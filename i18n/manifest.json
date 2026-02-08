@@ -1,0 +1,10 @@
+{
+  "defaultLocale": "de-DE",
+  "locales": [
+    {
+      "code": "de-DE",
+      "label": "Deutsch (DE)",
+      "file": "de-DE.json"
+    }
+  ]
+}

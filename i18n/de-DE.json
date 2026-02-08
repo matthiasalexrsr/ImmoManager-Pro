@@ -1,0 +1,911 @@
+{
+  "brand": {
+    "productName": "ImmoManager Pro",
+    "shortName": "ImmoManager",
+    "slogan": "Alles im Blick. Jede Immobilie."
+  },
+  "navigation": {
+    "main": {
+      "dashboard": "Dashboard",
+      "portfolio": "Portfolio",
+      "properties": "Immobilien",
+      "units": "Einheiten",
+      "tenantsContracts": "Mieter & Verträge",
+      "finance": "Finanzen",
+      "maintenance": "Instandhaltung",
+      "documents": "Dokumente",
+      "tasks": "Aufgaben",
+      "calendar": "Kalender",
+      "reports": "Berichte",
+      "integrations": "Integrationen",
+      "settings": "Einstellungen",
+      "help": "Hilfe"
+    },
+    "secondary": {
+      "overview": "Übersicht",
+      "details": "Details",
+      "history": "Historie",
+      "notes": "Notizen",
+      "attachments": "Anhänge",
+      "activity": "Aktivität"
+    }
+  },
+  "topBar": {
+    "search": "Suche…",
+    "quickAction": "Schnellaktion",
+    "notifications": "Benachrichtigungen",
+    "account": "Konto"
+  },
+  "accountMenu": {
+    "profile": "Profil",
+    "teamRoles": "Team & Rollen",
+    "billing": "Abrechnung",
+    "language": "Sprache",
+    "shortcuts": "Tastenkürzel",
+    "logout": "Abmelden"
+  },
+  "ui": {
+    "buttons": {
+      "new": "Neu",
+      "create": "Erstellen",
+      "save": "Speichern",
+      "saveClose": "Speichern & schließen",
+      "saveNew": "Speichern & neu",
+      "cancel": "Abbrechen",
+      "close": "Schließen",
+      "edit": "Bearbeiten",
+      "delete": "Löschen",
+      "duplicate": "Duplizieren",
+      "export": "Exportieren",
+      "import": "Importieren",
+      "print": "Drucken",
+      "share": "Teilen",
+      "open": "Öffnen",
+      "upload": "Hochladen",
+      "download": "Herunterladen",
+      "refresh": "Aktualisieren",
+      "filter": "Filtern",
+      "sort": "Sortieren",
+      "reset": "Zurücksetzen",
+      "apply": "Anwenden",
+      "confirm": "Bestätigen",
+      "next": "Weiter",
+      "back": "Zurück",
+      "done": "Fertig"
+    },
+    "commonActions": {
+      "viewDetails": "Details anzeigen",
+      "addToFavorites": "Zu Favoriten",
+      "markDone": "Als erledigt markieren",
+      "setReminder": "Erinnerung setzen",
+      "addComment": "Kommentar hinzufügen",
+      "addNote": "Notiz hinzufügen",
+      "attachFile": "Datei anhängen"
+    },
+    "form": {
+      "required": "Pflichtfeld",
+      "optional": "Optional",
+      "hint": "Hinweis",
+      "description": "Beschreibung",
+      "selectValue": "Wert auswählen",
+      "pleaseSelect": "Bitte auswählen…",
+      "selectDate": "Datum auswählen",
+      "selectTime": "Zeit auswählen",
+      "enterAmount": "Betrag eingeben",
+      "search": "Suchen"
+    },
+    "table": {
+      "adjustColumns": "Spalten anpassen",
+      "resetColumns": "Spalten zurücksetzen",
+      "density": "Dichte",
+      "groupBy": "Gruppieren nach",
+      "showTotals": "Summen anzeigen",
+      "rowsPerPage": "Einträge pro Seite",
+      "nextPage": "Nächste Seite",
+      "previousPage": "Vorherige Seite",
+      "noResults": "Keine Ergebnisse",
+      "loading": "Laden…"
+    },
+    "filterChips": {
+      "active": "Aktiv",
+      "inactive": "Inaktiv",
+      "draft": "Entwurf",
+      "archived": "Archiviert",
+      "due": "Fällig",
+      "overdue": "Überfällig",
+      "open": "Offen",
+      "done": "Erledigt"
+    }
+  },
+  "status": {
+    "general": {
+      "active": "Aktiv",
+      "inactive": "Inaktiv",
+      "archived": "Archiviert",
+      "draft": "Entwurf",
+      "pending": "Ausstehend",
+      "completed": "Abgeschlossen",
+      "locked": "Gesperrt"
+    },
+    "priority": {
+      "low": "Niedrig",
+      "medium": "Mittel",
+      "high": "Hoch",
+      "critical": "Kritisch"
+    },
+    "payment": {
+      "paid": "Bezahlt",
+      "partiallyPaid": "Teilbezahlt",
+      "open": "Offen",
+      "overdue": "Überfällig",
+      "cancelled": "Storniert"
+    },
+    "contract": {
+      "active": "Aktiv",
+      "expiring": "Auslaufend",
+      "terminated": "Gekündigt",
+      "ended": "Beendet",
+      "inReview": "In Prüfung"
+    }
+  },
+  "onboarding": {
+    "welcomeTitle": "Willkommen bei ImmoManager Pro",
+    "welcomeBody": "Verwalten Sie Ihr gesamtes Immobilienportfolio an einem Ort – klar, sicher und effizient.",
+    "steps": {
+      "createPortfolio": "Portfolio anlegen",
+      "addProperties": "Immobilien hinzufügen",
+      "addUnits": "Einheiten erfassen",
+      "addTenantsContracts": "Mieter & Verträge anlegen",
+      "configureAccounts": "Konten & Kategorien konfigurieren",
+      "viewFirstReport": "Erste Auswertung ansehen"
+    },
+    "cta": {
+      "startSetup": "Setup starten",
+      "loadSampleData": "Beispieldaten laden",
+      "setupLater": "Später einrichten"
+    }
+  },
+  "auth": {
+    "login": {
+      "title": "Anmelden",
+      "email": "E-Mail-Adresse",
+      "password": "Passwort",
+      "rememberMe": "Angemeldet bleiben",
+      "forgotPassword": "Passwort vergessen?",
+      "submit": "Anmelden"
+    },
+    "forgotPassword": {
+      "title": "Passwort zurücksetzen",
+      "body": "Wir senden Ihnen einen Link zum Zurücksetzen Ihres Passworts.",
+      "submit": "Link senden"
+    },
+    "register": {
+      "title": "Konto erstellen",
+      "firstName": "Vorname",
+      "lastName": "Nachname",
+      "company": "Unternehmen (optional)",
+      "email": "E-Mail-Adresse",
+      "password": "Passwort",
+      "confirmPassword": "Passwort bestätigen",
+      "submit": "Konto erstellen"
+    },
+    "twoFactor": {
+      "title": "Zwei-Faktor-Authentifizierung",
+      "enterCode": "Code eingeben",
+      "confirmCode": "Code bestätigen",
+      "resendCode": "Neuen Code senden"
+    }
+  },
+  "dashboard": {
+    "headings": {
+      "portfolioOverview": "Portfolio-Übersicht",
+      "keyMetrics": "Wichtige Kennzahlen",
+      "recentActivity": "Aktuelle Aktivitäten",
+      "upcomingAppointments": "Nächste Termine"
+    },
+    "kpis": {
+      "totalProperties": "Immobilien gesamt",
+      "totalUnits": "Einheiten gesamt",
+      "occupancyRate": "Vermietungsquote",
+      "netRentMonthly": "Nettomiete (Monat)",
+      "cashflowMonthly": "Cashflow (Monat)",
+      "openReceivables": "Offene Forderungen",
+      "overduePayments": "Überfällige Zahlungen",
+      "openMaintenanceCases": "Instandhaltungsfälle offen"
+    },
+    "widgets": {
+      "rentPayments30Days": "Mieteingänge (letzte 30 Tage)",
+      "vacancyByProperty": "Leerstand nach Objekt",
+      "costsByCategory": "Kosten nach Kategorie",
+      "contractTerms": "Vertragslaufzeiten",
+      "tasksDue": "Aufgaben: fällig/überfällig"
+    },
+    "emptyState": {
+      "title": "Noch keine Daten vorhanden.",
+      "body": "Legen Sie Ihr Portfolio an, um Kennzahlen und Auswertungen zu sehen.",
+      "cta": "Portfolio anlegen"
+    }
+  },
+  "portfolio": {
+    "list": {
+      "title": "Portfolio",
+      "plural": "Portfolios",
+      "new": "Neues Portfolio",
+      "name": "Portfolio-Name",
+      "description": "Beschreibung",
+      "owner": "Eigentümer/Organisation",
+      "currency": "Währung",
+      "timezone": "Zeitzone",
+      "createdAt": "Erstellt am"
+    },
+    "detail": {
+      "title": "Portfolio-Details",
+      "general": "Allgemein",
+      "addresses": "Adressen",
+      "taxBilling": "Steuer & Abrechnung",
+      "userAccess": "Benutzerzugriff"
+    },
+    "actions": {
+      "create": "Portfolio erstellen",
+      "edit": "Portfolio bearbeiten",
+      "archive": "Portfolio archivieren"
+    }
+  },
+  "properties": {
+    "list": {
+      "title": "Immobilien",
+      "new": "Neue Immobilie",
+      "name": "Objektname",
+      "type": "Objektart",
+      "address": "Adresse",
+      "yearBuilt": "Baujahr",
+      "area": "Wohn-/Nutzfläche",
+      "units": "Einheiten",
+      "status": "Status",
+      "ownershipShare": "Eigentumsanteil",
+      "marketValue": "Marktwert"
+    },
+    "types": {
+      "multiFamily": "Mehrfamilienhaus",
+      "singleFamily": "Einfamilienhaus",
+      "apartment": "Wohnung",
+      "commercial": "Gewerbe",
+      "mixedUse": "Mischobjekt",
+      "land": "Grundstück",
+      "other": "Sonstiges"
+    },
+    "form": {
+      "general": {
+        "title": "Allgemeine Angaben",
+        "name": "Objektname",
+        "type": "Objektart",
+        "portfolio": "Portfolio",
+        "status": "Status"
+      },
+      "location": {
+        "title": "Standort",
+        "street": "Straße und Hausnummer",
+        "postalCode": "PLZ",
+        "city": "Ort",
+        "country": "Land"
+      },
+      "metrics": {
+        "title": "Kennzahlen",
+        "yearBuilt": "Baujahr",
+        "livingArea": "Wohnfläche (m²)",
+        "usableArea": "Nutzfläche (m²)",
+        "plotArea": "Grundstücksfläche (m²)"
+      },
+      "ownership": {
+        "title": "Eigentum & Bewertung",
+        "owner": "Eigentümer",
+        "ownershipShare": "Eigentumsanteil (%)",
+        "purchasePrice": "Kaufpreis",
+        "purchaseDate": "Kaufdatum",
+        "marketValue": "Marktwert",
+        "valuationDate": "Bewertungsdatum"
+      }
+    },
+    "tabs": {
+      "overview": "Überblick",
+      "units": "Einheiten",
+      "tenants": "Mieter",
+      "finance": "Finanzen",
+      "maintenance": "Instandhaltung",
+      "documents": "Dokumente",
+      "history": "Historie"
+    }
+  },
+  "units": {
+    "list": {
+      "title": "Einheiten",
+      "new": "Neue Einheit",
+      "unit": "Einheit",
+      "type": "Typ",
+      "area": "Fläche (m²)",
+      "rooms": "Zimmer",
+      "floor": "Etage",
+      "coldRent": "Kaltmiete",
+      "serviceCharge": "Nebenkosten-VZ",
+      "warmRent": "Warmmiete",
+      "status": "Status",
+      "tenant": "Mieter"
+    },
+    "types": {
+      "apartment": "Wohnung",
+      "office": "Büro",
+      "retail": "Laden",
+      "storage": "Lager",
+      "parking": "Stellplatz",
+      "garage": "Garage",
+      "basement": "Keller",
+      "other": "Sonstiges"
+    },
+    "form": {
+      "property": "Immobilie",
+      "label": "Einheitsbezeichnung",
+      "type": "Typ",
+      "area": "Fläche (m²)",
+      "rooms": "Zimmer",
+      "floor": "Etage",
+      "features": "Ausstattungsmerkmale",
+      "rentSettings": {
+        "title": "Mieteinstellungen",
+        "coldRentMonthly": "Kaltmiete (Monat)",
+        "serviceChargeAdvance": "Nebenkosten-Vorauszahlung",
+        "heatingAdvance": "Heizkosten-Vorauszahlung",
+        "warmRentCalculated": "Warmmiete (berechnet)"
+      },
+      "status": {
+        "title": "Status",
+        "rented": "Vermietet",
+        "vacant": "Leerstand",
+        "reserved": "Reserviert",
+        "renovation": "In Renovierung"
+      }
+    }
+  },
+  "tenantsContracts": {
+    "tenants": {
+      "title": "Mieter",
+      "new": "Neuer Mieter",
+      "name": "Name",
+      "email": "E-Mail",
+      "phone": "Telefon",
+      "address": "Adresse",
+      "paymentMethod": "Zahlungsweise",
+      "sepaMandate": "SEPA-Mandat",
+      "notes": "Notizen"
+    },
+    "contracts": {
+      "title": "Verträge",
+      "new": "Neuer Vertrag",
+      "number": "Vertragsnummer",
+      "property": "Immobilie",
+      "unit": "Einheit",
+      "tenant": "Mieter",
+      "start": "Mietbeginn",
+      "endOptional": "Mietende (optional)",
+      "noticePeriod": "Kündigungsfrist",
+      "deposit": "Kaution",
+      "indexRent": "Index-/Staffelmiete",
+      "serviceChargeSettlement": "Betriebskostenabrechnung",
+      "status": "Status"
+    },
+    "contractActions": {
+      "activate": "Vertrag aktivieren",
+      "terminate": "Vertrag kündigen",
+      "handoverProtocol": "Übergabeprotokoll",
+      "rentAdjustment": "Mietanpassung",
+      "sendPaymentReminder": "Zahlungserinnerung senden"
+    },
+    "emptyState": {
+      "title": "Keine Verträge vorhanden.",
+      "body": "Legen Sie einen Vertrag an, um Miete und Zahlungen zu verwalten.",
+      "cta": "Vertrag anlegen"
+    }
+  },
+  "finance": {
+    "areas": {
+      "accounts": "Konten",
+      "bookings": "Buchungen",
+      "receivables": "Forderungen",
+      "invoices": "Rechnungen",
+      "budgets": "Budgets",
+      "categories": "Kategorien",
+      "taxes": "Steuern"
+    },
+    "accounts": {
+      "title": "Konten",
+      "new": "Neues Konto",
+      "name": "Kontoname",
+      "bank": "Bank",
+      "iban": "IBAN",
+      "bic": "BIC",
+      "type": "Kontotyp",
+      "openingBalance": "Anfangssaldo",
+      "balance": "Saldo",
+      "lastSync": "Letzte Synchronisation"
+    },
+    "accountTypes": {
+      "bank": "Bankkonto",
+      "cash": "Kasse",
+      "reserves": "Rücklagenkonto",
+      "credit": "Kreditkonto"
+    },
+    "bookings": {
+      "title": "Buchungen",
+      "new": "Neue Buchung",
+      "date": "Datum",
+      "amount": "Betrag",
+      "category": "Kategorie",
+      "propertyUnit": "Objekt/Einheit",
+      "tenant": "Mieter",
+      "paymentText": "Zahlungstext",
+      "receipt": "Beleg",
+      "status": "Status"
+    },
+    "categories": {
+      "rentIncome": "Mieteinnahmen",
+      "serviceCharges": "Nebenkosten",
+      "maintenance": "Instandhaltung",
+      "administration": "Verwaltung",
+      "insurance": "Versicherung",
+      "propertyTax": "Grundsteuer",
+      "energy": "Energie",
+      "interest": "Zinsen",
+      "repayment": "Tilgung",
+      "otherCosts": "Sonstige Kosten"
+    },
+    "receivables": {
+      "openReceivables": "Offene Forderungen",
+      "dunningLevel": "Mahnstufe",
+      "dueDate": "Fällig am",
+      "postPayment": "Zahlungseingang buchen",
+      "createDunning": "Mahnung erstellen"
+    },
+    "invoices": {
+      "title": "Rechnungen",
+      "new": "Neue Rechnung",
+      "supplier": "Lieferant",
+      "invoiceDate": "Rechnungsdatum",
+      "dueDate": "Fälligkeitsdatum",
+      "net": "Netto",
+      "vat": "MwSt.",
+      "gross": "Brutto",
+      "paymentTerms": "Zahlungsziel",
+      "pay": "Bezahlen"
+    },
+    "export": {
+      "datev": "DATEV-Export",
+      "csv": "CSV-Export",
+      "pdf": "PDF-Export"
+    }
+  },
+  "maintenance": {
+    "overview": {
+      "title": "Instandhaltung",
+      "new": "Neuer Fall",
+      "cases": "Fälle",
+      "priority": "Priorität",
+      "status": "Status",
+      "propertyUnit": "Objekt/Einheit",
+      "reporter": "Melder",
+      "assignee": "Zuständig",
+      "due": "Fällig",
+      "estimatedCost": "Kosten (Schätzung)"
+    },
+    "form": {
+      "title": "Titel",
+      "description": "Beschreibung",
+      "category": "Kategorie",
+      "priority": "Priorität",
+      "property": "Objekt",
+      "unitOptional": "Einheit (optional)",
+      "photos": "Fotos/Anhänge",
+      "contractor": "Dienstleister",
+      "appointment": "Termin",
+      "budget": "Kostenrahmen"
+    },
+    "categories": {
+      "plumbing": "Sanitär",
+      "electrical": "Elektrik",
+      "heating": "Heizung",
+      "roofFacade": "Dach/Fassade",
+      "interior": "Innenausbau",
+      "pestControl": "Schädlingsbekämpfung",
+      "outdoor": "Außenanlagen",
+      "other": "Sonstiges"
+    },
+    "actions": {
+      "createOrder": "Auftrag erstellen",
+      "requestQuote": "Angebot anfordern",
+      "addInvoice": "Rechnung hinzufügen",
+      "closeCase": "Fall abschließen"
+    }
+  },
+  "documents": {
+    "library": {
+      "title": "Dokumente",
+      "folders": "Ordner",
+      "new": "Neues Dokument",
+      "upload": "Hochladen",
+      "scan": "Scannen",
+      "tags": "Tags",
+      "fullTextSearch": "Volltextsuche"
+    },
+    "standardFolders": {
+      "contracts": "Verträge",
+      "statements": "Abrechnungen",
+      "receipts": "Belege",
+      "protocols": "Protokolle",
+      "plans": "Pläne",
+      "insurance": "Versicherungen",
+      "tax": "Steuer"
+    },
+    "metadata": {
+      "title": "Titel",
+      "type": "Typ",
+      "propertyUnit": "Objekt/Einheit",
+      "contract": "Vertrag",
+      "date": "Datum",
+      "tags": "Tags",
+      "description": "Beschreibung"
+    }
+  },
+  "tasks": {
+    "list": {
+      "title": "Aufgaben",
+      "new": "Neue Aufgabe",
+      "titleLabel": "Titel",
+      "assignee": "Zugewiesen an",
+      "dueDate": "Fällig am",
+      "priority": "Priorität",
+      "status": "Status",
+      "propertyUnit": "Objekt/Einheit"
+    },
+    "status": {
+      "open": "Offen",
+      "inProgress": "In Arbeit",
+      "blocked": "Blockiert",
+      "done": "Erledigt"
+    },
+    "actions": {
+      "complete": "Aufgabe abschließen",
+      "reassign": "Neu zuweisen",
+      "remind": "Erinnern"
+    }
+  },
+  "calendar": {
+    "title": "Kalender",
+    "create": "Termin erstellen",
+    "types": {
+      "viewing": "Besichtigung",
+      "maintenance": "Wartung",
+      "handover": "Übergabe",
+      "reading": "Ablesung",
+      "note": "Notiz"
+    },
+    "form": {
+      "title": "Titel",
+      "date": "Datum",
+      "time": "Uhrzeit",
+      "location": "Ort",
+      "participants": "Teilnehmer",
+      "propertyUnit": "Objekt/Einheit",
+      "description": "Beschreibung"
+    }
+  },
+  "reports": {
+    "hub": {
+      "title": "Berichte",
+      "create": "Bericht erstellen",
+      "period": "Zeitraum",
+      "portfolio": "Portfolio",
+      "properties": "Immobilien",
+      "grouping": "Gruppierung",
+      "filter": "Filter"
+    },
+    "standard": {
+      "profitLoss": "Gewinn & Verlust",
+      "cashflow": "Cashflow",
+      "tenantList": "Mieterliste",
+      "vacancyReport": "Leerstandsbericht",
+      "openReceivables": "Offene Forderungen",
+      "maintenanceCosts": "Instandhaltungskosten",
+      "serviceChargeOverview": "Betriebskostenübersicht",
+      "taxOverview": "Steuerübersicht"
+    },
+    "actions": {
+      "exportPdf": "Als PDF exportieren",
+      "exportExcel": "Als Excel exportieren",
+      "schedule": "Bericht planen"
+    }
+  },
+  "integrations": {
+    "title": "Integrationen",
+    "bankSync": "Bank-Synchronisation",
+    "datev": "DATEV",
+    "email": "E-Mail",
+    "calendar": "Kalender (Google/Microsoft)",
+    "storage": "Dokumentenablage (Dropbox/SharePoint)",
+    "webhooks": "Webhooks/API",
+    "status": {
+      "connected": "Verbunden",
+      "notConnected": "Nicht verbunden",
+      "checkConnection": "Verbindung prüfen",
+      "renewAccess": "Zugriff erneuern"
+    }
+  },
+  "settings": {
+    "areas": {
+      "general": "Allgemein",
+      "usersRoles": "Benutzer & Rollen",
+      "notifications": "Benachrichtigungen",
+      "templates": "Vorlagen",
+      "categories": "Kategorien",
+      "numberRanges": "Nummernkreise",
+      "privacy": "Datenschutz",
+      "security": "Sicherheit",
+      "billing": "Abrechnung"
+    },
+    "general": {
+      "language": "Sprache",
+      "currency": "Währung",
+      "dateFormat": "Datumsformat",
+      "taxRates": "Steuersätze",
+      "defaultPortfolio": "Standardportfolio"
+    },
+    "usersRoles": {
+      "users": "Benutzer",
+      "role": "Rolle",
+      "permissions": "Berechtigungen",
+      "invite": "Einladen",
+      "sendInvite": "Einladung senden"
+    },
+    "roles": {
+      "owner": "Eigentümer",
+      "manager": "Verwalter",
+      "accounting": "Buchhaltung",
+      "technician": "Techniker",
+      "readOnly": "Nur Lesen"
+    },
+    "notifications": {
+      "email": "E-Mail-Benachrichtigungen",
+      "push": "Push-Benachrichtigungen",
+      "paymentAlerts": "Zahlungsalarme",
+      "contractAlerts": "Vertragsalarme",
+      "maintenanceAlerts": "Instandhaltungsalarme"
+    },
+    "templates": {
+      "dunning": "Mahnungsvorlagen",
+      "email": "E-Mail-Vorlagen",
+      "contract": "Vertragsvorlagen",
+      "protocol": "Protokollvorlagen"
+    },
+    "security": {
+      "changePassword": "Passwort ändern",
+      "enable2fa": "2FA aktivieren",
+      "activeSessions": "Aktive Sitzungen",
+      "deviceManagement": "Geräteverwaltung"
+    }
+  },
+  "search": {
+    "global": {
+      "placeholder": "Suche nach Immobilien, Einheiten, Mietern, Verträgen, Buchungen…",
+      "recent": "Letzte Suchanfragen",
+      "results": "Treffer",
+      "noResults": "Keine Treffer gefunden."
+    }
+  },
+  "notifications": {
+    "items": {
+      "paymentReceived": "Neue Zahlung eingegangen",
+      "paymentOverdue": "Zahlung überfällig",
+      "contractExpiring": "Vertrag läuft aus",
+      "taskDue": "Aufgabe fällig",
+      "newMaintenanceCase": "Neuer Instandhaltungsfall",
+      "documentUploaded": "Dokument hochgeladen"
+    },
+    "actions": {
+      "markAllRead": "Alle als gelesen markieren",
+      "settings": "Benachrichtigungseinstellungen"
+    }
+  },
+  "modals": {
+    "confirmSave": {
+      "title": "Änderungen speichern?",
+      "body": "Sie haben ungespeicherte Änderungen. Möchten Sie speichern?",
+      "save": "Speichern",
+      "dontSave": "Nicht speichern"
+    },
+    "confirmDelete": {
+      "title": "Wirklich löschen?",
+      "body": "Diese Aktion kann nicht rückgängig gemacht werden.",
+      "delete": "Löschen",
+      "cancel": "Abbrechen"
+    },
+    "confirmArchive": {
+      "title": "Archivieren?",
+      "body": "Sie können archivierte Einträge später wiederherstellen.",
+      "archive": "Archivieren"
+    }
+  },
+  "toasts": {
+    "success": {
+      "saved": "Erfolgreich gespeichert.",
+      "created": "Erfolgreich erstellt.",
+      "deleted": "Erfolgreich gelöscht.",
+      "exportStarted": "Export wurde gestartet.",
+      "importCompleted": "Import abgeschlossen."
+    },
+    "error": {
+      "generic": "Es ist ein Fehler aufgetreten.",
+      "saveFailed": "Speichern fehlgeschlagen. Bitte versuchen Sie es erneut.",
+      "invalidInput": "Ungültige Eingabe. Bitte prüfen Sie die Felder.",
+      "offline": "Keine Verbindung. Bitte Internetverbindung prüfen.",
+      "accessDenied": "Zugriff verweigert. Ihnen fehlen Berechtigungen."
+    },
+    "info": {
+      "changesDiscarded": "Änderungen wurden verworfen.",
+      "syncInProgress": "Synchronisation läuft…",
+      "dataRefreshing": "Daten werden aktualisiert…"
+    }
+  },
+  "validation": {
+    "required": "Dieses Feld ist erforderlich.",
+    "invalidEmail": "Bitte geben Sie eine gültige E-Mail-Adresse ein.",
+    "invalidNumber": "Bitte geben Sie eine Zahl ein.",
+    "amountGreaterThanZero": "Betrag muss größer als 0 sein.",
+    "dateInPast": "Datum liegt in der Vergangenheit.",
+    "invalidIban": "IBAN ist ungültig.",
+    "portfolioPropertyExists": "Die Kombination aus Portfolio und Objektname existiert bereits."
+  },
+  "emptyStates": {
+    "generic": {
+      "title": "Noch keine Einträge vorhanden.",
+      "body": "Erstellen Sie Ihren ersten Eintrag, um loszulegen.",
+      "cta": "Neu erstellen"
+    },
+    "documents": {
+      "title": "Keine Dokumente gefunden.",
+      "body": "Laden Sie Belege, Verträge und Protokolle hoch – alles zentral an einem Ort.",
+      "cta": "Dokument hochladen"
+    },
+    "maintenance": {
+      "title": "Keine offenen Fälle.",
+      "body": "Alles erledigt. Neue Fälle können jederzeit angelegt werden.",
+      "cta": "Fall anlegen"
+    }
+  },
+  "helpSupport": {
+    "title": "Hilfe",
+    "helpCenter": "Hilfe-Center",
+    "contactSupport": "Support kontaktieren",
+    "documentation": "Dokumentation",
+    "videoTutorials": "Video-Tutorials",
+    "shortcuts": "Tastenkürzel",
+    "systemStatus": "Systemstatus",
+    "supportForm": {
+      "subject": "Betreff",
+      "description": "Beschreibung",
+      "priority": "Priorität",
+      "attachment": "Screenshot/Datei",
+      "submit": "Anfrage senden"
+    }
+  },
+  "privacyLegal": {
+    "privacy": "Datenschutz",
+    "imprint": "Impressum",
+    "terms": "Nutzungsbedingungen",
+    "manageConsents": "Einwilligungen verwalten",
+    "requestExport": "Datenexport anfordern",
+    "deleteAccount": "Konto löschen",
+    "notes": {
+      "dataProcessing": "Wir verarbeiten Ihre Daten gemäß Datenschutzbestimmungen.",
+      "exportDuration": "Ein Datenexport kann je nach Umfang einige Minuten dauern."
+    }
+  },
+  "locale": {
+    "language": "Deutsch (DE)",
+    "date": "TT.MM.JJJJ",
+    "currency": "EUR (€)",
+    "decimalSeparator": ",",
+    "thousandSeparator": "."
+  },
+  "microcopy": {
+    "tipTags": "Tipp: Sie können Objekte über Tags schneller finden.",
+    "noteDeposits": "Hinweis: Kautionen werden separat vom Mietkonto verwaltet.",
+    "recommendReceipts": "Empfehlung: Hinterlegen Sie Belege direkt an der Buchung.",
+    "useQuickActions": "Praktisch: Nutzen Sie Schnellaktionen für häufige Aufgaben."
+  },
+  "placeholders": {
+    "address": "z. B. „Musterstraße 12, 10115 Berlin“",
+    "unit": "z. B. „Wohnung 3.2“",
+    "payment": "z. B. „Mieteingang Januar“",
+    "task": "z. B. „Heizungswartung beauftragen“"
+  },
+  "shortcuts": {
+    "openSearch": "/ Suche öffnen",
+    "createNew": "N Neu erstellen",
+    "save": "Ctrl/⌘ + S Speichern",
+    "closeDialog": "Esc Dialog schließen"
+  },
+  "errorPages": {
+    "notFound": {
+      "title": "404 – Seite nicht gefunden",
+      "body": "Die gewünschte Seite existiert nicht oder wurde verschoben.",
+      "cta": "Zur Startseite"
+    },
+    "serverError": {
+      "title": "500 – Serverfehler",
+      "body": "Bitte versuchen Sie es später erneut.",
+      "cta": "Neu laden"
+    },
+    "maintenance": {
+      "title": "Wartung",
+      "body": "ImmoManager Pro wird gerade gewartet.",
+      "cta": "Wir sind in Kürze wieder für Sie da."
+    }
+  },
+  "analyticsLabels": {
+    "period": "Zeitraum",
+    "comparisonPeriod": "Vergleichszeitraum",
+    "sum": "Summe",
+    "average": "Durchschnitt",
+    "median": "Median",
+    "minimum": "Minimum",
+    "maximum": "Maximum",
+    "share": "Anteil",
+    "trend": "Trend",
+    "forecast": "Prognose"
+  },
+  "sensitiveActions": {
+    "deleteAccount": {
+      "title": "Konto wirklich löschen?",
+      "body": "Alle Daten werden dauerhaft entfernt. Diese Aktion ist nicht rückgängig zu machen.",
+      "confirm": "Ich verstehe die Konsequenzen",
+      "cta": "Konto löschen"
+    }
+  },
+  "importExport": {
+    "import": {
+      "selectFile": "Datei auswählen",
+      "mapColumns": "Spalten zuordnen",
+      "preview": "Vorschau",
+      "start": "Import starten",
+      "log": "Importprotokoll",
+      "rowsImported": "Zeilen importiert",
+      "rowsSkipped": "Zeilen übersprungen",
+      "rowsWithErrors": "Fehlerhafte Zeilen"
+    },
+    "export": {
+      "format": "Exportformat",
+      "scope": "Exportumfang",
+      "create": "Export erstellen",
+      "downloadReady": "Download bereit"
+    }
+  },
+  "tooltips": {
+    "occupancyRate": "Vermietungsquote: Anteil vermieteter Einheiten an allen Einheiten.",
+    "cashflow": "Cashflow: Einnahmen minus Ausgaben im gewählten Zeitraum.",
+    "serviceChargeAdvance": "Nebenkosten-VZ: Monatliche Vorauszahlung für Betriebskosten."
+  },
+  "security": {
+    "sessionExpired": "Sitzung abgelaufen. Bitte melden Sie sich erneut an.",
+    "tooManyAttempts": "Zu viele Anmeldeversuche. Bitte warten Sie kurz und versuchen Sie es erneut.",
+    "connectionEncrypted": "Ihre Verbindung ist verschlüsselt."
+  },
+  "terminology": {
+    "property": "Immobilie",
+    "unit": "Einheit",
+    "contract": "Vertrag",
+    "booking": "Buchung"
+  },
+  "glossary": {
+    "coldRent": "Kaltmiete: Miete ohne Nebenkosten.",
+    "warmRent": "Warmmiete: Kaltmiete plus Nebenkosten-VZ (und ggf. Heizkosten-VZ).",
+    "serviceCharges": "Betriebskosten: Umlagefähige Kosten, z. B. Wasser, Müll, Hausreinigung.",
+    "deposit": "Kaution: Sicherheitsleistung des Mieters."
+  }
+}
