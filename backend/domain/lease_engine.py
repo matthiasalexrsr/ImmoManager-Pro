@@ -79,6 +79,17 @@ class BalanceResult:
     overpaid_total: Decimal
 
 
+
+
+@dataclass(frozen=True)
+class ReceivableSettlementLine:
+    period_start: date
+    due_date: date
+    total_amount: Decimal
+    paid_amount: Decimal
+    outstanding_amount: Decimal
+    status: str
+
 @dataclass(frozen=True)
 class ReceivablePaymentAllocation:
     receivable_period_start: date
@@ -204,3 +215,45 @@ class LeaseEngine:
             unapplied_total=unapplied_total,
             outstanding_total=outstanding_total,
         )
+
+
+    @staticmethod
+    def build_settlement_report(
+        receivables: Iterable[ReceivableLine],
+        payments: Iterable[PaymentLine],
+        *,
+        today: date,
+    ) -> list[ReceivableSettlementLine]:
+        sorted_receivables = sorted(receivables, key=lambda item: item.due_date)
+        allocation_result = LeaseEngine.allocate_payments_fifo(sorted_receivables, payments)
+
+        paid_by_period: dict[date, Decimal] = {}
+        for item in allocation_result.allocations:
+            paid_by_period[item.receivable_period_start] = _money(
+                paid_by_period.get(item.receivable_period_start, Decimal("0.00")) + item.allocated_amount
+            )
+
+        lines: list[ReceivableSettlementLine] = []
+        for receivable in sorted_receivables:
+            paid = paid_by_period.get(receivable.period_start, Decimal("0.00"))
+            outstanding = _money(receivable.total_amount - paid)
+            if outstanding <= Decimal("0.00"):
+                status = "paid"
+                outstanding = Decimal("0.00")
+            elif today > receivable.due_date:
+                status = "overdue"
+            else:
+                status = "open"
+
+            lines.append(
+                ReceivableSettlementLine(
+                    period_start=receivable.period_start,
+                    due_date=receivable.due_date,
+                    total_amount=_money(receivable.total_amount),
+                    paid_amount=_money(paid),
+                    outstanding_amount=outstanding,
+                    status=status,
+                )
+            )
+
+        return lines

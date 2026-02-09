@@ -141,3 +141,32 @@ def test_charge_config_normalizes_amounts() -> None:
     assert charge.service_charge_advance == Decimal("100.50")
     assert charge.heating_advance == Decimal("25.56")
     assert charge.warm_rent == Decimal("1026.06")
+
+
+def test_build_settlement_report_statuses() -> None:
+    receivables = LeaseEngine.build_monthly_receivables(
+        contract_start=datetime.date(2024, 1, 1),
+        contract_end=None,
+        until_including=datetime.date(2024, 3, 31),
+        charge=ChargeConfig(cold_rent=Decimal("1000.00")),
+    )
+    payments = [
+        PaymentLine(booking_date=datetime.date(2024, 1, 5), amount=Decimal("1000.00")),
+        PaymentLine(booking_date=datetime.date(2024, 2, 6), amount=Decimal("500.00")),
+    ]
+
+    report = LeaseEngine.build_settlement_report(
+        receivables,
+        payments,
+        today=datetime.date(2024, 3, 20),
+    )
+
+    assert len(report) == 3
+    assert report[0].status == "paid"
+    assert report[0].outstanding_amount == Decimal("0.00")
+    assert report[1].status == "overdue"
+    assert report[1].paid_amount == Decimal("500.00")
+    assert report[1].outstanding_amount == Decimal("500.00")
+    assert report[2].status == "overdue"
+    assert report[2].paid_amount == Decimal("0.00")
+    assert report[2].outstanding_amount == Decimal("1000.00")
