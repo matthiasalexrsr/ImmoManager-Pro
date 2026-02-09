@@ -1,15 +1,25 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 
+from ..dependencies import store
 from ..models import CalendarEvent, CalendarEventCreate
-from ..routers.portfolios import store
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/calendar", tags=["Kalender"])
 
 
 @router.get("", response_model=list[CalendarEvent])
-def list_calendar_events() -> list[CalendarEvent]:
-    return store.list_calendar_events()
+def list_calendar_events(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    property_id: str | None = Query(None),
+    event_type: str | None = Query(None),
+) -> list[CalendarEvent]:
+    results = store.list_calendar_events()
+    if property_id:
+        results = [e for e in results if e.property_id == property_id]
+    if event_type:
+        results = [e for e in results if e.event_type == event_type]
+    return results[skip : skip + limit]
 
 
 @router.post("", response_model=CalendarEvent, status_code=status.HTTP_201_CREATED)

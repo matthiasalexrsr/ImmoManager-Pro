@@ -1,15 +1,19 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 
+from ..dependencies import store
 from ..models import Tenant, TenantCreate
-from ..routers.portfolios import store
 from ..storage import NotFoundError
 
 router = APIRouter(prefix="/tenants", tags=["Mieter"])
 
 
 @router.get("", response_model=list[Tenant])
-def list_tenants() -> list[Tenant]:
-    return store.list_tenants()
+def list_tenants(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+) -> list[Tenant]:
+    results = store.list_tenants()
+    return results[skip : skip + limit]
 
 
 @router.post("", response_model=Tenant, status_code=status.HTTP_201_CREATED)

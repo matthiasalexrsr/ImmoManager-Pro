@@ -12,7 +12,7 @@ from backend.models import (
     UnitCreate,
 )
 from backend.routers import contracts, invoices
-from backend.routers.portfolios import store
+from backend.dependencies import store
 
 
 def _clear_store() -> None:

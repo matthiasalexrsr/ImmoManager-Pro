@@ -1,19 +1,29 @@
 from dataclasses import asdict
 from decimal import Decimal
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 
+from ..dependencies import store
 from ..domain.invoice_matching import BookingCandidate, InvoiceMatcher, InvoiceToMatch
 from ..models import Invoice, InvoiceCreate
-from ..routers.portfolios import store
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/invoices", tags=["Rechnungen"])
 
 
 @router.get("", response_model=list[Invoice])
-def list_invoices() -> list[Invoice]:
-    return store.list_invoices()
+def list_invoices(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    supplier: str | None = Query(None),
+    status_filter: str | None = Query(None, alias="status"),
+) -> list[Invoice]:
+    results = store.list_invoices()
+    if supplier:
+        results = [i for i in results if i.supplier == supplier]
+    if status_filter:
+        results = [i for i in results if i.status == status_filter]
+    return results[skip : skip + limit]
 
 
 @router.post("", response_model=Invoice, status_code=status.HTTP_201_CREATED)

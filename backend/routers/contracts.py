@@ -6,9 +6,9 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel
 
+from ..dependencies import store
 from ..domain.lease_engine import ChargeConfig, LeaseEngine, PaymentLine
 from ..models import Contract, ContractCreate
-from ..routers.portfolios import store
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/contracts", tags=["Verträge"])
@@ -24,8 +24,21 @@ class DunningPolicyRequest(BaseModel):
 
 
 @router.get("", response_model=list[Contract])
-def list_contracts() -> list[Contract]:
-    return store.list_contracts()
+def list_contracts(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    property_id: str | None = Query(None),
+    tenant_id: str | None = Query(None),
+    status_filter: str | None = Query(None, alias="status"),
+) -> list[Contract]:
+    results = store.list_contracts()
+    if property_id:
+        results = [c for c in results if c.property_id == property_id]
+    if tenant_id:
+        results = [c for c in results if c.tenant_id == tenant_id]
+    if status_filter:
+        results = [c for c in results if c.status == status_filter]
+    return results[skip : skip + limit]
 
 
 @router.post("", response_model=Contract, status_code=status.HTTP_201_CREATED)

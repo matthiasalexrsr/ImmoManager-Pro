@@ -1,15 +1,25 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 
+from ..dependencies import store
 from ..models import Category, CategoryCreate
-from ..routers.portfolios import store
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/categories", tags=["Kategorien"])
 
 
 @router.get("", response_model=list[Category])
-def list_categories() -> list[Category]:
-    return store.list_categories()
+def list_categories(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    portfolio_id: str | None = Query(None),
+    category_type: str | None = Query(None),
+) -> list[Category]:
+    results = store.list_categories()
+    if portfolio_id:
+        results = [c for c in results if c.portfolio_id == portfolio_id]
+    if category_type:
+        results = [c for c in results if c.category_type == category_type]
+    return results[skip : skip + limit]
 
 
 @router.post("", response_model=Category, status_code=status.HTTP_201_CREATED)

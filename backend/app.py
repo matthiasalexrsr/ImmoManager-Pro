@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
 
 from .routers import (
     accounts,
@@ -22,26 +22,32 @@ from .routers import (
 
 app = FastAPI(title="ImmoManager Pro API", version="0.1.0")
 
+# API v1 router with version prefix
+api_v1 = APIRouter(prefix="/api/v1")
+
+api_v1.include_router(portfolios.router)
+api_v1.include_router(properties.router)
+api_v1.include_router(units.router)
+api_v1.include_router(tenants.router)
+api_v1.include_router(contracts.router)
+api_v1.include_router(accounts.router)
+api_v1.include_router(bookings.router)
+api_v1.include_router(receivables.router)
+api_v1.include_router(invoices.router)
+api_v1.include_router(maintenance.router)
+api_v1.include_router(documents.router)
+api_v1.include_router(tasks.router)
+api_v1.include_router(calendar.router)
+api_v1.include_router(listings.router)
+api_v1.include_router(categories.router)
+api_v1.include_router(reports.router)
+
+app.include_router(api_v1)
+
+# i18n stays at root level (not versioned)
+app.include_router(i18n.router)
+
 
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
-
-
-app.include_router(portfolios.router)
-app.include_router(properties.router)
-app.include_router(units.router)
-app.include_router(tenants.router)
-app.include_router(contracts.router)
-app.include_router(accounts.router)
-app.include_router(bookings.router)
-app.include_router(receivables.router)
-app.include_router(invoices.router)
-app.include_router(maintenance.router)
-app.include_router(documents.router)
-app.include_router(tasks.router)
-app.include_router(calendar.router)
-app.include_router(i18n.router)
-app.include_router(listings.router)
-app.include_router(categories.router)
-app.include_router(reports.router)

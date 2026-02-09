@@ -1,15 +1,25 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 
+from ..dependencies import store
 from ..models import Document, DocumentCreate
-from ..routers.portfolios import store
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/documents", tags=["Dokumente"])
 
 
 @router.get("", response_model=list[Document])
-def list_documents() -> list[Document]:
-    return store.list_documents()
+def list_documents(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    property_id: str | None = Query(None),
+    contract_id: str | None = Query(None),
+) -> list[Document]:
+    results = store.list_documents()
+    if property_id:
+        results = [d for d in results if d.property_id == property_id]
+    if contract_id:
+        results = [d for d in results if d.contract_id == contract_id]
+    return results[skip : skip + limit]
 
 
 @router.post("", response_model=Document, status_code=status.HTTP_201_CREATED)

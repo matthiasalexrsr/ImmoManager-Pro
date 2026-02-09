@@ -14,7 +14,7 @@ from backend.models import (
     UnitCreate,
 )
 from backend.routers import reports
-from backend.routers.portfolios import store
+from backend.dependencies import store
 
 
 def test_reports_summary_counts() -> None:

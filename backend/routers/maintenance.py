@@ -1,15 +1,25 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 
+from ..dependencies import store
 from ..models import MaintenanceCase, MaintenanceCaseCreate
-from ..routers.portfolios import store
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/maintenance", tags=["Instandhaltung"])
 
 
 @router.get("", response_model=list[MaintenanceCase])
-def list_maintenance_cases() -> list[MaintenanceCase]:
-    return store.list_maintenance_cases()
+def list_maintenance_cases(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    property_id: str | None = Query(None),
+    status_filter: str | None = Query(None, alias="status"),
+) -> list[MaintenanceCase]:
+    results = store.list_maintenance_cases()
+    if property_id:
+        results = [c for c in results if c.property_id == property_id]
+    if status_filter:
+        results = [c for c in results if c.status == status_filter]
+    return results[skip : skip + limit]
 
 
 @router.post("", response_model=MaintenanceCase, status_code=status.HTTP_201_CREATED)

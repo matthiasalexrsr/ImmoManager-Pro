@@ -1,15 +1,25 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 
+from ..dependencies import store
 from ..models import Receivable, ReceivableCreate
-from ..routers.portfolios import store
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/receivables", tags=["Forderungen"])
 
 
 @router.get("", response_model=list[Receivable])
-def list_receivables() -> list[Receivable]:
-    return store.list_receivables()
+def list_receivables(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    contract_id: str | None = Query(None),
+    status_filter: str | None = Query(None, alias="status"),
+) -> list[Receivable]:
+    results = store.list_receivables()
+    if contract_id:
+        results = [r for r in results if r.contract_id == contract_id]
+    if status_filter:
+        results = [r for r in results if r.status == status_filter]
+    return results[skip : skip + limit]
 
 
 @router.post("", response_model=Receivable, status_code=status.HTTP_201_CREATED)

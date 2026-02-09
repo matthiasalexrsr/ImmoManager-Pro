@@ -1,15 +1,25 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 
+from ..dependencies import store
 from ..models import Listing, ListingCreate, ListingPhoto, ListingPhotoCreate
-from ..routers.portfolios import store
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/listings", tags=["Inserate"])
 
 
 @router.get("", response_model=list[Listing])
-def list_listings() -> list[Listing]:
-    return store.list_listings()
+def list_listings(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    unit_id: str | None = Query(None),
+    status_filter: str | None = Query(None, alias="status"),
+) -> list[Listing]:
+    results = store.list_listings()
+    if unit_id:
+        results = [lst for lst in results if lst.unit_id == unit_id]
+    if status_filter:
+        results = [lst for lst in results if lst.status == status_filter]
+    return results[skip : skip + limit]
 
 
 @router.post("", response_model=Listing, status_code=status.HTTP_201_CREATED)
@@ -24,8 +34,15 @@ def create_listing(payload: ListingCreate) -> Listing:
 
 
 @router.get("/photos", response_model=list[ListingPhoto])
-def list_listing_photos() -> list[ListingPhoto]:
-    return store.list_listing_photos()
+def list_listing_photos(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    listing_id: str | None = Query(None),
+) -> list[ListingPhoto]:
+    results = store.list_listing_photos()
+    if listing_id:
+        results = [p for p in results if p.listing_id == listing_id]
+    return results[skip : skip + limit]
 
 
 @router.post("/photos", response_model=ListingPhoto, status_code=status.HTTP_201_CREATED)

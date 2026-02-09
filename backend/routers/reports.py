@@ -2,7 +2,7 @@ from datetime import date, timedelta
 
 from fastapi import APIRouter
 
-from ..routers.portfolios import store
+from ..dependencies import store
 
 router = APIRouter(prefix="/reports", tags=["Berichte"])
 

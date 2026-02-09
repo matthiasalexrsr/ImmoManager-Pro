@@ -1,15 +1,22 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 
+from ..dependencies import store
 from ..models import Portfolio, PortfolioCreate
-from ..storage import InMemoryStore, NotFoundError
+from ..storage import NotFoundError
 
 router = APIRouter(prefix="/portfolios", tags=["Portfolios"])
-store = InMemoryStore()
 
 
 @router.get("", response_model=list[Portfolio])
-def list_portfolios() -> list[Portfolio]:
-    return store.list_portfolios()
+def list_portfolios(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    status_filter: str | None = Query(None, alias="status"),
+) -> list[Portfolio]:
+    results = store.list_portfolios()
+    if status_filter:
+        results = [p for p in results if p.status == status_filter]
+    return results[skip : skip + limit]
 
 
 @router.post("", response_model=Portfolio, status_code=status.HTTP_201_CREATED)

@@ -1,15 +1,25 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 
+from ..dependencies import store
 from ..models import Unit, UnitCreate
-from ..routers.portfolios import store
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/units", tags=["Einheiten"])
 
 
 @router.get("", response_model=list[Unit])
-def list_units() -> list[Unit]:
-    return store.list_units()
+def list_units(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    property_id: str | None = Query(None),
+    status_filter: str | None = Query(None, alias="status"),
+) -> list[Unit]:
+    results = store.list_units()
+    if property_id:
+        results = [u for u in results if u.property_id == property_id]
+    if status_filter:
+        results = [u for u in results if u.status == status_filter]
+    return results[skip : skip + limit]
 
 
 @router.post("", response_model=Unit, status_code=status.HTTP_201_CREATED)

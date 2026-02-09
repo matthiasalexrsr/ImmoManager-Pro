@@ -1,15 +1,25 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 
+from ..dependencies import store
 from ..models import Account, AccountCreate
-from ..routers.portfolios import store
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/accounts", tags=["Konten"])
 
 
 @router.get("", response_model=list[Account])
-def list_accounts() -> list[Account]:
-    return store.list_accounts()
+def list_accounts(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    portfolio_id: str | None = Query(None),
+    account_type: str | None = Query(None),
+) -> list[Account]:
+    results = store.list_accounts()
+    if portfolio_id:
+        results = [a for a in results if a.portfolio_id == portfolio_id]
+    if account_type:
+        results = [a for a in results if a.account_type == account_type]
+    return results[skip : skip + limit]
 
 
 @router.post("", response_model=Account, status_code=status.HTTP_201_CREATED)

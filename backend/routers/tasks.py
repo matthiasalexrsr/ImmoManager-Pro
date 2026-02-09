@@ -1,15 +1,25 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 
+from ..dependencies import store
 from ..models import Task, TaskCreate
-from ..routers.portfolios import store
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/tasks", tags=["Aufgaben"])
 
 
 @router.get("", response_model=list[Task])
-def list_tasks() -> list[Task]:
-    return store.list_tasks()
+def list_tasks(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    status_filter: str | None = Query(None, alias="status"),
+    assignee: str | None = Query(None),
+) -> list[Task]:
+    results = store.list_tasks()
+    if status_filter:
+        results = [t for t in results if t.status == status_filter]
+    if assignee:
+        results = [t for t in results if t.assignee == assignee]
+    return results[skip : skip + limit]
 
 
 @router.post("", response_model=Task, status_code=status.HTTP_201_CREATED)
