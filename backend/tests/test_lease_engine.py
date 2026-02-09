@@ -115,3 +115,29 @@ def test_allocate_payments_fifo_handles_overpayment() -> None:
     assert result.allocations[0].allocated_amount == Decimal("500.00")
     assert result.unapplied_total == Decimal("200.00")
     assert result.outstanding_total == Decimal("0.00")
+
+
+def test_charge_config_rejects_negative_components() -> None:
+    with pytest.raises(ValueError):
+        ChargeConfig(cold_rent=Decimal("-1.00"))
+
+    with pytest.raises(ValueError):
+        ChargeConfig(cold_rent=Decimal("500.00"), service_charge_advance=Decimal("-1.00"))
+
+
+def test_payment_line_rejects_negative_amount() -> None:
+    with pytest.raises(ValueError):
+        PaymentLine(booking_date=datetime.date(2024, 1, 5), amount=Decimal("-10.00"))
+
+
+def test_charge_config_normalizes_amounts() -> None:
+    charge = ChargeConfig(
+        cold_rent=Decimal("900"),
+        service_charge_advance=Decimal("100.5"),
+        heating_advance=Decimal("25.555"),
+    )
+
+    assert charge.cold_rent == Decimal("900.00")
+    assert charge.service_charge_advance == Decimal("100.50")
+    assert charge.heating_advance == Decimal("25.56")
+    assert charge.warm_rent == Decimal("1026.06")

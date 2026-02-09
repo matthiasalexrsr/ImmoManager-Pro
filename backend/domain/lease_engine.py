@@ -12,6 +12,11 @@ def _money(value: Decimal | float | int | str) -> Decimal:
     return Decimal(str(value)).quantize(CENTS, rounding=ROUND_HALF_UP)
 
 
+def _require_non_negative(value: Decimal, field_name: str) -> None:
+    if value < Decimal("0.00"):
+        raise ValueError(f"{field_name} must be >= 0")
+
+
 def _month_start(value: date) -> date:
     return value.replace(day=1)
 
@@ -27,6 +32,17 @@ class ChargeConfig:
     cold_rent: Decimal
     service_charge_advance: Decimal = Decimal("0.00")
     heating_advance: Decimal = Decimal("0.00")
+
+    def __post_init__(self) -> None:
+        normalized_cold = _money(self.cold_rent)
+        normalized_service = _money(self.service_charge_advance)
+        normalized_heating = _money(self.heating_advance)
+        _require_non_negative(normalized_cold, "cold_rent")
+        _require_non_negative(normalized_service, "service_charge_advance")
+        _require_non_negative(normalized_heating, "heating_advance")
+        object.__setattr__(self, "cold_rent", normalized_cold)
+        object.__setattr__(self, "service_charge_advance", normalized_service)
+        object.__setattr__(self, "heating_advance", normalized_heating)
 
     @property
     def warm_rent(self) -> Decimal:
@@ -48,6 +64,11 @@ class ReceivableLine:
 class PaymentLine:
     booking_date: date
     amount: Decimal
+
+    def __post_init__(self) -> None:
+        normalized_amount = _money(self.amount)
+        _require_non_negative(normalized_amount, "payment.amount")
+        object.__setattr__(self, "amount", normalized_amount)
 
 
 @dataclass(frozen=True)
