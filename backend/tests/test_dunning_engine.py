@@ -3,7 +3,7 @@ from decimal import Decimal
 
 import pytest
 
-from backend.domain.dunning_engine import DunningEngine, ReceivableState
+from backend.domain.dunning_engine import DunningEngine, DunningPolicy, ReceivableState
 
 
 def test_notice_level_1_for_recent_overdue() -> None:
@@ -89,6 +89,68 @@ def test_batch_decisions_and_totals() -> None:
     assert result.decisions[0].receivable_id == "r-2"
 
 
+def test_policy_custom_thresholds_and_fees() -> None:
+    policy = DunningPolicy(
+        level_1_after_days=3,
+        level_2_after_days=10,
+        level_3_after_days=20,
+        fee_level_1=Decimal("3.00"),
+        fee_level_2=Decimal("6.00"),
+        fee_level_3=Decimal("9.00"),
+    )
+    receivable = ReceivableState(
+        receivable_id="r-10",
+        due_date=datetime.date(2024, 4, 1),
+        amount_due=Decimal("100.00"),
+        current_level=0,
+    )
+
+    decision = DunningEngine.recommend_notice(
+        receivable,
+        today=datetime.date(2024, 4, 9),
+        policy=policy,
+    )
+
+    assert decision.next_level == 1
+    assert decision.should_send_notice is True
+    assert policy.fee_for_level(1) == Decimal("3.00")
+
+
+def test_campaign_builds_claim_totals_with_fees() -> None:
+    receivables = [
+        ReceivableState(
+            receivable_id="r-1",
+            due_date=datetime.date(2024, 4, 1),
+            amount_due=Decimal("300.00"),
+            amount_paid=Decimal("100.00"),
+            current_level=0,
+        ),
+        ReceivableState(
+            receivable_id="r-2",
+            due_date=datetime.date(2024, 3, 1),
+            amount_due=Decimal("400.00"),
+            amount_paid=Decimal("0.00"),
+            current_level=1,
+        ),
+        ReceivableState(
+            receivable_id="r-3",
+            due_date=datetime.date(2024, 5, 1),
+            amount_due=Decimal("150.00"),
+            amount_paid=Decimal("150.00"),
+            current_level=0,
+        ),
+    ]
+
+    campaign = DunningEngine.build_campaign(receivables, today=datetime.date(2024, 4, 20))
+
+    assert campaign.total_cases == 2
+    assert campaign.total_principal == Decimal("600.00")
+    assert campaign.total_fees == Decimal("12.50")
+    assert campaign.total_claim == Decimal("612.50")
+    assert campaign.lines[0].receivable_id == "r-2"
+    assert campaign.lines[0].dunning_fee == Decimal("7.50")
+
+
 def test_reject_invalid_input() -> None:
     with pytest.raises(ValueError):
         ReceivableState(
@@ -104,3 +166,6 @@ def test_reject_invalid_input() -> None:
             amount_due=Decimal("100.00"),
             current_level=-1,
         )
+
+    with pytest.raises(ValueError):
+        DunningPolicy(level_1_after_days=10, level_2_after_days=5, level_3_after_days=20)

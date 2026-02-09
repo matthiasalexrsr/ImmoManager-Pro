@@ -48,6 +48,49 @@ class DunningBatchResult:
     decisions: list[DunningDecision]
 
 
+@dataclass(frozen=True)
+class DunningPolicy:
+    level_1_after_days: int = 1
+    level_2_after_days: int = 14
+    level_3_after_days: int = 30
+    fee_level_1: Decimal = Decimal("2.50")
+    fee_level_2: Decimal = Decimal("5.00")
+    fee_level_3: Decimal = Decimal("7.50")
+
+    def __post_init__(self) -> None:
+        if not (0 <= self.level_1_after_days <= self.level_2_after_days <= self.level_3_after_days):
+            raise ValueError("Ungültige Mahnstufen-Schwellenwerte")
+        object.__setattr__(self, "fee_level_1", _money(self.fee_level_1))
+        object.__setattr__(self, "fee_level_2", _money(self.fee_level_2))
+        object.__setattr__(self, "fee_level_3", _money(self.fee_level_3))
+
+    def fee_for_level(self, level: int) -> Decimal:
+        if level <= 1:
+            return self.fee_level_1
+        if level == 2:
+            return self.fee_level_2
+        return self.fee_level_3
+
+
+@dataclass(frozen=True)
+class DunningCampaignLine:
+    receivable_id: str
+    level: int
+    overdue_days: int
+    outstanding_amount: Decimal
+    dunning_fee: Decimal
+    total_claim: Decimal
+
+
+@dataclass(frozen=True)
+class DunningCampaign:
+    lines: list[DunningCampaignLine]
+    total_cases: int
+    total_principal: Decimal
+    total_fees: Decimal
+    total_claim: Decimal
+
+
 class DunningEngine:
     """Entscheidungslogik für Mahnstufen auf Basis Fälligkeit und offenem Betrag."""
 
@@ -59,7 +102,12 @@ class DunningEngine:
         return outstanding
 
     @staticmethod
-    def recommend_notice(receivable: ReceivableState, today: date) -> DunningDecision:
+    def recommend_notice(
+        receivable: ReceivableState,
+        today: date,
+        policy: DunningPolicy | None = None,
+    ) -> DunningDecision:
+        rules = policy or DunningPolicy()
         overdue_days = (today - receivable.due_date).days
         outstanding = DunningEngine.calculate_outstanding(receivable)
 
@@ -73,14 +121,14 @@ class DunningEngine:
             )
 
         target_level = receivable.current_level
-        if overdue_days >= 30:
+        if overdue_days >= rules.level_3_after_days:
             target_level = max(target_level, 3)
-        elif overdue_days >= 14:
+        elif overdue_days >= rules.level_2_after_days:
             target_level = max(target_level, 2)
-        elif overdue_days >= 1:
+        elif overdue_days >= rules.level_1_after_days:
             target_level = max(target_level, 1)
 
-        should_send = overdue_days >= 1 and target_level > receivable.current_level
+        should_send = overdue_days >= rules.level_1_after_days and target_level > receivable.current_level
 
         return DunningDecision(
             receivable_id=receivable.receivable_id,
@@ -91,8 +139,12 @@ class DunningEngine:
         )
 
     @staticmethod
-    def build_batch(receivables: Iterable[ReceivableState], today: date) -> DunningBatchResult:
-        decisions = [DunningEngine.recommend_notice(item, today=today) for item in receivables]
+    def build_batch(
+        receivables: Iterable[ReceivableState],
+        today: date,
+        policy: DunningPolicy | None = None,
+    ) -> DunningBatchResult:
+        decisions = [DunningEngine.recommend_notice(item, today=today, policy=policy) for item in receivables]
         actionable = [item for item in decisions if item.should_send_notice]
         notices_by_level: dict[int, int] = {1: 0, 2: 0, 3: 0}
         for item in actionable:
@@ -109,4 +161,38 @@ class DunningEngine:
             notices_by_level=notices_by_level,
             total_outstanding=total_outstanding,
             decisions=sorted(decisions, key=lambda item: (item.next_level, item.overdue_days), reverse=True),
+        )
+
+    @staticmethod
+    def build_campaign(
+        receivables: Iterable[ReceivableState],
+        today: date,
+        policy: DunningPolicy | None = None,
+    ) -> DunningCampaign:
+        rules = policy or DunningPolicy()
+        batch = DunningEngine.build_batch(receivables, today=today, policy=rules)
+        actionable = [item for item in batch.decisions if item.should_send_notice]
+
+        lines = [
+            DunningCampaignLine(
+                receivable_id=item.receivable_id,
+                level=item.next_level,
+                overdue_days=item.overdue_days,
+                outstanding_amount=item.outstanding_amount,
+                dunning_fee=rules.fee_for_level(item.next_level),
+                total_claim=_money(item.outstanding_amount + rules.fee_for_level(item.next_level)),
+            )
+            for item in actionable
+        ]
+
+        total_principal = _money(sum((line.outstanding_amount for line in lines), Decimal("0.00")))
+        total_fees = _money(sum((line.dunning_fee for line in lines), Decimal("0.00")))
+        total_claim = _money(total_principal + total_fees)
+
+        return DunningCampaign(
+            lines=lines,
+            total_cases=len(lines),
+            total_principal=total_principal,
+            total_fees=total_fees,
+            total_claim=total_claim,
         )
