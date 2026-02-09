@@ -1,6 +1,7 @@
 """Domain services for ImmoManager Pro."""
 
+from .dunning_engine import DunningEngine
 from .invoice_matching import InvoiceMatcher
 from .lease_engine import LeaseEngine
 
-__all__ = ["InvoiceMatcher", "LeaseEngine"]
+__all__ = ["DunningEngine", "InvoiceMatcher", "LeaseEngine"]
