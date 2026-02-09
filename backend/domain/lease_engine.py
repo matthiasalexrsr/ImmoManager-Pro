@@ -3,9 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
-from typing import Iterable, List, Optional
+from typing import TYPE_CHECKING, Iterable, List, Optional
 
 CENTS = Decimal("0.01")
+
+if TYPE_CHECKING:
+    from .dunning_engine import DunningCampaign, DunningPolicy
 
 
 def _money(value: Decimal | float | int | str) -> Decimal:
@@ -389,3 +392,44 @@ class LeaseEngine:
             next_due_date=next_due_date,
             oldest_overdue_due_date=oldest_overdue_due_date,
         )
+
+
+    @staticmethod
+    def build_dunning_campaign(
+        *,
+        contract_start: date,
+        contract_end: date | None,
+        charge: ChargeConfig,
+        payments: Iterable[PaymentLine],
+        today: date,
+        policy: "DunningPolicy | None" = None,
+        until_including: date | None = None,
+        due_day: int = 3,
+        current_level_by_period: dict[date, int] | None = None,
+    ) -> "DunningCampaign":
+        from .dunning_engine import DunningEngine, ReceivableState
+
+        dashboard = LeaseEngine.build_dashboard(
+            contract_start=contract_start,
+            contract_end=contract_end,
+            charge=charge,
+            payments=payments,
+            today=today,
+            until_including=until_including,
+            due_day=due_day,
+        )
+
+        levels = current_level_by_period or {}
+        receivables = [
+            ReceivableState(
+                receivable_id=line.period_start.isoformat(),
+                due_date=line.due_date,
+                amount_due=line.total_amount,
+                amount_paid=line.paid_amount,
+                current_level=levels.get(line.period_start, 0),
+            )
+            for line in dashboard.settlement_lines
+            if line.outstanding_amount > Decimal("0.00")
+        ]
+
+        return DunningEngine.build_campaign(receivables, today=today, policy=policy)

@@ -287,3 +287,43 @@ def test_build_dashboard_tracks_next_due_date_for_open_items() -> None:
     assert dashboard.summary.open_receivables == 1
     assert dashboard.next_due_date == datetime.date(2024, 3, 3)
     assert dashboard.oldest_overdue_due_date is None
+
+
+
+def test_build_dunning_campaign_from_lease_dashboard() -> None:
+    campaign = LeaseEngine.build_dunning_campaign(
+        contract_start=datetime.date(2024, 1, 1),
+        contract_end=None,
+        charge=ChargeConfig(cold_rent=Decimal("1000.00")),
+        payments=[
+            PaymentLine(booking_date=datetime.date(2024, 1, 5), amount=Decimal("1000.00")),
+            PaymentLine(booking_date=datetime.date(2024, 2, 10), amount=Decimal("400.00")),
+        ],
+        today=datetime.date(2024, 3, 20),
+        until_including=datetime.date(2024, 3, 31),
+        due_day=3,
+        current_level_by_period={datetime.date(2024, 2, 1): 1},
+    )
+
+    assert campaign.total_cases == 2
+    assert campaign.total_principal == Decimal("1600.00")
+    assert campaign.total_fees == Decimal("12.50")
+    assert campaign.total_claim == Decimal("1612.50")
+    assert campaign.lines[0].receivable_id == "2024-02-01"
+    assert campaign.lines[0].level == 3
+
+
+def test_build_dunning_campaign_returns_empty_for_fully_paid() -> None:
+    campaign = LeaseEngine.build_dunning_campaign(
+        contract_start=datetime.date(2024, 1, 1),
+        contract_end=None,
+        charge=ChargeConfig(cold_rent=Decimal("1000.00")),
+        payments=[PaymentLine(booking_date=datetime.date(2024, 1, 5), amount=Decimal("1000.00"))],
+        today=datetime.date(2024, 1, 20),
+        until_including=datetime.date(2024, 1, 31),
+    )
+
+    assert campaign.total_cases == 0
+    assert campaign.total_principal == Decimal("0.00")
+    assert campaign.total_fees == Decimal("0.00")
+    assert campaign.total_claim == Decimal("0.00")
