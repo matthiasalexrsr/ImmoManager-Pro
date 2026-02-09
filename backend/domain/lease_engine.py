@@ -58,6 +58,20 @@ class BalanceResult:
     overpaid_total: Decimal
 
 
+@dataclass(frozen=True)
+class ReceivablePaymentAllocation:
+    receivable_period_start: date
+    payment_booking_date: date
+    allocated_amount: Decimal
+
+
+@dataclass(frozen=True)
+class AllocationResult:
+    allocations: list[ReceivablePaymentAllocation]
+    unapplied_total: Decimal
+    outstanding_total: Decimal
+
+
 class LeaseEngine:
     """Core rent/receivable logic independent from API/storage adapters."""
 
@@ -120,4 +134,52 @@ class LeaseEngine:
             paid_total=paid_total,
             outstanding_total=outstanding_total,
             overpaid_total=overpaid_total,
+        )
+
+    @staticmethod
+    def allocate_payments_fifo(
+        receivables: Iterable[ReceivableLine],
+        payments: Iterable[PaymentLine],
+    ) -> AllocationResult:
+        receivable_rows = [
+            {
+                "period_start": row.period_start,
+                "remaining": _money(row.total_amount),
+            }
+            for row in sorted(receivables, key=lambda item: item.due_date)
+        ]
+        payment_rows = [
+            {
+                "booking_date": row.booking_date,
+                "remaining": _money(row.amount),
+            }
+            for row in sorted(payments, key=lambda item: item.booking_date)
+        ]
+
+        allocations: list[ReceivablePaymentAllocation] = []
+
+        for payment in payment_rows:
+            while payment["remaining"] > Decimal("0.00"):
+                target = next((row for row in receivable_rows if row["remaining"] > Decimal("0.00")), None)
+                if target is None:
+                    break
+
+                amount = min(payment["remaining"], target["remaining"])
+                allocations.append(
+                    ReceivablePaymentAllocation(
+                        receivable_period_start=target["period_start"],
+                        payment_booking_date=payment["booking_date"],
+                        allocated_amount=_money(amount),
+                    )
+                )
+                payment["remaining"] = _money(payment["remaining"] - amount)
+                target["remaining"] = _money(target["remaining"] - amount)
+
+        unapplied_total = _money(sum((row["remaining"] for row in payment_rows), Decimal("0.00")))
+        outstanding_total = _money(sum((row["remaining"] for row in receivable_rows), Decimal("0.00")))
+
+        return AllocationResult(
+            allocations=allocations,
+            unapplied_total=unapplied_total,
+            outstanding_total=outstanding_total,
         )
