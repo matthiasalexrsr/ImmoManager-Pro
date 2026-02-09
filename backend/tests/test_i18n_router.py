@@ -23,4 +23,4 @@ def test_i18n_dir_is_repo_root() -> None:
 
     assert (path / "manifest.json").exists()
     assert (path / "de-DE.json").exists()
-    assert Path("i18n") in path.parts
+    assert "i18n" in path.parts

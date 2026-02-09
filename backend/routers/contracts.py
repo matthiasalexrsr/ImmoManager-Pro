@@ -64,6 +64,11 @@ def delete_contract(contract_id: str) -> None:
 def _build_charge_and_payments(contract: Contract) -> tuple[ChargeConfig, list[PaymentLine]]:
     """Derive ChargeConfig from the unit and collect tenant payment bookings."""
     unit = store.units.get(contract.unit_id)
+    if unit is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Einheit zum Vertrag nicht gefunden",
+        )
     charge = ChargeConfig(
         cold_rent=Decimal(str(unit.cold_rent or 0)),
         service_charge_advance=Decimal(str(unit.service_charge_advance or 0)),

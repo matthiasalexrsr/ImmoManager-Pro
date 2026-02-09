@@ -230,3 +230,35 @@ CREATE TABLE calendar_events (
 );
 
 CREATE INDEX idx_calendar_property ON calendar_events(property_id);
+
+CREATE TABLE listings (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  unit_id uuid NOT NULL REFERENCES units(id) ON DELETE CASCADE,
+  title text NOT NULL,
+  description text,
+  portal text,
+  listing_url text,
+  status text NOT NULL DEFAULT 'draft',
+  target_rent numeric(12, 2),
+  service_charge numeric(12, 2),
+  available_from date,
+  contact_name text,
+  contact_email text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_listings_unit ON listings(unit_id);
+
+CREATE TABLE listing_photos (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  listing_id uuid NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
+  title text,
+  file_url text NOT NULL,
+  is_primary boolean NOT NULL DEFAULT false,
+  sort_order integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_listing_photos_listing ON listing_photos(listing_id);

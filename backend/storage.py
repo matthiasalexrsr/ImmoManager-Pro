@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Dict, List
 from uuid import uuid4
 
@@ -86,7 +87,8 @@ class InMemoryStore:
     def update_portfolio(self, portfolio_id: str, data: PortfolioCreate) -> Portfolio:
         if portfolio_id not in self.portfolios:
             raise NotFoundError("Portfolio nicht gefunden")
-        portfolio = Portfolio(id=portfolio_id, **data.model_dump())
+        old = self.portfolios[portfolio_id]
+        portfolio = Portfolio(id=portfolio_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
         self.portfolios[portfolio_id] = portfolio
         return portfolio
 
@@ -138,7 +140,8 @@ class InMemoryStore:
             raise NotFoundError("Kategorie nicht gefunden")
         if data.portfolio_id not in self.portfolios:
             raise ValidationError("Portfolio existiert nicht")
-        category = Category(id=category_id, **data.model_dump())
+        old = self.categories[category_id]
+        category = Category(id=category_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
         self.categories[category_id] = category
         return category
 
@@ -156,7 +159,8 @@ class InMemoryStore:
             raise NotFoundError("Konto nicht gefunden")
         if data.portfolio_id not in self.portfolios:
             raise ValidationError("Portfolio existiert nicht")
-        account = Account(id=account_id, **data.model_dump())
+        old = self.accounts[account_id]
+        account = Account(id=account_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
         self.accounts[account_id] = account
         return account
 
@@ -189,7 +193,8 @@ class InMemoryStore:
             raise NotFoundError("Immobilie nicht gefunden")
         if data.portfolio_id not in self.portfolios:
             raise ValidationError("Portfolio existiert nicht")
-        property_item = Property(id=property_id, **data.model_dump())
+        old = self.properties[property_id]
+        property_item = Property(id=property_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
         self.properties[property_id] = property_item
         return property_item
 
@@ -242,7 +247,8 @@ class InMemoryStore:
             raise NotFoundError("Einheit nicht gefunden")
         if data.property_id not in self.properties:
             raise ValidationError("Immobilie existiert nicht")
-        unit = Unit(id=unit_id, **data.model_dump())
+        old = self.units[unit_id]
+        unit = Unit(id=unit_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
         self.units[unit_id] = unit
         return unit
 
@@ -289,7 +295,8 @@ class InMemoryStore:
     def update_tenant(self, tenant_id: str, data: TenantCreate) -> Tenant:
         if tenant_id not in self.tenants:
             raise NotFoundError("Mieter nicht gefunden")
-        tenant = Tenant(id=tenant_id, **data.model_dump())
+        old = self.tenants[tenant_id]
+        tenant = Tenant(id=tenant_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
         self.tenants[tenant_id] = tenant
         return tenant
 
@@ -344,7 +351,8 @@ class InMemoryStore:
             for contract in self.contracts.values()
         ):
             raise ValidationError("Vertragsnummer existiert bereits")
-        contract = Contract(id=contract_id, **data.model_dump())
+        old = self.contracts[contract_id]
+        contract = Contract(id=contract_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
         self.contracts[contract_id] = contract
         return contract
 
@@ -390,7 +398,8 @@ class InMemoryStore:
             raise ValidationError("Einheit existiert nicht")
         if data.tenant_id and data.tenant_id not in self.tenants:
             raise ValidationError("Mieter existiert nicht")
-        booking = Booking(id=booking_id, **data.model_dump())
+        old = self.bookings[booking_id]
+        booking = Booking(id=booking_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
         self.bookings[booking_id] = booking
         return booking
 
@@ -420,7 +429,8 @@ class InMemoryStore:
             raise NotFoundError("Forderung nicht gefunden")
         if data.contract_id not in self.contracts:
             raise ValidationError("Vertrag existiert nicht")
-        receivable = Receivable(id=receivable_id, **data.model_dump())
+        old = self.receivables[receivable_id]
+        receivable = Receivable(id=receivable_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
         self.receivables[receivable_id] = receivable
         return receivable
 
@@ -450,7 +460,8 @@ class InMemoryStore:
             raise NotFoundError("Rechnung nicht gefunden")
         if data.property_id and data.property_id not in self.properties:
             raise ValidationError("Immobilie existiert nicht")
-        invoice = Invoice(id=invoice_id, **data.model_dump())
+        old = self.invoices[invoice_id]
+        invoice = Invoice(id=invoice_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
         self.invoices[invoice_id] = invoice
         return invoice
 
@@ -484,7 +495,8 @@ class InMemoryStore:
             raise ValidationError("Immobilie existiert nicht")
         if data.unit_id and data.unit_id not in self.units:
             raise ValidationError("Einheit existiert nicht")
-        case = MaintenanceCase(id=case_id, **data.model_dump())
+        old = self.maintenance_cases[case_id]
+        case = MaintenanceCase(id=case_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
         self.maintenance_cases[case_id] = case
         return case
 
@@ -522,7 +534,8 @@ class InMemoryStore:
             raise ValidationError("Einheit existiert nicht")
         if data.contract_id and data.contract_id not in self.contracts:
             raise ValidationError("Vertrag existiert nicht")
-        document = Document(id=document_id, **data.model_dump())
+        old = self.documents[document_id]
+        document = Document(id=document_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
         self.documents[document_id] = document
         return document
 
@@ -556,7 +569,8 @@ class InMemoryStore:
             raise ValidationError("Immobilie existiert nicht")
         if data.unit_id and data.unit_id not in self.units:
             raise ValidationError("Einheit existiert nicht")
-        task = Task(id=task_id, **data.model_dump())
+        old = self.tasks[task_id]
+        task = Task(id=task_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
         self.tasks[task_id] = task
         return task
 
@@ -590,7 +604,8 @@ class InMemoryStore:
             raise ValidationError("Immobilie existiert nicht")
         if data.unit_id and data.unit_id not in self.units:
             raise ValidationError("Einheit existiert nicht")
-        event = CalendarEvent(id=event_id, **data.model_dump())
+        old = self.calendar_events[event_id]
+        event = CalendarEvent(id=event_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
         self.calendar_events[event_id] = event
         return event
 
@@ -620,7 +635,8 @@ class InMemoryStore:
             raise NotFoundError("Inserat nicht gefunden")
         if data.unit_id not in self.units:
             raise ValidationError("Einheit existiert nicht")
-        listing = Listing(id=listing_id, **data.model_dump())
+        old = self.listings[listing_id]
+        listing = Listing(id=listing_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
         self.listings[listing_id] = listing
         return listing
 
@@ -653,7 +669,8 @@ class InMemoryStore:
             raise NotFoundError("Inseratsfoto nicht gefunden")
         if data.listing_id not in self.listings:
             raise ValidationError("Inserat existiert nicht")
-        photo = ListingPhoto(id=photo_id, **data.model_dump())
+        old = self.listing_photos[photo_id]
+        photo = ListingPhoto(id=photo_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
         self.listing_photos[photo_id] = photo
         return photo
 

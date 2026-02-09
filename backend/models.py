@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from typing import Optional
 from pydantic import BaseModel, Field
 
@@ -14,6 +14,8 @@ class PortfolioCreate(BaseModel):
 
 class Portfolio(PortfolioCreate):
     id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class PropertyCreate(BaseModel):
@@ -38,6 +40,8 @@ class PropertyCreate(BaseModel):
 
 class Property(PropertyCreate):
     id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class UnitCreate(BaseModel):
@@ -56,6 +60,8 @@ class UnitCreate(BaseModel):
 
 class Unit(UnitCreate):
     id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class TenantCreate(BaseModel):
@@ -73,6 +79,8 @@ class TenantCreate(BaseModel):
 
 class Tenant(TenantCreate):
     id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class ContractCreate(BaseModel):
@@ -91,6 +99,8 @@ class ContractCreate(BaseModel):
 
 class Contract(ContractCreate):
     id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class AccountCreate(BaseModel):
@@ -106,6 +116,8 @@ class AccountCreate(BaseModel):
 
 class Account(AccountCreate):
     id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class CategoryCreate(BaseModel):
@@ -116,6 +128,8 @@ class CategoryCreate(BaseModel):
 
 class Category(CategoryCreate):
     id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class BookingCreate(BaseModel):
@@ -133,6 +147,8 @@ class BookingCreate(BaseModel):
 
 class Booking(BookingCreate):
     id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class ReceivableCreate(BaseModel):
@@ -145,6 +161,8 @@ class ReceivableCreate(BaseModel):
 
 class Receivable(ReceivableCreate):
     id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class InvoiceCreate(BaseModel):
@@ -161,6 +179,8 @@ class InvoiceCreate(BaseModel):
 
 class Invoice(InvoiceCreate):
     id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class MaintenanceCaseCreate(BaseModel):
@@ -181,6 +201,8 @@ class MaintenanceCaseCreate(BaseModel):
 
 class MaintenanceCase(MaintenanceCaseCreate):
     id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class DocumentCreate(BaseModel):
@@ -197,6 +219,8 @@ class DocumentCreate(BaseModel):
 
 class Document(DocumentCreate):
     id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class TaskCreate(BaseModel):
@@ -212,6 +236,8 @@ class TaskCreate(BaseModel):
 
 class Task(TaskCreate):
     id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class CalendarEventCreate(BaseModel):
@@ -228,6 +254,8 @@ class CalendarEventCreate(BaseModel):
 
 class CalendarEvent(CalendarEventCreate):
     id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class ListingCreate(BaseModel):
@@ -246,6 +274,8 @@ class ListingCreate(BaseModel):
 
 class Listing(ListingCreate):
     id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class ListingPhotoCreate(BaseModel):
@@ -258,3 +288,5 @@ class ListingPhotoCreate(BaseModel):
 
 class ListingPhoto(ListingPhotoCreate):
     id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)

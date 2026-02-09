@@ -20,29 +20,7 @@ def create_listing(payload: ListingCreate) -> Listing:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
-@router.get("/{listing_id}", response_model=Listing)
-def get_listing(listing_id: str) -> Listing:
-    try:
-        return store.get_listing(listing_id)
-    except NotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-
-
-@router.put("/{listing_id}", response_model=Listing)
-def update_listing(listing_id: str, payload: ListingCreate) -> Listing:
-    try:
-        return store.update_listing(listing_id, payload)
-    except (NotFoundError, ValidationError) as exc:
-        status_code = status.HTTP_404_NOT_FOUND if isinstance(exc, NotFoundError) else status.HTTP_400_BAD_REQUEST
-        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
-
-
-@router.delete("/{listing_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_listing(listing_id: str) -> None:
-    try:
-        store.delete_listing(listing_id)
-    except NotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+# --- Photo sub-routes MUST be registered before /{listing_id} ---
 
 
 @router.get("/photos", response_model=list[ListingPhoto])
@@ -79,5 +57,33 @@ def update_listing_photo(photo_id: str, payload: ListingPhotoCreate) -> ListingP
 def delete_listing_photo(photo_id: str) -> None:
     try:
         store.delete_listing_photo(photo_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+# --- Listing detail routes (after /photos to avoid path conflicts) ---
+
+
+@router.get("/{listing_id}", response_model=Listing)
+def get_listing(listing_id: str) -> Listing:
+    try:
+        return store.get_listing(listing_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.put("/{listing_id}", response_model=Listing)
+def update_listing(listing_id: str, payload: ListingCreate) -> Listing:
+    try:
+        return store.update_listing(listing_id, payload)
+    except (NotFoundError, ValidationError) as exc:
+        status_code = status.HTTP_404_NOT_FOUND if isinstance(exc, NotFoundError) else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+
+
+@router.delete("/{listing_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_listing(listing_id: str) -> None:
+    try:
+        store.delete_listing(listing_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
