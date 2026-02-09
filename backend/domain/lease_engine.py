@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
-from typing import Iterable, List
+from typing import Iterable, List, Optional
 
 CENTS = Decimal("0.01")
 
@@ -79,8 +79,6 @@ class BalanceResult:
     overpaid_total: Decimal
 
 
-
-
 @dataclass(frozen=True)
 class ReceivableSettlementLine:
     period_start: date
@@ -89,6 +87,7 @@ class ReceivableSettlementLine:
     paid_amount: Decimal
     outstanding_amount: Decimal
     status: str
+
 
 @dataclass(frozen=True)
 class SettlementSummary:
@@ -122,6 +121,18 @@ class AllocationResult:
     allocations: list[ReceivablePaymentAllocation]
     unapplied_total: Decimal
     outstanding_total: Decimal
+
+
+@dataclass(frozen=True)
+class SettlementDashboard:
+    receivables: list[ReceivableLine]
+    allocations: AllocationResult
+    settlement_lines: list[ReceivableSettlementLine]
+    summary: SettlementSummary
+    aging: SettlementAgingResult
+    balance: BalanceResult
+    next_due_date: Optional[date]
+    oldest_overdue_due_date: Optional[date]
 
 
 class LeaseEngine:
@@ -236,7 +247,6 @@ class LeaseEngine:
             outstanding_total=outstanding_total,
         )
 
-
     @staticmethod
     def build_settlement_report(
         receivables: Iterable[ReceivableLine],
@@ -278,7 +288,6 @@ class LeaseEngine:
 
         return lines
 
-
     @staticmethod
     def summarize_settlement(lines: Iterable[ReceivableSettlementLine]) -> SettlementSummary:
         settlement_lines = list(lines)
@@ -299,7 +308,6 @@ class LeaseEngine:
             total_paid=total_paid,
             total_outstanding=total_outstanding,
         )
-
 
     @staticmethod
     def build_settlement_aging(
@@ -336,4 +344,48 @@ class LeaseEngine:
             days_31_60=buckets["days_31_60"],
             days_61_90=buckets["days_61_90"],
             days_90_plus=buckets["days_90_plus"],
+        )
+
+    @staticmethod
+    def build_dashboard(
+        *,
+        contract_start: date,
+        contract_end: date | None,
+        charge: ChargeConfig,
+        payments: Iterable[PaymentLine],
+        today: date,
+        until_including: date | None = None,
+        due_day: int = 3,
+    ) -> SettlementDashboard:
+        horizon = until_including or today
+        receivables = LeaseEngine.build_monthly_receivables(
+            contract_start=contract_start,
+            contract_end=contract_end,
+            charge=charge,
+            until_including=horizon,
+            due_day=due_day,
+        )
+        payment_list = list(payments)
+
+        allocations = LeaseEngine.allocate_payments_fifo(receivables, payment_list)
+        settlement_lines = LeaseEngine.build_settlement_report(receivables, payment_list, today=today)
+        summary = LeaseEngine.summarize_settlement(settlement_lines)
+        aging = LeaseEngine.build_settlement_aging(settlement_lines, today=today)
+        balance = LeaseEngine.calculate_balance(receivables, payment_list)
+
+        open_lines = [line for line in settlement_lines if line.status == "open"]
+        overdue_lines = [line for line in settlement_lines if line.status == "overdue"]
+
+        next_due_date = min((line.due_date for line in open_lines), default=None)
+        oldest_overdue_due_date = min((line.due_date for line in overdue_lines), default=None)
+
+        return SettlementDashboard(
+            receivables=receivables,
+            allocations=allocations,
+            settlement_lines=settlement_lines,
+            summary=summary,
+            aging=aging,
+            balance=balance,
+            next_due_date=next_due_date,
+            oldest_overdue_due_date=oldest_overdue_due_date,
         )
