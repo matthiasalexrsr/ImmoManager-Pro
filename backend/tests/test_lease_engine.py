@@ -170,3 +170,51 @@ def test_build_settlement_report_statuses() -> None:
     assert report[2].status == "overdue"
     assert report[2].paid_amount == Decimal("0.00")
     assert report[2].outstanding_amount == Decimal("1000.00")
+
+
+def test_build_settlement_report_marks_open_before_due_date() -> None:
+    receivables = LeaseEngine.build_monthly_receivables(
+        contract_start=datetime.date(2024, 3, 1),
+        contract_end=None,
+        until_including=datetime.date(2024, 3, 31),
+        charge=ChargeConfig(cold_rent=Decimal("1000.00")),
+    )
+
+    report = LeaseEngine.build_settlement_report(
+        receivables,
+        payments=[],
+        today=datetime.date(2024, 3, 1),
+    )
+
+    assert len(report) == 1
+    assert report[0].status == "open"
+    assert report[0].paid_amount == Decimal("0.00")
+    assert report[0].outstanding_amount == Decimal("1000.00")
+
+
+def test_summarize_settlement_returns_aggregate_counts_and_amounts() -> None:
+    receivables = LeaseEngine.build_monthly_receivables(
+        contract_start=datetime.date(2024, 1, 1),
+        contract_end=None,
+        until_including=datetime.date(2024, 3, 31),
+        charge=ChargeConfig(cold_rent=Decimal("1000.00")),
+    )
+    payments = [
+        PaymentLine(booking_date=datetime.date(2024, 1, 5), amount=Decimal("1000.00")),
+        PaymentLine(booking_date=datetime.date(2024, 2, 6), amount=Decimal("500.00")),
+    ]
+    settlement = LeaseEngine.build_settlement_report(
+        receivables,
+        payments,
+        today=datetime.date(2024, 3, 20),
+    )
+
+    summary = LeaseEngine.summarize_settlement(settlement)
+
+    assert summary.total_receivables == 3
+    assert summary.paid_receivables == 1
+    assert summary.open_receivables == 0
+    assert summary.overdue_receivables == 2
+    assert summary.total_expected == Decimal("3000.00")
+    assert summary.total_paid == Decimal("1500.00")
+    assert summary.total_outstanding == Decimal("1500.00")

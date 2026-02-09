@@ -91,6 +91,17 @@ class ReceivableSettlementLine:
     status: str
 
 @dataclass(frozen=True)
+class SettlementSummary:
+    total_receivables: int
+    paid_receivables: int
+    open_receivables: int
+    overdue_receivables: int
+    total_expected: Decimal
+    total_paid: Decimal
+    total_outstanding: Decimal
+
+
+@dataclass(frozen=True)
 class ReceivablePaymentAllocation:
     receivable_period_start: date
     payment_booking_date: date
@@ -257,3 +268,25 @@ class LeaseEngine:
             )
 
         return lines
+
+
+    @staticmethod
+    def summarize_settlement(lines: Iterable[ReceivableSettlementLine]) -> SettlementSummary:
+        settlement_lines = list(lines)
+        total_expected = _money(sum((line.total_amount for line in settlement_lines), Decimal("0.00")))
+        total_paid = _money(sum((line.paid_amount for line in settlement_lines), Decimal("0.00")))
+        total_outstanding = _money(sum((line.outstanding_amount for line in settlement_lines), Decimal("0.00")))
+
+        paid_receivables = sum(1 for line in settlement_lines if line.status == "paid")
+        open_receivables = sum(1 for line in settlement_lines if line.status == "open")
+        overdue_receivables = sum(1 for line in settlement_lines if line.status == "overdue")
+
+        return SettlementSummary(
+            total_receivables=len(settlement_lines),
+            paid_receivables=paid_receivables,
+            open_receivables=open_receivables,
+            overdue_receivables=overdue_receivables,
+            total_expected=total_expected,
+            total_paid=total_paid,
+            total_outstanding=total_outstanding,
+        )
