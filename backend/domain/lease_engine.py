@@ -102,6 +102,15 @@ class SettlementSummary:
 
 
 @dataclass(frozen=True)
+class SettlementAgingResult:
+    current: Decimal
+    days_1_30: Decimal
+    days_31_60: Decimal
+    days_61_90: Decimal
+    days_90_plus: Decimal
+
+
+@dataclass(frozen=True)
 class ReceivablePaymentAllocation:
     receivable_period_start: date
     payment_booking_date: date
@@ -289,4 +298,42 @@ class LeaseEngine:
             total_expected=total_expected,
             total_paid=total_paid,
             total_outstanding=total_outstanding,
+        )
+
+
+    @staticmethod
+    def build_settlement_aging(
+        lines: Iterable[ReceivableSettlementLine],
+        *,
+        today: date,
+    ) -> SettlementAgingResult:
+        buckets = {
+            "current": Decimal("0.00"),
+            "days_1_30": Decimal("0.00"),
+            "days_31_60": Decimal("0.00"),
+            "days_61_90": Decimal("0.00"),
+            "days_90_plus": Decimal("0.00"),
+        }
+
+        for line in lines:
+            if line.outstanding_amount <= Decimal("0.00"):
+                continue
+            days_overdue = (today - line.due_date).days
+            if days_overdue <= 0:
+                buckets["current"] = _money(buckets["current"] + line.outstanding_amount)
+            elif days_overdue <= 30:
+                buckets["days_1_30"] = _money(buckets["days_1_30"] + line.outstanding_amount)
+            elif days_overdue <= 60:
+                buckets["days_31_60"] = _money(buckets["days_31_60"] + line.outstanding_amount)
+            elif days_overdue <= 90:
+                buckets["days_61_90"] = _money(buckets["days_61_90"] + line.outstanding_amount)
+            else:
+                buckets["days_90_plus"] = _money(buckets["days_90_plus"] + line.outstanding_amount)
+
+        return SettlementAgingResult(
+            current=buckets["current"],
+            days_1_30=buckets["days_1_30"],
+            days_31_60=buckets["days_31_60"],
+            days_61_90=buckets["days_61_90"],
+            days_90_plus=buckets["days_90_plus"],
         )
