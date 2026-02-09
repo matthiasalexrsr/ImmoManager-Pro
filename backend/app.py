@@ -8,6 +8,7 @@ from .routers import (
     contracts,
     documents,
     i18n,
+    listings,
     invoices,
     maintenance,
     portfolios,
@@ -41,5 +42,6 @@ app.include_router(documents.router)
 app.include_router(tasks.router)
 app.include_router(calendar.router)
 app.include_router(i18n.router)
+app.include_router(listings.router)
 app.include_router(categories.router)
 app.include_router(reports.router)

@@ -228,3 +228,33 @@ class CalendarEventCreate(BaseModel):
 
 class CalendarEvent(CalendarEventCreate):
     id: str = Field(..., min_length=1)
+
+
+class ListingCreate(BaseModel):
+    unit_id: str
+    title: str
+    description: Optional[str] = None
+    portal: Optional[str] = None
+    listing_url: Optional[str] = None
+    status: str = "draft"
+    target_rent: Optional[float] = None
+    service_charge: Optional[float] = None
+    available_from: Optional[date] = None
+    contact_name: Optional[str] = None
+    contact_email: Optional[str] = None
+
+
+class Listing(ListingCreate):
+    id: str = Field(..., min_length=1)
+
+
+class ListingPhotoCreate(BaseModel):
+    listing_id: str
+    title: Optional[str] = None
+    file_url: str
+    is_primary: bool = False
+    sort_order: int = 0
+
+
+class ListingPhoto(ListingPhotoCreate):
+    id: str = Field(..., min_length=1)

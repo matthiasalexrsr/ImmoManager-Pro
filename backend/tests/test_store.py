@@ -7,6 +7,8 @@ from backend.models import (
     BookingCreate,
     CategoryCreate,
     ContractCreate,
+    ListingCreate,
+    ListingPhotoCreate,
     MaintenanceCaseCreate,
     PortfolioCreate,
     PropertyCreate,
@@ -167,3 +169,49 @@ def test_delete_property_cascades_units_and_contracts() -> None:
         store.get_unit(unit.id)
     with pytest.raises(NotFoundError):
         store.get_contract(contract.id)
+
+
+def test_listing_and_photo_flow_with_unit_cascade() -> None:
+    store = InMemoryStore()
+    portfolio = store.create_portfolio(PortfolioCreate(name="Portfolio"))
+    property_item = store.create_property(
+        PropertyCreate(
+            portfolio_id=portfolio.id,
+            name="Objekt",
+            property_type="Wohnung",
+        )
+    )
+    unit = store.create_unit(
+        UnitCreate(
+            property_id=property_item.id,
+            label="1.1",
+            unit_type="Wohnung",
+        )
+    )
+
+    listing = store.create_listing(
+        ListingCreate(
+            unit_id=unit.id,
+            title="Schöne Wohnung mit Balkon",
+            portal="ImmoScout24",
+            status="published",
+        )
+    )
+    photo = store.create_listing_photo(
+        ListingPhotoCreate(
+            listing_id=listing.id,
+            title="Wohnzimmer",
+            file_url="https://cdn.example.com/photos/wohnzimmer.jpg",
+            is_primary=True,
+        )
+    )
+
+    assert store.get_listing(listing.id).title.startswith("Schöne Wohnung")
+    assert store.get_listing_photo(photo.id).listing_id == listing.id
+
+    store.delete_unit(unit.id)
+
+    with pytest.raises(NotFoundError):
+        store.get_listing(listing.id)
+    with pytest.raises(NotFoundError):
+        store.get_listing_photo(photo.id)

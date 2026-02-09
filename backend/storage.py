@@ -31,6 +31,10 @@ from .models import (
     TenantCreate,
     Unit,
     UnitCreate,
+    Listing,
+    ListingCreate,
+    ListingPhoto,
+    ListingPhotoCreate,
 )
 
 
@@ -62,6 +66,8 @@ class InMemoryStore:
     tasks: Dict[str, Task] = field(default_factory=dict)
     tenants: Dict[str, Tenant] = field(default_factory=dict)
     contracts: Dict[str, Contract] = field(default_factory=dict)
+    listings: Dict[str, Listing] = field(default_factory=dict)
+    listing_photos: Dict[str, ListingPhoto] = field(default_factory=dict)
 
     def list_portfolios(self) -> List[Portfolio]:
         return list(self.portfolios.values())
@@ -261,6 +267,9 @@ class InMemoryStore:
         for event_id, event in list(self.calendar_events.items()):
             if event.unit_id == unit_id:
                 del self.calendar_events[event_id]
+        for listing_id, listing in list(self.listings.items()):
+            if listing.unit_id == unit_id:
+                self.delete_listing(listing_id)
         del self.units[unit_id]
 
     def list_tenants(self) -> List[Tenant]:
@@ -589,6 +598,69 @@ class InMemoryStore:
         if event_id not in self.calendar_events:
             raise NotFoundError("Termin nicht gefunden")
         del self.calendar_events[event_id]
+
+    def list_listings(self) -> List[Listing]:
+        return list(self.listings.values())
+
+    def create_listing(self, data: ListingCreate) -> Listing:
+        if data.unit_id not in self.units:
+            raise ValidationError("Einheit existiert nicht")
+        listing = Listing(id=_generate_id(), **data.model_dump())
+        self.listings[listing.id] = listing
+        return listing
+
+    def get_listing(self, listing_id: str) -> Listing:
+        try:
+            return self.listings[listing_id]
+        except KeyError as exc:
+            raise NotFoundError("Inserat nicht gefunden") from exc
+
+    def update_listing(self, listing_id: str, data: ListingCreate) -> Listing:
+        if listing_id not in self.listings:
+            raise NotFoundError("Inserat nicht gefunden")
+        if data.unit_id not in self.units:
+            raise ValidationError("Einheit existiert nicht")
+        listing = Listing(id=listing_id, **data.model_dump())
+        self.listings[listing_id] = listing
+        return listing
+
+    def delete_listing(self, listing_id: str) -> None:
+        if listing_id not in self.listings:
+            raise NotFoundError("Inserat nicht gefunden")
+        for photo_id, photo in list(self.listing_photos.items()):
+            if photo.listing_id == listing_id:
+                del self.listing_photos[photo_id]
+        del self.listings[listing_id]
+
+    def list_listing_photos(self) -> List[ListingPhoto]:
+        return list(self.listing_photos.values())
+
+    def create_listing_photo(self, data: ListingPhotoCreate) -> ListingPhoto:
+        if data.listing_id not in self.listings:
+            raise ValidationError("Inserat existiert nicht")
+        photo = ListingPhoto(id=_generate_id(), **data.model_dump())
+        self.listing_photos[photo.id] = photo
+        return photo
+
+    def get_listing_photo(self, photo_id: str) -> ListingPhoto:
+        try:
+            return self.listing_photos[photo_id]
+        except KeyError as exc:
+            raise NotFoundError("Inseratsfoto nicht gefunden") from exc
+
+    def update_listing_photo(self, photo_id: str, data: ListingPhotoCreate) -> ListingPhoto:
+        if photo_id not in self.listing_photos:
+            raise NotFoundError("Inseratsfoto nicht gefunden")
+        if data.listing_id not in self.listings:
+            raise ValidationError("Inserat existiert nicht")
+        photo = ListingPhoto(id=photo_id, **data.model_dump())
+        self.listing_photos[photo_id] = photo
+        return photo
+
+    def delete_listing_photo(self, photo_id: str) -> None:
+        if photo_id not in self.listing_photos:
+            raise NotFoundError("Inseratsfoto nicht gefunden")
+        del self.listing_photos[photo_id]
 
     def _delete_contract(self, contract_id: str) -> None:
         for receivable_id, receivable in list(self.receivables.items()):
