@@ -1,5 +1,9 @@
+from dataclasses import asdict
+from decimal import Decimal
+
 from fastapi import APIRouter, HTTPException, status
 
+from ..domain.invoice_matching import BookingCandidate, InvoiceMatcher, InvoiceToMatch
 from ..models import Invoice, InvoiceCreate
 from ..routers.portfolios import store
 from ..storage import NotFoundError, ValidationError
@@ -43,3 +47,42 @@ def delete_invoice(invoice_id: str) -> None:
         store.delete_invoice(invoice_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.post("/{invoice_id}/match")
+def match_invoice_to_bookings(invoice_id: str) -> dict:
+    """Match an invoice to open bookings using FIFO allocation."""
+    try:
+        invoice = store.get_invoice(invoice_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    invoice_to_match = InvoiceToMatch(
+        invoice_id=invoice.id,
+        gross_amount=Decimal(str(invoice.gross_amount)),
+        invoice_date=invoice.invoice_date,
+    )
+
+    candidates = [
+        BookingCandidate(
+            booking_id=booking.id,
+            open_amount=Decimal(str(abs(booking.amount))),
+            booking_date=booking.booking_date,
+        )
+        for booking in store.bookings.values()
+        if booking.amount < 0 and booking.status == "open"
+    ]
+
+    result = InvoiceMatcher.allocate_fifo(invoice_to_match, candidates)
+
+    raw = asdict(result)
+    return {
+        key: (
+            float(value) if isinstance(value, Decimal)
+            else [
+                {k: (float(v) if isinstance(v, Decimal) else v) for k, v in item.items()}
+                for item in value
+            ] if isinstance(value, list) else value
+        )
+        for key, value in raw.items()
+    }
