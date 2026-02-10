@@ -728,3 +728,71 @@ class NotificationTemplatePatch(BaseModel):
     title_template: Optional[str] = None
     content_template: Optional[str] = None
     severity: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Phase 5.1: Authentication & Users
+# ---------------------------------------------------------------------------
+
+
+class UserCreate(BaseModel):
+    username: str
+    email: str
+    full_name: str
+    password: str
+    role: str = "readonly"  # eigentuemer, verwalter, buchhaltung, techniker, readonly
+
+
+class UserRead(BaseModel):
+    id: str = Field(..., min_length=1)
+    username: str
+    email: str
+    full_name: str
+    role: str
+    is_active: bool = True
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class UserPatch(BaseModel):
+    email: Optional[str] = None
+    full_name: Optional[str] = None
+    role: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+
+
+class TokenPayload(BaseModel):
+    sub: str  # user_id
+    exp: datetime
+    type: str  # access or refresh
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
+# ---------------------------------------------------------------------------
+# Phase 5.3: Audit Logging
+# ---------------------------------------------------------------------------
+
+
+class AuditLogEntry(BaseModel):
+    id: str = Field(..., min_length=1)
+    user_id: Optional[str] = None
+    username: Optional[str] = None
+    action: str  # create, update, patch, delete
+    entity_type: str  # portfolio, property, unit, etc.
+    entity_id: str
+    changes: Optional[str] = None  # JSON diff
+    timestamp: datetime = Field(default_factory=datetime.utcnow)

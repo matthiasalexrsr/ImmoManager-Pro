@@ -2,6 +2,8 @@ from fastapi import APIRouter, FastAPI
 
 from .routers import (
     accounts,
+    audit,
+    auth,
     billing,
     bookings,
     calendar,
@@ -30,6 +32,8 @@ app = FastAPI(title="ImmoManager Pro API", version="0.1.0")
 # API v1 router with version prefix
 api_v1 = APIRouter(prefix="/api/v1")
 
+api_v1.include_router(auth.router)
+api_v1.include_router(audit.router)
 api_v1.include_router(portfolios.router)
 api_v1.include_router(properties.router)
 api_v1.include_router(units.router)

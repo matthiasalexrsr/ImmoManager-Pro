@@ -394,3 +394,33 @@ CREATE TABLE notification_templates (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+CREATE TABLE users (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  username text NOT NULL UNIQUE,
+  email text NOT NULL UNIQUE,
+  full_name text NOT NULL,
+  hashed_password text NOT NULL,
+  role text NOT NULL DEFAULT 'readonly',
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_users_username ON users(username);
+CREATE INDEX idx_users_email ON users(email);
+
+CREATE TABLE audit_logs (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id uuid,
+  username text,
+  action text NOT NULL,
+  entity_type text NOT NULL,
+  entity_id text NOT NULL,
+  changes text,
+  timestamp timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_audit_entity ON audit_logs(entity_type, entity_id);
+CREATE INDEX idx_audit_user ON audit_logs(user_id);
+CREATE INDEX idx_audit_timestamp ON audit_logs(timestamp);
