@@ -91,6 +91,26 @@ class DunningCampaign:
     total_claim: Decimal
 
 
+@dataclass(frozen=True)
+class NoticeTemplate:
+    subject_template: str = "Mahnung Stufe {level} - Forderung {receivable_id}"
+    body_template: str = (
+        "Sehr geehrte Damen und Herren,\n\n"
+        "für die Forderung {receivable_id} besteht ein offener Betrag von {principal} EUR. "
+        "Die Mahngebühr beträgt {fee} EUR, Gesamtforderung {claim} EUR. "
+        "Überfälligkeit: {overdue_days} Tage.\n\n"
+        "Bitte begleichen Sie den Betrag zeitnah."
+    )
+
+
+@dataclass(frozen=True)
+class NoticeDraft:
+    receivable_id: str
+    level: int
+    subject: str
+    body: str
+
+
 class DunningEngine:
     """Entscheidungslogik für Mahnstufen auf Basis Fälligkeit und offenem Betrag."""
 
@@ -196,3 +216,38 @@ class DunningEngine:
             total_fees=total_fees,
             total_claim=total_claim,
         )
+
+
+    @staticmethod
+    def build_notice_drafts(
+        campaign: DunningCampaign,
+        template: NoticeTemplate | None = None,
+    ) -> list[NoticeDraft]:
+        tpl = template or NoticeTemplate()
+        drafts: list[NoticeDraft] = []
+        for line in campaign.lines:
+            subject = tpl.subject_template.format(
+                level=line.level,
+                receivable_id=line.receivable_id,
+                principal=f"{line.outstanding_amount:.2f}",
+                fee=f"{line.dunning_fee:.2f}",
+                claim=f"{line.total_claim:.2f}",
+                overdue_days=line.overdue_days,
+            )
+            body = tpl.body_template.format(
+                level=line.level,
+                receivable_id=line.receivable_id,
+                principal=f"{line.outstanding_amount:.2f}",
+                fee=f"{line.dunning_fee:.2f}",
+                claim=f"{line.total_claim:.2f}",
+                overdue_days=line.overdue_days,
+            )
+            drafts.append(
+                NoticeDraft(
+                    receivable_id=line.receivable_id,
+                    level=line.level,
+                    subject=subject,
+                    body=body,
+                )
+            )
+        return drafts
