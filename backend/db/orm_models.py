@@ -274,6 +274,8 @@ class TaskORM(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False, default="open")
     property_id: Mapped[str | None] = mapped_column(ForeignKey("properties.id", ondelete="SET NULL"))
     unit_id: Mapped[str | None] = mapped_column(ForeignKey("units.id", ondelete="SET NULL"))
+    recurrence_rule: Mapped[str | None] = mapped_column(Text)
+    parent_task_id: Mapped[str | None] = mapped_column(String)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 

@@ -232,6 +232,8 @@ class TaskCreate(BaseModel):
     status: str = "open"
     property_id: Optional[str] = None
     unit_id: Optional[str] = None
+    recurrence_rule: Optional[str] = None  # iCal RRULE (e.g. "FREQ=MONTHLY;INTERVAL=1")
+    parent_task_id: Optional[str] = None  # links recurring instances to template
 
 
 class Task(TaskCreate):
@@ -454,6 +456,8 @@ class TaskPatch(BaseModel):
     status: Optional[str] = None
     property_id: Optional[str] = None
     unit_id: Optional[str] = None
+    recurrence_rule: Optional[str] = None
+    parent_task_id: Optional[str] = None
 
 
 class CalendarEventPatch(BaseModel):
