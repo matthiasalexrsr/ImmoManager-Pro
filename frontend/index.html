@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ImmoManager Pro</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand__logo">IM</div>
+          <div>
+            <h1>ImmoManager</h1>
+            <p>Alles im Blick. Jede Immobilie.</p>
+          </div>
+        </div>
+        <nav id="main-nav" class="nav"></nav>
+      </aside>
+
+      <div class="content">
+        <header class="topbar">
+          <input id="global-search" type="search" placeholder="Suche…" />
+          <div class="topbar__actions">
+            <button class="ghost">Schnellaktion</button>
+            <button class="ghost">Benachrichtigungen</button>
+            <button class="primary">Neu</button>
+          </div>
+        </header>
+
+        <main class="main">
+          <section class="kpis" id="kpis"></section>
+
+          <section class="panel-grid">
+            <article class="panel">
+              <div class="panel__header">
+                <h2>Forderungen</h2>
+                <button class="ghost small">Details anzeigen</button>
+              </div>
+              <div id="receivables-summary" class="stat-grid"></div>
+            </article>
+
+            <article class="panel">
+              <div class="panel__header">
+                <h2>Vertragsübersicht</h2>
+                <button class="ghost small">Berichte</button>
+              </div>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Einheit</th>
+                    <th>Mieter</th>
+                    <th>Status</th>
+                    <th>Fällig am</th>
+                  </tr>
+                </thead>
+                <tbody id="contracts-table"></tbody>
+              </table>
+            </article>
+          </section>
+
+          <section class="panel">
+            <div class="panel__header">
+              <h2>Mahnwesen</h2>
+              <button id="refresh-dunning" class="ghost small">Aktualisieren</button>
+            </div>
+            <div id="dunning-campaign"></div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>
