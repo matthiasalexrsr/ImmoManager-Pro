@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Iterable
 
@@ -109,6 +109,16 @@ class NoticeDraft:
     level: int
     subject: str
     body: str
+
+
+@dataclass(frozen=True)
+class NoticePackage:
+    receivable_id: str
+    level: int
+    subject: str
+    body: str
+    sender_name: str
+    payment_due_date: date
 
 
 class DunningEngine:
@@ -251,3 +261,41 @@ class DunningEngine:
                 )
             )
         return drafts
+
+
+    @staticmethod
+    def build_notice_packages(
+        campaign: DunningCampaign,
+        *,
+        today: date,
+        template: NoticeTemplate | None = None,
+        sender_name: str = "ImmoManager Pro",
+        payment_deadline_days: int = 7,
+    ) -> list[NoticePackage]:
+        if payment_deadline_days < 1:
+            raise ValueError("payment_deadline_days muss >= 1 sein")
+
+        drafts = DunningEngine.build_notice_drafts(campaign, template=template)
+        lines_by_id = {line.receivable_id: line for line in campaign.lines}
+        payment_due_date = today + timedelta(days=payment_deadline_days)
+
+        packages: list[NoticePackage] = []
+        for draft in drafts:
+            line = lines_by_id[draft.receivable_id]
+            body = (
+                f"{draft.body}\n\n"
+                f"Absender: {sender_name}\n"
+                f"Zahlungsziel: {payment_due_date.isoformat()}\n"
+                f"Offene Gesamtforderung: {line.total_claim:.2f} EUR"
+            )
+            packages.append(
+                NoticePackage(
+                    receivable_id=draft.receivable_id,
+                    level=draft.level,
+                    subject=draft.subject,
+                    body=body,
+                    sender_name=sender_name,
+                    payment_due_date=payment_due_date,
+                )
+            )
+        return packages

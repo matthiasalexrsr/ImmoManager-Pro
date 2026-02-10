@@ -217,3 +217,50 @@ def test_build_notice_drafts_custom_template() -> None:
 
     assert drafts[0].subject == "[2] r-2"
     assert "105.00" in drafts[0].body
+
+
+
+def test_build_notice_packages_adds_sender_and_payment_deadline() -> None:
+    receivables = [
+        ReceivableState(
+            receivable_id="r-9",
+            due_date=datetime.date(2024, 3, 1),
+            amount_due=Decimal("200.00"),
+            amount_paid=Decimal("0.00"),
+            current_level=0,
+        )
+    ]
+    campaign = DunningEngine.build_campaign(receivables, today=datetime.date(2024, 4, 20))
+
+    packages = DunningEngine.build_notice_packages(
+        campaign,
+        today=datetime.date(2024, 4, 20),
+        sender_name="Hausverwaltung Beispiel",
+        payment_deadline_days=10,
+    )
+
+    assert len(packages) == 1
+    assert packages[0].sender_name == "Hausverwaltung Beispiel"
+    assert packages[0].payment_due_date == datetime.date(2024, 4, 30)
+    assert "Zahlungsziel: 2024-04-30" in packages[0].body
+    assert "Offene Gesamtforderung: 207.50 EUR" in packages[0].body
+
+
+def test_build_notice_packages_rejects_invalid_deadline() -> None:
+    receivables = [
+        ReceivableState(
+            receivable_id="r-10",
+            due_date=datetime.date(2024, 3, 1),
+            amount_due=Decimal("200.00"),
+            amount_paid=Decimal("0.00"),
+            current_level=0,
+        )
+    ]
+    campaign = DunningEngine.build_campaign(receivables, today=datetime.date(2024, 4, 20))
+
+    with pytest.raises(ValueError):
+        DunningEngine.build_notice_packages(
+            campaign,
+            today=datetime.date(2024, 4, 20),
+            payment_deadline_days=0,
+        )
