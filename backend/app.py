@@ -14,6 +14,7 @@ from .routers import (
     listings,
     invoices,
     maintenance,
+    notifications,
     portfolios,
     properties,
     receivables,
@@ -48,6 +49,7 @@ api_v1.include_router(leads.router)
 api_v1.include_router(viewings.router)
 api_v1.include_router(billing.router)
 api_v1.include_router(deposits.router)
+api_v1.include_router(notifications.router)
 api_v1.include_router(reports.router)
 
 app.include_router(api_v1)

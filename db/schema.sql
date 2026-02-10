@@ -366,3 +366,31 @@ CREATE TABLE deposits (
 );
 
 CREATE INDEX idx_deposits_contract ON deposits(contract_id);
+
+CREATE TABLE notifications (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  notification_type text NOT NULL,
+  title text NOT NULL,
+  content text NOT NULL,
+  severity text NOT NULL DEFAULT 'info',
+  entity_type text,
+  entity_id uuid,
+  status text NOT NULL DEFAULT 'unread',
+  read_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_notifications_status ON notifications(status);
+CREATE INDEX idx_notifications_type ON notifications(notification_type);
+
+CREATE TABLE notification_templates (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name text NOT NULL,
+  notification_type text NOT NULL,
+  title_template text NOT NULL,
+  content_template text NOT NULL,
+  severity text NOT NULL DEFAULT 'info',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);

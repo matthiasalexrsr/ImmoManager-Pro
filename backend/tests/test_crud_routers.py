@@ -44,6 +44,10 @@ from backend.models import (
     ListingPhotoPatch,
     MaintenanceCaseCreate,
     MaintenanceCasePatch,
+    NotificationCreate,
+    NotificationPatch,
+    NotificationTemplateCreate,
+    NotificationTemplatePatch,
     PortfolioCreate,
     PortfolioPatch,
     PropertyCreate,
@@ -73,6 +77,7 @@ from backend.routers import (
     leads,
     listings,
     maintenance,
+    notifications,
     portfolios,
     properties,
     receivables,
@@ -179,6 +184,14 @@ def _list_deposits(**kw):
     return deposits.list_deposits(skip=kw.get("skip", S), limit=kw.get("limit", L), contract_id=kw.get("contract_id"), status_filter=kw.get("status_filter"))
 
 
+def _list_notifications(**kw):
+    return notifications.list_notifications(skip=kw.get("skip", S), limit=kw.get("limit", L), status_filter=kw.get("status_filter"), notification_type=kw.get("notification_type"), severity=kw.get("severity"))
+
+
+def _list_notification_templates(**kw):
+    return notifications.list_notification_templates(skip=kw.get("skip", S), limit=kw.get("limit", L), notification_type=kw.get("notification_type"))
+
+
 def _clear_store() -> None:
     for collection in (
         store.portfolios,
@@ -204,6 +217,8 @@ def _clear_store() -> None:
         store.cost_items,
         store.utility_statements,
         store.deposits,
+        store.notifications,
+        store.notification_templates,
     ):
         collection.clear()
 
@@ -2469,3 +2484,296 @@ class TestDeposits:
         assert updated.deductions == 500.0
         assert updated.deduction_reason == "Renovierungskosten"
         assert updated.status == "partially_returned"
+
+
+# ---------------------------------------------------------------------------
+# Notifications (Benachrichtigungen)
+# ---------------------------------------------------------------------------
+
+class TestNotifications:
+    def setup_method(self) -> None:
+        _clear_store()
+
+    def _make(self, **overrides):
+        data = dict(
+            notification_type="general", title="Test", content="Test content"
+        )
+        data.update(overrides)
+        return NotificationCreate(**data)
+
+    def test_create_notification(self) -> None:
+        n = notifications.create_notification(self._make())
+        assert n.title == "Test"
+        assert n.status == "unread"
+        assert n.id
+
+    def test_list_notifications_empty(self) -> None:
+        assert _list_notifications() == []
+
+    def test_list_notifications_returns_created(self) -> None:
+        notifications.create_notification(self._make(title="A"))
+        notifications.create_notification(self._make(title="B"))
+        assert len(_list_notifications()) == 2
+
+    def test_get_notification(self) -> None:
+        n = notifications.create_notification(self._make())
+        fetched = notifications.get_notification(n.id)
+        assert fetched.id == n.id
+
+    def test_get_notification_404(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            notifications.get_notification("nonexistent")
+        assert exc_info.value.status_code == 404
+
+    def test_mark_read(self) -> None:
+        n = notifications.create_notification(self._make())
+        assert n.status == "unread"
+        assert n.read_at is None
+        read = notifications.mark_notification_read(n.id)
+        assert read.status == "read"
+        assert read.read_at is not None
+
+    def test_mark_read_404(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            notifications.mark_notification_read("nonexistent")
+        assert exc_info.value.status_code == 404
+
+    def test_delete_notification(self) -> None:
+        n = notifications.create_notification(self._make())
+        notifications.delete_notification(n.id)
+        assert _list_notifications() == []
+
+    def test_delete_notification_404(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            notifications.delete_notification("nonexistent")
+        assert exc_info.value.status_code == 404
+
+    def test_filter_by_status(self) -> None:
+        n = notifications.create_notification(self._make(title="A"))
+        notifications.create_notification(self._make(title="B"))
+        notifications.mark_notification_read(n.id)
+        assert len(_list_notifications(status_filter="unread")) == 1
+        assert len(_list_notifications(status_filter="read")) == 1
+
+    def test_filter_by_type(self) -> None:
+        notifications.create_notification(self._make(notification_type="overdue_payment"))
+        notifications.create_notification(self._make(notification_type="task_due"))
+        assert len(_list_notifications(notification_type="overdue_payment")) == 1
+
+    def test_filter_by_severity(self) -> None:
+        notifications.create_notification(self._make(severity="warning"))
+        notifications.create_notification(self._make(severity="info"))
+        assert len(_list_notifications(severity="warning")) == 1
+
+    def test_patch_notification(self) -> None:
+        n = notifications.create_notification(self._make())
+        patched = notifications.patch_notification(n.id, NotificationPatch(status="archived"))
+        assert patched.status == "archived"
+        assert patched.title == "Test"
+
+    def test_patch_notification_404(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            notifications.patch_notification("nonexistent", NotificationPatch(status="archived"))
+        assert exc_info.value.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Notification Templates (Benachrichtigungsvorlagen)
+# ---------------------------------------------------------------------------
+
+class TestNotificationTemplates:
+    def setup_method(self) -> None:
+        _clear_store()
+
+    def _make(self, **overrides):
+        data = dict(
+            name="Overdue", notification_type="overdue_payment",
+            title_template="Überfällig: {tenant}", content_template="Zahlung {amount} EUR überfällig.",
+        )
+        data.update(overrides)
+        return NotificationTemplateCreate(**data)
+
+    def test_create_template(self) -> None:
+        t = notifications.create_notification_template(self._make())
+        assert t.name == "Overdue"
+        assert t.id
+
+    def test_list_templates_empty(self) -> None:
+        assert _list_notification_templates() == []
+
+    def test_list_templates_with_filter(self) -> None:
+        notifications.create_notification_template(self._make())
+        notifications.create_notification_template(
+            self._make(name="Task", notification_type="task_due", title_template="T", content_template="C")
+        )
+        assert len(_list_notification_templates(notification_type="overdue_payment")) == 1
+
+    def test_get_template(self) -> None:
+        t = notifications.create_notification_template(self._make())
+        fetched = notifications.get_notification_template(t.id)
+        assert fetched.id == t.id
+
+    def test_get_template_404(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            notifications.get_notification_template("nonexistent")
+        assert exc_info.value.status_code == 404
+
+    def test_update_template(self) -> None:
+        t = notifications.create_notification_template(self._make())
+        updated = notifications.update_notification_template(
+            t.id, self._make(name="Updated")
+        )
+        assert updated.name == "Updated"
+        assert updated.created_at == t.created_at
+
+    def test_update_template_404(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            notifications.update_notification_template("nonexistent", self._make())
+        assert exc_info.value.status_code == 404
+
+    def test_delete_template(self) -> None:
+        t = notifications.create_notification_template(self._make())
+        notifications.delete_notification_template(t.id)
+        assert _list_notification_templates() == []
+
+    def test_delete_template_404(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            notifications.delete_notification_template("nonexistent")
+        assert exc_info.value.status_code == 404
+
+    def test_patch_template(self) -> None:
+        t = notifications.create_notification_template(self._make())
+        patched = notifications.patch_notification_template(
+            t.id, NotificationTemplatePatch(name="Patched")
+        )
+        assert patched.name == "Patched"
+        assert patched.notification_type == "overdue_payment"
+
+
+# ---------------------------------------------------------------------------
+# Notification Generation (Event Triggers)
+# ---------------------------------------------------------------------------
+
+class TestNotificationGeneration:
+    def setup_method(self) -> None:
+        _clear_store()
+        self.portfolio = store.create_portfolio(PortfolioCreate(name="P"))
+        self.prop = store.create_property(
+            PropertyCreate(portfolio_id=self.portfolio.id, name="H", property_type="MFH")
+        )
+        self.unit = store.create_unit(
+            UnitCreate(property_id=self.prop.id, label="1", unit_type="Wohnung")
+        )
+        self.tenant = store.create_tenant(TenantCreate(full_name="Müller"))
+        self.contract = store.create_contract(
+            ContractCreate(
+                contract_number="V-1", property_id=self.prop.id,
+                unit_id=self.unit.id, tenant_id=self.tenant.id,
+                start_date=datetime.date(2024, 1, 1),
+            )
+        )
+
+    def test_generate_overdue_payments(self) -> None:
+        store.create_receivable(
+            ReceivableCreate(
+                contract_id=self.contract.id,
+                due_date=datetime.date(2025, 1, 1),
+                amount_due=500.0,
+            )
+        )
+        result = notifications.generate_overdue_payment_notifications(
+            as_of=datetime.date(2025, 2, 1)
+        )
+        assert len(result) == 1
+        assert result[0].notification_type == "overdue_payment"
+        assert "Müller" in result[0].title
+        assert result[0].severity == "warning"
+
+    def test_generate_overdue_payments_none_overdue(self) -> None:
+        store.create_receivable(
+            ReceivableCreate(
+                contract_id=self.contract.id,
+                due_date=datetime.date(2025, 3, 1),
+                amount_due=500.0,
+            )
+        )
+        result = notifications.generate_overdue_payment_notifications(
+            as_of=datetime.date(2025, 2, 1)
+        )
+        assert len(result) == 0
+
+    def test_generate_expiring_contracts(self) -> None:
+        # Update contract to have an end_date
+        store.update_contract(
+            self.contract.id,
+            ContractCreate(
+                contract_number="V-1", property_id=self.prop.id,
+                unit_id=self.unit.id, tenant_id=self.tenant.id,
+                start_date=datetime.date(2024, 1, 1),
+                end_date=datetime.date(2025, 6, 30),
+            ),
+        )
+        result = notifications.generate_expiring_contract_notifications(
+            days_ahead=90, as_of=datetime.date(2025, 5, 1)
+        )
+        assert len(result) == 1
+        assert result[0].notification_type == "contract_expiry"
+        assert "V-1" in result[0].title
+
+    def test_generate_expiring_contracts_none_expiring(self) -> None:
+        result = notifications.generate_expiring_contract_notifications(
+            days_ahead=90, as_of=datetime.date(2025, 1, 1)
+        )
+        # Contract has no end_date, so no expiring contracts
+        assert len(result) == 0
+
+    def test_generate_due_tasks(self) -> None:
+        store.create_task(
+            TaskCreate(
+                title="Fix sink", due_date=datetime.date(2025, 1, 15),
+                property_id=self.prop.id,
+            )
+        )
+        result = notifications.generate_due_task_notifications(
+            as_of=datetime.date(2025, 2, 1)
+        )
+        assert len(result) == 1
+        assert result[0].notification_type == "task_due"
+        assert "Fix sink" in result[0].title
+        assert result[0].severity == "warning"  # overdue
+
+    def test_generate_due_tasks_today(self) -> None:
+        store.create_task(
+            TaskCreate(
+                title="Today task", due_date=datetime.date(2025, 2, 1),
+            )
+        )
+        result = notifications.generate_due_task_notifications(
+            as_of=datetime.date(2025, 2, 1)
+        )
+        assert len(result) == 1
+        assert result[0].severity == "info"  # due today, not overdue
+
+    def test_generate_due_tasks_none_due(self) -> None:
+        store.create_task(
+            TaskCreate(
+                title="Future task", due_date=datetime.date(2025, 6, 1),
+            )
+        )
+        result = notifications.generate_due_task_notifications(
+            as_of=datetime.date(2025, 2, 1)
+        )
+        assert len(result) == 0
+
+    def test_generated_notifications_stored(self) -> None:
+        store.create_receivable(
+            ReceivableCreate(
+                contract_id=self.contract.id,
+                due_date=datetime.date(2025, 1, 1),
+                amount_due=500.0,
+            )
+        )
+        notifications.generate_overdue_payment_notifications(
+            as_of=datetime.date(2025, 2, 1)
+        )
+        assert len(_list_notifications()) == 1

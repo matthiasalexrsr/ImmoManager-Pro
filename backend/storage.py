@@ -32,6 +32,10 @@ from .models import (
     LeadCreate,
     MaintenanceCase,
     MaintenanceCaseCreate,
+    Notification,
+    NotificationCreate,
+    NotificationTemplate,
+    NotificationTemplateCreate,
     Portfolio,
     PortfolioCreate,
     Property,
@@ -92,6 +96,8 @@ class InMemoryStore:
     cost_items: Dict[str, CostItem] = field(default_factory=dict)
     utility_statements: Dict[str, UtilityStatement] = field(default_factory=dict)
     deposits: Dict[str, Deposit] = field(default_factory=dict)
+    notifications: Dict[str, Notification] = field(default_factory=dict)
+    notification_templates: Dict[str, NotificationTemplate] = field(default_factory=dict)
 
     def list_portfolios(self) -> List[Portfolio]:
         return list(self.portfolios.values())
@@ -971,6 +977,64 @@ class InMemoryStore:
         if deposit_id not in self.deposits:
             raise NotFoundError("Kaution nicht gefunden")
         del self.deposits[deposit_id]
+
+    # --- Notifications ---
+
+    def list_notifications(self) -> List[Notification]:
+        return list(self.notifications.values())
+
+    def create_notification(self, data: NotificationCreate) -> Notification:
+        notification = Notification(id=_generate_id(), **data.model_dump())
+        self.notifications[notification.id] = notification
+        return notification
+
+    def get_notification(self, notification_id: str) -> Notification:
+        try:
+            return self.notifications[notification_id]
+        except KeyError as exc:
+            raise NotFoundError("Benachrichtigung nicht gefunden") from exc
+
+    def mark_notification_read(self, notification_id: str) -> Notification:
+        if notification_id not in self.notifications:
+            raise NotFoundError("Benachrichtigung nicht gefunden")
+        old = self.notifications[notification_id]
+        updated = old.model_copy(update={"status": "read", "read_at": datetime.utcnow(), "updated_at": datetime.utcnow()})
+        self.notifications[notification_id] = updated
+        return updated
+
+    def delete_notification(self, notification_id: str) -> None:
+        if notification_id not in self.notifications:
+            raise NotFoundError("Benachrichtigung nicht gefunden")
+        del self.notifications[notification_id]
+
+    # --- Notification Templates ---
+
+    def list_notification_templates(self) -> List[NotificationTemplate]:
+        return list(self.notification_templates.values())
+
+    def create_notification_template(self, data: NotificationTemplateCreate) -> NotificationTemplate:
+        template = NotificationTemplate(id=_generate_id(), **data.model_dump())
+        self.notification_templates[template.id] = template
+        return template
+
+    def get_notification_template(self, template_id: str) -> NotificationTemplate:
+        try:
+            return self.notification_templates[template_id]
+        except KeyError as exc:
+            raise NotFoundError("Benachrichtigungsvorlage nicht gefunden") from exc
+
+    def update_notification_template(self, template_id: str, data: NotificationTemplateCreate) -> NotificationTemplate:
+        if template_id not in self.notification_templates:
+            raise NotFoundError("Benachrichtigungsvorlage nicht gefunden")
+        old = self.notification_templates[template_id]
+        template = NotificationTemplate(id=template_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
+        self.notification_templates[template_id] = template
+        return template
+
+    def delete_notification_template(self, template_id: str) -> None:
+        if template_id not in self.notification_templates:
+            raise NotFoundError("Benachrichtigungsvorlage nicht gefunden")
+        del self.notification_templates[template_id]
 
     def _patch_entity(self, collection: dict, entity_id: str, patch: PydanticBaseModel, not_found_msg: str):
         """Apply a partial update to an entity. Only non-None fields in the patch are applied."""

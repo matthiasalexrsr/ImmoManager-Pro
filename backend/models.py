@@ -673,3 +673,58 @@ class DepositPatch(BaseModel):
     deductions: Optional[float] = None
     deduction_reason: Optional[str] = None
     notes: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Phase 3.4: Notifications (Benachrichtigungen)
+# ---------------------------------------------------------------------------
+
+
+class NotificationCreate(BaseModel):
+    notification_type: str  # overdue_payment, contract_expiry, task_due, maintenance, general
+    title: str
+    content: str
+    severity: str = "info"  # info, warning, critical
+    entity_type: Optional[str] = None  # contract, receivable, task, etc.
+    entity_id: Optional[str] = None
+    status: str = "unread"  # unread, read, archived
+
+
+class Notification(NotificationCreate):
+    id: str = Field(..., min_length=1)
+    read_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class NotificationPatch(BaseModel):
+    notification_type: Optional[str] = None
+    title: Optional[str] = None
+    content: Optional[str] = None
+    severity: Optional[str] = None
+    entity_type: Optional[str] = None
+    entity_id: Optional[str] = None
+    status: Optional[str] = None
+    read_at: Optional[datetime] = None
+
+
+class NotificationTemplateCreate(BaseModel):
+    name: str
+    notification_type: str
+    title_template: str
+    content_template: str
+    severity: str = "info"
+
+
+class NotificationTemplate(NotificationTemplateCreate):
+    id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class NotificationTemplatePatch(BaseModel):
+    name: Optional[str] = None
+    notification_type: Optional[str] = None
+    title_template: Optional[str] = None
+    content_template: Optional[str] = None
+    severity: Optional[str] = None
