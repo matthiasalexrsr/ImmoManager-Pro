@@ -30,6 +30,8 @@ from backend.models import (
     ContractPatch,
     CostItemCreate,
     CostItemPatch,
+    DepositCreate,
+    DepositPatch,
     DocumentCreate,
     DocumentPatch,
     InvoiceCreate,
@@ -65,6 +67,7 @@ from backend.routers import (
     calendar,
     categories,
     contracts,
+    deposits,
     documents,
     invoices,
     leads,
@@ -172,6 +175,10 @@ def _list_utility_statements(**kw):
     return billing.list_utility_statements(skip=kw.get("skip", S), limit=kw.get("limit", L), billing_period_id=kw.get("billing_period_id"), contract_id=kw.get("contract_id"), status_filter=kw.get("status_filter"))
 
 
+def _list_deposits(**kw):
+    return deposits.list_deposits(skip=kw.get("skip", S), limit=kw.get("limit", L), contract_id=kw.get("contract_id"), status_filter=kw.get("status_filter"))
+
+
 def _clear_store() -> None:
     for collection in (
         store.portfolios,
@@ -196,6 +203,7 @@ def _clear_store() -> None:
         store.allocation_keys,
         store.cost_items,
         store.utility_statements,
+        store.deposits,
     ):
         collection.clear()
 
@@ -2306,3 +2314,158 @@ class TestGenerateUtilityStatements:
         billing.delete_billing_period(self.bp.id)
         assert len(_list_cost_items()) == 0
         assert len(_list_utility_statements()) == 0
+
+
+# ---------------------------------------------------------------------------
+# Deposits (Kautionen)
+# ---------------------------------------------------------------------------
+
+class TestDeposits:
+    def setup_method(self) -> None:
+        _clear_store()
+        self.portfolio = store.create_portfolio(PortfolioCreate(name="P"))
+        self.prop = store.create_property(
+            PropertyCreate(portfolio_id=self.portfolio.id, name="H", property_type="MFH")
+        )
+        self.unit = store.create_unit(
+            UnitCreate(property_id=self.prop.id, label="1", unit_type="Wohnung")
+        )
+        self.tenant = store.create_tenant(TenantCreate(full_name="Müller"))
+        self.contract = store.create_contract(
+            ContractCreate(
+                contract_number="V-1", property_id=self.prop.id,
+                unit_id=self.unit.id, tenant_id=self.tenant.id,
+                start_date=datetime.date(2024, 1, 1),
+            )
+        )
+
+    def test_create_deposit(self) -> None:
+        d = deposits.create_deposit(
+            DepositCreate(contract_id=self.contract.id, amount=2000.0)
+        )
+        assert d.amount == 2000.0
+        assert d.status == "held"
+        assert d.id
+
+    def test_list_deposits_empty(self) -> None:
+        assert _list_deposits() == []
+
+    def test_list_deposits_returns_created(self) -> None:
+        deposits.create_deposit(DepositCreate(contract_id=self.contract.id, amount=1000.0))
+        deposits.create_deposit(DepositCreate(contract_id=self.contract.id, amount=2000.0))
+        assert len(_list_deposits()) == 2
+
+    def test_get_deposit(self) -> None:
+        d = deposits.create_deposit(
+            DepositCreate(contract_id=self.contract.id, amount=1500.0)
+        )
+        fetched = deposits.get_deposit(d.id)
+        assert fetched.id == d.id
+
+    def test_get_deposit_404(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            deposits.get_deposit("nonexistent")
+        assert exc_info.value.status_code == 404
+
+    def test_update_deposit(self) -> None:
+        d = deposits.create_deposit(
+            DepositCreate(contract_id=self.contract.id, amount=1500.0)
+        )
+        updated = deposits.update_deposit(
+            d.id,
+            DepositCreate(
+                contract_id=self.contract.id, amount=1500.0,
+                status="returned", return_date=datetime.date(2025, 6, 1),
+            ),
+        )
+        assert updated.status == "returned"
+        assert updated.return_date == datetime.date(2025, 6, 1)
+        assert updated.created_at == d.created_at
+
+    def test_update_deposit_404(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            deposits.update_deposit(
+                "nonexistent",
+                DepositCreate(contract_id=self.contract.id, amount=1000.0),
+            )
+        assert exc_info.value.status_code == 404
+
+    def test_create_deposit_bad_contract_400(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            deposits.create_deposit(DepositCreate(contract_id="bad", amount=1000.0))
+        assert exc_info.value.status_code == 400
+
+    def test_delete_deposit(self) -> None:
+        d = deposits.create_deposit(
+            DepositCreate(contract_id=self.contract.id, amount=1500.0)
+        )
+        deposits.delete_deposit(d.id)
+        assert _list_deposits() == []
+
+    def test_delete_deposit_404(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            deposits.delete_deposit("nonexistent")
+        assert exc_info.value.status_code == 404
+
+    def test_filter_by_contract(self) -> None:
+        unit2 = store.create_unit(
+            UnitCreate(property_id=self.prop.id, label="2", unit_type="Wohnung")
+        )
+        tenant2 = store.create_tenant(TenantCreate(full_name="Schmidt"))
+        contract2 = store.create_contract(
+            ContractCreate(
+                contract_number="V-2", property_id=self.prop.id,
+                unit_id=unit2.id, tenant_id=tenant2.id,
+                start_date=datetime.date(2024, 1, 1),
+            )
+        )
+        deposits.create_deposit(DepositCreate(contract_id=self.contract.id, amount=1000.0))
+        deposits.create_deposit(DepositCreate(contract_id=contract2.id, amount=2000.0))
+        assert len(_list_deposits(contract_id=self.contract.id)) == 1
+        assert len(_list_deposits(contract_id=contract2.id)) == 1
+
+    def test_filter_by_status(self) -> None:
+        deposits.create_deposit(DepositCreate(contract_id=self.contract.id, amount=1000.0, status="held"))
+        deposits.create_deposit(DepositCreate(contract_id=self.contract.id, amount=500.0, status="returned"))
+        assert len(_list_deposits(status_filter="held")) == 1
+        assert len(_list_deposits(status_filter="returned")) == 1
+
+    def test_patch_deposit(self) -> None:
+        d = deposits.create_deposit(
+            DepositCreate(contract_id=self.contract.id, amount=2000.0)
+        )
+        patched = deposits.patch_deposit(
+            d.id, DepositPatch(status="partially_returned", deductions=200.0, deduction_reason="Schäden")
+        )
+        assert patched.status == "partially_returned"
+        assert patched.deductions == 200.0
+        assert patched.deduction_reason == "Schäden"
+        assert patched.amount == 2000.0
+        assert patched.created_at == d.created_at
+
+    def test_patch_deposit_404(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            deposits.patch_deposit("nonexistent", DepositPatch(status="returned"))
+        assert exc_info.value.status_code == 404
+
+    def test_deposit_with_deductions(self) -> None:
+        d = deposits.create_deposit(
+            DepositCreate(
+                contract_id=self.contract.id, amount=3000.0,
+                held_date=datetime.date(2024, 1, 1),
+            )
+        )
+        updated = deposits.update_deposit(
+            d.id,
+            DepositCreate(
+                contract_id=self.contract.id, amount=3000.0,
+                status="partially_returned",
+                held_date=datetime.date(2024, 1, 1),
+                return_date=datetime.date(2025, 3, 1),
+                deductions=500.0,
+                deduction_reason="Renovierungskosten",
+            ),
+        )
+        assert updated.deductions == 500.0
+        assert updated.deduction_reason == "Renovierungskosten"
+        assert updated.status == "partially_returned"

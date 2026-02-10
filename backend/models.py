@@ -640,3 +640,36 @@ class UtilityStatementPatch(BaseModel):
     balance: Optional[float] = None
     status: Optional[str] = None
     notes: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Phase 3.3: Deposits (Kautionsverwaltung)
+# ---------------------------------------------------------------------------
+
+
+class DepositCreate(BaseModel):
+    contract_id: str
+    amount: float
+    status: str = "held"  # held, partially_returned, returned
+    held_date: Optional[date] = None
+    return_date: Optional[date] = None
+    deductions: Optional[float] = None
+    deduction_reason: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class Deposit(DepositCreate):
+    id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class DepositPatch(BaseModel):
+    contract_id: Optional[str] = None
+    amount: Optional[float] = None
+    status: Optional[str] = None
+    held_date: Optional[date] = None
+    return_date: Optional[date] = None
+    deductions: Optional[float] = None
+    deduction_reason: Optional[str] = None
+    notes: Optional[str] = None

@@ -7,6 +7,7 @@ from .routers import (
     calendar,
     categories,
     contracts,
+    deposits,
     documents,
     i18n,
     leads,
@@ -46,6 +47,7 @@ api_v1.include_router(categories.router)
 api_v1.include_router(leads.router)
 api_v1.include_router(viewings.router)
 api_v1.include_router(billing.router)
+api_v1.include_router(deposits.router)
 api_v1.include_router(reports.router)
 
 app.include_router(api_v1)

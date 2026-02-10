@@ -350,3 +350,19 @@ CREATE TABLE utility_statements (
 
 CREATE INDEX idx_utility_statements_period ON utility_statements(billing_period_id);
 CREATE INDEX idx_utility_statements_contract ON utility_statements(contract_id);
+
+CREATE TABLE deposits (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  contract_id uuid NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
+  amount numeric(14, 2) NOT NULL,
+  status text NOT NULL DEFAULT 'held',
+  held_date date,
+  return_date date,
+  deductions numeric(14, 2),
+  deduction_reason text,
+  notes text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_deposits_contract ON deposits(contract_id);

@@ -22,6 +22,8 @@ from .models import (
     ContractCreate,
     CostItem,
     CostItemCreate,
+    Deposit,
+    DepositCreate,
     Document,
     DocumentCreate,
     Invoice,
@@ -89,6 +91,7 @@ class InMemoryStore:
     allocation_keys: Dict[str, AllocationKey] = field(default_factory=dict)
     cost_items: Dict[str, CostItem] = field(default_factory=dict)
     utility_statements: Dict[str, UtilityStatement] = field(default_factory=dict)
+    deposits: Dict[str, Deposit] = field(default_factory=dict)
 
     def list_portfolios(self) -> List[Portfolio]:
         return list(self.portfolios.values())
@@ -935,6 +938,39 @@ class InMemoryStore:
         if statement_id not in self.utility_statements:
             raise NotFoundError("Betriebskostenabrechnung nicht gefunden")
         del self.utility_statements[statement_id]
+
+    # --- Deposits ---
+
+    def list_deposits(self) -> List[Deposit]:
+        return list(self.deposits.values())
+
+    def create_deposit(self, data: DepositCreate) -> Deposit:
+        if data.contract_id not in self.contracts:
+            raise ValidationError("Vertrag existiert nicht")
+        deposit = Deposit(id=_generate_id(), **data.model_dump())
+        self.deposits[deposit.id] = deposit
+        return deposit
+
+    def get_deposit(self, deposit_id: str) -> Deposit:
+        try:
+            return self.deposits[deposit_id]
+        except KeyError as exc:
+            raise NotFoundError("Kaution nicht gefunden") from exc
+
+    def update_deposit(self, deposit_id: str, data: DepositCreate) -> Deposit:
+        if deposit_id not in self.deposits:
+            raise NotFoundError("Kaution nicht gefunden")
+        if data.contract_id not in self.contracts:
+            raise ValidationError("Vertrag existiert nicht")
+        old = self.deposits[deposit_id]
+        deposit = Deposit(id=deposit_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
+        self.deposits[deposit_id] = deposit
+        return deposit
+
+    def delete_deposit(self, deposit_id: str) -> None:
+        if deposit_id not in self.deposits:
+            raise NotFoundError("Kaution nicht gefunden")
+        del self.deposits[deposit_id]
 
     def _patch_entity(self, collection: dict, entity_id: str, patch: PydanticBaseModel, not_found_msg: str):
         """Apply a partial update to an entity. Only non-None fields in the patch are applied."""
