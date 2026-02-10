@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
-from ..models import Listing, ListingCreate, ListingPhoto, ListingPhotoCreate
+from ..models import Listing, ListingCreate, ListingPatch, ListingPhoto, ListingPhotoCreate, ListingPhotoPatch
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/listings", tags=["Inserate"])
@@ -70,6 +70,14 @@ def update_listing_photo(photo_id: str, payload: ListingPhotoCreate) -> ListingP
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
 
 
+@router.patch("/photos/{photo_id}", response_model=ListingPhoto)
+def patch_listing_photo(photo_id: str, payload: ListingPhotoPatch) -> ListingPhoto:
+    try:
+        return store._patch_entity(store.listing_photos, photo_id, payload, "Inseratsfoto nicht gefunden")
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
 @router.delete("/photos/{photo_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_listing_photo(photo_id: str) -> None:
     try:
@@ -96,6 +104,14 @@ def update_listing(listing_id: str, payload: ListingCreate) -> Listing:
     except (NotFoundError, ValidationError) as exc:
         status_code = status.HTTP_404_NOT_FOUND if isinstance(exc, NotFoundError) else status.HTTP_400_BAD_REQUEST
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+
+
+@router.patch("/{listing_id}", response_model=Listing)
+def patch_listing(listing_id: str, payload: ListingPatch) -> Listing:
+    try:
+        return store._patch_entity(store.listings, listing_id, payload, "Inserat nicht gefunden")
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.delete("/{listing_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
-from ..models import Task, TaskCreate
+from ..models import Task, TaskCreate, TaskPatch
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/tasks", tags=["Aufgaben"])
@@ -45,6 +45,14 @@ def update_task(task_id: str, payload: TaskCreate) -> Task:
     except (NotFoundError, ValidationError) as exc:
         status_code = status.HTTP_404_NOT_FOUND if isinstance(exc, NotFoundError) else status.HTTP_400_BAD_REQUEST
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+
+
+@router.patch("/{task_id}", response_model=Task)
+def patch_task(task_id: str, payload: TaskPatch) -> Task:
+    try:
+        return store._patch_entity(store.tasks, task_id, payload, "Aufgabe nicht gefunden")
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
-from ..models import Receivable, ReceivableCreate
+from ..models import Receivable, ReceivableCreate, ReceivablePatch
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/receivables", tags=["Forderungen"])
@@ -45,6 +45,14 @@ def update_receivable(receivable_id: str, payload: ReceivableCreate) -> Receivab
     except (NotFoundError, ValidationError) as exc:
         status_code = status.HTTP_404_NOT_FOUND if isinstance(exc, NotFoundError) else status.HTTP_400_BAD_REQUEST
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+
+
+@router.patch("/{receivable_id}", response_model=Receivable)
+def patch_receivable(receivable_id: str, payload: ReceivablePatch) -> Receivable:
+    try:
+        return store._patch_entity(store.receivables, receivable_id, payload, "Forderung nicht gefunden")
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.delete("/{receivable_id}", status_code=status.HTTP_204_NO_CONTENT)

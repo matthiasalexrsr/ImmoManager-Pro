@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
-from ..models import Unit, UnitCreate
+from ..models import Unit, UnitCreate, UnitPatch
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/units", tags=["Einheiten"])
@@ -45,6 +45,14 @@ def update_unit(unit_id: str, payload: UnitCreate) -> Unit:
     except (NotFoundError, ValidationError) as exc:
         status_code = status.HTTP_404_NOT_FOUND if isinstance(exc, NotFoundError) else status.HTTP_400_BAD_REQUEST
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+
+
+@router.patch("/{unit_id}", response_model=Unit)
+def patch_unit(unit_id: str, payload: UnitPatch) -> Unit:
+    try:
+        return store._patch_entity(store.units, unit_id, payload, "Einheit nicht gefunden")
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.delete("/{unit_id}", status_code=status.HTTP_204_NO_CONTENT)

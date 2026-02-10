@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
-from ..models import Category, CategoryCreate
+from ..models import Category, CategoryCreate, CategoryPatch
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/categories", tags=["Kategorien"])
@@ -45,6 +45,14 @@ def update_category(category_id: str, payload: CategoryCreate) -> Category:
     except (NotFoundError, ValidationError) as exc:
         status_code = status.HTTP_404_NOT_FOUND if isinstance(exc, NotFoundError) else status.HTTP_400_BAD_REQUEST
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+
+
+@router.patch("/{category_id}", response_model=Category)
+def patch_category(category_id: str, payload: CategoryPatch) -> Category:
+    try:
+        return store._patch_entity(store.categories, category_id, payload, "Kategorie nicht gefunden")
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.delete("/{category_id}", status_code=status.HTTP_204_NO_CONTENT)

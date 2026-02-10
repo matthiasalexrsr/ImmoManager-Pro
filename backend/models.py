@@ -290,3 +290,201 @@ class ListingPhoto(ListingPhotoCreate):
     id: str = Field(..., min_length=1)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+# ---------------------------------------------------------------------------
+# Patch (partial update) models – all fields optional
+# ---------------------------------------------------------------------------
+
+
+class PortfolioPatch(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    owner_name: Optional[str] = None
+    currency: Optional[str] = None
+    timezone: Optional[str] = None
+    status: Optional[str] = None
+
+
+class PropertyPatch(BaseModel):
+    portfolio_id: Optional[str] = None
+    name: Optional[str] = None
+    property_type: Optional[str] = None
+    status: Optional[str] = None
+    year_built: Optional[int] = None
+    living_area_sqm: Optional[float] = None
+    usable_area_sqm: Optional[float] = None
+    plot_area_sqm: Optional[float] = None
+    ownership_share: Optional[float] = None
+    purchase_price: Optional[float] = None
+    purchase_date: Optional[date] = None
+    market_value: Optional[float] = None
+    valuation_date: Optional[date] = None
+    address_line: Optional[str] = None
+    postal_code: Optional[str] = None
+    city: Optional[str] = None
+    country: Optional[str] = None
+
+
+class UnitPatch(BaseModel):
+    property_id: Optional[str] = None
+    label: Optional[str] = None
+    unit_type: Optional[str] = None
+    status: Optional[str] = None
+    area_sqm: Optional[float] = None
+    rooms: Optional[float] = None
+    floor: Optional[str] = None
+    cold_rent: Optional[float] = None
+    service_charge_advance: Optional[float] = None
+    heating_advance: Optional[float] = None
+    features: Optional[str] = None
+
+
+class TenantPatch(BaseModel):
+    full_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    address_line: Optional[str] = None
+    postal_code: Optional[str] = None
+    city: Optional[str] = None
+    country: Optional[str] = None
+    payment_method: Optional[str] = None
+    sepa_mandate: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class ContractPatch(BaseModel):
+    contract_number: Optional[str] = None
+    property_id: Optional[str] = None
+    unit_id: Optional[str] = None
+    tenant_id: Optional[str] = None
+    status: Optional[str] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    notice_period: Optional[str] = None
+    deposit_amount: Optional[float] = None
+    index_rent: Optional[str] = None
+    service_charge_settlement: Optional[str] = None
+
+
+class AccountPatch(BaseModel):
+    portfolio_id: Optional[str] = None
+    name: Optional[str] = None
+    bank_name: Optional[str] = None
+    iban: Optional[str] = None
+    bic: Optional[str] = None
+    account_type: Optional[str] = None
+    opening_balance: Optional[float] = None
+    balance: Optional[float] = None
+
+
+class CategoryPatch(BaseModel):
+    portfolio_id: Optional[str] = None
+    name: Optional[str] = None
+    category_type: Optional[str] = None
+
+
+class BookingPatch(BaseModel):
+    account_id: Optional[str] = None
+    category_id: Optional[str] = None
+    property_id: Optional[str] = None
+    unit_id: Optional[str] = None
+    tenant_id: Optional[str] = None
+    booking_date: Optional[date] = None
+    amount: Optional[float] = None
+    status: Optional[str] = None
+    payment_text: Optional[str] = None
+    receipt_url: Optional[str] = None
+
+
+class ReceivablePatch(BaseModel):
+    contract_id: Optional[str] = None
+    due_date: Optional[date] = None
+    amount_due: Optional[float] = None
+    dunning_level: Optional[str] = None
+    status: Optional[str] = None
+
+
+class InvoicePatch(BaseModel):
+    property_id: Optional[str] = None
+    supplier: Optional[str] = None
+    invoice_date: Optional[date] = None
+    due_date: Optional[date] = None
+    net_amount: Optional[float] = None
+    vat_amount: Optional[float] = None
+    gross_amount: Optional[float] = None
+    payment_terms: Optional[str] = None
+    status: Optional[str] = None
+
+
+class MaintenanceCasePatch(BaseModel):
+    property_id: Optional[str] = None
+    unit_id: Optional[str] = None
+    title: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    priority: Optional[str] = None
+    status: Optional[str] = None
+    reported_by: Optional[str] = None
+    assignee: Optional[str] = None
+    due_date: Optional[date] = None
+    estimated_cost: Optional[float] = None
+    contractor: Optional[str] = None
+    appointment_at: Optional[date] = None
+
+
+class DocumentPatch(BaseModel):
+    property_id: Optional[str] = None
+    unit_id: Optional[str] = None
+    contract_id: Optional[str] = None
+    title: Optional[str] = None
+    document_type: Optional[str] = None
+    document_date: Optional[date] = None
+    tags: Optional[str] = None
+    description: Optional[str] = None
+    file_url: Optional[str] = None
+
+
+class TaskPatch(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    assignee: Optional[str] = None
+    due_date: Optional[date] = None
+    priority: Optional[str] = None
+    status: Optional[str] = None
+    property_id: Optional[str] = None
+    unit_id: Optional[str] = None
+
+
+class CalendarEventPatch(BaseModel):
+    title: Optional[str] = None
+    event_type: Optional[str] = None
+    event_date: Optional[date] = None
+    event_time: Optional[str] = None
+    location: Optional[str] = None
+    participants: Optional[str] = None
+    property_id: Optional[str] = None
+    unit_id: Optional[str] = None
+    description: Optional[str] = None
+
+
+class ListingPatch(BaseModel):
+    unit_id: Optional[str] = None
+    title: Optional[str] = None
+    description: Optional[str] = None
+    portal: Optional[str] = None
+    listing_url: Optional[str] = None
+    status: Optional[str] = None
+    target_rent: Optional[float] = None
+    service_charge: Optional[float] = None
+    available_from: Optional[date] = None
+    contact_name: Optional[str] = None
+    contact_email: Optional[str] = None
+
+
+class ListingPhotoPatch(BaseModel):
+    listing_id: Optional[str] = None
+    title: Optional[str] = None
+    file_url: Optional[str] = None
+    is_primary: Optional[bool] = None
+    sort_order: Optional[int] = None

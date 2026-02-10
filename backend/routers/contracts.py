@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from ..dependencies import store
 from ..domain.lease_engine import ChargeConfig, LeaseEngine, PaymentLine
-from ..models import Contract, ContractCreate
+from ..models import Contract, ContractCreate, ContractPatch
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/contracts", tags=["Verträge"])
@@ -64,6 +64,14 @@ def update_contract(contract_id: str, payload: ContractCreate) -> Contract:
     except (NotFoundError, ValidationError) as exc:
         status_code = status.HTTP_404_NOT_FOUND if isinstance(exc, NotFoundError) else status.HTTP_400_BAD_REQUEST
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+
+
+@router.patch("/{contract_id}", response_model=Contract)
+def patch_contract(contract_id: str, payload: ContractPatch) -> Contract:
+    try:
+        return store._patch_entity(store.contracts, contract_id, payload, "Vertrag nicht gefunden")
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.delete("/{contract_id}", status_code=status.HTTP_204_NO_CONTENT)

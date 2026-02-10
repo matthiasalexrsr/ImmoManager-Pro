@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
-from ..models import MaintenanceCase, MaintenanceCaseCreate
+from ..models import MaintenanceCase, MaintenanceCaseCreate, MaintenanceCasePatch
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/maintenance", tags=["Instandhaltung"])
@@ -45,6 +45,14 @@ def update_maintenance_case(case_id: str, payload: MaintenanceCaseCreate) -> Mai
     except (NotFoundError, ValidationError) as exc:
         status_code = status.HTTP_404_NOT_FOUND if isinstance(exc, NotFoundError) else status.HTTP_400_BAD_REQUEST
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+
+
+@router.patch("/{case_id}", response_model=MaintenanceCase)
+def patch_maintenance_case(case_id: str, payload: MaintenanceCasePatch) -> MaintenanceCase:
+    try:
+        return store._patch_entity(store.maintenance_cases, case_id, payload, "Instandhaltungsfall nicht gefunden")
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.delete("/{case_id}", status_code=status.HTTP_204_NO_CONTENT)

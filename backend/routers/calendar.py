@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
-from ..models import CalendarEvent, CalendarEventCreate
+from ..models import CalendarEvent, CalendarEventCreate, CalendarEventPatch
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/calendar", tags=["Kalender"])
@@ -45,6 +45,14 @@ def update_calendar_event(event_id: str, payload: CalendarEventCreate) -> Calend
     except (NotFoundError, ValidationError) as exc:
         status_code = status.HTTP_404_NOT_FOUND if isinstance(exc, NotFoundError) else status.HTTP_400_BAD_REQUEST
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+
+
+@router.patch("/{event_id}", response_model=CalendarEvent)
+def patch_calendar_event(event_id: str, payload: CalendarEventPatch) -> CalendarEvent:
+    try:
+        return store._patch_entity(store.calendar_events, event_id, payload, "Termin nicht gefunden")
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.delete("/{event_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
-from ..models import Tenant, TenantCreate
+from ..models import Tenant, TenantCreate, TenantPatch
 from ..storage import NotFoundError
 
 router = APIRouter(prefix="/tenants", tags=["Mieter"])
@@ -33,6 +33,14 @@ def get_tenant(tenant_id: str) -> Tenant:
 def update_tenant(tenant_id: str, payload: TenantCreate) -> Tenant:
     try:
         return store.update_tenant(tenant_id, payload)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.patch("/{tenant_id}", response_model=Tenant)
+def patch_tenant(tenant_id: str, payload: TenantPatch) -> Tenant:
+    try:
+        return store._patch_entity(store.tenants, tenant_id, payload, "Mieter nicht gefunden")
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 

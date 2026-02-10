@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
 from ..domain.invoice_matching import BookingCandidate, InvoiceMatcher, InvoiceToMatch
-from ..models import Invoice, InvoiceCreate
+from ..models import Invoice, InvoiceCreate, InvoicePatch
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/invoices", tags=["Rechnungen"])
@@ -49,6 +49,14 @@ def update_invoice(invoice_id: str, payload: InvoiceCreate) -> Invoice:
     except (NotFoundError, ValidationError) as exc:
         status_code = status.HTTP_404_NOT_FOUND if isinstance(exc, NotFoundError) else status.HTTP_400_BAD_REQUEST
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+
+
+@router.patch("/{invoice_id}", response_model=Invoice)
+def patch_invoice(invoice_id: str, payload: InvoicePatch) -> Invoice:
+    try:
+        return store._patch_entity(store.invoices, invoice_id, payload, "Rechnung nicht gefunden")
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.delete("/{invoice_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -3,6 +3,8 @@ from datetime import datetime
 from typing import Dict, List
 from uuid import uuid4
 
+from pydantic import BaseModel as PydanticBaseModel
+
 from .models import (
     Account,
     AccountCreate,
@@ -678,6 +680,16 @@ class InMemoryStore:
         if photo_id not in self.listing_photos:
             raise NotFoundError("Inseratsfoto nicht gefunden")
         del self.listing_photos[photo_id]
+
+    def _patch_entity(self, collection: dict, entity_id: str, patch: PydanticBaseModel, not_found_msg: str):
+        """Apply a partial update to an entity. Only non-None fields in the patch are applied."""
+        if entity_id not in collection:
+            raise NotFoundError(not_found_msg)
+        old = collection[entity_id]
+        updates = patch.model_dump(exclude_unset=True)
+        updated = old.model_copy(update={**updates, "updated_at": datetime.utcnow()})
+        collection[entity_id] = updated
+        return updated
 
     def _delete_contract(self, contract_id: str) -> None:
         for receivable_id, receivable in list(self.receivables.items()):

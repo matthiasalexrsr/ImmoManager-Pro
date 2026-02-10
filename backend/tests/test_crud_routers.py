@@ -15,21 +15,37 @@ from fastapi import HTTPException
 from backend.dependencies import store
 from backend.models import (
     AccountCreate,
+    AccountPatch,
     BookingCreate,
+    BookingPatch,
     CalendarEventCreate,
+    CalendarEventPatch,
     CategoryCreate,
+    CategoryPatch,
     ContractCreate,
+    ContractPatch,
     DocumentCreate,
+    DocumentPatch,
     InvoiceCreate,
+    InvoicePatch,
     ListingCreate,
+    ListingPatch,
     ListingPhotoCreate,
+    ListingPhotoPatch,
     MaintenanceCaseCreate,
+    MaintenanceCasePatch,
     PortfolioCreate,
+    PortfolioPatch,
     PropertyCreate,
+    PropertyPatch,
     ReceivableCreate,
+    ReceivablePatch,
     TaskCreate,
+    TaskPatch,
     TenantCreate,
+    TenantPatch,
     UnitCreate,
+    UnitPatch,
 )
 from backend.routers import (
     accounts,
@@ -1306,3 +1322,198 @@ class TestTimestamps:
         assert t.created_at is not None
         updated = tasks.update_task(t.id, TaskCreate(title="B"))
         assert updated.created_at == t.created_at
+
+
+# ---------------------------------------------------------------------------
+# PATCH endpoint tests
+# ---------------------------------------------------------------------------
+
+class TestPatchEndpoints:
+    def setup_method(self) -> None:
+        _clear_store()
+
+    def test_patch_portfolio(self) -> None:
+        p = portfolios.create_portfolio(PortfolioCreate(name="Old", status="active"))
+        patched = portfolios.patch_portfolio(p.id, PortfolioPatch(name="New"))
+        assert patched.name == "New"
+        assert patched.status == "active"  # unchanged
+
+    def test_patch_portfolio_not_found(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            portfolios.patch_portfolio("nonexistent", PortfolioPatch(name="X"))
+        assert exc_info.value.status_code == 404
+
+    def test_patch_tenant(self) -> None:
+        t = tenants.create_tenant(TenantCreate(full_name="Old", email="a@b.c"))
+        patched = tenants.patch_tenant(t.id, TenantPatch(full_name="New"))
+        assert patched.full_name == "New"
+        assert patched.email == "a@b.c"  # unchanged
+
+    def test_patch_property(self) -> None:
+        portfolio = store.create_portfolio(PortfolioCreate(name="P"))
+        p = properties.create_property(
+            PropertyCreate(portfolio_id=portfolio.id, name="Old", property_type="MFH")
+        )
+        patched = properties.patch_property(p.id, PropertyPatch(name="New"))
+        assert patched.name == "New"
+        assert patched.property_type == "MFH"  # unchanged
+
+    def test_patch_unit(self) -> None:
+        portfolio = store.create_portfolio(PortfolioCreate(name="P"))
+        prop = store.create_property(
+            PropertyCreate(portfolio_id=portfolio.id, name="H", property_type="MFH")
+        )
+        u = units.create_unit(
+            UnitCreate(property_id=prop.id, label="EG", unit_type="Wohnung", cold_rent=500.0)
+        )
+        patched = units.patch_unit(u.id, UnitPatch(cold_rent=600.0))
+        assert patched.cold_rent == 600.0
+        assert patched.label == "EG"  # unchanged
+
+    def test_patch_contract(self) -> None:
+        portfolio = store.create_portfolio(PortfolioCreate(name="P"))
+        prop = store.create_property(
+            PropertyCreate(portfolio_id=portfolio.id, name="H", property_type="MFH")
+        )
+        unit = store.create_unit(
+            UnitCreate(property_id=prop.id, label="1", unit_type="Wohnung")
+        )
+        tenant = store.create_tenant(TenantCreate(full_name="M"))
+        c = contracts.create_contract(
+            ContractCreate(
+                contract_number="C-1", property_id=prop.id,
+                unit_id=unit.id, tenant_id=tenant.id,
+                start_date=datetime.date(2025, 1, 1),
+            )
+        )
+        patched = contracts.patch_contract(c.id, ContractPatch(status="terminated"))
+        assert patched.status == "terminated"
+        assert patched.contract_number == "C-1"  # unchanged
+
+    def test_patch_account(self) -> None:
+        portfolio = store.create_portfolio(PortfolioCreate(name="P"))
+        a = accounts.create_account(
+            AccountCreate(portfolio_id=portfolio.id, name="Old", account_type="Bankkonto")
+        )
+        patched = accounts.patch_account(a.id, AccountPatch(name="New"))
+        assert patched.name == "New"
+        assert patched.account_type == "Bankkonto"
+
+    def test_patch_booking(self) -> None:
+        portfolio = store.create_portfolio(PortfolioCreate(name="P"))
+        account = store.create_account(
+            AccountCreate(portfolio_id=portfolio.id, name="K", account_type="Bankkonto")
+        )
+        b = bookings.create_booking(
+            BookingCreate(account_id=account.id, booking_date=datetime.date(2025, 1, 1), amount=100.0)
+        )
+        patched = bookings.patch_booking(b.id, BookingPatch(amount=200.0))
+        assert patched.amount == 200.0
+        assert patched.status == "open"
+
+    def test_patch_category(self) -> None:
+        portfolio = store.create_portfolio(PortfolioCreate(name="P"))
+        c = categories.create_category(
+            CategoryCreate(portfolio_id=portfolio.id, name="Old", category_type="income")
+        )
+        patched = categories.patch_category(c.id, CategoryPatch(name="New"))
+        assert patched.name == "New"
+        assert patched.category_type == "income"
+
+    def test_patch_invoice(self) -> None:
+        inv = invoices.create_invoice(
+            InvoiceCreate(supplier="Old", invoice_date=datetime.date(2025, 1, 1), net_amount=100.0, gross_amount=119.0)
+        )
+        patched = invoices.patch_invoice(inv.id, InvoicePatch(status="paid"))
+        assert patched.status == "paid"
+        assert patched.supplier == "Old"
+
+    def test_patch_task(self) -> None:
+        t = tasks.create_task(TaskCreate(title="Old", status="open"))
+        patched = tasks.patch_task(t.id, TaskPatch(status="done"))
+        assert patched.status == "done"
+        assert patched.title == "Old"
+
+    def test_patch_calendar_event(self) -> None:
+        e = calendar.create_calendar_event(
+            CalendarEventCreate(title="Old", event_type="Besichtigung", event_date=datetime.date(2025, 3, 15))
+        )
+        patched = calendar.patch_calendar_event(e.id, CalendarEventPatch(title="New"))
+        assert patched.title == "New"
+        assert patched.event_type == "Besichtigung"
+
+    def test_patch_document(self) -> None:
+        d = documents.create_document(DocumentCreate(title="Old", file_url="u"))
+        patched = documents.patch_document(d.id, DocumentPatch(title="New"))
+        assert patched.title == "New"
+        assert patched.file_url == "u"
+
+    def test_patch_maintenance_case(self) -> None:
+        portfolio = store.create_portfolio(PortfolioCreate(name="P"))
+        prop = store.create_property(
+            PropertyCreate(portfolio_id=portfolio.id, name="H", property_type="MFH")
+        )
+        m = maintenance.create_maintenance_case(
+            MaintenanceCaseCreate(property_id=prop.id, title="Old", status="open")
+        )
+        patched = maintenance.patch_maintenance_case(m.id, MaintenanceCasePatch(status="done"))
+        assert patched.status == "done"
+        assert patched.title == "Old"
+
+    def test_patch_listing(self) -> None:
+        portfolio = store.create_portfolio(PortfolioCreate(name="P"))
+        prop = store.create_property(
+            PropertyCreate(portfolio_id=portfolio.id, name="H", property_type="MFH")
+        )
+        unit = store.create_unit(
+            UnitCreate(property_id=prop.id, label="1", unit_type="Wohnung")
+        )
+        lst = listings.create_listing(ListingCreate(unit_id=unit.id, title="Old", status="draft"))
+        patched = listings.patch_listing(lst.id, ListingPatch(status="active"))
+        assert patched.status == "active"
+        assert patched.title == "Old"
+
+    def test_patch_listing_photo(self) -> None:
+        portfolio = store.create_portfolio(PortfolioCreate(name="P"))
+        prop = store.create_property(
+            PropertyCreate(portfolio_id=portfolio.id, name="H", property_type="MFH")
+        )
+        unit = store.create_unit(
+            UnitCreate(property_id=prop.id, label="1", unit_type="Wohnung")
+        )
+        lst = store.create_listing(ListingCreate(unit_id=unit.id, title="I"))
+        photo = listings.create_listing_photo(
+            ListingPhotoCreate(listing_id=lst.id, file_url="old.jpg")
+        )
+        patched = listings.patch_listing_photo(photo.id, ListingPhotoPatch(is_primary=True))
+        assert patched.is_primary is True
+        assert patched.file_url == "old.jpg"
+
+    def test_patch_preserves_created_at(self) -> None:
+        p = portfolios.create_portfolio(PortfolioCreate(name="T"))
+        patched = portfolios.patch_portfolio(p.id, PortfolioPatch(name="T2"))
+        assert patched.created_at == p.created_at
+        assert patched.updated_at >= p.updated_at
+
+    def test_patch_receivable(self) -> None:
+        portfolio = store.create_portfolio(PortfolioCreate(name="P"))
+        prop = store.create_property(
+            PropertyCreate(portfolio_id=portfolio.id, name="H", property_type="MFH")
+        )
+        unit = store.create_unit(
+            UnitCreate(property_id=prop.id, label="1", unit_type="Wohnung")
+        )
+        tenant = store.create_tenant(TenantCreate(full_name="M"))
+        contract = store.create_contract(
+            ContractCreate(
+                contract_number="C-1", property_id=prop.id,
+                unit_id=unit.id, tenant_id=tenant.id,
+                start_date=datetime.date(2025, 1, 1),
+            )
+        )
+        r = receivables.create_receivable(
+            ReceivableCreate(contract_id=contract.id, due_date=datetime.date(2025, 2, 1), amount_due=500.0)
+        )
+        patched = receivables.patch_receivable(r.id, ReceivablePatch(status="paid"))
+        assert patched.status == "paid"
+        assert patched.amount_due == 500.0

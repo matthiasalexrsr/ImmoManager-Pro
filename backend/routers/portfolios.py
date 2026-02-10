@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
-from ..models import Portfolio, PortfolioCreate
+from ..models import Portfolio, PortfolioCreate, PortfolioPatch
 from ..storage import NotFoundError
 
 router = APIRouter(prefix="/portfolios", tags=["Portfolios"])
@@ -36,6 +36,14 @@ def get_portfolio(portfolio_id: str) -> Portfolio:
 def update_portfolio(portfolio_id: str, payload: PortfolioCreate) -> Portfolio:
     try:
         return store.update_portfolio(portfolio_id, payload)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.patch("/{portfolio_id}", response_model=Portfolio)
+def patch_portfolio(portfolio_id: str, payload: PortfolioPatch) -> Portfolio:
+    try:
+        return store._patch_entity(store.portfolios, portfolio_id, payload, "Portfolio nicht gefunden")
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 

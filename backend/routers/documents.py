@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
-from ..models import Document, DocumentCreate
+from ..models import Document, DocumentCreate, DocumentPatch
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/documents", tags=["Dokumente"])
@@ -45,6 +45,14 @@ def update_document(document_id: str, payload: DocumentCreate) -> Document:
     except (NotFoundError, ValidationError) as exc:
         status_code = status.HTTP_404_NOT_FOUND if isinstance(exc, NotFoundError) else status.HTTP_400_BAD_REQUEST
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+
+
+@router.patch("/{document_id}", response_model=Document)
+def patch_document(document_id: str, payload: DocumentPatch) -> Document:
+    try:
+        return store._patch_entity(store.documents, document_id, payload, "Dokument nicht gefunden")
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
