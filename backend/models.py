@@ -488,3 +488,60 @@ class ListingPhotoPatch(BaseModel):
     file_url: Optional[str] = None
     is_primary: Optional[bool] = None
     sort_order: Optional[int] = None
+
+
+# ---------------------------------------------------------------------------
+# Phase 3.1: Leads & Viewings (Interessenten & Besichtigungen)
+# ---------------------------------------------------------------------------
+
+
+class LeadCreate(BaseModel):
+    listing_id: Optional[str] = None
+    unit_id: Optional[str] = None
+    full_name: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    source: Optional[str] = None
+    status: str = "new"
+    notes: Optional[str] = None
+
+
+class Lead(LeadCreate):
+    id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class LeadPatch(BaseModel):
+    listing_id: Optional[str] = None
+    unit_id: Optional[str] = None
+    full_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    source: Optional[str] = None
+    status: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class ViewingAppointmentCreate(BaseModel):
+    lead_id: str
+    unit_id: str
+    scheduled_at: datetime
+    status: str = "scheduled"
+    agent: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class ViewingAppointment(ViewingAppointmentCreate):
+    id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ViewingAppointmentPatch(BaseModel):
+    lead_id: Optional[str] = None
+    unit_id: Optional[str] = None
+    scheduled_at: Optional[datetime] = None
+    status: Optional[str] = None
+    agent: Optional[str] = None
+    notes: Optional[str] = None

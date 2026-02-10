@@ -8,6 +8,7 @@ from .routers import (
     contracts,
     documents,
     i18n,
+    leads,
     listings,
     invoices,
     maintenance,
@@ -18,6 +19,7 @@ from .routers import (
     tasks,
     tenants,
     units,
+    viewings,
 )
 
 app = FastAPI(title="ImmoManager Pro API", version="0.1.0")
@@ -40,6 +42,8 @@ api_v1.include_router(tasks.router)
 api_v1.include_router(calendar.router)
 api_v1.include_router(listings.router)
 api_v1.include_router(categories.router)
+api_v1.include_router(leads.router)
+api_v1.include_router(viewings.router)
 api_v1.include_router(reports.router)
 
 app.include_router(api_v1)

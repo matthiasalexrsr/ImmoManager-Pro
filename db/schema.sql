@@ -262,3 +262,36 @@ CREATE TABLE listing_photos (
 );
 
 CREATE INDEX idx_listing_photos_listing ON listing_photos(listing_id);
+
+CREATE TABLE leads (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  listing_id uuid REFERENCES listings(id) ON DELETE SET NULL,
+  unit_id uuid REFERENCES units(id) ON DELETE SET NULL,
+  full_name text NOT NULL,
+  email text,
+  phone text,
+  source text,
+  status text NOT NULL DEFAULT 'new',
+  notes text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_leads_listing ON leads(listing_id);
+CREATE INDEX idx_leads_unit ON leads(unit_id);
+CREATE INDEX idx_leads_status ON leads(status);
+
+CREATE TABLE viewing_appointments (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  lead_id uuid NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+  unit_id uuid NOT NULL REFERENCES units(id) ON DELETE CASCADE,
+  scheduled_at timestamptz NOT NULL,
+  status text NOT NULL DEFAULT 'scheduled',
+  agent text,
+  notes text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_viewings_lead ON viewing_appointments(lead_id);
+CREATE INDEX idx_viewings_unit ON viewing_appointments(unit_id);

@@ -28,6 +28,8 @@ from backend.models import (
     DocumentPatch,
     InvoiceCreate,
     InvoicePatch,
+    LeadCreate,
+    LeadPatch,
     ListingCreate,
     ListingPatch,
     ListingPhotoCreate,
@@ -46,6 +48,8 @@ from backend.models import (
     TenantPatch,
     UnitCreate,
     UnitPatch,
+    ViewingAppointmentCreate,
+    ViewingAppointmentPatch,
 )
 from backend.routers import (
     accounts,
@@ -55,6 +59,7 @@ from backend.routers import (
     contracts,
     documents,
     invoices,
+    leads,
     listings,
     maintenance,
     portfolios,
@@ -63,6 +68,7 @@ from backend.routers import (
     tasks,
     tenants,
     units,
+    viewings,
 )
 
 # Default pagination values (Query defaults aren't resolved outside FastAPI).
@@ -134,6 +140,14 @@ def _list_listing_photos(**kw):
     return listings.list_listing_photos(skip=kw.get("skip", S), limit=kw.get("limit", L), listing_id=kw.get("listing_id"))
 
 
+def _list_leads(**kw):
+    return leads.list_leads(skip=kw.get("skip", S), limit=kw.get("limit", L), status_filter=kw.get("status_filter"), unit_id=kw.get("unit_id"), listing_id=kw.get("listing_id"), source=kw.get("source"))
+
+
+def _list_viewings(**kw):
+    return viewings.list_viewings(skip=kw.get("skip", S), limit=kw.get("limit", L), status_filter=kw.get("status_filter"), lead_id=kw.get("lead_id"), unit_id=kw.get("unit_id"))
+
+
 def _clear_store() -> None:
     for collection in (
         store.portfolios,
@@ -152,6 +166,8 @@ def _clear_store() -> None:
         store.calendar_events,
         store.listings,
         store.listing_photos,
+        store.leads,
+        store.viewing_appointments,
     ):
         collection.clear()
 
@@ -1517,3 +1533,282 @@ class TestPatchEndpoints:
         patched = receivables.patch_receivable(r.id, ReceivablePatch(status="paid"))
         assert patched.status == "paid"
         assert patched.amount_due == 500.0
+
+
+# ---------------------------------------------------------------------------
+# Leads (Interessenten)
+# ---------------------------------------------------------------------------
+
+class TestLeads:
+    def setup_method(self) -> None:
+        _clear_store()
+
+    def test_create_lead(self) -> None:
+        lead = leads.create_lead(LeadCreate(full_name="Max Mustermann"))
+        assert lead.full_name == "Max Mustermann"
+        assert lead.id
+        assert lead.status == "new"
+        assert lead.created_at is not None
+
+    def test_list_leads_empty(self) -> None:
+        assert _list_leads() == []
+
+    def test_list_leads_returns_created(self) -> None:
+        leads.create_lead(LeadCreate(full_name="A"))
+        leads.create_lead(LeadCreate(full_name="B"))
+        assert len(_list_leads()) == 2
+
+    def test_get_lead(self) -> None:
+        created = leads.create_lead(LeadCreate(full_name="Test"))
+        fetched = leads.get_lead(created.id)
+        assert fetched.id == created.id
+        assert fetched.full_name == "Test"
+
+    def test_get_lead_404(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            leads.get_lead("nonexistent")
+        assert exc_info.value.status_code == 404
+
+    def test_update_lead(self) -> None:
+        created = leads.create_lead(LeadCreate(full_name="Old"))
+        updated = leads.update_lead(
+            created.id, LeadCreate(full_name="New", status="contacted")
+        )
+        assert updated.full_name == "New"
+        assert updated.status == "contacted"
+        assert updated.created_at == created.created_at
+
+    def test_update_lead_404(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            leads.update_lead("nonexistent", LeadCreate(full_name="X"))
+        assert exc_info.value.status_code == 404
+
+    def test_delete_lead(self) -> None:
+        created = leads.create_lead(LeadCreate(full_name="Del"))
+        leads.delete_lead(created.id)
+        assert _list_leads() == []
+
+    def test_delete_lead_404(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            leads.delete_lead("nonexistent")
+        assert exc_info.value.status_code == 404
+
+    def test_create_lead_with_listing(self) -> None:
+        portfolio = store.create_portfolio(PortfolioCreate(name="P"))
+        prop = store.create_property(
+            PropertyCreate(portfolio_id=portfolio.id, name="H", property_type="MFH")
+        )
+        unit = store.create_unit(
+            UnitCreate(property_id=prop.id, label="1", unit_type="Wohnung")
+        )
+        listing = store.create_listing(ListingCreate(unit_id=unit.id, title="I"))
+        lead = leads.create_lead(
+            LeadCreate(full_name="M", listing_id=listing.id, unit_id=unit.id)
+        )
+        assert lead.listing_id == listing.id
+        assert lead.unit_id == unit.id
+
+    def test_create_lead_bad_listing_400(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            leads.create_lead(LeadCreate(full_name="M", listing_id="bad"))
+        assert exc_info.value.status_code == 400
+
+    def test_create_lead_bad_unit_400(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            leads.create_lead(LeadCreate(full_name="M", unit_id="bad"))
+        assert exc_info.value.status_code == 400
+
+    def test_filter_by_status(self) -> None:
+        leads.create_lead(LeadCreate(full_name="A", status="new"))
+        leads.create_lead(LeadCreate(full_name="B", status="contacted"))
+        assert len(_list_leads(status_filter="new")) == 1
+        assert len(_list_leads(status_filter="contacted")) == 1
+
+    def test_filter_by_source(self) -> None:
+        leads.create_lead(LeadCreate(full_name="A", source="immoscout"))
+        leads.create_lead(LeadCreate(full_name="B", source="referral"))
+        assert len(_list_leads(source="immoscout")) == 1
+
+    def test_pagination(self) -> None:
+        for i in range(5):
+            leads.create_lead(LeadCreate(full_name=f"L{i}"))
+        assert len(_list_leads(skip=0, limit=2)) == 2
+        assert len(_list_leads(skip=3, limit=10)) == 2
+
+    def test_patch_lead(self) -> None:
+        lead = leads.create_lead(LeadCreate(full_name="Old", status="new"))
+        patched = leads.patch_lead(lead.id, LeadPatch(status="contacted"))
+        assert patched.status == "contacted"
+        assert patched.full_name == "Old"
+        assert patched.created_at == lead.created_at
+
+    def test_patch_lead_404(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            leads.patch_lead("nonexistent", LeadPatch(status="contacted"))
+        assert exc_info.value.status_code == 404
+
+    def test_delete_lead_cascades_viewings(self) -> None:
+        portfolio = store.create_portfolio(PortfolioCreate(name="P"))
+        prop = store.create_property(
+            PropertyCreate(portfolio_id=portfolio.id, name="H", property_type="MFH")
+        )
+        unit = store.create_unit(
+            UnitCreate(property_id=prop.id, label="1", unit_type="Wohnung")
+        )
+        lead = store.create_lead(LeadCreate(full_name="M"))
+        store.create_viewing_appointment(
+            ViewingAppointmentCreate(
+                lead_id=lead.id, unit_id=unit.id,
+                scheduled_at=datetime.datetime(2025, 6, 1, 10, 0),
+            )
+        )
+        assert len(list(store.viewing_appointments.values())) == 1
+        leads.delete_lead(lead.id)
+        assert len(list(store.viewing_appointments.values())) == 0
+
+
+# ---------------------------------------------------------------------------
+# Viewing Appointments (Besichtigungen)
+# ---------------------------------------------------------------------------
+
+class TestViewings:
+    def setup_method(self) -> None:
+        _clear_store()
+        # Create prerequisite entities
+        self.portfolio = store.create_portfolio(PortfolioCreate(name="P"))
+        self.prop = store.create_property(
+            PropertyCreate(portfolio_id=self.portfolio.id, name="H", property_type="MFH")
+        )
+        self.unit = store.create_unit(
+            UnitCreate(property_id=self.prop.id, label="1", unit_type="Wohnung")
+        )
+        self.lead = store.create_lead(LeadCreate(full_name="Max"))
+        self.dt = datetime.datetime(2025, 6, 15, 14, 0)
+
+    def _make(self, **overrides):
+        data = dict(lead_id=self.lead.id, unit_id=self.unit.id, scheduled_at=self.dt)
+        data.update(overrides)
+        return ViewingAppointmentCreate(**data)
+
+    def test_create_viewing(self) -> None:
+        v = viewings.create_viewing(self._make())
+        assert v.lead_id == self.lead.id
+        assert v.unit_id == self.unit.id
+        assert v.status == "scheduled"
+        assert v.id
+        assert v.created_at is not None
+
+    def test_list_viewings_empty(self) -> None:
+        assert _list_viewings() == []
+
+    def test_list_viewings_returns_created(self) -> None:
+        viewings.create_viewing(self._make())
+        viewings.create_viewing(self._make(scheduled_at=datetime.datetime(2025, 7, 1, 10, 0)))
+        assert len(_list_viewings()) == 2
+
+    def test_get_viewing(self) -> None:
+        created = viewings.create_viewing(self._make())
+        fetched = viewings.get_viewing(created.id)
+        assert fetched.id == created.id
+
+    def test_get_viewing_404(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            viewings.get_viewing("nonexistent")
+        assert exc_info.value.status_code == 404
+
+    def test_update_viewing(self) -> None:
+        created = viewings.create_viewing(self._make())
+        updated = viewings.update_viewing(
+            created.id, self._make(status="completed", agent="Agent Smith")
+        )
+        assert updated.status == "completed"
+        assert updated.agent == "Agent Smith"
+        assert updated.created_at == created.created_at
+
+    def test_update_viewing_404(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            viewings.update_viewing("nonexistent", self._make())
+        assert exc_info.value.status_code == 404
+
+    def test_update_viewing_bad_lead_400(self) -> None:
+        created = viewings.create_viewing(self._make())
+        with pytest.raises(HTTPException) as exc_info:
+            viewings.update_viewing(created.id, self._make(lead_id="bad"))
+        assert exc_info.value.status_code == 400
+
+    def test_update_viewing_bad_unit_400(self) -> None:
+        created = viewings.create_viewing(self._make())
+        with pytest.raises(HTTPException) as exc_info:
+            viewings.update_viewing(created.id, self._make(unit_id="bad"))
+        assert exc_info.value.status_code == 400
+
+    def test_delete_viewing(self) -> None:
+        created = viewings.create_viewing(self._make())
+        viewings.delete_viewing(created.id)
+        assert _list_viewings() == []
+
+    def test_delete_viewing_404(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            viewings.delete_viewing("nonexistent")
+        assert exc_info.value.status_code == 404
+
+    def test_create_viewing_bad_lead_400(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            viewings.create_viewing(
+                ViewingAppointmentCreate(
+                    lead_id="bad", unit_id=self.unit.id, scheduled_at=self.dt
+                )
+            )
+        assert exc_info.value.status_code == 400
+
+    def test_create_viewing_bad_unit_400(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            viewings.create_viewing(
+                ViewingAppointmentCreate(
+                    lead_id=self.lead.id, unit_id="bad", scheduled_at=self.dt
+                )
+            )
+        assert exc_info.value.status_code == 400
+
+    def test_filter_by_status(self) -> None:
+        viewings.create_viewing(self._make())
+        v2 = viewings.create_viewing(self._make(scheduled_at=datetime.datetime(2025, 7, 1, 10, 0)))
+        viewings.update_viewing(v2.id, self._make(status="completed", scheduled_at=datetime.datetime(2025, 7, 1, 10, 0)))
+        assert len(_list_viewings(status_filter="scheduled")) == 1
+        assert len(_list_viewings(status_filter="completed")) == 1
+
+    def test_filter_by_lead(self) -> None:
+        lead2 = store.create_lead(LeadCreate(full_name="Other"))
+        viewings.create_viewing(self._make())
+        viewings.create_viewing(self._make(lead_id=lead2.id, scheduled_at=datetime.datetime(2025, 8, 1, 10, 0)))
+        assert len(_list_viewings(lead_id=self.lead.id)) == 1
+        assert len(_list_viewings(lead_id=lead2.id)) == 1
+
+    def test_filter_by_unit(self) -> None:
+        unit2 = store.create_unit(
+            UnitCreate(property_id=self.prop.id, label="2", unit_type="Wohnung")
+        )
+        viewings.create_viewing(self._make())
+        viewings.create_viewing(self._make(unit_id=unit2.id, scheduled_at=datetime.datetime(2025, 8, 1, 10, 0)))
+        assert len(_list_viewings(unit_id=self.unit.id)) == 1
+        assert len(_list_viewings(unit_id=unit2.id)) == 1
+
+    def test_pagination(self) -> None:
+        for i in range(5):
+            viewings.create_viewing(
+                self._make(scheduled_at=datetime.datetime(2025, 6, 15 + i, 10, 0))
+            )
+        assert len(_list_viewings(skip=0, limit=2)) == 2
+        assert len(_list_viewings(skip=3, limit=10)) == 2
+
+    def test_patch_viewing(self) -> None:
+        v = viewings.create_viewing(self._make())
+        patched = viewings.patch_viewing(v.id, ViewingAppointmentPatch(status="cancelled"))
+        assert patched.status == "cancelled"
+        assert patched.lead_id == self.lead.id
+        assert patched.created_at == v.created_at
+
+    def test_patch_viewing_404(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            viewings.patch_viewing("nonexistent", ViewingAppointmentPatch(status="cancelled"))
+        assert exc_info.value.status_code == 404

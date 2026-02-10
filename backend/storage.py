@@ -20,6 +20,8 @@ from .models import (
     DocumentCreate,
     Invoice,
     InvoiceCreate,
+    Lead,
+    LeadCreate,
     MaintenanceCase,
     MaintenanceCaseCreate,
     Portfolio,
@@ -38,6 +40,8 @@ from .models import (
     ListingCreate,
     ListingPhoto,
     ListingPhotoCreate,
+    ViewingAppointment,
+    ViewingAppointmentCreate,
 )
 
 
@@ -71,6 +75,8 @@ class InMemoryStore:
     contracts: Dict[str, Contract] = field(default_factory=dict)
     listings: Dict[str, Listing] = field(default_factory=dict)
     listing_photos: Dict[str, ListingPhoto] = field(default_factory=dict)
+    leads: Dict[str, Lead] = field(default_factory=dict)
+    viewing_appointments: Dict[str, ViewingAppointment] = field(default_factory=dict)
 
     def list_portfolios(self) -> List[Portfolio]:
         return list(self.portfolios.values())
@@ -680,6 +686,84 @@ class InMemoryStore:
         if photo_id not in self.listing_photos:
             raise NotFoundError("Inseratsfoto nicht gefunden")
         del self.listing_photos[photo_id]
+
+    # --- Leads ---
+
+    def list_leads(self) -> List[Lead]:
+        return list(self.leads.values())
+
+    def create_lead(self, data: LeadCreate) -> Lead:
+        if data.listing_id and data.listing_id not in self.listings:
+            raise ValidationError("Inserat existiert nicht")
+        if data.unit_id and data.unit_id not in self.units:
+            raise ValidationError("Einheit existiert nicht")
+        lead = Lead(id=_generate_id(), **data.model_dump())
+        self.leads[lead.id] = lead
+        return lead
+
+    def get_lead(self, lead_id: str) -> Lead:
+        try:
+            return self.leads[lead_id]
+        except KeyError as exc:
+            raise NotFoundError("Interessent nicht gefunden") from exc
+
+    def update_lead(self, lead_id: str, data: LeadCreate) -> Lead:
+        if lead_id not in self.leads:
+            raise NotFoundError("Interessent nicht gefunden")
+        if data.listing_id and data.listing_id not in self.listings:
+            raise ValidationError("Inserat existiert nicht")
+        if data.unit_id and data.unit_id not in self.units:
+            raise ValidationError("Einheit existiert nicht")
+        old = self.leads[lead_id]
+        lead = Lead(id=lead_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
+        self.leads[lead_id] = lead
+        return lead
+
+    def delete_lead(self, lead_id: str) -> None:
+        if lead_id not in self.leads:
+            raise NotFoundError("Interessent nicht gefunden")
+        # Cascade: delete associated viewing appointments
+        for va_id, va in list(self.viewing_appointments.items()):
+            if va.lead_id == lead_id:
+                del self.viewing_appointments[va_id]
+        del self.leads[lead_id]
+
+    # --- Viewing Appointments ---
+
+    def list_viewing_appointments(self) -> List[ViewingAppointment]:
+        return list(self.viewing_appointments.values())
+
+    def create_viewing_appointment(self, data: ViewingAppointmentCreate) -> ViewingAppointment:
+        if data.lead_id not in self.leads:
+            raise ValidationError("Interessent existiert nicht")
+        if data.unit_id not in self.units:
+            raise ValidationError("Einheit existiert nicht")
+        appointment = ViewingAppointment(id=_generate_id(), **data.model_dump())
+        self.viewing_appointments[appointment.id] = appointment
+        return appointment
+
+    def get_viewing_appointment(self, appointment_id: str) -> ViewingAppointment:
+        try:
+            return self.viewing_appointments[appointment_id]
+        except KeyError as exc:
+            raise NotFoundError("Besichtigungstermin nicht gefunden") from exc
+
+    def update_viewing_appointment(self, appointment_id: str, data: ViewingAppointmentCreate) -> ViewingAppointment:
+        if appointment_id not in self.viewing_appointments:
+            raise NotFoundError("Besichtigungstermin nicht gefunden")
+        if data.lead_id not in self.leads:
+            raise ValidationError("Interessent existiert nicht")
+        if data.unit_id not in self.units:
+            raise ValidationError("Einheit existiert nicht")
+        old = self.viewing_appointments[appointment_id]
+        appointment = ViewingAppointment(id=appointment_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
+        self.viewing_appointments[appointment_id] = appointment
+        return appointment
+
+    def delete_viewing_appointment(self, appointment_id: str) -> None:
+        if appointment_id not in self.viewing_appointments:
+            raise NotFoundError("Besichtigungstermin nicht gefunden")
+        del self.viewing_appointments[appointment_id]
 
     def _patch_entity(self, collection: dict, entity_id: str, patch: PydanticBaseModel, not_found_msg: str):
         """Apply a partial update to an entity. Only non-None fields in the patch are applied."""
