@@ -545,3 +545,98 @@ class ViewingAppointmentPatch(BaseModel):
     status: Optional[str] = None
     agent: Optional[str] = None
     notes: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Phase 3.2: Billing Periods & Utility Statements (Betriebskostenabrechnung)
+# ---------------------------------------------------------------------------
+
+
+class BillingPeriodCreate(BaseModel):
+    property_id: str
+    label: str
+    start_date: date
+    end_date: date
+    status: str = "draft"
+
+
+class BillingPeriod(BillingPeriodCreate):
+    id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class BillingPeriodPatch(BaseModel):
+    property_id: Optional[str] = None
+    label: Optional[str] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    status: Optional[str] = None
+
+
+class AllocationKeyCreate(BaseModel):
+    property_id: str
+    name: str
+    key_type: str  # area_sqm, unit_count, person_count, consumption
+    description: Optional[str] = None
+
+
+class AllocationKey(AllocationKeyCreate):
+    id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class AllocationKeyPatch(BaseModel):
+    property_id: Optional[str] = None
+    name: Optional[str] = None
+    key_type: Optional[str] = None
+    description: Optional[str] = None
+
+
+class CostItemCreate(BaseModel):
+    billing_period_id: str
+    description: str
+    amount: float
+    allocation_key_id: str
+
+
+class CostItem(CostItemCreate):
+    id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class CostItemPatch(BaseModel):
+    billing_period_id: Optional[str] = None
+    description: Optional[str] = None
+    amount: Optional[float] = None
+    allocation_key_id: Optional[str] = None
+
+
+class UtilityStatementCreate(BaseModel):
+    billing_period_id: str
+    contract_id: str
+    unit_id: str
+    total_cost: float
+    advance_paid: float
+    balance: float  # positive = tenant owes, negative = refund
+    status: str = "draft"
+    notes: Optional[str] = None
+
+
+class UtilityStatement(UtilityStatementCreate):
+    id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class UtilityStatementPatch(BaseModel):
+    billing_period_id: Optional[str] = None
+    contract_id: Optional[str] = None
+    unit_id: Optional[str] = None
+    total_cost: Optional[float] = None
+    advance_paid: Optional[float] = None
+    balance: Optional[float] = None
+    status: Optional[str] = None
+    notes: Optional[str] = None

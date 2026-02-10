@@ -8,6 +8,10 @@ from pydantic import BaseModel as PydanticBaseModel
 from .models import (
     Account,
     AccountCreate,
+    AllocationKey,
+    AllocationKeyCreate,
+    BillingPeriod,
+    BillingPeriodCreate,
     Booking,
     BookingCreate,
     CalendarEvent,
@@ -16,6 +20,8 @@ from .models import (
     CategoryCreate,
     Contract,
     ContractCreate,
+    CostItem,
+    CostItemCreate,
     Document,
     DocumentCreate,
     Invoice,
@@ -36,6 +42,8 @@ from .models import (
     TenantCreate,
     Unit,
     UnitCreate,
+    UtilityStatement,
+    UtilityStatementCreate,
     Listing,
     ListingCreate,
     ListingPhoto,
@@ -77,6 +85,10 @@ class InMemoryStore:
     listing_photos: Dict[str, ListingPhoto] = field(default_factory=dict)
     leads: Dict[str, Lead] = field(default_factory=dict)
     viewing_appointments: Dict[str, ViewingAppointment] = field(default_factory=dict)
+    billing_periods: Dict[str, BillingPeriod] = field(default_factory=dict)
+    allocation_keys: Dict[str, AllocationKey] = field(default_factory=dict)
+    cost_items: Dict[str, CostItem] = field(default_factory=dict)
+    utility_statements: Dict[str, UtilityStatement] = field(default_factory=dict)
 
     def list_portfolios(self) -> List[Portfolio]:
         return list(self.portfolios.values())
@@ -764,6 +776,165 @@ class InMemoryStore:
         if appointment_id not in self.viewing_appointments:
             raise NotFoundError("Besichtigungstermin nicht gefunden")
         del self.viewing_appointments[appointment_id]
+
+    # --- Billing Periods ---
+
+    def list_billing_periods(self) -> List[BillingPeriod]:
+        return list(self.billing_periods.values())
+
+    def create_billing_period(self, data: BillingPeriodCreate) -> BillingPeriod:
+        if data.property_id not in self.properties:
+            raise ValidationError("Immobilie existiert nicht")
+        if data.end_date <= data.start_date:
+            raise ValidationError("Enddatum muss nach Startdatum liegen")
+        period = BillingPeriod(id=_generate_id(), **data.model_dump())
+        self.billing_periods[period.id] = period
+        return period
+
+    def get_billing_period(self, period_id: str) -> BillingPeriod:
+        try:
+            return self.billing_periods[period_id]
+        except KeyError as exc:
+            raise NotFoundError("Abrechnungsperiode nicht gefunden") from exc
+
+    def update_billing_period(self, period_id: str, data: BillingPeriodCreate) -> BillingPeriod:
+        if period_id not in self.billing_periods:
+            raise NotFoundError("Abrechnungsperiode nicht gefunden")
+        if data.property_id not in self.properties:
+            raise ValidationError("Immobilie existiert nicht")
+        if data.end_date <= data.start_date:
+            raise ValidationError("Enddatum muss nach Startdatum liegen")
+        old = self.billing_periods[period_id]
+        period = BillingPeriod(id=period_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
+        self.billing_periods[period_id] = period
+        return period
+
+    def delete_billing_period(self, period_id: str) -> None:
+        if period_id not in self.billing_periods:
+            raise NotFoundError("Abrechnungsperiode nicht gefunden")
+        # Cascade: delete cost items and utility statements
+        for ci_id, ci in list(self.cost_items.items()):
+            if ci.billing_period_id == period_id:
+                del self.cost_items[ci_id]
+        for us_id, us in list(self.utility_statements.items()):
+            if us.billing_period_id == period_id:
+                del self.utility_statements[us_id]
+        del self.billing_periods[period_id]
+
+    # --- Allocation Keys ---
+
+    def list_allocation_keys(self) -> List[AllocationKey]:
+        return list(self.allocation_keys.values())
+
+    def create_allocation_key(self, data: AllocationKeyCreate) -> AllocationKey:
+        if data.property_id not in self.properties:
+            raise ValidationError("Immobilie existiert nicht")
+        key = AllocationKey(id=_generate_id(), **data.model_dump())
+        self.allocation_keys[key.id] = key
+        return key
+
+    def get_allocation_key(self, key_id: str) -> AllocationKey:
+        try:
+            return self.allocation_keys[key_id]
+        except KeyError as exc:
+            raise NotFoundError("Verteilerschlüssel nicht gefunden") from exc
+
+    def update_allocation_key(self, key_id: str, data: AllocationKeyCreate) -> AllocationKey:
+        if key_id not in self.allocation_keys:
+            raise NotFoundError("Verteilerschlüssel nicht gefunden")
+        if data.property_id not in self.properties:
+            raise ValidationError("Immobilie existiert nicht")
+        old = self.allocation_keys[key_id]
+        key = AllocationKey(id=key_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
+        self.allocation_keys[key_id] = key
+        return key
+
+    def delete_allocation_key(self, key_id: str) -> None:
+        if key_id not in self.allocation_keys:
+            raise NotFoundError("Verteilerschlüssel nicht gefunden")
+        # Cascade: delete cost items using this key
+        for ci_id, ci in list(self.cost_items.items()):
+            if ci.allocation_key_id == key_id:
+                del self.cost_items[ci_id]
+        del self.allocation_keys[key_id]
+
+    # --- Cost Items ---
+
+    def list_cost_items(self) -> List[CostItem]:
+        return list(self.cost_items.values())
+
+    def create_cost_item(self, data: CostItemCreate) -> CostItem:
+        if data.billing_period_id not in self.billing_periods:
+            raise ValidationError("Abrechnungsperiode existiert nicht")
+        if data.allocation_key_id not in self.allocation_keys:
+            raise ValidationError("Verteilerschlüssel existiert nicht")
+        item = CostItem(id=_generate_id(), **data.model_dump())
+        self.cost_items[item.id] = item
+        return item
+
+    def get_cost_item(self, item_id: str) -> CostItem:
+        try:
+            return self.cost_items[item_id]
+        except KeyError as exc:
+            raise NotFoundError("Kostenposition nicht gefunden") from exc
+
+    def update_cost_item(self, item_id: str, data: CostItemCreate) -> CostItem:
+        if item_id not in self.cost_items:
+            raise NotFoundError("Kostenposition nicht gefunden")
+        if data.billing_period_id not in self.billing_periods:
+            raise ValidationError("Abrechnungsperiode existiert nicht")
+        if data.allocation_key_id not in self.allocation_keys:
+            raise ValidationError("Verteilerschlüssel existiert nicht")
+        old = self.cost_items[item_id]
+        item = CostItem(id=item_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
+        self.cost_items[item_id] = item
+        return item
+
+    def delete_cost_item(self, item_id: str) -> None:
+        if item_id not in self.cost_items:
+            raise NotFoundError("Kostenposition nicht gefunden")
+        del self.cost_items[item_id]
+
+    # --- Utility Statements ---
+
+    def list_utility_statements(self) -> List[UtilityStatement]:
+        return list(self.utility_statements.values())
+
+    def create_utility_statement(self, data: UtilityStatementCreate) -> UtilityStatement:
+        if data.billing_period_id not in self.billing_periods:
+            raise ValidationError("Abrechnungsperiode existiert nicht")
+        if data.contract_id not in self.contracts:
+            raise ValidationError("Vertrag existiert nicht")
+        if data.unit_id not in self.units:
+            raise ValidationError("Einheit existiert nicht")
+        statement = UtilityStatement(id=_generate_id(), **data.model_dump())
+        self.utility_statements[statement.id] = statement
+        return statement
+
+    def get_utility_statement(self, statement_id: str) -> UtilityStatement:
+        try:
+            return self.utility_statements[statement_id]
+        except KeyError as exc:
+            raise NotFoundError("Betriebskostenabrechnung nicht gefunden") from exc
+
+    def update_utility_statement(self, statement_id: str, data: UtilityStatementCreate) -> UtilityStatement:
+        if statement_id not in self.utility_statements:
+            raise NotFoundError("Betriebskostenabrechnung nicht gefunden")
+        if data.billing_period_id not in self.billing_periods:
+            raise ValidationError("Abrechnungsperiode existiert nicht")
+        if data.contract_id not in self.contracts:
+            raise ValidationError("Vertrag existiert nicht")
+        if data.unit_id not in self.units:
+            raise ValidationError("Einheit existiert nicht")
+        old = self.utility_statements[statement_id]
+        statement = UtilityStatement(id=statement_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
+        self.utility_statements[statement_id] = statement
+        return statement
+
+    def delete_utility_statement(self, statement_id: str) -> None:
+        if statement_id not in self.utility_statements:
+            raise NotFoundError("Betriebskostenabrechnung nicht gefunden")
+        del self.utility_statements[statement_id]
 
     def _patch_entity(self, collection: dict, entity_id: str, patch: PydanticBaseModel, not_found_msg: str):
         """Apply a partial update to an entity. Only non-None fields in the patch are applied."""

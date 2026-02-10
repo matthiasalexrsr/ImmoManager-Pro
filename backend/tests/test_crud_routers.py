@@ -16,6 +16,10 @@ from backend.dependencies import store
 from backend.models import (
     AccountCreate,
     AccountPatch,
+    AllocationKeyCreate,
+    AllocationKeyPatch,
+    BillingPeriodCreate,
+    BillingPeriodPatch,
     BookingCreate,
     BookingPatch,
     CalendarEventCreate,
@@ -24,6 +28,8 @@ from backend.models import (
     CategoryPatch,
     ContractCreate,
     ContractPatch,
+    CostItemCreate,
+    CostItemPatch,
     DocumentCreate,
     DocumentPatch,
     InvoiceCreate,
@@ -48,11 +54,13 @@ from backend.models import (
     TenantPatch,
     UnitCreate,
     UnitPatch,
+    UtilityStatementPatch,
     ViewingAppointmentCreate,
     ViewingAppointmentPatch,
 )
 from backend.routers import (
     accounts,
+    billing,
     bookings,
     calendar,
     categories,
@@ -148,6 +156,22 @@ def _list_viewings(**kw):
     return viewings.list_viewings(skip=kw.get("skip", S), limit=kw.get("limit", L), status_filter=kw.get("status_filter"), lead_id=kw.get("lead_id"), unit_id=kw.get("unit_id"))
 
 
+def _list_billing_periods(**kw):
+    return billing.list_billing_periods(skip=kw.get("skip", S), limit=kw.get("limit", L), property_id=kw.get("property_id"), status_filter=kw.get("status_filter"))
+
+
+def _list_allocation_keys(**kw):
+    return billing.list_allocation_keys(skip=kw.get("skip", S), limit=kw.get("limit", L), property_id=kw.get("property_id"), key_type=kw.get("key_type"))
+
+
+def _list_cost_items(**kw):
+    return billing.list_cost_items(skip=kw.get("skip", S), limit=kw.get("limit", L), billing_period_id=kw.get("billing_period_id"), allocation_key_id=kw.get("allocation_key_id"))
+
+
+def _list_utility_statements(**kw):
+    return billing.list_utility_statements(skip=kw.get("skip", S), limit=kw.get("limit", L), billing_period_id=kw.get("billing_period_id"), contract_id=kw.get("contract_id"), status_filter=kw.get("status_filter"))
+
+
 def _clear_store() -> None:
     for collection in (
         store.portfolios,
@@ -168,6 +192,10 @@ def _clear_store() -> None:
         store.listing_photos,
         store.leads,
         store.viewing_appointments,
+        store.billing_periods,
+        store.allocation_keys,
+        store.cost_items,
+        store.utility_statements,
     ):
         collection.clear()
 
@@ -1812,3 +1840,469 @@ class TestViewings:
         with pytest.raises(HTTPException) as exc_info:
             viewings.patch_viewing("nonexistent", ViewingAppointmentPatch(status="cancelled"))
         assert exc_info.value.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Billing Periods (Abrechnungsperioden)
+# ---------------------------------------------------------------------------
+
+class TestBillingPeriods:
+    def setup_method(self) -> None:
+        _clear_store()
+        self.portfolio = store.create_portfolio(PortfolioCreate(name="P"))
+        self.prop = store.create_property(
+            PropertyCreate(portfolio_id=self.portfolio.id, name="H", property_type="MFH")
+        )
+
+    def test_create_billing_period(self) -> None:
+        bp = billing.create_billing_period(
+            BillingPeriodCreate(
+                property_id=self.prop.id, label="BK 2024",
+                start_date=datetime.date(2024, 1, 1), end_date=datetime.date(2024, 12, 31),
+            )
+        )
+        assert bp.label == "BK 2024"
+        assert bp.status == "draft"
+        assert bp.id
+
+    def test_list_billing_periods_empty(self) -> None:
+        assert _list_billing_periods() == []
+
+    def test_list_billing_periods_with_filter(self) -> None:
+        billing.create_billing_period(
+            BillingPeriodCreate(
+                property_id=self.prop.id, label="BK 2024",
+                start_date=datetime.date(2024, 1, 1), end_date=datetime.date(2024, 12, 31),
+            )
+        )
+        assert len(_list_billing_periods(property_id=self.prop.id)) == 1
+        assert len(_list_billing_periods(property_id="other")) == 0
+
+    def test_get_billing_period(self) -> None:
+        bp = billing.create_billing_period(
+            BillingPeriodCreate(
+                property_id=self.prop.id, label="BK 2024",
+                start_date=datetime.date(2024, 1, 1), end_date=datetime.date(2024, 12, 31),
+            )
+        )
+        fetched = billing.get_billing_period(bp.id)
+        assert fetched.id == bp.id
+
+    def test_get_billing_period_404(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            billing.get_billing_period("nonexistent")
+        assert exc_info.value.status_code == 404
+
+    def test_update_billing_period(self) -> None:
+        bp = billing.create_billing_period(
+            BillingPeriodCreate(
+                property_id=self.prop.id, label="BK 2024",
+                start_date=datetime.date(2024, 1, 1), end_date=datetime.date(2024, 12, 31),
+            )
+        )
+        updated = billing.update_billing_period(
+            bp.id,
+            BillingPeriodCreate(
+                property_id=self.prop.id, label="BK 2024 Final",
+                start_date=datetime.date(2024, 1, 1), end_date=datetime.date(2024, 12, 31),
+                status="finalized",
+            ),
+        )
+        assert updated.label == "BK 2024 Final"
+        assert updated.status == "finalized"
+
+    def test_create_bad_dates_400(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            billing.create_billing_period(
+                BillingPeriodCreate(
+                    property_id=self.prop.id, label="Bad",
+                    start_date=datetime.date(2024, 12, 31), end_date=datetime.date(2024, 1, 1),
+                )
+            )
+        assert exc_info.value.status_code == 400
+
+    def test_create_bad_property_400(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            billing.create_billing_period(
+                BillingPeriodCreate(
+                    property_id="bad", label="X",
+                    start_date=datetime.date(2024, 1, 1), end_date=datetime.date(2024, 12, 31),
+                )
+            )
+        assert exc_info.value.status_code == 400
+
+    def test_delete_billing_period(self) -> None:
+        bp = billing.create_billing_period(
+            BillingPeriodCreate(
+                property_id=self.prop.id, label="BK 2024",
+                start_date=datetime.date(2024, 1, 1), end_date=datetime.date(2024, 12, 31),
+            )
+        )
+        billing.delete_billing_period(bp.id)
+        assert _list_billing_periods() == []
+
+    def test_delete_billing_period_404(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            billing.delete_billing_period("nonexistent")
+        assert exc_info.value.status_code == 404
+
+    def test_patch_billing_period(self) -> None:
+        bp = billing.create_billing_period(
+            BillingPeriodCreate(
+                property_id=self.prop.id, label="BK 2024",
+                start_date=datetime.date(2024, 1, 1), end_date=datetime.date(2024, 12, 31),
+            )
+        )
+        patched = billing.patch_billing_period(bp.id, BillingPeriodPatch(status="finalized"))
+        assert patched.status == "finalized"
+        assert patched.label == "BK 2024"
+
+
+# ---------------------------------------------------------------------------
+# Allocation Keys (Verteilerschlüssel)
+# ---------------------------------------------------------------------------
+
+class TestAllocationKeys:
+    def setup_method(self) -> None:
+        _clear_store()
+        self.portfolio = store.create_portfolio(PortfolioCreate(name="P"))
+        self.prop = store.create_property(
+            PropertyCreate(portfolio_id=self.portfolio.id, name="H", property_type="MFH")
+        )
+
+    def test_create_allocation_key(self) -> None:
+        ak = billing.create_allocation_key(
+            AllocationKeyCreate(property_id=self.prop.id, name="Wohnfläche", key_type="area_sqm")
+        )
+        assert ak.name == "Wohnfläche"
+        assert ak.key_type == "area_sqm"
+
+    def test_list_allocation_keys_empty(self) -> None:
+        assert _list_allocation_keys() == []
+
+    def test_list_allocation_keys_with_filter(self) -> None:
+        billing.create_allocation_key(
+            AllocationKeyCreate(property_id=self.prop.id, name="Fläche", key_type="area_sqm")
+        )
+        billing.create_allocation_key(
+            AllocationKeyCreate(property_id=self.prop.id, name="Einheiten", key_type="unit_count")
+        )
+        assert len(_list_allocation_keys(key_type="area_sqm")) == 1
+
+    def test_get_allocation_key_404(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            billing.get_allocation_key("nonexistent")
+        assert exc_info.value.status_code == 404
+
+    def test_update_allocation_key(self) -> None:
+        ak = billing.create_allocation_key(
+            AllocationKeyCreate(property_id=self.prop.id, name="Old", key_type="area_sqm")
+        )
+        updated = billing.update_allocation_key(
+            ak.id,
+            AllocationKeyCreate(property_id=self.prop.id, name="New", key_type="unit_count"),
+        )
+        assert updated.name == "New"
+        assert updated.key_type == "unit_count"
+
+    def test_delete_allocation_key(self) -> None:
+        ak = billing.create_allocation_key(
+            AllocationKeyCreate(property_id=self.prop.id, name="Del", key_type="area_sqm")
+        )
+        billing.delete_allocation_key(ak.id)
+        assert _list_allocation_keys() == []
+
+    def test_delete_allocation_key_404(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            billing.delete_allocation_key("nonexistent")
+        assert exc_info.value.status_code == 404
+
+    def test_patch_allocation_key(self) -> None:
+        ak = billing.create_allocation_key(
+            AllocationKeyCreate(property_id=self.prop.id, name="Old", key_type="area_sqm")
+        )
+        patched = billing.patch_allocation_key(ak.id, AllocationKeyPatch(name="Updated"))
+        assert patched.name == "Updated"
+        assert patched.key_type == "area_sqm"
+
+
+# ---------------------------------------------------------------------------
+# Cost Items (Kostenpositionen)
+# ---------------------------------------------------------------------------
+
+class TestCostItems:
+    def setup_method(self) -> None:
+        _clear_store()
+        self.portfolio = store.create_portfolio(PortfolioCreate(name="P"))
+        self.prop = store.create_property(
+            PropertyCreate(portfolio_id=self.portfolio.id, name="H", property_type="MFH")
+        )
+        self.bp = store.create_billing_period(
+            BillingPeriodCreate(
+                property_id=self.prop.id, label="BK 2024",
+                start_date=datetime.date(2024, 1, 1), end_date=datetime.date(2024, 12, 31),
+            )
+        )
+        self.ak = store.create_allocation_key(
+            AllocationKeyCreate(property_id=self.prop.id, name="Fläche", key_type="area_sqm")
+        )
+
+    def test_create_cost_item(self) -> None:
+        ci = billing.create_cost_item(
+            CostItemCreate(
+                billing_period_id=self.bp.id, description="Wasser",
+                amount=1000.0, allocation_key_id=self.ak.id,
+            )
+        )
+        assert ci.description == "Wasser"
+        assert ci.amount == 1000.0
+
+    def test_list_cost_items_empty(self) -> None:
+        assert _list_cost_items() == []
+
+    def test_list_cost_items_with_filter(self) -> None:
+        billing.create_cost_item(
+            CostItemCreate(
+                billing_period_id=self.bp.id, description="Wasser",
+                amount=1000.0, allocation_key_id=self.ak.id,
+            )
+        )
+        assert len(_list_cost_items(billing_period_id=self.bp.id)) == 1
+        assert len(_list_cost_items(billing_period_id="other")) == 0
+
+    def test_get_cost_item_404(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            billing.get_cost_item("nonexistent")
+        assert exc_info.value.status_code == 404
+
+    def test_create_cost_item_bad_period_400(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            billing.create_cost_item(
+                CostItemCreate(
+                    billing_period_id="bad", description="X",
+                    amount=100.0, allocation_key_id=self.ak.id,
+                )
+            )
+        assert exc_info.value.status_code == 400
+
+    def test_create_cost_item_bad_key_400(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            billing.create_cost_item(
+                CostItemCreate(
+                    billing_period_id=self.bp.id, description="X",
+                    amount=100.0, allocation_key_id="bad",
+                )
+            )
+        assert exc_info.value.status_code == 400
+
+    def test_delete_cost_item(self) -> None:
+        ci = billing.create_cost_item(
+            CostItemCreate(
+                billing_period_id=self.bp.id, description="X",
+                amount=100.0, allocation_key_id=self.ak.id,
+            )
+        )
+        billing.delete_cost_item(ci.id)
+        assert _list_cost_items() == []
+
+    def test_patch_cost_item(self) -> None:
+        ci = billing.create_cost_item(
+            CostItemCreate(
+                billing_period_id=self.bp.id, description="Old",
+                amount=100.0, allocation_key_id=self.ak.id,
+            )
+        )
+        patched = billing.patch_cost_item(ci.id, CostItemPatch(description="Updated"))
+        assert patched.description == "Updated"
+        assert patched.amount == 100.0
+
+
+# ---------------------------------------------------------------------------
+# Generate Utility Statements (Betriebskostenabrechnung generieren)
+# ---------------------------------------------------------------------------
+
+class TestGenerateUtilityStatements:
+    def setup_method(self) -> None:
+        _clear_store()
+        self.portfolio = store.create_portfolio(PortfolioCreate(name="P"))
+        self.prop = store.create_property(
+            PropertyCreate(portfolio_id=self.portfolio.id, name="H", property_type="MFH")
+        )
+        self.unit1 = store.create_unit(
+            UnitCreate(
+                property_id=self.prop.id, label="EG links", unit_type="Wohnung",
+                area_sqm=60.0, service_charge_advance=150.0, heating_advance=50.0,
+            )
+        )
+        self.unit2 = store.create_unit(
+            UnitCreate(
+                property_id=self.prop.id, label="EG rechts", unit_type="Wohnung",
+                area_sqm=40.0, service_charge_advance=100.0, heating_advance=30.0,
+            )
+        )
+        self.tenant1 = store.create_tenant(TenantCreate(full_name="Müller"))
+        self.tenant2 = store.create_tenant(TenantCreate(full_name="Schmidt"))
+        self.contract1 = store.create_contract(
+            ContractCreate(
+                contract_number="V-1", property_id=self.prop.id,
+                unit_id=self.unit1.id, tenant_id=self.tenant1.id,
+                start_date=datetime.date(2024, 1, 1),
+            )
+        )
+        self.contract2 = store.create_contract(
+            ContractCreate(
+                contract_number="V-2", property_id=self.prop.id,
+                unit_id=self.unit2.id, tenant_id=self.tenant2.id,
+                start_date=datetime.date(2024, 1, 1),
+            )
+        )
+        self.bp = store.create_billing_period(
+            BillingPeriodCreate(
+                property_id=self.prop.id, label="BK 2024",
+                start_date=datetime.date(2024, 1, 1), end_date=datetime.date(2024, 12, 31),
+            )
+        )
+        self.ak_area = store.create_allocation_key(
+            AllocationKeyCreate(property_id=self.prop.id, name="Fläche", key_type="area_sqm")
+        )
+
+    def test_generate_distributes_by_area(self) -> None:
+        store.create_cost_item(
+            CostItemCreate(
+                billing_period_id=self.bp.id, description="Wasser",
+                amount=1000.0, allocation_key_id=self.ak_area.id,
+            )
+        )
+        stmts = billing.generate_utility_statements(self.bp.id)
+        assert len(stmts) == 2
+        by_unit = {s.unit_id: s for s in stmts}
+        # 60/(60+40) * 1000 = 600, 40/(60+40) * 1000 = 400
+        assert by_unit[self.unit1.id].total_cost == 600.0
+        assert by_unit[self.unit2.id].total_cost == 400.0
+
+    def test_generate_calculates_advances(self) -> None:
+        store.create_cost_item(
+            CostItemCreate(
+                billing_period_id=self.bp.id, description="Wasser",
+                amount=1000.0, allocation_key_id=self.ak_area.id,
+            )
+        )
+        stmts = billing.generate_utility_statements(self.bp.id)
+        by_unit = {s.unit_id: s for s in stmts}
+        # Unit1: (150+50) * 12 = 2400 advance
+        # Unit2: (100+30) * 12 = 1560 advance
+        assert by_unit[self.unit1.id].advance_paid == 2400.0
+        assert by_unit[self.unit2.id].advance_paid == 1560.0
+
+    def test_generate_balance_refund(self) -> None:
+        store.create_cost_item(
+            CostItemCreate(
+                billing_period_id=self.bp.id, description="Wasser",
+                amount=1000.0, allocation_key_id=self.ak_area.id,
+            )
+        )
+        stmts = billing.generate_utility_statements(self.bp.id)
+        by_unit = {s.unit_id: s for s in stmts}
+        # Unit1: 600 cost - 2400 advance = -1800 (refund)
+        assert by_unit[self.unit1.id].balance == -1800.0
+
+    def test_generate_creates_utility_statements_in_store(self) -> None:
+        store.create_cost_item(
+            CostItemCreate(
+                billing_period_id=self.bp.id, description="Wasser",
+                amount=1000.0, allocation_key_id=self.ak_area.id,
+            )
+        )
+        billing.generate_utility_statements(self.bp.id)
+        assert len(_list_utility_statements(billing_period_id=self.bp.id)) == 2
+
+    def test_generate_regeneration_replaces_old(self) -> None:
+        store.create_cost_item(
+            CostItemCreate(
+                billing_period_id=self.bp.id, description="Wasser",
+                amount=1000.0, allocation_key_id=self.ak_area.id,
+            )
+        )
+        billing.generate_utility_statements(self.bp.id)
+        assert len(_list_utility_statements()) == 2
+        # Regenerate
+        billing.generate_utility_statements(self.bp.id)
+        assert len(_list_utility_statements()) == 2  # Still 2, not 4
+
+    def test_generate_no_contracts_400(self) -> None:
+        # Remove all contracts
+        for cid in list(store.contracts.keys()):
+            store.contracts.pop(cid)
+        store.create_cost_item(
+            CostItemCreate(
+                billing_period_id=self.bp.id, description="X",
+                amount=100.0, allocation_key_id=self.ak_area.id,
+            )
+        )
+        with pytest.raises(HTTPException) as exc_info:
+            billing.generate_utility_statements(self.bp.id)
+        assert exc_info.value.status_code == 400
+
+    def test_generate_no_cost_items_400(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            billing.generate_utility_statements(self.bp.id)
+        assert exc_info.value.status_code == 400
+
+    def test_generate_period_not_found_404(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            billing.generate_utility_statements("nonexistent")
+        assert exc_info.value.status_code == 404
+
+    def test_generate_unit_count_key(self) -> None:
+        ak_count = store.create_allocation_key(
+            AllocationKeyCreate(property_id=self.prop.id, name="Einheiten", key_type="unit_count")
+        )
+        store.create_cost_item(
+            CostItemCreate(
+                billing_period_id=self.bp.id, description="Müll",
+                amount=600.0, allocation_key_id=ak_count.id,
+            )
+        )
+        stmts = billing.generate_utility_statements(self.bp.id)
+        by_unit = {s.unit_id: s for s in stmts}
+        # Equal distribution: 600/2 = 300 each
+        assert by_unit[self.unit1.id].total_cost == 300.0
+        assert by_unit[self.unit2.id].total_cost == 300.0
+
+    def test_utility_statement_patch(self) -> None:
+        store.create_cost_item(
+            CostItemCreate(
+                billing_period_id=self.bp.id, description="Wasser",
+                amount=1000.0, allocation_key_id=self.ak_area.id,
+            )
+        )
+        stmts = billing.generate_utility_statements(self.bp.id)
+        patched = billing.patch_utility_statement(
+            stmts[0].id, UtilityStatementPatch(status="finalized")
+        )
+        assert patched.status == "finalized"
+
+    def test_delete_utility_statement(self) -> None:
+        store.create_cost_item(
+            CostItemCreate(
+                billing_period_id=self.bp.id, description="Wasser",
+                amount=1000.0, allocation_key_id=self.ak_area.id,
+            )
+        )
+        stmts = billing.generate_utility_statements(self.bp.id)
+        billing.delete_utility_statement(stmts[0].id)
+        assert len(_list_utility_statements()) == 1
+
+    def test_delete_billing_period_cascades(self) -> None:
+        store.create_cost_item(
+            CostItemCreate(
+                billing_period_id=self.bp.id, description="Wasser",
+                amount=1000.0, allocation_key_id=self.ak_area.id,
+            )
+        )
+        billing.generate_utility_statements(self.bp.id)
+        assert len(_list_cost_items()) == 1
+        assert len(_list_utility_statements()) == 2
+        billing.delete_billing_period(self.bp.id)
+        assert len(_list_cost_items()) == 0
+        assert len(_list_utility_statements()) == 0

@@ -2,6 +2,7 @@ from fastapi import APIRouter, FastAPI
 
 from .routers import (
     accounts,
+    billing,
     bookings,
     calendar,
     categories,
@@ -44,6 +45,7 @@ api_v1.include_router(listings.router)
 api_v1.include_router(categories.router)
 api_v1.include_router(leads.router)
 api_v1.include_router(viewings.router)
+api_v1.include_router(billing.router)
 api_v1.include_router(reports.router)
 
 app.include_router(api_v1)

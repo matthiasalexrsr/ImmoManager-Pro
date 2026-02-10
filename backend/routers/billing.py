@@ -1,0 +1,418 @@
+"""Router for billing periods, allocation keys, cost items, and utility statements.
+
+Includes a POST endpoint to auto-generate utility statements from cost items
+using the BillingEngine for cost allocation.
+"""
+
+from decimal import Decimal
+
+from fastapi import APIRouter, HTTPException, Query, status
+
+from ..dependencies import store
+from ..domain.billing_engine import (
+    AdvancePayment,
+    BillingEngine,
+    CostEntry,
+    UnitShare,
+)
+from ..models import (
+    AllocationKey,
+    AllocationKeyCreate,
+    AllocationKeyPatch,
+    BillingPeriod,
+    BillingPeriodCreate,
+    BillingPeriodPatch,
+    CostItem,
+    CostItemCreate,
+    CostItemPatch,
+    UtilityStatement,
+    UtilityStatementCreate,
+    UtilityStatementPatch,
+)
+from ..storage import NotFoundError, ValidationError
+
+router = APIRouter(prefix="/billing", tags=["Abrechnung"])
+
+
+# ---------------------------------------------------------------------------
+# Billing Periods
+# ---------------------------------------------------------------------------
+
+
+@router.get("/periods", response_model=list[BillingPeriod])
+def list_billing_periods(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    property_id: str | None = Query(None),
+    status_filter: str | None = Query(None, alias="status"),
+) -> list[BillingPeriod]:
+    results = store.list_billing_periods()
+    if property_id:
+        results = [r for r in results if r.property_id == property_id]
+    if status_filter:
+        results = [r for r in results if r.status == status_filter]
+    return results[skip : skip + limit]
+
+
+@router.post("/periods", response_model=BillingPeriod, status_code=status.HTTP_201_CREATED)
+def create_billing_period(payload: BillingPeriodCreate) -> BillingPeriod:
+    try:
+        return store.create_billing_period(payload)
+    except ValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.get("/periods/{period_id}", response_model=BillingPeriod)
+def get_billing_period(period_id: str) -> BillingPeriod:
+    try:
+        return store.get_billing_period(period_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.put("/periods/{period_id}", response_model=BillingPeriod)
+def update_billing_period(period_id: str, payload: BillingPeriodCreate) -> BillingPeriod:
+    try:
+        return store.update_billing_period(period_id, payload)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.patch("/periods/{period_id}", response_model=BillingPeriod)
+def patch_billing_period(period_id: str, payload: BillingPeriodPatch) -> BillingPeriod:
+    try:
+        return store._patch_entity(
+            store.billing_periods, period_id, payload, "Abrechnungsperiode nicht gefunden"
+        )
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.delete("/periods/{period_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_billing_period(period_id: str) -> None:
+    try:
+        store.delete_billing_period(period_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+# ---------------------------------------------------------------------------
+# Allocation Keys
+# ---------------------------------------------------------------------------
+
+
+@router.get("/allocation-keys", response_model=list[AllocationKey])
+def list_allocation_keys(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    property_id: str | None = Query(None),
+    key_type: str | None = Query(None),
+) -> list[AllocationKey]:
+    results = store.list_allocation_keys()
+    if property_id:
+        results = [r for r in results if r.property_id == property_id]
+    if key_type:
+        results = [r for r in results if r.key_type == key_type]
+    return results[skip : skip + limit]
+
+
+@router.post("/allocation-keys", response_model=AllocationKey, status_code=status.HTTP_201_CREATED)
+def create_allocation_key(payload: AllocationKeyCreate) -> AllocationKey:
+    try:
+        return store.create_allocation_key(payload)
+    except ValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.get("/allocation-keys/{key_id}", response_model=AllocationKey)
+def get_allocation_key(key_id: str) -> AllocationKey:
+    try:
+        return store.get_allocation_key(key_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.put("/allocation-keys/{key_id}", response_model=AllocationKey)
+def update_allocation_key(key_id: str, payload: AllocationKeyCreate) -> AllocationKey:
+    try:
+        return store.update_allocation_key(key_id, payload)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.patch("/allocation-keys/{key_id}", response_model=AllocationKey)
+def patch_allocation_key(key_id: str, payload: AllocationKeyPatch) -> AllocationKey:
+    try:
+        return store._patch_entity(
+            store.allocation_keys, key_id, payload, "Verteilerschlüssel nicht gefunden"
+        )
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.delete("/allocation-keys/{key_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_allocation_key(key_id: str) -> None:
+    try:
+        store.delete_allocation_key(key_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+# ---------------------------------------------------------------------------
+# Cost Items
+# ---------------------------------------------------------------------------
+
+
+@router.get("/cost-items", response_model=list[CostItem])
+def list_cost_items(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    billing_period_id: str | None = Query(None),
+    allocation_key_id: str | None = Query(None),
+) -> list[CostItem]:
+    results = store.list_cost_items()
+    if billing_period_id:
+        results = [r for r in results if r.billing_period_id == billing_period_id]
+    if allocation_key_id:
+        results = [r for r in results if r.allocation_key_id == allocation_key_id]
+    return results[skip : skip + limit]
+
+
+@router.post("/cost-items", response_model=CostItem, status_code=status.HTTP_201_CREATED)
+def create_cost_item(payload: CostItemCreate) -> CostItem:
+    try:
+        return store.create_cost_item(payload)
+    except ValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.get("/cost-items/{item_id}", response_model=CostItem)
+def get_cost_item(item_id: str) -> CostItem:
+    try:
+        return store.get_cost_item(item_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.put("/cost-items/{item_id}", response_model=CostItem)
+def update_cost_item(item_id: str, payload: CostItemCreate) -> CostItem:
+    try:
+        return store.update_cost_item(item_id, payload)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.patch("/cost-items/{item_id}", response_model=CostItem)
+def patch_cost_item(item_id: str, payload: CostItemPatch) -> CostItem:
+    try:
+        return store._patch_entity(
+            store.cost_items, item_id, payload, "Kostenposition nicht gefunden"
+        )
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.delete("/cost-items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_cost_item(item_id: str) -> None:
+    try:
+        store.delete_cost_item(item_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+# ---------------------------------------------------------------------------
+# Utility Statements
+# ---------------------------------------------------------------------------
+
+
+@router.get("/statements", response_model=list[UtilityStatement])
+def list_utility_statements(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    billing_period_id: str | None = Query(None),
+    contract_id: str | None = Query(None),
+    status_filter: str | None = Query(None, alias="status"),
+) -> list[UtilityStatement]:
+    results = store.list_utility_statements()
+    if billing_period_id:
+        results = [r for r in results if r.billing_period_id == billing_period_id]
+    if contract_id:
+        results = [r for r in results if r.contract_id == contract_id]
+    if status_filter:
+        results = [r for r in results if r.status == status_filter]
+    return results[skip : skip + limit]
+
+
+@router.get("/statements/{statement_id}", response_model=UtilityStatement)
+def get_utility_statement(statement_id: str) -> UtilityStatement:
+    try:
+        return store.get_utility_statement(statement_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.patch("/statements/{statement_id}", response_model=UtilityStatement)
+def patch_utility_statement(statement_id: str, payload: UtilityStatementPatch) -> UtilityStatement:
+    try:
+        return store._patch_entity(
+            store.utility_statements, statement_id, payload, "Betriebskostenabrechnung nicht gefunden"
+        )
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.delete("/statements/{statement_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_utility_statement(statement_id: str) -> None:
+    try:
+        store.delete_utility_statement(statement_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+# ---------------------------------------------------------------------------
+# Generate Utility Statements
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/periods/{period_id}/generate",
+    response_model=list[UtilityStatement],
+    status_code=status.HTTP_201_CREATED,
+)
+def generate_utility_statements(period_id: str) -> list[UtilityStatement]:
+    """Auto-generate utility statements for all contracts in the billing period.
+
+    Uses cost items, allocation keys, and unit shares (area_sqm from units)
+    to distribute costs. Compares with service charge advances from contracts
+    to compute the balance (Nachzahlung/Guthaben).
+
+    Existing statements for this period are deleted first (regeneration).
+    """
+    try:
+        period = store.get_billing_period(period_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    property_id = period.property_id
+
+    # Find all active contracts for the property whose dates overlap the period
+    contracts_in_period = [
+        c for c in store.contracts.values()
+        if c.property_id == property_id
+        and c.start_date <= period.end_date
+        and (c.end_date is None or c.end_date >= period.start_date)
+    ]
+
+    if not contracts_in_period:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Keine aktiven Verträge im Abrechnungszeitraum gefunden",
+        )
+
+    # Find cost items for this period
+    cost_items = [
+        ci for ci in store.cost_items.values()
+        if ci.billing_period_id == period_id
+    ]
+
+    if not cost_items:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Keine Kostenpositionen für diese Abrechnungsperiode vorhanden",
+        )
+
+    # Build the engine
+    engine = BillingEngine()
+
+    # Collect allocation keys used by cost items
+    used_key_ids = {ci.allocation_key_id for ci in cost_items}
+    allocation_keys = {
+        k.id: k for k in store.allocation_keys.values()
+        if k.id in used_key_ids
+    }
+
+    # Register unit shares for each allocation key
+    for contract in contracts_in_period:
+        unit = store.units.get(contract.unit_id)
+        if unit is None:
+            continue
+
+        for key_id, key in allocation_keys.items():
+            if key.key_type == "area_sqm":
+                share_value = Decimal(str(unit.area_sqm or 0))
+            elif key.key_type == "unit_count":
+                share_value = Decimal("1")
+            else:
+                # Default: equal distribution
+                share_value = Decimal("1")
+
+            engine.add_unit_share(
+                key_id,
+                UnitShare(
+                    unit_id=unit.id,
+                    contract_id=contract.id,
+                    share_value=share_value,
+                ),
+            )
+
+    # Add cost entries
+    for ci in cost_items:
+        engine.add_cost(
+            CostEntry(
+                description=ci.description,
+                amount=Decimal(str(ci.amount)),
+                allocation_key_id=ci.allocation_key_id,
+            )
+        )
+
+    # Calculate advances: sum of service_charge_advance * months in period for each contract
+    for contract in contracts_in_period:
+        unit = store.units.get(contract.unit_id)
+        monthly_advance = Decimal(str((unit.service_charge_advance or 0) + (unit.heating_advance or 0))) if unit else Decimal("0")
+
+        # Calculate overlapping months
+        overlap_start = max(contract.start_date, period.start_date)
+        overlap_end = min(contract.end_date, period.end_date) if contract.end_date else period.end_date
+        if overlap_end < overlap_start:
+            continue
+        months = ((overlap_end.year - overlap_start.year) * 12
+                  + overlap_end.month - overlap_start.month + 1)
+        total_advance = monthly_advance * months
+
+        engine.add_advance(
+            AdvancePayment(
+                unit_id=contract.unit_id,
+                contract_id=contract.id,
+                total_advance=total_advance,
+            )
+        )
+
+    generated = engine.generate()
+
+    # Delete existing statements for this period
+    for us_id, us in list(store.utility_statements.items()):
+        if us.billing_period_id == period_id:
+            del store.utility_statements[us_id]
+
+    # Create new statements
+    results: list[UtilityStatement] = []
+    for stmt in generated:
+        created = store.create_utility_statement(
+            UtilityStatementCreate(
+                billing_period_id=period_id,
+                contract_id=stmt.contract_id,
+                unit_id=stmt.unit_id,
+                total_cost=float(stmt.total_cost),
+                advance_paid=float(stmt.advance_paid),
+                balance=float(stmt.balance),
+            )
+        )
+        results.append(created)
+
+    return results

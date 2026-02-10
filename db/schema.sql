@@ -295,3 +295,58 @@ CREATE TABLE viewing_appointments (
 
 CREATE INDEX idx_viewings_lead ON viewing_appointments(lead_id);
 CREATE INDEX idx_viewings_unit ON viewing_appointments(unit_id);
+
+CREATE TABLE billing_periods (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  property_id uuid NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+  label text NOT NULL,
+  start_date date NOT NULL,
+  end_date date NOT NULL,
+  status text NOT NULL DEFAULT 'draft',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_billing_periods_property ON billing_periods(property_id);
+
+CREATE TABLE allocation_keys (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  property_id uuid NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+  name text NOT NULL,
+  key_type text NOT NULL,
+  description text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_allocation_keys_property ON allocation_keys(property_id);
+
+CREATE TABLE cost_items (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  billing_period_id uuid NOT NULL REFERENCES billing_periods(id) ON DELETE CASCADE,
+  description text NOT NULL,
+  amount numeric(14, 2) NOT NULL,
+  allocation_key_id uuid NOT NULL REFERENCES allocation_keys(id) ON DELETE CASCADE,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_cost_items_period ON cost_items(billing_period_id);
+CREATE INDEX idx_cost_items_key ON cost_items(allocation_key_id);
+
+CREATE TABLE utility_statements (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  billing_period_id uuid NOT NULL REFERENCES billing_periods(id) ON DELETE CASCADE,
+  contract_id uuid NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
+  unit_id uuid NOT NULL REFERENCES units(id) ON DELETE CASCADE,
+  total_cost numeric(14, 2) NOT NULL,
+  advance_paid numeric(14, 2) NOT NULL,
+  balance numeric(14, 2) NOT NULL,
+  status text NOT NULL DEFAULT 'draft',
+  notes text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_utility_statements_period ON utility_statements(billing_period_id);
+CREATE INDEX idx_utility_statements_contract ON utility_statements(contract_id);
