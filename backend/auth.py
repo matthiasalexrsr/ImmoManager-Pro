@@ -29,11 +29,104 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = settings.access_token_expire_minutes
 REFRESH_TOKEN_EXPIRE_DAYS = settings.refresh_token_expire_days
 
+# T21: Password policy constants
+MIN_PASSWORD_LENGTH = 8
+REQUIRE_UPPERCASE = True
+REQUIRE_LOWERCASE = True
+REQUIRE_DIGIT = True
+REQUIRE_SPECIAL = False
+
+# T21: Login rate limiting
+MAX_LOGIN_ATTEMPTS = 5
+LOCKOUT_DURATION_MINUTES = 15
+_login_attempts: dict[str, list[datetime]] = {}  # username -> list of failed attempt times
+
 # HTTP Bearer scheme
 security = HTTPBearer(auto_error=False)
 
 # Number of PBKDF2 iterations (OWASP recommended minimum for SHA-256)
 _PBKDF2_ITERATIONS = 600_000
+
+
+def validate_password_strength(password: str) -> list[str]:
+    """T21: Validate password meets policy requirements. Returns list of violations."""
+    errors = []
+    if len(password) < MIN_PASSWORD_LENGTH:
+        errors.append(f"Mindestens {MIN_PASSWORD_LENGTH} Zeichen erforderlich")
+    if REQUIRE_UPPERCASE and not any(c.isupper() for c in password):
+        errors.append("Mindestens ein Großbuchstabe erforderlich")
+    if REQUIRE_LOWERCASE and not any(c.islower() for c in password):
+        errors.append("Mindestens ein Kleinbuchstabe erforderlich")
+    if REQUIRE_DIGIT and not any(c.isdigit() for c in password):
+        errors.append("Mindestens eine Ziffer erforderlich")
+    if REQUIRE_SPECIAL and not any(c in "!@#$%^&*()_+-=[]{}|;':\",./<>?" for c in password):
+        errors.append("Mindestens ein Sonderzeichen erforderlich")
+    return errors
+
+
+def check_login_rate_limit(username: str) -> bool:
+    """T21: Check if login is rate-limited. Returns True if blocked."""
+    now = datetime.utcnow()
+    cutoff = now - timedelta(minutes=LOCKOUT_DURATION_MINUTES)
+    attempts = _login_attempts.get(username, [])
+    # Clean old attempts
+    recent = [t for t in attempts if t > cutoff]
+    _login_attempts[username] = recent
+    return len(recent) >= MAX_LOGIN_ATTEMPTS
+
+
+def record_failed_login(username: str) -> None:
+    """T21: Record a failed login attempt."""
+    if username not in _login_attempts:
+        _login_attempts[username] = []
+    _login_attempts[username].append(datetime.utcnow())
+
+
+def clear_login_attempts(username: str) -> None:
+    """T21: Clear login attempts after successful login."""
+    _login_attempts.pop(username, None)
+
+
+# ---------------------------------------------------------------------------
+# T10: TOTP Two-Factor Authentication
+# ---------------------------------------------------------------------------
+
+
+def generate_totp_secret() -> str:
+    """Generate a new TOTP secret key (base32 encoded)."""
+    import base64
+    raw = secrets.token_bytes(20)
+    return base64.b32encode(raw).decode("ascii")
+
+
+def get_totp_uri(secret: str, username: str, issuer: str = "ImmoManager Pro") -> str:
+    """Generate a TOTP URI for QR code generation."""
+    from urllib.parse import quote
+    return f"otpauth://totp/{quote(issuer)}:{quote(username)}?secret={secret}&issuer={quote(issuer)}&digits=6&period=30"
+
+
+def verify_totp(secret: str, code: str) -> bool:
+    """Verify a TOTP code against the secret. Allows 1 period drift."""
+    import hmac as _hmac
+    import struct
+    import time
+
+    if not code or len(code) != 6 or not code.isdigit():
+        return False
+
+    import base64
+    key = base64.b32decode(secret, casefold=True)
+    now = int(time.time())
+
+    for offset in [-1, 0, 1]:  # Allow ±30s drift
+        counter = (now // 30) + offset
+        msg = struct.pack(">Q", counter)
+        h = _hmac.new(key, msg, "sha1").digest()
+        o = h[-1] & 0x0F
+        token = str((struct.unpack(">I", h[o:o+4])[0] & 0x7FFFFFFF) % 1000000).zfill(6)
+        if _hmac.compare_digest(token, code):
+            return True
+    return False
 
 
 def hash_password(password: str) -> str:
@@ -291,9 +384,16 @@ def _to_user_read(user_data: dict) -> UserRead:
 
 
 def register_user(username: str, email: str, full_name: str, password: str, role: str = "readonly") -> UserRead:
-    """Register a new user."""
+    """Register a new user with password policy enforcement (T21)."""
     if _user_store.get_by_username(username) is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Benutzername existiert bereits")
+    # T21: Validate password strength
+    pw_errors = validate_password_strength(password)
+    if pw_errors:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Passwort zu schwach: {'; '.join(pw_errors)}",
+        )
     user_id = str(uuid4())
     now = datetime.utcnow()
     user_data = {
@@ -304,6 +404,8 @@ def register_user(username: str, email: str, full_name: str, password: str, role
         "hashed_password": hash_password(password),
         "role": role,
         "is_active": True,
+        "totp_secret": None,  # T10: TOTP disabled by default
+        "totp_enabled": False,
         "created_at": now,
         "updated_at": now,
     }
@@ -312,14 +414,25 @@ def register_user(username: str, email: str, full_name: str, password: str, role
 
 
 def authenticate_user(username: str, password: str) -> Optional[dict]:
-    """Authenticate a user by username and password."""
+    """Authenticate a user by username and password with rate limiting (T21)."""
+    # T21: Check rate limit
+    if check_login_rate_limit(username):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Zu viele Anmeldeversuche. Bitte warten Sie {LOCKOUT_DURATION_MINUTES} Minuten.",
+        )
     user = _user_store.get_by_username(username)
     if user is None:
+        record_failed_login(username)
         return None
     if not user["is_active"]:
+        record_failed_login(username)
         return None
     if not verify_password(password, user["hashed_password"]):
+        record_failed_login(username)
         return None
+    # Success: clear attempts
+    clear_login_attempts(username)
     return user
 
 
@@ -351,6 +464,7 @@ def delete_user(user_id: str) -> None:
 def clear_users() -> None:
     """Clear all users (for testing)."""
     _user_store.clear()
+    _login_attempts.clear()
 
 
 async def get_current_user(

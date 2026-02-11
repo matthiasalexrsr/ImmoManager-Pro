@@ -8,12 +8,15 @@ from ..auth import (
     create_refresh_token,
     decode_token,
     delete_user,
+    generate_totp_secret,
+    get_totp_uri,
     get_user_by_id,
     list_users,
     register_user,
     require_auth,
     require_role,
     update_user,
+    verify_totp,
 )
 from ..models import (
     LoginRequest,
@@ -189,3 +192,58 @@ def remove_user(
             detail="Eigenes Konto kann nicht gelöscht werden",
         )
     delete_user(user_id)
+
+
+# ---------------------------------------------------------------------------
+# T10: Two-Factor Authentication (TOTP)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/2fa/setup", response_model=None)
+def setup_2fa(user: UserRead = Depends(require_auth)) -> dict:
+    """Generate a TOTP secret and return the setup URI for QR code generation."""
+    secret = generate_totp_secret()
+    uri = get_totp_uri(secret, user.username)
+    # Store secret temporarily (not yet enabled)
+    update_user(user.id, {"totp_secret": secret})
+    return {"secret": secret, "uri": uri, "message": "Scannen Sie den QR-Code mit einer Authenticator-App."}
+
+
+@router.post("/2fa/verify", response_model=None)
+def verify_2fa_setup(
+    payload: dict,
+    user: UserRead = Depends(require_auth),
+) -> dict:
+    """Verify a TOTP code and enable 2FA for the user."""
+    code = payload.get("code", "")
+    user_data = get_user_by_id(user.id)
+    if not user_data or not user_data.get("totp_secret"):
+        raise HTTPException(status_code=400, detail="2FA nicht eingerichtet. Bitte zuerst /2fa/setup aufrufen.")
+    if not verify_totp(user_data["totp_secret"], code):
+        raise HTTPException(status_code=400, detail="Ungültiger TOTP-Code")
+    update_user(user.id, {"totp_enabled": True})
+    return {"enabled": True, "message": "Zwei-Faktor-Authentifizierung aktiviert."}
+
+
+@router.post("/2fa/disable", response_model=None)
+def disable_2fa(
+    payload: dict,
+    user: UserRead = Depends(require_auth),
+) -> dict:
+    """Disable 2FA for the current user. Requires current TOTP code."""
+    code = payload.get("code", "")
+    user_data = get_user_by_id(user.id)
+    if not user_data or not user_data.get("totp_enabled"):
+        raise HTTPException(status_code=400, detail="2FA ist nicht aktiviert.")
+    if not verify_totp(user_data["totp_secret"], code):
+        raise HTTPException(status_code=400, detail="Ungültiger TOTP-Code")
+    update_user(user.id, {"totp_enabled": False, "totp_secret": None})
+    return {"enabled": False, "message": "Zwei-Faktor-Authentifizierung deaktiviert."}
+
+
+@router.get("/2fa/status", response_model=None)
+def get_2fa_status(user: UserRead = Depends(require_auth)) -> dict:
+    """Check if 2FA is enabled for the current user."""
+    user_data = get_user_by_id(user.id)
+    enabled = bool(user_data and user_data.get("totp_enabled"))
+    return {"enabled": enabled}

@@ -36,7 +36,7 @@ def client():
 @pytest.fixture
 def auth_headers():
     """Create a registered user and return auth headers."""
-    user = register_user("testuser", "test@example.com", "Test User", "secret123", "eigentuemer")
+    user = register_user("testuser", "test@example.com", "Test User", "Secret123", "eigentuemer")
     token = create_access_token(user.id)
     return {"Authorization": f"Bearer {token}"}
 
@@ -105,7 +105,7 @@ class TestAuthEndpoints:
             "username": "newuser",
             "email": "new@example.com",
             "full_name": "New User",
-            "password": "pass123",
+            "password": "Pass1234",
         })
         assert resp.status_code == 201
         data = resp.json()
@@ -118,7 +118,7 @@ class TestAuthEndpoints:
             "username": "attacker",
             "email": "attacker@example.com",
             "full_name": "Attacker",
-            "password": "pass123",
+            "password": "Pass1234",
             "role": "eigentuemer",
         })
         assert resp.status_code == 201
@@ -127,10 +127,10 @@ class TestAuthEndpoints:
         assert data["role"] == "readonly"
 
     def test_login(self, client):
-        register_user("loginuser", "login@example.com", "Login User", "pass123")
+        register_user("loginuser", "login@example.com", "Login User", "Pass1234")
         resp = client.post("/api/v1/auth/login", json={
             "username": "loginuser",
-            "password": "pass123",
+            "password": "Pass1234",
         })
         assert resp.status_code == 200
         data = resp.json()

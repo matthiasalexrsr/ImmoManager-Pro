@@ -196,6 +196,7 @@ class InvoiceCreate(BaseModel):
     invoice_date: date
     due_date: Optional[date] = None
     net_amount: float
+    vat_rate: float = 19.0  # T14: VAT rate percentage (0, 7, 19)
     vat_amount: float = 0.0
     gross_amount: float
     payment_terms: Optional[str] = None
@@ -445,6 +446,7 @@ class InvoicePatch(BaseModel):
     invoice_date: Optional[date] = None
     due_date: Optional[date] = None
     net_amount: Optional[float] = None
+    vat_rate: Optional[float] = None
     vat_amount: Optional[float] = None
     gross_amount: Optional[float] = None
     payment_terms: Optional[str] = None
@@ -666,6 +668,8 @@ class UtilityStatementCreate(BaseModel):
     advance_paid: float
     balance: float  # positive = tenant owes, negative = refund
     status: str = "draft"
+    revision: int = 1  # T19: revision-safe versioning
+    revision_notes: Optional[str] = None
     notes: Optional[str] = None
 
 
@@ -683,6 +687,8 @@ class UtilityStatementPatch(BaseModel):
     advance_paid: Optional[float] = None
     balance: Optional[float] = None
     status: Optional[str] = None
+    revision: Optional[int] = None
+    revision_notes: Optional[str] = None
     notes: Optional[str] = None
 
 
@@ -857,3 +863,234 @@ class AuditLogEntry(BaseModel):
     entity_id: str
     changes: Optional[str] = None  # JSON diff
     timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+
+# ---------------------------------------------------------------------------
+# T14: VAT / Tax Rates (Steuerlogik)
+# ---------------------------------------------------------------------------
+
+
+_VALID_VAT_RATES = {0.0, 7.0, 19.0}
+
+
+class TaxRateCreate(BaseModel):
+    name: str  # e.g. "Regelsteuersatz", "Ermäßigt", "Steuerfrei"
+    rate: float  # percentage, e.g. 19.0
+    description: Optional[str] = None
+    is_default: bool = False
+    valid_from: Optional[date] = None
+    valid_until: Optional[date] = None
+
+
+class TaxRate(TaxRateCreate):
+    id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class TaxRatePatch(BaseModel):
+    name: Optional[str] = None
+    rate: Optional[float] = None
+    description: Optional[str] = None
+    is_default: Optional[bool] = None
+    valid_from: Optional[date] = None
+    valid_until: Optional[date] = None
+
+
+# ---------------------------------------------------------------------------
+# T15: Index / Stepped Rent (Indexmiete / Staffelmiete)
+# ---------------------------------------------------------------------------
+
+
+class RentAdjustmentCreate(BaseModel):
+    contract_id: str
+    adjustment_type: str  # "index" or "stepped"
+    effective_date: date
+    previous_rent: float
+    new_rent: float
+    increase_percent: Optional[float] = None
+    index_base_year: Optional[int] = None  # CPI base year for index rent
+    index_value: Optional[float] = None  # CPI value at adjustment
+    notes: Optional[str] = None
+    status: str = "pending"  # pending, applied, rejected
+
+
+class RentAdjustment(RentAdjustmentCreate):
+    id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class RentAdjustmentPatch(BaseModel):
+    contract_id: Optional[str] = None
+    adjustment_type: Optional[str] = None
+    effective_date: Optional[date] = None
+    previous_rent: Optional[float] = None
+    new_rent: Optional[float] = None
+    increase_percent: Optional[float] = None
+    index_base_year: Optional[int] = None
+    index_value: Optional[float] = None
+    notes: Optional[str] = None
+    status: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# T16: Handover Protocol (Übergabeprotokoll)
+# ---------------------------------------------------------------------------
+
+
+class MeterReadingCreate(BaseModel):
+    handover_id: str
+    meter_type: str  # electricity, gas, water, heating
+    meter_number: Optional[str] = None
+    reading_value: float
+    unit: str = "kWh"  # kWh, m³, etc.
+    photo_url: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class MeterReading(MeterReadingCreate):
+    id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class MeterReadingPatch(BaseModel):
+    handover_id: Optional[str] = None
+    meter_type: Optional[str] = None
+    meter_number: Optional[str] = None
+    reading_value: Optional[float] = None
+    unit: Optional[str] = None
+    photo_url: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class HandoverProtocolCreate(BaseModel):
+    contract_id: str
+    unit_id: str
+    protocol_type: str  # "move_in" or "move_out"
+    protocol_date: date
+    tenant_present: bool = True
+    landlord_present: bool = True
+    key_count: Optional[int] = None
+    key_details: Optional[str] = None
+    overall_condition: Optional[str] = None  # good, fair, poor
+    damages: Optional[str] = None  # JSON list of damage descriptions
+    photos: Optional[str] = None  # JSON list of photo URLs
+    notes: Optional[str] = None
+    tenant_signature: Optional[str] = None
+    landlord_signature: Optional[str] = None
+    status: str = "draft"  # draft, signed, finalized
+
+
+class HandoverProtocol(HandoverProtocolCreate):
+    id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class HandoverProtocolPatch(BaseModel):
+    contract_id: Optional[str] = None
+    unit_id: Optional[str] = None
+    protocol_type: Optional[str] = None
+    protocol_date: Optional[date] = None
+    tenant_present: Optional[bool] = None
+    landlord_present: Optional[bool] = None
+    key_count: Optional[int] = None
+    key_details: Optional[str] = None
+    overall_condition: Optional[str] = None
+    damages: Optional[str] = None
+    photos: Optional[str] = None
+    notes: Optional[str] = None
+    tenant_signature: Optional[str] = None
+    landlord_signature: Optional[str] = None
+    status: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# T18: Change History (Historisierung)
+# ---------------------------------------------------------------------------
+
+
+class ChangeHistoryEntry(BaseModel):
+    id: str = Field(..., min_length=1)
+    entity_type: str  # property, unit, contract, tenant, etc.
+    entity_id: str
+    field_name: str
+    old_value: Optional[str] = None
+    new_value: Optional[str] = None
+    changed_by: Optional[str] = None  # user_id
+    changed_at: datetime = Field(default_factory=datetime.utcnow)
+    reason: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# T27: Budget Planning (Budgetplanung)
+# ---------------------------------------------------------------------------
+
+
+class BudgetCreate(BaseModel):
+    property_id: str
+    year: int
+    category: str  # maintenance, operating_costs, renovation, reserve, other
+    planned_amount: float
+    actual_amount: float = 0.0
+    notes: Optional[str] = None
+
+
+class Budget(BudgetCreate):
+    id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    @property
+    def deviation(self) -> float:
+        return self.actual_amount - self.planned_amount
+
+    @property
+    def utilization_percent(self) -> float:
+        if self.planned_amount == 0:
+            return 0.0
+        return (self.actual_amount / self.planned_amount) * 100
+
+
+class BudgetPatch(BaseModel):
+    property_id: Optional[str] = None
+    year: Optional[int] = None
+    category: Optional[str] = None
+    planned_amount: Optional[float] = None
+    actual_amount: Optional[float] = None
+    notes: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# T17: Escalation Rules
+# ---------------------------------------------------------------------------
+
+
+class EscalationRuleCreate(BaseModel):
+    name: str
+    entity_type: str  # task, maintenance, receivable
+    condition_field: str  # due_date, appointment_at, etc.
+    days_overdue: int  # trigger after N days overdue
+    action: str  # notify, reassign, escalate_priority
+    target_role: Optional[str] = None  # role to notify / reassign to
+    notification_severity: str = "warning"
+    is_active: bool = True
+
+
+class EscalationRule(EscalationRuleCreate):
+    id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class EscalationRulePatch(BaseModel):
+    name: Optional[str] = None
+    entity_type: Optional[str] = None
+    condition_field: Optional[str] = None
+    days_overdue: Optional[int] = None
+    action: Optional[str] = None
+    target_role: Optional[str] = None
+    notification_severity: Optional[str] = None
+    is_active: Optional[bool] = None

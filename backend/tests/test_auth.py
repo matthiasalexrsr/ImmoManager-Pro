@@ -44,11 +44,11 @@ def _clean_users():
 
 
 def _register_admin() -> UserRead:
-    return register_user("admin", "admin@example.com", "Admin User", "secret123", "eigentuemer")
+    return register_user("admin", "admin@example.com", "Admin User", "Secret123", "eigentuemer")
 
 
 def _register_viewer() -> UserRead:
-    return register_user("viewer", "viewer@example.com", "View User", "pass123", "readonly")
+    return register_user("viewer", "viewer@example.com", "View User", "Pass1234", "readonly")
 
 
 # === Password Hashing ===
@@ -98,12 +98,12 @@ class TestUserManagement:
     def test_duplicate_username(self):
         _register_admin()
         with pytest.raises(HTTPException) as exc_info:
-            register_user("admin", "other@example.com", "Other", "pass", "readonly")
+            register_user("admin", "other@example.com", "Other", "Pass1234", "readonly")
         assert exc_info.value.status_code == 409
 
     def test_authenticate_valid(self):
         _register_admin()
-        user = authenticate_user("admin", "secret123")
+        user = authenticate_user("admin", "Secret123")
         assert user is not None
         assert user["username"] == "admin"
 
@@ -119,7 +119,7 @@ class TestUserManagement:
     def test_authenticate_inactive_user(self):
         u = _register_admin()
         update_user(u.id, {"is_active": False})
-        user = authenticate_user("admin", "secret123")
+        user = authenticate_user("admin", "Secret123")
         assert user is None
 
     def test_list_users(self):
@@ -155,13 +155,13 @@ class TestAuthRouter:
     def test_register_endpoint(self):
         result = register(UserCreate(
             username="test", email="test@example.com",
-            full_name="Test User", password="pass123"
+            full_name="Test User", password="Pass1234"
         ))
         assert result.username == "test"
 
     def test_login_endpoint(self):
         _register_admin()
-        result = login(LoginRequest(username="admin", password="secret123"))
+        result = login(LoginRequest(username="admin", password="Secret123"))
         assert result.access_token
         assert result.refresh_token
         assert result.token_type == "bearer"

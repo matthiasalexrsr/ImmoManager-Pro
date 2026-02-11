@@ -29,11 +29,15 @@ from .routers import (
     auth,
     billing,
     bookings,
+    budgets,
     calendar,
     categories,
     contracts,
     deposits,
     documents,
+    escalation,
+    handover_protocols,
+    history,
     i18n,
     leads,
     listings,
@@ -43,9 +47,11 @@ from .routers import (
     portfolios,
     properties,
     receivables,
+    rent_adjustments,
     reports,
     search,
     tasks,
+    tax_rates,
     tenants,
     units,
     viewings,
@@ -228,6 +234,12 @@ api_v1.include_router(billing.router, dependencies=_auth_dep)
 api_v1.include_router(deposits.router, dependencies=_auth_dep)
 api_v1.include_router(notifications.router, dependencies=_auth_dep)
 api_v1.include_router(reports.router, dependencies=_auth_dep)
+api_v1.include_router(tax_rates.router, dependencies=_auth_dep)
+api_v1.include_router(rent_adjustments.router, dependencies=_auth_dep)
+api_v1.include_router(handover_protocols.router, dependencies=_auth_dep)
+api_v1.include_router(budgets.router, dependencies=_auth_dep)
+api_v1.include_router(escalation.router, dependencies=_auth_dep)
+api_v1.include_router(history.router, dependencies=_auth_dep)
 
 app.include_router(api_v1)
 

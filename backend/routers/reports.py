@@ -2,7 +2,7 @@ import csv
 import io
 from datetime import date, timedelta
 
-from fastapi import APIRouter, Body, Query
+from fastapi import APIRouter, Body, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -439,3 +439,152 @@ def import_bookings(
         "errors": len(errors),
         "details": {"imported": imported, "errors": errors},
     }
+
+
+@router.get("/liquidity-forecast", response_model=None)
+def liquidity_forecast(
+    months: int = Query(12, ge=1, le=60),
+    property_id: str | None = Query(None),
+):
+    """T28: Liquidity forecast for 3/6/12 months based on historical data."""
+    from collections import defaultdict
+
+    today = date.today()
+    bookings = list(store.bookings.values())
+    if property_id:
+        bookings = [b for b in bookings if b.property_id == property_id]
+
+    # Calculate monthly averages from last 12 months
+    cutoff = today - timedelta(days=365)
+    recent = [b for b in bookings if b.booking_date >= cutoff]
+
+    monthly_income = defaultdict(float)
+    monthly_expense = defaultdict(float)
+    for b in recent:
+        key = f"{b.booking_date.year}-{b.booking_date.month:02d}"
+        if b.amount > 0:
+            monthly_income[key] += b.amount
+        else:
+            monthly_expense[key] += abs(b.amount)
+
+    n_months = max(len(monthly_income), 1)
+    avg_income = sum(monthly_income.values()) / n_months
+    avg_expense = sum(monthly_expense.values()) / n_months
+
+    # Current balance
+    current_balance = sum(b.amount for b in bookings)
+
+    # Project forward
+    forecast = []
+    balance = current_balance
+    for i in range(1, months + 1):
+        month_date = today + timedelta(days=30 * i)
+        balance += avg_income - avg_expense
+        forecast.append({
+            "month": f"{month_date.year}-{month_date.month:02d}",
+            "projected_income": round(avg_income, 2),
+            "projected_expense": round(avg_expense, 2),
+            "projected_balance": round(balance, 2),
+        })
+
+    return {
+        "current_balance": round(current_balance, 2),
+        "avg_monthly_income": round(avg_income, 2),
+        "avg_monthly_expense": round(avg_expense, 2),
+        "avg_monthly_net": round(avg_income - avg_expense, 2),
+        "forecast_months": months,
+        "forecast": forecast,
+    }
+
+
+@router.get("/pdf/{report_name}", response_model=None)
+def export_report_pdf(report_name: str):
+    """T8: Export a report as PDF.
+
+    Uses simple text-based PDF generation.
+    Supported reports: summary, finance, occupancy, cashflow.
+    """
+
+    valid_reports = ["summary", "finance", "occupancy", "cashflow", "receivables-aging"]
+    if report_name not in valid_reports:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Ungültiger Report. Erlaubt: {', '.join(valid_reports)}",
+        )
+
+    # Get report data
+    if report_name == "summary":
+        data = get_summary()
+    elif report_name == "finance":
+        data = get_finance_report()
+    elif report_name == "occupancy":
+        data = get_occupancy_report()
+    elif report_name == "cashflow":
+        data = get_cashflow_report()
+    elif report_name == "receivables-aging":
+        data = get_receivables_aging()
+    else:
+        data = {}
+
+    # Generate simple text-based PDF
+    lines = [
+        f"ImmoManager Pro - {report_name.replace('-', ' ').title()}",
+        f"Erstellt am: {date.today().isoformat()}",
+        "=" * 60,
+        "",
+    ]
+
+    def _flatten(obj, prefix=""):
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                _flatten(v, f"{prefix}{k}: " if not prefix else f"{prefix}.{k}: ")
+        elif isinstance(obj, list):
+            for i, item in enumerate(obj):
+                _flatten(item, f"{prefix}[{i}] ")
+        else:
+            lines.append(f"{prefix}{obj}")
+
+    _flatten(data)
+    text_content = "\n".join(lines)
+
+    # Try to use reportlab for real PDF
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.pdfgen import canvas
+
+        buf = io.BytesIO()
+        c = canvas.Canvas(buf, pagesize=A4)
+        width, height = A4
+        y = height - 50
+        c.setFont("Helvetica-Bold", 16)
+        c.drawString(50, y, f"ImmoManager Pro - {report_name.replace('-', ' ').title()}")
+        y -= 25
+        c.setFont("Helvetica", 10)
+        c.drawString(50, y, f"Erstellt am: {date.today().isoformat()}")
+        y -= 20
+        c.line(50, y, width - 50, y)
+        y -= 15
+        c.setFont("Helvetica", 9)
+        for line in text_content.split("\n")[3:]:  # Skip header
+            if y < 50:
+                c.showPage()
+                y = height - 50
+                c.setFont("Helvetica", 9)
+            c.drawString(50, y, line[:100])  # Truncate long lines
+            y -= 12
+        c.save()
+        buf.seek(0)
+        return StreamingResponse(
+            buf,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename={report_name}.pdf"},
+        )
+    except ImportError:
+        # Fallback: return as plain text with PDF-like header
+        buf = io.BytesIO(text_content.encode("utf-8"))
+        return StreamingResponse(
+            buf,
+            media_type="text/plain",
+            headers={"Content-Disposition": f"attachment; filename={report_name}.txt",
+                     "X-PDF-Fallback": "reportlab not installed"},
+        )

@@ -14,10 +14,13 @@ from .models import (
     BillingPeriodCreate,
     Booking,
     BookingCreate,
+    Budget,
+    BudgetCreate,
     CalendarEvent,
     CalendarEventCreate,
     Category,
     CategoryCreate,
+    ChangeHistoryEntry,
     Contract,
     ContractCreate,
     CostItem,
@@ -26,12 +29,22 @@ from .models import (
     DepositCreate,
     Document,
     DocumentCreate,
+    EscalationRule,
+    EscalationRuleCreate,
+    HandoverProtocol,
+    HandoverProtocolCreate,
     Invoice,
     InvoiceCreate,
     Lead,
     LeadCreate,
+    Listing,
+    ListingCreate,
+    ListingPhoto,
+    ListingPhotoCreate,
     MaintenanceCase,
     MaintenanceCaseCreate,
+    MeterReading,
+    MeterReadingCreate,
     Notification,
     NotificationCreate,
     NotificationTemplate,
@@ -42,18 +55,18 @@ from .models import (
     PropertyCreate,
     Receivable,
     ReceivableCreate,
+    RentAdjustment,
+    RentAdjustmentCreate,
     Task,
     TaskCreate,
+    TaxRate,
+    TaxRateCreate,
     Tenant,
     TenantCreate,
     Unit,
     UnitCreate,
     UtilityStatement,
     UtilityStatementCreate,
-    Listing,
-    ListingCreate,
-    ListingPhoto,
-    ListingPhotoCreate,
     ViewingAppointment,
     ViewingAppointmentCreate,
 )
@@ -98,6 +111,13 @@ class InMemoryStore:
     deposits: Dict[str, Deposit] = field(default_factory=dict)
     notifications: Dict[str, Notification] = field(default_factory=dict)
     notification_templates: Dict[str, NotificationTemplate] = field(default_factory=dict)
+    tax_rates: Dict[str, TaxRate] = field(default_factory=dict)
+    rent_adjustments: Dict[str, RentAdjustment] = field(default_factory=dict)
+    handover_protocols: Dict[str, HandoverProtocol] = field(default_factory=dict)
+    meter_readings: Dict[str, MeterReading] = field(default_factory=dict)
+    change_history: Dict[str, ChangeHistoryEntry] = field(default_factory=dict)
+    budgets: Dict[str, Budget] = field(default_factory=dict)
+    escalation_rules: Dict[str, EscalationRule] = field(default_factory=dict)
 
     def list_portfolios(self) -> List[Portfolio]:
         return list(self.portfolios.values())
@@ -1074,3 +1094,205 @@ class InMemoryStore:
         for category_id in category_ids:
             if category_id in self.categories:
                 self.delete_category(category_id)
+
+    # --- Tax Rates (T14) ---
+    def list_tax_rates(self) -> List[TaxRate]:
+        return list(self.tax_rates.values())
+
+    def create_tax_rate(self, data: TaxRateCreate) -> TaxRate:
+        item = TaxRate(id=_generate_id(), **data.model_dump())
+        self.tax_rates[item.id] = item
+        return item
+
+    def get_tax_rate(self, tax_rate_id: str) -> TaxRate:
+        try:
+            return self.tax_rates[tax_rate_id]
+        except KeyError as exc:
+            raise NotFoundError("Steuersatz nicht gefunden") from exc
+
+    def update_tax_rate(self, tax_rate_id: str, data: TaxRateCreate) -> TaxRate:
+        if tax_rate_id not in self.tax_rates:
+            raise NotFoundError("Steuersatz nicht gefunden")
+        old = self.tax_rates[tax_rate_id]
+        item = TaxRate(id=tax_rate_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
+        self.tax_rates[tax_rate_id] = item
+        return item
+
+    def delete_tax_rate(self, tax_rate_id: str) -> None:
+        if tax_rate_id not in self.tax_rates:
+            raise NotFoundError("Steuersatz nicht gefunden")
+        del self.tax_rates[tax_rate_id]
+
+    # --- Rent Adjustments (T15) ---
+    def list_rent_adjustments(self) -> List[RentAdjustment]:
+        return list(self.rent_adjustments.values())
+
+    def create_rent_adjustment(self, data: RentAdjustmentCreate) -> RentAdjustment:
+        if data.contract_id not in self.contracts:
+            raise ValidationError("Vertrag nicht gefunden")
+        item = RentAdjustment(id=_generate_id(), **data.model_dump())
+        self.rent_adjustments[item.id] = item
+        return item
+
+    def get_rent_adjustment(self, adj_id: str) -> RentAdjustment:
+        try:
+            return self.rent_adjustments[adj_id]
+        except KeyError as exc:
+            raise NotFoundError("Mietanpassung nicht gefunden") from exc
+
+    def update_rent_adjustment(self, adj_id: str, data: RentAdjustmentCreate) -> RentAdjustment:
+        if adj_id not in self.rent_adjustments:
+            raise NotFoundError("Mietanpassung nicht gefunden")
+        old = self.rent_adjustments[adj_id]
+        item = RentAdjustment(id=adj_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
+        self.rent_adjustments[adj_id] = item
+        return item
+
+    def delete_rent_adjustment(self, adj_id: str) -> None:
+        if adj_id not in self.rent_adjustments:
+            raise NotFoundError("Mietanpassung nicht gefunden")
+        del self.rent_adjustments[adj_id]
+
+    # --- Handover Protocols (T16) ---
+    def list_handover_protocols(self) -> List[HandoverProtocol]:
+        return list(self.handover_protocols.values())
+
+    def create_handover_protocol(self, data: HandoverProtocolCreate) -> HandoverProtocol:
+        if data.contract_id not in self.contracts:
+            raise ValidationError("Vertrag nicht gefunden")
+        if data.unit_id not in self.units:
+            raise ValidationError("Einheit nicht gefunden")
+        item = HandoverProtocol(id=_generate_id(), **data.model_dump())
+        self.handover_protocols[item.id] = item
+        return item
+
+    def get_handover_protocol(self, proto_id: str) -> HandoverProtocol:
+        try:
+            return self.handover_protocols[proto_id]
+        except KeyError as exc:
+            raise NotFoundError("Übergabeprotokoll nicht gefunden") from exc
+
+    def update_handover_protocol(self, proto_id: str, data: HandoverProtocolCreate) -> HandoverProtocol:
+        if proto_id not in self.handover_protocols:
+            raise NotFoundError("Übergabeprotokoll nicht gefunden")
+        old = self.handover_protocols[proto_id]
+        item = HandoverProtocol(id=proto_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
+        self.handover_protocols[proto_id] = item
+        return item
+
+    def delete_handover_protocol(self, proto_id: str) -> None:
+        if proto_id not in self.handover_protocols:
+            raise NotFoundError("Übergabeprotokoll nicht gefunden")
+        # Cascade delete meter readings
+        for mr_id, mr in list(self.meter_readings.items()):
+            if mr.handover_id == proto_id:
+                del self.meter_readings[mr_id]
+        del self.handover_protocols[proto_id]
+
+    # --- Meter Readings (T16) ---
+    def list_meter_readings(self) -> List[MeterReading]:
+        return list(self.meter_readings.values())
+
+    def create_meter_reading(self, data: MeterReadingCreate) -> MeterReading:
+        if data.handover_id not in self.handover_protocols:
+            raise ValidationError("Übergabeprotokoll nicht gefunden")
+        item = MeterReading(id=_generate_id(), **data.model_dump())
+        self.meter_readings[item.id] = item
+        return item
+
+    def get_meter_reading(self, reading_id: str) -> MeterReading:
+        try:
+            return self.meter_readings[reading_id]
+        except KeyError as exc:
+            raise NotFoundError("Zählerstand nicht gefunden") from exc
+
+    def update_meter_reading(self, reading_id: str, data: MeterReadingCreate) -> MeterReading:
+        if reading_id not in self.meter_readings:
+            raise NotFoundError("Zählerstand nicht gefunden")
+        old = self.meter_readings[reading_id]
+        item = MeterReading(id=reading_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
+        self.meter_readings[reading_id] = item
+        return item
+
+    def delete_meter_reading(self, reading_id: str) -> None:
+        if reading_id not in self.meter_readings:
+            raise NotFoundError("Zählerstand nicht gefunden")
+        del self.meter_readings[reading_id]
+
+    # --- Change History (T18) ---
+    def list_change_history(self) -> List[ChangeHistoryEntry]:
+        return list(self.change_history.values())
+
+    def add_change_history(self, entity_type: str, entity_id: str,
+                           field_name: str, old_value: str | None,
+                           new_value: str | None, changed_by: str | None = None,
+                           reason: str | None = None) -> ChangeHistoryEntry:
+        entry = ChangeHistoryEntry(
+            id=_generate_id(), entity_type=entity_type, entity_id=entity_id,
+            field_name=field_name, old_value=old_value, new_value=new_value,
+            changed_by=changed_by, reason=reason,
+        )
+        self.change_history[entry.id] = entry
+        return entry
+
+    def get_entity_history(self, entity_type: str, entity_id: str) -> List[ChangeHistoryEntry]:
+        return [h for h in self.change_history.values()
+                if h.entity_type == entity_type and h.entity_id == entity_id]
+
+    # --- Budgets (T27) ---
+    def list_budgets(self) -> List[Budget]:
+        return list(self.budgets.values())
+
+    def create_budget(self, data: BudgetCreate) -> Budget:
+        if data.property_id not in self.properties:
+            raise ValidationError("Immobilie nicht gefunden")
+        item = Budget(id=_generate_id(), **data.model_dump())
+        self.budgets[item.id] = item
+        return item
+
+    def get_budget(self, budget_id: str) -> Budget:
+        try:
+            return self.budgets[budget_id]
+        except KeyError as exc:
+            raise NotFoundError("Budget nicht gefunden") from exc
+
+    def update_budget(self, budget_id: str, data: BudgetCreate) -> Budget:
+        if budget_id not in self.budgets:
+            raise NotFoundError("Budget nicht gefunden")
+        old = self.budgets[budget_id]
+        item = Budget(id=budget_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
+        self.budgets[budget_id] = item
+        return item
+
+    def delete_budget(self, budget_id: str) -> None:
+        if budget_id not in self.budgets:
+            raise NotFoundError("Budget nicht gefunden")
+        del self.budgets[budget_id]
+
+    # --- Escalation Rules (T17) ---
+    def list_escalation_rules(self) -> List[EscalationRule]:
+        return list(self.escalation_rules.values())
+
+    def create_escalation_rule(self, data: EscalationRuleCreate) -> EscalationRule:
+        item = EscalationRule(id=_generate_id(), **data.model_dump())
+        self.escalation_rules[item.id] = item
+        return item
+
+    def get_escalation_rule(self, rule_id: str) -> EscalationRule:
+        try:
+            return self.escalation_rules[rule_id]
+        except KeyError as exc:
+            raise NotFoundError("Eskalationsregel nicht gefunden") from exc
+
+    def update_escalation_rule(self, rule_id: str, data: EscalationRuleCreate) -> EscalationRule:
+        if rule_id not in self.escalation_rules:
+            raise NotFoundError("Eskalationsregel nicht gefunden")
+        old = self.escalation_rules[rule_id]
+        item = EscalationRule(id=rule_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
+        self.escalation_rules[rule_id] = item
+        return item
+
+    def delete_escalation_rule(self, rule_id: str) -> None:
+        if rule_id not in self.escalation_rules:
+            raise NotFoundError("Eskalationsregel nicht gefunden")
+        del self.escalation_rules[rule_id]

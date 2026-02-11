@@ -30,6 +30,11 @@ jobs:
       - name: Lint with ruff
         run: ruff check backend/
 
+      - name: Type check with mypy
+        run: |
+          pip install mypy
+          mypy backend/ --ignore-missing-imports
+
       - name: Run tests with coverage
         run: |
           python -m pytest backend/tests/ -q --tb=short --cov=backend --cov-report=term-missing --cov-fail-under=80
