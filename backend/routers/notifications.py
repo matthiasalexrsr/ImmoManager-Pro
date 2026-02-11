@@ -69,7 +69,7 @@ def update_notification_template(template_id: str, payload: NotificationTemplate
 def patch_notification_template(template_id: str, payload: NotificationTemplatePatch) -> NotificationTemplate:
     try:
         return store._patch_entity(
-            store.notification_templates, template_id, payload, "Benachrichtigungsvorlage nicht gefunden"
+            None, template_id, payload, "Benachrichtigungsvorlage nicht gefunden"
         )
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -96,13 +96,18 @@ def generate_overdue_payment_notifications(
     check_date = as_of or date.today()
     created: list[Notification] = []
 
-    for receivable in store.receivables.values():
+    for receivable in store.list_receivables():
         if receivable.status == "open" and receivable.due_date < check_date:
-            contract = store.contracts.get(receivable.contract_id)
             tenant_name = "Unbekannt"
-            if contract:
-                tenant = store.tenants.get(contract.tenant_id)
-                tenant_name = tenant.full_name if tenant else "Unbekannt"
+            try:
+                contract = store.get_contract(receivable.contract_id)
+                try:
+                    tenant = store.get_tenant(contract.tenant_id)
+                    tenant_name = tenant.full_name
+                except Exception:
+                    pass
+            except Exception:
+                pass
 
             notification = store.create_notification(
                 NotificationCreate(
@@ -131,14 +136,18 @@ def generate_expiring_contract_notifications(
     horizon = check_date + timedelta(days=days_ahead)
     created: list[Notification] = []
 
-    for contract in store.contracts.values():
+    for contract in store.list_contracts():
         if (
             contract.status == "active"
             and contract.end_date is not None
             and check_date <= contract.end_date <= horizon
         ):
-            tenant = store.tenants.get(contract.tenant_id)
-            tenant_name = tenant.full_name if tenant else "Unbekannt"
+            tenant_name = "Unbekannt"
+            try:
+                tenant = store.get_tenant(contract.tenant_id)
+                tenant_name = tenant.full_name
+            except Exception:
+                pass
 
             notification = store.create_notification(
                 NotificationCreate(
@@ -163,7 +172,7 @@ def generate_due_task_notifications(
     check_date = as_of or date.today()
     created: list[Notification] = []
 
-    for task in store.tasks.values():
+    for task in store.list_tasks():
         if (
             task.status == "open"
             and task.due_date is not None
@@ -235,7 +244,7 @@ def mark_notification_read(notification_id: str) -> Notification:
 def patch_notification(notification_id: str, payload: NotificationPatch) -> Notification:
     try:
         return store._patch_entity(
-            store.notifications, notification_id, payload, "Benachrichtigung nicht gefunden"
+            None, notification_id, payload, "Benachrichtigung nicht gefunden"
         )
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

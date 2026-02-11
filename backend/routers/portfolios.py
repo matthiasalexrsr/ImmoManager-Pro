@@ -46,7 +46,7 @@ def update_portfolio(portfolio_id: str, payload: PortfolioCreate) -> Portfolio:
 @router.patch("/{portfolio_id}", response_model=Portfolio)
 def patch_portfolio(portfolio_id: str, payload: PortfolioPatch) -> Portfolio:
     try:
-        return store._patch_entity(store.portfolios, portfolio_id, payload, "Portfolio nicht gefunden")
+        return store._patch_entity(None, portfolio_id, payload, "Portfolio nicht gefunden")
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 

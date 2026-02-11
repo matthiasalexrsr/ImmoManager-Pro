@@ -523,6 +523,113 @@ class NotificationTemplateORM(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
 
+class TaxRateORM(Base):
+    __tablename__ = "tax_rates"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))
+    rate: Mapped[float] = mapped_column(Float)
+    description: Mapped[str | None] = mapped_column(Text)
+    is_default: Mapped[bool] = mapped_column(default=False)
+    valid_from: Mapped[date | None] = mapped_column(Date)
+    valid_until: Mapped[date | None] = mapped_column(Date)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class RentAdjustmentORM(Base):
+    __tablename__ = "rent_adjustments"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    contract_id: Mapped[str] = mapped_column(String(36), ForeignKey("contracts.id"))
+    adjustment_type: Mapped[str] = mapped_column(String(20))
+    effective_date: Mapped[date] = mapped_column(Date)
+    previous_rent: Mapped[float] = mapped_column(Float)
+    new_rent: Mapped[float] = mapped_column(Float)
+    increase_percent: Mapped[float | None] = mapped_column(Float)
+    index_base_year: Mapped[int | None] = mapped_column(Integer)
+    index_value: Mapped[float | None] = mapped_column(Float)
+    notes: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class HandoverProtocolORM(Base):
+    __tablename__ = "handover_protocols"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    contract_id: Mapped[str] = mapped_column(String(36), ForeignKey("contracts.id"))
+    unit_id: Mapped[str] = mapped_column(String(36), ForeignKey("units.id"))
+    protocol_type: Mapped[str] = mapped_column(String(20))
+    protocol_date: Mapped[date] = mapped_column(Date)
+    tenant_present: Mapped[bool] = mapped_column(default=True)
+    landlord_present: Mapped[bool] = mapped_column(default=True)
+    key_count: Mapped[int | None] = mapped_column(Integer)
+    key_details: Mapped[str | None] = mapped_column(Text)
+    overall_condition: Mapped[str | None] = mapped_column(String(20))
+    damages: Mapped[str | None] = mapped_column(Text)
+    photos: Mapped[str | None] = mapped_column(Text)
+    notes: Mapped[str | None] = mapped_column(Text)
+    tenant_signature: Mapped[str | None] = mapped_column(Text)
+    landlord_signature: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="draft")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class MeterReadingORM(Base):
+    __tablename__ = "meter_readings"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    handover_id: Mapped[str] = mapped_column(String(36), ForeignKey("handover_protocols.id", ondelete="CASCADE"))
+    meter_type: Mapped[str] = mapped_column(String(30))
+    meter_number: Mapped[str | None] = mapped_column(String(50))
+    reading_value: Mapped[float] = mapped_column(Float)
+    unit: Mapped[str] = mapped_column(String(10), default="kWh")
+    photo_url: Mapped[str | None] = mapped_column(Text)
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class BudgetORM(Base):
+    __tablename__ = "budgets"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    property_id: Mapped[str] = mapped_column(String(36), ForeignKey("properties.id"))
+    year: Mapped[int] = mapped_column(Integer)
+    category: Mapped[str] = mapped_column(String(50))
+    planned_amount: Mapped[float] = mapped_column(Float)
+    actual_amount: Mapped[float] = mapped_column(Float, default=0.0)
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class EscalationRuleORM(Base):
+    __tablename__ = "escalation_rules"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))
+    entity_type: Mapped[str] = mapped_column(String(30))
+    condition_field: Mapped[str] = mapped_column(String(50))
+    days_overdue: Mapped[int] = mapped_column(Integer)
+    action: Mapped[str] = mapped_column(String(30))
+    target_role: Mapped[str | None] = mapped_column(String(50))
+    notification_severity: Mapped[str] = mapped_column(String(20), default="warning")
+    is_active: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class ChangeHistoryORM(Base):
+    __tablename__ = "change_history"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    entity_type: Mapped[str] = mapped_column(String(50))
+    entity_id: Mapped[str] = mapped_column(String(36))
+    field_name: Mapped[str] = mapped_column(String(100))
+    old_value: Mapped[str | None] = mapped_column(Text)
+    new_value: Mapped[str | None] = mapped_column(Text)
+    changed_by: Mapped[str | None] = mapped_column(String(36))
+    changed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    reason: Mapped[str | None] = mapped_column(Text)
+
+
 class UserORM(Base):
     __tablename__ = "users"
 

@@ -51,7 +51,7 @@ def update_rent_adjustment(adj_id: str, payload: RentAdjustmentCreate):
 @router.patch("/{adj_id}", response_model=RentAdjustment)
 def patch_rent_adjustment(adj_id: str, payload: RentAdjustmentPatch):
     try:
-        return store._patch_entity(store.rent_adjustments, adj_id, payload, "Mietanpassung nicht gefunden")
+        return store._patch_entity(None, adj_id, payload, "Mietanpassung nicht gefunden")
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

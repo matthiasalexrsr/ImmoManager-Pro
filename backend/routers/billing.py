@@ -84,7 +84,7 @@ def update_billing_period(period_id: str, payload: BillingPeriodCreate) -> Billi
 def patch_billing_period(period_id: str, payload: BillingPeriodPatch) -> BillingPeriod:
     try:
         return store._patch_entity(
-            store.billing_periods, period_id, payload, "Abrechnungsperiode nicht gefunden"
+            None, period_id, payload, "Abrechnungsperiode nicht gefunden"
         )
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -148,7 +148,7 @@ def update_allocation_key(key_id: str, payload: AllocationKeyCreate) -> Allocati
 def patch_allocation_key(key_id: str, payload: AllocationKeyPatch) -> AllocationKey:
     try:
         return store._patch_entity(
-            store.allocation_keys, key_id, payload, "Verteilerschlüssel nicht gefunden"
+            None, key_id, payload, "Verteilerschlüssel nicht gefunden"
         )
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -212,7 +212,7 @@ def update_cost_item(item_id: str, payload: CostItemCreate) -> CostItem:
 def patch_cost_item(item_id: str, payload: CostItemPatch) -> CostItem:
     try:
         return store._patch_entity(
-            store.cost_items, item_id, payload, "Kostenposition nicht gefunden"
+            None, item_id, payload, "Kostenposition nicht gefunden"
         )
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -261,7 +261,7 @@ def get_utility_statement(statement_id: str) -> UtilityStatement:
 def patch_utility_statement(statement_id: str, payload: UtilityStatementPatch) -> UtilityStatement:
     try:
         return store._patch_entity(
-            store.utility_statements, statement_id, payload, "Betriebskostenabrechnung nicht gefunden"
+            None, statement_id, payload, "Betriebskostenabrechnung nicht gefunden"
         )
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -303,7 +303,7 @@ def generate_utility_statements(period_id: str) -> list[UtilityStatement]:
 
     # Find all active contracts for the property whose dates overlap the period
     contracts_in_period = [
-        c for c in store.contracts.values()
+        c for c in store.list_contracts()
         if c.property_id == property_id
         and c.start_date <= period.end_date
         and (c.end_date is None or c.end_date >= period.start_date)
@@ -317,7 +317,7 @@ def generate_utility_statements(period_id: str) -> list[UtilityStatement]:
 
     # Find cost items for this period
     cost_items = [
-        ci for ci in store.cost_items.values()
+        ci for ci in store.list_cost_items()
         if ci.billing_period_id == period_id
     ]
 
@@ -333,13 +333,21 @@ def generate_utility_statements(period_id: str) -> list[UtilityStatement]:
     # Collect allocation keys used by cost items
     used_key_ids = {ci.allocation_key_id for ci in cost_items}
     allocation_keys = {
-        k.id: k for k in store.allocation_keys.values()
+        k.id: k for k in store.list_allocation_keys()
         if k.id in used_key_ids
     }
 
+    # Pre-fetch units for the contracts
+    unit_cache = {}
+    for contract in contracts_in_period:
+        try:
+            unit_cache[contract.unit_id] = store.get_unit(contract.unit_id)
+        except Exception:
+            pass
+
     # Register unit shares for each allocation key
     for contract in contracts_in_period:
-        unit = store.units.get(contract.unit_id)
+        unit = unit_cache.get(contract.unit_id)
         if unit is None:
             continue
 
@@ -373,7 +381,7 @@ def generate_utility_statements(period_id: str) -> list[UtilityStatement]:
 
     # Calculate advances: sum of service_charge_advance * months in period for each contract
     for contract in contracts_in_period:
-        unit = store.units.get(contract.unit_id)
+        unit = unit_cache.get(contract.unit_id)
         monthly_advance = Decimal(str((unit.service_charge_advance or 0) + (unit.heating_advance or 0))) if unit else Decimal("0")
 
         # Calculate overlapping months
@@ -396,9 +404,12 @@ def generate_utility_statements(period_id: str) -> list[UtilityStatement]:
     generated = engine.generate()
 
     # Delete existing statements for this period
-    for us_id, us in list(store.utility_statements.items()):
-        if us.billing_period_id == period_id:
-            del store.utility_statements[us_id]
+    existing_statements = [
+        us for us in store.list_utility_statements()
+        if us.billing_period_id == period_id
+    ]
+    for us in existing_statements:
+        store.delete_utility_statement(us.id)
 
     # Create new statements
     results: list[UtilityStatement] = []

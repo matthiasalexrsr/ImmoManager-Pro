@@ -43,7 +43,7 @@ def update_tenant(tenant_id: str, payload: TenantCreate) -> Tenant:
 @router.patch("/{tenant_id}", response_model=Tenant)
 def patch_tenant(tenant_id: str, payload: TenantPatch) -> Tenant:
     try:
-        return store._patch_entity(store.tenants, tenant_id, payload, "Mieter nicht gefunden")
+        return store._patch_entity(None, tenant_id, payload, "Mieter nicht gefunden")
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 

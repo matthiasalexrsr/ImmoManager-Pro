@@ -51,7 +51,7 @@ def update_deposit(deposit_id: str, payload: DepositCreate) -> Deposit:
 @router.patch("/{deposit_id}", response_model=Deposit)
 def patch_deposit(deposit_id: str, payload: DepositPatch) -> Deposit:
     try:
-        return store._patch_entity(store.deposits, deposit_id, payload, "Kaution nicht gefunden")
+        return store._patch_entity(None, deposit_id, payload, "Kaution nicht gefunden")
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 

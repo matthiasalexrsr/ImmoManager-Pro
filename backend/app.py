@@ -19,6 +19,7 @@ from starlette.responses import FileResponse
 from .audit import log_action
 from .auth import require_auth
 from .config import settings
+from .dependencies import cleanup_session
 from .exceptions import register_exception_handlers
 from .logging_config import request_id_var, request_user_var, setup_logging
 from .plugins import get_plugins, load_plugins
@@ -159,6 +160,26 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(RequestLoggingMiddleware)
+
+
+# ─── DB Session Cleanup Middleware ────────────────────────────────────────────
+
+class DBSessionMiddleware(BaseHTTPMiddleware):
+    """Cleans up scoped DB session after each request.
+
+    Ensures each request gets a fresh session, preventing stale state
+    from leaking across concurrent requests.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        try:
+            response = await call_next(request)
+            return response
+        finally:
+            cleanup_session()
+
+
+app.add_middleware(DBSessionMiddleware)
 
 
 # ─── Audit Middleware ────────────────────────────────────────────────────────

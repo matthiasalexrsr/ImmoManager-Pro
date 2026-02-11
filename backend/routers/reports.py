@@ -30,23 +30,27 @@ def _csv_response(rows: list[dict], filename: str) -> StreamingResponse:
 
 @router.get("/summary")
 def get_summary(format: str | None = Query(None, alias="format")):
-    total_properties = len(store.properties)
-    total_units = len(store.units)
-    total_contracts = len(store.contracts)
+    all_properties = store.list_properties()
+    all_units = store.list_units()
+    all_contracts = store.list_contracts()
+    all_receivables = store.list_receivables()
+    all_bookings = store.list_bookings()
+    all_invoices = store.list_invoices()
+    all_maintenance = store.list_maintenance_cases()
+
+    total_properties = len(all_properties)
+    total_units = len(all_units)
+    total_contracts = len(all_contracts)
     open_receivables = sum(
-        receivable.amount_due
-        for receivable in store.receivables.values()
-        if receivable.status in {"open", "overdue"}
+        r.amount_due for r in all_receivables if r.status in {"open", "overdue"}
     )
     overdue_receivables = sum(
-        receivable.amount_due
-        for receivable in store.receivables.values()
-        if receivable.status == "overdue"
+        r.amount_due for r in all_receivables if r.status == "overdue"
     )
-    total_bookings = sum(booking.amount for booking in store.bookings.values())
-    total_invoices = sum(invoice.gross_amount for invoice in store.invoices.values())
+    total_bookings = sum(b.amount for b in all_bookings)
+    total_invoices = sum(inv.gross_amount for inv in all_invoices)
     open_maintenance_cases = sum(
-        1 for case in store.maintenance_cases.values() if case.status in {"open", "in_progress"}
+        1 for case in all_maintenance if case.status in {"open", "in_progress"}
     )
 
     data = {
@@ -84,11 +88,11 @@ def get_summary(format: str | None = Query(None, alias="format")):
 
 @router.get("/finance")
 def get_finance_report(format: str | None = Query(None, alias="format")):
-    categories = {category.id: category for category in store.categories.values()}
+    categories = {category.id: category for category in store.list_categories()}
     totals_by_category = {}
     uncategorized_total = 0.0
 
-    for booking in store.bookings.values():
+    for booking in store.list_bookings():
         if booking.category_id and booking.category_id in categories:
             category = categories[booking.category_id]
             entry = totals_by_category.setdefault(
@@ -118,14 +122,15 @@ def get_finance_report(format: str | None = Query(None, alias="format")):
     return {
         "totalsByCategory": totals,
         "uncategorizedTotal": uncategorized_total,
-        "bookingsTotal": sum(booking.amount for booking in store.bookings.values()),
+        "bookingsTotal": sum(booking.amount for booking in store.list_bookings()),
     }
 
 
 @router.get("/occupancy")
 def get_occupancy_report(format: str | None = Query(None, alias="format")):
-    total_units = len(store.units)
-    rented_units = sum(1 for unit in store.units.values() if unit.status == "rented")
+    all_units = store.list_units()
+    total_units = len(all_units)
+    rented_units = sum(1 for unit in all_units if unit.status == "rented")
     occupancy_rate = (rented_units / total_units) if total_units else 0.0
 
     if format == "csv":
@@ -156,7 +161,7 @@ def get_receivables_aging(format: str | None = Query(None, alias="format")):
     }
     open_total = 0.0
 
-    for receivable in store.receivables.values():
+    for receivable in store.list_receivables():
         if receivable.status not in {"open", "overdue"}:
             continue
         open_total += receivable.amount_due
@@ -191,16 +196,9 @@ def get_receivables_aging(format: str | None = Query(None, alias="format")):
 
 @router.get("/cashflow")
 def get_cashflow_report(format: str | None = Query(None, alias="format")):
-    income = sum(
-        booking.amount
-        for booking in store.bookings.values()
-        if booking.amount >= 0
-    )
-    expenses = sum(
-        -booking.amount
-        for booking in store.bookings.values()
-        if booking.amount < 0
-    )
+    all_bookings = store.list_bookings()
+    income = sum(b.amount for b in all_bookings if b.amount >= 0)
+    expenses = sum(-b.amount for b in all_bookings if b.amount < 0)
     net = income - expenses
 
     if format == "csv":
@@ -230,7 +228,7 @@ def get_contracts_expiring_report(
     threshold = today + timedelta(days=days)
 
     expiring = []
-    for contract in store.contracts.values():
+    for contract in store.list_contracts():
         if contract.end_date is None:
             continue
         if today <= contract.end_date <= threshold:
@@ -273,7 +271,7 @@ def get_maintenance_costs_report(format: str | None = Query(None, alias="format"
     by_category = {}
     open_cases = 0
 
-    for case in store.maintenance_cases.values():
+    for case in store.list_maintenance_cases():
         if case.status in {"open", "in_progress"}:
             open_cases += 1
         amount = case.estimated_cost or 0.0
@@ -314,7 +312,7 @@ def datev_export(
     DATEV Buchungsstapel format uses semicolons, German number formatting,
     and specific column headers recognized by DATEV accounting software.
     """
-    bookings = list(store.bookings.values())
+    bookings = store.list_bookings()
 
     if start_date:
         bookings = [b for b in bookings if b.booking_date >= start_date]
@@ -340,8 +338,8 @@ def datev_export(
         "Buchungstext",
     ])
 
-    accounts = {acc.id: acc for acc in store.accounts.values()}
-    categories = {cat.id: cat for cat in store.categories.values()}
+    accounts = {acc.id: acc for acc in store.list_accounts()}
+    categories = {cat.id: cat for cat in store.list_categories()}
 
     for booking in bookings:
         amount = abs(booking.amount)
@@ -450,7 +448,7 @@ def liquidity_forecast(
     from collections import defaultdict
 
     today = date.today()
-    bookings = list(store.bookings.values())
+    bookings = store.list_bookings()
     if property_id:
         bookings = [b for b in bookings if b.property_id == property_id]
 

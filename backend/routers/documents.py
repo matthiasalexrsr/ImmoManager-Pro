@@ -50,7 +50,7 @@ def update_document(document_id: str, payload: DocumentCreate) -> Document:
 @router.patch("/{document_id}", response_model=Document)
 def patch_document(document_id: str, payload: DocumentPatch) -> Document:
     try:
-        return store._patch_entity(store.documents, document_id, payload, "Dokument nicht gefunden")
+        return store._patch_entity(None, document_id, payload, "Dokument nicht gefunden")
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 

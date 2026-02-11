@@ -75,7 +75,7 @@ def update_handover_protocol(protocol_id: str, payload: HandoverProtocolCreate):
 @router.patch("/{protocol_id}", response_model=HandoverProtocol)
 def patch_handover_protocol(protocol_id: str, payload: HandoverProtocolPatch):
     try:
-        return store._patch_entity(store.handover_protocols, protocol_id, payload, "Übergabeprotokoll nicht gefunden")
+        return store._patch_entity(None, protocol_id, payload, "Übergabeprotokoll nicht gefunden")
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

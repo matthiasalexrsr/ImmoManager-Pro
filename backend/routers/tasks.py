@@ -144,7 +144,7 @@ def update_task(task_id: str, payload: TaskCreate) -> Task:
 @router.patch("/{task_id}", response_model=Task)
 def patch_task(task_id: str, payload: TaskPatch) -> Task:
     try:
-        return store._patch_entity(store.tasks, task_id, payload, "Aufgabe nicht gefunden")
+        return store._patch_entity(None, task_id, payload, "Aufgabe nicht gefunden")
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 

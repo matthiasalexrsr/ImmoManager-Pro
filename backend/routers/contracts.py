@@ -69,7 +69,7 @@ def update_contract(contract_id: str, payload: ContractCreate) -> Contract:
 @router.patch("/{contract_id}", response_model=Contract)
 def patch_contract(contract_id: str, payload: ContractPatch) -> Contract:
     try:
-        return store._patch_entity(store.contracts, contract_id, payload, "Vertrag nicht gefunden")
+        return store._patch_entity(None, contract_id, payload, "Vertrag nicht gefunden")
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -84,8 +84,9 @@ def delete_contract(contract_id: str) -> None:
 
 def _build_charge_and_payments(contract: Contract) -> tuple[ChargeConfig, list[PaymentLine]]:
     """Derive ChargeConfig from the unit and collect tenant payment bookings."""
-    unit = store.units.get(contract.unit_id)
-    if unit is None:
+    try:
+        unit = store.get_unit(contract.unit_id)
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Einheit zum Vertrag nicht gefunden",
@@ -95,13 +96,16 @@ def _build_charge_and_payments(contract: Contract) -> tuple[ChargeConfig, list[P
         service_charge_advance=Decimal(str(unit.service_charge_advance or 0)),
         heating_advance=Decimal(str(unit.heating_advance or 0)),
     )
+    # Filter bookings by tenant, scoped to this contract's property when possible
     payments = [
         PaymentLine(
             booking_date=booking.booking_date,
             amount=Decimal(str(booking.amount)),
         )
-        for booking in store.bookings.values()
-        if booking.tenant_id == contract.tenant_id and booking.amount > 0
+        for booking in store.list_bookings()
+        if booking.tenant_id == contract.tenant_id
+        and (not booking.property_id or booking.property_id == contract.property_id)
+        and booking.amount > 0
     ]
     return charge, payments
 

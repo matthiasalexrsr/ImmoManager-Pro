@@ -50,7 +50,7 @@ def update_receivable(receivable_id: str, payload: ReceivableCreate) -> Receivab
 @router.patch("/{receivable_id}", response_model=Receivable)
 def patch_receivable(receivable_id: str, payload: ReceivablePatch) -> Receivable:
     try:
-        return store._patch_entity(store.receivables, receivable_id, payload, "Forderung nicht gefunden")
+        return store._patch_entity(None, receivable_id, payload, "Forderung nicht gefunden")
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 

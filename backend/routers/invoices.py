@@ -54,7 +54,7 @@ def update_invoice(invoice_id: str, payload: InvoiceCreate) -> Invoice:
 @router.patch("/{invoice_id}", response_model=Invoice)
 def patch_invoice(invoice_id: str, payload: InvoicePatch) -> Invoice:
     try:
-        return store._patch_entity(store.invoices, invoice_id, payload, "Rechnung nicht gefunden")
+        return store._patch_entity(None, invoice_id, payload, "Rechnung nicht gefunden")
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -87,7 +87,7 @@ def match_invoice_to_bookings(invoice_id: str) -> dict:
             open_amount=Decimal(str(abs(booking.amount))),
             booking_date=booking.booking_date,
         )
-        for booking in store.bookings.values()
+        for booking in store.list_bookings()
         if booking.amount < 0 and booking.status == "open"
     ]
 

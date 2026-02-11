@@ -53,7 +53,7 @@ def update_booking(booking_id: str, payload: BookingCreate) -> Booking:
 @router.patch("/{booking_id}", response_model=Booking)
 def patch_booking(booking_id: str, payload: BookingPatch) -> Booking:
     try:
-        return store._patch_entity(store.bookings, booking_id, payload, "Buchung nicht gefunden")
+        return store._patch_entity(None, booking_id, payload, "Buchung nicht gefunden")
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 

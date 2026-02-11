@@ -14,23 +14,30 @@ from ..db.orm_models import (
     AllocationKeyORM,
     BillingPeriodORM,
     BookingORM,
+    BudgetORM,
     CalendarEventORM,
     CategoryORM,
+    ChangeHistoryORM,
     ContractORM,
     CostItemORM,
     DepositORM,
     DocumentORM,
+    EscalationRuleORM,
+    HandoverProtocolORM,
     InvoiceORM,
     LeadORM,
     ListingORM,
     ListingPhotoORM,
     MaintenanceCaseORM,
+    MeterReadingORM,
     NotificationORM,
     NotificationTemplateORM,
     PortfolioORM,
     PropertyORM,
     ReceivableORM,
+    RentAdjustmentORM,
     TaskORM,
+    TaxRateORM,
     TenantORM,
     UnitORM,
     UtilityStatementORM,
@@ -45,10 +52,13 @@ from ..models import (
     BillingPeriodCreate,
     Booking,
     BookingCreate,
+    Budget,
+    BudgetCreate,
     CalendarEvent,
     CalendarEventCreate,
     Category,
     CategoryCreate,
+    ChangeHistoryEntry,
     Contract,
     ContractCreate,
     CostItem,
@@ -57,6 +67,10 @@ from ..models import (
     DepositCreate,
     Document,
     DocumentCreate,
+    EscalationRule,
+    EscalationRuleCreate,
+    HandoverProtocol,
+    HandoverProtocolCreate,
     Invoice,
     InvoiceCreate,
     Lead,
@@ -67,6 +81,8 @@ from ..models import (
     ListingPhotoCreate,
     MaintenanceCase,
     MaintenanceCaseCreate,
+    MeterReading,
+    MeterReadingCreate,
     Notification,
     NotificationCreate,
     NotificationTemplate,
@@ -77,8 +93,12 @@ from ..models import (
     PropertyCreate,
     Receivable,
     ReceivableCreate,
+    RentAdjustment,
+    RentAdjustmentCreate,
     Task,
     TaskCreate,
+    TaxRate,
+    TaxRateCreate,
     Tenant,
     TenantCreate,
     Unit,
@@ -123,6 +143,13 @@ class SQLAlchemyStore:
         self._deposits = BaseRepository(db, DepositORM, Deposit, "Kaution nicht gefunden")
         self._notifications = BaseRepository(db, NotificationORM, Notification, "Benachrichtigung nicht gefunden")
         self._notification_templates = BaseRepository(db, NotificationTemplateORM, NotificationTemplate, "Benachrichtigungsvorlage nicht gefunden")
+        self._tax_rates = BaseRepository(db, TaxRateORM, TaxRate, "Steuersatz nicht gefunden")
+        self._rent_adjustments = BaseRepository(db, RentAdjustmentORM, RentAdjustment, "Mietanpassung nicht gefunden")
+        self._handover_protocols = BaseRepository(db, HandoverProtocolORM, HandoverProtocol, "Übergabeprotokoll nicht gefunden")
+        self._meter_readings = BaseRepository(db, MeterReadingORM, MeterReading, "Zählerstand nicht gefunden")
+        self._budgets = BaseRepository(db, BudgetORM, Budget, "Budget nicht gefunden")
+        self._escalation_rules = BaseRepository(db, EscalationRuleORM, EscalationRule, "Eskalationsregel nicht gefunden")
+        self._change_history = BaseRepository(db, ChangeHistoryORM, ChangeHistoryEntry, "Änderungshistorie nicht gefunden")
 
     def _commit(self):
         self.db.commit()
@@ -863,6 +890,151 @@ class SQLAlchemyStore:
         self._notification_templates.delete(template_id)
         self._commit()
 
+    # --- Tax Rates ---
+
+    def list_tax_rates(self) -> list[TaxRate]:
+        return self._tax_rates.list_all()
+
+    def create_tax_rate(self, data: TaxRateCreate) -> TaxRate:
+        result = self._tax_rates.create(data)
+        self._commit()
+        return result
+
+    def get_tax_rate(self, tax_rate_id: str) -> TaxRate:
+        return self._tax_rates.get(tax_rate_id)
+
+    def update_tax_rate(self, tax_rate_id: str, data: TaxRateCreate) -> TaxRate:
+        result = self._tax_rates.update(tax_rate_id, data)
+        self._commit()
+        return result
+
+    def delete_tax_rate(self, tax_rate_id: str) -> None:
+        self._tax_rates.delete(tax_rate_id)
+        self._commit()
+
+    # --- Rent Adjustments ---
+
+    def list_rent_adjustments(self) -> list[RentAdjustment]:
+        return self._rent_adjustments.list_all()
+
+    def create_rent_adjustment(self, data: RentAdjustmentCreate) -> RentAdjustment:
+        if not self._contracts.exists(data.contract_id):
+            raise ValidationError("Vertrag existiert nicht")
+        result = self._rent_adjustments.create(data)
+        self._commit()
+        return result
+
+    def get_rent_adjustment(self, adj_id: str) -> RentAdjustment:
+        return self._rent_adjustments.get(adj_id)
+
+    def update_rent_adjustment(self, adj_id: str, data: RentAdjustmentCreate) -> RentAdjustment:
+        result = self._rent_adjustments.update(adj_id, data)
+        self._commit()
+        return result
+
+    def delete_rent_adjustment(self, adj_id: str) -> None:
+        self._rent_adjustments.delete(adj_id)
+        self._commit()
+
+    # --- Handover Protocols ---
+
+    def list_handover_protocols(self) -> list[HandoverProtocol]:
+        return self._handover_protocols.list_all()
+
+    def create_handover_protocol(self, data: HandoverProtocolCreate) -> HandoverProtocol:
+        if not self._contracts.exists(data.contract_id):
+            raise ValidationError("Vertrag existiert nicht")
+        if not self._units.exists(data.unit_id):
+            raise ValidationError("Einheit existiert nicht")
+        result = self._handover_protocols.create(data)
+        self._commit()
+        return result
+
+    def get_handover_protocol(self, protocol_id: str) -> HandoverProtocol:
+        return self._handover_protocols.get(protocol_id)
+
+    def update_handover_protocol(self, protocol_id: str, data: HandoverProtocolCreate) -> HandoverProtocol:
+        result = self._handover_protocols.update(protocol_id, data)
+        self._commit()
+        return result
+
+    def delete_handover_protocol(self, protocol_id: str) -> None:
+        self._handover_protocols.delete(protocol_id)
+        self._commit()
+
+    # --- Meter Readings ---
+
+    def list_meter_readings(self) -> list[MeterReading]:
+        return self._meter_readings.list_all()
+
+    def create_meter_reading(self, data: MeterReadingCreate) -> MeterReading:
+        if not self._handover_protocols.exists(data.handover_id):
+            raise ValidationError("Übergabeprotokoll existiert nicht")
+        result = self._meter_readings.create(data)
+        self._commit()
+        return result
+
+    def get_meter_reading(self, reading_id: str) -> MeterReading:
+        return self._meter_readings.get(reading_id)
+
+    def delete_meter_reading(self, reading_id: str) -> None:
+        self._meter_readings.delete(reading_id)
+        self._commit()
+
+    # --- Budgets ---
+
+    def list_budgets(self) -> list[Budget]:
+        return self._budgets.list_all()
+
+    def create_budget(self, data: BudgetCreate) -> Budget:
+        if not self._properties.exists(data.property_id):
+            raise ValidationError("Immobilie existiert nicht")
+        result = self._budgets.create(data)
+        self._commit()
+        return result
+
+    def get_budget(self, budget_id: str) -> Budget:
+        return self._budgets.get(budget_id)
+
+    def update_budget(self, budget_id: str, data: BudgetCreate) -> Budget:
+        result = self._budgets.update(budget_id, data)
+        self._commit()
+        return result
+
+    def delete_budget(self, budget_id: str) -> None:
+        self._budgets.delete(budget_id)
+        self._commit()
+
+    # --- Escalation Rules ---
+
+    def list_escalation_rules(self) -> list[EscalationRule]:
+        return self._escalation_rules.list_all()
+
+    def create_escalation_rule(self, data: EscalationRuleCreate) -> EscalationRule:
+        result = self._escalation_rules.create(data)
+        self._commit()
+        return result
+
+    def get_escalation_rule(self, rule_id: str) -> EscalationRule:
+        return self._escalation_rules.get(rule_id)
+
+    def update_escalation_rule(self, rule_id: str, data: EscalationRuleCreate) -> EscalationRule:
+        result = self._escalation_rules.update(rule_id, data)
+        self._commit()
+        return result
+
+    def delete_escalation_rule(self, rule_id: str) -> None:
+        self._escalation_rules.delete(rule_id)
+        self._commit()
+
+    # --- Change History ---
+
+    def list_change_history(self) -> list[ChangeHistoryEntry]:
+        return self._change_history.list_all()
+
+    def get_entity_history(self, entity_type: str, entity_id: str) -> list[ChangeHistoryEntry]:
+        return self._change_history.filter_by(entity_type=entity_type, entity_id=entity_id)
+
     # --- Generic patch (mirrors InMemoryStore._patch_entity) ---
 
     def _patch_entity(self, collection_unused, entity_id: str, patch: PydanticBaseModel, not_found_msg: str):
@@ -898,6 +1070,12 @@ class SQLAlchemyStore:
             "Kaution nicht gefunden": self._deposits,
             "Benachrichtigung nicht gefunden": self._notifications,
             "Benachrichtigungsvorlage nicht gefunden": self._notification_templates,
+            "Steuersatz nicht gefunden": self._tax_rates,
+            "Mietanpassung nicht gefunden": self._rent_adjustments,
+            "Übergabeprotokoll nicht gefunden": self._handover_protocols,
+            "Zählerstand nicht gefunden": self._meter_readings,
+            "Budget nicht gefunden": self._budgets,
+            "Eskalationsregel nicht gefunden": self._escalation_rules,
         }
         repo = repo_map.get(not_found_msg)
         if repo is None:

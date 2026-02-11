@@ -1056,8 +1056,52 @@ class InMemoryStore:
             raise NotFoundError("Benachrichtigungsvorlage nicht gefunden")
         del self.notification_templates[template_id]
 
-    def _patch_entity(self, collection: dict, entity_id: str, patch: PydanticBaseModel, not_found_msg: str):
-        """Apply a partial update to an entity. Only non-None fields in the patch are applied."""
+    def _get_collection(self, not_found_msg: str) -> dict:
+        """Look up the right collection dict from a not-found message."""
+        _msg_to_collection = {
+            "Portfolio nicht gefunden": self.portfolios,
+            "Immobilie nicht gefunden": self.properties,
+            "Einheit nicht gefunden": self.units,
+            "Mieter nicht gefunden": self.tenants,
+            "Vertrag nicht gefunden": self.contracts,
+            "Konto nicht gefunden": self.accounts,
+            "Kategorie nicht gefunden": self.categories,
+            "Buchung nicht gefunden": self.bookings,
+            "Forderung nicht gefunden": self.receivables,
+            "Rechnung nicht gefunden": self.invoices,
+            "Instandhaltungsfall nicht gefunden": self.maintenance_cases,
+            "Dokument nicht gefunden": self.documents,
+            "Aufgabe nicht gefunden": self.tasks,
+            "Termin nicht gefunden": self.calendar_events,
+            "Inserat nicht gefunden": self.listings,
+            "Inseratsfoto nicht gefunden": self.listing_photos,
+            "Interessent nicht gefunden": self.leads,
+            "Besichtigungstermin nicht gefunden": self.viewing_appointments,
+            "Abrechnungsperiode nicht gefunden": self.billing_periods,
+            "Verteilerschlüssel nicht gefunden": self.allocation_keys,
+            "Kostenposition nicht gefunden": self.cost_items,
+            "Betriebskostenabrechnung nicht gefunden": self.utility_statements,
+            "Kaution nicht gefunden": self.deposits,
+            "Benachrichtigung nicht gefunden": self.notifications,
+            "Benachrichtigungsvorlage nicht gefunden": self.notification_templates,
+            "Steuersatz nicht gefunden": self.tax_rates,
+            "Mietanpassung nicht gefunden": self.rent_adjustments,
+            "Übergabeprotokoll nicht gefunden": self.handover_protocols,
+            "Budget nicht gefunden": self.budgets,
+            "Eskalationsregel nicht gefunden": self.escalation_rules,
+        }
+        collection = _msg_to_collection.get(not_found_msg)
+        if collection is None:
+            raise ValueError(f"Unknown entity type for message: {not_found_msg}")
+        return collection
+
+    def _patch_entity(self, _collection_unused, entity_id: str, patch: PydanticBaseModel, not_found_msg: str):
+        """Apply a partial update to an entity. Only non-None fields in the patch are applied.
+
+        The first argument is unused (kept for API compatibility) — the collection
+        is resolved from not_found_msg, matching SQLAlchemyStore behaviour.
+        """
+        collection = self._get_collection(not_found_msg)
         if entity_id not in collection:
             raise NotFoundError(not_found_msg)
         old = collection[entity_id]
