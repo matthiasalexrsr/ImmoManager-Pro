@@ -15,6 +15,11 @@ import multiprocessing
 import os
 import sys
 
+# ---------------------------------------------------------------------------
+# Frozen-bundle detection (used throughout)
+# ---------------------------------------------------------------------------
+IS_FROZEN = getattr(sys, "frozen", False)
+
 
 def _get_base_dir():
     """Return the base directory for bundled resources.
@@ -23,22 +28,74 @@ def _get_base_dir():
     temporary directory referenced by sys._MEIPASS.  Otherwise, use the
     project root (parent of the backend/ package).
     """
-    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+    if IS_FROZEN and hasattr(sys, "_MEIPASS"):
         return sys._MEIPASS
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def _wait_on_error():
-    """Keep the console window open on error when running as .exe on Windows."""
-    if getattr(sys, "frozen", False) and sys.platform == "win32":
+def _exe_dir():
+    """Return the directory the .exe lives in (not _internal)."""
+    if IS_FROZEN:
+        return os.path.dirname(sys.executable)
+    return _get_base_dir()
+
+
+def _setup_logging_to_file():
+    """Write a startup log next to the .exe so errors survive a closed console."""
+    if not IS_FROZEN:
+        return None
+    log_path = os.path.join(_exe_dir(), "immo_startup.log")
+    try:
+        fh = open(log_path, "w", encoding="utf-8")
+        return fh
+    except OSError:
+        return None
+
+
+def _pause_console():
+    """Keep the console window open so the user can read output."""
+    if IS_FROZEN:
         print()
-        input("Druecke Enter zum Beenden...")
+        try:
+            input("Druecke Enter zum Beenden...")
+        except EOFError:
+            pass
+
+
+class _TeeWriter:
+    """Write to both the console and a log file simultaneously."""
+
+    def __init__(self, original, log_file):
+        self.original = original
+        self.log_file = log_file
+
+    def write(self, text):
+        self.original.write(text)
+        if self.log_file:
+            try:
+                self.log_file.write(text)
+                self.log_file.flush()
+            except OSError:
+                pass
+
+    def flush(self):
+        self.original.flush()
+        if self.log_file:
+            try:
+                self.log_file.flush()
+            except OSError:
+                pass
+
+    # Needed so Python treats this as a valid stream
+    def isatty(self):
+        return getattr(self.original, "isatty", lambda: False)()
+
+    @property
+    def encoding(self):
+        return getattr(self.original, "encoding", "utf-8")
 
 
 def main():
-    # Required for PyInstaller on Windows to avoid multiprocessing issues
-    multiprocessing.freeze_support()
-
     import argparse
 
     parser = argparse.ArgumentParser(
@@ -53,17 +110,17 @@ def main():
 
     # When running as frozen .exe, set working directory and sys.path
     base_dir = _get_base_dir()
-    is_frozen = getattr(sys, "frozen", False)
 
-    if is_frozen:
+    if IS_FROZEN:
         os.chdir(base_dir)
         if base_dir not in sys.path:
             sys.path.insert(0, base_dir)
 
     print(f"ImmoManager Pro v1.0.0")
     print(f"Python {sys.version}")
-    if is_frozen:
+    if IS_FROZEN:
         print(f"Bundle: {base_dir}")
+        print(f"Exe:    {sys.executable}")
     print()
 
     # Import the app early so import errors are visible before uvicorn starts
@@ -74,7 +131,7 @@ def main():
         print(f"\nFEHLER beim Laden der Anwendung:\n{exc}")
         import traceback
         traceback.print_exc()
-        _wait_on_error()
+        _pause_console()
         sys.exit(1)
 
     print("Anwendung geladen.")
@@ -122,17 +179,35 @@ def main():
         print(f"\nFEHLER beim Starten des Servers:\n{exc}")
         import traceback
         traceback.print_exc()
-        _wait_on_error()
+        _pause_console()
         sys.exit(1)
 
 
 if __name__ == "__main__":
+    # freeze_support() MUST be called immediately after __name__ guard.
+    # On Windows frozen bundles, child processes re-execute the script and
+    # freeze_support() ensures they exit cleanly instead of re-spawning.
+    multiprocessing.freeze_support()
+
+    # Set up a log file next to the .exe so errors survive a closed console
+    _log_fh = _setup_logging_to_file()
+    if _log_fh:
+        sys.stdout = _TeeWriter(sys.__stdout__, _log_fh)
+        sys.stderr = _TeeWriter(sys.__stderr__, _log_fh)
+
     try:
         main()
-    except Exception as exc:
-        print(f"\nUnerwarteter Fehler:\n{exc}")
-        import traceback
-        traceback.print_exc()
-        if getattr(sys, "frozen", False) and sys.platform == "win32":
-            input("\nDruecke Enter zum Beenden...")
-        sys.exit(1)
+    except BaseException as exc:
+        # Catch *everything* (SystemExit, KeyboardInterrupt, etc.) so the
+        # console window stays open long enough for the user to read errors.
+        if not isinstance(exc, (KeyboardInterrupt, SystemExit)):
+            print(f"\nUnerwarteter Fehler:\n{exc}")
+            import traceback
+            traceback.print_exc()
+        _pause_console()
+    finally:
+        if _log_fh:
+            try:
+                _log_fh.close()
+            except OSError:
+                pass

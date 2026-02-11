@@ -29,15 +29,26 @@ def check_pyinstaller():
 
 
 def build_frontend():
-    """Build the frontend if node_modules exist."""
+    """Install npm deps and build the frontend."""
     frontend_dir = ROOT / "frontend"
-    if (frontend_dir / "node_modules").is_dir():
-        print("Baue Frontend...")
-        subprocess.check_call(["npm", "run", "build"], cwd=str(frontend_dir))
-    elif (frontend_dir / "dist").is_dir():
-        print("Frontend dist/ bereits vorhanden.")
-    else:
-        print("WARNUNG: Kein Frontend-Build gefunden. Frontend wird nicht eingebunden.")
+    if not (frontend_dir / "package.json").is_file():
+        print("WARNUNG: Kein frontend/package.json gefunden. Frontend wird nicht eingebunden.")
+        return
+
+    import shutil
+
+    if shutil.which("npm") is None:
+        if (frontend_dir / "dist").is_dir():
+            print("Frontend dist/ bereits vorhanden (npm nicht verfügbar).")
+        else:
+            print("FEHLER: npm nicht gefunden und frontend/dist existiert nicht.")
+            sys.exit(1)
+        return
+
+    print("Installiere Frontend-Abhängigkeiten...")
+    subprocess.check_call(["npm", "install"], cwd=str(frontend_dir))
+    print("Baue Frontend...")
+    subprocess.check_call(["npm", "run", "build"], cwd=str(frontend_dir))
 
 
 def build_exe(onefile=False):
@@ -62,6 +73,8 @@ def build_exe(onefile=False):
             "--hidden-import", "sqlalchemy.dialects.sqlite",
             "--hidden-import", "aiosqlite",
             "--hidden-import", "pydantic_settings",
+            "--hidden-import", "cffi",
+            "--hidden-import", "cryptography",
             "--console",
             str(ROOT / "backend" / "__main__.py"),
         ]
