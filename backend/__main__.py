@@ -5,13 +5,30 @@ Usage:
     python -m backend --seed             # Seed demo data then start
     python -m backend --port 9000        # Custom port
     python -m backend --no-browser       # Don't open browser
+
+Also works as PyInstaller-bundled .exe:
+    ImmoManager-Pro.exe
+    ImmoManager-Pro.exe --seed --port 9000
 """
 
 import argparse
+import os
 import sys
 import threading
 import time
 import webbrowser
+
+
+def _get_base_dir():
+    """Return the base directory for bundled resources.
+
+    When running as a PyInstaller bundle, resources are extracted to a
+    temporary directory referenced by sys._MEIPASS.  Otherwise, use the
+    project root (parent of the backend/ package).
+    """
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        return sys._MEIPASS
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def main():
@@ -25,11 +42,23 @@ def main():
     parser.add_argument("--no-browser", action="store_true", help="Don't auto-open browser")
     args = parser.parse_args()
 
+    # When running as frozen .exe, set working directory to base dir
+    # so that relative paths (alembic.ini, i18n/, frontend/dist/) resolve correctly
+    base_dir = _get_base_dir()
+    if getattr(sys, "frozen", False):
+        os.chdir(base_dir)
+        # Ensure the backend package can be found
+        if base_dir not in sys.path:
+            sys.path.insert(0, base_dir)
+
     # Seed demo data if requested
     if args.seed:
         print("Lade Demo-Daten...")
-        from seed_data import seed
-        seed()
+        try:
+            from seed_data import seed
+            seed()
+        except ImportError:
+            print("WARNUNG: seed_data.py nicht gefunden. Demo-Daten werden nicht geladen.")
         print()
 
     url = f"http://{args.host}:{args.port}"

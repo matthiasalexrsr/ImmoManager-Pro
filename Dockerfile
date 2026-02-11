@@ -17,6 +17,9 @@ COPY db/ db/
 COPY alembic.ini .
 COPY i18n/ i18n/
 
+# Copy pre-built frontend (run `cd frontend && npm run build` before docker build)
+COPY frontend/dist/ frontend/dist/
+
 # Copy entrypoint script
 COPY docker-entrypoint.sh .
 RUN chmod +x docker-entrypoint.sh

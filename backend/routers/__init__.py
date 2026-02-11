@@ -1,5 +1,6 @@
 from . import (
     accounts,
+    admin,
     audit,
     auth,
     billing,
@@ -19,6 +20,7 @@ from . import (
     properties,
     receivables,
     reports,
+    search,
     tasks,
     tenants,
     units,
@@ -27,6 +29,7 @@ from . import (
 
 __all__ = [
     "accounts",
+    "admin",
     "audit",
     "auth",
     "billing",
@@ -46,6 +49,7 @@ __all__ = [
     "properties",
     "receivables",
     "reports",
+    "search",
     "tasks",
     "tenants",
     "units",
