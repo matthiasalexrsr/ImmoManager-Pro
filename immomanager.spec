@@ -70,6 +70,7 @@ _THIRD_PARTY_PACKAGES = [
     'cffi',
     'cryptography',
     'multipart',
+    'python_multipart',
     'annotated_types',
     'typing_extensions',
     'dotenv',
@@ -185,6 +186,8 @@ _EXPLICIT_THIRD_PARTY = [
     'cryptography.hazmat.primitives',
     'multipart',
     'multipart.multipart',
+    'python_multipart',
+    'python_multipart.multipart',
     'typing_extensions',
     'dotenv',
 ]
@@ -253,6 +256,7 @@ a = Analysis(
         'backend.events',
         'backend.logging_config',
         'backend.plugins',
+        'backend.plugins.base',
         # --- Database ---
         'backend.db',
         'backend.db.session',

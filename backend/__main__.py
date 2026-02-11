@@ -131,7 +131,6 @@ def main():
         print(f"\nFEHLER beim Laden der Anwendung:\n{exc}")
         import traceback
         traceback.print_exc()
-        _pause_console()
         sys.exit(1)
 
     print("Anwendung geladen.")
@@ -179,7 +178,6 @@ def main():
         print(f"\nFEHLER beim Starten des Servers:\n{exc}")
         import traceback
         traceback.print_exc()
-        _pause_console()
         sys.exit(1)
 
 
@@ -197,13 +195,17 @@ if __name__ == "__main__":
 
     try:
         main()
+    except KeyboardInterrupt:
+        print("\nServer beendet.")
+    except SystemExit as exc:
+        # Pause on errors (non-zero exit) so the user can read output.
+        # Clean exit (code 0 or None) should close the console normally.
+        if exc.code:
+            _pause_console()
     except BaseException as exc:
-        # Catch *everything* (SystemExit, KeyboardInterrupt, etc.) so the
-        # console window stays open long enough for the user to read errors.
-        if not isinstance(exc, (KeyboardInterrupt, SystemExit)):
-            print(f"\nUnerwarteter Fehler:\n{exc}")
-            import traceback
-            traceback.print_exc()
+        print(f"\nUnerwarteter Fehler:\n{exc}")
+        import traceback
+        traceback.print_exc()
         _pause_console()
     finally:
         if _log_fh:

@@ -1,4 +1,5 @@
 @echo off
+setlocal EnableDelayedExpansion
 REM ImmoManager Pro — Build Script (Windows)
 REM
 REM Creates a standalone .exe in dist\ImmoManager-Pro\
@@ -22,7 +23,7 @@ REM Install all project dependencies + PyInstaller
 echo Installiere Abhaengigkeiten...
 pip install --upgrade pip setuptools wheel -q
 pip install -e ".[build]" -q
-if %errorlevel% neq 0 (
+if !errorlevel! neq 0 (
     echo FEHLER: pip install fehlgeschlagen.
     pause
     exit /b 1
@@ -30,32 +31,41 @@ if %errorlevel% neq 0 (
 echo [OK] Abhaengigkeiten installiert
 
 REM Build frontend (always rebuild to ensure dist is up-to-date)
-if exist "frontend\package.json" (
-    where npm >nul 2>&1
-    if %errorlevel% equ 0 (
+if not exist "frontend\package.json" goto :skip_frontend
+
+where npm >nul 2>&1
+if !errorlevel! neq 0 (
+    if not exist "frontend\dist" (
         echo.
-        echo Installiere Frontend-Abhaengigkeiten und baue Frontend...
-        cd frontend
-        call npm install
-        call npm run build
-        if %errorlevel% neq 0 (
-            echo FEHLER: Frontend-Build fehlgeschlagen.
-            cd ..
-            pause
-            exit /b 1
-        )
-        cd ..
-        echo [OK] Frontend gebaut
-    ) else (
-        if not exist "frontend\dist" (
-            echo.
-            echo FEHLER: npm nicht gefunden und frontend\dist existiert nicht.
-            echo         Installieren Sie Node.js oder bauen Sie das Frontend manuell.
-            pause
-            exit /b 1
-        )
+        echo FEHLER: npm nicht gefunden und frontend\dist existiert nicht.
+        echo         Installieren Sie Node.js oder bauen Sie das Frontend manuell.
+        pause
+        exit /b 1
     )
+    goto :skip_frontend
 )
+
+echo.
+echo Installiere Frontend-Abhaengigkeiten und baue Frontend...
+cd frontend
+call npm install
+if !errorlevel! neq 0 (
+    echo FEHLER: npm install fehlgeschlagen.
+    cd ..
+    pause
+    exit /b 1
+)
+call npm run build
+if !errorlevel! neq 0 (
+    echo FEHLER: Frontend-Build fehlgeschlagen.
+    cd ..
+    pause
+    exit /b 1
+)
+cd ..
+echo [OK] Frontend gebaut
+
+:skip_frontend
 
 REM Clean previous build
 if exist "build" rmdir /s /q build
@@ -65,7 +75,7 @@ echo.
 echo Starte PyInstaller Build...
 echo.
 python -m PyInstaller immomanager.spec
-if %errorlevel% neq 0 (
+if !errorlevel! neq 0 (
     echo.
     echo FEHLER: Build fehlgeschlagen.
     pause

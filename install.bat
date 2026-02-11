@@ -1,4 +1,5 @@
 @echo off
+setlocal EnableDelayedExpansion
 REM ImmoManager Pro — Installation Script (Windows)
 REM
 REM Usage:
@@ -13,7 +14,7 @@ echo.
 
 REM Check Python
 where python >nul 2>&1
-if %errorlevel% neq 0 (
+if !errorlevel! neq 0 (
     echo FEHLER: Python nicht gefunden.
     echo Bitte installieren Sie Python 3.11+ von https://www.python.org
     echo Stellen Sie sicher, dass "Add Python to PATH" aktiviert ist.
@@ -23,7 +24,7 @@ if %errorlevel% neq 0 (
 
 REM Check Python version
 python -c "import sys; exit(0 if sys.version_info >= (3, 11) else 1)" 2>nul
-if %errorlevel% neq 0 (
+if !errorlevel! neq 0 (
     echo FEHLER: Python 3.11+ erforderlich.
     python --version
     pause
@@ -49,7 +50,7 @@ echo.
 echo Installiere Abhaengigkeiten...
 pip install --upgrade pip setuptools wheel -q
 pip install -e ".[dev]" -q
-if %errorlevel% neq 0 (
+if !errorlevel! neq 0 (
     echo FEHLER: Installation fehlgeschlagen.
     pause
     exit /b 1
@@ -57,35 +58,38 @@ if %errorlevel% neq 0 (
 echo [OK] Abhaengigkeiten installiert
 
 REM Check for frontend
-if exist "frontend\package.json" (
-    where npm >nul 2>&1
-    if %errorlevel% equ 0 (
-        echo.
-        echo Installiere Frontend-Abhaengigkeiten...
-        cd frontend
-        call npm install
-        if %errorlevel% neq 0 (
-            echo FEHLER: npm install fehlgeschlagen.
-            cd ..
-            pause
-            exit /b 1
-        )
-        echo Baue Frontend...
-        call npm run build
-        if %errorlevel% neq 0 (
-            echo FEHLER: Frontend-Build fehlgeschlagen.
-            cd ..
-            pause
-            exit /b 1
-        )
-        cd ..
-        echo [OK] Frontend gebaut
-    ) else (
-        echo.
-        echo HINWEIS: npm nicht gefunden — Frontend wird nicht gebaut.
-        echo          Installieren Sie Node.js fuer die Frontend-Entwicklung.
-    )
+if not exist "frontend\package.json" goto :skip_frontend
+
+where npm >nul 2>&1
+if !errorlevel! neq 0 (
+    echo.
+    echo HINWEIS: npm nicht gefunden — Frontend wird nicht gebaut.
+    echo          Installieren Sie Node.js fuer die Frontend-Entwicklung.
+    goto :skip_frontend
 )
+
+echo.
+echo Installiere Frontend-Abhaengigkeiten...
+cd frontend
+call npm install
+if !errorlevel! neq 0 (
+    echo FEHLER: npm install fehlgeschlagen.
+    cd ..
+    pause
+    exit /b 1
+)
+echo Baue Frontend...
+call npm run build
+if !errorlevel! neq 0 (
+    echo FEHLER: Frontend-Build fehlgeschlagen.
+    cd ..
+    pause
+    exit /b 1
+)
+cd ..
+echo [OK] Frontend gebaut
+
+:skip_frontend
 
 echo.
 echo ======================================
