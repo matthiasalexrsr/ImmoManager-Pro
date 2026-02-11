@@ -5,17 +5,18 @@ Build with:
     pip install pyinstaller
     pyinstaller immomanager.spec
 
-Result: dist/ImmoManager-Pro/ (directory) or dist/ImmoManager-Pro.exe (one-file)
+Or use the build script:
+    Windows: build.bat
+    Linux:   ./build.sh
+
+Result: dist/ImmoManager-Pro/ directory containing the executable and all dependencies.
 """
 import os
-from pathlib import Path
-
-block_cipher = None
 
 # Project root
 ROOT = os.path.abspath('.')
 
-# Collect all backend Python files
+# Collect bundled data files
 backend_data = []
 
 # Include i18n locale files
@@ -64,6 +65,7 @@ a = Analysis(
     binaries=[],
     datas=backend_data,
     hiddenimports=[
+        # --- Uvicorn internals ---
         'uvicorn.logging',
         'uvicorn.loops',
         'uvicorn.loops.auto',
@@ -75,6 +77,7 @@ a = Analysis(
         'uvicorn.lifespan',
         'uvicorn.lifespan.on',
         'uvicorn.lifespan.off',
+        # --- Backend core ---
         'backend.app',
         'backend.config',
         'backend.dependencies',
@@ -86,14 +89,61 @@ a = Analysis(
         'backend.events',
         'backend.logging_config',
         'backend.plugins',
+        # --- Database ---
         'backend.db',
         'backend.db.session',
         'backend.db.orm_models',
+        'backend.repositories',
+        'backend.repositories.base',
+        'backend.repositories.sql_store',
+        # --- Domain engines ---
         'backend.domain',
         'backend.domain.lease_engine',
         'backend.domain.dunning_engine',
         'backend.domain.invoice_matching',
         'backend.domain.billing_engine',
+        # --- Services ---
+        'backend.services',
+        'backend.services.email_service',
+        'backend.services.file_storage',
+        'backend.services.iban_encryption',
+        'backend.services.portal_adapters',
+        'backend.services.task_queue',
+        # --- All routers ---
+        'backend.routers',
+        'backend.routers.accounts',
+        'backend.routers.admin',
+        'backend.routers.audit',
+        'backend.routers.auth',
+        'backend.routers.billing',
+        'backend.routers.bookings',
+        'backend.routers.budgets',
+        'backend.routers.calendar',
+        'backend.routers.categories',
+        'backend.routers.contracts',
+        'backend.routers.deposits',
+        'backend.routers.documents',
+        'backend.routers.escalation',
+        'backend.routers.handover_protocols',
+        'backend.routers.history',
+        'backend.routers.i18n',
+        'backend.routers.invoices',
+        'backend.routers.leads',
+        'backend.routers.listings',
+        'backend.routers.maintenance',
+        'backend.routers.notifications',
+        'backend.routers.portfolios',
+        'backend.routers.properties',
+        'backend.routers.receivables',
+        'backend.routers.rent_adjustments',
+        'backend.routers.reports',
+        'backend.routers.search',
+        'backend.routers.tasks',
+        'backend.routers.tax_rates',
+        'backend.routers.tenants',
+        'backend.routers.units',
+        'backend.routers.viewings',
+        # --- Third-party ---
         'sqlalchemy.dialects.sqlite',
         'sqlalchemy.dialects.postgresql',
         'aiosqlite',
@@ -106,13 +156,10 @@ a = Analysis(
     hooksconfig={},
     runtime_hooks=[],
     excludes=[],
-    win_no_prefer_redirects=False,
-    win_private_assemblies=False,
-    cipher=block_cipher,
     noarchive=False,
 )
 
-pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+pyz = PYZ(a.pure, a.zipped_data)
 
 exe = EXE(
     pyz,
