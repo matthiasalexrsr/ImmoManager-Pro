@@ -19,7 +19,7 @@ from ..models import (
     NotificationTemplateCreate,
     NotificationTemplatePatch,
 )
-from ..storage import NotFoundError
+from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/notifications", tags=["Benachrichtigungen"])
 
@@ -43,7 +43,10 @@ def list_notification_templates(
 
 @router.post("/templates", response_model=NotificationTemplate, status_code=status.HTTP_201_CREATED)
 def create_notification_template(payload: NotificationTemplateCreate) -> NotificationTemplate:
-    return store.create_notification_template(payload)
+    try:
+        return store.create_notification_template(payload)
+    except ValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @router.get("/templates/{template_id}", response_model=NotificationTemplate)
@@ -206,7 +209,10 @@ def list_notifications(
 
 @router.post("", response_model=Notification, status_code=status.HTTP_201_CREATED)
 def create_notification(payload: NotificationCreate) -> Notification:
-    return store.create_notification(payload)
+    try:
+        return store.create_notification(payload)
+    except ValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @router.get("/{notification_id}", response_model=Notification)

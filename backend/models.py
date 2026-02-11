@@ -379,6 +379,13 @@ class TenantPatch(BaseModel):
     sepa_mandate: Optional[str] = None
     notes: Optional[str] = None
 
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and "@" not in v:
+            raise ValueError("Ungültige E-Mail-Adresse")
+        return v
+
 
 class ContractPatch(BaseModel):
     contract_number: Optional[str] = None

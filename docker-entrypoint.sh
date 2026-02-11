@@ -1,10 +1,10 @@
 #!/bin/bash
 set -e
 
-# Run database migrations if alembic is available
+# Run database migrations
 if [ -f alembic.ini ]; then
     echo "Running database migrations..."
-    alembic upgrade head 2>/dev/null || echo "Migration skipped (using schema.sql init)"
+    alembic upgrade head
 fi
 
 # Execute the main command

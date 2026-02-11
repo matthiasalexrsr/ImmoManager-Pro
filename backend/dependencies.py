@@ -25,9 +25,11 @@ if _database_url:
     _session = SessionLocal()
     store = SQLAlchemyStore(_session)  # type: ignore[assignment]
 
-    # Also enable SQL-backed user storage
+    # Also enable SQL-backed user and audit storage
     from .auth import enable_sql_users
+    from .audit import enable_sql_audit
     enable_sql_users(SessionLocal)
+    enable_sql_audit(SessionLocal)
 
 
 def get_store():

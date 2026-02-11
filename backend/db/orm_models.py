@@ -151,6 +151,7 @@ class AccountORM(Base):
     account_type: Mapped[str] = mapped_column(Text, nullable=False)
     opening_balance: Mapped[float] = mapped_column(Float, default=0.0)
     balance: Mapped[float] = mapped_column(Float, default=0.0)
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
@@ -238,7 +239,7 @@ class MaintenanceCaseORM(Base):
     due_date: Mapped[date | None] = mapped_column(Date)
     estimated_cost: Mapped[float | None] = mapped_column(Float)
     contractor: Mapped[str | None] = mapped_column(Text)
-    appointment_at: Mapped[date | None] = mapped_column(Date)
+    appointment_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
@@ -275,7 +276,7 @@ class TaskORM(Base):
     property_id: Mapped[str | None] = mapped_column(ForeignKey("properties.id", ondelete="SET NULL"))
     unit_id: Mapped[str | None] = mapped_column(ForeignKey("units.id", ondelete="SET NULL"))
     recurrence_rule: Mapped[str | None] = mapped_column(Text)
-    parent_task_id: Mapped[str | None] = mapped_column(String)
+    parent_task_id: Mapped[str | None] = mapped_column(ForeignKey("tasks.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 

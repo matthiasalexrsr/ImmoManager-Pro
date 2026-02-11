@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
 from ..models import Tenant, TenantCreate, TenantPatch
-from ..storage import NotFoundError
+from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/tenants", tags=["Mieter"])
 
@@ -18,7 +18,10 @@ def list_tenants(
 
 @router.post("", response_model=Tenant, status_code=status.HTTP_201_CREATED)
 def create_tenant(payload: TenantCreate) -> Tenant:
-    return store.create_tenant(payload)
+    try:
+        return store.create_tenant(payload)
+    except ValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @router.get("/{tenant_id}", response_model=Tenant)
