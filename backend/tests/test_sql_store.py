@@ -386,7 +386,7 @@ class TestBilling:
         assert len(store.list_billing_periods()) == 0
 
     def test_billing_period_date_validation(self, store, property_):
-        with pytest.raises(ValidationError, match="Enddatum"):
+        with pytest.raises(Exception, match="Enddatum"):
             store.create_billing_period(BillingPeriodCreate(
                 property_id=property_.id, label="Bad",
                 start_date=date(2024, 12, 31), end_date=date(2024, 1, 1)

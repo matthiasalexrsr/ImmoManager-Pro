@@ -25,6 +25,10 @@ if _database_url:
     _session = SessionLocal()
     store = SQLAlchemyStore(_session)  # type: ignore[assignment]
 
+    # Also enable SQL-backed user storage
+    from .auth import enable_sql_users
+    enable_sql_users(SessionLocal)
+
 
 def get_store():
     """FastAPI dependency that provides the data store."""

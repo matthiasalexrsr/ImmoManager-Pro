@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class PortfolioCreate(BaseModel):
@@ -76,11 +76,21 @@ class TenantCreate(BaseModel):
     sepa_mandate: Optional[str] = None
     notes: Optional[str] = None
 
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and "@" not in v:
+            raise ValueError("Ungültige E-Mail-Adresse")
+        return v
+
 
 class Tenant(TenantCreate):
     id: str = Field(..., min_length=1)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+_VALID_CONTRACT_STATUSES = {"active", "terminated", "expired", "draft"}
 
 
 class ContractCreate(BaseModel):
@@ -95,6 +105,21 @@ class ContractCreate(BaseModel):
     deposit_amount: Optional[float] = None
     index_rent: Optional[str] = None
     service_charge_settlement: Optional[str] = None
+
+    @field_validator("end_date")
+    @classmethod
+    def validate_end_after_start(cls, v: Optional[date], info) -> Optional[date]:
+        if v is not None and "start_date" in info.data and info.data["start_date"] is not None:
+            if v < info.data["start_date"]:
+                raise ValueError("Enddatum muss nach Startdatum liegen")
+        return v
+
+    @field_validator("status")
+    @classmethod
+    def validate_contract_status(cls, v: str) -> str:
+        if v not in _VALID_CONTRACT_STATUSES:
+            raise ValueError(f"Ungültiger Status. Erlaubt: {', '.join(sorted(_VALID_CONTRACT_STATUSES))}")
+        return v
 
 
 class Contract(ContractCreate):
@@ -563,6 +588,14 @@ class BillingPeriodCreate(BaseModel):
     end_date: date
     status: str = "draft"
 
+    @field_validator("end_date")
+    @classmethod
+    def validate_period_end_after_start(cls, v: date, info) -> date:
+        if "start_date" in info.data and info.data["start_date"] is not None:
+            if v < info.data["start_date"]:
+                raise ValueError("Enddatum muss nach Startdatum liegen")
+        return v
+
 
 class BillingPeriod(BillingPeriodCreate):
     id: str = Field(..., min_length=1)
@@ -739,12 +772,29 @@ class NotificationTemplatePatch(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+_VALID_ROLES = {"eigentuemer", "verwalter", "buchhaltung", "techniker", "readonly"}
+
+
 class UserCreate(BaseModel):
     username: str
     email: str
     full_name: str
-    password: str
+    password: str = Field(..., min_length=6)
     role: str = "readonly"  # eigentuemer, verwalter, buchhaltung, techniker, readonly
+
+    @field_validator("email")
+    @classmethod
+    def validate_user_email(cls, v: str) -> str:
+        if "@" not in v:
+            raise ValueError("Ungültige E-Mail-Adresse")
+        return v
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, v: str) -> str:
+        if v not in _VALID_ROLES:
+            raise ValueError(f"Ungültige Rolle. Erlaubt: {', '.join(sorted(_VALID_ROLES))}")
+        return v
 
 
 class UserRead(BaseModel):
