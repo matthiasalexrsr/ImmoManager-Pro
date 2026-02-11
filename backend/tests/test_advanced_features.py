@@ -12,7 +12,6 @@ from backend.models import (
     MaintenanceCaseCreate,
     PortfolioCreate,
     PropertyCreate,
-    ReceivableCreate,
     TaskCreate,
     TenantCreate,
     UnitCreate,
@@ -32,10 +31,8 @@ from backend.routers.tasks import (
     _next_due_date,
     _parse_rrule,
     generate_recurring_tasks,
-    list_tasks,
 )
 
-from fastapi import Query
 from fastapi.responses import StreamingResponse
 
 
@@ -233,7 +230,7 @@ class TestRecurringTasks:
         assert created[0].due_date == date(2024, 2, 1)
 
     def test_no_duplicate_recurring(self):
-        template = store.create_task(TaskCreate(
+        store.create_task(TaskCreate(
             title="Test", due_date=date(2024, 1, 1),
             recurrence_rule="FREQ=MONTHLY;INTERVAL=1",
         ))
@@ -245,7 +242,7 @@ class TestRecurringTasks:
         assert len(created2) == 0
 
     def test_generate_after_completion(self):
-        template = store.create_task(TaskCreate(
+        store.create_task(TaskCreate(
             title="Test", due_date=date(2024, 1, 1),
             recurrence_rule="FREQ=MONTHLY;INTERVAL=1",
         ))

@@ -1,4 +1,3 @@
-from pathlib import Path
 
 from backend.routers import i18n
 

@@ -3,7 +3,6 @@
 import pytest
 
 from backend.audit import clear_audit_logs, list_audit_logs, log_action
-from backend.models import AuditLogEntry
 
 
 @pytest.fixture(autouse=True)

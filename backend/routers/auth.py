@@ -4,7 +4,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from ..auth import (
     authenticate_user,
-    clear_users,
     create_access_token,
     create_refresh_token,
     decode_token,
@@ -28,15 +27,19 @@ from ..models import (
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
+_ALLOWED_SELF_REGISTER_ROLES = {"readonly", "techniker"}
+
+
 @router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
 def register(payload: UserCreate) -> UserRead:
-    """Register a new user."""
+    """Register a new user. Self-registration is restricted to readonly/techniker roles."""
+    role = payload.role if payload.role in _ALLOWED_SELF_REGISTER_ROLES else "readonly"
     return register_user(
         username=payload.username,
         email=payload.email,
         full_name=payload.full_name,
         password=payload.password,
-        role=payload.role,
+        role=role,
     )
 
 

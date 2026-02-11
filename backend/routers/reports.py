@@ -2,8 +2,9 @@ import csv
 import io
 from datetime import date, timedelta
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Body, Query
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 
 from ..dependencies import store
 
@@ -382,19 +383,36 @@ def datev_export(
 # Phase 6.3: Bank Statement Import
 # ---------------------------------------------------------------------------
 
+class ImportBookingsRequest(BaseModel):
+    account_id: str
+    csv_content: str = Field(..., description="CSV content with columns: date;amount;text")
+
+
 @router.post("/bookings/import")
 def import_bookings(
-    account_id: str = Query(...),
-    csv_content: str = Query(..., description="CSV content with columns: date;amount;text"),
+    account_id: str | None = None,
+    csv_content: str | None = None,
+    payload: ImportBookingsRequest | None = Body(None),
 ) -> dict:
     """Import bookings from CSV data.
+
+    Accepts either a JSON body with account_id and csv_content,
+    or keyword arguments (for backward compatibility).
 
     Expected CSV format (semicolon-separated):
     date;amount;text
     2024-01-15;-500.00;Handwerker Rechnung
     2024-01-20;800.00;Miete Wohnung 1
     """
-    reader = csv.DictReader(io.StringIO(csv_content), delimiter=";")
+    # Support both body and direct keyword arguments
+    _account_id = account_id if account_id is not None else (payload.account_id if payload else None)
+    _csv_content = csv_content if csv_content is not None else (payload.csv_content if payload else None)
+
+    if not _account_id or not _csv_content:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=422, detail="account_id and csv_content are required")
+
+    reader = csv.DictReader(io.StringIO(_csv_content), delimiter=";")
     imported = []
     errors = []
 
@@ -407,7 +425,7 @@ def import_bookings(
             text = row.get("text", "").strip()
 
             booking = store.create_booking(BookingCreate(
-                account_id=account_id,
+                account_id=_account_id,
                 booking_date=booking_date,
                 amount=amount,
                 payment_text=text,

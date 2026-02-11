@@ -8,7 +8,6 @@ from backend.domain.billing_engine import (
     AdvancePayment,
     BillingEngine,
     CostEntry,
-    GeneratedStatement,
     UnitShare,
 )
 

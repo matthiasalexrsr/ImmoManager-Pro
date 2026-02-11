@@ -8,6 +8,7 @@ Set DATABASE_URL to enable persistent database storage.
 """
 
 import os
+from collections.abc import Generator
 
 from .storage import InMemoryStore
 
@@ -28,3 +29,22 @@ if _database_url:
 def get_store():
     """FastAPI dependency that provides the data store."""
     return store
+
+
+def get_db() -> Generator:
+    """FastAPI dependency that provides a per-request database session.
+
+    Use this for endpoints that need direct DB access.
+    For most endpoints, use get_store() which wraps the session.
+    """
+    if not _database_url:
+        yield None
+        return
+
+    from .db.session import SessionLocal
+
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()

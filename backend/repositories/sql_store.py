@@ -89,7 +89,7 @@ from ..models import (
     ViewingAppointmentCreate,
 )
 from ..storage import NotFoundError, ValidationError
-from .base import BaseRepository, _generate_id
+from .base import BaseRepository
 
 
 class SQLAlchemyStore:

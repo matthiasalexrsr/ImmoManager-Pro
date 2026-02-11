@@ -1,7 +1,6 @@
 """Tests for authentication: registration, login, JWT tokens, RBAC."""
 
 import pytest
-from datetime import datetime
 
 from backend.auth import (
     authenticate_user,
@@ -10,7 +9,6 @@ from backend.auth import (
     create_refresh_token,
     decode_token,
     delete_user,
-    get_user_by_id,
     hash_password,
     list_users,
     register_user,
@@ -20,7 +18,6 @@ from backend.auth import (
 from backend.models import (
     LoginRequest,
     RefreshRequest,
-    TokenResponse,
     UserCreate,
     UserPatch,
     UserRead,

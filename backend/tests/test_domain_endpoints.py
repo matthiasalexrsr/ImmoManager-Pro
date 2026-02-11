@@ -1,5 +1,4 @@
 import datetime
-from decimal import Decimal
 
 from backend.models import (
     AccountCreate,

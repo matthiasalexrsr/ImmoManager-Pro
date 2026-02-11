@@ -210,6 +210,8 @@ CREATE TABLE tasks (
   status text NOT NULL DEFAULT 'open',
   property_id uuid REFERENCES properties(id) ON DELETE SET NULL,
   unit_id uuid REFERENCES units(id) ON DELETE SET NULL,
+  recurrence_rule text,
+  parent_task_id uuid REFERENCES tasks(id) ON DELETE SET NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
