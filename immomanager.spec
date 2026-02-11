@@ -13,11 +13,59 @@ Result: dist/ImmoManager-Pro/ directory containing the executable and all depend
 """
 import os
 
+from PyInstaller.utils.hooks import collect_submodules, collect_data_files
+
 # Project root
 ROOT = os.path.abspath('.')
 
-# Collect bundled data files
-backend_data = []
+# ---------------------------------------------------------------------------
+# Collect ALL submodules of third-party packages automatically.
+# This is far more reliable than listing individual modules, especially
+# on newer Python versions (3.13+) where PyInstaller's auto-detection
+# may miss packages.
+# ---------------------------------------------------------------------------
+_THIRD_PARTY_PACKAGES = [
+    'fastapi',
+    'starlette',
+    'pydantic',
+    'pydantic_core',
+    'pydantic_settings',
+    'uvicorn',
+    'sqlalchemy',
+    'alembic',
+    'aiosqlite',
+    'anyio',
+    'sniffio',
+    'h11',
+    'jose',
+    'cffi',
+    'cryptography',
+    'multipart',
+    'annotated_types',
+    'typing_extensions',
+    'dotenv',
+]
+
+third_party_hiddenimports = []
+for pkg in _THIRD_PARTY_PACKAGES:
+    try:
+        third_party_hiddenimports += collect_submodules(pkg)
+    except Exception:
+        # Package may not be installed – skip silently
+        pass
+
+# Also collect data files that some packages need at runtime
+third_party_datas = []
+for pkg in ['pydantic', 'pydantic_core', 'alembic']:
+    try:
+        third_party_datas += collect_data_files(pkg)
+    except Exception:
+        pass
+
+# ---------------------------------------------------------------------------
+# Collect bundled data files from project
+# ---------------------------------------------------------------------------
+backend_data = list(third_party_datas)
 
 # Include i18n locale files
 i18n_dir = os.path.join(ROOT, 'i18n')
@@ -65,19 +113,7 @@ a = Analysis(
     pathex=[ROOT],
     binaries=[],
     datas=backend_data,
-    hiddenimports=[
-        # --- Uvicorn internals ---
-        'uvicorn.logging',
-        'uvicorn.loops',
-        'uvicorn.loops.auto',
-        'uvicorn.protocols',
-        'uvicorn.protocols.http',
-        'uvicorn.protocols.http.auto',
-        'uvicorn.protocols.websockets',
-        'uvicorn.protocols.websockets.auto',
-        'uvicorn.lifespan',
-        'uvicorn.lifespan.on',
-        'uvicorn.lifespan.off',
+    hiddenimports=third_party_hiddenimports + [
         # --- Backend core ---
         'backend.app',
         'backend.config',
@@ -145,16 +181,6 @@ a = Analysis(
         'backend.routers.tenants',
         'backend.routers.units',
         'backend.routers.viewings',
-        # --- Third-party ---
-        'sqlalchemy.dialects.sqlite',
-        'sqlalchemy.dialects.postgresql',
-        'aiosqlite',
-        'pydantic_settings',
-        'multipart',
-        'jose',
-        'alembic',
-        'cffi',
-        'cryptography',
     ],
     hookspath=[],
     hooksconfig={},
