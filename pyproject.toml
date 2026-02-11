@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "immomanager-pro"
+version = "1.0.0"
+description = "ImmoManager Pro – Immobilienverwaltung für Mietobjekte"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.100.0",
+    "pydantic>=2.0.0",
+    "uvicorn>=0.23.0",
+    "sqlalchemy>=2.0.0",
+    "alembic>=1.12.0",
+    "python-jose[cryptography]>=3.3.0",
+]
+
+[project.optional-dependencies]
+postgres = ["psycopg2-binary>=2.9.0"]
+dev = [
+    "pytest>=7.0.0",
+    "httpx>=0.24.0",
+    "ruff>=0.1.0",
+]
+
+[project.scripts]
+immomanager = "backend.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["backend*"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]

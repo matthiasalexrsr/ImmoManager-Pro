@@ -1,9 +1,12 @@
 import os
 import re
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import FileResponse
 
 from .audit import log_action
 from .auth import require_auth
@@ -126,3 +129,22 @@ app.include_router(i18n.router)
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+# --- Serve built frontend as static files (SPA) ---
+# Look for frontend/dist relative to the project root (one level up from backend/)
+_FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+
+if _FRONTEND_DIR.is_dir():
+    # Serve static assets (JS, CSS, images)
+    app.mount("/assets", StaticFiles(directory=_FRONTEND_DIR / "assets"), name="frontend-assets")
+
+    # Catch-all: serve index.html for any non-API, non-asset route (SPA routing)
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        # If a specific static file exists, serve it directly
+        file_path = _FRONTEND_DIR / full_path
+        if full_path and file_path.is_file():
+            return FileResponse(file_path)
+        # Otherwise serve index.html for SPA client-side routing
+        return FileResponse(_FRONTEND_DIR / "index.html")
