@@ -85,6 +85,77 @@ def get_me(user: UserRead = Depends(require_auth)) -> UserRead:
     return user
 
 
+@router.get("/users/me/preferences", response_model=None)
+def get_my_preferences(user: UserRead = Depends(require_auth)) -> dict:
+    """Get current user's preferences."""
+    from ..db.session import DATABASE_URL
+    if DATABASE_URL.startswith("sqlite") or "postgresql" in DATABASE_URL:
+        from ..db.session import SessionLocal
+        from ..db.orm_models import UserPreferencesORM
+        session = SessionLocal()
+        try:
+            prefs = session.query(UserPreferencesORM).filter(
+                UserPreferencesORM.user_id == user.id
+            ).first()
+            if prefs:
+                return {
+                    "theme": prefs.theme,
+                    "locale": prefs.locale,
+                    "sidebar_collapsed": prefs.sidebar_collapsed,
+                    "items_per_page": prefs.items_per_page,
+                    "date_format": prefs.date_format,
+                    "currency": prefs.currency,
+                }
+        finally:
+            session.close()
+    return {
+        "theme": "light",
+        "locale": "de-DE",
+        "sidebar_collapsed": False,
+        "items_per_page": 25,
+        "date_format": "DD.MM.YYYY",
+        "currency": "EUR",
+    }
+
+
+@router.put("/users/me/preferences", response_model=None)
+def update_my_preferences(payload: dict, user: UserRead = Depends(require_auth)) -> dict:
+    """Update current user's preferences."""
+    from ..db.session import DATABASE_URL
+    allowed_keys = {"theme", "locale", "sidebar_collapsed", "items_per_page", "date_format", "currency"}
+    clean = {k: v for k, v in payload.items() if k in allowed_keys}
+
+    if DATABASE_URL.startswith("sqlite") or "postgresql" in DATABASE_URL:
+        from ..db.session import SessionLocal
+        from ..db.orm_models import UserPreferencesORM
+        session = SessionLocal()
+        try:
+            prefs = session.query(UserPreferencesORM).filter(
+                UserPreferencesORM.user_id == user.id
+            ).first()
+            if prefs:
+                for k, v in clean.items():
+                    setattr(prefs, k, v)
+            else:
+                prefs = UserPreferencesORM(user_id=user.id, **clean)
+                session.add(prefs)
+            session.commit()
+            return {
+                "theme": prefs.theme,
+                "locale": prefs.locale,
+                "sidebar_collapsed": prefs.sidebar_collapsed,
+                "items_per_page": prefs.items_per_page,
+                "date_format": prefs.date_format,
+                "currency": prefs.currency,
+            }
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+    return clean
+
+
 @router.get("/users", response_model=list[UserRead])
 def get_users(
     skip: int = Query(0, ge=0),

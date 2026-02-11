@@ -1,17 +1,17 @@
 """Database session management with connection pooling.
 
-Supports PostgreSQL (prod) and SQLite (dev/test) via DATABASE_URL env var.
+Supports PostgreSQL (prod) and SQLite (dev/test) via settings.database_url.
 """
 
-import os
 from collections.abc import Generator
 
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 
+from ..config import settings
 from .orm_models import Base
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./immo_manager.db")
+DATABASE_URL = settings.database_url
 
 _connect_args: dict = {}
 if DATABASE_URL.startswith("sqlite"):

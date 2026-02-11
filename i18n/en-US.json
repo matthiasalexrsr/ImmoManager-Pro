@@ -1,0 +1,911 @@
+{
+  "brand": {
+    "productName": "ImmoManager Pro",
+    "shortName": "ImmoManager",
+    "slogan": "Everything at a glance. Every property."
+  },
+  "navigation": {
+    "main": {
+      "dashboard": "Dashboard",
+      "portfolio": "Portfolio",
+      "properties": "Properties",
+      "units": "Units",
+      "tenantsContracts": "Tenants & Contracts",
+      "finance": "Finance",
+      "maintenance": "Maintenance",
+      "documents": "Documents",
+      "tasks": "Tasks",
+      "calendar": "Calendar",
+      "reports": "Reports",
+      "integrations": "Integrations",
+      "settings": "Settings",
+      "help": "Help"
+    },
+    "secondary": {
+      "overview": "Overview",
+      "details": "Details",
+      "history": "History",
+      "notes": "Notes",
+      "attachments": "Attachments",
+      "activity": "Activity"
+    }
+  },
+  "topBar": {
+    "search": "Search...",
+    "quickAction": "Quick Action",
+    "notifications": "Notifications",
+    "account": "Account"
+  },
+  "accountMenu": {
+    "profile": "Profile",
+    "teamRoles": "Team & Roles",
+    "billing": "Billing",
+    "language": "Language",
+    "shortcuts": "Keyboard Shortcuts",
+    "logout": "Log Out"
+  },
+  "ui": {
+    "buttons": {
+      "new": "New",
+      "create": "Create",
+      "save": "Save",
+      "saveClose": "Save & Close",
+      "saveNew": "Save & New",
+      "cancel": "Cancel",
+      "close": "Close",
+      "edit": "Edit",
+      "delete": "Delete",
+      "duplicate": "Duplicate",
+      "export": "Export",
+      "import": "Import",
+      "print": "Print",
+      "share": "Share",
+      "open": "Open",
+      "upload": "Upload",
+      "download": "Download",
+      "refresh": "Refresh",
+      "filter": "Filter",
+      "sort": "Sort",
+      "reset": "Reset",
+      "apply": "Apply",
+      "confirm": "Confirm",
+      "next": "Next",
+      "back": "Back",
+      "done": "Done"
+    },
+    "commonActions": {
+      "viewDetails": "View Details",
+      "addToFavorites": "Add to Favorites",
+      "markDone": "Mark as Done",
+      "setReminder": "Set Reminder",
+      "addComment": "Add Comment",
+      "addNote": "Add Note",
+      "attachFile": "Attach File"
+    },
+    "form": {
+      "required": "Required",
+      "optional": "Optional",
+      "hint": "Hint",
+      "description": "Description",
+      "selectValue": "Select Value",
+      "pleaseSelect": "Please select...",
+      "selectDate": "Select Date",
+      "selectTime": "Select Time",
+      "enterAmount": "Enter Amount",
+      "search": "Search"
+    },
+    "table": {
+      "adjustColumns": "Adjust Columns",
+      "resetColumns": "Reset Columns",
+      "density": "Density",
+      "groupBy": "Group By",
+      "showTotals": "Show Totals",
+      "rowsPerPage": "Rows per Page",
+      "nextPage": "Next Page",
+      "previousPage": "Previous Page",
+      "noResults": "No Results",
+      "loading": "Loading..."
+    },
+    "filterChips": {
+      "active": "Active",
+      "inactive": "Inactive",
+      "draft": "Draft",
+      "archived": "Archived",
+      "due": "Due",
+      "overdue": "Overdue",
+      "open": "Open",
+      "done": "Done"
+    }
+  },
+  "status": {
+    "general": {
+      "active": "Active",
+      "inactive": "Inactive",
+      "archived": "Archived",
+      "draft": "Draft",
+      "pending": "Pending",
+      "completed": "Completed",
+      "locked": "Locked"
+    },
+    "priority": {
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "critical": "Critical"
+    },
+    "payment": {
+      "paid": "Paid",
+      "partiallyPaid": "Partially Paid",
+      "open": "Open",
+      "overdue": "Overdue",
+      "cancelled": "Cancelled"
+    },
+    "contract": {
+      "active": "Active",
+      "expiring": "Expiring",
+      "terminated": "Terminated",
+      "ended": "Ended",
+      "inReview": "In Review"
+    }
+  },
+  "onboarding": {
+    "welcomeTitle": "Welcome to ImmoManager Pro",
+    "welcomeBody": "Manage your entire property portfolio in one place -- clearly, securely, and efficiently.",
+    "steps": {
+      "createPortfolio": "Create Portfolio",
+      "addProperties": "Add Properties",
+      "addUnits": "Add Units",
+      "addTenantsContracts": "Add Tenants & Contracts",
+      "configureAccounts": "Configure Accounts & Categories",
+      "viewFirstReport": "View First Report"
+    },
+    "cta": {
+      "startSetup": "Start Setup",
+      "loadSampleData": "Load Sample Data",
+      "setupLater": "Set Up Later"
+    }
+  },
+  "auth": {
+    "login": {
+      "title": "Log In",
+      "email": "Email Address",
+      "password": "Password",
+      "rememberMe": "Remember Me",
+      "forgotPassword": "Forgot Password?",
+      "submit": "Log In"
+    },
+    "forgotPassword": {
+      "title": "Reset Password",
+      "body": "We will send you a link to reset your password.",
+      "submit": "Send Link"
+    },
+    "register": {
+      "title": "Create Account",
+      "firstName": "First Name",
+      "lastName": "Last Name",
+      "company": "Company (optional)",
+      "email": "Email Address",
+      "password": "Password",
+      "confirmPassword": "Confirm Password",
+      "submit": "Create Account"
+    },
+    "twoFactor": {
+      "title": "Two-Factor Authentication",
+      "enterCode": "Enter Code",
+      "confirmCode": "Confirm Code",
+      "resendCode": "Resend Code"
+    }
+  },
+  "dashboard": {
+    "headings": {
+      "portfolioOverview": "Portfolio Overview",
+      "keyMetrics": "Key Metrics",
+      "recentActivity": "Recent Activity",
+      "upcomingAppointments": "Upcoming Appointments"
+    },
+    "kpis": {
+      "totalProperties": "Total Properties",
+      "totalUnits": "Total Units",
+      "occupancyRate": "Occupancy Rate",
+      "netRentMonthly": "Net Rent (Monthly)",
+      "cashflowMonthly": "Cash Flow (Monthly)",
+      "openReceivables": "Open Receivables",
+      "overduePayments": "Overdue Payments",
+      "openMaintenanceCases": "Open Maintenance Cases"
+    },
+    "widgets": {
+      "rentPayments30Days": "Rent Payments (Last 30 Days)",
+      "vacancyByProperty": "Vacancy by Property",
+      "costsByCategory": "Costs by Category",
+      "contractTerms": "Contract Terms",
+      "tasksDue": "Tasks: Due/Overdue"
+    },
+    "emptyState": {
+      "title": "No data available yet.",
+      "body": "Create your portfolio to see key metrics and reports.",
+      "cta": "Create Portfolio"
+    }
+  },
+  "portfolio": {
+    "list": {
+      "title": "Portfolio",
+      "plural": "Portfolios",
+      "new": "New Portfolio",
+      "name": "Portfolio Name",
+      "description": "Description",
+      "owner": "Owner/Organization",
+      "currency": "Currency",
+      "timezone": "Time Zone",
+      "createdAt": "Created On"
+    },
+    "detail": {
+      "title": "Portfolio Details",
+      "general": "General",
+      "addresses": "Addresses",
+      "taxBilling": "Tax & Billing",
+      "userAccess": "User Access"
+    },
+    "actions": {
+      "create": "Create Portfolio",
+      "edit": "Edit Portfolio",
+      "archive": "Archive Portfolio"
+    }
+  },
+  "properties": {
+    "list": {
+      "title": "Properties",
+      "new": "New Property",
+      "name": "Property Name",
+      "type": "Property Type",
+      "address": "Address",
+      "yearBuilt": "Year Built",
+      "area": "Living/Usable Area",
+      "units": "Units",
+      "status": "Status",
+      "ownershipShare": "Ownership Share",
+      "marketValue": "Market Value"
+    },
+    "types": {
+      "multiFamily": "Multi-Family House",
+      "singleFamily": "Single-Family House",
+      "apartment": "Apartment",
+      "commercial": "Commercial",
+      "mixedUse": "Mixed Use",
+      "land": "Land",
+      "other": "Other"
+    },
+    "form": {
+      "general": {
+        "title": "General Information",
+        "name": "Property Name",
+        "type": "Property Type",
+        "portfolio": "Portfolio",
+        "status": "Status"
+      },
+      "location": {
+        "title": "Location",
+        "street": "Street and House Number",
+        "postalCode": "Postal Code",
+        "city": "City",
+        "country": "Country"
+      },
+      "metrics": {
+        "title": "Key Metrics",
+        "yearBuilt": "Year Built",
+        "livingArea": "Living Area (sqm)",
+        "usableArea": "Usable Area (sqm)",
+        "plotArea": "Plot Area (sqm)"
+      },
+      "ownership": {
+        "title": "Ownership & Valuation",
+        "owner": "Owner",
+        "ownershipShare": "Ownership Share (%)",
+        "purchasePrice": "Purchase Price",
+        "purchaseDate": "Purchase Date",
+        "marketValue": "Market Value",
+        "valuationDate": "Valuation Date"
+      }
+    },
+    "tabs": {
+      "overview": "Overview",
+      "units": "Units",
+      "tenants": "Tenants",
+      "finance": "Finance",
+      "maintenance": "Maintenance",
+      "documents": "Documents",
+      "history": "History"
+    }
+  },
+  "units": {
+    "list": {
+      "title": "Units",
+      "new": "New Unit",
+      "unit": "Unit",
+      "type": "Type",
+      "area": "Area (sqm)",
+      "rooms": "Rooms",
+      "floor": "Floor",
+      "coldRent": "Base Rent",
+      "serviceCharge": "Service Charge Advance",
+      "warmRent": "Gross Rent",
+      "status": "Status",
+      "tenant": "Tenant"
+    },
+    "types": {
+      "apartment": "Apartment",
+      "office": "Office",
+      "retail": "Retail",
+      "storage": "Storage",
+      "parking": "Parking Space",
+      "garage": "Garage",
+      "basement": "Basement",
+      "other": "Other"
+    },
+    "form": {
+      "property": "Property",
+      "label": "Unit Label",
+      "type": "Type",
+      "area": "Area (sqm)",
+      "rooms": "Rooms",
+      "floor": "Floor",
+      "features": "Features",
+      "rentSettings": {
+        "title": "Rent Settings",
+        "coldRentMonthly": "Base Rent (Monthly)",
+        "serviceChargeAdvance": "Service Charge Advance",
+        "heatingAdvance": "Heating Cost Advance",
+        "warmRentCalculated": "Gross Rent (Calculated)"
+      },
+      "status": {
+        "title": "Status",
+        "rented": "Rented",
+        "vacant": "Vacant",
+        "reserved": "Reserved",
+        "renovation": "Under Renovation"
+      }
+    }
+  },
+  "tenantsContracts": {
+    "tenants": {
+      "title": "Tenants",
+      "new": "New Tenant",
+      "name": "Name",
+      "email": "Email",
+      "phone": "Phone",
+      "address": "Address",
+      "paymentMethod": "Payment Method",
+      "sepaMandate": "SEPA Mandate",
+      "notes": "Notes"
+    },
+    "contracts": {
+      "title": "Contracts",
+      "new": "New Contract",
+      "number": "Contract Number",
+      "property": "Property",
+      "unit": "Unit",
+      "tenant": "Tenant",
+      "start": "Lease Start",
+      "endOptional": "Lease End (optional)",
+      "noticePeriod": "Notice Period",
+      "deposit": "Deposit",
+      "indexRent": "Index/Graduated Rent",
+      "serviceChargeSettlement": "Service Charge Settlement",
+      "status": "Status"
+    },
+    "contractActions": {
+      "activate": "Activate Contract",
+      "terminate": "Terminate Contract",
+      "handoverProtocol": "Handover Protocol",
+      "rentAdjustment": "Rent Adjustment",
+      "sendPaymentReminder": "Send Payment Reminder"
+    },
+    "emptyState": {
+      "title": "No contracts available.",
+      "body": "Create a contract to manage rent and payments.",
+      "cta": "Create Contract"
+    }
+  },
+  "finance": {
+    "areas": {
+      "accounts": "Accounts",
+      "bookings": "Bookings",
+      "receivables": "Receivables",
+      "invoices": "Invoices",
+      "budgets": "Budgets",
+      "categories": "Categories",
+      "taxes": "Taxes"
+    },
+    "accounts": {
+      "title": "Accounts",
+      "new": "New Account",
+      "name": "Account Name",
+      "bank": "Bank",
+      "iban": "IBAN",
+      "bic": "BIC",
+      "type": "Account Type",
+      "openingBalance": "Opening Balance",
+      "balance": "Balance",
+      "lastSync": "Last Sync"
+    },
+    "accountTypes": {
+      "bank": "Bank Account",
+      "cash": "Cash",
+      "reserves": "Reserves Account",
+      "credit": "Credit Account"
+    },
+    "bookings": {
+      "title": "Bookings",
+      "new": "New Booking",
+      "date": "Date",
+      "amount": "Amount",
+      "category": "Category",
+      "propertyUnit": "Property/Unit",
+      "tenant": "Tenant",
+      "paymentText": "Payment Reference",
+      "receipt": "Receipt",
+      "status": "Status"
+    },
+    "categories": {
+      "rentIncome": "Rent Income",
+      "serviceCharges": "Service Charges",
+      "maintenance": "Maintenance",
+      "administration": "Administration",
+      "insurance": "Insurance",
+      "propertyTax": "Property Tax",
+      "energy": "Energy",
+      "interest": "Interest",
+      "repayment": "Repayment",
+      "otherCosts": "Other Costs"
+    },
+    "receivables": {
+      "openReceivables": "Open Receivables",
+      "dunningLevel": "Dunning Level",
+      "dueDate": "Due Date",
+      "postPayment": "Post Payment",
+      "createDunning": "Create Dunning Notice"
+    },
+    "invoices": {
+      "title": "Invoices",
+      "new": "New Invoice",
+      "supplier": "Supplier",
+      "invoiceDate": "Invoice Date",
+      "dueDate": "Due Date",
+      "net": "Net",
+      "vat": "VAT",
+      "gross": "Gross",
+      "paymentTerms": "Payment Terms",
+      "pay": "Pay"
+    },
+    "export": {
+      "datev": "DATEV Export",
+      "csv": "CSV Export",
+      "pdf": "PDF Export"
+    }
+  },
+  "maintenance": {
+    "overview": {
+      "title": "Maintenance",
+      "new": "New Case",
+      "cases": "Cases",
+      "priority": "Priority",
+      "status": "Status",
+      "propertyUnit": "Property/Unit",
+      "reporter": "Reporter",
+      "assignee": "Assignee",
+      "due": "Due",
+      "estimatedCost": "Estimated Cost"
+    },
+    "form": {
+      "title": "Title",
+      "description": "Description",
+      "category": "Category",
+      "priority": "Priority",
+      "property": "Property",
+      "unitOptional": "Unit (optional)",
+      "photos": "Photos/Attachments",
+      "contractor": "Contractor",
+      "appointment": "Appointment",
+      "budget": "Budget"
+    },
+    "categories": {
+      "plumbing": "Plumbing",
+      "electrical": "Electrical",
+      "heating": "Heating",
+      "roofFacade": "Roof/Facade",
+      "interior": "Interior",
+      "pestControl": "Pest Control",
+      "outdoor": "Outdoor Areas",
+      "other": "Other"
+    },
+    "actions": {
+      "createOrder": "Create Work Order",
+      "requestQuote": "Request Quote",
+      "addInvoice": "Add Invoice",
+      "closeCase": "Close Case"
+    }
+  },
+  "documents": {
+    "library": {
+      "title": "Documents",
+      "folders": "Folders",
+      "new": "New Document",
+      "upload": "Upload",
+      "scan": "Scan",
+      "tags": "Tags",
+      "fullTextSearch": "Full-Text Search"
+    },
+    "standardFolders": {
+      "contracts": "Contracts",
+      "statements": "Statements",
+      "receipts": "Receipts",
+      "protocols": "Protocols",
+      "plans": "Plans",
+      "insurance": "Insurance",
+      "tax": "Tax"
+    },
+    "metadata": {
+      "title": "Title",
+      "type": "Type",
+      "propertyUnit": "Property/Unit",
+      "contract": "Contract",
+      "date": "Date",
+      "tags": "Tags",
+      "description": "Description"
+    }
+  },
+  "tasks": {
+    "list": {
+      "title": "Tasks",
+      "new": "New Task",
+      "titleLabel": "Title",
+      "assignee": "Assigned To",
+      "dueDate": "Due Date",
+      "priority": "Priority",
+      "status": "Status",
+      "propertyUnit": "Property/Unit"
+    },
+    "status": {
+      "open": "Open",
+      "inProgress": "In Progress",
+      "blocked": "Blocked",
+      "done": "Done"
+    },
+    "actions": {
+      "complete": "Complete Task",
+      "reassign": "Reassign",
+      "remind": "Remind"
+    }
+  },
+  "calendar": {
+    "title": "Calendar",
+    "create": "Create Appointment",
+    "types": {
+      "viewing": "Viewing",
+      "maintenance": "Maintenance",
+      "handover": "Handover",
+      "reading": "Meter Reading",
+      "note": "Note"
+    },
+    "form": {
+      "title": "Title",
+      "date": "Date",
+      "time": "Time",
+      "location": "Location",
+      "participants": "Participants",
+      "propertyUnit": "Property/Unit",
+      "description": "Description"
+    }
+  },
+  "reports": {
+    "hub": {
+      "title": "Reports",
+      "create": "Create Report",
+      "period": "Period",
+      "portfolio": "Portfolio",
+      "properties": "Properties",
+      "grouping": "Grouping",
+      "filter": "Filter"
+    },
+    "standard": {
+      "profitLoss": "Profit & Loss",
+      "cashflow": "Cash Flow",
+      "tenantList": "Tenant List",
+      "vacancyReport": "Vacancy Report",
+      "openReceivables": "Open Receivables",
+      "maintenanceCosts": "Maintenance Costs",
+      "serviceChargeOverview": "Service Charge Overview",
+      "taxOverview": "Tax Overview"
+    },
+    "actions": {
+      "exportPdf": "Export as PDF",
+      "exportExcel": "Export as Excel",
+      "schedule": "Schedule Report"
+    }
+  },
+  "integrations": {
+    "title": "Integrations",
+    "bankSync": "Bank Sync",
+    "datev": "DATEV",
+    "email": "Email",
+    "calendar": "Calendar (Google/Microsoft)",
+    "storage": "Document Storage (Dropbox/SharePoint)",
+    "webhooks": "Webhooks/API",
+    "status": {
+      "connected": "Connected",
+      "notConnected": "Not Connected",
+      "checkConnection": "Check Connection",
+      "renewAccess": "Renew Access"
+    }
+  },
+  "settings": {
+    "areas": {
+      "general": "General",
+      "usersRoles": "Users & Roles",
+      "notifications": "Notifications",
+      "templates": "Templates",
+      "categories": "Categories",
+      "numberRanges": "Number Ranges",
+      "privacy": "Privacy",
+      "security": "Security",
+      "billing": "Billing"
+    },
+    "general": {
+      "language": "Language",
+      "currency": "Currency",
+      "dateFormat": "Date Format",
+      "taxRates": "Tax Rates",
+      "defaultPortfolio": "Default Portfolio"
+    },
+    "usersRoles": {
+      "users": "Users",
+      "role": "Role",
+      "permissions": "Permissions",
+      "invite": "Invite",
+      "sendInvite": "Send Invitation"
+    },
+    "roles": {
+      "owner": "Owner",
+      "manager": "Manager",
+      "accounting": "Accounting",
+      "technician": "Technician",
+      "readOnly": "Read Only"
+    },
+    "notifications": {
+      "email": "Email Notifications",
+      "push": "Push Notifications",
+      "paymentAlerts": "Payment Alerts",
+      "contractAlerts": "Contract Alerts",
+      "maintenanceAlerts": "Maintenance Alerts"
+    },
+    "templates": {
+      "dunning": "Dunning Templates",
+      "email": "Email Templates",
+      "contract": "Contract Templates",
+      "protocol": "Protocol Templates"
+    },
+    "security": {
+      "changePassword": "Change Password",
+      "enable2fa": "Enable 2FA",
+      "activeSessions": "Active Sessions",
+      "deviceManagement": "Device Management"
+    }
+  },
+  "search": {
+    "global": {
+      "placeholder": "Search for properties, units, tenants, contracts, bookings...",
+      "recent": "Recent Searches",
+      "results": "Results",
+      "noResults": "No results found."
+    }
+  },
+  "notifications": {
+    "items": {
+      "paymentReceived": "New payment received",
+      "paymentOverdue": "Payment overdue",
+      "contractExpiring": "Contract expiring",
+      "taskDue": "Task due",
+      "newMaintenanceCase": "New maintenance case",
+      "documentUploaded": "Document uploaded"
+    },
+    "actions": {
+      "markAllRead": "Mark all as read",
+      "settings": "Notification Settings"
+    }
+  },
+  "modals": {
+    "confirmSave": {
+      "title": "Save changes?",
+      "body": "You have unsaved changes. Would you like to save?",
+      "save": "Save",
+      "dontSave": "Don't Save"
+    },
+    "confirmDelete": {
+      "title": "Are you sure you want to delete?",
+      "body": "This action cannot be undone.",
+      "delete": "Delete",
+      "cancel": "Cancel"
+    },
+    "confirmArchive": {
+      "title": "Archive?",
+      "body": "You can restore archived entries later.",
+      "archive": "Archive"
+    }
+  },
+  "toasts": {
+    "success": {
+      "saved": "Saved successfully.",
+      "created": "Created successfully.",
+      "deleted": "Deleted successfully.",
+      "exportStarted": "Export has been started.",
+      "importCompleted": "Import completed."
+    },
+    "error": {
+      "generic": "An error has occurred.",
+      "saveFailed": "Save failed. Please try again.",
+      "invalidInput": "Invalid input. Please check the fields.",
+      "offline": "No connection. Please check your internet connection.",
+      "accessDenied": "Access denied. You do not have the required permissions."
+    },
+    "info": {
+      "changesDiscarded": "Changes have been discarded.",
+      "syncInProgress": "Sync in progress...",
+      "dataRefreshing": "Data is refreshing..."
+    }
+  },
+  "validation": {
+    "required": "This field is required.",
+    "invalidEmail": "Please enter a valid email address.",
+    "invalidNumber": "Please enter a number.",
+    "amountGreaterThanZero": "Amount must be greater than 0.",
+    "dateInPast": "Date is in the past.",
+    "invalidIban": "IBAN is invalid.",
+    "portfolioPropertyExists": "The combination of portfolio and property name already exists."
+  },
+  "emptyStates": {
+    "generic": {
+      "title": "No entries yet.",
+      "body": "Create your first entry to get started.",
+      "cta": "Create New"
+    },
+    "documents": {
+      "title": "No documents found.",
+      "body": "Upload receipts, contracts, and protocols -- everything in one central place.",
+      "cta": "Upload Document"
+    },
+    "maintenance": {
+      "title": "No open cases.",
+      "body": "All done. New cases can be created at any time.",
+      "cta": "Create Case"
+    }
+  },
+  "helpSupport": {
+    "title": "Help",
+    "helpCenter": "Help Center",
+    "contactSupport": "Contact Support",
+    "documentation": "Documentation",
+    "videoTutorials": "Video Tutorials",
+    "shortcuts": "Keyboard Shortcuts",
+    "systemStatus": "System Status",
+    "supportForm": {
+      "subject": "Subject",
+      "description": "Description",
+      "priority": "Priority",
+      "attachment": "Screenshot/File",
+      "submit": "Submit Request"
+    }
+  },
+  "privacyLegal": {
+    "privacy": "Privacy",
+    "imprint": "Imprint",
+    "terms": "Terms of Use",
+    "manageConsents": "Manage Consents",
+    "requestExport": "Request Data Export",
+    "deleteAccount": "Delete Account",
+    "notes": {
+      "dataProcessing": "We process your data in accordance with privacy regulations.",
+      "exportDuration": "A data export may take a few minutes depending on the volume of data."
+    }
+  },
+  "locale": {
+    "language": "English (US)",
+    "date": "MM/DD/YYYY",
+    "currency": "USD ($)",
+    "decimalSeparator": ".",
+    "thousandSeparator": ","
+  },
+  "microcopy": {
+    "tipTags": "Tip: You can find properties faster using tags.",
+    "noteDeposits": "Note: Deposits are managed separately from the rent account.",
+    "recommendReceipts": "Recommendation: Attach receipts directly to the booking.",
+    "useQuickActions": "Handy: Use quick actions for frequently performed tasks."
+  },
+  "placeholders": {
+    "address": "e.g. \"123 Main Street, New York, NY 10001\"",
+    "unit": "e.g. \"Apartment 3.2\"",
+    "payment": "e.g. \"Rent payment January\"",
+    "task": "e.g. \"Schedule heating maintenance\""
+  },
+  "shortcuts": {
+    "openSearch": "/ Open Search",
+    "createNew": "N Create New",
+    "save": "Ctrl/\u2318 + S Save",
+    "closeDialog": "Esc Close Dialog"
+  },
+  "errorPages": {
+    "notFound": {
+      "title": "404 -- Page Not Found",
+      "body": "The requested page does not exist or has been moved.",
+      "cta": "Go to Home Page"
+    },
+    "serverError": {
+      "title": "500 -- Server Error",
+      "body": "Please try again later.",
+      "cta": "Reload"
+    },
+    "maintenance": {
+      "title": "Maintenance",
+      "body": "ImmoManager Pro is currently undergoing maintenance.",
+      "cta": "We will be back shortly."
+    }
+  },
+  "analyticsLabels": {
+    "period": "Period",
+    "comparisonPeriod": "Comparison Period",
+    "sum": "Sum",
+    "average": "Average",
+    "median": "Median",
+    "minimum": "Minimum",
+    "maximum": "Maximum",
+    "share": "Share",
+    "trend": "Trend",
+    "forecast": "Forecast"
+  },
+  "sensitiveActions": {
+    "deleteAccount": {
+      "title": "Are you sure you want to delete your account?",
+      "body": "All data will be permanently removed. This action cannot be undone.",
+      "confirm": "I understand the consequences",
+      "cta": "Delete Account"
+    }
+  },
+  "importExport": {
+    "import": {
+      "selectFile": "Select File",
+      "mapColumns": "Map Columns",
+      "preview": "Preview",
+      "start": "Start Import",
+      "log": "Import Log",
+      "rowsImported": "Rows imported",
+      "rowsSkipped": "Rows skipped",
+      "rowsWithErrors": "Rows with errors"
+    },
+    "export": {
+      "format": "Export Format",
+      "scope": "Export Scope",
+      "create": "Create Export",
+      "downloadReady": "Download Ready"
+    }
+  },
+  "tooltips": {
+    "occupancyRate": "Occupancy Rate: Percentage of rented units out of all units.",
+    "cashflow": "Cash Flow: Income minus expenses for the selected period.",
+    "serviceChargeAdvance": "Service Charge Advance: Monthly advance payment for operating costs."
+  },
+  "security": {
+    "sessionExpired": "Session expired. Please log in again.",
+    "tooManyAttempts": "Too many login attempts. Please wait a moment and try again.",
+    "connectionEncrypted": "Your connection is encrypted."
+  },
+  "terminology": {
+    "property": "Property",
+    "unit": "Unit",
+    "contract": "Contract",
+    "booking": "Booking"
+  },
+  "glossary": {
+    "coldRent": "Base Rent: Rent without service charges.",
+    "warmRent": "Gross Rent: Base rent plus service charge advance (and heating advance, if applicable).",
+    "serviceCharges": "Service Charges: Allocable operating costs, e.g. water, waste disposal, building cleaning.",
+    "deposit": "Deposit: Security deposit paid by the tenant."
+  }
+}

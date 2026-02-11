@@ -1,0 +1,911 @@
+{
+  "brand": {
+    "productName": "ImmoManager Pro",
+    "shortName": "ImmoManager",
+    "slogan": "Todo bajo control. Cada inmueble."
+  },
+  "navigation": {
+    "main": {
+      "dashboard": "Panel de control",
+      "portfolio": "Cartera",
+      "properties": "Inmuebles",
+      "units": "Unidades",
+      "tenantsContracts": "Inquilinos y contratos",
+      "finance": "Finanzas",
+      "maintenance": "Mantenimiento",
+      "documents": "Documentos",
+      "tasks": "Tareas",
+      "calendar": "Calendario",
+      "reports": "Informes",
+      "integrations": "Integraciones",
+      "settings": "Configuración",
+      "help": "Ayuda"
+    },
+    "secondary": {
+      "overview": "Resumen",
+      "details": "Detalles",
+      "history": "Historial",
+      "notes": "Notas",
+      "attachments": "Adjuntos",
+      "activity": "Actividad"
+    }
+  },
+  "topBar": {
+    "search": "Buscar…",
+    "quickAction": "Acción rápida",
+    "notifications": "Notificaciones",
+    "account": "Cuenta"
+  },
+  "accountMenu": {
+    "profile": "Perfil",
+    "teamRoles": "Equipo y roles",
+    "billing": "Facturación",
+    "language": "Idioma",
+    "shortcuts": "Atajos de teclado",
+    "logout": "Cerrar sesión"
+  },
+  "ui": {
+    "buttons": {
+      "new": "Nuevo",
+      "create": "Crear",
+      "save": "Guardar",
+      "saveClose": "Guardar y cerrar",
+      "saveNew": "Guardar y nuevo",
+      "cancel": "Cancelar",
+      "close": "Cerrar",
+      "edit": "Editar",
+      "delete": "Eliminar",
+      "duplicate": "Duplicar",
+      "export": "Exportar",
+      "import": "Importar",
+      "print": "Imprimir",
+      "share": "Compartir",
+      "open": "Abrir",
+      "upload": "Subir",
+      "download": "Descargar",
+      "refresh": "Actualizar",
+      "filter": "Filtrar",
+      "sort": "Ordenar",
+      "reset": "Restablecer",
+      "apply": "Aplicar",
+      "confirm": "Confirmar",
+      "next": "Siguiente",
+      "back": "Atrás",
+      "done": "Hecho"
+    },
+    "commonActions": {
+      "viewDetails": "Ver detalles",
+      "addToFavorites": "Añadir a favoritos",
+      "markDone": "Marcar como completado",
+      "setReminder": "Establecer recordatorio",
+      "addComment": "Añadir comentario",
+      "addNote": "Añadir nota",
+      "attachFile": "Adjuntar archivo"
+    },
+    "form": {
+      "required": "Campo obligatorio",
+      "optional": "Opcional",
+      "hint": "Indicación",
+      "description": "Descripción",
+      "selectValue": "Seleccionar valor",
+      "pleaseSelect": "Por favor, seleccione…",
+      "selectDate": "Seleccionar fecha",
+      "selectTime": "Seleccionar hora",
+      "enterAmount": "Introducir importe",
+      "search": "Buscar"
+    },
+    "table": {
+      "adjustColumns": "Ajustar columnas",
+      "resetColumns": "Restablecer columnas",
+      "density": "Densidad",
+      "groupBy": "Agrupar por",
+      "showTotals": "Mostrar totales",
+      "rowsPerPage": "Entradas por página",
+      "nextPage": "Página siguiente",
+      "previousPage": "Página anterior",
+      "noResults": "Sin resultados",
+      "loading": "Cargando…"
+    },
+    "filterChips": {
+      "active": "Activo",
+      "inactive": "Inactivo",
+      "draft": "Borrador",
+      "archived": "Archivado",
+      "due": "Pendiente",
+      "overdue": "Vencido",
+      "open": "Abierto",
+      "done": "Completado"
+    }
+  },
+  "status": {
+    "general": {
+      "active": "Activo",
+      "inactive": "Inactivo",
+      "archived": "Archivado",
+      "draft": "Borrador",
+      "pending": "Pendiente",
+      "completed": "Completado",
+      "locked": "Bloqueado"
+    },
+    "priority": {
+      "low": "Baja",
+      "medium": "Media",
+      "high": "Alta",
+      "critical": "Crítica"
+    },
+    "payment": {
+      "paid": "Pagado",
+      "partiallyPaid": "Parcialmente pagado",
+      "open": "Abierto",
+      "overdue": "Vencido",
+      "cancelled": "Anulado"
+    },
+    "contract": {
+      "active": "Activo",
+      "expiring": "Próximo a vencer",
+      "terminated": "Rescindido",
+      "ended": "Finalizado",
+      "inReview": "En revisión"
+    }
+  },
+  "onboarding": {
+    "welcomeTitle": "Bienvenido a ImmoManager Pro",
+    "welcomeBody": "Gestione toda su cartera inmobiliaria en un solo lugar: de forma clara, segura y eficiente.",
+    "steps": {
+      "createPortfolio": "Crear cartera",
+      "addProperties": "Añadir inmuebles",
+      "addUnits": "Registrar unidades",
+      "addTenantsContracts": "Crear inquilinos y contratos",
+      "configureAccounts": "Configurar cuentas y categorías",
+      "viewFirstReport": "Ver el primer informe"
+    },
+    "cta": {
+      "startSetup": "Iniciar configuración",
+      "loadSampleData": "Cargar datos de ejemplo",
+      "setupLater": "Configurar más tarde"
+    }
+  },
+  "auth": {
+    "login": {
+      "title": "Iniciar sesión",
+      "email": "Correo electrónico",
+      "password": "Contraseña",
+      "rememberMe": "Mantener sesión iniciada",
+      "forgotPassword": "¿Olvidó su contraseña?",
+      "submit": "Iniciar sesión"
+    },
+    "forgotPassword": {
+      "title": "Restablecer contraseña",
+      "body": "Le enviaremos un enlace para restablecer su contraseña.",
+      "submit": "Enviar enlace"
+    },
+    "register": {
+      "title": "Crear cuenta",
+      "firstName": "Nombre",
+      "lastName": "Apellido",
+      "company": "Empresa (opcional)",
+      "email": "Correo electrónico",
+      "password": "Contraseña",
+      "confirmPassword": "Confirmar contraseña",
+      "submit": "Crear cuenta"
+    },
+    "twoFactor": {
+      "title": "Autenticación de dos factores",
+      "enterCode": "Introducir código",
+      "confirmCode": "Confirmar código",
+      "resendCode": "Reenviar código"
+    }
+  },
+  "dashboard": {
+    "headings": {
+      "portfolioOverview": "Resumen de la cartera",
+      "keyMetrics": "Indicadores clave",
+      "recentActivity": "Actividad reciente",
+      "upcomingAppointments": "Próximas citas"
+    },
+    "kpis": {
+      "totalProperties": "Inmuebles totales",
+      "totalUnits": "Unidades totales",
+      "occupancyRate": "Tasa de ocupación",
+      "netRentMonthly": "Alquiler neto (mensual)",
+      "cashflowMonthly": "Flujo de caja (mensual)",
+      "openReceivables": "Cuentas por cobrar pendientes",
+      "overduePayments": "Pagos vencidos",
+      "openMaintenanceCases": "Casos de mantenimiento abiertos"
+    },
+    "widgets": {
+      "rentPayments30Days": "Cobros de alquiler (últimos 30 días)",
+      "vacancyByProperty": "Desocupación por inmueble",
+      "costsByCategory": "Costes por categoría",
+      "contractTerms": "Plazos de contratos",
+      "tasksDue": "Tareas: pendientes/vencidas"
+    },
+    "emptyState": {
+      "title": "Aún no hay datos disponibles.",
+      "body": "Cree su cartera para ver indicadores e informes.",
+      "cta": "Crear cartera"
+    }
+  },
+  "portfolio": {
+    "list": {
+      "title": "Cartera",
+      "plural": "Carteras",
+      "new": "Nueva cartera",
+      "name": "Nombre de la cartera",
+      "description": "Descripción",
+      "owner": "Propietario/Organización",
+      "currency": "Moneda",
+      "timezone": "Zona horaria",
+      "createdAt": "Fecha de creación"
+    },
+    "detail": {
+      "title": "Detalles de la cartera",
+      "general": "General",
+      "addresses": "Direcciones",
+      "taxBilling": "Impuestos y facturación",
+      "userAccess": "Acceso de usuarios"
+    },
+    "actions": {
+      "create": "Crear cartera",
+      "edit": "Editar cartera",
+      "archive": "Archivar cartera"
+    }
+  },
+  "properties": {
+    "list": {
+      "title": "Inmuebles",
+      "new": "Nuevo inmueble",
+      "name": "Nombre del inmueble",
+      "type": "Tipo de inmueble",
+      "address": "Dirección",
+      "yearBuilt": "Año de construcción",
+      "area": "Superficie habitable/útil",
+      "units": "Unidades",
+      "status": "Estado",
+      "ownershipShare": "Cuota de propiedad",
+      "marketValue": "Valor de mercado"
+    },
+    "types": {
+      "multiFamily": "Edificio multifamiliar",
+      "singleFamily": "Vivienda unifamiliar",
+      "apartment": "Apartamento",
+      "commercial": "Local comercial",
+      "mixedUse": "Uso mixto",
+      "land": "Terreno",
+      "other": "Otros"
+    },
+    "form": {
+      "general": {
+        "title": "Datos generales",
+        "name": "Nombre del inmueble",
+        "type": "Tipo de inmueble",
+        "portfolio": "Cartera",
+        "status": "Estado"
+      },
+      "location": {
+        "title": "Ubicación",
+        "street": "Calle y número",
+        "postalCode": "Código postal",
+        "city": "Ciudad",
+        "country": "País"
+      },
+      "metrics": {
+        "title": "Indicadores",
+        "yearBuilt": "Año de construcción",
+        "livingArea": "Superficie habitable (m²)",
+        "usableArea": "Superficie útil (m²)",
+        "plotArea": "Superficie del terreno (m²)"
+      },
+      "ownership": {
+        "title": "Propiedad y valoración",
+        "owner": "Propietario",
+        "ownershipShare": "Cuota de propiedad (%)",
+        "purchasePrice": "Precio de compra",
+        "purchaseDate": "Fecha de compra",
+        "marketValue": "Valor de mercado",
+        "valuationDate": "Fecha de valoración"
+      }
+    },
+    "tabs": {
+      "overview": "Vista general",
+      "units": "Unidades",
+      "tenants": "Inquilinos",
+      "finance": "Finanzas",
+      "maintenance": "Mantenimiento",
+      "documents": "Documentos",
+      "history": "Historial"
+    }
+  },
+  "units": {
+    "list": {
+      "title": "Unidades",
+      "new": "Nueva unidad",
+      "unit": "Unidad",
+      "type": "Tipo",
+      "area": "Superficie (m²)",
+      "rooms": "Habitaciones",
+      "floor": "Planta",
+      "coldRent": "Alquiler base",
+      "serviceCharge": "Anticipo de gastos comunes",
+      "warmRent": "Alquiler total",
+      "status": "Estado",
+      "tenant": "Inquilino"
+    },
+    "types": {
+      "apartment": "Apartamento",
+      "office": "Oficina",
+      "retail": "Local comercial",
+      "storage": "Almacén",
+      "parking": "Plaza de aparcamiento",
+      "garage": "Garaje",
+      "basement": "Sótano",
+      "other": "Otros"
+    },
+    "form": {
+      "property": "Inmueble",
+      "label": "Denominación de la unidad",
+      "type": "Tipo",
+      "area": "Superficie (m²)",
+      "rooms": "Habitaciones",
+      "floor": "Planta",
+      "features": "Características del equipamiento",
+      "rentSettings": {
+        "title": "Configuración de alquiler",
+        "coldRentMonthly": "Alquiler base (mensual)",
+        "serviceChargeAdvance": "Anticipo de gastos comunes",
+        "heatingAdvance": "Anticipo de calefacción",
+        "warmRentCalculated": "Alquiler total (calculado)"
+      },
+      "status": {
+        "title": "Estado",
+        "rented": "Alquilado",
+        "vacant": "Desocupado",
+        "reserved": "Reservado",
+        "renovation": "En renovación"
+      }
+    }
+  },
+  "tenantsContracts": {
+    "tenants": {
+      "title": "Inquilinos",
+      "new": "Nuevo inquilino",
+      "name": "Nombre",
+      "email": "Correo electrónico",
+      "phone": "Teléfono",
+      "address": "Dirección",
+      "paymentMethod": "Método de pago",
+      "sepaMandate": "Mandato SEPA",
+      "notes": "Notas"
+    },
+    "contracts": {
+      "title": "Contratos",
+      "new": "Nuevo contrato",
+      "number": "Número de contrato",
+      "property": "Inmueble",
+      "unit": "Unidad",
+      "tenant": "Inquilino",
+      "start": "Inicio del alquiler",
+      "endOptional": "Fin del alquiler (opcional)",
+      "noticePeriod": "Plazo de preaviso",
+      "deposit": "Fianza",
+      "indexRent": "Alquiler indexado/escalonado",
+      "serviceChargeSettlement": "Liquidación de gastos comunes",
+      "status": "Estado"
+    },
+    "contractActions": {
+      "activate": "Activar contrato",
+      "terminate": "Rescindir contrato",
+      "handoverProtocol": "Protocolo de entrega",
+      "rentAdjustment": "Ajuste de alquiler",
+      "sendPaymentReminder": "Enviar recordatorio de pago"
+    },
+    "emptyState": {
+      "title": "No hay contratos disponibles.",
+      "body": "Cree un contrato para gestionar alquileres y pagos.",
+      "cta": "Crear contrato"
+    }
+  },
+  "finance": {
+    "areas": {
+      "accounts": "Cuentas",
+      "bookings": "Asientos contables",
+      "receivables": "Cuentas por cobrar",
+      "invoices": "Facturas",
+      "budgets": "Presupuestos",
+      "categories": "Categorías",
+      "taxes": "Impuestos"
+    },
+    "accounts": {
+      "title": "Cuentas",
+      "new": "Nueva cuenta",
+      "name": "Nombre de la cuenta",
+      "bank": "Banco",
+      "iban": "IBAN",
+      "bic": "BIC",
+      "type": "Tipo de cuenta",
+      "openingBalance": "Saldo inicial",
+      "balance": "Saldo",
+      "lastSync": "Última sincronización"
+    },
+    "accountTypes": {
+      "bank": "Cuenta bancaria",
+      "cash": "Caja",
+      "reserves": "Cuenta de reservas",
+      "credit": "Cuenta de crédito"
+    },
+    "bookings": {
+      "title": "Asientos contables",
+      "new": "Nuevo asiento",
+      "date": "Fecha",
+      "amount": "Importe",
+      "category": "Categoría",
+      "propertyUnit": "Inmueble/Unidad",
+      "tenant": "Inquilino",
+      "paymentText": "Concepto de pago",
+      "receipt": "Comprobante",
+      "status": "Estado"
+    },
+    "categories": {
+      "rentIncome": "Ingresos por alquiler",
+      "serviceCharges": "Gastos comunes",
+      "maintenance": "Mantenimiento",
+      "administration": "Administración",
+      "insurance": "Seguro",
+      "propertyTax": "Impuesto sobre bienes inmuebles",
+      "energy": "Energía",
+      "interest": "Intereses",
+      "repayment": "Amortización",
+      "otherCosts": "Otros gastos"
+    },
+    "receivables": {
+      "openReceivables": "Cuentas por cobrar pendientes",
+      "dunningLevel": "Nivel de reclamación",
+      "dueDate": "Fecha de vencimiento",
+      "postPayment": "Registrar cobro",
+      "createDunning": "Crear reclamación de pago"
+    },
+    "invoices": {
+      "title": "Facturas",
+      "new": "Nueva factura",
+      "supplier": "Proveedor",
+      "invoiceDate": "Fecha de factura",
+      "dueDate": "Fecha de vencimiento",
+      "net": "Neto",
+      "vat": "IVA",
+      "gross": "Bruto",
+      "paymentTerms": "Plazo de pago",
+      "pay": "Pagar"
+    },
+    "export": {
+      "datev": "Exportación DATEV",
+      "csv": "Exportación CSV",
+      "pdf": "Exportación PDF"
+    }
+  },
+  "maintenance": {
+    "overview": {
+      "title": "Mantenimiento",
+      "new": "Nuevo caso",
+      "cases": "Casos",
+      "priority": "Prioridad",
+      "status": "Estado",
+      "propertyUnit": "Inmueble/Unidad",
+      "reporter": "Reportado por",
+      "assignee": "Responsable",
+      "due": "Vencimiento",
+      "estimatedCost": "Coste (estimado)"
+    },
+    "form": {
+      "title": "Título",
+      "description": "Descripción",
+      "category": "Categoría",
+      "priority": "Prioridad",
+      "property": "Inmueble",
+      "unitOptional": "Unidad (opcional)",
+      "photos": "Fotos/Adjuntos",
+      "contractor": "Proveedor de servicios",
+      "appointment": "Cita",
+      "budget": "Presupuesto"
+    },
+    "categories": {
+      "plumbing": "Fontanería",
+      "electrical": "Electricidad",
+      "heating": "Calefacción",
+      "roofFacade": "Tejado/Fachada",
+      "interior": "Interior",
+      "pestControl": "Control de plagas",
+      "outdoor": "Exteriores",
+      "other": "Otros"
+    },
+    "actions": {
+      "createOrder": "Crear orden de trabajo",
+      "requestQuote": "Solicitar presupuesto",
+      "addInvoice": "Añadir factura",
+      "closeCase": "Cerrar caso"
+    }
+  },
+  "documents": {
+    "library": {
+      "title": "Documentos",
+      "folders": "Carpetas",
+      "new": "Nuevo documento",
+      "upload": "Subir",
+      "scan": "Escanear",
+      "tags": "Etiquetas",
+      "fullTextSearch": "Búsqueda de texto completo"
+    },
+    "standardFolders": {
+      "contracts": "Contratos",
+      "statements": "Liquidaciones",
+      "receipts": "Comprobantes",
+      "protocols": "Protocolos",
+      "plans": "Planos",
+      "insurance": "Seguros",
+      "tax": "Impuestos"
+    },
+    "metadata": {
+      "title": "Título",
+      "type": "Tipo",
+      "propertyUnit": "Inmueble/Unidad",
+      "contract": "Contrato",
+      "date": "Fecha",
+      "tags": "Etiquetas",
+      "description": "Descripción"
+    }
+  },
+  "tasks": {
+    "list": {
+      "title": "Tareas",
+      "new": "Nueva tarea",
+      "titleLabel": "Título",
+      "assignee": "Asignado a",
+      "dueDate": "Fecha de vencimiento",
+      "priority": "Prioridad",
+      "status": "Estado",
+      "propertyUnit": "Inmueble/Unidad"
+    },
+    "status": {
+      "open": "Abierta",
+      "inProgress": "En progreso",
+      "blocked": "Bloqueada",
+      "done": "Completada"
+    },
+    "actions": {
+      "complete": "Completar tarea",
+      "reassign": "Reasignar",
+      "remind": "Recordar"
+    }
+  },
+  "calendar": {
+    "title": "Calendario",
+    "create": "Crear cita",
+    "types": {
+      "viewing": "Visita",
+      "maintenance": "Mantenimiento",
+      "handover": "Entrega",
+      "reading": "Lectura de contadores",
+      "note": "Nota"
+    },
+    "form": {
+      "title": "Título",
+      "date": "Fecha",
+      "time": "Hora",
+      "location": "Lugar",
+      "participants": "Participantes",
+      "propertyUnit": "Inmueble/Unidad",
+      "description": "Descripción"
+    }
+  },
+  "reports": {
+    "hub": {
+      "title": "Informes",
+      "create": "Crear informe",
+      "period": "Período",
+      "portfolio": "Cartera",
+      "properties": "Inmuebles",
+      "grouping": "Agrupación",
+      "filter": "Filtro"
+    },
+    "standard": {
+      "profitLoss": "Pérdidas y ganancias",
+      "cashflow": "Flujo de caja",
+      "tenantList": "Lista de inquilinos",
+      "vacancyReport": "Informe de desocupación",
+      "openReceivables": "Cuentas por cobrar pendientes",
+      "maintenanceCosts": "Costes de mantenimiento",
+      "serviceChargeOverview": "Resumen de gastos comunes",
+      "taxOverview": "Resumen fiscal"
+    },
+    "actions": {
+      "exportPdf": "Exportar como PDF",
+      "exportExcel": "Exportar como Excel",
+      "schedule": "Programar informe"
+    }
+  },
+  "integrations": {
+    "title": "Integraciones",
+    "bankSync": "Sincronización bancaria",
+    "datev": "DATEV",
+    "email": "Correo electrónico",
+    "calendar": "Calendario (Google/Microsoft)",
+    "storage": "Almacenamiento de documentos (Dropbox/SharePoint)",
+    "webhooks": "Webhooks/API",
+    "status": {
+      "connected": "Conectado",
+      "notConnected": "No conectado",
+      "checkConnection": "Verificar conexión",
+      "renewAccess": "Renovar acceso"
+    }
+  },
+  "settings": {
+    "areas": {
+      "general": "General",
+      "usersRoles": "Usuarios y roles",
+      "notifications": "Notificaciones",
+      "templates": "Plantillas",
+      "categories": "Categorías",
+      "numberRanges": "Rangos de numeración",
+      "privacy": "Protección de datos",
+      "security": "Seguridad",
+      "billing": "Facturación"
+    },
+    "general": {
+      "language": "Idioma",
+      "currency": "Moneda",
+      "dateFormat": "Formato de fecha",
+      "taxRates": "Tipos impositivos",
+      "defaultPortfolio": "Cartera predeterminada"
+    },
+    "usersRoles": {
+      "users": "Usuarios",
+      "role": "Rol",
+      "permissions": "Permisos",
+      "invite": "Invitar",
+      "sendInvite": "Enviar invitación"
+    },
+    "roles": {
+      "owner": "Propietario",
+      "manager": "Administrador",
+      "accounting": "Contabilidad",
+      "technician": "Técnico",
+      "readOnly": "Solo lectura"
+    },
+    "notifications": {
+      "email": "Notificaciones por correo electrónico",
+      "push": "Notificaciones push",
+      "paymentAlerts": "Alertas de pago",
+      "contractAlerts": "Alertas de contratos",
+      "maintenanceAlerts": "Alertas de mantenimiento"
+    },
+    "templates": {
+      "dunning": "Plantillas de reclamación de pago",
+      "email": "Plantillas de correo electrónico",
+      "contract": "Plantillas de contrato",
+      "protocol": "Plantillas de protocolo"
+    },
+    "security": {
+      "changePassword": "Cambiar contraseña",
+      "enable2fa": "Activar 2FA",
+      "activeSessions": "Sesiones activas",
+      "deviceManagement": "Gestión de dispositivos"
+    }
+  },
+  "search": {
+    "global": {
+      "placeholder": "Buscar inmuebles, unidades, inquilinos, contratos, asientos contables…",
+      "recent": "Búsquedas recientes",
+      "results": "Resultados",
+      "noResults": "No se encontraron resultados."
+    }
+  },
+  "notifications": {
+    "items": {
+      "paymentReceived": "Nuevo pago recibido",
+      "paymentOverdue": "Pago vencido",
+      "contractExpiring": "Contrato próximo a vencer",
+      "taskDue": "Tarea pendiente",
+      "newMaintenanceCase": "Nuevo caso de mantenimiento",
+      "documentUploaded": "Documento subido"
+    },
+    "actions": {
+      "markAllRead": "Marcar todo como leído",
+      "settings": "Configuración de notificaciones"
+    }
+  },
+  "modals": {
+    "confirmSave": {
+      "title": "¿Guardar cambios?",
+      "body": "Tiene cambios sin guardar. ¿Desea guardarlos?",
+      "save": "Guardar",
+      "dontSave": "No guardar"
+    },
+    "confirmDelete": {
+      "title": "¿Eliminar de verdad?",
+      "body": "Esta acción no se puede deshacer.",
+      "delete": "Eliminar",
+      "cancel": "Cancelar"
+    },
+    "confirmArchive": {
+      "title": "¿Archivar?",
+      "body": "Puede restaurar las entradas archivadas más adelante.",
+      "archive": "Archivar"
+    }
+  },
+  "toasts": {
+    "success": {
+      "saved": "Guardado correctamente.",
+      "created": "Creado correctamente.",
+      "deleted": "Eliminado correctamente.",
+      "exportStarted": "La exportación ha comenzado.",
+      "importCompleted": "Importación completada."
+    },
+    "error": {
+      "generic": "Se ha producido un error.",
+      "saveFailed": "Error al guardar. Por favor, inténtelo de nuevo.",
+      "invalidInput": "Entrada no válida. Por favor, revise los campos.",
+      "offline": "Sin conexión. Por favor, compruebe su conexión a Internet.",
+      "accessDenied": "Acceso denegado. No tiene los permisos necesarios."
+    },
+    "info": {
+      "changesDiscarded": "Los cambios han sido descartados.",
+      "syncInProgress": "Sincronización en curso…",
+      "dataRefreshing": "Actualizando datos…"
+    }
+  },
+  "validation": {
+    "required": "Este campo es obligatorio.",
+    "invalidEmail": "Por favor, introduzca una dirección de correo electrónico válida.",
+    "invalidNumber": "Por favor, introduzca un número.",
+    "amountGreaterThanZero": "El importe debe ser mayor que 0.",
+    "dateInPast": "La fecha está en el pasado.",
+    "invalidIban": "El IBAN no es válido.",
+    "portfolioPropertyExists": "La combinación de cartera y nombre del inmueble ya existe."
+  },
+  "emptyStates": {
+    "generic": {
+      "title": "Aún no hay entradas disponibles.",
+      "body": "Cree su primera entrada para comenzar.",
+      "cta": "Crear nuevo"
+    },
+    "documents": {
+      "title": "No se encontraron documentos.",
+      "body": "Suba comprobantes, contratos y protocolos: todo en un solo lugar.",
+      "cta": "Subir documento"
+    },
+    "maintenance": {
+      "title": "No hay casos abiertos.",
+      "body": "Todo al día. Se pueden crear nuevos casos en cualquier momento.",
+      "cta": "Crear caso"
+    }
+  },
+  "helpSupport": {
+    "title": "Ayuda",
+    "helpCenter": "Centro de ayuda",
+    "contactSupport": "Contactar con soporte",
+    "documentation": "Documentación",
+    "videoTutorials": "Tutoriales en vídeo",
+    "shortcuts": "Atajos de teclado",
+    "systemStatus": "Estado del sistema",
+    "supportForm": {
+      "subject": "Asunto",
+      "description": "Descripción",
+      "priority": "Prioridad",
+      "attachment": "Captura de pantalla/Archivo",
+      "submit": "Enviar solicitud"
+    }
+  },
+  "privacyLegal": {
+    "privacy": "Protección de datos",
+    "imprint": "Aviso legal",
+    "terms": "Condiciones de uso",
+    "manageConsents": "Gestionar consentimientos",
+    "requestExport": "Solicitar exportación de datos",
+    "deleteAccount": "Eliminar cuenta",
+    "notes": {
+      "dataProcessing": "Procesamos sus datos conforme a la normativa de protección de datos.",
+      "exportDuration": "Una exportación de datos puede tardar algunos minutos según el volumen."
+    }
+  },
+  "locale": {
+    "language": "Español (ES)",
+    "date": "DD/MM/AAAA",
+    "currency": "EUR (€)",
+    "decimalSeparator": ",",
+    "thousandSeparator": "."
+  },
+  "microcopy": {
+    "tipTags": "Consejo: Puede encontrar inmuebles más rápido usando etiquetas.",
+    "noteDeposits": "Nota: Las fianzas se gestionan de forma separada a la cuenta de alquiler.",
+    "recommendReceipts": "Recomendación: Adjunte los comprobantes directamente al asiento contable.",
+    "useQuickActions": "Práctico: Utilice acciones rápidas para las tareas frecuentes."
+  },
+  "placeholders": {
+    "address": "p. ej. «Calle Mayor 12, 28013 Madrid»",
+    "unit": "p. ej. «Apartamento 3.2»",
+    "payment": "p. ej. «Cobro de alquiler enero»",
+    "task": "p. ej. «Encargar mantenimiento de calefacción»"
+  },
+  "shortcuts": {
+    "openSearch": "/ Abrir búsqueda",
+    "createNew": "N Crear nuevo",
+    "save": "Ctrl/⌘ + S Guardar",
+    "closeDialog": "Esc Cerrar diálogo"
+  },
+  "errorPages": {
+    "notFound": {
+      "title": "404 – Página no encontrada",
+      "body": "La página solicitada no existe o ha sido movida.",
+      "cta": "Ir a la página de inicio"
+    },
+    "serverError": {
+      "title": "500 – Error del servidor",
+      "body": "Por favor, inténtelo de nuevo más tarde.",
+      "cta": "Recargar"
+    },
+    "maintenance": {
+      "title": "Mantenimiento",
+      "body": "ImmoManager Pro se encuentra en mantenimiento.",
+      "cta": "Estaremos de vuelta en breve."
+    }
+  },
+  "analyticsLabels": {
+    "period": "Período",
+    "comparisonPeriod": "Período de comparación",
+    "sum": "Suma",
+    "average": "Promedio",
+    "median": "Mediana",
+    "minimum": "Mínimo",
+    "maximum": "Máximo",
+    "share": "Proporción",
+    "trend": "Tendencia",
+    "forecast": "Pronóstico"
+  },
+  "sensitiveActions": {
+    "deleteAccount": {
+      "title": "¿Eliminar la cuenta de verdad?",
+      "body": "Todos los datos se eliminarán de forma permanente. Esta acción no se puede deshacer.",
+      "confirm": "Entiendo las consecuencias",
+      "cta": "Eliminar cuenta"
+    }
+  },
+  "importExport": {
+    "import": {
+      "selectFile": "Seleccionar archivo",
+      "mapColumns": "Asignar columnas",
+      "preview": "Vista previa",
+      "start": "Iniciar importación",
+      "log": "Registro de importación",
+      "rowsImported": "Filas importadas",
+      "rowsSkipped": "Filas omitidas",
+      "rowsWithErrors": "Filas con errores"
+    },
+    "export": {
+      "format": "Formato de exportación",
+      "scope": "Alcance de exportación",
+      "create": "Crear exportación",
+      "downloadReady": "Descarga lista"
+    }
+  },
+  "tooltips": {
+    "occupancyRate": "Tasa de ocupación: proporción de unidades alquiladas respecto al total de unidades.",
+    "cashflow": "Flujo de caja: ingresos menos gastos en el período seleccionado.",
+    "serviceChargeAdvance": "Anticipo de gastos comunes: pago mensual anticipado de gastos de comunidad."
+  },
+  "security": {
+    "sessionExpired": "La sesión ha expirado. Por favor, inicie sesión de nuevo.",
+    "tooManyAttempts": "Demasiados intentos de inicio de sesión. Por favor, espere un momento e inténtelo de nuevo.",
+    "connectionEncrypted": "Su conexión está cifrada."
+  },
+  "terminology": {
+    "property": "Inmueble",
+    "unit": "Unidad",
+    "contract": "Contrato",
+    "booking": "Asiento contable"
+  },
+  "glossary": {
+    "coldRent": "Alquiler base: alquiler sin gastos comunes.",
+    "warmRent": "Alquiler total: alquiler base más anticipo de gastos comunes (y, en su caso, anticipo de calefacción).",
+    "serviceCharges": "Gastos comunes: costes repercutibles, p. ej. agua, basura, limpieza del edificio.",
+    "deposit": "Fianza: depósito de garantía del inquilino."
+  }
+}

@@ -8,7 +8,6 @@ Supports two user storage backends:
 import hashlib
 import hmac
 import logging
-import os
 import secrets
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
@@ -19,18 +18,16 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 
+from .config import settings
 from .models import TokenPayload, UserRead
 
 logger = logging.getLogger(__name__)
 
-# Configuration via environment variables
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", "dev-secret-key-change-in-production")
+# Configuration from centralized settings
+SECRET_KEY = settings.jwt_secret_key
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
-REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
-
-if SECRET_KEY == "dev-secret-key-change-in-production":
-    logger.warning("JWT_SECRET_KEY is using the default value. Set JWT_SECRET_KEY env var in production!")
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.access_token_expire_minutes
+REFRESH_TOKEN_EXPIRE_DAYS = settings.refresh_token_expire_days
 
 # HTTP Bearer scheme
 security = HTTPBearer(auto_error=False)

@@ -1,6 +1,14 @@
-import os
+"""ImmoManager Pro — FastAPI application.
+
+Central module wiring together middleware, routers, plugins, and error handling.
+"""
+
+import logging
 import re
+import time
+from contextlib import asynccontextmanager
 from pathlib import Path
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,8 +18,13 @@ from starlette.responses import FileResponse
 
 from .audit import log_action
 from .auth import require_auth
+from .config import settings
+from .exceptions import register_exception_handlers
+from .logging_config import request_id_var, request_user_var, setup_logging
+from .plugins import get_plugins, load_plugins
 from .routers import (
     accounts,
+    admin,
     audit,
     auth,
     billing,
@@ -31,26 +44,119 @@ from .routers import (
     properties,
     receivables,
     reports,
+    search,
     tasks,
     tenants,
     units,
     viewings,
 )
 
-app = FastAPI(title="ImmoManager Pro API", version="0.1.0")
+# Initialize logging first
+setup_logging()
+logger = logging.getLogger(__name__)
+
+
+# ─── Lifespan ────────────────────────────────────────────────────────────────
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Startup / shutdown lifecycle."""
+    logger.info("ImmoManager Pro %s starting up", settings.app_version)
+
+    # Auto-migrate if enabled
+    if settings.auto_migrate:
+        try:
+            from alembic import command
+            from alembic.config import Config
+            alembic_cfg = Config("alembic.ini")
+            command.upgrade(alembic_cfg, "head")
+            logger.info("Database migrations applied successfully")
+        except Exception:
+            logger.exception("Auto-migration failed")
+
+    # Load plugins
+    if settings.plugin_dirs:
+        loaded = load_plugins(settings.plugin_dirs)
+        for plugin in loaded:
+            try:
+                plugin.register_routes(app, f"/api/v1/plugins/{plugin.name}")
+                plugin.on_startup()
+                logger.info("Plugin loaded: %s v%s", plugin.name, plugin.version)
+            except Exception:
+                logger.exception("Failed to start plugin: %s", plugin.name)
+
+    if settings.jwt_secret_key == "dev-secret-key-change-in-production":
+        logger.warning("JWT_SECRET_KEY is using the default value. Set JWT_SECRET_KEY env var in production!")
+
+    yield
+
+    # Shutdown plugins
+    for plugin in get_plugins():
+        try:
+            plugin.on_shutdown()
+        except Exception:
+            logger.exception("Error shutting down plugin: %s", plugin.name)
+
+    logger.info("ImmoManager Pro shutting down")
+
+
+# ─── App ─────────────────────────────────────────────────────────────────────
+
+app = FastAPI(
+    title=settings.app_title,
+    version=settings.app_version,
+    lifespan=lifespan,
+)
+
+# Register global exception handlers
+register_exception_handlers(app)
 
 # CORS middleware
-_allowed_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_allowed_origins,
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-# Audit logging middleware for write operations
+# ─── Request ID + Logging Middleware ─────────────────────────────────────────
+
+class RequestLoggingMiddleware(BaseHTTPMiddleware):
+    """Assigns request IDs, logs requests, and tracks timing."""
+
+    async def dispatch(self, request: Request, call_next):
+        rid = str(uuid4())[:8]
+        request.state.request_id = rid
+        request_id_var.set(rid)
+
+        # Extract user info if available later (after auth)
+        start = time.monotonic()
+        response: Response = await call_next(request)
+        duration_ms = round((time.monotonic() - start) * 1000, 1)
+
+        # Add request ID header
+        response.headers["X-Request-ID"] = rid
+
+        # Log the request
+        if request.url.path.startswith("/api/"):
+            logger.info(
+                "%s %s → %d (%.1fms)",
+                request.method, request.url.path,
+                response.status_code, duration_ms,
+                extra={"method": request.method, "path": request.url.path,
+                       "status_code": response.status_code, "duration_ms": duration_ms},
+            )
+
+        return response
+
+
+app.add_middleware(RequestLoggingMiddleware)
+
+
+# ─── Audit Middleware ────────────────────────────────────────────────────────
+
 _WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 _METHOD_TO_ACTION = {"POST": "create", "PUT": "update", "PATCH": "patch", "DELETE": "delete"}
 _API_PATH_RE = re.compile(r"/api/v1/(\w[\w-]*)(?:/([^/]+))?")
@@ -68,7 +174,6 @@ class AuditMiddleware(BaseHTTPMiddleware):
                 entity_id = match.group(2) or "new"
                 action = _METHOD_TO_ACTION.get(request.method, request.method.lower())
 
-                # Extract user info from request state if available
                 user_id = None
                 username = None
                 if hasattr(request.state, "user"):
@@ -89,15 +194,19 @@ class AuditMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(AuditMiddleware)
 
-# API v1 router with version prefix
+
+# ─── API v1 Router ───────────────────────────────────────────────────────────
+
 api_v1 = APIRouter(prefix="/api/v1")
 
 # Auth routes (public - no auth dependency)
 api_v1.include_router(auth.router)
 
-# Protected routes - require authentication via router-level dependency
+# Protected routes
 _auth_dep = [Depends(require_auth)]
+api_v1.include_router(admin.router, dependencies=_auth_dep)
 api_v1.include_router(audit.router, dependencies=_auth_dep)
+api_v1.include_router(search.router, dependencies=_auth_dep)
 api_v1.include_router(portfolios.router, dependencies=_auth_dep)
 api_v1.include_router(properties.router, dependencies=_auth_dep)
 api_v1.include_router(units.router, dependencies=_auth_dep)
@@ -126,25 +235,26 @@ app.include_router(api_v1)
 app.include_router(i18n.router)
 
 
+# ─── Health ──────────────────────────────────────────────────────────────────
+
 @app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+def health() -> dict:
+    return {
+        "status": "ok",
+        "version": settings.app_version,
+    }
 
 
-# --- Serve built frontend as static files (SPA) ---
-# Look for frontend/dist relative to the project root (one level up from backend/)
+# ─── Serve built frontend (SPA) ─────────────────────────────────────────────
+
 _FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
 if _FRONTEND_DIR.is_dir():
-    # Serve static assets (JS, CSS, images)
     app.mount("/assets", StaticFiles(directory=_FRONTEND_DIR / "assets"), name="frontend-assets")
 
-    # Catch-all: serve index.html for any non-API, non-asset route (SPA routing)
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
-        # If a specific static file exists, serve it directly
         file_path = _FRONTEND_DIR / full_path
         if full_path and file_path.is_file():
             return FileResponse(file_path)
-        # Otherwise serve index.html for SPA client-side routing
         return FileResponse(_FRONTEND_DIR / "index.html")

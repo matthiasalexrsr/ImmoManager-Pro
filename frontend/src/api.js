@@ -4,24 +4,70 @@ function getToken() {
   return localStorage.getItem('access_token');
 }
 
+// Try to refresh the access token using the refresh token
+async function tryRefreshToken() {
+  const refreshToken = localStorage.getItem('refresh_token');
+  if (!refreshToken) return false;
+  try {
+    const res = await fetch(`${BASE}/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      localStorage.setItem('access_token', data.access_token);
+      if (data.refresh_token) localStorage.setItem('refresh_token', data.refresh_token);
+      return true;
+    }
+  } catch { /* ignore */ }
+  return false;
+}
+
+/**
+ * Parse standardized error response from backend.
+ * Expected format: { error: { code, message, details, request_id } }
+ */
+function parseApiError(body) {
+  if (body?.error?.message) {
+    const err = new Error(body.error.message);
+    err.code = body.error.code;
+    err.details = body.error.details;
+    err.requestId = body.error.request_id;
+    return err;
+  }
+  if (body?.detail) {
+    return new Error(body.detail);
+  }
+  return new Error('Ein Fehler ist aufgetreten');
+}
+
 async function request(path, options = {}) {
   const token = getToken();
   const headers = { 'Content-Type': 'application/json', ...options.headers };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
-  const res = await fetch(`${BASE}${path}`, { ...options, headers });
+  let res = await fetch(`${BASE}${path}`, { ...options, headers });
 
+  // On 401, try refreshing the token once
   if (res.status === 401) {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
-    window.location.href = '/login';
-    throw new Error('Nicht authentifiziert');
+    const refreshed = await tryRefreshToken();
+    if (refreshed) {
+      headers['Authorization'] = `Bearer ${getToken()}`;
+      res = await fetch(`${BASE}${path}`, { ...options, headers });
+    }
+    if (res.status === 401) {
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+      window.location.href = '/login';
+      throw new Error('Nicht authentifiziert');
+    }
   }
 
   if (res.status === 204) return null;
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.detail || `Fehler ${res.status}`);
+    throw parseApiError(body);
   }
   return res.json();
 }
@@ -40,7 +86,10 @@ export async function login(username, password) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password }),
   });
-  if (!res.ok) throw new Error('Login fehlgeschlagen');
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw parseApiError(body);
+  }
   const data = await res.json();
   localStorage.setItem('access_token', data.access_token);
   localStorage.setItem('refresh_token', data.refresh_token);
@@ -55,7 +104,7 @@ export async function register(username, email, full_name, password) {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.detail || 'Registrierung fehlgeschlagen');
+    throw parseApiError(body);
   }
   return res.json();
 }

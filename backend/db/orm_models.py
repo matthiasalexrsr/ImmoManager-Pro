@@ -8,6 +8,7 @@ from datetime import date, datetime
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     Float,
@@ -16,6 +17,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -97,7 +99,11 @@ class UnitORM(Base):
 
     property: Mapped["PropertyORM"] = relationship(back_populates="units")
 
-    __table_args__ = (Index("idx_units_property", "property_id"),)
+    __table_args__ = (
+        Index("idx_units_property", "property_id"),
+        Index("idx_units_property_status", "property_id", "status"),
+        CheckConstraint("area_sqm IS NULL OR area_sqm > 0", name="ck_units_area_positive"),
+    )
 
 
 class TenantORM(Base):
@@ -136,7 +142,14 @@ class ContractORM(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
-    __table_args__ = (Index("idx_contracts_unit", "unit_id"),)
+    __table_args__ = (
+        Index("idx_contracts_unit", "unit_id"),
+        Index("idx_contracts_tenant_status", "tenant_id", "status"),
+        CheckConstraint(
+            "end_date IS NULL OR end_date >= start_date",
+            name="ck_contracts_dates",
+        ),
+    )
 
 
 class AccountORM(Base):
@@ -157,7 +170,10 @@ class AccountORM(Base):
 
     portfolio: Mapped["PortfolioORM"] = relationship(back_populates="accounts")
 
-    __table_args__ = (Index("idx_accounts_portfolio", "portfolio_id"),)
+    __table_args__ = (
+        Index("idx_accounts_portfolio", "portfolio_id"),
+        UniqueConstraint("iban", name="uq_accounts_iban"),
+    )
 
 
 class CategoryORM(Base):
@@ -190,7 +206,11 @@ class BookingORM(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
-    __table_args__ = (Index("idx_bookings_account", "account_id"),)
+    __table_args__ = (
+        Index("idx_bookings_account", "account_id"),
+        Index("idx_bookings_account_date", "account_id", "booking_date"),
+        CheckConstraint("amount != 0", name="ck_bookings_amount_nonzero"),
+    )
 
 
 class ReceivableORM(Base):
@@ -517,6 +537,23 @@ class UserORM(Base):
         Index("idx_users_username", "username"),
         Index("idx_users_email", "email"),
     )
+
+
+class UserPreferencesORM(Base):
+    __tablename__ = "user_preferences"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)
+    theme: Mapped[str] = mapped_column(Text, nullable=False, default="light")
+    locale: Mapped[str] = mapped_column(Text, nullable=False, default="de-DE")
+    sidebar_collapsed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    items_per_page: Mapped[int] = mapped_column(Integer, nullable=False, default=25)
+    date_format: Mapped[str] = mapped_column(Text, nullable=False, default="DD.MM.YYYY")
+    currency: Mapped[str] = mapped_column(Text, nullable=False, default="EUR")
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
+
+    __table_args__ = (Index("idx_user_preferences_user", "user_id"),)
 
 
 class AuditLogORM(Base):
