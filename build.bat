@@ -25,17 +25,30 @@ if %errorlevel% neq 0 (
     pip install "pyinstaller>=6.0.0" -q
 )
 
-REM Build frontend if not already built
+REM Build frontend (always rebuild to ensure dist is up-to-date)
 if exist "frontend\package.json" (
-    if not exist "frontend\dist" (
-        where npm >nul 2>&1
-        if %errorlevel% equ 0 (
-            echo.
-            echo Baue Frontend...
-            cd frontend
-            call npm install --silent 2>nul
-            call npm run build --silent 2>nul
+    where npm >nul 2>&1
+    if %errorlevel% equ 0 (
+        echo.
+        echo Installiere Frontend-Abhaengigkeiten und baue Frontend...
+        cd frontend
+        call npm install
+        call npm run build
+        if %errorlevel% neq 0 (
+            echo FEHLER: Frontend-Build fehlgeschlagen.
             cd ..
+            pause
+            exit /b 1
+        )
+        cd ..
+        echo [OK] Frontend gebaut
+    ) else (
+        if not exist "frontend\dist" (
+            echo.
+            echo FEHLER: npm nicht gefunden und frontend\dist existiert nicht.
+            echo         Installieren Sie Node.js oder bauen Sie das Frontend manuell.
+            pause
+            exit /b 1
         )
     )
 )

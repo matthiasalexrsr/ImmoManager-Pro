@@ -280,9 +280,31 @@ def health() -> dict:
 
 # ─── Serve built frontend (SPA) ─────────────────────────────────────────────
 
-_FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+def _resolve_frontend_dir() -> Path | None:
+    """Locate the built frontend dist directory.
 
-if _FRONTEND_DIR.is_dir():
+    When running from source the layout is <project>/frontend/dist.
+    In a PyInstaller frozen bundle, data files are extracted under sys._MEIPASS
+    and the frontend dist ends up at <_MEIPASS>/frontend/dist.
+    """
+    import sys as _sys
+
+    if getattr(_sys, "frozen", False) and hasattr(_sys, "_MEIPASS"):
+        candidate = Path(_sys._MEIPASS) / "frontend" / "dist"
+        if candidate.is_dir():
+            return candidate
+
+    # Source-tree layout
+    candidate = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+    if candidate.is_dir():
+        return candidate
+
+    return None
+
+
+_FRONTEND_DIR = _resolve_frontend_dir()
+
+if _FRONTEND_DIR is not None:
     app.mount("/assets", StaticFiles(directory=_FRONTEND_DIR / "assets"), name="frontend-assets")
 
     @app.get("/{full_path:path}")

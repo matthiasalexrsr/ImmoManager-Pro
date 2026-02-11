@@ -52,10 +52,11 @@ echo "[OK] Abhängigkeiten installiert"
 if [ -d "frontend" ] && [ -f "frontend/package.json" ]; then
     if command -v npm &>/dev/null; then
         echo ""
-        echo "Baue Frontend..."
+        echo "Installiere Frontend-Abhängigkeiten..."
         cd frontend
-        npm install --silent 2>/dev/null
-        npm run build --silent 2>/dev/null
+        npm install
+        echo "Baue Frontend..."
+        npm run build
         cd ..
         echo "[OK] Frontend gebaut"
     else

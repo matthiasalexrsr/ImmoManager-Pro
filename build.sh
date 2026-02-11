@@ -28,12 +28,21 @@ fi
 PYINSTALLER_VER=$(python -m PyInstaller --version 2>&1)
 echo "[OK] PyInstaller $PYINSTALLER_VER"
 
-# Build frontend if not already built
-if [ -d "frontend" ] && [ -f "frontend/package.json" ] && [ ! -d "frontend/dist" ]; then
+# Build frontend (always rebuild to ensure dist is up-to-date)
+if [ -d "frontend" ] && [ -f "frontend/package.json" ]; then
     if command -v npm &>/dev/null; then
         echo ""
-        echo "Baue Frontend..."
-        cd frontend && npm install --silent && npm run build --silent && cd ..
+        echo "Installiere Frontend-Abhängigkeiten und baue Frontend..."
+        cd frontend
+        npm install
+        npm run build
+        cd ..
+        echo "[OK] Frontend gebaut"
+    elif [ ! -d "frontend/dist" ]; then
+        echo ""
+        echo "FEHLER: npm nicht gefunden und frontend/dist existiert nicht."
+        echo "        Installieren Sie Node.js oder bauen Sie das Frontend manuell."
+        exit 1
     fi
 fi
 

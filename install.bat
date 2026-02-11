@@ -61,15 +61,29 @@ if exist "frontend\package.json" (
     where npm >nul 2>&1
     if %errorlevel% equ 0 (
         echo.
-        echo Baue Frontend...
+        echo Installiere Frontend-Abhaengigkeiten...
         cd frontend
-        call npm install --silent 2>nul
-        call npm run build --silent 2>nul
+        call npm install
+        if %errorlevel% neq 0 (
+            echo FEHLER: npm install fehlgeschlagen.
+            cd ..
+            pause
+            exit /b 1
+        )
+        echo Baue Frontend...
+        call npm run build
+        if %errorlevel% neq 0 (
+            echo FEHLER: Frontend-Build fehlgeschlagen.
+            cd ..
+            pause
+            exit /b 1
+        )
         cd ..
         echo [OK] Frontend gebaut
     ) else (
         echo.
         echo HINWEIS: npm nicht gefunden — Frontend wird nicht gebaut.
+        echo          Installieren Sie Node.js fuer die Frontend-Entwicklung.
     )
 )
 

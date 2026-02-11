@@ -32,9 +32,10 @@ alembic_ini = os.path.join(ROOT, 'alembic.ini')
 if os.path.isfile(alembic_ini):
     backend_data.append((alembic_ini, '.'))
 
-alembic_dir = os.path.join(ROOT, 'alembic')
-if os.path.isdir(alembic_dir):
-    for dirpath, dirnames, filenames in os.walk(alembic_dir):
+# Migrations live under backend/db/migrations/ (not a top-level alembic/ dir)
+migrations_dir = os.path.join(ROOT, 'backend', 'db', 'migrations')
+if os.path.isdir(migrations_dir):
+    for dirpath, dirnames, filenames in os.walk(migrations_dir):
         for f in filenames:
             src = os.path.join(dirpath, f)
             rel = os.path.relpath(dirpath, ROOT)
@@ -107,7 +108,8 @@ a = Analysis(
         'backend.services.email_service',
         'backend.services.file_storage',
         'backend.services.iban_encryption',
-        'backend.services.portal_adapters',
+        'backend.services.portal_adapter',
+        'backend.services.ocr_service',
         'backend.services.task_queue',
         # --- All routers ---
         'backend.routers',
@@ -151,6 +153,8 @@ a = Analysis(
         'multipart',
         'jose',
         'alembic',
+        'cffi',
+        'cryptography',
     ],
     hookspath=[],
     hooksconfig={},
