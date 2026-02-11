@@ -18,12 +18,16 @@ if exist ".venv\Scripts\activate.bat" (
     call .venv\Scripts\activate.bat
 )
 
-REM Check PyInstaller
-python -m PyInstaller --version >nul 2>&1
+REM Install all project dependencies + PyInstaller
+echo Installiere Abhaengigkeiten...
+pip install --upgrade pip setuptools wheel -q
+pip install -e ".[build]" -q
 if %errorlevel% neq 0 (
-    echo PyInstaller wird installiert...
-    pip install "pyinstaller>=6.0.0" -q
+    echo FEHLER: pip install fehlgeschlagen.
+    pause
+    exit /b 1
 )
+echo [OK] Abhaengigkeiten installiert
 
 REM Build frontend (always rebuild to ensure dist is up-to-date)
 if exist "frontend\package.json" (

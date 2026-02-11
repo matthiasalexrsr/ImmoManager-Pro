@@ -12,6 +12,7 @@ Or use the build script:
 Result: dist/ImmoManager-Pro/ directory containing the executable and all dependencies.
 """
 import os
+import sys
 
 from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 
@@ -19,10 +20,38 @@ from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 ROOT = os.path.abspath('.')
 
 # ---------------------------------------------------------------------------
+# Verify critical dependencies are installed BEFORE building
+# ---------------------------------------------------------------------------
+_REQUIRED_PACKAGES = {
+    'fastapi': 'fastapi',
+    'starlette': 'starlette',
+    'pydantic': 'pydantic',
+    'uvicorn': 'uvicorn',
+    'sqlalchemy': 'sqlalchemy',
+}
+_missing = []
+for import_name, pip_name in _REQUIRED_PACKAGES.items():
+    try:
+        __import__(import_name)
+    except ImportError:
+        _missing.append(pip_name)
+if _missing:
+    print("=" * 70)
+    print("FEHLER: Folgende Pakete fehlen:")
+    for m in _missing:
+        print(f"  - {m}")
+    print()
+    print("Bitte zuerst installieren:")
+    print(f"  pip install {' '.join(_missing)}")
+    print("Oder:  pip install -e \".[build]\"")
+    print("Oder:  install.bat  /  ./install.sh")
+    print("=" * 70)
+    sys.exit(1)
+
+# ---------------------------------------------------------------------------
 # Collect ALL submodules of third-party packages automatically.
-# This is far more reliable than listing individual modules, especially
-# on newer Python versions (3.13+) where PyInstaller's auto-detection
-# may miss packages.
+# This ensures every sub-module is included even when PyInstaller's
+# import analysis misses some (common on Python 3.13+).
 # ---------------------------------------------------------------------------
 _THIRD_PARTY_PACKAGES = [
     'fastapi',
@@ -46,26 +75,124 @@ _THIRD_PARTY_PACKAGES = [
     'dotenv',
 ]
 
-third_party_hiddenimports = []
+collected_hiddenimports = []
 for pkg in _THIRD_PARTY_PACKAGES:
     try:
-        third_party_hiddenimports += collect_submodules(pkg)
-    except Exception:
-        # Package may not be installed – skip silently
-        pass
+        mods = collect_submodules(pkg)
+        collected_hiddenimports += mods
+        print(f"  collect_submodules('{pkg}'): {len(mods)} modules")
+    except Exception as exc:
+        print(f"  WARNUNG: collect_submodules('{pkg}') fehlgeschlagen: {exc}")
 
 # Also collect data files that some packages need at runtime
-third_party_datas = []
+collected_datas = []
 for pkg in ['pydantic', 'pydantic_core', 'alembic']:
     try:
-        third_party_datas += collect_data_files(pkg)
+        files = collect_data_files(pkg)
+        collected_datas += files
     except Exception:
         pass
+
+# ---------------------------------------------------------------------------
+# Explicit hidden imports — these are ALWAYS included regardless of whether
+# collect_submodules worked.  This is the critical safety net.
+# ---------------------------------------------------------------------------
+_EXPLICIT_THIRD_PARTY = [
+    # FastAPI + Starlette
+    'fastapi',
+    'fastapi.applications',
+    'fastapi.routing',
+    'fastapi.params',
+    'fastapi.datastructures',
+    'fastapi.exceptions',
+    'fastapi.middleware',
+    'fastapi.middleware.cors',
+    'fastapi.responses',
+    'fastapi.staticfiles',
+    'fastapi.templating',
+    'fastapi.security',
+    'fastapi.encoders',
+    'fastapi.dependencies',
+    'starlette',
+    'starlette.applications',
+    'starlette.middleware',
+    'starlette.middleware.base',
+    'starlette.middleware.cors',
+    'starlette.routing',
+    'starlette.requests',
+    'starlette.responses',
+    'starlette.staticfiles',
+    'starlette.exceptions',
+    'starlette.status',
+    'starlette.types',
+    'starlette.concurrency',
+    'starlette.formparsers',
+    'starlette.datastructures',
+    'starlette.websockets',
+    # Pydantic
+    'pydantic',
+    'pydantic.fields',
+    'pydantic.main',
+    'pydantic.types',
+    'pydantic.errors',
+    'pydantic.validators',
+    'pydantic_core',
+    'pydantic_settings',
+    'annotated_types',
+    # Uvicorn
+    'uvicorn',
+    'uvicorn.main',
+    'uvicorn.config',
+    'uvicorn.logging',
+    'uvicorn.loops',
+    'uvicorn.loops.auto',
+    'uvicorn.protocols',
+    'uvicorn.protocols.http',
+    'uvicorn.protocols.http.auto',
+    'uvicorn.protocols.http.h11_impl',
+    'uvicorn.protocols.websockets',
+    'uvicorn.protocols.websockets.auto',
+    'uvicorn.lifespan',
+    'uvicorn.lifespan.on',
+    'uvicorn.lifespan.off',
+    'uvicorn.server',
+    # SQLAlchemy
+    'sqlalchemy',
+    'sqlalchemy.dialects.sqlite',
+    'sqlalchemy.dialects.postgresql',
+    'sqlalchemy.orm',
+    'sqlalchemy.ext.asyncio',
+    'sqlalchemy.pool',
+    'sqlalchemy.engine',
+    'sqlalchemy.event',
+    'sqlalchemy.sql',
+    # Other
+    'alembic',
+    'aiosqlite',
+    'anyio',
+    'anyio._backends',
+    'anyio._backends._asyncio',
+    'sniffio',
+    'h11',
+    'jose',
+    'jose.jwt',
+    'jose.jws',
+    'jose.backends',
+    'cffi',
+    'cryptography',
+    'cryptography.fernet',
+    'cryptography.hazmat',
+    'cryptography.hazmat.primitives',
+    'multipart',
+    'multipart.multipart',
+    'typing_extensions',
+    'dotenv',
+]
 
 # ---------------------------------------------------------------------------
 # Collect bundled data files from project
 # ---------------------------------------------------------------------------
-backend_data = list(third_party_datas)
+backend_data = list(collected_datas)
 
 # Include i18n locale files
 i18n_dir = os.path.join(ROOT, 'i18n')
@@ -113,7 +240,7 @@ a = Analysis(
     pathex=[ROOT],
     binaries=[],
     datas=backend_data,
-    hiddenimports=third_party_hiddenimports + [
+    hiddenimports=collected_hiddenimports + _EXPLICIT_THIRD_PARTY + [
         # --- Backend core ---
         'backend.app',
         'backend.config',
