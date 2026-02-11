@@ -11,12 +11,9 @@ Also works as PyInstaller-bundled .exe:
     ImmoManager-Pro.exe --seed --port 9000
 """
 
-import argparse
+import multiprocessing
 import os
 import sys
-import threading
-import time
-import webbrowser
 
 
 def _get_base_dir():
@@ -31,7 +28,19 @@ def _get_base_dir():
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+def _wait_on_error():
+    """Keep the console window open on error when running as .exe on Windows."""
+    if getattr(sys, "frozen", False) and sys.platform == "win32":
+        print()
+        input("Druecke Enter zum Beenden...")
+
+
 def main():
+    # Required for PyInstaller on Windows to avoid multiprocessing issues
+    multiprocessing.freeze_support()
+
+    import argparse
+
     parser = argparse.ArgumentParser(
         prog="immomanager",
         description="ImmoManager Pro – Immobilienverwaltung",
@@ -42,14 +51,33 @@ def main():
     parser.add_argument("--no-browser", action="store_true", help="Don't auto-open browser")
     args = parser.parse_args()
 
-    # When running as frozen .exe, set working directory to base dir
-    # so that relative paths (alembic.ini, i18n/, frontend/dist/) resolve correctly
+    # When running as frozen .exe, set working directory and sys.path
     base_dir = _get_base_dir()
-    if getattr(sys, "frozen", False):
+    is_frozen = getattr(sys, "frozen", False)
+
+    if is_frozen:
         os.chdir(base_dir)
-        # Ensure the backend package can be found
         if base_dir not in sys.path:
             sys.path.insert(0, base_dir)
+
+    print(f"ImmoManager Pro v1.0.0")
+    print(f"Python {sys.version}")
+    if is_frozen:
+        print(f"Bundle: {base_dir}")
+    print()
+
+    # Import the app early so import errors are visible before uvicorn starts
+    print("Lade Anwendung...")
+    try:
+        from backend.app import app  # noqa: F811
+    except Exception as exc:
+        print(f"\nFEHLER beim Laden der Anwendung:\n{exc}")
+        import traceback
+        traceback.print_exc()
+        _wait_on_error()
+        sys.exit(1)
+
+    print("Anwendung geladen.")
 
     # Seed demo data if requested
     if args.seed:
@@ -59,29 +87,52 @@ def main():
             seed()
         except ImportError:
             print("WARNUNG: seed_data.py nicht gefunden. Demo-Daten werden nicht geladen.")
+        except Exception as exc:
+            print(f"WARNUNG: Demo-Daten konnten nicht geladen werden: {exc}")
         print()
 
     url = f"http://{args.host}:{args.port}"
 
     # Auto-open browser after short delay
     if not args.no_browser:
+        import threading
+        import time
+        import webbrowser
+
         def open_browser():
-            time.sleep(1.5)
-            print(f"\nÖffne Browser: {url}")
+            time.sleep(2.0)
+            print(f"\nOeffne Browser: {url}")
             webbrowser.open(url)
 
         threading.Thread(target=open_browser, daemon=True).start()
 
-    print(f"ImmoManager Pro startet auf {url}")
-    print("Drücke Strg+C zum Beenden.\n")
+    print(f"Server startet auf {url}")
+    print("Druecke Strg+C zum Beenden.\n")
 
     try:
         import uvicorn
-        uvicorn.run("backend.app:app", host=args.host, port=args.port, log_level="info")
+
+        # Use the imported app object directly instead of string-based import.
+        # String-based import ("backend.app:app") can fail in PyInstaller bundles
+        # because uvicorn's module loader doesn't find frozen modules.
+        uvicorn.run(app, host=args.host, port=args.port, log_level="info")
     except KeyboardInterrupt:
         print("\nServer beendet.")
-        sys.exit(0)
+    except Exception as exc:
+        print(f"\nFEHLER beim Starten des Servers:\n{exc}")
+        import traceback
+        traceback.print_exc()
+        _wait_on_error()
+        sys.exit(1)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as exc:
+        print(f"\nUnerwarteter Fehler:\n{exc}")
+        import traceback
+        traceback.print_exc()
+        if getattr(sys, "frozen", False) and sys.platform == "win32":
+            input("\nDruecke Enter zum Beenden...")
+        sys.exit(1)
