@@ -4,20 +4,65 @@ import { useTranslation } from '../i18n';
 import { usePreferences } from '../contexts/PreferencesContext';
 import SearchBar from './SearchBar';
 import NotificationBell from './NotificationBell';
+import {
+  LayoutDashboard,
+  Building2,
+  Home,
+  DoorOpen,
+  Users,
+  FileText,
+  Landmark,
+  Receipt,
+  CreditCard,
+  Wrench,
+  CheckSquare,
+  FolderOpen,
+  Building,
+  Sun,
+  Moon,
+  LogOut,
+  PanelLeftClose,
+  PanelLeftOpen,
+} from 'lucide-react';
 
-const NAV = [
-  { to: '/', labelKey: 'navigation.main.dashboard', icon: '\uD83D\uDCCA' },
-  { to: '/portfolios', labelKey: 'navigation.main.portfolio', icon: '\uD83C\uDFE2' },
-  { to: '/properties', labelKey: 'navigation.main.properties', icon: '\uD83C\uDFE0' },
-  { to: '/units', labelKey: 'units.list.title', icon: '\uD83D\uDEAA' },
-  { to: '/tenants', labelKey: 'tenantsContracts.tenants.title', icon: '\uD83D\uDC64' },
-  { to: '/contracts', labelKey: 'tenantsContracts.contracts.title', icon: '\uD83D\uDCC4' },
-  { to: '/accounts', labelKey: 'finance.accounts.title', icon: '\uD83C\uDFE6' },
-  { to: '/bookings', labelKey: 'finance.bookings.title', icon: '\uD83D\uDCB6' },
-  { to: '/invoices', labelKey: 'finance.invoices.title', icon: '\uD83E\uDDFE' },
-  { to: '/maintenance', labelKey: 'navigation.main.maintenance', icon: '\uD83D\uDD27' },
-  { to: '/tasks', labelKey: 'navigation.main.tasks', icon: '\u2705' },
-  { to: '/documents', labelKey: 'navigation.main.documents', icon: '\uD83D\uDCC1' },
+const NAV_SECTIONS = [
+  {
+    label: 'Übersicht',
+    items: [
+      { to: '/', labelKey: 'navigation.main.dashboard', icon: LayoutDashboard },
+    ],
+  },
+  {
+    label: 'Immobilien',
+    items: [
+      { to: '/portfolios', labelKey: 'navigation.main.portfolio', icon: Building2 },
+      { to: '/properties', labelKey: 'navigation.main.properties', icon: Home },
+      { to: '/units', labelKey: 'units.list.title', icon: DoorOpen },
+    ],
+  },
+  {
+    label: 'Mieter & Verträge',
+    items: [
+      { to: '/tenants', labelKey: 'tenantsContracts.tenants.title', icon: Users },
+      { to: '/contracts', labelKey: 'tenantsContracts.contracts.title', icon: FileText },
+    ],
+  },
+  {
+    label: 'Finanzen',
+    items: [
+      { to: '/accounts', labelKey: 'finance.accounts.title', icon: Landmark },
+      { to: '/bookings', labelKey: 'finance.bookings.title', icon: Receipt },
+      { to: '/invoices', labelKey: 'finance.invoices.title', icon: CreditCard },
+    ],
+  },
+  {
+    label: 'Verwaltung',
+    items: [
+      { to: '/maintenance', labelKey: 'navigation.main.maintenance', icon: Wrench },
+      { to: '/tasks', labelKey: 'navigation.main.tasks', icon: CheckSquare },
+      { to: '/documents', labelKey: 'navigation.main.documents', icon: FolderOpen },
+    ],
+  },
 ];
 
 const LOCALES = [
@@ -32,46 +77,101 @@ export default function Layout() {
   const { prefs, toggleTheme, toggleSidebar } = usePreferences();
   const collapsed = prefs.sidebar_collapsed;
 
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
+
   return (
-    <div className={`app-layout ${collapsed ? 'sidebar-collapsed' : ''}`}>
-      <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
+    <div className={`app-layout${collapsed ? ' sidebar-collapsed' : ''}`}>
+      <aside className={`sidebar${collapsed ? ' collapsed' : ''}`}>
+        {/* Sidebar Header */}
         <div className="sidebar-header">
-          <h1>{collapsed ? 'IM' : 'ImmoManager'}</h1>
-          {!collapsed && <span className="subtitle">Pro</span>}
+          <div className="logo-icon">
+            <Building size={collapsed ? 24 : 28} />
+          </div>
+          {!collapsed && (
+            <div className="logo-text">
+              <span className="logo-title">ImmoManager</span>
+              <span className="logo-subtitle">PRO</span>
+            </div>
+          )}
         </div>
-        <nav>
-          {NAV.map(({ to, labelKey, icon }) => (
-            <NavLink key={to} to={to} className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
-              <span className="nav-icon">{icon}</span>
-              {!collapsed && <span>{t(labelKey)}</span>}
-            </NavLink>
-          ))}
-        </nav>
-        <div className="sidebar-footer">
-          <div className="sidebar-controls">
-            <button onClick={toggleSidebar} className="sidebar-control-btn" title={collapsed ? 'Sidebar einblenden' : 'Sidebar ausblenden'}>
-              {collapsed ? '\u25B6' : '\u25C0'}
-            </button>
-            <button onClick={toggleTheme} className="sidebar-control-btn" title="Theme wechseln">
-              {prefs.theme === 'dark' ? '\u2600' : '\u263D'}
-            </button>
-            <div className="locale-switcher">
-              {LOCALES.map(loc => (
-                <button
-                  key={loc.code}
-                  className={`locale-btn ${locale === loc.code ? 'active' : ''}`}
-                  onClick={() => setLocale(loc.code)}
+
+        {/* Sidebar Navigation */}
+        <nav className="sidebar-nav">
+          {NAV_SECTIONS.map((section) => (
+            <div key={section.label} className="nav-section">
+              {!collapsed && (
+                <div className="nav-section-label">{section.label}</div>
+              )}
+              {section.items.map(({ to, labelKey, icon: Icon }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  end={to === '/'}
+                  className={({ isActive }) =>
+                    `nav-link${isActive ? ' active' : ''}`
+                  }
+                  title={collapsed ? t(labelKey) : undefined}
                 >
-                  {loc.label}
-                </button>
+                  <span className="nav-icon">
+                    <Icon size={20} />
+                  </span>
+                  {!collapsed && <span>{t(labelKey)}</span>}
+                </NavLink>
               ))}
             </div>
+          ))}
+        </nav>
+
+        {/* Sidebar Footer */}
+        <div className="sidebar-footer">
+          <div className="sidebar-controls">
+            <button
+              onClick={toggleSidebar}
+              className="sidebar-control-btn"
+              title={collapsed ? 'Sidebar einblenden' : 'Sidebar ausblenden'}
+            >
+              {collapsed ? (
+                <PanelLeftOpen size={18} />
+              ) : (
+                <PanelLeftClose size={18} />
+              )}
+            </button>
+            <button
+              onClick={toggleTheme}
+              className="sidebar-control-btn"
+              title="Theme wechseln"
+            >
+              {prefs.theme === 'dark' ? (
+                <Sun size={18} />
+              ) : (
+                <Moon size={18} />
+              )}
+            </button>
+            {!collapsed && (
+              <div className="locale-switcher">
+                {LOCALES.map((loc) => (
+                  <button
+                    key={loc.code}
+                    className={`locale-btn${locale === loc.code ? ' active' : ''}`}
+                    onClick={() => setLocale(loc.code)}
+                  >
+                    {loc.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
-          <button onClick={() => { logout(); navigate('/login'); }} className="btn-logout">
-            {t('accountMenu.logout')}
+          <button onClick={handleLogout} className="btn-logout" title={t('accountMenu.logout')}>
+            <LogOut size={18} />
+            {!collapsed && <span>{t('accountMenu.logout')}</span>}
           </button>
         </div>
       </aside>
+
+      {/* Main Content Area */}
       <main className="main-content">
         <div className="top-bar">
           <SearchBar />
