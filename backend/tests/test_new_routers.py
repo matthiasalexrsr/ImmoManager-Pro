@@ -6,7 +6,7 @@ Query() defaults are not resolved when calling functions directly, so
 skip/limit and filter params must always be passed explicitly.
 """
 
-from datetime import date, datetime
+from datetime import date
 
 import pytest
 from fastapi import HTTPException
@@ -15,7 +15,6 @@ from backend.dependencies import store
 from backend.models import (
     BudgetCreate,
     BudgetPatch,
-    ChangeHistoryEntry,
     ContractCreate,
     EscalationRuleCreate,
     EscalationRulePatch,

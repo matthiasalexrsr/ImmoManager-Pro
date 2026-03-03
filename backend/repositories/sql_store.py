@@ -128,28 +128,43 @@ class SQLAlchemyStore:
         self._bookings = BaseRepository(db, BookingORM, Booking, "Buchung nicht gefunden")
         self._receivables = BaseRepository(db, ReceivableORM, Receivable, "Forderung nicht gefunden")
         self._invoices = BaseRepository(db, InvoiceORM, Invoice, "Rechnung nicht gefunden")
-        self._maintenance = BaseRepository(db, MaintenanceCaseORM, MaintenanceCase, "Instandhaltungsfall nicht gefunden")
+        self._maintenance = BaseRepository(
+            db, MaintenanceCaseORM, MaintenanceCase, "Instandhaltungsfall nicht gefunden",
+        )
         self._documents = BaseRepository(db, DocumentORM, Document, "Dokument nicht gefunden")
         self._tasks = BaseRepository(db, TaskORM, Task, "Aufgabe nicht gefunden")
         self._calendar = BaseRepository(db, CalendarEventORM, CalendarEvent, "Termin nicht gefunden")
         self._listings = BaseRepository(db, ListingORM, Listing, "Inserat nicht gefunden")
         self._listing_photos = BaseRepository(db, ListingPhotoORM, ListingPhoto, "Inseratsfoto nicht gefunden")
         self._leads = BaseRepository(db, LeadORM, Lead, "Interessent nicht gefunden")
-        self._viewings = BaseRepository(db, ViewingAppointmentORM, ViewingAppointment, "Besichtigungstermin nicht gefunden")
+        self._viewings = BaseRepository(
+            db, ViewingAppointmentORM, ViewingAppointment, "Besichtigungstermin nicht gefunden",
+        )
         self._billing_periods = BaseRepository(db, BillingPeriodORM, BillingPeriod, "Abrechnungsperiode nicht gefunden")
         self._allocation_keys = BaseRepository(db, AllocationKeyORM, AllocationKey, "Verteilerschlüssel nicht gefunden")
         self._cost_items = BaseRepository(db, CostItemORM, CostItem, "Kostenposition nicht gefunden")
-        self._utility_statements = BaseRepository(db, UtilityStatementORM, UtilityStatement, "Betriebskostenabrechnung nicht gefunden")
+        self._utility_statements = BaseRepository(
+            db, UtilityStatementORM, UtilityStatement, "Betriebskostenabrechnung nicht gefunden",
+        )
         self._deposits = BaseRepository(db, DepositORM, Deposit, "Kaution nicht gefunden")
         self._notifications = BaseRepository(db, NotificationORM, Notification, "Benachrichtigung nicht gefunden")
-        self._notification_templates = BaseRepository(db, NotificationTemplateORM, NotificationTemplate, "Benachrichtigungsvorlage nicht gefunden")
+        self._notification_templates = BaseRepository(
+            db, NotificationTemplateORM, NotificationTemplate,
+            "Benachrichtigungsvorlage nicht gefunden",
+        )
         self._tax_rates = BaseRepository(db, TaxRateORM, TaxRate, "Steuersatz nicht gefunden")
         self._rent_adjustments = BaseRepository(db, RentAdjustmentORM, RentAdjustment, "Mietanpassung nicht gefunden")
-        self._handover_protocols = BaseRepository(db, HandoverProtocolORM, HandoverProtocol, "Übergabeprotokoll nicht gefunden")
+        self._handover_protocols = BaseRepository(
+            db, HandoverProtocolORM, HandoverProtocol, "Übergabeprotokoll nicht gefunden",
+        )
         self._meter_readings = BaseRepository(db, MeterReadingORM, MeterReading, "Zählerstand nicht gefunden")
         self._budgets = BaseRepository(db, BudgetORM, Budget, "Budget nicht gefunden")
-        self._escalation_rules = BaseRepository(db, EscalationRuleORM, EscalationRule, "Eskalationsregel nicht gefunden")
-        self._change_history = BaseRepository(db, ChangeHistoryORM, ChangeHistoryEntry, "Änderungshistorie nicht gefunden")
+        self._escalation_rules = BaseRepository(
+            db, EscalationRuleORM, EscalationRule, "Eskalationsregel nicht gefunden",
+        )
+        self._change_history = BaseRepository(
+            db, ChangeHistoryORM, ChangeHistoryEntry, "Änderungshistorie nicht gefunden",
+        )
 
     def _commit(self):
         self.db.commit()

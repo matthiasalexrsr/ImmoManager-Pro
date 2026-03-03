@@ -1,5 +1,6 @@
 import datetime
 
+from backend.dependencies import store
 from backend.models import (
     AccountCreate,
     BookingCreate,
@@ -14,7 +15,6 @@ from backend.models import (
     UnitCreate,
 )
 from backend.routers import reports
-from backend.dependencies import store
 
 
 def test_reports_summary_counts() -> None:

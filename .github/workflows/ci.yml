@@ -7,6 +7,25 @@ on:
     branches: [main]
 
 jobs:
+  frontend-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install frontend dependencies
+        run: cd frontend && npm ci
+
+      - name: Lint frontend
+        run: cd frontend && npx eslint .
+
+      - name: Build frontend
+        run: cd frontend && npm run build
+
   test:
     runs-on: ubuntu-latest
     strategy:

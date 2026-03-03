@@ -1,6 +1,7 @@
 """Tests for authentication: registration, login, JWT tokens, RBAC."""
 
 import pytest
+from fastapi import HTTPException
 
 from backend.auth import (
     authenticate_user,
@@ -27,12 +28,10 @@ from backend.routers.auth import (
     get_users,
     login,
     patch_user,
-    register,
     refresh,
+    register,
     remove_user,
 )
-
-from fastapi import HTTPException
 
 
 @pytest.fixture(autouse=True)

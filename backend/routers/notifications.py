@@ -113,7 +113,10 @@ def generate_overdue_payment_notifications(
                 NotificationCreate(
                     notification_type="overdue_payment",
                     title=f"Überfällige Zahlung: {tenant_name}",
-                    content=f"Forderung über {receivable.amount_due:.2f} EUR fällig am {receivable.due_date} ist überfällig.",
+                    content=(
+                        f"Forderung über {receivable.amount_due:.2f} EUR fällig am"
+                        f" {receivable.due_date} ist überfällig."
+                    ),
                     severity="warning",
                     entity_type="receivable",
                     entity_id=receivable.id,

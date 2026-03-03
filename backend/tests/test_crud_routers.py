@@ -93,103 +93,205 @@ S, L = 0, 100
 
 
 def _list_portfolios(**kw):
-    return portfolios.list_portfolios(skip=kw.get("skip", S), limit=kw.get("limit", L), status_filter=kw.get("status_filter"))
+    return portfolios.list_portfolios(
+        skip=kw.get("skip", S), limit=kw.get("limit", L),
+        status_filter=kw.get("status_filter"),
+    )
 
 
 def _list_properties(**kw):
-    return properties.list_properties(skip=kw.get("skip", S), limit=kw.get("limit", L), portfolio_id=kw.get("portfolio_id"), status_filter=kw.get("status_filter"))
+    return properties.list_properties(
+        skip=kw.get("skip", S), limit=kw.get("limit", L),
+        portfolio_id=kw.get("portfolio_id"),
+        status_filter=kw.get("status_filter"),
+    )
 
 
 def _list_units(**kw):
-    return units.list_units(skip=kw.get("skip", S), limit=kw.get("limit", L), property_id=kw.get("property_id"), status_filter=kw.get("status_filter"))
+    return units.list_units(
+        skip=kw.get("skip", S), limit=kw.get("limit", L),
+        property_id=kw.get("property_id"),
+        status_filter=kw.get("status_filter"),
+    )
 
 
 def _list_tenants(**kw):
-    return tenants.list_tenants(skip=kw.get("skip", S), limit=kw.get("limit", L))
+    return tenants.list_tenants(
+        skip=kw.get("skip", S), limit=kw.get("limit", L),
+    )
 
 
 def _list_contracts(**kw):
-    return contracts.list_contracts(skip=kw.get("skip", S), limit=kw.get("limit", L), property_id=kw.get("property_id"), tenant_id=kw.get("tenant_id"), status_filter=kw.get("status_filter"))
+    return contracts.list_contracts(
+        skip=kw.get("skip", S), limit=kw.get("limit", L),
+        property_id=kw.get("property_id"),
+        tenant_id=kw.get("tenant_id"),
+        status_filter=kw.get("status_filter"),
+    )
 
 
 def _list_accounts(**kw):
-    return accounts.list_accounts(skip=kw.get("skip", S), limit=kw.get("limit", L), portfolio_id=kw.get("portfolio_id"), account_type=kw.get("account_type"))
+    return accounts.list_accounts(
+        skip=kw.get("skip", S), limit=kw.get("limit", L),
+        portfolio_id=kw.get("portfolio_id"),
+        account_type=kw.get("account_type"),
+    )
 
 
 def _list_bookings(**kw):
-    return bookings.list_bookings(skip=kw.get("skip", S), limit=kw.get("limit", L), account_id=kw.get("account_id"), tenant_id=kw.get("tenant_id"), status_filter=kw.get("status_filter"))
+    return bookings.list_bookings(
+        skip=kw.get("skip", S), limit=kw.get("limit", L),
+        account_id=kw.get("account_id"),
+        tenant_id=kw.get("tenant_id"),
+        status_filter=kw.get("status_filter"),
+    )
 
 
 def _list_categories(**kw):
-    return categories.list_categories(skip=kw.get("skip", S), limit=kw.get("limit", L), portfolio_id=kw.get("portfolio_id"), category_type=kw.get("category_type"))
+    return categories.list_categories(
+        skip=kw.get("skip", S), limit=kw.get("limit", L),
+        portfolio_id=kw.get("portfolio_id"),
+        category_type=kw.get("category_type"),
+    )
 
 
 def _list_receivables(**kw):
-    return receivables.list_receivables(skip=kw.get("skip", S), limit=kw.get("limit", L), contract_id=kw.get("contract_id"), status_filter=kw.get("status_filter"))
+    return receivables.list_receivables(
+        skip=kw.get("skip", S), limit=kw.get("limit", L),
+        contract_id=kw.get("contract_id"),
+        status_filter=kw.get("status_filter"),
+    )
 
 
 def _list_invoices(**kw):
-    return invoices.list_invoices(skip=kw.get("skip", S), limit=kw.get("limit", L), supplier=kw.get("supplier"), status_filter=kw.get("status_filter"))
+    return invoices.list_invoices(
+        skip=kw.get("skip", S), limit=kw.get("limit", L),
+        supplier=kw.get("supplier"),
+        status_filter=kw.get("status_filter"),
+    )
 
 
 def _list_maintenance(**kw):
-    return maintenance.list_maintenance_cases(skip=kw.get("skip", S), limit=kw.get("limit", L), property_id=kw.get("property_id"), status_filter=kw.get("status_filter"))
+    return maintenance.list_maintenance_cases(
+        skip=kw.get("skip", S), limit=kw.get("limit", L),
+        property_id=kw.get("property_id"),
+        status_filter=kw.get("status_filter"),
+    )
 
 
 def _list_documents(**kw):
-    return documents.list_documents(skip=kw.get("skip", S), limit=kw.get("limit", L), property_id=kw.get("property_id"), contract_id=kw.get("contract_id"))
+    return documents.list_documents(
+        skip=kw.get("skip", S), limit=kw.get("limit", L),
+        property_id=kw.get("property_id"),
+        contract_id=kw.get("contract_id"),
+    )
 
 
 def _list_tasks(**kw):
-    return tasks.list_tasks(skip=kw.get("skip", S), limit=kw.get("limit", L), status_filter=kw.get("status_filter"), assignee=kw.get("assignee"))
+    return tasks.list_tasks(
+        skip=kw.get("skip", S), limit=kw.get("limit", L),
+        status_filter=kw.get("status_filter"),
+        assignee=kw.get("assignee"),
+    )
 
 
 def _list_calendar(**kw):
-    return calendar.list_calendar_events(skip=kw.get("skip", S), limit=kw.get("limit", L), property_id=kw.get("property_id"), event_type=kw.get("event_type"))
+    return calendar.list_calendar_events(
+        skip=kw.get("skip", S), limit=kw.get("limit", L),
+        property_id=kw.get("property_id"),
+        event_type=kw.get("event_type"),
+    )
 
 
 def _list_listings(**kw):
-    return listings.list_listings(skip=kw.get("skip", S), limit=kw.get("limit", L), unit_id=kw.get("unit_id"), status_filter=kw.get("status_filter"))
+    return listings.list_listings(
+        skip=kw.get("skip", S), limit=kw.get("limit", L),
+        unit_id=kw.get("unit_id"),
+        status_filter=kw.get("status_filter"),
+    )
 
 
 def _list_listing_photos(**kw):
-    return listings.list_listing_photos(skip=kw.get("skip", S), limit=kw.get("limit", L), listing_id=kw.get("listing_id"))
+    return listings.list_listing_photos(
+        skip=kw.get("skip", S), limit=kw.get("limit", L),
+        listing_id=kw.get("listing_id"),
+    )
 
 
 def _list_leads(**kw):
-    return leads.list_leads(skip=kw.get("skip", S), limit=kw.get("limit", L), status_filter=kw.get("status_filter"), unit_id=kw.get("unit_id"), listing_id=kw.get("listing_id"), source=kw.get("source"))
+    return leads.list_leads(
+        skip=kw.get("skip", S), limit=kw.get("limit", L),
+        status_filter=kw.get("status_filter"),
+        unit_id=kw.get("unit_id"),
+        listing_id=kw.get("listing_id"),
+        source=kw.get("source"),
+    )
 
 
 def _list_viewings(**kw):
-    return viewings.list_viewings(skip=kw.get("skip", S), limit=kw.get("limit", L), status_filter=kw.get("status_filter"), lead_id=kw.get("lead_id"), unit_id=kw.get("unit_id"))
+    return viewings.list_viewings(
+        skip=kw.get("skip", S), limit=kw.get("limit", L),
+        status_filter=kw.get("status_filter"),
+        lead_id=kw.get("lead_id"),
+        unit_id=kw.get("unit_id"),
+    )
 
 
 def _list_billing_periods(**kw):
-    return billing.list_billing_periods(skip=kw.get("skip", S), limit=kw.get("limit", L), property_id=kw.get("property_id"), status_filter=kw.get("status_filter"))
+    return billing.list_billing_periods(
+        skip=kw.get("skip", S), limit=kw.get("limit", L),
+        property_id=kw.get("property_id"),
+        status_filter=kw.get("status_filter"),
+    )
 
 
 def _list_allocation_keys(**kw):
-    return billing.list_allocation_keys(skip=kw.get("skip", S), limit=kw.get("limit", L), property_id=kw.get("property_id"), key_type=kw.get("key_type"))
+    return billing.list_allocation_keys(
+        skip=kw.get("skip", S), limit=kw.get("limit", L),
+        property_id=kw.get("property_id"),
+        key_type=kw.get("key_type"),
+    )
 
 
 def _list_cost_items(**kw):
-    return billing.list_cost_items(skip=kw.get("skip", S), limit=kw.get("limit", L), billing_period_id=kw.get("billing_period_id"), allocation_key_id=kw.get("allocation_key_id"))
+    return billing.list_cost_items(
+        skip=kw.get("skip", S), limit=kw.get("limit", L),
+        billing_period_id=kw.get("billing_period_id"),
+        allocation_key_id=kw.get("allocation_key_id"),
+    )
 
 
 def _list_utility_statements(**kw):
-    return billing.list_utility_statements(skip=kw.get("skip", S), limit=kw.get("limit", L), billing_period_id=kw.get("billing_period_id"), contract_id=kw.get("contract_id"), status_filter=kw.get("status_filter"))
+    return billing.list_utility_statements(
+        skip=kw.get("skip", S), limit=kw.get("limit", L),
+        billing_period_id=kw.get("billing_period_id"),
+        contract_id=kw.get("contract_id"),
+        status_filter=kw.get("status_filter"),
+    )
 
 
 def _list_deposits(**kw):
-    return deposits.list_deposits(skip=kw.get("skip", S), limit=kw.get("limit", L), contract_id=kw.get("contract_id"), status_filter=kw.get("status_filter"))
+    return deposits.list_deposits(
+        skip=kw.get("skip", S), limit=kw.get("limit", L),
+        contract_id=kw.get("contract_id"),
+        status_filter=kw.get("status_filter"),
+    )
 
 
 def _list_notifications(**kw):
-    return notifications.list_notifications(skip=kw.get("skip", S), limit=kw.get("limit", L), status_filter=kw.get("status_filter"), notification_type=kw.get("notification_type"), severity=kw.get("severity"))
+    return notifications.list_notifications(
+        skip=kw.get("skip", S), limit=kw.get("limit", L),
+        status_filter=kw.get("status_filter"),
+        notification_type=kw.get("notification_type"),
+        severity=kw.get("severity"),
+    )
 
 
 def _list_notification_templates(**kw):
-    return notifications.list_notification_templates(skip=kw.get("skip", S), limit=kw.get("limit", L), notification_type=kw.get("notification_type"))
+    return notifications.list_notification_templates(
+        skip=kw.get("skip", S), limit=kw.get("limit", L),
+        notification_type=kw.get("notification_type"),
+    )
 
 
 def _clear_store() -> None:
@@ -1824,7 +1926,12 @@ class TestViewings:
     def test_filter_by_status(self) -> None:
         viewings.create_viewing(self._make())
         v2 = viewings.create_viewing(self._make(scheduled_at=datetime.datetime(2025, 7, 1, 10, 0)))
-        viewings.update_viewing(v2.id, self._make(status="completed", scheduled_at=datetime.datetime(2025, 7, 1, 10, 0)))
+        viewings.update_viewing(
+            v2.id, self._make(
+                status="completed",
+                scheduled_at=datetime.datetime(2025, 7, 1, 10, 0),
+            ),
+        )
         assert len(_list_viewings(status_filter="scheduled")) == 1
         assert len(_list_viewings(status_filter="completed")) == 1
 

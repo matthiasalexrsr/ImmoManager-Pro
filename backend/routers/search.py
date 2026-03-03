@@ -26,7 +26,7 @@ def global_search(q: str = Query(..., min_length=1, description="Search query"))
                 "id": p.id,
                 "display": p.name,
                 "detail": getattr(p, "city", "") or "",
-                "url": f"/properties",
+                "url": "/properties",
             })
 
     # Search tenants
@@ -38,7 +38,7 @@ def global_search(q: str = Query(..., min_length=1, description="Search query"))
                 "id": t.id,
                 "display": t.full_name,
                 "detail": getattr(t, "email", "") or "",
-                "url": f"/tenants",
+                "url": "/tenants",
             })
 
     # Search units
@@ -49,7 +49,7 @@ def global_search(q: str = Query(..., min_length=1, description="Search query"))
                 "id": u.id,
                 "display": u.label,
                 "detail": u.unit_type,
-                "url": f"/units",
+                "url": "/units",
             })
 
     # Search contracts
@@ -60,7 +60,7 @@ def global_search(q: str = Query(..., min_length=1, description="Search query"))
                 "id": c.id,
                 "display": c.contract_number,
                 "detail": c.status,
-                "url": f"/contracts",
+                "url": "/contracts",
             })
 
     # Search tasks
@@ -72,7 +72,7 @@ def global_search(q: str = Query(..., min_length=1, description="Search query"))
                 "id": t.id,
                 "display": t.title,
                 "detail": t.status,
-                "url": f"/tasks",
+                "url": "/tasks",
             })
 
     # Search invoices
@@ -84,7 +84,7 @@ def global_search(q: str = Query(..., min_length=1, description="Search query"))
                 "id": i.id,
                 "display": i.supplier,
                 "detail": str(i.gross_amount),
-                "url": f"/invoices",
+                "url": "/invoices",
             })
 
     return {"query": q, "count": len(results), "results": results[:50]}

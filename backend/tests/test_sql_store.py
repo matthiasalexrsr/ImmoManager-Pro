@@ -3,42 +3,43 @@
 Uses an in-memory SQLite database per test for isolation.
 """
 
-import pytest
 from datetime import date, datetime
+
+import pytest
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
 from backend.db.orm_models import Base
-from backend.repositories.sql_store import SQLAlchemyStore
-from backend.storage import NotFoundError, ValidationError
 from backend.models import (
-    PortfolioCreate,
-    PropertyCreate,
-    UnitCreate,
-    TenantCreate,
-    ContractCreate,
     AccountCreate,
-    CategoryCreate,
+    AllocationKeyCreate,
+    BillingPeriodCreate,
     BookingCreate,
-    ReceivableCreate,
-    InvoiceCreate,
-    MaintenanceCaseCreate,
-    DocumentCreate,
-    TaskCreate,
     CalendarEventCreate,
+    CategoryCreate,
+    ContractCreate,
+    CostItemCreate,
+    DepositCreate,
+    DocumentCreate,
+    InvoiceCreate,
+    LeadCreate,
     ListingCreate,
     ListingPhotoCreate,
-    LeadCreate,
-    ViewingAppointmentCreate,
-    BillingPeriodCreate,
-    AllocationKeyCreate,
-    CostItemCreate,
-    UtilityStatementCreate,
-    DepositCreate,
+    MaintenanceCaseCreate,
     NotificationCreate,
     NotificationTemplateCreate,
+    PortfolioCreate,
     PortfolioPatch,
+    PropertyCreate,
+    ReceivableCreate,
+    TaskCreate,
+    TenantCreate,
+    UnitCreate,
+    UtilityStatementCreate,
+    ViewingAppointmentCreate,
 )
+from backend.repositories.sql_store import SQLAlchemyStore
+from backend.storage import NotFoundError, ValidationError
 
 
 @pytest.fixture

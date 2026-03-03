@@ -382,7 +382,10 @@ def generate_utility_statements(period_id: str) -> list[UtilityStatement]:
     # Calculate advances: sum of service_charge_advance * months in period for each contract
     for contract in contracts_in_period:
         unit = unit_cache.get(contract.unit_id)
-        monthly_advance = Decimal(str((unit.service_charge_advance or 0) + (unit.heating_advance or 0))) if unit else Decimal("0")
+        monthly_advance = (
+            Decimal(str((unit.service_charge_advance or 0) + (unit.heating_advance or 0)))
+            if unit else Decimal("0")
+        )
 
         # Calculate overlapping months
         overlap_start = max(contract.start_date, period.start_date)

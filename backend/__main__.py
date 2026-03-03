@@ -116,7 +116,7 @@ def main():
         if base_dir not in sys.path:
             sys.path.insert(0, base_dir)
 
-    print(f"ImmoManager Pro v1.0.0")
+    print("ImmoManager Pro v1.0.0")
     print(f"Python {sys.version}")
     if IS_FROZEN:
         print(f"Bundle: {base_dir}")

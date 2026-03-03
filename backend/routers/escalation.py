@@ -1,11 +1,14 @@
 """Escalation rules and execution router (T17)."""
 
 from datetime import date, timedelta
+
 from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
 from ..models import (
-    EscalationRule, EscalationRuleCreate, EscalationRulePatch,
+    EscalationRule,
+    EscalationRuleCreate,
+    EscalationRulePatch,
     NotificationCreate,
 )
 from ..storage import NotFoundError
@@ -96,7 +99,10 @@ def run_escalation(as_of: date | None = Query(None)):
                 notif = store.create_notification(NotificationCreate(
                     notification_type="escalation",
                     title=f"Eskalation: {item.title}",
-                    content=f"Instandhaltungsfall '{item.title}' ist seit {rule.days_overdue} Tagen überfällig. Regel: {rule.name}",
+                    content=(
+                        f"Instandhaltungsfall '{item.title}' ist seit"
+                        f" {rule.days_overdue} Tagen überfällig. Regel: {rule.name}"
+                    ),
                     severity=rule.notification_severity,
                     entity_type="maintenance",
                     entity_id=item.id,
@@ -109,8 +115,11 @@ def run_escalation(as_of: date | None = Query(None)):
             for item in items:
                 notif = store.create_notification(NotificationCreate(
                     notification_type="escalation",
-                    title=f"Eskalation: Überfällige Forderung",
-                    content=f"Forderung {item.id} ist seit {rule.days_overdue} Tagen überfällig. Betrag: {item.amount_due:.2f}€. Regel: {rule.name}",
+                    title="Eskalation: Überfällige Forderung",
+                    content=(
+                        f"Forderung {item.id} ist seit {rule.days_overdue} Tagen überfällig."
+                        f" Betrag: {item.amount_due:.2f}€. Regel: {rule.name}"
+                    ),
                     severity=rule.notification_severity,
                     entity_type="receivable",
                     entity_id=item.id,

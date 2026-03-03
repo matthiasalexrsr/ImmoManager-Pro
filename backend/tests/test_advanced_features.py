@@ -1,7 +1,9 @@
 """Tests for Phase 6 advanced features: CSV export, DATEV, bank import, recurring tasks."""
 
-import pytest
 from datetime import date
+
+import pytest
+from fastapi.responses import StreamingResponse
 
 from backend.dependencies import store
 from backend.models import (
@@ -32,8 +34,6 @@ from backend.routers.tasks import (
     _parse_rrule,
     generate_recurring_tasks,
 )
-
-from fastapi.responses import StreamingResponse
 
 
 def _clear_store():
@@ -248,7 +248,11 @@ class TestRecurringTasks:
         ))
         # Generate and complete first instance
         created = generate_recurring_tasks(as_of=date(2024, 2, 15))
-        store._patch_entity(store.tasks, created[0].id, type("P", (), {"model_dump": lambda self, **kw: {"status": "completed"}})(), "Aufgabe nicht gefunden")
+        store._patch_entity(
+            store.tasks, created[0].id,
+            type("P", (), {"model_dump": lambda self, **kw: {"status": "completed"}})(),
+            "Aufgabe nicht gefunden",
+        )
         # Now it should generate the next one
         created2 = generate_recurring_tasks(as_of=date(2024, 3, 15))
         assert len(created2) == 1

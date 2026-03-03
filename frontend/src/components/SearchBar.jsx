@@ -48,11 +48,10 @@ export default function SearchBar() {
   // Debounced search
   useEffect(() => {
     if (query.length < 2) {
-      setResults([]);
       return;
     }
-    setLoading(true);
     const timer = setTimeout(() => {
+      setLoading(true);
       api.get(`/search?q=${encodeURIComponent(query)}`)
         .then(data => setResults(data.results || []))
         .catch(() => setResults([]))
@@ -60,6 +59,9 @@ export default function SearchBar() {
     }, 300);
     return () => clearTimeout(timer);
   }, [query]);
+
+  // Clear results when query is too short
+  const currentResults = query.length < 2 ? [] : results;
 
   const handleSelect = (result) => {
     setOpen(false);
@@ -90,8 +92,8 @@ export default function SearchBar() {
       {open && query.length >= 2 && (
         <div className="search-bar-dropdown">
           {loading && <div className="search-bar-loading">Suche...</div>}
-          {!loading && results.length === 0 && <div className="search-bar-empty">Keine Treffer</div>}
-          {!loading && results.map((r, i) => (
+          {!loading && currentResults.length === 0 && <div className="search-bar-empty">Keine Treffer</div>}
+          {!loading && currentResults.map((r, i) => (
             <div key={i} className="search-bar-result" onClick={() => handleSelect(r)}>
               <span className="search-bar-result-icon">{ENTITY_ICONS[r.entity_type] || '\uD83D\uDCC1'}</span>
               <div className="search-bar-result-text">

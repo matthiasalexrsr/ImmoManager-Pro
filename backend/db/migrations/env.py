@@ -6,9 +6,8 @@ Configured to use our ORM models for autogenerate support and DATABASE_URL from 
 import os
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config, pool
-
 from alembic import context
+from sqlalchemy import engine_from_config, pool
 
 from backend.db.orm_models import Base
 

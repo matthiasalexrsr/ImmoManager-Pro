@@ -7,7 +7,6 @@ The encryption key is derived from JWT_SECRET_KEY using PBKDF2.
 import base64
 import hashlib
 import logging
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 

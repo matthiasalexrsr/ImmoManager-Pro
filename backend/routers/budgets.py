@@ -1,6 +1,5 @@
 """Budget planning router (T27)."""
 
-from datetime import date
 from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store

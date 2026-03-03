@@ -33,8 +33,8 @@ if _database_url and "sqlite" not in _database_url:
     store = SQLAlchemyStore(_scoped_session)  # type: ignore[assignment]
 
     # Also enable SQL-backed user and audit storage
-    from .auth import enable_sql_users
     from .audit import enable_sql_audit
+    from .auth import enable_sql_users
     enable_sql_users(SessionLocal)
     enable_sql_audit(SessionLocal)
 

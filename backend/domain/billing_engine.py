@@ -7,7 +7,7 @@ Compares allocated costs with advance payments to produce per-unit statements.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Dict, List
 
 CENTS = Decimal("0.01")

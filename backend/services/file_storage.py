@@ -8,7 +8,6 @@ Configure via FILE_STORAGE_BACKEND and S3_* environment variables.
 """
 
 import logging
-import os
 import shutil
 from abc import ABC, abstractmethod
 from pathlib import Path

@@ -4,8 +4,11 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
 from ..models import (
-    HandoverProtocol, HandoverProtocolCreate, HandoverProtocolPatch,
-    MeterReading, MeterReadingCreate, MeterReadingPatch,
+    HandoverProtocol,
+    HandoverProtocolCreate,
+    HandoverProtocolPatch,
+    MeterReading,
+    MeterReadingCreate,
 )
 from ..storage import NotFoundError, ValidationError
 

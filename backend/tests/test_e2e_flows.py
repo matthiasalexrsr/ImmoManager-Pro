@@ -13,7 +13,6 @@ from backend.app import app
 from backend.auth import clear_users, create_access_token, register_user
 from backend.dependencies import store
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -401,7 +400,6 @@ class TestAuthUserManagementFlow:
         )
         assert reg_resp.status_code == 201
         user1 = reg_resp.json()
-        user1_id = user1["id"]
         assert user1["username"] == "admin1"
 
         # Step 2: Login with the registered user

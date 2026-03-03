@@ -5,16 +5,36 @@ TOTP 2FA, task queue, file storage, portal adapters, and email service.
 """
 
 import io
-import time
-from datetime import datetime, timedelta
 
 import pytest
+
+from backend.auth import (
+    MAX_LOGIN_ATTEMPTS,
+    _login_attempts,
+    check_login_rate_limit,
+    clear_login_attempts,
+    generate_totp_secret,
+    get_totp_uri,
+    record_failed_login,
+    validate_password_strength,
+    verify_totp,
+)
+from backend.services.email_service import EmailConfig, send_email
+from backend.services.file_storage import LocalStorage
+from backend.services.iban_encryption import decrypt_iban, encrypt_iban, mask_iban
+from backend.services.portal_adapter import (
+    ImmobilienScout24Adapter,
+    ImmoweltAdapter,
+    _adapters,
+    get_adapter,
+    list_adapters,
+    register_adapter,
+)
+from backend.services.task_queue import SyncQueue
 
 # ---------------------------------------------------------------------------
 # 1. IBAN Encryption
 # ---------------------------------------------------------------------------
-
-from backend.services.iban_encryption import decrypt_iban, encrypt_iban, mask_iban
 
 
 class TestIBANEncryption:
@@ -61,8 +81,6 @@ class TestIBANEncryption:
 # 2. Password Policy
 # ---------------------------------------------------------------------------
 
-from backend.auth import validate_password_strength
-
 
 class TestPasswordPolicy:
     """Tests for password strength validation."""
@@ -96,14 +114,6 @@ class TestPasswordPolicy:
 # ---------------------------------------------------------------------------
 # 3. Login Rate Limiting
 # ---------------------------------------------------------------------------
-
-from backend.auth import (
-    MAX_LOGIN_ATTEMPTS,
-    _login_attempts,
-    check_login_rate_limit,
-    clear_login_attempts,
-    record_failed_login,
-)
 
 
 class TestLoginRateLimiting:
@@ -145,8 +155,6 @@ class TestLoginRateLimiting:
 # ---------------------------------------------------------------------------
 # 4. TOTP Two-Factor Authentication
 # ---------------------------------------------------------------------------
-
-from backend.auth import generate_totp_secret, get_totp_uri, verify_totp
 
 
 class TestTOTP:
@@ -192,8 +200,6 @@ class TestTOTP:
 # 5. Task Queue (SyncQueue)
 # ---------------------------------------------------------------------------
 
-from backend.services.task_queue import SyncQueue
-
 
 class TestSyncQueue:
     """Tests for synchronous task queue."""
@@ -237,8 +243,6 @@ class TestSyncQueue:
 # 6. File Storage (LocalStorage)
 # ---------------------------------------------------------------------------
 
-from backend.services.file_storage import LocalStorage
-
 
 class TestLocalStorage:
     """Tests for local filesystem storage using tmp_path."""
@@ -281,15 +285,6 @@ class TestLocalStorage:
 # ---------------------------------------------------------------------------
 # 7. Portal Adapter
 # ---------------------------------------------------------------------------
-
-from backend.services.portal_adapter import (
-    ImmobilienScout24Adapter,
-    ImmoweltAdapter,
-    _adapters,
-    get_adapter,
-    list_adapters,
-    register_adapter,
-)
 
 
 class TestPortalAdapter:
@@ -337,8 +332,6 @@ class TestPortalAdapter:
 # ---------------------------------------------------------------------------
 # 8. Email Service
 # ---------------------------------------------------------------------------
-
-from backend.services.email_service import EmailConfig, send_email
 
 
 class TestEmailService:

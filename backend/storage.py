@@ -137,7 +137,10 @@ class InMemoryStore:
         if portfolio_id not in self.portfolios:
             raise NotFoundError("Portfolio nicht gefunden")
         old = self.portfolios[portfolio_id]
-        portfolio = Portfolio(id=portfolio_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
+        portfolio = Portfolio(
+            id=portfolio_id, created_at=old.created_at,
+            updated_at=datetime.utcnow(), **data.model_dump(),
+        )
         self.portfolios[portfolio_id] = portfolio
         return portfolio
 
@@ -190,7 +193,10 @@ class InMemoryStore:
         if data.portfolio_id not in self.portfolios:
             raise ValidationError("Portfolio existiert nicht")
         old = self.categories[category_id]
-        category = Category(id=category_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
+        category = Category(
+            id=category_id, created_at=old.created_at,
+            updated_at=datetime.utcnow(), **data.model_dump(),
+        )
         self.categories[category_id] = category
         return category
 
@@ -243,7 +249,10 @@ class InMemoryStore:
         if data.portfolio_id not in self.portfolios:
             raise ValidationError("Portfolio existiert nicht")
         old = self.properties[property_id]
-        property_item = Property(id=property_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
+        property_item = Property(
+            id=property_id, created_at=old.created_at,
+            updated_at=datetime.utcnow(), **data.model_dump(),
+        )
         self.properties[property_id] = property_item
         return property_item
 
@@ -401,7 +410,10 @@ class InMemoryStore:
         ):
             raise ValidationError("Vertragsnummer existiert bereits")
         old = self.contracts[contract_id]
-        contract = Contract(id=contract_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
+        contract = Contract(
+            id=contract_id, created_at=old.created_at,
+            updated_at=datetime.utcnow(), **data.model_dump(),
+        )
         self.contracts[contract_id] = contract
         return contract
 
@@ -479,7 +491,10 @@ class InMemoryStore:
         if data.contract_id not in self.contracts:
             raise ValidationError("Vertrag existiert nicht")
         old = self.receivables[receivable_id]
-        receivable = Receivable(id=receivable_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
+        receivable = Receivable(
+            id=receivable_id, created_at=old.created_at,
+            updated_at=datetime.utcnow(), **data.model_dump(),
+        )
         self.receivables[receivable_id] = receivable
         return receivable
 
@@ -584,7 +599,10 @@ class InMemoryStore:
         if data.contract_id and data.contract_id not in self.contracts:
             raise ValidationError("Vertrag existiert nicht")
         old = self.documents[document_id]
-        document = Document(id=document_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
+        document = Document(
+            id=document_id, created_at=old.created_at,
+            updated_at=datetime.utcnow(), **data.model_dump(),
+        )
         self.documents[document_id] = document
         return document
 
@@ -797,7 +815,10 @@ class InMemoryStore:
         if data.unit_id not in self.units:
             raise ValidationError("Einheit existiert nicht")
         old = self.viewing_appointments[appointment_id]
-        appointment = ViewingAppointment(id=appointment_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
+        appointment = ViewingAppointment(
+            id=appointment_id, created_at=old.created_at,
+            updated_at=datetime.utcnow(), **data.model_dump(),
+        )
         self.viewing_appointments[appointment_id] = appointment
         return appointment
 
@@ -834,7 +855,10 @@ class InMemoryStore:
         if data.end_date <= data.start_date:
             raise ValidationError("Enddatum muss nach Startdatum liegen")
         old = self.billing_periods[period_id]
-        period = BillingPeriod(id=period_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
+        period = BillingPeriod(
+            id=period_id, created_at=old.created_at,
+            updated_at=datetime.utcnow(), **data.model_dump(),
+        )
         self.billing_periods[period_id] = period
         return period
 
@@ -956,7 +980,10 @@ class InMemoryStore:
         if data.unit_id not in self.units:
             raise ValidationError("Einheit existiert nicht")
         old = self.utility_statements[statement_id]
-        statement = UtilityStatement(id=statement_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
+        statement = UtilityStatement(
+            id=statement_id, created_at=old.created_at,
+            updated_at=datetime.utcnow(), **data.model_dump(),
+        )
         self.utility_statements[statement_id] = statement
         return statement
 
@@ -1018,7 +1045,10 @@ class InMemoryStore:
         if notification_id not in self.notifications:
             raise NotFoundError("Benachrichtigung nicht gefunden")
         old = self.notifications[notification_id]
-        updated = old.model_copy(update={"status": "read", "read_at": datetime.utcnow(), "updated_at": datetime.utcnow()})
+        updated = old.model_copy(update={
+            "status": "read", "read_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
+        })
         self.notifications[notification_id] = updated
         return updated
 
@@ -1047,7 +1077,10 @@ class InMemoryStore:
         if template_id not in self.notification_templates:
             raise NotFoundError("Benachrichtigungsvorlage nicht gefunden")
         old = self.notification_templates[template_id]
-        template = NotificationTemplate(id=template_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
+        template = NotificationTemplate(
+            id=template_id, created_at=old.created_at,
+            updated_at=datetime.utcnow(), **data.model_dump(),
+        )
         self.notification_templates[template_id] = template
         return template
 
@@ -1221,7 +1254,10 @@ class InMemoryStore:
         if proto_id not in self.handover_protocols:
             raise NotFoundError("Übergabeprotokoll nicht gefunden")
         old = self.handover_protocols[proto_id]
-        item = HandoverProtocol(id=proto_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
+        item = HandoverProtocol(
+            id=proto_id, created_at=old.created_at,
+            updated_at=datetime.utcnow(), **data.model_dump(),
+        )
         self.handover_protocols[proto_id] = item
         return item
 

@@ -21,7 +21,7 @@ from .auth import require_auth
 from .config import settings
 from .dependencies import cleanup_session
 from .exceptions import register_exception_handlers
-from .logging_config import request_id_var, request_user_var, setup_logging
+from .logging_config import request_id_var, setup_logging
 from .plugins import get_plugins, load_plugins
 from .routers import (
     accounts,
@@ -40,9 +40,9 @@ from .routers import (
     handover_protocols,
     history,
     i18n,
+    invoices,
     leads,
     listings,
-    invoices,
     maintenance,
     notifications,
     portfolios,

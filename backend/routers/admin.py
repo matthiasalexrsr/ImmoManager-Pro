@@ -7,8 +7,8 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, UploadFile, status
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi import APIRouter, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
 
 from ..config import settings
 from ..dependencies import store
@@ -129,17 +129,29 @@ def integrity_check():
 
     for c in contracts:
         if c.unit_id not in unit_ids:
-            issues.append({"type": "orphan", "entity": "contract", "id": c.id, "detail": f"unit_id {c.unit_id} not found"})
+            issues.append({
+                "type": "orphan", "entity": "contract", "id": c.id,
+                "detail": f"unit_id {c.unit_id} not found",
+            })
         if c.tenant_id not in tenant_ids:
-            issues.append({"type": "orphan", "entity": "contract", "id": c.id, "detail": f"tenant_id {c.tenant_id} not found"})
+            issues.append({
+                "type": "orphan", "entity": "contract", "id": c.id,
+                "detail": f"tenant_id {c.tenant_id} not found",
+            })
         if c.property_id not in property_ids:
-            issues.append({"type": "orphan", "entity": "contract", "id": c.id, "detail": f"property_id {c.property_id} not found"})
+            issues.append({
+                "type": "orphan", "entity": "contract", "id": c.id,
+                "detail": f"property_id {c.property_id} not found",
+            })
 
     # Check: bookings referencing non-existent accounts
     account_ids = {a.id for a in store.list_accounts()}
     for b in store.list_bookings():
         if b.account_id not in account_ids:
-            issues.append({"type": "orphan", "entity": "booking", "id": b.id, "detail": f"account_id {b.account_id} not found"})
+            issues.append({
+                "type": "orphan", "entity": "booking", "id": b.id,
+                "detail": f"account_id {b.account_id} not found",
+            })
 
     return {
         "status": "ok" if not issues else "issues_found",
@@ -187,9 +199,17 @@ def import_data(file: UploadFile):
         raise HTTPException(400, f"Ungültige JSON-Datei: {e}")
 
     from ..models import (
-        PortfolioCreate, PropertyCreate, UnitCreate, TenantCreate,
-        ContractCreate, AccountCreate, BookingCreate, InvoiceCreate,
-        MaintenanceCaseCreate, DocumentCreate, TaskCreate,
+        AccountCreate,
+        BookingCreate,
+        ContractCreate,
+        DocumentCreate,
+        InvoiceCreate,
+        MaintenanceCaseCreate,
+        PortfolioCreate,
+        PropertyCreate,
+        TaskCreate,
+        TenantCreate,
+        UnitCreate,
     )
 
     counts = {}

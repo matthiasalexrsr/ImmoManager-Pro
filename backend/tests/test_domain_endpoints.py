@@ -1,5 +1,6 @@
 import datetime
 
+from backend.dependencies import store
 from backend.models import (
     AccountCreate,
     BookingCreate,
@@ -11,7 +12,6 @@ from backend.models import (
     UnitCreate,
 )
 from backend.routers import contracts, invoices
-from backend.dependencies import store
 
 
 def _clear_store() -> None:

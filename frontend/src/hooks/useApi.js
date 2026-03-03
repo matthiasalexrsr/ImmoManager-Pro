@@ -5,16 +5,19 @@ export function useList(path, deps = []) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [reloadCount, setReloadCount] = useState(0);
 
-  const reload = useCallback(() => {
-    setLoading(true);
+  const depsKey = JSON.stringify(deps);
+
+  useEffect(() => {
+    setLoading(true); // eslint-disable-line react-hooks/set-state-in-effect -- data-fetching effect needs loading state
     api.get(path)
       .then(data => { setItems(data); setError(null); })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
-  }, [path, ...deps]);
+  }, [path, depsKey, reloadCount]);
 
-  useEffect(() => { reload(); }, [reload]);
+  const reload = useCallback(() => setReloadCount(c => c + 1), []);
 
   return { items, loading, error, reload };
 }
