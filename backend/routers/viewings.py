@@ -55,7 +55,7 @@ def update_viewing(appointment_id: str, payload: ViewingAppointmentCreate) -> Vi
 def patch_viewing(appointment_id: str, payload: ViewingAppointmentPatch) -> ViewingAppointment:
     try:
         return store._patch_entity(
-            store.viewing_appointments, appointment_id, payload, "Besichtigungstermin nicht gefunden"
+            None, appointment_id, payload, "Besichtigungstermin nicht gefunden"
         )
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

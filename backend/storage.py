@@ -1089,6 +1089,7 @@ class InMemoryStore:
             "Übergabeprotokoll nicht gefunden": self.handover_protocols,
             "Budget nicht gefunden": self.budgets,
             "Eskalationsregel nicht gefunden": self.escalation_rules,
+            "Zählerstand nicht gefunden": self.meter_readings,
         }
         collection = _msg_to_collection.get(not_found_msg)
         if collection is None:
