@@ -22,10 +22,10 @@ export default function Statements() {
 
   const loadData = () => {
     Promise.all([
-      api.get('/billing/periods').catch(() => []),
-      api.get('/billing/cost-items').catch(() => []),
-      api.get('/billing/utility-statements').catch(() => []),
-      api.get('/properties').catch(() => []),
+      api.get('/billing/periods').catch(err => { console.warn('[Statements] periods:', err.message); return []; }),
+      api.get('/billing/cost-items').catch(err => { console.warn('[Statements] cost-items:', err.message); return []; }),
+      api.get('/billing/utility-statements').catch(err => { console.warn('[Statements] statements:', err.message); return []; }),
+      api.get('/properties').catch(err => { console.warn('[Statements] properties:', err.message); return []; }),
     ]).then(([bp, ci, us, props]) => {
       setPeriods(bp);
       setCostItems(ci);
@@ -57,6 +57,7 @@ export default function Statements() {
   const fields = [
     { key: 'property_id', label: 'Immobilie', type: 'select', required: true,
       options: properties.map(p => ({ value: p.id, label: p.name })) },
+    { key: 'label', label: 'Bezeichnung', required: true, placeholder: 'z.B. NK-Abrechnung 2024' },
     { key: 'start_date', label: 'Beginn', type: 'date', required: true },
     { key: 'end_date', label: 'Ende', type: 'date', required: true },
     { key: 'status', label: 'Status', type: 'select', default: 'draft', options: [

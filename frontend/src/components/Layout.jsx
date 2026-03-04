@@ -10,6 +10,7 @@ import {
   InvoiceIcon, MaintenanceIcon, TaskIcon, DocumentIcon,
   SunIcon, MoonIcon, LogoutIcon, ChevronLeftIcon, ChevronRightIcon,
   RentIcon, MeterIcon, ContactIcon, StatementIcon, MessageIcon, SettingsIcon,
+  CategoryIcon, DepositIcon,
 } from './Icons';
 
 const NAV_SECTIONS = [
@@ -36,6 +37,7 @@ const NAV_SECTIONS = [
       { to: '/tenants', labelKey: 'tenantsContracts.tenants.title', fallback: 'Mieter', icon: TenantIcon },
       { to: '/contracts', labelKey: 'tenantsContracts.contracts.title', fallback: 'Vertr\u00e4ge', icon: ContractIcon },
       { to: '/contacts', labelKey: 'navigation.main.contacts', fallback: 'Kontakte', icon: ContactIcon },
+      { to: '/deposits', labelKey: 'navigation.main.deposits', fallback: 'Kautionen', icon: DepositIcon },
     ],
   },
   {
@@ -47,6 +49,7 @@ const NAV_SECTIONS = [
       { to: '/invoices', labelKey: 'finance.invoices.title', fallback: 'Rechnungen', icon: InvoiceIcon },
       { to: '/rent-overview', labelKey: 'navigation.main.rentOverview', fallback: 'Miet\u00fcbersicht', icon: RentIcon },
       { to: '/statements', labelKey: 'navigation.main.statements', fallback: 'Abrechnungen', icon: StatementIcon },
+      { to: '/categories', labelKey: 'navigation.main.categories', fallback: 'Kategorien', icon: CategoryIcon },
     ],
   },
   {

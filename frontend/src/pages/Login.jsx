@@ -58,6 +58,9 @@ export default function Login() {
           <div className="form-group">
             <label>Passwort</label>
             <input type="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={8} placeholder="Mindestens 8 Zeichen" />
+            {isRegister && (
+              <small className="form-hint">Mindestens 8 Zeichen mit Buchstaben und Zahlen</small>
+            )}
           </div>
           <button type="submit" className="btn btn-primary btn-block" disabled={loading}>
             {loading ? 'Bitte warten...' : (isRegister ? 'Registrieren & Anmelden' : 'Anmelden')}

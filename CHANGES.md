@@ -1,5 +1,35 @@
 # ImmoManager Pro — Change Log & Hardening Documentation
 
+## 2026-03-04: Implementation Plan Fixes (Phase 1-6)
+
+### Phase 1: Navigation & Contracts
+- Added `CategoryIcon` and `DepositIcon` SVG components to `Icons.jsx`
+- Added Categories and Deposits entries to sidebar navigation in `Layout.jsx`
+- Fixed Contracts.jsx: replaced 3 silent `.catch(() => [])` with logged warnings
+- Added missing `index_rent` and `service_charge_settlement` fields to Contracts form
+
+### Phase 2: FormModal & CrudPage Bug Fixes
+- **FormModal**: Fixed empty number fields sending `0` instead of `null` — now properly returns `null` for empty optional number fields
+- **CrudPage**: Added try-catch to `handleDelete` with dismissible error banner — delete errors are now visible to users
+
+### Phase 3: Backend MeterReading Endpoints
+- Added `update_meter_reading()` method to `SQLAlchemyStore`
+- Added `PUT /{protocol_id}/meter-readings/{reading_id}` endpoint for full updates
+- Added `PATCH /{protocol_id}/meter-readings/{reading_id}` endpoint for partial updates
+- Imported `MeterReadingPatch` model in handover protocols router
+
+### Phase 4: Missing Frontend Fields
+- Added `features` field to Units.jsx form (Ausstattung)
+- Added required `label` field to Statements.jsx billing period form
+- Fixed 4 silent catches in Statements.jsx with logged warnings
+
+### Phase 5-6: SearchBar, Login & Auth Safety
+- Expanded SearchBar `ENTITY_ROUTES` with 6 additional entity types (account, booking, maintenance, document, contact, portfolio)
+- Added password complexity hint on Login registration form
+- Wrapped auth preferences GET endpoint in try-except with fallback to defaults
+
+---
+
 ## 2026-03-04: Software Hardening & Error Resilience
 
 ### Summary

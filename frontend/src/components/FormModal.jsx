@@ -22,8 +22,11 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
       const cleaned = {};
       fields.forEach(f => {
         let v = values[f.key];
-        if (f.type === 'number' && v !== '' && v !== null) v = Number(v);
-        if (v === '') v = f.required ? v : null;
+        if (f.type === 'number') {
+          v = (v === '' || v === null || v === undefined) ? null : Number(v);
+        } else if (v === '') {
+          v = f.required ? v : null;
+        }
         cleaned[f.key] = v;
       });
       await onSave(cleaned);

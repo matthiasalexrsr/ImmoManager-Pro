@@ -992,6 +992,13 @@ class SQLAlchemyStore:
     def get_meter_reading(self, reading_id: str) -> MeterReading:
         return self._meter_readings.get(reading_id)
 
+    def update_meter_reading(self, reading_id: str, data: MeterReadingCreate) -> MeterReading:
+        if not self._handover_protocols.exists(data.handover_id):
+            raise ValidationError("Übergabeprotokoll existiert nicht")
+        result = self._meter_readings.update(reading_id, data)
+        self._commit()
+        return result
+
     def delete_meter_reading(self, reading_id: str) -> None:
         self._meter_readings.delete(reading_id)
         self._commit()

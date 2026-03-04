@@ -18,9 +18,9 @@ export default function Contracts() {
 
   useEffect(() => {
     Promise.all([
-      api.get('/properties').catch(() => []),
-      api.get('/units').catch(() => []),
-      api.get('/tenants').catch(() => []),
+      api.get('/properties').catch(err => { console.warn('[Contracts] properties:', err.message); return []; }),
+      api.get('/units').catch(err => { console.warn('[Contracts] units:', err.message); return []; }),
+      api.get('/tenants').catch(err => { console.warn('[Contracts] tenants:', err.message); return []; }),
     ]).then(([p, u, t]) => { setProperties(p); setUnits(u); setTenants(t); });
   }, []);
 
@@ -35,6 +35,13 @@ export default function Contracts() {
     { key: 'start_date', label: 'Vertragsbeginn', type: 'date', required: true },
     { key: 'end_date', label: 'Vertragsende', type: 'date' },
     { key: 'deposit_amount', label: 'Kaution (€)', type: 'number' },
+    { key: 'index_rent', label: 'Indexmiete', type: 'select', options: [
+      { value: 'true', label: 'Ja' }, { value: 'false', label: 'Nein' },
+    ]},
+    { key: 'service_charge_settlement', label: 'NK-Abrechnung', type: 'select', options: [
+      { value: 'annual', label: 'Jährlich' }, { value: 'monthly', label: 'Monatlich' },
+      { value: 'none', label: 'Keine' },
+    ]},
     { key: 'notice_period', label: 'Kündigungsfrist', placeholder: 'z.B. 3 Monate' },
     { key: 'status', label: 'Status', type: 'select', default: 'active', options: [
       { value: 'active', label: 'Aktiv' }, { value: 'terminated', label: 'Gekündigt' },

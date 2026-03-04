@@ -91,28 +91,9 @@ def get_me(user: UserRead = Depends(require_auth)) -> UserRead:
 @router.get("/users/me/preferences", response_model=None)
 def get_my_preferences(user: UserRead = Depends(require_auth)) -> dict:
     """Get current user's preferences."""
-    from ..db.session import DATABASE_URL
+    import logging
 
-    if DATABASE_URL and "sqlite" not in DATABASE_URL:
-        from ..db.orm_models import UserPreferencesORM
-        from ..db.session import SessionLocal
-        session = SessionLocal()
-        try:
-            prefs = session.query(UserPreferencesORM).filter(
-                UserPreferencesORM.user_id == user.id
-            ).first()
-            if prefs:
-                return {
-                    "theme": prefs.theme,
-                    "locale": prefs.locale,
-                    "sidebar_collapsed": prefs.sidebar_collapsed,
-                    "items_per_page": prefs.items_per_page,
-                    "date_format": prefs.date_format,
-                    "currency": prefs.currency,
-                }
-        finally:
-            session.close()
-    return {
+    _defaults = {
         "theme": "light",
         "locale": "de-DE",
         "sidebar_collapsed": False,
@@ -120,6 +101,31 @@ def get_my_preferences(user: UserRead = Depends(require_auth)) -> dict:
         "date_format": "DD.MM.YYYY",
         "currency": "EUR",
     }
+    try:
+        from ..db.session import DATABASE_URL
+
+        if DATABASE_URL and "sqlite" not in DATABASE_URL:
+            from ..db.orm_models import UserPreferencesORM
+            from ..db.session import SessionLocal
+            session = SessionLocal()
+            try:
+                prefs = session.query(UserPreferencesORM).filter(
+                    UserPreferencesORM.user_id == user.id
+                ).first()
+                if prefs:
+                    return {
+                        "theme": prefs.theme,
+                        "locale": prefs.locale,
+                        "sidebar_collapsed": prefs.sidebar_collapsed,
+                        "items_per_page": prefs.items_per_page,
+                        "date_format": prefs.date_format,
+                        "currency": prefs.currency,
+                    }
+            finally:
+                session.close()
+    except Exception:
+        logging.getLogger(__name__).warning("Failed to load user preferences, using defaults")
+    return _defaults
 
 
 @router.put("/users/me/preferences", response_model=None)
