@@ -337,13 +337,17 @@ def generate_utility_statements(period_id: str) -> list[UtilityStatement]:
         if k.id in used_key_ids
     }
 
-    # Pre-fetch units for the contracts
+    # Pre-fetch units for the contracts (log missing units instead of silent skip)
     unit_cache = {}
     for contract in contracts_in_period:
         try:
             unit_cache[contract.unit_id] = store.get_unit(contract.unit_id)
         except Exception:
-            pass
+            import logging as _log
+            _log.getLogger(__name__).warning(
+                "Unit %s for contract %s not found — skipping in billing calculation",
+                contract.unit_id, contract.id,
+            )
 
     # Register unit shares for each allocation key
     for contract in contracts_in_period:

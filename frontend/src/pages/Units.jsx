@@ -14,7 +14,7 @@ const COLUMNS = [
 
 export default function Units() {
   const [properties, setProperties] = useState([]);
-  useEffect(() => { api.get('/properties').then(setProperties).catch(() => {}); }, []);
+  useEffect(() => { api.get('/properties').then(setProperties).catch(err => console.warn('[Units] properties:', err.message)); }, []);
 
   const fields = [
     { key: 'property_id', label: 'Immobilie', required: true, type: 'select',

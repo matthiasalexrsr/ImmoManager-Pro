@@ -16,7 +16,7 @@ const COLUMNS = [
 
 export default function Bookings() {
   const [accounts, setAccounts] = useState([]);
-  useEffect(() => { api.get('/accounts').then(setAccounts).catch(() => {}); }, []);
+  useEffect(() => { api.get('/accounts').then(setAccounts).catch(err => console.warn('[Bookings] accounts:', err.message)); }, []);
 
   const fields = [
     { key: 'account_id', label: 'Konto', required: true, type: 'select',

@@ -62,7 +62,7 @@ export default function Meters() {
         };
       });
       setMeters(meterList);
-    }).catch(() => {}).finally(() => setLoading(false));
+    }).catch(err => console.warn('[Meters] load failed:', err.message)).finally(() => setLoading(false));
   };
 
   useEffect(() => { loadData(); }, []);

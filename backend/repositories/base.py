@@ -1,5 +1,11 @@
-"""Generic base repository for CRUD operations."""
+"""Generic base repository for CRUD operations.
 
+All database operations are wrapped with error handling via
+safe_db_operation to catch SQLAlchemy errors and convert them
+to DatabaseOperationError with proper logging.
+"""
+
+import logging
 from datetime import datetime
 from typing import Any, Generic, TypeVar
 from uuid import uuid4
@@ -8,7 +14,10 @@ from pydantic import BaseModel as PydanticBaseModel
 from sqlalchemy.orm import Session
 
 from ..db.orm_models import Base
+from ..error_helpers import safe_db_operation
 from ..storage import NotFoundError
+
+logger = logging.getLogger(__name__)
 
 ORM = TypeVar("ORM", bound=Base)
 ReadModel = TypeVar("ReadModel", bound=PydanticBaseModel)
@@ -21,11 +30,21 @@ def _generate_id() -> str:
 
 def _orm_to_dict(orm_obj: Base) -> dict[str, Any]:
     """Extract column values from an ORM object as a dict."""
-    return {c.key: getattr(orm_obj, c.key) for c in orm_obj.__table__.columns}
+    try:
+        return {c.key: getattr(orm_obj, c.key) for c in orm_obj.__table__.columns}
+    except Exception:
+        logger.error("Failed to convert ORM object to dict: %s", type(orm_obj).__name__)
+        raise
 
 
 class BaseRepository(Generic[ORM, ReadModel, CreateModel]):
-    """Generic CRUD repository for a single entity type."""
+    """Generic CRUD repository for a single entity type.
+
+    Error handling strategy:
+    - NotFoundError is raised for missing entities (caught by global handler → 404)
+    - SQLAlchemy errors are caught by @safe_db_operation → DatabaseOperationError → 500
+    - Pydantic validation errors in _to_pydantic propagate naturally → 422
+    """
 
     def __init__(
         self,
@@ -40,27 +59,41 @@ class BaseRepository(Generic[ORM, ReadModel, CreateModel]):
         self.not_found_msg = not_found_msg
 
     def _to_pydantic(self, orm_obj: ORM) -> ReadModel:
-        return self.read_class.model_validate(_orm_to_dict(orm_obj))
+        try:
+            return self.read_class.model_validate(_orm_to_dict(orm_obj))
+        except Exception as exc:
+            logger.error(
+                "Failed to validate %s from ORM %s: %s",
+                self.read_class.__name__,
+                type(orm_obj).__name__,
+                exc,
+            )
+            raise
 
+    @safe_db_operation("list_all")
     def list_all(self) -> list[ReadModel]:
         objs = self.db.query(self.orm_class).all()
         return [self._to_pydantic(o) for o in objs]
 
+    @safe_db_operation("get")
     def get(self, entity_id: str) -> ReadModel:
         obj = self.db.get(self.orm_class, entity_id)
         if obj is None:
             raise NotFoundError(self.not_found_msg)
         return self._to_pydantic(obj)
 
+    @safe_db_operation("get_orm")
     def get_orm(self, entity_id: str) -> ORM:
         obj = self.db.get(self.orm_class, entity_id)
         if obj is None:
             raise NotFoundError(self.not_found_msg)
         return obj
 
+    @safe_db_operation("exists")
     def exists(self, entity_id: str) -> bool:
         return self.db.get(self.orm_class, entity_id) is not None
 
+    @safe_db_operation("create")
     def create(self, data: CreateModel) -> ReadModel:
         orm_obj = self.orm_class(id=_generate_id(), **data.model_dump())
         self.db.add(orm_obj)
@@ -68,6 +101,7 @@ class BaseRepository(Generic[ORM, ReadModel, CreateModel]):
         self.db.refresh(orm_obj)
         return self._to_pydantic(orm_obj)
 
+    @safe_db_operation("update")
     def update(self, entity_id: str, data: CreateModel) -> ReadModel:
         orm_obj = self.db.get(self.orm_class, entity_id)
         if orm_obj is None:
@@ -79,6 +113,7 @@ class BaseRepository(Generic[ORM, ReadModel, CreateModel]):
         self.db.refresh(orm_obj)
         return self._to_pydantic(orm_obj)
 
+    @safe_db_operation("patch")
     def patch(self, entity_id: str, data: PydanticBaseModel) -> ReadModel:
         orm_obj = self.db.get(self.orm_class, entity_id)
         if orm_obj is None:
@@ -91,6 +126,7 @@ class BaseRepository(Generic[ORM, ReadModel, CreateModel]):
         self.db.refresh(orm_obj)
         return self._to_pydantic(orm_obj)
 
+    @safe_db_operation("delete")
     def delete(self, entity_id: str) -> None:
         orm_obj = self.db.get(self.orm_class, entity_id)
         if orm_obj is None:
@@ -98,6 +134,7 @@ class BaseRepository(Generic[ORM, ReadModel, CreateModel]):
         self.db.delete(orm_obj)
         self.db.flush()
 
+    @safe_db_operation("filter_by")
     def filter_by(self, **kwargs) -> list[ReadModel]:
         """Filter entities by column values. None values are skipped."""
         query = self.db.query(self.orm_class)

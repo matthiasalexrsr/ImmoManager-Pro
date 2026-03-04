@@ -56,23 +56,29 @@ export default function Dashboard() {
   const [financeReport, setFinanceReport] = useState(null);
 
   useEffect(() => {
+    const safeFetch = (path, fallback) =>
+      api.get(path).catch(err => {
+        console.warn(`[Dashboard] Failed to load ${path}:`, err.message);
+        return fallback;
+      });
+
     Promise.all([
-      api.get('/portfolios').catch(() => []),
-      api.get('/properties').catch(() => []),
-      api.get('/units').catch(() => []),
-      api.get('/tenants').catch(() => []),
-      api.get('/contracts').catch(() => []),
-      api.get('/accounts').catch(() => []),
-      api.get('/tasks?status=open&limit=5').catch(() => []),
-      api.get('/maintenance?status=open&limit=5').catch(() => []),
-      api.get('/notifications?status=unread&limit=5').catch(() => []),
-      api.get('/reports/cashflow').catch(() => null),
-      api.get('/reports/receivables-aging').catch(() => null),
-      api.get('/reports/occupancy').catch(() => null),
-      api.get('/reports/maintenance-costs').catch(() => null),
-      api.get('/reports/liquidity-forecast?months=6').catch(() => null),
-      api.get('/reports/contracts-expiring?days=90').catch(() => null),
-      api.get('/reports/finance').catch(() => null),
+      safeFetch('/portfolios', []),
+      safeFetch('/properties', []),
+      safeFetch('/units', []),
+      safeFetch('/tenants', []),
+      safeFetch('/contracts', []),
+      safeFetch('/accounts', []),
+      safeFetch('/tasks?status=open&limit=5', []),
+      safeFetch('/maintenance?status=open&limit=5', []),
+      safeFetch('/notifications?status=unread&limit=5', []),
+      safeFetch('/reports/cashflow', null),
+      safeFetch('/reports/receivables-aging', null),
+      safeFetch('/reports/occupancy', null),
+      safeFetch('/reports/maintenance-costs', null),
+      safeFetch('/reports/liquidity-forecast?months=6', null),
+      safeFetch('/reports/contracts-expiring?days=90', null),
+      safeFetch('/reports/finance', null),
     ]).then(([
       portfolios, properties, units, tenants, contracts, accounts,
       openTasks, maintenance, notifs,

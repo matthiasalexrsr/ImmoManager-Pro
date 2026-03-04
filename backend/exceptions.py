@@ -2,6 +2,14 @@
 
 Provides global exception handlers registered on the FastAPI app,
 plus a standard error response schema used across all endpoints.
+
+Exception hierarchy:
+  - NotFoundError → 404 NOT_FOUND
+  - ValidationError → 400 VALIDATION_ERROR
+  - PydanticValidationError → 422 VALIDATION_ERROR (with field details)
+  - DatabaseOperationError → 500 DB_ERROR (logged, user-safe message)
+  - HTTPException → mapped by status code
+  - Exception (catch-all) → 500 INTERNAL_ERROR
 """
 
 import logging
@@ -18,12 +26,17 @@ logger = logging.getLogger(__name__)
 
 
 class ErrorCode(str, Enum):
-    """Standardized error codes for API responses."""
+    """Standardized error codes for API responses.
+
+    See backend/error_helpers.py ERROR_CATALOG for full documentation.
+    """
     NOT_FOUND = "NOT_FOUND"
     VALIDATION_ERROR = "VALIDATION_ERROR"
     AUTH_FAILED = "AUTH_FAILED"
     PERMISSION_DENIED = "PERMISSION_DENIED"
     CONFLICT = "CONFLICT"
+    RATE_LIMITED = "RATE_LIMITED"
+    DB_ERROR = "DB_ERROR"
     INTERNAL_ERROR = "INTERNAL_ERROR"
 
 
@@ -65,6 +78,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def pydantic_validation_handler(request: Request, exc: PydanticValidationError):
         details = []
         for err in exc.errors():
+            # Only expose field name and message, not internal location paths
             field = ".".join(str(loc) for loc in err.get("loc", []))
             details.append({"field": field, "message": err.get("msg", "")})
         logger.info(
@@ -73,9 +87,26 @@ def register_exception_handlers(app: FastAPI) -> None:
         )
         return _error_response(422, ErrorCode.VALIDATION_ERROR, "Ungültige Eingabe", details)
 
+    # DatabaseOperationError — typed DB failures from safe_db_operation
+    try:
+        from .error_helpers import DatabaseOperationError
+
+        @app.exception_handler(DatabaseOperationError)
+        async def db_operation_handler(request: Request, exc: DatabaseOperationError):
+            logger.error(
+                "Database operation failed: %s %s – op=%s detail=%s",
+                request.method, request.url.path, exc.operation, exc.detail,
+            )
+            return _error_response(
+                500,
+                ErrorCode.DB_ERROR,
+                exc.detail or "Ein Datenbankfehler ist aufgetreten. Bitte erneut versuchen.",
+            )
+    except ImportError:
+        pass  # error_helpers not available — skip handler
+
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request: Request, exc: HTTPException):
-        # Map HTTP status codes to error codes
         code = ErrorCode.INTERNAL_ERROR
         if exc.status_code == 401:
             code = ErrorCode.AUTH_FAILED
@@ -85,7 +116,9 @@ def register_exception_handlers(app: FastAPI) -> None:
             code = ErrorCode.NOT_FOUND
         elif exc.status_code == 409:
             code = ErrorCode.CONFLICT
-        elif exc.status_code == 400 or exc.status_code == 422:
+        elif exc.status_code == 429:
+            code = ErrorCode.RATE_LIMITED
+        elif exc.status_code in (400, 422):
             code = ErrorCode.VALIDATION_ERROR
         msg = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
         return _error_response(exc.status_code, code, msg)

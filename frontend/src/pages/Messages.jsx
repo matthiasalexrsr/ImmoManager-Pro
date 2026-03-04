@@ -9,11 +9,11 @@ export default function Messages() {
   const [filter, setFilter] = useState('all');
 
   useEffect(() => {
-    api.get('/notifications').then(setNotifications).catch(() => {}).finally(() => setLoading(false));
+    api.get('/notifications').then(setNotifications).catch(err => console.warn('[Messages]', err.message)).finally(() => setLoading(false));
   }, []);
 
   const markRead = async (id) => {
-    await api.patch(`/notifications/${id}`, { status: 'read' }).catch(() => {});
+    await api.patch(`/notifications/${id}`, { status: 'read' }).catch(err => console.warn('[Messages] mark read:', err.message));
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, status: 'read' } : n));
   };
 

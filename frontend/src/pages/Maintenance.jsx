@@ -15,7 +15,7 @@ const COLUMNS = [
 
 export default function Maintenance() {
   const [properties, setProperties] = useState([]);
-  useEffect(() => { api.get('/properties').then(setProperties).catch(() => {}); }, []);
+  useEffect(() => { api.get('/properties').then(setProperties).catch(err => console.warn('[Maintenance] properties:', err.message)); }, []);
 
   const fields = [
     { key: 'property_id', label: 'Immobilie', required: true, type: 'select',

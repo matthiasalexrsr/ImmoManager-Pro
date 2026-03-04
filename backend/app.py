@@ -208,13 +208,19 @@ class AuditMiddleware(BaseHTTPMiddleware):
                     user_id = getattr(user, "id", None)
                     username = getattr(user, "username", None)
 
-                log_action(
-                    action=action,
-                    entity_type=entity_type,
-                    entity_id=entity_id,
-                    user_id=user_id,
-                    username=username,
-                )
+                try:
+                    log_action(
+                        action=action,
+                        entity_type=entity_type,
+                        entity_id=entity_id,
+                        user_id=user_id,
+                        username=username,
+                    )
+                except Exception:
+                    logger.warning(
+                        "Audit log failed for %s %s (non-fatal)",
+                        action, entity_type, exc_info=True,
+                    )
 
         return response
 
