@@ -14,6 +14,12 @@ import Invoices from './pages/Invoices';
 import Maintenance from './pages/Maintenance';
 import Tasks from './pages/Tasks';
 import Documents from './pages/Documents';
+import RentOverview from './pages/RentOverview';
+import Meters from './pages/Meters';
+import Contacts from './pages/Contacts';
+import Statements from './pages/Statements';
+import Messages from './pages/Messages';
+import Settings from './pages/Settings';
 
 function ProtectedRoute({ children }) {
   return isLoggedIn() ? children : <Navigate to="/login" />;
@@ -37,6 +43,12 @@ export default function App() {
           <Route path="maintenance" element={<Maintenance />} />
           <Route path="tasks" element={<Tasks />} />
           <Route path="documents" element={<Documents />} />
+          <Route path="rent-overview" element={<RentOverview />} />
+          <Route path="meters" element={<Meters />} />
+          <Route path="contacts" element={<Contacts />} />
+          <Route path="statements" element={<Statements />} />
+          <Route path="messages" element={<Messages />} />
+          <Route path="settings" element={<Settings />} />
         </Route>
       </Routes>
     </BrowserRouter>

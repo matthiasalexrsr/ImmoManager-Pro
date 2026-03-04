@@ -18,6 +18,12 @@ const NAV = [
   { to: '/maintenance', labelKey: 'navigation.main.maintenance', icon: '\uD83D\uDD27' },
   { to: '/tasks', labelKey: 'navigation.main.tasks', icon: '\u2705' },
   { to: '/documents', labelKey: 'navigation.main.documents', icon: '\uD83D\uDCC1' },
+  { to: '/rent-overview', labelKey: 'navigation.main.rentOverview', icon: '\uD83D\uDCB0' },
+  { to: '/meters', labelKey: 'navigation.main.meters', icon: '\uD83D\uDCA7' },
+  { to: '/contacts', labelKey: 'navigation.main.contacts', icon: '\uD83D\uDCD5' },
+  { to: '/statements', labelKey: 'navigation.main.statements', icon: '\uD83D\uDCCB' },
+  { to: '/messages', labelKey: 'navigation.main.messages', icon: '\u2709' },
+  { to: '/settings', labelKey: 'navigation.main.settings', icon: '\u2699' },
 ];
 
 const LOCALES = [

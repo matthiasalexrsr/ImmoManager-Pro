@@ -24,8 +24,8 @@ from backend.models import (
     UserRead,
 )
 from backend.routers.auth import (
-    get_my_preferences,
     get_me,
+    get_my_preferences,
     get_users,
     login,
     patch_user,
