@@ -178,7 +178,16 @@ def patch_user(
     user: UserRead = Depends(require_role("eigentuemer", "verwalter")),
 ) -> UserRead:
     """Update a user (admin only)."""
-    return update_user(user_id, payload.model_dump(exclude_unset=True))
+    changes = payload.model_dump(exclude_unset=True)
+
+    # Only owners may change user roles.
+    if "role" in changes and user.role != "eigentuemer":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Nur Eigentümer dürfen Rollen ändern",
+        )
+
+    return update_user(user_id, changes)
 
 
 @router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)

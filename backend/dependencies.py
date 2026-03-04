@@ -18,9 +18,9 @@ store = InMemoryStore()
 # Scoped session factory (set when using SQL backend)
 _scoped_session = None
 
-# If DATABASE_URL is configured (and not the default SQLite), use SQLAlchemy store
+# If DATABASE_URL is configured, use SQLAlchemy store
 _database_url = settings.database_url
-if _database_url and "sqlite" not in _database_url:
+if _database_url:
     from sqlalchemy.orm import scoped_session
 
     from .db.session import SessionLocal, create_tables
@@ -56,7 +56,7 @@ def cleanup_session():
 
 def get_db() -> Generator:
     """FastAPI dependency that provides a per-request database session."""
-    if not _database_url or "sqlite" in _database_url:
+    if not _database_url:
         yield None
         return
 

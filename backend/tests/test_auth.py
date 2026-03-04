@@ -51,6 +51,7 @@ def _register_viewer() -> UserRead:
     return register_user("viewer", "viewer@example.com", "View User", "Pass1234", "readonly")
 
 
+
 # === Password Hashing ===
 
 class TestPasswordHashing:
@@ -212,6 +213,22 @@ class TestRBAC:
         viewer = _register_viewer()
         result = patch_user(viewer.id, UserPatch(full_name="Updated"), user=admin)
         assert result.full_name == "Updated"
+
+    def test_manager_cannot_promote_self_to_owner(self, monkeypatch):
+        manager = UserRead(
+            id="manager-1",
+            username="manager",
+            email="manager@example.com",
+            full_name="Manager User",
+            role="verwalter",
+            is_active=True,
+        )
+
+        monkeypatch.setattr("backend.routers.auth.update_user", lambda *_args, **_kwargs: manager)
+
+        with pytest.raises(HTTPException) as exc_info:
+            patch_user(manager.id, UserPatch(role="eigentuemer"), user=manager)
+        assert exc_info.value.status_code == 403
 
     def test_delete_user_as_owner(self):
         admin = _register_admin()
