@@ -2358,6 +2358,33 @@ class TestGenerateUtilityStatements:
         billing.generate_utility_statements(self.bp.id)
         assert len(_list_utility_statements()) == 2  # Still 2, not 4
 
+    def test_generate_excludes_inactive_contracts(self) -> None:
+        terminated = store.create_contract(
+            ContractCreate(
+                contract_number="V-3", property_id=self.prop.id,
+                unit_id=self.unit1.id, tenant_id=self.tenant1.id,
+                start_date=datetime.date(2024, 1, 1), status="terminated",
+            )
+        )
+        draft = store.create_contract(
+            ContractCreate(
+                contract_number="V-4", property_id=self.prop.id,
+                unit_id=self.unit2.id, tenant_id=self.tenant2.id,
+                start_date=datetime.date(2024, 1, 1), status="draft",
+            )
+        )
+        store.create_cost_item(
+            CostItemCreate(
+                billing_period_id=self.bp.id, description="Wasser",
+                amount=1000.0, allocation_key_id=self.ak_area.id,
+            )
+        )
+        stmts = billing.generate_utility_statements(self.bp.id)
+        statement_contract_ids = {s.contract_id for s in stmts}
+        assert terminated.id not in statement_contract_ids
+        assert draft.id not in statement_contract_ids
+        assert statement_contract_ids == {self.contract1.id, self.contract2.id}
+
     def test_generate_no_contracts_400(self) -> None:
         # Remove all contracts
         for cid in list(store.contracts.keys()):
