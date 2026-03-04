@@ -24,7 +24,18 @@ class ErrorCode(str, Enum):
     AUTH_FAILED = "AUTH_FAILED"
     PERMISSION_DENIED = "PERMISSION_DENIED"
     CONFLICT = "CONFLICT"
+    RATE_LIMITED = "RATE_LIMITED"
+    TIMEOUT = "TIMEOUT"
+    SERVICE_UNAVAILABLE = "SERVICE_UNAVAILABLE"
     INTERNAL_ERROR = "INTERNAL_ERROR"
+
+
+class RateLimitError(Exception):
+    """Raised when a client exceeds request rate limits."""
+
+
+class ServiceUnavailableError(Exception):
+    """Raised when a downstream service or resource is temporarily unavailable."""
 
 
 def _error_response(
