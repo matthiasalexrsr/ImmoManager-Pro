@@ -3,6 +3,11 @@ import { Link } from 'react-router-dom';
 import { api } from '../api';
 import StatusBadge from '../components/StatusBadge';
 import {
+  PortfolioIcon, PropertyIcon, UnitIcon, TenantIcon,
+  ContractIcon, AccountIcon, MaintenanceIcon, ChartIcon,
+  ArrowRightIcon,
+} from '../components/Icons';
+import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend, LineChart, Line, CartesianGrid,
 } from 'recharts';
@@ -11,11 +16,14 @@ const CHART_COLORS = ['#2563eb', '#16a34a', '#d97706', '#dc2626', '#8b5cf6', '#0
 const PIE_COLORS = ['#16a34a', '#d97706', '#e2e8f0']; // occupied, reserved, vacant
 
 function StatCard({ icon, label, value, to, color }) {
+  const Ico = icon;
   return (
     <Link to={to} className={`stat-card ${color || ''}`}>
-      <div className="stat-icon">{icon}</div>
+      <div className="stat-icon">
+        <Ico size={22} />
+      </div>
       <div className="stat-info">
-        <div className="stat-value">{value ?? '—'}</div>
+        <div className="stat-value">{value ?? '\u2014'}</div>
         <div className="stat-label">{label}</div>
       </div>
     </Link>
@@ -145,14 +153,14 @@ export default function Dashboard() {
 
       {/* KPI Cards */}
       <div className="stats-grid">
-        <StatCard icon="🏢" label="Portfolios" value={stats.portfolios} to="/portfolios" />
-        <StatCard icon="🏠" label="Immobilien" value={stats.properties} to="/properties" />
-        <StatCard icon="🚪" label="Einheiten" value={`${stats.unitsOccupied}/${stats.units}`} to="/units" color="stat-highlight" />
-        <StatCard icon="👤" label="Mieter" value={stats.tenants} to="/tenants" />
-        <StatCard icon="📄" label="Aktive Verträge" value={stats.contractsActive} to="/contracts" />
-        <StatCard icon="🏦" label="Konten" value={stats.accounts} to="/accounts" />
-        <StatCard icon="🔧" label="Offene Wartung" value={stats.openMaintenance} to="/maintenance" color={stats.openMaintenance > 0 ? 'stat-warning' : ''} />
-        <StatCard icon="📈" label="Auslastung" value={`${occupancyRate}%`} to="/units" color="stat-highlight" />
+        <StatCard icon={PortfolioIcon} label="Portfolios" value={stats.portfolios} to="/portfolios" />
+        <StatCard icon={PropertyIcon} label="Immobilien" value={stats.properties} to="/properties" />
+        <StatCard icon={UnitIcon} label="Einheiten" value={`${stats.unitsOccupied}/${stats.units}`} to="/units" color="stat-highlight" />
+        <StatCard icon={TenantIcon} label="Mieter" value={stats.tenants} to="/tenants" />
+        <StatCard icon={ContractIcon} label="Aktive Vertr\u00e4ge" value={stats.contractsActive} to="/contracts" />
+        <StatCard icon={AccountIcon} label="Konten" value={stats.accounts} to="/accounts" />
+        <StatCard icon={MaintenanceIcon} label="Offene Wartung" value={stats.openMaintenance} to="/maintenance" color={stats.openMaintenance > 0 ? 'stat-warning' : ''} />
+        <StatCard icon={ChartIcon} label="Auslastung" value={`${occupancyRate}%`} to="/units" color="stat-highlight" />
       </div>
 
       {/* Charts Row 1 */}
@@ -214,7 +222,7 @@ export default function Dashboard() {
       {/* Charts Row 2 */}
       <div className="dashboard-charts">
         {/* Liquidity Forecast */}
-        <ChartPanel title="Liquiditätsprognose (6 Monate)">
+        <ChartPanel title="Liquidit\u00e4tsprognose (6 Monate)">
           {forecastData.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
               <LineChart data={forecastData}>
@@ -237,7 +245,7 @@ export default function Dashboard() {
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={maintData} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={v => `${v.toFixed(0)} €`} />
+                <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={v => `${v.toFixed(0)} \u20AC`} />
                 <YAxis type="category" dataKey="category" tick={{ fontSize: 11 }} width={100} />
                 <Tooltip formatter={v => fmt(v)} />
                 <Bar dataKey="estimatedCost" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
@@ -268,58 +276,56 @@ export default function Dashboard() {
       {/* Activity Panels */}
       <div className="dashboard-panels">
         <div className="panel">
-          <div className="panel-header">Offene Aufgaben</div>
-          <div className="panel-body">
-            {tasks.length === 0 ? <p className="panel-empty">Keine offenen Aufgaben</p> : (
-              <ul className="activity-list">
-                {tasks.map(t => (
-                  <li key={t.id} className="panel-item">
-                    <span className="activity-title">{t.title}</span>
-                    {t.due_date && <span className="activity-date">{t.due_date}</span>}
-                    <StatusBadge status={t.priority} />
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-          <Link to="/tasks" className="panel-footer-link">Alle Aufgaben &rarr;</Link>
+          <h3>Offene Aufgaben</h3>
+          {tasks.length === 0 ? <p className="empty-text">Keine offenen Aufgaben</p> : (
+            <ul className="activity-list">
+              {tasks.map(t => (
+                <li key={t.id}>
+                  <span className="activity-title">{t.title}</span>
+                  {t.due_date && <span className="activity-date">{t.due_date}</span>}
+                  <StatusBadge status={t.priority} />
+                </li>
+              ))}
+            </ul>
+          )}
+          <Link to="/tasks" className="panel-link">
+            Alle Aufgaben <ArrowRightIcon size={14} />
+          </Link>
         </div>
 
         <div className="panel">
-          <div className="panel-header">Auslaufende Verträge (90 Tage)</div>
-          <div className="panel-body">
-            {!expiring?.contracts?.length ? <p className="panel-empty">Keine auslaufenden Verträge</p> : (
-              <ul className="activity-list">
-                {expiring.contracts.slice(0, 5).map(c => (
-                  <li key={c.contractId} className="panel-item">
-                    <span className="activity-title">{c.contractNumber}</span>
-                    <span className="activity-date">{c.endDate}</span>
-                    <StatusBadge status={c.daysRemaining <= 30 ? 'overdue' : 'warning'} />
-                    <span className="text-muted" style={{ fontSize: '0.75rem' }}>
-                      {c.daysRemaining} Tage
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-          <Link to="/contracts" className="panel-footer-link">Alle Verträge &rarr;</Link>
+          <h3>Auslaufende Vertr\u00e4ge (90 Tage)</h3>
+          {!expiring?.contracts?.length ? <p className="empty-text">Keine auslaufenden Vertr\u00e4ge</p> : (
+            <ul className="activity-list">
+              {expiring.contracts.slice(0, 5).map(c => (
+                <li key={c.contractId}>
+                  <span className="activity-title">{c.contractNumber}</span>
+                  <span className="activity-date">{c.endDate}</span>
+                  <StatusBadge status={c.daysRemaining <= 30 ? 'overdue' : 'warning'} />
+                  <span className="text-muted" style={{ fontSize: '0.75rem' }}>
+                    {c.daysRemaining} Tage
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <Link to="/contracts" className="panel-link">
+            Alle Vertr\u00e4ge <ArrowRightIcon size={14} />
+          </Link>
         </div>
 
         <div className="panel">
-          <div className="panel-header">Benachrichtigungen</div>
-          <div className="panel-body">
-            {notifications.length === 0 ? <p className="panel-empty">Keine neuen Benachrichtigungen</p> : (
-              <ul className="activity-list">
-                {notifications.map(n => (
-                  <li key={n.id} className="panel-item">
-                    <span className="activity-title">{n.title}</span>
-                    <StatusBadge status={n.severity} />
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+          <h3>Benachrichtigungen</h3>
+          {notifications.length === 0 ? <p className="empty-text">Keine neuen Benachrichtigungen</p> : (
+            <ul className="activity-list">
+              {notifications.map(n => (
+                <li key={n.id}>
+                  <span className="activity-title">{n.title}</span>
+                  <StatusBadge status={n.severity} />
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </div>
     </div>

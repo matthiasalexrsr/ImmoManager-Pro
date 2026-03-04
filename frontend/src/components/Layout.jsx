@@ -4,26 +4,63 @@ import { useTranslation } from '../i18n';
 import { usePreferences } from '../contexts/PreferencesContext';
 import SearchBar from './SearchBar';
 import NotificationBell from './NotificationBell';
+import {
+  DashboardIcon, PortfolioIcon, PropertyIcon, UnitIcon,
+  TenantIcon, ContractIcon, AccountIcon, BookingIcon,
+  InvoiceIcon, MaintenanceIcon, TaskIcon, DocumentIcon,
+  SunIcon, MoonIcon, LogoutIcon, ChevronLeftIcon, ChevronRightIcon,
+  RentIcon, MeterIcon, ContactIcon, StatementIcon, MessageIcon, SettingsIcon,
+} from './Icons';
 
-const NAV = [
-  { to: '/', labelKey: 'navigation.main.dashboard', icon: '\uD83D\uDCCA' },
-  { to: '/portfolios', labelKey: 'navigation.main.portfolio', icon: '\uD83C\uDFE2' },
-  { to: '/properties', labelKey: 'navigation.main.properties', icon: '\uD83C\uDFE0' },
-  { to: '/units', labelKey: 'units.list.title', icon: '\uD83D\uDEAA' },
-  { to: '/tenants', labelKey: 'tenantsContracts.tenants.title', icon: '\uD83D\uDC64' },
-  { to: '/contracts', labelKey: 'tenantsContracts.contracts.title', icon: '\uD83D\uDCC4' },
-  { to: '/accounts', labelKey: 'finance.accounts.title', icon: '\uD83C\uDFE6' },
-  { to: '/bookings', labelKey: 'finance.bookings.title', icon: '\uD83D\uDCB6' },
-  { to: '/invoices', labelKey: 'finance.invoices.title', icon: '\uD83E\uDDFE' },
-  { to: '/maintenance', labelKey: 'navigation.main.maintenance', icon: '\uD83D\uDD27' },
-  { to: '/tasks', labelKey: 'navigation.main.tasks', icon: '\u2705' },
-  { to: '/documents', labelKey: 'navigation.main.documents', icon: '\uD83D\uDCC1' },
-  { to: '/rent-overview', labelKey: 'navigation.main.rentOverview', icon: '\uD83D\uDCB0' },
-  { to: '/meters', labelKey: 'navigation.main.meters', icon: '\uD83D\uDCA7' },
-  { to: '/contacts', labelKey: 'navigation.main.contacts', icon: '\uD83D\uDCD5' },
-  { to: '/statements', labelKey: 'navigation.main.statements', icon: '\uD83D\uDCCB' },
-  { to: '/messages', labelKey: 'navigation.main.messages', icon: '\u2709' },
-  { to: '/settings', labelKey: 'navigation.main.settings', icon: '\u2699' },
+const NAV_SECTIONS = [
+  {
+    labelKey: 'navigation.sections.overview',
+    fallback: 'Overview',
+    items: [
+      { to: '/', labelKey: 'navigation.main.dashboard', fallback: 'Dashboard', icon: DashboardIcon },
+    ],
+  },
+  {
+    labelKey: 'navigation.sections.portfolio',
+    fallback: 'Portfolio',
+    items: [
+      { to: '/portfolios', labelKey: 'navigation.main.portfolio', fallback: 'Portfolios', icon: PortfolioIcon },
+      { to: '/properties', labelKey: 'navigation.main.properties', fallback: 'Immobilien', icon: PropertyIcon },
+      { to: '/units', labelKey: 'units.list.title', fallback: 'Einheiten', icon: UnitIcon },
+    ],
+  },
+  {
+    labelKey: 'navigation.sections.tenants',
+    fallback: 'Mieter & Vertr\u00e4ge',
+    items: [
+      { to: '/tenants', labelKey: 'tenantsContracts.tenants.title', fallback: 'Mieter', icon: TenantIcon },
+      { to: '/contracts', labelKey: 'tenantsContracts.contracts.title', fallback: 'Vertr\u00e4ge', icon: ContractIcon },
+      { to: '/contacts', labelKey: 'navigation.main.contacts', fallback: 'Kontakte', icon: ContactIcon },
+    ],
+  },
+  {
+    labelKey: 'navigation.sections.finance',
+    fallback: 'Finanzen',
+    items: [
+      { to: '/accounts', labelKey: 'finance.accounts.title', fallback: 'Konten', icon: AccountIcon },
+      { to: '/bookings', labelKey: 'finance.bookings.title', fallback: 'Buchungen', icon: BookingIcon },
+      { to: '/invoices', labelKey: 'finance.invoices.title', fallback: 'Rechnungen', icon: InvoiceIcon },
+      { to: '/rent-overview', labelKey: 'navigation.main.rentOverview', fallback: 'Miet\u00fcbersicht', icon: RentIcon },
+      { to: '/statements', labelKey: 'navigation.main.statements', fallback: 'Abrechnungen', icon: StatementIcon },
+    ],
+  },
+  {
+    labelKey: 'navigation.sections.operations',
+    fallback: 'Verwaltung',
+    items: [
+      { to: '/maintenance', labelKey: 'navigation.main.maintenance', fallback: 'Wartung', icon: MaintenanceIcon },
+      { to: '/tasks', labelKey: 'navigation.main.tasks', fallback: 'Aufgaben', icon: TaskIcon },
+      { to: '/documents', labelKey: 'navigation.main.documents', fallback: 'Dokumente', icon: DocumentIcon },
+      { to: '/meters', labelKey: 'navigation.main.meters', fallback: 'Z\u00e4hler', icon: MeterIcon },
+      { to: '/messages', labelKey: 'navigation.main.messages', fallback: 'Nachrichten', icon: MessageIcon },
+      { to: '/settings', labelKey: 'navigation.main.settings', fallback: 'Einstellungen', icon: SettingsIcon },
+    ],
+  },
 ];
 
 const LOCALES = [
@@ -38,28 +75,54 @@ export default function Layout() {
   const { prefs, toggleTheme, toggleSidebar } = usePreferences();
   const collapsed = prefs.sidebar_collapsed;
 
+  const tr = (key, fallback) => {
+    const result = t(key);
+    return result === key ? fallback : result;
+  };
+
   return (
     <div className={`app-layout ${collapsed ? 'sidebar-collapsed' : ''}`}>
-      <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
+      <aside className="sidebar">
         <div className="sidebar-header">
-          <h1>{collapsed ? 'IM' : 'ImmoManager'}</h1>
-          {!collapsed && <span className="subtitle">Pro</span>}
+          <div className="sidebar-logo">IM</div>
+          {!collapsed && (
+            <div className="sidebar-brand">
+              <span className="sidebar-brand-name">ImmoManager</span>
+              <span className="sidebar-brand-sub">Pro</span>
+            </div>
+          )}
         </div>
-        <nav>
-          {NAV.map(({ to, labelKey, icon }) => (
-            <NavLink key={to} to={to} className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
-              <span className="nav-icon">{icon}</span>
-              {!collapsed && <span>{t(labelKey)}</span>}
-            </NavLink>
+        <nav className="sidebar-nav">
+          {NAV_SECTIONS.map((section, si) => (
+            <div key={si}>
+              {!collapsed && (
+                <div className="sidebar-section-label">
+                  {tr(section.labelKey, section.fallback)}
+                </div>
+              )}
+              {section.items.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.to === '/'}
+                  className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+                >
+                  <span className="icon-wrapper">
+                    <item.icon size={18} />
+                  </span>
+                  {!collapsed && <span>{tr(item.labelKey, item.fallback)}</span>}
+                </NavLink>
+              ))}
+            </div>
           ))}
         </nav>
         <div className="sidebar-footer">
           <div className="sidebar-controls">
-            <button onClick={toggleSidebar} className="sidebar-control-btn" title={collapsed ? 'Sidebar einblenden' : 'Sidebar ausblenden'}>
-              {collapsed ? '\u25B6' : '\u25C0'}
+            <button onClick={toggleSidebar} className="sidebar-control-btn" title={collapsed ? 'Expand' : 'Collapse'}>
+              {collapsed ? <ChevronRightIcon size={16} /> : <ChevronLeftIcon size={16} />}
             </button>
-            <button onClick={toggleTheme} className="sidebar-control-btn" title="Theme wechseln">
-              {prefs.theme === 'dark' ? '\u2600' : '\u263D'}
+            <button onClick={toggleTheme} className="sidebar-control-btn" title="Toggle theme">
+              {prefs.theme === 'dark' ? <SunIcon size={16} /> : <MoonIcon size={16} />}
             </button>
             <div className="locale-switcher">
               {LOCALES.map(loc => (
@@ -73,8 +136,12 @@ export default function Layout() {
               ))}
             </div>
           </div>
-          <button onClick={() => { logout(); navigate('/login'); }} className="btn-logout">
-            {t('accountMenu.logout')}
+          <button
+            onClick={() => { logout(); navigate('/login'); }}
+            className="btn-logout"
+          >
+            <LogoutIcon size={16} />
+            {!collapsed && <span>{t('accountMenu.logout')}</span>}
           </button>
         </div>
       </aside>
@@ -83,7 +150,9 @@ export default function Layout() {
           <SearchBar />
           <NotificationBell />
         </div>
-        <Outlet />
+        <div className="main-content-body">
+          <Outlet />
+        </div>
       </main>
     </div>
   );

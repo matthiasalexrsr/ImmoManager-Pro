@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { CloseIcon } from './Icons';
 
 export default function FormModal({ title, fields, initial, onSave, onClose }) {
   const [values, setValues] = useState({});
@@ -39,11 +40,13 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
       <div className="modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3>{title}</h3>
-          <button onClick={onClose} className="btn-close">&times;</button>
+          <button onClick={onClose} className="btn-close" aria-label="Close">
+            <CloseIcon size={18} />
+          </button>
         </div>
         <form onSubmit={handleSubmit}>
           <div className="modal-body">
-            {error && <div className="alert alert-error">{error}</div>}
+            {error && <div className="alert-error">{error}</div>}
             {fields.map(f => (
               <div key={f.key} className="form-group">
                 <label>{f.label}{f.required && ' *'}</label>
@@ -77,7 +80,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
             ))}
           </div>
           <div className="modal-footer">
-            <button type="button" onClick={onClose} className="btn">Abbrechen</button>
+            <button type="button" onClick={onClose} className="btn btn-secondary">Abbrechen</button>
             <button type="submit" className="btn btn-primary" disabled={saving}>
               {saving ? 'Speichern...' : 'Speichern'}
             </button>

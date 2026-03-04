@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
+import { PlusIcon, EditIcon, TrashIcon } from './Icons';
 
 const PAGE_SIZES = [10, 25, 50, 100];
 
@@ -195,7 +196,11 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
               )}
             </div>
             <button onClick={exportCsv} className="btn btn-sm btn-secondary">CSV</button>
-            {onAdd && <button onClick={onAdd} className="btn btn-primary">+ Neu</button>}
+            {onAdd && (
+              <button onClick={onAdd} className="btn btn-primary">
+                <PlusIcon size={16} /> Neu
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -214,7 +219,7 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
                     {col.label}
                     {col.sortable !== false && (
                       <span className="sort-indicator">
-                        {sortKey === col.key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
+                        {sortKey === col.key ? (sortDir === 'asc' ? ' \u25B2' : ' \u25BC') : ''}
                       </span>
                     )}
                   </span>
@@ -301,19 +306,27 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
           </thead>
           <tbody>
             {pageData.length === 0 ? (
-              <tr><td colSpan={colSpan} className="table-empty">Keine Einträge gefunden</td></tr>
+              <tr><td colSpan={colSpan} className="table-empty">Keine Eintr\u00e4ge gefunden</td></tr>
             ) : (
               pageData.map(row => (
                 <tr key={row.id}>
                   {visibleColumns.map(col => (
                     <td key={col.key} className={col.align === 'right' ? 'text-right' : ''}>
-                      {col.render ? col.render(row[col.key], row) : (row[col.key] ?? '—')}
+                      {col.render ? col.render(row[col.key], row) : (row[col.key] ?? '\u2014')}
                     </td>
                   ))}
                   {(onEdit || onDelete) && (
-                    <td className="actions">
-                      {onEdit && <button onClick={() => onEdit(row)} className="btn btn-sm">Bearbeiten</button>}
-                      {onDelete && <button onClick={() => onDelete(row)} className="btn btn-sm btn-danger">Löschen</button>}
+                    <td className="action-cell">
+                      {onEdit && (
+                        <button onClick={() => onEdit(row)} className="btn btn-sm btn-ghost" title="Bearbeiten">
+                          <EditIcon size={15} />
+                        </button>
+                      )}
+                      {onDelete && (
+                        <button onClick={() => onDelete(row)} className="btn btn-sm btn-ghost" title="L\u00f6schen" style={{ color: 'var(--color-danger)' }}>
+                          <TrashIcon size={15} />
+                        </button>
+                      )}
                     </td>
                   )}
                 </tr>
@@ -326,8 +339,8 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
       <div className="table-footer">
         <div className="table-footer-info">
           {sorted.length === 0
-            ? 'Keine Einträge'
-            : `${startRow}–${endRow} von ${sorted.length}`}
+            ? 'Keine Eintr\u00e4ge'
+            : `${startRow}\u2013${endRow} von ${sorted.length}`}
           {filtered.length !== data.length && ` (${data.length} gesamt)`}
         </div>
         <div className="table-footer-controls">
@@ -339,11 +352,11 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
             {PAGE_SIZES.map(s => <option key={s} value={s}>{s} / Seite</option>)}
           </select>
           <div className="pagination-btns">
-            <button disabled={safePage === 0} onClick={() => setPage(0)} className="btn btn-sm btn-secondary">«</button>
-            <button disabled={safePage === 0} onClick={() => setPage(p => p - 1)} className="btn btn-sm btn-secondary">‹</button>
+            <button disabled={safePage === 0} onClick={() => setPage(0)} className="btn btn-sm btn-secondary">\u00AB</button>
+            <button disabled={safePage === 0} onClick={() => setPage(p => p - 1)} className="btn btn-sm btn-secondary">\u2039</button>
             <span className="page-indicator">{safePage + 1} / {totalPages}</span>
-            <button disabled={safePage >= totalPages - 1} onClick={() => setPage(p => p + 1)} className="btn btn-sm btn-secondary">›</button>
-            <button disabled={safePage >= totalPages - 1} onClick={() => setPage(totalPages - 1)} className="btn btn-sm btn-secondary">»</button>
+            <button disabled={safePage >= totalPages - 1} onClick={() => setPage(p => p + 1)} className="btn btn-sm btn-secondary">\u203A</button>
+            <button disabled={safePage >= totalPages - 1} onClick={() => setPage(totalPages - 1)} className="btn btn-sm btn-secondary">\u00BB</button>
           </div>
         </div>
       </div>

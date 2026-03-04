@@ -1,7 +1,15 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useState, useCallback } from 'react';
+import { CheckCircleIcon, XCircleIcon, AlertIcon, InfoIcon } from './Icons';
 
 const ToastContext = createContext(null);
+
+const TOAST_ICONS = {
+  success: CheckCircleIcon,
+  error: XCircleIcon,
+  warning: AlertIcon,
+  info: InfoIcon,
+};
 
 export function useToast() {
   return useContext(ToastContext);
@@ -35,17 +43,17 @@ export function ToastProvider({ children }) {
     <ToastContext.Provider value={toast}>
       {children}
       <div className="toast-container">
-        {toasts.map(t => (
-          <div key={t.id} className={`toast toast-${t.type}`} onClick={() => removeToast(t.id)}>
-            <span className="toast-icon">
-              {t.type === 'success' && '\u2713'}
-              {t.type === 'error' && '\u2717'}
-              {t.type === 'warning' && '\u26A0'}
-              {t.type === 'info' && '\u2139'}
-            </span>
-            <span className="toast-message">{t.message}</span>
-          </div>
-        ))}
+        {toasts.map(t => {
+          const IconComp = TOAST_ICONS[t.type] || InfoIcon;
+          return (
+            <div key={t.id} className={`toast toast-${t.type}`} onClick={() => removeToast(t.id)}>
+              <span className="toast-icon">
+                <IconComp size={18} />
+              </span>
+              <span className="toast-message">{t.message}</span>
+            </div>
+          );
+        })}
       </div>
     </ToastContext.Provider>
   );

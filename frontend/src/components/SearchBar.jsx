@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
+import { SearchIcon, CloseIcon, ENTITY_ICON_MAP } from './Icons';
 
 const ENTITY_ROUTES = {
   property: '/properties',
@@ -9,15 +10,6 @@ const ENTITY_ROUTES = {
   contract: '/contracts',
   task: '/tasks',
   invoice: '/invoices',
-};
-
-const ENTITY_ICONS = {
-  property: '\uD83C\uDFE0',
-  tenant: '\uD83D\uDC64',
-  unit: '\uD83D\uDEAA',
-  contract: '\uD83D\uDCC4',
-  task: '\u2705',
-  invoice: '\uD83E\uDDFE',
 };
 
 export default function SearchBar() {
@@ -73,35 +65,42 @@ export default function SearchBar() {
   return (
     <div className="search-bar-global">
       <div className="search-bar-input-wrapper">
-        <span className="search-bar-icon">{'\uD83D\uDD0D'}</span>
+        <span className="search-bar-icon"><SearchIcon size={16} /></span>
         <input
           ref={inputRef}
           type="text"
-          placeholder="Suchen... (Ctrl+K)"
+          placeholder="Suchen..."
           value={query}
           onChange={e => { setQuery(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)}
           className="search-bar-input"
         />
-        {query && (
+        {query ? (
           <button className="search-bar-clear" onClick={() => { setQuery(''); setResults([]); }}>
-            &times;
+            <CloseIcon size={14} />
           </button>
+        ) : (
+          <span className="search-bar-shortcut">Ctrl+K</span>
         )}
       </div>
       {open && query.length >= 2 && (
         <div className="search-bar-dropdown">
           {loading && <div className="search-bar-loading">Suche...</div>}
           {!loading && currentResults.length === 0 && <div className="search-bar-empty">Keine Treffer</div>}
-          {!loading && currentResults.map((r, i) => (
-            <div key={i} className="search-bar-result" onClick={() => handleSelect(r)}>
-              <span className="search-bar-result-icon">{ENTITY_ICONS[r.entity_type] || '\uD83D\uDCC1'}</span>
-              <div className="search-bar-result-text">
-                <span className="search-bar-result-title">{r.display}</span>
-                <span className="search-bar-result-detail">{r.entity_type} {r.detail ? `\u2014 ${r.detail}` : ''}</span>
+          {!loading && currentResults.map((r, i) => {
+            const EntityIcon = ENTITY_ICON_MAP[r.entity_type];
+            return (
+              <div key={i} className="search-bar-result" onClick={() => handleSelect(r)}>
+                <span className="search-bar-result-icon">
+                  {EntityIcon ? <EntityIcon size={16} /> : <SearchIcon size={16} />}
+                </span>
+                <div className="search-bar-result-text">
+                  <span className="search-bar-result-title">{r.display}</span>
+                  <span className="search-bar-result-detail">{r.entity_type}{r.detail ? ` \u2014 ${r.detail}` : ''}</span>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
       {open && <div className="search-bar-backdrop" onClick={() => setOpen(false)} />}
