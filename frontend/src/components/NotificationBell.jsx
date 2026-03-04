@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { api } from '../api';
+import { BellIcon } from './Icons';
 
 export default function NotificationBell() {
   const [notifications, setNotifications] = useState([]);
@@ -53,7 +54,7 @@ export default function NotificationBell() {
   return (
     <div className="notification-bell" ref={ref}>
       <button className="notification-bell-btn" onClick={() => setOpen(!open)} title="Benachrichtigungen">
-        {'\uD83D\uDD14'}
+        <BellIcon size={18} />
         {unreadCount > 0 && <span className="notification-badge">{unreadCount}</span>}
       </button>
       {open && (

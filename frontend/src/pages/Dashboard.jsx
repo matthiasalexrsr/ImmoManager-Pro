@@ -2,13 +2,21 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
 import StatusBadge from '../components/StatusBadge';
+import {
+  PortfolioIcon, PropertyIcon, UnitIcon, TenantIcon,
+  ContractIcon, AccountIcon, MaintenanceIcon, ChartIcon,
+  ArrowRightIcon,
+} from '../components/Icons';
 
 function StatCard({ icon, label, value, to, color }) {
+  const Ico = icon;
   return (
     <Link to={to} className={`stat-card ${color || ''}`}>
-      <div className="stat-icon">{icon}</div>
+      <div className="stat-icon">
+        <Ico size={22} />
+      </div>
       <div className="stat-info">
-        <div className="stat-value">{value ?? '—'}</div>
+        <div className="stat-value">{value ?? '\u2014'}</div>
         <div className="stat-label">{label}</div>
       </div>
     </Link>
@@ -60,14 +68,14 @@ export default function Dashboard() {
       <h1 className="page-title">Dashboard</h1>
 
       <div className="stats-grid">
-        <StatCard icon="🏢" label="Portfolios" value={stats.portfolios} to="/portfolios" />
-        <StatCard icon="🏠" label="Immobilien" value={stats.properties} to="/properties" />
-        <StatCard icon="🚪" label="Einheiten" value={`${stats.unitsOccupied}/${stats.units}`} to="/units" color="stat-highlight" />
-        <StatCard icon="👤" label="Mieter" value={stats.tenants} to="/tenants" />
-        <StatCard icon="📄" label="Aktive Verträge" value={stats.contractsActive} to="/contracts" />
-        <StatCard icon="🏦" label="Konten" value={stats.accounts} to="/accounts" />
-        <StatCard icon="🔧" label="Offene Wartung" value={stats.openMaintenance} to="/maintenance" color={stats.openMaintenance > 0 ? 'stat-warning' : ''} />
-        <StatCard icon="📈" label="Auslastung" value={`${occupancyRate}%`} to="/units" color="stat-highlight" />
+        <StatCard icon={PortfolioIcon} label="Portfolios" value={stats.portfolios} to="/portfolios" />
+        <StatCard icon={PropertyIcon} label="Immobilien" value={stats.properties} to="/properties" />
+        <StatCard icon={UnitIcon} label="Einheiten" value={`${stats.unitsOccupied}/${stats.units}`} to="/units" color="stat-highlight" />
+        <StatCard icon={TenantIcon} label="Mieter" value={stats.tenants} to="/tenants" />
+        <StatCard icon={ContractIcon} label="Aktive Verträge" value={stats.contractsActive} to="/contracts" />
+        <StatCard icon={AccountIcon} label="Konten" value={stats.accounts} to="/accounts" />
+        <StatCard icon={MaintenanceIcon} label="Offene Wartung" value={stats.openMaintenance} to="/maintenance" color={stats.openMaintenance > 0 ? 'stat-warning' : ''} />
+        <StatCard icon={ChartIcon} label="Auslastung" value={`${occupancyRate}%`} to="/units" color="stat-highlight" />
       </div>
 
       <div className="dashboard-panels">
@@ -84,7 +92,9 @@ export default function Dashboard() {
               ))}
             </ul>
           )}
-          <Link to="/tasks" className="panel-link">Alle Aufgaben &rarr;</Link>
+          <Link to="/tasks" className="panel-link">
+            Alle Aufgaben <ArrowRightIcon size={14} />
+          </Link>
         </div>
 
         <div className="panel">

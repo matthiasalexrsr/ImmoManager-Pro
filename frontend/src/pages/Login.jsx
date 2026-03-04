@@ -33,30 +33,31 @@ export default function Login() {
     <div className="login-page">
       <div className="login-card">
         <div className="login-header">
+          <div className="login-logo">IM</div>
           <h1>ImmoManager <span className="pro">Pro</span></h1>
           <p>Immobilienverwaltung</p>
         </div>
         <form onSubmit={handleSubmit}>
-          {error && <div className="alert alert-error">{error}</div>}
+          {error && <div className="alert-error">{error}</div>}
           <div className="form-group">
             <label>Benutzername</label>
-            <input type="text" value={username} onChange={e => setUsername(e.target.value)} required autoFocus />
+            <input type="text" value={username} onChange={e => setUsername(e.target.value)} required autoFocus placeholder="Ihr Benutzername" />
           </div>
           {isRegister && (
             <>
               <div className="form-group">
                 <label>E-Mail</label>
-                <input type="email" value={email} onChange={e => setEmail(e.target.value)} required />
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)} required placeholder="name@firma.de" />
               </div>
               <div className="form-group">
                 <label>Vollständiger Name</label>
-                <input type="text" value={fullName} onChange={e => setFullName(e.target.value)} required />
+                <input type="text" value={fullName} onChange={e => setFullName(e.target.value)} required placeholder="Max Mustermann" />
               </div>
             </>
           )}
           <div className="form-group">
             <label>Passwort</label>
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={6} />
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={6} placeholder="Mindestens 6 Zeichen" />
           </div>
           <button type="submit" className="btn btn-primary btn-block" disabled={loading}>
             {loading ? 'Bitte warten...' : (isRegister ? 'Registrieren & Anmelden' : 'Anmelden')}

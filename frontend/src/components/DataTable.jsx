@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { PlusIcon, EditIcon, TrashIcon } from './Icons';
 
 export default function DataTable({ columns, data, onEdit, onDelete, title, onAdd }) {
   const [search, setSearch] = useState('');
@@ -22,7 +23,11 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
             onChange={e => setSearch(e.target.value)}
             className="search-input"
           />
-          {onAdd && <button onClick={onAdd} className="btn btn-primary">+ Neu</button>}
+          {onAdd && (
+            <button onClick={onAdd} className="btn btn-primary">
+              <PlusIcon size={16} /> Neu
+            </button>
+          )}
         </div>
       </div>
       <div className="table-scroll">
@@ -30,7 +35,7 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
           <thead>
             <tr>
               {columns.map(col => <th key={col.key}>{col.label}</th>)}
-              {(onEdit || onDelete) && <th>Aktionen</th>}
+              {(onEdit || onDelete) && <th style={{ textAlign: 'right' }}>Aktionen</th>}
             </tr>
           </thead>
           <tbody>
@@ -41,13 +46,21 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
                 <tr key={row.id}>
                   {columns.map(col => (
                     <td key={col.key}>
-                      {col.render ? col.render(row[col.key], row) : (row[col.key] ?? '—')}
+                      {col.render ? col.render(row[col.key], row) : (row[col.key] ?? '\u2014')}
                     </td>
                   ))}
                   {(onEdit || onDelete) && (
                     <td className="action-cell">
-                      {onEdit && <button onClick={() => onEdit(row)} className="btn btn-sm">Bearbeiten</button>}
-                      {onDelete && <button onClick={() => onDelete(row)} className="btn btn-sm btn-danger">Löschen</button>}
+                      {onEdit && (
+                        <button onClick={() => onEdit(row)} className="btn btn-sm btn-ghost" title="Bearbeiten">
+                          <EditIcon size={15} />
+                        </button>
+                      )}
+                      {onDelete && (
+                        <button onClick={() => onDelete(row)} className="btn btn-sm btn-ghost" title="Löschen" style={{ color: 'var(--color-danger)' }}>
+                          <TrashIcon size={15} />
+                        </button>
+                      )}
                     </td>
                   )}
                 </tr>
