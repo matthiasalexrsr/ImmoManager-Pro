@@ -814,6 +814,14 @@ a:hover {
   color: var(--color-text);
 }
 
+.modal > form {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .btn-close {
   display: inline-flex;
   align-items: center;
