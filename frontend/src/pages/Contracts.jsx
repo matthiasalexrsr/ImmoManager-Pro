@@ -3,11 +3,12 @@ import { api } from '../api';
 import CrudPage from './CrudPage';
 
 const COLUMNS = [
-  { key: 'contract_number', label: 'Vertragsnr.' },
-  { key: 'start_date', label: 'Beginn' },
-  { key: 'end_date', label: 'Ende' },
-  { key: 'deposit_amount', label: 'Kaution (€)', render: v => v ? `${Number(v).toFixed(2)} €` : '—' },
-  { key: 'status', label: 'Status', type: 'status' },
+  { key: 'contract_number', label: 'Vertragsnr.', filterType: 'text' },
+  { key: 'start_date', label: 'Beginn', type: 'date', filterType: 'dateRange' },
+  { key: 'end_date', label: 'Ende', type: 'date', filterType: 'dateRange' },
+  { key: 'deposit_amount', label: 'Kaution (€)', type: 'number', align: 'right',
+    render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
+  { key: 'status', label: 'Status', type: 'status', filterType: 'select' },
 ];
 
 export default function Contracts() {

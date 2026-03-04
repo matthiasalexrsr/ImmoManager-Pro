@@ -10,6 +10,7 @@ from ..dependencies import store
 from ..domain.lease_engine import ChargeConfig, LeaseEngine, PaymentLine
 from ..models import Contract, ContractCreate, ContractPatch
 from ..storage import NotFoundError, ValidationError
+from ._helpers import apply_sort
 
 router = APIRouter(prefix="/contracts", tags=["Verträge"])
 
@@ -30,6 +31,10 @@ def list_contracts(
     property_id: str | None = Query(None),
     tenant_id: str | None = Query(None),
     status_filter: str | None = Query(None, alias="status"),
+    sort_by: str | None = Query(None),
+    sort_order: str = Query("asc"),
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
 ) -> list[Contract]:
     results = store.list_contracts()
     if property_id:
@@ -38,6 +43,19 @@ def list_contracts(
         results = [c for c in results if c.tenant_id == tenant_id]
     if status_filter:
         results = [c for c in results if c.status == status_filter]
+    if isinstance(date_from, date):
+        results = [
+            r for r in results
+            if getattr(r, 'start_date', None)
+            and r.start_date >= date_from
+        ]
+    if isinstance(date_to, date):
+        results = [
+            r for r in results
+            if getattr(r, 'end_date', None)
+            and r.end_date <= date_to
+        ]
+    results = apply_sort(results, sort_by, sort_order)
     return results[skip : skip + limit]
 
 

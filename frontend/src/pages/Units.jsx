@@ -3,11 +3,13 @@ import { api } from '../api';
 import CrudPage from './CrudPage';
 
 const COLUMNS = [
-  { key: 'label', label: 'Bezeichnung' },
-  { key: 'unit_type', label: 'Typ' },
-  { key: 'area_sqm', label: 'Fläche (m²)' },
-  { key: 'cold_rent', label: 'Kaltmiete (€)', render: v => v ? `${Number(v).toFixed(2)} €` : '—' },
-  { key: 'status', label: 'Status', type: 'status' },
+  { key: 'label', label: 'Bezeichnung', filterType: 'text' },
+  { key: 'unit_type', label: 'Typ', filterType: 'select' },
+  { key: 'area_sqm', label: 'Fläche (m²)', type: 'number', align: 'right', filterType: 'numberRange',
+    render: v => v != null ? `${Number(v).toLocaleString('de-DE')} m²` : '—' },
+  { key: 'cold_rent', label: 'Kaltmiete (€)', type: 'number', align: 'right', filterType: 'numberRange',
+    render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
+  { key: 'status', label: 'Status', type: 'status', filterType: 'select' },
 ];
 
 export default function Units() {

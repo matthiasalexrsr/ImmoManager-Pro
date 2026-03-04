@@ -3,11 +3,14 @@ import { api } from '../api';
 import CrudPage from './CrudPage';
 
 const COLUMNS = [
-  { key: 'name', label: 'Name' },
-  { key: 'property_type', label: 'Typ' },
-  { key: 'city', label: 'Stadt' },
-  { key: 'zip_code', label: 'PLZ' },
-  { key: 'status', label: 'Status', type: 'status' },
+  { key: 'name', label: 'Name', filterType: 'text' },
+  { key: 'property_type', label: 'Typ', filterType: 'select' },
+  { key: 'city', label: 'Stadt', filterType: 'text' },
+  { key: 'zip_code', label: 'PLZ', filterType: 'text' },
+  { key: 'year_built', label: 'Baujahr', type: 'number' },
+  { key: 'total_area', label: 'Fläche (m²)', type: 'number', align: 'right',
+    render: v => v != null ? `${Number(v).toLocaleString('de-DE')} m²` : '—' },
+  { key: 'status', label: 'Status', type: 'status', filterType: 'select' },
 ];
 
 export default function Properties() {

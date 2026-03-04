@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from ..dependencies import store
 from ..models import Deposit, DepositCreate, DepositPatch
 from ..storage import NotFoundError, ValidationError
+from ._helpers import apply_sort
 
 router = APIRouter(prefix="/deposits", tags=["Kautionen"])
 
@@ -13,12 +14,15 @@ def list_deposits(
     limit: int = Query(100, ge=1, le=1000),
     contract_id: str | None = Query(None),
     status_filter: str | None = Query(None, alias="status"),
+    sort_by: str | None = Query(None),
+    sort_order: str = Query("asc"),
 ) -> list[Deposit]:
     results = store.list_deposits()
     if contract_id:
         results = [r for r in results if r.contract_id == contract_id]
     if status_filter:
         results = [r for r in results if r.status == status_filter]
+    results = apply_sort(results, sort_by, sort_order)
     return results[skip : skip + limit]
 
 

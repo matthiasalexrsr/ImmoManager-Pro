@@ -1,4 +1,5 @@
 from dataclasses import asdict
+from datetime import date
 from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -7,6 +8,7 @@ from ..dependencies import store
 from ..domain.invoice_matching import BookingCandidate, InvoiceMatcher, InvoiceToMatch
 from ..models import Invoice, InvoiceCreate, InvoicePatch
 from ..storage import NotFoundError, ValidationError
+from ._helpers import apply_sort
 
 router = APIRouter(prefix="/invoices", tags=["Rechnungen"])
 
@@ -17,12 +19,29 @@ def list_invoices(
     limit: int = Query(100, ge=1, le=1000),
     supplier: str | None = Query(None),
     status_filter: str | None = Query(None, alias="status"),
+    sort_by: str | None = Query(None),
+    sort_order: str = Query("asc"),
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
 ) -> list[Invoice]:
     results = store.list_invoices()
     if supplier:
         results = [i for i in results if i.supplier == supplier]
     if status_filter:
         results = [i for i in results if i.status == status_filter]
+    if isinstance(date_from, date):
+        results = [
+            r for r in results
+            if getattr(r, 'invoice_date', None)
+            and r.invoice_date >= date_from
+        ]
+    if isinstance(date_to, date):
+        results = [
+            r for r in results
+            if getattr(r, 'invoice_date', None)
+            and r.invoice_date <= date_to
+        ]
+    results = apply_sort(results, sort_by, sort_order)
     return results[skip : skip + limit]
 
 

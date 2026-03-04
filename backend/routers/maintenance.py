@@ -1,8 +1,11 @@
+from datetime import date
+
 from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
 from ..models import MaintenanceCase, MaintenanceCaseCreate, MaintenanceCasePatch
 from ..storage import NotFoundError, ValidationError
+from ._helpers import apply_sort
 
 router = APIRouter(prefix="/maintenance", tags=["Instandhaltung"])
 
@@ -13,12 +16,29 @@ def list_maintenance_cases(
     limit: int = Query(100, ge=1, le=1000),
     property_id: str | None = Query(None),
     status_filter: str | None = Query(None, alias="status"),
+    sort_by: str | None = Query(None),
+    sort_order: str = Query("asc"),
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
 ) -> list[MaintenanceCase]:
     results = store.list_maintenance_cases()
     if property_id:
         results = [c for c in results if c.property_id == property_id]
     if status_filter:
         results = [c for c in results if c.status == status_filter]
+    if isinstance(date_from, date):
+        results = [
+            r for r in results
+            if getattr(r, 'due_date', None)
+            and r.due_date >= date_from
+        ]
+    if isinstance(date_to, date):
+        results = [
+            r for r in results
+            if getattr(r, 'due_date', None)
+            and r.due_date <= date_to
+        ]
+    results = apply_sort(results, sort_by, sort_order)
     return results[skip : skip + limit]
 
 

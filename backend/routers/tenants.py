@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from ..dependencies import store
 from ..models import Tenant, TenantCreate, TenantPatch
 from ..storage import NotFoundError, ValidationError
+from ._helpers import apply_sort
 
 router = APIRouter(prefix="/tenants", tags=["Mieter"])
 
@@ -11,8 +12,11 @@ router = APIRouter(prefix="/tenants", tags=["Mieter"])
 def list_tenants(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
+    sort_by: str | None = Query(None),
+    sort_order: str = Query("asc"),
 ) -> list[Tenant]:
     results = store.list_tenants()
+    results = apply_sort(results, sort_by, sort_order)
     return results[skip : skip + limit]
 
 

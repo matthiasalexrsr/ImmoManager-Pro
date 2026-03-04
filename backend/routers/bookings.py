@@ -1,8 +1,11 @@
+from datetime import date
+
 from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
 from ..models import Booking, BookingCreate, BookingPatch
 from ..storage import NotFoundError, ValidationError
+from ._helpers import apply_sort
 
 router = APIRouter(prefix="/bookings", tags=["Buchungen"])
 
@@ -14,6 +17,10 @@ def list_bookings(
     account_id: str | None = Query(None),
     tenant_id: str | None = Query(None),
     status_filter: str | None = Query(None, alias="status"),
+    sort_by: str | None = Query(None),
+    sort_order: str = Query("asc"),
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
 ) -> list[Booking]:
     results = store.list_bookings()
     if account_id:
@@ -22,6 +29,19 @@ def list_bookings(
         results = [b for b in results if b.tenant_id == tenant_id]
     if status_filter:
         results = [b for b in results if b.status == status_filter]
+    if isinstance(date_from, date):
+        results = [
+            r for r in results
+            if getattr(r, 'booking_date', None)
+            and r.booking_date >= date_from
+        ]
+    if isinstance(date_to, date):
+        results = [
+            r for r in results
+            if getattr(r, 'booking_date', None)
+            and r.booking_date <= date_to
+        ]
+    results = apply_sort(results, sort_by, sort_order)
     return results[skip : skip + limit]
 
 

@@ -1,10 +1,10 @@
 import CrudPage from './CrudPage';
 
 const COLUMNS = [
-  { key: 'title', label: 'Titel' },
-  { key: 'document_type', label: 'Typ' },
-  { key: 'document_date', label: 'Datum' },
-  { key: 'tags', label: 'Tags' },
+  { key: 'title', label: 'Titel', filterType: 'text' },
+  { key: 'document_type', label: 'Typ', filterType: 'select' },
+  { key: 'document_date', label: 'Datum', type: 'date', filterType: 'dateRange' },
+  { key: 'tags', label: 'Tags', filterType: 'text' },
 ];
 
 const FIELDS = [

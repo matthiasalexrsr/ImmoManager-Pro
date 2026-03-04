@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from ..dependencies import store
 from ..models import Portfolio, PortfolioCreate, PortfolioPatch
 from ..storage import NotFoundError, ValidationError
+from ._helpers import apply_sort
 
 router = APIRouter(prefix="/portfolios", tags=["Portfolios"])
 
@@ -12,10 +13,13 @@ def list_portfolios(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     status_filter: str | None = Query(None, alias="status"),
+    sort_by: str | None = Query(None),
+    sort_order: str = Query("asc"),
 ) -> list[Portfolio]:
     results = store.list_portfolios()
     if status_filter:
         results = [p for p in results if p.status == status_filter]
+    results = apply_sort(results, sort_by, sort_order)
     return results[skip : skip + limit]
 
 

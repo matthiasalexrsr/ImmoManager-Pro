@@ -1,9 +1,9 @@
 import CrudPage from './CrudPage';
 
 const COLUMNS = [
-  { key: 'name', label: 'Name' },
+  { key: 'name', label: 'Name', filterType: 'text' },
   { key: 'description', label: 'Beschreibung' },
-  { key: 'status', label: 'Status', type: 'status' },
+  { key: 'status', label: 'Status', type: 'status', filterType: 'select' },
 ];
 
 const FIELDS = [

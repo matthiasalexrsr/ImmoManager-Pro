@@ -1,11 +1,11 @@
 import CrudPage from './CrudPage';
 
 const COLUMNS = [
-  { key: 'title', label: 'Titel' },
-  { key: 'assignee', label: 'Zuständig' },
-  { key: 'due_date', label: 'Fällig am' },
-  { key: 'priority', label: 'Priorität', type: 'status' },
-  { key: 'status', label: 'Status', type: 'status' },
+  { key: 'title', label: 'Titel', filterType: 'text' },
+  { key: 'assignee', label: 'Zuständig', filterType: 'text' },
+  { key: 'due_date', label: 'Fällig am', type: 'date', filterType: 'dateRange' },
+  { key: 'priority', label: 'Priorität', type: 'status', filterType: 'select' },
+  { key: 'status', label: 'Status', type: 'status', filterType: 'select' },
 ];
 
 const FIELDS = [

@@ -3,14 +3,15 @@ import { api } from '../api';
 import CrudPage from './CrudPage';
 
 const COLUMNS = [
-  { key: 'booking_date', label: 'Datum' },
-  { key: 'amount', label: 'Betrag (€)', render: v => {
-    const n = Number(v);
-    const cls = n < 0 ? 'text-red' : 'text-green';
-    return <span className={cls}>{n.toFixed(2)} €</span>;
-  }},
-  { key: 'payment_text', label: 'Buchungstext' },
-  { key: 'status', label: 'Status', type: 'status' },
+  { key: 'booking_date', label: 'Datum', type: 'date', filterType: 'dateRange' },
+  { key: 'amount', label: 'Betrag (€)', type: 'number', align: 'right', filterType: 'numberRange',
+    render: v => {
+      const n = Number(v);
+      const cls = n < 0 ? 'text-red' : 'text-green';
+      return <span className={cls}>{n.toFixed(2)} €</span>;
+    }},
+  { key: 'payment_text', label: 'Buchungstext', filterType: 'text' },
+  { key: 'status', label: 'Status', type: 'status', filterType: 'select' },
 ];
 
 export default function Bookings() {

@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from ..dependencies import store
 from ..models import Category, CategoryCreate, CategoryPatch
 from ..storage import NotFoundError, ValidationError
+from ._helpers import apply_sort
 
 router = APIRouter(prefix="/categories", tags=["Kategorien"])
 
@@ -13,12 +14,15 @@ def list_categories(
     limit: int = Query(100, ge=1, le=1000),
     portfolio_id: str | None = Query(None),
     category_type: str | None = Query(None),
+    sort_by: str | None = Query(None),
+    sort_order: str = Query("asc"),
 ) -> list[Category]:
     results = store.list_categories()
     if portfolio_id:
         results = [c for c in results if c.portfolio_id == portfolio_id]
     if category_type:
         results = [c for c in results if c.category_type == category_type]
+    results = apply_sort(results, sort_by, sort_order)
     return results[skip : skip + limit]
 
 

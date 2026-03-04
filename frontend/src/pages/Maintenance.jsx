@@ -3,12 +3,14 @@ import { api } from '../api';
 import CrudPage from './CrudPage';
 
 const COLUMNS = [
-  { key: 'title', label: 'Titel' },
-  { key: 'category', label: 'Kategorie' },
-  { key: 'priority', label: 'Priorität', type: 'status' },
-  { key: 'assignee', label: 'Zuständig' },
-  { key: 'due_date', label: 'Fällig am' },
-  { key: 'status', label: 'Status', type: 'status' },
+  { key: 'title', label: 'Titel', filterType: 'text' },
+  { key: 'category', label: 'Kategorie', filterType: 'select' },
+  { key: 'priority', label: 'Priorität', type: 'status', filterType: 'select' },
+  { key: 'assignee', label: 'Zuständig', filterType: 'text' },
+  { key: 'estimated_cost', label: 'Kosten (€)', type: 'number', align: 'right',
+    render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
+  { key: 'due_date', label: 'Fällig am', type: 'date', filterType: 'dateRange' },
+  { key: 'status', label: 'Status', type: 'status', filterType: 'select' },
 ];
 
 export default function Maintenance() {

@@ -1,10 +1,10 @@
 import CrudPage from './CrudPage';
 
 const COLUMNS = [
-  { key: 'full_name', label: 'Name' },
-  { key: 'email', label: 'E-Mail' },
+  { key: 'full_name', label: 'Name', filterType: 'text' },
+  { key: 'email', label: 'E-Mail', filterType: 'text' },
   { key: 'phone', label: 'Telefon' },
-  { key: 'company', label: 'Firma' },
+  { key: 'company', label: 'Firma', filterType: 'text' },
 ];
 
 const FIELDS = [

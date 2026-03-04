@@ -1,11 +1,12 @@
 import CrudPage from './CrudPage';
 
 const COLUMNS = [
-  { key: 'supplier', label: 'Lieferant' },
-  { key: 'invoice_date', label: 'Rechnungsdatum' },
-  { key: 'due_date', label: 'Fällig am' },
-  { key: 'gross_amount', label: 'Brutto (€)', render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
-  { key: 'status', label: 'Status', type: 'status' },
+  { key: 'supplier', label: 'Lieferant', filterType: 'text' },
+  { key: 'invoice_date', label: 'Rechnungsdatum', type: 'date', filterType: 'dateRange' },
+  { key: 'due_date', label: 'Fällig am', type: 'date', filterType: 'dateRange' },
+  { key: 'gross_amount', label: 'Brutto (€)', type: 'number', align: 'right', filterType: 'numberRange',
+    render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
+  { key: 'status', label: 'Status', type: 'status', filterType: 'select' },
 ];
 
 const FIELDS = [

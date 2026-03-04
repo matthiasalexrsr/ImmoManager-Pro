@@ -3,11 +3,12 @@ import { api } from '../api';
 import CrudPage from './CrudPage';
 
 const COLUMNS = [
-  { key: 'name', label: 'Kontoname' },
-  { key: 'bank_name', label: 'Bank' },
+  { key: 'name', label: 'Kontoname', filterType: 'text' },
+  { key: 'bank_name', label: 'Bank', filterType: 'text' },
   { key: 'iban', label: 'IBAN' },
-  { key: 'account_type', label: 'Typ' },
-  { key: 'balance', label: 'Saldo (€)', render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
+  { key: 'account_type', label: 'Typ', filterType: 'select' },
+  { key: 'balance', label: 'Saldo (€)', type: 'number', align: 'right', filterType: 'numberRange',
+    render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
 ];
 
 export default function Accounts() {

@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from ..dependencies import store
 from ..models import Account, AccountCreate, AccountPatch
 from ..storage import NotFoundError, ValidationError
+from ._helpers import apply_sort
 
 router = APIRouter(prefix="/accounts", tags=["Konten"])
 
@@ -13,12 +14,15 @@ def list_accounts(
     limit: int = Query(100, ge=1, le=1000),
     portfolio_id: str | None = Query(None),
     account_type: str | None = Query(None),
+    sort_by: str | None = Query(None),
+    sort_order: str = Query("asc"),
 ) -> list[Account]:
     results = store.list_accounts()
     if portfolio_id:
         results = [a for a in results if a.portfolio_id == portfolio_id]
     if account_type:
         results = [a for a in results if a.account_type == account_type]
+    results = apply_sort(results, sort_by, sort_order)
     return results[skip : skip + limit]
 
 
