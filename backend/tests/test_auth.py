@@ -24,6 +24,7 @@ from backend.models import (
     UserRead,
 )
 from backend.routers.auth import (
+    get_my_preferences,
     get_me,
     get_users,
     login,
@@ -188,6 +189,13 @@ class TestAuthRouter:
         user = _register_admin()
         result = get_me(user)
         assert result.username == "admin"
+
+    def test_get_my_preferences_returns_defaults_on_sqlite(self, monkeypatch):
+        user = _register_admin()
+        monkeypatch.setattr("backend.db.session.DATABASE_URL", "sqlite:///./immo_manager.db")
+        prefs = get_my_preferences(user)
+        assert prefs["theme"] == "light"
+        assert prefs["locale"] == "de-DE"
 
 
 # === RBAC ===

@@ -92,7 +92,8 @@ def get_me(user: UserRead = Depends(require_auth)) -> UserRead:
 def get_my_preferences(user: UserRead = Depends(require_auth)) -> dict:
     """Get current user's preferences."""
     from ..db.session import DATABASE_URL
-    if DATABASE_URL.startswith("sqlite") or "postgresql" in DATABASE_URL:
+
+    if DATABASE_URL and "sqlite" not in DATABASE_URL:
         from ..db.orm_models import UserPreferencesORM
         from ..db.session import SessionLocal
         session = SessionLocal()
@@ -128,7 +129,7 @@ def update_my_preferences(payload: dict, user: UserRead = Depends(require_auth))
     allowed_keys = {"theme", "locale", "sidebar_collapsed", "items_per_page", "date_format", "currency"}
     clean = {k: v for k, v in payload.items() if k in allowed_keys}
 
-    if DATABASE_URL.startswith("sqlite") or "postgresql" in DATABASE_URL:
+    if DATABASE_URL and "sqlite" not in DATABASE_URL:
         from ..db.orm_models import UserPreferencesORM
         from ..db.session import SessionLocal
         session = SessionLocal()

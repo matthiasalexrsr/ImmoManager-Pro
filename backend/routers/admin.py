@@ -21,6 +21,97 @@ router = APIRouter(prefix="/admin", tags=["Admin"])
 _BACKUP_DIR = Path("backups")
 
 
+def _export_store_data() -> dict:
+    """Build a JSON-serializable snapshot of the active store backend."""
+    return {
+        "version": settings.app_version,
+        "exported_at": datetime.utcnow().isoformat(),
+        "portfolios": [p.model_dump(mode="json") for p in store.list_portfolios()],
+        "properties": [p.model_dump(mode="json") for p in store.list_properties()],
+        "units": [u.model_dump(mode="json") for u in store.list_units()],
+        "tenants": [t.model_dump(mode="json") for t in store.list_tenants()],
+        "contracts": [c.model_dump(mode="json") for c in store.list_contracts()],
+        "accounts": [a.model_dump(mode="json") for a in store.list_accounts()],
+        "bookings": [b.model_dump(mode="json") for b in store.list_bookings()],
+        "invoices": [i.model_dump(mode="json") for i in store.list_invoices()],
+        "maintenance_cases": [m.model_dump(mode="json") for m in store.list_maintenance_cases()],
+        "documents": [d.model_dump(mode="json") for d in store.list_documents()],
+        "tasks": [t.model_dump(mode="json") for t in store.list_tasks()],
+    }
+
+
+def _clear_store_data() -> None:
+    """Delete exported entities in reverse dependency order."""
+    delete_order = [
+        ("list_tasks", "delete_task"),
+        ("list_documents", "delete_document"),
+        ("list_maintenance_cases", "delete_maintenance_case"),
+        ("list_invoices", "delete_invoice"),
+        ("list_bookings", "delete_booking"),
+        ("list_accounts", "delete_account"),
+        ("list_contracts", "delete_contract"),
+        ("list_tenants", "delete_tenant"),
+        ("list_units", "delete_unit"),
+        ("list_properties", "delete_property"),
+        ("list_portfolios", "delete_portfolio"),
+    ]
+
+    for list_fn_name, delete_fn_name in delete_order:
+        list_fn = getattr(store, list_fn_name)
+        delete_fn = getattr(store, delete_fn_name)
+        for item in list_fn():
+            delete_fn(item.id)
+
+
+def _import_store_data(data: dict, *, replace_existing: bool) -> dict:
+    """Import store data from export/backup JSON."""
+    from ..models import (
+        AccountCreate,
+        BookingCreate,
+        ContractCreate,
+        DocumentCreate,
+        InvoiceCreate,
+        MaintenanceCaseCreate,
+        PortfolioCreate,
+        PropertyCreate,
+        TaskCreate,
+        TenantCreate,
+        UnitCreate,
+    )
+
+    entity_configs = [
+        ("portfolios", PortfolioCreate, store.create_portfolio),
+        ("properties", PropertyCreate, store.create_property),
+        ("units", UnitCreate, store.create_unit),
+        ("tenants", TenantCreate, store.create_tenant),
+        ("contracts", ContractCreate, store.create_contract),
+        ("accounts", AccountCreate, store.create_account),
+        ("bookings", BookingCreate, store.create_booking),
+        ("invoices", InvoiceCreate, store.create_invoice),
+        ("maintenance_cases", MaintenanceCaseCreate, store.create_maintenance_case),
+        ("documents", DocumentCreate, store.create_document),
+        ("tasks", TaskCreate, store.create_task),
+    ]
+
+    if replace_existing:
+        _clear_store_data()
+
+    counts = {}
+    for key, model_cls, create_fn in entity_configs:
+        items = data.get(key, [])
+        imported = 0
+        for item in items:
+            cleaned_item = dict(item)
+            for skip in ("id", "created_at", "updated_at"):
+                cleaned_item.pop(skip, None)
+            obj = model_cls(**cleaned_item)
+            create_fn(obj)
+            imported += 1
+        counts[key] = imported
+
+    return {"imported": counts, "replace_existing": replace_existing}
+
+
 # ─── Version ────────────────────────────────────────────────────────────────
 
 @router.get("/version")
@@ -62,20 +153,15 @@ def list_plugins():
 
 @router.post("/backup", response_model=None)
 def create_backup():
-    """Create a database backup (SQLite only)."""
-    if "sqlite" not in settings.database_url:
-        raise HTTPException(400, "Backup is only supported for SQLite databases")
-
+    """Create a backup of the currently active store backend."""
     _BACKUP_DIR.mkdir(exist_ok=True)
-    # Extract DB file path from URL
-    db_path = settings.database_url.replace("sqlite:///", "")
-    if not Path(db_path).exists():
-        raise HTTPException(404, "Database file not found")
 
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    backup_name = f"backup_{timestamp}.db"
+    backup_name = f"backup_{timestamp}.json"
     backup_path = _BACKUP_DIR / backup_name
-    shutil.copy2(db_path, backup_path)
+    payload = _export_store_data()
+    backup_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
     logger.info("Backup created: %s", backup_name)
     return {"backup": backup_name, "size_bytes": backup_path.stat().st_size}
 
@@ -85,7 +171,7 @@ def list_backups():
     """List available database backups."""
     _BACKUP_DIR.mkdir(exist_ok=True)
     backups = []
-    for f in sorted(_BACKUP_DIR.glob("backup_*.db"), reverse=True):
+    for f in sorted(_BACKUP_DIR.glob("backup_*.*"), reverse=True):
         backups.append({
             "name": f.name,
             "size_bytes": f.stat().st_size,
@@ -96,13 +182,23 @@ def list_backups():
 
 @router.post("/restore/{backup_name}", response_model=None)
 def restore_backup(backup_name: str):
-    """Restore a database from a backup file (SQLite only)."""
-    if "sqlite" not in settings.database_url:
-        raise HTTPException(400, "Restore is only supported for SQLite databases")
-
+    """Restore data from a backup file."""
     backup_path = _BACKUP_DIR / backup_name
     if not backup_path.exists():
         raise HTTPException(404, f"Backup not found: {backup_name}")
+
+    if backup_path.suffix == ".json":
+        try:
+            data = json.loads(backup_path.read_text(encoding="utf-8"))
+            return {
+                "restored_from": backup_name,
+                **_import_store_data(data, replace_existing=True),
+            }
+        except Exception as exc:
+            raise HTTPException(400, f"Invalid JSON backup: {exc}") from exc
+
+    if "sqlite" not in settings.database_url:
+        raise HTTPException(400, "Binary DB restore is only supported for SQLite databases")
 
     db_path = settings.database_url.replace("sqlite:///", "")
     # Create a safety backup before restoring
@@ -165,21 +261,7 @@ def integrity_check():
 @router.get("/export", response_model=None)
 def export_data():
     """Export all data as JSON."""
-    data = {
-        "version": settings.app_version,
-        "exported_at": datetime.utcnow().isoformat(),
-        "portfolios": [p.model_dump(mode="json") for p in store.list_portfolios()],
-        "properties": [p.model_dump(mode="json") for p in store.list_properties()],
-        "units": [u.model_dump(mode="json") for u in store.list_units()],
-        "tenants": [t.model_dump(mode="json") for t in store.list_tenants()],
-        "contracts": [c.model_dump(mode="json") for c in store.list_contracts()],
-        "accounts": [a.model_dump(mode="json") for a in store.list_accounts()],
-        "bookings": [b.model_dump(mode="json") for b in store.list_bookings()],
-        "invoices": [i.model_dump(mode="json") for i in store.list_invoices()],
-        "maintenance_cases": [m.model_dump(mode="json") for m in store.list_maintenance_cases()],
-        "documents": [d.model_dump(mode="json") for d in store.list_documents()],
-        "tasks": [t.model_dump(mode="json") for t in store.list_tasks()],
-    }
+    data = _export_store_data()
     content = json.dumps(data, ensure_ascii=False, indent=2)
 
     return StreamingResponse(
@@ -198,53 +280,13 @@ def import_data(file: UploadFile):
     except (json.JSONDecodeError, Exception) as e:
         raise HTTPException(400, f"Ungültige JSON-Datei: {e}")
 
-    from ..models import (
-        AccountCreate,
-        BookingCreate,
-        ContractCreate,
-        DocumentCreate,
-        InvoiceCreate,
-        MaintenanceCaseCreate,
-        PortfolioCreate,
-        PropertyCreate,
-        TaskCreate,
-        TenantCreate,
-        UnitCreate,
-    )
+    try:
+        result = _import_store_data(data, replace_existing=False)
+    except Exception as exc:
+        raise HTTPException(400, f"Import error: {exc}") from exc
 
-    counts = {}
-    # Import in dependency order
-    entity_configs = [
-        ("portfolios", PortfolioCreate, store.create_portfolio),
-        ("properties", PropertyCreate, store.create_property),
-        ("units", UnitCreate, store.create_unit),
-        ("tenants", TenantCreate, store.create_tenant),
-        ("contracts", ContractCreate, store.create_contract),
-        ("accounts", AccountCreate, store.create_account),
-        ("bookings", BookingCreate, store.create_booking),
-        ("invoices", InvoiceCreate, store.create_invoice),
-        ("maintenance_cases", MaintenanceCaseCreate, store.create_maintenance_case),
-        ("documents", DocumentCreate, store.create_document),
-        ("tasks", TaskCreate, store.create_task),
-    ]
-
-    for key, model_cls, create_fn in entity_configs:
-        items = data.get(key, [])
-        imported = 0
-        for item in items:
-            try:
-                # Remove read-only fields
-                for skip in ("id", "created_at", "updated_at"):
-                    item.pop(skip, None)
-                obj = model_cls(**item)
-                create_fn(obj)
-                imported += 1
-            except Exception as e:
-                logger.warning("Import skip %s item: %s", key, e)
-        counts[key] = imported
-
-    logger.info("Data imported: %s", counts)
-    return {"imported": counts}
+    logger.info("Data imported: %s", result["imported"])
+    return result
 
 
 # ─── Bulk Operations ─────────────────────────────────────────────────────────
