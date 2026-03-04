@@ -1,507 +1,199 @@
-# ImmoManager Pro – Comprehensive Implementation Plan
+# ImmoManager Pro — Comprehensive Implementation Plan
 
-## Scope
-
-This plan covers eight feature areas, organized into four implementation phases:
-
-1. **Updateability** – Version management, auto-migration, self-update
-2. **Plugin Support** – Extension architecture, dynamic router loading, hooks
-3. **Advanced Error Logging & Handling** – Structured logging, global handlers, error tracking
-4. **Spanish Language Support** – i18n framework integration, locale management
-5. **Interface Customization** – Theming, layout preferences, user settings
-6. **Database Integrity** – Constraints, referential checks, backup/restore
-7. **Data Persistence** – Session reliability, auto-save, export/import
-8. **Practical Features** – Search, notifications, dashboard widgets, bulk operations
+_Generated 2026-03-04 from full codebase audit (backend models, frontend pages,
+routers, storage, tests, auth, i18n, error handling)._
 
 ---
 
-## Phase 1: Foundation (Error Handling, Logging, Config, DB Integrity)
+## Phase 1: CRITICAL — Navigation & Unreachable Pages
 
-These are infrastructure concerns that every subsequent feature depends on.
+### 1.1 Add Categories and Deposits to Sidebar
+**Files:** `Layout.jsx`, `Icons.jsx`
+**Issue:** Both pages exist, are routed in App.jsx, but have NO sidebar entry.
+Users cannot find them without typing the URL directly.
+**Fix:** Add `CategoryIcon` + `DepositIcon` SVGs to Icons.jsx. Add Categories
+to Finance section and Deposits to Tenants & Contracts section in NAV_SECTIONS.
 
-### 1.1 Centralized Configuration Module
+### 1.2 Fix Contracts.jsx Silent Catches
+**File:** `Contracts.jsx` lines 21-23
+**Issue:** Last remaining `.catch(() => [])` patterns from before hardening.
+**Fix:** Replace with `.catch(err => { console.warn(...); return []; })`.
 
-**Problem:** Config is scattered across files using raw `os.getenv()` calls with no validation.
-
-**Plan:**
-- Create `backend/config.py` using `pydantic-settings.BaseSettings`
-- Consolidate all environment variables into one typed, validated Settings class:
-  ```
-  class Settings(BaseSettings):
-      database_url: str = "sqlite:///./immo_manager.db"
-      jwt_secret_key: str  # no default → forces production config
-      access_token_expire_minutes: int = 30
-      refresh_token_expire_days: int = 7
-      cors_origins: list[str] = ["http://localhost:3000"]
-      log_level: str = "INFO"
-      log_format: str = "json"  # "json" or "text"
-      log_file: str | None = None
-      app_version: str  # read from pyproject.toml
-      default_locale: str = "de-DE"
-      plugin_dirs: list[str] = []
-      model_config = SettingsConfigDict(env_file=".env")
-  ```
-- Replace all inline `os.getenv()` calls with `settings.xxx`
-- Add `GET /api/v1/config/public` endpoint for frontend-safe config (version, locale, features)
-
-**Files:** `backend/config.py` (new), `backend/app.py`, `backend/auth.py`, `backend/db/session.py`, `backend/dependencies.py`
-
-### 1.2 Structured Logging
-
-**Problem:** Only 2 logger calls exist. No structured logging, no log files, no request correlation.
-
-**Plan:**
-- Create `backend/logging_config.py`:
-  - Configure Python `logging` with JSON formatter (for production) and colored text formatter (for dev)
-  - Log levels controlled by `settings.log_level`
-  - Optional file handler via `settings.log_file`
-  - Add `RequestContextFilter` that injects `request_id`, `user_id`, `method`, `path` into every log record
-- Add `RequestIDMiddleware` to `app.py`:
-  - Generates UUID per request, stores in `request.state.request_id`
-  - Adds `X-Request-ID` response header
-  - Logs request start/end with timing
-- Add module-level loggers to all routers and domain engines:
-  - `logger = logging.getLogger(__name__)`
-  - Log at DEBUG for operations, WARNING for recoverable issues, ERROR for failures
-- Log rotation: use `RotatingFileHandler` (10MB, 5 backups) when `log_file` is set
-
-**Files:** `backend/logging_config.py` (new), `backend/app.py` (middleware), all routers (add loggers)
-
-### 1.3 Global Error Handling
-
-**Problem:** No `@app.exception_handler()`, no error codes, inconsistent error formats, no frontend error boundary.
-
-**Plan:**
-
-**Backend:**
-- Create `backend/exceptions.py`:
-  - Define error code enum: `ErrorCode.NOT_FOUND`, `VALIDATION_ERROR`, `AUTH_FAILED`, `PERMISSION_DENIED`, `CONFLICT`, `INTERNAL_ERROR`
-  - Standardize error response schema:
-    ```json
-    {
-      "error": {
-        "code": "VALIDATION_ERROR",
-        "message": "Enddatum muss nach Startdatum liegen",
-        "details": [{"field": "end_date", "message": "..."}],
-        "request_id": "abc-123"
-      }
-    }
-    ```
-- Register global exception handlers in `app.py`:
-  - `NotFoundError` → 404 with `NOT_FOUND` code
-  - `ValidationError` → 400/422 with `VALIDATION_ERROR` code + field details
-  - `UnauthorizedError` → 401 with `AUTH_FAILED` code
-  - `Exception` → 500 with `INTERNAL_ERROR` code, log full traceback, sanitize response
-- Remove try/except blocks from individual router endpoints (handled globally)
-- Add `@app.on_event("startup")` health checks (DB connectivity, migration status)
-
-**Frontend:**
-- Create `frontend/src/components/ErrorBoundary.jsx`:
-  - React Error Boundary catches render crashes
-  - Shows user-friendly German error page with reload button
-- Update `api.js` error handling:
-  - Parse standardized error response format
-  - Extract `error.code`, `error.message`, `error.details`
-  - Show field-level validation errors in forms
-- Add toast notification system for transient errors
-
-**Files:** `backend/exceptions.py` (new), `backend/app.py`, all routers (simplify), `frontend/src/components/ErrorBoundary.jsx` (new), `frontend/src/api.js`
-
-### 1.4 Database Integrity Enhancements
-
-**Problem:** No CHECK constraints, no unique constraints beyond PKs, no backup/restore, limited FK enforcement.
-
-**Plan:**
-- **ORM Constraints** (`backend/db/orm_models.py`):
-  - Add `UniqueConstraint` where needed:
-    - `ContractORM`: unique `contract_number`
-    - `UserORM`: unique `username`, unique `email`
-    - `AccountORM`: unique `iban` (when not NULL)
-  - Add `CheckConstraint` for business rules:
-    - `BookingORM`: `amount != 0`
-    - `UnitORM`: `area_sqm > 0` (when not NULL)
-    - `ContractORM`: `end_date > start_date` (when both set)
-  - Add composite indexes for common queries:
-    - `(property_id, status)` on units
-    - `(account_id, booking_date)` on bookings
-    - `(tenant_id, status)` on contracts
-
-- **Migration** (`alembic/`):
-  - Generate new migration for constraint additions
-  - Add data validation script that runs pre-migration to flag violations
-
-- **Backup/Restore** (`backend/routers/admin.py` new):
-  - `POST /api/v1/admin/backup` → Creates timestamped SQLite dump or pg_dump
-  - `POST /api/v1/admin/restore` → Restores from backup file (admin-only)
-  - `GET /api/v1/admin/backups` → Lists available backups
-  - Automatic daily backup via optional cron/scheduler
-
-- **Integrity Check Endpoint**:
-  - `GET /api/v1/admin/integrity-check` → Runs foreign key checks, orphan detection, constraint validation
-  - Returns report of any data inconsistencies
-
-**Files:** `backend/db/orm_models.py`, new migration, `backend/routers/admin.py` (new)
+### 1.3 Add Missing Contract Form Fields
+**File:** `Contracts.jsx`
+**Issue:** Backend `ContractCreate` has `index_rent` and `service_charge_settlement`
+not in frontend form. `notice_period` IS present already.
+**Fix:** Add `index_rent` (select: index/stepped/fixed) and
+`service_charge_settlement` (select: annual/monthly).
 
 ---
 
-## Phase 2: Internationalization & Interface Customization
+## Phase 2: HIGH — FormModal & CrudPage Bugs
 
-### 2.1 i18n Framework Integration
+### 2.1 CrudPage Delete Error Invisible
+**File:** `CrudPage.jsx`
+**Issue:** `handleDelete` has no try-catch — API errors during delete are
+completely invisible. `handleSave` errors DO propagate to FormModal, but
+delete happens outside the modal.
+**Fix:** Add try-catch to `handleDelete`, render error banner above table.
 
-**Problem:** Backend i18n API exists with `de-DE.json`, but frontend has all strings hardcoded.
+### 2.2 FormModal Empty Number → 0 Bug
+**File:** `FormModal.jsx` line 25
+**Issue:** `Number('')` returns `0`. All empty optional number fields silently
+send `0` to backend instead of `null`. Affects: purchase_price, market_value,
+estimated_cost, deductions, vat_amount, etc.
+**Fix:** Check `v === '' || v === null` before Number() conversion; return
+`null` for non-required fields.
 
-**Plan:**
-
-**Backend:**
-- Add `es-ES.json` locale file with full Spanish translations (copy structure from `de-DE.json`)
-- Add `en-US.json` as fallback/base locale
-- Extend `i18n/manifest.json` with new locales
-- Add locale-aware error messages:
-  - Validation errors return message keys (e.g., `"validation.end_date_before_start"`)
-  - Frontend resolves keys to localized strings
-- Add `Accept-Language` header support in middleware:
-  - Detect preferred locale from request
-  - Store in `request.state.locale`
-  - Used by error messages and server-rendered content
-
-**Frontend:**
-- Install `react-i18next` + `i18next` + `i18next-http-backend`
-- Create `frontend/src/i18n.js` configuration:
-  - Load translations from `/i18n/{locale}` API endpoint
-  - Fallback chain: `es-ES` → `de-DE` → `en-US`
-  - Lazy loading per locale
-- Create `useTranslation()` hook wrapper for convenience
-- Replace all hardcoded strings in components:
-  - `Layout.jsx`: Navigation labels
-  - `Login.jsx`: Form labels, buttons, messages
-  - `Dashboard.jsx`: Stat labels, panel titles
-  - `CrudPage.jsx`: "Neu", "Bearbeiten", "Löschen", "Suche..."
-  - `FormModal.jsx`: "Speichern", "Abbrechen", field labels
-  - `DataTable.jsx`: "Keine Einträge", search placeholder
-  - All entity pages: Column headers, form field labels, select options
-- Date/number formatting via `Intl.DateTimeFormat` and `Intl.NumberFormat` with locale
-- Add locale switcher component in sidebar footer
-
-**Locale Files Structure:**
-```
-i18n/
-  manifest.json          # lists available locales
-  de-DE.json            # German (existing, expand)
-  es-ES.json            # Spanish (new)
-  en-US.json            # English fallback (new)
-```
-
-**Files:** `frontend/src/i18n.js` (new), `i18n/es-ES.json` (new), `i18n/en-US.json` (new), all frontend components
-
-### 2.2 Spanish Language Support
-
-**Implementation:** Part of 2.1 above. Specific tasks:
-- Translate all ~200 i18n keys from `de-DE.json` to Spanish
-- Include Spanish date/currency formatting (dd/mm/yyyy, €/currency)
-- Test all pages with `es-ES` locale active
-- Verify form validation messages in Spanish
-- Ensure special characters (ñ, á, é, í, ó, ú, ¿, ¡) render correctly
-
-### 2.3 Interface Customization
-
-**Problem:** Single fixed theme, no user preferences, no layout options.
-
-**Plan:**
-
-**Backend – User Preferences:**
-- Add `UserPreferencesORM` model:
-  ```
-  user_id: str (FK → users.id)
-  theme: str = "light"         # "light", "dark", "system"
-  locale: str = "de-DE"        # user's preferred language
-  sidebar_collapsed: bool = False
-  dashboard_layout: JSON = {}  # widget order/visibility
-  items_per_page: int = 25
-  date_format: str = "DD.MM.YYYY"
-  currency: str = "EUR"
-  ```
-- Add `GET/PUT /api/v1/users/me/preferences` endpoint
-- Include preferences in login response token payload or separate call
-
-**Frontend – Theme System:**
-- Extend CSS custom properties for dark theme:
-  ```css
-  [data-theme="dark"] {
-    --color-bg: #0f172a;
-    --color-surface: #1e293b;
-    --color-text: #e2e8f0;
-    --color-border: #334155;
-    /* ... */
-  }
-  ```
-- Create `frontend/src/contexts/PreferencesContext.jsx`:
-  - React Context providing user preferences
-  - Persists to backend on change, localStorage as cache
-  - Applies `data-theme` attribute to `<html>`
-- Theme toggle in sidebar footer (sun/moon icon)
-- Sidebar collapse toggle (hamburger icon)
-- Dashboard widget customization:
-  - Drag-and-drop widget reordering (optional, could use simple toggle)
-  - Show/hide specific stat cards
-  - Save layout to preferences
-
-**Files:** `backend/db/orm_models.py` (UserPreferencesORM), `backend/routers/users.py` (preferences endpoints), `frontend/src/contexts/PreferencesContext.jsx` (new), `frontend/src/index.css` (dark theme), `frontend/src/components/Layout.jsx` (theme toggle)
+### 2.3 FormModal Empty Select → "" Bug
+**File:** `FormModal.jsx` line 26-27
+**Issue:** Optional select fields left at "— Auswählen —" send empty string
+`""` to backend. FK fields like `property_id`, `unit_id` etc. should be `null`.
+**Fix:** Convert `""` to `null` for non-required fields in handleSubmit.
 
 ---
 
-## Phase 3: Plugin Architecture & Updateability
+## Phase 3: HIGH — Backend Gaps
 
-### 3.1 Plugin System
+### 3.1 MeterReading Missing PUT/PATCH Endpoints
+**File:** `backend/routers/handover_protocols.py`
+**Issue:** Meter readings can be created and deleted but NOT corrected. No
+PUT or PATCH endpoint exists.
+**Fix:** Add PUT and PATCH endpoints for `/{protocol_id}/meter-readings/{reading_id}`.
 
-**Problem:** All routers are statically imported. No way to add functionality without modifying core code.
-
-**Plan:**
-
-**Plugin Discovery & Loading:**
-- Create `backend/plugins/` package:
-  - `__init__.py`: Plugin manager
-  - `base.py`: Abstract `Plugin` class
-  ```python
-  class Plugin(ABC):
-      name: str
-      version: str
-      description: str
-
-      @abstractmethod
-      def register_routes(self, app: FastAPI, prefix: str) -> None: ...
-
-      def on_startup(self) -> None: ...
-      def on_shutdown(self) -> None: ...
-      def get_migrations_dir(self) -> Path | None: ...
-      def get_locale_dir(self) -> Path | None: ...
-  ```
-
-**Plugin Structure (convention):**
-```
-plugins/
-  my_plugin/
-    __init__.py          # exports Plugin subclass
-    plugin.py            # Plugin implementation
-    routers/             # FastAPI routers
-    models.py            # Pydantic models
-    orm_models.py        # SQLAlchemy models (optional)
-    migrations/          # Alembic migrations (optional)
-    i18n/                # Locale files (optional)
-    frontend/            # React components (optional, advanced)
-```
-
-**Plugin Manager:**
-- Scan `settings.plugin_dirs` for Python packages with `Plugin` subclass
-- Validate plugin compatibility (required API version)
-- Register plugin routes under `/api/v1/plugins/{plugin_name}/`
-- Run plugin migrations separately
-- Merge plugin locale files into i18n manifest
-
-**Event Bus (for plugin communication):**
-- Create `backend/events.py`:
-  - Simple pub/sub event system
-  - Events: `entity.created`, `entity.updated`, `entity.deleted`, `auth.login`, `auth.logout`
-  - Plugins subscribe to events and react
-  - Synchronous dispatch (async optional later)
-
-**Built-in Hook Points:**
-- Pre/post create, update, delete hooks on store operations
-- Middleware hooks for request/response processing
-- Dashboard widget registration for plugins
-
-**Plugin API:**
-- `GET /api/v1/plugins` → List installed plugins
-- `POST /api/v1/plugins/{name}/enable` → Enable plugin
-- `POST /api/v1/plugins/{name}/disable` → Disable plugin
-
-**Files:** `backend/plugins/` (new package), `backend/events.py` (new), `backend/app.py` (dynamic loading), `backend/config.py` (plugin_dirs)
-
-### 3.2 Updateability
-
-**Problem:** No version endpoint, version mismatch between pyproject.toml and app.py, no auto-migration, no update strategy.
-
-**Plan:**
-
-**Version Management:**
-- Single source of truth: read version from `pyproject.toml` at startup
-- Sync FastAPI `app.version` with package version
-- Add `GET /api/v1/version` endpoint:
-  ```json
-  {
-    "version": "1.1.0",
-    "api_version": "v1",
-    "python_version": "3.11.x",
-    "database": "sqlite",
-    "plugins": [{"name": "...", "version": "..."}],
-    "migrations_current": true
-  }
-  ```
-
-**Auto-Migration on Startup:**
-- In `backend/app.py` startup event:
-  - Check if pending Alembic migrations exist
-  - If `AUTO_MIGRATE=true` (env var), run `alembic upgrade head` automatically
-  - If not, log a warning with instructions
-  - Run plugin migrations after core migrations
-- Add migration status to health endpoint:
-  ```json
-  {"status": "ok", "migrations_pending": 0}
-  ```
-
-**Database Schema Versioning:**
-- Store app version in DB metadata table: `schema_version`
-- On startup, compare app version with DB version
-- If mismatch: warn or auto-migrate
-
-**Update Script** (`scripts/update.sh`):
-```bash
-#!/bin/bash
-# 1. Pull latest code
-# 2. Install/update dependencies
-# 3. Build frontend
-# 4. Run migrations
-# 5. Restart server
-```
-
-**Changelog:**
-- Maintain `CHANGELOG.md` with semantic versioning
-- Auto-generate from git tags/commits (optional)
-
-**Files:** `backend/app.py` (startup migration), `scripts/update.sh` (new), `CHANGELOG.md` (new), version endpoint in `backend/routers/admin.py`
+### 3.2 SQLAlchemyStore Missing Methods
+**File:** `backend/repositories/sql_store.py`
+**Issue:** `update_meter_reading()` and `add_change_history()` exist in
+InMemoryStore but NOT in SQLAlchemyStore. SQL backend silently loses change
+history and cannot update meter readings.
+**Fix:** Implement both methods in SQLAlchemyStore.
 
 ---
 
-## Phase 4: Data Persistence & Practical Features
+## Phase 4: MEDIUM — Missing Form Fields & Data
 
-### 4.1 Data Persistence Enhancements
+### 4.1 Units — Missing `features` Field
+**File:** `Units.jsx`
+**Issue:** Backend `UnitCreate` has `features: Optional[str]` (balcony,
+parking, etc.) not exposed in form.
+**Fix:** Add `features` textarea field.
 
-**Problem:** InMemoryStore loses data on restart. SQLite default works but no backup strategy. No import/export.
+### 4.2 Deposits — `contract_label` Column Empty
+**File:** `Deposits.jsx`
+**Issue:** Column key `contract_label` doesn't exist on Deposit model — shows
+blank in every row.
+**Fix:** Load contracts on mount, create enriched deposit list mapping
+`contract_id` → `contract_number` as `contract_label`.
 
-**Plan:**
-
-**Default to SQLite Persistence:**
-- Change `dependencies.py` to always use SQLAlchemy store (even without `DATABASE_URL`)
-- Default `DATABASE_URL = "sqlite:///./immo_manager.db"` (already in session.py)
-- Run auto-migration on first startup to create tables
-- Remove InMemoryStore from production path (keep for tests only)
-
-**Data Export/Import:**
-- `GET /api/v1/admin/export` → Full database export as JSON
-  - Includes all entities with relationships
-  - Preserves IDs for re-import
-  - Streaming response for large datasets
-- `POST /api/v1/admin/import` → Import from JSON export
-  - Validates schema before import
-  - Option: merge or replace
-  - Transaction-based: all-or-nothing
-- CSV export per entity (already partially exists in reports)
-
-**Auto-Save / Draft Support:**
-- Frontend: Debounced auto-save for form data to `localStorage`
-- On page reload: restore unsaved form data with "Entwurf wiederherstellen?" prompt
-- Backend: Optional `status: "draft"` for entities that support it
-
-**Session Reliability:**
-- Frontend: Token refresh before expiry (background timer)
-- Offline detection: Queue failed API calls, retry when back online
-- Optimistic updates: Update UI immediately, reconcile with server response
-
-**Files:** `backend/dependencies.py`, `backend/routers/admin.py` (export/import), frontend components (auto-save)
-
-### 4.2 Practical Features
-
-**Global Search:**
-- `GET /api/v1/search?q=Kastanienallee` endpoint
-- Searches across: properties (name, street, city), tenants (name, email), contracts (number), units (label)
-- Returns unified results with entity type, id, display text, relevance
-- Frontend: Search bar in top of sidebar or header
-  - Keyboard shortcut: Ctrl+K
-  - Dropdown results with entity type icons
-  - Navigate to entity on selection
-
-**Enhanced Notifications:**
-- Expand notification system with scheduled checks:
-  - Contract expiry warnings (30/60/90 days before end_date)
-  - Overdue invoice alerts
-  - Maintenance case reminders
-  - Task due date notifications
-- `GET /api/v1/notifications/unread/count` for badge in sidebar
-- Frontend: Notification bell icon with unread count badge
-- Mark as read/dismiss functionality
-
-**Bulk Operations:**
-- Frontend: Multi-select checkboxes in DataTable
-- Bulk delete with confirmation
-- Bulk status update (e.g., mark multiple invoices as paid)
-- Backend: `POST /api/v1/{entity}/bulk-delete` with list of IDs
-- Backend: `PATCH /api/v1/{entity}/bulk-update` with list of IDs + patch data
-
-**Dashboard Widgets:**
-- Occupancy trend chart (last 12 months)
-- Revenue summary (monthly income vs expenses)
-- Upcoming contract expirations
-- Maintenance case status breakdown (pie chart)
-- Frontend: Use lightweight chart library (Chart.js or recharts)
-
-**Files:** `backend/routers/search.py` (new), `backend/routers/admin.py` (bulk ops), `frontend/src/components/SearchBar.jsx` (new), `frontend/src/components/NotificationBell.jsx` (new)
+### 4.3 Statements.jsx — BillingPeriod `label` Required
+**File:** `Statements.jsx`
+**Issue:** `BillingPeriodCreate` requires `label` field but the Statements
+form doesn't include it. Creates will fail.
+**Fix:** Add `label` text field to billing period form, or auto-generate from
+property + dates.
 
 ---
 
-## Implementation Order & Dependencies
+## Phase 5: MEDIUM — SearchBar & Dashboard
 
-```
-Phase 1 (Foundation)           Phase 2 (i18n & UI)
-├── 1.1 Config Module          ├── 2.1 i18n Framework ←── depends on 1.1
-├── 1.2 Structured Logging     ├── 2.2 Spanish Locale ←── depends on 2.1
-├── 1.3 Global Error Handling  └── 2.3 Interface Customization
-└── 1.4 DB Integrity
+### 5.1 Expand SearchBar Entity Coverage
+**File:** `SearchBar.jsx`
+**Issue:** Only 6 of ~15 entity types searchable. Missing: portfolio, account,
+booking, document, maintenance, deposit, category, lead, listing.
+**Fix:** Add missing types to ENTITY_ROUTES and ENTITY_ICON_MAP.
 
-Phase 3 (Extensibility)        Phase 4 (Polish)
-├── 3.1 Plugin System ←─────── depends on 1.1, 1.2, 1.3
-└── 3.2 Updateability ←─────── depends on 1.1, 1.4
-                                ├── 4.1 Data Persistence ←── depends on 1.4
-                                └── 4.2 Practical Features
-```
-
-**Recommended execution order:**
-1. **1.1** Config → **1.2** Logging → **1.3** Error Handling → **1.4** DB Integrity
-2. **2.1** i18n → **2.2** Spanish → **2.3** Customization
-3. **3.2** Updateability → **3.1** Plugin System
-4. **4.1** Persistence → **4.2** Practical Features
+### 5.2 Dashboard Array Safety
+**File:** `Dashboard.jsx` lines 82-92
+**Issue:** Calls `.length`/`.filter()` on values that could theoretically be
+non-array from API.
+**Fix:** Add `Array.isArray()` guards.
 
 ---
 
-## Estimated Scope per Phase
+## Phase 6: MEDIUM — Auth & Security
 
-| Phase | New Files | Modified Files | New Dependencies |
-|-------|-----------|----------------|------------------|
-| 1 | 4 | ~30 | pydantic-settings, python-json-logger |
-| 2 | 6+ | ~20 | react-i18next, i18next, i18next-http-backend |
-| 3 | 8+ | ~5 | (none) |
-| 4 | 4+ | ~10 | recharts (optional) |
+### 6.1 Show Password Complexity Requirements
+**File:** `Login.jsx`
+**Issue:** Backend requires 8+ chars + 1 upper + 1 lower + 1 digit. Frontend
+only shows "Mindestens 8 Zeichen". Users discover rules only after rejection.
+**Fix:** Add hint text listing all requirements below password field.
+
+### 6.2 Auth Preferences Session Safety
+**File:** `backend/routers/auth.py` lines 99, 135
+**Issue:** `get_my_preferences` and `update_my_preferences` create raw
+`SessionLocal()` outside DI. DB failures crash these endpoints.
+**Fix:** Wrap in try-except, fall back to defaults on failure.
+
+### 6.3 JWT Secret Key Warning
+**File:** `backend/config.py`
+**Issue:** Default JWT_SECRET_KEY is a dev value. Production deployments
+silently use the insecure default.
+**Fix:** Already logs a warning. Consider refusing to start without explicit
+JWT_SECRET_KEY in production mode.
 
 ---
 
-## Risk Mitigation
+## Phase 7: LOW — i18n Coverage
 
-- **Breaking changes**: All new features are additive. Existing API endpoints unchanged.
-- **Migration safety**: New Alembic migrations are additive (ADD COLUMN, ADD CONSTRAINT). No destructive schema changes.
-- **Plugin isolation**: Plugins run in separate route namespaces. A broken plugin cannot crash core.
-- **i18n fallback**: Missing translations fall back to German (`de-DE`), then English (`en-US`). No blank strings.
-- **Test coverage**: Each phase includes tests. Current 503 tests remain passing throughout.
+### 7.1 Shared Components (~15 hardcoded German strings)
+**Files:** `FormModal.jsx`, `CrudPage.jsx`, `DataTable.jsx`
+**Key strings:** "— Auswählen —", "Abbrechen", "Speichern", "Suchen...",
+"Filter", "Spalten", "CSV", "Neu", "Keine Einträge gefunden", "Aktionen",
+"Alle", "/ Seite", "Laden...", "wirklich löschen?"
+
+### 7.2 Page Components (~25+ hardcoded German strings)
+**Files:** `Login.jsx`, `Dashboard.jsx`, `Settings.jsx`, `RentOverview.jsx`,
+`Messages.jsx`, `Contacts.jsx`, `Statements.jsx`
+**Includes:** All page titles, button labels, chart labels, form labels.
 
 ---
 
-## Success Criteria
+## Phase 8: LOW — Missing Frontend Pages (Backend APIs exist)
 
-- [ ] All config via `.env` with validation; app refuses to start with missing required config
-- [ ] JSON-structured logs with request correlation, optional file output
-- [ ] Standardized error responses with error codes across all endpoints
-- [ ] Full Spanish locale with all ~200+ UI strings translated
-- [ ] Dark mode toggle, locale switcher, persistent user preferences
-- [ ] DB constraints prevent invalid data at the database level
-- [ ] Backup/restore via admin API
-- [ ] Plugin system loads external plugins from configured directories
-- [ ] Auto-migration on startup with version tracking
-- [ ] Global search across all entities with keyboard shortcut
-- [ ] 550+ tests passing (50+ new tests for new features)
+Backend entities with full CRUD APIs but NO frontend page:
+
+| Entity | Endpoint | Use Case |
+|--------|----------|----------|
+| CalendarEvent | `/calendar` | Calendar view for appointments |
+| Lead | `/leads` | Vacancy management: prospect tracking |
+| Listing | `/listings` | Vacancy management: portal listings |
+| ListingPhoto | `/listings/{id}/photos` | Photos for listings |
+| ViewingAppointment | `/viewings` | Vacancy management: viewing scheduling |
+| HandoverProtocol | `/handover-protocols` | Move-in/out protocols (only meter part exposed) |
+| RentAdjustment | `/rent-adjustments` | Index/stepped rent tracking |
+| Budget | `/budgets` | Budget vs actual analysis |
+| AllocationKey | `/billing/allocation-keys` | Billing cost distribution keys |
+| TaxRate | `/tax-rates` | VAT rate configuration |
+| EscalationRule | `/escalation-rules` | Automated escalation rules |
+| NotificationTemplate | `/notifications/templates` | Notification template management |
+
+---
+
+## Phase 9: LOW — Code Quality
+
+### 9.1 Remove Unused Icons
+**File:** `Icons.jsx`
+6 defined but never imported: AlertIcon, CheckCircleIcon, InfoIcon,
+XCircleIcon, CalendarIcon, BuildingIcon.
+
+### 9.2 Test Coverage Gap
+**File:** `backend/repositories/sql_store.py`
+`update_meter_reading()` and `add_change_history()` untested since they
+don't exist yet (Phase 3.2).
+
+---
+
+## Implementation Priority Matrix
+
+| # | Phase | Item | Effort | Impact |
+|---|-------|------|--------|--------|
+| 1 | 1.1 | Sidebar nav for Categories + Deposits | 15 min | Critical |
+| 2 | 2.2-2.3 | FormModal null handling bugs | 15 min | High |
+| 3 | 2.1 | CrudPage delete error display | 15 min | High |
+| 4 | 1.2-1.3 | Contracts catches + missing fields | 10 min | Medium |
+| 5 | 3.1-3.2 | MeterReading PUT/PATCH + SQLStore gaps | 30 min | High |
+| 6 | 4.1-4.3 | Missing form fields (Units, Deposits, Statements) | 20 min | Medium |
+| 7 | 5.1-5.2 | SearchBar + Dashboard safety | 20 min | Medium |
+| 8 | 6.1-6.2 | Password hints + auth safety | 15 min | Medium |
+| 9 | 7.1-7.2 | i18n hardcoded strings | 2+ hrs | Low |
+| 10 | 8.x | New frontend pages | Large | New features |
