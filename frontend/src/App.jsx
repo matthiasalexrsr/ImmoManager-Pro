@@ -20,6 +20,8 @@ import Contacts from './pages/Contacts';
 import Statements from './pages/Statements';
 import Messages from './pages/Messages';
 import Settings from './pages/Settings';
+import Categories from './pages/Categories';
+import Deposits from './pages/Deposits';
 
 function ProtectedRoute({ children }) {
   return isLoggedIn() ? children : <Navigate to="/login" />;
@@ -48,6 +50,8 @@ export default function App() {
           <Route path="contacts" element={<Contacts />} />
           <Route path="statements" element={<Statements />} />
           <Route path="messages" element={<Messages />} />
+          <Route path="categories" element={<Categories />} />
+          <Route path="deposits" element={<Deposits />} />
           <Route path="settings" element={<Settings />} />
         </Route>
       </Routes>

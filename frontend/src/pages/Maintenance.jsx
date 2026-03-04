@@ -15,11 +15,20 @@ const COLUMNS = [
 
 export default function Maintenance() {
   const [properties, setProperties] = useState([]);
-  useEffect(() => { api.get('/properties').then(setProperties).catch(err => console.warn('[Maintenance] properties:', err.message)); }, []);
+  const [units, setUnits] = useState([]);
+
+  useEffect(() => {
+    Promise.all([
+      api.get('/properties').catch(err => { console.warn('[Maintenance] properties:', err.message); return []; }),
+      api.get('/units').catch(err => { console.warn('[Maintenance] units:', err.message); return []; }),
+    ]).then(([p, u]) => { setProperties(p); setUnits(u); });
+  }, []);
 
   const fields = [
     { key: 'property_id', label: 'Immobilie', required: true, type: 'select',
       options: properties.map(p => ({ value: p.id, label: p.name })) },
+    { key: 'unit_id', label: 'Einheit', type: 'select',
+      options: [{ value: '', label: '— Keine —' }, ...units.map(u => ({ value: u.id, label: u.label }))] },
     { key: 'title', label: 'Titel', required: true },
     { key: 'description', label: 'Beschreibung', type: 'textarea' },
     { key: 'category', label: 'Kategorie', type: 'select', options: [
@@ -31,9 +40,11 @@ export default function Maintenance() {
       { value: 'low', label: 'Niedrig' }, { value: 'medium', label: 'Mittel' },
       { value: 'high', label: 'Hoch' }, { value: 'urgent', label: 'Dringend' },
     ]},
+    { key: 'reported_by', label: 'Gemeldet von' },
     { key: 'assignee', label: 'Zuständig' },
     { key: 'contractor', label: 'Handwerker' },
     { key: 'due_date', label: 'Fällig am', type: 'date' },
+    { key: 'appointment_at', label: 'Termin', type: 'date' },
     { key: 'estimated_cost', label: 'Geschätzte Kosten (€)', type: 'number' },
     { key: 'status', label: 'Status', type: 'select', default: 'open', options: [
       { value: 'open', label: 'Offen' }, { value: 'in_progress', label: 'In Bearbeitung' },
