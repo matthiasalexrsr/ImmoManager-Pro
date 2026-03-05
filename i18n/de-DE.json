@@ -19,7 +19,19 @@
       "reports": "Berichte",
       "integrations": "Integrationen",
       "settings": "Einstellungen",
-      "help": "Hilfe"
+      "help": "Hilfe",
+      "contacts": "Kontakte",
+      "meters": "Zähler",
+      "messages": "Nachrichten",
+      "rentOverview": "Mietübersicht",
+      "statements": "Abrechnungen"
+    },
+    "sections": {
+      "overview": "Übersicht",
+      "portfolio": "Portfolio",
+      "tenants": "Mieter & Verträge",
+      "finance": "Finanzen",
+      "operations": "Verwaltung"
     },
     "secondary": {
       "overview": "Übersicht",
@@ -212,6 +224,14 @@
       "openReceivables": "Offene Forderungen",
       "overduePayments": "Überfällige Zahlungen",
       "openMaintenanceCases": "Instandhaltungsfälle offen"
+    },
+    "cashflow": {
+      "income": "Einnahmen",
+      "expenses": "Ausgaben",
+      "net": "Netto"
+    },
+    "aging": {
+      "current": "Aktuell"
     },
     "widgets": {
       "rentPayments30Days": "Mieteingänge (letzte 30 Tage)",
@@ -688,6 +708,29 @@
       "enable2fa": "2FA aktivieren",
       "activeSessions": "Aktive Sitzungen",
       "deviceManagement": "Geräteverwaltung"
+    },
+    "theme": {
+      "light": "Hell",
+      "dark": "Dunkel"
+    },
+    "sidebar": {
+      "show": "Einblenden",
+      "hide": "Ausblenden"
+    },
+    "tables": {
+      "title": "Tabellen"
+    },
+    "defaultDueDay": "Standard-Fälligkeitstag",
+    "dataBackup": {
+      "title": "Daten & Sicherung",
+      "database": "Datenbank",
+      "dbDetails": "DB-Details",
+      "createBackup": "Backup erstellen"
+    },
+    "about": {
+      "title": "Über ImmoManager Pro",
+      "type": "Typ",
+      "localApp": "Lokale Anwendung (Non-Cloud, Privat)"
     }
   },
   "search": {

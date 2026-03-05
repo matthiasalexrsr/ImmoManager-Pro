@@ -21,6 +21,8 @@ from .models import (
     Category,
     CategoryCreate,
     ChangeHistoryEntry,
+    Contact,
+    ContactCreate,
     Contract,
     ContractCreate,
     CostItem,
@@ -47,6 +49,12 @@ from .models import (
     ListingPhotoCreate,
     MaintenanceCase,
     MaintenanceCaseCreate,
+    Message,
+    MessageCreate,
+    MessageThread,
+    MessageThreadCreate,
+    Meter,
+    MeterCreate,
     MeterReading,
     MeterReadingCreate,
     Notification,
@@ -61,6 +69,10 @@ from .models import (
     ReceivableCreate,
     RentAdjustment,
     RentAdjustmentCreate,
+    RentCharge,
+    RentChargeCreate,
+    StandaloneMeterReading,
+    StandaloneMeterReadingCreate,
     Task,
     TaskCreate,
     TaxRate,
@@ -122,6 +134,12 @@ class InMemoryStore:
     change_history: Dict[str, ChangeHistoryEntry] = field(default_factory=dict)
     budgets: Dict[str, Budget] = field(default_factory=dict)
     escalation_rules: Dict[str, EscalationRule] = field(default_factory=dict)
+    contacts: Dict[str, Contact] = field(default_factory=dict)
+    meters: Dict[str, Meter] = field(default_factory=dict)
+    standalone_meter_readings: Dict[str, StandaloneMeterReading] = field(default_factory=dict)
+    message_threads: Dict[str, MessageThread] = field(default_factory=dict)
+    messages: Dict[str, Message] = field(default_factory=dict)
+    rent_charges: Dict[str, RentCharge] = field(default_factory=dict)
     insurances: Dict[str, Insurance] = field(default_factory=dict)
     entity_photos: Dict[str, EntityPhoto] = field(default_factory=dict)
 
@@ -1129,6 +1147,12 @@ class InMemoryStore:
             "Budget nicht gefunden": self.budgets,
             "Eskalationsregel nicht gefunden": self.escalation_rules,
             "Zählerstand nicht gefunden": self.meter_readings,
+            "Kontakt nicht gefunden": self.contacts,
+            "Zähler nicht gefunden": self.meters,
+            "Ablesung nicht gefunden": self.standalone_meter_readings,
+            "Thread nicht gefunden": self.message_threads,
+            "Nachricht nicht gefunden": self.messages,
+            "Sollstellung nicht gefunden": self.rent_charges,
         }
         collection = _msg_to_collection.get(not_found_msg)
         if collection is None:
@@ -1383,6 +1407,178 @@ class InMemoryStore:
         if rule_id not in self.escalation_rules:
             raise NotFoundError("Eskalationsregel nicht gefunden")
         del self.escalation_rules[rule_id]
+
+    # --- Contacts ---
+    def list_contacts(self) -> List[Contact]:
+        return list(self.contacts.values())
+
+    def create_contact(self, data: ContactCreate) -> Contact:
+        contact = Contact(id=_generate_id(), **data.model_dump())
+        self.contacts[contact.id] = contact
+        return contact
+
+    def get_contact(self, contact_id: str) -> Contact:
+        try:
+            return self.contacts[contact_id]
+        except KeyError as exc:
+            raise NotFoundError("Kontakt nicht gefunden") from exc
+
+    def update_contact(self, contact_id: str, data: ContactCreate) -> Contact:
+        if contact_id not in self.contacts:
+            raise NotFoundError("Kontakt nicht gefunden")
+        old = self.contacts[contact_id]
+        contact = Contact(id=contact_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
+        self.contacts[contact_id] = contact
+        return contact
+
+    def delete_contact(self, contact_id: str) -> None:
+        if contact_id not in self.contacts:
+            raise NotFoundError("Kontakt nicht gefunden")
+        del self.contacts[contact_id]
+
+    # --- Meters ---
+    def list_meters(self) -> List[Meter]:
+        return list(self.meters.values())
+
+    def create_meter(self, data: MeterCreate) -> Meter:
+        meter = Meter(id=_generate_id(), **data.model_dump())
+        self.meters[meter.id] = meter
+        return meter
+
+    def get_meter(self, meter_id: str) -> Meter:
+        try:
+            return self.meters[meter_id]
+        except KeyError as exc:
+            raise NotFoundError("Zähler nicht gefunden") from exc
+
+    def update_meter(self, meter_id: str, data: MeterCreate) -> Meter:
+        if meter_id not in self.meters:
+            raise NotFoundError("Zähler nicht gefunden")
+        old = self.meters[meter_id]
+        meter = Meter(id=meter_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
+        self.meters[meter_id] = meter
+        return meter
+
+    def delete_meter(self, meter_id: str) -> None:
+        if meter_id not in self.meters:
+            raise NotFoundError("Zähler nicht gefunden")
+        del self.meters[meter_id]
+
+    # --- Standalone Meter Readings ---
+    def list_standalone_meter_readings(self) -> List[StandaloneMeterReading]:
+        return list(self.standalone_meter_readings.values())
+
+    def create_standalone_meter_reading(self, data: StandaloneMeterReadingCreate) -> StandaloneMeterReading:
+        reading = StandaloneMeterReading(id=_generate_id(), **data.model_dump())
+        self.standalone_meter_readings[reading.id] = reading
+        return reading
+
+    def get_standalone_meter_reading(self, reading_id: str) -> StandaloneMeterReading:
+        try:
+            return self.standalone_meter_readings[reading_id]
+        except KeyError as exc:
+            raise NotFoundError("Ablesung nicht gefunden") from exc
+
+    def update_standalone_meter_reading(self, reading_id: str, data: StandaloneMeterReadingCreate) -> StandaloneMeterReading:
+        if reading_id not in self.standalone_meter_readings:
+            raise NotFoundError("Ablesung nicht gefunden")
+        old = self.standalone_meter_readings[reading_id]
+        reading = StandaloneMeterReading(id=reading_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
+        self.standalone_meter_readings[reading_id] = reading
+        return reading
+
+    def delete_standalone_meter_reading(self, reading_id: str) -> None:
+        if reading_id not in self.standalone_meter_readings:
+            raise NotFoundError("Ablesung nicht gefunden")
+        del self.standalone_meter_readings[reading_id]
+
+    # --- Message Threads ---
+    def list_message_threads(self) -> List[MessageThread]:
+        return list(self.message_threads.values())
+
+    def create_message_thread(self, data: MessageThreadCreate) -> MessageThread:
+        thread = MessageThread(id=_generate_id(), **data.model_dump())
+        self.message_threads[thread.id] = thread
+        return thread
+
+    def get_message_thread(self, thread_id: str) -> MessageThread:
+        try:
+            return self.message_threads[thread_id]
+        except KeyError as exc:
+            raise NotFoundError("Thread nicht gefunden") from exc
+
+    def update_message_thread(self, thread_id: str, data: MessageThreadCreate) -> MessageThread:
+        if thread_id not in self.message_threads:
+            raise NotFoundError("Thread nicht gefunden")
+        old = self.message_threads[thread_id]
+        thread = MessageThread(id=thread_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
+        self.message_threads[thread_id] = thread
+        return thread
+
+    def delete_message_thread(self, thread_id: str) -> None:
+        if thread_id not in self.message_threads:
+            raise NotFoundError("Thread nicht gefunden")
+        # Also delete associated messages
+        msg_ids = [m.id for m in self.messages.values() if m.thread_id == thread_id]
+        for mid in msg_ids:
+            del self.messages[mid]
+        del self.message_threads[thread_id]
+
+    # --- Messages ---
+    def list_messages(self) -> List[Message]:
+        return list(self.messages.values())
+
+    def create_message(self, data: MessageCreate) -> Message:
+        message = Message(id=_generate_id(), **data.model_dump())
+        self.messages[message.id] = message
+        # Update thread stats
+        if data.thread_id in self.message_threads:
+            thread = self.message_threads[data.thread_id]
+            self.message_threads[data.thread_id] = thread.model_copy(update={
+                "last_message_at": message.sent_at,
+                "message_count": thread.message_count + 1,
+                "updated_at": datetime.utcnow(),
+            })
+        return message
+
+    def get_message(self, message_id: str) -> Message:
+        try:
+            return self.messages[message_id]
+        except KeyError as exc:
+            raise NotFoundError("Nachricht nicht gefunden") from exc
+
+    def delete_message(self, message_id: str) -> None:
+        if message_id not in self.messages:
+            raise NotFoundError("Nachricht nicht gefunden")
+        del self.messages[message_id]
+
+    # --- Rent Charges (Sollstellung) ---
+    def list_rent_charges(self) -> List[RentCharge]:
+        return list(self.rent_charges.values())
+
+    def create_rent_charge(self, data: RentChargeCreate) -> RentCharge:
+        charge = RentCharge(id=_generate_id(), **data.model_dump())
+        self.rent_charges[charge.id] = charge
+        return charge
+
+    def get_rent_charge(self, charge_id: str) -> RentCharge:
+        try:
+            return self.rent_charges[charge_id]
+        except KeyError as exc:
+            raise NotFoundError("Sollstellung nicht gefunden") from exc
+
+    def update_rent_charge(self, charge_id: str, data: RentChargeCreate) -> RentCharge:
+        if charge_id not in self.rent_charges:
+            raise NotFoundError("Sollstellung nicht gefunden")
+        old = self.rent_charges[charge_id]
+        charge = RentCharge(id=charge_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
+        self.rent_charges[charge_id] = charge
+        return charge
+
+    def delete_rent_charge(self, charge_id: str) -> None:
+        if charge_id not in self.rent_charges:
+            raise NotFoundError("Sollstellung nicht gefunden")
+        del self.rent_charges[charge_id]
 
     # --- Insurances ---
 

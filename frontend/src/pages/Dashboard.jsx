@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
-import StatusBadge from '../components/StatusBadge';
 import { useTranslation } from '../i18n';
+import StatusBadge from '../components/StatusBadge';
 import {
   PortfolioIcon, PropertyIcon, UnitIcon, TenantIcon,
   ContractIcon, AccountIcon, MaintenanceIcon, ChartIcon,
@@ -42,6 +42,10 @@ function ChartPanel({ title, children }) {
 
 function fmt(v) {
   return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(v);
+}
+
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
 }
 
 export default function Dashboard() {
@@ -86,20 +90,30 @@ export default function Dashboard() {
       openTasks, maintenance, notifs,
       cf, ag, , mc, fc, exp, fin,
     ]) => {
+      const safePortfolios = asArray(portfolios);
+      const safeProperties = asArray(properties);
+      const safeUnits = asArray(units);
+      const safeTenants = asArray(tenants);
+      const safeContracts = asArray(contracts);
+      const safeAccounts = asArray(accounts);
+      const safeOpenTasks = asArray(openTasks);
+      const safeMaintenance = asArray(maintenance);
+      const safeNotifications = asArray(notifs);
+
       setStats({
-        portfolios: portfolios.length,
-        properties: properties.length,
-        units: units.length,
-        unitsOccupied: units.filter(u => u.status === 'occupied').length,
-        unitsReserved: units.filter(u => u.status === 'reserved').length,
-        tenants: tenants.length,
-        contracts: contracts.length,
-        contractsActive: contracts.filter(c => c.status === 'active').length,
-        accounts: accounts.length,
-        openMaintenance: maintenance.length,
+        portfolios: safePortfolios.length,
+        properties: safeProperties.length,
+        units: safeUnits.length,
+        unitsOccupied: safeUnits.filter(u => u.status === 'occupied').length,
+        unitsReserved: safeUnits.filter(u => u.status === 'reserved').length,
+        tenants: safeTenants.length,
+        contracts: safeContracts.length,
+        contractsActive: safeContracts.filter(c => c.status === 'active').length,
+        accounts: safeAccounts.length,
+        openMaintenance: safeMaintenance.length,
       });
-      setTasks(openTasks);
-      setNotifications(notifs);
+      setTasks(safeOpenTasks);
+      setNotifications(safeNotifications);
       setCashflow(cf);
       setAging(ag);
       setMaintCosts(mc);
@@ -142,11 +156,14 @@ export default function Dashboard() {
   const maintData = maintCosts?.categories?.slice(0, 8) || [];
 
   // Liquidity forecast line data
+  const forecastBalanceLabel = t('pages.dashboard.balance');
+  const forecastIncomeLabel = t('pages.dashboard.income');
+  const forecastExpenseLabel = t('pages.dashboard.expenses');
   const forecastData = forecast?.forecast?.map(f => ({
     name: f.month,
-    balance: f.projected_balance,
-    income: f.projected_income,
-    expense: f.projected_expense,
+    [forecastBalanceLabel]: f.projected_balance,
+    [forecastIncomeLabel]: f.projected_income,
+    [forecastExpenseLabel]: f.projected_expense,
   })) || [];
 
   // Finance by category (top 8)
@@ -165,7 +182,7 @@ export default function Dashboard() {
         <StatCard icon={PropertyIcon} label={t('pages.dashboard.properties')} value={stats.properties} to="/properties" />
         <StatCard icon={UnitIcon} label={t('pages.dashboard.units')} value={`${stats.unitsOccupied}/${stats.units}`} to="/units" color="stat-highlight" />
         <StatCard icon={TenantIcon} label={t('pages.dashboard.tenants')} value={stats.tenants} to="/tenants" />
-        <StatCard icon={ContractIcon} label="Aktive Vertr\u00e4ge" value={stats.contractsActive} to="/contracts" />
+        <StatCard icon={ContractIcon} label={t('pages.dashboard.activeContracts')} value={stats.contractsActive} to="/contracts" />
         <StatCard icon={AccountIcon} label={t('pages.dashboard.accounts')} value={stats.accounts} to="/accounts" />
         <StatCard icon={MaintenanceIcon} label={t('pages.dashboard.openMaintenance')} value={stats.openMaintenance} to="/maintenance" color={stats.openMaintenance > 0 ? 'stat-warning' : ''} />
         <StatCard icon={ChartIcon} label={t('pages.dashboard.occupancy')} value={`${occupancyRate}%`} to="/units" color="stat-highlight" />
@@ -208,11 +225,11 @@ export default function Dashboard() {
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
-          ) : <p className="chart-empty">{t('pages.dashboard.noBookings')}</p>}
+          ) : <p className="chart-empty">{t('emptyStates.generic.title')}</p>}
         </ChartPanel>
 
         {/* Receivables Aging */}
-        <ChartPanel title={t('pages.dashboard.receivablesAging')}>
+        <ChartPanel title={t('finance.receivables.openReceivables')}>
           {agingData.some(d => d.value > 0) ? (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={agingData}>
@@ -223,14 +240,14 @@ export default function Dashboard() {
                 <Bar dataKey="value" fill="#d97706" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
-          ) : <p className="chart-empty">{t('pages.dashboard.noReceivables')}</p>}
+          ) : <p className="chart-empty">{t('emptyStates.generic.title')}</p>}
         </ChartPanel>
       </div>
 
       {/* Charts Row 2 */}
       <div className="dashboard-charts">
         {/* Liquidity Forecast */}
-        <ChartPanel title="Liquidit\u00e4tsprognose (6 Monate)">
+        <ChartPanel title={t('analyticsLabels.forecast')}>
           {forecastData.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
               <LineChart data={forecastData}>
@@ -239,16 +256,16 @@ export default function Dashboard() {
                 <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
                 <Tooltip formatter={v => fmt(v)} />
                 <Legend />
-                <Line type="monotone" dataKey="balance" name={t('pages.dashboard.balance')} stroke="#2563eb" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="income" name={t('pages.dashboard.income')} stroke="#16a34a" strokeWidth={1} dot={false} strokeDasharray="4 2" />
-                <Line type="monotone" dataKey="expense" name={t('pages.dashboard.expenses')} stroke="#dc2626" strokeWidth={1} dot={false} strokeDasharray="4 2" />
+                <Line type="monotone" dataKey={forecastBalanceLabel} stroke="#2563eb" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey={forecastIncomeLabel} stroke="#16a34a" strokeWidth={1} dot={false} strokeDasharray="4 2" />
+                <Line type="monotone" dataKey={forecastExpenseLabel} stroke="#dc2626" strokeWidth={1} dot={false} strokeDasharray="4 2" />
               </LineChart>
             </ResponsiveContainer>
-          ) : <p className="chart-empty">{t('pages.dashboard.noForecast')}</p>}
+          ) : <p className="chart-empty">{t('emptyStates.generic.title')}</p>}
         </ChartPanel>
 
         {/* Maintenance Costs by Category */}
-        <ChartPanel title={t('pages.dashboard.maintenanceCosts')}>
+        <ChartPanel title={t('reports.standard.maintenanceCosts')}>
           {maintData.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={maintData} layout="vertical">
@@ -259,11 +276,11 @@ export default function Dashboard() {
                 <Bar dataKey="estimatedCost" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
-          ) : <p className="chart-empty">{t('pages.dashboard.noMaintenanceCosts')}</p>}
+          ) : <p className="chart-empty">{t('emptyStates.generic.title')}</p>}
         </ChartPanel>
 
         {/* Finance by Category */}
-        <ChartPanel title={t('pages.dashboard.financeByCategory')}>
+        <ChartPanel title={t('dashboard.widgets.costsByCategory')}>
           {financeData.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
               <PieChart>
@@ -277,33 +294,33 @@ export default function Dashboard() {
                 <Tooltip formatter={v => fmt(v)} />
               </PieChart>
             </ResponsiveContainer>
-          ) : <p className="chart-empty">{t('pages.dashboard.noFinanceData')}</p>}
+          ) : <p className="chart-empty">{t('emptyStates.generic.title')}</p>}
         </ChartPanel>
       </div>
 
       {/* Activity Panels */}
       <div className="dashboard-panels">
         <div className="panel">
-          <h3>{t('pages.dashboard.openTasks')}</h3>
-          {tasks.length === 0 ? <p className="empty-text">{t('pages.dashboard.noOpenTasks')}</p> : (
+          <h3>{t('dashboard.widgets.tasksDue')}</h3>
+          {tasks.length === 0 ? <p className="empty-text">{t('emptyStates.generic.title')}</p> : (
             <ul className="activity-list">
-              {tasks.map(task => (
-                <li key={task.id}>
-                  <span className="activity-title">{task.title}</span>
-                  {task.due_date && <span className="activity-date">{task.due_date}</span>}
-                  <StatusBadge status={task.priority} />
+              {tasks.map(t => (
+                <li key={t.id}>
+                  <span className="activity-title">{t.title}</span>
+                  {t.due_date && <span className="activity-date">{t.due_date}</span>}
+                  <StatusBadge status={t.priority} />
                 </li>
               ))}
             </ul>
           )}
           <Link to="/tasks" className="panel-link">
-            Alle Aufgaben <ArrowRightIcon size={14} />
+            {t('tasks.list.title')} <ArrowRightIcon size={14} />
           </Link>
         </div>
 
         <div className="panel">
-          <h3>Auslaufende Vertr\u00e4ge (90 Tage)</h3>
-          {!expiring?.contracts?.length ? <p className="empty-text">Keine auslaufenden Vertr\u00e4ge</p> : (
+          <h3>{t('dashboard.widgets.contractTerms')}</h3>
+          {!expiring?.contracts?.length ? <p className="empty-text">{t('emptyStates.generic.title')}</p> : (
             <ul className="activity-list">
               {expiring.contracts.slice(0, 5).map(c => (
                 <li key={c.contractId}>
@@ -311,20 +328,20 @@ export default function Dashboard() {
                   <span className="activity-date">{c.endDate}</span>
                   <StatusBadge status={c.daysRemaining <= 30 ? 'overdue' : 'warning'} />
                   <span className="text-muted" style={{ fontSize: '0.75rem' }}>
-                    {c.daysRemaining} {t('pages.dashboard.days')}
+                    {c.daysRemaining} Tage
                   </span>
                 </li>
               ))}
             </ul>
           )}
           <Link to="/contracts" className="panel-link">
-            Alle Vertr\u00e4ge <ArrowRightIcon size={14} />
+            {t('tenantsContracts.contracts.title')} <ArrowRightIcon size={14} />
           </Link>
         </div>
 
         <div className="panel">
-          <h3>{t('pages.dashboard.notifications')}</h3>
-          {notifications.length === 0 ? <p className="empty-text">{t('pages.dashboard.noNotifications')}</p> : (
+          <h3>{t('topBar.notifications')}</h3>
+          {notifications.length === 0 ? <p className="empty-text">{t('emptyStates.generic.title')}</p> : (
             <ul className="activity-list">
               {notifications.map(n => (
                 <li key={n.id}>

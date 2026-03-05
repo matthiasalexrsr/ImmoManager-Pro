@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { api } from '../api';
-import { BellIcon } from './Icons';
 import { useTranslation } from '../i18n';
+import { BellIcon } from './Icons';
 
 export default function NotificationBell() {
   const { t } = useTranslation();
@@ -61,23 +61,23 @@ export default function NotificationBell() {
 
   return (
     <div className="notification-bell" ref={ref}>
-      <button className="notification-bell-btn" onClick={() => setOpen(!open)} title={t('comp.notifications.title')}>
+      <button className="notification-bell-btn" onClick={() => setOpen(!open)} title={t('topBar.notifications')}>
         <BellIcon size={18} />
         {unreadCount > 0 && <span className="notification-badge">{unreadCount}</span>}
       </button>
       {open && (
         <div className="notification-dropdown">
           <div className="notification-dropdown-header">
-            <span>{t('comp.notifications.title')}</span>
+            <span>{t('topBar.notifications')}</span>
             {notifications.length > 0 && (
               <button className="notification-mark-all" onClick={markAllRead}>
-                {t('comp.notifications.markAllRead')}
+                {t('notifications.actions.markAllRead')}
               </button>
             )}
           </div>
           <div className="notification-dropdown-body">
             {notifications.length === 0 ? (
-              <div className="notification-empty">{t('comp.notifications.empty')}</div>
+              <div className="notification-empty">{t('emptyStates.generic.title')}</div>
             ) : (
               notifications.map(n => (
                 <div key={n.id} className={`notification-item notification-${n.severity || 'info'}`} onClick={() => markRead(n.id)}>

@@ -1,12 +1,9 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
-import DataTable from '../components/DataTable';
-import FormModal from '../components/FormModal';
-import StatusBadge from '../components/StatusBadge';
-import { useTranslation } from '../i18n';
+import CrudPage from './CrudPage';
 
-const COLUMNS = [
-  { key: 'contract_label', label: 'Vertrag', filterType: 'text' },
+const BASE_COLUMNS = [
+  { key: 'contract_id', label: 'Vertrag', filterType: 'text' },
   { key: 'amount', label: 'Betrag (€)', type: 'number', align: 'right',
     render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
   { key: 'status', label: 'Status', type: 'status', filterType: 'select' },
@@ -17,43 +14,17 @@ const COLUMNS = [
 ];
 
 export default function Deposits() {
-  const { t } = useTranslation();
-  const [deposits, setDeposits] = useState([]);
   const [contracts, setContracts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [modal, setModal] = useState(null);
+  useEffect(() => { api.get('/contracts').then(setContracts).catch(err => console.warn('[Deposits] contracts:', err.message)); }, []);
 
-  const loadData = () => {
-    Promise.all([
-      api.get('/deposits').catch(err => { console.warn('[Deposits]', err.message); return []; }),
-      api.get('/contracts').catch(err => { console.warn('[Deposits] contracts:', err.message); return []; }),
-    ]).then(([deps, ctrcts]) => {
-      const contractMap = Object.fromEntries(ctrcts.map(c => [c.id, c]));
-      const enriched = (Array.isArray(deps) ? deps : []).map(d => ({
-        ...d,
-        contract_label: contractMap[d.contract_id]?.contract_number || '—',
-      }));
-      setDeposits(enriched);
-      setContracts(ctrcts);
-    }).finally(() => setLoading(false));
-  };
-
-  useEffect(() => { loadData(); }, []);
-
-  const handleSave = async (data) => {
-    if (modal === 'create') {
-      await api.post('/deposits', data);
-    } else {
-      await api.put(`/deposits/${modal.id}`, data);
-    }
-    loadData();
-  };
-
-  const handleDelete = async (row) => {
-    if (!window.confirm(t('pages.confirmDelete', { name: row.contract_label || row.id }))) return;
-    await api.del(`/deposits/${row.id}`);
-    loadData();
-  };
+  const contractById = Object.fromEntries(contracts.map(contract => [contract.id, contract]));
+  const columns = BASE_COLUMNS.map((column) => {
+    if (column.key !== 'contract_id') return column;
+    return {
+      ...column,
+      render: value => contractById[value]?.contract_number || value || '—',
+    };
+  });
 
   const fields = [
     { key: 'contract_id', label: 'Vertrag', required: true, type: 'select',
@@ -71,32 +42,5 @@ export default function Deposits() {
     { key: 'notes', label: 'Notizen', type: 'textarea' },
   ];
 
-  const tableColumns = COLUMNS.map(col => ({
-    ...col,
-    render: col.render || (col.type === 'status' ? (val) => <StatusBadge status={val} /> : undefined),
-  }));
-
-  if (loading) return <div className="page-loading">{t('pages.loading')}</div>;
-
-  return (
-    <div className="page">
-      <DataTable
-        title="Kautionen"
-        columns={tableColumns}
-        data={deposits}
-        onAdd={() => setModal('create')}
-        onEdit={(row) => setModal(row)}
-        onDelete={handleDelete}
-      />
-      {modal && (
-        <FormModal
-          title={modal === 'create' ? t('comp.formModal.create', { title: 'Kaution' }) : t('comp.formModal.editTitle', { title: 'Kaution' })}
-          fields={fields}
-          initial={modal === 'create' ? null : modal}
-          onSave={handleSave}
-          onClose={() => setModal(null)}
-        />
-      )}
-    </div>
-  );
+  return <CrudPage title="Kautionen" endpoint="/deposits" columns={columns} formFields={fields} />;
 }

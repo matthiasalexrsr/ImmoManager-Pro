@@ -32,6 +32,7 @@ from backend.routers.auth import (
     refresh,
     register,
     remove_user,
+    update_my_preferences,
 )
 
 
@@ -49,6 +50,7 @@ def _register_admin() -> UserRead:
 
 def _register_viewer() -> UserRead:
     return register_user("viewer", "viewer@example.com", "View User", "Pass1234", "readonly")
+
 
 
 # === Password Hashing ===
@@ -198,6 +200,65 @@ class TestAuthRouter:
         assert prefs["locale"] == "de-DE"
 
 
+    def test_update_my_preferences_returns_defaults_merged_on_sqlite(self, monkeypatch):
+        user = _register_admin()
+        monkeypatch.setattr("backend.db.session.DATABASE_URL", "sqlite:///./immo_manager.db")
+
+        updated = update_my_preferences({"theme": "dark"}, user)
+        assert updated["theme"] == "dark"
+        assert updated["locale"] == "de-DE"
+        assert updated["currency"] == "EUR"
+
+    def test_update_my_preferences_returns_fallback_when_session_init_fails(self, monkeypatch):
+        user = _register_admin()
+
+        monkeypatch.setattr("backend.db.session.DATABASE_URL", "postgresql://db/test")
+
+        def _raise_session_error():
+            raise RuntimeError("db down")
+
+        monkeypatch.setattr("backend.db.session.SessionLocal", _raise_session_error)
+
+        updated = update_my_preferences({"theme": "dark", "locale": "en-US", "ignored": "x"}, user)
+        assert updated["theme"] == "dark"
+        assert updated["locale"] == "en-US"
+        assert "ignored" not in updated
+
+    def test_update_my_preferences_returns_fallback_when_commit_fails(self, monkeypatch):
+        user = _register_admin()
+
+        monkeypatch.setattr("backend.db.session.DATABASE_URL", "postgresql://db/test")
+
+        class _BrokenSession:
+            def query(self, _model):
+                return self
+
+            def filter(self, *_args, **_kwargs):
+                return self
+
+            def first(self):
+                return None
+
+            def add(self, _obj):
+                return None
+
+            def commit(self):
+                raise RuntimeError("commit failed")
+
+            def rollback(self):
+                return None
+
+            def close(self):
+                return None
+
+        monkeypatch.setattr("backend.db.session.SessionLocal", lambda: _BrokenSession())
+
+        updated = update_my_preferences({"theme": "dark", "currency": "USD"}, user)
+        assert updated["theme"] == "dark"
+        assert updated["currency"] == "USD"
+
+
+
 # === RBAC ===
 
 class TestRBAC:
@@ -212,6 +273,22 @@ class TestRBAC:
         viewer = _register_viewer()
         result = patch_user(viewer.id, UserPatch(full_name="Updated"), user=admin)
         assert result.full_name == "Updated"
+
+    def test_manager_cannot_promote_self_to_owner(self, monkeypatch):
+        manager = UserRead(
+            id="manager-1",
+            username="manager",
+            email="manager@example.com",
+            full_name="Manager User",
+            role="verwalter",
+            is_active=True,
+        )
+
+        monkeypatch.setattr("backend.routers.auth.update_user", lambda *_args, **_kwargs: manager)
+
+        with pytest.raises(HTTPException) as exc_info:
+            patch_user(manager.id, UserPatch(role="eigentuemer"), user=manager)
+        assert exc_info.value.status_code == 403
 
     def test_delete_user_as_owner(self):
         admin = _register_admin()

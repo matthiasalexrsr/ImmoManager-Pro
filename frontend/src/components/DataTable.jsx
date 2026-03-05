@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback } from 'react';
-import { PlusIcon, EditIcon, TrashIcon } from './Icons';
 import { useTranslation } from '../i18n';
+import { PlusIcon, EditIcon, TrashIcon } from './Icons';
 
 const PAGE_SIZES = [10, 25, 50, 100];
 
@@ -164,7 +164,7 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
         <div className="table-actions">
           <input
             type="text"
-            placeholder={t('comp.dataTable.search')}
+            placeholder={`${t('ui.form.search')}...`}
             value={search}
             onChange={e => { setSearch(e.target.value); setPage(0); }}
             className="search-input"
@@ -172,12 +172,12 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
           <div className="table-btn-group">
             {hasActiveFilters && (
               <button onClick={() => { setColumnFilters({}); setPage(0); }} className="btn btn-sm btn-secondary">
-                {t('comp.dataTable.clearFilter')}
+                {t('ui.buttons.filter')} ✕
               </button>
             )}
             <div className="col-menu-wrapper">
               <button onClick={() => setShowColMenu(!showColMenu)} className="btn btn-sm btn-secondary">
-                {t('comp.dataTable.columns')}
+                {t('ui.table.adjustColumns')}
               </button>
               {showColMenu && (
                 <>
@@ -197,10 +197,10 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
                 </>
               )}
             </div>
-            <button onClick={exportCsv} className="btn btn-sm btn-secondary">{t('comp.dataTable.csv')}</button>
+            <button onClick={exportCsv} className="btn btn-sm btn-secondary">CSV</button>
             {onAdd && (
               <button onClick={onAdd} className="btn btn-primary">
-                <PlusIcon size={16} /> {t('comp.dataTable.new')}
+                <PlusIcon size={16} /> {t('ui.buttons.new')}
               </button>
             )}
           </div>
@@ -227,7 +227,7 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
                   </span>
                 </th>
               ))}
-              {(onEdit || onDelete) && <th className="th-actions">{t('comp.dataTable.actions')}</th>}
+              {(onEdit || onDelete) && <th className="th-actions">{t('ui.buttons.edit')}</th>}
             </tr>
             {/* Column filter row */}
             {columns.some(c => c.filterType) && (
@@ -240,7 +240,7 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
                         onChange={e => setFilter(col.key, e.target.value || '')}
                         className="filter-select"
                       >
-                        <option value="">{t('comp.dataTable.all')}</option>
+                        <option value="">—</option>
                         {(selectOptions[col.key] || []).map(v => (
                           <option key={v} value={v}>{v}</option>
                         ))}
@@ -255,7 +255,7 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
                             setFilter(col.key, [e.target.value, cur[1]]);
                           }}
                           className="filter-date"
-                          title={t('comp.dataTable.filterFrom')}
+                          title="Von"
                         />
                         <input
                           type="date"
@@ -265,14 +265,14 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
                             setFilter(col.key, [cur[0], e.target.value]);
                           }}
                           className="filter-date"
-                          title={t('comp.dataTable.filterTo')}
+                          title="Bis"
                         />
                       </div>
                     ) : col.filterType === 'numberRange' ? (
                       <div className="filter-number-range">
                         <input
                           type="number"
-                          placeholder={t('comp.dataTable.filterMin')}
+                          placeholder="Min"
                           value={(columnFilters[col.key] || ['', ''])[0]}
                           onChange={e => {
                             const cur = columnFilters[col.key] || ['', ''];
@@ -282,7 +282,7 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
                         />
                         <input
                           type="number"
-                          placeholder={t('comp.dataTable.filterMax')}
+                          placeholder="Max"
                           value={(columnFilters[col.key] || ['', ''])[1]}
                           onChange={e => {
                             const cur = columnFilters[col.key] || ['', ''];
@@ -294,7 +294,7 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
                     ) : col.filterType === 'text' ? (
                       <input
                         type="text"
-                        placeholder={t('comp.dataTable.filterText')}
+                        placeholder="Filter..."
                         value={columnFilters[col.key] || ''}
                         onChange={e => setFilter(col.key, e.target.value)}
                         className="filter-text"
@@ -308,12 +308,10 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
           </thead>
           <tbody>
             {pageData.length === 0 ? (
-              <tr><td colSpan={colSpan} className="table-empty">
-                {data.length === 0 ? t('comp.dataTable.noEntries') : t('comp.dataTable.noEntriesFiltered')}
-              </td></tr>
+              <tr><td colSpan={colSpan} className="table-empty">{t('ui.table.noResults')}</td></tr>
             ) : (
               pageData.map(row => (
-                <tr key={row.id} onClick={() => onRowClick?.(row)} className={onRowClick ? 'clickable-row' : ''}>
+                <tr key={row.id} onClick={() => onRowClick?.(row)} className={onRowClick ? 'clickable-row' : ''} style={onRowClick ? { cursor: 'pointer' } : undefined}>
                   {visibleColumns.map(col => (
                     <td key={col.key} className={col.align === 'right' ? 'text-right' : ''}>
                       {col.render ? col.render(row[col.key], row) : (row[col.key] ?? '\u2014')}
@@ -322,12 +320,12 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
                   {(onEdit || onDelete) && (
                     <td className="action-cell" onClick={e => e.stopPropagation()}>
                       {onEdit && (
-                        <button onClick={() => onEdit(row)} className="btn btn-sm btn-ghost" title={t('comp.dataTable.edit')}>
+                        <button onClick={() => onEdit(row)} className="btn btn-sm btn-ghost" title={t('ui.buttons.edit')}>
                           <EditIcon size={15} />
                         </button>
                       )}
                       {onDelete && (
-                        <button onClick={() => onDelete(row)} className="btn btn-sm btn-ghost" title={t('comp.dataTable.delete')} style={{ color: 'var(--color-danger)' }}>
+                        <button onClick={() => onDelete(row)} className="btn btn-sm btn-ghost" title={t('ui.buttons.delete')} style={{ color: 'var(--color-danger)' }}>
                           <TrashIcon size={15} />
                         </button>
                       )}
@@ -343,8 +341,8 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
       {sorted.length > 0 && (
       <div className="table-footer">
         <div className="table-footer-info">
-          {t('comp.dataTable.showing', { start: startRow, end: endRow, total: sorted.length })}
-          {filtered.length !== data.length && ` ${t('comp.dataTable.totalFiltered', { total: data.length })}`}
+          {`${startRow}–${endRow} / ${sorted.length}`}
+          {filtered.length !== data.length && ` (${data.length})`}
         </div>
         <div className="table-footer-controls">
           <select
@@ -352,14 +350,14 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
             onChange={e => { setPageSize(Number(e.target.value)); setPage(0); }}
             className="page-size-select"
           >
-            {PAGE_SIZES.map(s => <option key={s} value={s}>{s} {t('comp.dataTable.perPage')}</option>)}
+            {PAGE_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
           <div className="pagination-btns">
-            <button disabled={safePage === 0} onClick={() => setPage(0)} className="btn btn-sm btn-secondary">{'\u00AB'}</button>
-            <button disabled={safePage === 0} onClick={() => setPage(p => p - 1)} className="btn btn-sm btn-secondary">{'\u2039'}</button>
+            <button disabled={safePage === 0} onClick={() => setPage(0)} className="btn btn-sm btn-secondary">\u00AB</button>
+            <button disabled={safePage === 0} onClick={() => setPage(p => p - 1)} className="btn btn-sm btn-secondary">\u2039</button>
             <span className="page-indicator">{safePage + 1} / {totalPages}</span>
-            <button disabled={safePage >= totalPages - 1} onClick={() => setPage(p => p + 1)} className="btn btn-sm btn-secondary">{'\u203A'}</button>
-            <button disabled={safePage >= totalPages - 1} onClick={() => setPage(totalPages - 1)} className="btn btn-sm btn-secondary">{'\u00BB'}</button>
+            <button disabled={safePage >= totalPages - 1} onClick={() => setPage(p => p + 1)} className="btn btn-sm btn-secondary">\u203A</button>
+            <button disabled={safePage >= totalPages - 1} onClick={() => setPage(totalPages - 1)} className="btn btn-sm btn-secondary">\u00BB</button>
           </div>
         </div>
       </div>

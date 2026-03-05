@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { api } from '../api';
+import { useTranslation } from '../i18n';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useList } from '../hooks/useApi';
-import { useTranslation } from '../i18n';
 
 export default function CrudPage({ title, endpoint, columns, formFields, onRowClick }) {
   const { t } = useTranslation();
@@ -22,13 +22,14 @@ export default function CrudPage({ title, endpoint, columns, formFields, onRowCl
   };
 
   const handleDelete = async (row) => {
-    if (!window.confirm(t('pages.confirmDelete', { name: row[columns[0]?.key] || row.id }))) return;
+    const name = row[columns[0]?.key] || row.id;
+    if (!window.confirm(`"${name}" ${t('modals.confirmDelete.body')}`)) return;
     setDeleteError(null);
     try {
       await api.del(`${endpoint}/${row.id}`);
       reload();
     } catch (err) {
-      setDeleteError(err.message || t('pages.deleteFailed'));
+      setDeleteError(err.message || 'Löschen fehlgeschlagen');
     }
   };
 
@@ -39,7 +40,7 @@ export default function CrudPage({ title, endpoint, columns, formFields, onRowCl
       : undefined),
   }));
 
-  if (loading) return <div className="page-loading">{t('pages.loading')}</div>;
+  if (loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
   if (error) return <div className="page"><div className="alert alert-error">{error}</div></div>;
 
   return (
@@ -61,7 +62,7 @@ export default function CrudPage({ title, endpoint, columns, formFields, onRowCl
       />
       {modal && (
         <FormModal
-          title={modal === 'create' ? t('comp.formModal.create', { title }) : t('comp.formModal.editTitle', { title })}
+          title={modal === 'create' ? `${title} ${t('ui.buttons.create').toLowerCase()}` : `${title} ${t('ui.buttons.edit').toLowerCase()}`}
           fields={formFields}
           initial={modal === 'create' ? null : modal}
           onSave={handleSave}

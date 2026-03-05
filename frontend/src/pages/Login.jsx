@@ -4,6 +4,7 @@ import { login, register } from '../api';
 import { useTranslation } from '../i18n';
 
 export default function Login() {
+  const { t } = useTranslation();
   const [isRegister, setIsRegister] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -11,7 +12,6 @@ export default function Login() {
   const [fullName, setFullName] = useState('');
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
-  const { t } = useTranslation();
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
@@ -37,41 +37,40 @@ export default function Login() {
         <div className="login-header">
           <div className="login-logo">IM</div>
           <h1>ImmoManager <span className="pro">Pro</span></h1>
-          <p>{t('pages.login.subtitle')}</p>
+          <p>{t('brand.slogan')}</p>
         </div>
         <form onSubmit={handleSubmit}>
           {error && <div className="alert-error">{error}</div>}
           <div className="form-group">
-            <label>{t('pages.login.username')}</label>
-            <input type="text" value={username} onChange={e => setUsername(e.target.value)} required autoFocus placeholder={t('pages.login.usernamePlaceholder')} />
+            <label>{t('auth.login.email')}</label>
+            <input type="text" value={username} onChange={e => setUsername(e.target.value)} required autoFocus />
           </div>
           {isRegister && (
             <>
               <div className="form-group">
-                <label>{t('pages.login.email')}</label>
-                <input type="email" value={email} onChange={e => setEmail(e.target.value)} required placeholder={t('pages.login.emailPlaceholder')} />
+                <label>{t('auth.register.email')}</label>
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)} required />
               </div>
               <div className="form-group">
-                <label>{t('pages.login.fullName')}</label>
-                <input type="text" value={fullName} onChange={e => setFullName(e.target.value)} required placeholder={t('pages.login.fullNamePlaceholder')} />
+                <label>{t('auth.register.firstName')}</label>
+                <input type="text" value={fullName} onChange={e => setFullName(e.target.value)} required />
               </div>
             </>
           )}
           <div className="form-group">
-            <label>{t('pages.login.password')}</label>
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={8} placeholder={t('pages.login.passwordPlaceholder')} />
+            <label>{t('auth.login.password')}</label>
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={8} placeholder="Mindestens 8 Zeichen" />
             {isRegister && (
-              <small className="form-hint">{t('pages.login.passwordHint')}</small>
+              <small className="form-hint">Mindestens 8 Zeichen, davon mind. 1 Großbuchstabe, 1 Kleinbuchstabe und 1 Zahl</small>
             )}
           </div>
           <button type="submit" className="btn btn-primary btn-block" disabled={loading}>
-            {loading ? t('pages.login.pleaseWait') : (isRegister ? t('pages.login.registerAndLogin') : t('pages.login.loginBtn'))}
+            {loading ? `${t('ui.table.loading')}` : (isRegister ? t('auth.register.submit') : t('auth.login.submit'))}
           </button>
         </form>
         <p className="login-toggle">
-          {isRegister ? t('pages.login.alreadyRegistered') : t('pages.login.noAccount')}{' '}
           <button onClick={() => { setIsRegister(!isRegister); setError(null); }} className="link-btn">
-            {isRegister ? t('pages.login.loginLink') : t('pages.login.registerLink')}
+            {isRegister ? t('auth.login.submit') : t('auth.register.title')}
           </button>
         </p>
       </div>

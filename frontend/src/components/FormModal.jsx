@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { CloseIcon } from './Icons';
 import { useTranslation } from '../i18n';
+import { CloseIcon } from './Icons';
 
 export default function FormModal({ title, fields, initial, onSave, onClose }) {
   const { t } = useTranslation();
@@ -25,7 +25,11 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
       fields.forEach(f => {
         let v = values[f.key];
         if (f.type === 'number') {
-          v = (v === '' || v === null || v === undefined) ? null : Number(v);
+          if (v === '' || v === null || v === undefined) {
+            v = f.required ? '' : null;
+          } else {
+            v = Number(v);
+          }
         } else if (v === '') {
           v = f.required ? v : null;
         }
@@ -45,7 +49,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
       <div className="modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3>{title}</h3>
-          <button onClick={onClose} className="btn-close" aria-label="Close">
+          <button onClick={onClose} className="btn-close" aria-label={t('ui.buttons.close')}>
             <CloseIcon size={18} />
           </button>
         </div>
@@ -61,7 +65,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
                     onChange={e => setValues({ ...values, [f.key]: e.target.value })}
                     required={f.required}
                   >
-                    <option value="">{t('comp.formModal.selectPlaceholder')}</option>
+                    <option value="">{t('ui.form.pleaseSelect')}</option>
                     {f.options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
                 ) : f.type === 'textarea' ? (
@@ -85,9 +89,9 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
             ))}
           </div>
           <div className="modal-footer">
-            <button type="button" onClick={onClose} className="btn btn-secondary">{t('comp.formModal.cancel')}</button>
+            <button type="button" onClick={onClose} className="btn btn-secondary">{t('ui.buttons.cancel')}</button>
             <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? t('comp.formModal.saving') : t('comp.formModal.save')}
+              {saving ? `${t('ui.buttons.save')}...` : t('ui.buttons.save')}
             </button>
           </div>
         </form>

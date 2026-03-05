@@ -17,7 +17,7 @@ const COLUMNS = [
 export default function Properties() {
   const navigate = useNavigate();
   const [portfolios, setPortfolios] = useState([]);
-  useEffect(() => { api.get('/portfolios').then(setPortfolios).catch(err => console.warn('[Properties] portfolios:', err.message)); }, []);
+  useEffect(() => { api.get('/portfolios').then(setPortfolios).catch(() => {}); }, []);
 
   const fields = [
     { key: 'portfolio_id', label: 'Portfolio', required: true, type: 'select',
@@ -35,7 +35,7 @@ export default function Properties() {
     { key: 'year_built', label: 'Baujahr', type: 'number' },
     { key: 'living_area_sqm', label: 'Wohnfläche (m²)', type: 'number' },
     { key: 'usable_area_sqm', label: 'Nutzfläche (m²)', type: 'number' },
-    { key: 'plot_area_sqm', label: 'Grundstück (m²)', type: 'number' },
+    { key: 'plot_area_sqm', label: 'Grundstücksfläche (m²)', type: 'number' },
     { key: 'ownership_share', label: 'Eigentumsanteil (%)', type: 'number' },
     { key: 'purchase_price', label: 'Kaufpreis (€)', type: 'number' },
     { key: 'purchase_date', label: 'Kaufdatum', type: 'date' },
@@ -46,5 +46,13 @@ export default function Properties() {
     ]},
   ];
 
-  return <CrudPage title="Immobilien" endpoint="/properties" columns={COLUMNS} formFields={fields} onRowClick={row => navigate(`/properties/${row.id}`)} />;
+  return (
+    <CrudPage
+      title="Immobilien"
+      endpoint="/properties"
+      columns={COLUMNS}
+      formFields={fields}
+      onRowClick={row => navigate(`/properties/${row.id}`)}
+    />
+  );
 }

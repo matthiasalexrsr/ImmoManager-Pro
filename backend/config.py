@@ -65,5 +65,13 @@ class Settings(BaseSettings):
     # --- Auto-migration ---
     auto_migrate: bool = False
 
+    # --- Persistence toggles ---
+    # Keep disabled by default for backwards compatibility in test/dev setups
+    # that still expect in-memory repositories for SQLite.
+    sqlite_persistent_store: bool = False
+
+    # --- Integrations ---
+    integration_state_file: str | None = None
+
 
 settings = Settings()

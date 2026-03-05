@@ -35,12 +35,14 @@ export default function Contracts() {
     { key: 'start_date', label: 'Vertragsbeginn', type: 'date', required: true },
     { key: 'end_date', label: 'Vertragsende', type: 'date' },
     { key: 'deposit_amount', label: 'Kaution (€)', type: 'number' },
-    { key: 'index_rent', label: 'Indexmiete', type: 'select', options: [
-      { value: 'true', label: 'Ja' }, { value: 'false', label: 'Nein' },
+    { key: 'index_rent', label: 'Mietanpassung', type: 'select', options: [
+      { value: 'index', label: 'Indexmiete' },
+      { value: 'stepped', label: 'Staffelmiete' },
+      { value: 'fixed', label: 'Festmiete' },
     ]},
     { key: 'service_charge_settlement', label: 'NK-Abrechnung', type: 'select', options: [
-      { value: 'annual', label: 'Jährlich' }, { value: 'monthly', label: 'Monatlich' },
-      { value: 'none', label: 'Keine' },
+      { value: 'annual', label: 'Jährlich' },
+      { value: 'monthly', label: 'Monatlich' },
     ]},
     { key: 'notice_period', label: 'Kündigungsfrist', placeholder: 'z.B. 3 Monate' },
     { key: 'status', label: 'Status', type: 'select', default: 'active', options: [

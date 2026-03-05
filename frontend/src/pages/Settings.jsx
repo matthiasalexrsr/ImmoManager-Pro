@@ -8,10 +8,31 @@ const BASE = (import.meta.env.VITE_API_URL || '/api/v1');
 export default function Settings() {
   const { prefs, toggleTheme, toggleSidebar, updatePrefs } = usePreferences();
   const { t, locale, setLocale } = useTranslation();
+  const [backupStatus, setBackupStatus] = useState(null);
+  const [dbInfo, setDbInfo] = useState(null);
   const [exportLoading, setExportLoading] = useState(false);
   const [importLoading, setImportLoading] = useState(false);
   const [importResult, setImportResult] = useState(null);
   const fileRef = useRef(null);
+
+  const tr = (key, fallback) => {
+    const result = t(key);
+    return result === key ? fallback : result;
+  };
+
+  const loadDbInfo = () => {
+    api.get('/admin/database-info').then(setDbInfo).catch(() => setDbInfo({ error: t('toasts.error.generic') }));
+  };
+
+  const handleBackup = async () => {
+    setBackupStatus(t('toasts.info.syncInProgress'));
+    try {
+      const result = await api.post('/admin/backup');
+      setBackupStatus(`${t('toasts.success.saved')}: ${result?.filename || 'OK'}`);
+    } catch {
+      setBackupStatus(t('toasts.error.saveFailed'));
+    }
+  };
 
   const handleExport = async () => {
     setExportLoading(true);
@@ -60,34 +81,34 @@ export default function Settings() {
 
   return (
     <div className="page">
-      <h1 className="page-title">{t('pages.settings.title')}</h1>
+      <h1 className="page-title">{t('navigation.main.settings')}</h1>
       <div className="settings-grid">
         <div className="panel">
-          <div className="panel-header">{t('pages.settings.appearance')}</div>
+          <div className="panel-header">{t('settings.areas.general')}</div>
           <div className="panel-body settings-section">
             <div className="settings-row">
-              <label>{t('pages.settings.theme')}</label>
+              <label>Theme</label>
               <div className="settings-control">
                 <button
                   className={`btn btn-sm ${prefs.theme === 'light' ? 'btn-primary' : 'btn-secondary'}`}
                   onClick={() => prefs.theme !== 'light' && toggleTheme()}
-                >{t('pages.settings.light')}</button>
+                >{tr('settings.theme.light', 'Hell')}</button>
                 <button
                   className={`btn btn-sm ${prefs.theme === 'dark' ? 'btn-primary' : 'btn-secondary'}`}
                   onClick={() => prefs.theme !== 'dark' && toggleTheme()}
-                >{t('pages.settings.dark')}</button>
+                >{tr('settings.theme.dark', 'Dunkel')}</button>
               </div>
             </div>
             <div className="settings-row">
-              <label>{t('pages.settings.sidebar')}</label>
+              <label>Sidebar</label>
               <div className="settings-control">
                 <button className="btn btn-sm btn-secondary" onClick={toggleSidebar}>
-                  {prefs.sidebar_collapsed ? t('pages.settings.show') : t('pages.settings.hide')}
+                  {prefs.sidebar_collapsed ? tr('settings.sidebar.show', 'Einblenden') : tr('settings.sidebar.hide', 'Ausblenden')}
                 </button>
               </div>
             </div>
             <div className="settings-row">
-              <label>{t('pages.settings.language')}</label>
+              <label>{t('settings.general.language')}</label>
               <div className="settings-control">
                 {['de-DE', 'en-US', 'es-ES'].map(loc => (
                   <button
@@ -102,10 +123,10 @@ export default function Settings() {
         </div>
 
         <div className="panel">
-          <div className="panel-header">{t('pages.settings.tables')}</div>
+          <div className="panel-header">{tr('settings.tables.title', 'Tabellen')}</div>
           <div className="panel-body settings-section">
             <div className="settings-row">
-              <label>{t('pages.settings.itemsPerPage')}</label>
+              <label>{t('ui.table.rowsPerPage')}</label>
               <div className="settings-control">
                 <select
                   value={prefs.items_per_page || 25}
@@ -120,7 +141,7 @@ export default function Settings() {
               </div>
             </div>
             <div className="settings-row">
-              <label>{t('pages.settings.dateFormat')}</label>
+              <label>{t('settings.general.dateFormat')}</label>
               <div className="settings-control">
                 <select
                   value={prefs.date_format || 'DD.MM.YYYY'}
@@ -134,16 +155,30 @@ export default function Settings() {
               </div>
             </div>
             <div className="settings-row">
-              <label>{t('pages.settings.currency')}</label>
+              <label>{t('settings.general.currency')}</label>
               <div className="settings-control">
                 <select
                   value={prefs.currency || 'EUR'}
                   onChange={e => updatePrefs({ currency: e.target.value })}
                   className="page-size-select"
                 >
-                  <option value="EUR">{t('pages.settings.eurLabel')}</option>
-                  <option value="CHF">{t('pages.settings.chfLabel')}</option>
-                  <option value="USD">{t('pages.settings.usdLabel')}</option>
+                  <option value="EUR">Euro (€)</option>
+                  <option value="CHF">CHF (Fr.)</option>
+                  <option value="USD">USD ($)</option>
+                </select>
+              </div>
+            </div>
+            <div className="settings-row">
+              <label>{tr('settings.defaultDueDay', 'Standard-Fälligkeitstag')}</label>
+              <div className="settings-control">
+                <select
+                  value={prefs.default_due_day || 1}
+                  onChange={e => updatePrefs({ default_due_day: Number(e.target.value) })}
+                  className="page-size-select"
+                >
+                  {[1, 3, 5, 10, 15].map(d => (
+                    <option key={d} value={d}>{d}.</option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -151,34 +186,34 @@ export default function Settings() {
         </div>
 
         <div className="panel">
-          <div className="panel-header">{t('pages.settings.notificationsSection')}</div>
+          <div className="panel-header">Benachrichtigungen</div>
           <div className="panel-body settings-section">
             <div className="settings-row">
-              <label>{t('pages.settings.emailNotifications')}</label>
+              <label>E-Mail-Benachrichtigungen</label>
               <div className="settings-control">
                 <select
                   value={prefs.email_notifications || 'important'}
                   onChange={e => updatePrefs({ email_notifications: e.target.value })}
                   className="page-size-select"
                 >
-                  <option value="all">{t('pages.settings.emailAll')}</option>
-                  <option value="important">{t('pages.settings.emailImportant')}</option>
-                  <option value="none">{t('pages.settings.emailNone')}</option>
+                  <option value="all">Alle</option>
+                  <option value="important">Nur wichtige</option>
+                  <option value="none">Keine</option>
                 </select>
               </div>
             </div>
             <div className="settings-row">
-              <label>{t('pages.settings.reminders')}</label>
+              <label>Erinnerungen</label>
               <div className="settings-control">
                 <select
                   value={prefs.reminder_days || '7'}
                   onChange={e => updatePrefs({ reminder_days: e.target.value })}
                   className="page-size-select"
                 >
-                  <option value="3">{t('pages.settings.days3')}</option>
-                  <option value="7">{t('pages.settings.days7')}</option>
-                  <option value="14">{t('pages.settings.days14')}</option>
-                  <option value="30">{t('pages.settings.days30')}</option>
+                  <option value="3">3 Tage vorher</option>
+                  <option value="7">7 Tage vorher</option>
+                  <option value="14">14 Tage vorher</option>
+                  <option value="30">30 Tage vorher</option>
                 </select>
               </div>
             </div>
@@ -186,28 +221,50 @@ export default function Settings() {
         </div>
 
         <div className="panel">
-          <div className="panel-header">{t('pages.settings.dataBackup')}</div>
+          <div className="panel-header">{tr('settings.dataBackup.title', 'Daten & Sicherung')}</div>
           <div className="panel-body settings-section">
             <div className="settings-row">
-              <label>{t('pages.settings.database')}</label>
+              <label>{tr('settings.dataBackup.database', 'Datenbank')}</label>
               <div className="settings-control">
-                <span className="text-muted">{t('pages.settings.dbType')}</span>
+                <span className="text-muted">SQLite / In-Memory</span>
+                <button className="btn btn-sm btn-secondary" onClick={loadDbInfo} style={{ marginLeft: '0.5rem' }}>
+                  Info
+                </button>
+              </div>
+            </div>
+            {dbInfo && (
+              <div className="settings-row">
+                <label>{tr('settings.dataBackup.dbDetails', 'DB-Details')}</label>
+                <div className="settings-control">
+                  <span className="text-muted" style={{ fontSize: '0.8rem' }}>
+                    {dbInfo.error || JSON.stringify(dbInfo, null, 2).slice(0, 200)}
+                  </span>
+                </div>
+              </div>
+            )}
+            <div className="settings-row">
+              <label>Backup</label>
+              <div className="settings-control">
+                <button className="btn btn-sm btn-primary" onClick={handleBackup}>
+                  {tr('settings.dataBackup.createBackup', 'Backup erstellen')}
+                </button>
+                {backupStatus && <span className="text-muted" style={{ marginLeft: '0.5rem', fontSize: '0.8rem' }}>{backupStatus}</span>}
               </div>
             </div>
             <div className="settings-row">
-              <label>{t('pages.settings.exportData')}</label>
+              <label>Daten exportieren</label>
               <div className="settings-control">
                 <button
                   className="btn btn-sm btn-secondary"
                   onClick={handleExport}
                   disabled={exportLoading}
                 >
-                  {exportLoading ? t('pages.settings.exporting') : t('pages.settings.jsonExport')}
+                  {exportLoading ? 'Exportiere...' : 'JSON-Export'}
                 </button>
               </div>
             </div>
             <div className="settings-row">
-              <label>{t('pages.settings.importData')}</label>
+              <label>Daten importieren</label>
               <div className="settings-control">
                 <input
                   ref={fileRef}
@@ -221,14 +278,14 @@ export default function Settings() {
             </div>
             {importResult && (
               <div className="settings-row">
-                <label>{t('pages.settings.importResult')}</label>
+                <label>Import-Ergebnis</label>
                 <div className="settings-control" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
                   {importResult.imported && Object.entries(importResult.imported).map(([k, v]) => (
-                    <span key={k} className="text-muted">{k}: {v} {t('pages.settings.imported')}</span>
+                    <span key={k} className="text-muted">{k}: {v} importiert</span>
                   ))}
                   {importResult.errors && Object.keys(importResult.errors).length > 0 && (
                     <span style={{ color: 'var(--danger)' }}>
-                      {t('pages.settings.errorsIn')} {Object.keys(importResult.errors).join(', ')}
+                      Fehler in: {Object.keys(importResult.errors).join(', ')}
                     </span>
                   )}
                 </div>
@@ -238,24 +295,42 @@ export default function Settings() {
         </div>
 
         <div className="panel">
-          <div className="panel-header">{t('pages.settings.docsOcr')}</div>
+          <div className="panel-header">Dokumente & OCR</div>
           <div className="panel-body settings-section">
             <div className="settings-row">
-              <label>{t('pages.settings.autoOcr')}</label>
+              <label>Automatische OCR</label>
               <div className="settings-control">
-                <span className="text-muted">{t('pages.settings.ocrActive')}</span>
+                <span className="text-muted">Aktiv (für PDF, PNG, JPG, TIFF)</span>
               </div>
             </div>
             <div className="settings-row">
-              <label>{t('pages.settings.ocrLanguages')}</label>
+              <label>OCR-Sprachen</label>
               <div className="settings-control">
-                <span className="text-muted">{t('pages.settings.ocrLangs')}</span>
+                <span className="text-muted">Deutsch + Englisch</span>
               </div>
             </div>
             <div className="settings-row">
-              <label>{t('pages.settings.fileStorage')}</label>
+              <label>Dateispeicher</label>
               <div className="settings-control">
-                <span className="text-muted">{t('pages.settings.fileStorageLocal')}</span>
+                <span className="text-muted">Lokal (uploads/)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="panel">
+          <div className="panel-header">{tr('settings.about.title', 'Über ImmoManager Pro')}</div>
+          <div className="panel-body settings-section">
+            <div className="settings-row">
+              <label>Version</label>
+              <div className="settings-control">
+                <span className="text-muted">1.0.0</span>
+              </div>
+            </div>
+            <div className="settings-row">
+              <label>{tr('settings.about.type', 'Typ')}</label>
+              <div className="settings-control">
+                <span className="text-muted">{tr('settings.about.localApp', 'Lokale Anwendung (Non-Cloud, Privat)')}</span>
               </div>
             </div>
           </div>

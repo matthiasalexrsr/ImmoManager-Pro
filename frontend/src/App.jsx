@@ -22,6 +22,7 @@ import Contacts from './pages/Contacts';
 import Statements from './pages/Statements';
 import Messages from './pages/Messages';
 import Settings from './pages/Settings';
+import PropertyDetail from './pages/PropertyDetail';
 import Categories from './pages/Categories';
 import Deposits from './pages/Deposits';
 import Insurances from './pages/Insurances';
@@ -41,7 +42,7 @@ export default function App() {
           <Route index element={<Dashboard />} />
           <Route path="portfolios" element={<Portfolios />} />
           <Route path="properties" element={<Properties />} />
-          <Route path="properties/:id" element={<PropertyOverview />} />
+          <Route path="properties/:id" element={<PropertyDetail />} />
           <Route path="units" element={<Units />} />
           <Route path="units/:id" element={<UnitOverview />} />
           <Route path="tenants" element={<Tenants />} />

@@ -33,6 +33,7 @@ from .routers import (
     budgets,
     calendar,
     categories,
+    contacts,
     contracts,
     data_exchange,
     deposits,
@@ -43,16 +44,20 @@ from .routers import (
     history,
     i18n,
     insurances,
+    integrations,
     invoices,
     leads,
     listings,
     maintenance,
+    messages,
+    meters_standalone,
     notifications,
     photos,
     portfolios,
     properties,
     receivables,
     rent_adjustments,
+    rent_charges,
     reports,
     search,
     tasks,
@@ -271,6 +276,11 @@ api_v1.include_router(handover_protocols.router, dependencies=_auth_dep)
 api_v1.include_router(budgets.router, dependencies=_auth_dep)
 api_v1.include_router(escalation.router, dependencies=_auth_dep)
 api_v1.include_router(history.router, dependencies=_auth_dep)
+api_v1.include_router(contacts.router, dependencies=_auth_dep)
+api_v1.include_router(meters_standalone.router, dependencies=_auth_dep)
+api_v1.include_router(messages.router, dependencies=_auth_dep)
+api_v1.include_router(rent_charges.router, dependencies=_auth_dep)
+api_v1.include_router(integrations.router, dependencies=_auth_dep)
 api_v1.include_router(insurances.router, dependencies=_auth_dep)
 api_v1.include_router(photos.router, dependencies=_auth_dep)
 api_v1.include_router(files.router, dependencies=_auth_dep)
@@ -280,6 +290,10 @@ app.include_router(api_v1)
 
 # i18n stays at root level (not versioned, public)
 app.include_router(i18n.router)
+
+_UPLOADS_DIR = Path(__file__).resolve().parent.parent / "uploads"
+_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=_UPLOADS_DIR), name="uploads")
 
 
 # ─── Health ──────────────────────────────────────────────────────────────────

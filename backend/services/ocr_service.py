@@ -1,23 +1,27 @@
-"""OCR service for invoice/document text extraction.
+"""OCR service for document text extraction.
 
-Provides an abstraction for OCR processing. Supports:
-- pytesseract (if installed)
-- Placeholder for external OCR APIs
-
-When no OCR engine is available, returns an error message.
+Provides OCR/text extraction helpers for images and PDFs.
+The module is resilient to optional dependencies not being installed.
 """
 
+from __future__ import annotations
+
 import logging
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "tiff", "tif", "bmp", "webp"}
+_PDF_EXTENSIONS = {"pdf"}
+
 
 @dataclass
 class OCRResult:
     """Result of an OCR extraction."""
+
     success: bool
     text: str = ""
     confidence: float = 0.0
@@ -28,28 +32,10 @@ class OCRResult:
     errors: list[str] = field(default_factory=list)
 
 
-def _try_pytesseract(image_path: str) -> Optional[str]:
-    """Try to extract text using pytesseract."""
-    try:
-        import pytesseract
-        from PIL import Image
-        img = Image.open(image_path)
-        text = pytesseract.image_to_string(img, lang="deu")
-        return text
-    except ImportError:
-        return None
-    except Exception as exc:
-        logger.warning("pytesseract extraction failed: %s", exc)
-        return None
-
-
 def _extract_invoice_fields(text: str) -> dict:
-    """Extract structured fields from OCR text using regex patterns."""
-    import re
+    """Extract structured invoice-like fields from OCR text."""
+    fields: dict[str, str | float] = {}
 
-    fields = {}
-
-    # Invoice number patterns (German)
     inv_patterns = [
         r"Rechnungsnr\.?\s*:?\s*(\S+)",
         r"Rechnung\s*Nr\.?\s*:?\s*(\S+)",
@@ -62,7 +48,6 @@ def _extract_invoice_fields(text: str) -> dict:
             fields["invoice_number"] = m.group(1)
             break
 
-    # Date patterns
     date_patterns = [
         r"Rechnungsdatum\s*:?\s*(\d{1,2}[./]\d{1,2}[./]\d{2,4})",
         r"Datum\s*:?\s*(\d{1,2}[./]\d{1,2}[./]\d{2,4})",
@@ -74,7 +59,6 @@ def _extract_invoice_fields(text: str) -> dict:
             fields["invoice_date"] = m.group(1)
             break
 
-    # Amount patterns (German format: 1.234,56 or 1234,56)
     amount_patterns = [
         r"Gesamtbetrag\s*:?\s*€?\s*([\d.,]+)",
         r"Bruttobetrag\s*:?\s*€?\s*([\d.,]+)",
@@ -95,49 +79,85 @@ def _extract_invoice_fields(text: str) -> dict:
     return fields
 
 
-def process_document(file_path: str) -> OCRResult:
-    """Process a document file through the OCR pipeline.
+def _image_ocr_bytes(content: bytes, languages: str = "deu+eng") -> Optional[str]:
+    try:
+        from io import BytesIO
 
-    Supports image files (PNG, JPG, TIFF) and PDFs (first page).
-    """
+        import pytesseract
+        from PIL import Image
+
+        image = Image.open(BytesIO(content))
+        text = pytesseract.image_to_string(image, lang=languages)
+        return text.strip() or None
+    except ImportError:
+        logger.info("pytesseract/Pillow not installed - image OCR skipped")
+        return None
+    except Exception:
+        logger.warning("Image OCR failed", exc_info=True)
+        return None
+
+
+def _pdf_text_bytes(content: bytes) -> Optional[str]:
+    try:
+        from io import BytesIO
+
+        import pdfplumber
+
+        pages_text: list[str] = []
+        with pdfplumber.open(BytesIO(content)) as pdf:
+            for page in pdf.pages:
+                text = page.extract_text()
+                if text:
+                    pages_text.append(text)
+        return "\n\n".join(pages_text).strip() or None
+    except ImportError:
+        logger.info("pdfplumber not installed - PDF text extraction skipped")
+        return None
+    except Exception:
+        logger.warning("PDF text extraction failed", exc_info=True)
+        return None
+
+
+def extract_text_from_bytes(content: bytes, extension: str, languages: str = "deu+eng") -> Optional[str]:
+    """Extract OCR/text from file bytes based on extension."""
+    ext = extension.lower().lstrip(".")
+    if ext in _IMAGE_EXTENSIONS:
+        return _image_ocr_bytes(content, languages=languages)
+    if ext in _PDF_EXTENSIONS:
+        return _pdf_text_bytes(content)
+    return None
+
+
+def process_document(file_path: str) -> OCRResult:
+    """Process a local document through OCR/text extraction and field parsing."""
     path = Path(file_path)
     if not path.exists():
         return OCRResult(success=False, errors=[f"Datei nicht gefunden: {file_path}"])
 
-    suffix = path.suffix.lower()
-    if suffix not in (".png", ".jpg", ".jpeg", ".tiff", ".tif", ".pdf", ".bmp"):
+    ext = path.suffix.lower().lstrip(".")
+    if ext not in _IMAGE_EXTENSIONS | _PDF_EXTENSIONS:
         return OCRResult(
             success=False,
-            errors=[f"Nicht unterstütztes Dateiformat: {suffix}. "
-                    "Unterstützt: PNG, JPG, TIFF, PDF, BMP"],
+            errors=[
+                f"Nicht unterstütztes Dateiformat: .{ext}. Unterstützt: PNG, JPG, TIFF, BMP, WEBP, PDF"
+            ],
         )
 
-    # Try pytesseract
-    text = _try_pytesseract(file_path)
-
+    text = extract_text_from_bytes(path.read_bytes(), ext)
     if text is None:
         return OCRResult(
             success=False,
             errors=[
-                "Kein OCR-Engine verfügbar. "
-                "Installieren Sie pytesseract: pip install pytesseract Pillow"
+                "Kein OCR-Engine verfügbar oder kein Text extrahierbar. "
+                "Installieren Sie optional pytesseract/Pillow bzw. pdfplumber."
             ],
         )
 
-    if not text.strip():
-        return OCRResult(
-            success=True,
-            text="",
-            errors=["Kein Text im Dokument erkannt"],
-        )
-
-    # Extract structured fields
     fields = _extract_invoice_fields(text)
-
     return OCRResult(
         success=True,
         text=text,
-        confidence=0.85,  # placeholder confidence
+        confidence=0.85,
         invoice_number=fields.get("invoice_number"),
         invoice_date=fields.get("invoice_date"),
         total_amount=fields.get("total_amount"),
