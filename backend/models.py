@@ -693,6 +693,21 @@ class UtilityStatementPatch(BaseModel):
     notes: Optional[str] = None
 
 
+class BillingPreflightIssue(BaseModel):
+    code: str
+    message: str
+    severity: str  # blocker | warning
+    context: Optional[str] = None
+
+
+class BillingPreflightResult(BaseModel):
+    billing_period_id: str
+    has_blockers: bool
+    blockers: list[BillingPreflightIssue] = Field(default_factory=list)
+    warnings: list[BillingPreflightIssue] = Field(default_factory=list)
+    metrics: dict[str, float | int | str | bool] = Field(default_factory=dict)
+
+
 # ---------------------------------------------------------------------------
 # Phase 3.3: Deposits (Kautionsverwaltung)
 # ---------------------------------------------------------------------------

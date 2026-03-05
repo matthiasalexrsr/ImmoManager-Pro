@@ -22,6 +22,8 @@ from ..models import (
     BillingPeriod,
     BillingPeriodCreate,
     BillingPeriodPatch,
+    BillingPreflightIssue,
+    BillingPreflightResult,
     CostItem,
     CostItemCreate,
     CostItemPatch,
@@ -224,6 +226,127 @@ def delete_cost_item(item_id: str) -> None:
         store.delete_cost_item(item_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.get("/periods/{period_id}/preflight", response_model=BillingPreflightResult)
+def get_billing_period_preflight(period_id: str) -> BillingPreflightResult:
+    """Run data-quality and readiness checks before utility statement generation."""
+    try:
+        period = store.get_billing_period(period_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    blockers: list[BillingPreflightIssue] = []
+    warnings: list[BillingPreflightIssue] = []
+
+    def add_issue(severity: str, code: str, message: str, context: str | None = None) -> None:
+        issue = BillingPreflightIssue(code=code, message=message, severity=severity, context=context)
+        if severity == "blocker":
+            blockers.append(issue)
+        else:
+            warnings.append(issue)
+
+    contracts_in_period = [
+        c
+        for c in store.list_contracts()
+        if c.property_id == period.property_id
+        and c.status == "active"
+        and c.start_date <= period.end_date
+        and (c.end_date is None or c.end_date >= period.start_date)
+    ]
+
+    cost_items = [ci for ci in store.list_cost_items() if ci.billing_period_id == period_id]
+    used_key_ids = {ci.allocation_key_id for ci in cost_items}
+    allocation_keys = {k.id: k for k in store.list_allocation_keys() if k.id in used_key_ids}
+
+    if not contracts_in_period:
+        add_issue("blocker", "NO_ACTIVE_CONTRACTS", "Keine aktiven Verträge im Abrechnungszeitraum gefunden")
+    if not cost_items:
+        add_issue("blocker", "NO_COST_ITEMS", "Keine Kostenpositionen für diese Periode vorhanden")
+
+    missing_key_ids = sorted([key_id for key_id in used_key_ids if key_id not in allocation_keys])
+    if missing_key_ids:
+        add_issue(
+            "blocker",
+            "MISSING_ALLOCATION_KEYS",
+            "Verteilerschlüssel für Kostenpositionen fehlen",
+            ", ".join(missing_key_ids),
+        )
+
+    unit_cache = {}
+    missing_unit_contract_ids: list[str] = []
+    area_missing_unit_ids: list[str] = []
+    non_positive_cost_ids: list[str] = []
+    missing_advance_contract_ids: list[str] = []
+
+    requires_area = any(k.key_type == "area_sqm" for k in allocation_keys.values())
+
+    for contract in contracts_in_period:
+        try:
+            unit = store.get_unit(contract.unit_id)
+            unit_cache[contract.id] = unit
+        except Exception:
+            missing_unit_contract_ids.append(contract.id)
+            continue
+
+        if requires_area and (unit.area_sqm is None or unit.area_sqm <= 0):
+            area_missing_unit_ids.append(unit.id)
+
+        monthly_advance = float((unit.service_charge_advance or 0) + (unit.heating_advance or 0))
+        if monthly_advance <= 0:
+            missing_advance_contract_ids.append(contract.id)
+
+    for ci in cost_items:
+        if ci.amount <= 0:
+            non_positive_cost_ids.append(ci.id)
+
+    if missing_unit_contract_ids:
+        add_issue(
+            "blocker",
+            "MISSING_UNITS",
+            "Vertragszuordnungen ohne vorhandene Einheit",
+            ", ".join(missing_unit_contract_ids),
+        )
+    if area_missing_unit_ids:
+        add_issue(
+            "blocker",
+            "MISSING_AREA",
+            "Fläche fehlt oder ist 0 für area_sqm-Verteilung",
+            ", ".join(sorted(set(area_missing_unit_ids))),
+        )
+    if non_positive_cost_ids:
+        add_issue(
+            "warning",
+            "NON_POSITIVE_COST",
+            "Kostenpositionen mit <= 0 Betrag gefunden",
+            ", ".join(non_positive_cost_ids),
+        )
+    if missing_advance_contract_ids:
+        add_issue(
+            "warning",
+            "MISSING_ADVANCE",
+            "Verträge ohne Nebenkosten-/Heizkostenvorauszahlung",
+            ", ".join(missing_advance_contract_ids),
+        )
+
+    metrics = {
+        "contracts_in_period": len(contracts_in_period),
+        "cost_items": len(cost_items),
+        "allocation_keys_used": len(used_key_ids),
+        "allocation_keys_missing": len(missing_key_ids),
+        "units_missing": len(missing_unit_contract_ids),
+        "area_missing_units": len(set(area_missing_unit_ids)),
+        "contracts_without_advance": len(missing_advance_contract_ids),
+        "non_positive_cost_items": len(non_positive_cost_ids),
+    }
+
+    return BillingPreflightResult(
+        billing_period_id=period_id,
+        has_blockers=bool(blockers),
+        blockers=blockers,
+        warnings=warnings,
+        metrics=metrics,
+    )
 
 
 # ---------------------------------------------------------------------------

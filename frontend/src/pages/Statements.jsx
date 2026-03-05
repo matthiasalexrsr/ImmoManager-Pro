@@ -46,6 +46,8 @@ export default function Statements() {
   const [selectedPeriod, setSelectedPeriod] = useState(null);
   const [costModal, setCostModal] = useState(null);
   const [view, setView] = useState('list');
+  const [preflight, setPreflight] = useState(null);
+  const [preflightLoading, setPreflightLoading] = useState(false);
 
   const loadData = () => {
     Promise.all([
@@ -139,6 +141,12 @@ export default function Statements() {
   const handleSelectPeriod = (period) => {
     setSelectedPeriod(period);
     setView('detail');
+    setPreflight(null);
+    setPreflightLoading(true);
+    api.get(`/billing/periods/${period.id}/preflight`)
+      .then(setPreflight)
+      .catch(() => setPreflight(null))
+      .finally(() => setPreflightLoading(false));
   };
 
   if (loading) return <div className="page-loading">Laden...</div>;
@@ -181,6 +189,64 @@ export default function Statements() {
           <div className="stat-card">
             <div className="stat-label">Status</div>
             <div className="stat-value"><StatusBadge status={selectedPeriod.status} /></div>
+          </div>
+        </div>
+
+        <div className="card" style={{ marginBottom: '1rem' }}>
+          <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <strong>Preflight (Abrechnungsbereitschaft)</strong>
+            <button
+              className="btn btn-sm btn-secondary"
+              onClick={() => {
+                setPreflightLoading(true);
+                api.get(`/billing/periods/${selectedPeriod.id}/preflight`)
+                  .then(setPreflight)
+                  .catch(() => setPreflight(null))
+                  .finally(() => setPreflightLoading(false));
+              }}
+            >
+              Neu prüfen
+            </button>
+          </div>
+          <div className="card-body">
+            {preflightLoading && <span className="text-muted">Prüfung läuft…</span>}
+            {!preflightLoading && !preflight && <span className="text-muted">Keine Preflight-Daten verfügbar.</span>}
+            {!preflightLoading && preflight && (
+              <div style={{ display: 'grid', gap: '0.75rem' }}>
+                <div>
+                  <span className={`badge ${preflight.has_blockers ? 'badge-danger' : 'badge-success'}`}>
+                    {preflight.has_blockers ? 'Blockiert' : 'Bereit zur Generierung'}
+                  </span>
+                </div>
+                {preflight.blockers?.length > 0 && (
+                  <div>
+                    <strong>Blocker</strong>
+                    <ul>
+                      {preflight.blockers.map((i) => (
+                        <li key={`${i.code}-${i.context || ''}`}>{i.message}{i.context ? ` (${i.context})` : ''}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {preflight.warnings?.length > 0 && (
+                  <div>
+                    <strong>Warnungen</strong>
+                    <ul>
+                      {preflight.warnings.map((i) => (
+                        <li key={`${i.code}-${i.context || ''}`}>{i.message}{i.context ? ` (${i.context})` : ''}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <div>
+                  <strong>Kennzahlen</strong>
+                  <div className="text-muted" style={{ fontSize: '0.9rem' }}>
+                    Verträge: {preflight.metrics?.contracts_in_period ?? 0} · Kostenpositionen: {preflight.metrics?.cost_items ?? 0} ·
+                    Fehlende Schlüssel: {preflight.metrics?.allocation_keys_missing ?? 0} · Fehlende Flächen: {preflight.metrics?.area_missing_units ?? 0}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
