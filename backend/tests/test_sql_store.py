@@ -21,11 +21,13 @@ from backend.models import (
     CostItemCreate,
     DepositCreate,
     DocumentCreate,
+    HandoverProtocolCreate,
     InvoiceCreate,
     LeadCreate,
     ListingCreate,
     ListingPhotoCreate,
     MaintenanceCaseCreate,
+    MeterReadingCreate,
     NotificationCreate,
     NotificationTemplateCreate,
     PortfolioCreate,
@@ -480,6 +482,57 @@ class TestNotifications:
         assert t.name == "Mahnung"
         store.delete_notification_template(t.id)
         assert len(store.list_notification_templates()) == 0
+
+
+# === Meter Reading and Change History Tests ===
+
+class TestMeterReadingsAndChangeHistory:
+    def test_update_meter_reading(self, store, contract, unit):
+        protocol = store.create_handover_protocol(HandoverProtocolCreate(
+            contract_id=contract.id,
+            unit_id=unit.id,
+            protocol_type="move_in",
+            protocol_date=date(2024, 1, 10),
+        ))
+        reading = store.create_meter_reading(MeterReadingCreate(
+            handover_id=protocol.id,
+            meter_type="water",
+            meter_number="W-100",
+            reading_value=123.4,
+            unit="m3",
+        ))
+
+        updated = store.update_meter_reading(reading.id, MeterReadingCreate(
+            handover_id=protocol.id,
+            meter_type="water",
+            meter_number="W-100",
+            reading_value=130.0,
+            unit="m3",
+        ))
+
+        assert updated.reading_value == 130.0
+
+    def test_add_and_filter_change_history(self, store):
+        entry = store.add_change_history(
+            entity_type="contract",
+            entity_id="contract-1",
+            field_name="status",
+            old_value="active",
+            new_value="terminated",
+            changed_by="user-1",
+            reason="Kündigung",
+        )
+
+        assert entry.id
+        assert entry.reason == "Kündigung"
+
+        all_entries = store.list_change_history()
+        assert len(all_entries) == 1
+
+        filtered = store.get_entity_history("contract", "contract-1")
+        assert len(filtered) == 1
+        assert filtered[0].field_name == "status"
+
 
 
 # === Cascade Tests ===

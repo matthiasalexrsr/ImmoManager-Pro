@@ -3,9 +3,12 @@
 Central module wiring together middleware, routers, plugins, and error handling.
 """
 
+import importlib
 import logging
 import re
+import sys
 import time
+from collections.abc import Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 from uuid import uuid4
@@ -290,6 +293,50 @@ app.include_router(api_v1)
 
 # i18n stays at root level (not versioned, public)
 app.include_router(i18n.router)
+
+_UPLOADS_DIR = Path(__file__).resolve().parent.parent / "uploads"
+_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=_UPLOADS_DIR), name="uploads")
+
+
+def _load_contract_wizard_mount() -> Callable | None:
+    """Load optional contract wizard mount function from installed module/zip/folder."""
+    try:
+        module = importlib.import_module("mietvertrag_wizard")
+        return getattr(module, "mount_fastapi", None)
+    except Exception:
+        project_root = Path(__file__).resolve().parent.parent
+        candidate_paths = [
+            project_root / "mietvertrag_wizard_fastapi_reportlab_pro.zip",
+            project_root / "mietvertrag_wizard_fastapi_reportlab_pro",
+            project_root / "mietvertrag_wizard_fastapi_reportlab_pro" / "src",
+        ]
+        for candidate in candidate_paths:
+            if (candidate.is_file() or candidate.is_dir()) and str(candidate) not in sys.path:
+                sys.path.insert(0, str(candidate))
+
+        try:
+            module = importlib.import_module("mietvertrag_wizard")
+            return getattr(module, "mount_fastapi", None)
+        except Exception:
+            return None
+
+
+def _mount_contract_wizard_if_available(app_instance: FastAPI) -> None:
+    mount_fastapi = _load_contract_wizard_mount()
+    if mount_fastapi is None:
+        logger.info("Optional Mietvertrag Wizard package not found; skipping mount")
+        return
+
+    try:
+        mount_fastapi(app_instance, mount_path="/mietvertrag", static_path="/mietvertrag/static")
+        logger.info("Mounted Mietvertrag Wizard at /mietvertrag")
+    except Exception:
+        logger.exception("Failed to mount optional Mietvertrag Wizard")
+
+
+_mount_contract_wizard_if_available(app)
+
 
 
 # ─── Health ──────────────────────────────────────────────────────────────────

@@ -21,6 +21,7 @@ from backend.models import (
     HandoverProtocolCreate,
     HandoverProtocolPatch,
     MeterReadingCreate,
+    MeterReadingPatch,
     PortfolioCreate,
     PropertyCreate,
     RentAdjustmentCreate,
@@ -457,6 +458,25 @@ class TestMeterReadings:
             handover_protocols.get_meter_reading("wrong-protocol", mr.id)
         assert exc_info.value.status_code == 404
 
+
+    def test_update_meter_reading(self) -> None:
+        mr = handover_protocols.create_meter_reading(self.protocol_id, self._make_reading())
+        updated = handover_protocols.update_meter_reading(
+            self.protocol_id,
+            mr.id,
+            self._make_reading(reading_value=13000.5),
+        )
+        assert updated.reading_value == 13000.5
+
+    def test_patch_meter_reading_rejects_mismatched_handover_id(self) -> None:
+        mr = handover_protocols.create_meter_reading(self.protocol_id, self._make_reading())
+        with pytest.raises(HTTPException) as exc_info:
+            handover_protocols.patch_meter_reading(
+                self.protocol_id,
+                mr.id,
+                MeterReadingPatch(handover_id="wrong-protocol", notes="x"),
+            )
+        assert exc_info.value.status_code == 400
     def test_delete_meter_reading(self) -> None:
         mr = handover_protocols.create_meter_reading(self.protocol_id, self._make_reading())
         handover_protocols.delete_meter_reading(self.protocol_id, mr.id)
