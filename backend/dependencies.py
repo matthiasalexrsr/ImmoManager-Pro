@@ -26,8 +26,19 @@ store = InMemoryStore()
 # Scoped session factory (set when using SQL backend)
 _scoped_session = None
 
-# If DATABASE_URL is configured (and not the default SQLite), use SQLAlchemy store
+# Use SQLAlchemy store for PostgreSQL and other non-SQLite databases.
+# SQLite uses InMemoryStore for compatibility but tables are still created for persistence.
 _database_url = settings.database_url
+
+# Ensure SQLite tables exist even when using InMemoryStore
+if _database_url and "sqlite" in _database_url:
+    try:
+        from .db.session import create_tables
+        create_tables()
+        logger.info("SQLite tables created/verified: %s", _database_url)
+    except Exception:
+        logger.warning("SQLite table creation failed", exc_info=True)
+
 if _database_url and "sqlite" not in _database_url:
     try:
         from sqlalchemy.orm import scoped_session
@@ -41,11 +52,12 @@ if _database_url and "sqlite" not in _database_url:
         _scoped_session = scoped_session(SessionLocal)
         store = SQLAlchemyStore(_scoped_session)  # type: ignore[assignment]
 
-        # Also enable SQL-backed user and audit storage
-        from .audit import enable_sql_audit
-        from .auth import enable_sql_users
-        enable_sql_users(SessionLocal)
-        enable_sql_audit(SessionLocal)
+        # Enable SQL-backed user and audit storage for non-SQLite databases
+        if "sqlite" not in _database_url:
+            from .audit import enable_sql_audit
+            from .auth import enable_sql_users
+            enable_sql_users(SessionLocal)
+            enable_sql_audit(SessionLocal)
 
         logger.info("SQL backend initialized successfully (url=%s...)", _database_url[:30])
     except Exception:

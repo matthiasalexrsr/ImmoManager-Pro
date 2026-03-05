@@ -1,9 +1,62 @@
+import { useState, useRef } from 'react';
 import { usePreferences } from '../contexts/PreferencesContext';
 import { useTranslation } from '../i18n';
+import { api } from '../api';
+
+const BASE = (import.meta.env.VITE_API_URL || '/api/v1');
 
 export default function Settings() {
   const { prefs, toggleTheme, toggleSidebar, updatePrefs } = usePreferences();
   const { locale, setLocale } = useTranslation();
+  const [exportLoading, setExportLoading] = useState(false);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importResult, setImportResult] = useState(null);
+  const fileRef = useRef(null);
+
+  const handleExport = async () => {
+    setExportLoading(true);
+    try {
+      const token = localStorage.getItem('access_token');
+      const res = await fetch(`${BASE}/data/export`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `immomanager_export_${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.warn('[Settings] export:', err.message);
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
+  const handleImport = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportLoading(true);
+    setImportResult(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const token = localStorage.getItem('access_token');
+      const res = await fetch(`${BASE}/data/import`, {
+        method: 'POST',
+        body: formData,
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      setImportResult(data);
+    } catch (err) {
+      setImportResult({ errors: { general: [err.message] } });
+    } finally {
+      setImportLoading(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
 
   return (
     <div className="page">
@@ -98,12 +151,111 @@ export default function Settings() {
         </div>
 
         <div className="panel">
-          <div className="panel-header">Daten</div>
+          <div className="panel-header">Benachrichtigungen</div>
+          <div className="panel-body settings-section">
+            <div className="settings-row">
+              <label>E-Mail-Benachrichtigungen</label>
+              <div className="settings-control">
+                <select
+                  value={prefs.email_notifications || 'important'}
+                  onChange={e => updatePrefs({ email_notifications: e.target.value })}
+                  className="page-size-select"
+                >
+                  <option value="all">Alle</option>
+                  <option value="important">Nur wichtige</option>
+                  <option value="none">Keine</option>
+                </select>
+              </div>
+            </div>
+            <div className="settings-row">
+              <label>Erinnerungen</label>
+              <div className="settings-control">
+                <select
+                  value={prefs.reminder_days || '7'}
+                  onChange={e => updatePrefs({ reminder_days: e.target.value })}
+                  className="page-size-select"
+                >
+                  <option value="3">3 Tage vorher</option>
+                  <option value="7">7 Tage vorher</option>
+                  <option value="14">14 Tage vorher</option>
+                  <option value="30">30 Tage vorher</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="panel">
+          <div className="panel-header">Daten & Sicherung</div>
           <div className="panel-body settings-section">
             <div className="settings-row">
               <label>Datenbank</label>
               <div className="settings-control">
-                <span className="text-muted">Lokal (SQLite / In-Memory)</span>
+                <span className="text-muted">SQLite (Persistent)</span>
+              </div>
+            </div>
+            <div className="settings-row">
+              <label>Daten exportieren</label>
+              <div className="settings-control">
+                <button
+                  className="btn btn-sm btn-secondary"
+                  onClick={handleExport}
+                  disabled={exportLoading}
+                >
+                  {exportLoading ? 'Exportiere...' : 'JSON-Export'}
+                </button>
+              </div>
+            </div>
+            <div className="settings-row">
+              <label>Daten importieren</label>
+              <div className="settings-control">
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept=".json"
+                  onChange={handleImport}
+                  disabled={importLoading}
+                  style={{ fontSize: '0.85rem' }}
+                />
+              </div>
+            </div>
+            {importResult && (
+              <div className="settings-row">
+                <label>Import-Ergebnis</label>
+                <div className="settings-control" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+                  {importResult.imported && Object.entries(importResult.imported).map(([k, v]) => (
+                    <span key={k} className="text-muted">{k}: {v} importiert</span>
+                  ))}
+                  {importResult.errors && Object.keys(importResult.errors).length > 0 && (
+                    <span style={{ color: 'var(--danger)' }}>
+                      Fehler in: {Object.keys(importResult.errors).join(', ')}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="panel">
+          <div className="panel-header">Dokumente & OCR</div>
+          <div className="panel-body settings-section">
+            <div className="settings-row">
+              <label>Automatische OCR</label>
+              <div className="settings-control">
+                <span className="text-muted">Aktiv (für PDF, PNG, JPG, TIFF)</span>
+              </div>
+            </div>
+            <div className="settings-row">
+              <label>OCR-Sprachen</label>
+              <div className="settings-control">
+                <span className="text-muted">Deutsch + Englisch</span>
+              </div>
+            </div>
+            <div className="settings-row">
+              <label>Dateispeicher</label>
+              <div className="settings-control">
+                <span className="text-muted">Lokal (uploads/)</span>
               </div>
             </div>
           </div>

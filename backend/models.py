@@ -1095,3 +1095,73 @@ class EscalationRulePatch(BaseModel):
     target_role: Optional[str] = None
     notification_severity: Optional[str] = None
     is_active: Optional[bool] = None
+
+
+# ---------------------------------------------------------------------------
+# T18: Insurances
+# ---------------------------------------------------------------------------
+
+
+class InsuranceCreate(BaseModel):
+    property_id: str
+    unit_id: Optional[str] = None
+    insurance_type: str  # building, liability, contents, legal
+    provider: str
+    policy_number: Optional[str] = None
+    coverage_amount: Optional[float] = None
+    premium_amount: Optional[float] = None
+    premium_interval: str = "annual"  # monthly, quarterly, annual
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    contact_person: Optional[str] = None
+    contact_phone: Optional[str] = None
+    notes: Optional[str] = None
+    status: str = "active"
+
+
+class Insurance(InsuranceCreate):
+    id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class InsurancePatch(BaseModel):
+    property_id: Optional[str] = None
+    unit_id: Optional[str] = None
+    insurance_type: Optional[str] = None
+    provider: Optional[str] = None
+    policy_number: Optional[str] = None
+    coverage_amount: Optional[float] = None
+    premium_amount: Optional[float] = None
+    premium_interval: Optional[str] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    contact_person: Optional[str] = None
+    contact_phone: Optional[str] = None
+    notes: Optional[str] = None
+    status: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# T19: Entity Photos
+# ---------------------------------------------------------------------------
+
+
+class EntityPhotoCreate(BaseModel):
+    entity_type: str  # property, unit
+    entity_id: str
+    file_url: str
+    caption: Optional[str] = None
+    is_primary: bool = False
+    sort_order: int = 0
+
+
+class EntityPhoto(EntityPhotoCreate):
+    id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class EntityPhotoPatch(BaseModel):
+    caption: Optional[str] = None
+    is_primary: Optional[bool] = None
+    sort_order: Optional[int] = None

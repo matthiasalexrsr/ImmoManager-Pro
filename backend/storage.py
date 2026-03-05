@@ -29,10 +29,14 @@ from .models import (
     DepositCreate,
     Document,
     DocumentCreate,
+    EntityPhoto,
+    EntityPhotoCreate,
     EscalationRule,
     EscalationRuleCreate,
     HandoverProtocol,
     HandoverProtocolCreate,
+    Insurance,
+    InsuranceCreate,
     Invoice,
     InvoiceCreate,
     Lead,
@@ -118,6 +122,8 @@ class InMemoryStore:
     change_history: Dict[str, ChangeHistoryEntry] = field(default_factory=dict)
     budgets: Dict[str, Budget] = field(default_factory=dict)
     escalation_rules: Dict[str, EscalationRule] = field(default_factory=dict)
+    insurances: Dict[str, Insurance] = field(default_factory=dict)
+    entity_photos: Dict[str, EntityPhoto] = field(default_factory=dict)
 
     def list_portfolios(self) -> List[Portfolio]:
         return list(self.portfolios.values())
@@ -1377,3 +1383,55 @@ class InMemoryStore:
         if rule_id not in self.escalation_rules:
             raise NotFoundError("Eskalationsregel nicht gefunden")
         del self.escalation_rules[rule_id]
+
+    # --- Insurances ---
+
+    def list_insurances(self) -> List[Insurance]:
+        return list(self.insurances.values())
+
+    def create_insurance(self, data: InsuranceCreate) -> Insurance:
+        if data.property_id not in self.properties:
+            raise ValidationError("Immobilie existiert nicht")
+        item = Insurance(id=_generate_id(), **data.model_dump())
+        self.insurances[item.id] = item
+        return item
+
+    def get_insurance(self, insurance_id: str) -> Insurance:
+        try:
+            return self.insurances[insurance_id]
+        except KeyError as exc:
+            raise NotFoundError("Versicherung nicht gefunden") from exc
+
+    def update_insurance(self, insurance_id: str, data: InsuranceCreate) -> Insurance:
+        if insurance_id not in self.insurances:
+            raise NotFoundError("Versicherung nicht gefunden")
+        old = self.insurances[insurance_id]
+        item = Insurance(id=insurance_id, created_at=old.created_at, updated_at=datetime.utcnow(), **data.model_dump())
+        self.insurances[insurance_id] = item
+        return item
+
+    def delete_insurance(self, insurance_id: str) -> None:
+        if insurance_id not in self.insurances:
+            raise NotFoundError("Versicherung nicht gefunden")
+        del self.insurances[insurance_id]
+
+    # --- Entity Photos ---
+
+    def list_entity_photos(self, entity_type: str, entity_id: str) -> List[EntityPhoto]:
+        return [p for p in self.entity_photos.values() if p.entity_type == entity_type and p.entity_id == entity_id]
+
+    def create_entity_photo(self, data: EntityPhotoCreate) -> EntityPhoto:
+        item = EntityPhoto(id=_generate_id(), **data.model_dump())
+        self.entity_photos[item.id] = item
+        return item
+
+    def get_entity_photo(self, photo_id: str) -> EntityPhoto:
+        try:
+            return self.entity_photos[photo_id]
+        except KeyError as exc:
+            raise NotFoundError("Foto nicht gefunden") from exc
+
+    def delete_entity_photo(self, photo_id: str) -> None:
+        if photo_id not in self.entity_photos:
+            raise NotFoundError("Foto nicht gefunden")
+        del self.entity_photos[photo_id]

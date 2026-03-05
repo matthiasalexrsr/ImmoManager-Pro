@@ -1,5 +1,95 @@
 # ImmoManager Pro — Change Log & Hardening Documentation
 
+## 2026-03-05: Major Feature Expansion
+
+### Insurances
+- New `InsuranceORM` model with property/unit association, policy details, premium tracking
+- New Pydantic models: `InsuranceCreate`, `Insurance`, `InsurancePatch`
+- Backend CRUD router (`/insurances`) with property validation
+- Frontend `Insurances.jsx` page with type, provider, premium, interval fields
+- Added to sidebar navigation with shield icon
+
+### Photo Upload & Drop Zone
+- New `EntityPhotoORM` model for entity-linked photos (property/unit)
+- Backend `/photos` router with file upload endpoint (multipart/form-data)
+- `PhotoDropZone.jsx` component — drag-and-drop + click photo upload
+- Photo grid display with delete capability per photo
+- Stored via `FileStorage` abstraction (local or S3)
+
+### Property & Unit Overview Pages
+- `PropertyOverview.jsx` — detail view with photos, key data (area, price), rental status (occupancy rate, total rent), active contracts, insurances
+- `UnitOverview.jsx` — detail view with photos, unit specs, current tenant info, contract history, insurances
+- Routes: `/properties/:id` and `/units/:id`
+- New CSS for overview grid, stats, definition lists
+
+### Data Export & Import
+- Backend `/data/export` — exports all entities as single JSON file
+- Backend `/data/import` — imports from JSON with dependency ordering
+- Settings page integration with download button and file upload
+- Import results display with per-entity counts and error reporting
+
+### Data Persistence
+- SQLite tables now created at startup regardless of store type
+- Database file `immo_manager.db` persists between restarts
+- Settings page updated to show "SQLite (Persistent)"
+
+### Settings Page Expansion
+- Added Notifications section: email notification level, reminder timing
+- Added Data & Backup section: export/import buttons, import results
+- Added Documents & OCR section: OCR status, languages, storage info
+- Database status now shows persistent storage type
+
+### OCR Processing
+- Backend `/files/upload` endpoint with automatic OCR for PDF/images
+- Supports pytesseract (images) and pdfplumber (PDF text extraction)
+- OCR text stored alongside original file (`_ocr.txt`)
+- Linked lifecycle: OCR file follows original
+- `/files/ocr-text` endpoint to retrieve OCR text for any file
+
+### File Viewer with OCR Overlay
+- `FileViewer.jsx` modal component for image/PDF viewing
+- OCR text overlay toggle button when OCR data available
+- Copy-to-clipboard for OCR text
+- Integrated into Documents page with row-click to view
+- Document upload button with file URL auto-fill
+
+### Integration Placeholders
+- `Integrations.jsx` page with planned feature cards:
+  - **E-Mail API**: Templates, auto-notifications, document sending
+  - **WhatsApp Business API**: Messaging, reminders, status updates
+  - **Mietvertrags-Assistent**: Contract templates, clause selection, PDF export
+  - **Deutsche Post API**: Letters, registered mail, bulk sending
+- Each card shows planned features and "Geplant" badge
+- Added to sidebar with integration icon
+
+### New Files Created
+- `backend/routers/insurances.py` — Insurance CRUD endpoints
+- `backend/routers/photos.py` — Photo upload/management endpoints
+- `backend/routers/files.py` — File upload, download, OCR endpoints
+- `backend/routers/data_exchange.py` — Data export/import endpoints
+- `frontend/src/pages/Insurances.jsx` — Insurance management UI
+- `frontend/src/pages/PropertyOverview.jsx` — Property detail view
+- `frontend/src/pages/UnitOverview.jsx` — Unit detail view
+- `frontend/src/pages/Integrations.jsx` — Integration placeholders
+- `frontend/src/components/PhotoDropZone.jsx` — Photo upload component
+- `frontend/src/components/FileViewer.jsx` — File viewer with OCR
+
+### Modified Files
+- `backend/models.py` — Added Insurance, EntityPhoto models
+- `backend/db/orm_models.py` — Added InsuranceORM, EntityPhotoORM
+- `backend/repositories/sql_store.py` — Insurance + EntityPhoto CRUD
+- `backend/storage.py` — Insurance + EntityPhoto in InMemoryStore
+- `backend/app.py` — Registered 4 new routers
+- `backend/dependencies.py` — SQLite table creation at startup
+- `frontend/src/App.jsx` — 4 new routes + overview routes
+- `frontend/src/components/Layout.jsx` — Insurances + Integrations nav
+- `frontend/src/components/Icons.jsx` — InsuranceIcon + IntegrationIcon
+- `frontend/src/pages/Settings.jsx` — Full rewrite with expanded options
+- `frontend/src/pages/Documents.jsx` — File upload + viewer integration
+- `frontend/src/index.css` — Styles for all new components
+
+---
+
 ## 2026-03-04: Implementation Plan Fixes (Phase 1-6)
 
 ### Phase 1: Navigation & Contracts

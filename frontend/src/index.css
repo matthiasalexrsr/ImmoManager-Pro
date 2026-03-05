@@ -2177,3 +2177,220 @@ a:hover {
     grid-template-columns: 1fr;
   }
 }
+
+/* ─── Photo Drop Zone ───────────────────────────────────────────────── */
+.photo-drop-zone-container {
+  margin-bottom: 1.5rem;
+}
+.photo-drop-zone {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 2rem;
+  text-align: center;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--muted);
+  transition: border-color 0.2s, background 0.2s;
+}
+.photo-drop-zone:hover,
+.photo-drop-zone.drag-active {
+  border-color: var(--primary);
+  background: rgba(37, 99, 235, 0.05);
+}
+.photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+.photo-thumb {
+  position: relative;
+  border-radius: var(--radius);
+  overflow: hidden;
+  aspect-ratio: 1;
+  border: 1px solid var(--border);
+}
+.photo-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.photo-caption {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 0.25rem 0.5rem;
+  background: rgba(0, 0, 0, 0.6);
+  color: white;
+  font-size: 0.7rem;
+}
+.photo-delete-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: rgba(220, 38, 38, 0.85);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.photo-thumb:hover .photo-delete-btn {
+  opacity: 1;
+}
+
+/* ─── Overview Pages ────────────────────────────────────────────────── */
+.overview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1.5rem;
+}
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1rem;
+}
+.overview-dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.4rem 1rem;
+}
+.overview-dl dt {
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.overview-dl dd {
+  margin: 0;
+  font-size: 0.9rem;
+}
+.overview-stats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+}
+.overview-stat {
+  text-align: center;
+}
+.overview-stat-value {
+  display: block;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--primary);
+}
+.overview-stat-label {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.overview-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.overview-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.overview-list li:last-child {
+  border-bottom: none;
+}
+
+/* ─── File Viewer ───────────────────────────────────────────────────── */
+.file-viewer-modal {
+  background: var(--card-bg);
+  border-radius: var(--radius);
+  width: 90vw;
+  max-width: 900px;
+  height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+.file-viewer-body {
+  flex: 1;
+  overflow: auto;
+  padding: 1rem;
+}
+.file-viewer-image {
+  max-width: 100%;
+  height: auto;
+}
+.file-viewer-pdf {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+.file-viewer-fallback {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 1rem;
+}
+.ocr-overlay {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.ocr-toolbar {
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+.ocr-text {
+  flex: 1;
+  overflow: auto;
+  padding: 1rem;
+  font-family: inherit;
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+  line-height: 1.6;
+  user-select: text;
+}
+
+/* ─── Integrations ──────────────────────────────────────────────────── */
+.integrations-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 1rem;
+}
+.integration-card .badge-planned {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.75rem;
+  border-radius: 999px;
+  background: rgba(217, 119, 6, 0.15);
+  color: #d97706;
+}
+.integration-features {
+  list-style: disc;
+  padding-left: 1.2rem;
+  margin: 0;
+}
+.integration-features li {
+  font-size: 0.85rem;
+  padding: 0.15rem 0;
+  color: var(--muted);
+}
+
+/* ─── Form hint ─────────────────────────────────────────────────────── */
+.form-hint {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-top: 0.25rem;
+}

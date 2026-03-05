@@ -34,17 +34,21 @@ from .routers import (
     calendar,
     categories,
     contracts,
+    data_exchange,
     deposits,
     documents,
     escalation,
+    files,
     handover_protocols,
     history,
     i18n,
+    insurances,
     invoices,
     leads,
     listings,
     maintenance,
     notifications,
+    photos,
     portfolios,
     properties,
     receivables,
@@ -267,6 +271,10 @@ api_v1.include_router(handover_protocols.router, dependencies=_auth_dep)
 api_v1.include_router(budgets.router, dependencies=_auth_dep)
 api_v1.include_router(escalation.router, dependencies=_auth_dep)
 api_v1.include_router(history.router, dependencies=_auth_dep)
+api_v1.include_router(insurances.router, dependencies=_auth_dep)
+api_v1.include_router(photos.router, dependencies=_auth_dep)
+api_v1.include_router(files.router, dependencies=_auth_dep)
+api_v1.include_router(data_exchange.router, dependencies=_auth_dep)
 
 app.include_router(api_v1)
 
