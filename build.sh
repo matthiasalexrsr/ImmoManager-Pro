@@ -19,11 +19,11 @@ if [ -f ".venv/bin/activate" ]; then
     source .venv/bin/activate
 fi
 
-# Check PyInstaller
-if ! python -m PyInstaller --version &>/dev/null; then
-    echo "PyInstaller wird installiert..."
-    pip install "pyinstaller>=6.0.0" -q
-fi
+# Install all project dependencies + PyInstaller
+echo "Installiere Abhängigkeiten..."
+pip install --upgrade pip setuptools wheel -q
+pip install -e ".[build]" -q
+echo "[OK] Abhängigkeiten installiert"
 
 PYINSTALLER_VER=$(python -m PyInstaller --version 2>&1)
 echo "[OK] PyInstaller $PYINSTALLER_VER"

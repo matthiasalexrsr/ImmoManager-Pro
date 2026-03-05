@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Build ImmoManager Pro as a standalone Windows .exe using PyInstaller.
+"""Build ImmoManager Pro as a standalone executable using PyInstaller.
 
 Usage:
-    python scripts/build_exe.py          # Build directory bundle
-    python scripts/build_exe.py --onefile # Build single .exe file
+    python scripts/build_exe.py          # Build directory bundle (recommended)
+    python scripts/build_exe.py --clean  # Clean build artifacts first
 
 Prerequisites:
-    pip install pyinstaller
+    pip install -e ".[build]"
 
 Output:
-    dist/ImmoManager-Pro/ImmoManager-Pro.exe  (directory mode)
-    dist/ImmoManager-Pro.exe                  (one-file mode)
+    dist/ImmoManager-Pro/ImmoManager-Pro.exe  (Windows)
+    dist/ImmoManager-Pro/ImmoManager-Pro      (Linux/macOS)
 """
 import subprocess
 import sys
@@ -19,13 +19,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def check_pyinstaller():
-    """Ensure PyInstaller is installed."""
+def check_dependencies():
+    """Ensure PyInstaller and project dependencies are installed."""
     try:
         import PyInstaller  # noqa: F401
     except ImportError:
-        print("PyInstaller nicht installiert. Installiere...")
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "pyinstaller"])
+        print("PyInstaller nicht installiert. Installiere Projekt mit Build-Deps...")
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "-e", ".[build]"])
 
 
 def build_frontend():
@@ -39,71 +39,55 @@ def build_frontend():
 
     if shutil.which("npm") is None:
         if (frontend_dir / "dist").is_dir():
-            print("Frontend dist/ bereits vorhanden (npm nicht verfügbar).")
+            print("Frontend dist/ bereits vorhanden (npm nicht verfuegbar).")
         else:
             print("FEHLER: npm nicht gefunden und frontend/dist existiert nicht.")
             sys.exit(1)
         return
 
-    print("Installiere Frontend-Abhängigkeiten...")
+    print("Installiere Frontend-Abhaengigkeiten...")
     subprocess.check_call(["npm", "install"], cwd=str(frontend_dir))
     print("Baue Frontend...")
     subprocess.check_call(["npm", "run", "build"], cwd=str(frontend_dir))
 
 
-def build_exe(onefile=False):
-    """Run PyInstaller with the spec file."""
+def build_exe(clean=False):
+    """Run PyInstaller with the spec file.
+
+    Always uses immomanager.spec which contains the complete configuration
+    including all hidden imports and data files.
+    """
     spec_file = ROOT / "immomanager.spec"
 
-    if onefile:
-        # For one-file mode, modify the spec dynamically
-        print("Baue einzelne .exe-Datei...")
-        cmd = [
-            sys.executable, "-m", "PyInstaller",
-            "--onefile",
-            "--name", "ImmoManager-Pro",
-            "--add-data", f"{ROOT / 'i18n'}{':' if sys.platform != 'win32' else ';'}i18n",
-            "--add-data", f"{ROOT / 'frontend' / 'dist'}{':' if sys.platform != 'win32' else ';'}frontend/dist",
-            "--hidden-import", "uvicorn.logging",
-            "--hidden-import", "uvicorn.loops.auto",
-            "--hidden-import", "uvicorn.protocols.http.auto",
-            "--hidden-import", "uvicorn.protocols.websockets.auto",
-            "--hidden-import", "uvicorn.lifespan.on",
-            "--hidden-import", "backend.app",
-            "--hidden-import", "sqlalchemy.dialects.sqlite",
-            "--hidden-import", "aiosqlite",
-            "--hidden-import", "pydantic_settings",
-            "--hidden-import", "cffi",
-            "--hidden-import", "cryptography",
-            "--console",
-            str(ROOT / "backend" / "__main__.py"),
-        ]
-        subprocess.check_call(cmd, cwd=str(ROOT))
-    else:
-        print("Baue .exe-Verzeichnis-Bundle...")
-        subprocess.check_call(
-            [sys.executable, "-m", "PyInstaller", "--clean", str(spec_file)],
-            cwd=str(ROOT),
-        )
+    if not spec_file.is_file():
+        print(f"FEHLER: Spec-Datei nicht gefunden: {spec_file}")
+        sys.exit(1)
+
+    print("Baue .exe-Verzeichnis-Bundle...")
+    cmd = [sys.executable, "-m", "PyInstaller"]
+    if clean:
+        cmd.append("--clean")
+    cmd.append(str(spec_file))
+    subprocess.check_call(cmd, cwd=str(ROOT))
 
 
 def main():
-    onefile = "--onefile" in sys.argv
+    clean = "--clean" in sys.argv
 
     print("=" * 60)
     print("ImmoManager Pro – Build .exe")
     print("=" * 60)
 
-    check_pyinstaller()
+    check_dependencies()
     build_frontend()
-    build_exe(onefile=onefile)
+    build_exe(clean=clean)
 
     print()
     print("=" * 60)
-    if onefile:
-        exe_path = ROOT / "dist" / "ImmoManager-Pro.exe"
-    else:
+    if sys.platform == "win32":
         exe_path = ROOT / "dist" / "ImmoManager-Pro" / "ImmoManager-Pro.exe"
+    else:
+        exe_path = ROOT / "dist" / "ImmoManager-Pro" / "ImmoManager-Pro"
     print(f"Build fertig: {exe_path}")
     print()
     print("Starten mit:")
