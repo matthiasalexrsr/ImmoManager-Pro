@@ -1,9 +1,27 @@
+import { useState } from 'react';
 import { usePreferences } from '../contexts/PreferencesContext';
 import { useTranslation } from '../i18n';
+import { api } from '../api';
 
 export default function Settings() {
   const { prefs, toggleTheme, toggleSidebar, updatePrefs } = usePreferences();
   const { locale, setLocale } = useTranslation();
+  const [backupStatus, setBackupStatus] = useState(null);
+  const [dbInfo, setDbInfo] = useState(null);
+
+  const loadDbInfo = () => {
+    api.get('/admin/database-info').then(setDbInfo).catch(() => setDbInfo({ error: 'Nicht verfügbar' }));
+  };
+
+  const handleBackup = async () => {
+    setBackupStatus('Backup wird erstellt...');
+    try {
+      const result = await api.post('/admin/backup');
+      setBackupStatus(`Backup erstellt: ${result?.filename || 'OK'}`);
+    } catch {
+      setBackupStatus('Backup fehlgeschlagen');
+    }
+  };
 
   return (
     <div className="page">
@@ -94,16 +112,70 @@ export default function Settings() {
                 </select>
               </div>
             </div>
+            <div className="settings-row">
+              <label>Standard-Fälligkeitstag</label>
+              <div className="settings-control">
+                <select
+                  value={prefs.default_due_day || 1}
+                  onChange={e => updatePrefs({ default_due_day: Number(e.target.value) })}
+                  className="page-size-select"
+                >
+                  {[1, 3, 5, 10, 15].map(d => (
+                    <option key={d} value={d}>{d}. des Monats</option>
+                  ))}
+                </select>
+              </div>
+            </div>
           </div>
         </div>
 
         <div className="panel">
-          <div className="panel-header">Daten</div>
+          <div className="panel-header">Daten & Sicherung</div>
           <div className="panel-body settings-section">
             <div className="settings-row">
               <label>Datenbank</label>
               <div className="settings-control">
                 <span className="text-muted">Lokal (SQLite / In-Memory)</span>
+                <button className="btn btn-sm btn-secondary" onClick={loadDbInfo} style={{ marginLeft: '0.5rem' }}>
+                  Info
+                </button>
+              </div>
+            </div>
+            {dbInfo && (
+              <div className="settings-row">
+                <label>DB-Details</label>
+                <div className="settings-control">
+                  <span className="text-muted" style={{ fontSize: '0.8rem' }}>
+                    {dbInfo.error || JSON.stringify(dbInfo, null, 2).slice(0, 200)}
+                  </span>
+                </div>
+              </div>
+            )}
+            <div className="settings-row">
+              <label>Backup</label>
+              <div className="settings-control">
+                <button className="btn btn-sm btn-primary" onClick={handleBackup}>
+                  Backup erstellen
+                </button>
+                {backupStatus && <span className="text-muted" style={{ marginLeft: '0.5rem', fontSize: '0.8rem' }}>{backupStatus}</span>}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="panel">
+          <div className="panel-header">Über ImmoManager Pro</div>
+          <div className="panel-body settings-section">
+            <div className="settings-row">
+              <label>Version</label>
+              <div className="settings-control">
+                <span className="text-muted">1.0.0</span>
+              </div>
+            </div>
+            <div className="settings-row">
+              <label>Typ</label>
+              <div className="settings-control">
+                <span className="text-muted">Lokale Anwendung (Non-Cloud, Privat)</span>
               </div>
             </div>
           </div>

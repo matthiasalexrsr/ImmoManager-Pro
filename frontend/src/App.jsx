@@ -20,6 +20,7 @@ import Contacts from './pages/Contacts';
 import Statements from './pages/Statements';
 import Messages from './pages/Messages';
 import Settings from './pages/Settings';
+import PropertyDetail from './pages/PropertyDetail';
 
 function ProtectedRoute({ children }) {
   return isLoggedIn() ? children : <Navigate to="/login" />;
@@ -34,6 +35,7 @@ export default function App() {
           <Route index element={<Dashboard />} />
           <Route path="portfolios" element={<Portfolios />} />
           <Route path="properties" element={<Properties />} />
+          <Route path="properties/:id" element={<PropertyDetail />} />
           <Route path="units" element={<Units />} />
           <Route path="tenants" element={<Tenants />} />
           <Route path="contracts" element={<Contracts />} />

@@ -33,6 +33,7 @@ from .routers import (
     budgets,
     calendar,
     categories,
+    contacts,
     contracts,
     deposits,
     documents,
@@ -44,11 +45,14 @@ from .routers import (
     leads,
     listings,
     maintenance,
+    messages,
+    meters_standalone,
     notifications,
     portfolios,
     properties,
     receivables,
     rent_adjustments,
+    rent_charges,
     reports,
     search,
     tasks,
@@ -261,6 +265,10 @@ api_v1.include_router(handover_protocols.router, dependencies=_auth_dep)
 api_v1.include_router(budgets.router, dependencies=_auth_dep)
 api_v1.include_router(escalation.router, dependencies=_auth_dep)
 api_v1.include_router(history.router, dependencies=_auth_dep)
+api_v1.include_router(contacts.router, dependencies=_auth_dep)
+api_v1.include_router(meters_standalone.router, dependencies=_auth_dep)
+api_v1.include_router(messages.router, dependencies=_auth_dep)
+api_v1.include_router(rent_charges.router, dependencies=_auth_dep)
 
 app.include_router(api_v1)
 

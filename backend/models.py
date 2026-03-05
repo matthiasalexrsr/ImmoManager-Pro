@@ -1095,3 +1095,199 @@ class EscalationRulePatch(BaseModel):
     target_role: Optional[str] = None
     notification_severity: Optional[str] = None
     is_active: Optional[bool] = None
+
+
+# ---------------------------------------------------------------------------
+# Contact (unified contacts: tenant, owner, supplier, manager)
+# ---------------------------------------------------------------------------
+
+
+class ContactCreate(BaseModel):
+    contact_type: str = "tenant"  # tenant, owner, supplier, manager
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    company_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    mobile: Optional[str] = None
+    street: Optional[str] = None
+    zip_code: Optional[str] = None
+    city: Optional[str] = None
+    country: str = "DE"
+    iban: Optional[str] = None
+    bic: Optional[str] = None
+    bank_name: Optional[str] = None
+    tax_id: Optional[str] = None
+    notes: Optional[str] = None
+
+    @field_validator("email")
+    @classmethod
+    def validate_contact_email(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v != "" and "@" not in v:
+            raise ValueError("Ungültige E-Mail-Adresse")
+        return v
+
+
+class Contact(ContactCreate):
+    id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ContactPatch(BaseModel):
+    contact_type: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    company_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    mobile: Optional[str] = None
+    street: Optional[str] = None
+    zip_code: Optional[str] = None
+    city: Optional[str] = None
+    country: Optional[str] = None
+    iban: Optional[str] = None
+    bic: Optional[str] = None
+    bank_name: Optional[str] = None
+    tax_id: Optional[str] = None
+    notes: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Meter (standalone meter management)
+# ---------------------------------------------------------------------------
+
+
+class MeterCreate(BaseModel):
+    unit_id: str
+    meter_type: str  # cold_water, hot_water, heating, electricity, gas
+    serial_number: Optional[str] = None
+    location: Optional[str] = None
+    installation_date: Optional[date] = None
+    next_inspection: Optional[date] = None
+    supplier: Optional[str] = None
+    is_active: bool = True
+
+
+class Meter(MeterCreate):
+    id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class MeterPatch(BaseModel):
+    unit_id: Optional[str] = None
+    meter_type: Optional[str] = None
+    serial_number: Optional[str] = None
+    location: Optional[str] = None
+    installation_date: Optional[date] = None
+    next_inspection: Optional[date] = None
+    supplier: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+# ---------------------------------------------------------------------------
+# Standalone MeterReading (for Zähler page, not handover-bound)
+# ---------------------------------------------------------------------------
+
+
+class StandaloneMeterReadingCreate(BaseModel):
+    meter_id: str
+    reading_date: date
+    value: float
+    recorded_by: Optional[str] = None
+    photo_url: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class StandaloneMeterReading(StandaloneMeterReadingCreate):
+    id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class StandaloneMeterReadingPatch(BaseModel):
+    meter_id: Optional[str] = None
+    reading_date: Optional[date] = None
+    value: Optional[float] = None
+    recorded_by: Optional[str] = None
+    photo_url: Optional[str] = None
+    notes: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Message Thread & Message (internal communication)
+# ---------------------------------------------------------------------------
+
+
+class MessageThreadCreate(BaseModel):
+    subject: str
+    participant_ids: Optional[str] = None  # comma-separated contact IDs
+    property_id: Optional[str] = None
+    unit_id: Optional[str] = None
+    contract_id: Optional[str] = None
+
+
+class MessageThread(MessageThreadCreate):
+    id: str = Field(..., min_length=1)
+    last_message_at: Optional[datetime] = None
+    message_count: int = 0
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class MessageThreadPatch(BaseModel):
+    subject: Optional[str] = None
+    participant_ids: Optional[str] = None
+    property_id: Optional[str] = None
+    unit_id: Optional[str] = None
+    contract_id: Optional[str] = None
+
+
+class MessageCreate(BaseModel):
+    thread_id: str
+    sender_name: str = "System"
+    body: str
+    attachment_ids: Optional[str] = None  # comma-separated document IDs
+
+
+class Message(MessageCreate):
+    id: str = Field(..., min_length=1)
+    sent_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class MessagePatch(BaseModel):
+    body: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# RentCharge (Sollstellung - monthly rent charges)
+# ---------------------------------------------------------------------------
+
+
+class RentChargeCreate(BaseModel):
+    contract_id: str
+    month: str  # YYYY-MM
+    cold_rent: float = 0.0
+    service_charge: float = 0.0
+    heating_charge: float = 0.0
+    other_charges: float = 0.0
+    amount_paid: float = 0.0
+    status: str = "open"  # open, partial, paid, overdue
+
+
+class RentCharge(RentChargeCreate):
+    id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class RentChargePatch(BaseModel):
+    contract_id: Optional[str] = None
+    month: Optional[str] = None
+    cold_rent: Optional[float] = None
+    service_charge: Optional[float] = None
+    heating_charge: Optional[float] = None
+    other_charges: Optional[float] = None
+    amount_paid: Optional[float] = None
+    status: Optional[str] = None

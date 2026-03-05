@@ -3,7 +3,7 @@ import { PlusIcon, EditIcon, TrashIcon } from './Icons';
 
 const PAGE_SIZES = [10, 25, 50, 100];
 
-export default function DataTable({ columns, data, onEdit, onDelete, title, onAdd }) {
+export default function DataTable({ columns, data, onEdit, onDelete, title, onAdd, onRowClick }) {
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState(null);
   const [sortDir, setSortDir] = useState('asc');
@@ -309,7 +309,7 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
               <tr><td colSpan={colSpan} className="table-empty">Keine Eintr\u00e4ge gefunden</td></tr>
             ) : (
               pageData.map(row => (
-                <tr key={row.id}>
+                <tr key={row.id} onClick={() => onRowClick && onRowClick(row)} style={onRowClick ? { cursor: 'pointer' } : undefined}>
                   {visibleColumns.map(col => (
                     <td key={col.key} className={col.align === 'right' ? 'text-right' : ''}>
                       {col.render ? col.render(row[col.key], row) : (row[col.key] ?? '\u2014')}
