@@ -214,6 +214,40 @@ class TestAuthRouter:
         assert updated["locale"] == "en-US"
         assert "ignored" not in updated
 
+    def test_update_my_preferences_returns_fallback_when_commit_fails(self, monkeypatch):
+        user = _register_admin()
+
+        monkeypatch.setattr("backend.db.session.DATABASE_URL", "postgresql://db/test")
+
+        class _BrokenSession:
+            def query(self, _model):
+                return self
+
+            def filter(self, *_args, **_kwargs):
+                return self
+
+            def first(self):
+                return None
+
+            def add(self, _obj):
+                return None
+
+            def commit(self):
+                raise RuntimeError("commit failed")
+
+            def rollback(self):
+                return None
+
+            def close(self):
+                return None
+
+        monkeypatch.setattr("backend.db.session.SessionLocal", lambda: _BrokenSession())
+
+        updated = update_my_preferences({"theme": "dark", "currency": "USD"}, user)
+        assert updated["theme"] == "dark"
+        assert updated["currency"] == "USD"
+
+
 
 # === RBAC ===
 
