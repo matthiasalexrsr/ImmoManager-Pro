@@ -44,6 +44,10 @@ function fmt(v) {
   return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(v);
 }
 
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
 export default function Dashboard() {
   const { t } = useTranslation();
   const [stats, setStats] = useState({});
@@ -86,20 +90,30 @@ export default function Dashboard() {
       openTasks, maintenance, notifs,
       cf, ag, , mc, fc, exp, fin,
     ]) => {
+      const safePortfolios = asArray(portfolios);
+      const safeProperties = asArray(properties);
+      const safeUnits = asArray(units);
+      const safeTenants = asArray(tenants);
+      const safeContracts = asArray(contracts);
+      const safeAccounts = asArray(accounts);
+      const safeOpenTasks = asArray(openTasks);
+      const safeMaintenance = asArray(maintenance);
+      const safeNotifications = asArray(notifs);
+
       setStats({
-        portfolios: portfolios.length,
-        properties: properties.length,
-        units: units.length,
-        unitsOccupied: units.filter(u => u.status === 'occupied').length,
-        unitsReserved: units.filter(u => u.status === 'reserved').length,
-        tenants: tenants.length,
-        contracts: contracts.length,
-        contractsActive: contracts.filter(c => c.status === 'active').length,
-        accounts: accounts.length,
-        openMaintenance: maintenance.length,
+        portfolios: safePortfolios.length,
+        properties: safeProperties.length,
+        units: safeUnits.length,
+        unitsOccupied: safeUnits.filter(u => u.status === 'occupied').length,
+        unitsReserved: safeUnits.filter(u => u.status === 'reserved').length,
+        tenants: safeTenants.length,
+        contracts: safeContracts.length,
+        contractsActive: safeContracts.filter(c => c.status === 'active').length,
+        accounts: safeAccounts.length,
+        openMaintenance: safeMaintenance.length,
       });
-      setTasks(openTasks);
-      setNotifications(notifs);
+      setTasks(safeOpenTasks);
+      setNotifications(safeNotifications);
       setCashflow(cf);
       setAging(ag);
       setMaintCosts(mc);
