@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
 import StatusBadge from '../components/StatusBadge';
+import { useTranslation } from '../i18n';
 import FormModal from '../components/FormModal';
 
 export default function Messages() {
@@ -9,6 +10,7 @@ export default function Messages() {
   const [selectedThread, setSelectedThread] = useState(null);
   const [threadMessages, setThreadMessages] = useState([]);
   const [loading, setLoading] = useState(true);
+  const { t } = useTranslation();
   const [view, setView] = useState('notifications');
   const [selected, setSelected] = useState(null);
   const [filter, setFilter] = useState('all');
@@ -68,24 +70,24 @@ export default function Messages() {
     ? notifications
     : notifications.filter(n => n.status === filter);
 
-  if (loading) return <div className="page-loading">Laden...</div>;
+  if (loading) return <div className="page-loading">{t('pages.loading')}</div>;
 
   return (
     <div className="page">
-      <h1 className="page-title">Nachrichten</h1>
+      <h1 className="page-title">{t('pages.messages.title')}</h1>
 
       <div className="tab-bar" style={{ marginBottom: '1rem' }}>
         <button
           className={`detail-tab ${view === 'notifications' ? 'active' : ''}`}
           onClick={() => setView('notifications')}
         >
-          Benachrichtigungen ({notifications.length})
+          {t('pages.messages.notifications') || 'Benachrichtigungen'} ({notifications.length})
         </button>
         <button
           className={`detail-tab ${view === 'threads' ? 'active' : ''}`}
           onClick={() => setView('threads')}
         >
-          Konversationen ({threads.length})
+          {t('pages.messages.conversations') || 'Konversationen'} ({threads.length})
         </button>
       </div>
 
@@ -96,15 +98,15 @@ export default function Messages() {
               <button
                 className={`btn btn-sm ${filter === 'all' ? 'btn-primary' : 'btn-secondary'}`}
                 onClick={() => setFilter('all')}
-              >Alle ({notifications.length})</button>
+              >{t('pages.messages.all')} ({notifications.length})</button>
               <button
                 className={`btn btn-sm ${filter === 'unread' ? 'btn-primary' : 'btn-secondary'}`}
                 onClick={() => setFilter('unread')}
-              >Ungelesen ({notifications.filter(n => n.status === 'unread').length})</button>
+              >{t('pages.messages.unread')} ({notifications.filter(n => n.status === 'unread').length})</button>
             </div>
             <div className="messages-list">
               {filteredNotifs.length === 0 ? (
-                <p className="panel-empty">Keine Nachrichten</p>
+                <p className="panel-empty">{t('pages.messages.noMessages')}</p>
               ) : filteredNotifs.map(n => (
                 <div
                   key={n.id}
@@ -131,16 +133,16 @@ export default function Messages() {
                   <StatusBadge status={selected.severity} />
                 </div>
                 <div className="message-detail-meta">
-                  {selected.notification_type && <span>Typ: {selected.notification_type}</span>}
+                  {selected.notification_type && <span>{t('pages.messages.type')}: {selected.notification_type}</span>}
                   {selected.created_at && <span>{selected.created_at.slice(0, 10)}</span>}
                 </div>
                 <div className="message-detail-body">
-                  {selected.content || 'Kein Inhalt'}
+                  {selected.content || t('pages.messages.noContent')}
                 </div>
               </>
             ) : (
               <div className="message-detail-empty">
-                Nachricht auswählen, um Details anzuzeigen
+                {t('pages.messages.selectMessage')}
               </div>
             )}
           </div>
@@ -152,26 +154,26 @@ export default function Messages() {
           <div className="messages-sidebar">
             <div className="messages-filters">
               <button className="btn btn-sm btn-primary" onClick={() => setModal('create')}>
-                + Neue Konversation
+                + {t('pages.messages.newConversation') || 'Neue Konversation'}
               </button>
             </div>
             <div className="messages-list">
               {threads.length === 0 ? (
-                <p className="panel-empty">Keine Konversationen</p>
-              ) : threads.map(t => (
+                <p className="panel-empty">{t('pages.messages.noConversations') || 'Keine Konversationen'}</p>
+              ) : threads.map(thr => (
                 <div
-                  key={t.id}
-                  className={`message-item ${selectedThread?.id === t.id ? 'active' : ''}`}
-                  onClick={() => loadThreadMessages(t)}
+                  key={thr.id}
+                  className={`message-item ${selectedThread?.id === thr.id ? 'active' : ''}`}
+                  onClick={() => loadThreadMessages(thr)}
                 >
                   <div className="message-item-header">
-                    <span className="message-item-title">{t.subject}</span>
+                    <span className="message-item-title">{thr.subject}</span>
                     <span className="text-muted" style={{ fontSize: '0.75rem' }}>
-                      {t.message_count} Nachrichten
+                      {thr.message_count} {t('pages.messages.messagesCount') || 'Nachrichten'}
                     </span>
                   </div>
                   <div className="message-item-date">
-                    {t.last_message_at?.slice(0, 10) || t.created_at?.slice(0, 10)}
+                    {thr.last_message_at?.slice(0, 10) || thr.created_at?.slice(0, 10)}
                   </div>
                 </div>
               ))}
@@ -185,7 +187,7 @@ export default function Messages() {
                 </div>
                 <div className="thread-messages">
                   {threadMessages.length === 0 ? (
-                    <p className="empty-text" style={{ padding: '1rem' }}>Noch keine Nachrichten in diesem Thread</p>
+                    <p className="empty-text" style={{ padding: '1rem' }}>{t('pages.messages.noThreadMessages') || 'Noch keine Nachrichten in diesem Thread'}</p>
                   ) : threadMessages.map(m => (
                     <div key={m.id} className="thread-message">
                       <div className="thread-message-header">
@@ -200,18 +202,18 @@ export default function Messages() {
                   <textarea
                     value={newMessage}
                     onChange={e => setNewMessage(e.target.value)}
-                    placeholder="Nachricht schreiben..."
+                    placeholder={t('pages.messages.writePlaceholder') || 'Nachricht schreiben...'}
                     rows={3}
                     onKeyDown={e => { if (e.key === 'Enter' && e.ctrlKey) handleSendMessage(); }}
                   />
                   <button className="btn btn-primary" onClick={handleSendMessage} disabled={!newMessage.trim()}>
-                    Senden
+                    {t('pages.messages.send') || 'Senden'}
                   </button>
                 </div>
               </>
             ) : (
               <div className="message-detail-empty">
-                Konversation auswählen oder neue erstellen
+                {t('pages.messages.selectOrCreateConversation') || 'Konversation auswählen oder neue erstellen'}
               </div>
             )}
           </div>
@@ -220,7 +222,7 @@ export default function Messages() {
 
       {modal && (
         <FormModal
-          title="Neue Konversation"
+          title={t('pages.messages.newConversation') || 'Neue Konversation'}
           fields={threadFields}
           initial={null}
           onSave={handleCreateThread}

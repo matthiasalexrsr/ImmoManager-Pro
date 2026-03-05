@@ -225,11 +225,11 @@ export default function Dashboard() {
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
-          ) : <p className="chart-empty">{t('emptyStates.generic.title')}</p>}
+          ) : <p className="chart-empty">{t('pages.dashboard.noBookings')}</p>}
         </ChartPanel>
 
         {/* Receivables Aging */}
-        <ChartPanel title={t('finance.receivables.openReceivables')}>
+        <ChartPanel title={t('pages.dashboard.receivablesAging')}>
           {agingData.some(d => d.value > 0) ? (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={agingData}>
@@ -240,7 +240,7 @@ export default function Dashboard() {
                 <Bar dataKey="value" fill="#d97706" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
-          ) : <p className="chart-empty">{t('emptyStates.generic.title')}</p>}
+          ) : <p className="chart-empty">{t('pages.dashboard.noReceivables')}</p>}
         </ChartPanel>
       </div>
 
@@ -261,11 +261,11 @@ export default function Dashboard() {
                 <Line type="monotone" dataKey={forecastExpenseLabel} stroke="#dc2626" strokeWidth={1} dot={false} strokeDasharray="4 2" />
               </LineChart>
             </ResponsiveContainer>
-          ) : <p className="chart-empty">{t('emptyStates.generic.title')}</p>}
+          ) : <p className="chart-empty">{t('pages.dashboard.noForecast')}</p>}
         </ChartPanel>
 
         {/* Maintenance Costs by Category */}
-        <ChartPanel title={t('reports.standard.maintenanceCosts')}>
+        <ChartPanel title={t('pages.dashboard.maintenanceCosts')}>
           {maintData.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={maintData} layout="vertical">
@@ -276,11 +276,11 @@ export default function Dashboard() {
                 <Bar dataKey="estimatedCost" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
-          ) : <p className="chart-empty">{t('emptyStates.generic.title')}</p>}
+          ) : <p className="chart-empty">{t('pages.dashboard.noMaintenanceCosts')}</p>}
         </ChartPanel>
 
         {/* Finance by Category */}
-        <ChartPanel title={t('dashboard.widgets.costsByCategory')}>
+        <ChartPanel title={t('pages.dashboard.financeByCategory')}>
           {financeData.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
               <PieChart>
@@ -294,15 +294,15 @@ export default function Dashboard() {
                 <Tooltip formatter={v => fmt(v)} />
               </PieChart>
             </ResponsiveContainer>
-          ) : <p className="chart-empty">{t('emptyStates.generic.title')}</p>}
+          ) : <p className="chart-empty">{t('pages.dashboard.noFinanceData')}</p>}
         </ChartPanel>
       </div>
 
       {/* Activity Panels */}
       <div className="dashboard-panels">
         <div className="panel">
-          <h3>{t('dashboard.widgets.tasksDue')}</h3>
-          {tasks.length === 0 ? <p className="empty-text">{t('emptyStates.generic.title')}</p> : (
+          <h3>{t('pages.dashboard.openTasks')}</h3>
+          {tasks.length === 0 ? <p className="empty-text">{t('pages.dashboard.noOpenTasks')}</p> : (
             <ul className="activity-list">
               {tasks.map(t => (
                 <li key={t.id}>
@@ -328,7 +328,7 @@ export default function Dashboard() {
                   <span className="activity-date">{c.endDate}</span>
                   <StatusBadge status={c.daysRemaining <= 30 ? 'overdue' : 'warning'} />
                   <span className="text-muted" style={{ fontSize: '0.75rem' }}>
-                    {c.daysRemaining} Tage
+                    {c.daysRemaining} {t('pages.dashboard.days')}
                   </span>
                 </li>
               ))}
@@ -340,8 +340,8 @@ export default function Dashboard() {
         </div>
 
         <div className="panel">
-          <h3>{t('topBar.notifications')}</h3>
-          {notifications.length === 0 ? <p className="empty-text">{t('emptyStates.generic.title')}</p> : (
+          <h3>{t('pages.dashboard.notifications')}</h3>
+          {notifications.length === 0 ? <p className="empty-text">{t('pages.dashboard.noNotifications')}</p> : (
             <ul className="activity-list">
               {notifications.map(n => (
                 <li key={n.id}>

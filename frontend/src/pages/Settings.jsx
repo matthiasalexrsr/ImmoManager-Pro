@@ -81,34 +81,34 @@ export default function Settings() {
 
   return (
     <div className="page">
-      <h1 className="page-title">{t('navigation.main.settings')}</h1>
+      <h1 className="page-title">{t('pages.settings.title')}</h1>
       <div className="settings-grid">
         <div className="panel">
-          <div className="panel-header">{t('settings.areas.general')}</div>
+          <div className="panel-header">{t('pages.settings.appearance')}</div>
           <div className="panel-body settings-section">
             <div className="settings-row">
-              <label>Theme</label>
+              <label>{t('pages.settings.theme')}</label>
               <div className="settings-control">
                 <button
                   className={`btn btn-sm ${prefs.theme === 'light' ? 'btn-primary' : 'btn-secondary'}`}
                   onClick={() => prefs.theme !== 'light' && toggleTheme()}
-                >{tr('settings.theme.light', 'Hell')}</button>
+                >{t('pages.settings.light')}</button>
                 <button
                   className={`btn btn-sm ${prefs.theme === 'dark' ? 'btn-primary' : 'btn-secondary'}`}
                   onClick={() => prefs.theme !== 'dark' && toggleTheme()}
-                >{tr('settings.theme.dark', 'Dunkel')}</button>
+                >{t('pages.settings.dark')}</button>
               </div>
             </div>
             <div className="settings-row">
-              <label>Sidebar</label>
+              <label>{t('pages.settings.sidebar')}</label>
               <div className="settings-control">
                 <button className="btn btn-sm btn-secondary" onClick={toggleSidebar}>
-                  {prefs.sidebar_collapsed ? tr('settings.sidebar.show', 'Einblenden') : tr('settings.sidebar.hide', 'Ausblenden')}
+                  {prefs.sidebar_collapsed ? t('pages.settings.show') : t('pages.settings.hide')}
                 </button>
               </div>
             </div>
             <div className="settings-row">
-              <label>{t('settings.general.language')}</label>
+              <label>{t('pages.settings.language')}</label>
               <div className="settings-control">
                 {['de-DE', 'en-US', 'es-ES'].map(loc => (
                   <button
@@ -123,10 +123,10 @@ export default function Settings() {
         </div>
 
         <div className="panel">
-          <div className="panel-header">{tr('settings.tables.title', 'Tabellen')}</div>
+          <div className="panel-header">{t('pages.settings.tables')}</div>
           <div className="panel-body settings-section">
             <div className="settings-row">
-              <label>{t('ui.table.rowsPerPage')}</label>
+              <label>{t('pages.settings.itemsPerPage')}</label>
               <div className="settings-control">
                 <select
                   value={prefs.items_per_page || 25}
@@ -141,7 +141,7 @@ export default function Settings() {
               </div>
             </div>
             <div className="settings-row">
-              <label>{t('settings.general.dateFormat')}</label>
+              <label>{t('pages.settings.dateFormat')}</label>
               <div className="settings-control">
                 <select
                   value={prefs.date_format || 'DD.MM.YYYY'}
@@ -155,16 +155,16 @@ export default function Settings() {
               </div>
             </div>
             <div className="settings-row">
-              <label>{t('settings.general.currency')}</label>
+              <label>{t('pages.settings.currency')}</label>
               <div className="settings-control">
                 <select
                   value={prefs.currency || 'EUR'}
                   onChange={e => updatePrefs({ currency: e.target.value })}
                   className="page-size-select"
                 >
-                  <option value="EUR">Euro (€)</option>
-                  <option value="CHF">CHF (Fr.)</option>
-                  <option value="USD">USD ($)</option>
+                  <option value="EUR">{t('pages.settings.eurLabel')}</option>
+                  <option value="CHF">{t('pages.settings.chfLabel')}</option>
+                  <option value="USD">{t('pages.settings.usdLabel')}</option>
                 </select>
               </div>
             </div>
