@@ -36,6 +36,38 @@ from ..storage import NotFoundError, ValidationError
 router = APIRouter(prefix="/billing", tags=["Abrechnung"])
 
 
+def _build_consumption_by_unit(period, contract_unit_ids: set[str]) -> dict[str, Decimal]:
+    """Aggregate consumption per unit from standalone meters/readings in period."""
+    meters = [
+        m
+        for m in store.list_meters()
+        if m.unit_id in contract_unit_ids and m.is_active is not False
+    ]
+    meter_by_id = {m.id: m for m in meters}
+
+    readings_by_meter: dict[str, list] = {}
+    for reading in store.list_standalone_meter_readings():
+        meter = meter_by_id.get(reading.meter_id)
+        if meter is None:
+            continue
+        if not (period.start_date <= reading.reading_date <= period.end_date):
+            continue
+        readings_by_meter.setdefault(reading.meter_id, []).append(reading)
+
+    consumption_by_unit: dict[str, Decimal] = {}
+    for meter_id, readings in readings_by_meter.items():
+        if len(readings) < 2:
+            continue
+        sorted_readings = sorted(readings, key=lambda r: r.reading_date)
+        consumption = Decimal(str(sorted_readings[-1].value)) - Decimal(str(sorted_readings[0].value))
+        if consumption <= 0:
+            continue
+        unit_id = meter_by_id[meter_id].unit_id
+        consumption_by_unit[unit_id] = consumption_by_unit.get(unit_id, Decimal("0")) + consumption
+
+    return consumption_by_unit
+
+
 # ---------------------------------------------------------------------------
 # Billing Periods
 # ---------------------------------------------------------------------------
@@ -278,8 +310,11 @@ def get_billing_period_preflight(period_id: str) -> BillingPreflightResult:
     area_missing_unit_ids: list[str] = []
     non_positive_cost_ids: list[str] = []
     missing_advance_contract_ids: list[str] = []
+    missing_person_count_unit_ids: list[str] = []
 
     requires_area = any(k.key_type == "area_sqm" for k in allocation_keys.values())
+    requires_person_count = any(k.key_type == "person_count" for k in allocation_keys.values())
+    requires_consumption = any(k.key_type == "consumption" for k in allocation_keys.values())
 
     for contract in contracts_in_period:
         try:
@@ -291,6 +326,8 @@ def get_billing_period_preflight(period_id: str) -> BillingPreflightResult:
 
         if requires_area and (unit.area_sqm is None or unit.area_sqm <= 0):
             area_missing_unit_ids.append(unit.id)
+        if requires_person_count and (unit.rooms is None or unit.rooms <= 0):
+            missing_person_count_unit_ids.append(unit.id)
 
         monthly_advance = float((unit.service_charge_advance or 0) + (unit.heating_advance or 0))
         if monthly_advance <= 0:
@@ -299,6 +336,12 @@ def get_billing_period_preflight(period_id: str) -> BillingPreflightResult:
     for ci in cost_items:
         if ci.amount <= 0:
             non_positive_cost_ids.append(ci.id)
+
+    consumption_units_with_data = set()
+    if requires_consumption:
+        contract_unit_ids = {c.unit_id for c in contracts_in_period}
+        consumption_by_unit = _build_consumption_by_unit(period, contract_unit_ids)
+        consumption_units_with_data = {uid for uid, val in consumption_by_unit.items() if val > 0}
 
     if missing_unit_contract_ids:
         add_issue(
@@ -313,6 +356,19 @@ def get_billing_period_preflight(period_id: str) -> BillingPreflightResult:
             "MISSING_AREA",
             "Fläche fehlt oder ist 0 für area_sqm-Verteilung",
             ", ".join(sorted(set(area_missing_unit_ids))),
+        )
+    if missing_person_count_unit_ids:
+        add_issue(
+            "blocker",
+            "MISSING_PERSON_COUNT",
+            "rooms fehlt oder ist 0 für person_count-Verteilung",
+            ", ".join(sorted(set(missing_person_count_unit_ids))),
+        )
+    if requires_consumption and not consumption_units_with_data and contracts_in_period:
+        add_issue(
+            "blocker",
+            "MISSING_CONSUMPTION",
+            "Keine verwertbaren Verbrauchsdaten für consumption-Verteilung im Zeitraum",
         )
     if non_positive_cost_ids:
         add_issue(
@@ -336,6 +392,8 @@ def get_billing_period_preflight(period_id: str) -> BillingPreflightResult:
         "allocation_keys_missing": len(missing_key_ids),
         "units_missing": len(missing_unit_contract_ids),
         "area_missing_units": len(set(area_missing_unit_ids)),
+        "person_count_missing_units": len(set(missing_person_count_unit_ids)),
+        "consumption_units_with_data": len(consumption_units_with_data),
         "contracts_without_advance": len(missing_advance_contract_ids),
         "non_positive_cost_items": len(non_positive_cost_ids),
     }
@@ -473,6 +531,9 @@ def generate_utility_statements(period_id: str) -> list[UtilityStatement]:
                 contract.unit_id, contract.id,
             )
 
+    contract_unit_ids = {c.unit_id for c in contracts_in_period}
+    consumption_by_unit = _build_consumption_by_unit(period, contract_unit_ids)
+
     # Register unit shares for each allocation key
     for contract in contracts_in_period:
         unit = unit_cache.get(contract.unit_id)
@@ -484,9 +545,22 @@ def generate_utility_statements(period_id: str) -> list[UtilityStatement]:
                 share_value = Decimal(str(unit.area_sqm or 0))
             elif key.key_type == "unit_count":
                 share_value = Decimal("1")
+            elif key.key_type == "person_count":
+                share_value = Decimal(str(unit.rooms or 0))
+            elif key.key_type == "consumption":
+                share_value = consumption_by_unit.get(unit.id, Decimal("0"))
             else:
                 # Default: equal distribution
                 share_value = Decimal("1")
+
+            if share_value <= Decimal("0"):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        f"Ungültiger Anteil für Schlüsseltyp '{key.key_type}' "
+                        f"(Vertrag {contract.id}, Einheit {unit.id})"
+                    ),
+                )
 
             engine.add_unit_share(
                 key_id,
