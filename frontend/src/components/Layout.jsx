@@ -63,6 +63,7 @@ const NAV_SECTIONS = [
       { to: '/meters', labelKey: 'navigation.main.meters', fallback: 'Z\u00e4hler', icon: MeterIcon },
       { to: '/messages', labelKey: 'navigation.main.messages', fallback: 'Nachrichten', icon: MessageIcon },
       { to: '/integrations', labelKey: 'navigation.main.integrations', fallback: 'Integrationen', icon: IntegrationIcon },
+      { href: '/mietvertrag', labelKey: 'navigation.main.contractWizard', fallback: 'Mietvertrag-Wizard', icon: ContractIcon, externalApp: true },
       { to: '/settings', labelKey: 'navigation.main.settings', fallback: 'Einstellungen', icon: SettingsIcon },
     ],
   },
@@ -105,19 +106,32 @@ export default function Layout() {
                   {tr(section.labelKey, section.fallback)}
                 </div>
               )}
-              {section.items.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  end={item.to === '/'}
-                  className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-                >
-                  <span className="icon-wrapper">
-                    <item.icon size={18} />
-                  </span>
-                  {!collapsed && <span>{tr(item.labelKey, item.fallback)}</span>}
-                </NavLink>
-              ))}
+              {section.items.map((item) => {
+                if (item.externalApp) {
+                  return (
+                    <a key={item.href} href={item.href} className="nav-link">
+                      <span className="icon-wrapper">
+                        <item.icon size={18} />
+                      </span>
+                      {!collapsed && <span>{tr(item.labelKey, item.fallback)}</span>}
+                    </a>
+                  );
+                }
+
+                return (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    end={item.to === '/'}
+                    className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+                  >
+                    <span className="icon-wrapper">
+                      <item.icon size={18} />
+                    </span>
+                    {!collapsed && <span>{tr(item.labelKey, item.fallback)}</span>}
+                  </NavLink>
+                );
+              })}
             </div>
           ))}
         </nav>

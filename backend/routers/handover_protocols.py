@@ -135,9 +135,13 @@ def patch_meter_reading(protocol_id: str, reading_id: str, payload: MeterReading
         existing = store.get_meter_reading(reading_id)
         if existing.handover_id != protocol_id:
             raise NotFoundError("Zählerstand nicht gefunden")
+        updates = payload.model_dump(exclude_unset=True)
+        if "handover_id" in updates and updates["handover_id"] != protocol_id:
+            raise ValidationError("handover_id muss der URL-Protokoll-ID entsprechen")
         return store._patch_entity(None, reading_id, payload, "Zählerstand nicht gefunden")
-    except NotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (NotFoundError, ValidationError) as exc:
+        code = 404 if isinstance(exc, NotFoundError) else 400
+        raise HTTPException(status_code=code, detail=str(exc)) from exc
 
 
 @router.delete("/{protocol_id}/meter-readings/{reading_id}", status_code=status.HTTP_204_NO_CONTENT)
