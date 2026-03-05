@@ -2,7 +2,7 @@ from fastapi.testclient import TestClient
 
 from backend.app import app
 from backend.auth import clear_users, create_access_token, register_user
-from backend.services.integration_service import integration_service
+from backend.services.integrations.manager import integration_manager
 
 
 def _auth_headers():
@@ -13,20 +13,21 @@ def _auth_headers():
 
 def test_list_integration_status_authenticated():
     client = TestClient(app)
-    resp = client.get("/api/v1/integrations/status", headers=_auth_headers())
+    resp = client.get("/api/v1/integrations", headers=_auth_headers())
     assert resp.status_code == 200
     data = resp.json()
     assert "integrations" in data
     assert any(i["id"] == "email" for i in data["integrations"])
+    assert any(i["id"] == "listing-portals" for i in data["integrations"])
 
 
-def test_toggle_and_run_contract_wizard():
+def test_toggle_run_and_history_contract_wizard():
     client = TestClient(app)
     headers = _auth_headers()
 
-    toggle = client.patch("/api/v1/integrations/contract-wizard", headers=headers, json={"enabled": False})
+    toggle = client.patch("/api/v1/integrations/contract-wizard", headers=headers, json={"enabled": True})
     assert toggle.status_code == 200
-    assert toggle.json()["enabled"] is False
+    assert toggle.json()["enabled"] is True
 
     run = client.post(
         "/api/v1/integrations/contract-wizard/run",
@@ -38,4 +39,26 @@ def test_toggle_and_run_contract_wizard():
     assert body["success"] is True
     assert "Vertragsentwurf" in body["message"]
 
-    integration_service.toggle("contract-wizard", True)
+    history = client.get("/api/v1/integrations/contract-wizard/history?limit=5", headers=headers)
+    assert history.status_code == 200
+    items = history.json()["items"]
+    assert len(items) >= 1
+    assert items[0]["integration_id"] == "contract-wizard"
+
+
+def test_update_config_endpoint():
+    client = TestClient(app)
+    headers = _auth_headers()
+
+    update = client.put(
+        "/api/v1/integrations/whatsapp/config",
+        headers=headers,
+        json={"config": {"phone_number_id": "123", "api_token": "abc"}},
+    )
+    assert update.status_code == 200
+
+    detail = client.get("/api/v1/integrations/whatsapp", headers=headers)
+    assert detail.status_code == 200
+    assert detail.json()["configured"] is True
+
+    integration_manager.update_config("whatsapp", {"phone_number_id": None, "api_token": None})

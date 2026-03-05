@@ -1,70 +1,70 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
-import { AlertIcon, MessageIcon, ContractIcon, DocumentIcon } from '../components/Icons';
+import { AlertIcon, MessageIcon, ContractIcon, DocumentIcon, BuildingIcon } from '../components/Icons';
 
-const INTEGRATIONS = [
-  {
-    id: 'email',
-    name: 'E-Mail API',
-    description: 'E-Mails direkt an Mieter, Handwerker und Makler senden. Automatische Benachrichtigungen bei Vertragsänderungen und Wartungsanfragen.',
-    icon: MessageIcon,
-    features: ['E-Mail-Vorlagen für Standardkommunikation', 'Automatische Mieterhöhungsmitteilungen', 'Wartungsbestätigungen', 'Nebenkostenabrechnungsversand'],
-  },
-  {
-    id: 'whatsapp',
-    name: 'WhatsApp Business API',
-    description: 'WhatsApp-Nachrichten an Kontakte senden. Schnelle Kommunikation mit Mietern und Dienstleistern.',
-    icon: MessageIcon,
-    features: ['Textnachrichten und Medien', 'Automatische Erinnerungen', 'Wartungsstatus-Updates', 'Besichtigungsterminbestätigungen'],
-  },
-  {
-    id: 'contract-wizard',
-    name: 'Mietvertrags-Assistent',
-    description: 'Mietverträge direkt in der Anwendung erstellen. Vorlagen basierend auf deutschen Mietrecht-Standards.',
-    icon: ContractIcon,
-    features: ['Vorkonfigurierte Vertragsvorlagen', 'Automatische Klauselauswahl nach Wohnungstyp', 'Nebenkostenpauschale oder Vorauszahlung', 'Staffelmiete und Indexmiete', 'PDF-Export und digitale Signatur'],
-  },
-  {
-    id: 'deutsche-post',
-    name: 'Deutsche Post API',
-    description: 'Physische Briefe direkt aus der Anwendung versenden. Einschreiben, Standardbriefe und Dokumente per Post.',
-    icon: DocumentIcon,
-    features: ['Standardbrief und Einschreiben', 'Automatische Adressformatierung', 'Sendungsverfolgung', 'Sammelversand für Nebenkostenabrechnungen'],
-  },
-];
+const ICONS = {
+  communication: MessageIcon,
+  workflow: ContractIcon,
+  delivery: DocumentIcon,
+  listing: BuildingIcon,
+};
+
+const runPayloadFor = (integrationId) => {
+  if (integrationId === 'email') {
+    return {
+      recipient: 'demo@example.com',
+      subject: 'ImmoManager Pro Test',
+      body: 'Integrationstest erfolgreich.',
+    };
+  }
+
+  if (integrationId === 'contract-wizard') {
+    return { tenant_name: 'Max Mustermann', property_name: 'Musterstraße 1' };
+  }
+
+  return {};
+};
 
 export default function Integrations() {
-  const [statusMap, setStatusMap] = useState({});
+  const [integrations, setIntegrations] = useState([]);
   const [messages, setMessages] = useState({});
+  const [loading, setLoading] = useState(true);
+
+  const loadIntegrations = () => {
+    setLoading(true);
+    api.get('/integrations')
+      .then((res) => setIntegrations(res.integrations || []))
+      .catch((err) => console.warn('[Integrations] load:', err.message))
+      .finally(() => setLoading(false));
+  };
 
   useEffect(() => {
-    api.get('/integrations/status')
-      .then((res) => {
-        const mapped = {};
-        (res.integrations || []).forEach((item) => { mapped[item.id] = item; });
-        setStatusMap(mapped);
-      })
-      .catch((err) => console.warn('[Integrations] status:', err.message));
+    loadIntegrations();
   }, []);
 
   const toggleIntegration = async (id, enabled) => {
     try {
-      const res = await api.patch(`/integrations/${id}`, { enabled });
-      setStatusMap(prev => ({ ...prev, [id]: { ...(prev[id] || {}), enabled: res.enabled } }));
+      await api.patch(`/integrations/${id}`, { enabled });
+      setIntegrations((prev) => prev.map((it) => (it.id === id ? { ...it, enabled } : it)));
     } catch (err) {
-      console.warn('[Integrations] toggle:', err.message);
+      setMessages((prev) => ({ ...prev, [id]: `Fehler: ${err.message}` }));
     }
   };
 
   const runIntegration = async (id) => {
     try {
-      const payload = id === 'email'
-        ? { recipient: 'demo@example.com', subject: 'ImmoManager Pro Test', body: 'Integrationstest erfolgreich.' }
-        : { tenant_name: 'Max Mustermann', property_name: 'Musterstraße 1' };
-      const res = await api.post(`/integrations/${id}/run`, { payload });
-      setMessages(prev => ({ ...prev, [id]: res.message || 'Aktion ausgeführt' }));
+      const res = await api.post(`/integrations/${id}/run`, { payload: runPayloadFor(id) });
+      setMessages((prev) => ({ ...prev, [id]: res.message || 'Aktion ausgeführt' }));
+      const history = await api.get(`/integrations/${id}/history?limit=1`);
+      const latest = history?.items?.[0];
+      if (latest) {
+        setMessages((prev) => ({
+          ...prev,
+          [id]: `${res.message || 'Aktion ausgeführt'} (${latest.created_at})`,
+        }));
+      }
     } catch (err) {
-      setMessages(prev => ({ ...prev, [id]: `Fehler: ${err.message}` }));
+      setMessages((prev) => ({ ...prev, [id]: `Fehler: ${err.message}` }));
     }
   };
 
@@ -72,41 +72,46 @@ export default function Integrations() {
     <div className="page">
       <h1 className="page-title">Integrationen</h1>
       <p className="text-muted" style={{ marginBottom: '1.5rem' }}>
-        Integrationen konfigurieren, aktivieren und testen.
+        Integrationsmodule verwalten, Konfiguration validieren und Testläufe ausführen.
       </p>
 
+      {loading && <p className="text-muted">Lade Integrationen...</p>}
+
       <div className="integrations-grid">
-        {INTEGRATIONS.map((intg) => {
-          const Ico = intg.icon;
-          const status = statusMap[intg.id];
-          const isEnabled = !!status?.enabled;
+        {integrations.map((intg) => {
+          const Ico = ICONS[intg.category] || AlertIcon;
           return (
             <div key={intg.id} className="panel integration-card">
               <div className="panel-header" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <Ico size={20} />
                 <span>{intg.name}</span>
-                <span className={`badge ${isEnabled ? 'badge-green' : 'badge-planned'}`} style={{ marginLeft: 'auto' }}>
-                  <AlertIcon size={12} /> {isEnabled ? 'Aktiv' : 'Inaktiv'}
+                <span className={`badge ${intg.enabled ? 'badge-green' : 'badge-planned'}`} style={{ marginLeft: 'auto' }}>
+                  <AlertIcon size={12} /> {intg.message || (intg.enabled ? 'Aktiv' : 'Inaktiv')}
                 </span>
               </div>
               <div className="panel-body">
                 <p style={{ marginBottom: '0.5rem' }}>{intg.description}</p>
-                <p className="text-muted" style={{ marginBottom: '1rem', fontSize: '0.85rem' }}>
-                  {status?.message || 'Status wird geladen...'}
+                <p className="text-muted" style={{ marginBottom: '0.5rem', fontSize: '0.85rem' }}>
+                  Kategorie: {intg.category} · {intg.configured ? 'Konfiguriert' : 'Nicht konfiguriert'}
                 </p>
+                <p className="text-muted" style={{ marginBottom: '1rem', fontSize: '0.85rem' }}>
+                  Health: {intg.health?.status || 'unknown'}
+                </p>
+
                 <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-                  <button className="btn btn-sm btn-secondary" onClick={() => toggleIntegration(intg.id, !isEnabled)}>
-                    {isEnabled ? 'Deaktivieren' : 'Aktivieren'}
+                  <button className="btn btn-sm btn-secondary" onClick={() => toggleIntegration(intg.id, !intg.enabled)}>
+                    {intg.enabled ? 'Deaktivieren' : 'Aktivieren'}
                   </button>
                   <button className="btn btn-sm btn-primary" onClick={() => runIntegration(intg.id)}>
                     Test ausführen
                   </button>
                 </div>
                 {messages[intg.id] && <div className="text-muted" style={{ marginBottom: '1rem' }}>{messages[intg.id]}</div>}
-                <h4 style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>Funktionen:</h4>
+
+                <h4 style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>Capabilities:</h4>
                 <ul className="integration-features">
-                  {intg.features.map((f, i) => (
-                    <li key={i}>{f}</li>
+                  {(intg.capabilities || []).map((feature, i) => (
+                    <li key={i}>{feature}</li>
                   ))}
                 </ul>
               </div>
