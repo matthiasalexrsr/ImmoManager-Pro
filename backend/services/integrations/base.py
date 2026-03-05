@@ -1,4 +1,4 @@
-"""Core contracts for integration providers and run tracking."""
+"""Core contracts for integration providers, config, and run tracking."""
 
 from __future__ import annotations
 
@@ -24,6 +24,8 @@ class IntegrationManifest:
     planned: bool = False
     enabled_by_default: bool = False
     capabilities: list[str] = field(default_factory=list)
+    required_config_keys: list[str] = field(default_factory=list)
+    secret_config_keys: list[str] = field(default_factory=list)
 
 
 @dataclass

@@ -25,7 +25,6 @@ def list_integrations() -> dict:
 
 @router.get("/status")
 def list_integration_status() -> dict:
-    # Backwards compatible alias
     return {"integrations": integration_manager.list_integrations()}
 
 
@@ -33,6 +32,22 @@ def list_integration_status() -> dict:
 def get_integration(integration_id: str) -> dict:
     try:
         return integration_manager.get_integration(integration_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Integration nicht gefunden") from exc
+
+
+@router.get("/{integration_id}/schema")
+def get_integration_schema(integration_id: str) -> dict:
+    try:
+        return integration_manager.get_schema(integration_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Integration nicht gefunden") from exc
+
+
+@router.post("/{integration_id}/validate")
+def validate_integration_config(integration_id: str, body: IntegrationConfigPayload) -> dict:
+    try:
+        return integration_manager.validate_config(integration_id, body.config)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Integration nicht gefunden") from exc
 
@@ -51,6 +66,8 @@ def update_integration_config(integration_id: str, body: IntegrationConfigPayloa
         return integration_manager.update_config(integration_id, body.config)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Integration nicht gefunden") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/{integration_id}/run")

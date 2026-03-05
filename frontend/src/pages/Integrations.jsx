@@ -94,8 +94,11 @@ export default function Integrations() {
                 <p className="text-muted" style={{ marginBottom: '0.5rem', fontSize: '0.85rem' }}>
                   Kategorie: {intg.category} · {intg.configured ? 'Konfiguriert' : 'Nicht konfiguriert'}
                 </p>
-                <p className="text-muted" style={{ marginBottom: '1rem', fontSize: '0.85rem' }}>
+                <p className="text-muted" style={{ marginBottom: '0.5rem', fontSize: '0.85rem' }}>
                   Health: {intg.health?.status || 'unknown'}
+                </p>
+                <p className="text-muted" style={{ marginBottom: '1rem', fontSize: '0.85rem' }}>
+                  Pflicht-Konfiguration: {(intg.required_config_keys || []).join(', ') || 'Keine'}
                 </p>
 
                 <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>

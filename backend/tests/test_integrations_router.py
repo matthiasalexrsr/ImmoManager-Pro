@@ -46,9 +46,22 @@ def test_toggle_run_and_history_contract_wizard():
     assert items[0]["integration_id"] == "contract-wizard"
 
 
-def test_update_config_endpoint():
+def test_schema_validate_and_config_masking_endpoint():
     client = TestClient(app)
     headers = _auth_headers()
+
+    schema = client.get("/api/v1/integrations/whatsapp/schema", headers=headers)
+    assert schema.status_code == 200
+    schema_data = schema.json()
+    assert "api_token" in schema_data["required_config_keys"]
+
+    validate = client.post(
+        "/api/v1/integrations/whatsapp/validate",
+        headers=headers,
+        json={"config": {"phone_number_id": "123"}},
+    )
+    assert validate.status_code == 200
+    assert validate.json()["valid"] is False
 
     update = client.put(
         "/api/v1/integrations/whatsapp/config",
@@ -56,9 +69,11 @@ def test_update_config_endpoint():
         json={"config": {"phone_number_id": "123", "api_token": "abc"}},
     )
     assert update.status_code == 200
+    assert update.json()["config"]["api_token"] == "***"
 
     detail = client.get("/api/v1/integrations/whatsapp", headers=headers)
     assert detail.status_code == 200
     assert detail.json()["configured"] is True
+    assert detail.json()["config"]["api_token"] == "***"
 
     integration_manager.update_config("whatsapp", {"phone_number_id": None, "api_token": None})

@@ -70,5 +70,8 @@ class Settings(BaseSettings):
     # that still expect in-memory repositories for SQLite.
     sqlite_persistent_store: bool = False
 
+    # --- Integrations ---
+    integration_state_file: str | None = None
+
 
 settings = Settings()

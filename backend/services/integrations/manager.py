@@ -5,7 +5,9 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import asdict
 
+from ...config import settings
 from .base import IntegrationProvider, IntegrationRunRecord
+from .config_store import InMemoryIntegrationConfigStore, JsonFileIntegrationConfigStore
 from .providers import (
     ContractWizardProvider,
     DeutschePostProvider,
@@ -16,11 +18,12 @@ from .providers import (
 
 
 class IntegrationManager:
-    def __init__(self) -> None:
+    def __init__(self, store=None) -> None:
         self._providers: dict[str, IntegrationProvider] = {}
         self._enabled: dict[str, bool] = {}
         self._config: dict[str, dict] = {}
         self._history: dict[str, list[IntegrationRunRecord]] = defaultdict(list)
+        self._store = store or InMemoryIntegrationConfigStore()
 
     def register(self, provider: IntegrationProvider) -> None:
         integration_id = provider.manifest.integration_id
@@ -37,12 +40,10 @@ class IntegrationManager:
             ListingPortalProvider(),
         ):
             self.register(provider)
+        self._load_state()
 
     def list_integrations(self) -> list[dict]:
-        result = []
-        for integration_id in sorted(self._providers.keys()):
-            result.append(self.get_integration(integration_id))
-        return result
+        return [self.get_integration(integration_id) for integration_id in sorted(self._providers.keys())]
 
     def get_integration(self, integration_id: str) -> dict:
         provider = self._providers.get(integration_id)
@@ -52,6 +53,7 @@ class IntegrationManager:
         manifest = provider.manifest
         config = self._config.get(integration_id, {})
         health = provider.health(config)
+        enabled = self._enabled.get(integration_id, False)
         configured = provider.is_configured(config)
         return {
             "id": manifest.integration_id,
@@ -59,30 +61,58 @@ class IntegrationManager:
             "category": manifest.category,
             "description": manifest.description,
             "planned": manifest.planned,
-            "enabled": self._enabled.get(integration_id, False),
+            "enabled": enabled,
             "configured": configured,
             "capabilities": manifest.capabilities,
             "health": health,
-            "config": config,
-            "message": self._to_message(
-                configured=configured,
-                enabled=self._enabled.get(integration_id, False),
-                health=health,
-            ),
+            "config": self._safe_config(manifest, config),
+            "required_config_keys": manifest.required_config_keys,
+            "secret_config_keys": manifest.secret_config_keys,
+            "message": self._to_message(configured=configured, enabled=enabled, health=health),
         }
+
+    def get_schema(self, integration_id: str) -> dict:
+        provider = self._providers.get(integration_id)
+        if provider is None:
+            raise KeyError(integration_id)
+        manifest = provider.manifest
+        return {
+            "id": manifest.integration_id,
+            "required_config_keys": manifest.required_config_keys,
+            "secret_config_keys": manifest.secret_config_keys,
+            "capabilities": manifest.capabilities,
+        }
+
+    def validate_config(self, integration_id: str, config: dict) -> dict:
+        provider = self._providers.get(integration_id)
+        if provider is None:
+            raise KeyError(integration_id)
+        if not isinstance(config, dict):
+            return {"valid": False, "missing_keys": [], "message": "Konfiguration muss ein Objekt sein"}
+
+        manifest = provider.manifest
+        missing = [k for k in manifest.required_config_keys if not config.get(k)]
+        if missing:
+            return {"valid": False, "missing_keys": missing, "message": "Pflichtfelder fehlen"}
+        return {"valid": True, "missing_keys": [], "message": "Konfiguration ist gültig"}
 
     def set_enabled(self, integration_id: str, enabled: bool) -> dict:
         if integration_id not in self._providers:
             raise KeyError(integration_id)
         self._enabled[integration_id] = enabled
+        self._persist_state()
         return {"id": integration_id, "enabled": enabled}
 
     def update_config(self, integration_id: str, config_updates: dict) -> dict:
         if integration_id not in self._providers:
             raise KeyError(integration_id)
+        if not isinstance(config_updates, dict):
+            raise ValueError("Config updates must be a dictionary")
         current = self._config.setdefault(integration_id, {})
         current.update(config_updates)
-        return {"id": integration_id, "config": current}
+        self._persist_state()
+        manifest = self._providers[integration_id].manifest
+        return {"id": integration_id, "config": self._safe_config(manifest, current)}
 
     def run(self, integration_id: str, payload: dict) -> dict:
         provider = self._providers.get(integration_id)
@@ -95,6 +125,16 @@ class IntegrationManager:
             return result
 
         config = self._config.get(integration_id, {})
+        validation = self.validate_config(integration_id, config)
+        if not validation.get("valid"):
+            result = {
+                "success": False,
+                "message": validation.get("message", "Ungültige Konfiguration"),
+                "details": validation,
+            }
+            self._append_history(integration_id, payload, result)
+            return result
+
         action = provider.run(payload, config)
         result = {"success": action.success, "message": action.message, "details": action.details}
         self._append_history(integration_id, payload, result)
@@ -115,9 +155,32 @@ class IntegrationManager:
             details=result.get("details"),
         )
         self._history[integration_id].append(record)
-        # keep memory bounded
         if len(self._history[integration_id]) > 200:
             self._history[integration_id] = self._history[integration_id][-200:]
+
+    def _persist_state(self) -> None:
+        self._store.save({"enabled": self._enabled, "config": self._config})
+
+    def _load_state(self) -> None:
+        state = self._store.load()
+        enabled = state.get("enabled", {}) if isinstance(state, dict) else {}
+        config = state.get("config", {}) if isinstance(state, dict) else {}
+        if isinstance(enabled, dict):
+            for integration_id, value in enabled.items():
+                if integration_id in self._providers and isinstance(value, bool):
+                    self._enabled[integration_id] = value
+        if isinstance(config, dict):
+            for integration_id, value in config.items():
+                if integration_id in self._providers and isinstance(value, dict):
+                    self._config[integration_id] = value
+
+    @staticmethod
+    def _safe_config(manifest, config: dict) -> dict:
+        masked = dict(config)
+        for key in manifest.secret_config_keys:
+            if key in masked and masked[key]:
+                masked[key] = "***"
+        return masked
 
     @staticmethod
     def _to_message(*, configured: bool, enabled: bool, health: dict) -> str:
@@ -131,5 +194,10 @@ class IntegrationManager:
         return "Aktiv (eingeschränkt)"
 
 
-integration_manager = IntegrationManager()
+_config_store = (
+    JsonFileIntegrationConfigStore(settings.integration_state_file)
+    if settings.integration_state_file
+    else InMemoryIntegrationConfigStore()
+)
+integration_manager = IntegrationManager(store=_config_store)
 integration_manager.seed_defaults()
