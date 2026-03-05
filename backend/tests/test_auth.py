@@ -32,6 +32,7 @@ from backend.routers.auth import (
     refresh,
     register,
     remove_user,
+    update_my_preferences,
 )
 
 
@@ -197,6 +198,21 @@ class TestAuthRouter:
         prefs = get_my_preferences(user)
         assert prefs["theme"] == "light"
         assert prefs["locale"] == "de-DE"
+
+    def test_update_my_preferences_returns_fallback_when_session_init_fails(self, monkeypatch):
+        user = _register_admin()
+
+        monkeypatch.setattr("backend.db.session.DATABASE_URL", "postgresql://db/test")
+
+        def _raise_session_error():
+            raise RuntimeError("db down")
+
+        monkeypatch.setattr("backend.db.session.SessionLocal", _raise_session_error)
+
+        updated = update_my_preferences({"theme": "dark", "locale": "en-US", "ignored": "x"}, user)
+        assert updated["theme"] == "dark"
+        assert updated["locale"] == "en-US"
+        assert "ignored" not in updated
 
 
 # === RBAC ===

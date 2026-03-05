@@ -33,6 +33,16 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 _ALLOWED_SELF_REGISTER_ROLES = {"readonly", "techniker"}
 
 
+_DEFAULT_PREFERENCES = {
+    "theme": "light",
+    "locale": "de-DE",
+    "sidebar_collapsed": False,
+    "items_per_page": 25,
+    "date_format": "DD.MM.YYYY",
+    "currency": "EUR",
+}
+
+
 @router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
 def register(payload: UserCreate) -> UserRead:
     """Register a new user. Self-registration is restricted to readonly/techniker roles."""
@@ -93,14 +103,6 @@ def get_my_preferences(user: UserRead = Depends(require_auth)) -> dict:
     """Get current user's preferences."""
     import logging
 
-    _defaults = {
-        "theme": "light",
-        "locale": "de-DE",
-        "sidebar_collapsed": False,
-        "items_per_page": 25,
-        "date_format": "DD.MM.YYYY",
-        "currency": "EUR",
-    }
     try:
         from ..db.session import DATABASE_URL
 
@@ -125,20 +127,29 @@ def get_my_preferences(user: UserRead = Depends(require_auth)) -> dict:
                 session.close()
     except Exception:
         logging.getLogger(__name__).warning("Failed to load user preferences, using defaults")
-    return _defaults
+    return _DEFAULT_PREFERENCES.copy()
 
 
 @router.put("/users/me/preferences", response_model=None)
 def update_my_preferences(payload: dict, user: UserRead = Depends(require_auth)) -> dict:
     """Update current user's preferences."""
+    import logging
+
     from ..db.session import DATABASE_URL
+
     allowed_keys = {"theme", "locale", "sidebar_collapsed", "items_per_page", "date_format", "currency"}
     clean = {k: v for k, v in payload.items() if k in allowed_keys}
 
     if DATABASE_URL and "sqlite" not in DATABASE_URL:
-        from ..db.orm_models import UserPreferencesORM
-        from ..db.session import SessionLocal
-        session = SessionLocal()
+        try:
+            from ..db.orm_models import UserPreferencesORM
+            from ..db.session import SessionLocal
+
+            session = SessionLocal()
+        except Exception:
+            logging.getLogger(__name__).warning("Failed to initialize preferences update session")
+            return {**_DEFAULT_PREFERENCES, **clean}
+
         try:
             prefs = session.query(UserPreferencesORM).filter(
                 UserPreferencesORM.user_id == user.id
@@ -160,7 +171,8 @@ def update_my_preferences(payload: dict, user: UserRead = Depends(require_auth))
             }
         except Exception:
             session.rollback()
-            raise
+            logging.getLogger(__name__).warning("Failed to persist user preferences update")
+            return {**_DEFAULT_PREFERENCES, **clean}
         finally:
             session.close()
     return clean
