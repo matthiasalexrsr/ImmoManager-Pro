@@ -88,6 +88,22 @@ def _build_consumption_by_unit(period, contract_unit_ids: set[str]) -> dict[str,
     return consumption_by_unit
 
 
+
+
+def _ensure_statement_mutable(statement_id: str):
+    statement = store.get_utility_statement(statement_id)
+    try:
+        period = store.get_billing_period(statement.billing_period_id)
+    except NotFoundError:
+        return statement, None
+
+    if period.status == "finalized" and statement.status == "delivered":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Zugestellte Abrechnung kann nicht mehr geändert werden",
+        )
+    return statement, period
+
 def _statement_lines_for_export(statement: UtilityStatement) -> dict[str, str | float]:
     return {
         "statement_id": statement.id,
@@ -680,6 +696,16 @@ def get_utility_statement(statement_id: str) -> UtilityStatement:
 @router.patch("/statements/{statement_id}", response_model=UtilityStatement)
 def patch_utility_statement(statement_id: str, payload: UtilityStatementPatch) -> UtilityStatement:
     try:
+        statement, period = _ensure_statement_mutable(statement_id)
+        if (
+            period
+            and period.status == "finalized"
+            and payload.status not in {None, "finalized", "delivered", "disputed"}
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Finalisierte Abrechnungsperiode: Nur Statusänderungen erlaubt",
+            )
         return store._patch_entity(
             None, statement_id, payload, "Betriebskostenabrechnung nicht gefunden"
         )
@@ -690,7 +716,13 @@ def patch_utility_statement(statement_id: str, payload: UtilityStatementPatch) -
 @router.delete("/statements/{statement_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_utility_statement(statement_id: str) -> None:
     try:
-        store.delete_utility_statement(statement_id)
+        statement, period = _ensure_statement_mutable(statement_id)
+        if period and period.status == "finalized":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Finalisierte Abrechnungsperiode: Löschen nicht erlaubt",
+            )
+        store.delete_utility_statement(statement.id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -777,6 +809,21 @@ def export_billing_period(period_id: str, export_format: str = Query("csv", alia
 
     headers = {"Content-Disposition": f"attachment; filename=billing_period_{period_id}.csv"}
     return Response(content=output.getvalue().encode("utf-8"), media_type="text/csv", headers=headers)
+
+
+@router.post("/statements/{statement_id}/mark-delivered", response_model=UtilityStatement)
+def mark_statement_delivered(statement_id: str) -> UtilityStatement:
+    """Mark a statement as delivered."""
+    try:
+        _ensure_statement_mutable(statement_id)
+        return store._patch_entity(
+            None,
+            statement_id,
+            UtilityStatementPatch(status="delivered"),
+            "Betriebskostenabrechnung nicht gefunden",
+        )
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 # ---------------------------------------------------------------------------

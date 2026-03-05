@@ -52,6 +52,7 @@ export default function Statements() {
   const [exporting, setExporting] = useState(false);
   const [creatingRevision, setCreatingRevision] = useState(false);
   const [creatingReceivables, setCreatingReceivables] = useState(false);
+  const [markingDelivered, setMarkingDelivered] = useState(false);
 
   const loadData = () => {
     Promise.all([
@@ -165,6 +166,28 @@ export default function Statements() {
 
 
 
+
+
+
+  const handleMarkDelivered = async () => {
+    if (!selectedPeriod) return;
+    setMarkingDelivered(true);
+    try {
+      const periodStatements = (statements || []).filter(s => s.billing_period_id === selectedPeriod.id);
+      for (const stmt of periodStatements) {
+        if (stmt.status !== 'delivered') {
+          await api.post(`/billing/statements/${stmt.id}/mark-delivered`, {});
+        }
+      }
+      await loadData();
+      const refreshedPeriod = await api.get(`/billing/periods/${selectedPeriod.id}`).catch(() => selectedPeriod);
+      setSelectedPeriod(refreshedPeriod || selectedPeriod);
+    } catch (err) {
+      window.alert(err.message || 'Zustellstatus konnte nicht gesetzt werden');
+    } finally {
+      setMarkingDelivered(false);
+    }
+  };
 
   const handleCreateReceivables = async () => {
     if (!selectedPeriod) return;
@@ -289,6 +312,13 @@ export default function Statements() {
               disabled={exporting}
             >
               {exporting ? 'Exportiere…' : 'CSV-Export'}
+            </button>
+            <button
+              className="btn btn-sm btn-secondary"
+              onClick={handleMarkDelivered}
+              disabled={markingDelivered || selectedPeriod.status !== 'finalized'}
+            >
+              {markingDelivered ? 'Setze…' : 'Als zugestellt markieren'}
             </button>
             <button
               className="btn btn-sm btn-primary"

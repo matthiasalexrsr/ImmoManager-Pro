@@ -2594,6 +2594,42 @@ class TestGenerateUtilityStatements:
 
 
 
+
+    def test_mark_statement_delivered_and_protect_from_changes(self) -> None:
+        store.create_cost_item(
+            CostItemCreate(
+                billing_period_id=self.bp.id,
+                description="Wasser",
+                amount=1000.0,
+                allocation_key_id=self.ak_area.id,
+            )
+        )
+        stmts = billing.generate_utility_statements(self.bp.id)
+        billing.finalize_billing_period(self.bp.id)
+
+        delivered = billing.mark_statement_delivered(stmts[0].id)
+        assert delivered.status == "delivered"
+
+        with pytest.raises(HTTPException) as patch_exc:
+            billing.patch_utility_statement(stmts[0].id, UtilityStatementPatch(notes="change"))
+        assert patch_exc.value.status_code == 400
+
+    def test_delete_statement_blocked_when_period_finalized(self) -> None:
+        store.create_cost_item(
+            CostItemCreate(
+                billing_period_id=self.bp.id,
+                description="Wasser",
+                amount=1000.0,
+                allocation_key_id=self.ak_area.id,
+            )
+        )
+        stmts = billing.generate_utility_statements(self.bp.id)
+        billing.finalize_billing_period(self.bp.id)
+
+        with pytest.raises(HTTPException) as exc_info:
+            billing.delete_utility_statement(stmts[0].id)
+        assert exc_info.value.status_code == 400
+
     def test_create_receivables_from_finalized_period(self) -> None:
         store.create_cost_item(
             CostItemCreate(
