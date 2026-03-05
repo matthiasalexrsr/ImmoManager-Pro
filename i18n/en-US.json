@@ -19,7 +19,19 @@
       "reports": "Reports",
       "integrations": "Integrations",
       "settings": "Settings",
-      "help": "Help"
+      "help": "Help",
+      "contacts": "Contacts",
+      "meters": "Meters",
+      "messages": "Messages",
+      "rentOverview": "Rent Overview",
+      "statements": "Statements"
+    },
+    "sections": {
+      "overview": "Overview",
+      "portfolio": "Portfolio",
+      "tenants": "Tenants & Contracts",
+      "finance": "Finance",
+      "operations": "Administration"
     },
     "secondary": {
       "overview": "Overview",
@@ -150,7 +162,7 @@
   },
   "onboarding": {
     "welcomeTitle": "Welcome to ImmoManager Pro",
-    "welcomeBody": "Manage your entire property portfolio in one place -- clearly, securely, and efficiently.",
+    "welcomeBody": "Manage your entire property portfolio in one place — clearly, securely, and efficiently.",
     "steps": {
       "createPortfolio": "Create Portfolio",
       "addProperties": "Add Properties",
@@ -212,6 +224,14 @@
       "openReceivables": "Open Receivables",
       "overduePayments": "Overdue Payments",
       "openMaintenanceCases": "Open Maintenance Cases"
+    },
+    "cashflow": {
+      "income": "Income",
+      "expenses": "Expenses",
+      "net": "Net"
+    },
+    "aging": {
+      "current": "Current"
     },
     "widgets": {
       "rentPayments30Days": "Rent Payments (Last 30 Days)",
@@ -688,6 +708,29 @@
       "enable2fa": "Enable 2FA",
       "activeSessions": "Active Sessions",
       "deviceManagement": "Device Management"
+    },
+    "theme": {
+      "light": "Light",
+      "dark": "Dark"
+    },
+    "sidebar": {
+      "show": "Show",
+      "hide": "Hide"
+    },
+    "tables": {
+      "title": "Tables"
+    },
+    "defaultDueDay": "Default Due Day",
+    "dataBackup": {
+      "title": "Data & Backup",
+      "database": "Database",
+      "dbDetails": "DB Details",
+      "createBackup": "Create Backup"
+    },
+    "about": {
+      "title": "About ImmoManager Pro",
+      "type": "Type",
+      "localApp": "Local Application (Non-Cloud, Private)"
     }
   },
   "search": {
@@ -769,7 +812,7 @@
     },
     "documents": {
       "title": "No documents found.",
-      "body": "Upload receipts, contracts, and protocols -- everything in one central place.",
+      "body": "Upload receipts, contracts, and protocols — everything in one central place.",
       "cta": "Upload Document"
     },
     "maintenance": {
@@ -833,12 +876,12 @@
   },
   "errorPages": {
     "notFound": {
-      "title": "404 -- Page Not Found",
+      "title": "404 — Page Not Found",
       "body": "The requested page does not exist or has been moved.",
       "cta": "Go to Home Page"
     },
     "serverError": {
-      "title": "500 -- Server Error",
+      "title": "500 — Server Error",
       "body": "Please try again later.",
       "cta": "Reload"
     },

@@ -19,7 +19,19 @@
       "reports": "Informes",
       "integrations": "Integraciones",
       "settings": "Configuración",
-      "help": "Ayuda"
+      "help": "Ayuda",
+      "contacts": "Contactos",
+      "meters": "Contadores",
+      "messages": "Mensajes",
+      "rentOverview": "Resumen de alquileres",
+      "statements": "Liquidaciones"
+    },
+    "sections": {
+      "overview": "Resumen",
+      "portfolio": "Cartera",
+      "tenants": "Inquilinos y contratos",
+      "finance": "Finanzas",
+      "operations": "Administración"
     },
     "secondary": {
       "overview": "Resumen",
@@ -212,6 +224,14 @@
       "openReceivables": "Cuentas por cobrar pendientes",
       "overduePayments": "Pagos vencidos",
       "openMaintenanceCases": "Casos de mantenimiento abiertos"
+    },
+    "cashflow": {
+      "income": "Ingresos",
+      "expenses": "Gastos",
+      "net": "Neto"
+    },
+    "aging": {
+      "current": "Actual"
     },
     "widgets": {
       "rentPayments30Days": "Cobros de alquiler (últimos 30 días)",
@@ -688,6 +708,29 @@
       "enable2fa": "Activar 2FA",
       "activeSessions": "Sesiones activas",
       "deviceManagement": "Gestión de dispositivos"
+    },
+    "theme": {
+      "light": "Claro",
+      "dark": "Oscuro"
+    },
+    "sidebar": {
+      "show": "Mostrar",
+      "hide": "Ocultar"
+    },
+    "tables": {
+      "title": "Tablas"
+    },
+    "defaultDueDay": "Día de vencimiento predeterminado",
+    "dataBackup": {
+      "title": "Datos y copias de seguridad",
+      "database": "Base de datos",
+      "dbDetails": "Detalles de BD",
+      "createBackup": "Crear copia de seguridad"
+    },
+    "about": {
+      "title": "Acerca de ImmoManager Pro",
+      "type": "Tipo",
+      "localApp": "Aplicación local (sin nube, privada)"
     }
   },
   "search": {

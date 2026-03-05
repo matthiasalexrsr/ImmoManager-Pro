@@ -1,9 +1,11 @@
 import { useState, useMemo, useCallback } from 'react';
+import { useTranslation } from '../i18n';
 import { PlusIcon, EditIcon, TrashIcon } from './Icons';
 
 const PAGE_SIZES = [10, 25, 50, 100];
 
 export default function DataTable({ columns, data, onEdit, onDelete, title, onAdd, onRowClick }) {
+  const { t } = useTranslation();
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState(null);
   const [sortDir, setSortDir] = useState('asc');
@@ -162,7 +164,7 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
         <div className="table-actions">
           <input
             type="text"
-            placeholder="Suchen..."
+            placeholder={`${t('ui.form.search')}...`}
             value={search}
             onChange={e => { setSearch(e.target.value); setPage(0); }}
             className="search-input"
@@ -170,12 +172,12 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
           <div className="table-btn-group">
             {hasActiveFilters && (
               <button onClick={() => { setColumnFilters({}); setPage(0); }} className="btn btn-sm btn-secondary">
-                Filter ✕
+                {t('ui.buttons.filter')} ✕
               </button>
             )}
             <div className="col-menu-wrapper">
               <button onClick={() => setShowColMenu(!showColMenu)} className="btn btn-sm btn-secondary">
-                Spalten
+                {t('ui.table.adjustColumns')}
               </button>
               {showColMenu && (
                 <>
@@ -198,7 +200,7 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
             <button onClick={exportCsv} className="btn btn-sm btn-secondary">CSV</button>
             {onAdd && (
               <button onClick={onAdd} className="btn btn-primary">
-                <PlusIcon size={16} /> Neu
+                <PlusIcon size={16} /> {t('ui.buttons.new')}
               </button>
             )}
           </div>
@@ -225,7 +227,7 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
                   </span>
                 </th>
               ))}
-              {(onEdit || onDelete) && <th className="th-actions">Aktionen</th>}
+              {(onEdit || onDelete) && <th className="th-actions">{t('ui.buttons.edit')}</th>}
             </tr>
             {/* Column filter row */}
             {columns.some(c => c.filterType) && (
@@ -238,7 +240,7 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
                         onChange={e => setFilter(col.key, e.target.value || '')}
                         className="filter-select"
                       >
-                        <option value="">Alle</option>
+                        <option value="">—</option>
                         {(selectOptions[col.key] || []).map(v => (
                           <option key={v} value={v}>{v}</option>
                         ))}
@@ -306,7 +308,7 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
           </thead>
           <tbody>
             {pageData.length === 0 ? (
-              <tr><td colSpan={colSpan} className="table-empty">Keine Eintr\u00e4ge gefunden</td></tr>
+              <tr><td colSpan={colSpan} className="table-empty">{t('ui.table.noResults')}</td></tr>
             ) : (
               pageData.map(row => (
                 <tr key={row.id} onClick={() => onRowClick && onRowClick(row)} style={onRowClick ? { cursor: 'pointer' } : undefined}>
@@ -318,12 +320,12 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
                   {(onEdit || onDelete) && (
                     <td className="action-cell">
                       {onEdit && (
-                        <button onClick={() => onEdit(row)} className="btn btn-sm btn-ghost" title="Bearbeiten">
+                        <button onClick={() => onEdit(row)} className="btn btn-sm btn-ghost" title={t('ui.buttons.edit')}>
                           <EditIcon size={15} />
                         </button>
                       )}
                       {onDelete && (
-                        <button onClick={() => onDelete(row)} className="btn btn-sm btn-ghost" title="L\u00f6schen" style={{ color: 'var(--color-danger)' }}>
+                        <button onClick={() => onDelete(row)} className="btn btn-sm btn-ghost" title={t('ui.buttons.delete')} style={{ color: 'var(--color-danger)' }}>
                           <TrashIcon size={15} />
                         </button>
                       )}
@@ -339,9 +341,9 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
       <div className="table-footer">
         <div className="table-footer-info">
           {sorted.length === 0
-            ? 'Keine Eintr\u00e4ge'
-            : `${startRow}\u2013${endRow} von ${sorted.length}`}
-          {filtered.length !== data.length && ` (${data.length} gesamt)`}
+            ? t('ui.table.noResults')
+            : `${startRow}–${endRow} / ${sorted.length}`}
+          {filtered.length !== data.length && ` (${data.length})`}
         </div>
         <div className="table-footer-controls">
           <select
@@ -349,7 +351,7 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
             onChange={e => { setPageSize(Number(e.target.value)); setPage(0); }}
             className="page-size-select"
           >
-            {PAGE_SIZES.map(s => <option key={s} value={s}>{s} / Seite</option>)}
+            {PAGE_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
           <div className="pagination-btns">
             <button disabled={safePage === 0} onClick={() => setPage(0)} className="btn btn-sm btn-secondary">\u00AB</button>

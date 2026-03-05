@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
+import { useTranslation } from '../i18n';
 import { SearchIcon, CloseIcon, ENTITY_ICON_MAP } from './Icons';
 
 const ENTITY_ROUTES = {
@@ -13,6 +14,7 @@ const ENTITY_ROUTES = {
 };
 
 export default function SearchBar() {
+  const { t } = useTranslation();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [open, setOpen] = useState(false);
@@ -69,7 +71,7 @@ export default function SearchBar() {
         <input
           ref={inputRef}
           type="text"
-          placeholder="Suchen..."
+          placeholder={`${t('ui.form.search')}...`}
           value={query}
           onChange={e => { setQuery(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)}
@@ -85,8 +87,8 @@ export default function SearchBar() {
       </div>
       {open && query.length >= 2 && (
         <div className="search-bar-dropdown">
-          {loading && <div className="search-bar-loading">Suche...</div>}
-          {!loading && currentResults.length === 0 && <div className="search-bar-empty">Keine Treffer</div>}
+          {loading && <div className="search-bar-loading">{t('ui.table.loading')}</div>}
+          {!loading && currentResults.length === 0 && <div className="search-bar-empty">{t('search.global.noResults')}</div>}
           {!loading && currentResults.map((r, i) => {
             const EntityIcon = ENTITY_ICON_MAP[r.entity_type];
             return (
@@ -96,7 +98,7 @@ export default function SearchBar() {
                 </span>
                 <div className="search-bar-result-text">
                   <span className="search-bar-result-title">{r.display}</span>
-                  <span className="search-bar-result-detail">{r.entity_type}{r.detail ? ` \u2014 ${r.detail}` : ''}</span>
+                  <span className="search-bar-result-detail">{r.entity_type}{r.detail ? ` — ${r.detail}` : ''}</span>
                 </div>
               </div>
             );

@@ -123,7 +123,7 @@ export default function PropertyDetail() {
         </div>
         <div className="stat-card">
           <div className="stat-label">Offene Wartung</div>
-          <div className="stat-value" className={openMaintenance > 0 ? 'text-red' : ''}>{openMaintenance}</div>
+          <div className={`stat-value ${openMaintenance > 0 ? 'text-red' : ''}`}>{openMaintenance}</div>
         </div>
       </div>
 

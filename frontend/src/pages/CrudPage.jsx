@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { api } from '../api';
+import { useTranslation } from '../i18n';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useList } from '../hooks/useApi';
 
 export default function CrudPage({ title, endpoint, columns, formFields, onRowClick }) {
+  const { t } = useTranslation();
   const { items, loading, error, reload } = useList(endpoint);
   const [modal, setModal] = useState(null); // null | 'create' | item
 
@@ -19,7 +21,8 @@ export default function CrudPage({ title, endpoint, columns, formFields, onRowCl
   };
 
   const handleDelete = async (row) => {
-    if (!window.confirm(`"${row[columns[0]?.key] || row.id}" wirklich löschen?`)) return;
+    const name = row[columns[0]?.key] || row.id;
+    if (!window.confirm(`"${name}" ${t('modals.confirmDelete.body')}`)) return;
     await api.del(`${endpoint}/${row.id}`);
     reload();
   };
@@ -31,7 +34,7 @@ export default function CrudPage({ title, endpoint, columns, formFields, onRowCl
       : undefined),
   }));
 
-  if (loading) return <div className="page-loading">Laden...</div>;
+  if (loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
   if (error) return <div className="page"><div className="alert alert-error">{error}</div></div>;
 
   return (
@@ -47,7 +50,7 @@ export default function CrudPage({ title, endpoint, columns, formFields, onRowCl
       />
       {modal && (
         <FormModal
-          title={modal === 'create' ? `${title} erstellen` : `${title} bearbeiten`}
+          title={modal === 'create' ? `${title} ${t('ui.buttons.create').toLowerCase()}` : `${title} ${t('ui.buttons.edit').toLowerCase()}`}
           fields={formFields}
           initial={modal === 'create' ? null : modal}
           onSave={handleSave}
