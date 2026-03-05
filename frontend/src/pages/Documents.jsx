@@ -88,7 +88,7 @@ export default function Documents() {
         formFields={fields}
         onRowClick={row => row.file_url && setViewerFile(row.file_url)}
       />
-      {viewerFile && <FileViewer fileUrl={viewerFile} onClose={() => setViewerFile(null)} />}
+      {viewerFile && <FileViewer key={viewerFile} fileUrl={viewerFile} onClose={() => setViewerFile(null)} />}
     </div>
   );
 }
