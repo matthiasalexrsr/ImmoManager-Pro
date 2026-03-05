@@ -46,6 +46,11 @@ export default function Statements() {
   const [selectedPeriod, setSelectedPeriod] = useState(null);
   const [costModal, setCostModal] = useState(null);
   const [view, setView] = useState('list');
+  const [preflight, setPreflight] = useState(null);
+  const [preflightLoading, setPreflightLoading] = useState(false);
+  const [finalizing, setFinalizing] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [creatingRevision, setCreatingRevision] = useState(false);
 
   const loadData = () => {
     Promise.all([
@@ -136,9 +141,93 @@ export default function Statements() {
     loadData();
   };
 
+
+
+  const handleFinalizePeriod = async () => {
+    if (!selectedPeriod || selectedPeriod.status === 'finalized') return;
+    setFinalizing(true);
+    try {
+      const updated = await api.post(`/billing/periods/${selectedPeriod.id}/finalize`, {});
+      setSelectedPeriod(updated);
+      await loadData();
+      const pf = await api.get(`/billing/periods/${selectedPeriod.id}/preflight`).catch(() => null);
+      setPreflight(pf);
+    } catch (err) {
+      window.alert(err.message || 'Finalisierung fehlgeschlagen');
+    } finally {
+      setFinalizing(false);
+    }
+  };
+
+
+
+
+
+  const handleCreateRevision = async () => {
+    if (!selectedPeriod) return;
+    const notes = window.prompt('Grund für Korrektur (optional):', '') || '';
+    setCreatingRevision(true);
+    try {
+      const res = await api.post(
+        `/billing/periods/${selectedPeriod.id}/revisions?revision_notes=${encodeURIComponent(notes)}`,
+        {}
+      );
+      await loadData();
+      if (res?.new_period_id) {
+        const allPeriods = await api.get('/billing/periods').catch(() => []);
+        const newPeriod = (allPeriods || []).find(p => p.id === res.new_period_id);
+        if (newPeriod) handleSelectPeriod(newPeriod);
+      }
+    } catch (err) {
+      window.alert(err.message || 'Korrektur konnte nicht erstellt werden');
+    } finally {
+      setCreatingRevision(false);
+    }
+  };
+
+  const handleExportPeriod = async () => {
+    if (!selectedPeriod) return;
+    setExporting(true);
+    try {
+      const token = localStorage.getItem('access_token');
+      const res = await fetch(`/api/v1/billing/periods/${selectedPeriod.id}/export?format=csv`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        let message = 'Export fehlgeschlagen';
+        try {
+          const body = await res.json();
+          message = body?.detail || message;
+        } catch {
+          // ignore
+        }
+        throw new Error(message);
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `abrechnung_${selectedPeriod.id}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      window.alert(err.message || 'Export fehlgeschlagen');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const handleSelectPeriod = (period) => {
     setSelectedPeriod(period);
     setView('detail');
+    setPreflight(null);
+    setPreflightLoading(true);
+    api.get(`/billing/periods/${period.id}/preflight`)
+      .then(setPreflight)
+      .catch(() => setPreflight(null))
+      .finally(() => setPreflightLoading(false));
   };
 
   if (loading) return <div className="page-loading">Laden...</div>;
@@ -162,7 +251,30 @@ export default function Statements() {
               {propMap[selectedPeriod.property_id]?.name || '—'} · {selectedPeriod.start_date} – {selectedPeriod.end_date}
             </span>
           </div>
-          <StatusBadge status={selectedPeriod.status} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <StatusBadge status={selectedPeriod.status} />
+            <button
+              className="btn btn-sm btn-secondary"
+              onClick={handleCreateRevision}
+              disabled={creatingRevision}
+            >
+              {creatingRevision ? 'Erstelle…' : 'Korrektur starten'}
+            </button>
+            <button
+              className="btn btn-sm btn-secondary"
+              onClick={handleExportPeriod}
+              disabled={exporting}
+            >
+              {exporting ? 'Exportiere…' : 'CSV-Export'}
+            </button>
+            <button
+              className="btn btn-sm btn-primary"
+              onClick={handleFinalizePeriod}
+              disabled={selectedPeriod.status === 'finalized' || finalizing || preflightLoading || preflight?.has_blockers}
+            >
+              {finalizing ? 'Finalisiere…' : (selectedPeriod.status === 'finalized' ? 'Finalisiert' : 'Finalisieren')}
+            </button>
+          </div>
         </div>
 
         <div className="stats-grid" style={{ marginBottom: '1rem' }}>
@@ -184,13 +296,71 @@ export default function Statements() {
           </div>
         </div>
 
+        <div className="card" style={{ marginBottom: '1rem' }}>
+          <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <strong>Preflight (Abrechnungsbereitschaft)</strong>
+            <button
+              className="btn btn-sm btn-secondary"
+              onClick={() => {
+                setPreflightLoading(true);
+                api.get(`/billing/periods/${selectedPeriod.id}/preflight`)
+                  .then(setPreflight)
+                  .catch(() => setPreflight(null))
+                  .finally(() => setPreflightLoading(false));
+              }}
+            >
+              Neu prüfen
+            </button>
+          </div>
+          <div className="card-body">
+            {preflightLoading && <span className="text-muted">Prüfung läuft…</span>}
+            {!preflightLoading && !preflight && <span className="text-muted">Keine Preflight-Daten verfügbar.</span>}
+            {!preflightLoading && preflight && (
+              <div style={{ display: 'grid', gap: '0.75rem' }}>
+                <div>
+                  <span className={`badge ${preflight.has_blockers ? 'badge-danger' : 'badge-success'}`}>
+                    {preflight.has_blockers ? 'Blockiert' : 'Bereit zur Generierung'}
+                  </span>
+                </div>
+                {preflight.blockers?.length > 0 && (
+                  <div>
+                    <strong>Blocker</strong>
+                    <ul>
+                      {preflight.blockers.map((i) => (
+                        <li key={`${i.code}-${i.context || ''}`}>{i.message}{i.context ? ` (${i.context})` : ''}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {preflight.warnings?.length > 0 && (
+                  <div>
+                    <strong>Warnungen</strong>
+                    <ul>
+                      {preflight.warnings.map((i) => (
+                        <li key={`${i.code}-${i.context || ''}`}>{i.message}{i.context ? ` (${i.context})` : ''}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <div>
+                  <strong>Kennzahlen</strong>
+                  <div className="text-muted" style={{ fontSize: '0.9rem' }}>
+                    Verträge: {preflight.metrics?.contracts_in_period ?? 0} · Kostenpositionen: {preflight.metrics?.cost_items ?? 0} ·
+                    Fehlende Schlüssel: {preflight.metrics?.allocation_keys_missing ?? 0} · Fehlende Flächen: {preflight.metrics?.area_missing_units ?? 0}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
         <div style={{ marginBottom: '1.5rem' }}>
           <DataTable
             title="Kostenpositionen"
             columns={COST_COLUMNS}
             data={periodCosts}
-            onAdd={() => setCostModal('create')}
-            onEdit={row => setCostModal(row)}
+            onAdd={selectedPeriod.status === 'finalized' ? undefined : () => setCostModal('create')}
+            onEdit={selectedPeriod.status === 'finalized' ? undefined : (row => setCostModal(row))}
           />
         </div>
 
@@ -202,7 +372,7 @@ export default function Statements() {
           />
         )}
 
-        {costModal && (
+        {costModal && selectedPeriod.status !== 'finalized' && (
           <FormModal
             title={costModal === 'create' ? 'Kostenposition hinzufügen' : 'Kostenposition bearbeiten'}
             fields={costFields}

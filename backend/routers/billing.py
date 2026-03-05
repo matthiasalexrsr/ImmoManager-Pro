@@ -4,9 +4,12 @@ Includes a POST endpoint to auto-generate utility statements from cost items
 using the BillingEngine for cost allocation.
 """
 
+import csv
 from decimal import Decimal
+from io import BytesIO, StringIO
 
 from fastapi import APIRouter, HTTPException, Query, status
+from fastapi.responses import Response
 
 from ..dependencies import store
 from ..domain.billing_engine import (
@@ -22,6 +25,8 @@ from ..models import (
     BillingPeriod,
     BillingPeriodCreate,
     BillingPeriodPatch,
+    BillingPreflightIssue,
+    BillingPreflightResult,
     CostItem,
     CostItemCreate,
     CostItemPatch,
@@ -32,6 +37,66 @@ from ..models import (
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/billing", tags=["Abrechnung"])
+
+
+
+
+def _ensure_period_not_finalized(period_id: str) -> None:
+    """Block mutating operations for finalized billing periods."""
+    try:
+        period = store.get_billing_period(period_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    if period.status == "finalized":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Abrechnungsperiode ist finalisiert und kann nicht mehr geändert werden",
+        )
+
+def _build_consumption_by_unit(period, contract_unit_ids: set[str]) -> dict[str, Decimal]:
+    """Aggregate consumption per unit from standalone meters/readings in period."""
+    meters = [
+        m
+        for m in store.list_meters()
+        if m.unit_id in contract_unit_ids and m.is_active is not False
+    ]
+    meter_by_id = {m.id: m for m in meters}
+
+    readings_by_meter: dict[str, list] = {}
+    for reading in store.list_standalone_meter_readings():
+        meter = meter_by_id.get(reading.meter_id)
+        if meter is None:
+            continue
+        if not (period.start_date <= reading.reading_date <= period.end_date):
+            continue
+        readings_by_meter.setdefault(reading.meter_id, []).append(reading)
+
+    consumption_by_unit: dict[str, Decimal] = {}
+    for meter_id, readings in readings_by_meter.items():
+        if len(readings) < 2:
+            continue
+        sorted_readings = sorted(readings, key=lambda r: r.reading_date)
+        consumption = Decimal(str(sorted_readings[-1].value)) - Decimal(str(sorted_readings[0].value))
+        if consumption <= 0:
+            continue
+        unit_id = meter_by_id[meter_id].unit_id
+        consumption_by_unit[unit_id] = consumption_by_unit.get(unit_id, Decimal("0")) + consumption
+
+    return consumption_by_unit
+
+
+def _statement_lines_for_export(statement: UtilityStatement) -> dict[str, str | float]:
+    return {
+        "statement_id": statement.id,
+        "billing_period_id": statement.billing_period_id,
+        "contract_id": statement.contract_id,
+        "unit_id": statement.unit_id,
+        "total_cost": round(float(statement.total_cost), 2),
+        "advance_paid": round(float(statement.advance_paid), 2),
+        "balance": round(float(statement.balance), 2),
+        "status": statement.status,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -73,6 +138,12 @@ def get_billing_period(period_id: str) -> BillingPeriod:
 @router.put("/periods/{period_id}", response_model=BillingPeriod)
 def update_billing_period(period_id: str, payload: BillingPeriodCreate) -> BillingPeriod:
     try:
+        existing = store.get_billing_period(period_id)
+        if existing.status == "finalized" and payload.status != "finalized":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Abrechnungsperiode ist finalisiert und kann nicht mehr geändert werden",
+            )
         return store.update_billing_period(period_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -83,6 +154,12 @@ def update_billing_period(period_id: str, payload: BillingPeriodCreate) -> Billi
 @router.patch("/periods/{period_id}", response_model=BillingPeriod)
 def patch_billing_period(period_id: str, payload: BillingPeriodPatch) -> BillingPeriod:
     try:
+        existing = store.get_billing_period(period_id)
+        if existing.status == "finalized" and payload.status != "finalized":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Abrechnungsperiode ist finalisiert und kann nicht mehr geändert werden",
+            )
         return store._patch_entity(
             None, period_id, payload, "Abrechnungsperiode nicht gefunden"
         )
@@ -185,6 +262,7 @@ def list_cost_items(
 @router.post("/cost-items", response_model=CostItem, status_code=status.HTTP_201_CREATED)
 def create_cost_item(payload: CostItemCreate) -> CostItem:
     try:
+        _ensure_period_not_finalized(payload.billing_period_id)
         return store.create_cost_item(payload)
     except ValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -201,6 +279,9 @@ def get_cost_item(item_id: str) -> CostItem:
 @router.put("/cost-items/{item_id}", response_model=CostItem)
 def update_cost_item(item_id: str, payload: CostItemCreate) -> CostItem:
     try:
+        existing = store.get_cost_item(item_id)
+        _ensure_period_not_finalized(existing.billing_period_id)
+        _ensure_period_not_finalized(payload.billing_period_id)
         return store.update_cost_item(item_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -211,6 +292,10 @@ def update_cost_item(item_id: str, payload: CostItemCreate) -> CostItem:
 @router.patch("/cost-items/{item_id}", response_model=CostItem)
 def patch_cost_item(item_id: str, payload: CostItemPatch) -> CostItem:
     try:
+        existing = store.get_cost_item(item_id)
+        _ensure_period_not_finalized(existing.billing_period_id)
+        if payload.billing_period_id:
+            _ensure_period_not_finalized(payload.billing_period_id)
         return store._patch_entity(
             None, item_id, payload, "Kostenposition nicht gefunden"
         )
@@ -221,9 +306,282 @@ def patch_cost_item(item_id: str, payload: CostItemPatch) -> CostItem:
 @router.delete("/cost-items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_cost_item(item_id: str) -> None:
     try:
+        existing = store.get_cost_item(item_id)
+        _ensure_period_not_finalized(existing.billing_period_id)
         store.delete_cost_item(item_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.get("/periods/{period_id}/preflight", response_model=BillingPreflightResult)
+def get_billing_period_preflight(period_id: str) -> BillingPreflightResult:
+    return _run_billing_period_preflight(period_id)
+
+
+def _run_billing_period_preflight(period_id: str) -> BillingPreflightResult:
+    try:
+        period = store.get_billing_period(period_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    blockers: list[BillingPreflightIssue] = []
+    warnings: list[BillingPreflightIssue] = []
+
+    def add_issue(severity: str, code: str, message: str, context: str | None = None) -> None:
+        issue = BillingPreflightIssue(code=code, message=message, severity=severity, context=context)
+        if severity == "blocker":
+            blockers.append(issue)
+        else:
+            warnings.append(issue)
+
+    contracts_in_period = [
+        c
+        for c in store.list_contracts()
+        if c.property_id == period.property_id
+        and c.status == "active"
+        and c.start_date <= period.end_date
+        and (c.end_date is None or c.end_date >= period.start_date)
+    ]
+
+    cost_items = [ci for ci in store.list_cost_items() if ci.billing_period_id == period_id]
+    used_key_ids = {ci.allocation_key_id for ci in cost_items}
+    allocation_keys = {k.id: k for k in store.list_allocation_keys() if k.id in used_key_ids}
+
+    if not contracts_in_period:
+        add_issue("blocker", "NO_ACTIVE_CONTRACTS", "Keine aktiven Verträge im Abrechnungszeitraum gefunden")
+    if not cost_items:
+        add_issue("blocker", "NO_COST_ITEMS", "Keine Kostenpositionen für diese Periode vorhanden")
+
+    missing_key_ids = sorted([key_id for key_id in used_key_ids if key_id not in allocation_keys])
+    if missing_key_ids:
+        add_issue(
+            "blocker",
+            "MISSING_ALLOCATION_KEYS",
+            "Verteilerschlüssel für Kostenpositionen fehlen",
+            ", ".join(missing_key_ids),
+        )
+
+    unit_cache = {}
+    missing_unit_contract_ids: list[str] = []
+    area_missing_unit_ids: list[str] = []
+    non_positive_cost_ids: list[str] = []
+    missing_advance_contract_ids: list[str] = []
+    missing_person_count_unit_ids: list[str] = []
+
+    requires_area = any(k.key_type == "area_sqm" for k in allocation_keys.values())
+    requires_person_count = any(k.key_type == "person_count" for k in allocation_keys.values())
+    requires_consumption = any(k.key_type == "consumption" for k in allocation_keys.values())
+
+    for contract in contracts_in_period:
+        try:
+            unit = store.get_unit(contract.unit_id)
+            unit_cache[contract.id] = unit
+        except Exception:
+            missing_unit_contract_ids.append(contract.id)
+            continue
+
+        if requires_area and (unit.area_sqm is None or unit.area_sqm <= 0):
+            area_missing_unit_ids.append(unit.id)
+        if requires_person_count and (unit.rooms is None or unit.rooms <= 0):
+            missing_person_count_unit_ids.append(unit.id)
+
+        monthly_advance = float((unit.service_charge_advance or 0) + (unit.heating_advance or 0))
+        if monthly_advance <= 0:
+            missing_advance_contract_ids.append(contract.id)
+
+    for ci in cost_items:
+        if ci.amount <= 0:
+            non_positive_cost_ids.append(ci.id)
+
+    consumption_units_with_data = set()
+    if requires_consumption:
+        contract_unit_ids = {c.unit_id for c in contracts_in_period}
+        consumption_by_unit = _build_consumption_by_unit(period, contract_unit_ids)
+        consumption_units_with_data = {uid for uid, val in consumption_by_unit.items() if val > 0}
+
+    if missing_unit_contract_ids:
+        add_issue(
+            "blocker",
+            "MISSING_UNITS",
+            "Vertragszuordnungen ohne vorhandene Einheit",
+            ", ".join(missing_unit_contract_ids),
+        )
+    if area_missing_unit_ids:
+        add_issue(
+            "blocker",
+            "MISSING_AREA",
+            "Fläche fehlt oder ist 0 für area_sqm-Verteilung",
+            ", ".join(sorted(set(area_missing_unit_ids))),
+        )
+    if missing_person_count_unit_ids:
+        add_issue(
+            "blocker",
+            "MISSING_PERSON_COUNT",
+            "rooms fehlt oder ist 0 für person_count-Verteilung",
+            ", ".join(sorted(set(missing_person_count_unit_ids))),
+        )
+    if requires_consumption and not consumption_units_with_data and contracts_in_period:
+        add_issue(
+            "blocker",
+            "MISSING_CONSUMPTION",
+            "Keine verwertbaren Verbrauchsdaten für consumption-Verteilung im Zeitraum",
+        )
+    if non_positive_cost_ids:
+        add_issue(
+            "warning",
+            "NON_POSITIVE_COST",
+            "Kostenpositionen mit <= 0 Betrag gefunden",
+            ", ".join(non_positive_cost_ids),
+        )
+    if missing_advance_contract_ids:
+        add_issue(
+            "warning",
+            "MISSING_ADVANCE",
+            "Verträge ohne Nebenkosten-/Heizkostenvorauszahlung",
+            ", ".join(missing_advance_contract_ids),
+        )
+
+    metrics = {
+        "contracts_in_period": len(contracts_in_period),
+        "cost_items": len(cost_items),
+        "allocation_keys_used": len(used_key_ids),
+        "allocation_keys_missing": len(missing_key_ids),
+        "units_missing": len(missing_unit_contract_ids),
+        "area_missing_units": len(set(area_missing_unit_ids)),
+        "person_count_missing_units": len(set(missing_person_count_unit_ids)),
+        "consumption_units_with_data": len(consumption_units_with_data),
+        "contracts_without_advance": len(missing_advance_contract_ids),
+        "non_positive_cost_items": len(non_positive_cost_ids),
+    }
+
+    return BillingPreflightResult(
+        billing_period_id=period_id,
+        has_blockers=bool(blockers),
+        blockers=blockers,
+        warnings=warnings,
+        metrics=metrics,
+    )
+
+
+@router.post("/periods/{period_id}/finalize", response_model=BillingPeriod)
+def finalize_billing_period(period_id: str) -> BillingPeriod:
+    """Finalize billing period after successful preflight and generated statements."""
+    try:
+        period = store.get_billing_period(period_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    if period.status == "finalized":
+        return period
+
+    preflight = _run_billing_period_preflight(period_id)
+    if preflight.has_blockers:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Finalisierung blockiert: Preflight enthält Blocker",
+        )
+
+    period_statements = [
+        s for s in store.list_utility_statements() if s.billing_period_id == period_id
+    ]
+    if not period_statements:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Finalisierung nicht möglich: Keine Einzelabrechnungen vorhanden",
+        )
+
+    finalized = store.update_billing_period(
+        period_id,
+        BillingPeriodCreate(
+            property_id=period.property_id,
+            label=period.label,
+            start_date=period.start_date,
+            end_date=period.end_date,
+            status="finalized",
+        ),
+    )
+
+    for stmt in period_statements:
+        if stmt.status != "finalized":
+            store._patch_entity(
+                None,
+                stmt.id,
+                UtilityStatementPatch(status="finalized"),
+                "Betriebskostenabrechnung nicht gefunden",
+            )
+
+    return finalized
+
+
+@router.post("/periods/{period_id}/revisions")
+def create_billing_period_revision(
+    period_id: str,
+    revision_notes: str | None = Query(None, description="Reason/context for correction"),
+) -> dict:
+    """Create a correction revision as new draft period copied from an existing period."""
+    try:
+        period = store.get_billing_period(period_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    existing_revisions = [
+        p for p in store.list_billing_periods()
+        if p.property_id == period.property_id
+        and p.start_date == period.start_date
+        and p.end_date == period.end_date
+        and p.label.startswith(period.label.split(" (Korrektur", 1)[0])
+    ]
+    next_rev = len(existing_revisions)
+    base_label = period.label.split(" (Korrektur", 1)[0]
+    new_label = f"{base_label} (Korrektur {next_rev})"
+
+    new_period = store.create_billing_period(
+        BillingPeriodCreate(
+            property_id=period.property_id,
+            label=new_label,
+            start_date=period.start_date,
+            end_date=period.end_date,
+            status="draft",
+        )
+    )
+
+    old_cost_items = [ci for ci in store.list_cost_items() if ci.billing_period_id == period_id]
+    for ci in old_cost_items:
+        store.create_cost_item(
+            CostItemCreate(
+                billing_period_id=new_period.id,
+                description=ci.description,
+                amount=ci.amount,
+                allocation_key_id=ci.allocation_key_id,
+            )
+        )
+
+    old_statements = [us for us in store.list_utility_statements() if us.billing_period_id == period_id]
+    created_statements = 0
+    for stmt in old_statements:
+        store.create_utility_statement(
+            UtilityStatementCreate(
+                billing_period_id=new_period.id,
+                contract_id=stmt.contract_id,
+                unit_id=stmt.unit_id,
+                total_cost=stmt.total_cost,
+                advance_paid=stmt.advance_paid,
+                balance=stmt.balance,
+                status="draft",
+                revision=(stmt.revision or 1) + 1,
+                revision_notes=revision_notes or f"Korrektur aus {period.id}",
+                notes=stmt.notes,
+            )
+        )
+        created_statements += 1
+
+    return {
+        "source_period_id": period_id,
+        "new_period_id": new_period.id,
+        "new_label": new_period.label,
+        "copied_cost_items": len(old_cost_items),
+        "copied_statements": created_statements,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -275,6 +633,90 @@ def delete_utility_statement(statement_id: str) -> None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
+@router.get("/statements/{statement_id}/pdf")
+def download_utility_statement_pdf(statement_id: str) -> Response:
+    """Export one utility statement as PDF (or text fallback)."""
+    try:
+        statement = store.get_utility_statement(statement_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    title = f"Nebenkostenabrechnung {statement.id[:8]}"
+    lines = [
+        title,
+        f"Abrechnungsperiode: {statement.billing_period_id}",
+        f"Vertrag: {statement.contract_id}",
+        f"Einheit: {statement.unit_id}",
+        f"Gesamtkosten: {statement.total_cost:.2f} EUR",
+        f"Vorauszahlung: {statement.advance_paid:.2f} EUR",
+        f"Saldo: {statement.balance:.2f} EUR",
+        f"Status: {statement.status}",
+    ]
+
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.pdfgen import canvas
+
+        buf = BytesIO()
+        pdf = canvas.Canvas(buf, pagesize=A4)
+        y = 800
+        for line in lines:
+            pdf.drawString(50, y, line)
+            y -= 20
+        pdf.save()
+        content = buf.getvalue()
+        media_type = "application/pdf"
+        headers = {"Content-Disposition": f"attachment; filename=statement_{statement.id}.pdf"}
+        return Response(content=content, media_type=media_type, headers=headers)
+    except Exception:
+        text = "\n".join(lines)
+        headers = {
+            "Content-Disposition": f"attachment; filename=statement_{statement.id}.txt",
+            "X-PDF-Fallback": "reportlab unavailable",
+        }
+        return Response(content=text.encode("utf-8"), media_type="text/plain", headers=headers)
+
+
+@router.get("/periods/{period_id}/export")
+def export_billing_period(period_id: str, export_format: str = Query("csv", alias="format")) -> Response:
+    """Export all utility statements for a billing period."""
+    try:
+        store.get_billing_period(period_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    statements = [
+        s for s in store.list_utility_statements() if s.billing_period_id == period_id
+    ]
+    if not statements:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Keine Einzelabrechnungen für Export vorhanden",
+        )
+
+    if export_format != "csv":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Nur format=csv unterstützt")
+
+    output = StringIO()
+    fieldnames = [
+        "statement_id",
+        "billing_period_id",
+        "contract_id",
+        "unit_id",
+        "total_cost",
+        "advance_paid",
+        "balance",
+        "status",
+    ]
+    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    writer.writeheader()
+    for statement in statements:
+        writer.writerow(_statement_lines_for_export(statement))
+
+    headers = {"Content-Disposition": f"attachment; filename=billing_period_{period_id}.csv"}
+    return Response(content=output.getvalue().encode("utf-8"), media_type="text/csv", headers=headers)
+
+
 # ---------------------------------------------------------------------------
 # Generate Utility Statements
 # ---------------------------------------------------------------------------
@@ -298,6 +740,12 @@ def generate_utility_statements(period_id: str) -> list[UtilityStatement]:
         period = store.get_billing_period(period_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    if period.status == "finalized":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Finalisierte Abrechnungsperiode kann nicht neu generiert werden",
+        )
 
     property_id = period.property_id
 
@@ -350,6 +798,9 @@ def generate_utility_statements(period_id: str) -> list[UtilityStatement]:
                 contract.unit_id, contract.id,
             )
 
+    contract_unit_ids = {c.unit_id for c in contracts_in_period}
+    consumption_by_unit = _build_consumption_by_unit(period, contract_unit_ids)
+
     # Register unit shares for each allocation key
     for contract in contracts_in_period:
         unit = unit_cache.get(contract.unit_id)
@@ -361,9 +812,22 @@ def generate_utility_statements(period_id: str) -> list[UtilityStatement]:
                 share_value = Decimal(str(unit.area_sqm or 0))
             elif key.key_type == "unit_count":
                 share_value = Decimal("1")
+            elif key.key_type == "person_count":
+                share_value = Decimal(str(unit.rooms or 0))
+            elif key.key_type == "consumption":
+                share_value = consumption_by_unit.get(unit.id, Decimal("0"))
             else:
                 # Default: equal distribution
                 share_value = Decimal("1")
+
+            if share_value <= Decimal("0"):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        f"Ungültiger Anteil für Schlüsseltyp '{key.key_type}' "
+                        f"(Vertrag {contract.id}, Einheit {unit.id})"
+                    ),
+                )
 
             engine.add_unit_share(
                 key_id,

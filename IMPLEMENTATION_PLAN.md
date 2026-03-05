@@ -197,3 +197,183 @@ don't exist yet (Phase 3.2).
 | 8 | 6.1-6.2 | Password hints + auth safety | 15 min | Medium |
 | 9 | 7.1-7.2 | i18n hardcoded strings | 2+ hrs | Low |
 | 10 | 8.x | New frontend pages | Large | New features |
+---
+
+## Detaillierter Masterplan: Bereich „Nebenkostenabrechnungen“
+
+### 1) Zielbild (Produkt)
+Der Bereich „Nebenkostenabrechnungen" soll den kompletten Lebenszyklus abdecken:
+1. Abrechnungsperiode vorbereiten
+2. Kosten erfassen/importieren (inkl. Beleg/OCR)
+3. Verteilung plausibilisieren
+4. Einzelabrechnungen erzeugen
+5. Prüfen/freigeben/finalisieren
+6. Zustellen und Nachverfolgen
+7. Nachzahlung/Guthaben in Finanzflüsse überführen
+
+### 2) Vorhandene Basis im Code (Anknüpfungspunkte)
+- Backend-Router mit vollständigen CRUD-Endpoints für Perioden, Verteilerschlüssel, Kostenpositionen und Utility Statements sowie Generierungsendpoint. (`backend/routers/billing.py`)
+- Abrechnungslogik über `BillingEngine` mit centgenauer Rundung und Advance-Abzug. (`backend/domain/billing_engine.py`)
+- Datenmodelle mit Status/Revisionsfeldern für `UtilityStatement`. (`backend/models.py`)
+- Frontend-Seite `Statements.jsx` mit Listen-/Detailansicht, Kostenpositionen und Vorjahreskopie.
+- Zähler/Ablesungen in `Meters.jsx` als Grundlage für verbrauchsbasierte Schlüssel.
+
+### 3) Funktionsbausteine (Soll)
+
+#### A. Stammdaten & Regeln
+- Kostenartenkatalog (umlagefähig/nicht umlagefähig, Standard-Verteilerschlüssel)
+- Objekt-Check „abrechnungsbereit“ (Flächen, aktive Verträge, Schlüssel vorhanden)
+- Versionierte Verteilerschlüssel-Regeln pro Periode
+
+#### B. Datenerfassung
+- Manuelle Kostenpositionen mit Pflichtvalidierung
+- Dokumentimport mit OCR-gestützter Vorbelegung (Betrag, Datum, Lieferant, Kostenart)
+- Vorjahresübernahme inkl. Markierung „Wert noch zu prüfen"
+
+#### C. Rechenkern
+- Vollständige Schlüsselunterstützung: `area_sqm`, `unit_count`, `person_count`, `consumption`
+- Leerstandslogik (Eigentümeranteil)
+- Deterministische Resteverteilung auf Cent
+- Plausibilitätsprüfungen vor Finalisierung
+
+#### D. Workflow / Governance
+- Statuskette: `draft -> review -> finalized -> delivered -> disputed -> corrected`
+- Finalisierungssperre (immutable Snapshot)
+- Revisions-/Korrekturabrechnungen statt Überschreiben
+
+#### E. Output / Zustellung / Forderungen
+- PDF-Erstellung je Einzelabrechnung inkl. Kostenzeilen
+- Sammel-Export (ZIP/PDF) je Periode
+- Zustellstatus je Vertrag (gesendet/zugestellt/fehlgeschlagen)
+- Automatische Folgebuchungen:
+  - Nachzahlung => Forderung
+  - Guthaben => Erstattung/Verrechnung
+
+#### F. Monitoring
+- Dashboard: offene Perioden, offene Prüfungen, Widersprüche
+- Fristenmonitoring mit Eskalationshinweisen
+
+### 4) Architektur-Roadmap (12 Wochen, 6 Phasen)
+
+#### Phase NK-1 (Woche 1–2): Preflight & Datenqualität
+**Backend**
+- Endpoint: `GET /billing/periods/{period_id}/preflight`
+- Ergebnis: `blockers`, `warnings`, `metrics`
+
+**Frontend**
+- Preflight-Panel in `Statements.jsx` (Ampel, Blocker-Liste)
+
+**Akzeptanzkriterien**
+- Generierung kann optional blockiert werden, wenn Blocker vorliegen.
+- Mindestens 8 Qualitätschecks implementiert (z. B. keine Kostenposition, fehlende Schlüssel, fehlende Flächen).
+
+---
+
+#### Phase NK-2 (Woche 3–4): Rechenkern ausbauen
+**Backend**
+- `BillingEngine`: implementiere `person_count` und `consumption`
+- Einbindung von Zählerablesungen in die Verbrauchsverteilung
+- Resteverteilungsstrategie dokumentiert + testbar
+
+**Akzeptanzkriterien**
+- 100% Abdeckung der Schlüsseltypen in Tests.
+- Bei identischen Inputs deterministische Ergebnisse.
+
+---
+
+#### Phase NK-3 (Woche 5–6): Workflow & Revision
+**Backend**
+- Statusübergänge mit Guard-Rules
+- Finalisieren-Endpoint mit Snapshot-Markierung
+- Korrekturabrechnung erzeugt neue Revision
+
+**Frontend**
+- Actions: „Zur Prüfung“, „Finalisieren“, „Korrektur starten"
+- Revisionshistorie im Detail-View
+
+**Akzeptanzkriterien**
+- Finalisierte Revision ist nicht editierbar.
+- Jede Korrektur erzeugt Revision `n+1`.
+
+---
+
+#### Phase NK-4 (Woche 7–8): PDF & Zustellung
+**Backend**
+- PDF-Generator für Einzelabrechnung (`/billing/statements/{id}/pdf`)
+- Batch-Export pro Periode
+- Zustellstatus speichern
+
+**Frontend**
+- Buttons: „PDF“, „Alle exportieren“, „Versand starten"
+- Versandstatus-Spalte in Statement-Liste
+
+**Akzeptanzkriterien**
+- Pro Periode kann ein vollständiges Zustellpaket erstellt werden.
+- Zustellstatus je Einheit nachvollziehbar.
+
+---
+
+#### Phase NK-5 (Woche 9–10): Finanzintegration
+**Backend**
+- Mapping Statement-Saldo -> Receivable/Refund
+- Referenzfelder zur Rückverfolgung (`statement_id`)
+
+**Frontend**
+- Anzeige „Folgebuchung erstellt“ im Statement-Detail
+
+**Akzeptanzkriterien**
+- Keine manuelle Doppelerfassung von Salden nötig.
+- Jede Folgebuchung referenziert die Ausgangsabrechnung.
+
+---
+
+#### Phase NK-6 (Woche 11–12): OCR-gestützter Kostenimport & Ops
+**Backend**
+- Beleg -> OCR -> Kostenentwurf Endpoint
+- Confidence-Felder + manuelle Freigabe
+
+**Frontend**
+- Import-Dialog für Rechnungsbelege
+- Vorschlags-Mapping (Kostenart, Betrag, Zeitraum)
+
+**Akzeptanzkriterien**
+- Mind. 60% der Pflichtfelder aus OCR vorbefüllt (bei geeigneten Belegen).
+- Benutzer kann Vorschläge vor dem Speichern korrigieren.
+
+### 5) Konkrete API-Erweiterungen (Vorschlag)
+- `GET /billing/periods/{period_id}/preflight`
+- `POST /billing/periods/{period_id}/finalize`
+- `POST /billing/periods/{period_id}/revisions`
+- `GET /billing/statements/{statement_id}/pdf`
+- `POST /billing/periods/{period_id}/export`
+- `POST /billing/cost-items/import-document`
+
+### 6) Datenmodell-Erweiterungen (Vorschlag)
+- `cost_items`: `is_recoverable`, `cost_category`, `source_document_id`, `vat_rate`, `net_amount`, `gross_amount`
+- `utility_statements`: `delivery_status`, `delivered_at`, `delivery_channel`, `snapshot_hash`
+- neue Entität `BillingPreflightResult` (persistiert oder on-the-fly)
+
+### 7) Teststrategie je Phase
+- **Unit**: Verteilungs- und Rundungslogik, Status-Transitions
+- **Integration**: End-to-End von Periode -> Kosten -> Generate -> Finalize -> Output
+- **Regression**: Referenzfälle mit bekannten Sollwerten
+- **UI-Tests**: Preflight-Blocker, Finalisierungssperre, Revisionsdarstellung
+
+### 8) Sprint-1-Backlog (direkt startbar)
+1. Preflight-Endpoint (Backend) inkl. 8 Checks
+2. Preflight-Panel in `Statements.jsx`
+3. `person_count`-Key im BillingEngine
+4. `consumption`-Key + Meter-Readings-Mapping
+5. Erweiterte Tests in `test_crud_routers.py`
+6. Finalize-Endpoint + Status-Guard
+7. UI-Button „Finalisieren" + Sperrlogik
+8. PDF-Skeleton-Endpoint für Einzelabrechnung
+9. Statement-Detail um Revisionsinformationen erweitern
+10. Folgebuchungs-Prototyp für Nachzahlung/Guthaben
+
+### 9) KPIs für Erfolg
+- Anteil finalisierter Perioden ohne Nachbearbeitung
+- Zeit von Periodenbeginn bis Versand
+- Anteil automatisch vorbefüllter Kostenpositionen
+- Anzahl/Quote Widersprüche je Periode
+- Vollständigkeit der Zustellnachweise

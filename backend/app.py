@@ -291,6 +291,10 @@ app.include_router(api_v1)
 # i18n stays at root level (not versioned, public)
 app.include_router(i18n.router)
 
+_UPLOADS_DIR = Path(__file__).resolve().parent.parent / "uploads"
+_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=_UPLOADS_DIR), name="uploads")
+
 
 # ─── Health ──────────────────────────────────────────────────────────────────
 

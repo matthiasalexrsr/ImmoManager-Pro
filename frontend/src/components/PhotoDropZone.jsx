@@ -75,7 +75,7 @@ export default function PhotoDropZone({ entityType, entityId }) {
           onChange={e => Array.from(e.target.files).forEach(uploadFile)}
         />
         <PlusIcon size={24} />
-        <span>{uploading ? 'Wird hochgeladen...' : 'Fotos hierher ziehen oder klicken'}</span>
+        <span>{uploading ? 'Wird hochgeladen...' : 'Fotos hierher ziehen oder klicken (automatisch speichern)'}</span>
       </div>
       {photos.length > 0 && (
         <div className="photo-grid">
