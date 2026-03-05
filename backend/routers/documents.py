@@ -1,7 +1,11 @@
-from fastapi import APIRouter, HTTPException, Query, status
+import uuid
+
+from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
 
 from ..dependencies import store
 from ..models import Document, DocumentCreate, DocumentPatch
+from ..routers.files import _perform_ocr
+from ..services.file_storage import get_file_storage
 from ..storage import NotFoundError, ValidationError
 from ._helpers import apply_sort
 
@@ -28,6 +32,50 @@ def list_documents(
 
 @router.post("", response_model=Document, status_code=status.HTTP_201_CREATED)
 def create_document(payload: DocumentCreate) -> Document:
+    try:
+        return store.create_document(payload)
+    except ValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.post("/import", response_model=Document, status_code=status.HTTP_201_CREATED)
+async def import_document(
+    file: UploadFile = File(...),
+    title: str = Form(...),
+    document_type: str | None = Form(None),
+    document_date: str | None = Form(None),
+    tags: str | None = Form(None),
+    description: str | None = Form(None),
+    property_id: str | None = Form(None),
+    unit_id: str | None = Form(None),
+    contract_id: str | None = Form(None),
+) -> Document:
+    """Import a document in one step: upload + OCR + metadata persistence."""
+    storage = get_file_storage()
+    ext = (file.filename or "file").rsplit(".", 1)[-1].lower()
+    key = f"documents/{uuid.uuid4().hex}_{(file.filename or 'file').replace(' ', '_')}"
+    storage.save(key, file.file, content_type=file.content_type or "application/octet-stream")
+    file_url = storage.get_url(key)
+
+    if ext in {"pdf", "png", "jpg", "jpeg", "tiff", "tif", "bmp"}:
+        ocr_text = _perform_ocr(storage, key, ext)
+        if ocr_text:
+            from io import BytesIO
+
+            ocr_key = f"{key.rsplit('.', 1)[0]}_ocr.txt"
+            storage.save(ocr_key, BytesIO(ocr_text.encode("utf-8")), content_type="text/plain")
+
+    payload = DocumentCreate(
+        title=title,
+        document_type=document_type,
+        document_date=document_date,
+        tags=tags,
+        description=description,
+        property_id=property_id,
+        unit_id=unit_id,
+        contract_id=contract_id,
+        file_url=file_url,
+    )
     try:
         return store.create_document(payload)
     except ValidationError as exc:

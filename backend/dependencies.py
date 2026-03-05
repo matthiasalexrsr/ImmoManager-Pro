@@ -29,6 +29,9 @@ _scoped_session = None
 # Use SQLAlchemy store for PostgreSQL and other non-SQLite databases.
 # SQLite uses InMemoryStore for compatibility but tables are still created for persistence.
 _database_url = settings.database_url
+_use_sql_store = bool(_database_url) and (
+    "sqlite" not in _database_url or settings.sqlite_persistent_store
+)
 
 # Ensure SQLite tables exist even when using InMemoryStore
 if _database_url and "sqlite" in _database_url:
@@ -39,7 +42,7 @@ if _database_url and "sqlite" in _database_url:
     except Exception:
         logger.warning("SQLite table creation failed", exc_info=True)
 
-if _database_url and "sqlite" not in _database_url:
+if _use_sql_store:
     try:
         from sqlalchemy.orm import scoped_session
 
@@ -52,12 +55,12 @@ if _database_url and "sqlite" not in _database_url:
         _scoped_session = scoped_session(SessionLocal)
         store = SQLAlchemyStore(_scoped_session)  # type: ignore[assignment]
 
-        # Enable SQL-backed user and audit storage for non-SQLite databases
-        if "sqlite" not in _database_url:
-            from .audit import enable_sql_audit
-            from .auth import enable_sql_users
-            enable_sql_users(SessionLocal)
-            enable_sql_audit(SessionLocal)
+        # Enable SQL-backed user and audit storage for configured SQL store.
+        from .audit import enable_sql_audit
+        from .auth import enable_sql_users
+
+        enable_sql_users(SessionLocal)
+        enable_sql_audit(SessionLocal)
 
         logger.info("SQL backend initialized successfully (url=%s...)", _database_url[:30])
     except Exception:
@@ -90,7 +93,7 @@ def cleanup_session():
 
 def get_db() -> Generator:
     """FastAPI dependency that provides a per-request database session."""
-    if not _database_url or "sqlite" in _database_url:
+    if not _use_sql_store:
         yield None
         return
 

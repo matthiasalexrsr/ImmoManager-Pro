@@ -2,6 +2,7 @@
 
 import logging
 import uuid
+from urllib.parse import unquote
 
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from fastapi.responses import Response
@@ -11,6 +12,25 @@ from ..services.file_storage import get_file_storage
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/files", tags=["Dateien"])
+
+
+def _file_url_to_key(file_url: str) -> str:
+    """Convert a public/local file URL to a storage key."""
+    decoded = unquote(file_url or "").strip()
+    for prefix in ("/uploads/", "uploads/"):
+        if decoded.startswith(prefix):
+            return decoded[len(prefix):]
+
+    # For urls like https://host/uploads/documents/a.pdf
+    marker = "/uploads/"
+    if marker in decoded:
+        return decoded.split(marker, 1)[1]
+
+    # For s3://bucket/key we keep key portion only
+    if decoded.startswith("s3://") and "/" in decoded[5:]:
+        return decoded.split("/", 3)[-1]
+
+    return decoded.lstrip("/")
 
 
 @router.post("/upload")
@@ -73,7 +93,7 @@ def get_ocr_text(file_url: str = Query(...)) -> dict:
     """Get OCR text for a file if available."""
     storage = get_file_storage()
     # Derive OCR key from file URL
-    base = file_url.replace("/uploads/", "")
+    base = _file_url_to_key(file_url)
     name, ext = base.rsplit(".", 1) if "." in base else (base, "")
     ocr_key = f"{name}_ocr.txt"
 
