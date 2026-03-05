@@ -1,4 +1,5 @@
 import { AlertIcon, MessageIcon, ContractIcon, DocumentIcon } from '../components/Icons';
+import { useTranslation } from '../i18n';
 
 const INTEGRATIONS = [
   {
@@ -57,11 +58,12 @@ const INTEGRATIONS = [
 ];
 
 export default function Integrations() {
+  const { t } = useTranslation();
   return (
     <div className="page">
-      <h1 className="page-title">Integrationen</h1>
+      <h1 className="page-title">{t('pages.integrations.title')}</h1>
       <p className="text-muted" style={{ marginBottom: '1.5rem' }}>
-        Zukünftige Integrationen für erweiterte Kommunikation und Automatisierung.
+        {t('pages.integrations.subtitle')}
       </p>
 
       <div className="integrations-grid">
@@ -73,12 +75,12 @@ export default function Integrations() {
                 <Ico size={20} />
                 <span>{intg.name}</span>
                 <span className="badge badge-planned" style={{ marginLeft: 'auto' }}>
-                  <AlertIcon size={12} /> Geplant
+                  <AlertIcon size={12} /> {t('pages.integrations.planned')}
                 </span>
               </div>
               <div className="panel-body">
                 <p style={{ marginBottom: '1rem' }}>{intg.description}</p>
-                <h4 style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>Geplante Funktionen:</h4>
+                <h4 style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>{t('pages.integrations.plannedFeatures')}</h4>
                 <ul className="integration-features">
                   {intg.features.map((f, i) => (
                     <li key={i}>{f}</li>

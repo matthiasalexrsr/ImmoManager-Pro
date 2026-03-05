@@ -123,10 +123,10 @@ export default function Layout() {
         </nav>
         <div className="sidebar-footer">
           <div className="sidebar-controls">
-            <button onClick={toggleSidebar} className="sidebar-control-btn" title={collapsed ? 'Expand' : 'Collapse'}>
+            <button onClick={toggleSidebar} className="sidebar-control-btn" title={collapsed ? t('sidebar.expand') : t('sidebar.collapse')}>
               {collapsed ? <ChevronRightIcon size={16} /> : <ChevronLeftIcon size={16} />}
             </button>
-            <button onClick={toggleTheme} className="sidebar-control-btn" title="Toggle theme">
+            <button onClick={toggleTheme} className="sidebar-control-btn" title={t('sidebar.toggleTheme')}>
               {prefs.theme === 'dark' ? <SunIcon size={16} /> : <MoonIcon size={16} />}
             </button>
             <div className="locale-switcher">

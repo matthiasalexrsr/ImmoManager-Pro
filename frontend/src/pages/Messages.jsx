@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
 import StatusBadge from '../components/StatusBadge';
+import { useTranslation } from '../i18n';
 
 export default function Messages() {
   const [notifications, setNotifications] = useState([]);
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(true);
+  const { t } = useTranslation();
   const [filter, setFilter] = useState('all');
 
   useEffect(() => {
@@ -21,26 +23,26 @@ export default function Messages() {
     ? notifications
     : notifications.filter(n => n.status === filter);
 
-  if (loading) return <div className="page-loading">Laden...</div>;
+  if (loading) return <div className="page-loading">{t('pages.loading')}</div>;
 
   return (
     <div className="page">
-      <h1 className="page-title">Nachrichten</h1>
+      <h1 className="page-title">{t('pages.messages.title')}</h1>
       <div className="messages-layout">
         <div className="messages-sidebar">
           <div className="messages-filters">
             <button
               className={`btn btn-sm ${filter === 'all' ? 'btn-primary' : 'btn-secondary'}`}
               onClick={() => setFilter('all')}
-            >Alle ({notifications.length})</button>
+            >{t('pages.messages.all')} ({notifications.length})</button>
             <button
               className={`btn btn-sm ${filter === 'unread' ? 'btn-primary' : 'btn-secondary'}`}
               onClick={() => setFilter('unread')}
-            >Ungelesen ({notifications.filter(n => n.status === 'unread').length})</button>
+            >{t('pages.messages.unread')} ({notifications.filter(n => n.status === 'unread').length})</button>
           </div>
           <div className="messages-list">
             {filtered.length === 0 ? (
-              <p className="panel-empty">Keine Nachrichten</p>
+              <p className="panel-empty">{t('pages.messages.noMessages')}</p>
             ) : filtered.map(n => (
               <div
                 key={n.id}
@@ -67,16 +69,16 @@ export default function Messages() {
                 <StatusBadge status={selected.severity} />
               </div>
               <div className="message-detail-meta">
-                {selected.notification_type && <span>Typ: {selected.notification_type}</span>}
+                {selected.notification_type && <span>{t('pages.messages.type')}: {selected.notification_type}</span>}
                 {selected.created_at && <span>{selected.created_at.slice(0, 10)}</span>}
               </div>
               <div className="message-detail-body">
-                {selected.content || 'Kein Inhalt'}
+                {selected.content || t('pages.messages.noContent')}
               </div>
             </>
           ) : (
             <div className="message-detail-empty">
-              Nachricht auswählen, um Details anzuzeigen
+              {t('pages.messages.selectMessage')}
             </div>
           )}
         </div>

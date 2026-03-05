@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { CloseIcon } from './Icons';
+import { useTranslation } from '../i18n';
 
 export default function FormModal({ title, fields, initial, onSave, onClose }) {
+  const { t } = useTranslation();
   const [values, setValues] = useState({});
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -59,7 +61,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
                     onChange={e => setValues({ ...values, [f.key]: e.target.value })}
                     required={f.required}
                   >
-                    <option value="">— Auswählen —</option>
+                    <option value="">{t('comp.formModal.selectPlaceholder')}</option>
                     {f.options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
                 ) : f.type === 'textarea' ? (
@@ -83,9 +85,9 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
             ))}
           </div>
           <div className="modal-footer">
-            <button type="button" onClick={onClose} className="btn btn-secondary">Abbrechen</button>
+            <button type="button" onClick={onClose} className="btn btn-secondary">{t('comp.formModal.cancel')}</button>
             <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? 'Speichern...' : 'Speichern'}
+              {saving ? t('comp.formModal.saving') : t('comp.formModal.save')}
             </button>
           </div>
         </form>

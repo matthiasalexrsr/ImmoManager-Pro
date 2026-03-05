@@ -4,8 +4,10 @@ import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useList } from '../hooks/useApi';
+import { useTranslation } from '../i18n';
 
 export default function CrudPage({ title, endpoint, columns, formFields, onRowClick }) {
+  const { t } = useTranslation();
   const { items, loading, error, reload } = useList(endpoint);
   const [modal, setModal] = useState(null); // null | 'create' | item
   const [deleteError, setDeleteError] = useState(null);
@@ -20,13 +22,13 @@ export default function CrudPage({ title, endpoint, columns, formFields, onRowCl
   };
 
   const handleDelete = async (row) => {
-    if (!window.confirm(`"${row[columns[0]?.key] || row.id}" wirklich löschen?`)) return;
+    if (!window.confirm(t('pages.confirmDelete', { name: row[columns[0]?.key] || row.id }))) return;
     setDeleteError(null);
     try {
       await api.del(`${endpoint}/${row.id}`);
       reload();
     } catch (err) {
-      setDeleteError(err.message || 'Löschen fehlgeschlagen');
+      setDeleteError(err.message || t('pages.deleteFailed'));
     }
   };
 
@@ -37,7 +39,7 @@ export default function CrudPage({ title, endpoint, columns, formFields, onRowCl
       : undefined),
   }));
 
-  if (loading) return <div className="page-loading">Laden...</div>;
+  if (loading) return <div className="page-loading">{t('pages.loading')}</div>;
   if (error) return <div className="page"><div className="alert alert-error">{error}</div></div>;
 
   return (
@@ -59,7 +61,7 @@ export default function CrudPage({ title, endpoint, columns, formFields, onRowCl
       />
       {modal && (
         <FormModal
-          title={modal === 'create' ? `${title} erstellen` : `${title} bearbeiten`}
+          title={modal === 'create' ? t('comp.formModal.create', { title }) : t('comp.formModal.editTitle', { title })}
           fields={formFields}
           initial={modal === 'create' ? null : modal}
           onSave={handleSave}

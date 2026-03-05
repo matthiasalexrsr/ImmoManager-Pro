@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
 import StatusBadge from '../components/StatusBadge';
+import { useTranslation } from '../i18n';
 import {
   PortfolioIcon, PropertyIcon, UnitIcon, TenantIcon,
   ContractIcon, AccountIcon, MaintenanceIcon, ChartIcon,
@@ -44,6 +45,7 @@ function fmt(v) {
 }
 
 export default function Dashboard() {
+  const { t } = useTranslation();
   const [stats, setStats] = useState({});
   const [tasks, setTasks] = useState([]);
   const [notifications, setNotifications] = useState([]);
@@ -107,7 +109,7 @@ export default function Dashboard() {
     }).finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <div className="page-loading">Laden...</div>;
+  if (loading) return <div className="page-loading">{t('pages.loading')}</div>;
 
   const occupancyRate = stats.units > 0
     ? Math.round((stats.unitsOccupied / stats.units) * 100)
@@ -115,25 +117,25 @@ export default function Dashboard() {
 
   // Occupancy pie data
   const occupancyData = stats.units > 0 ? [
-    { name: 'Vermietet', value: stats.unitsOccupied },
-    { name: 'Reserviert', value: stats.unitsReserved || 0 },
-    { name: 'Leer', value: stats.units - stats.unitsOccupied - (stats.unitsReserved || 0) },
+    { name: t('pages.dashboard.occupied'), value: stats.unitsOccupied },
+    { name: t('pages.dashboard.reserved'), value: stats.unitsReserved || 0 },
+    { name: t('pages.dashboard.vacant'), value: stats.units - stats.unitsOccupied - (stats.unitsReserved || 0) },
   ].filter(d => d.value > 0) : [];
 
   // Cashflow bar data
   const cashflowData = cashflow ? [
-    { name: 'Einnahmen', value: cashflow.incomeTotal },
-    { name: 'Ausgaben', value: cashflow.expenseTotal },
-    { name: 'Netto', value: cashflow.netTotal },
+    { name: t('pages.dashboard.income'), value: cashflow.incomeTotal },
+    { name: t('pages.dashboard.expenses'), value: cashflow.expenseTotal },
+    { name: t('pages.dashboard.net'), value: cashflow.netTotal },
   ] : [];
 
   // Aging bar data
   const agingData = aging ? [
-    { name: 'Aktuell', value: aging.buckets.current },
-    { name: '1-30 T.', value: aging.buckets.days1to30 },
-    { name: '31-60 T.', value: aging.buckets.days31to60 },
-    { name: '61-90 T.', value: aging.buckets.days61to90 },
-    { name: '90+ T.', value: aging.buckets.days90plus },
+    { name: t('pages.dashboard.agingCurrent'), value: aging.buckets.current },
+    { name: t('pages.dashboard.aging1to30'), value: aging.buckets.days1to30 },
+    { name: t('pages.dashboard.aging31to60'), value: aging.buckets.days31to60 },
+    { name: t('pages.dashboard.aging61to90'), value: aging.buckets.days61to90 },
+    { name: t('pages.dashboard.aging90plus'), value: aging.buckets.days90plus },
   ] : [];
 
   // Maintenance costs by category
@@ -142,9 +144,9 @@ export default function Dashboard() {
   // Liquidity forecast line data
   const forecastData = forecast?.forecast?.map(f => ({
     name: f.month,
-    Saldo: f.projected_balance,
-    Einnahmen: f.projected_income,
-    Ausgaben: f.projected_expense,
+    balance: f.projected_balance,
+    income: f.projected_income,
+    expense: f.projected_expense,
   })) || [];
 
   // Finance by category (top 8)
@@ -155,24 +157,24 @@ export default function Dashboard() {
 
   return (
     <div className="page">
-      <h1 className="page-title">Dashboard</h1>
+      <h1 className="page-title">{t('pages.dashboard.title')}</h1>
 
       {/* KPI Cards */}
       <div className="stats-grid">
-        <StatCard icon={PortfolioIcon} label="Portfolios" value={stats.portfolios} to="/portfolios" />
-        <StatCard icon={PropertyIcon} label="Immobilien" value={stats.properties} to="/properties" />
-        <StatCard icon={UnitIcon} label="Einheiten" value={`${stats.unitsOccupied}/${stats.units}`} to="/units" color="stat-highlight" />
-        <StatCard icon={TenantIcon} label="Mieter" value={stats.tenants} to="/tenants" />
+        <StatCard icon={PortfolioIcon} label={t('pages.dashboard.portfolios')} value={stats.portfolios} to="/portfolios" />
+        <StatCard icon={PropertyIcon} label={t('pages.dashboard.properties')} value={stats.properties} to="/properties" />
+        <StatCard icon={UnitIcon} label={t('pages.dashboard.units')} value={`${stats.unitsOccupied}/${stats.units}`} to="/units" color="stat-highlight" />
+        <StatCard icon={TenantIcon} label={t('pages.dashboard.tenants')} value={stats.tenants} to="/tenants" />
         <StatCard icon={ContractIcon} label="Aktive Vertr\u00e4ge" value={stats.contractsActive} to="/contracts" />
-        <StatCard icon={AccountIcon} label="Konten" value={stats.accounts} to="/accounts" />
-        <StatCard icon={MaintenanceIcon} label="Offene Wartung" value={stats.openMaintenance} to="/maintenance" color={stats.openMaintenance > 0 ? 'stat-warning' : ''} />
-        <StatCard icon={ChartIcon} label="Auslastung" value={`${occupancyRate}%`} to="/units" color="stat-highlight" />
+        <StatCard icon={AccountIcon} label={t('pages.dashboard.accounts')} value={stats.accounts} to="/accounts" />
+        <StatCard icon={MaintenanceIcon} label={t('pages.dashboard.openMaintenance')} value={stats.openMaintenance} to="/maintenance" color={stats.openMaintenance > 0 ? 'stat-warning' : ''} />
+        <StatCard icon={ChartIcon} label={t('pages.dashboard.occupancy')} value={`${occupancyRate}%`} to="/units" color="stat-highlight" />
       </div>
 
       {/* Charts Row 1 */}
       <div className="dashboard-charts">
         {/* Occupancy Pie */}
-        <ChartPanel title="Belegung">
+        <ChartPanel title={t('pages.dashboard.occupancyChart')}>
           {occupancyData.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
               <PieChart>
@@ -187,11 +189,11 @@ export default function Dashboard() {
                 <Legend />
               </PieChart>
             </ResponsiveContainer>
-          ) : <p className="chart-empty">Keine Einheiten vorhanden</p>}
+          ) : <p className="chart-empty">{t('pages.dashboard.noUnits')}</p>}
         </ChartPanel>
 
         {/* Cashflow Bar */}
-        <ChartPanel title="Cashflow">
+        <ChartPanel title={t('pages.dashboard.cashflow')}>
           {cashflowData.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={cashflowData}>
@@ -206,11 +208,11 @@ export default function Dashboard() {
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
-          ) : <p className="chart-empty">Keine Buchungsdaten</p>}
+          ) : <p className="chart-empty">{t('pages.dashboard.noBookings')}</p>}
         </ChartPanel>
 
         {/* Receivables Aging */}
-        <ChartPanel title="Forderungsalter">
+        <ChartPanel title={t('pages.dashboard.receivablesAging')}>
           {agingData.some(d => d.value > 0) ? (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={agingData}>
@@ -221,7 +223,7 @@ export default function Dashboard() {
                 <Bar dataKey="value" fill="#d97706" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
-          ) : <p className="chart-empty">Keine offenen Forderungen</p>}
+          ) : <p className="chart-empty">{t('pages.dashboard.noReceivables')}</p>}
         </ChartPanel>
       </div>
 
@@ -237,16 +239,16 @@ export default function Dashboard() {
                 <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
                 <Tooltip formatter={v => fmt(v)} />
                 <Legend />
-                <Line type="monotone" dataKey="Saldo" stroke="#2563eb" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="Einnahmen" stroke="#16a34a" strokeWidth={1} dot={false} strokeDasharray="4 2" />
-                <Line type="monotone" dataKey="Ausgaben" stroke="#dc2626" strokeWidth={1} dot={false} strokeDasharray="4 2" />
+                <Line type="monotone" dataKey="balance" name={t('pages.dashboard.balance')} stroke="#2563eb" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="income" name={t('pages.dashboard.income')} stroke="#16a34a" strokeWidth={1} dot={false} strokeDasharray="4 2" />
+                <Line type="monotone" dataKey="expense" name={t('pages.dashboard.expenses')} stroke="#dc2626" strokeWidth={1} dot={false} strokeDasharray="4 2" />
               </LineChart>
             </ResponsiveContainer>
-          ) : <p className="chart-empty">Keine Prognosedaten</p>}
+          ) : <p className="chart-empty">{t('pages.dashboard.noForecast')}</p>}
         </ChartPanel>
 
         {/* Maintenance Costs by Category */}
-        <ChartPanel title="Wartungskosten nach Kategorie">
+        <ChartPanel title={t('pages.dashboard.maintenanceCosts')}>
           {maintData.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={maintData} layout="vertical">
@@ -257,11 +259,11 @@ export default function Dashboard() {
                 <Bar dataKey="estimatedCost" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
-          ) : <p className="chart-empty">Keine Wartungskosten</p>}
+          ) : <p className="chart-empty">{t('pages.dashboard.noMaintenanceCosts')}</p>}
         </ChartPanel>
 
         {/* Finance by Category */}
-        <ChartPanel title="Finanzen nach Kategorie">
+        <ChartPanel title={t('pages.dashboard.financeByCategory')}>
           {financeData.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
               <PieChart>
@@ -275,21 +277,21 @@ export default function Dashboard() {
                 <Tooltip formatter={v => fmt(v)} />
               </PieChart>
             </ResponsiveContainer>
-          ) : <p className="chart-empty">Keine Finanzdaten</p>}
+          ) : <p className="chart-empty">{t('pages.dashboard.noFinanceData')}</p>}
         </ChartPanel>
       </div>
 
       {/* Activity Panels */}
       <div className="dashboard-panels">
         <div className="panel">
-          <h3>Offene Aufgaben</h3>
-          {tasks.length === 0 ? <p className="empty-text">Keine offenen Aufgaben</p> : (
+          <h3>{t('pages.dashboard.openTasks')}</h3>
+          {tasks.length === 0 ? <p className="empty-text">{t('pages.dashboard.noOpenTasks')}</p> : (
             <ul className="activity-list">
-              {tasks.map(t => (
-                <li key={t.id}>
-                  <span className="activity-title">{t.title}</span>
-                  {t.due_date && <span className="activity-date">{t.due_date}</span>}
-                  <StatusBadge status={t.priority} />
+              {tasks.map(task => (
+                <li key={task.id}>
+                  <span className="activity-title">{task.title}</span>
+                  {task.due_date && <span className="activity-date">{task.due_date}</span>}
+                  <StatusBadge status={task.priority} />
                 </li>
               ))}
             </ul>
@@ -309,7 +311,7 @@ export default function Dashboard() {
                   <span className="activity-date">{c.endDate}</span>
                   <StatusBadge status={c.daysRemaining <= 30 ? 'overdue' : 'warning'} />
                   <span className="text-muted" style={{ fontSize: '0.75rem' }}>
-                    {c.daysRemaining} Tage
+                    {c.daysRemaining} {t('pages.dashboard.days')}
                   </span>
                 </li>
               ))}
@@ -321,8 +323,8 @@ export default function Dashboard() {
         </div>
 
         <div className="panel">
-          <h3>Benachrichtigungen</h3>
-          {notifications.length === 0 ? <p className="empty-text">Keine neuen Benachrichtigungen</p> : (
+          <h3>{t('pages.dashboard.notifications')}</h3>
+          {notifications.length === 0 ? <p className="empty-text">{t('pages.dashboard.noNotifications')}</p> : (
             <ul className="activity-list">
               {notifications.map(n => (
                 <li key={n.id}>

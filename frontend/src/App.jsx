@@ -26,6 +26,7 @@ import Categories from './pages/Categories';
 import Deposits from './pages/Deposits';
 import Insurances from './pages/Insurances';
 import Integrations from './pages/Integrations';
+import NotFound from './pages/NotFound';
 
 function ProtectedRoute({ children }) {
   return isLoggedIn() ? children : <Navigate to="/login" />;
@@ -61,6 +62,7 @@ export default function App() {
           <Route path="insurances" element={<Insurances />} />
           <Route path="integrations" element={<Integrations />} />
           <Route path="settings" element={<Settings />} />
+          <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>
     </BrowserRouter>

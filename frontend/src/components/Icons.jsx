@@ -435,4 +435,10 @@ export const ENTITY_ICON_MAP = {
   contract: ContractIcon,
   task: TaskIcon,
   invoice: InvoiceIcon,
+  account: AccountIcon,
+  booking: BookingIcon,
+  maintenance: MaintenanceIcon,
+  document: DocumentIcon,
+  contact: ContactIcon,
+  portfolio: PortfolioIcon,
 };

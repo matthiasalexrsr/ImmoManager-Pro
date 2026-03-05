@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { api } from '../api';
 import DataTable from '../components/DataTable';
 import StatusBadge from '../components/StatusBadge';
+import { useTranslation } from '../i18n';
 
 const COLUMNS = [
   { key: 'contract_number', label: 'Vertrag', filterType: 'text' },
@@ -24,6 +25,7 @@ const COLUMNS = [
 export default function RentOverview() {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const { t } = useTranslation();
   const [error, setError] = useState(null);
 
   useEffect(() => {
@@ -53,7 +55,7 @@ export default function RentOverview() {
     }).catch(e => setError(e.message)).finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <div className="page-loading">Laden...</div>;
+  if (loading) return <div className="page-loading">{t('pages.loading')}</div>;
   if (error) return <div className="page"><div className="alert alert-error">{error}</div></div>;
 
   const totalDue = data.reduce((s, r) => s + (r.amount_due || 0), 0);
@@ -65,23 +67,23 @@ export default function RentOverview() {
     <div className="page">
       <div className="stats-grid" style={{ marginBottom: '1rem' }}>
         <div className="stat-card">
-          <div className="stat-label">Gesamtforderungen</div>
+          <div className="stat-label">{t('pages.rentOverview.totalReceivables')}</div>
           <div className="stat-value">{totalDue.toFixed(2)} €</div>
         </div>
         <div className="stat-card">
-          <div className="stat-label">Bezahlt</div>
+          <div className="stat-label">{t('pages.rentOverview.paid')}</div>
           <div className="stat-value text-green">{totalPaid.toFixed(2)} €</div>
         </div>
         <div className="stat-card">
-          <div className="stat-label">Offen</div>
+          <div className="stat-label">{t('pages.rentOverview.open')}</div>
           <div className="stat-value text-red">{totalOpen.toFixed(2)} €</div>
         </div>
         <div className="stat-card">
-          <div className="stat-label">Überfällig</div>
+          <div className="stat-label">{t('pages.rentOverview.overdue')}</div>
           <div className="stat-value">{overdueCount} <StatusBadge status="overdue" /></div>
         </div>
       </div>
-      <DataTable title="Mietübersicht" columns={COLUMNS} data={data} />
+      <DataTable title={t('pages.rentOverview.title')} columns={COLUMNS} data={data} />
     </div>
   );
 }

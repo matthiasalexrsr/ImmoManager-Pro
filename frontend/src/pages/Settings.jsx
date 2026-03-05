@@ -7,7 +7,7 @@ const BASE = (import.meta.env.VITE_API_URL || '/api/v1');
 
 export default function Settings() {
   const { prefs, toggleTheme, toggleSidebar, updatePrefs } = usePreferences();
-  const { locale, setLocale } = useTranslation();
+  const { t, locale, setLocale } = useTranslation();
   const [exportLoading, setExportLoading] = useState(false);
   const [importLoading, setImportLoading] = useState(false);
   const [importResult, setImportResult] = useState(null);
@@ -60,34 +60,34 @@ export default function Settings() {
 
   return (
     <div className="page">
-      <h1 className="page-title">Einstellungen</h1>
+      <h1 className="page-title">{t('pages.settings.title')}</h1>
       <div className="settings-grid">
         <div className="panel">
-          <div className="panel-header">Darstellung</div>
+          <div className="panel-header">{t('pages.settings.appearance')}</div>
           <div className="panel-body settings-section">
             <div className="settings-row">
-              <label>Theme</label>
+              <label>{t('pages.settings.theme')}</label>
               <div className="settings-control">
                 <button
                   className={`btn btn-sm ${prefs.theme === 'light' ? 'btn-primary' : 'btn-secondary'}`}
                   onClick={() => prefs.theme !== 'light' && toggleTheme()}
-                >Hell</button>
+                >{t('pages.settings.light')}</button>
                 <button
                   className={`btn btn-sm ${prefs.theme === 'dark' ? 'btn-primary' : 'btn-secondary'}`}
                   onClick={() => prefs.theme !== 'dark' && toggleTheme()}
-                >Dunkel</button>
+                >{t('pages.settings.dark')}</button>
               </div>
             </div>
             <div className="settings-row">
-              <label>Sidebar</label>
+              <label>{t('pages.settings.sidebar')}</label>
               <div className="settings-control">
                 <button className="btn btn-sm btn-secondary" onClick={toggleSidebar}>
-                  {prefs.sidebar_collapsed ? 'Einblenden' : 'Ausblenden'}
+                  {prefs.sidebar_collapsed ? t('pages.settings.show') : t('pages.settings.hide')}
                 </button>
               </div>
             </div>
             <div className="settings-row">
-              <label>Sprache</label>
+              <label>{t('pages.settings.language')}</label>
               <div className="settings-control">
                 {['de-DE', 'en-US', 'es-ES'].map(loc => (
                   <button
@@ -102,10 +102,10 @@ export default function Settings() {
         </div>
 
         <div className="panel">
-          <div className="panel-header">Tabellen</div>
+          <div className="panel-header">{t('pages.settings.tables')}</div>
           <div className="panel-body settings-section">
             <div className="settings-row">
-              <label>Einträge pro Seite</label>
+              <label>{t('pages.settings.itemsPerPage')}</label>
               <div className="settings-control">
                 <select
                   value={prefs.items_per_page || 25}
@@ -120,7 +120,7 @@ export default function Settings() {
               </div>
             </div>
             <div className="settings-row">
-              <label>Datumsformat</label>
+              <label>{t('pages.settings.dateFormat')}</label>
               <div className="settings-control">
                 <select
                   value={prefs.date_format || 'DD.MM.YYYY'}
@@ -134,16 +134,16 @@ export default function Settings() {
               </div>
             </div>
             <div className="settings-row">
-              <label>Währung</label>
+              <label>{t('pages.settings.currency')}</label>
               <div className="settings-control">
                 <select
                   value={prefs.currency || 'EUR'}
                   onChange={e => updatePrefs({ currency: e.target.value })}
                   className="page-size-select"
                 >
-                  <option value="EUR">Euro (€)</option>
-                  <option value="CHF">CHF (Fr.)</option>
-                  <option value="USD">USD ($)</option>
+                  <option value="EUR">{t('pages.settings.eurLabel')}</option>
+                  <option value="CHF">{t('pages.settings.chfLabel')}</option>
+                  <option value="USD">{t('pages.settings.usdLabel')}</option>
                 </select>
               </div>
             </div>
@@ -151,34 +151,34 @@ export default function Settings() {
         </div>
 
         <div className="panel">
-          <div className="panel-header">Benachrichtigungen</div>
+          <div className="panel-header">{t('pages.settings.notificationsSection')}</div>
           <div className="panel-body settings-section">
             <div className="settings-row">
-              <label>E-Mail-Benachrichtigungen</label>
+              <label>{t('pages.settings.emailNotifications')}</label>
               <div className="settings-control">
                 <select
                   value={prefs.email_notifications || 'important'}
                   onChange={e => updatePrefs({ email_notifications: e.target.value })}
                   className="page-size-select"
                 >
-                  <option value="all">Alle</option>
-                  <option value="important">Nur wichtige</option>
-                  <option value="none">Keine</option>
+                  <option value="all">{t('pages.settings.emailAll')}</option>
+                  <option value="important">{t('pages.settings.emailImportant')}</option>
+                  <option value="none">{t('pages.settings.emailNone')}</option>
                 </select>
               </div>
             </div>
             <div className="settings-row">
-              <label>Erinnerungen</label>
+              <label>{t('pages.settings.reminders')}</label>
               <div className="settings-control">
                 <select
                   value={prefs.reminder_days || '7'}
                   onChange={e => updatePrefs({ reminder_days: e.target.value })}
                   className="page-size-select"
                 >
-                  <option value="3">3 Tage vorher</option>
-                  <option value="7">7 Tage vorher</option>
-                  <option value="14">14 Tage vorher</option>
-                  <option value="30">30 Tage vorher</option>
+                  <option value="3">{t('pages.settings.days3')}</option>
+                  <option value="7">{t('pages.settings.days7')}</option>
+                  <option value="14">{t('pages.settings.days14')}</option>
+                  <option value="30">{t('pages.settings.days30')}</option>
                 </select>
               </div>
             </div>
@@ -186,28 +186,28 @@ export default function Settings() {
         </div>
 
         <div className="panel">
-          <div className="panel-header">Daten & Sicherung</div>
+          <div className="panel-header">{t('pages.settings.dataBackup')}</div>
           <div className="panel-body settings-section">
             <div className="settings-row">
-              <label>Datenbank</label>
+              <label>{t('pages.settings.database')}</label>
               <div className="settings-control">
-                <span className="text-muted">SQLite (Persistent)</span>
+                <span className="text-muted">{t('pages.settings.dbType')}</span>
               </div>
             </div>
             <div className="settings-row">
-              <label>Daten exportieren</label>
+              <label>{t('pages.settings.exportData')}</label>
               <div className="settings-control">
                 <button
                   className="btn btn-sm btn-secondary"
                   onClick={handleExport}
                   disabled={exportLoading}
                 >
-                  {exportLoading ? 'Exportiere...' : 'JSON-Export'}
+                  {exportLoading ? t('pages.settings.exporting') : t('pages.settings.jsonExport')}
                 </button>
               </div>
             </div>
             <div className="settings-row">
-              <label>Daten importieren</label>
+              <label>{t('pages.settings.importData')}</label>
               <div className="settings-control">
                 <input
                   ref={fileRef}
@@ -221,14 +221,14 @@ export default function Settings() {
             </div>
             {importResult && (
               <div className="settings-row">
-                <label>Import-Ergebnis</label>
+                <label>{t('pages.settings.importResult')}</label>
                 <div className="settings-control" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
                   {importResult.imported && Object.entries(importResult.imported).map(([k, v]) => (
-                    <span key={k} className="text-muted">{k}: {v} importiert</span>
+                    <span key={k} className="text-muted">{k}: {v} {t('pages.settings.imported')}</span>
                   ))}
                   {importResult.errors && Object.keys(importResult.errors).length > 0 && (
                     <span style={{ color: 'var(--danger)' }}>
-                      Fehler in: {Object.keys(importResult.errors).join(', ')}
+                      {t('pages.settings.errorsIn')} {Object.keys(importResult.errors).join(', ')}
                     </span>
                   )}
                 </div>
@@ -238,24 +238,24 @@ export default function Settings() {
         </div>
 
         <div className="panel">
-          <div className="panel-header">Dokumente & OCR</div>
+          <div className="panel-header">{t('pages.settings.docsOcr')}</div>
           <div className="panel-body settings-section">
             <div className="settings-row">
-              <label>Automatische OCR</label>
+              <label>{t('pages.settings.autoOcr')}</label>
               <div className="settings-control">
-                <span className="text-muted">Aktiv (für PDF, PNG, JPG, TIFF)</span>
+                <span className="text-muted">{t('pages.settings.ocrActive')}</span>
               </div>
             </div>
             <div className="settings-row">
-              <label>OCR-Sprachen</label>
+              <label>{t('pages.settings.ocrLanguages')}</label>
               <div className="settings-control">
-                <span className="text-muted">Deutsch + Englisch</span>
+                <span className="text-muted">{t('pages.settings.ocrLangs')}</span>
               </div>
             </div>
             <div className="settings-row">
-              <label>Dateispeicher</label>
+              <label>{t('pages.settings.fileStorage')}</label>
               <div className="settings-control">
-                <span className="text-muted">Lokal (uploads/)</span>
+                <span className="text-muted">{t('pages.settings.fileStorageLocal')}</span>
               </div>
             </div>
           </div>

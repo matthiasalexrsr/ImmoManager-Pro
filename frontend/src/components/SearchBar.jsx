@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { SearchIcon, CloseIcon, ENTITY_ICON_MAP } from './Icons';
+import { useTranslation } from '../i18n';
 
 const ENTITY_ROUTES = {
   property: '/properties',
@@ -19,6 +20,7 @@ const ENTITY_ROUTES = {
 };
 
 export default function SearchBar() {
+  const { t } = useTranslation();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [open, setOpen] = useState(false);
@@ -75,7 +77,7 @@ export default function SearchBar() {
         <input
           ref={inputRef}
           type="text"
-          placeholder="Suchen..."
+          placeholder={t('comp.searchBar.placeholder')}
           value={query}
           onChange={e => { setQuery(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)}
@@ -86,13 +88,13 @@ export default function SearchBar() {
             <CloseIcon size={14} />
           </button>
         ) : (
-          <span className="search-bar-shortcut">Ctrl+K</span>
+          <span className="search-bar-shortcut">{t('comp.searchBar.shortcut')}</span>
         )}
       </div>
       {open && query.length >= 2 && (
         <div className="search-bar-dropdown">
-          {loading && <div className="search-bar-loading">Suche...</div>}
-          {!loading && currentResults.length === 0 && <div className="search-bar-empty">Keine Treffer</div>}
+          {loading && <div className="search-bar-loading">{t('comp.searchBar.searching')}</div>}
+          {!loading && currentResults.length === 0 && <div className="search-bar-empty">{t('comp.searchBar.noResults')}</div>}
           {!loading && currentResults.map((r, i) => {
             const EntityIcon = ENTITY_ICON_MAP[r.entity_type];
             return (
