@@ -8,6 +8,7 @@ Configure via FILE_STORAGE_BACKEND and S3_* environment variables.
 """
 
 import logging
+import re
 import shutil
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -56,9 +57,14 @@ class LocalStorage(FileStorage):
         self.base_dir.mkdir(parents=True, exist_ok=True)
 
     def _path(self, key: str) -> Path:
-        # Prevent path traversal
-        safe_key = key.replace("..", "").lstrip("/")
-        return self.base_dir / safe_key
+        # Prevent path traversal, absolute paths, and Windows-style path escapes
+        normalized = key.replace("\\", "/")
+        normalized = re.sub(r"^[a-zA-Z]:", "", normalized)
+        safe_parts = [part for part in normalized.split("/") if part and part not in {".", ".."}]
+        candidate = (self.base_dir / Path(*safe_parts)).resolve()
+        if not candidate.is_relative_to(self.base_dir.resolve()):
+            raise ValueError("Invalid storage key")
+        return candidate
 
     def save(self, key: str, data: BinaryIO, content_type: str = "application/octet-stream") -> str:
         path = self._path(key)

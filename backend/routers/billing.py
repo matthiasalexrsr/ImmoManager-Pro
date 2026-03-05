@@ -305,6 +305,7 @@ def generate_utility_statements(period_id: str) -> list[UtilityStatement]:
     contracts_in_period = [
         c for c in store.list_contracts()
         if c.property_id == property_id
+        and c.status == "active"
         and c.start_date <= period.end_date
         and (c.end_date is None or c.end_date >= period.start_date)
     ]
