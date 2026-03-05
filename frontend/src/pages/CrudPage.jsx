@@ -5,7 +5,7 @@ import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useList } from '../hooks/useApi';
 
-export default function CrudPage({ title, endpoint, columns, formFields }) {
+export default function CrudPage({ title, endpoint, columns, formFields, onRowClick }) {
   const { items, loading, error, reload } = useList(endpoint);
   const [modal, setModal] = useState(null); // null | 'create' | item
   const [deleteError, setDeleteError] = useState(null);
@@ -55,6 +55,7 @@ export default function CrudPage({ title, endpoint, columns, formFields }) {
         onAdd={() => setModal('create')}
         onEdit={(row) => setModal(row)}
         onDelete={handleDelete}
+        onRowClick={onRowClick}
       />
       {modal && (
         <FormModal

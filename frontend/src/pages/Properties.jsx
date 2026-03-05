@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import CrudPage from './CrudPage';
 
@@ -14,6 +15,7 @@ const COLUMNS = [
 ];
 
 export default function Properties() {
+  const navigate = useNavigate();
   const [portfolios, setPortfolios] = useState([]);
   useEffect(() => { api.get('/portfolios').then(setPortfolios).catch(err => console.warn('[Properties] portfolios:', err.message)); }, []);
 
@@ -44,5 +46,5 @@ export default function Properties() {
     ]},
   ];
 
-  return <CrudPage title="Immobilien" endpoint="/properties" columns={COLUMNS} formFields={fields} />;
+  return <CrudPage title="Immobilien" endpoint="/properties" columns={COLUMNS} formFields={fields} onRowClick={row => navigate(`/properties/${row.id}`)} />;
 }

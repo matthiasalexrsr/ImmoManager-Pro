@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import CrudPage from './CrudPage';
 
@@ -13,6 +14,7 @@ const COLUMNS = [
 ];
 
 export default function Units() {
+  const navigate = useNavigate();
   const [properties, setProperties] = useState([]);
   useEffect(() => { api.get('/properties').then(setProperties).catch(err => console.warn('[Units] properties:', err.message)); }, []);
 
@@ -40,5 +42,5 @@ export default function Units() {
     ]},
   ];
 
-  return <CrudPage title="Einheiten" endpoint="/units" columns={COLUMNS} formFields={fields} />;
+  return <CrudPage title="Einheiten" endpoint="/units" columns={COLUMNS} formFields={fields} onRowClick={row => navigate(`/units/${row.id}`)} />;
 }
