@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react';
 import { api } from '../api';
 import CrudPage from './CrudPage';
 
-const COLUMNS = [
-  { key: 'contract_label', label: 'Vertrag', filterType: 'text' },
+const BASE_COLUMNS = [
+  { key: 'contract_id', label: 'Vertrag', filterType: 'text' },
   { key: 'amount', label: 'Betrag (€)', type: 'number', align: 'right',
     render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
   { key: 'status', label: 'Status', type: 'status', filterType: 'select' },
@@ -16,6 +16,15 @@ const COLUMNS = [
 export default function Deposits() {
   const [contracts, setContracts] = useState([]);
   useEffect(() => { api.get('/contracts').then(setContracts).catch(err => console.warn('[Deposits] contracts:', err.message)); }, []);
+
+  const contractById = Object.fromEntries(contracts.map(contract => [contract.id, contract]));
+  const columns = BASE_COLUMNS.map((column) => {
+    if (column.key !== 'contract_id') return column;
+    return {
+      ...column,
+      render: value => contractById[value]?.contract_number || value || '—',
+    };
+  });
 
   const fields = [
     { key: 'contract_id', label: 'Vertrag', required: true, type: 'select',
@@ -33,5 +42,5 @@ export default function Deposits() {
     { key: 'notes', label: 'Notizen', type: 'textarea' },
   ];
 
-  return <CrudPage title="Kautionen" endpoint="/deposits" columns={COLUMNS} formFields={fields} />;
+  return <CrudPage title="Kautionen" endpoint="/deposits" columns={columns} formFields={fields} />;
 }
