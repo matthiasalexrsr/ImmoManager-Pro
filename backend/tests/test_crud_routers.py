@@ -2506,6 +2506,45 @@ class TestGenerateUtilityStatements:
         assert by_unit[self.unit1.id].total_cost == 450.0
         assert by_unit[self.unit2.id].total_cost == 150.0
 
+
+    def test_finalize_period_success(self) -> None:
+        store.create_cost_item(
+            CostItemCreate(
+                billing_period_id=self.bp.id,
+                description="Wasser",
+                amount=1000.0,
+                allocation_key_id=self.ak_area.id,
+            )
+        )
+        billing.generate_utility_statements(self.bp.id)
+
+        finalized = billing.finalize_billing_period(self.bp.id)
+        assert finalized.status == "finalized"
+
+        stmts = _list_utility_statements(billing_period_id=self.bp.id)
+        assert len(stmts) == 2
+        assert all(s.status == "finalized" for s in stmts)
+
+    def test_finalize_period_blocked_by_preflight(self) -> None:
+        # no costs => preflight blocker
+        with pytest.raises(HTTPException) as exc_info:
+            billing.finalize_billing_period(self.bp.id)
+        assert exc_info.value.status_code == 400
+
+    def test_finalize_period_requires_generated_statements(self) -> None:
+        store.create_cost_item(
+            CostItemCreate(
+                billing_period_id=self.bp.id,
+                description="Wasser",
+                amount=200.0,
+                allocation_key_id=self.ak_area.id,
+            )
+        )
+        # Preflight passes, but no statements generated yet
+        with pytest.raises(HTTPException) as exc_info:
+            billing.finalize_billing_period(self.bp.id)
+        assert exc_info.value.status_code == 400
+
     def test_utility_statement_patch(self) -> None:
         store.create_cost_item(
             CostItemCreate(

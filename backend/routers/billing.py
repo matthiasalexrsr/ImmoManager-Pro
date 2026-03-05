@@ -262,7 +262,10 @@ def delete_cost_item(item_id: str) -> None:
 
 @router.get("/periods/{period_id}/preflight", response_model=BillingPreflightResult)
 def get_billing_period_preflight(period_id: str) -> BillingPreflightResult:
-    """Run data-quality and readiness checks before utility statement generation."""
+    return _run_billing_period_preflight(period_id)
+
+
+def _run_billing_period_preflight(period_id: str) -> BillingPreflightResult:
     try:
         period = store.get_billing_period(period_id)
     except NotFoundError as exc:
@@ -405,6 +408,56 @@ def get_billing_period_preflight(period_id: str) -> BillingPreflightResult:
         warnings=warnings,
         metrics=metrics,
     )
+
+
+@router.post("/periods/{period_id}/finalize", response_model=BillingPeriod)
+def finalize_billing_period(period_id: str) -> BillingPeriod:
+    """Finalize billing period after successful preflight and generated statements."""
+    try:
+        period = store.get_billing_period(period_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    if period.status == "finalized":
+        return period
+
+    preflight = _run_billing_period_preflight(period_id)
+    if preflight.has_blockers:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Finalisierung blockiert: Preflight enthält Blocker",
+        )
+
+    period_statements = [
+        s for s in store.list_utility_statements() if s.billing_period_id == period_id
+    ]
+    if not period_statements:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Finalisierung nicht möglich: Keine Einzelabrechnungen vorhanden",
+        )
+
+    finalized = store.update_billing_period(
+        period_id,
+        BillingPeriodCreate(
+            property_id=period.property_id,
+            label=period.label,
+            start_date=period.start_date,
+            end_date=period.end_date,
+            status="finalized",
+        ),
+    )
+
+    for stmt in period_statements:
+        if stmt.status != "finalized":
+            store._patch_entity(
+                None,
+                stmt.id,
+                UtilityStatementPatch(status="finalized"),
+                "Betriebskostenabrechnung nicht gefunden",
+            )
+
+    return finalized
 
 
 # ---------------------------------------------------------------------------

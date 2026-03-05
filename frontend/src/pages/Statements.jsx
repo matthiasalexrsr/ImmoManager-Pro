@@ -48,6 +48,7 @@ export default function Statements() {
   const [view, setView] = useState('list');
   const [preflight, setPreflight] = useState(null);
   const [preflightLoading, setPreflightLoading] = useState(false);
+  const [finalizing, setFinalizing] = useState(false);
 
   const loadData = () => {
     Promise.all([
@@ -138,6 +139,24 @@ export default function Statements() {
     loadData();
   };
 
+
+
+  const handleFinalizePeriod = async () => {
+    if (!selectedPeriod || selectedPeriod.status === 'finalized') return;
+    setFinalizing(true);
+    try {
+      const updated = await api.post(`/billing/periods/${selectedPeriod.id}/finalize`, {});
+      setSelectedPeriod(updated);
+      await loadData();
+      const pf = await api.get(`/billing/periods/${selectedPeriod.id}/preflight`).catch(() => null);
+      setPreflight(pf);
+    } catch (err) {
+      window.alert(err.message || 'Finalisierung fehlgeschlagen');
+    } finally {
+      setFinalizing(false);
+    }
+  };
+
   const handleSelectPeriod = (period) => {
     setSelectedPeriod(period);
     setView('detail');
@@ -170,7 +189,16 @@ export default function Statements() {
               {propMap[selectedPeriod.property_id]?.name || '—'} · {selectedPeriod.start_date} – {selectedPeriod.end_date}
             </span>
           </div>
-          <StatusBadge status={selectedPeriod.status} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <StatusBadge status={selectedPeriod.status} />
+            <button
+              className="btn btn-sm btn-primary"
+              onClick={handleFinalizePeriod}
+              disabled={selectedPeriod.status === 'finalized' || finalizing || preflightLoading || preflight?.has_blockers}
+            >
+              {finalizing ? 'Finalisiere…' : (selectedPeriod.status === 'finalized' ? 'Finalisiert' : 'Finalisieren')}
+            </button>
+          </div>
         </div>
 
         <div className="stats-grid" style={{ marginBottom: '1rem' }}>
@@ -255,8 +283,8 @@ export default function Statements() {
             title="Kostenpositionen"
             columns={COST_COLUMNS}
             data={periodCosts}
-            onAdd={() => setCostModal('create')}
-            onEdit={row => setCostModal(row)}
+            onAdd={selectedPeriod.status === 'finalized' ? undefined : () => setCostModal('create')}
+            onEdit={selectedPeriod.status === 'finalized' ? undefined : (row => setCostModal(row))}
           />
         </div>
 
@@ -268,7 +296,7 @@ export default function Statements() {
           />
         )}
 
-        {costModal && (
+        {costModal && selectedPeriod.status !== 'finalized' && (
           <FormModal
             title={costModal === 'create' ? 'Kostenposition hinzufügen' : 'Kostenposition bearbeiten'}
             fields={costFields}
