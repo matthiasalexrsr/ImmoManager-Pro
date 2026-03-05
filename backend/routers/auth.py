@@ -175,7 +175,7 @@ def update_my_preferences(payload: dict, user: UserRead = Depends(require_auth))
             return {**_DEFAULT_PREFERENCES, **clean}
         finally:
             session.close()
-    return clean
+    return {**_DEFAULT_PREFERENCES, **clean}
 
 
 @router.get("/users", response_model=list[UserRead])

@@ -199,6 +199,16 @@ class TestAuthRouter:
         assert prefs["theme"] == "light"
         assert prefs["locale"] == "de-DE"
 
+
+    def test_update_my_preferences_returns_defaults_merged_on_sqlite(self, monkeypatch):
+        user = _register_admin()
+        monkeypatch.setattr("backend.db.session.DATABASE_URL", "sqlite:///./immo_manager.db")
+
+        updated = update_my_preferences({"theme": "dark"}, user)
+        assert updated["theme"] == "dark"
+        assert updated["locale"] == "de-DE"
+        assert updated["currency"] == "EUR"
+
     def test_update_my_preferences_returns_fallback_when_session_init_fails(self, monkeypatch):
         user = _register_admin()
 
