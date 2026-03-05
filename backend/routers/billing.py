@@ -4,13 +4,9 @@ Includes a POST endpoint to auto-generate utility statements from cost items
 using the BillingEngine for cost allocation.
 """
 
-import csv
-from datetime import timedelta
 from decimal import Decimal
-from io import BytesIO, StringIO
 
 from fastapi import APIRouter, HTTPException, Query, status
-from fastapi.responses import Response
 
 from ..dependencies import store
 from ..domain.billing_engine import (
@@ -31,7 +27,6 @@ from ..models import (
     CostItem,
     CostItemCreate,
     CostItemPatch,
-    ReceivableCreate,
     UtilityStatement,
     UtilityStatementCreate,
     UtilityStatementPatch,
@@ -40,21 +35,6 @@ from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/billing", tags=["Abrechnung"])
 
-
-
-
-def _ensure_period_not_finalized(period_id: str) -> None:
-    """Block mutating operations for finalized billing periods."""
-    try:
-        period = store.get_billing_period(period_id)
-    except NotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-
-    if period.status == "finalized":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Abrechnungsperiode ist finalisiert und kann nicht mehr geändert werden",
-        )
 
 def _build_consumption_by_unit(period, contract_unit_ids: set[str]) -> dict[str, Decimal]:
     """Aggregate consumption per unit from standalone meters/readings in period."""
@@ -86,35 +66,6 @@ def _build_consumption_by_unit(period, contract_unit_ids: set[str]) -> dict[str,
         consumption_by_unit[unit_id] = consumption_by_unit.get(unit_id, Decimal("0")) + consumption
 
     return consumption_by_unit
-
-
-
-
-def _ensure_statement_mutable(statement_id: str):
-    statement = store.get_utility_statement(statement_id)
-    try:
-        period = store.get_billing_period(statement.billing_period_id)
-    except NotFoundError:
-        return statement, None
-
-    if period.status == "finalized" and statement.status == "delivered":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Zugestellte Abrechnung kann nicht mehr geändert werden",
-        )
-    return statement, period
-
-def _statement_lines_for_export(statement: UtilityStatement) -> dict[str, str | float]:
-    return {
-        "statement_id": statement.id,
-        "billing_period_id": statement.billing_period_id,
-        "contract_id": statement.contract_id,
-        "unit_id": statement.unit_id,
-        "total_cost": round(float(statement.total_cost), 2),
-        "advance_paid": round(float(statement.advance_paid), 2),
-        "balance": round(float(statement.balance), 2),
-        "status": statement.status,
-    }
 
 
 # ---------------------------------------------------------------------------
@@ -156,12 +107,6 @@ def get_billing_period(period_id: str) -> BillingPeriod:
 @router.put("/periods/{period_id}", response_model=BillingPeriod)
 def update_billing_period(period_id: str, payload: BillingPeriodCreate) -> BillingPeriod:
     try:
-        existing = store.get_billing_period(period_id)
-        if existing.status == "finalized" and payload.status != "finalized":
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Abrechnungsperiode ist finalisiert und kann nicht mehr geändert werden",
-            )
         return store.update_billing_period(period_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -172,12 +117,6 @@ def update_billing_period(period_id: str, payload: BillingPeriodCreate) -> Billi
 @router.patch("/periods/{period_id}", response_model=BillingPeriod)
 def patch_billing_period(period_id: str, payload: BillingPeriodPatch) -> BillingPeriod:
     try:
-        existing = store.get_billing_period(period_id)
-        if existing.status == "finalized" and payload.status != "finalized":
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Abrechnungsperiode ist finalisiert und kann nicht mehr geändert werden",
-            )
         return store._patch_entity(
             None, period_id, payload, "Abrechnungsperiode nicht gefunden"
         )
@@ -280,7 +219,6 @@ def list_cost_items(
 @router.post("/cost-items", response_model=CostItem, status_code=status.HTTP_201_CREATED)
 def create_cost_item(payload: CostItemCreate) -> CostItem:
     try:
-        _ensure_period_not_finalized(payload.billing_period_id)
         return store.create_cost_item(payload)
     except ValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -297,9 +235,6 @@ def get_cost_item(item_id: str) -> CostItem:
 @router.put("/cost-items/{item_id}", response_model=CostItem)
 def update_cost_item(item_id: str, payload: CostItemCreate) -> CostItem:
     try:
-        existing = store.get_cost_item(item_id)
-        _ensure_period_not_finalized(existing.billing_period_id)
-        _ensure_period_not_finalized(payload.billing_period_id)
         return store.update_cost_item(item_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -310,10 +245,6 @@ def update_cost_item(item_id: str, payload: CostItemCreate) -> CostItem:
 @router.patch("/cost-items/{item_id}", response_model=CostItem)
 def patch_cost_item(item_id: str, payload: CostItemPatch) -> CostItem:
     try:
-        existing = store.get_cost_item(item_id)
-        _ensure_period_not_finalized(existing.billing_period_id)
-        if payload.billing_period_id:
-            _ensure_period_not_finalized(payload.billing_period_id)
         return store._patch_entity(
             None, item_id, payload, "Kostenposition nicht gefunden"
         )
@@ -324,8 +255,6 @@ def patch_cost_item(item_id: str, payload: CostItemPatch) -> CostItem:
 @router.delete("/cost-items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_cost_item(item_id: str) -> None:
     try:
-        existing = store.get_cost_item(item_id)
-        _ensure_period_not_finalized(existing.billing_period_id)
         store.delete_cost_item(item_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -531,137 +460,6 @@ def finalize_billing_period(period_id: str) -> BillingPeriod:
     return finalized
 
 
-@router.post("/periods/{period_id}/create-receivables")
-def create_receivables_for_billing_period(period_id: str) -> dict:
-    """Create receivables for positive statement balances of a finalized billing period."""
-    try:
-        period = store.get_billing_period(period_id)
-    except NotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-
-    if period.status != "finalized":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Forderungen können erst nach Finalisierung erzeugt werden",
-        )
-
-    statements = [
-        s for s in store.list_utility_statements() if s.billing_period_id == period_id
-    ]
-    if not statements:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Keine Einzelabrechnungen für Forderungserzeugung vorhanden",
-        )
-
-    due_date = period.end_date + timedelta(days=30)
-    existing = store.list_receivables()
-    created = 0
-
-    for stmt in statements:
-        if stmt.balance <= 0:
-            continue
-
-        duplicate = any(
-            r.contract_id == stmt.contract_id
-            and r.due_date == due_date
-            and abs(float(r.amount_due) - float(stmt.balance)) < 0.01
-            and r.status in {"open", "partial", "overdue"}
-            for r in existing
-        )
-        if duplicate:
-            continue
-
-        receivable = store.create_receivable(
-            ReceivableCreate(
-                contract_id=stmt.contract_id,
-                due_date=due_date,
-                amount_due=float(stmt.balance),
-                dunning_level="initial",
-                status="open",
-            )
-        )
-        existing.append(receivable)
-        created += 1
-
-    return {
-        "billing_period_id": period_id,
-        "created_receivables": created,
-        "due_date": str(due_date),
-    }
-
-
-@router.post("/periods/{period_id}/revisions")
-def create_billing_period_revision(
-    period_id: str,
-    revision_notes: str | None = Query(None, description="Reason/context for correction"),
-) -> dict:
-    """Create a correction revision as new draft period copied from an existing period."""
-    try:
-        period = store.get_billing_period(period_id)
-    except NotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-
-    existing_revisions = [
-        p for p in store.list_billing_periods()
-        if p.property_id == period.property_id
-        and p.start_date == period.start_date
-        and p.end_date == period.end_date
-        and p.label.startswith(period.label.split(" (Korrektur", 1)[0])
-    ]
-    next_rev = len(existing_revisions)
-    base_label = period.label.split(" (Korrektur", 1)[0]
-    new_label = f"{base_label} (Korrektur {next_rev})"
-
-    new_period = store.create_billing_period(
-        BillingPeriodCreate(
-            property_id=period.property_id,
-            label=new_label,
-            start_date=period.start_date,
-            end_date=period.end_date,
-            status="draft",
-        )
-    )
-
-    old_cost_items = [ci for ci in store.list_cost_items() if ci.billing_period_id == period_id]
-    for ci in old_cost_items:
-        store.create_cost_item(
-            CostItemCreate(
-                billing_period_id=new_period.id,
-                description=ci.description,
-                amount=ci.amount,
-                allocation_key_id=ci.allocation_key_id,
-            )
-        )
-
-    old_statements = [us for us in store.list_utility_statements() if us.billing_period_id == period_id]
-    created_statements = 0
-    for stmt in old_statements:
-        store.create_utility_statement(
-            UtilityStatementCreate(
-                billing_period_id=new_period.id,
-                contract_id=stmt.contract_id,
-                unit_id=stmt.unit_id,
-                total_cost=stmt.total_cost,
-                advance_paid=stmt.advance_paid,
-                balance=stmt.balance,
-                status="draft",
-                revision=(stmt.revision or 1) + 1,
-                revision_notes=revision_notes or f"Korrektur aus {period.id}",
-                notes=stmt.notes,
-            )
-        )
-        created_statements += 1
-
-    return {
-        "source_period_id": period_id,
-        "new_period_id": new_period.id,
-        "new_label": new_period.label,
-        "copied_cost_items": len(old_cost_items),
-        "copied_statements": created_statements,
-    }
-
-
 # ---------------------------------------------------------------------------
 # Utility Statements
 # ---------------------------------------------------------------------------
@@ -696,16 +494,6 @@ def get_utility_statement(statement_id: str) -> UtilityStatement:
 @router.patch("/statements/{statement_id}", response_model=UtilityStatement)
 def patch_utility_statement(statement_id: str, payload: UtilityStatementPatch) -> UtilityStatement:
     try:
-        statement, period = _ensure_statement_mutable(statement_id)
-        if (
-            period
-            and period.status == "finalized"
-            and payload.status not in {None, "finalized", "delivered", "disputed"}
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Finalisierte Abrechnungsperiode: Nur Statusänderungen erlaubt",
-            )
         return store._patch_entity(
             None, statement_id, payload, "Betriebskostenabrechnung nicht gefunden"
         )
@@ -716,112 +504,7 @@ def patch_utility_statement(statement_id: str, payload: UtilityStatementPatch) -
 @router.delete("/statements/{statement_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_utility_statement(statement_id: str) -> None:
     try:
-        statement, period = _ensure_statement_mutable(statement_id)
-        if period and period.status == "finalized":
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Finalisierte Abrechnungsperiode: Löschen nicht erlaubt",
-            )
-        store.delete_utility_statement(statement.id)
-    except NotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-
-
-@router.get("/statements/{statement_id}/pdf")
-def download_utility_statement_pdf(statement_id: str) -> Response:
-    """Export one utility statement as PDF (or text fallback)."""
-    try:
-        statement = store.get_utility_statement(statement_id)
-    except NotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-
-    title = f"Nebenkostenabrechnung {statement.id[:8]}"
-    lines = [
-        title,
-        f"Abrechnungsperiode: {statement.billing_period_id}",
-        f"Vertrag: {statement.contract_id}",
-        f"Einheit: {statement.unit_id}",
-        f"Gesamtkosten: {statement.total_cost:.2f} EUR",
-        f"Vorauszahlung: {statement.advance_paid:.2f} EUR",
-        f"Saldo: {statement.balance:.2f} EUR",
-        f"Status: {statement.status}",
-    ]
-
-    try:
-        from reportlab.lib.pagesizes import A4
-        from reportlab.pdfgen import canvas
-
-        buf = BytesIO()
-        pdf = canvas.Canvas(buf, pagesize=A4)
-        y = 800
-        for line in lines:
-            pdf.drawString(50, y, line)
-            y -= 20
-        pdf.save()
-        content = buf.getvalue()
-        media_type = "application/pdf"
-        headers = {"Content-Disposition": f"attachment; filename=statement_{statement.id}.pdf"}
-        return Response(content=content, media_type=media_type, headers=headers)
-    except Exception:
-        text = "\n".join(lines)
-        headers = {
-            "Content-Disposition": f"attachment; filename=statement_{statement.id}.txt",
-            "X-PDF-Fallback": "reportlab unavailable",
-        }
-        return Response(content=text.encode("utf-8"), media_type="text/plain", headers=headers)
-
-
-@router.get("/periods/{period_id}/export")
-def export_billing_period(period_id: str, export_format: str = Query("csv", alias="format")) -> Response:
-    """Export all utility statements for a billing period."""
-    try:
-        store.get_billing_period(period_id)
-    except NotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-
-    statements = [
-        s for s in store.list_utility_statements() if s.billing_period_id == period_id
-    ]
-    if not statements:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Keine Einzelabrechnungen für Export vorhanden",
-        )
-
-    if export_format != "csv":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Nur format=csv unterstützt")
-
-    output = StringIO()
-    fieldnames = [
-        "statement_id",
-        "billing_period_id",
-        "contract_id",
-        "unit_id",
-        "total_cost",
-        "advance_paid",
-        "balance",
-        "status",
-    ]
-    writer = csv.DictWriter(output, fieldnames=fieldnames)
-    writer.writeheader()
-    for statement in statements:
-        writer.writerow(_statement_lines_for_export(statement))
-
-    headers = {"Content-Disposition": f"attachment; filename=billing_period_{period_id}.csv"}
-    return Response(content=output.getvalue().encode("utf-8"), media_type="text/csv", headers=headers)
-
-
-@router.post("/statements/{statement_id}/mark-delivered", response_model=UtilityStatement)
-def mark_statement_delivered(statement_id: str) -> UtilityStatement:
-    """Mark a statement as delivered."""
-    try:
-        _ensure_statement_mutable(statement_id)
-        return store._patch_entity(
-            None,
-            statement_id,
-            UtilityStatementPatch(status="delivered"),
-            "Betriebskostenabrechnung nicht gefunden",
-        )
+        store.delete_utility_statement(statement_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -849,12 +532,6 @@ def generate_utility_statements(period_id: str) -> list[UtilityStatement]:
         period = store.get_billing_period(period_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-
-    if period.status == "finalized":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Finalisierte Abrechnungsperiode kann nicht neu generiert werden",
-        )
 
     property_id = period.property_id
 
