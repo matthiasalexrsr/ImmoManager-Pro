@@ -5,6 +5,7 @@ using the BillingEngine for cost allocation.
 """
 
 import csv
+from datetime import timedelta
 from decimal import Decimal
 from io import BytesIO, StringIO
 
@@ -30,6 +31,7 @@ from ..models import (
     CostItem,
     CostItemCreate,
     CostItemPatch,
+    ReceivableCreate,
     UtilityStatement,
     UtilityStatementCreate,
     UtilityStatementPatch,
@@ -511,6 +513,66 @@ def finalize_billing_period(period_id: str) -> BillingPeriod:
             )
 
     return finalized
+
+
+@router.post("/periods/{period_id}/create-receivables")
+def create_receivables_for_billing_period(period_id: str) -> dict:
+    """Create receivables for positive statement balances of a finalized billing period."""
+    try:
+        period = store.get_billing_period(period_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    if period.status != "finalized":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Forderungen können erst nach Finalisierung erzeugt werden",
+        )
+
+    statements = [
+        s for s in store.list_utility_statements() if s.billing_period_id == period_id
+    ]
+    if not statements:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Keine Einzelabrechnungen für Forderungserzeugung vorhanden",
+        )
+
+    due_date = period.end_date + timedelta(days=30)
+    existing = store.list_receivables()
+    created = 0
+
+    for stmt in statements:
+        if stmt.balance <= 0:
+            continue
+
+        duplicate = any(
+            r.contract_id == stmt.contract_id
+            and r.due_date == due_date
+            and abs(float(r.amount_due) - float(stmt.balance)) < 0.01
+            and r.status in {"open", "partial", "overdue"}
+            for r in existing
+        )
+        if duplicate:
+            continue
+
+        receivable = store.create_receivable(
+            ReceivableCreate(
+                contract_id=stmt.contract_id,
+                due_date=due_date,
+                amount_due=float(stmt.balance),
+                dunning_level="initial",
+                status="open",
+            )
+        )
+        existing.append(receivable)
+        created += 1
+
+    return {
+        "billing_period_id": period_id,
+        "created_receivables": created,
+        "due_date": str(due_date),
+    }
 
 
 @router.post("/periods/{period_id}/revisions")

@@ -2593,6 +2593,33 @@ class TestGenerateUtilityStatements:
         assert exc_info.value.status_code == 400
 
 
+
+    def test_create_receivables_from_finalized_period(self) -> None:
+        store.create_cost_item(
+            CostItemCreate(
+                billing_period_id=self.bp.id,
+                description="Wasser",
+                amount=6000.0,
+                allocation_key_id=self.ak_area.id,
+            )
+        )
+        billing.generate_utility_statements(self.bp.id)
+        billing.finalize_billing_period(self.bp.id)
+
+        result = billing.create_receivables_for_billing_period(self.bp.id)
+        assert result["created_receivables"] >= 1
+
+        receivables_for_contracts = [
+            r for r in _list_receivables() if r.contract_id in {self.contract1.id, self.contract2.id}
+        ]
+        assert len(receivables_for_contracts) >= 1
+        assert all(r.status == "open" for r in receivables_for_contracts)
+
+    def test_create_receivables_requires_finalized_period(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            billing.create_receivables_for_billing_period(self.bp.id)
+        assert exc_info.value.status_code == 400
+
     def test_create_revision_creates_new_period_and_draft_statements(self) -> None:
         store.create_cost_item(
             CostItemCreate(

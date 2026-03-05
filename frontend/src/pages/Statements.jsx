@@ -51,6 +51,7 @@ export default function Statements() {
   const [finalizing, setFinalizing] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [creatingRevision, setCreatingRevision] = useState(false);
+  const [creatingReceivables, setCreatingReceivables] = useState(false);
 
   const loadData = () => {
     Promise.all([
@@ -163,6 +164,21 @@ export default function Statements() {
 
 
 
+
+
+  const handleCreateReceivables = async () => {
+    if (!selectedPeriod) return;
+    setCreatingReceivables(true);
+    try {
+      const res = await api.post(`/billing/periods/${selectedPeriod.id}/create-receivables`, {});
+      window.alert(`Forderungen erzeugt: ${res?.created_receivables ?? 0}`);
+    } catch (err) {
+      window.alert(err.message || 'Forderungen konnten nicht erzeugt werden');
+    } finally {
+      setCreatingReceivables(false);
+    }
+  };
+
   const handleCreateRevision = async () => {
     if (!selectedPeriod) return;
     const notes = window.prompt('Grund für Korrektur (optional):', '') || '';
@@ -259,6 +275,13 @@ export default function Statements() {
               disabled={creatingRevision}
             >
               {creatingRevision ? 'Erstelle…' : 'Korrektur starten'}
+            </button>
+            <button
+              className="btn btn-sm btn-secondary"
+              onClick={handleCreateReceivables}
+              disabled={creatingReceivables || selectedPeriod.status !== 'finalized'}
+            >
+              {creatingReceivables ? 'Erzeuge…' : 'Forderungen erzeugen'}
             </button>
             <button
               className="btn btn-sm btn-secondary"
