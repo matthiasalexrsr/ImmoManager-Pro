@@ -311,14 +311,14 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
               <tr><td colSpan={colSpan} className="table-empty">{t('ui.table.noResults')}</td></tr>
             ) : (
               pageData.map(row => (
-                <tr key={row.id} onClick={() => onRowClick && onRowClick(row)} style={onRowClick ? { cursor: 'pointer' } : undefined}>
+                <tr key={row.id} onClick={() => onRowClick?.(row)} className={onRowClick ? 'clickable-row' : ''} style={onRowClick ? { cursor: 'pointer' } : undefined}>
                   {visibleColumns.map(col => (
                     <td key={col.key} className={col.align === 'right' ? 'text-right' : ''}>
                       {col.render ? col.render(row[col.key], row) : (row[col.key] ?? '\u2014')}
                     </td>
                   ))}
                   {(onEdit || onDelete) && (
-                    <td className="action-cell">
+                    <td className="action-cell" onClick={e => e.stopPropagation()}>
                       {onEdit && (
                         <button onClick={() => onEdit(row)} className="btn btn-sm btn-ghost" title={t('ui.buttons.edit')}>
                           <EditIcon size={15} />

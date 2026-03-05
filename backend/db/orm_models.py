@@ -666,6 +666,45 @@ class UserPreferencesORM(Base):
     __table_args__ = (Index("idx_user_preferences_user", "user_id"),)
 
 
+class InsuranceORM(Base):
+    __tablename__ = "insurances"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    property_id: Mapped[str] = mapped_column(ForeignKey("properties.id", ondelete="CASCADE"), nullable=False)
+    unit_id: Mapped[str | None] = mapped_column(ForeignKey("units.id", ondelete="SET NULL"))
+    insurance_type: Mapped[str] = mapped_column(Text, nullable=False)
+    provider: Mapped[str] = mapped_column(Text, nullable=False)
+    policy_number: Mapped[str | None] = mapped_column(Text)
+    coverage_amount: Mapped[float | None] = mapped_column(Float)
+    premium_amount: Mapped[float | None] = mapped_column(Float)
+    premium_interval: Mapped[str] = mapped_column(Text, nullable=False, default="annual")
+    start_date: Mapped[date | None] = mapped_column(Date)
+    end_date: Mapped[date | None] = mapped_column(Date)
+    contact_person: Mapped[str | None] = mapped_column(Text)
+    contact_phone: Mapped[str | None] = mapped_column(Text)
+    notes: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="active")
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
+
+    __table_args__ = (Index("idx_insurance_property", "property_id"),)
+
+
+class EntityPhotoORM(Base):
+    __tablename__ = "entity_photos"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    entity_type: Mapped[str] = mapped_column(Text, nullable=False)
+    entity_id: Mapped[str] = mapped_column(Text, nullable=False)
+    file_url: Mapped[str] = mapped_column(Text, nullable=False)
+    caption: Mapped[str | None] = mapped_column(Text)
+    is_primary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
+
+    __table_args__ = (Index("idx_entity_photos_entity", "entity_type", "entity_id"),)
+
+
 class AuditLogORM(Base):
     __tablename__ = "audit_logs"
 

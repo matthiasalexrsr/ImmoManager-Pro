@@ -10,6 +10,7 @@ export default function CrudPage({ title, endpoint, columns, formFields, onRowCl
   const { t } = useTranslation();
   const { items, loading, error, reload } = useList(endpoint);
   const [modal, setModal] = useState(null); // null | 'create' | item
+  const [deleteError, setDeleteError] = useState(null);
 
   const handleSave = async (data) => {
     if (modal === 'create') {
@@ -23,8 +24,13 @@ export default function CrudPage({ title, endpoint, columns, formFields, onRowCl
   const handleDelete = async (row) => {
     const name = row[columns[0]?.key] || row.id;
     if (!window.confirm(`"${name}" ${t('modals.confirmDelete.body')}`)) return;
-    await api.del(`${endpoint}/${row.id}`);
-    reload();
+    setDeleteError(null);
+    try {
+      await api.del(`${endpoint}/${row.id}`);
+      reload();
+    } catch (err) {
+      setDeleteError(err.message || 'Löschen fehlgeschlagen');
+    }
   };
 
   const tableColumns = columns.map(col => ({
@@ -39,6 +45,12 @@ export default function CrudPage({ title, endpoint, columns, formFields, onRowCl
 
   return (
     <div className="page">
+      {deleteError && (
+        <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
+          {deleteError}
+          <button onClick={() => setDeleteError(null)} style={{ marginLeft: '1rem', cursor: 'pointer' }}>✕</button>
+        </div>
+      )}
       <DataTable
         title={title}
         columns={tableColumns}

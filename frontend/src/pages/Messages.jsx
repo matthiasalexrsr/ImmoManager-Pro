@@ -26,7 +26,7 @@ export default function Messages() {
   }, []);
 
   const markRead = async (id) => {
-    await api.patch(`/notifications/${id}`, { status: 'read' }).catch(() => {});
+    await api.patch(`/notifications/${id}`, { status: 'read' }).catch(err => console.warn('[Messages] mark read:', err.message));
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, status: 'read' } : n));
   };
 

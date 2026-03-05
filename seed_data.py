@@ -21,11 +21,15 @@ def seed():
             username="demo",
             email="demo@immomanager.de",
             full_name="Max Mustermann",
-            password="demo123",
+            password="Demo1234",
         )
-        print("  Benutzer 'demo' erstellt (Passwort: demo123)")
-    except Exception:
-        print("  Benutzer 'demo' existiert bereits")
+        print("  Benutzer 'demo' erstellt (Passwort: Demo1234)")
+    except Exception as exc:
+        detail = getattr(exc, 'detail', str(exc))
+        if '409' in str(getattr(exc, 'status_code', '')) or 'existiert' in str(detail):
+            print("  Benutzer 'demo' existiert bereits")
+        else:
+            print(f"  WARNUNG: Demo-Benutzer konnte nicht erstellt werden: {detail}")
 
     # --- Portfolios ---
     from backend.models import (

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import CrudPage from './CrudPage';
 
@@ -13,8 +14,9 @@ const COLUMNS = [
 ];
 
 export default function Units() {
+  const navigate = useNavigate();
   const [properties, setProperties] = useState([]);
-  useEffect(() => { api.get('/properties').then(setProperties).catch(() => {}); }, []);
+  useEffect(() => { api.get('/properties').then(setProperties).catch(err => console.warn('[Units] properties:', err.message)); }, []);
 
   const fields = [
     { key: 'property_id', label: 'Immobilie', required: true, type: 'select',
@@ -33,11 +35,12 @@ export default function Units() {
     { key: 'cold_rent', label: 'Kaltmiete (€)', type: 'number' },
     { key: 'service_charge_advance', label: 'NK-Vorauszahlung (€)', type: 'number' },
     { key: 'heating_advance', label: 'Heizkosten-Vorauszahlung (€)', type: 'number' },
+    { key: 'features', label: 'Ausstattung', placeholder: 'z.B. Balkon, Einbauküche, Keller' },
     { key: 'status', label: 'Status', type: 'select', default: 'vacant', options: [
       { value: 'vacant', label: 'Leer' }, { value: 'occupied', label: 'Vermietet' },
       { value: 'reserved', label: 'Reserviert' },
     ]},
   ];
 
-  return <CrudPage title="Einheiten" endpoint="/units" columns={COLUMNS} formFields={fields} />;
+  return <CrudPage title="Einheiten" endpoint="/units" columns={COLUMNS} formFields={fields} onRowClick={row => navigate(`/units/${row.id}`)} />;
 }

@@ -59,7 +59,10 @@ export default function Login() {
           )}
           <div className="form-group">
             <label>{t('auth.login.password')}</label>
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={6} />
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={8} placeholder="Mindestens 8 Zeichen" />
+            {isRegister && (
+              <small className="form-hint">Mindestens 8 Zeichen mit Buchstaben und Zahlen</small>
+            )}
           </div>
           <button type="submit" className="btn btn-primary btn-block" disabled={loading}>
             {loading ? `${t('ui.table.loading')}` : (isRegister ? t('auth.register.submit') : t('auth.login.submit'))}

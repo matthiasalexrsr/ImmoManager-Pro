@@ -17,7 +17,9 @@ export default function NotificationBell() {
         setNotifications(items);
         setUnreadCount(items.length);
       })
-      .catch(() => {});
+      .catch(err => {
+        console.warn('[NotificationBell] Failed to fetch notifications:', err.message);
+      });
   };
 
   useEffect(() => {
@@ -41,14 +43,18 @@ export default function NotificationBell() {
     try {
       await api.patch(`/notifications/${id}`, { status: 'read' });
       fetchNotifications();
-    } catch { /* ignore */ }
+    } catch (err) {
+      console.warn('[NotificationBell] Failed to mark notification read:', err.message);
+    }
   };
 
   const markAllRead = async () => {
     for (const n of notifications) {
       try {
         await api.patch(`/notifications/${n.id}`, { status: 'read' });
-      } catch { /* ignore */ }
+      } catch (err) {
+        console.warn('[NotificationBell] Failed to mark notification read:', err.message);
+      }
     }
     fetchNotifications();
   };

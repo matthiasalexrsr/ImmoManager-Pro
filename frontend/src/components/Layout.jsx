@@ -10,6 +10,7 @@ import {
   InvoiceIcon, MaintenanceIcon, TaskIcon, DocumentIcon,
   SunIcon, MoonIcon, LogoutIcon, ChevronLeftIcon, ChevronRightIcon,
   RentIcon, MeterIcon, ContactIcon, StatementIcon, MessageIcon, SettingsIcon,
+  CategoryIcon, DepositIcon, InsuranceIcon, IntegrationIcon,
 } from './Icons';
 
 const NAV_SECTIONS = [
@@ -27,6 +28,7 @@ const NAV_SECTIONS = [
       { to: '/portfolios', labelKey: 'navigation.main.portfolio', fallback: 'Portfolios', icon: PortfolioIcon },
       { to: '/properties', labelKey: 'navigation.main.properties', fallback: 'Immobilien', icon: PropertyIcon },
       { to: '/units', labelKey: 'units.list.title', fallback: 'Einheiten', icon: UnitIcon },
+      { to: '/insurances', labelKey: 'navigation.main.insurances', fallback: 'Versicherungen', icon: InsuranceIcon },
     ],
   },
   {
@@ -36,6 +38,7 @@ const NAV_SECTIONS = [
       { to: '/tenants', labelKey: 'tenantsContracts.tenants.title', fallback: 'Mieter', icon: TenantIcon },
       { to: '/contracts', labelKey: 'tenantsContracts.contracts.title', fallback: 'Vertr\u00e4ge', icon: ContractIcon },
       { to: '/contacts', labelKey: 'navigation.main.contacts', fallback: 'Kontakte', icon: ContactIcon },
+      { to: '/deposits', labelKey: 'navigation.main.deposits', fallback: 'Kautionen', icon: DepositIcon },
     ],
   },
   {
@@ -47,6 +50,7 @@ const NAV_SECTIONS = [
       { to: '/invoices', labelKey: 'finance.invoices.title', fallback: 'Rechnungen', icon: InvoiceIcon },
       { to: '/rent-overview', labelKey: 'navigation.main.rentOverview', fallback: 'Miet\u00fcbersicht', icon: RentIcon },
       { to: '/statements', labelKey: 'navigation.main.statements', fallback: 'Abrechnungen', icon: StatementIcon },
+      { to: '/categories', labelKey: 'navigation.main.categories', fallback: 'Kategorien', icon: CategoryIcon },
     ],
   },
   {
@@ -58,6 +62,7 @@ const NAV_SECTIONS = [
       { to: '/documents', labelKey: 'navigation.main.documents', fallback: 'Dokumente', icon: DocumentIcon },
       { to: '/meters', labelKey: 'navigation.main.meters', fallback: 'Z\u00e4hler', icon: MeterIcon },
       { to: '/messages', labelKey: 'navigation.main.messages', fallback: 'Nachrichten', icon: MessageIcon },
+      { to: '/integrations', labelKey: 'navigation.main.integrations', fallback: 'Integrationen', icon: IntegrationIcon },
       { to: '/settings', labelKey: 'navigation.main.settings', fallback: 'Einstellungen', icon: SettingsIcon },
     ],
   },

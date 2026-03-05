@@ -9,6 +9,7 @@ from ..models import (
     HandoverProtocolPatch,
     MeterReading,
     MeterReadingCreate,
+    MeterReadingPatch,
 )
 from ..storage import NotFoundError, ValidationError
 
@@ -110,6 +111,31 @@ def get_meter_reading(protocol_id: str, reading_id: str):
         if reading.handover_id != protocol_id:
             raise NotFoundError("Zählerstand nicht gefunden")
         return reading
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.put("/{protocol_id}/meter-readings/{reading_id}", response_model=MeterReading)
+def update_meter_reading(protocol_id: str, reading_id: str, payload: MeterReadingCreate):
+    try:
+        existing = store.get_meter_reading(reading_id)
+        if existing.handover_id != protocol_id:
+            raise NotFoundError("Zählerstand nicht gefunden")
+        if payload.handover_id != protocol_id:
+            payload = MeterReadingCreate(**{**payload.model_dump(), "handover_id": protocol_id})
+        return store.update_meter_reading(reading_id, payload)
+    except (NotFoundError, ValidationError) as exc:
+        code = 404 if isinstance(exc, NotFoundError) else 400
+        raise HTTPException(status_code=code, detail=str(exc)) from exc
+
+
+@router.patch("/{protocol_id}/meter-readings/{reading_id}", response_model=MeterReading)
+def patch_meter_reading(protocol_id: str, reading_id: str, payload: MeterReadingPatch):
+    try:
+        existing = store.get_meter_reading(reading_id)
+        if existing.handover_id != protocol_id:
+            raise NotFoundError("Zählerstand nicht gefunden")
+        return store._patch_entity(None, reading_id, payload, "Zählerstand nicht gefunden")
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

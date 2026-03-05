@@ -1,3 +1,5 @@
+import { useState, useEffect } from 'react';
+import { api } from '../api';
 import CrudPage from './CrudPage';
 
 const COLUMNS = [
@@ -9,20 +11,26 @@ const COLUMNS = [
   { key: 'status', label: 'Status', type: 'status', filterType: 'select' },
 ];
 
-const FIELDS = [
-  { key: 'supplier', label: 'Lieferant', required: true },
-  { key: 'invoice_date', label: 'Rechnungsdatum', type: 'date', required: true },
-  { key: 'due_date', label: 'Fälligkeitsdatum', type: 'date' },
-  { key: 'net_amount', label: 'Netto (€)', type: 'number', required: true },
-  { key: 'vat_amount', label: 'MwSt (€)', type: 'number', default: 0 },
-  { key: 'gross_amount', label: 'Brutto (€)', type: 'number', required: true },
-  { key: 'payment_terms', label: 'Zahlungsbedingungen' },
-  { key: 'status', label: 'Status', type: 'select', default: 'open', options: [
-    { value: 'open', label: 'Offen' }, { value: 'paid', label: 'Bezahlt' },
-    { value: 'overdue', label: 'Überfällig' }, { value: 'cancelled', label: 'Storniert' },
-  ]},
-];
-
 export default function Invoices() {
-  return <CrudPage title="Rechnungen" endpoint="/invoices" columns={COLUMNS} formFields={FIELDS} />;
+  const [properties, setProperties] = useState([]);
+  useEffect(() => { api.get('/properties').then(setProperties).catch(err => console.warn('[Invoices] properties:', err.message)); }, []);
+
+  const fields = [
+    { key: 'supplier', label: 'Lieferant', required: true },
+    { key: 'property_id', label: 'Immobilie', type: 'select',
+      options: [{ value: '', label: '— Keine —' }, ...properties.map(p => ({ value: p.id, label: p.name }))] },
+    { key: 'invoice_date', label: 'Rechnungsdatum', type: 'date', required: true },
+    { key: 'due_date', label: 'Fälligkeitsdatum', type: 'date' },
+    { key: 'net_amount', label: 'Netto (€)', type: 'number', required: true },
+    { key: 'vat_rate', label: 'MwSt-Satz (%)', type: 'number', default: 19 },
+    { key: 'vat_amount', label: 'MwSt (€)', type: 'number', default: 0 },
+    { key: 'gross_amount', label: 'Brutto (€)', type: 'number', required: true },
+    { key: 'payment_terms', label: 'Zahlungsbedingungen' },
+    { key: 'status', label: 'Status', type: 'select', default: 'open', options: [
+      { value: 'open', label: 'Offen' }, { value: 'paid', label: 'Bezahlt' },
+      { value: 'overdue', label: 'Überfällig' }, { value: 'cancelled', label: 'Storniert' },
+    ]},
+  ];
+
+  return <CrudPage title="Rechnungen" endpoint="/invoices" columns={COLUMNS} formFields={fields} />;
 }

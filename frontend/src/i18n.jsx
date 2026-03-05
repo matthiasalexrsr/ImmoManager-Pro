@@ -31,7 +31,7 @@ export function I18nProvider({ children }) {
         translationCache[loc] = data;
         return data;
       }
-    } catch { /* ignore */ }
+    } catch (err) { console.warn('[i18n] Failed to load locale:', err.message); }
     return {};
   }, []);
 

@@ -11,6 +11,12 @@ const ENTITY_ROUTES = {
   contract: '/contracts',
   task: '/tasks',
   invoice: '/invoices',
+  account: '/accounts',
+  booking: '/bookings',
+  maintenance: '/maintenance',
+  document: '/documents',
+  contact: '/contacts',
+  portfolio: '/portfolios',
 };
 
 export default function SearchBar() {

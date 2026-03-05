@@ -35,12 +35,16 @@ from .routers import (
     categories,
     contacts,
     contracts,
+    data_exchange,
     deposits,
     documents,
     escalation,
+    files,
     handover_protocols,
     history,
     i18n,
+    insurances,
+    integrations,
     invoices,
     leads,
     listings,
@@ -48,6 +52,7 @@ from .routers import (
     messages,
     meters_standalone,
     notifications,
+    photos,
     portfolios,
     properties,
     receivables,
@@ -212,13 +217,19 @@ class AuditMiddleware(BaseHTTPMiddleware):
                     user_id = getattr(user, "id", None)
                     username = getattr(user, "username", None)
 
-                log_action(
-                    action=action,
-                    entity_type=entity_type,
-                    entity_id=entity_id,
-                    user_id=user_id,
-                    username=username,
-                )
+                try:
+                    log_action(
+                        action=action,
+                        entity_type=entity_type,
+                        entity_id=entity_id,
+                        user_id=user_id,
+                        username=username,
+                    )
+                except Exception:
+                    logger.warning(
+                        "Audit log failed for %s %s (non-fatal)",
+                        action, entity_type, exc_info=True,
+                    )
 
         return response
 
@@ -269,6 +280,11 @@ api_v1.include_router(contacts.router, dependencies=_auth_dep)
 api_v1.include_router(meters_standalone.router, dependencies=_auth_dep)
 api_v1.include_router(messages.router, dependencies=_auth_dep)
 api_v1.include_router(rent_charges.router, dependencies=_auth_dep)
+api_v1.include_router(integrations.router, dependencies=_auth_dep)
+api_v1.include_router(insurances.router, dependencies=_auth_dep)
+api_v1.include_router(photos.router, dependencies=_auth_dep)
+api_v1.include_router(files.router, dependencies=_auth_dep)
+api_v1.include_router(data_exchange.router, dependencies=_auth_dep)
 
 app.include_router(api_v1)
 

@@ -22,8 +22,10 @@ from ..db.orm_models import (
     CostItemORM,
     DepositORM,
     DocumentORM,
+    EntityPhotoORM,
     EscalationRuleORM,
     HandoverProtocolORM,
+    InsuranceORM,
     InvoiceORM,
     LeadORM,
     ListingORM,
@@ -67,10 +69,14 @@ from ..models import (
     DepositCreate,
     Document,
     DocumentCreate,
+    EntityPhoto,
+    EntityPhotoCreate,
     EscalationRule,
     EscalationRuleCreate,
     HandoverProtocol,
     HandoverProtocolCreate,
+    Insurance,
+    InsuranceCreate,
     Invoice,
     InvoiceCreate,
     Lead,
@@ -165,6 +171,8 @@ class SQLAlchemyStore:
         self._change_history = BaseRepository(
             db, ChangeHistoryORM, ChangeHistoryEntry, "Änderungshistorie nicht gefunden",
         )
+        self._insurances = BaseRepository(db, InsuranceORM, Insurance, "Versicherung nicht gefunden")
+        self._entity_photos = BaseRepository(db, EntityPhotoORM, EntityPhoto, "Foto nicht gefunden")
 
     def _commit(self):
         self.db.commit()
@@ -992,6 +1000,13 @@ class SQLAlchemyStore:
     def get_meter_reading(self, reading_id: str) -> MeterReading:
         return self._meter_readings.get(reading_id)
 
+    def update_meter_reading(self, reading_id: str, data: MeterReadingCreate) -> MeterReading:
+        if not self._handover_protocols.exists(data.handover_id):
+            raise ValidationError("Übergabeprotokoll existiert nicht")
+        result = self._meter_readings.update(reading_id, data)
+        self._commit()
+        return result
+
     def delete_meter_reading(self, reading_id: str) -> None:
         self._meter_readings.delete(reading_id)
         self._commit()
@@ -1050,6 +1065,47 @@ class SQLAlchemyStore:
     def get_entity_history(self, entity_type: str, entity_id: str) -> list[ChangeHistoryEntry]:
         return self._change_history.filter_by(entity_type=entity_type, entity_id=entity_id)
 
+    # --- Insurances ---
+
+    def list_insurances(self) -> list[Insurance]:
+        return self._insurances.list_all()
+
+    def create_insurance(self, data: InsuranceCreate) -> Insurance:
+        if not self._properties.exists(data.property_id):
+            raise ValidationError("Immobilie existiert nicht")
+        result = self._insurances.create(data)
+        self._commit()
+        return result
+
+    def get_insurance(self, insurance_id: str) -> Insurance:
+        return self._insurances.get(insurance_id)
+
+    def update_insurance(self, insurance_id: str, data: InsuranceCreate) -> Insurance:
+        result = self._insurances.update(insurance_id, data)
+        self._commit()
+        return result
+
+    def delete_insurance(self, insurance_id: str) -> None:
+        self._insurances.delete(insurance_id)
+        self._commit()
+
+    # --- Entity Photos ---
+
+    def list_entity_photos(self, entity_type: str, entity_id: str) -> list[EntityPhoto]:
+        return self._entity_photos.filter_by(entity_type=entity_type, entity_id=entity_id)
+
+    def create_entity_photo(self, data: EntityPhotoCreate) -> EntityPhoto:
+        result = self._entity_photos.create(data)
+        self._commit()
+        return result
+
+    def get_entity_photo(self, photo_id: str) -> EntityPhoto:
+        return self._entity_photos.get(photo_id)
+
+    def delete_entity_photo(self, photo_id: str) -> None:
+        self._entity_photos.delete(photo_id)
+        self._commit()
+
     # --- Generic patch (mirrors InMemoryStore._patch_entity) ---
 
     def _patch_entity(self, collection_unused, entity_id: str, patch: PydanticBaseModel, not_found_msg: str):
@@ -1091,6 +1147,8 @@ class SQLAlchemyStore:
             "Zählerstand nicht gefunden": self._meter_readings,
             "Budget nicht gefunden": self._budgets,
             "Eskalationsregel nicht gefunden": self._escalation_rules,
+            "Versicherung nicht gefunden": self._insurances,
+            "Foto nicht gefunden": self._entity_photos,
         }
         repo = repo_map.get(not_found_msg)
         if repo is None:

@@ -13,7 +13,7 @@ const COLUMNS = [
 
 export default function Accounts() {
   const [portfolios, setPortfolios] = useState([]);
-  useEffect(() => { api.get('/portfolios').then(setPortfolios).catch(() => {}); }, []);
+  useEffect(() => { api.get('/portfolios').then(setPortfolios).catch(err => console.warn('[Accounts] portfolios:', err.message)); }, []);
 
   const fields = [
     { key: 'portfolio_id', label: 'Portfolio', required: true, type: 'select',
