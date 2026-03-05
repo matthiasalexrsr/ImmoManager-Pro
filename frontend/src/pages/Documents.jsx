@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from '../api';
 import CrudPage from './CrudPage';
 import FileViewer from '../components/FileViewer';
+import { PlusIcon } from '../components/Icons';
 
 const BASE = (import.meta.env.VITE_API_URL || '/api/v1');
 
@@ -19,6 +20,8 @@ export default function Documents() {
   const [contracts, setContracts] = useState([]);
   const [viewerFile, setViewerFile] = useState(null);
   const [uploadedUrl, setUploadedUrl] = useState('');
+  const [dragActive, setDragActive] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const fileRef = useRef(null);
 
   useEffect(() => {
@@ -29,9 +32,9 @@ export default function Documents() {
     ]).then(([p, u, c]) => { setProperties(p); setUnits(u); setContracts(c); });
   }, []);
 
-  const handleFileUpload = async (e) => {
-    const file = e.target.files?.[0];
+  const uploadFile = useCallback(async (file) => {
     if (!file) return;
+    setUploading(true);
     try {
       const formData = new FormData();
       formData.append('file', file);
@@ -41,14 +44,22 @@ export default function Documents() {
         body: formData,
         headers: { Authorization: `Bearer ${token}` },
       });
+      if (!res.ok) throw new Error('Upload fehlgeschlagen');
       const data = await res.json();
-      if (data.file_url) {
-        setUploadedUrl(data.file_url);
-      }
+      if (data.file_url) setUploadedUrl(data.file_url);
     } catch (err) {
       console.warn('[Documents] upload failed:', err.message);
+    } finally {
+      setUploading(false);
     }
-  };
+  }, []);
+
+  const handleDrop = useCallback((e) => {
+    e.preventDefault();
+    setDragActive(false);
+    const file = e.dataTransfer?.files?.[0];
+    uploadFile(file);
+  }, [uploadFile]);
 
   const fields = [
     { key: 'title', label: 'Titel', required: true },
@@ -74,12 +85,24 @@ export default function Documents() {
 
   return (
     <div>
-      <div style={{ padding: '1rem 1.5rem 0', display: 'flex', gap: '1rem', alignItems: 'center' }}>
-        <label className="btn btn-sm btn-secondary" style={{ cursor: 'pointer' }}>
-          Datei hochladen
-          <input ref={fileRef} type="file" style={{ display: 'none' }} onChange={handleFileUpload} />
-        </label>
-        {uploadedUrl && <span className="text-muted" style={{ fontSize: '0.85rem' }}>Hochgeladen: {uploadedUrl}</span>}
+      <div className="photo-drop-zone-container" style={{ padding: '1rem 1.5rem 0' }}>
+        <div
+          className={`photo-drop-zone ${dragActive ? 'drag-active' : ''}`}
+          onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
+          onDragLeave={() => setDragActive(false)}
+          onDrop={handleDrop}
+          onClick={() => fileRef.current?.click()}
+        >
+          <input
+            ref={fileRef}
+            type="file"
+            style={{ display: 'none' }}
+            onChange={e => uploadFile(e.target.files?.[0])}
+          />
+          <PlusIcon size={24} />
+          <span>{uploading ? 'Wird hochgeladen...' : 'Dokument hierher ziehen oder klicken (automatisch speichern)'}</span>
+          {uploadedUrl && <span className="text-muted">Hochgeladen: {uploadedUrl}</span>}
+        </div>
       </div>
       <CrudPage
         title="Dokumente"
