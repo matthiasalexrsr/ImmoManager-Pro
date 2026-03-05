@@ -29,3 +29,12 @@ def test_safe_extension_defaults_for_invalid_names():
     assert _safe_extension('noext') == 'bin'
     assert _safe_extension('image.') == 'bin'
     assert _safe_extension('evil.$$$') == 'bin'
+
+
+def test_file_url_to_key_rejects_non_upload_http_or_unknown_schemes():
+    assert _file_url_to_key('https://example.com/documents/x.pdf') == ''
+    assert _file_url_to_key('ftp://example.com/uploads/documents/x.pdf') == ''
+
+
+def test_ocr_key_empty_for_invalid_input():
+    assert _ocr_key_from_file_key('../etc/passwd') == ''

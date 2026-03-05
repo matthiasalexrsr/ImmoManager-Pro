@@ -49,12 +49,18 @@ def _file_url_to_key(file_url: str) -> str:
 
     parsed = urlparse(decoded)
     if parsed.scheme in {"http", "https"}:
-        decoded = parsed.path or ""
-    elif parsed.scheme == "s3":
+        path = parsed.path or ""
+        marker = "/uploads/"
+        if marker not in path:
+            return ""
+        return _normalize_storage_key(path.split(marker, 1)[1])
+    if parsed.scheme == "s3":
         bucket = parsed.netloc.strip("/")
         path = (parsed.path or "").lstrip("/")
         if bucket and path:
             return _normalize_storage_key(path)
+        return ""
+    if parsed.scheme:
         return ""
 
     for prefix in ("/uploads/", "uploads/"):
