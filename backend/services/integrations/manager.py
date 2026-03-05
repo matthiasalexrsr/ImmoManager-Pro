@@ -45,6 +45,10 @@ class IntegrationManager:
     def list_integrations(self) -> list[dict]:
         return [self.get_integration(integration_id) for integration_id in sorted(self._providers.keys())]
 
+    def list_categories(self) -> list[str]:
+        categories = {provider.manifest.category for provider in self._providers.values()}
+        return sorted(categories)
+
     def get_integration(self, integration_id: str) -> dict:
         provider = self._providers.get(integration_id)
         if provider is None:
@@ -145,6 +149,32 @@ class IntegrationManager:
             raise KeyError(integration_id)
         entries = self._history.get(integration_id, [])[-limit:]
         return [asdict(e) for e in reversed(entries)]
+
+    def clear_history(self, integration_id: str) -> dict:
+        if integration_id not in self._providers:
+            raise KeyError(integration_id)
+        count = len(self._history.get(integration_id, []))
+        self._history[integration_id] = []
+        return {"id": integration_id, "cleared": count}
+
+    def get_metrics(self) -> dict:
+        total = len(self._providers)
+        enabled = sum(1 for k in self._providers if self._enabled.get(k, False))
+        configured = sum(
+            1 for k, provider in self._providers.items() if provider.is_configured(self._config.get(k, {}))
+        )
+        runs_total = sum(len(v) for v in self._history.values())
+        successful = sum(1 for runs in self._history.values() for r in runs if r.success)
+        failed = runs_total - successful
+        return {
+            "total_integrations": total,
+            "enabled_integrations": enabled,
+            "configured_integrations": configured,
+            "runs_total": runs_total,
+            "runs_successful": successful,
+            "runs_failed": failed,
+            "categories": self.list_categories(),
+        }
 
     def _append_history(self, integration_id: str, payload: dict, result: dict) -> None:
         record = IntegrationRunRecord(

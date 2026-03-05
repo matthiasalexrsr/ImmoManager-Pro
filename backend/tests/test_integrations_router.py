@@ -77,3 +77,28 @@ def test_schema_validate_and_config_masking_endpoint():
     assert detail.json()["config"]["api_token"] == "***"
 
     integration_manager.update_config("whatsapp", {"phone_number_id": None, "api_token": None})
+
+
+def test_metrics_and_history_clear_endpoint():
+    client = TestClient(app)
+    headers = _auth_headers()
+
+    client.patch("/api/v1/integrations/contract-wizard", headers=headers, json={"enabled": True})
+    client.post(
+        "/api/v1/integrations/contract-wizard/run",
+        headers=headers,
+        json={"payload": {"tenant_name": "Metrics", "property_name": "Objekt 1"}},
+    )
+
+    metrics = client.get("/api/v1/integrations/metrics", headers=headers)
+    assert metrics.status_code == 200
+    assert metrics.json()["total_integrations"] >= 1
+    assert metrics.json()["runs_total"] >= 1
+
+    cleared = client.delete("/api/v1/integrations/contract-wizard/history", headers=headers)
+    assert cleared.status_code == 200
+    assert cleared.json()["id"] == "contract-wizard"
+
+    history = client.get("/api/v1/integrations/contract-wizard/history", headers=headers)
+    assert history.status_code == 200
+    assert history.json()["items"] == []

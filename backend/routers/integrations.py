@@ -28,6 +28,11 @@ def list_integration_status() -> dict:
     return {"integrations": integration_manager.list_integrations()}
 
 
+@router.get("/metrics")
+def get_integration_metrics() -> dict:
+    return integration_manager.get_metrics()
+
+
 @router.get("/{integration_id}")
 def get_integration(integration_id: str) -> dict:
     try:
@@ -85,5 +90,13 @@ def get_integration_history(
 ) -> dict:
     try:
         return {"items": integration_manager.list_history(integration_id, limit=limit)}
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Integration nicht gefunden") from exc
+
+
+@router.delete("/{integration_id}/history")
+def clear_integration_history(integration_id: str) -> dict:
+    try:
+        return integration_manager.clear_history(integration_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Integration nicht gefunden") from exc

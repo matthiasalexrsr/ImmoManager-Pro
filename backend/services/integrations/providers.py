@@ -136,7 +136,7 @@ class ListingPortalProvider:
             name="Immobilienportale",
             category="listing",
             description=f"Zentrale Anbindung für Portal-Publishing ({adapters}).",
-            capabilities=["Portal-Status", "Listing-Publishing", "Unpublish/Sync"],
+            capabilities=["Portal-Status", "Listing-Publishing", "Unpublish/Sync", "Statusprüfung"],
             required_config_keys=["default_portal"],
         )
 
@@ -147,6 +147,7 @@ class ListingPortalProvider:
         return {"status": "ok", "adapters": list_adapters()}
 
     def run(self, payload: dict, config: dict) -> IntegrationActionResult:
+        action = (payload.get("action") or "publish").lower()
         portal_name = payload.get("portal") or config.get("default_portal")
         if not portal_name:
             return IntegrationActionResult(success=False, message="Portal fehlt")
@@ -156,15 +157,35 @@ class ListingPortalProvider:
             return IntegrationActionResult(success=False, message=f"Portal '{portal_name}' nicht registriert")
 
         listing_data = payload.get("listing", {})
-        result = adapter.publish(listing_data)
+        portal_listing_id = payload.get("portal_listing_id")
+
+        if action == "publish":
+            result = adapter.publish(listing_data)
+        elif action == "update":
+            if not portal_listing_id:
+                return IntegrationActionResult(success=False, message="portal_listing_id fehlt für update")
+            result = adapter.update(portal_listing_id, listing_data)
+        elif action == "unpublish":
+            if not portal_listing_id:
+                return IntegrationActionResult(success=False, message="portal_listing_id fehlt für unpublish")
+            result = adapter.unpublish(portal_listing_id)
+        elif action == "status":
+            if not portal_listing_id:
+                return IntegrationActionResult(success=False, message="portal_listing_id fehlt für status")
+            status_info = adapter.check_status(portal_listing_id)
+            return IntegrationActionResult(success=True, message="Status abgerufen", details=status_info)
+        else:
+            return IntegrationActionResult(success=False, message=f"Unbekannte Aktion: {action}")
+
         return IntegrationActionResult(
             success=result.success,
             message=(
-                "Portal-Publishing ausgeführt"
+                "Portal-Aktion ausgeführt"
                 if result.success
-                else (result.error or "Portal-Publishing fehlgeschlagen")
+                else (result.error or "Portal-Aktion fehlgeschlagen")
             ),
             details={
+                "action": action,
                 "portal": result.portal_name,
                 "portal_listing_id": result.portal_listing_id,
                 "portal_url": result.portal_url,
