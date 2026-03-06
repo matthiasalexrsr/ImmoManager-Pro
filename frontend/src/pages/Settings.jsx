@@ -186,34 +186,34 @@ export default function Settings() {
         </div>
 
         <div className="panel">
-          <div className="panel-header">Benachrichtigungen</div>
+          <div className="panel-header">{t('pages.settings.notificationsSection')}</div>
           <div className="panel-body settings-section">
             <div className="settings-row">
-              <label>E-Mail-Benachrichtigungen</label>
+              <label>{t('pages.settings.emailNotifications')}</label>
               <div className="settings-control">
                 <select
                   value={prefs.email_notifications || 'important'}
                   onChange={e => updatePrefs({ email_notifications: e.target.value })}
                   className="page-size-select"
                 >
-                  <option value="all">Alle</option>
-                  <option value="important">Nur wichtige</option>
-                  <option value="none">Keine</option>
+                  <option value="all">{t('pages.settings.emailAll')}</option>
+                  <option value="important">{t('pages.settings.emailImportant')}</option>
+                  <option value="none">{t('pages.settings.emailNone')}</option>
                 </select>
               </div>
             </div>
             <div className="settings-row">
-              <label>Erinnerungen</label>
+              <label>{t('pages.settings.reminders')}</label>
               <div className="settings-control">
                 <select
                   value={prefs.reminder_days || '7'}
                   onChange={e => updatePrefs({ reminder_days: e.target.value })}
                   className="page-size-select"
                 >
-                  <option value="3">3 Tage vorher</option>
-                  <option value="7">7 Tage vorher</option>
-                  <option value="14">14 Tage vorher</option>
-                  <option value="30">30 Tage vorher</option>
+                  <option value="3">{t('pages.settings.days3')}</option>
+                  <option value="7">{t('pages.settings.days7')}</option>
+                  <option value="14">{t('pages.settings.days14')}</option>
+                  <option value="30">{t('pages.settings.days30')}</option>
                 </select>
               </div>
             </div>
@@ -221,12 +221,12 @@ export default function Settings() {
         </div>
 
         <div className="panel">
-          <div className="panel-header">{tr('settings.dataBackup.title', 'Daten & Sicherung')}</div>
+          <div className="panel-header">{t('pages.settings.dataBackup')}</div>
           <div className="panel-body settings-section">
             <div className="settings-row">
-              <label>{tr('settings.dataBackup.database', 'Datenbank')}</label>
+              <label>{t('pages.settings.database')}</label>
               <div className="settings-control">
-                <span className="text-muted">SQLite / In-Memory</span>
+                <span className="text-muted">{t('pages.settings.dbType')}</span>
                 <button className="btn btn-sm btn-secondary" onClick={loadDbInfo} style={{ marginLeft: '0.5rem' }}>
                   Info
                 </button>
@@ -252,19 +252,19 @@ export default function Settings() {
               </div>
             </div>
             <div className="settings-row">
-              <label>Daten exportieren</label>
+              <label>{t('pages.settings.exportData')}</label>
               <div className="settings-control">
                 <button
                   className="btn btn-sm btn-secondary"
                   onClick={handleExport}
                   disabled={exportLoading}
                 >
-                  {exportLoading ? 'Exportiere...' : 'JSON-Export'}
+                  {exportLoading ? t('pages.settings.exporting') : t('pages.settings.jsonExport')}
                 </button>
               </div>
             </div>
             <div className="settings-row">
-              <label>Daten importieren</label>
+              <label>{t('pages.settings.importData')}</label>
               <div className="settings-control">
                 <input
                   ref={fileRef}
@@ -278,14 +278,14 @@ export default function Settings() {
             </div>
             {importResult && (
               <div className="settings-row">
-                <label>Import-Ergebnis</label>
+                <label>{t('pages.settings.importResult')}</label>
                 <div className="settings-control" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
                   {importResult.imported && Object.entries(importResult.imported).map(([k, v]) => (
-                    <span key={k} className="text-muted">{k}: {v} importiert</span>
+                    <span key={k} className="text-muted">{k}: {v} {t('pages.settings.imported')}</span>
                   ))}
                   {importResult.errors && Object.keys(importResult.errors).length > 0 && (
                     <span style={{ color: 'var(--danger)' }}>
-                      Fehler in: {Object.keys(importResult.errors).join(', ')}
+                      {t('pages.settings.errorsIn')} {Object.keys(importResult.errors).join(', ')}
                     </span>
                   )}
                 </div>
