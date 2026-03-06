@@ -1,6 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { isLoggedIn } from './api';
 import Layout from './components/Layout';
+import DevModeOverlay from './components/DevModeOverlay';
+import { useDevMode } from './contexts/DevModeContext';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Portfolios from './pages/Portfolios';
@@ -41,9 +43,20 @@ function ProtectedRoute({ children }) {
   return isLoggedIn() ? children : <Navigate to="/login" />;
 }
 
+function DevModeWrapper({ children }) {
+  const devMode = useDevMode();
+  return (
+    <div className={devMode?.enabled ? 'dev-mode-active' : ''}>
+      {children}
+      <DevModeOverlay />
+    </div>
+  );
+}
+
 export default function App() {
   return (
     <BrowserRouter>
+      <DevModeWrapper>
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
@@ -82,6 +95,7 @@ export default function App() {
           <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>
+      </DevModeWrapper>
     </BrowserRouter>
   );
 }

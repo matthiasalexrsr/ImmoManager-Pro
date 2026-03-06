@@ -1272,5 +1272,16 @@
     "expand": "Expand",
     "collapse": "Collapse",
     "toggleTheme": "Toggle theme"
+  },
+  "devMode": {
+    "title": "Developer Mode",
+    "description": "Annotations and improvement notes for developers",
+    "enable": "Enable Developer Mode",
+    "disable": "Disable Developer Mode",
+    "shortcut": "Ctrl+Shift+D",
+    "addNote": "Add Note",
+    "notes": "Notes",
+    "exportLog": "Export Log",
+    "exit": "Exit"
   }
 }
