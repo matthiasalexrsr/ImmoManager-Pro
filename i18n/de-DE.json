@@ -24,14 +24,24 @@
       "meters": "Zähler",
       "messages": "Nachrichten",
       "rentOverview": "Mietübersicht",
-      "statements": "Abrechnungen"
+      "statements": "Abrechnungen",
+      "deposits": "Kautionen",
+      "categories": "Kategorien",
+      "insurances": "Versicherungen",
+      "leads": "Interessenten",
+      "listings": "Inserate",
+      "viewings": "Besichtigungen",
+      "rentAdjustments": "Mietanpassungen",
+      "budgets": "Budgets",
+      "taxRates": "Steuersätze"
     },
     "sections": {
       "overview": "Übersicht",
       "portfolio": "Portfolio",
       "tenants": "Mieter & Verträge",
       "finance": "Finanzen",
-      "operations": "Verwaltung"
+      "operations": "Verwaltung",
+      "vacancy": "Leerstand"
     },
     "secondary": {
       "overview": "Übersicht",
@@ -206,6 +216,10 @@
       "enterCode": "Code eingeben",
       "confirmCode": "Code bestätigen",
       "resendCode": "Neuen Code senden"
+    },
+    "password": {
+      "placeholder": "Mindestens 8 Zeichen",
+      "requirements": "Mindestens 8 Zeichen, 1 Großbuchstabe, 1 Kleinbuchstabe, 1 Zahl"
     }
   },
   "dashboard": {
@@ -938,6 +952,24 @@
     "sessionExpired": "Sitzung abgelaufen. Bitte melden Sie sich erneut an.",
     "tooManyAttempts": "Zu viele Anmeldeversuche. Bitte warten Sie kurz und versuchen Sie es erneut.",
     "connectionEncrypted": "Ihre Verbindung ist verschlüsselt."
+  },
+  "deposits": {
+    "list": {
+      "title": "Kautionen"
+    },
+    "form": {
+      "heldDate": "Hinterlegt am",
+      "returnDate": "Rückgabe",
+      "deductions": "Abzüge",
+      "deductionReason": "Abzugsgrund",
+      "notes": "Notizen",
+      "amount": "Kautionsbetrag"
+    },
+    "status": {
+      "held": "Hinterlegt",
+      "partiallyReturned": "Teilweise zurückgegeben",
+      "returned": "Zurückgegeben"
+    }
   },
   "terminology": {
     "property": "Immobilie",

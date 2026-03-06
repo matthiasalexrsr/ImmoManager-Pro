@@ -86,20 +86,28 @@ export default function Dashboard() {
       openTasks, maintenance, notifs,
       cf, ag, , mc, fc, exp, fin,
     ]) => {
+      const safeArr = v => Array.isArray(v) ? v : [];
+      const pf = safeArr(portfolios);
+      const pr = safeArr(properties);
+      const un = safeArr(units);
+      const tn = safeArr(tenants);
+      const ct = safeArr(contracts);
+      const ac = safeArr(accounts);
+      const mt = safeArr(maintenance);
       setStats({
-        portfolios: portfolios.length,
-        properties: properties.length,
-        units: units.length,
-        unitsOccupied: units.filter(u => u.status === 'occupied').length,
-        unitsReserved: units.filter(u => u.status === 'reserved').length,
-        tenants: tenants.length,
-        contracts: contracts.length,
-        contractsActive: contracts.filter(c => c.status === 'active').length,
-        accounts: accounts.length,
-        openMaintenance: maintenance.length,
+        portfolios: pf.length,
+        properties: pr.length,
+        units: un.length,
+        unitsOccupied: un.filter(u => u.status === 'occupied').length,
+        unitsReserved: un.filter(u => u.status === 'reserved').length,
+        tenants: tn.length,
+        contracts: ct.length,
+        contractsActive: ct.filter(c => c.status === 'active').length,
+        accounts: ac.length,
+        openMaintenance: mt.length,
       });
-      setTasks(openTasks);
-      setNotifications(notifs);
+      setTasks(safeArr(openTasks));
+      setNotifications(safeArr(notifs));
       setCashflow(cf);
       setAging(ag);
       setMaintCosts(mc);

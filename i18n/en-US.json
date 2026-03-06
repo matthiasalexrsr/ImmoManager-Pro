@@ -24,14 +24,24 @@
       "meters": "Meters",
       "messages": "Messages",
       "rentOverview": "Rent Overview",
-      "statements": "Statements"
+      "statements": "Statements",
+      "deposits": "Deposits",
+      "categories": "Categories",
+      "insurances": "Insurances",
+      "leads": "Leads",
+      "listings": "Listings",
+      "viewings": "Viewings",
+      "rentAdjustments": "Rent Adjustments",
+      "budgets": "Budgets",
+      "taxRates": "Tax Rates"
     },
     "sections": {
       "overview": "Overview",
       "portfolio": "Portfolio",
       "tenants": "Tenants & Contracts",
       "finance": "Finance",
-      "operations": "Administration"
+      "operations": "Administration",
+      "vacancy": "Vacancy"
     },
     "secondary": {
       "overview": "Overview",
@@ -206,6 +216,10 @@
       "enterCode": "Enter Code",
       "confirmCode": "Confirm Code",
       "resendCode": "Resend Code"
+    },
+    "password": {
+      "placeholder": "At least 8 characters",
+      "requirements": "At least 8 characters, 1 uppercase, 1 lowercase, 1 number"
     }
   },
   "dashboard": {
@@ -938,6 +952,24 @@
     "sessionExpired": "Session expired. Please log in again.",
     "tooManyAttempts": "Too many login attempts. Please wait a moment and try again.",
     "connectionEncrypted": "Your connection is encrypted."
+  },
+  "deposits": {
+    "list": {
+      "title": "Deposits"
+    },
+    "form": {
+      "heldDate": "Held Date",
+      "returnDate": "Return Date",
+      "deductions": "Deductions",
+      "deductionReason": "Deduction Reason",
+      "notes": "Notes",
+      "amount": "Deposit Amount"
+    },
+    "status": {
+      "held": "Held",
+      "partiallyReturned": "Partially Returned",
+      "returned": "Returned"
+    }
   },
   "terminology": {
     "property": "Property",

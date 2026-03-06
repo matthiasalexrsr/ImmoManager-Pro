@@ -24,14 +24,24 @@
       "meters": "Contadores",
       "messages": "Mensajes",
       "rentOverview": "Resumen de alquileres",
-      "statements": "Liquidaciones"
+      "statements": "Liquidaciones",
+      "deposits": "Depósitos",
+      "categories": "Categorías",
+      "insurances": "Seguros",
+      "leads": "Prospectos",
+      "listings": "Anuncios",
+      "viewings": "Visitas",
+      "rentAdjustments": "Ajustes de alquiler",
+      "budgets": "Presupuestos",
+      "taxRates": "Tipos impositivos"
     },
     "sections": {
       "overview": "Resumen",
       "portfolio": "Cartera",
       "tenants": "Inquilinos y contratos",
       "finance": "Finanzas",
-      "operations": "Administración"
+      "operations": "Administración",
+      "vacancy": "Vacantes"
     },
     "secondary": {
       "overview": "Resumen",
@@ -206,6 +216,10 @@
       "enterCode": "Introducir código",
       "confirmCode": "Confirmar código",
       "resendCode": "Reenviar código"
+    },
+    "password": {
+      "placeholder": "Mínimo 8 caracteres",
+      "requirements": "Mínimo 8 caracteres, 1 mayúscula, 1 minúscula, 1 número"
     }
   },
   "dashboard": {
@@ -938,6 +952,24 @@
     "sessionExpired": "La sesión ha expirado. Por favor, inicie sesión de nuevo.",
     "tooManyAttempts": "Demasiados intentos de inicio de sesión. Por favor, espere un momento e inténtelo de nuevo.",
     "connectionEncrypted": "Su conexión está cifrada."
+  },
+  "deposits": {
+    "list": {
+      "title": "Depósitos"
+    },
+    "form": {
+      "heldDate": "Fecha de depósito",
+      "returnDate": "Fecha de devolución",
+      "deductions": "Deducciones",
+      "deductionReason": "Motivo de deducción",
+      "notes": "Notas",
+      "amount": "Importe del depósito"
+    },
+    "status": {
+      "held": "Depositado",
+      "partiallyReturned": "Parcialmente devuelto",
+      "returned": "Devuelto"
+    }
   },
   "terminology": {
     "property": "Inmueble",

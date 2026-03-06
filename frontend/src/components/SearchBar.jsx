@@ -17,6 +17,11 @@ const ENTITY_ROUTES = {
   document: '/documents',
   contact: '/contacts',
   portfolio: '/portfolios',
+  deposit: '/deposits',
+  category: '/categories',
+  insurance: '/insurances',
+  lead: '/leads',
+  listing: '/listings',
 };
 
 export default function SearchBar() {

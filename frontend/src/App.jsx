@@ -27,6 +27,13 @@ import Categories from './pages/Categories';
 import Deposits from './pages/Deposits';
 import Insurances from './pages/Insurances';
 import Integrations from './pages/Integrations';
+import Calendar from './pages/Calendar';
+import Leads from './pages/Leads';
+import Listings from './pages/Listings';
+import Viewings from './pages/Viewings';
+import RentAdjustments from './pages/RentAdjustments';
+import Budgets from './pages/Budgets';
+import TaxRates from './pages/TaxRates';
 
 function ProtectedRoute({ children }) {
   return isLoggedIn() ? children : <Navigate to="/login" />;
@@ -61,6 +68,13 @@ export default function App() {
           <Route path="deposits" element={<Deposits />} />
           <Route path="insurances" element={<Insurances />} />
           <Route path="integrations" element={<Integrations />} />
+          <Route path="calendar" element={<Calendar />} />
+          <Route path="leads" element={<Leads />} />
+          <Route path="listings" element={<Listings />} />
+          <Route path="viewings" element={<Viewings />} />
+          <Route path="rent-adjustments" element={<RentAdjustments />} />
+          <Route path="budgets" element={<Budgets />} />
+          <Route path="tax-rates" element={<TaxRates />} />
           <Route path="settings" element={<Settings />} />
         </Route>
       </Routes>
