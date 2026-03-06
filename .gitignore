@@ -11,3 +11,7 @@ frontend/dist/
 *.egg-info/
 dist/
 build/
+
+# Developer mode runtime files
+dev_notes.log
+dev_notes.json
