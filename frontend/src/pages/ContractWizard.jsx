@@ -9,7 +9,7 @@ export default function ContractWizard() {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <h2 style={{ margin: '0 0 12px 0' }}>{title}</h2>
       <iframe
-        src="/mietvertrag"
+        src="/mietvertrag/"
         title={title}
         style={{
           flex: 1,

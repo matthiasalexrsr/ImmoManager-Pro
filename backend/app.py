@@ -363,6 +363,15 @@ def _mount_contract_wizard_if_available(target_app: FastAPI) -> None:
         )
 
     target_app.mount("/mietvertrag", wizard_app)
+
+    # Starlette Mount only handles paths *under* the prefix (with trailing
+    # slash).  Add an explicit redirect so /mietvertrag → /mietvertrag/.
+    from starlette.responses import RedirectResponse
+
+    @target_app.get("/mietvertrag")
+    async def _wizard_redirect():
+        return RedirectResponse(url="/mietvertrag/", status_code=301)
+
     logger.info("Mietvertrag-Wizard mounted at /mietvertrag")
 
 

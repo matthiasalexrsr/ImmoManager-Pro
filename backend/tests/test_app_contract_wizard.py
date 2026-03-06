@@ -60,3 +60,20 @@ def test_wizard_endpoints_functional(monkeypatch):
     r2 = client.post("/mietvertrag/api/pdf", json={"vermieter": [{"name": "V"}]})
     assert r2.status_code == 200
     assert r2.content == b"%PDF-dummy"
+
+
+def test_mietvertrag_no_slash_redirects(monkeypatch):
+    """GET /mietvertrag (no trailing slash) should redirect to /mietvertrag/."""
+    monkeypatch.setattr(
+        app_module,
+        "_load_contract_wizard_mount",
+        lambda: (_dummy_build_pdf, _pkg_path()),
+    )
+
+    test_app = FastAPI()
+    app_module._mount_contract_wizard_if_available(test_app)
+    client = TestClient(test_app, follow_redirects=False)
+
+    r = client.get("/mietvertrag")
+    assert r.status_code == 301
+    assert r.headers["location"] == "/mietvertrag/"
