@@ -31,8 +31,45 @@ const STMT_COLUMNS = [
       const cls = v > 0 ? 'text-red' : v < 0 ? 'text-green' : '';
       return <span className={cls}>{Number(v || 0).toFixed(2)} €</span>;
     }},
+  { key: 'delivery_status', label: 'Zustellung',
+    render: v => v ? <StatusBadge status={v} /> : <span className="text-muted">—</span> },
   { key: 'status', label: 'Status', type: 'status' },
+  { key: 'pdf_action', label: '',
+    render: (_, row) => (
+      <button
+        className="btn btn-sm btn-secondary"
+        title="PDF herunterladen"
+        onClick={(e) => { e.stopPropagation(); downloadStatementPdf(row.id); }}
+      >
+        PDF
+      </button>
+    )},
 ];
+
+/** Trigger browser download of a single statement PDF. */
+function downloadStatementPdf(statementId) {
+  const token = localStorage.getItem('access_token');
+  fetch(`/api/v1/billing/statements/${statementId}/pdf`, {
+    headers: { Authorization: `Bearer ${token}` },
+  }).then(res => {
+    if (!res.ok) throw new Error('PDF-Download fehlgeschlagen');
+    return res.blob();
+  }).then(blob => {
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `abrechnung_${statementId}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  }).catch(err => window.alert(err.message));
+}
+
+/** Helper: is a period in a mutable (editable) state? */
+function isMutable(status) {
+  return status === 'draft' || status === 'review';
+}
 
 export default function Statements() {
   const [periods, setPeriods] = useState([]);
@@ -50,6 +87,8 @@ export default function Statements() {
   const [preflightLoading, setPreflightLoading] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [submittingReview, setSubmittingReview] = useState(false);
   const [creatingRevision, setCreatingRevision] = useState(false);
   const [creatingReceivables, setCreatingReceivables] = useState(false);
   const [markingDelivered, setMarkingDelivered] = useState(false);
@@ -58,7 +97,7 @@ export default function Statements() {
     Promise.all([
       api.get('/billing/periods').catch(() => []),
       api.get('/billing/cost-items').catch(() => []),
-      api.get('/billing/utility-statements').catch(() => []),
+      api.get('/billing/statements').catch(() => []),
       api.get('/properties').catch(() => []),
       api.get('/units').catch(() => []),
       api.get('/billing/allocation-keys').catch(() => []),
@@ -99,6 +138,7 @@ export default function Statements() {
     { key: 'end_date', label: 'Ende', type: 'date', required: true },
     { key: 'status', label: 'Status', type: 'select', default: 'draft', options: [
       { value: 'draft', label: 'Entwurf' },
+      { value: 'review', label: 'In Prüfung' },
       { value: 'finalized', label: 'Abgeschlossen' },
     ]},
   ];
@@ -143,10 +183,48 @@ export default function Statements() {
     loadData();
   };
 
+  const handleGenerateStatements = async () => {
+    if (!selectedPeriod) return;
+    setGenerating(true);
+    try {
+      await api.post(`/billing/periods/${selectedPeriod.id}/generate`, {});
+      await loadData();
+      const pf = await api.get(`/billing/periods/${selectedPeriod.id}/preflight`).catch(() => null);
+      setPreflight(pf);
+    } catch (err) {
+      window.alert(err.message || 'Generierung fehlgeschlagen');
+    } finally {
+      setGenerating(false);
+    }
+  };
 
+  const handleSubmitReview = async () => {
+    if (!selectedPeriod) return;
+    setSubmittingReview(true);
+    try {
+      const updated = await api.post(`/billing/periods/${selectedPeriod.id}/submit-review`, {});
+      setSelectedPeriod(updated);
+      await loadData();
+    } catch (err) {
+      window.alert(err.message || 'Statuswechsel fehlgeschlagen');
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
+
+  const handleRevertDraft = async () => {
+    if (!selectedPeriod) return;
+    try {
+      const updated = await api.post(`/billing/periods/${selectedPeriod.id}/revert-draft`, {});
+      setSelectedPeriod(updated);
+      await loadData();
+    } catch (err) {
+      window.alert(err.message || 'Zurücksetzen fehlgeschlagen');
+    }
+  };
 
   const handleFinalizePeriod = async () => {
-    if (!selectedPeriod || selectedPeriod.status === 'finalized') return;
+    if (!selectedPeriod || !isMutable(selectedPeriod.status)) return;
     setFinalizing(true);
     try {
       const updated = await api.post(`/billing/periods/${selectedPeriod.id}/finalize`, {});
@@ -160,14 +238,6 @@ export default function Statements() {
       setFinalizing(false);
     }
   };
-
-
-
-
-
-
-
-
 
   const handleMarkDelivered = async () => {
     if (!selectedPeriod) return;
@@ -237,9 +307,7 @@ export default function Statements() {
         try {
           const body = await res.json();
           message = body?.detail || message;
-        } catch {
-          // ignore
-        }
+        } catch { /* ignore */ }
         throw new Error(message);
       }
       const blob = await res.blob();
@@ -258,6 +326,38 @@ export default function Statements() {
     }
   };
 
+  const handleExportZip = async () => {
+    if (!selectedPeriod) return;
+    setExporting(true);
+    try {
+      const token = localStorage.getItem('access_token');
+      const res = await fetch(`/api/v1/billing/periods/${selectedPeriod.id}/export-zip`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        let message = 'ZIP-Export fehlgeschlagen';
+        try {
+          const body = await res.json();
+          message = body?.detail || message;
+        } catch { /* ignore */ }
+        throw new Error(message);
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `abrechnungen_${selectedPeriod.id}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      window.alert(err.message || 'ZIP-Export fehlgeschlagen');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const handleSelectPeriod = (period) => {
     setSelectedPeriod(period);
     setView('detail');
@@ -269,6 +369,18 @@ export default function Statements() {
       .finally(() => setPreflightLoading(false));
   };
 
+  // Build revision history for the selected period (periods with same property + date range)
+  const getRevisionHistory = () => {
+    if (!selectedPeriod) return [];
+    return periods
+      .filter(p =>
+        p.property_id === selectedPeriod.property_id &&
+        p.start_date === selectedPeriod.start_date &&
+        p.end_date === selectedPeriod.end_date
+      )
+      .sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
+  };
+
   if (loading) return <div className="page-loading">Laden...</div>;
 
   if (view === 'detail' && selectedPeriod) {
@@ -277,12 +389,15 @@ export default function Statements() {
     const periodStmts = statements.filter(s => s.billing_period_id === selectedPeriod.id)
       .map(s => ({ ...s, unit_label: unitMap[s.unit_id]?.label || '—' }));
     const totalCosts = periodCosts.reduce((s, c) => s + (c.amount || 0), 0);
+    const editable = isMutable(selectedPeriod.status);
+    const isFinalized = selectedPeriod.status === 'finalized';
+    const revisionHistory = getRevisionHistory();
 
     return (
       <div className="page">
         <div className="detail-header">
           <button className="btn btn-sm btn-secondary" onClick={() => setView('list')}>
-            ← Zurück
+            &larr; Zurück
           </button>
           <div className="detail-title">
             <h1>{selectedPeriod.label || 'Abrechnung'}</h1>
@@ -290,8 +405,39 @@ export default function Statements() {
               {propMap[selectedPeriod.property_id]?.name || '—'} · {selectedPeriod.start_date} – {selectedPeriod.end_date}
             </span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
             <StatusBadge status={selectedPeriod.status} />
+
+            {/* Workflow buttons based on status */}
+            {selectedPeriod.status === 'draft' && (
+              <button
+                className="btn btn-sm btn-secondary"
+                onClick={handleSubmitReview}
+                disabled={submittingReview}
+              >
+                {submittingReview ? 'Sende…' : 'Zur Prüfung'}
+              </button>
+            )}
+            {selectedPeriod.status === 'review' && (
+              <button
+                className="btn btn-sm btn-secondary"
+                onClick={handleRevertDraft}
+              >
+                Zurück zu Entwurf
+              </button>
+            )}
+
+            {editable && (
+              <button
+                className="btn btn-sm btn-secondary"
+                onClick={handleGenerateStatements}
+                disabled={generating || preflightLoading || preflight?.has_blockers}
+                title={preflight?.has_blockers ? 'Preflight-Blocker vorhanden' : ''}
+              >
+                {generating ? 'Generiere…' : 'Abrechnungen generieren'}
+              </button>
+            )}
+
             <button
               className="btn btn-sm btn-secondary"
               onClick={handleCreateRevision}
@@ -302,7 +448,7 @@ export default function Statements() {
             <button
               className="btn btn-sm btn-secondary"
               onClick={handleCreateReceivables}
-              disabled={creatingReceivables || selectedPeriod.status !== 'finalized'}
+              disabled={creatingReceivables || !isFinalized}
             >
               {creatingReceivables ? 'Erzeuge…' : 'Forderungen erzeugen'}
             </button>
@@ -313,19 +459,28 @@ export default function Statements() {
             >
               {exporting ? 'Exportiere…' : 'CSV-Export'}
             </button>
+            {periodStmts.length > 0 && (
+              <button
+                className="btn btn-sm btn-secondary"
+                onClick={handleExportZip}
+                disabled={exporting}
+              >
+                {exporting ? 'Exportiere…' : 'ZIP (alle PDFs)'}
+              </button>
+            )}
             <button
               className="btn btn-sm btn-secondary"
               onClick={handleMarkDelivered}
-              disabled={markingDelivered || selectedPeriod.status !== 'finalized'}
+              disabled={markingDelivered || !isFinalized}
             >
               {markingDelivered ? 'Setze…' : 'Als zugestellt markieren'}
             </button>
             <button
               className="btn btn-sm btn-primary"
               onClick={handleFinalizePeriod}
-              disabled={selectedPeriod.status === 'finalized' || finalizing || preflightLoading || preflight?.has_blockers}
+              disabled={!editable || finalizing || preflightLoading || preflight?.has_blockers}
             >
-              {finalizing ? 'Finalisiere…' : (selectedPeriod.status === 'finalized' ? 'Finalisiert' : 'Finalisieren')}
+              {finalizing ? 'Finalisiere…' : (isFinalized ? 'Finalisiert' : 'Finalisieren')}
             </button>
           </div>
         </div>
@@ -407,13 +562,57 @@ export default function Statements() {
           </div>
         </div>
 
+        {/* Revision History */}
+        {revisionHistory.length > 1 && (
+          <div className="card" style={{ marginBottom: '1rem' }}>
+            <div className="card-header"><strong>Revisionshistorie</strong></div>
+            <div className="card-body">
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--border-color, #ddd)' }}>
+                    <th style={{ textAlign: 'left', padding: '4px 8px' }}>Bezeichnung</th>
+                    <th style={{ textAlign: 'left', padding: '4px 8px' }}>Status</th>
+                    <th style={{ textAlign: 'left', padding: '4px 8px' }}>Erstellt</th>
+                    <th style={{ padding: '4px 8px' }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {revisionHistory.map(rev => (
+                    <tr
+                      key={rev.id}
+                      style={{
+                        borderBottom: '1px solid var(--border-color, #eee)',
+                        background: rev.id === selectedPeriod.id ? 'var(--highlight-bg, #f0f4ff)' : undefined,
+                      }}
+                    >
+                      <td style={{ padding: '4px 8px' }}>{rev.label}</td>
+                      <td style={{ padding: '4px 8px' }}><StatusBadge status={rev.status} /></td>
+                      <td style={{ padding: '4px 8px' }}>{rev.created_at ? new Date(rev.created_at).toLocaleDateString('de-DE') : '—'}</td>
+                      <td style={{ padding: '4px 8px' }}>
+                        {rev.id !== selectedPeriod.id && (
+                          <button
+                            className="btn btn-sm btn-secondary"
+                            onClick={() => handleSelectPeriod(rev)}
+                          >
+                            Anzeigen
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         <div style={{ marginBottom: '1.5rem' }}>
           <DataTable
             title="Kostenpositionen"
             columns={COST_COLUMNS}
             data={periodCosts}
-            onAdd={selectedPeriod.status === 'finalized' ? undefined : () => setCostModal('create')}
-            onEdit={selectedPeriod.status === 'finalized' ? undefined : (row => setCostModal(row))}
+            onAdd={editable ? () => setCostModal('create') : undefined}
+            onEdit={editable ? (row => setCostModal(row)) : undefined}
           />
         </div>
 
@@ -425,7 +624,7 @@ export default function Statements() {
           />
         )}
 
-        {costModal && selectedPeriod.status !== 'finalized' && (
+        {costModal && editable && (
           <FormModal
             title={costModal === 'create' ? 'Kostenposition hinzufügen' : 'Kostenposition bearbeiten'}
             fields={costFields}

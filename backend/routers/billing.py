@@ -2,8 +2,14 @@
 
 Includes a POST endpoint to auto-generate utility statements from cost items
 using the BillingEngine for cost allocation.
+
+Status machine for billing periods:
+  draft -> review -> finalized -> delivered
+  finalized -> corrected (via revision endpoint)
 """
 
+import hashlib
+import json
 from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -32,6 +38,47 @@ from ..models import (
     UtilityStatementPatch,
 )
 from ..storage import NotFoundError, ValidationError
+
+# Valid status transitions for billing periods
+_PERIOD_TRANSITIONS: dict[str, set[str]] = {
+    "draft": {"review", "finalized"},
+    "review": {"draft", "finalized"},
+    "finalized": {"delivered", "corrected"},
+    "delivered": set(),
+    "corrected": set(),
+}
+
+_IMMUTABLE_STATUSES = {"finalized", "delivered", "corrected"}
+
+
+def _assert_period_mutable(period: BillingPeriod) -> None:
+    """Raise 409 if the period is in an immutable state."""
+    if period.status in _IMMUTABLE_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Periode ist '{period.status}' und kann nicht mehr bearbeitet werden",
+        )
+
+
+def _compute_snapshot_hash(period_id: str) -> str:
+    """Compute a deterministic SHA-256 hash over all statement data for a period."""
+    stmts = sorted(
+        [s for s in store.list_utility_statements() if s.billing_period_id == period_id],
+        key=lambda s: s.id,
+    )
+    payload = []
+    for s in stmts:
+        payload.append({
+            "id": s.id,
+            "unit_id": s.unit_id,
+            "contract_id": s.contract_id,
+            "total_cost": float(s.total_cost),
+            "advance_paid": float(s.advance_paid),
+            "balance": float(s.balance),
+            "line_items": s.line_items or [],
+        })
+    raw = json.dumps(payload, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 router = APIRouter(prefix="/billing", tags=["Abrechnung"])
 
@@ -107,6 +154,8 @@ def get_billing_period(period_id: str) -> BillingPeriod:
 @router.put("/periods/{period_id}", response_model=BillingPeriod)
 def update_billing_period(period_id: str, payload: BillingPeriodCreate) -> BillingPeriod:
     try:
+        existing = store.get_billing_period(period_id)
+        _assert_period_mutable(existing)
         return store.update_billing_period(period_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -117,6 +166,8 @@ def update_billing_period(period_id: str, payload: BillingPeriodCreate) -> Billi
 @router.patch("/periods/{period_id}", response_model=BillingPeriod)
 def patch_billing_period(period_id: str, payload: BillingPeriodPatch) -> BillingPeriod:
     try:
+        existing = store.get_billing_period(period_id)
+        _assert_period_mutable(existing)
         return store._patch_entity(
             None, period_id, payload, "Abrechnungsperiode nicht gefunden"
         )
@@ -127,6 +178,8 @@ def patch_billing_period(period_id: str, payload: BillingPeriodPatch) -> Billing
 @router.delete("/periods/{period_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_billing_period(period_id: str) -> None:
     try:
+        existing = store.get_billing_period(period_id)
+        _assert_period_mutable(existing)
         store.delete_billing_period(period_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -219,6 +272,11 @@ def list_cost_items(
 @router.post("/cost-items", response_model=CostItem, status_code=status.HTTP_201_CREATED)
 def create_cost_item(payload: CostItemCreate) -> CostItem:
     try:
+        period = store.get_billing_period(payload.billing_period_id)
+        _assert_period_mutable(period)
+    except NotFoundError:
+        pass  # Let store.create_cost_item raise its own ValidationError
+    try:
         return store.create_cost_item(payload)
     except ValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -235,6 +293,9 @@ def get_cost_item(item_id: str) -> CostItem:
 @router.put("/cost-items/{item_id}", response_model=CostItem)
 def update_cost_item(item_id: str, payload: CostItemCreate) -> CostItem:
     try:
+        existing = store.get_cost_item(item_id)
+        period = store.get_billing_period(existing.billing_period_id)
+        _assert_period_mutable(period)
         return store.update_cost_item(item_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -245,6 +306,9 @@ def update_cost_item(item_id: str, payload: CostItemCreate) -> CostItem:
 @router.patch("/cost-items/{item_id}", response_model=CostItem)
 def patch_cost_item(item_id: str, payload: CostItemPatch) -> CostItem:
     try:
+        existing = store.get_cost_item(item_id)
+        period = store.get_billing_period(existing.billing_period_id)
+        _assert_period_mutable(period)
         return store._patch_entity(
             None, item_id, payload, "Kostenposition nicht gefunden"
         )
@@ -255,6 +319,9 @@ def patch_cost_item(item_id: str, payload: CostItemPatch) -> CostItem:
 @router.delete("/cost-items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_cost_item(item_id: str) -> None:
     try:
+        existing = store.get_cost_item(item_id)
+        period = store.get_billing_period(existing.billing_period_id)
+        _assert_period_mutable(period)
         store.delete_cost_item(item_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -410,9 +477,65 @@ def _run_billing_period_preflight(period_id: str) -> BillingPreflightResult:
     )
 
 
+@router.post("/periods/{period_id}/submit-review", response_model=BillingPeriod)
+def submit_period_for_review(period_id: str) -> BillingPeriod:
+    """Transition period from draft to review status."""
+    try:
+        period = store.get_billing_period(period_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    if period.status != "draft":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Nur Perioden im Status 'draft' können zur Prüfung eingereicht werden (aktuell: '{period.status}')",
+        )
+
+    return store.update_billing_period(
+        period_id,
+        BillingPeriodCreate(
+            property_id=period.property_id,
+            label=period.label,
+            start_date=period.start_date,
+            end_date=period.end_date,
+            status="review",
+        ),
+    )
+
+
+@router.post("/periods/{period_id}/revert-draft", response_model=BillingPeriod)
+def revert_period_to_draft(period_id: str) -> BillingPeriod:
+    """Revert period from review back to draft."""
+    try:
+        period = store.get_billing_period(period_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    if period.status != "review":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Nur Perioden im Status 'review' können zurückgesetzt werden (aktuell: '{period.status}')",
+        )
+
+    return store.update_billing_period(
+        period_id,
+        BillingPeriodCreate(
+            property_id=period.property_id,
+            label=period.label,
+            start_date=period.start_date,
+            end_date=period.end_date,
+            status="draft",
+        ),
+    )
+
+
 @router.post("/periods/{period_id}/finalize", response_model=BillingPeriod)
 def finalize_billing_period(period_id: str) -> BillingPeriod:
-    """Finalize billing period after successful preflight and generated statements."""
+    """Finalize billing period after successful preflight and generated statements.
+
+    Allowed from 'draft' or 'review' status. Computes a snapshot hash for
+    immutability verification and stamps it on all statements.
+    """
     try:
         period = store.get_billing_period(period_id)
     except NotFoundError as exc:
@@ -420,6 +543,12 @@ def finalize_billing_period(period_id: str) -> BillingPeriod:
 
     if period.status == "finalized":
         return period
+
+    if period.status not in ("draft", "review"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Finalisierung nur aus 'draft' oder 'review' möglich (aktuell: '{period.status}')",
+        )
 
     preflight = _run_billing_period_preflight(period_id)
     if preflight.has_blockers:
@@ -437,6 +566,9 @@ def finalize_billing_period(period_id: str) -> BillingPeriod:
             detail="Finalisierung nicht möglich: Keine Einzelabrechnungen vorhanden",
         )
 
+    # Compute immutable snapshot hash
+    snapshot = _compute_snapshot_hash(period_id)
+
     finalized = store.update_billing_period(
         period_id,
         BillingPeriodCreate(
@@ -449,11 +581,16 @@ def finalize_billing_period(period_id: str) -> BillingPeriod:
     )
 
     for stmt in period_statements:
+        patch_data = {}
         if stmt.status != "finalized":
+            patch_data["status"] = "finalized"
+        if not stmt.snapshot_hash:
+            patch_data["snapshot_hash"] = snapshot
+        if patch_data:
             store._patch_entity(
                 None,
                 stmt.id,
-                UtilityStatementPatch(status="finalized"),
+                UtilityStatementPatch(**patch_data),
                 "Betriebskostenabrechnung nicht gefunden",
             )
 
@@ -494,6 +631,9 @@ def get_utility_statement(statement_id: str) -> UtilityStatement:
 @router.patch("/statements/{statement_id}", response_model=UtilityStatement)
 def patch_utility_statement(statement_id: str, payload: UtilityStatementPatch) -> UtilityStatement:
     try:
+        existing = store.get_utility_statement(statement_id)
+        period = store.get_billing_period(existing.billing_period_id)
+        _assert_period_mutable(period)
         return store._patch_entity(
             None, statement_id, payload, "Betriebskostenabrechnung nicht gefunden"
         )
@@ -504,6 +644,9 @@ def patch_utility_statement(statement_id: str, payload: UtilityStatementPatch) -
 @router.delete("/statements/{statement_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_utility_statement(statement_id: str) -> None:
     try:
+        existing = store.get_utility_statement(statement_id)
+        period = store.get_billing_period(existing.billing_period_id)
+        _assert_period_mutable(period)
         store.delete_utility_statement(statement_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -532,6 +675,8 @@ def generate_utility_statements(period_id: str) -> list[UtilityStatement]:
         period = store.get_billing_period(period_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    _assert_period_mutable(period)
 
     property_id = period.property_id
 
@@ -737,15 +882,61 @@ def export_billing_period(period_id: str, export_format: str = Query("csv", alia
     )
 
 
+@router.get("/periods/{period_id}/export-zip")
+def export_billing_period_zip(period_id: str):
+    """Export all statement PDFs for a billing period as a ZIP archive."""
+    import io
+    import zipfile
+
+    from starlette.responses import Response as RawResponse
+
+    try:
+        period = store.get_billing_period(period_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    period_statements = [
+        s for s in store.list_utility_statements() if s.billing_period_id == period_id
+    ]
+    if not period_statements:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Keine Einzelabrechnungen zum Exportieren vorhanden",
+        )
+
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for stmt in period_statements:
+            pdf_response = download_utility_statement_pdf(stmt.id)
+            ext = "pdf" if pdf_response.media_type == "application/pdf" else "txt"
+            filename = f"statement_{stmt.id}.{ext}"
+            zf.writestr(filename, pdf_response.body)
+
+    return RawResponse(
+        content=zip_buffer.getvalue(),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="billing_period_{period_id}.zip"',
+        },
+    )
+
+
 @router.post("/statements/{statement_id}/mark-delivered", response_model=UtilityStatement)
 def mark_statement_delivered(statement_id: str):
-    """Mark a utility statement as delivered."""
+    """Mark a utility statement as delivered. Requires finalized period."""
     from datetime import datetime as _dt
 
     try:
-        store.get_utility_statement(statement_id)
+        stmt = store.get_utility_statement(statement_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    period = store.get_billing_period(stmt.billing_period_id)
+    if period.status not in ("finalized", "delivered"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Zustellung nur für finalisierte Perioden möglich",
+        )
 
     return store._patch_entity(
         None,

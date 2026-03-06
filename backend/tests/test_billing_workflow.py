@@ -139,6 +139,7 @@ def test_export_period_csv():
 def test_mark_statement_delivered():
     period, *_ = _setup_full_scenario()
     stmts = billing.generate_utility_statements(period.id)
+    billing.finalize_billing_period(period.id)
 
     updated = billing.mark_statement_delivered(stmts[0].id)
     assert updated.delivery_status == "delivered"
