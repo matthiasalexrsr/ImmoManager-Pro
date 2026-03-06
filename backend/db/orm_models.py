@@ -223,6 +223,7 @@ class ReceivableORM(Base):
     amount_due: Mapped[float] = mapped_column(Float, nullable=False)
     dunning_level: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="open")
+    statement_id: Mapped[str | None] = mapped_column(String)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 

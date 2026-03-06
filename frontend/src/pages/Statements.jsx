@@ -92,6 +92,10 @@ export default function Statements() {
   const [creatingRevision, setCreatingRevision] = useState(false);
   const [creatingReceivables, setCreatingReceivables] = useState(false);
   const [markingDelivered, setMarkingDelivered] = useState(false);
+  const [ocrImportOpen, setOcrImportOpen] = useState(false);
+  const [ocrDraft, setOcrDraft] = useState(null);
+  const [ocrUploading, setOcrUploading] = useState(false);
+  const [disputing, setDisputing] = useState(false);
 
   const loadData = () => {
     Promise.all([
@@ -140,6 +144,7 @@ export default function Statements() {
       { value: 'draft', label: 'Entwurf' },
       { value: 'review', label: 'In Prüfung' },
       { value: 'finalized', label: 'Abgeschlossen' },
+      { value: 'disputed', label: 'Widerspruch' },
     ]},
   ];
 
@@ -291,6 +296,82 @@ export default function Statements() {
       window.alert(err.message || 'Korrektur konnte nicht erstellt werden');
     } finally {
       setCreatingRevision(false);
+    }
+  };
+
+  const handleDispute = async () => {
+    if (!selectedPeriod) return;
+    const reason = window.prompt('Grund für Widerspruch:', '') || '';
+    setDisputing(true);
+    try {
+      const updated = await api.post(
+        `/billing/periods/${selectedPeriod.id}/dispute?reason=${encodeURIComponent(reason)}`,
+        {}
+      );
+      setSelectedPeriod(updated);
+      await loadData();
+    } catch (err) {
+      window.alert(err.message || 'Widerspruch konnte nicht eingelegt werden');
+    } finally {
+      setDisputing(false);
+    }
+  };
+
+  const handleOcrUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedPeriod) return;
+    setOcrUploading(true);
+    setOcrDraft(null);
+    try {
+      // Step 1: Upload file
+      const formData = new FormData();
+      formData.append('file', file);
+      const token = localStorage.getItem('access_token');
+      const uploadRes = await fetch('/api/v1/files/upload?folder=billing-ocr', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      if (!uploadRes.ok) throw new Error('Datei-Upload fehlgeschlagen');
+      const uploadData = await uploadRes.json();
+
+      // Step 2: Call OCR import endpoint
+      const ocrRes = await api.post(
+        `/billing/cost-items/import-ocr?billing_period_id=${selectedPeriod.id}&file_url=${encodeURIComponent(uploadData.file_url)}`,
+        {}
+      );
+
+      if (ocrRes?.success) {
+        setOcrDraft(ocrRes);
+      } else {
+        window.alert(ocrRes?.error || 'OCR-Erkennung fehlgeschlagen');
+      }
+    } catch (err) {
+      window.alert(err.message || 'Import fehlgeschlagen');
+    } finally {
+      setOcrUploading(false);
+      // Reset file input
+      e.target.value = '';
+    }
+  };
+
+  const handleAcceptOcrDraft = async () => {
+    if (!ocrDraft?.draft) return;
+    const draft = ocrDraft.draft;
+    try {
+      await api.post('/billing/cost-items', {
+        billing_period_id: draft.billing_period_id,
+        description: draft.description || 'Importierte Kostenposition',
+        amount: draft.amount || 0,
+        allocation_key_id: draft.allocation_key_id || allocationKeys[0]?.id,
+        cost_category: draft.cost_category,
+        source_document_id: draft.source_document_id,
+      });
+      setOcrDraft(null);
+      setOcrImportOpen(false);
+      loadData();
+    } catch (err) {
+      window.alert(err.message || 'Kostenposition konnte nicht gespeichert werden');
     }
   };
 
@@ -475,6 +556,16 @@ export default function Statements() {
             >
               {markingDelivered ? 'Setze…' : 'Als zugestellt markieren'}
             </button>
+            {(isFinalized || selectedPeriod.status === 'delivered') && (
+              <button
+                className="btn btn-sm btn-secondary"
+                onClick={handleDispute}
+                disabled={disputing}
+                style={{ color: 'var(--color-warning, #c57600)' }}
+              >
+                {disputing ? 'Sende…' : 'Widerspruch'}
+              </button>
+            )}
             <button
               className="btn btn-sm btn-primary"
               onClick={handleFinalizePeriod}
@@ -607,6 +698,20 @@ export default function Statements() {
         )}
 
         <div style={{ marginBottom: '1.5rem' }}>
+          {editable && (
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', justifyContent: 'flex-end' }}>
+              <label className="btn btn-sm btn-secondary" style={{ cursor: 'pointer', margin: 0 }}>
+                {ocrUploading ? 'OCR läuft…' : 'Beleg importieren (OCR)'}
+                <input
+                  type="file"
+                  accept=".pdf,.png,.jpg,.jpeg,.tiff,.bmp,.webp"
+                  style={{ display: 'none' }}
+                  onChange={handleOcrUpload}
+                  disabled={ocrUploading}
+                />
+              </label>
+            </div>
+          )}
           <DataTable
             title="Kostenpositionen"
             columns={COST_COLUMNS}
@@ -615,6 +720,70 @@ export default function Statements() {
             onEdit={editable ? (row => setCostModal(row)) : undefined}
           />
         </div>
+
+        {/* OCR Import Preview Dialog */}
+        {ocrDraft && (
+          <div className="modal-overlay" onClick={() => setOcrDraft(null)}>
+            <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+              <div className="modal-header">
+                <h3>OCR-Ergebnis prüfen</h3>
+                <button className="btn btn-sm" onClick={() => setOcrDraft(null)}>&times;</button>
+              </div>
+              <div className="modal-body" style={{ display: 'grid', gap: '0.75rem' }}>
+                {ocrDraft.ocr_fields && (
+                  <div>
+                    <strong>Erkannte Felder</strong>
+                    <table style={{ width: '100%', fontSize: '0.9rem', borderCollapse: 'collapse' }}>
+                      <tbody>
+                        {ocrDraft.ocr_fields.supplier && (
+                          <tr><td style={{ padding: '4px 8px', fontWeight: 500 }}>Lieferant</td>
+                            <td style={{ padding: '4px 8px' }}>{ocrDraft.ocr_fields.supplier}</td>
+                            <td style={{ padding: '4px 8px', color: '#888' }}>{Math.round((ocrDraft.confidence?.description || 0) * 100)}%</td></tr>
+                        )}
+                        {ocrDraft.ocr_fields.total_amount != null && (
+                          <tr><td style={{ padding: '4px 8px', fontWeight: 500 }}>Betrag</td>
+                            <td style={{ padding: '4px 8px' }}>{ocrDraft.ocr_fields.total_amount.toFixed(2)} &euro;</td>
+                            <td style={{ padding: '4px 8px', color: '#888' }}>{Math.round((ocrDraft.confidence?.amount || 0) * 100)}%</td></tr>
+                        )}
+                        {ocrDraft.ocr_fields.cost_category && (
+                          <tr><td style={{ padding: '4px 8px', fontWeight: 500 }}>Kostenart</td>
+                            <td style={{ padding: '4px 8px' }}>{ocrDraft.ocr_fields.cost_category}</td>
+                            <td style={{ padding: '4px 8px', color: '#888' }}>{Math.round((ocrDraft.confidence?.cost_category || 0) * 100)}%</td></tr>
+                        )}
+                        {ocrDraft.ocr_fields.invoice_number && (
+                          <tr><td style={{ padding: '4px 8px', fontWeight: 500 }}>Rechnungsnr.</td>
+                            <td style={{ padding: '4px 8px' }}>{ocrDraft.ocr_fields.invoice_number}</td>
+                            <td></td></tr>
+                        )}
+                        {ocrDraft.ocr_fields.invoice_date && (
+                          <tr><td style={{ padding: '4px 8px', fontWeight: 500 }}>Datum</td>
+                            <td style={{ padding: '4px 8px' }}>{ocrDraft.ocr_fields.invoice_date}</td>
+                            <td></td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {ocrDraft.ocr_text_preview && (
+                  <div>
+                    <strong>Textvorschau</strong>
+                    <pre style={{ fontSize: '0.8rem', background: 'var(--bg-secondary, #f5f5f5)', padding: '8px', borderRadius: '4px', maxHeight: '150px', overflow: 'auto', whiteSpace: 'pre-wrap' }}>
+                      {ocrDraft.ocr_text_preview}
+                    </pre>
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                  <button className="btn btn-sm btn-secondary" onClick={() => setOcrDraft(null)}>
+                    Abbrechen
+                  </button>
+                  <button className="btn btn-sm btn-primary" onClick={handleAcceptOcrDraft}>
+                    Als Kostenposition übernehmen
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {periodStmts.length > 0 && (
           <DataTable

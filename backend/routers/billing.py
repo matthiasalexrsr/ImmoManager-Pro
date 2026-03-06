@@ -43,8 +43,9 @@ from ..storage import NotFoundError, ValidationError
 _PERIOD_TRANSITIONS: dict[str, set[str]] = {
     "draft": {"review", "finalized"},
     "review": {"draft", "finalized"},
-    "finalized": {"delivered", "corrected"},
-    "delivered": set(),
+    "finalized": {"delivered", "corrected", "disputed"},
+    "delivered": {"disputed"},
+    "disputed": {"corrected"},
     "corrected": set(),
 }
 
@@ -922,8 +923,14 @@ def export_billing_period_zip(period_id: str):
 
 
 @router.post("/statements/{statement_id}/mark-delivered", response_model=UtilityStatement)
-def mark_statement_delivered(statement_id: str):
-    """Mark a utility statement as delivered. Requires finalized period."""
+def mark_statement_delivered(
+    statement_id: str,
+    channel: str = "email",
+):
+    """Mark a utility statement as delivered. Requires finalized period.
+
+    ``channel`` may be ``email``, ``post``, or ``portal``.
+    """
     from datetime import datetime as _dt
 
     try:
@@ -944,6 +951,7 @@ def mark_statement_delivered(statement_id: str):
         UtilityStatementPatch(
             delivery_status="delivered",
             delivered_at=_dt.utcnow(),
+            delivery_channel=channel,
             status="delivered",
         ),
         "Betriebskostenabrechnung nicht gefunden",
@@ -980,6 +988,7 @@ def create_receivables_from_period(period_id: str):
                     due_date=period.end_date,
                     amount_due=stmt.balance,
                     status="open",
+                    statement_id=stmt.id,
                 )
             )
             created_count += 1
@@ -991,6 +1000,7 @@ def create_receivables_from_period(period_id: str):
                     due_date=period.end_date,
                     amount_due=stmt.balance,
                     status="open",
+                    statement_id=stmt.id,
                 )
             )
             created_count += 1
@@ -1048,6 +1058,120 @@ def create_period_revision(
         "source_period_id": period_id,
         "revision": new_revision,
         "revision_notes": revision_notes,
+    }
+
+
+@router.post("/periods/{period_id}/dispute", response_model=BillingPeriod)
+def dispute_billing_period(
+    period_id: str,
+    reason: str = Query("", alias="reason"),
+) -> BillingPeriod:
+    """Mark a finalized or delivered period as disputed.
+
+    The period can then be corrected via the revision endpoint.
+    """
+    try:
+        period = store.get_billing_period(period_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    allowed = _PERIOD_TRANSITIONS.get(period.status, set())
+    if "disputed" not in allowed:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Widerspruch nur aus 'finalized' oder 'delivered' möglich (aktuell: '{period.status}')",
+        )
+
+    return store.update_billing_period(
+        period_id,
+        BillingPeriodCreate(
+            property_id=period.property_id,
+            label=period.label,
+            start_date=period.start_date,
+            end_date=period.end_date,
+            status="disputed",
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# OCR-Assisted Cost Import (NK-6)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/cost-items/import-ocr")
+def import_cost_item_from_ocr(
+    billing_period_id: str = Query(...),
+    file_url: str = Query(...),
+    allocation_key_id: str | None = Query(None),
+):
+    """Perform OCR on a document and return a CostItem draft with confidence scores.
+
+    The user can review and correct the suggested fields before accepting.
+    Does NOT persist the cost item — the user must POST /cost-items to save.
+    """
+    from ..services.file_storage import get_file_storage
+    from ..services.ocr_service import extract_text_from_bytes, _extract_invoice_fields
+
+    # Validate period exists and is mutable
+    try:
+        period = store.get_billing_period(billing_period_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    _assert_period_mutable(period)
+
+    # Resolve file from storage
+    storage = get_file_storage()
+    from ..routers.files import _file_url_to_key
+    file_key = _file_url_to_key(file_url)
+    if not file_key:
+        raise HTTPException(status_code=400, detail="Ungültige Datei-URL")
+
+    file_bytes = storage.get(file_key)
+    if file_bytes is None:
+        raise HTTPException(status_code=404, detail="Datei nicht gefunden im Speicher")
+
+    ext = file_key.rsplit(".", 1)[-1].lower() if "." in file_key else ""
+    text = extract_text_from_bytes(file_bytes, ext)
+    if not text:
+        return {
+            "success": False,
+            "error": "Kein Text aus Dokument extrahierbar. Prüfen Sie ob pytesseract/pdfplumber installiert ist.",
+            "draft": None,
+            "confidence": {},
+        }
+
+    fields = _extract_invoice_fields(text)
+
+    # Build draft CostItem suggestion
+    draft = {
+        "billing_period_id": billing_period_id,
+        "description": fields.get("supplier") or fields.get("cost_category") or "",
+        "amount": fields.get("total_amount"),
+        "allocation_key_id": allocation_key_id,
+        "cost_category": fields.get("cost_category"),
+        "source_document_id": file_url,
+    }
+
+    # Confidence scores per field (0.0–1.0)
+    confidence = {
+        "description": 0.7 if fields.get("supplier") else (0.5 if fields.get("cost_category") else 0.0),
+        "amount": 0.85 if fields.get("total_amount") is not None else 0.0,
+        "cost_category": 0.6 if fields.get("cost_category") else 0.0,
+    }
+
+    return {
+        "success": True,
+        "draft": draft,
+        "confidence": confidence,
+        "ocr_fields": {
+            "invoice_number": fields.get("invoice_number"),
+            "invoice_date": fields.get("invoice_date"),
+            "total_amount": fields.get("total_amount"),
+            "supplier": fields.get("supplier"),
+            "cost_category": fields.get("cost_category"),
+        },
+        "ocr_text_preview": text[:500],
     }
 
 

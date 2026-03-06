@@ -34,7 +34,7 @@ class OCRResult:
 
 def _extract_invoice_fields(text: str) -> dict:
     """Extract structured invoice-like fields from OCR text."""
-    fields: dict[str, str | float] = {}
+    fields: dict[str, str | float | None] = {}
 
     inv_patterns = [
         r"Rechnungsnr\.?\s*:?\s*(\S+)",
@@ -76,7 +76,58 @@ def _extract_invoice_fields(text: str) -> dict:
                 pass
             break
 
+    # Supplier extraction
+    supplier_patterns = [
+        r"Lieferant\s*:?\s*(.+)",
+        r"Rechnungssteller\s*:?\s*(.+)",
+        r"Absender\s*:?\s*(.+)",
+        r"Von\s*:?\s*(.+)",
+        r"Firma\s*:?\s*(.+)",
+    ]
+    for pat in supplier_patterns:
+        m = re.search(pat, text, re.IGNORECASE)
+        if m:
+            supplier = m.group(1).strip()
+            if supplier:
+                fields["supplier"] = supplier
+            break
+
+    # Cost category inference from text content
+    fields["cost_category"] = _infer_cost_category(text)
+
     return fields
+
+
+# Cost category keyword mapping for German utility bill terms
+_CATEGORY_KEYWORDS: dict[str, list[str]] = {
+    "water": ["wasser", "abwasser", "trinkwasser", "wasserversorgung", "kanalgebühr"],
+    "heating": ["heizung", "heizkosten", "fernwärme", "gas", "brennstoff", "wärme", "heizöl"],
+    "garbage": ["müll", "abfall", "müllabfuhr", "entsorgung", "wertstoff", "restmüll"],
+    "electricity": ["strom", "elektr", "allgemeinstrom", "beleuchtung", "hausstrom"],
+    "insurance": ["versicherung", "gebäudeversicherung", "haftpflicht", "feuerversicherung"],
+    "cleaning": ["reinigung", "hausreinigung", "treppenhausreinigung", "gebäudereinigung"],
+    "garden": ["garten", "gartenpflege", "grünanlagen", "winterdienst", "außenanlage"],
+    "elevator": ["aufzug", "fahrstuhl", "lift", "aufzugswartung"],
+    "chimney": ["schornstein", "schornsteinfeger", "kaminkehrer", "abgasmessung"],
+    "property_tax": ["grundsteuer"],
+    "cable_tv": ["kabel", "kabelanschluss", "antenne", "sat"],
+    "caretaker": ["hausmeister", "hauswart"],
+}
+
+
+def _infer_cost_category(text: str) -> Optional[str]:
+    """Infer cost category from OCR text by matching German utility keywords."""
+    text_lower = text.lower()
+    best_category = None
+    best_count = 0
+
+    for category, keywords in _CATEGORY_KEYWORDS.items():
+        count = sum(1 for kw in keywords if kw in text_lower)
+        if count > best_count:
+            best_count = count
+            best_category = category
+
+    return best_category
 
 
 def _image_ocr_bytes(content: bytes, languages: str = "deu+eng") -> Optional[str]:

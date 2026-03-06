@@ -183,6 +183,7 @@ class ReceivableCreate(BaseModel):
     amount_due: float
     dunning_level: Optional[str] = None
     status: str = "open"
+    statement_id: Optional[str] = None  # link back to source UtilityStatement
 
 
 class Receivable(ReceivableCreate):
@@ -439,6 +440,7 @@ class ReceivablePatch(BaseModel):
     amount_due: Optional[float] = None
     dunning_level: Optional[str] = None
     status: Optional[str] = None
+    statement_id: Optional[str] = None
 
 
 class InvoicePatch(BaseModel):
