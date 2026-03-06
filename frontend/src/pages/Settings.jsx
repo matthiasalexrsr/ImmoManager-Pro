@@ -81,34 +81,34 @@ export default function Settings() {
 
   return (
     <div className="page">
-      <h1 className="page-title">{t('navigation.main.settings')}</h1>
+      <h1 className="page-title">{t('pages.settings.title')}</h1>
       <div className="settings-grid">
         <div className="panel">
-          <div className="panel-header">{t('settings.areas.general')}</div>
+          <div className="panel-header">{t('pages.settings.appearance')}</div>
           <div className="panel-body settings-section">
             <div className="settings-row">
-              <label>Theme</label>
+              <label>{t('pages.settings.theme')}</label>
               <div className="settings-control">
                 <button
                   className={`btn btn-sm ${prefs.theme === 'light' ? 'btn-primary' : 'btn-secondary'}`}
                   onClick={() => prefs.theme !== 'light' && toggleTheme()}
-                >{tr('settings.theme.light', 'Hell')}</button>
+                >{t('pages.settings.light')}</button>
                 <button
                   className={`btn btn-sm ${prefs.theme === 'dark' ? 'btn-primary' : 'btn-secondary'}`}
                   onClick={() => prefs.theme !== 'dark' && toggleTheme()}
-                >{tr('settings.theme.dark', 'Dunkel')}</button>
+                >{t('pages.settings.dark')}</button>
               </div>
             </div>
             <div className="settings-row">
-              <label>Sidebar</label>
+              <label>{t('pages.settings.sidebar')}</label>
               <div className="settings-control">
                 <button className="btn btn-sm btn-secondary" onClick={toggleSidebar}>
-                  {prefs.sidebar_collapsed ? tr('settings.sidebar.show', 'Einblenden') : tr('settings.sidebar.hide', 'Ausblenden')}
+                  {prefs.sidebar_collapsed ? t('pages.settings.show') : t('pages.settings.hide')}
                 </button>
               </div>
             </div>
             <div className="settings-row">
-              <label>{t('settings.general.language')}</label>
+              <label>{t('pages.settings.language')}</label>
               <div className="settings-control">
                 {['de-DE', 'en-US', 'es-ES'].map(loc => (
                   <button
@@ -123,10 +123,10 @@ export default function Settings() {
         </div>
 
         <div className="panel">
-          <div className="panel-header">{tr('settings.tables.title', 'Tabellen')}</div>
+          <div className="panel-header">{t('pages.settings.tables')}</div>
           <div className="panel-body settings-section">
             <div className="settings-row">
-              <label>{t('ui.table.rowsPerPage')}</label>
+              <label>{t('pages.settings.itemsPerPage')}</label>
               <div className="settings-control">
                 <select
                   value={prefs.items_per_page || 25}
@@ -141,7 +141,7 @@ export default function Settings() {
               </div>
             </div>
             <div className="settings-row">
-              <label>{t('settings.general.dateFormat')}</label>
+              <label>{t('pages.settings.dateFormat')}</label>
               <div className="settings-control">
                 <select
                   value={prefs.date_format || 'DD.MM.YYYY'}
@@ -155,16 +155,16 @@ export default function Settings() {
               </div>
             </div>
             <div className="settings-row">
-              <label>{t('settings.general.currency')}</label>
+              <label>{t('pages.settings.currency')}</label>
               <div className="settings-control">
                 <select
                   value={prefs.currency || 'EUR'}
                   onChange={e => updatePrefs({ currency: e.target.value })}
                   className="page-size-select"
                 >
-                  <option value="EUR">Euro (€)</option>
-                  <option value="CHF">CHF (Fr.)</option>
-                  <option value="USD">USD ($)</option>
+                  <option value="EUR">{t('pages.settings.eurLabel')}</option>
+                  <option value="CHF">{t('pages.settings.chfLabel')}</option>
+                  <option value="USD">{t('pages.settings.usdLabel')}</option>
                 </select>
               </div>
             </div>
@@ -186,34 +186,34 @@ export default function Settings() {
         </div>
 
         <div className="panel">
-          <div className="panel-header">Benachrichtigungen</div>
+          <div className="panel-header">{t('pages.settings.notificationsSection')}</div>
           <div className="panel-body settings-section">
             <div className="settings-row">
-              <label>E-Mail-Benachrichtigungen</label>
+              <label>{t('pages.settings.emailNotifications')}</label>
               <div className="settings-control">
                 <select
                   value={prefs.email_notifications || 'important'}
                   onChange={e => updatePrefs({ email_notifications: e.target.value })}
                   className="page-size-select"
                 >
-                  <option value="all">Alle</option>
-                  <option value="important">Nur wichtige</option>
-                  <option value="none">Keine</option>
+                  <option value="all">{t('pages.settings.emailAll')}</option>
+                  <option value="important">{t('pages.settings.emailImportant')}</option>
+                  <option value="none">{t('pages.settings.emailNone')}</option>
                 </select>
               </div>
             </div>
             <div className="settings-row">
-              <label>Erinnerungen</label>
+              <label>{t('pages.settings.reminders')}</label>
               <div className="settings-control">
                 <select
                   value={prefs.reminder_days || '7'}
                   onChange={e => updatePrefs({ reminder_days: e.target.value })}
                   className="page-size-select"
                 >
-                  <option value="3">3 Tage vorher</option>
-                  <option value="7">7 Tage vorher</option>
-                  <option value="14">14 Tage vorher</option>
-                  <option value="30">30 Tage vorher</option>
+                  <option value="3">{t('pages.settings.days3')}</option>
+                  <option value="7">{t('pages.settings.days7')}</option>
+                  <option value="14">{t('pages.settings.days14')}</option>
+                  <option value="30">{t('pages.settings.days30')}</option>
                 </select>
               </div>
             </div>
@@ -221,12 +221,12 @@ export default function Settings() {
         </div>
 
         <div className="panel">
-          <div className="panel-header">{tr('settings.dataBackup.title', 'Daten & Sicherung')}</div>
+          <div className="panel-header">{t('pages.settings.dataBackup')}</div>
           <div className="panel-body settings-section">
             <div className="settings-row">
-              <label>{tr('settings.dataBackup.database', 'Datenbank')}</label>
+              <label>{t('pages.settings.database')}</label>
               <div className="settings-control">
-                <span className="text-muted">SQLite / In-Memory</span>
+                <span className="text-muted">{t('pages.settings.dbType')}</span>
                 <button className="btn btn-sm btn-secondary" onClick={loadDbInfo} style={{ marginLeft: '0.5rem' }}>
                   Info
                 </button>
@@ -252,19 +252,19 @@ export default function Settings() {
               </div>
             </div>
             <div className="settings-row">
-              <label>Daten exportieren</label>
+              <label>{t('pages.settings.exportData')}</label>
               <div className="settings-control">
                 <button
                   className="btn btn-sm btn-secondary"
                   onClick={handleExport}
                   disabled={exportLoading}
                 >
-                  {exportLoading ? 'Exportiere...' : 'JSON-Export'}
+                  {exportLoading ? t('pages.settings.exporting') : t('pages.settings.jsonExport')}
                 </button>
               </div>
             </div>
             <div className="settings-row">
-              <label>Daten importieren</label>
+              <label>{t('pages.settings.importData')}</label>
               <div className="settings-control">
                 <input
                   ref={fileRef}
@@ -278,14 +278,14 @@ export default function Settings() {
             </div>
             {importResult && (
               <div className="settings-row">
-                <label>Import-Ergebnis</label>
+                <label>{t('pages.settings.importResult')}</label>
                 <div className="settings-control" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
                   {importResult.imported && Object.entries(importResult.imported).map(([k, v]) => (
-                    <span key={k} className="text-muted">{k}: {v} importiert</span>
+                    <span key={k} className="text-muted">{k}: {v} {t('pages.settings.imported')}</span>
                   ))}
                   {importResult.errors && Object.keys(importResult.errors).length > 0 && (
                     <span style={{ color: 'var(--danger)' }}>
-                      Fehler in: {Object.keys(importResult.errors).join(', ')}
+                      {t('pages.settings.errorsIn')} {Object.keys(importResult.errors).join(', ')}
                     </span>
                   )}
                 </div>

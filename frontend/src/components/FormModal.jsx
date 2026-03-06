@@ -25,7 +25,11 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
       fields.forEach(f => {
         let v = values[f.key];
         if (f.type === 'number') {
-          v = (v === '' || v === null || v === undefined) ? null : Number(v);
+          if (v === '' || v === null || v === undefined) {
+            v = f.required ? '' : null;
+          } else {
+            v = Number(v);
+          }
         } else if (v === '') {
           v = f.required ? v : null;
         }

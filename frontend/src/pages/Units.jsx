@@ -35,7 +35,7 @@ export default function Units() {
     { key: 'cold_rent', label: 'Kaltmiete (€)', type: 'number' },
     { key: 'service_charge_advance', label: 'NK-Vorauszahlung (€)', type: 'number' },
     { key: 'heating_advance', label: 'Heizkosten-Vorauszahlung (€)', type: 'number' },
-    { key: 'features', label: 'Ausstattung', placeholder: 'z.B. Balkon, Einbauküche, Keller' },
+    { key: 'features', label: 'Ausstattung', type: 'textarea', placeholder: 'z.B. Balkon, Einbauküche, Keller' },
     { key: 'status', label: 'Status', type: 'select', default: 'vacant', options: [
       { value: 'vacant', label: 'Leer' }, { value: 'occupied', label: 'Vermietet' },
       { value: 'reserved', label: 'Reserviert' },

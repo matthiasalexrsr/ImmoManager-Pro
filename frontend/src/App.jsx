@@ -34,6 +34,8 @@ import Viewings from './pages/Viewings';
 import RentAdjustments from './pages/RentAdjustments';
 import Budgets from './pages/Budgets';
 import TaxRates from './pages/TaxRates';
+import ContractWizard from './pages/ContractWizard';
+import NotFound from './pages/NotFound';
 
 function ProtectedRoute({ children }) {
   return isLoggedIn() ? children : <Navigate to="/login" />;
@@ -75,7 +77,9 @@ export default function App() {
           <Route path="rent-adjustments" element={<RentAdjustments />} />
           <Route path="budgets" element={<Budgets />} />
           <Route path="tax-rates" element={<TaxRates />} />
+          <Route path="contract-wizard" element={<ContractWizard />} />
           <Route path="settings" element={<Settings />} />
+          <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>
     </BrowserRouter>

@@ -5,6 +5,7 @@ with the in-memory store used for testing.
 """
 
 from datetime import datetime
+from uuid import uuid4
 
 from pydantic import BaseModel as PydanticBaseModel
 from sqlalchemy.orm import Session
@@ -1072,9 +1073,7 @@ class SQLAlchemyStore:
         changed_by: str | None = None,
         reason: str | None = None,
     ) -> ChangeHistoryEntry:
-        from uuid import uuid4
-
-        orm_obj = ChangeHistoryORM(
+        entry = ChangeHistoryORM(
             id=str(uuid4()),
             entity_type=entity_type,
             entity_id=entity_id,
@@ -1084,12 +1083,11 @@ class SQLAlchemyStore:
             changed_by=changed_by,
             reason=reason,
         )
-        self.db.add(orm_obj)
+        self.db.add(entry)
         self.db.flush()
-        self.db.refresh(orm_obj)
-        result = self._change_history._to_pydantic(orm_obj)
+        self.db.refresh(entry)
         self._commit()
-        return result
+        return self._change_history.get(entry.id)
 
     def get_entity_history(self, entity_type: str, entity_id: str) -> list[ChangeHistoryEntry]:
         return self._change_history.filter_by(entity_type=entity_type, entity_id=entity_id)

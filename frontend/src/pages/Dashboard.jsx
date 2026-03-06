@@ -44,6 +44,10 @@ function fmt(v) {
   return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(v);
 }
 
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
 export default function Dashboard() {
   const { t } = useTranslation();
   const [stats, setStats] = useState({});
@@ -86,28 +90,30 @@ export default function Dashboard() {
       openTasks, maintenance, notifs,
       cf, ag, , mc, fc, exp, fin,
     ]) => {
-      const safeArr = v => Array.isArray(v) ? v : [];
-      const pf = safeArr(portfolios);
-      const pr = safeArr(properties);
-      const un = safeArr(units);
-      const tn = safeArr(tenants);
-      const ct = safeArr(contracts);
-      const ac = safeArr(accounts);
-      const mt = safeArr(maintenance);
+      const safePortfolios = asArray(portfolios);
+      const safeProperties = asArray(properties);
+      const safeUnits = asArray(units);
+      const safeTenants = asArray(tenants);
+      const safeContracts = asArray(contracts);
+      const safeAccounts = asArray(accounts);
+      const safeOpenTasks = asArray(openTasks);
+      const safeMaintenance = asArray(maintenance);
+      const safeNotifications = asArray(notifs);
+
       setStats({
-        portfolios: pf.length,
-        properties: pr.length,
-        units: un.length,
-        unitsOccupied: un.filter(u => u.status === 'occupied').length,
-        unitsReserved: un.filter(u => u.status === 'reserved').length,
-        tenants: tn.length,
-        contracts: ct.length,
-        contractsActive: ct.filter(c => c.status === 'active').length,
-        accounts: ac.length,
-        openMaintenance: mt.length,
+        portfolios: safePortfolios.length,
+        properties: safeProperties.length,
+        units: safeUnits.length,
+        unitsOccupied: safeUnits.filter(u => u.status === 'occupied').length,
+        unitsReserved: safeUnits.filter(u => u.status === 'reserved').length,
+        tenants: safeTenants.length,
+        contracts: safeContracts.length,
+        contractsActive: safeContracts.filter(c => c.status === 'active').length,
+        accounts: safeAccounts.length,
+        openMaintenance: safeMaintenance.length,
       });
-      setTasks(safeArr(openTasks));
-      setNotifications(safeArr(notifs));
+      setTasks(safeOpenTasks);
+      setNotifications(safeNotifications);
       setCashflow(cf);
       setAging(ag);
       setMaintCosts(mc);
@@ -117,7 +123,7 @@ export default function Dashboard() {
     }).finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  if (loading) return <div className="page-loading">{t('pages.loading')}</div>;
 
   const occupancyRate = stats.units > 0
     ? Math.round((stats.unitsOccupied / stats.units) * 100)
@@ -125,34 +131,34 @@ export default function Dashboard() {
 
   // Occupancy pie data
   const occupancyData = stats.units > 0 ? [
-    { name: t('units.form.status.rented'), value: stats.unitsOccupied },
-    { name: t('units.form.status.reserved'), value: stats.unitsReserved || 0 },
-    { name: t('units.form.status.vacant'), value: stats.units - stats.unitsOccupied - (stats.unitsReserved || 0) },
+    { name: t('pages.dashboard.occupied'), value: stats.unitsOccupied },
+    { name: t('pages.dashboard.reserved'), value: stats.unitsReserved || 0 },
+    { name: t('pages.dashboard.vacant'), value: stats.units - stats.unitsOccupied - (stats.unitsReserved || 0) },
   ].filter(d => d.value > 0) : [];
 
   // Cashflow bar data
   const cashflowData = cashflow ? [
-    { name: t('dashboard.cashflow.income') || 'Einnahmen', value: cashflow.incomeTotal },
-    { name: t('dashboard.cashflow.expenses') || 'Ausgaben', value: cashflow.expenseTotal },
-    { name: t('dashboard.cashflow.net') || 'Netto', value: cashflow.netTotal },
+    { name: t('pages.dashboard.income'), value: cashflow.incomeTotal },
+    { name: t('pages.dashboard.expenses'), value: cashflow.expenseTotal },
+    { name: t('pages.dashboard.net'), value: cashflow.netTotal },
   ] : [];
 
   // Aging bar data
   const agingData = aging ? [
-    { name: t('dashboard.aging.current') || 'Aktuell', value: aging.buckets.current },
-    { name: '1-30 T.', value: aging.buckets.days1to30 },
-    { name: '31-60 T.', value: aging.buckets.days31to60 },
-    { name: '61-90 T.', value: aging.buckets.days61to90 },
-    { name: '90+ T.', value: aging.buckets.days90plus },
+    { name: t('pages.dashboard.agingCurrent'), value: aging.buckets.current },
+    { name: t('pages.dashboard.aging1to30'), value: aging.buckets.days1to30 },
+    { name: t('pages.dashboard.aging31to60'), value: aging.buckets.days31to60 },
+    { name: t('pages.dashboard.aging61to90'), value: aging.buckets.days61to90 },
+    { name: t('pages.dashboard.aging90plus'), value: aging.buckets.days90plus },
   ] : [];
 
   // Maintenance costs by category
   const maintData = maintCosts?.categories?.slice(0, 8) || [];
 
   // Liquidity forecast line data
-  const forecastBalanceLabel = t('finance.accounts.balance') || 'Saldo';
-  const forecastIncomeLabel = t('dashboard.cashflow.income') || 'Einnahmen';
-  const forecastExpenseLabel = t('dashboard.cashflow.expenses') || 'Ausgaben';
+  const forecastBalanceLabel = t('pages.dashboard.balance');
+  const forecastIncomeLabel = t('pages.dashboard.income');
+  const forecastExpenseLabel = t('pages.dashboard.expenses');
   const forecastData = forecast?.forecast?.map(f => ({
     name: f.month,
     [forecastBalanceLabel]: f.projected_balance,
@@ -168,24 +174,24 @@ export default function Dashboard() {
 
   return (
     <div className="page">
-      <h1 className="page-title">Dashboard</h1>
+      <h1 className="page-title">{t('pages.dashboard.title')}</h1>
 
       {/* KPI Cards */}
       <div className="stats-grid">
-        <StatCard icon={PortfolioIcon} label={t('portfolio.list.plural')} value={stats.portfolios} to="/portfolios" />
-        <StatCard icon={PropertyIcon} label={t('properties.list.title')} value={stats.properties} to="/properties" />
-        <StatCard icon={UnitIcon} label={t('units.list.title')} value={`${stats.unitsOccupied}/${stats.units}`} to="/units" color="stat-highlight" />
-        <StatCard icon={TenantIcon} label={t('tenantsContracts.tenants.title')} value={stats.tenants} to="/tenants" />
-        <StatCard icon={ContractIcon} label={t('tenantsContracts.contracts.title')} value={stats.contractsActive} to="/contracts" />
-        <StatCard icon={AccountIcon} label={t('finance.accounts.title')} value={stats.accounts} to="/accounts" />
-        <StatCard icon={MaintenanceIcon} label={t('dashboard.kpis.openMaintenanceCases')} value={stats.openMaintenance} to="/maintenance" color={stats.openMaintenance > 0 ? 'stat-warning' : ''} />
-        <StatCard icon={ChartIcon} label={t('dashboard.kpis.occupancyRate')} value={`${occupancyRate}%`} to="/units" color="stat-highlight" />
+        <StatCard icon={PortfolioIcon} label={t('pages.dashboard.portfolios')} value={stats.portfolios} to="/portfolios" />
+        <StatCard icon={PropertyIcon} label={t('pages.dashboard.properties')} value={stats.properties} to="/properties" />
+        <StatCard icon={UnitIcon} label={t('pages.dashboard.units')} value={`${stats.unitsOccupied}/${stats.units}`} to="/units" color="stat-highlight" />
+        <StatCard icon={TenantIcon} label={t('pages.dashboard.tenants')} value={stats.tenants} to="/tenants" />
+        <StatCard icon={ContractIcon} label={t('pages.dashboard.activeContracts')} value={stats.contractsActive} to="/contracts" />
+        <StatCard icon={AccountIcon} label={t('pages.dashboard.accounts')} value={stats.accounts} to="/accounts" />
+        <StatCard icon={MaintenanceIcon} label={t('pages.dashboard.openMaintenance')} value={stats.openMaintenance} to="/maintenance" color={stats.openMaintenance > 0 ? 'stat-warning' : ''} />
+        <StatCard icon={ChartIcon} label={t('pages.dashboard.occupancy')} value={`${occupancyRate}%`} to="/units" color="stat-highlight" />
       </div>
 
       {/* Charts Row 1 */}
       <div className="dashboard-charts">
         {/* Occupancy Pie */}
-        <ChartPanel title={t('dashboard.widgets.vacancyByProperty')}>
+        <ChartPanel title={t('pages.dashboard.occupancyChart')}>
           {occupancyData.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
               <PieChart>
@@ -200,11 +206,11 @@ export default function Dashboard() {
                 <Legend />
               </PieChart>
             </ResponsiveContainer>
-          ) : <p className="chart-empty">{t('emptyStates.generic.title')}</p>}
+          ) : <p className="chart-empty">{t('pages.dashboard.noUnits')}</p>}
         </ChartPanel>
 
         {/* Cashflow Bar */}
-        <ChartPanel title={t('dashboard.kpis.cashflowMonthly')}>
+        <ChartPanel title={t('pages.dashboard.cashflow')}>
           {cashflowData.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={cashflowData}>
@@ -219,11 +225,11 @@ export default function Dashboard() {
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
-          ) : <p className="chart-empty">{t('emptyStates.generic.title')}</p>}
+          ) : <p className="chart-empty">{t('pages.dashboard.noBookings')}</p>}
         </ChartPanel>
 
         {/* Receivables Aging */}
-        <ChartPanel title={t('finance.receivables.openReceivables')}>
+        <ChartPanel title={t('pages.dashboard.receivablesAging')}>
           {agingData.some(d => d.value > 0) ? (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={agingData}>
@@ -234,7 +240,7 @@ export default function Dashboard() {
                 <Bar dataKey="value" fill="#d97706" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
-          ) : <p className="chart-empty">{t('emptyStates.generic.title')}</p>}
+          ) : <p className="chart-empty">{t('pages.dashboard.noReceivables')}</p>}
         </ChartPanel>
       </div>
 
@@ -255,11 +261,11 @@ export default function Dashboard() {
                 <Line type="monotone" dataKey={forecastExpenseLabel} stroke="#dc2626" strokeWidth={1} dot={false} strokeDasharray="4 2" />
               </LineChart>
             </ResponsiveContainer>
-          ) : <p className="chart-empty">{t('emptyStates.generic.title')}</p>}
+          ) : <p className="chart-empty">{t('pages.dashboard.noForecast')}</p>}
         </ChartPanel>
 
         {/* Maintenance Costs by Category */}
-        <ChartPanel title={t('reports.standard.maintenanceCosts')}>
+        <ChartPanel title={t('pages.dashboard.maintenanceCosts')}>
           {maintData.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={maintData} layout="vertical">
@@ -270,11 +276,11 @@ export default function Dashboard() {
                 <Bar dataKey="estimatedCost" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
-          ) : <p className="chart-empty">{t('emptyStates.generic.title')}</p>}
+          ) : <p className="chart-empty">{t('pages.dashboard.noMaintenanceCosts')}</p>}
         </ChartPanel>
 
         {/* Finance by Category */}
-        <ChartPanel title={t('dashboard.widgets.costsByCategory')}>
+        <ChartPanel title={t('pages.dashboard.financeByCategory')}>
           {financeData.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
               <PieChart>
@@ -288,15 +294,15 @@ export default function Dashboard() {
                 <Tooltip formatter={v => fmt(v)} />
               </PieChart>
             </ResponsiveContainer>
-          ) : <p className="chart-empty">{t('emptyStates.generic.title')}</p>}
+          ) : <p className="chart-empty">{t('pages.dashboard.noFinanceData')}</p>}
         </ChartPanel>
       </div>
 
       {/* Activity Panels */}
       <div className="dashboard-panels">
         <div className="panel">
-          <h3>{t('dashboard.widgets.tasksDue')}</h3>
-          {tasks.length === 0 ? <p className="empty-text">{t('emptyStates.generic.title')}</p> : (
+          <h3>{t('pages.dashboard.openTasks')}</h3>
+          {tasks.length === 0 ? <p className="empty-text">{t('pages.dashboard.noOpenTasks')}</p> : (
             <ul className="activity-list">
               {tasks.map(t => (
                 <li key={t.id}>
@@ -322,7 +328,7 @@ export default function Dashboard() {
                   <span className="activity-date">{c.endDate}</span>
                   <StatusBadge status={c.daysRemaining <= 30 ? 'overdue' : 'warning'} />
                   <span className="text-muted" style={{ fontSize: '0.75rem' }}>
-                    {c.daysRemaining} Tage
+                    {c.daysRemaining} {t('pages.dashboard.days')}
                   </span>
                 </li>
               ))}
@@ -334,8 +340,8 @@ export default function Dashboard() {
         </div>
 
         <div className="panel">
-          <h3>{t('topBar.notifications')}</h3>
-          {notifications.length === 0 ? <p className="empty-text">{t('emptyStates.generic.title')}</p> : (
+          <h3>{t('pages.dashboard.notifications')}</h3>
+          {notifications.length === 0 ? <p className="empty-text">{t('pages.dashboard.noNotifications')}</p> : (
             <ul className="activity-list">
               {notifications.map(n => (
                 <li key={n.id}>

@@ -1,0 +1,323 @@
+/*
+ * Stilvorlage für den Mietvertrag‑Wizard
+ * Das Layout orientiert sich an modernen Web‑Standards: klare Typografie,
+ * großzügige Abstände und dezente Farben. Die Darstellung ist responsiv
+ * und passt sich unterschiedlichen Bildschirmgrößen an.
+ */
+
+body {
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.5;
+    margin: 0;
+    padding: 0;
+    background: #f8f9fa;
+    color: #212529;
+}
+
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 2rem 1rem 4rem;
+}
+
+header {
+    margin-bottom: 2rem;
+    text-align: center;
+}
+
+header h1 {
+    margin-bottom: 0.5rem;
+    font-size: 2rem;
+    color: #343a40;
+}
+
+header p {
+    margin: 0 auto;
+    max-width: 600px;
+    color: #6c757d;
+}
+
+/* Fortschrittsleiste */
+.progressbar {
+    counter-reset: step;
+    display: flex;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    justify-content: space-between;
+    margin-bottom: 2rem;
+}
+
+.progressbar li {
+    position: relative;
+    flex: 1;
+    text-align: center;
+    font-size: 0.8rem;
+    color: #adb5bd;
+    /* Lange Beschriftungen umbrechen, damit sich mehrere Schritte nicht überlappen */
+    white-space: normal;
+    word-break: break-word;
+}
+
+.progressbar li::before {
+    counter-increment: step;
+    content: counter(step);
+    width: 2rem;
+    height: 2rem;
+    line-height: 2rem;
+    border: 2px solid #dee2e6;
+    display: block;
+    text-align: center;
+    margin: 0 auto 0.5rem;
+    border-radius: 50%;
+    background-color: #fff;
+    color: #6c757d;
+}
+
+.progressbar li.active::before,
+.progressbar li.active ~ li::before {
+    border-color: #0d6efd;
+    background-color: #0d6efd;
+    color: #fff;
+}
+
+.progressbar li.active {
+    color: #0d6efd;
+}
+
+/* Schritt-Container */
+.step {
+    display: none;
+    background: #fff;
+    padding: 1.5rem;
+    border-radius: 0.5rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.step.active {
+    display: block;
+}
+
+h2 {
+    margin-top: 0;
+    margin-bottom: 1rem;
+    font-size: 1.5rem;
+    color: #343a40;
+}
+
+.form-group {
+    margin-bottom: 1rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.25rem;
+    font-weight: 600;
+}
+
+.form-group input,
+.form-group select {
+    width: 100%;
+    padding: 0.5rem;
+    font-size: 1rem;
+    border: 1px solid #ced4da;
+    border-radius: 0.375rem;
+    background-color: #fff;
+    color: #212529;
+    box-sizing: border-box;
+}
+
+.form-group small {
+    display: block;
+    margin-top: 0.25rem;
+    font-size: 0.8rem;
+    color: #6c757d;
+}
+
+.form-group.inline {
+    display: flex;
+    gap: 1rem;
+}
+
+.form-group.inline > div {
+    flex: 1;
+}
+
+/* Navigationsbuttons */
+.navigation {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 2rem;
+}
+
+.navigation button {
+    padding: 0.6rem 1.2rem;
+    font-size: 1rem;
+    border: none;
+    border-radius: 0.375rem;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.navigation button.prev {
+    background-color: #6c757d;
+    color: #fff;
+}
+
+.navigation button.prev:hover {
+    background-color: #5a6268;
+}
+
+.navigation button.next,
+.navigation #download {
+    background-color: #0d6efd;
+    color: #fff;
+}
+
+.navigation button.next:hover,
+.navigation #download:hover {
+    background-color: #0b5ed7;
+}
+
+/* Vertragsdarstellung */
+.vertrag {
+    white-space: normal;
+    background: #f1f3f5;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    height: 400px;
+    overflow-y: auto;
+    border: 1px solid #dee2e6;
+}
+
+/* Checkbox-Gruppen für Zusatzklauseln */
+.checkbox-group {
+    margin-bottom: 1rem;
+}
+.checkbox-group label {
+    display: block;
+    margin-bottom: 0.35rem;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+/* Staffelmiete-Elemente */
+.staffel-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+    align-items: center;
+}
+.staffel-row input.staffel-betrag,
+.staffel-row input.staffel-ab {
+    flex: 1;
+}
+.staffel-row button.remove-staffel {
+    background: #dc3545;
+    color: #fff;
+    border: none;
+    padding: 0.4rem 0.6rem;
+    border-radius: 0.375rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+.staffel-row button.remove-staffel:hover {
+    background: #c82333;
+}
+#add-staffel {
+    margin-top: 0.5rem;
+    background: #198754;
+    color: #fff;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 0.375rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+#add-staffel:hover {
+    background: #157347;
+}
+
+/* Blöcke für mehrere Vermieter/Mieter voneinander absetzen */
+.vermieter-block,
+.mieter-block {
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #dee2e6;
+}
+
+/*
+ * Zusätzliche Styles für erweiterte Funktionen
+ *
+ *   - help-icon: kleine Info‑Symbole, die einen Tooltip auslösen
+ *   - expert-only: Elemente, die nur im Expertenmodus sichtbar werden
+ *   - Print‑Styles: Beim Drucken soll der Vertrag übersichtlich ohne UI‑Elemente erscheinen
+ */
+
+/* Info‑Icon für Tooltips */
+.help-icon {
+    cursor: help;
+    display: inline-block;
+    margin-left: 4px;
+    color: #6c757d;
+    font-size: 0.9em;
+    line-height: 1;
+}
+
+/* Expertenmodus: standardmäßig sind Expertenfelder ausgeblendet */
+.expert-only {
+    display: none;
+}
+
+/* Wenn body.expert-mode gesetzt ist, werden Expertenfelder angezeigt */
+body.expert-mode .expert-only {
+    display: block;
+}
+
+/*
+ * Druckoptimierung: Beim Drucken sollen nur der Vertragstext und relevante Überschriften
+ *   erscheinen. UI‑Elemente, Buttons und Formularschritte werden ausgeblendet.
+ */
+@media print {
+    /* Grundlayout für Druck: Serifenschrift, dunkle Schrift auf weißem Hintergrund */
+    body {
+        font-family: "Times New Roman", "Liberation Serif", serif;
+        font-size: 11pt;
+        color: #000;
+        background: #fff !important;
+    }
+    /* Alle Schritte und Navigations‑Elemente ausblenden */
+    .progressbar,
+    .navigation,
+    .add-person,
+    .no-print,
+    header,
+    button,
+    .form-group,
+    .checkbox-group,
+    .step:not(#step-8) {
+        display: none !important;
+    }
+    /* Step 8 (Zusammenfassung) und der Vertragstext sollen angezeigt werden */
+    #step-8 {
+        display: block !important;
+        margin: 0;
+        padding: 0;
+        box-shadow: none;
+        border: none;
+    }
+    #vertragstext {
+        border: none;
+        box-shadow: none;
+        height: auto;
+        overflow: visible;
+        background: transparent;
+        padding: 0;
+        margin: 0;
+        white-space: normal;
+    }
+    #vertragstext h2,
+    #vertragstext h3 {
+        page-break-after: avoid;
+    }
+}

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { api } from '../api';
 import DataTable from '../components/DataTable';
 import StatusBadge from '../components/StatusBadge';
+import { useTranslation } from '../i18n';
 import FormModal from '../components/FormModal';
 
 function fmt(v) {
@@ -29,6 +30,7 @@ export default function RentOverview() {
   const [charges, setCharges] = useState([]);
   const [receivables, setReceivables] = useState([]);
   const [loading, setLoading] = useState(true);
+  const { t } = useTranslation();
   const [error, setError] = useState(null);
   const [paymentModal, setPaymentModal] = useState(null);
   const [tab, setTab] = useState('charges');
@@ -106,7 +108,7 @@ export default function RentOverview() {
     { key: 'payment_note', label: 'Bemerkung', type: 'textarea' },
   ];
 
-  if (loading) return <div className="page-loading">Laden...</div>;
+  if (loading) return <div className="page-loading">{t('pages.loading')}</div>;
   if (error) return <div className="page"><div className="alert alert-error">{error}</div></div>;
 
   const data = tab === 'charges' ? charges : receivables;
@@ -120,19 +122,19 @@ export default function RentOverview() {
     <div className="page">
       <div className="stats-grid" style={{ marginBottom: '1rem' }}>
         <div className="stat-card">
-          <div className="stat-label">Gesamtforderungen</div>
+          <div className="stat-label">{t('pages.rentOverview.totalReceivables')}</div>
           <div className="stat-value">{fmt(totalDue)}</div>
         </div>
         <div className="stat-card">
-          <div className="stat-label">Bezahlt</div>
+          <div className="stat-label">{t('pages.rentOverview.paid')}</div>
           <div className="stat-value text-green">{fmt(totalPaid)}</div>
         </div>
         <div className="stat-card">
-          <div className="stat-label">Offen</div>
+          <div className="stat-label">{t('pages.rentOverview.open')}</div>
           <div className="stat-value text-red">{fmt(totalOpen)}</div>
         </div>
         <div className="stat-card">
-          <div className="stat-label">Überfällig</div>
+          <div className="stat-label">{t('pages.rentOverview.overdue')}</div>
           <div className="stat-value">{overdueCount} <StatusBadge status="overdue" /></div>
         </div>
       </div>
@@ -142,18 +144,18 @@ export default function RentOverview() {
           className={`detail-tab ${tab === 'charges' ? 'active' : ''}`}
           onClick={() => setTab('charges')}
         >
-          Sollstellungen ({charges.length})
+          {t('pages.rentOverview.charges') || 'Sollstellungen'} ({charges.length})
         </button>
         <button
           className={`detail-tab ${tab === 'receivables' ? 'active' : ''}`}
           onClick={() => setTab('receivables')}
         >
-          Forderungen ({receivables.length})
+          {t('pages.rentOverview.receivables') || 'Forderungen'} ({receivables.length})
         </button>
       </div>
 
       <DataTable
-        title="Mietübersicht"
+        title={t('pages.rentOverview.title')}
         columns={COLUMNS}
         data={data}
         onEdit={row => setPaymentModal(row)}

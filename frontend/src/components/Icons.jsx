@@ -429,19 +429,24 @@ export function DepositIcon({ size = 20, ...props }) {
 
 // Entity icon map for SearchBar
 export const ENTITY_ICON_MAP = {
+  portfolio: PortfolioIcon,
   property: PropertyIcon,
-  tenant: TenantIcon,
   unit: UnitIcon,
+  tenant: TenantIcon,
   contract: ContractIcon,
-  task: TaskIcon,
-  invoice: InvoiceIcon,
   account: AccountIcon,
   booking: BookingIcon,
+  invoice: InvoiceIcon,
   maintenance: MaintenanceIcon,
+  task: TaskIcon,
   document: DocumentIcon,
   contact: ContactIcon,
   portfolio: PortfolioIcon,
   deposit: DepositIcon,
   category: CategoryIcon,
   insurance: InsuranceIcon,
+  meter: MeterIcon,
+  statement: StatementIcon,
+  integration: IntegrationIcon,
+  message: MessageIcon,
 };

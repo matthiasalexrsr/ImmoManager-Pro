@@ -338,11 +338,10 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
         </table>
       </div>
 
+      {sorted.length > 0 && (
       <div className="table-footer">
         <div className="table-footer-info">
-          {sorted.length === 0
-            ? t('ui.table.noResults')
-            : `${startRow}–${endRow} / ${sorted.length}`}
+          {`${startRow}–${endRow} / ${sorted.length}`}
           {filtered.length !== data.length && ` (${data.length})`}
         </div>
         <div className="table-footer-controls">
@@ -362,6 +361,7 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }

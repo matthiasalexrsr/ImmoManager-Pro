@@ -44,6 +44,7 @@ from backend.models import (
     ListingPhotoPatch,
     MaintenanceCaseCreate,
     MaintenanceCasePatch,
+    MeterCreate,
     NotificationCreate,
     NotificationPatch,
     NotificationTemplateCreate,
@@ -54,6 +55,7 @@ from backend.models import (
     PropertyPatch,
     ReceivableCreate,
     ReceivablePatch,
+    StandaloneMeterReadingCreate,
     TaskCreate,
     TaskPatch,
     TenantCreate,
@@ -2424,6 +2426,124 @@ class TestGenerateUtilityStatements:
         # Equal distribution: 600/2 = 300 each
         assert by_unit[self.unit1.id].total_cost == 300.0
         assert by_unit[self.unit2.id].total_cost == 300.0
+
+    def test_generate_person_count_key_uses_rooms(self) -> None:
+        ak_person = store.create_allocation_key(
+            AllocationKeyCreate(property_id=self.prop.id, name="Personen", key_type="person_count")
+        )
+        store.create_cost_item(
+            CostItemCreate(
+                billing_period_id=self.bp.id,
+                description="Hausstrom",
+                amount=300.0,
+                allocation_key_id=ak_person.id,
+            )
+        )
+
+        # rooms as proxy: 60%/40% split (3.0 vs 2.0)
+        store.update_unit(
+            self.unit1.id,
+            UnitCreate(
+                property_id=self.prop.id,
+                label="EG links",
+                unit_type="Wohnung",
+                area_sqm=60.0,
+                rooms=3.0,
+                service_charge_advance=150.0,
+                heating_advance=50.0,
+            ),
+        )
+        store.update_unit(
+            self.unit2.id,
+            UnitCreate(
+                property_id=self.prop.id,
+                label="EG rechts",
+                unit_type="Wohnung",
+                area_sqm=40.0,
+                rooms=2.0,
+                service_charge_advance=100.0,
+                heating_advance=30.0,
+            ),
+        )
+
+        stmts = billing.generate_utility_statements(self.bp.id)
+        by_unit = {s.unit_id: s for s in stmts}
+        assert by_unit[self.unit1.id].total_cost == 180.0
+        assert by_unit[self.unit2.id].total_cost == 120.0
+
+    def test_generate_consumption_key_uses_meter_readings(self) -> None:
+        ak_consumption = store.create_allocation_key(
+            AllocationKeyCreate(property_id=self.prop.id, name="Verbrauch", key_type="consumption")
+        )
+        store.create_cost_item(
+            CostItemCreate(
+                billing_period_id=self.bp.id,
+                description="Heizenergie",
+                amount=600.0,
+                allocation_key_id=ak_consumption.id,
+            )
+        )
+
+        m1 = store.create_meter(MeterCreate(unit_id=self.unit1.id, meter_type="heating", serial_number="M1"))
+        m2 = store.create_meter(MeterCreate(unit_id=self.unit2.id, meter_type="heating", serial_number="M2"))
+
+        store.create_standalone_meter_reading(
+            StandaloneMeterReadingCreate(meter_id=m1.id, reading_date=datetime.date(2024, 1, 1), value=100.0)
+        )
+        store.create_standalone_meter_reading(
+            StandaloneMeterReadingCreate(meter_id=m1.id, reading_date=datetime.date(2024, 12, 31), value=250.0)
+        )
+        store.create_standalone_meter_reading(
+            StandaloneMeterReadingCreate(meter_id=m2.id, reading_date=datetime.date(2024, 1, 1), value=100.0)
+        )
+        store.create_standalone_meter_reading(
+            StandaloneMeterReadingCreate(meter_id=m2.id, reading_date=datetime.date(2024, 12, 31), value=150.0)
+        )
+
+        stmts = billing.generate_utility_statements(self.bp.id)
+        by_unit = {s.unit_id: s for s in stmts}
+        # consumption: unit1=150, unit2=50 -> 75% / 25%
+        assert by_unit[self.unit1.id].total_cost == 450.0
+        assert by_unit[self.unit2.id].total_cost == 150.0
+
+
+    def test_finalize_period_success(self) -> None:
+        store.create_cost_item(
+            CostItemCreate(
+                billing_period_id=self.bp.id,
+                description="Wasser",
+                amount=1000.0,
+                allocation_key_id=self.ak_area.id,
+            )
+        )
+        billing.generate_utility_statements(self.bp.id)
+
+        finalized = billing.finalize_billing_period(self.bp.id)
+        assert finalized.status == "finalized"
+
+        stmts = _list_utility_statements(billing_period_id=self.bp.id)
+        assert len(stmts) == 2
+        assert all(s.status == "finalized" for s in stmts)
+
+    def test_finalize_period_blocked_by_preflight(self) -> None:
+        # no costs => preflight blocker
+        with pytest.raises(HTTPException) as exc_info:
+            billing.finalize_billing_period(self.bp.id)
+        assert exc_info.value.status_code == 400
+
+    def test_finalize_period_requires_generated_statements(self) -> None:
+        store.create_cost_item(
+            CostItemCreate(
+                billing_period_id=self.bp.id,
+                description="Wasser",
+                amount=200.0,
+                allocation_key_id=self.ak_area.id,
+            )
+        )
+        # Preflight passes, but no statements generated yet
+        with pytest.raises(HTTPException) as exc_info:
+            billing.finalize_billing_period(self.bp.id)
+        assert exc_info.value.status_code == 400
 
     def test_utility_statement_patch(self) -> None:
         store.create_cost_item(

@@ -1,19 +1,33 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { api } from '../api';
 import { CloseIcon } from './Icons';
+
+const API_BASE = import.meta.env.VITE_API_URL || '/api/v1';
+
+function resolveFileUrl(url) {
+  if (!url) return '';
+  if (/^https?:\/\//i.test(url) || /^s3:\/\//i.test(url)) return url;
+  if (url.startsWith('/uploads/')) {
+    const origin = API_BASE.startsWith('http') ? new URL(API_BASE).origin : window.location.origin;
+    return `${origin}${url}`;
+  }
+  return url;
+}
 
 export default function FileViewer({ fileUrl, onClose }) {
   const [ocrText, setOcrText] = useState(null);
   const [showOcr, setShowOcr] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  const resolvedUrl = useMemo(() => resolveFileUrl(fileUrl), [fileUrl]);
+
   useEffect(() => {
     if (!fileUrl) return;
     api.get(`/files/ocr-text?file_url=${encodeURIComponent(fileUrl)}`)
-      .then(data => {
+      .then((data) => {
         if (data?.has_ocr) setOcrText(data.text);
       })
-      .catch(err => console.warn('[FileViewer] OCR load:', err.message));
+      .catch((err) => console.warn('[FileViewer] OCR load:', err.message));
   }, [fileUrl]);
 
   const handleCopy = useCallback(() => {
@@ -31,7 +45,7 @@ export default function FileViewer({ fileUrl, onClose }) {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="file-viewer-modal" onClick={e => e.stopPropagation()}>
+      <div className="file-viewer-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h3>Dateiansicht</h3>
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
@@ -43,6 +57,9 @@ export default function FileViewer({ fileUrl, onClose }) {
                 {showOcr ? 'Original' : 'OCR-Text'}
               </button>
             )}
+            <a href={resolvedUrl} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-secondary">
+              Öffnen
+            </a>
             <button onClick={onClose} className="btn-close" aria-label="Close">
               <CloseIcon size={18} />
             </button>
@@ -59,13 +76,13 @@ export default function FileViewer({ fileUrl, onClose }) {
               <pre className="ocr-text">{ocrText}</pre>
             </div>
           ) : isImage ? (
-            <img src={fileUrl} alt="Dokument" className="file-viewer-image" />
+            <img src={resolvedUrl} alt="Dokument" className="file-viewer-image" />
           ) : isPdf ? (
-            <iframe src={fileUrl} title="PDF Viewer" className="file-viewer-pdf" />
+            <iframe src={resolvedUrl} title="PDF Viewer" className="file-viewer-pdf" />
           ) : (
             <div className="file-viewer-fallback">
               <p>Vorschau nicht verfügbar</p>
-              <a href={fileUrl} target="_blank" rel="noopener noreferrer" className="btn btn-primary">
+              <a href={resolvedUrl} target="_blank" rel="noopener noreferrer" className="btn btn-primary">
                 Datei herunterladen
               </a>
             </div>

@@ -1,6 +1,6 @@
 from dataclasses import dataclass
-from datetime import date
-from decimal import ROUND_HALF_UP, Decimal
+from datetime import date, timedelta
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Iterable
 
 CENT = Decimal("0.01")
@@ -89,6 +89,36 @@ class DunningCampaign:
     total_principal: Decimal
     total_fees: Decimal
     total_claim: Decimal
+
+
+@dataclass(frozen=True)
+class NoticeTemplate:
+    subject_template: str = "Mahnung Stufe {level} - Forderung {receivable_id}"
+    body_template: str = (
+        "Sehr geehrte Damen und Herren,\n\n"
+        "für die Forderung {receivable_id} besteht ein offener Betrag von {principal} EUR. "
+        "Die Mahngebühr beträgt {fee} EUR, Gesamtforderung {claim} EUR. "
+        "Überfälligkeit: {overdue_days} Tage.\n\n"
+        "Bitte begleichen Sie den Betrag zeitnah."
+    )
+
+
+@dataclass(frozen=True)
+class NoticeDraft:
+    receivable_id: str
+    level: int
+    subject: str
+    body: str
+
+
+@dataclass(frozen=True)
+class NoticePackage:
+    receivable_id: str
+    level: int
+    subject: str
+    body: str
+    sender_name: str
+    payment_due_date: date
 
 
 class DunningEngine:
@@ -196,3 +226,76 @@ class DunningEngine:
             total_fees=total_fees,
             total_claim=total_claim,
         )
+
+
+    @staticmethod
+    def build_notice_drafts(
+        campaign: DunningCampaign,
+        template: NoticeTemplate | None = None,
+    ) -> list[NoticeDraft]:
+        tpl = template or NoticeTemplate()
+        drafts: list[NoticeDraft] = []
+        for line in campaign.lines:
+            subject = tpl.subject_template.format(
+                level=line.level,
+                receivable_id=line.receivable_id,
+                principal=f"{line.outstanding_amount:.2f}",
+                fee=f"{line.dunning_fee:.2f}",
+                claim=f"{line.total_claim:.2f}",
+                overdue_days=line.overdue_days,
+            )
+            body = tpl.body_template.format(
+                level=line.level,
+                receivable_id=line.receivable_id,
+                principal=f"{line.outstanding_amount:.2f}",
+                fee=f"{line.dunning_fee:.2f}",
+                claim=f"{line.total_claim:.2f}",
+                overdue_days=line.overdue_days,
+            )
+            drafts.append(
+                NoticeDraft(
+                    receivable_id=line.receivable_id,
+                    level=line.level,
+                    subject=subject,
+                    body=body,
+                )
+            )
+        return drafts
+
+
+    @staticmethod
+    def build_notice_packages(
+        campaign: DunningCampaign,
+        *,
+        today: date,
+        template: NoticeTemplate | None = None,
+        sender_name: str = "ImmoManager Pro",
+        payment_deadline_days: int = 7,
+    ) -> list[NoticePackage]:
+        if payment_deadline_days < 1:
+            raise ValueError("payment_deadline_days muss >= 1 sein")
+
+        drafts = DunningEngine.build_notice_drafts(campaign, template=template)
+        lines_by_id = {line.receivable_id: line for line in campaign.lines}
+        payment_due_date = today + timedelta(days=payment_deadline_days)
+
+        packages: list[NoticePackage] = []
+        for draft in drafts:
+            line = lines_by_id[draft.receivable_id]
+            body = (
+                f"{draft.body}\n\n"
+                f"Absender: {sender_name}\n"
+                f"Zahlungsziel: {payment_due_date.isoformat()}\n"
+                f"Offene Gesamtforderung: {line.total_claim:.2f} EUR"
+            )
+            packages.append(
+                NoticePackage(
+                    receivable_id=draft.receivable_id,
+                    level=draft.level,
+                    subject=draft.subject,
+                    body=body,
+                    sender_name=sender_name,
+                    payment_due_date=payment_due_date,
+                )
+            )
+        return packages

@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="mw-api-base" content="{{ api_base }}" />
+    <title>Mietvertrag Wizard</title>
+    <link rel="stylesheet" href="{{ static_prefix }}/css/style.css" />
+    <!-- Bootstrap CSS for modernes, ansprechendes Layout -->
+    <link rel="stylesheet" href="{{ static_prefix }}/css/bootstrap.min.css" />
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Mietvertrag Wizard</h1>
+            <p>Dieser interaktive Assistent führt Sie Schritt für Schritt durch die Erstellung eines Wohnraum‑Mietvertrages. Bitte füllen Sie alle Felder sorgfältig aus. Angaben können jederzeit über die Zurück‑Schaltfläche korrigiert werden.</p>
+        </header>
+
+        <!-- Expertenmodus‑Schalter -->
+        <div class="d-flex justify-content-end align-items-center mb-3 no-print">
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="toggle-expert-mode" />
+                <label class="form-check-label" for="toggle-expert-mode">Expertenmodus anzeigen (zusätzliche Optionen)</label>
+            </div>
+        </div>
+
+        <!-- Fortschrittsanzeige -->
+        <ul class="progressbar">
+            <li class="active" data-step="1">Vermieter</li>
+            <li data-step="2">Mieter</li>
+            <li data-step="3">Mietobjekt</li>
+            <li data-step="4">Mietzeit</li>
+            <li data-step="5">Miete &amp; Kosten</li>
+            <li data-step="6">Zahlung/SEPA</li>
+            <li data-step="7">Klauseln</li>
+            <li data-step="8">Zusammenf.</li>
+        </ul>
+
+        <!-- Schritt 1: Vermieter -->
+        <section class="step active" id="step-1">
+            <h2>Schritt 1: Angaben zum Vermieter</h2>
+            <!-- Container für mehrere Vermieter -->
+            <div id="vermieter-list">
+                <div class="vermieter-block" data-index="1">
+                    <div class="form-group">
+                        <label>Name / Firma</label>
+                        <input type="text" name="vermieter-name" placeholder="z. B. Max Mustermann" />
+                    </div>
+                    <div class="form-group">
+                        <label>Vertretungsberechtigte/r (bei Firma)</label>
+                        <input type="text" name="vermieter-vertreter" placeholder="Optional" />
+                    </div>
+                    <div class="form-group">
+                        <label>Straße & Nr.</label>
+                        <input type="text" name="vermieter-strasse" placeholder="z. B. Musterstraße 1" />
+                    </div>
+                    <div class="form-group inline">
+                        <div>
+                            <label>PLZ</label>
+                            <input type="text" name="vermieter-plz" placeholder="12345" />
+                        </div>
+                        <div>
+                            <label>Ort</label>
+                            <input type="text" name="vermieter-ort" placeholder="z. B. Musterstadt" />
+                        </div>
+                    </div>
+                    <div class="form-group inline">
+                        <div>
+                            <label>Telefon</label>
+                            <input type="tel" name="vermieter-telefon" placeholder="optional" />
+                        </div>
+                        <div>
+                            <label>E‑Mail</label>
+                            <input type="email" name="vermieter-email" placeholder="optional" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <button type="button" id="add-vermieter" class="add-person">Weiteren Vermieter hinzufügen</button>
+            <div class="navigation">
+                <button type="button" class="next" data-next="2">Weiter</button>
+            </div>
+        </section>
+
+        <!-- Schritt 2: Mieter -->
+        <section class="step" id="step-2">
+            <h2>Schritt 2: Angaben zum Mieter</h2>
+            <!-- Container für mehrere Mieter -->
+            <div id="mieter-list">
+                <div class="mieter-block" data-index="1">
+                    <div class="form-group">
+                        <label>Name / Firma</label>
+                        <input type="text" name="mieter-name" placeholder="z. B. Erika Mustermann" />
+                    </div>
+                    <div class="form-group">
+                        <label>Geburtsdatum</label>
+                        <input type="text" name="mieter-geburtsdatum" class="date-input" placeholder="TT.MM.JJJJ" pattern="\d{2}\.\d{2}\.\d{4}" />
+                    </div>
+                    <div class="form-group">
+                        <label>Vertretungsberechtigte/r (bei Firma)</label>
+                        <input type="text" name="mieter-vertreter" placeholder="Optional" />
+                    </div>
+                    <div class="form-group">
+                        <label>Straße & Nr.</label>
+                        <input type="text" name="mieter-strasse" placeholder="z. B. Beispielweg 2" />
+                    </div>
+                    <div class="form-group inline">
+                        <div>
+                            <label>PLZ</label>
+                            <input type="text" name="mieter-plz" placeholder="54321" />
+                        </div>
+                        <div>
+                            <label>Ort</label>
+                            <input type="text" name="mieter-ort" placeholder="z. B. Beispielstadt" />
+                        </div>
+                    </div>
+                    <div class="form-group inline">
+                        <div>
+                            <label>Telefon</label>
+                            <input type="tel" name="mieter-telefon" placeholder="optional" />
+                        </div>
+                        <div>
+                            <label>E‑Mail</label>
+                            <input type="email" name="mieter-email" placeholder="optional" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <button type="button" id="add-mieter" class="add-person">Weiteren Mieter hinzufügen</button>
+            <div class="navigation">
+                <button type="button" class="prev" data-prev="1">Zurück</button>
+                <button type="button" class="next" data-next="3">Weiter</button>
+            </div>
+        </section>
+
+        <!-- Schritt 3: Mietobjekt -->
+        <section class="step" id="step-3">
+            <h2>Schritt 3: Angaben zum Mietobjekt</h2>
+            <div class="form-group">
+                <label>Objektart</label>
+                <select id="objektart">
+                    <option value="Wohnung" selected>Wohnung</option>
+                    <option value="Eigentumswohnung">Eigentumswohnung</option>
+                    <option value="Anderes">Anderes Objekt</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="objekt-strasse">Straße & Nr.</label>
+                <input type="text" id="objekt-strasse" placeholder="z. B. Wohnweg 3" />
+            </div>
+            <div class="form-group inline">
+                <div>
+                    <label for="objekt-plz">PLZ</label>
+                    <input type="text" id="objekt-plz" placeholder="98765" />
+                </div>
+                <div>
+                    <label for="objekt-ort">Ort</label>
+                    <input type="text" id="objekt-ort" placeholder="z. B. Wohnstadt" />
+                </div>
+            </div>
+            <div class="form-group inline">
+                <div>
+                    <label for="objekt-wohnflaeche">Wohnfläche (m²)</label>
+                    <input type="number" id="objekt-wohnflaeche" step="0.1" min="0" placeholder="z. B. 75" />
+                </div>
+                <div>
+                    <label for="objekt-geschoss">Geschoss</label>
+                    <input type="text" id="objekt-geschoss" placeholder="z. B. 2. OG" />
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Anzahl Zimmer</label>
+                <input type="number" id="objekt-zimmer" min="1" step="1" placeholder="z. B. 3" />
+            </div>
+            <div class="form-group">
+                <label>Weitere Räumlichkeiten (bitte Anzahl eintragen):</label>
+                <div class="form-group inline">
+                    <div>
+                        <label for="objekt-kueche">Küche</label>
+                        <input type="number" id="objekt-kueche" min="0" step="1" value="1" />
+                    </div>
+                    <div>
+                        <label for="objekt-bad">Bad</label>
+                        <input type="number" id="objekt-bad" min="0" step="1" value="1" />
+                    </div>
+                    <div>
+                        <label for="objekt-wc">Toilette</label>
+                        <input type="number" id="objekt-wc" min="0" step="1" value="1" />
+                    </div>
+                </div>
+                <div class="form-group inline">
+                    <div>
+                        <label for="objekt-keller">Keller</label>
+                        <input type="number" id="objekt-keller" min="0" step="1" value="0" />
+                    </div>
+                    <div>
+                        <label for="objekt-boden">Bodenraum</label>
+                        <input type="number" id="objekt-boden" min="0" step="1" value="0" />
+                    </div>
+                    <div>
+                        <label for="objekt-abstell">Abstellraum</label>
+                        <input type="number" id="objekt-abstell" min="0" step="1" value="0" />
+                    </div>
+                </div>
+                <div class="form-group inline">
+                    <div>
+                        <label for="objekt-balkon">Balkon/Terrasse</label>
+                        <input type="number" id="objekt-balkon" min="0" step="1" value="0" />
+                    </div>
+                    <div>
+                        <label for="objekt-sonstige">Sonstige Räume</label>
+                        <input type="number" id="objekt-sonstige" min="0" step="1" value="0" />
+                    </div>
+                </div>
+                <div class="form-group inline">
+                    <div>
+                        <label for="objekt-garage">Garage / Einstellplatz</label>
+                        <input type="number" id="objekt-garage" min="0" step="1" value="0" />
+                    </div>
+                    <div>
+                        <label for="objekt-hofraum">Hofraum</label>
+                        <input type="number" id="objekt-hofraum" min="0" step="1" value="0" />
+                    </div>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="objekt-nutzung">Nutzungszweck (falls nicht Wohnzweck)</label>
+                <input type="text" id="objekt-nutzung" placeholder="optional" />
+            </div>
+            <div class="form-group">
+                <label>Übergebene Schlüssel (Anzahl):</label>
+                <div class="form-group inline">
+                    <div>
+                        <label for="schluessel-haus">Haus</label>
+                        <input type="number" id="schluessel-haus" min="0" value="1" />
+                    </div>
+                    <div>
+                        <label for="schluessel-wohnung">Wohnung</label>
+                        <input type="number" id="schluessel-wohnung" min="0" value="2" />
+                    </div>
+                    <div>
+                        <label for="schluessel-zimmer">Zimmer</label>
+                        <input type="number" id="schluessel-zimmer" min="0" value="0" />
+                    </div>
+                </div>
+                <div class="form-group inline">
+                    <div>
+                        <label for="schluessel-boden">Bodenraum</label>
+                        <input type="number" id="schluessel-boden" min="0" value="0" />
+                    </div>
+                    <div>
+                        <label for="schluessel-keller">Keller</label>
+                        <input type="number" id="schluessel-keller" min="0" value="0" />
+                    </div>
+                    <div>
+                        <label for="schluessel-briefkasten">Briefkasten</label>
+                        <input type="number" id="schluessel-briefkasten" min="0" value="1" />
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="schluessel-sonstige">Sonstige Schlüssel (Beschreibung & Anzahl)</label>
+                    <input type="text" id="schluessel-sonstige" placeholder="optional" />
+                </div>
+            </div>
+            <div class="navigation">
+                <button type="button" class="prev" data-prev="2">Zurück</button>
+                <button type="button" class="next" data-next="4">Weiter</button>
+            </div>
+        </section>
+
+        <!-- Schritt 4: Mietzeit -->
+        <section class="step" id="step-4">
+            <h2>Schritt 4: Mietzeit</h2>
+            <div class="form-group">
+                <label>Mietvertragsart</label>
+                <select id="mietzeit-art">
+                    <option value="unbefristet" selected>Mietvertrag auf unbestimmte Zeit</option>
+                    <option value="befristet">Zeitmietvertrag</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="mietbeginn">Beginn des Mietverhältnisses</label>
+                <!-- Datum im Format TT.MM.JJJJ eingeben -->
+                <input type="text" id="mietbeginn" class="date-input" placeholder="TT.MM.JJJJ" pattern="\d{2}\.\d{2}\.\d{4}" />
+            </div>
+            <div class="form-group conditional" id="befristet-field" style="display:none;">
+                <label for="mietende">Ende des Mietverhältnisses</label>
+                <!-- Bei befristeten Verträgen: Datum im Format TT.MM.JJJJ eingeben -->
+                <input type="text" id="mietende" class="date-input" placeholder="TT.MM.JJJJ" pattern="\d{2}\.\d{2}\.\d{4}" />
+                <label>Befristungsgrund
+                    <span class="help-icon" data-bs-toggle="tooltip" title="Bei befristeten Mietverträgen muss der Grund im Vertrag genannt werden (z. B. Eigenbedarf ab einem bestimmten Datum).">ⓘ</span>
+                </label>
+                <select id="befristet-grund-option">
+                    <option value="">Bitte auswählen</option>
+                    <option value="Eigenbedarf">Eigenbedarf</option>
+                    <option value="Umbau / Renovierung">Umbau / Renovierung</option>
+                    <option value="Nutzung durch Angehörige">Nutzung durch Angehörige</option>
+                    <option value="Sonstiges">Sonstiges</option>
+                </select>
+                <input type="text" id="befristet-grund-text" placeholder="Bitte Grund angeben" style="display:none; margin-top: 0.5rem;" />
+            </div>
+            <div class="form-group conditional" id="kuendigungsausschluss-field">
+                <label>
+                    <input type="checkbox" id="kuendigungsausschluss-check" />
+                    Beiderseitiger Verzicht auf ordentliche Kündigung (Kündigungsausschluss)
+                    <span class="help-icon" data-bs-toggle="tooltip" title="Die Vertragsparteien können für bis zu vier Jahre auf das Recht zur ordentlichen Kündigung verzichten.">ⓘ</span>
+                </label>
+                <div id="kuendigungsausschluss-details" style="display:none; margin-top:0.5rem;">
+                    <label for="kuendigungsausschluss-bis">Kündigung erstmals möglich zum</label>
+                    <!-- Datum im Format TT.MM.JJJJ eingeben -->
+                    <input type="text" id="kuendigungsausschluss-bis" class="date-input" placeholder="TT.MM.JJJJ" pattern="\d{2}\.\d{2}\.\d{4}" />
+                    <small>Hinweis: max. 4 Jahre ab Vertragsschluss</small>
+                </div>
+            </div>
+            <div class="navigation">
+                <button type="button" class="prev" data-prev="3">Zurück</button>
+                <button type="button" class="next" data-next="5">Weiter</button>
+            </div>
+        </section>
+
+        <!-- Schritt 5: Miete & Kosten -->
+        <section class="step" id="step-5">
+            <h2>Schritt 5: Miete und Nebenkosten</h2>
+            <div class="form-group">
+                <label for="miete-grund">Grundmiete (monatlich)</label>
+                <input type="text" id="miete-grund" class="money-input" inputmode="decimal" placeholder="z. B. 800,00" />
+            </div>
+            <div class="form-group">
+                <label for="miete-betrieb">Vorauszahlung Betriebskosten (monatlich)</label>
+                <input type="text" id="miete-betrieb" class="money-input" inputmode="decimal" placeholder="z. B. 150,00" />
+            </div>
+            <div class="form-group">
+                <label for="miete-heizung">Vorauszahlung Heizkosten (monatlich)</label>
+                <input type="text" id="miete-heizung" class="money-input" inputmode="decimal" placeholder="z. B. 100,00" />
+            </div>
+            <div class="form-group">
+                <label for="kaution">Kaution / Sicherheitsleistung</label>
+                <input type="text" id="kaution" class="money-input" inputmode="decimal" placeholder="z. B. 1.600,00" />
+                <small>Die Kaution darf maximal drei Monatsmieten betragen (§ 551 BGB).</small>
+            </div>
+            <div class="form-group">
+                <label>Mieterhöhungsvereinbarungen (optional)
+                    <span class="help-icon" data-bs-toggle="tooltip" title="Wählen Sie, ob feste Erhöhungen (Staffelmiete) oder Anpassungen nach Verbraucherpreisindex (Indexmiete) vereinbart werden sollen.">ⓘ</span>
+                </label>
+                <select id="mieterhoehung">
+                    <option value="keine" selected>Keine besondere Regelung</option>
+                    <option value="staffel">Staffelmiete</option>
+                    <option value="index">Indexmiete</option>
+                </select>
+            </div>
+            <div class="form-group conditional expert-only" id="staffel-details" style="display:none;">
+                <label>Staffelmiete: Fügen Sie nacheinander beliebig viele Staffelstufen hinzu.
+                    <span class="help-icon" data-bs-toggle="tooltip" title="Bei einer Staffelmiete vereinbaren die Parteien bereits im Voraus feste Mietsteigerungen zu bestimmten Zeitpunkten. Während der Staffelzeit ist eine weitere Mieterhöhung ausgeschlossen.">ⓘ</span>
+                </label>
+                <div id="staffel-list">
+                    <!-- Erstes Staffelemplar -->
+                    <div class="staffel-row" data-index="1">
+                        <input type="text" class="staffel-betrag money-input" inputmode="decimal" placeholder="Betrag (€)" />
+                        <input type="number" class="staffel-ab" min="1" step="1" placeholder="ab Monat" />
+                        <button type="button" class="remove-staffel" title="Stufe entfernen">&times;</button>
+                    </div>
+                </div>
+                <button type="button" id="add-staffel" class="add-staffel">Weitere Stufe hinzufügen</button>
+            </div>
+            <div class="form-group conditional expert-only" id="index-details" style="display:none;">
+                <label>Indexmiete: Ausgangsindex
+                    <span class="help-icon" data-bs-toggle="tooltip" title="Bei einer Indexmiete richtet sich die Miete nach der Entwicklung des vom Statistischen Bundesamt ermittelten Verbraucherpreisindex.">ⓘ</span>
+                </label>
+                <input type="number" id="index-ausgang" min="0" step="0.1" placeholder="z. B. 110" />
+                <small>Der Mietpreis wird entsprechend der Entwicklung des Verbraucherpreisindex angepasst.</small>
+            </div>
+
+            <div class="navigation">
+                <button type="button" class="prev" data-prev="4">Zurück</button>
+                <button type="button" class="next" data-next="6">Weiter</button>
+            </div>
+        </section>
+
+        <!-- Schritt 6: Zahlung & SEPA -->
+        <section class="step" id="step-6">
+            <h2>Schritt 6: Zahlung &amp; SEPA</h2>
+            <p>Tragen Sie die Zahlungsinformationen des Vermieters ein und erteilen Sie optional ein SEPA‑Lastschriftmandat für den Mieter.</p>
+            <h3>Zahlungsinformationen des Vermieters</h3>
+            <div class="form-group">
+                <label for="zahlung-iban">IBAN des Vermieters</label>
+                <input type="text" id="zahlung-iban" placeholder="DE00 1234 5678 9012 3456 78" />
+            </div>
+            <div class="form-group">
+                <label for="zahlung-bic">BIC</label>
+                <input type="text" id="zahlung-bic" placeholder="BANKDEFFXXX" />
+            </div>
+            <div class="form-group">
+                <label for="zahlung-faelligkeit">Zahlungsfälligkeit</label>
+                <input type="text" id="zahlung-faelligkeit" placeholder="z. B. bis zum 3. Werktag eines Monats" />
+            </div>
+            <h3>SEPA‑Lastschriftmandat des Mieters (optional)</h3>
+            <div class="form-group">
+                <label for="mandat-inhaber">Kontoinhaber (Mieter)</label>
+                <input type="text" id="mandat-inhaber" placeholder="z. B. Max Mustermann" />
+            </div>
+            <div class="form-group">
+                <label for="mandat-iban">IBAN des Mieters</label>
+                <input type="text" id="mandat-iban" placeholder="DE00 1234 5678 9012 3456 78" />
+            </div>
+            <div class="form-group">
+                <label for="mandat-bic">BIC des Mieters</label>
+                <input type="text" id="mandat-bic" placeholder="BANKDEFFXXX" />
+            </div>
+            <div class="navigation">
+                <button type="button" class="prev" data-prev="5">Zurück</button>
+                <button type="button" class="next" data-next="7">Weiter</button>
+            </div>
+        </section>
+
+        <!-- Schritt 7: Vereinbarungen -->
+        <section class="step" id="step-7">
+            <h2>Schritt 7: Vereinbarungen &amp; Zusatzklauseln</h2>
+            <p>Wählen Sie optionale Zusatzklauseln aus und hinterlegen Sie individuelle Vereinbarungen.</p>
+            <h3>Zusatzklauseln (optional)</h3>
+            <div class="checkbox-group">
+                <label><input type="checkbox" id="clause-schoenheits" /> Schönheitsreparaturen durch den Mieter</label><br />
+                <label><input type="checkbox" id="clause-klein" /> Kleinreparaturen durch den Mieter</label><br />
+                <label><input type="checkbox" id="clause-tierhaltung" /> Tierhaltung: Kleintiere erlaubt; Hunde/Katzen nur mit Zustimmung</label><br />
+                <label><input type="checkbox" id="clause-untervermietung" /> Untervermietung nur mit Zustimmung des Vermieters</label><br />
+                <label><input type="checkbox" id="clause-besichtigung" /> Besichtigungsrecht des Vermieters nach vorheriger Ankündigung</label><br />
+                <label class="expert-only"><input type="checkbox" id="clause-modernisierung" /> Duldung von Modernisierungsmaßnahmen</label><br />
+                <label class="expert-only"><input type="checkbox" id="clause-garten" /> Gartennutzung und Pflege</label><br />
+                <label class="expert-only"><input type="checkbox" id="clause-mehrere" /> Mehrere Mieter haften gesamtschuldnerisch</label><br />
+                <label><input type="checkbox" id="clause-hausordnung" /> Einhaltung der Hausordnung</label><br />
+                <label class="expert-only"><input type="checkbox" id="clause-umbauten" /> Bauliche Veränderungen nur mit Zustimmung des Vermieters</label><br />
+                <label class="expert-only"><input type="checkbox" id="clause-haftung" /> Haftung für Schäden und Anzeigepflicht</label><br />
+                <label class="expert-only"><input type="checkbox" id="clause-rauchmelder" /> Wartung der Rauchmelder durch den Mieter</label><br />
+                <label class="expert-only"><input type="checkbox" id="clause-schriftform" /> Änderungen nur in Schriftform</label><br />
+                <label class="expert-only"><input type="checkbox" id="clause-ruhezeiten" /> Einhaltung der Ruhezeiten</label><br />
+                <label class="expert-only"><input type="checkbox" id="clause-instandhaltung" /> Laufende Instandhaltungspflichten des Mieters</label>
+            </div>
+            <div class="form-group">
+                <label for="sonstige-vereinbarungen">Weitere Vereinbarungen (optional)</label>
+                <textarea id="sonstige-vereinbarungen" placeholder="z. B. besondere Absprachen über Renovierung, Einbauten etc." rows="4"></textarea>
+            </div>
+            <div class="navigation">
+                <button type="button" class="prev" data-prev="6">Zurück</button>
+                <button type="button" class="next" data-next="8">Weiter</button>
+            </div>
+        </section>
+
+        <!-- Schritt 8: Zusammenfassung -->
+        <section class="step" id="step-8">
+            <h2>Schritt 8: Zusammenfassung &amp; Vertrag</h2>
+            <p>Der Mietvertrag wird anhand Ihrer Angaben generiert. Sie können die Daten mit den Zurück‑Buttons korrigieren. Zum Speichern verwenden Sie die Download‑Buttons.</p>
+            <div class="vertrag" id="vertragstext"></div>
+            <div class="navigation no-print">
+                <button type="button" class="prev" data-prev="7">Zurück</button>
+                <button type="button" id="download" class="btn">Vertrag herunterladen</button>
+                <button type="button" id="download-pdf" class="btn">PDF herunterladen</button>
+                <button type="button" class="btn btn-outline-secondary" onclick="window.print()">Vertrag drucken</button>
+            </div>
+
+            <!-- Speicher‑/Lade‑Panel für JSON (wird nicht gedruckt) -->
+            <div class="card no-print" style="margin-top: 1.5rem;">
+                <div class="card-body">
+                    <h3 class="h5">Eingaben sichern / laden</h3>
+                    <p class="text-muted mb-2">
+                        Sie können Ihre Eingaben lokal im Browser speichern oder als JSON-Datei exportieren.
+                    </p>
+                    <div class="button-row" style="gap: 0.5rem;">
+                        <button type="button" id="btn-save-local" class="btn btn-outline-secondary">Im Browser speichern</button>
+                        <button type="button" id="btn-load-local" class="btn btn-outline-secondary">Gespeicherte Daten laden</button>
+                        <button type="button" id="btn-clear-local" class="btn btn-outline-danger">Speicher löschen</button>
+                    </div>
+                    <hr />
+                    <div class="button-row" style="gap: 0.5rem; margin-top: 0.5rem;">
+                        <button type="button" id="btn-export-json" class="btn btn-outline-primary">JSON-Datei herunterladen</button>
+                        <label class="btn btn-outline-primary mb-0">
+                            JSON-Datei laden
+                            <input type="file" id="input-import-json" accept="application/json" style="display: none;" />
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+    <!-- Vendor-Libs zuerst (lokal, offline-fähig) -->
+    <script defer src="{{ static_prefix }}/vendor/pdfmake.min.js"></script>
+    <script defer src="{{ static_prefix }}/vendor/vfs_fonts.js"></script>
+    <!-- App-Skript zuletzt -->
+    <script defer src="{{ static_prefix }}/js/script.js"></script>
+</body>
+</html>

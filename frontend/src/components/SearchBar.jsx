@@ -5,16 +5,19 @@ import { useTranslation } from '../i18n';
 import { SearchIcon, CloseIcon, ENTITY_ICON_MAP } from './Icons';
 
 const ENTITY_ROUTES = {
+  portfolio: '/portfolios',
   property: '/properties',
-  tenant: '/tenants',
   unit: '/units',
+  tenant: '/tenants',
   contract: '/contracts',
-  task: '/tasks',
-  invoice: '/invoices',
   account: '/accounts',
   booking: '/bookings',
+  invoice: '/invoices',
   maintenance: '/maintenance',
+  task: '/tasks',
   document: '/documents',
+  meter: '/meters',
+  statement: '/statements',
   contact: '/contacts',
   portfolio: '/portfolios',
   deposit: '/deposits',
@@ -22,6 +25,8 @@ const ENTITY_ROUTES = {
   insurance: '/insurances',
   lead: '/leads',
   listing: '/listings',
+  integration: '/integrations',
+  message: '/messages',
 };
 
 export default function SearchBar() {
