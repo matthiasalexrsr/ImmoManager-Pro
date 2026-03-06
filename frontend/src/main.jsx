@@ -6,15 +6,18 @@ import ErrorBoundary from './components/ErrorBoundary.jsx'
 import { ToastProvider } from './components/Toast.jsx'
 import { I18nProvider } from './i18n.jsx'
 import { PreferencesProvider } from './contexts/PreferencesContext.jsx'
+import { DevModeProvider } from './contexts/DevModeContext.jsx'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <ErrorBoundary>
       <I18nProvider>
         <PreferencesProvider>
-          <ToastProvider>
-            <App />
-          </ToastProvider>
+          <DevModeProvider>
+            <ToastProvider>
+              <App />
+            </ToastProvider>
+          </DevModeProvider>
         </PreferencesProvider>
       </I18nProvider>
     </ErrorBoundary>

@@ -37,6 +37,7 @@ from .routers import (
     contracts,
     data_exchange,
     deposits,
+    dev_notes,
     documents,
     escalation,
     files,
@@ -285,6 +286,7 @@ api_v1.include_router(insurances.router, dependencies=_auth_dep)
 api_v1.include_router(photos.router, dependencies=_auth_dep)
 api_v1.include_router(files.router, dependencies=_auth_dep)
 api_v1.include_router(data_exchange.router, dependencies=_auth_dep)
+api_v1.include_router(dev_notes.router, dependencies=_auth_dep)
 
 app.include_router(api_v1)
 

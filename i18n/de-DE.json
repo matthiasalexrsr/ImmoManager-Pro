@@ -1262,5 +1262,16 @@
     "expand": "Erweitern",
     "collapse": "Einklappen",
     "toggleTheme": "Theme wechseln"
+  },
+  "devMode": {
+    "title": "Entwicklermodus",
+    "description": "Anmerkungen und Verbesserungsnotizen für Entwickler",
+    "enable": "Entwicklermodus aktivieren",
+    "disable": "Entwicklermodus deaktivieren",
+    "shortcut": "Strg+Umschalt+D",
+    "addNote": "Notiz hinzufügen",
+    "notes": "Notizen",
+    "exportLog": "Log exportieren",
+    "exit": "Beenden"
   }
 }

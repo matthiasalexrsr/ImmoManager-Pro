@@ -950,5 +950,16 @@
     "warmRent": "Alquiler total: alquiler base más anticipo de gastos comunes (y, en su caso, anticipo de calefacción).",
     "serviceCharges": "Gastos comunes: costes repercutibles, p. ej. agua, basura, limpieza del edificio.",
     "deposit": "Fianza: depósito de garantía del inquilino."
+  },
+  "devMode": {
+    "title": "Modo desarrollador",
+    "description": "Anotaciones y notas de mejora para desarrolladores",
+    "enable": "Activar modo desarrollador",
+    "disable": "Desactivar modo desarrollador",
+    "shortcut": "Ctrl+Mayús+D",
+    "addNote": "Añadir nota",
+    "notes": "Notas",
+    "exportLog": "Exportar registro",
+    "exit": "Salir"
   }
 }

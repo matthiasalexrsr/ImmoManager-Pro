@@ -2605,3 +2605,339 @@ a:hover {
 .clickable-row:hover td {
   background: rgba(37, 99, 235, 0.04);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════ */
+/* ─── Developer Mode ─────────────────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════════════════ */
+
+.dev-mode-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 36px;
+  background: linear-gradient(90deg, #1e1b4b, #312e81);
+  color: #e0e7ff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  z-index: 10000;
+  font-size: 12px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.dev-mode-bar-left,
+.dev-mode-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.dev-mode-indicator {
+  background: #7c3aed;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: 1px;
+}
+
+.dev-mode-page {
+  color: #a5b4fc;
+}
+
+.dev-mode-page-count {
+  color: #fbbf24;
+  font-size: 11px;
+}
+
+/* Dev buttons */
+.dev-btn {
+  border: none;
+  cursor: pointer;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 12px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.dev-btn-sm { padding: 4px 10px; }
+.dev-btn-xs { padding: 2px 8px; font-size: 11px; }
+
+.dev-btn-primary {
+  background: #7c3aed;
+  color: white;
+}
+.dev-btn-primary:hover { background: #6d28d9; }
+
+.dev-btn-accent {
+  background: #10b981;
+  color: white;
+}
+.dev-btn-accent:hover { background: #059669; }
+
+.dev-btn-secondary {
+  background: #4b5563;
+  color: white;
+}
+.dev-btn-secondary:hover { background: #374151; }
+
+.dev-btn-ghost {
+  background: transparent;
+  color: #c7d2fe;
+}
+.dev-btn-ghost:hover { background: rgba(255, 255, 255, 0.1); }
+
+.dev-btn-danger {
+  background: transparent;
+  color: #fca5a5;
+}
+.dev-btn-danger:hover { background: rgba(239, 68, 68, 0.2); }
+
+/* Dev panels */
+.dev-panel {
+  position: fixed;
+  z-index: 9999;
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  font-size: 13px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.dev-panel-form {
+  top: 48px;
+  right: 16px;
+  width: 380px;
+  padding: 16px;
+}
+
+.dev-panel-list {
+  top: 48px;
+  right: 16px;
+  width: 420px;
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.dev-panel-log {
+  top: 48px;
+  right: 16px;
+  width: 600px;
+  max-height: calc(100vh - 80px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.dev-panel-title {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 12px;
+  color: #c7d2fe;
+}
+
+/* Note form */
+.dev-note-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dev-note-form-row { display: flex; gap: 8px; }
+
+.dev-note-input,
+.dev-note-textarea,
+.dev-note-select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #4338ca;
+  border-radius: 4px;
+  background: #312e81;
+  color: #e0e7ff;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+}
+.dev-note-input:focus,
+.dev-note-textarea:focus,
+.dev-note-select:focus {
+  border-color: #7c3aed;
+}
+
+.dev-note-input::placeholder,
+.dev-note-textarea::placeholder {
+  color: #6366f1;
+}
+
+.dev-note-form-selects {
+  display: flex;
+  gap: 8px;
+}
+
+.dev-note-form-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+/* Notes list */
+.dev-notes-list-header {
+  margin-bottom: 8px;
+}
+
+.dev-notes-filter-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.dev-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #a5b4fc;
+  cursor: pointer;
+  margin-left: auto;
+}
+
+.dev-notes-empty {
+  text-align: center;
+  color: #6366f1;
+  padding: 24px 0;
+}
+
+.dev-note-item {
+  padding: 10px;
+  border: 1px solid #3730a3;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  transition: border-color 0.15s;
+}
+.dev-note-item:hover { border-color: #4f46e5; }
+.dev-note-resolved { opacity: 0.5; }
+
+.dev-note-item-header {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.dev-note-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  color: white;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.dev-note-item-title {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.dev-note-item-location {
+  font-size: 11px;
+  color: #818cf8;
+  margin-bottom: 4px;
+}
+
+.dev-note-item-desc {
+  font-size: 12px;
+  color: #a5b4fc;
+  margin-bottom: 6px;
+  white-space: pre-wrap;
+}
+
+.dev-note-item-actions {
+  display: flex;
+  gap: 6px;
+}
+
+/* Log preview */
+.dev-log-preview {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.dev-log-preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid #3730a3;
+  font-weight: 600;
+}
+.dev-log-preview-header > div {
+  display: flex;
+  gap: 6px;
+}
+
+.dev-log-preview-content {
+  padding: 16px;
+  margin: 0;
+  font-size: 12px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  color: #c7d2fe;
+  overflow: auto;
+  max-height: calc(100vh - 140px);
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.5;
+}
+
+/* Page indicators — floating notes on the side */
+.dev-page-indicators {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  z-index: 9998;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 280px;
+}
+
+.dev-page-indicator {
+  padding: 6px 10px;
+  background: #1e1b4b;
+  border: 1px solid #3730a3;
+  border-left: 3px solid;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #c7d2fe;
+  transition: background 0.15s;
+}
+.dev-page-indicator:hover { background: #312e81; }
+
+.dev-indicator-priority { font-size: 8px; }
+
+.dev-indicator-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Push app content down when dev bar is visible */
+.dev-mode-active .app-layout {
+  margin-top: 36px;
+}
+.dev-mode-active .sidebar {
+  top: 36px;
+  height: calc(100vh - 36px);
+}

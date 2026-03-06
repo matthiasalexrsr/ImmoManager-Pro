@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { usePreferences } from '../contexts/PreferencesContext';
+import { useDevMode } from '../contexts/DevModeContext';
 import { useTranslation } from '../i18n';
 import { api } from '../api';
 
@@ -7,6 +8,7 @@ const BASE = (import.meta.env.VITE_API_URL || '/api/v1');
 
 export default function Settings() {
   const { prefs, toggleTheme, toggleSidebar, updatePrefs } = usePreferences();
+  const devMode = useDevMode();
   const { t, locale, setLocale } = useTranslation();
   const [backupStatus, setBackupStatus] = useState(null);
   const [dbInfo, setDbInfo] = useState(null);
@@ -313,6 +315,31 @@ export default function Settings() {
               <label>Dateispeicher</label>
               <div className="settings-control">
                 <span className="text-muted">Lokal (uploads/)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="panel">
+          <div className="panel-header">{tr('devMode.title', 'Developer Mode')}</div>
+          <div className="panel-body settings-section">
+            <div className="settings-row">
+              <label>{tr('devMode.description', 'Annotations and improvement notes for developers')}</label>
+              <div className="settings-control">
+                <button
+                  className={`btn btn-sm ${devMode?.enabled ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => devMode?.toggle()}
+                >
+                  {devMode?.enabled
+                    ? tr('devMode.disable', 'Disable Developer Mode')
+                    : tr('devMode.enable', 'Enable Developer Mode')}
+                </button>
+              </div>
+            </div>
+            <div className="settings-row">
+              <label>{tr('devMode.shortcut', 'Shortcut')}</label>
+              <div className="settings-control">
+                <span className="text-muted">Ctrl+Shift+D</span>
               </div>
             </div>
           </div>
