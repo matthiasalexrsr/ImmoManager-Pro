@@ -14,10 +14,36 @@ def list_tenants(
     limit: int = Query(100, ge=1, le=1000),
     sort_by: str | None = Query(None),
     sort_order: str = Query("asc"),
+    archived: bool | None = Query(None, description="Filter by archived status"),
+    include_archived: bool = Query(False, description="Include archived tenants"),
 ) -> list[Tenant]:
     results = store.list_tenants()
+    if archived is not None:
+        results = [t for t in results if getattr(t, "archived", False) == archived]
+    elif not include_archived:
+        results = [t for t in results if not getattr(t, "archived", False)]
     results = apply_sort(results, sort_by, sort_order)
     return results[skip : skip + limit]
+
+
+@router.patch("/{tenant_id}/archive", response_model=Tenant)
+def archive_tenant(tenant_id: str) -> Tenant:
+    """Archive a tenant."""
+    try:
+        from ..models import TenantPatch
+        return store._patch_entity(None, tenant_id, TenantPatch(archived=True), "Mieter nicht gefunden")
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.patch("/{tenant_id}/unarchive", response_model=Tenant)
+def unarchive_tenant(tenant_id: str) -> Tenant:
+    """Unarchive a tenant."""
+    try:
+        from ..models import TenantPatch
+        return store._patch_entity(None, tenant_id, TenantPatch(archived=False), "Mieter nicht gefunden")
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.post("", response_model=Tenant, status_code=status.HTTP_201_CREATED)

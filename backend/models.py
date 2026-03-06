@@ -76,6 +76,7 @@ class TenantCreate(BaseModel):
     payment_method: Optional[str] = None
     sepa_mandate: Optional[str] = None
     notes: Optional[str] = None
+    archived: bool = False
 
     @field_validator("email")
     @classmethod
@@ -380,6 +381,7 @@ class TenantPatch(BaseModel):
     payment_method: Optional[str] = None
     sepa_mandate: Optional[str] = None
     notes: Optional[str] = None
+    archived: Optional[bool] = None
 
     @field_validator("email")
     @classmethod
@@ -542,6 +544,7 @@ class LeadCreate(BaseModel):
     phone: Optional[str] = None
     source: Optional[str] = None
     status: str = "new"
+    priority: int = 0
     notes: Optional[str] = None
 
 
@@ -559,6 +562,7 @@ class LeadPatch(BaseModel):
     phone: Optional[str] = None
     source: Optional[str] = None
     status: Optional[str] = None
+    priority: Optional[int] = None
     notes: Optional[str] = None
 
 
