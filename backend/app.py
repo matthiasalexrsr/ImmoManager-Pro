@@ -296,6 +296,35 @@ _UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=_UPLOADS_DIR), name="uploads")
 
 
+# ─── Contract Wizard ─────────────────────────────────────────────────────────
+
+def _load_contract_wizard_mount():
+    """Try to import the wizard's mount_fastapi function.
+
+    Returns the callable or *None* when the package is not installed.
+    """
+    try:
+        import sys as _sys
+        pkg_dir = str(Path(__file__).resolve().parent.parent / "mietvertrag_wizard_fastapi_reportlab_pro")
+        if pkg_dir not in _sys.path:
+            _sys.path.insert(0, pkg_dir)
+        from mietvertrag_wizard import mount_fastapi  # type: ignore[import-untyped]
+        return mount_fastapi
+    except Exception:
+        return None
+
+
+def _mount_contract_wizard_if_available(target_app: FastAPI) -> None:
+    """Mount the Mietvertrag-Wizard into the app if available."""
+    mount_fn = _load_contract_wizard_mount()
+    if mount_fn is not None:
+        mount_fn(target_app, mount_path="/mietvertrag", static_path="/mietvertrag/static")
+        logger.info("Mietvertrag-Wizard mounted at /mietvertrag")
+
+
+_mount_contract_wizard_if_available(app)
+
+
 # ─── Health ──────────────────────────────────────────────────────────────────
 
 @app.get("/health")
@@ -335,8 +364,16 @@ _FRONTEND_DIR = _resolve_frontend_dir()
 if _FRONTEND_DIR is not None:
     app.mount("/assets", StaticFiles(directory=_FRONTEND_DIR / "assets"), name="frontend-assets")
 
+    # Paths handled by other routers (e.g. the Mietvertrag-Wizard) that the
+    # SPA catch-all must NOT intercept.
+    _SPA_SKIP_PREFIXES = ("mietvertrag",)
+
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
+        if full_path.split("/")[0] in _SPA_SKIP_PREFIXES:
+            # Let FastAPI return 404 so the wizard router handles it.
+            from fastapi.responses import JSONResponse
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
         file_path = _FRONTEND_DIR / full_path
         if full_path and file_path.is_file():
             return FileResponse(file_path)
