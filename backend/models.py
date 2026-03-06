@@ -646,6 +646,12 @@ class CostItemCreate(BaseModel):
     description: str
     amount: float
     allocation_key_id: str
+    is_recoverable: bool = True  # umlagefähig
+    cost_category: Optional[str] = None  # e.g. "water", "heating", "garbage"
+    source_document_id: Optional[str] = None
+    vat_rate: Optional[float] = None
+    net_amount: Optional[float] = None
+    gross_amount: Optional[float] = None
 
 
 class CostItem(CostItemCreate):
@@ -659,6 +665,12 @@ class CostItemPatch(BaseModel):
     description: Optional[str] = None
     amount: Optional[float] = None
     allocation_key_id: Optional[str] = None
+    is_recoverable: Optional[bool] = None
+    cost_category: Optional[str] = None
+    source_document_id: Optional[str] = None
+    vat_rate: Optional[float] = None
+    net_amount: Optional[float] = None
+    gross_amount: Optional[float] = None
 
 
 class UtilityStatementCreate(BaseModel):
@@ -672,6 +684,11 @@ class UtilityStatementCreate(BaseModel):
     revision: int = 1  # T19: revision-safe versioning
     revision_notes: Optional[str] = None
     notes: Optional[str] = None
+    line_items: Optional[list[dict]] = None  # [{description, allocated_amount}]
+    delivery_status: Optional[str] = None  # pending | sent | delivered | failed
+    delivered_at: Optional[datetime] = None
+    delivery_channel: Optional[str] = None  # email | post | portal
+    snapshot_hash: Optional[str] = None  # immutable content hash after finalization
 
 
 class UtilityStatement(UtilityStatementCreate):
@@ -691,6 +708,11 @@ class UtilityStatementPatch(BaseModel):
     revision: Optional[int] = None
     revision_notes: Optional[str] = None
     notes: Optional[str] = None
+    line_items: Optional[list[dict]] = None
+    delivery_status: Optional[str] = None
+    delivered_at: Optional[datetime] = None
+    delivery_channel: Optional[str] = None
+    snapshot_hash: Optional[str] = None
 
 
 class BillingPreflightIssue(BaseModel):

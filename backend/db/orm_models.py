@@ -15,6 +15,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    JSON,
     String,
     Text,
     UniqueConstraint,
@@ -439,6 +440,12 @@ class CostItemORM(Base):
     description: Mapped[str] = mapped_column(Text, nullable=False)
     amount: Mapped[float] = mapped_column(Float, nullable=False)
     allocation_key_id: Mapped[str] = mapped_column(ForeignKey("allocation_keys.id", ondelete="CASCADE"), nullable=False)
+    is_recoverable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    cost_category: Mapped[str | None] = mapped_column(Text)
+    source_document_id: Mapped[str | None] = mapped_column(String)
+    vat_rate: Mapped[float | None] = mapped_column(Float)
+    net_amount: Mapped[float | None] = mapped_column(Float)
+    gross_amount: Mapped[float | None] = mapped_column(Float)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
@@ -462,6 +469,11 @@ class UtilityStatementORM(Base):
     revision_notes: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="draft")
     notes: Mapped[str | None] = mapped_column(Text)
+    line_items: Mapped[list | None] = mapped_column(JSON)
+    delivery_status: Mapped[str | None] = mapped_column(Text)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime)
+    delivery_channel: Mapped[str | None] = mapped_column(Text)
+    snapshot_hash: Mapped[str | None] = mapped_column(String)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 

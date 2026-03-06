@@ -672,6 +672,10 @@ def generate_utility_statements(period_id: str) -> list[UtilityStatement]:
     # Create new statements
     results: list[UtilityStatement] = []
     for stmt in generated:
+        line_items_data = [
+            {"description": li.description, "allocated_amount": float(li.allocated_amount)}
+            for li in stmt.line_items
+        ]
         created = store.create_utility_statement(
             UtilityStatementCreate(
                 billing_period_id=period_id,
@@ -680,8 +684,273 @@ def generate_utility_statements(period_id: str) -> list[UtilityStatement]:
                 total_cost=float(stmt.total_cost),
                 advance_paid=float(stmt.advance_paid),
                 balance=float(stmt.balance),
+                line_items=line_items_data,
             )
         )
         results.append(created)
 
     return results
+
+
+# ---------------------------------------------------------------------------
+# Export, Delivery, Receivables, Revisions, PDF
+# ---------------------------------------------------------------------------
+
+
+@router.get("/periods/{period_id}/export")
+def export_billing_period(period_id: str, export_format: str = Query("csv", alias="format")):
+    """Export all statements for a billing period as CSV."""
+    import csv
+    import io
+
+    from starlette.responses import Response as RawResponse
+
+    try:
+        period = store.get_billing_period(period_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    period_statements = [
+        s for s in store.list_utility_statements() if s.billing_period_id == period_id
+    ]
+
+    buf = io.StringIO()
+    writer = csv.writer(buf, delimiter=";")
+    writer.writerow([
+        "statement_id", "billing_period_id", "contract_id", "unit_id",
+        "total_cost", "advance_paid", "balance", "status", "revision",
+    ])
+    for stmt in period_statements:
+        writer.writerow([
+            stmt.id, stmt.billing_period_id, stmt.contract_id, stmt.unit_id,
+            f"{stmt.total_cost:.2f}", f"{stmt.advance_paid:.2f}", f"{stmt.balance:.2f}",
+            stmt.status, stmt.revision,
+        ])
+
+    content = buf.getvalue()
+    return RawResponse(
+        content=content.encode("utf-8"),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f'attachment; filename="billing_period_{period_id}.csv"',
+        },
+    )
+
+
+@router.post("/statements/{statement_id}/mark-delivered", response_model=UtilityStatement)
+def mark_statement_delivered(statement_id: str):
+    """Mark a utility statement as delivered."""
+    from datetime import datetime as _dt
+
+    try:
+        store.get_utility_statement(statement_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    return store._patch_entity(
+        None,
+        statement_id,
+        UtilityStatementPatch(
+            delivery_status="delivered",
+            delivered_at=_dt.utcnow(),
+            status="delivered",
+        ),
+        "Betriebskostenabrechnung nicht gefunden",
+    )
+
+
+@router.post("/periods/{period_id}/create-receivables")
+def create_receivables_from_period(period_id: str):
+    """Create receivables/refund bookings from finalized statement balances."""
+    from ..models import ReceivableCreate
+
+    try:
+        period = store.get_billing_period(period_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    if period.status != "finalized":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Forderungen können nur aus finalisierten Perioden erzeugt werden",
+        )
+
+    period_statements = [
+        s for s in store.list_utility_statements() if s.billing_period_id == period_id
+    ]
+
+    created_count = 0
+    for stmt in period_statements:
+        if stmt.balance > 0:
+            # Nachzahlung -> Forderung
+            store.create_receivable(
+                ReceivableCreate(
+                    contract_id=stmt.contract_id,
+                    due_date=period.end_date,
+                    amount_due=stmt.balance,
+                    status="open",
+                )
+            )
+            created_count += 1
+        elif stmt.balance < 0:
+            # Guthaben -> negative receivable for tracking
+            store.create_receivable(
+                ReceivableCreate(
+                    contract_id=stmt.contract_id,
+                    due_date=period.end_date,
+                    amount_due=stmt.balance,
+                    status="open",
+                )
+            )
+            created_count += 1
+
+    return {"period_id": period_id, "created_receivables": created_count}
+
+
+@router.post("/periods/{period_id}/revisions")
+def create_period_revision(
+    period_id: str,
+    revision_notes: str = Query("", alias="revision_notes"),
+):
+    """Create a correction revision of a finalized billing period.
+
+    Copies the period and its cost items into a new draft period with
+    incremented revision numbers on all statements.
+    """
+    try:
+        period = store.get_billing_period(period_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    # Determine next revision number
+    existing_stmts = [
+        s for s in store.list_utility_statements() if s.billing_period_id == period_id
+    ]
+    max_revision = max((s.revision for s in existing_stmts), default=1)
+    new_revision = max_revision + 1
+
+    # Create new period (draft copy)
+    new_period = store.create_billing_period(
+        BillingPeriodCreate(
+            property_id=period.property_id,
+            label=f"{period.label} (Korrektur Rev. {new_revision})",
+            start_date=period.start_date,
+            end_date=period.end_date,
+            status="draft",
+        )
+    )
+
+    # Copy cost items
+    cost_items = [ci for ci in store.list_cost_items() if ci.billing_period_id == period_id]
+    for ci in cost_items:
+        store.create_cost_item(
+            CostItemCreate(
+                billing_period_id=new_period.id,
+                description=ci.description,
+                amount=ci.amount,
+                allocation_key_id=ci.allocation_key_id,
+            )
+        )
+
+    return {
+        "new_period_id": new_period.id,
+        "source_period_id": period_id,
+        "revision": new_revision,
+        "revision_notes": revision_notes,
+    }
+
+
+def download_utility_statement_pdf(statement_id: str):
+    """Generate a PDF for a single utility statement (or text fallback)."""
+    from starlette.responses import Response as RawResponse
+
+    try:
+        stmt = store.get_utility_statement(statement_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    # Try to build a real PDF with reportlab
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.lib.units import mm
+        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+        import io
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=20*mm, rightMargin=20*mm,
+                                topMargin=25*mm, bottomMargin=18*mm)
+        styles = getSampleStyleSheet()
+        story = []
+
+        story.append(Paragraph("Betriebskostenabrechnung", styles["Title"]))
+        story.append(Spacer(1, 12))
+
+        # Try to resolve names
+        unit_label = stmt.unit_id
+        try:
+            unit = store.get_unit(stmt.unit_id)
+            unit_label = unit.label or stmt.unit_id
+        except Exception:
+            pass
+
+        story.append(Paragraph(f"Einheit: {unit_label}", styles["Normal"]))
+        story.append(Paragraph(f"Vertrag: {stmt.contract_id}", styles["Normal"]))
+        story.append(Paragraph(f"Revision: {stmt.revision}", styles["Normal"]))
+        story.append(Spacer(1, 12))
+
+        # Line items table
+        if stmt.line_items:
+            rows = [["Kostenart", "Anteil (€)"]]
+            for li in stmt.line_items:
+                rows.append([
+                    li.get("description", "—"),
+                    f"{li.get('allocated_amount', 0):.2f} €",
+                ])
+            rows.append(["Gesamtkosten", f"{stmt.total_cost:.2f} €"])
+            rows.append(["Vorauszahlungen", f"{stmt.advance_paid:.2f} €"])
+            rows.append(["Saldo", f"{stmt.balance:.2f} €"])
+
+            t = Table(rows)
+            t.setStyle(TableStyle([
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+                ("LINEBELOW", (0, 0), (-1, 0), 0.5, (0, 0, 0)),
+                ("LINEABOVE", (0, -3), (-1, -3), 0.5, (0, 0, 0)),
+            ]))
+            story.append(t)
+        else:
+            story.append(Paragraph(f"Gesamtkosten: {stmt.total_cost:.2f} €", styles["Normal"]))
+            story.append(Paragraph(f"Vorauszahlungen: {stmt.advance_paid:.2f} €", styles["Normal"]))
+            story.append(Paragraph(f"Saldo: {stmt.balance:.2f} €", styles["Normal"]))
+
+        doc.build(story)
+        return RawResponse(
+            content=buffer.getvalue(),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="statement_{statement_id}.pdf"'},
+        )
+    except ImportError:
+        # Fallback: plain text
+        lines = [
+            "Betriebskostenabrechnung",
+            f"Statement ID: {stmt.id}",
+            f"Einheit: {stmt.unit_id}",
+            f"Vertrag: {stmt.contract_id}",
+            f"Gesamtkosten: {stmt.total_cost:.2f} €",
+            f"Vorauszahlung: {stmt.advance_paid:.2f} €",
+            f"Saldo: {stmt.balance:.2f} €",
+            f"Status: {stmt.status}",
+            f"Revision: {stmt.revision}",
+        ]
+        return RawResponse(
+            content="\n".join(lines).encode("utf-8"),
+            media_type="text/plain",
+            headers={"Content-Disposition": f'attachment; filename="statement_{statement_id}.txt"'},
+        )
+
+
+@router.get("/statements/{statement_id}/pdf")
+def get_utility_statement_pdf(statement_id: str):
+    """Download a PDF for a single utility statement."""
+    return download_utility_statement_pdf(statement_id)
