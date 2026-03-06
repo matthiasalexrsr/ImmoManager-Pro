@@ -27,6 +27,7 @@ import Categories from './pages/Categories';
 import Deposits from './pages/Deposits';
 import Insurances from './pages/Insurances';
 import Integrations from './pages/Integrations';
+import ContractWizard from './pages/ContractWizard';
 import NotFound from './pages/NotFound';
 
 function ProtectedRoute({ children }) {
@@ -62,6 +63,7 @@ export default function App() {
           <Route path="deposits" element={<Deposits />} />
           <Route path="insurances" element={<Insurances />} />
           <Route path="integrations" element={<Integrations />} />
+          <Route path="contract-wizard" element={<ContractWizard />} />
           <Route path="settings" element={<Settings />} />
           <Route path="*" element={<NotFound />} />
         </Route>

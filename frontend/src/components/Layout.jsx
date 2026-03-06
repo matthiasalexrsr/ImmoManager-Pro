@@ -63,7 +63,7 @@ const NAV_SECTIONS = [
       { to: '/meters', labelKey: 'navigation.main.meters', fallback: 'Z\u00e4hler', icon: MeterIcon },
       { to: '/messages', labelKey: 'navigation.main.messages', fallback: 'Nachrichten', icon: MessageIcon },
       { to: '/integrations', labelKey: 'navigation.main.integrations', fallback: 'Integrationen', icon: IntegrationIcon },
-      { href: '/mietvertrag', labelKey: 'navigation.main.contractWizard', fallback: 'Mietvertrag-Wizard', icon: ContractIcon, externalApp: true },
+      { to: '/contract-wizard', labelKey: 'navigation.main.contractWizard', fallback: 'Mietvertrag-Wizard', icon: ContractIcon },
       { to: '/settings', labelKey: 'navigation.main.settings', fallback: 'Einstellungen', icon: SettingsIcon },
     ],
   },

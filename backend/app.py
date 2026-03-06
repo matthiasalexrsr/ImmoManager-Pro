@@ -364,16 +364,8 @@ _FRONTEND_DIR = _resolve_frontend_dir()
 if _FRONTEND_DIR is not None:
     app.mount("/assets", StaticFiles(directory=_FRONTEND_DIR / "assets"), name="frontend-assets")
 
-    # Paths handled by other routers (e.g. the Mietvertrag-Wizard) that the
-    # SPA catch-all must NOT intercept.
-    _SPA_SKIP_PREFIXES = ("mietvertrag",)
-
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
-        if full_path.split("/")[0] in _SPA_SKIP_PREFIXES:
-            # Let FastAPI return 404 so the wizard router handles it.
-            from fastapi.responses import JSONResponse
-            return JSONResponse({"detail": "Not Found"}, status_code=404)
         file_path = _FRONTEND_DIR / full_path
         if full_path and file_path.is_file():
             return FileResponse(file_path)
