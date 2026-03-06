@@ -299,27 +299,71 @@ app.mount("/uploads", StaticFiles(directory=_UPLOADS_DIR), name="uploads")
 # ─── Contract Wizard ─────────────────────────────────────────────────────────
 
 def _load_contract_wizard_mount():
-    """Try to import the wizard's mount_fastapi function.
+    """Try to import the wizard package pieces.
 
-    Returns the callable or *None* when the package is not installed.
+    Returns ``(build_contract_pdf, pkg_path)`` or *None* when unavailable.
     """
     try:
         import sys as _sys
         pkg_dir = str(Path(__file__).resolve().parent.parent / "mietvertrag_wizard_fastapi_reportlab_pro")
         if pkg_dir not in _sys.path:
             _sys.path.insert(0, pkg_dir)
-        from mietvertrag_wizard import mount_fastapi  # type: ignore[import-untyped]
-        return mount_fastapi
+        from mietvertrag_wizard.pdf_reportlab import build_contract_pdf  # type: ignore[import-untyped]
+        pkg_path = Path(pkg_dir) / "mietvertrag_wizard"
+        return build_contract_pdf, pkg_path
     except Exception:
         return None
 
 
 def _mount_contract_wizard_if_available(target_app: FastAPI) -> None:
-    """Mount the Mietvertrag-Wizard into the app if available."""
-    mount_fn = _load_contract_wizard_mount()
-    if mount_fn is not None:
-        mount_fn(target_app, mount_path="/mietvertrag", static_path="/mietvertrag/static")
-        logger.info("Mietvertrag-Wizard mounted at /mietvertrag")
+    """Mount the Mietvertrag-Wizard as a sub-application.
+
+    Uses ``app.mount()`` so Starlette treats it as a Mount which is
+    always checked *before* regular Route entries (like the SPA catch-all).
+    """
+    result = _load_contract_wizard_mount()
+    if result is None:
+        return
+
+    from typing import Any, Dict
+
+    from fastapi import Body
+    from fastapi.responses import HTMLResponse
+    from fastapi.templating import Jinja2Templates
+
+    build_contract_pdf, pkg_path = result
+
+    wizard_app = FastAPI()
+    templates = Jinja2Templates(directory=str(pkg_path / "templates"))
+    wizard_app.mount(
+        "/static",
+        StaticFiles(directory=str(pkg_path / "static")),
+        name="mietvertrag_wizard_static",
+    )
+
+    @wizard_app.get("/", response_class=HTMLResponse)
+    @wizard_app.get("", response_class=HTMLResponse)
+    async def wizard_page(request: Request):
+        return templates.TemplateResponse(
+            "mietvertrag_wizard/index.html",
+            {
+                "request": request,
+                "static_prefix": "/mietvertrag/static/mietvertrag_wizard",
+                "api_base": "/mietvertrag/api",
+            },
+        )
+
+    @wizard_app.post("/api/pdf")
+    async def pdf_endpoint(payload: Dict[str, Any] = Body(...)):
+        pdf_bytes = build_contract_pdf(payload)
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": 'attachment; filename="mietvertrag.pdf"'},
+        )
+
+    target_app.mount("/mietvertrag", wizard_app)
+    logger.info("Mietvertrag-Wizard mounted at /mietvertrag")
 
 
 _mount_contract_wizard_if_available(app)
