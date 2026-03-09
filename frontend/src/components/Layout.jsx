@@ -41,6 +41,7 @@ const NAV_SECTIONS = [
       { to: '/contacts', labelKey: 'navigation.main.contacts', fallback: 'Kontakte', icon: ContactIcon },
       { to: '/deposits', labelKey: 'navigation.main.deposits', fallback: 'Kautionen', icon: DepositIcon },
       { to: '/rent-adjustments', labelKey: 'navigation.main.rentAdjustments', fallback: 'Mietanpassungen', icon: RentIcon },
+      { to: '/handover-protocols', labelKey: 'navigation.main.handoverProtocols', fallback: 'Übergabeprotokolle', icon: DocumentIcon },
     ],
   },
   {
@@ -66,6 +67,7 @@ const NAV_SECTIONS = [
       { to: '/tax-rates', labelKey: 'navigation.main.taxRates', fallback: 'Steuersätze', icon: AccountIcon },
       { to: '/receivables', labelKey: 'navigation.main.receivables', fallback: 'Offene Posten', icon: InvoiceIcon },
       { to: '/rent-charges', labelKey: 'navigation.main.rentCharges', fallback: 'Sollstellung', icon: RentIcon },
+      { to: '/allocation-keys', labelKey: 'navigation.main.allocationKeys', fallback: 'Verteilerschlüssel', icon: StatementIcon },
     ],
   },
   {

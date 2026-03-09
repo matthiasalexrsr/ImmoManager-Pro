@@ -42,6 +42,8 @@ import RentCharges from './pages/RentCharges';
 import EscalationRules from './pages/EscalationRules';
 import NotificationTemplates from './pages/NotificationTemplates';
 import History from './pages/History';
+import AllocationKeys from './pages/AllocationKeys';
+import HandoverProtocols from './pages/HandoverProtocols';
 import NotFound from './pages/NotFound';
 
 function ProtectedRoute({ children }) {
@@ -101,6 +103,8 @@ export default function App() {
           <Route path="escalation-rules" element={<EscalationRules />} />
           <Route path="notification-templates" element={<NotificationTemplates />} />
           <Route path="history" element={<History />} />
+          <Route path="allocation-keys" element={<AllocationKeys />} />
+          <Route path="handover-protocols" element={<HandoverProtocols />} />
           <Route path="settings" element={<Settings />} />
           <Route path="*" element={<NotFound />} />
         </Route>
