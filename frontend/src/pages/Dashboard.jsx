@@ -298,6 +298,20 @@ export default function Dashboard() {
         </ChartPanel>
       </div>
 
+      {/* Quick Actions Bar */}
+      <div className="panel" style={{ padding: '1rem', marginBottom: '1.5rem' }}>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontWeight: 600, marginRight: '0.5rem' }}>Schnellzugriff:</span>
+          <Link to="/contract-wizard" className="btn btn-sm btn-primary">+ Mietvertrag</Link>
+          <Link to="/tenants" className="btn btn-sm btn-secondary">+ Mieter</Link>
+          <Link to="/invoices" className="btn btn-sm btn-secondary">+ Rechnung</Link>
+          <Link to="/maintenance" className="btn btn-sm btn-secondary">+ Wartung</Link>
+          <Link to="/documents" className="btn btn-sm btn-secondary">+ Dokument</Link>
+          <Link to="/meters" className="btn btn-sm btn-secondary">Zähler ablesen</Link>
+          <Link to="/viewings" className="btn btn-sm btn-secondary">Besichtigung planen</Link>
+        </div>
+      </div>
+
       {/* Activity Panels */}
       <div className="dashboard-panels">
         <div className="panel">
@@ -352,6 +366,53 @@ export default function Dashboard() {
             </ul>
           )}
         </div>
+      </div>
+
+      {/* Recent Audit Log */}
+      <RecentAuditLog />
+    </div>
+  );
+}
+
+function RecentAuditLog() {
+  const [entries, setEntries] = useState([]);
+  useEffect(() => {
+    api.get('/audit?limit=10').then(data => setEntries(Array.isArray(data) ? data : data?.items || [])).catch(() => {});
+  }, []);
+
+  const actionLabels = { create: 'Erstellt', update: 'Aktualisiert', patch: 'Geändert', delete: 'Gelöscht' };
+
+  if (entries.length === 0) return null;
+
+  return (
+    <div className="panel" style={{ marginTop: '1.5rem' }}>
+      <div className="panel-header">Letzte Aktivitäten</div>
+      <div className="panel-body">
+        <table style={{ width: '100%', fontSize: '0.85rem', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+              <th style={{ textAlign: 'left', padding: '4px 8px' }}>Aktion</th>
+              <th style={{ textAlign: 'left', padding: '4px 8px' }}>Bereich</th>
+              <th style={{ textAlign: 'left', padding: '4px 8px' }}>Benutzer</th>
+              <th style={{ textAlign: 'left', padding: '4px 8px' }}>Zeitpunkt</th>
+            </tr>
+          </thead>
+          <tbody>
+            {entries.map((e, i) => (
+              <tr key={i} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                <td style={{ padding: '4px 8px' }}>
+                  <StatusBadge status={e.action === 'delete' ? 'cancelled' : e.action === 'create' ? 'active' : 'warning'} />
+                  {' '}{actionLabels[e.action] || e.action}
+                </td>
+                <td style={{ padding: '4px 8px' }}>{e.entity_type?.replace(/_/g, ' ')}</td>
+                <td style={{ padding: '4px 8px' }}>{e.username || '—'}</td>
+                <td style={{ padding: '4px 8px', color: 'var(--text-secondary)' }}>
+                  {e.timestamp ? new Date(e.timestamp).toLocaleString('de-DE') : '—'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
