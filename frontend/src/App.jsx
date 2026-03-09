@@ -37,6 +37,11 @@ import RentAdjustments from './pages/RentAdjustments';
 import Budgets from './pages/Budgets';
 import TaxRates from './pages/TaxRates';
 import ContractWizard from './pages/ContractWizard';
+import Receivables from './pages/Receivables';
+import RentCharges from './pages/RentCharges';
+import EscalationRules from './pages/EscalationRules';
+import NotificationTemplates from './pages/NotificationTemplates';
+import History from './pages/History';
 import NotFound from './pages/NotFound';
 
 function ProtectedRoute({ children }) {
@@ -91,6 +96,11 @@ export default function App() {
           <Route path="budgets" element={<Budgets />} />
           <Route path="tax-rates" element={<TaxRates />} />
           <Route path="contract-wizard" element={<ContractWizard />} />
+          <Route path="receivables" element={<Receivables />} />
+          <Route path="rent-charges" element={<RentCharges />} />
+          <Route path="escalation-rules" element={<EscalationRules />} />
+          <Route path="notification-templates" element={<NotificationTemplates />} />
+          <Route path="history" element={<History />} />
           <Route path="settings" element={<Settings />} />
           <Route path="*" element={<NotFound />} />
         </Route>

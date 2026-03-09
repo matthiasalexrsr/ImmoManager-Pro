@@ -66,9 +66,9 @@ class Settings(BaseSettings):
     auto_migrate: bool = False
 
     # --- Persistence toggles ---
-    # Keep disabled by default for backwards compatibility in test/dev setups
-    # that still expect in-memory repositories for SQLite.
-    sqlite_persistent_store: bool = False
+    # SQLite uses SQLAlchemyStore by default for real data persistence.
+    # Set to False only for tests that require in-memory repositories.
+    sqlite_persistent_store: bool = True
 
     # --- Integrations ---
     integration_state_file: str | None = None

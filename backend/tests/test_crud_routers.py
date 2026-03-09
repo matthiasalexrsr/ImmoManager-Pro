@@ -120,6 +120,7 @@ def _list_units(**kw):
 def _list_tenants(**kw):
     return tenants.list_tenants(
         skip=kw.get("skip", S), limit=kw.get("limit", L),
+        archived=None, include_archived=True,
     )
 
 

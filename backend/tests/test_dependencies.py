@@ -1,28 +1,34 @@
 """Tests for dependency wiring and backend selection."""
 
 import importlib
+import subprocess
+import sys
 
-from backend import audit, auth, config
-import backend.dependencies as dependencies
+import pytest
 
 
-def test_sqlite_url_uses_sqlalchemy_store(monkeypatch):
-    original_url = config.settings.database_url
-    monkeypatch.setattr(config.settings, "database_url", "sqlite:///:memory:")
+def test_sqlite_url_uses_sqlalchemy_store():
+    """Verify that SQLite URL with persistent_store=True uses SQLAlchemyStore.
 
-    deps = importlib.reload(dependencies)
-
-    assert deps._scoped_session is not None
-    assert deps.store.__class__.__name__ == "SQLAlchemyStore"
-
-    db_gen = deps.get_db()
-    db = next(db_gen)
-    assert db is not None
-    db_gen.close()
-
-    # Avoid cross-test state pollution from SQL-backed globals.
-    auth._user_store = auth.InMemoryUserStore()
-    audit._audit_store = audit.InMemoryAuditStore()
-
-    config.settings.database_url = original_url
-    importlib.reload(dependencies)
+    Runs in a subprocess to avoid polluting module-level store references
+    used by other tests.
+    """
+    result = subprocess.run(
+        [
+            sys.executable, "-c",
+            "import os; "
+            "os.environ['SQLITE_PERSISTENT_STORE'] = 'true'; "
+            "os.environ['DATABASE_URL'] = 'sqlite:///:memory:'; "
+            "from backend import dependencies as deps; "
+            "assert deps._scoped_session is not None, 'scoped_session should be set'; "
+            "assert deps.store.__class__.__name__ == 'SQLAlchemyStore', "
+            "f'Expected SQLAlchemyStore, got {deps.store.__class__.__name__}'; "
+            "db_gen = deps.get_db(); db = next(db_gen); "
+            "assert db is not None; db_gen.close(); "
+            "print('OK')",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, f"Subprocess failed: {result.stderr}"
+    assert "OK" in result.stdout

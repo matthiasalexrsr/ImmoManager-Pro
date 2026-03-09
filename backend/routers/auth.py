@@ -40,6 +40,9 @@ _DEFAULT_PREFERENCES = {
     "items_per_page": 25,
     "date_format": "DD.MM.YYYY",
     "currency": "EUR",
+    "default_due_day": 1,
+    "email_notifications": "important",
+    "reminder_days": "7",
 }
 
 
@@ -137,7 +140,7 @@ def update_my_preferences(payload: dict, user: UserRead = Depends(require_auth))
 
     from ..db.session import DATABASE_URL
 
-    allowed_keys = {"theme", "locale", "sidebar_collapsed", "items_per_page", "date_format", "currency"}
+    allowed_keys = {"theme", "locale", "sidebar_collapsed", "items_per_page", "date_format", "currency", "default_due_day", "email_notifications", "reminder_days"}
     clean = {k: v for k, v in payload.items() if k in allowed_keys}
 
     if DATABASE_URL and "sqlite" not in DATABASE_URL:

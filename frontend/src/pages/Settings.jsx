@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { usePreferences } from '../contexts/PreferencesContext';
 import { useDevMode } from '../contexts/DevModeContext';
 import { useTranslation } from '../i18n';
@@ -15,7 +15,12 @@ export default function Settings() {
   const [exportLoading, setExportLoading] = useState(false);
   const [importLoading, setImportLoading] = useState(false);
   const [importResult, setImportResult] = useState(null);
+  const [versionInfo, setVersionInfo] = useState(null);
   const fileRef = useRef(null);
+
+  useEffect(() => {
+    api.get('/admin/version').then(setVersionInfo).catch(() => {});
+  }, []);
 
   const tr = (key, fallback) => {
     const result = t(key);
@@ -30,7 +35,7 @@ export default function Settings() {
     setBackupStatus(t('toasts.info.syncInProgress'));
     try {
       const result = await api.post('/admin/backup');
-      setBackupStatus(`${t('toasts.success.saved')}: ${result?.filename || 'OK'}`);
+      setBackupStatus(`${t('toasts.success.saved')}: ${result?.backup || result?.filename || 'OK'}`);
     } catch {
       setBackupStatus(t('toasts.error.saveFailed'));
     }
@@ -297,24 +302,24 @@ export default function Settings() {
         </div>
 
         <div className="panel">
-          <div className="panel-header">Dokumente & OCR</div>
+          <div className="panel-header">{t('pages.settings.docsOcr')}</div>
           <div className="panel-body settings-section">
             <div className="settings-row">
-              <label>Automatische OCR</label>
+              <label>{t('pages.settings.autoOcr')}</label>
               <div className="settings-control">
-                <span className="text-muted">Aktiv (für PDF, PNG, JPG, TIFF)</span>
+                <span className="text-muted">{t('pages.settings.ocrActive')}</span>
               </div>
             </div>
             <div className="settings-row">
-              <label>OCR-Sprachen</label>
+              <label>{t('pages.settings.ocrLanguages')}</label>
               <div className="settings-control">
-                <span className="text-muted">Deutsch + Englisch</span>
+                <span className="text-muted">{t('pages.settings.ocrLangs')}</span>
               </div>
             </div>
             <div className="settings-row">
-              <label>Dateispeicher</label>
+              <label>{t('pages.settings.fileStorage')}</label>
               <div className="settings-control">
-                <span className="text-muted">Lokal (uploads/)</span>
+                <span className="text-muted">{t('pages.settings.fileStorageLocal')}</span>
               </div>
             </div>
           </div>
@@ -351,7 +356,7 @@ export default function Settings() {
             <div className="settings-row">
               <label>Version</label>
               <div className="settings-control">
-                <span className="text-muted">1.0.0</span>
+                <span className="text-muted">{versionInfo?.version || '...'}</span>
               </div>
             </div>
             <div className="settings-row">

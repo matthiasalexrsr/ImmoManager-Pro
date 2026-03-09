@@ -44,9 +44,19 @@ def export_all_data() -> StreamingResponse:
         "deposits": "list_deposits",
         "insurances": "list_insurances",
         "notifications": "list_notifications",
+        "notification_templates": "list_notification_templates",
         "handover_protocols": "list_handover_protocols",
         "meter_readings": "list_meter_readings",
         "budgets": "list_budgets",
+        "leads": "list_leads",
+        "listings": "list_listings",
+        "viewings": "list_viewings",
+        "tax_rates": "list_tax_rates",
+        "rent_adjustments": "list_rent_adjustments",
+        "rent_charges": "list_rent_charges",
+        "escalation_rules": "list_escalation_rules",
+        "contacts": "list_contacts",
+        "messages": "list_messages",
     }
 
     for key, method_name in entity_methods.items():

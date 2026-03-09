@@ -5,7 +5,6 @@ import { useTranslation } from '../i18n';
 import { SearchIcon, CloseIcon, ENTITY_ICON_MAP } from './Icons';
 
 const ENTITY_ROUTES = {
-  portfolio: '/portfolios',
   property: '/properties',
   unit: '/units',
   tenant: '/tenants',
@@ -27,6 +26,8 @@ const ENTITY_ROUTES = {
   listing: '/listings',
   integration: '/integrations',
   message: '/messages',
+  receivable: '/receivables',
+  rent_charge: '/rent-charges',
 };
 
 export default function SearchBar() {
@@ -76,7 +77,9 @@ export default function SearchBar() {
   const handleSelect = (result) => {
     setOpen(false);
     setQuery('');
-    const route = ENTITY_ROUTES[result.entity_type] || '/';
+    // Use the URL from backend if available (may include entity ID)
+    // Fall back to entity route map
+    const route = result.url || ENTITY_ROUTES[result.entity_type] || '/';
     navigate(route);
   };
 

@@ -21,22 +21,50 @@ router = APIRouter(prefix="/admin", tags=["Admin"])
 _BACKUP_DIR = Path("backups")
 
 
+def _safe_list(method_name: str) -> list[dict]:
+    """Safely call a store list method and return model_dump results."""
+    method = getattr(store, method_name, None)
+    if not method:
+        return []
+    try:
+        return [item.model_dump(mode="json") for item in method()]
+    except Exception:
+        logger.warning("Export failed for %s", method_name, exc_info=True)
+        return []
+
+
 def _export_store_data() -> dict:
     """Build a JSON-serializable snapshot of the active store backend."""
     return {
         "version": settings.app_version,
         "exported_at": datetime.utcnow().isoformat(),
-        "portfolios": [p.model_dump(mode="json") for p in store.list_portfolios()],
-        "properties": [p.model_dump(mode="json") for p in store.list_properties()],
-        "units": [u.model_dump(mode="json") for u in store.list_units()],
-        "tenants": [t.model_dump(mode="json") for t in store.list_tenants()],
-        "contracts": [c.model_dump(mode="json") for c in store.list_contracts()],
-        "accounts": [a.model_dump(mode="json") for a in store.list_accounts()],
-        "bookings": [b.model_dump(mode="json") for b in store.list_bookings()],
-        "invoices": [i.model_dump(mode="json") for i in store.list_invoices()],
-        "maintenance_cases": [m.model_dump(mode="json") for m in store.list_maintenance_cases()],
-        "documents": [d.model_dump(mode="json") for d in store.list_documents()],
-        "tasks": [t.model_dump(mode="json") for t in store.list_tasks()],
+        "portfolios": _safe_list("list_portfolios"),
+        "properties": _safe_list("list_properties"),
+        "units": _safe_list("list_units"),
+        "tenants": _safe_list("list_tenants"),
+        "contracts": _safe_list("list_contracts"),
+        "accounts": _safe_list("list_accounts"),
+        "categories": _safe_list("list_categories"),
+        "bookings": _safe_list("list_bookings"),
+        "receivables": _safe_list("list_receivables"),
+        "invoices": _safe_list("list_invoices"),
+        "maintenance_cases": _safe_list("list_maintenance_cases"),
+        "documents": _safe_list("list_documents"),
+        "tasks": _safe_list("list_tasks"),
+        "deposits": _safe_list("list_deposits"),
+        "insurances": _safe_list("list_insurances"),
+        "notifications": _safe_list("list_notifications"),
+        "notification_templates": _safe_list("list_notification_templates"),
+        "budgets": _safe_list("list_budgets"),
+        "leads": _safe_list("list_leads"),
+        "listings": _safe_list("list_listings"),
+        "viewings": _safe_list("list_viewings"),
+        "tax_rates": _safe_list("list_tax_rates"),
+        "rent_charges": _safe_list("list_rent_charges"),
+        "escalation_rules": _safe_list("list_escalation_rules"),
+        "contacts": _safe_list("list_contacts"),
+        "handover_protocols": _safe_list("list_handover_protocols"),
+        "meter_readings": _safe_list("list_meter_readings"),
     }
 
 
@@ -127,6 +155,36 @@ def get_version():
         "plugins": plugins,
         "default_locale": settings.default_locale,
     }
+
+
+# ─── Database Info ───────────────────────────────────────────────────────────
+
+@router.get("/database-info")
+def get_database_info():
+    """Return database type, store backend, and operational details."""
+    from ..dependencies import store as active_store
+
+    db_url = settings.database_url
+    db_type = "postgresql" if "postgresql" in db_url else "sqlite"
+    store_type = type(active_store).__name__
+
+    info = {
+        "database_type": db_type,
+        "store_backend": store_type,
+        "persistent": store_type != "InMemoryStore",
+        "version": settings.app_version,
+        "default_locale": settings.default_locale,
+        "upload_directory": "uploads/",
+        "plugins_loaded": len(get_plugins()),
+    }
+    if "sqlite" in db_url:
+        db_path = db_url.replace("sqlite:///", "")
+        db_file = Path(db_path)
+        info["database_file"] = db_path
+        info["database_exists"] = db_file.exists()
+        if db_file.exists():
+            info["database_size_bytes"] = db_file.stat().st_size
+    return info
 
 
 # ─── Config (public-safe subset) ────────────────────────────────────────────

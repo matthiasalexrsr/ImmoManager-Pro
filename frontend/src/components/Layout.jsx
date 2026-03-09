@@ -64,6 +64,8 @@ const NAV_SECTIONS = [
       { to: '/categories', labelKey: 'navigation.main.categories', fallback: 'Kategorien', icon: CategoryIcon },
       { to: '/budgets', labelKey: 'navigation.main.budgets', fallback: 'Budgets', icon: ChartIcon },
       { to: '/tax-rates', labelKey: 'navigation.main.taxRates', fallback: 'Steuersätze', icon: AccountIcon },
+      { to: '/receivables', labelKey: 'navigation.main.receivables', fallback: 'Offene Posten', icon: InvoiceIcon },
+      { to: '/rent-charges', labelKey: 'navigation.main.rentCharges', fallback: 'Sollstellung', icon: RentIcon },
     ],
   },
   {
@@ -77,6 +79,9 @@ const NAV_SECTIONS = [
       { to: '/meters', labelKey: 'navigation.main.meters', fallback: 'Z\u00e4hler', icon: MeterIcon },
       { to: '/messages', labelKey: 'navigation.main.messages', fallback: 'Nachrichten', icon: MessageIcon },
       { to: '/integrations', labelKey: 'navigation.main.integrations', fallback: 'Integrationen', icon: IntegrationIcon },
+      { to: '/escalation-rules', labelKey: 'navigation.main.escalationRules', fallback: 'Eskalationsregeln', icon: MaintenanceIcon },
+      { to: '/notification-templates', labelKey: 'navigation.main.notificationTemplates', fallback: 'Benachrichtigungsvorlagen', icon: MessageIcon },
+      { to: '/history', labelKey: 'navigation.main.history', fallback: 'Änderungshistorie', icon: DocumentIcon },
       { to: '/contract-wizard', labelKey: 'navigation.main.contractWizard', fallback: 'Mietvertrag-Wizard', icon: ContractIcon },
       { to: '/settings', labelKey: 'navigation.main.settings', fallback: 'Einstellungen', icon: SettingsIcon },
     ],
