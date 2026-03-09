@@ -1180,6 +1180,17 @@
       "noContent": "No content",
       "selectMessage": "Select a message to view details"
     },
+    "statements": {
+      "revisionReason": "Reason for correction (optional):",
+      "revisionError": "Could not create correction",
+      "disputeReason": "Reason for dispute:"
+    },
+    "invoices": {
+      "markPaidConfirm": "mark as paid?"
+    },
+    "tenants": {
+      "archiveConfirm": "archive? The tenant will be removed from the active list."
+    },
     "rentOverview": {
       "totalReceivables": "Total Receivables",
       "paid": "Paid",

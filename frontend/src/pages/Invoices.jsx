@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { api } from '../api';
+import { useTranslation } from '../i18n';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
@@ -36,6 +37,7 @@ const COLUMNS = [
 ];
 
 export default function Invoices() {
+  const { t } = useTranslation();
   const [invoices, setInvoices] = useState([]);
   const [properties, setProperties] = useState([]);
   const [taxRates, setTaxRates] = useState([]);
@@ -134,7 +136,7 @@ export default function Invoices() {
   };
 
   const handleDelete = async (row) => {
-    if (!window.confirm(`Rechnung "${row.supplier}" wirklich löschen?`)) return;
+    if (!window.confirm(`"${row.supplier}" ${t('modals.confirmDelete.body')}`)) return;
     await api.del(`/invoices/${row.id}`);
     loadData();
   };
@@ -201,7 +203,7 @@ export default function Invoices() {
         onDelete={handleDelete}
         onRowClick={row => {
           if (row.status === 'open' || row.status === 'overdue') {
-            if (window.confirm(`"${row.supplier}" als bezahlt markieren?`)) markPaid(row);
+            if (window.confirm(`"${row.supplier}" ${t('pages.invoices.markPaidConfirm') || 'als bezahlt markieren?'}`)) markPaid(row);
           }
         }}
       />

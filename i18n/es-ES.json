@@ -993,5 +993,18 @@
     "notes": "Notas",
     "exportLog": "Exportar registro",
     "exit": "Salir"
+  },
+  "pages": {
+    "statements": {
+      "revisionReason": "Motivo de la corrección (opcional):",
+      "revisionError": "No se pudo crear la corrección",
+      "disputeReason": "Motivo de la disputa:"
+    },
+    "invoices": {
+      "markPaidConfirm": "¿marcar como pagada?"
+    },
+    "tenants": {
+      "archiveConfirm": "¿archivar? El inquilino será eliminado de la lista activa."
+    }
   }
 }

@@ -76,7 +76,7 @@ export default function Tenants() {
   };
 
   const handleArchive = async (tenant) => {
-    if (!window.confirm(`"${tenant.full_name}" archivieren? Der Mieter wird aus der aktiven Liste entfernt.`)) return;
+    if (!window.confirm(`"${tenant.full_name}" ${t('pages.tenants.archiveConfirm') || 'archivieren? Der Mieter wird aus der aktiven Liste entfernt.'}`)) return;
     try {
       await api.patch(`/tenants/${tenant.id}/archive`, {});
       loadData();

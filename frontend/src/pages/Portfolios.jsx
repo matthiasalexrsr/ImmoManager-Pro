@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
+import { useTranslation } from '../i18n';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
@@ -57,6 +58,7 @@ const FIELDS = [
 ];
 
 export default function Portfolios() {
+  const { t } = useTranslation();
   const [portfolios, setPortfolios] = useState([]);
   const [properties, setProperties] = useState([]);
   const [units, setUnits] = useState([]);
@@ -112,7 +114,7 @@ export default function Portfolios() {
   };
 
   const handleDelete = async (row) => {
-    if (!window.confirm(`Portfolio "${row.name}" wirklich löschen?`)) return;
+    if (!window.confirm(`"${row.name}" ${t('modals.confirmDelete.body')}`)) return;
     await api.del(`/portfolios/${row.id}`);
     loadData();
   };

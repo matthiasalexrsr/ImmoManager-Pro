@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
+import { useTranslation } from '../i18n';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
@@ -40,6 +41,7 @@ const FIELDS = [
 ];
 
 export default function Contacts() {
+  const { t } = useTranslation();
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
@@ -68,7 +70,7 @@ export default function Contacts() {
   };
 
   const handleDelete = async (row) => {
-    if (!window.confirm(`"${row.display_name}" wirklich löschen?`)) return;
+    if (!window.confirm(`"${row.display_name}" ${t('modals.confirmDelete.body')}`)) return;
     await api.del(`/contacts/${row.id}`);
     loadData();
   };

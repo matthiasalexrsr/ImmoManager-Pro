@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
+import { useTranslation } from '../i18n';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
@@ -48,6 +49,7 @@ const READING_COLUMNS = [
 ];
 
 export default function Meters() {
+  const { t } = useTranslation();
   const [meters, setMeters] = useState([]);
   const [units, setUnits] = useState([]);
   const [properties, setProperties] = useState([]);
@@ -165,7 +167,7 @@ export default function Meters() {
   };
 
   const handleDeleteMeter = async (row) => {
-    if (!window.confirm(`Zähler "${row.serial_number || row.id}" wirklich löschen?`)) return;
+    if (!window.confirm(`"${row.serial_number || row.id}" ${t('modals.confirmDelete.body')}`)) return;
     await api.del(`/meters/${row.id}`);
     if (selectedMeter?.id === row.id) {
       setSelectedMeter(null);

@@ -255,7 +255,7 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
                             setFilter(col.key, [e.target.value, cur[1]]);
                           }}
                           className="filter-date"
-                          title="Von"
+                          title={t('comp.dataTable.filterFrom') || 'Von'}
                         />
                         <input
                           type="date"
@@ -265,14 +265,14 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
                             setFilter(col.key, [cur[0], e.target.value]);
                           }}
                           className="filter-date"
-                          title="Bis"
+                          title={t('comp.dataTable.filterTo') || 'Bis'}
                         />
                       </div>
                     ) : col.filterType === 'numberRange' ? (
                       <div className="filter-number-range">
                         <input
                           type="number"
-                          placeholder="Min"
+                          placeholder={t('comp.dataTable.filterMin') || 'Min'}
                           value={(columnFilters[col.key] || ['', ''])[0]}
                           onChange={e => {
                             const cur = columnFilters[col.key] || ['', ''];
@@ -282,7 +282,7 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
                         />
                         <input
                           type="number"
-                          placeholder="Max"
+                          placeholder={t('comp.dataTable.filterMax') || 'Max'}
                           value={(columnFilters[col.key] || ['', ''])[1]}
                           onChange={e => {
                             const cur = columnFilters[col.key] || ['', ''];
@@ -294,7 +294,7 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
                     ) : col.filterType === 'text' ? (
                       <input
                         type="text"
-                        placeholder="Filter..."
+                        placeholder={t('comp.dataTable.filterText') || 'Filter…'}
                         value={columnFilters[col.key] || ''}
                         onChange={e => setFilter(col.key, e.target.value)}
                         className="filter-text"

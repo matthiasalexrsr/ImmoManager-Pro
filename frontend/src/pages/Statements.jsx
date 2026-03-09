@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
+import { useTranslation } from '../i18n';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
@@ -72,6 +73,7 @@ function isMutable(status) {
 }
 
 export default function Statements() {
+  const { t } = useTranslation();
   const [periods, setPeriods] = useState([]);
   const [costItems, setCostItems] = useState([]);
   const [statements, setStatements] = useState([]);
@@ -279,7 +281,7 @@ export default function Statements() {
 
   const handleCreateRevision = async () => {
     if (!selectedPeriod) return;
-    const notes = window.prompt('Grund für Korrektur (optional):', '') || '';
+    const notes = window.prompt(t('pages.statements.revisionReason') || 'Grund für Korrektur (optional):', '') || '';
     setCreatingRevision(true);
     try {
       const res = await api.post(
@@ -293,7 +295,7 @@ export default function Statements() {
         if (newPeriod) handleSelectPeriod(newPeriod);
       }
     } catch (err) {
-      window.alert(err.message || 'Korrektur konnte nicht erstellt werden');
+      window.alert(err.message || t('pages.statements.revisionError') || 'Korrektur konnte nicht erstellt werden');
     } finally {
       setCreatingRevision(false);
     }
@@ -301,7 +303,7 @@ export default function Statements() {
 
   const handleDispute = async () => {
     if (!selectedPeriod) return;
-    const reason = window.prompt('Grund für Widerspruch:', '') || '';
+    const reason = window.prompt(t('pages.statements.disputeReason') || 'Grund für Widerspruch:', '') || '';
     setDisputing(true);
     try {
       const updated = await api.post(
