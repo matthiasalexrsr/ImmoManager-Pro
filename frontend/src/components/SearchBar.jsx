@@ -28,6 +28,15 @@ const ENTITY_ROUTES = {
   message: '/messages',
   receivable: '/receivables',
   rent_charge: '/rent-charges',
+  allocation_key: '/allocation-keys',
+  handover_protocol: '/handover-protocols',
+  escalation_rule: '/escalation-rules',
+  notification_template: '/notification-templates',
+  budget: '/budgets',
+  tax_rate: '/tax-rates',
+  calendar_event: '/calendar',
+  viewing: '/viewings',
+  rent_adjustment: '/rent-adjustments',
 };
 
 export default function SearchBar() {
