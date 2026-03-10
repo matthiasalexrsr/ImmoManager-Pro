@@ -5,47 +5,53 @@ import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 
-const COLUMNS = [
-  { key: 'property_name', label: 'Immobilie', filterType: 'text' },
-  { key: 'period_label', label: 'Abrechnungszeitraum', filterType: 'text' },
-  { key: 'total_costs', label: 'Gesamtkosten (€)', type: 'number', align: 'right',
-    render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
-  { key: 'units_count', label: 'Einheiten', type: 'number' },
-  { key: 'status', label: 'Status', type: 'status', filterType: 'select' },
-];
+function getColumns(t) {
+  return [
+    { key: 'property_name', label: t('pages.statements.colProperty') || 'Immobilie', filterType: 'text' },
+    { key: 'period_label', label: t('pages.statements.colPeriod') || 'Abrechnungszeitraum', filterType: 'text' },
+    { key: 'total_costs', label: t('pages.statements.colTotalCosts') || 'Gesamtkosten (€)', type: 'number', align: 'right',
+      render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
+    { key: 'units_count', label: t('pages.statements.colUnits') || 'Einheiten', type: 'number' },
+    { key: 'status', label: t('ui.form.status') || 'Status', type: 'status', filterType: 'select' },
+  ];
+}
 
-const COST_COLUMNS = [
-  { key: 'description', label: 'Kostenart', filterType: 'text' },
-  { key: 'amount', label: 'Betrag (€)', type: 'number', align: 'right',
-    render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
-  { key: 'allocation_key_name', label: 'Verteilerschlüssel' },
-];
+function getCostColumns(t) {
+  return [
+    { key: 'description', label: t('pages.statements.colCostType') || 'Kostenart', filterType: 'text' },
+    { key: 'amount', label: t('pages.statements.colAmount') || 'Betrag (€)', type: 'number', align: 'right',
+      render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
+    { key: 'allocation_key_name', label: t('pages.statements.colAllocationKey') || 'Verteilerschlüssel' },
+  ];
+}
 
-const STMT_COLUMNS = [
-  { key: 'unit_label', label: 'Einheit' },
-  { key: 'total_cost', label: 'Anteil (€)', type: 'number', align: 'right',
-    render: v => `${Number(v || 0).toFixed(2)} €` },
-  { key: 'advance_paid', label: 'Vorauszahlung (€)', type: 'number', align: 'right',
-    render: v => `${Number(v || 0).toFixed(2)} €` },
-  { key: 'balance', label: 'Saldo (€)', type: 'number', align: 'right',
-    render: (v) => {
-      const cls = v > 0 ? 'text-red' : v < 0 ? 'text-green' : '';
-      return <span className={cls}>{Number(v || 0).toFixed(2)} €</span>;
-    }},
-  { key: 'delivery_status', label: 'Zustellung',
-    render: v => v ? <StatusBadge status={v} /> : <span className="text-muted">—</span> },
-  { key: 'status', label: 'Status', type: 'status' },
-  { key: 'pdf_action', label: '',
-    render: (_, row) => (
-      <button
-        className="btn btn-sm btn-secondary"
-        title="PDF herunterladen"
-        onClick={(e) => { e.stopPropagation(); downloadStatementPdf(row.id); }}
-      >
-        PDF
-      </button>
-    )},
-];
+function getStmtColumns(t) {
+  return [
+    { key: 'unit_label', label: t('pages.statements.colUnit') || 'Einheit' },
+    { key: 'total_cost', label: t('pages.statements.colShare') || 'Anteil (€)', type: 'number', align: 'right',
+      render: v => `${Number(v || 0).toFixed(2)} €` },
+    { key: 'advance_paid', label: t('pages.statements.colAdvancePaid') || 'Vorauszahlung (€)', type: 'number', align: 'right',
+      render: v => `${Number(v || 0).toFixed(2)} €` },
+    { key: 'balance', label: t('pages.statements.colBalance') || 'Saldo (€)', type: 'number', align: 'right',
+      render: (v) => {
+        const cls = v > 0 ? 'text-red' : v < 0 ? 'text-green' : '';
+        return <span className={cls}>{Number(v || 0).toFixed(2)} €</span>;
+      }},
+    { key: 'delivery_status', label: t('pages.statements.colDelivery') || 'Zustellung',
+      render: v => v ? <StatusBadge status={v} /> : <span className="text-muted">—</span> },
+    { key: 'status', label: t('ui.form.status') || 'Status', type: 'status' },
+    { key: 'pdf_action', label: '',
+      render: (_, row) => (
+        <button
+          className="btn btn-sm btn-secondary"
+          title={t('pages.statements.pdfDownload') || 'PDF herunterladen'}
+          onClick={(e) => { e.stopPropagation(); downloadStatementPdf(row.id); }}
+        >
+          PDF
+        </button>
+      )},
+  ];
+}
 
 /** Trigger browser download of a single statement PDF. */
 function downloadStatementPdf(statementId) {
@@ -137,25 +143,25 @@ export default function Statements() {
   });
 
   const fields = [
-    { key: 'property_id', label: 'Immobilie', type: 'select', required: true,
+    { key: 'property_id', label: t('pages.statements.formProperty') || 'Immobilie', type: 'select', required: true,
       options: properties.map(p => ({ value: p.id, label: p.name })) },
-    { key: 'label', label: 'Bezeichnung', required: true, placeholder: 'z.B. NK-Abrechnung 2025' },
-    { key: 'start_date', label: 'Beginn', type: 'date', required: true },
-    { key: 'end_date', label: 'Ende', type: 'date', required: true },
-    { key: 'status', label: 'Status', type: 'select', default: 'draft', options: [
-      { value: 'draft', label: 'Entwurf' },
-      { value: 'review', label: 'In Prüfung' },
-      { value: 'finalized', label: 'Abgeschlossen' },
-      { value: 'disputed', label: 'Widerspruch' },
+    { key: 'label', label: t('pages.statements.formLabel') || 'Bezeichnung', required: true, placeholder: 'z.B. NK-Abrechnung 2025' },
+    { key: 'start_date', label: t('pages.statements.formStart') || 'Beginn', type: 'date', required: true },
+    { key: 'end_date', label: t('pages.statements.formEnd') || 'Ende', type: 'date', required: true },
+    { key: 'status', label: t('ui.form.status') || 'Status', type: 'select', default: 'draft', options: [
+      { value: 'draft', label: t('ui.filterChips.draft') || 'Entwurf' },
+      { value: 'review', label: t('status.contract.inReview') || 'In Prüfung' },
+      { value: 'finalized', label: t('status.general.completed') || 'Abgeschlossen' },
+      { value: 'disputed', label: t('pages.statements.dispute') || 'Widerspruch' },
     ]},
   ];
 
   const costFields = [
-    { key: 'billing_period_id', label: 'Abrechnungsperiode', type: 'select', required: true,
+    { key: 'billing_period_id', label: t('pages.statements.formPeriod') || 'Abrechnungsperiode', type: 'select', required: true,
       options: periods.map(p => ({ value: p.id, label: p.label || `${p.start_date} – ${p.end_date}` })) },
-    { key: 'description', label: 'Kostenart', required: true, placeholder: 'z.B. Wasser, Heizung, Müll' },
-    { key: 'amount', label: 'Betrag (€)', type: 'number', required: true },
-    { key: 'allocation_key_id', label: 'Verteilerschlüssel', type: 'select', required: true,
+    { key: 'description', label: t('pages.statements.formCostType') || 'Kostenart', required: true, placeholder: 'z.B. Wasser, Heizung, Müll' },
+    { key: 'amount', label: t('pages.statements.formAmount') || 'Betrag (€)', type: 'number', required: true },
+    { key: 'allocation_key_id', label: t('pages.statements.formAllocationKey') || 'Verteilerschlüssel', type: 'select', required: true,
       options: allocationKeys.map(k => ({ value: k.id, label: `${k.name} (${k.key_type})` })) },
   ];
 
@@ -464,7 +470,11 @@ export default function Statements() {
       .sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
   };
 
-  if (loading) return <div className="page-loading">Laden...</div>;
+  const COLUMNS = getColumns(t);
+  const COST_COLUMNS = getCostColumns(t);
+  const STMT_COLUMNS = getStmtColumns(t);
+
+  if (loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
 
   if (view === 'detail' && selectedPeriod) {
     const periodCosts = costItems.filter(ci => ci.billing_period_id === selectedPeriod.id)
@@ -480,10 +490,10 @@ export default function Statements() {
       <div className="page">
         <div className="detail-header">
           <button className="btn btn-sm btn-secondary" onClick={() => setView('list')}>
-            &larr; Zurück
+            &larr; {t('pages.statements.back') || 'Zurück'}
           </button>
           <div className="detail-title">
-            <h1>{selectedPeriod.label || 'Abrechnung'}</h1>
+            <h1>{selectedPeriod.label || t('pages.statements.defaultLabel') || 'Abrechnung'}</h1>
             <span className="text-muted">
               {propMap[selectedPeriod.property_id]?.name || '—'} · {selectedPeriod.start_date} – {selectedPeriod.end_date}
             </span>
@@ -498,7 +508,7 @@ export default function Statements() {
                 onClick={handleSubmitReview}
                 disabled={submittingReview}
               >
-                {submittingReview ? 'Sende…' : 'Zur Prüfung'}
+                {submittingReview ? t('pages.statements.submitting') : t('pages.statements.submitReview')}
               </button>
             )}
             {selectedPeriod.status === 'review' && (
@@ -506,7 +516,7 @@ export default function Statements() {
                 className="btn btn-sm btn-secondary"
                 onClick={handleRevertDraft}
               >
-                Zurück zu Entwurf
+                {t('pages.statements.revertDraft')}
               </button>
             )}
 
@@ -515,9 +525,9 @@ export default function Statements() {
                 className="btn btn-sm btn-secondary"
                 onClick={handleGenerateStatements}
                 disabled={generating || preflightLoading || preflight?.has_blockers}
-                title={preflight?.has_blockers ? 'Preflight-Blocker vorhanden' : ''}
+                title={preflight?.has_blockers ? t('pages.statements.preflightBlockers') : ''}
               >
-                {generating ? 'Generiere…' : 'Abrechnungen generieren'}
+                {generating ? t('pages.statements.generating') : t('pages.statements.generate')}
               </button>
             )}
 
@@ -526,21 +536,21 @@ export default function Statements() {
               onClick={handleCreateRevision}
               disabled={creatingRevision}
             >
-              {creatingRevision ? 'Erstelle…' : 'Korrektur starten'}
+              {creatingRevision ? t('pages.statements.creating') : t('pages.statements.startCorrection')}
             </button>
             <button
               className="btn btn-sm btn-secondary"
               onClick={handleCreateReceivables}
               disabled={creatingReceivables || !isFinalized}
             >
-              {creatingReceivables ? 'Erzeuge…' : 'Forderungen erzeugen'}
+              {creatingReceivables ? t('pages.statements.creatingReceivables') : t('pages.statements.createReceivables')}
             </button>
             <button
               className="btn btn-sm btn-secondary"
               onClick={handleExportPeriod}
               disabled={exporting}
             >
-              {exporting ? 'Exportiere…' : 'CSV-Export'}
+              {exporting ? t('pages.statements.exporting') : t('pages.statements.csvExport')}
             </button>
             {periodStmts.length > 0 && (
               <button
@@ -548,7 +558,7 @@ export default function Statements() {
                 onClick={handleExportZip}
                 disabled={exporting}
               >
-                {exporting ? 'Exportiere…' : 'ZIP (alle PDFs)'}
+                {exporting ? t('pages.statements.exporting') : t('pages.statements.zipExport')}
               </button>
             )}
             <button
@@ -556,7 +566,7 @@ export default function Statements() {
               onClick={handleMarkDelivered}
               disabled={markingDelivered || !isFinalized}
             >
-              {markingDelivered ? 'Setze…' : 'Als zugestellt markieren'}
+              {markingDelivered ? t('pages.statements.markingDelivered') : t('pages.statements.markDelivered')}
             </button>
             {(isFinalized || selectedPeriod.status === 'delivered') && (
               <button
@@ -565,7 +575,7 @@ export default function Statements() {
                 disabled={disputing}
                 style={{ color: 'var(--color-warning, #c57600)' }}
               >
-                {disputing ? 'Sende…' : 'Widerspruch'}
+                {disputing ? t('pages.statements.submitting') : t('pages.statements.dispute')}
               </button>
             )}
             <button
@@ -573,33 +583,33 @@ export default function Statements() {
               onClick={handleFinalizePeriod}
               disabled={!editable || finalizing || preflightLoading || preflight?.has_blockers}
             >
-              {finalizing ? 'Finalisiere…' : (isFinalized ? 'Finalisiert' : 'Finalisieren')}
+              {finalizing ? t('pages.statements.finalizing') : (isFinalized ? t('pages.statements.finalized') : t('pages.statements.finalize'))}
             </button>
           </div>
         </div>
 
         <div className="stats-grid" style={{ marginBottom: '1rem' }}>
           <div className="stat-card">
-            <div className="stat-label">Gesamtkosten</div>
+            <div className="stat-label">{t('pages.statements.totalCosts')}</div>
             <div className="stat-value">{totalCosts.toFixed(2)} €</div>
           </div>
           <div className="stat-card">
-            <div className="stat-label">Kostenpositionen</div>
+            <div className="stat-label">{t('pages.statements.costItems')}</div>
             <div className="stat-value">{periodCosts.length}</div>
           </div>
           <div className="stat-card">
-            <div className="stat-label">Einzelabrechnungen</div>
+            <div className="stat-label">{t('pages.statements.individualStatements')}</div>
             <div className="stat-value">{periodStmts.length}</div>
           </div>
           <div className="stat-card">
-            <div className="stat-label">Status</div>
+            <div className="stat-label">{t('ui.form.status') || 'Status'}</div>
             <div className="stat-value"><StatusBadge status={selectedPeriod.status} /></div>
           </div>
         </div>
 
         <div className="card" style={{ marginBottom: '1rem' }}>
           <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <strong>Preflight (Abrechnungsbereitschaft)</strong>
+            <strong>{t('pages.statements.preflight')}</strong>
             <button
               className="btn btn-sm btn-secondary"
               onClick={() => {
@@ -610,22 +620,22 @@ export default function Statements() {
                   .finally(() => setPreflightLoading(false));
               }}
             >
-              Neu prüfen
+              {t('pages.statements.recheck')}
             </button>
           </div>
           <div className="card-body">
-            {preflightLoading && <span className="text-muted">Prüfung läuft…</span>}
-            {!preflightLoading && !preflight && <span className="text-muted">Keine Preflight-Daten verfügbar.</span>}
+            {preflightLoading && <span className="text-muted">{t('pages.statements.checking')}</span>}
+            {!preflightLoading && !preflight && <span className="text-muted">{t('pages.statements.noPreflightData')}</span>}
             {!preflightLoading && preflight && (
               <div style={{ display: 'grid', gap: '0.75rem' }}>
                 <div>
                   <span className={`badge ${preflight.has_blockers ? 'badge-danger' : 'badge-success'}`}>
-                    {preflight.has_blockers ? 'Blockiert' : 'Bereit zur Generierung'}
+                    {preflight.has_blockers ? t('pages.statements.blocked') : t('pages.statements.readyToGenerate')}
                   </span>
                 </div>
                 {preflight.blockers?.length > 0 && (
                   <div>
-                    <strong>Blocker</strong>
+                    <strong>{t('pages.statements.blockers')}</strong>
                     <ul>
                       {preflight.blockers.map((i) => (
                         <li key={`${i.code}-${i.context || ''}`}>{i.message}{i.context ? ` (${i.context})` : ''}</li>
@@ -635,7 +645,7 @@ export default function Statements() {
                 )}
                 {preflight.warnings?.length > 0 && (
                   <div>
-                    <strong>Warnungen</strong>
+                    <strong>{t('pages.statements.warnings')}</strong>
                     <ul>
                       {preflight.warnings.map((i) => (
                         <li key={`${i.code}-${i.context || ''}`}>{i.message}{i.context ? ` (${i.context})` : ''}</li>
@@ -644,10 +654,10 @@ export default function Statements() {
                   </div>
                 )}
                 <div>
-                  <strong>Kennzahlen</strong>
+                  <strong>{t('pages.statements.metrics')}</strong>
                   <div className="text-muted" style={{ fontSize: '0.9rem' }}>
-                    Verträge: {preflight.metrics?.contracts_in_period ?? 0} · Kostenpositionen: {preflight.metrics?.cost_items ?? 0} ·
-                    Fehlende Schlüssel: {preflight.metrics?.allocation_keys_missing ?? 0} · Fehlende Flächen: {preflight.metrics?.area_missing_units ?? 0}
+                    {t('pages.statements.metricsContracts')}: {preflight.metrics?.contracts_in_period ?? 0} · {t('pages.statements.metricsCostItems')}: {preflight.metrics?.cost_items ?? 0} ·
+                    {t('pages.statements.metricsMissingKeys')}: {preflight.metrics?.allocation_keys_missing ?? 0} · {t('pages.statements.metricsMissingArea')}: {preflight.metrics?.area_missing_units ?? 0}
                   </div>
                 </div>
               </div>
@@ -658,14 +668,14 @@ export default function Statements() {
         {/* Revision History */}
         {revisionHistory.length > 1 && (
           <div className="card" style={{ marginBottom: '1rem' }}>
-            <div className="card-header"><strong>Revisionshistorie</strong></div>
+            <div className="card-header"><strong>{t('pages.statements.revisionHistory')}</strong></div>
             <div className="card-body">
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid var(--border-color, #ddd)' }}>
-                    <th style={{ textAlign: 'left', padding: '4px 8px' }}>Bezeichnung</th>
-                    <th style={{ textAlign: 'left', padding: '4px 8px' }}>Status</th>
-                    <th style={{ textAlign: 'left', padding: '4px 8px' }}>Erstellt</th>
+                    <th style={{ textAlign: 'left', padding: '4px 8px' }}>{t('pages.statements.colLabel')}</th>
+                    <th style={{ textAlign: 'left', padding: '4px 8px' }}>{t('ui.form.status') || 'Status'}</th>
+                    <th style={{ textAlign: 'left', padding: '4px 8px' }}>{t('pages.statements.colCreated')}</th>
                     <th style={{ padding: '4px 8px' }}></th>
                   </tr>
                 </thead>
@@ -687,7 +697,7 @@ export default function Statements() {
                             className="btn btn-sm btn-secondary"
                             onClick={() => handleSelectPeriod(rev)}
                           >
-                            Anzeigen
+                            {t('pages.statements.show')}
                           </button>
                         )}
                       </td>
@@ -703,7 +713,7 @@ export default function Statements() {
           {editable && (
             <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', justifyContent: 'flex-end' }}>
               <label className="btn btn-sm btn-secondary" style={{ cursor: 'pointer', margin: 0 }}>
-                {ocrUploading ? 'OCR läuft…' : 'Beleg importieren (OCR)'}
+                {ocrUploading ? t('pages.statements.ocrRunning') : t('pages.statements.ocrImport')}
                 <input
                   type="file"
                   accept=".pdf,.png,.jpg,.jpeg,.tiff,.bmp,.webp"
@@ -715,7 +725,7 @@ export default function Statements() {
             </div>
           )}
           <DataTable
-            title="Kostenpositionen"
+            title={t('pages.statements.costItems')}
             columns={COST_COLUMNS}
             data={periodCosts}
             onAdd={editable ? () => setCostModal('create') : undefined}

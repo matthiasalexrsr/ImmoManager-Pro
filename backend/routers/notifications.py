@@ -235,6 +235,14 @@ def get_notification(notification_id: str) -> Notification:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
+@router.put("/{notification_id}", response_model=Notification)
+def update_notification(notification_id: str, payload: NotificationCreate) -> Notification:
+    try:
+        return store.update_notification(notification_id, payload)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
 @router.post("/{notification_id}/read", response_model=Notification)
 def mark_notification_read(notification_id: str) -> Notification:
     try:
