@@ -387,3 +387,156 @@ def bulk_delete(entity_type: str, payload: dict):
             errors.append({"id": eid, "error": str(e)})
 
     return {"deleted": deleted, "errors": errors}
+
+
+# ─── DSGVO / GDPR Compliance ────────────────────────────────────────────────
+
+
+@router.get("/dsgvo/tenant/{tenant_id}/export", response_model=None)
+def dsgvo_export_tenant_data(tenant_id: str):
+    """T11: DSGVO Art. 15 — Export all personal data for a tenant.
+
+    Returns a JSON file containing all data associated with the given tenant,
+    including contracts, bookings, deposits, documents, maintenance cases,
+    messages, and handover protocols.
+    """
+    from io import BytesIO
+
+    from fastapi.responses import StreamingResponse
+
+    # Get the tenant
+    try:
+        tenant = store.get_tenant(tenant_id)
+    except Exception:
+        raise HTTPException(404, f"Mieter mit ID {tenant_id} nicht gefunden")
+
+    tenant_data = tenant.model_dump(mode="json")
+
+    # Collect all related data
+    contracts = [c.model_dump(mode="json") for c in store.list_contracts()
+                 if c.tenant_id == tenant_id]
+    contract_ids = {c["id"] for c in contracts}
+
+    bookings = [b.model_dump(mode="json") for b in store.list_bookings()
+                if getattr(b, "contract_id", None) in contract_ids]
+
+    deposits = [d.model_dump(mode="json") for d in store.list_deposits()
+                if getattr(d, "contract_id", None) in contract_ids]
+
+    documents = [d.model_dump(mode="json") for d in store.list_documents()
+                 if getattr(d, "tenant_id", None) == tenant_id]
+
+    maintenance = [m.model_dump(mode="json") for m in store.list_maintenance_cases()
+                   if getattr(m, "tenant_id", None) == tenant_id]
+
+    receivables = [r.model_dump(mode="json") for r in store.list_receivables()
+                   if getattr(r, "contract_id", None) in contract_ids]
+
+    handover_protocols = [h.model_dump(mode="json") for h in store.list_handover_protocols()
+                          if getattr(h, "contract_id", None) in contract_ids]
+
+    messages = []
+    try:
+        for msg in store.list_messages():
+            if getattr(msg, "tenant_id", None) == tenant_id:
+                messages.append(msg.model_dump(mode="json"))
+    except Exception:
+        pass  # messages may not have tenant_id field
+
+    export = {
+        "export_type": "DSGVO_Datenauskunft",
+        "exported_at": datetime.utcnow().isoformat(),
+        "tenant": tenant_data,
+        "contracts": contracts,
+        "bookings": bookings,
+        "deposits": deposits,
+        "receivables": receivables,
+        "documents": documents,
+        "maintenance_cases": maintenance,
+        "handover_protocols": handover_protocols,
+        "messages": messages,
+    }
+
+    content = json.dumps(export, ensure_ascii=False, indent=2, default=str)
+    return StreamingResponse(
+        BytesIO(content.encode("utf-8")),
+        media_type="application/json",
+        headers={
+            "Content-Disposition": f'attachment; filename="dsgvo_export_tenant_{tenant_id}.json"',
+        },
+    )
+
+
+@router.post("/dsgvo/tenant/{tenant_id}/anonymize", response_model=None)
+def dsgvo_anonymize_tenant(tenant_id: str):
+    """T11: DSGVO Art. 17 — Right to erasure / anonymization.
+
+    Anonymizes all personal data for a tenant while preserving financial
+    records required for tax retention periods (§ 147 AO: 10 years for
+    bookings/invoices). Replaces personal identifiers with anonymized
+    placeholders.
+    """
+    try:
+        tenant = store.get_tenant(tenant_id)
+    except Exception:
+        raise HTTPException(404, f"Mieter mit ID {tenant_id} nicht gefunden")
+
+    # Anonymize tenant personal data
+    from ..models import TenantPatch
+
+    anonymized_name = f"Anonymisiert-{tenant_id[:8]}"
+    patch_fields = {}
+
+    # Anonymize all personal fields that exist on the model
+    for field in ["first_name", "last_name", "name"]:
+        if hasattr(tenant, field):
+            patch_fields[field] = anonymized_name
+
+    for field in ["email", "phone", "mobile", "address", "iban", "tax_id",
+                   "notes", "emergency_contact", "employer"]:
+        if hasattr(tenant, field) and getattr(tenant, field) is not None:
+            patch_fields[field] = f"[DSGVO gelöscht]"
+
+    if patch_fields:
+        try:
+            patch = TenantPatch(**patch_fields)
+            store._patch_entity(None, tenant_id, patch, "Mieter nicht gefunden")
+        except Exception as exc:
+            logger.warning("Tenant patch failed during anonymization: %s", exc)
+
+    # Anonymize related documents (remove references, keep financial records)
+    anonymized_docs = 0
+    for doc in store.list_documents():
+        if getattr(doc, "tenant_id", None) == tenant_id:
+            try:
+                store.delete_document(doc.id)
+                anonymized_docs += 1
+            except Exception:
+                pass
+
+    # Delete messages
+    deleted_messages = 0
+    try:
+        for msg in store.list_messages():
+            if getattr(msg, "tenant_id", None) == tenant_id:
+                try:
+                    store.delete_message(msg.id)
+                    deleted_messages += 1
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    logger.info(
+        "DSGVO anonymization for tenant %s: fields=%d, docs=%d, messages=%d",
+        tenant_id, len(patch_fields), anonymized_docs, deleted_messages,
+    )
+
+    return {
+        "status": "anonymized",
+        "tenant_id": tenant_id,
+        "anonymized_fields": list(patch_fields.keys()),
+        "deleted_documents": anonymized_docs,
+        "deleted_messages": deleted_messages,
+        "note": "Finanzdaten (Buchungen, Rechnungen) bleiben gemäß § 147 AO erhalten.",
+    }
