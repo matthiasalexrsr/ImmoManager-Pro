@@ -44,6 +44,10 @@ _login_attempts: dict[str, list[datetime]] = {}  # username -> list of failed at
 # HTTP Bearer scheme
 security = HTTPBearer(auto_error=False)
 
+# Token blacklist for logout/revocation
+_token_blacklist: set[str] = set()
+_blacklist_expiry: dict[str, datetime] = {}  # token -> expiry time for cleanup
+
 # Number of PBKDF2 iterations (OWASP recommended minimum for SHA-256)
 _PBKDF2_ITERATIONS = 600_000
 
@@ -162,8 +166,41 @@ def create_refresh_token(user_id: str) -> str:
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
+def revoke_token(token: str) -> None:
+    """Add a token to the blacklist (for logout)."""
+    _cleanup_blacklist()
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        exp = datetime.utcfromtimestamp(payload["exp"])
+        _token_blacklist.add(token)
+        _blacklist_expiry[token] = exp
+    except JWTError:
+        # Token is invalid anyway, no need to blacklist
+        pass
+
+
+def is_token_revoked(token: str) -> bool:
+    """Check if a token has been revoked."""
+    return token in _token_blacklist
+
+
+def _cleanup_blacklist() -> None:
+    """Remove expired tokens from the blacklist."""
+    now = datetime.utcnow()
+    expired = [t for t, exp in _blacklist_expiry.items() if exp < now]
+    for t in expired:
+        _token_blacklist.discard(t)
+        _blacklist_expiry.pop(t, None)
+
+
 def decode_token(token: str) -> TokenPayload:
-    """Decode and validate a JWT token."""
+    """Decode and validate a JWT token. Rejects revoked tokens."""
+    if is_token_revoked(token):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token wurde widerrufen",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         return TokenPayload(**payload)
@@ -465,6 +502,8 @@ def clear_users() -> None:
     """Clear all users (for testing)."""
     _user_store.clear()
     _login_attempts.clear()
+    _token_blacklist.clear()
+    _blacklist_expiry.clear()
 
 
 async def get_current_user(

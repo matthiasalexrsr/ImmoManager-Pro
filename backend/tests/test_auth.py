@@ -11,8 +11,10 @@ from backend.auth import (
     decode_token,
     delete_user,
     hash_password,
+    is_token_revoked,
     list_users,
     register_user,
+    revoke_token,
     update_user,
     verify_password,
 )
@@ -28,6 +30,7 @@ from backend.routers.auth import (
     get_my_preferences,
     get_users,
     login,
+    logout,
     patch_user,
     refresh,
     register,
@@ -301,3 +304,35 @@ class TestRBAC:
         with pytest.raises(HTTPException) as exc_info:
             remove_user(admin.id, user=admin)
         assert exc_info.value.status_code == 400
+
+
+# === Token Revocation / Logout ===
+
+class TestTokenRevocation:
+    def test_revoke_access_token(self):
+        token = create_access_token("user-123")
+        assert not is_token_revoked(token)
+        revoke_token(token)
+        assert is_token_revoked(token)
+        with pytest.raises(HTTPException) as exc_info:
+            decode_token(token)
+        assert exc_info.value.status_code == 401
+
+    def test_revoke_refresh_token(self):
+        token = create_refresh_token("user-456")
+        revoke_token(token)
+        with pytest.raises(HTTPException) as exc_info:
+            decode_token(token)
+        assert exc_info.value.status_code == 401
+
+    def test_revoke_invalid_token_no_error(self):
+        revoke_token("totally.invalid.token")
+        # Should not raise
+
+    def test_logout_endpoint(self):
+        _register_admin()
+        result = login(LoginRequest(username="admin", password="Secret123"))
+        resp = logout({"access_token": result.access_token, "refresh_token": result.refresh_token})
+        assert "abgemeldet" in resp["detail"].lower() or "erfolgreich" in resp["detail"].lower()
+        assert is_token_revoked(result.access_token)
+        assert is_token_revoked(result.refresh_token)

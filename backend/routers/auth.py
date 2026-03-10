@@ -15,6 +15,7 @@ from ..auth import (
     register_user,
     require_auth,
     require_role,
+    revoke_token,
     update_user,
     verify_totp,
 )
@@ -93,6 +94,18 @@ def refresh(payload: RefreshRequest) -> TokenResponse:
         access_token=create_access_token(user["id"]),
         refresh_token=create_refresh_token(user["id"]),
     )
+
+
+@router.post("/logout")
+def logout(payload: dict) -> dict:
+    """Logout by revoking the provided access and/or refresh tokens."""
+    access_token = payload.get("access_token")
+    refresh_token = payload.get("refresh_token")
+    if access_token:
+        revoke_token(access_token)
+    if refresh_token:
+        revoke_token(refresh_token)
+    return {"detail": "Erfolgreich abgemeldet"}
 
 
 @router.get("/me", response_model=UserRead)

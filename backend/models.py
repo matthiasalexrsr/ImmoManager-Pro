@@ -225,7 +225,7 @@ class MaintenanceCaseCreate(BaseModel):
     due_date: Optional[date] = None
     estimated_cost: Optional[float] = None
     contractor: Optional[str] = None
-    appointment_at: Optional[date] = None
+    appointment_at: Optional[datetime] = None
 
 
 class MaintenanceCase(MaintenanceCaseCreate):
@@ -471,7 +471,7 @@ class MaintenanceCasePatch(BaseModel):
     due_date: Optional[date] = None
     estimated_cost: Optional[float] = None
     contractor: Optional[str] = None
-    appointment_at: Optional[date] = None
+    appointment_at: Optional[datetime] = None
 
 
 class DocumentPatch(BaseModel):
