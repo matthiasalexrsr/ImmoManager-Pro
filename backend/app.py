@@ -172,6 +172,43 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 app.add_middleware(RequestLoggingMiddleware)
 
 
+# ─── Accept-Language Middleware ───────────────────────────────────────────────
+
+_SUPPORTED_LOCALES = {"de-DE", "en-US", "es-ES"}
+_DEFAULT_LOCALE = settings.default_locale
+
+
+class AcceptLanguageMiddleware(BaseHTTPMiddleware):
+    """Parses Accept-Language header and sets request.state.locale."""
+
+    async def dispatch(self, request: Request, call_next):
+        accept = request.headers.get("accept-language", "")
+        request.state.locale = self._parse_locale(accept)
+        response: Response = await call_next(request)
+        response.headers["Content-Language"] = request.state.locale
+        return response
+
+    @staticmethod
+    def _parse_locale(header: str) -> str:
+        """Extract best matching locale from Accept-Language header."""
+        if not header:
+            return _DEFAULT_LOCALE
+        for part in header.split(","):
+            tag = part.split(";")[0].strip()
+            # Exact match
+            if tag in _SUPPORTED_LOCALES:
+                return tag
+            # Language-only match (e.g. "de" → "de-DE")
+            lang = tag.split("-")[0].lower()
+            for loc in _SUPPORTED_LOCALES:
+                if loc.lower().startswith(lang):
+                    return loc
+        return _DEFAULT_LOCALE
+
+
+app.add_middleware(AcceptLanguageMiddleware)
+
+
 # ─── DB Session Cleanup Middleware ────────────────────────────────────────────
 
 class DBSessionMiddleware(BaseHTTPMiddleware):
