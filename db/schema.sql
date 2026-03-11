@@ -426,3 +426,89 @@ CREATE TABLE audit_logs (
 CREATE INDEX idx_audit_entity ON audit_logs(entity_type, entity_id);
 CREATE INDEX idx_audit_user ON audit_logs(user_id);
 CREATE INDEX idx_audit_timestamp ON audit_logs(timestamp);
+
+CREATE TABLE contacts (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  contact_type text NOT NULL DEFAULT 'tenant',
+  first_name text,
+  last_name text,
+  company_name text,
+  email text,
+  phone text,
+  mobile text,
+  street text,
+  zip_code text,
+  city text,
+  country text NOT NULL DEFAULT 'DE',
+  iban text,
+  bic text,
+  bank_name text,
+  tax_id text,
+  notes text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE meters (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  unit_id uuid NOT NULL REFERENCES units(id),
+  meter_type text NOT NULL,
+  serial_number text,
+  location text,
+  installation_date date,
+  next_inspection date,
+  supplier text,
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE standalone_meter_readings (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  meter_id uuid NOT NULL REFERENCES meters(id) ON DELETE CASCADE,
+  reading_date date NOT NULL,
+  value double precision NOT NULL,
+  recorded_by text,
+  photo_url text,
+  notes text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE message_threads (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  subject text NOT NULL,
+  participant_ids text,
+  property_id uuid,
+  unit_id uuid,
+  contract_id uuid,
+  last_message_at timestamptz,
+  message_count integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE messages (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  thread_id uuid NOT NULL REFERENCES message_threads(id) ON DELETE CASCADE,
+  sender_name text NOT NULL DEFAULT 'System',
+  body text NOT NULL,
+  attachment_ids text,
+  sent_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE rent_charges (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  contract_id uuid NOT NULL REFERENCES contracts(id),
+  month text NOT NULL,
+  cold_rent double precision NOT NULL DEFAULT 0,
+  service_charge double precision NOT NULL DEFAULT 0,
+  heating_charge double precision NOT NULL DEFAULT 0,
+  other_charges double precision NOT NULL DEFAULT 0,
+  amount_paid double precision NOT NULL DEFAULT 0,
+  status text NOT NULL DEFAULT 'open',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_rent_charges_contract_month ON rent_charges(contract_id, month);

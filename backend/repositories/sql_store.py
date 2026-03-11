@@ -19,6 +19,7 @@ from ..db.orm_models import (
     CalendarEventORM,
     CategoryORM,
     ChangeHistoryORM,
+    ContactORM,
     ContractORM,
     CostItemORM,
     DepositORM,
@@ -32,6 +33,9 @@ from ..db.orm_models import (
     ListingORM,
     ListingPhotoORM,
     MaintenanceCaseORM,
+    MessageORM,
+    MessageThreadORM,
+    MeterORM,
     MeterReadingORM,
     NotificationORM,
     NotificationTemplateORM,
@@ -39,6 +43,8 @@ from ..db.orm_models import (
     PropertyORM,
     ReceivableORM,
     RentAdjustmentORM,
+    RentChargeORM,
+    StandaloneMeterReadingORM,
     TaskORM,
     TaxRateORM,
     TenantORM,
@@ -62,6 +68,8 @@ from ..models import (
     Category,
     CategoryCreate,
     ChangeHistoryEntry,
+    Contact,
+    ContactCreate,
     Contract,
     ContractCreate,
     CostItem,
@@ -88,6 +96,12 @@ from ..models import (
     ListingPhotoCreate,
     MaintenanceCase,
     MaintenanceCaseCreate,
+    Message,
+    MessageCreate,
+    MessageThread,
+    MessageThreadCreate,
+    Meter,
+    MeterCreate,
     MeterReading,
     MeterReadingCreate,
     Notification,
@@ -102,6 +116,10 @@ from ..models import (
     ReceivableCreate,
     RentAdjustment,
     RentAdjustmentCreate,
+    RentCharge,
+    RentChargeCreate,
+    StandaloneMeterReading,
+    StandaloneMeterReadingCreate,
     Task,
     TaskCreate,
     TaxRate,
@@ -174,6 +192,16 @@ class SQLAlchemyStore:
         )
         self._insurances = BaseRepository(db, InsuranceORM, Insurance, "Versicherung nicht gefunden")
         self._entity_photos = BaseRepository(db, EntityPhotoORM, EntityPhoto, "Foto nicht gefunden")
+        self._contacts = BaseRepository(db, ContactORM, Contact, "Kontakt nicht gefunden")
+        self._meters = BaseRepository(db, MeterORM, Meter, "Zähler nicht gefunden")
+        self._standalone_readings = BaseRepository(
+            db, StandaloneMeterReadingORM, StandaloneMeterReading, "Ablesung nicht gefunden",
+        )
+        self._message_threads = BaseRepository(
+            db, MessageThreadORM, MessageThread, "Thread nicht gefunden",
+        )
+        self._messages = BaseRepository(db, MessageORM, Message, "Nachricht nicht gefunden")
+        self._rent_charges = BaseRepository(db, RentChargeORM, RentCharge, "Sollstellung nicht gefunden")
 
     def _commit(self):
         self.db.commit()
@@ -1133,6 +1161,144 @@ class SQLAlchemyStore:
         self._entity_photos.delete(photo_id)
         self._commit()
 
+    # --- Contacts ---
+
+    def list_contacts(self) -> list[Contact]:
+        return self._contacts.list_all()
+
+    def create_contact(self, data: ContactCreate) -> Contact:
+        result = self._contacts.create(data)
+        self._commit()
+        return result
+
+    def get_contact(self, contact_id: str) -> Contact:
+        return self._contacts.get(contact_id)
+
+    def update_contact(self, contact_id: str, data: ContactCreate) -> Contact:
+        result = self._contacts.update(contact_id, data)
+        self._commit()
+        return result
+
+    def delete_contact(self, contact_id: str) -> None:
+        self._contacts.delete(contact_id)
+        self._commit()
+
+    # --- Meters (standalone meter management) ---
+
+    def list_meters(self) -> list[Meter]:
+        return self._meters.list_all()
+
+    def create_meter(self, data: MeterCreate) -> Meter:
+        result = self._meters.create(data)
+        self._commit()
+        return result
+
+    def get_meter(self, meter_id: str) -> Meter:
+        return self._meters.get(meter_id)
+
+    def update_meter(self, meter_id: str, data: MeterCreate) -> Meter:
+        result = self._meters.update(meter_id, data)
+        self._commit()
+        return result
+
+    def delete_meter(self, meter_id: str) -> None:
+        self._meters.delete(meter_id)
+        self._commit()
+
+    # --- Standalone Meter Readings ---
+
+    def list_standalone_meter_readings(self) -> list[StandaloneMeterReading]:
+        return self._standalone_readings.list_all()
+
+    def create_standalone_meter_reading(self, data: StandaloneMeterReadingCreate) -> StandaloneMeterReading:
+        result = self._standalone_readings.create(data)
+        self._commit()
+        return result
+
+    def get_standalone_meter_reading(self, reading_id: str) -> StandaloneMeterReading:
+        return self._standalone_readings.get(reading_id)
+
+    def update_standalone_meter_reading(self, reading_id: str, data: StandaloneMeterReadingCreate) -> StandaloneMeterReading:
+        result = self._standalone_readings.update(reading_id, data)
+        self._commit()
+        return result
+
+    def delete_standalone_meter_reading(self, reading_id: str) -> None:
+        self._standalone_readings.delete(reading_id)
+        self._commit()
+
+    # --- Message Threads ---
+
+    def list_message_threads(self) -> list[MessageThread]:
+        return self._message_threads.list_all()
+
+    def create_message_thread(self, data: MessageThreadCreate) -> MessageThread:
+        result = self._message_threads.create(data)
+        self._commit()
+        return result
+
+    def get_message_thread(self, thread_id: str) -> MessageThread:
+        return self._message_threads.get(thread_id)
+
+    def update_message_thread(self, thread_id: str, data: MessageThreadCreate) -> MessageThread:
+        result = self._message_threads.update(thread_id, data)
+        self._commit()
+        return result
+
+    def delete_message_thread(self, thread_id: str) -> None:
+        # Cascade delete of messages handled by DB FK (ondelete=CASCADE)
+        self._message_threads.delete(thread_id)
+        self._commit()
+
+    # --- Messages ---
+
+    def list_messages(self) -> list[Message]:
+        return self._messages.list_all()
+
+    def create_message(self, data: MessageCreate) -> Message:
+        result = self._messages.create(data)
+        # Update thread stats
+        try:
+            thread_orm = self.db.query(MessageThreadORM).filter(
+                MessageThreadORM.id == data.thread_id
+            ).first()
+            if thread_orm:
+                thread_orm.message_count = (thread_orm.message_count or 0) + 1
+                thread_orm.last_message_at = datetime.utcnow()
+        except Exception:
+            pass
+        self._commit()
+        return result
+
+    def get_message(self, message_id: str) -> Message:
+        return self._messages.get(message_id)
+
+    def delete_message(self, message_id: str) -> None:
+        self._messages.delete(message_id)
+        self._commit()
+
+    # --- Rent Charges (Sollstellung) ---
+
+    def list_rent_charges(self) -> list[RentCharge]:
+        return self._rent_charges.list_all()
+
+    def create_rent_charge(self, data: RentChargeCreate) -> RentCharge:
+        result = self._rent_charges.create(data)
+        self._commit()
+        return result
+
+    def get_rent_charge(self, charge_id: str) -> RentCharge:
+        return self._rent_charges.get(charge_id)
+
+    def update_rent_charge(self, charge_id: str, data: RentChargeCreate) -> RentCharge:
+        result = self._rent_charges.update(charge_id, data)
+        self._commit()
+        return result
+
+    def delete_rent_charge(self, charge_id: str) -> None:
+        self._rent_charges.delete(charge_id)
+        self._commit()
+
     # --- Generic patch (mirrors InMemoryStore._patch_entity) ---
 
     def _patch_entity(self, collection_unused, entity_id: str, patch: PydanticBaseModel, not_found_msg: str):
@@ -1176,6 +1342,12 @@ class SQLAlchemyStore:
             "Eskalationsregel nicht gefunden": self._escalation_rules,
             "Versicherung nicht gefunden": self._insurances,
             "Foto nicht gefunden": self._entity_photos,
+            "Kontakt nicht gefunden": self._contacts,
+            "Zähler nicht gefunden": self._meters,
+            "Ablesung nicht gefunden": self._standalone_readings,
+            "Thread nicht gefunden": self._message_threads,
+            "Nachricht nicht gefunden": self._messages,
+            "Sollstellung nicht gefunden": self._rent_charges,
         }
         repo = repo_map.get(not_found_msg)
         if repo is None:

@@ -720,6 +720,98 @@ class EntityPhotoORM(Base):
     __table_args__ = (Index("idx_entity_photos_entity", "entity_type", "entity_id"),)
 
 
+class ContactORM(Base):
+    __tablename__ = "contacts"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    contact_type: Mapped[str] = mapped_column(String(30), default="tenant")
+    first_name: Mapped[str | None] = mapped_column(String(100))
+    last_name: Mapped[str | None] = mapped_column(String(100))
+    company_name: Mapped[str | None] = mapped_column(String(200))
+    email: Mapped[str | None] = mapped_column(String(200))
+    phone: Mapped[str | None] = mapped_column(String(50))
+    mobile: Mapped[str | None] = mapped_column(String(50))
+    street: Mapped[str | None] = mapped_column(String(200))
+    zip_code: Mapped[str | None] = mapped_column(String(20))
+    city: Mapped[str | None] = mapped_column(String(100))
+    country: Mapped[str] = mapped_column(String(5), default="DE")
+    iban: Mapped[str | None] = mapped_column(String(34))
+    bic: Mapped[str | None] = mapped_column(String(11))
+    bank_name: Mapped[str | None] = mapped_column(String(100))
+    tax_id: Mapped[str | None] = mapped_column(String(50))
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class MeterORM(Base):
+    __tablename__ = "meters"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    unit_id: Mapped[str] = mapped_column(String(36), ForeignKey("units.id"))
+    meter_type: Mapped[str] = mapped_column(String(30))
+    serial_number: Mapped[str | None] = mapped_column(String(100))
+    location: Mapped[str | None] = mapped_column(String(200))
+    installation_date: Mapped[date | None] = mapped_column(Date)
+    next_inspection: Mapped[date | None] = mapped_column(Date)
+    supplier: Mapped[str | None] = mapped_column(String(200))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class StandaloneMeterReadingORM(Base):
+    __tablename__ = "standalone_meter_readings"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    meter_id: Mapped[str] = mapped_column(String(36), ForeignKey("meters.id", ondelete="CASCADE"))
+    reading_date: Mapped[date] = mapped_column(Date)
+    value: Mapped[float] = mapped_column(Float)
+    recorded_by: Mapped[str | None] = mapped_column(String(100))
+    photo_url: Mapped[str | None] = mapped_column(Text)
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class MessageThreadORM(Base):
+    __tablename__ = "message_threads"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    subject: Mapped[str] = mapped_column(String(300))
+    participant_ids: Mapped[str | None] = mapped_column(Text)
+    property_id: Mapped[str | None] = mapped_column(String(36))
+    unit_id: Mapped[str | None] = mapped_column(String(36))
+    contract_id: Mapped[str | None] = mapped_column(String(36))
+    last_message_at: Mapped[datetime | None] = mapped_column(DateTime)
+    message_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class MessageORM(Base):
+    __tablename__ = "messages"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    thread_id: Mapped[str] = mapped_column(String(36), ForeignKey("message_threads.id", ondelete="CASCADE"))
+    sender_name: Mapped[str] = mapped_column(String(200), default="System")
+    body: Mapped[str] = mapped_column(Text)
+    attachment_ids: Mapped[str | None] = mapped_column(Text)
+    sent_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class RentChargeORM(Base):
+    __tablename__ = "rent_charges"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    contract_id: Mapped[str] = mapped_column(String(36), ForeignKey("contracts.id"))
+    month: Mapped[str] = mapped_column(String(7))  # YYYY-MM
+    cold_rent: Mapped[float] = mapped_column(Float, default=0.0)
+    service_charge: Mapped[float] = mapped_column(Float, default=0.0)
+    heating_charge: Mapped[float] = mapped_column(Float, default=0.0)
+    other_charges: Mapped[float] = mapped_column(Float, default=0.0)
+    amount_paid: Mapped[float] = mapped_column(Float, default=0.0)
+    status: Mapped[str] = mapped_column(String(20), default="open")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (Index("idx_rent_charges_contract_month", "contract_id", "month"),)
+
+
 class AuditLogORM(Base):
     __tablename__ = "audit_logs"
 
