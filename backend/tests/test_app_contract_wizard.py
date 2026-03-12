@@ -11,7 +11,11 @@ def _dummy_build_pdf(data):
 
 
 def _pkg_path():
-    return Path(__file__).resolve().parent.parent.parent / "mietvertrag_wizard_fastapi_reportlab_pro" / "mietvertrag_wizard"
+    return (
+        Path(__file__).resolve().parent.parent.parent
+        / "mietvertrag_wizard_fastapi_reportlab_pro"
+        / "mietvertrag_wizard"
+    )
 
 
 def test_mount_contract_wizard_if_available_mounts_sub_app(monkeypatch):
