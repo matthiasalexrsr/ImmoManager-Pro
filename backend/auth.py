@@ -305,6 +305,8 @@ class SQLUserStore(UserStore):
             "hashed_password": orm_obj.hashed_password,
             "role": orm_obj.role,
             "is_active": orm_obj.is_active,
+            "totp_secret": orm_obj.totp_secret,
+            "totp_enabled": orm_obj.totp_enabled,
             "created_at": orm_obj.created_at,
             "updated_at": orm_obj.updated_at,
         }
