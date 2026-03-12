@@ -1,4 +1,5 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { logout } from '../api';
 import { useTranslation } from '../i18n';
 import { usePreferences } from '../contexts/PreferencesContext';
@@ -11,7 +12,7 @@ import {
   SunIcon, MoonIcon, LogoutIcon, ChevronLeftIcon, ChevronRightIcon,
   RentIcon, MeterIcon, ContactIcon, StatementIcon, MessageIcon, SettingsIcon,
   CategoryIcon, DepositIcon, InsuranceIcon, IntegrationIcon,
-  CalendarIcon, ChartIcon, SearchIcon,
+  CalendarIcon, ChartIcon, SearchIcon, MenuIcon, CloseIcon,
 } from './Icons';
 
 const NAV_SECTIONS = [
@@ -34,10 +35,10 @@ const NAV_SECTIONS = [
   },
   {
     labelKey: 'navigation.sections.tenants',
-    fallback: 'Mieter & Vertr\u00e4ge',
+    fallback: 'Mieter & Verträge',
     items: [
       { to: '/tenants', labelKey: 'tenantsContracts.tenants.title', fallback: 'Mieter', icon: TenantIcon },
-      { to: '/contracts', labelKey: 'tenantsContracts.contracts.title', fallback: 'Vertr\u00e4ge', icon: ContractIcon },
+      { to: '/contracts', labelKey: 'tenantsContracts.contracts.title', fallback: 'Verträge', icon: ContractIcon },
       { to: '/contacts', labelKey: 'navigation.main.contacts', fallback: 'Kontakte', icon: ContactIcon },
       { to: '/deposits', labelKey: 'navigation.main.deposits', fallback: 'Kautionen', icon: DepositIcon },
       { to: '/rent-adjustments', labelKey: 'navigation.main.rentAdjustments', fallback: 'Mietanpassungen', icon: RentIcon },
@@ -60,7 +61,7 @@ const NAV_SECTIONS = [
       { to: '/accounts', labelKey: 'finance.accounts.title', fallback: 'Konten', icon: AccountIcon },
       { to: '/bookings', labelKey: 'finance.bookings.title', fallback: 'Buchungen', icon: BookingIcon },
       { to: '/invoices', labelKey: 'finance.invoices.title', fallback: 'Rechnungen', icon: InvoiceIcon },
-      { to: '/rent-overview', labelKey: 'navigation.main.rentOverview', fallback: 'Miet\u00fcbersicht', icon: RentIcon },
+      { to: '/rent-overview', labelKey: 'navigation.main.rentOverview', fallback: 'Mietübersicht', icon: RentIcon },
       { to: '/statements', labelKey: 'navigation.main.statements', fallback: 'Abrechnungen', icon: StatementIcon },
       { to: '/categories', labelKey: 'navigation.main.categories', fallback: 'Kategorien', icon: CategoryIcon },
       { to: '/budgets', labelKey: 'navigation.main.budgets', fallback: 'Budgets', icon: ChartIcon },
@@ -78,7 +79,7 @@ const NAV_SECTIONS = [
       { to: '/maintenance', labelKey: 'navigation.main.maintenance', fallback: 'Wartung', icon: MaintenanceIcon },
       { to: '/tasks', labelKey: 'navigation.main.tasks', fallback: 'Aufgaben', icon: TaskIcon },
       { to: '/documents', labelKey: 'navigation.main.documents', fallback: 'Dokumente', icon: DocumentIcon },
-      { to: '/meters', labelKey: 'navigation.main.meters', fallback: 'Z\u00e4hler', icon: MeterIcon },
+      { to: '/meters', labelKey: 'navigation.main.meters', fallback: 'Zähler', icon: MeterIcon },
       { to: '/messages', labelKey: 'navigation.main.messages', fallback: 'Nachrichten', icon: MessageIcon },
       { to: '/integrations', labelKey: 'navigation.main.integrations', fallback: 'Integrationen', icon: IntegrationIcon },
       { to: '/escalation-rules', labelKey: 'navigation.main.escalationRules', fallback: 'Eskalationsregeln', icon: MaintenanceIcon },
@@ -96,10 +97,21 @@ const LOCALES = [
   { code: 'es-ES', label: 'ES' },
 ];
 
+function findActiveNavItem(pathname) {
+  const navItems = NAV_SECTIONS.flatMap(section => section.items)
+    .sort((a, b) => b.to.length - a.to.length);
+
+  return navItems.find(item => item.to === '/'
+    ? pathname === '/'
+    : pathname === item.to || pathname.startsWith(`${item.to}/`));
+}
+
 export default function Layout() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { t, locale, setLocale } = useTranslation();
   const { prefs, toggleTheme, toggleSidebar } = usePreferences();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const collapsed = prefs.sidebar_collapsed;
 
   const tr = (key, fallback) => {
@@ -107,9 +119,36 @@ export default function Layout() {
     return result === key ? fallback : result;
   };
 
+  const activeItem = findActiveNavItem(location.pathname);
+  const currentPageTitle = activeItem
+    ? tr(activeItem.labelKey, activeItem.fallback)
+    : tr('navigation.main.dashboard', 'Dashboard');
+
+  useEffect(() => {
+    if (!mobileNavOpen) {
+      return undefined;
+    }
+
+    const { body } = document;
+    const originalOverflow = body.style.overflow;
+    body.style.overflow = 'hidden';
+
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setMobileNavOpen(false);
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      body.style.overflow = originalOverflow;
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [mobileNavOpen]);
+
   return (
-    <div className={`app-layout ${collapsed ? 'sidebar-collapsed' : ''}`}>
-      <aside className="sidebar">
+    <div className={`app-layout ${collapsed ? 'sidebar-collapsed' : ''} ${mobileNavOpen ? 'mobile-nav-open' : ''}`}>
+      <aside className="sidebar" aria-label={tr('navigation.main.dashboard', 'Navigation')}>
         <div className="sidebar-header">
           <div className="sidebar-logo">IM</div>
           {!collapsed && (
@@ -118,8 +157,15 @@ export default function Layout() {
               <span className="sidebar-brand-sub">Pro</span>
             </div>
           )}
+          <button
+            className="sidebar-mobile-close"
+            onClick={() => setMobileNavOpen(false)}
+            aria-label={tr('ui.form.cancel', 'Close navigation')}
+          >
+            <CloseIcon size={16} />
+          </button>
         </div>
-        <nav className="sidebar-nav">
+        <nav className="sidebar-nav" id="primary-navigation">
           {NAV_SECTIONS.map((section, si) => (
             <div key={si}>
               {!collapsed && (
@@ -145,6 +191,8 @@ export default function Layout() {
                     to={item.to}
                     end={item.to === '/'}
                     className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+                    title={collapsed ? tr(item.labelKey, item.fallback) : undefined}
+                    onClick={() => setMobileNavOpen(false)}
                   >
                     <span className="icon-wrapper">
                       <item.icon size={18} />
@@ -185,8 +233,21 @@ export default function Layout() {
           </button>
         </div>
       </aside>
+      {mobileNavOpen && <button className="mobile-nav-backdrop" onClick={() => setMobileNavOpen(false)} aria-label={tr('ui.form.cancel', 'Close navigation')} />}
       <main className="main-content">
         <div className="top-bar">
+          <div className="top-bar-left">
+            <button
+              className="top-bar-mobile-toggle"
+              onClick={() => setMobileNavOpen(prev => !prev)}
+              aria-controls="primary-navigation"
+              aria-expanded={mobileNavOpen}
+              aria-label={mobileNavOpen ? tr('ui.form.cancel', 'Close navigation') : tr('sidebar.expand', 'Open navigation')}
+            >
+              {mobileNavOpen ? <CloseIcon size={18} /> : <MenuIcon size={18} />}
+            </button>
+            <div className="top-bar-page-title">{currentPageTitle}</div>
+          </div>
           <SearchBar />
           <NotificationBell />
         </div>
