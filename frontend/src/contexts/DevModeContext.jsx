@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { api } from '../api';
 
 const DevModeContext = createContext(null);
@@ -15,6 +15,15 @@ export function DevModeProvider({ children }) {
   const [notes, setNotes] = useState([]);
   const [annotating, setAnnotating] = useState(false);
 
+  const fetchNotes = useCallback(async () => {
+    try {
+      const data = await api.get('/dev-notes');
+      setNotes(data || []);
+    } catch (err) {
+      console.warn('[DevMode] Failed to load notes:', err.message);
+    }
+  }, []);
+
   // Persist toggle
   useEffect(() => {
     localStorage.setItem('dev_mode', String(enabled));
@@ -22,9 +31,20 @@ export function DevModeProvider({ children }) {
 
   // Load notes when dev mode is enabled
   useEffect(() => {
-    if (enabled) {
-      fetchNotes();
-    }
+    if (!enabled) return;
+    let cancelled = false;
+
+    api.get('/dev-notes')
+      .then((data) => {
+        if (!cancelled) setNotes(data || []);
+      })
+      .catch((err) => {
+        console.warn('[DevMode] Failed to load notes:', err.message);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [enabled]);
 
   // Keyboard shortcut: Ctrl+Shift+D to toggle dev mode
@@ -37,15 +57,6 @@ export function DevModeProvider({ children }) {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, []);
-
-  const fetchNotes = useCallback(async () => {
-    try {
-      const data = await api.get('/dev-notes');
-      setNotes(data || []);
-    } catch (err) {
-      console.warn('[DevMode] Failed to load notes:', err.message);
-    }
   }, []);
 
   const createNote = useCallback(async (noteData) => {

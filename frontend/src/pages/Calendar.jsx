@@ -32,8 +32,7 @@ export default function Calendar() {
   const [modal, setModal] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
 
-  const loadData = () => {
-    setLoading(true);
+  const refreshData = () => {
     Promise.all([
       api.get('/calendar').catch(err => { console.warn('[Calendar]', err.message); return []; }),
       api.get('/properties').catch(() => []),
@@ -43,7 +42,25 @@ export default function Calendar() {
     }).finally(() => setLoading(false));
   };
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      api.get('/calendar').catch(err => { console.warn('[Calendar]', err.message); return []; }),
+      api.get('/properties').catch(err => { console.warn('[Calendar] properties:', err.message); return []; }),
+    ]).then(([first, second]) => {
+      if (cancelled) return;
+      setEvents(first || []);
+      setProperties(second || []);
+    }).catch(e => {
+      if (!cancelled) console.warn('[Calendar] load failed:', e.message);
+    }).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const fields = [
     { key: 'title', label: 'Titel', required: true },
@@ -63,7 +80,7 @@ export default function Calendar() {
     } else {
       await api.put(`/calendar/${modal.id}`, data);
     }
-    loadData();
+    refreshData();
   };
 
   const handleDelete = async (row) => {
@@ -71,7 +88,7 @@ export default function Calendar() {
     setDeleteError(null);
     try {
       await api.del(`/calendar/${row.id}`);
-      loadData();
+      refreshData();
     } catch (err) {
       setDeleteError(err.message || 'Löschen fehlgeschlagen');
     }

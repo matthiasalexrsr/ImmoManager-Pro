@@ -14,8 +14,7 @@ export default function Deposits() {
   const [modal, setModal] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
 
-  const loadData = () => {
-    setLoading(true);
+  const refreshData = () => {
     Promise.all([
       api.get('/deposits').catch(err => { console.warn('[Deposits] deposits:', err.message); return []; }),
       api.get('/contracts').catch(err => { console.warn('[Deposits] contracts:', err.message); return []; }),
@@ -25,7 +24,25 @@ export default function Deposits() {
     }).catch(e => setError(e.message)).finally(() => setLoading(false));
   };
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      api.get('/deposits').catch(err => { console.warn('[Deposits] deposits:', err.message); return []; }),
+      api.get('/contracts').catch(err => { console.warn('[Deposits] contracts:', err.message); return []; }),
+    ]).then(([first, second]) => {
+      if (cancelled) return;
+      setDeposits(first || []);
+      setContracts(second || []);
+    }).catch(e => {
+      if (!cancelled) setError(e.message);
+    }).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const contractMap = Object.fromEntries(contracts.map(c => [c.id, c]));
 
@@ -68,7 +85,7 @@ export default function Deposits() {
     } else {
       await api.put(`/deposits/${modal.id}`, data);
     }
-    loadData();
+    refreshData();
   };
 
   const handleDelete = async (row) => {
@@ -77,7 +94,7 @@ export default function Deposits() {
     setDeleteError(null);
     try {
       await api.del(`/deposits/${row.id}`);
-      loadData();
+      refreshData();
     } catch (err) {
       setDeleteError(err.message || 'Löschen fehlgeschlagen');
     }
