@@ -11,7 +11,11 @@ def _dummy_build_pdf(data):
 
 
 def _pkg_path():
-    return Path(__file__).resolve().parent.parent.parent / "mietvertrag_wizard_fastapi_reportlab_pro" / "mietvertrag_wizard"
+    return (
+        Path(__file__).resolve().parent.parent.parent
+        / "mietvertrag_wizard_fastapi_reportlab_pro"
+        / "mietvertrag_wizard"
+    )
 
 
 def test_mount_contract_wizard_if_available_mounts_sub_app(monkeypatch):
@@ -77,3 +81,29 @@ def test_mietvertrag_no_slash_redirects(monkeypatch):
     r = client.get("/mietvertrag")
     assert r.status_code == 301
     assert r.headers["location"] == "/mietvertrag/"
+
+
+def test_wizard_assets_ready_true(tmp_path):
+    pkg_path = tmp_path / "mietvertrag_wizard"
+    template_dir = pkg_path / "templates" / "mietvertrag_wizard"
+    template_dir.mkdir(parents=True)
+    (template_dir / "index.html").write_text("<html></html>", encoding="utf-8")
+    (pkg_path / "static").mkdir(parents=True)
+
+    assert app_module._wizard_assets_ready(pkg_path)
+
+
+def test_wizard_assets_ready_false_without_template(tmp_path):
+    pkg_path = tmp_path / "mietvertrag_wizard"
+    (pkg_path / "static").mkdir(parents=True)
+
+    assert not app_module._wizard_assets_ready(pkg_path)
+
+
+def test_wizard_assets_ready_false_without_static_dir(tmp_path):
+    pkg_path = tmp_path / "mietvertrag_wizard"
+    template_dir = pkg_path / "templates" / "mietvertrag_wizard"
+    template_dir.mkdir(parents=True)
+    (template_dir / "index.html").write_text("<html></html>", encoding="utf-8")
+
+    assert not app_module._wizard_assets_ready(pkg_path)

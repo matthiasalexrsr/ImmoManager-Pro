@@ -390,6 +390,13 @@ app.mount("/uploads", StaticFiles(directory=_UPLOADS_DIR), name="uploads")
 
 # ─── Contract Wizard ─────────────────────────────────────────────────────────
 
+
+def _wizard_assets_ready(pkg_path: Path) -> bool:
+    template_file = pkg_path / "templates" / "mietvertrag_wizard" / "index.html"
+    static_dir = pkg_path / "static"
+    return template_file.is_file() and static_dir.is_dir()
+
+
 def _load_contract_wizard_mount():
     """Try to import the wizard package pieces.
 
@@ -402,8 +409,12 @@ def _load_contract_wizard_mount():
             _sys.path.insert(0, pkg_dir)
         from mietvertrag_wizard.pdf_reportlab import build_contract_pdf  # type: ignore[import-untyped]
         pkg_path = Path(pkg_dir) / "mietvertrag_wizard"
+        if not _wizard_assets_ready(pkg_path):
+            logger.warning("Mietvertrag-Wizard package found but static/template files are missing")
+            return None
         return build_contract_pdf, pkg_path
     except Exception:
+        logger.debug("Mietvertrag-Wizard could not be loaded", exc_info=True)
         return None
 
 
@@ -437,9 +448,9 @@ def _mount_contract_wizard_if_available(target_app: FastAPI) -> None:
     @wizard_app.get("", response_class=HTMLResponse)
     async def wizard_page(request: Request):
         return templates.TemplateResponse(
+            request,
             "mietvertrag_wizard/index.html",
             {
-                "request": request,
                 "static_prefix": "/mietvertrag/static/mietvertrag_wizard",
                 "api_base": "/mietvertrag/api",
             },
