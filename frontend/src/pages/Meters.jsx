@@ -52,7 +52,6 @@ export default function Meters() {
   const { t } = useTranslation();
   const [meters, setMeters] = useState([]);
   const [units, setUnits] = useState([]);
-  const [properties, setProperties] = useState([]);
   const [selectedMeter, setSelectedMeter] = useState(null);
   const [readings, setReadings] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -66,7 +65,6 @@ export default function Meters() {
       api.get('/properties').catch(() => []),
     ]).then(([m, u, p]) => {
       setUnits(u || []);
-      setProperties(p || []);
       const unitMap = Object.fromEntries((u || []).map(x => [x.id, x]));
       const propMap = Object.fromEntries((p || []).map(x => [x.id, x]));
 

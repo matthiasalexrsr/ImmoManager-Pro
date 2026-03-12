@@ -84,7 +84,7 @@ export default function Listings() {
   const [previewPortal, setPreviewPortal] = useState('immoscout24');
   const [copied, setCopied] = useState(false);
 
-  const loadData = () => {
+  const refreshData = () => {
     setLoading(true);
     Promise.all([
       api.get('/listings').catch(() => []),
@@ -95,7 +95,25 @@ export default function Listings() {
     }).finally(() => setLoading(false));
   };
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      api.get('/listings').catch(err => { console.warn('[Listings] listings:', err.message); return []; }),
+      api.get('/units').catch(err => { console.warn('[Listings] units:', err.message); return []; }),
+    ]).then(([l, u]) => {
+      if (cancelled) return;
+      setListings(l || []);
+      setUnits(u || []);
+    }).catch(e => {
+      if (!cancelled) console.warn('[Listings] load failed:', e.message);
+    }).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const unitMap = Object.fromEntries(units.map(u => [u.id, u]));
   const enriched = listings.map(l => ({
@@ -135,7 +153,7 @@ export default function Listings() {
     } else {
       await api.put(`/listings/${modal.id}`, data);
     }
-    loadData();
+    refreshData();
   };
 
   const handleDelete = async (row) => {
@@ -143,7 +161,7 @@ export default function Listings() {
     setDeleteError(null);
     try {
       await api.del(`/listings/${row.id}`);
-      loadData();
+      refreshData();
     } catch (err) {
       setDeleteError(err.message || 'Löschen fehlgeschlagen');
     }

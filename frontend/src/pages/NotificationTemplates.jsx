@@ -12,7 +12,7 @@ export default function NotificationTemplates() {
   const [modal, setModal] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
 
-  const loadData = () => {
+  const refreshData = () => {
     setLoading(true);
     api.get('/notifications/templates')
       .then(data => setTemplates(data || []))
@@ -20,7 +20,23 @@ export default function NotificationTemplates() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    api.get('/notifications/templates')
+      .then(data => {
+        if (!cancelled) setTemplates(data || []);
+      })
+      .catch(e => {
+        if (!cancelled) setError(e.message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const COLUMNS = [
     { key: 'name', label: 'Name', filterType: 'text' },
@@ -59,7 +75,7 @@ export default function NotificationTemplates() {
     } else {
       await api.put(`/notifications/templates/${modal.id}`, payload);
     }
-    loadData();
+    refreshData();
   };
 
   const handleDelete = async (row) => {
@@ -67,7 +83,7 @@ export default function NotificationTemplates() {
     setDeleteError(null);
     try {
       await api.del(`/notifications/templates/${row.id}`);
-      loadData();
+      refreshData();
     } catch (err) {
       setDeleteError(err.message || t('pages.deleteFailed'));
     }

@@ -45,7 +45,7 @@ export default function Invoices() {
   const [modal, setModal] = useState(null);
   const [filter, setFilter] = useState('all');
 
-  const loadData = () => {
+  const refreshData = () => {
     setLoading(true);
     Promise.all([
       api.get('/invoices').catch(() => []),
@@ -58,7 +58,25 @@ export default function Invoices() {
     }).finally(() => setLoading(false));
   };
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      api.get('/invoices').catch(err => { console.warn('[Invoices] invoices:', err.message); return []; }),
+      api.get('/properties').catch(err => { console.warn('[Invoices] properties:', err.message); return []; }),
+      api.get('/tax-rates').catch(err => { console.warn('[Invoices] tax-rates:', err.message); return []; }),
+    ]).then(([inv, props, taxes]) => {
+      if (cancelled) return;
+      setInvoices(Array.isArray(inv) ? inv : []);
+      setProperties(Array.isArray(props) ? props : []);
+      setTaxRates(Array.isArray(taxes) ? taxes : []);
+    }).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const propMap = Object.fromEntries(properties.map(p => [p.id, p.name]));
   const enriched = invoices.map(inv => ({
@@ -132,18 +150,18 @@ export default function Invoices() {
     } else {
       await api.put(`/invoices/${modal.id}`, data);
     }
-    loadData();
+    refreshData();
   };
 
   const handleDelete = async (row) => {
     if (!window.confirm(`"${row.supplier}" ${t('modals.confirmDelete.body')}`)) return;
     await api.del(`/invoices/${row.id}`);
-    loadData();
+    refreshData();
   };
 
   const markPaid = async (row) => {
     await api.patch(`/invoices/${row.id}`, { status: 'paid' });
-    loadData();
+    refreshData();
   };
 
   if (loading) return <div className="page-loading">Lade Rechnungen...</div>;

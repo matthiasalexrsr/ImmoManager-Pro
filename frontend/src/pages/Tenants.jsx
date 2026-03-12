@@ -43,7 +43,7 @@ export default function Tenants() {
   const [error, setError] = useState(null);
   const [showArchived, setShowArchived] = useState(false);
 
-  const loadData = () => {
+  const refreshData = () => {
     setLoading(true);
     api.get('/tenants?include_archived=true')
       .then(data => setTenants(data || []))
@@ -51,14 +51,30 @@ export default function Tenants() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    api.get('/tenants?include_archived=true')
+      .then(data => {
+        if (!cancelled) setTenants(data || []);
+      })
+      .catch(() => {
+        if (!cancelled) setTenants([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const activeTenants = tenants.filter(t => !t.archived);
   const archivedTenants = tenants.filter(t => t.archived);
 
   // Invalidate global cache so other pages see updated tenant data
   const afterMutation = () => {
-    loadData();
+    refreshData();
     if (store) store.invalidateAll();
   };
 

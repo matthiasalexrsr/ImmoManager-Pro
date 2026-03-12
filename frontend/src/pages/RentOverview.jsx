@@ -35,7 +35,7 @@ export default function RentOverview() {
   const [paymentModal, setPaymentModal] = useState(null);
   const [tab, setTab] = useState('charges');
 
-  const loadData = () => {
+  const refreshData = () => {
     setLoading(true);
     Promise.all([
       api.get('/rent-charges').catch(() => []),
@@ -84,7 +84,63 @@ export default function RentOverview() {
     }).catch(e => setError(e.message)).finally(() => setLoading(false));
   };
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      api.get('/rent-charges').catch(() => []),
+      api.get('/receivables').catch(() => []),
+      api.get('/contracts').catch(() => []),
+      api.get('/tenants').catch(() => []),
+      api.get('/units').catch(() => []),
+    ]).then(([chargesList, recList, contracts, tenants, units]) => {
+      if (cancelled) return;
+      const contractMap = Object.fromEntries((contracts || []).map(c => [c.id, c]));
+      const tenantMap = Object.fromEntries((tenants || []).map(t => [t.id, t]));
+      const unitMap = Object.fromEntries((units || []).map(u => [u.id, u]));
+
+      const enrichedCharges = (chargesList || []).map(r => {
+        const contract = contractMap[r.contract_id] || {};
+        const tenant = tenantMap[contract.tenant_id] || {};
+        const unit = unitMap[contract.unit_id] || {};
+        const totalDue = (r.cold_rent || 0) + (r.service_charge || 0) + (r.heating_charge || 0) + (r.other_charges || 0);
+        return {
+          ...r, _type: 'charge',
+          contract_number: contract.contract_number || '—',
+          tenant_name: tenant.full_name || '—',
+          unit_label: unit.label || '—',
+          total_due: totalDue,
+          remaining: totalDue - (r.amount_paid || 0),
+        };
+      });
+
+      const enrichedReceivables = (recList || []).map(r => {
+        const contract = contractMap[r.contract_id] || {};
+        const tenant = tenantMap[contract.tenant_id] || {};
+        const unit = unitMap[contract.unit_id] || {};
+        return {
+          ...r, _type: 'receivable',
+          contract_number: contract.contract_number || '—',
+          tenant_name: tenant.full_name || '—',
+          unit_label: unit.label || '—',
+          month: r.due_date?.slice(0, 7) || '—',
+          total_due: r.amount_due || 0,
+          amount_paid: r.amount_paid || 0,
+          remaining: (r.amount_due || 0) - (r.amount_paid || 0),
+        };
+      });
+
+      setCharges(enrichedCharges);
+      setReceivables(enrichedReceivables);
+    }).catch(e => {
+      if (!cancelled) setError(e.message);
+    }).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleRecordPayment = async (formData) => {
     if (paymentModal._type === 'charge') {
@@ -99,7 +155,7 @@ export default function RentOverview() {
         status: Number(formData.payment_amount) >= paymentModal.remaining ? 'paid' : 'partial',
       });
     }
-    loadData();
+    refreshData();
   };
 
   const paymentFields = [

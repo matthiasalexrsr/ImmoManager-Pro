@@ -43,7 +43,7 @@ export default function Leads() {
   const [deleteError, setDeleteError] = useState(null);
   const [groupBy, setGroupBy] = useState('none');
 
-  const loadData = () => {
+  const refreshData = () => {
     setLoading(true);
     Promise.all([
       api.get('/leads').catch(err => { console.warn('[Leads]', err.message); return []; }),
@@ -56,7 +56,25 @@ export default function Leads() {
     }).finally(() => setLoading(false));
   };
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      api.get('/leads').catch(err => { console.warn('[Leads]', err.message); return []; }),
+      api.get('/units').catch(err => { console.warn('[Leads] units:', err.message); return []; }),
+    ]).then(([l, u]) => {
+      if (cancelled) return;
+      setLeads(l || []);
+      setUnits(u || []);
+    }).catch(e => {
+      if (!cancelled) console.warn('[Leads] load failed:', e.message);
+    }).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const unitMap = Object.fromEntries(units.map(u => [u.id, u]));
   const enriched = leads.map(l => ({
@@ -129,7 +147,7 @@ export default function Leads() {
     } else {
       await api.put(`/leads/${modal.id}`, payload);
     }
-    loadData();
+    refreshData();
   };
 
   const handleDelete = async (row) => {
@@ -137,7 +155,7 @@ export default function Leads() {
     setDeleteError(null);
     try {
       await api.del(`/leads/${row.id}`);
-      loadData();
+      refreshData();
     } catch (err) {
       setDeleteError(err.message || 'Löschen fehlgeschlagen');
     }

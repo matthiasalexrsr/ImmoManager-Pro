@@ -65,7 +65,7 @@ export default function Portfolios() {
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
 
-  const loadData = () => {
+  const refreshData = () => {
     setLoading(true);
     Promise.all([
       api.get('/portfolios').catch(() => []),
@@ -78,7 +78,25 @@ export default function Portfolios() {
     }).finally(() => setLoading(false));
   };
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      api.get('/portfolios').catch(() => []),
+      api.get('/properties').catch(() => []),
+      api.get('/units').catch(() => []),
+    ]).then(([p, props, u]) => {
+      if (cancelled) return;
+      setPortfolios(Array.isArray(p) ? p : []);
+      setProperties(Array.isArray(props) ? props : []);
+      setUnits(Array.isArray(u) ? u : []);
+    }).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Enrich portfolios with property & unit counts
   const enriched = portfolios.map(pf => {
@@ -110,13 +128,13 @@ export default function Portfolios() {
     } else {
       await api.put(`/portfolios/${modal.id}`, data);
     }
-    loadData();
+    refreshData();
   };
 
   const handleDelete = async (row) => {
     if (!window.confirm(`"${row.name}" ${t('modals.confirmDelete.body')}`)) return;
     await api.del(`/portfolios/${row.id}`);
-    loadData();
+    refreshData();
   };
 
   if (loading) return <div className="page-loading">Lade Portfolios...</div>;
