@@ -983,25 +983,6 @@
     "serviceCharges": "Service Charges: Allocable operating costs, e.g. water, waste disposal, building cleaning.",
     "deposit": "Deposit: Security deposit paid by the tenant."
   },
-  "navigation": {
-    "sections": {
-      "overview": "Overview",
-      "portfolio": "Portfolio",
-      "tenants": "Tenants & Contracts",
-      "finance": "Finance",
-      "operations": "Administration"
-    },
-    "main": {
-      "rentOverview": "Rent Overview",
-      "meters": "Meters",
-      "contacts": "Contacts",
-      "statements": "Statements",
-      "messages": "Messages",
-      "categories": "Categories",
-      "deposits": "Deposits",
-      "insurances": "Insurances"
-    }
-  },
   "comp": {
     "dataTable": {
       "search": "Search…",
@@ -1124,7 +1105,17 @@
       "days": "days",
       "allContracts": "All Contracts",
       "notifications": "Notifications",
-      "noNotifications": "No new notifications"
+      "noNotifications": "No new notifications",
+      "quickAccess": "Quick Access",
+      "recentActivity": "Recent Activity",
+      "auditAction": "Action",
+      "auditArea": "Area",
+      "auditUser": "User",
+      "auditTime": "Timestamp",
+      "actionCreated": "Created",
+      "actionUpdated": "Updated",
+      "actionPatched": "Modified",
+      "actionDeleted": "Deleted"
     },
     "settings": {
       "title": "Settings",
@@ -1273,18 +1264,6 @@
       "exportFailed": "Export failed",
       "disputeFailed": "Could not file dispute",
       "preflightBlockers": "Preflight blockers present"
-    },
-    "dashboard": {
-      "quickAccess": "Quick Access",
-      "recentActivity": "Recent Activity",
-      "auditAction": "Action",
-      "auditArea": "Area",
-      "auditUser": "User",
-      "auditTime": "Timestamp",
-      "actionCreated": "Created",
-      "actionUpdated": "Updated",
-      "actionPatched": "Modified",
-      "actionDeleted": "Deleted"
     },
     "invoices": {
       "markPaidConfirm": "mark as paid?"

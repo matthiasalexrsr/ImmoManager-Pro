@@ -983,47 +983,6 @@
     "serviceCharges": "Betriebskosten: Umlagefähige Kosten, z. B. Wasser, Müll, Hausreinigung.",
     "deposit": "Kaution: Sicherheitsleistung des Mieters."
   },
-  "navigation": {
-    "main": {
-      "dashboard": "Dashboard",
-      "portfolio": "Portfolios",
-      "properties": "Immobilien",
-      "units": "Einheiten",
-      "tenantsContracts": "Mieter & Verträge",
-      "finance": "Finanzen",
-      "maintenance": "Wartung",
-      "documents": "Dokumente",
-      "tasks": "Aufgaben",
-      "calendar": "Kalender",
-      "reports": "Berichte",
-      "integrations": "Integrationen",
-      "settings": "Einstellungen",
-      "help": "Hilfe",
-      "rentOverview": "Mietübersicht",
-      "meters": "Zähler",
-      "contacts": "Kontakte",
-      "statements": "Abrechnungen",
-      "messages": "Nachrichten",
-      "categories": "Kategorien",
-      "deposits": "Kautionen",
-      "insurances": "Versicherungen"
-    },
-    "secondary": {
-      "overview": "Übersicht",
-      "details": "Details",
-      "history": "Historie",
-      "notes": "Notizen",
-      "attachments": "Anhänge",
-      "activity": "Aktivität"
-    },
-    "sections": {
-      "overview": "Übersicht",
-      "portfolio": "Portfolio",
-      "tenants": "Mieter & Verträge",
-      "finance": "Finanzen",
-      "operations": "Verwaltung"
-    }
-  },
   "comp": {
     "dataTable": {
       "search": "Suchen…",
@@ -1146,7 +1105,17 @@
       "days": "Tage",
       "allContracts": "Alle Verträge",
       "notifications": "Benachrichtigungen",
-      "noNotifications": "Keine neuen Benachrichtigungen"
+      "noNotifications": "Keine neuen Benachrichtigungen",
+      "quickAccess": "Schnellzugriff",
+      "recentActivity": "Letzte Aktivitäten",
+      "auditAction": "Aktion",
+      "auditArea": "Bereich",
+      "auditUser": "Benutzer",
+      "auditTime": "Zeitpunkt",
+      "actionCreated": "Erstellt",
+      "actionUpdated": "Aktualisiert",
+      "actionPatched": "Geändert",
+      "actionDeleted": "Gelöscht"
     },
     "settings": {
       "title": "Einstellungen",
@@ -1295,18 +1264,6 @@
       "exportFailed": "Export fehlgeschlagen",
       "disputeFailed": "Widerspruch konnte nicht eingelegt werden",
       "preflightBlockers": "Preflight-Blocker vorhanden"
-    },
-    "dashboard": {
-      "quickAccess": "Schnellzugriff",
-      "recentActivity": "Letzte Aktivitäten",
-      "auditAction": "Aktion",
-      "auditArea": "Bereich",
-      "auditUser": "Benutzer",
-      "auditTime": "Zeitpunkt",
-      "actionCreated": "Erstellt",
-      "actionUpdated": "Aktualisiert",
-      "actionPatched": "Geändert",
-      "actionDeleted": "Gelöscht"
     },
     "invoices": {
       "markPaidConfirm": "als bezahlt markieren?"

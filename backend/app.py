@@ -105,6 +105,17 @@ async def lifespan(app: FastAPI):
     if settings.jwt_secret_key == "dev-secret-key-change-in-production":
         logger.warning("JWT_SECRET_KEY is using the default value. Set JWT_SECRET_KEY env var in production!")
 
+    # Auto-seed demo data if the database is empty
+    try:
+        from .dependencies import store
+        if len(store.list_portfolios()) == 0:
+            logger.info("Empty database detected — seeding demo data …")
+            from seed_data import seed
+            seed()
+            logger.info("Demo data seeded successfully")
+    except Exception:
+        logger.exception("Auto-seed failed (non-fatal)")
+
     yield
 
     # Shutdown plugins

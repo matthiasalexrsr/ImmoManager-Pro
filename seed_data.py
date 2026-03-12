@@ -49,6 +49,7 @@ def seed():
         ContactCreate,
         ContractCreate,
         DepositCreate,
+        HandoverProtocolCreate,
         DocumentCreate,
         EscalationRuleCreate,
         InsuranceCreate,
@@ -946,12 +947,12 @@ def seed():
             (contracts[1].id, units[1].id, "move_in", contracts[1].start_date, 3, "Haustür, Wohnungstür, Kellerschlüssel", "good", "Kleine Kratzer am Parkettboden im Flur. Sonst einwandfrei."),
         ]
         for contract_id, unit_id, ptype, pdate, keys, key_det, cond, notes in hp_data:
-            store.create_handover_protocol({
-                "contract_id": contract_id, "unit_id": unit_id,
-                "protocol_type": ptype, "protocol_date": pdate,
-                "key_count": keys, "key_details": key_det,
-                "overall_condition": cond, "notes": notes, "status": "signed",
-            })
+            store.create_handover_protocol(HandoverProtocolCreate(
+                contract_id=contract_id, unit_id=unit_id,
+                protocol_type=ptype, protocol_date=pdate,
+                key_count=keys, key_details=key_det,
+                overall_condition=cond, notes=notes,
+            ))
         print(f"  {len(hp_data)} Übergabeprotokolle erstellt")
 
     print("\n  ========================================")

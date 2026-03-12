@@ -441,7 +441,6 @@ export const ENTITY_ICON_MAP = {
   task: TaskIcon,
   document: DocumentIcon,
   contact: ContactIcon,
-  portfolio: PortfolioIcon,
   deposit: DepositIcon,
   category: CategoryIcon,
   insurance: InsuranceIcon,
