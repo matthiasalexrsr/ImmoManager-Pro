@@ -1,10 +1,11 @@
 """Tests for dependency wiring and backend selection."""
 
-import importlib
+import os
 import subprocess
 import sys
+from pathlib import Path
 
-import pytest
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_sqlite_url_uses_sqlalchemy_store():
@@ -27,6 +28,8 @@ def test_sqlite_url_uses_sqlalchemy_store():
             "assert db is not None; db_gen.close(); "
             "print('OK')",
         ],
+        cwd=REPO_ROOT,
+        env={**os.environ, "PYTHONPATH": str(REPO_ROOT)},
         capture_output=True,
         text=True,
     )

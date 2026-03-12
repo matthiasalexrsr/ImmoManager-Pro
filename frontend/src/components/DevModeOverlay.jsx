@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useDevMode } from '../contexts/DevModeContext';
-import { useTranslation } from '../i18n';
 import DiagnosticsPanel from './DiagnosticsPanel';
 
 const CATEGORIES = [
@@ -182,7 +181,9 @@ function LogPreview({ onClose }) {
   }, [exportLog]);
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(content).catch(() => {});
+    navigator.clipboard.writeText(content).catch((err) => {
+      console.warn('[DevModeOverlay] copy log failed:', err.message);
+    });
   };
 
   const handleDownload = () => {
@@ -215,7 +216,7 @@ function LogPreview({ onClose }) {
 // ---------------------------------------------------------------------------
 
 export default function DevModeOverlay() {
-  const { enabled, notes, annotating, startAnnotating, stopAnnotating, createNote, resolveNote, deleteNote, toggle } = useDevMode();
+  const { enabled, notes, startAnnotating, stopAnnotating, createNote, resolveNote, deleteNote, toggle } = useDevMode();
   const location = useLocation();
   const [showPanel, setShowPanel] = useState(false);
   const [showForm, setShowForm] = useState(false);
