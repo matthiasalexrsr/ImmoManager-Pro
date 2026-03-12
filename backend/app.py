@@ -213,7 +213,7 @@ app.add_middleware(RequestLoggingMiddleware)
 # ─── Accept-Language Middleware ───────────────────────────────────────────────
 
 _SUPPORTED_LOCALES = {"de-DE", "en-US", "es-ES"}
-_DEFAULT_LOCALE = settings.default_locale
+_DEFAULT_LOCALE: str = str(settings.default_locale)
 
 
 class AcceptLanguageMiddleware(BaseHTTPMiddleware):
@@ -518,11 +518,12 @@ def _resolve_frontend_dir() -> Path | None:
 _FRONTEND_DIR = _resolve_frontend_dir()
 
 if _FRONTEND_DIR is not None:
-    app.mount("/assets", StaticFiles(directory=_FRONTEND_DIR / "assets"), name="frontend-assets")
+    _frontend_dir = _FRONTEND_DIR
+    app.mount("/assets", StaticFiles(directory=_frontend_dir / "assets"), name="frontend-assets")
 
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
-        file_path = _FRONTEND_DIR / full_path
+        file_path = _frontend_dir / full_path
         if full_path and file_path.is_file():
             return FileResponse(file_path)
-        return FileResponse(_FRONTEND_DIR / "index.html")
+        return FileResponse(_frontend_dir / "index.html")

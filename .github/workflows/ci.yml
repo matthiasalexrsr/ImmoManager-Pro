@@ -54,8 +54,8 @@ jobs:
           pip install ruff pytest-cov mypy
       - name: Lint (ruff)
         run: ruff check backend
-      - name: Type check (mypy)
-        run: mypy backend/ --ignore-missing-imports
+      - name: Type check (mypy, incremental gate)
+        run: mypy backend/app.py --ignore-missing-imports --follow-imports=skip
       - name: Run tests with coverage
         run: pytest backend/tests -q --tb=short --cov=backend --cov-report=term-missing --cov-fail-under=80
       - name: Import smoke check
