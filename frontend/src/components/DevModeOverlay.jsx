@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useDevMode } from '../contexts/DevModeContext';
 import { useTranslation } from '../i18n';
+import DiagnosticsPanel from './DiagnosticsPanel';
 
 const CATEGORIES = [
   { value: 'improvement', label: 'Improvement', color: '#06b6d4' },
@@ -219,6 +220,7 @@ export default function DevModeOverlay() {
   const [showPanel, setShowPanel] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [showLog, setShowLog] = useState(false);
+  const [showDiag, setShowDiag] = useState(false);
 
   // Count unresolved notes for current page
   const currentPath = location.pathname;
@@ -227,6 +229,14 @@ export default function DevModeOverlay() {
 
   if (!enabled) return null;
 
+  const closeAll = () => {
+    setShowPanel(false);
+    setShowForm(false);
+    setShowLog(false);
+    setShowDiag(false);
+    stopAnnotating();
+  };
+
   const handleCreateNote = async (data) => {
     await createNote(data);
     setShowForm(false);
@@ -234,24 +244,27 @@ export default function DevModeOverlay() {
   };
 
   const handleNewNote = () => {
+    closeAll();
     setShowForm(true);
-    setShowPanel(false);
-    setShowLog(false);
     startAnnotating();
   };
 
   const handleShowPanel = () => {
-    setShowPanel(!showPanel);
-    setShowForm(false);
-    setShowLog(false);
-    stopAnnotating();
+    const next = !showPanel;
+    closeAll();
+    setShowPanel(next);
   };
 
   const handleShowLog = () => {
-    setShowLog(!showLog);
-    setShowPanel(false);
-    setShowForm(false);
-    stopAnnotating();
+    const next = !showLog;
+    closeAll();
+    setShowLog(next);
+  };
+
+  const handleShowDiag = () => {
+    const next = !showDiag;
+    closeAll();
+    setShowDiag(next);
   };
 
   return (
@@ -271,6 +284,9 @@ export default function DevModeOverlay() {
           </button>
           <button className="dev-btn dev-btn-sm dev-btn-ghost" onClick={handleShowPanel}>
             Notes ({unresolvedCount})
+          </button>
+          <button className="dev-btn dev-btn-sm dev-btn-ghost" onClick={handleShowDiag}>
+            Diagnostics
           </button>
           <button className="dev-btn dev-btn-sm dev-btn-ghost" onClick={handleShowLog}>
             Export Log
@@ -313,8 +329,13 @@ export default function DevModeOverlay() {
         </div>
       )}
 
+      {/* Diagnostics Panel */}
+      {showDiag && (
+        <DiagnosticsPanel onClose={() => setShowDiag(false)} />
+      )}
+
       {/* Page note indicators — small badges on the page showing note count */}
-      {pageNotes.length > 0 && !showPanel && !showForm && !showLog && (
+      {pageNotes.length > 0 && !showPanel && !showForm && !showLog && !showDiag && (
         <div className="dev-page-indicators">
           {pageNotes.map(note => (
             <div

@@ -1,14 +1,12 @@
-import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api } from '../api';
 import { useTranslation } from '../i18n';
+import { useEntities } from '../contexts/DataStoreContext';
 import CrudPage from './CrudPage';
 
 export default function Properties() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const [portfolios, setPortfolios] = useState([]);
-  useEffect(() => { api.get('/portfolios').then(setPortfolios).catch(() => {}); }, []);
+  const { items: portfolios } = useEntities('portfolios', '/portfolios');
 
   const columns = [
     { key: 'name', label: t('portfolio.properties.form.name') || 'Name', filterType: 'text' },

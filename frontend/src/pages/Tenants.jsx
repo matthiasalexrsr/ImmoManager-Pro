@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
+import { useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 
@@ -35,6 +36,7 @@ const FIELDS = [
 
 export default function Tenants() {
   const { t } = useTranslation();
+  const store = useDataStore();
   const [tenants, setTenants] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
@@ -54,13 +56,19 @@ export default function Tenants() {
   const activeTenants = tenants.filter(t => !t.archived);
   const archivedTenants = tenants.filter(t => t.archived);
 
+  // Invalidate global cache so other pages see updated tenant data
+  const afterMutation = () => {
+    loadData();
+    if (store) store.invalidateAll();
+  };
+
   const handleSave = async (data) => {
     if (modal === 'create') {
       await api.post('/tenants', data);
     } else {
       await api.put(`/tenants/${modal.id}`, data);
     }
-    loadData();
+    afterMutation();
   };
 
   const handleDelete = async (row) => {
@@ -69,7 +77,7 @@ export default function Tenants() {
     setError(null);
     try {
       await api.del(`/tenants/${row.id}`);
-      loadData();
+      afterMutation();
     } catch (err) {
       setError(err.message || 'Löschen fehlgeschlagen');
     }
@@ -79,7 +87,7 @@ export default function Tenants() {
     if (!window.confirm(`"${tenant.full_name}" ${t('pages.tenants.archiveConfirm') || 'archivieren? Der Mieter wird aus der aktiven Liste entfernt.'}`)) return;
     try {
       await api.patch(`/tenants/${tenant.id}/archive`, {});
-      loadData();
+      afterMutation();
     } catch (err) {
       setError(err.message || 'Archivierung fehlgeschlagen');
     }
@@ -88,7 +96,7 @@ export default function Tenants() {
   const handleUnarchive = async (tenant) => {
     try {
       await api.patch(`/tenants/${tenant.id}/unarchive`, {});
-      loadData();
+      afterMutation();
     } catch (err) {
       setError(err.message || 'Wiederherstellung fehlgeschlagen');
     }

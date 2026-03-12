@@ -1,31 +1,14 @@
-import { useState, useEffect } from 'react';
-import { api } from '../api';
 import { useTranslation } from '../i18n';
+import { useEntities } from '../contexts/DataStoreContext';
 import CrudPage from './CrudPage';
 
 export default function Bookings() {
   const { t } = useTranslation();
-  const [accounts, setAccounts] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [properties, setProperties] = useState([]);
-  const [units, setUnits] = useState([]);
-  const [tenants, setTenants] = useState([]);
-
-  useEffect(() => {
-    Promise.all([
-      api.get('/accounts').catch(err => { console.warn('[Bookings] accounts:', err.message); return []; }),
-      api.get('/categories').catch(err => { console.warn('[Bookings] categories:', err.message); return []; }),
-      api.get('/properties').catch(err => { console.warn('[Bookings] properties:', err.message); return []; }),
-      api.get('/units').catch(err => { console.warn('[Bookings] units:', err.message); return []; }),
-      api.get('/tenants').catch(err => { console.warn('[Bookings] tenants:', err.message); return []; }),
-    ]).then(([a, c, p, u, tn]) => {
-      setAccounts(a);
-      setCategories(c);
-      setProperties(p);
-      setUnits(u);
-      setTenants(tn);
-    });
-  }, []);
+  const { items: accounts } = useEntities('accounts', '/accounts');
+  const { items: categories } = useEntities('categories', '/categories');
+  const { items: properties } = useEntities('properties', '/properties');
+  const { items: units } = useEntities('units', '/units');
+  const { items: tenants } = useEntities('tenants', '/tenants');
 
   const noneOpt = t('ui.form.none') || '— Keine —';
 

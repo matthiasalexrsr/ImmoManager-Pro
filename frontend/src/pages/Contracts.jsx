@@ -1,21 +1,12 @@
-import { useState, useEffect } from 'react';
-import { api } from '../api';
 import { useTranslation } from '../i18n';
+import { useEntities } from '../contexts/DataStoreContext';
 import CrudPage from './CrudPage';
 
 export default function Contracts() {
   const { t } = useTranslation();
-  const [properties, setProperties] = useState([]);
-  const [units, setUnits] = useState([]);
-  const [tenants, setTenants] = useState([]);
-
-  useEffect(() => {
-    Promise.all([
-      api.get('/properties').catch(err => { console.warn('[Contracts] properties:', err.message); return []; }),
-      api.get('/units').catch(err => { console.warn('[Contracts] units:', err.message); return []; }),
-      api.get('/tenants').catch(err => { console.warn('[Contracts] tenants:', err.message); return []; }),
-    ]).then(([p, u, tn]) => { setProperties(p); setUnits(u); setTenants(tn); });
-  }, []);
+  const { items: properties } = useEntities('properties', '/properties');
+  const { items: units } = useEntities('units', '/units');
+  const { items: tenants } = useEntities('tenants', '/tenants');
 
   const columns = [
     { key: 'contract_number', label: t('tenantsContracts.contracts.form.contractNumber') || 'Vertragsnr.', filterType: 'text' },

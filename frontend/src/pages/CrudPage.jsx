@@ -4,11 +4,17 @@ import { useTranslation } from '../i18n';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
-import { useList } from '../hooks/useApi';
+import { useEntities, useDataStore } from '../contexts/DataStoreContext';
+
+// Derive a cache key from endpoint, e.g. "/properties" → "properties"
+function endpointKey(ep) {
+  return ep.replace(/^\//, '').replace(/\//g, '_');
+}
 
 export default function CrudPage({ title, endpoint, columns, formFields, onRowClick }) {
   const { t } = useTranslation();
-  const { items, loading, error, reload } = useList(endpoint);
+  const store = useDataStore();
+  const { items, loading, error, reload } = useEntities(endpointKey(endpoint), endpoint);
   const [modal, setModal] = useState(null); // null | 'create' | item
   const [deleteError, setDeleteError] = useState(null);
 
@@ -18,7 +24,9 @@ export default function CrudPage({ title, endpoint, columns, formFields, onRowCl
     } else {
       await api.put(`${endpoint}/${modal.id}`, data);
     }
-    reload();
+    // Invalidate all caches so every page sees fresh data
+    if (store) store.invalidateAll();
+    else reload();
   };
 
   const handleDelete = async (row) => {
@@ -27,7 +35,8 @@ export default function CrudPage({ title, endpoint, columns, formFields, onRowCl
     setDeleteError(null);
     try {
       await api.del(`${endpoint}/${row.id}`);
-      reload();
+      if (store) store.invalidateAll();
+      else reload();
     } catch (err) {
       setDeleteError(err.message || 'Löschen fehlgeschlagen');
     }

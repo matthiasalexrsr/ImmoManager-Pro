@@ -1,14 +1,12 @@
-import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api } from '../api';
 import { useTranslation } from '../i18n';
+import { useEntities } from '../contexts/DataStoreContext';
 import CrudPage from './CrudPage';
 
 export default function Units() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const [properties, setProperties] = useState([]);
-  useEffect(() => { api.get('/properties').then(setProperties).catch(err => console.warn('[Units] properties:', err.message)); }, []);
+  const { items: properties } = useEntities('properties', '/properties');
 
   const columns = [
     { key: 'label', label: t('units.list.columns.label') || 'Bezeichnung', filterType: 'text' },

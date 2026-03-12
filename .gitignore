@@ -24,3 +24,4 @@ uploads/
 # Developer mode runtime files
 dev_notes.log
 dev_notes.json
+diagnostics.log
