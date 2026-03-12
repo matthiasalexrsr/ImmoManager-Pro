@@ -100,7 +100,6 @@ export default function Statements() {
   const [creatingRevision, setCreatingRevision] = useState(false);
   const [creatingReceivables, setCreatingReceivables] = useState(false);
   const [markingDelivered, setMarkingDelivered] = useState(false);
-  const [ocrImportOpen, setOcrImportOpen] = useState(false);
   const [ocrDraft, setOcrDraft] = useState(null);
   const [ocrUploading, setOcrUploading] = useState(false);
   const [disputing, setDisputing] = useState(false);
@@ -376,7 +375,6 @@ export default function Statements() {
         source_document_id: draft.source_document_id,
       });
       setOcrDraft(null);
-      setOcrImportOpen(false);
       loadData();
     } catch (err) {
       window.alert(err.message || 'Kostenposition konnte nicht gespeichert werden');

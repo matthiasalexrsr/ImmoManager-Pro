@@ -27,7 +27,7 @@ export default function ContractWizard() {
           .container { max-width: 100% !important; padding: 0 !important; margin: 0 !important; }
         `;
         doc.head.appendChild(style);
-      } catch (e) {
+      } catch {
         // Cross-origin: cannot modify iframe content
       }
     };

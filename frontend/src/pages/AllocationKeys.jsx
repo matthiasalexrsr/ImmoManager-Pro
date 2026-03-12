@@ -29,8 +29,7 @@ export default function AllocationKeys() {
   const [modal, setModal] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
 
-  const loadData = () => {
-    setLoading(true);
+  const refreshData = () => {
     Promise.all([
       api.get('/billing/allocation-keys').catch(err => { console.warn('[AllocationKeys] keys:', err.message); return []; }),
       api.get('/properties').catch(err => { console.warn('[AllocationKeys] properties:', err.message); return []; }),
@@ -40,7 +39,25 @@ export default function AllocationKeys() {
     }).catch(e => setError(e.message)).finally(() => setLoading(false));
   };
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      api.get('/billing/allocation-keys').catch(err => { console.warn('[AllocationKeys] keys:', err.message); return []; }),
+      api.get('/properties').catch(err => { console.warn('[AllocationKeys] properties:', err.message); return []; }),
+    ]).then(([first, second]) => {
+      if (cancelled) return;
+      setKeys(first || []);
+      setProperties(second || []);
+    }).catch(e => {
+      if (!cancelled) setError(e.message);
+    }).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const propertyMap = Object.fromEntries(properties.map(p => [p.id, p.name]));
   const enriched = keys.map(k => ({ ...k, property_label: propertyMap[k.property_id] || '—' }));
@@ -59,7 +76,7 @@ export default function AllocationKeys() {
     } else {
       await api.put(`/billing/allocation-keys/${modal.id}`, data);
     }
-    loadData();
+    refreshData();
   };
 
   const handleDelete = async (row) => {
@@ -68,7 +85,7 @@ export default function AllocationKeys() {
     setDeleteError(null);
     try {
       await api.del(`/billing/allocation-keys/${row.id}`);
-      loadData();
+      refreshData();
     } catch (err) {
       setDeleteError(err.message || 'Löschen fehlgeschlagen');
     }

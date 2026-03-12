@@ -10,11 +10,21 @@ export default function History() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    setLoading(true);
+    let cancelled = false;
     api.get('/history?limit=500')
-      .then(data => setHistory(data || []))
-      .catch(e => setError(e.message))
-      .finally(() => setLoading(false));
+      .then(data => {
+        if (!cancelled) setHistory(data || []);
+      })
+      .catch(e => {
+        if (!cancelled) setError(e.message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const COLUMNS = [

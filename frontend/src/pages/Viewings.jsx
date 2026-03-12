@@ -143,7 +143,7 @@ export default function Viewings() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(null);
 
-  const loadData = () => {
+  const refreshData = () => {
     setLoading(true);
     Promise.all([
       api.get('/viewings').catch(err => { console.warn('[Viewings]', err.message); return []; }),
@@ -156,7 +156,25 @@ export default function Viewings() {
     }).finally(() => setLoading(false));
   };
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      api.get('/viewings').catch(err => { console.warn('[Viewings]', err.message); return []; }),
+      api.get('/leads').catch(() => []),
+      api.get('/units').catch(() => []),
+    ]).then(([v, l, u]) => {
+      if (cancelled) return;
+      setViewings(v || []);
+      setLeads(l || []);
+      setUnits(u || []);
+    }).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const leadMap = Object.fromEntries(leads.map(l => [l.id, l]));
   const unitMap = Object.fromEntries(units.map(u => [u.id, u]));
@@ -215,7 +233,7 @@ export default function Viewings() {
     } else {
       await api.put(`/viewings/${modal.id}`, data);
     }
-    loadData();
+    refreshData();
   };
 
   const handleDelete = async (row) => {
@@ -223,7 +241,7 @@ export default function Viewings() {
     setDeleteError(null);
     try {
       await api.del(`/viewings/${row.id}`);
-      loadData();
+      refreshData();
     } catch (err) {
       setDeleteError(err.message || 'Löschen fehlgeschlagen');
     }

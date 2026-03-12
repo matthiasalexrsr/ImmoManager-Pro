@@ -45,7 +45,7 @@ export default function HandoverProtocols() {
   const [modal, setModal] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
 
-  const loadData = () => {
+  const refreshData = () => {
     setLoading(true);
     Promise.all([
       api.get('/handover-protocols').catch(err => { console.warn('[HandoverProtocols] protocols:', err.message); return []; }),
@@ -58,7 +58,27 @@ export default function HandoverProtocols() {
     }).catch(e => setError(e.message)).finally(() => setLoading(false));
   };
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      api.get('/handover-protocols').catch(err => { console.warn('[HandoverProtocols] protocols:', err.message); return []; }),
+      api.get('/units').catch(err => { console.warn('[HandoverProtocols] units:', err.message); return []; }),
+      api.get('/contracts').catch(err => { console.warn('[HandoverProtocols] contracts:', err.message); return []; }),
+    ]).then(([p, u, c]) => {
+      if (cancelled) return;
+      setProtocols(p || []);
+      setUnits(u || []);
+      setContracts(c || []);
+    }).catch(e => {
+      if (!cancelled) setError(e.message);
+    }).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const unitMap = Object.fromEntries(units.map(u => [u.id, u.name]));
   const contractMap = Object.fromEntries(contracts.map(c => [c.id, c.contract_number || c.id]));
@@ -96,7 +116,7 @@ export default function HandoverProtocols() {
     } else {
       await api.put(`/handover-protocols/${modal.id}`, data);
     }
-    loadData();
+    refreshData();
   };
 
   const handleDelete = async (row) => {
@@ -105,7 +125,7 @@ export default function HandoverProtocols() {
     setDeleteError(null);
     try {
       await api.del(`/handover-protocols/${row.id}`);
-      loadData();
+      refreshData();
     } catch (err) {
       setDeleteError(err.message || 'Löschen fehlgeschlagen');
     }

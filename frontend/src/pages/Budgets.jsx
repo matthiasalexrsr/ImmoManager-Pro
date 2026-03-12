@@ -44,8 +44,7 @@ export default function Budgets() {
   const [modal, setModal] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
 
-  const loadData = () => {
-    setLoading(true);
+  const refreshData = () => {
     Promise.all([
       api.get('/budgets').catch(err => { console.warn('[Budgets]', err.message); return []; }),
       api.get('/properties').catch(() => []),
@@ -55,7 +54,25 @@ export default function Budgets() {
     }).finally(() => setLoading(false));
   };
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      api.get('/budgets').catch(err => { console.warn('[Budgets]', err.message); return []; }),
+      api.get('/properties').catch(err => { console.warn('[Budgets] properties:', err.message); return []; }),
+    ]).then(([first, second]) => {
+      if (cancelled) return;
+      setBudgets(first || []);
+      setProperties(second || []);
+    }).catch(e => {
+      if (!cancelled) console.warn('[Budgets] load failed:', e.message);
+    }).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const propMap = Object.fromEntries(properties.map(p => [p.id, p]));
   const enriched = budgets.map(b => ({
@@ -83,7 +100,7 @@ export default function Budgets() {
     } else {
       await api.put(`/budgets/${modal.id}`, data);
     }
-    loadData();
+    refreshData();
   };
 
   const handleDelete = async (row) => {
@@ -91,7 +108,7 @@ export default function Budgets() {
     setDeleteError(null);
     try {
       await api.del(`/budgets/${row.id}`);
-      loadData();
+      refreshData();
     } catch (err) {
       setDeleteError(err.message || 'Löschen fehlgeschlagen');
     }

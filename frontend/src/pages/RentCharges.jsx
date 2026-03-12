@@ -14,7 +14,7 @@ export default function RentCharges() {
   const [modal, setModal] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
 
-  const loadData = () => {
+  const refreshData = () => {
     setLoading(true);
     Promise.all([
       api.get('/rent-charges').catch(() => []),
@@ -25,7 +25,25 @@ export default function RentCharges() {
     }).catch(e => setError(e.message)).finally(() => setLoading(false));
   };
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      api.get('/rent-charges').catch(err => { console.warn('[RentCharges] charges:', err.message); return []; }),
+      api.get('/contracts').catch(err => { console.warn('[RentCharges] contracts:', err.message); return []; }),
+    ]).then(([r, c]) => {
+      if (cancelled) return;
+      setCharges(r || []);
+      setContracts(c || []);
+    }).catch(e => {
+      if (!cancelled) setError(e.message);
+    }).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const contractMap = Object.fromEntries(contracts.map(c => [c.id, c]));
 
@@ -64,7 +82,7 @@ export default function RentCharges() {
     } else {
       await api.put(`/rent-charges/${modal.id}`, data);
     }
-    loadData();
+    refreshData();
   };
 
   const handleDelete = async (row) => {
@@ -72,7 +90,7 @@ export default function RentCharges() {
     setDeleteError(null);
     try {
       await api.del(`/rent-charges/${row.id}`);
-      loadData();
+      refreshData();
     } catch (err) {
       setDeleteError(err.message || t('pages.deleteFailed'));
     }
