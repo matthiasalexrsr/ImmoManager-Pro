@@ -390,6 +390,11 @@ app.mount("/uploads", StaticFiles(directory=_UPLOADS_DIR), name="uploads")
 
 # ─── Contract Wizard ─────────────────────────────────────────────────────────
 
+CONTRACT_WIZARD_STATUS = {
+    "available": False,
+    "reason": "not initialized",
+}
+
 
 def _wizard_assets_ready(pkg_path: Path) -> bool:
     template_file = pkg_path / "templates" / "mietvertrag_wizard" / "index.html"
@@ -410,11 +415,24 @@ def _load_contract_wizard_mount():
         from mietvertrag_wizard.pdf_reportlab import build_contract_pdf  # type: ignore[import-untyped]
         pkg_path = Path(pkg_dir) / "mietvertrag_wizard"
         if not _wizard_assets_ready(pkg_path):
-            logger.warning("Mietvertrag-Wizard package found but static/template files are missing")
+            CONTRACT_WIZARD_STATUS.update({
+                "available": False,
+                "reason": "package found but templates/static files are missing",
+            })
+            logger.error("Mietvertrag-Wizard unavailable: templates/static missing")
             return None
+
+        CONTRACT_WIZARD_STATUS.update({
+            "available": True,
+            "reason": None,
+        })
         return build_contract_pdf, pkg_path
-    except Exception:
-        logger.debug("Mietvertrag-Wizard could not be loaded", exc_info=True)
+    except Exception as exc:
+        CONTRACT_WIZARD_STATUS.update({
+            "available": False,
+            "reason": f"{type(exc).__name__}: {exc}",
+        })
+        logger.exception("Mietvertrag-Wizard could not be loaded")
         return None
 
 
@@ -498,6 +516,8 @@ def health() -> dict:
     return {
         "status": "ok",
         "version": settings.app_version,
+        "contract_wizard_available": CONTRACT_WIZARD_STATUS["available"],
+        "contract_wizard_reason": CONTRACT_WIZARD_STATUS["reason"],
     }
 
 

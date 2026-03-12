@@ -140,3 +140,14 @@ def test_mount_contract_wizard_required_does_not_raise_when_mounted(monkeypatch)
 
     mount_paths = [r.path for r in test_app.routes if hasattr(r, "app")]
     assert "/mietvertrag" in mount_paths
+
+
+def test_health_includes_contract_wizard_status(monkeypatch):
+    monkeypatch.setitem(app_module.CONTRACT_WIZARD_STATUS, "available", False)
+    monkeypatch.setitem(app_module.CONTRACT_WIZARD_STATUS, "reason", "missing assets")
+
+    data = app_module.health()
+
+    assert data["status"] == "ok"
+    assert data["contract_wizard_available"] is False
+    assert data["contract_wizard_reason"] == "missing assets"

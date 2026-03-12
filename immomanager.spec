@@ -18,6 +18,10 @@ from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 
 # Project root
 ROOT = os.path.abspath('.')
+WIZARD_ROOT = os.path.join(ROOT, 'mietvertrag_wizard_fastapi_reportlab_pro')
+
+if os.path.isdir(WIZARD_ROOT) and WIZARD_ROOT not in sys.path:
+    sys.path.insert(0, WIZARD_ROOT)
 
 # ---------------------------------------------------------------------------
 # Verify critical dependencies are installed BEFORE building
@@ -77,6 +81,7 @@ _THIRD_PARTY_PACKAGES = [
     'typing_extensions',
     'dotenv',
     'jinja2',
+    'markupsafe',
     'reportlab',
 ]
 
@@ -195,6 +200,7 @@ _EXPLICIT_THIRD_PARTY = [
     'typing_extensions',
     'dotenv',
     'jinja2',
+    'markupsafe',
     'reportlab',
 ]
 
@@ -226,9 +232,8 @@ if os.path.isdir(migrations_dir):
             backend_data.append((src, rel))
 
 # Include Mietvertrag wizard package assets/templates/static
-wizard_root = os.path.join(ROOT, 'mietvertrag_wizard_fastapi_reportlab_pro')
-if os.path.isdir(wizard_root):
-    for dirpath, dirnames, filenames in os.walk(wizard_root):
+if os.path.isdir(WIZARD_ROOT):
+    for dirpath, dirnames, filenames in os.walk(WIZARD_ROOT):
         for f in filenames:
             src = os.path.join(dirpath, f)
             rel = os.path.relpath(dirpath, ROOT)
@@ -255,7 +260,7 @@ if os.path.isfile(db_schema):
 
 a = Analysis(
     ['backend/__main__.py'],
-    pathex=[ROOT],
+    pathex=[ROOT, WIZARD_ROOT],
     binaries=[],
     datas=backend_data,
     hiddenimports=collected_hiddenimports + _EXPLICIT_THIRD_PARTY + [
@@ -296,6 +301,7 @@ a = Analysis(
         # --- Mietvertrag wizard ---
         'mietvertrag_wizard',
         'mietvertrag_wizard.pdf_reportlab',
+        'mietvertrag_wizard.fastapi_integration',
         # --- All routers ---
         'backend.routers',
         'backend.routers.accounts',
