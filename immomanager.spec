@@ -28,6 +28,8 @@ _REQUIRED_PACKAGES = {
     'pydantic': 'pydantic',
     'uvicorn': 'uvicorn',
     'sqlalchemy': 'sqlalchemy',
+    'jinja2': 'jinja2',
+    'reportlab': 'reportlab',
 }
 _missing = []
 for import_name, pip_name in _REQUIRED_PACKAGES.items():
@@ -74,6 +76,8 @@ _THIRD_PARTY_PACKAGES = [
     'annotated_types',
     'typing_extensions',
     'dotenv',
+    'jinja2',
+    'reportlab',
 ]
 
 collected_hiddenimports = []
@@ -190,6 +194,8 @@ _EXPLICIT_THIRD_PARTY = [
     'python_multipart.multipart',
     'typing_extensions',
     'dotenv',
+    'jinja2',
+    'reportlab',
 ]
 
 # ---------------------------------------------------------------------------
@@ -214,6 +220,15 @@ if os.path.isfile(alembic_ini):
 migrations_dir = os.path.join(ROOT, 'backend', 'db', 'migrations')
 if os.path.isdir(migrations_dir):
     for dirpath, dirnames, filenames in os.walk(migrations_dir):
+        for f in filenames:
+            src = os.path.join(dirpath, f)
+            rel = os.path.relpath(dirpath, ROOT)
+            backend_data.append((src, rel))
+
+# Include Mietvertrag wizard package assets/templates/static
+wizard_root = os.path.join(ROOT, 'mietvertrag_wizard_fastapi_reportlab_pro')
+if os.path.isdir(wizard_root):
+    for dirpath, dirnames, filenames in os.walk(wizard_root):
         for f in filenames:
             src = os.path.join(dirpath, f)
             rel = os.path.relpath(dirpath, ROOT)
@@ -278,6 +293,9 @@ a = Analysis(
         'backend.services.portal_adapter',
         'backend.services.ocr_service',
         'backend.services.task_queue',
+        # --- Mietvertrag wizard ---
+        'mietvertrag_wizard',
+        'mietvertrag_wizard.pdf_reportlab',
         # --- All routers ---
         'backend.routers',
         'backend.routers.accounts',

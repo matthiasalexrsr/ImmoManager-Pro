@@ -16,6 +16,7 @@ COPY backend/ backend/
 COPY db/ db/
 COPY alembic.ini .
 COPY i18n/ i18n/
+COPY mietvertrag_wizard_fastapi_reportlab_pro/ mietvertrag_wizard_fastapi_reportlab_pro/
 
 # Copy pre-built frontend (run `cd frontend && npm run build` before docker build)
 COPY frontend/dist/ frontend/dist/

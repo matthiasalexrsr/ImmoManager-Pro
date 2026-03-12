@@ -107,3 +107,36 @@ def test_wizard_assets_ready_false_without_static_dir(tmp_path):
     (template_dir / "index.html").write_text("<html></html>", encoding="utf-8")
 
     assert not app_module._wizard_assets_ready(pkg_path)
+
+
+def test_mount_contract_wizard_required_raises_when_missing(monkeypatch):
+    monkeypatch.setattr(app_module, "_load_contract_wizard_mount", lambda: None)
+    monkeypatch.setattr(app_module.settings, "contract_wizard_required", True)
+
+    test_app = FastAPI()
+    try:
+        try:
+            app_module._ensure_contract_wizard_mount(test_app)
+            assert False, "Expected RuntimeError"
+        except RuntimeError as exc:
+            assert "required" in str(exc).lower()
+    finally:
+        monkeypatch.setattr(app_module.settings, "contract_wizard_required", False)
+
+
+def test_mount_contract_wizard_required_does_not_raise_when_mounted(monkeypatch):
+    monkeypatch.setattr(
+        app_module,
+        "_load_contract_wizard_mount",
+        lambda: (_dummy_build_pdf, _pkg_path()),
+    )
+    monkeypatch.setattr(app_module.settings, "contract_wizard_required", True)
+
+    test_app = FastAPI()
+    try:
+        app_module._ensure_contract_wizard_mount(test_app)
+    finally:
+        monkeypatch.setattr(app_module.settings, "contract_wizard_required", False)
+
+    mount_paths = [r.path for r in test_app.routes if hasattr(r, "app")]
+    assert "/mietvertrag" in mount_paths

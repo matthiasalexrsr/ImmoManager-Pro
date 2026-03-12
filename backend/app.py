@@ -418,7 +418,7 @@ def _load_contract_wizard_mount():
         return None
 
 
-def _mount_contract_wizard_if_available(target_app: FastAPI) -> None:
+def _mount_contract_wizard_if_available(target_app: FastAPI) -> bool:
     """Mount the Mietvertrag-Wizard as a sub-application.
 
     Uses ``app.mount()`` so Starlette treats it as a Mount which is
@@ -426,7 +426,7 @@ def _mount_contract_wizard_if_available(target_app: FastAPI) -> None:
     """
     result = _load_contract_wizard_mount()
     if result is None:
-        return
+        return False
 
     from typing import Any, Dict
 
@@ -476,9 +476,19 @@ def _mount_contract_wizard_if_available(target_app: FastAPI) -> None:
         return RedirectResponse(url="/mietvertrag/", status_code=301)
 
     logger.info("Mietvertrag-Wizard mounted at /mietvertrag")
+    return True
 
 
-_mount_contract_wizard_if_available(app)
+def _ensure_contract_wizard_mount(target_app: FastAPI) -> None:
+    mounted = _mount_contract_wizard_if_available(target_app)
+    if not mounted and settings.contract_wizard_required:
+        raise RuntimeError(
+            "Mietvertrag-Wizard is required but could not be mounted. "
+            "Ensure wizard package files and dependencies are installed."
+        )
+
+
+_ensure_contract_wizard_mount(app)
 
 
 # ─── Health ──────────────────────────────────────────────────────────────────
