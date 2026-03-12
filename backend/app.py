@@ -159,7 +159,6 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         request.state.request_id = rid
         request_id_var.set(rid)
 
-        # Extract user info if available later (after auth)
         start = time.monotonic()
         response: Response = await call_next(request)
         duration_ms = round((time.monotonic() - start) * 1000, 1)
@@ -167,15 +166,42 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         # Add request ID header
         response.headers["X-Request-ID"] = rid
 
-        # Log the request
+        # Log the request with appropriate level based on status code
         if request.url.path.startswith("/api/"):
-            logger.info(
-                "%s %s → %d (%.1fms)",
-                request.method, request.url.path,
-                response.status_code, duration_ms,
-                extra={"method": request.method, "path": request.url.path,
-                       "status_code": response.status_code, "duration_ms": duration_ms},
-            )
+            extra = {
+                "method": request.method,
+                "path": request.url.path,
+                "status_code": response.status_code,
+                "duration_ms": duration_ms,
+            }
+            query = str(request.url.query) if request.url.query else None
+            if query:
+                extra["query"] = query
+            client = request.client
+            if client:
+                extra["client_ip"] = client.host
+
+            if response.status_code >= 500:
+                logger.error(
+                    "%s %s → %d (%.1fms) [SERVER ERROR]",
+                    request.method, request.url.path,
+                    response.status_code, duration_ms,
+                    extra=extra,
+                )
+            elif response.status_code >= 400:
+                logger.warning(
+                    "%s %s → %d (%.1fms) [CLIENT ERROR]",
+                    request.method, request.url.path,
+                    response.status_code, duration_ms,
+                    extra=extra,
+                )
+            else:
+                logger.info(
+                    "%s %s → %d (%.1fms)",
+                    request.method, request.url.path,
+                    response.status_code, duration_ms,
+                    extra=extra,
+                )
 
         return response
 
@@ -227,12 +253,26 @@ class DBSessionMiddleware(BaseHTTPMiddleware):
 
     Ensures each request gets a fresh session, preventing stale state
     from leaking across concurrent requests.
+
+    On error responses (5xx), we explicitly rollback before cleanup to ensure
+    any failed transaction state is cleared, preventing cascading failures.
     """
 
     async def dispatch(self, request: Request, call_next):
         try:
             response = await call_next(request)
+            if response.status_code >= 500:
+                logger.warning(
+                    "Request ended with %d — ensuring session rollback for %s %s",
+                    response.status_code, request.method, request.url.path,
+                )
             return response
+        except Exception:
+            logger.error(
+                "Unhandled exception in middleware for %s %s — rolling back session",
+                request.method, request.url.path, exc_info=True,
+            )
+            raise
         finally:
             cleanup_session()
 

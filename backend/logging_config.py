@@ -28,7 +28,17 @@ class RequestContextFilter(logging.Filter):
 
 
 class JSONFormatter(logging.Formatter):
-    """Outputs log records as single-line JSON objects."""
+    """Outputs log records as single-line JSON objects.
+
+    Captures all structured extra fields (method, path, status_code, etc.)
+    along with exception tracebacks for comprehensive debugging.
+    """
+
+    # Extra fields to capture from log records (set via extra={} or attributes)
+    _EXTRA_FIELDS = (
+        "method", "path", "status_code", "duration_ms",
+        "query", "client_ip",
+    )
 
     def format(self, record):
         log_entry = {
@@ -39,21 +49,27 @@ class JSONFormatter(logging.Formatter):
             "request_id": getattr(record, "request_id", "-"),
             "user_id": getattr(record, "user_id", "-"),
         }
+        # Include all structured extra fields when present
+        for field in self._EXTRA_FIELDS:
+            value = getattr(record, field, None)
+            if value is not None:
+                log_entry[field] = value
+        # Include full exception traceback
         if record.exc_info and record.exc_info[1]:
+            log_entry["exception_type"] = type(record.exc_info[1]).__name__
             log_entry["exception"] = self.formatException(record.exc_info)
-        if hasattr(record, "method"):
-            log_entry["method"] = record.method
-        if hasattr(record, "path"):
-            log_entry["path"] = record.path
-        if hasattr(record, "status_code"):
-            log_entry["status_code"] = record.status_code
-        if hasattr(record, "duration_ms"):
-            log_entry["duration_ms"] = record.duration_ms
+        # Include source location for ERROR and above
+        if record.levelno >= logging.ERROR:
+            log_entry["source"] = f"{record.pathname}:{record.lineno}"
+            log_entry["func"] = record.funcName
         return json.dumps(log_entry, ensure_ascii=False)
 
 
 class TextFormatter(logging.Formatter):
-    """Human-readable colored text formatter for development."""
+    """Human-readable colored text formatter for development.
+
+    Includes source location and traceback for errors.
+    """
 
     COLORS = {
         "DEBUG": "\033[36m",     # cyan
@@ -68,9 +84,12 @@ class TextFormatter(logging.Formatter):
         color = self.COLORS.get(record.levelname, "")
         rid = getattr(record, "request_id", "-")
         prefix = f"{color}{record.levelname:8s}{self.RESET}"
-        ts = datetime.now().strftime("%H:%M:%S")
+        ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
         msg = record.getMessage()
         base = f"{ts} {prefix} [{rid}] {record.name}: {msg}"
+        # Add source location for ERROR and above
+        if record.levelno >= logging.ERROR:
+            base += f" [{record.pathname}:{record.lineno} in {record.funcName}]"
         if record.exc_info and record.exc_info[1]:
             base += "\n" + self.formatException(record.exc_info)
         return base

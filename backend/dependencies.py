@@ -78,9 +78,19 @@ def cleanup_session():
 
     Must be called after each request to return the session to the pool
     and prevent stale state from leaking across requests.
+
+    IMPORTANT: We rollback before removing to ensure any failed transaction
+    state is cleared. Without this, a single IntegrityError (e.g. FK constraint
+    on delete) would poison the session for ALL subsequent requests, causing
+    cascading 500 errors until the application is restarted.
+
     Safe to call even if the session is in a bad state.
     """
     if _scoped_session is not None:
+        try:
+            _scoped_session.rollback()
+        except Exception:
+            logger.debug("Rollback during cleanup (expected if no active tx).", exc_info=True)
         try:
             _scoped_session.remove()
         except Exception:

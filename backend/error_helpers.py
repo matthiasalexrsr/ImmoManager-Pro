@@ -1,7 +1,8 @@
 """Centralized error handling helpers and safe operation wrappers.
 
 Provides:
-  - safe_db_operation: wraps database calls with consistent error handling
+  - safe_db_operation: wraps database calls with consistent error handling,
+    including automatic session rollback on errors to prevent cascading failures
   - safe_parse_decimal: safely converts values to Decimal
   - safe_get_related: fetches related entities with fallback
   - DatabaseOperationError: typed exception for DB failures
@@ -12,6 +13,7 @@ frontend/API consumer reference.
 """
 
 import logging
+import traceback
 from decimal import Decimal, InvalidOperation
 from functools import wraps
 from typing import Any, TypeVar
@@ -97,12 +99,42 @@ class DatabaseOperationError(Exception):
 # Safe Database Operation Wrapper
 # ---------------------------------------------------------------------------
 
+def _rollback_session(instance: Any, operation_name: str) -> None:
+    """Attempt to rollback the session on the repository instance.
+
+    After a SQLAlchemy error (especially IntegrityError), the session is left
+    in a broken state. Without an explicit rollback(), ALL subsequent operations
+    on that session will fail with 'This Session's transaction has been rolled
+    back due to a previous exception during flush'.
+
+    This function finds and rolls back the session to prevent cascading failures.
+    """
+    session = getattr(instance, "db", None) or getattr(instance, "session", None)
+    if session is None:
+        return
+    try:
+        session.rollback()
+        logger.info(
+            "Session rolled back successfully after %s error (preventing cascade)",
+            operation_name,
+        )
+    except Exception as rollback_exc:
+        logger.error(
+            "Failed to rollback session after %s error: %s\n%s",
+            operation_name,
+            rollback_exc,
+            traceback.format_exc(),
+        )
+
+
 def safe_db_operation(operation_name: str):
     """Decorator that wraps a function with SQLAlchemy error handling.
 
     Catches IntegrityError, OperationalError, and generic SQLAlchemyError,
-    logs them with context, and re-raises as DatabaseOperationError so the
-    global exception handler can return a proper 500 response.
+    logs them with full context (including SQL statement and parameters),
+    **rolls back the session** to prevent cascading failures, and re-raises
+    as DatabaseOperationError so the global exception handler can return a
+    proper error response.
 
     Usage::
 
@@ -116,27 +148,47 @@ def safe_db_operation(operation_name: str):
             try:
                 return func(*args, **kwargs)
             except IntegrityError as exc:
+                # Extract detailed SQL context for debugging
+                sql_stmt = str(exc.statement) if exc.statement else "(no statement)"
+                sql_params = str(exc.params) if exc.params else "(no params)"
+                orig_msg = str(exc.orig) if exc.orig else str(exc)
                 logger.error(
-                    "Integrity error in %s: %s",
-                    operation_name,
-                    str(exc.orig) if exc.orig else str(exc),
+                    "Integrity error in %s: %s | SQL: %s | Params: %s | Full: %s",
+                    operation_name, orig_msg, sql_stmt, sql_params, exc,
+                    exc_info=True,
                 )
+                # CRITICAL: rollback session to prevent cascading failures
+                if args:
+                    _rollback_session(args[0], operation_name)
                 raise DatabaseOperationError(
                     operation_name,
                     "Datenintegritätsfehler — möglicherweise doppelter Eintrag oder ungültige Referenz.",
                 ) from exc
             except OperationalError as exc:
+                sql_stmt = str(exc.statement) if exc.statement else "(no statement)"
+                sql_params = str(exc.params) if exc.params else "(no params)"
+                orig_msg = str(exc.orig) if exc.orig else str(exc)
                 logger.error(
-                    "Operational error in %s: %s",
-                    operation_name,
-                    str(exc.orig) if exc.orig else str(exc),
+                    "Operational error in %s: %s | SQL: %s | Params: %s | Full: %s",
+                    operation_name, orig_msg, sql_stmt, sql_params, exc,
+                    exc_info=True,
                 )
+                # CRITICAL: rollback session to prevent cascading failures
+                if args:
+                    _rollback_session(args[0], operation_name)
                 raise DatabaseOperationError(
                     operation_name,
                     "Datenbankverbindung fehlgeschlagen. Bitte erneut versuchen.",
                 ) from exc
             except SQLAlchemyError as exc:
-                logger.error("Database error in %s: %s", operation_name, exc)
+                logger.error(
+                    "Database error in %s: %s | Type: %s",
+                    operation_name, exc, type(exc).__name__,
+                    exc_info=True,
+                )
+                # CRITICAL: rollback session to prevent cascading failures
+                if args:
+                    _rollback_session(args[0], operation_name)
                 raise DatabaseOperationError(operation_name) from exc
         return wrapper
     return decorator
