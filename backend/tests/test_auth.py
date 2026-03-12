@@ -4,6 +4,7 @@ import pytest
 from fastapi import HTTPException
 
 from backend.auth import (
+    SQLUserStore,
     authenticate_user,
     clear_users,
     create_access_token,
@@ -336,3 +337,61 @@ class TestTokenRevocation:
         assert "abgemeldet" in resp["detail"].lower() or "erfolgreich" in resp["detail"].lower()
         assert is_token_revoked(result.access_token)
         assert is_token_revoked(result.refresh_token)
+
+
+class TestSQLUserStoreSessionCleanup:
+    def test_finalize_session_removes_scoped_session_when_available(self):
+        calls: list[str] = []
+
+        class _Session:
+            def close(self):
+                calls.append("close")
+
+        class _ScopedFactory:
+            def __call__(self):
+                return _Session()
+
+            def remove(self):
+                calls.append("remove")
+
+        store = SQLUserStore(_ScopedFactory())
+        store._finalize_session(_Session())
+
+        assert calls == ["remove"]
+
+    def test_finalize_session_closes_non_scoped_sessions(self):
+        calls: list[str] = []
+
+        class _Session:
+            def close(self):
+                calls.append("close")
+
+        class _SessionFactory:
+            def __call__(self):
+                return _Session()
+
+        store = SQLUserStore(_SessionFactory())
+        store._finalize_session(_Session())
+
+        assert calls == ["close"]
+
+    def test_finalize_session_prefers_remove_for_scoped_factories(self):
+        calls: list[str] = []
+
+        class _Session:
+            def close(self):
+                calls.append("close")
+                raise RuntimeError("close should not be called directly")
+
+        class _ScopedFactory:
+            def __call__(self):
+                return _Session()
+
+            def remove(self):
+                calls.append("remove")
+
+        store = SQLUserStore(_ScopedFactory())
+        store._finalize_session(_Session())
+
+        assert calls == ["remove"]
+

@@ -296,6 +296,20 @@ class SQLUserStore(UserStore):
     def __init__(self, session_factory):
         self._session_factory = session_factory
 
+    def _finalize_session(self, session) -> None:
+        """Return DB resources and clear scoped-session state when configured.
+
+        For regular sessionmaker factories, session.close() is sufficient.
+        For scoped_session factories, remove() handles close + thread-local cleanup
+        and should be used instead of closing the possibly proxied session directly.
+        """
+        remove = getattr(self._session_factory, "remove", None)
+        if callable(remove):
+            remove()
+            return
+
+        session.close()
+
     def _to_dict(self, orm_obj) -> dict:
         return {
             "id": orm_obj.id,
@@ -318,7 +332,7 @@ class SQLUserStore(UserStore):
             obj = session.get(UserORM, user_id)
             return self._to_dict(obj) if obj else None
         finally:
-            session.close()
+            self._finalize_session(session)
 
     def get_by_username(self, username: str) -> Optional[dict]:
         from .db.orm_models import UserORM
@@ -327,7 +341,7 @@ class SQLUserStore(UserStore):
             obj = session.query(UserORM).filter(UserORM.username == username).first()
             return self._to_dict(obj) if obj else None
         finally:
-            session.close()
+            self._finalize_session(session)
 
     def create(self, user_data: dict) -> None:
         from .db.orm_models import UserORM
@@ -340,7 +354,7 @@ class SQLUserStore(UserStore):
             session.rollback()
             raise
         finally:
-            session.close()
+            self._finalize_session(session)
 
     def update(self, user_id: str, updates: dict) -> Optional[dict]:
         from .db.orm_models import UserORM
@@ -360,7 +374,7 @@ class SQLUserStore(UserStore):
             session.rollback()
             raise
         finally:
-            session.close()
+            self._finalize_session(session)
 
     def delete(self, user_id: str) -> Optional[dict]:
         from .db.orm_models import UserORM
@@ -377,7 +391,7 @@ class SQLUserStore(UserStore):
             session.rollback()
             raise
         finally:
-            session.close()
+            self._finalize_session(session)
 
     def list_all(self) -> list[dict]:
         from .db.orm_models import UserORM
@@ -385,7 +399,7 @@ class SQLUserStore(UserStore):
         try:
             return [self._to_dict(obj) for obj in session.query(UserORM).all()]
         finally:
-            session.close()
+            self._finalize_session(session)
 
     def clear(self) -> None:
         from .db.orm_models import UserORM
@@ -397,7 +411,7 @@ class SQLUserStore(UserStore):
             session.rollback()
             raise
         finally:
-            session.close()
+            self._finalize_session(session)
 
 
 # Default: in-memory store
