@@ -73,5 +73,8 @@ class Settings(BaseSettings):
     # --- Integrations ---
     integration_state_file: str | None = None
 
+    # --- Contract wizard runtime behavior ---
+    contract_wizard_required: bool = False
+
 
 settings = Settings()

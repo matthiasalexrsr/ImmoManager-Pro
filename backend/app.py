@@ -213,7 +213,7 @@ app.add_middleware(RequestLoggingMiddleware)
 # ─── Accept-Language Middleware ───────────────────────────────────────────────
 
 _SUPPORTED_LOCALES = {"de-DE", "en-US", "es-ES"}
-_DEFAULT_LOCALE = settings.default_locale
+_DEFAULT_LOCALE: str = str(settings.default_locale)
 
 
 class AcceptLanguageMiddleware(BaseHTTPMiddleware):
@@ -390,6 +390,18 @@ app.mount("/uploads", StaticFiles(directory=_UPLOADS_DIR), name="uploads")
 
 # ─── Contract Wizard ─────────────────────────────────────────────────────────
 
+CONTRACT_WIZARD_STATUS = {
+    "available": False,
+    "reason": "not initialized",
+}
+
+
+def _wizard_assets_ready(pkg_path: Path) -> bool:
+    template_file = pkg_path / "templates" / "mietvertrag_wizard" / "index.html"
+    static_dir = pkg_path / "static"
+    return template_file.is_file() and static_dir.is_dir()
+
+
 def _load_contract_wizard_mount():
     """Try to import the wizard package pieces.
 
@@ -402,18 +414,29 @@ def _load_contract_wizard_mount():
             _sys.path.insert(0, pkg_dir)
         from mietvertrag_wizard.pdf_reportlab import build_contract_pdf  # type: ignore[import-untyped]
         pkg_path = Path(pkg_dir) / "mietvertrag_wizard"
-        template_file = pkg_path / "templates" / "mietvertrag_wizard" / "index.html"
-        static_dir = pkg_path / "static"
-        if not template_file.is_file() or not static_dir.is_dir():
-            logger.warning("Mietvertrag-Wizard package found but static/template files are missing")
+        if not _wizard_assets_ready(pkg_path):
+            CONTRACT_WIZARD_STATUS.update({
+                "available": False,
+                "reason": "package found but templates/static files are missing",
+            })
+            logger.error("Mietvertrag-Wizard unavailable: templates/static missing")
             return None
+
+        CONTRACT_WIZARD_STATUS.update({
+            "available": True,
+            "reason": None,
+        })
         return build_contract_pdf, pkg_path
-    except Exception:
-        logger.debug("Mietvertrag-Wizard could not be loaded", exc_info=True)
+    except Exception as exc:
+        CONTRACT_WIZARD_STATUS.update({
+            "available": False,
+            "reason": f"{type(exc).__name__}: {exc}",
+        })
+        logger.exception("Mietvertrag-Wizard could not be loaded")
         return None
 
 
-def _mount_contract_wizard_if_available(target_app: FastAPI) -> None:
+def _mount_contract_wizard_if_available(target_app: FastAPI) -> bool:
     """Mount the Mietvertrag-Wizard as a sub-application.
 
     Uses ``app.mount()`` so Starlette treats it as a Mount which is
@@ -421,7 +444,7 @@ def _mount_contract_wizard_if_available(target_app: FastAPI) -> None:
     """
     result = _load_contract_wizard_mount()
     if result is None:
-        return
+        return False
 
     from typing import Any, Dict
 
@@ -471,9 +494,19 @@ def _mount_contract_wizard_if_available(target_app: FastAPI) -> None:
         return RedirectResponse(url="/mietvertrag/", status_code=301)
 
     logger.info("Mietvertrag-Wizard mounted at /mietvertrag")
+    return True
 
 
-_mount_contract_wizard_if_available(app)
+def _ensure_contract_wizard_mount(target_app: FastAPI) -> None:
+    mounted = _mount_contract_wizard_if_available(target_app)
+    if not mounted and settings.contract_wizard_required:
+        raise RuntimeError(
+            "Mietvertrag-Wizard is required but could not be mounted. "
+            "Ensure wizard package files and dependencies are installed."
+        )
+
+
+_ensure_contract_wizard_mount(app)
 
 
 # ─── Health ──────────────────────────────────────────────────────────────────
@@ -483,6 +516,8 @@ def health() -> dict:
     return {
         "status": "ok",
         "version": settings.app_version,
+        "contract_wizard_available": CONTRACT_WIZARD_STATUS["available"],
+        "contract_wizard_reason": CONTRACT_WIZARD_STATUS["reason"],
     }
 
 
@@ -513,11 +548,12 @@ def _resolve_frontend_dir() -> Path | None:
 _FRONTEND_DIR = _resolve_frontend_dir()
 
 if _FRONTEND_DIR is not None:
-    app.mount("/assets", StaticFiles(directory=_FRONTEND_DIR / "assets"), name="frontend-assets")
+    _frontend_dir = _FRONTEND_DIR
+    app.mount("/assets", StaticFiles(directory=_frontend_dir / "assets"), name="frontend-assets")
 
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
-        file_path = _FRONTEND_DIR / full_path
+        file_path = _frontend_dir / full_path
         if full_path and file_path.is_file():
             return FileResponse(file_path)
-        return FileResponse(_FRONTEND_DIR / "index.html")
+        return FileResponse(_frontend_dir / "index.html")
