@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
+import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
@@ -75,8 +76,9 @@ const COLUMNS = [
 
 export default function Listings() {
   const { t } = useTranslation();
+  const store = useDataStore();
+  const { items: units } = useEntities('units', '/units');
   const [listings, setListings] = useState([]);
-  const [units, setUnits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
@@ -86,33 +88,18 @@ export default function Listings() {
 
   const refreshData = () => {
     setLoading(true);
-    Promise.all([
-      api.get('/listings').catch(() => []),
-      api.get('/units').catch(() => []),
-    ]).then(([l, u]) => {
-      setListings(l || []);
-      setUnits(u || []);
-    }).finally(() => setLoading(false));
+    api.get('/listings').catch(() => [])
+      .then(l => setListings(l || []))
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      api.get('/listings').catch(err => { console.warn('[Listings] listings:', err.message); return []; }),
-      api.get('/units').catch(err => { console.warn('[Listings] units:', err.message); return []; }),
-    ]).then(([l, u]) => {
-      if (cancelled) return;
-      setListings(l || []);
-      setUnits(u || []);
-    }).catch(e => {
-      if (!cancelled) console.warn('[Listings] load failed:', e.message);
-    }).finally(() => {
-      if (!cancelled) setLoading(false);
-    });
-
-    return () => {
-      cancelled = true;
-    };
+    api.get('/listings').catch(err => { console.warn('[Listings] listings:', err.message); return []; })
+      .then(data => { if (!cancelled) setListings(data || []); })
+      .catch(e => { if (!cancelled) console.warn('[Listings] load failed:', e.message); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   const unitMap = Object.fromEntries(units.map(u => [u.id, u]));
@@ -154,6 +141,7 @@ export default function Listings() {
       await api.put(`/listings/${modal.id}`, data);
     }
     refreshData();
+    if (store) store.invalidateAll();
   };
 
   const handleDelete = async (row) => {
@@ -162,6 +150,7 @@ export default function Listings() {
     try {
       await api.del(`/listings/${row.id}`);
       refreshData();
+      if (store) store.invalidateAll();
     } catch (err) {
       setDeleteError(err.message || 'Löschen fehlgeschlagen');
     }

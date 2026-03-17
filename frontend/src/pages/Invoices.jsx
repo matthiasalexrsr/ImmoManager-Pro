@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
+import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
@@ -38,44 +39,27 @@ const COLUMNS = [
 
 export default function Invoices() {
   const { t } = useTranslation();
+  const store = useDataStore();
+  const { items: properties } = useEntities('properties', '/properties');
+  const { items: taxRates } = useEntities('taxRates', '/tax-rates');
   const [invoices, setInvoices] = useState([]);
-  const [properties, setProperties] = useState([]);
-  const [taxRates, setTaxRates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
   const [filter, setFilter] = useState('all');
 
   const refreshData = () => {
     setLoading(true);
-    Promise.all([
-      api.get('/invoices').catch(() => []),
-      api.get('/properties').catch(() => []),
-      api.get('/tax-rates').catch(() => []),
-    ]).then(([inv, props, taxes]) => {
-      setInvoices(Array.isArray(inv) ? inv : []);
-      setProperties(Array.isArray(props) ? props : []);
-      setTaxRates(Array.isArray(taxes) ? taxes : []);
-    }).finally(() => setLoading(false));
+    api.get('/invoices').catch(() => [])
+      .then(inv => setInvoices(Array.isArray(inv) ? inv : []))
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      api.get('/invoices').catch(err => { console.warn('[Invoices] invoices:', err.message); return []; }),
-      api.get('/properties').catch(err => { console.warn('[Invoices] properties:', err.message); return []; }),
-      api.get('/tax-rates').catch(err => { console.warn('[Invoices] tax-rates:', err.message); return []; }),
-    ]).then(([inv, props, taxes]) => {
-      if (cancelled) return;
-      setInvoices(Array.isArray(inv) ? inv : []);
-      setProperties(Array.isArray(props) ? props : []);
-      setTaxRates(Array.isArray(taxes) ? taxes : []);
-    }).finally(() => {
-      if (!cancelled) setLoading(false);
-    });
-
-    return () => {
-      cancelled = true;
-    };
+    api.get('/invoices').catch(err => { console.warn('[Invoices] invoices:', err.message); return []; })
+      .then(data => { if (!cancelled) setInvoices(Array.isArray(data) ? data : []); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   const propMap = Object.fromEntries(properties.map(p => [p.id, p.name]));
@@ -151,17 +135,20 @@ export default function Invoices() {
       await api.put(`/invoices/${modal.id}`, data);
     }
     refreshData();
+    if (store) store.invalidateAll();
   };
 
   const handleDelete = async (row) => {
     if (!window.confirm(`"${row.supplier}" ${t('modals.confirmDelete.body')}`)) return;
     await api.del(`/invoices/${row.id}`);
     refreshData();
+    if (store) store.invalidateAll();
   };
 
   const markPaid = async (row) => {
     await api.patch(`/invoices/${row.id}`, { status: 'paid' });
     refreshData();
+    if (store) store.invalidateAll();
   };
 
   if (loading) return <div className="page-loading">Lade Rechnungen...</div>;

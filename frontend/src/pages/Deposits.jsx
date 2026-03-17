@@ -1,47 +1,35 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
+import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 
 export default function Deposits() {
   const { t } = useTranslation();
+  const store = useDataStore();
+  const { items: contracts } = useEntities('contracts', '/contracts');
   const [deposits, setDeposits] = useState([]);
-  const [contracts, setContracts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [modal, setModal] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
 
   const refreshData = () => {
-    Promise.all([
-      api.get('/deposits').catch(err => { console.warn('[Deposits] deposits:', err.message); return []; }),
-      api.get('/contracts').catch(err => { console.warn('[Deposits] contracts:', err.message); return []; }),
-    ]).then(([deps, conts]) => {
-      setDeposits(deps || []);
-      setContracts(conts || []);
-    }).catch(e => setError(e.message)).finally(() => setLoading(false));
+    api.get('/deposits').catch(err => { console.warn('[Deposits] deposits:', err.message); return []; })
+      .then(data => setDeposits(data || []))
+      .catch(e => setError(e.message))
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      api.get('/deposits').catch(err => { console.warn('[Deposits] deposits:', err.message); return []; }),
-      api.get('/contracts').catch(err => { console.warn('[Deposits] contracts:', err.message); return []; }),
-    ]).then(([first, second]) => {
-      if (cancelled) return;
-      setDeposits(first || []);
-      setContracts(second || []);
-    }).catch(e => {
-      if (!cancelled) setError(e.message);
-    }).finally(() => {
-      if (!cancelled) setLoading(false);
-    });
-
-    return () => {
-      cancelled = true;
-    };
+    api.get('/deposits').catch(err => { console.warn('[Deposits] deposits:', err.message); return []; })
+      .then(data => { if (!cancelled) setDeposits(data || []); })
+      .catch(e => { if (!cancelled) setError(e.message); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   const contractMap = Object.fromEntries(contracts.map(c => [c.id, c]));
@@ -86,6 +74,7 @@ export default function Deposits() {
       await api.put(`/deposits/${modal.id}`, data);
     }
     refreshData();
+    if (store) store.invalidateAll();
   };
 
   const handleDelete = async (row) => {
@@ -95,6 +84,7 @@ export default function Deposits() {
     try {
       await api.del(`/deposits/${row.id}`);
       refreshData();
+      if (store) store.invalidateAll();
     } catch (err) {
       setDeleteError(err.message || 'Löschen fehlgeschlagen');
     }

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
+import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
@@ -133,9 +134,10 @@ function MiniCalendar({ viewings, currentMonth, onMonthChange, onSelectDate, sel
 
 export default function Viewings() {
   const { t } = useTranslation();
+  const store = useDataStore();
+  const { items: leads } = useEntities('leads', '/leads');
+  const { items: units } = useEntities('units', '/units');
   const [viewings, setViewings] = useState([]);
-  const [leads, setLeads] = useState([]);
-  const [units, setUnits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
@@ -145,35 +147,17 @@ export default function Viewings() {
 
   const refreshData = () => {
     setLoading(true);
-    Promise.all([
-      api.get('/viewings').catch(err => { console.warn('[Viewings]', err.message); return []; }),
-      api.get('/leads').catch(() => []),
-      api.get('/units').catch(() => []),
-    ]).then(([v, l, u]) => {
-      setViewings(v || []);
-      setLeads(l || []);
-      setUnits(u || []);
-    }).finally(() => setLoading(false));
+    api.get('/viewings').catch(err => { console.warn('[Viewings]', err.message); return []; })
+      .then(v => setViewings(v || []))
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      api.get('/viewings').catch(err => { console.warn('[Viewings]', err.message); return []; }),
-      api.get('/leads').catch(() => []),
-      api.get('/units').catch(() => []),
-    ]).then(([v, l, u]) => {
-      if (cancelled) return;
-      setViewings(v || []);
-      setLeads(l || []);
-      setUnits(u || []);
-    }).finally(() => {
-      if (!cancelled) setLoading(false);
-    });
-
-    return () => {
-      cancelled = true;
-    };
+    api.get('/viewings').catch(err => { console.warn('[Viewings]', err.message); return []; })
+      .then(data => { if (!cancelled) setViewings(data || []); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   const leadMap = Object.fromEntries(leads.map(l => [l.id, l]));
@@ -234,6 +218,7 @@ export default function Viewings() {
       await api.put(`/viewings/${modal.id}`, data);
     }
     refreshData();
+    if (store) store.invalidateAll();
   };
 
   const handleDelete = async (row) => {
@@ -242,6 +227,7 @@ export default function Viewings() {
     try {
       await api.del(`/viewings/${row.id}`);
       refreshData();
+      if (store) store.invalidateAll();
     } catch (err) {
       setDeleteError(err.message || 'Löschen fehlgeschlagen');
     }

@@ -1,12 +1,10 @@
-import { useState, useEffect } from 'react';
-import { api } from '../api';
 import { useTranslation } from '../i18n';
+import { useEntities } from '../contexts/DataStoreContext';
 import CrudPage from './CrudPage';
 
 export default function Accounts() {
   const { t } = useTranslation();
-  const [portfolios, setPortfolios] = useState([]);
-  useEffect(() => { api.get('/portfolios').then(setPortfolios).catch(err => console.warn('[Accounts] portfolios:', err.message)); }, []);
+  const { items: portfolios } = useEntities('portfolios', '/portfolios');
 
   const columns = [
     { key: 'name', label: t('finance.accounts.form.name') || 'Kontoname', filterType: 'text' },

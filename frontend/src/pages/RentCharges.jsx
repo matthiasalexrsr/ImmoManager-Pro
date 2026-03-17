@@ -1,14 +1,16 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
+import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 
 export default function RentCharges() {
   const { t } = useTranslation();
+  const store = useDataStore();
+  const { items: contracts } = useEntities('contracts', '/contracts');
   const [charges, setCharges] = useState([]);
-  const [contracts, setContracts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [modal, setModal] = useState(null);
@@ -16,33 +18,19 @@ export default function RentCharges() {
 
   const refreshData = () => {
     setLoading(true);
-    Promise.all([
-      api.get('/rent-charges').catch(() => []),
-      api.get('/contracts').catch(() => []),
-    ]).then(([ch, conts]) => {
-      setCharges(ch || []);
-      setContracts(conts || []);
-    }).catch(e => setError(e.message)).finally(() => setLoading(false));
+    api.get('/rent-charges').catch(() => [])
+      .then(ch => setCharges(ch || []))
+      .catch(e => setError(e.message))
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      api.get('/rent-charges').catch(err => { console.warn('[RentCharges] charges:', err.message); return []; }),
-      api.get('/contracts').catch(err => { console.warn('[RentCharges] contracts:', err.message); return []; }),
-    ]).then(([r, c]) => {
-      if (cancelled) return;
-      setCharges(r || []);
-      setContracts(c || []);
-    }).catch(e => {
-      if (!cancelled) setError(e.message);
-    }).finally(() => {
-      if (!cancelled) setLoading(false);
-    });
-
-    return () => {
-      cancelled = true;
-    };
+    api.get('/rent-charges').catch(err => { console.warn('[RentCharges] charges:', err.message); return []; })
+      .then(data => { if (!cancelled) setCharges(data || []); })
+      .catch(e => { if (!cancelled) setError(e.message); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   const contractMap = Object.fromEntries(contracts.map(c => [c.id, c]));
@@ -83,6 +71,7 @@ export default function RentCharges() {
       await api.put(`/rent-charges/${modal.id}`, data);
     }
     refreshData();
+    if (store) store.invalidateAll();
   };
 
   const handleDelete = async (row) => {
@@ -91,6 +80,7 @@ export default function RentCharges() {
     try {
       await api.del(`/rent-charges/${row.id}`);
       refreshData();
+      if (store) store.invalidateAll();
     } catch (err) {
       setDeleteError(err.message || t('pages.deleteFailed'));
     }

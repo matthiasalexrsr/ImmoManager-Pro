@@ -1,5 +1,4 @@
-import { useState, useEffect } from 'react';
-import { api } from '../api';
+import { useEntities } from '../contexts/DataStoreContext';
 import CrudPage from './CrudPage';
 
 const COLUMNS = [
@@ -11,15 +10,8 @@ const COLUMNS = [
 ];
 
 export default function Tasks() {
-  const [properties, setProperties] = useState([]);
-  const [units, setUnits] = useState([]);
-
-  useEffect(() => {
-    Promise.all([
-      api.get('/properties').catch(err => { console.warn('[Tasks] properties:', err.message); return []; }),
-      api.get('/units').catch(err => { console.warn('[Tasks] units:', err.message); return []; }),
-    ]).then(([p, u]) => { setProperties(p); setUnits(u); });
-  }, []);
+  const { items: properties } = useEntities('properties', '/properties');
+  const { items: units } = useEntities('units', '/units');
 
   const fields = [
     { key: 'title', label: 'Titel', required: true },

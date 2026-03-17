@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
+import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 
@@ -22,41 +23,28 @@ const COLUMNS = [
 
 export default function AllocationKeys() {
   const { t } = useTranslation();
+  const store = useDataStore();
+  const { items: properties } = useEntities('properties', '/properties');
   const [keys, setKeys] = useState([]);
-  const [properties, setProperties] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [modal, setModal] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
 
   const refreshData = () => {
-    Promise.all([
-      api.get('/billing/allocation-keys').catch(err => { console.warn('[AllocationKeys] keys:', err.message); return []; }),
-      api.get('/properties').catch(err => { console.warn('[AllocationKeys] properties:', err.message); return []; }),
-    ]).then(([k, p]) => {
-      setKeys(k || []);
-      setProperties(p || []);
-    }).catch(e => setError(e.message)).finally(() => setLoading(false));
+    api.get('/billing/allocation-keys').catch(err => { console.warn('[AllocationKeys] keys:', err.message); return []; })
+      .then(k => setKeys(k || []))
+      .catch(e => setError(e.message))
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      api.get('/billing/allocation-keys').catch(err => { console.warn('[AllocationKeys] keys:', err.message); return []; }),
-      api.get('/properties').catch(err => { console.warn('[AllocationKeys] properties:', err.message); return []; }),
-    ]).then(([first, second]) => {
-      if (cancelled) return;
-      setKeys(first || []);
-      setProperties(second || []);
-    }).catch(e => {
-      if (!cancelled) setError(e.message);
-    }).finally(() => {
-      if (!cancelled) setLoading(false);
-    });
-
-    return () => {
-      cancelled = true;
-    };
+    api.get('/billing/allocation-keys').catch(err => { console.warn('[AllocationKeys] keys:', err.message); return []; })
+      .then(data => { if (!cancelled) setKeys(data || []); })
+      .catch(e => { if (!cancelled) setError(e.message); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   const propertyMap = Object.fromEntries(properties.map(p => [p.id, p.name]));
@@ -77,6 +65,7 @@ export default function AllocationKeys() {
       await api.put(`/billing/allocation-keys/${modal.id}`, data);
     }
     refreshData();
+    if (store) store.invalidateAll();
   };
 
   const handleDelete = async (row) => {
@@ -86,6 +75,7 @@ export default function AllocationKeys() {
     try {
       await api.del(`/billing/allocation-keys/${row.id}`);
       refreshData();
+      if (store) store.invalidateAll();
     } catch (err) {
       setDeleteError(err.message || 'Löschen fehlgeschlagen');
     }

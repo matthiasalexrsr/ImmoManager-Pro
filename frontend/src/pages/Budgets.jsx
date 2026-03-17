@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
+import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
-import StatusBadge from '../components/StatusBadge';
 
 function fmt(v) {
   return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(v || 0);
@@ -38,40 +38,26 @@ const COLUMNS = [
 
 export default function Budgets() {
   const { t } = useTranslation();
+  const store = useDataStore();
+  const { items: properties } = useEntities('properties', '/properties');
   const [budgets, setBudgets] = useState([]);
-  const [properties, setProperties] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
 
   const refreshData = () => {
-    Promise.all([
-      api.get('/budgets').catch(err => { console.warn('[Budgets]', err.message); return []; }),
-      api.get('/properties').catch(() => []),
-    ]).then(([b, p]) => {
-      setBudgets(b || []);
-      setProperties(p || []);
-    }).finally(() => setLoading(false));
+    api.get('/budgets').catch(err => { console.warn('[Budgets]', err.message); return []; })
+      .then(b => setBudgets(b || []))
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      api.get('/budgets').catch(err => { console.warn('[Budgets]', err.message); return []; }),
-      api.get('/properties').catch(err => { console.warn('[Budgets] properties:', err.message); return []; }),
-    ]).then(([first, second]) => {
-      if (cancelled) return;
-      setBudgets(first || []);
-      setProperties(second || []);
-    }).catch(e => {
-      if (!cancelled) console.warn('[Budgets] load failed:', e.message);
-    }).finally(() => {
-      if (!cancelled) setLoading(false);
-    });
-
-    return () => {
-      cancelled = true;
-    };
+    api.get('/budgets').catch(err => { console.warn('[Budgets]', err.message); return []; })
+      .then(data => { if (!cancelled) setBudgets(data || []); })
+      .catch(e => { if (!cancelled) console.warn('[Budgets] load failed:', e.message); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   const propMap = Object.fromEntries(properties.map(p => [p.id, p]));
@@ -101,6 +87,7 @@ export default function Budgets() {
       await api.put(`/budgets/${modal.id}`, data);
     }
     refreshData();
+    if (store) store.invalidateAll();
   };
 
   const handleDelete = async (row) => {
@@ -109,6 +96,7 @@ export default function Budgets() {
     try {
       await api.del(`/budgets/${row.id}`);
       refreshData();
+      if (store) store.invalidateAll();
     } catch (err) {
       setDeleteError(err.message || 'Löschen fehlgeschlagen');
     }

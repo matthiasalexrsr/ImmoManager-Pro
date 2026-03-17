@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from '../api';
+import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import CrudPage from './CrudPage';
 import FileViewer from '../components/FileViewer';
 import { PlusIcon } from '../components/Icons';
@@ -53,9 +54,10 @@ const COLUMNS = [
 ];
 
 export default function Documents() {
-  const [properties, setProperties] = useState([]);
-  const [units, setUnits] = useState([]);
-  const [contracts, setContracts] = useState([]);
+  const store = useDataStore();
+  const { items: properties } = useEntities('properties', '/properties');
+  const { items: units } = useEntities('units', '/units');
+  const { items: contracts } = useEntities('contracts', '/contracts');
   const [viewerFile, setViewerFile] = useState(null);
   const [uploadedUrl, setUploadedUrl] = useState('');
   const [dragActive, setDragActive] = useState(false);
@@ -66,15 +68,7 @@ export default function Documents() {
   const fileRef = useRef(null);
 
   useEffect(() => {
-    Promise.all([
-      api.get('/properties').catch(() => []),
-      api.get('/units').catch(() => []),
-      api.get('/contracts').catch(() => []),
-      api.get('/documents').catch(() => []),
-    ]).then(([p, u, c, docs]) => {
-      setProperties(p);
-      setUnits(u);
-      setContracts(c);
+    api.get('/documents').catch(() => []).then(docs => {
       const docArr = Array.isArray(docs) ? docs : [];
       setStats({
         total: docArr.length,

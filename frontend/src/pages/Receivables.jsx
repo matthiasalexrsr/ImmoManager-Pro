@@ -1,14 +1,16 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
+import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 
 export default function Receivables() {
   const { t } = useTranslation();
+  const store = useDataStore();
+  const { items: contracts } = useEntities('contracts', '/contracts');
   const [receivables, setReceivables] = useState([]);
-  const [contracts, setContracts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [modal, setModal] = useState(null);
@@ -16,33 +18,19 @@ export default function Receivables() {
 
   const refreshData = () => {
     setLoading(true);
-    Promise.all([
-      api.get('/receivables').catch(() => []),
-      api.get('/contracts').catch(() => []),
-    ]).then(([recs, conts]) => {
-      setReceivables(recs || []);
-      setContracts(conts || []);
-    }).catch(e => setError(e.message)).finally(() => setLoading(false));
+    api.get('/receivables').catch(() => [])
+      .then(recs => setReceivables(recs || []))
+      .catch(e => setError(e.message))
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      api.get('/receivables').catch(err => { console.warn('[Receivables] receivables:', err.message); return []; }),
-      api.get('/contracts').catch(err => { console.warn('[Receivables] contracts:', err.message); return []; }),
-    ]).then(([r, c]) => {
-      if (cancelled) return;
-      setReceivables(r || []);
-      setContracts(c || []);
-    }).catch(e => {
-      if (!cancelled) setError(e.message);
-    }).finally(() => {
-      if (!cancelled) setLoading(false);
-    });
-
-    return () => {
-      cancelled = true;
-    };
+    api.get('/receivables').catch(err => { console.warn('[Receivables] receivables:', err.message); return []; })
+      .then(data => { if (!cancelled) setReceivables(data || []); })
+      .catch(e => { if (!cancelled) setError(e.message); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   const contractMap = Object.fromEntries(contracts.map(c => [c.id, c]));
@@ -83,6 +71,7 @@ export default function Receivables() {
       await api.put(`/receivables/${modal.id}`, data);
     }
     refreshData();
+    if (store) store.invalidateAll();
   };
 
   const handleDelete = async (row) => {
@@ -91,6 +80,7 @@ export default function Receivables() {
     try {
       await api.del(`/receivables/${row.id}`);
       refreshData();
+      if (store) store.invalidateAll();
     } catch (err) {
       setDeleteError(err.message || t('pages.deleteFailed'));
     }

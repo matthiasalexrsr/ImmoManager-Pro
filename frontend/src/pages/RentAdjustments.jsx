@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
+import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
@@ -22,41 +23,27 @@ const COLUMNS = [
 
 export default function RentAdjustments() {
   const { t } = useTranslation();
+  const store = useDataStore();
+  const { items: contracts } = useEntities('contracts', '/contracts');
   const [adjustments, setAdjustments] = useState([]);
-  const [contracts, setContracts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
 
   const refreshData = () => {
     setLoading(true);
-    Promise.all([
-      api.get('/rent-adjustments').catch(err => { console.warn('[RentAdj]', err.message); return []; }),
-      api.get('/contracts').catch(() => []),
-    ]).then(([adj, c]) => {
-      setAdjustments(adj || []);
-      setContracts(c || []);
-    }).finally(() => setLoading(false));
+    api.get('/rent-adjustments').catch(err => { console.warn('[RentAdj]', err.message); return []; })
+      .then(adj => setAdjustments(adj || []))
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      api.get('/rent-adjustments').catch(err => { console.warn('[RentAdjustments] adjustments:', err.message); return []; }),
-      api.get('/contracts').catch(err => { console.warn('[RentAdjustments] contracts:', err.message); return []; }),
-    ]).then(([a, c]) => {
-      if (cancelled) return;
-      setAdjustments(a || []);
-      setContracts(c || []);
-    }).catch(e => {
-      if (!cancelled) console.warn('[RentAdjustments] load failed:', e.message);
-    }).finally(() => {
-      if (!cancelled) setLoading(false);
-    });
-
-    return () => {
-      cancelled = true;
-    };
+    api.get('/rent-adjustments').catch(err => { console.warn('[RentAdjustments] adjustments:', err.message); return []; })
+      .then(data => { if (!cancelled) setAdjustments(data || []); })
+      .catch(e => { if (!cancelled) console.warn('[RentAdjustments] load failed:', e.message); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   const contractMap = Object.fromEntries(contracts.map(c => [c.id, c]));
@@ -93,6 +80,7 @@ export default function RentAdjustments() {
       await api.put(`/rent-adjustments/${modal.id}`, data);
     }
     refreshData();
+    if (store) store.invalidateAll();
   };
 
   const handleDelete = async (row) => {
@@ -101,6 +89,7 @@ export default function RentAdjustments() {
     try {
       await api.del(`/rent-adjustments/${row.id}`);
       refreshData();
+      if (store) store.invalidateAll();
     } catch (err) {
       setDeleteError(err.message || 'Löschen fehlgeschlagen');
     }

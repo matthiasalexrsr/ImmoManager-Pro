@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
+import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 
@@ -37,9 +38,10 @@ const COLUMNS = [
 
 export default function HandoverProtocols() {
   const { t } = useTranslation();
+  const store = useDataStore();
+  const { items: units } = useEntities('units', '/units');
+  const { items: contracts } = useEntities('contracts', '/contracts');
   const [protocols, setProtocols] = useState([]);
-  const [units, setUnits] = useState([]);
-  const [contracts, setContracts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [modal, setModal] = useState(null);
@@ -47,37 +49,19 @@ export default function HandoverProtocols() {
 
   const refreshData = () => {
     setLoading(true);
-    Promise.all([
-      api.get('/handover-protocols').catch(err => { console.warn('[HandoverProtocols] protocols:', err.message); return []; }),
-      api.get('/units').catch(err => { console.warn('[HandoverProtocols] units:', err.message); return []; }),
-      api.get('/contracts').catch(err => { console.warn('[HandoverProtocols] contracts:', err.message); return []; }),
-    ]).then(([p, u, c]) => {
-      setProtocols(p || []);
-      setUnits(u || []);
-      setContracts(c || []);
-    }).catch(e => setError(e.message)).finally(() => setLoading(false));
+    api.get('/handover-protocols').catch(err => { console.warn('[HandoverProtocols] protocols:', err.message); return []; })
+      .then(p => setProtocols(p || []))
+      .catch(e => setError(e.message))
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      api.get('/handover-protocols').catch(err => { console.warn('[HandoverProtocols] protocols:', err.message); return []; }),
-      api.get('/units').catch(err => { console.warn('[HandoverProtocols] units:', err.message); return []; }),
-      api.get('/contracts').catch(err => { console.warn('[HandoverProtocols] contracts:', err.message); return []; }),
-    ]).then(([p, u, c]) => {
-      if (cancelled) return;
-      setProtocols(p || []);
-      setUnits(u || []);
-      setContracts(c || []);
-    }).catch(e => {
-      if (!cancelled) setError(e.message);
-    }).finally(() => {
-      if (!cancelled) setLoading(false);
-    });
-
-    return () => {
-      cancelled = true;
-    };
+    api.get('/handover-protocols').catch(err => { console.warn('[HandoverProtocols] protocols:', err.message); return []; })
+      .then(data => { if (!cancelled) setProtocols(data || []); })
+      .catch(e => { if (!cancelled) setError(e.message); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   const unitMap = Object.fromEntries(units.map(u => [u.id, u.name]));
@@ -117,6 +101,7 @@ export default function HandoverProtocols() {
       await api.put(`/handover-protocols/${modal.id}`, data);
     }
     refreshData();
+    if (store) store.invalidateAll();
   };
 
   const handleDelete = async (row) => {
@@ -126,6 +111,7 @@ export default function HandoverProtocols() {
     try {
       await api.del(`/handover-protocols/${row.id}`);
       refreshData();
+      if (store) store.invalidateAll();
     } catch (err) {
       setDeleteError(err.message || 'Löschen fehlgeschlagen');
     }

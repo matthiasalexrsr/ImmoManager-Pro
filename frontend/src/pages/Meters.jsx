@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
+import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
@@ -50,24 +51,21 @@ const READING_COLUMNS = [
 
 export default function Meters() {
   const { t } = useTranslation();
+  const store = useDataStore();
+  const { items: units } = useEntities('units', '/units');
+  const { items: properties } = useEntities('properties', '/properties');
   const [meters, setMeters] = useState([]);
-  const [units, setUnits] = useState([]);
   const [selectedMeter, setSelectedMeter] = useState(null);
   const [readings, setReadings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
   const [groupBy, setGroupBy] = useState('none'); // 'none' | 'property' | 'type' | 'supplier'
 
-  const loadData = () => {
-    Promise.all([
-      api.get('/meters').catch(() => []),
-      api.get('/units').catch(() => []),
-      api.get('/properties').catch(() => []),
-    ]).then(([m, u, p]) => {
-      setUnits(u || []);
-      const unitMap = Object.fromEntries((u || []).map(x => [x.id, x]));
-      const propMap = Object.fromEntries((p || []).map(x => [x.id, x]));
+  const refreshData = () => {
+    const unitMap = Object.fromEntries(units.map(x => [x.id, x]));
+    const propMap = Object.fromEntries(properties.map(x => [x.id, x]));
 
+    api.get('/meters').catch(() => []).then(m => {
       const enriched = (m || []).map(meter => {
         const unit = unitMap[meter.unit_id];
         const prop = unit?.property_id ? propMap[unit.property_id] : null;
@@ -104,7 +102,7 @@ export default function Meters() {
     }).catch(() => {}).finally(() => setLoading(false));
   };
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { refreshData(); }, [units, properties]);
 
   const handleSelectMeter = (meter) => {
     setSelectedMeter(meter);
@@ -154,13 +152,15 @@ export default function Meters() {
     } else if (modal && modal.id) {
       await api.put(`/meters/${modal.id}`, data);
     }
-    loadData();
+    refreshData();
+    if (store) store.invalidateAll();
   };
 
   const handleSaveReading = async (data) => {
     const meterId = data.meter_id;
     await api.post(`/meters/${meterId}/readings`, data);
-    loadData();
+    refreshData();
+    if (store) store.invalidateAll();
     if (selectedMeter) handleSelectMeter(selectedMeter);
   };
 
@@ -171,7 +171,8 @@ export default function Meters() {
       setSelectedMeter(null);
       setReadings([]);
     }
-    loadData();
+    refreshData();
+    if (store) store.invalidateAll();
   };
 
   // Group meters

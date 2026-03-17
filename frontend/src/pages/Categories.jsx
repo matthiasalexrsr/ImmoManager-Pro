@@ -1,5 +1,4 @@
-import { useState, useEffect } from 'react';
-import { api } from '../api';
+import { useEntities } from '../contexts/DataStoreContext';
 import CrudPage from './CrudPage';
 
 const COLUMNS = [
@@ -8,8 +7,7 @@ const COLUMNS = [
 ];
 
 export default function Categories() {
-  const [portfolios, setPortfolios] = useState([]);
-  useEffect(() => { api.get('/portfolios').then(setPortfolios).catch(err => console.warn('[Categories] portfolios:', err.message)); }, []);
+  const { items: portfolios } = useEntities('portfolios', '/portfolios');
 
   const fields = [
     { key: 'portfolio_id', label: 'Portfolio', required: true, type: 'select',
