@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import mimetypes
 import posixpath
 import uuid
 from io import BytesIO
@@ -11,6 +12,7 @@ from urllib.parse import unquote, urlparse
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 
+from ..config import settings
 from ..services.file_storage import get_file_storage
 from ..services.ocr_service import extract_text_from_bytes
 
@@ -21,6 +23,26 @@ router = APIRouter(prefix="/files", tags=["Dateien"])
 
 SUPPORTED_OCR_EXTENSIONS = {"pdf", "png", "jpg", "jpeg", "tiff", "tif", "bmp", "webp"}
 _DEFAULT_EXTENSION = "bin"
+
+# Allowed MIME type prefixes for upload.
+_ALLOWED_MIME_PREFIXES = (
+    "application/pdf",
+    "image/",
+    "text/",
+    "application/json",
+    "application/xml",
+    "application/vnd.openxmlformats",
+    "application/vnd.ms-",
+    "application/msword",
+    "application/zip",
+)
+
+# Dangerous extensions that should never be accepted.
+_BLOCKED_EXTENSIONS = {
+    "exe", "bat", "cmd", "com", "msi", "scr", "pif", "vbs", "vbe",
+    "js", "jse", "wsf", "wsh", "ps1", "sh", "bash", "cgi", "php",
+    "py", "rb", "pl", "dll", "so", "dylib",
+}
 
 
 def _normalize_storage_key(value: str) -> str:
@@ -90,17 +112,49 @@ def _perform_ocr(storage, key: str, ext: str) -> str | None:
     return extract_text_from_bytes(file_bytes, ext)
 
 
+def _validate_upload(file: UploadFile) -> None:
+    """Validate file upload for size, extension, and MIME type."""
+    ext = _safe_extension(file.filename)
+    if ext in _BLOCKED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Dateityp '.{ext}' ist nicht erlaubt",
+        )
+
+    # MIME type sniffing: check declared content type
+    declared_ct = (file.content_type or "application/octet-stream").lower()
+    if not any(declared_ct.startswith(prefix) for prefix in _ALLOWED_MIME_PREFIXES):
+        # Also check by extension as a fallback
+        guessed_ct, _ = mimetypes.guess_type(file.filename or "")
+        if not guessed_ct or not any(guessed_ct.startswith(p) for p in _ALLOWED_MIME_PREFIXES):
+            raise HTTPException(
+                status_code=400,
+                detail=f"MIME-Typ '{declared_ct}' ist nicht erlaubt",
+            )
+
+
 @router.post("/upload")
 async def upload_file(
     file: UploadFile = File(...),
     folder: str = Query("documents", description="Storage folder"),
 ) -> dict:
     """Upload a file and return URLs. Triggers OCR for eligible files."""
+    # Enforce file size limit by reading up to the limit + 1 byte
+    max_size = settings.max_upload_size_bytes
+    contents = await file.read(max_size + 1)
+    if len(contents) > max_size:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Datei überschreitet das Limit von {max_size // (1024 * 1024)} MB",
+        )
+
+    _validate_upload(file)
+
     storage = get_file_storage()
     safe_folder = _normalize_storage_key(folder) or "documents"
     ext = _safe_extension(file.filename)
     key = f"{safe_folder}/{uuid.uuid4().hex}.{ext}"
-    storage.save(key, file.file, content_type=file.content_type or "application/octet-stream")
+    storage.save(key, BytesIO(contents), content_type=file.content_type or "application/octet-stream")
     file_url = storage.get_url(key)
 
     result = {

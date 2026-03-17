@@ -1,14 +1,16 @@
 """Shared dependencies for the ImmoManager Pro API.
 
 Supports two storage backends:
-  - InMemoryStore (for tests only when sqlite_persistent_store=False)
+  - InMemoryStore (only when sqlite_persistent_store=False or explicit fallback)
   - SQLAlchemyStore (default for all database URLs including SQLite)
 
 Set DATABASE_URL to configure the database. SQLite is the default.
 
 Error handling:
-  - SQL backend initialization is wrapped in try/except with fallback
-    to InMemoryStore so the application always starts.
+  - When ALLOW_INMEMORY_FALLBACK=true (default in dev), SQL init failure
+    falls back to InMemoryStore so the application can still start.
+  - When ALLOW_INMEMORY_FALLBACK=false (recommended for production),
+    SQL init failure aborts startup immediately.
   - cleanup_session() is safe to call even if the session is corrupted.
 """
 
@@ -55,6 +57,12 @@ if _use_sql_store:
 
         logger.info("SQL backend initialized successfully (url=%s...)", _database_url[:30])
     except Exception:
+        if not settings.allow_inmemory_fallback:
+            raise RuntimeError(
+                "Failed to initialize SQL backend and ALLOW_INMEMORY_FALLBACK=false. "
+                "Fix DATABASE_URL or database connectivity, or set "
+                "ALLOW_INMEMORY_FALLBACK=true to allow non-persistent fallback."
+            )
         logger.exception(
             "Failed to initialize SQL backend — falling back to InMemoryStore. "
             "Data will NOT be persisted! Fix DATABASE_URL or database connectivity."
@@ -62,6 +70,11 @@ if _use_sql_store:
         store = InMemoryStore()
         _scoped_session = None
 else:
+    if not settings.allow_inmemory_fallback:
+        raise RuntimeError(
+            "InMemoryStore is not allowed when ALLOW_INMEMORY_FALLBACK=false. "
+            "Set DATABASE_URL and SQLITE_PERSISTENT_STORE=true for production."
+        )
     logger.info("Using InMemoryStore — data will NOT be persisted across restarts.")
 
 # Log active store type for clarity

@@ -831,3 +831,33 @@ class AuditLogORM(Base):
         Index("idx_audit_user", "user_id"),
         Index("idx_audit_timestamp", "timestamp"),
     )
+
+
+class RevokedTokenORM(Base):
+    """Persisted token blacklist for cross-restart / multi-instance revocation."""
+    __tablename__ = "revoked_tokens"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    token_jti: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    revoked_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
+
+    __table_args__ = (
+        Index("idx_revoked_tokens_jti", "token_jti"),
+        Index("idx_revoked_tokens_expires", "expires_at"),
+    )
+
+
+class LoginAttemptORM(Base):
+    """Persisted login attempt records for cross-restart rate limiting."""
+    __tablename__ = "login_attempts"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    username: Mapped[str] = mapped_column(String, nullable=False)
+    attempted_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
+    success: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    __table_args__ = (
+        Index("idx_login_attempts_username", "username"),
+        Index("idx_login_attempts_time", "attempted_at"),
+    )

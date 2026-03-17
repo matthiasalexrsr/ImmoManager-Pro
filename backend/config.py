@@ -33,6 +33,10 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    # --- Environment profile ---
+    # Set to "production" to enable strict safety checks at startup.
+    environment: str = "development"
+
     # --- Application ---
     app_version: str = _get_version()
     app_title: str = "ImmoManager Pro API"
@@ -70,11 +74,28 @@ class Settings(BaseSettings):
     # Set to False only for tests that require in-memory repositories.
     sqlite_persistent_store: bool = True
 
+    # When False (default in production), abort startup if the configured
+    # database cannot be initialized instead of silently falling back to
+    # an in-memory store that loses all data on restart.
+    allow_inmemory_fallback: bool = True
+
+    # --- Demo seeding ---
+    # When True, seeds demo data on startup if the database is empty.
+    # Defaults to False; must be explicitly enabled (e.g. for demo images).
+    auto_seed_demo_data: bool = False
+
+    # --- File upload limits ---
+    max_upload_size_bytes: int = 50 * 1024 * 1024  # 50 MB
+
     # --- Integrations ---
     integration_state_file: str | None = None
 
     # --- Contract wizard runtime behavior ---
     contract_wizard_required: bool = False
+
+    @property
+    def is_production(self) -> bool:
+        return self.environment.lower() in ("production", "prod")
 
 
 settings = Settings()

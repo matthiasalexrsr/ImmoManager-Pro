@@ -1,5 +1,6 @@
+import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { isLoggedIn } from './api';
+import { isLoggedIn, api } from './api';
 import Layout from './components/Layout';
 import DevModeOverlay from './components/DevModeOverlay';
 import { useDevMode } from './contexts/DevModeContext';
@@ -47,7 +48,31 @@ import HandoverProtocols from './pages/HandoverProtocols';
 import NotFound from './pages/NotFound';
 
 function ProtectedRoute({ children }) {
-  return isLoggedIn() ? children : <Navigate to="/login" />;
+  const [status, setStatus] = useState(isLoggedIn() ? 'validating' : 'unauthenticated');
+
+  useEffect(() => {
+    if (!isLoggedIn()) {
+      setStatus('unauthenticated');
+      return;
+    }
+    // Validate the session against the backend before rendering
+    api.get('/auth/me')
+      .then(() => setStatus('authenticated'))
+      .catch(() => {
+        // Token is invalid/expired and refresh failed — clear tokens
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        setStatus('unauthenticated');
+      });
+  }, []);
+
+  if (status === 'validating') {
+    return null; // Brief blank while validating — avoids flash
+  }
+  if (status === 'unauthenticated') {
+    return <Navigate to="/login" />;
+  }
+  return children;
 }
 
 function DevModeWrapper({ children }) {

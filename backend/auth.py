@@ -48,6 +48,9 @@ security = HTTPBearer(auto_error=False)
 _token_blacklist: set[str] = set()
 _blacklist_expiry: dict[str, datetime] = {}  # token -> expiry time for cleanup
 
+# DB-backed session factory for auth security state (set by enable_sql_auth_state)
+_auth_session_factory = None
+
 # Number of PBKDF2 iterations (OWASP recommended minimum for SHA-256)
 _PBKDF2_ITERATIONS = 600_000
 
@@ -70,25 +73,63 @@ def validate_password_strength(password: str) -> list[str]:
 
 def check_login_rate_limit(username: str) -> bool:
     """T21: Check if login is rate-limited. Returns True if blocked."""
+    if _auth_session_factory is not None:
+        return _check_login_rate_limit_db(username)
     now = datetime.utcnow()
     cutoff = now - timedelta(minutes=LOCKOUT_DURATION_MINUTES)
     attempts = _login_attempts.get(username, [])
-    # Clean old attempts
     recent = [t for t in attempts if t > cutoff]
     _login_attempts[username] = recent
     return len(recent) >= MAX_LOGIN_ATTEMPTS
 
 
+def _check_login_rate_limit_db(username: str) -> bool:
+    """DB-backed rate limit check."""
+    from .db.orm_models import LoginAttemptORM
+    session = _auth_session_factory()
+    try:
+        cutoff = datetime.utcnow() - timedelta(minutes=LOCKOUT_DURATION_MINUTES)
+        count = session.query(LoginAttemptORM).filter(
+            LoginAttemptORM.username == username,
+            LoginAttemptORM.success == False,  # noqa: E712
+            LoginAttemptORM.attempted_at > cutoff,
+        ).count()
+        return count >= MAX_LOGIN_ATTEMPTS
+    except Exception:
+        logger.warning("DB rate-limit check failed, falling back to in-memory", exc_info=True)
+        return len([t for t in _login_attempts.get(username, []) if t > cutoff]) >= MAX_LOGIN_ATTEMPTS
+    finally:
+        session.close()
+
+
 def record_failed_login(username: str) -> None:
     """T21: Record a failed login attempt."""
+    if _auth_session_factory is not None:
+        _record_login_attempt_db(username, success=False)
     if username not in _login_attempts:
         _login_attempts[username] = []
     _login_attempts[username].append(datetime.utcnow())
 
 
+def _record_login_attempt_db(username: str, *, success: bool) -> None:
+    """Persist a login attempt to the database."""
+    from .db.orm_models import LoginAttemptORM
+    session = _auth_session_factory()
+    try:
+        session.add(LoginAttemptORM(username=username, success=success))
+        session.commit()
+    except Exception:
+        session.rollback()
+        logger.warning("Failed to persist login attempt", exc_info=True)
+    finally:
+        session.close()
+
+
 def clear_login_attempts(username: str) -> None:
     """T21: Clear login attempts after successful login."""
     _login_attempts.pop(username, None)
+    if _auth_session_factory is not None:
+        _record_login_attempt_db(username, success=True)
 
 
 # ---------------------------------------------------------------------------
@@ -166,6 +207,11 @@ def create_refresh_token(user_id: str) -> str:
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
+def _token_jti(token: str) -> str:
+    """Derive a short identifier from a token for DB storage."""
+    return hashlib.sha256(token.encode()).hexdigest()[:32]
+
+
 def revoke_token(token: str) -> None:
     """Add a token to the blacklist (for logout)."""
     _cleanup_blacklist()
@@ -174,14 +220,61 @@ def revoke_token(token: str) -> None:
         exp = datetime.utcfromtimestamp(payload["exp"])
         _token_blacklist.add(token)
         _blacklist_expiry[token] = exp
+        # Also persist to DB for cross-restart durability
+        if _auth_session_factory is not None:
+            _revoke_token_db(token, exp)
     except JWTError:
-        # Token is invalid anyway, no need to blacklist
         pass
+
+
+def _revoke_token_db(token: str, expires_at: datetime) -> None:
+    """Persist token revocation to the database."""
+    from .db.orm_models import RevokedTokenORM
+    session = _auth_session_factory()
+    try:
+        jti = _token_jti(token)
+        exists = session.query(RevokedTokenORM).filter(
+            RevokedTokenORM.token_jti == jti
+        ).first()
+        if not exists:
+            session.add(RevokedTokenORM(token_jti=jti, expires_at=expires_at))
+            session.commit()
+    except Exception:
+        session.rollback()
+        logger.warning("Failed to persist token revocation to DB", exc_info=True)
+    finally:
+        session.close()
 
 
 def is_token_revoked(token: str) -> bool:
     """Check if a token has been revoked."""
-    return token in _token_blacklist
+    if token in _token_blacklist:
+        return True
+    # Check DB if available
+    if _auth_session_factory is not None:
+        return _is_token_revoked_db(token)
+    return False
+
+
+def _is_token_revoked_db(token: str) -> bool:
+    """Check DB for revoked token."""
+    from .db.orm_models import RevokedTokenORM
+    session = _auth_session_factory()
+    try:
+        jti = _token_jti(token)
+        found = session.query(RevokedTokenORM).filter(
+            RevokedTokenORM.token_jti == jti
+        ).first()
+        if found:
+            # Cache in memory so subsequent checks are fast
+            _token_blacklist.add(token)
+            return True
+        return False
+    except Exception:
+        logger.warning("DB token revocation check failed", exc_info=True)
+        return False
+    finally:
+        session.close()
 
 
 def _cleanup_blacklist() -> None:
@@ -191,6 +284,25 @@ def _cleanup_blacklist() -> None:
     for t in expired:
         _token_blacklist.discard(t)
         _blacklist_expiry.pop(t, None)
+    # Clean expired DB entries periodically
+    if _auth_session_factory is not None and expired:
+        _cleanup_blacklist_db()
+
+
+def _cleanup_blacklist_db() -> None:
+    """Remove expired revoked tokens from the database."""
+    from .db.orm_models import RevokedTokenORM
+    session = _auth_session_factory()
+    try:
+        session.query(RevokedTokenORM).filter(
+            RevokedTokenORM.expires_at < datetime.utcnow()
+        ).delete()
+        session.commit()
+    except Exception:
+        session.rollback()
+        logger.debug("Failed to clean expired revoked tokens from DB", exc_info=True)
+    finally:
+        session.close()
 
 
 def decode_token(token: str) -> TokenPayload:
@@ -425,9 +537,11 @@ def enable_sql_users(session_factory) -> None:
     """Switch user storage to SQLAlchemy-backed persistence.
 
     Called from dependencies.py when DATABASE_URL is set.
+    Also enables DB-backed rate limiting and token revocation.
     """
-    global _user_store
+    global _user_store, _auth_session_factory
     _user_store = SQLUserStore(session_factory)
+    _auth_session_factory = session_factory
 
 
 def _to_user_read(user_data: dict) -> UserRead:

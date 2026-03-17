@@ -114,35 +114,48 @@ def get_me(user: UserRead = Depends(require_auth)) -> UserRead:
     return user
 
 
+def _get_preferences_session():
+    """Return a DB session for preferences, or None if SQL is unavailable."""
+    try:
+        from ..dependencies import _use_sql_store
+        if not _use_sql_store:
+            return None
+        from ..db.session import SessionLocal
+        return SessionLocal()
+    except Exception:
+        return None
+
+
+def _prefs_to_dict(prefs) -> dict:
+    return {
+        "theme": prefs.theme,
+        "locale": prefs.locale,
+        "sidebar_collapsed": prefs.sidebar_collapsed,
+        "items_per_page": prefs.items_per_page,
+        "date_format": prefs.date_format,
+        "currency": prefs.currency,
+    }
+
+
 @router.get("/users/me/preferences", response_model=None)
 def get_my_preferences(user: UserRead = Depends(require_auth)) -> dict:
     """Get current user's preferences."""
     import logging
 
+    session = _get_preferences_session()
+    if session is None:
+        return _DEFAULT_PREFERENCES.copy()
     try:
-        from ..db.session import DATABASE_URL
-
-        if DATABASE_URL and "sqlite" not in DATABASE_URL:
-            from ..db.orm_models import UserPreferencesORM
-            from ..db.session import SessionLocal
-            session = SessionLocal()
-            try:
-                prefs = session.query(UserPreferencesORM).filter(
-                    UserPreferencesORM.user_id == user.id
-                ).first()
-                if prefs:
-                    return {
-                        "theme": prefs.theme,
-                        "locale": prefs.locale,
-                        "sidebar_collapsed": prefs.sidebar_collapsed,
-                        "items_per_page": prefs.items_per_page,
-                        "date_format": prefs.date_format,
-                        "currency": prefs.currency,
-                    }
-            finally:
-                session.close()
+        from ..db.orm_models import UserPreferencesORM
+        prefs = session.query(UserPreferencesORM).filter(
+            UserPreferencesORM.user_id == user.id
+        ).first()
+        if prefs:
+            return _prefs_to_dict(prefs)
     except Exception:
         logging.getLogger(__name__).warning("Failed to load user preferences, using defaults")
+    finally:
+        session.close()
     return _DEFAULT_PREFERENCES.copy()
 
 
@@ -151,47 +164,32 @@ def update_my_preferences(payload: dict, user: UserRead = Depends(require_auth))
     """Update current user's preferences."""
     import logging
 
-    from ..db.session import DATABASE_URL
-
     allowed_keys = {"theme", "locale", "sidebar_collapsed", "items_per_page", "date_format", "currency", "default_due_day", "email_notifications", "reminder_days"}
     clean = {k: v for k, v in payload.items() if k in allowed_keys}
 
-    if DATABASE_URL and "sqlite" not in DATABASE_URL:
-        try:
-            from ..db.orm_models import UserPreferencesORM
-            from ..db.session import SessionLocal
+    session = _get_preferences_session()
+    if session is None:
+        return {**_DEFAULT_PREFERENCES, **clean}
 
-            session = SessionLocal()
-        except Exception:
-            logging.getLogger(__name__).warning("Failed to initialize preferences update session")
-            return {**_DEFAULT_PREFERENCES, **clean}
-
-        try:
-            prefs = session.query(UserPreferencesORM).filter(
-                UserPreferencesORM.user_id == user.id
-            ).first()
-            if prefs:
-                for k, v in clean.items():
-                    setattr(prefs, k, v)
-            else:
-                prefs = UserPreferencesORM(user_id=user.id, **clean)
-                session.add(prefs)
-            session.commit()
-            return {
-                "theme": prefs.theme,
-                "locale": prefs.locale,
-                "sidebar_collapsed": prefs.sidebar_collapsed,
-                "items_per_page": prefs.items_per_page,
-                "date_format": prefs.date_format,
-                "currency": prefs.currency,
-            }
-        except Exception:
-            session.rollback()
-            logging.getLogger(__name__).warning("Failed to persist user preferences update")
-            return {**_DEFAULT_PREFERENCES, **clean}
-        finally:
-            session.close()
-    return {**_DEFAULT_PREFERENCES, **clean}
+    try:
+        from ..db.orm_models import UserPreferencesORM
+        prefs = session.query(UserPreferencesORM).filter(
+            UserPreferencesORM.user_id == user.id
+        ).first()
+        if prefs:
+            for k, v in clean.items():
+                setattr(prefs, k, v)
+        else:
+            prefs = UserPreferencesORM(user_id=user.id, **clean)
+            session.add(prefs)
+        session.commit()
+        return _prefs_to_dict(prefs)
+    except Exception:
+        session.rollback()
+        logging.getLogger(__name__).warning("Failed to persist user preferences update")
+        return {**_DEFAULT_PREFERENCES, **clean}
+    finally:
+        session.close()
 
 
 @router.get("/users", response_model=list[UserRead])
