@@ -3,6 +3,7 @@
 All environment variables are consolidated here. Import `settings` to use them.
 """
 
+import enum
 import importlib.metadata
 from pathlib import Path
 
@@ -24,6 +25,13 @@ def _get_version() -> str:
     return "0.0.0"
 
 
+class Environment(str, enum.Enum):
+    """Recognised deployment environments."""
+    development = "development"
+    staging = "staging"
+    production = "production"
+
+
 class Settings(BaseSettings):
     """Application settings loaded from environment variables and .env file."""
 
@@ -35,7 +43,7 @@ class Settings(BaseSettings):
 
     # --- Environment profile ---
     # Set to "production" to enable strict safety checks at startup.
-    environment: str = "development"
+    environment: Environment = Environment.development
 
     # --- Application ---
     app_version: str = _get_version()
@@ -45,11 +53,14 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./immo_manager.db"
 
     # --- Authentication ---
+    # In production, this MUST be overridden — startup will fail if left at the
+    # default value when ENVIRONMENT=production.
     jwt_secret_key: str = "dev-secret-key-change-in-production"
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 7
 
     # --- CORS ---
+    # In production, explicit origins are required (no wildcards).
     cors_origins: list[str] = [
         "http://localhost:3000",
         "http://localhost:5173",
@@ -74,10 +85,9 @@ class Settings(BaseSettings):
     # Set to False only for tests that require in-memory repositories.
     sqlite_persistent_store: bool = True
 
-    # When False (default in production), abort startup if the configured
-    # database cannot be initialized instead of silently falling back to
-    # an in-memory store that loses all data on restart.
-    allow_inmemory_fallback: bool = True
+    # When False (default), abort startup if the configured database cannot be
+    # initialized.  Set to True only for development/demo environments.
+    allow_inmemory_fallback: bool = False
 
     # --- Demo seeding ---
     # When True, seeds demo data on startup if the database is empty.
@@ -95,7 +105,7 @@ class Settings(BaseSettings):
 
     @property
     def is_production(self) -> bool:
-        return self.environment.lower() in ("production", "prod")
+        return self.environment == Environment.production
 
 
 settings = Settings()

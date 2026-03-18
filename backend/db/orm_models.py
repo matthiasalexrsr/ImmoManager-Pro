@@ -677,6 +677,9 @@ class UserPreferencesORM(Base):
     items_per_page: Mapped[int] = mapped_column(Integer, nullable=False, default=25)
     date_format: Mapped[str] = mapped_column(Text, nullable=False, default="DD.MM.YYYY")
     currency: Mapped[str] = mapped_column(Text, nullable=False, default="EUR")
+    default_due_day: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    email_notifications: Mapped[str] = mapped_column(Text, nullable=False, default="important")
+    reminder_days: Mapped[str] = mapped_column(Text, nullable=False, default="7")
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 

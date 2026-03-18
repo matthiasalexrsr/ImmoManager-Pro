@@ -67,7 +67,11 @@ function ProtectedRoute({ children }) {
   }, []);
 
   if (status === 'validating') {
-    return null; // Brief blank while validating — avoids flash
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        <div className="spinner" />
+      </div>
+    );
   }
   if (status === 'unauthenticated') {
     return <Navigate to="/login" />;

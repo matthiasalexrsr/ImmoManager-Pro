@@ -89,11 +89,11 @@ class PropertyEngine:
     ) -> PropertyPerformance:
         relevant_units = [unit for unit in units if unit.property_id == property_item.property_id]
         total_units = len(relevant_units)
-        rented_units = sum(1 for unit in relevant_units if unit.status == "rented")
+        rented_units = sum(1 for unit in relevant_units if unit.status == "occupied")
         vacant_units = sum(1 for unit in relevant_units if unit.status in {"vacant", "reserved", "renovation"})
 
         potential_rent = _money(sum((unit.cold_rent for unit in relevant_units), Decimal("0.00")))
-        occupied_rent = _money(sum((unit.cold_rent for unit in relevant_units if unit.status == "rented"), Decimal("0.00")))
+        occupied_rent = _money(sum((unit.cold_rent for unit in relevant_units if unit.status == "occupied"), Decimal("0.00")))
         vacant_rent = _money(potential_rent - occupied_rent)
 
         occupancy_rate = Decimal("0.00")

@@ -208,7 +208,30 @@ export async function register(username, email, full_name, password) {
   return res.json();
 }
 
-export function logout() {
+export async function logout() {
+  const accessToken = localStorage.getItem('access_token');
+  const refreshToken = localStorage.getItem('refresh_token');
+
+  // Revoke tokens server-side before clearing local state.
+  // Fire-and-forget: even if the call fails we still clear local tokens.
+  if (accessToken || refreshToken) {
+    try {
+      await fetch(`${BASE}/auth/logout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        },
+        body: JSON.stringify({
+          access_token: accessToken || undefined,
+          refresh_token: refreshToken || undefined,
+        }),
+      });
+    } catch {
+      // Ignore — we still clear locally
+    }
+  }
+
   localStorage.removeItem('access_token');
   localStorage.removeItem('refresh_token');
   window.location.href = '/login';

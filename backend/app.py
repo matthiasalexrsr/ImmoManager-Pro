@@ -40,6 +40,8 @@ def _validate_startup_config() -> None:
     In production mode (ENVIRONMENT=production), unsafe defaults cause startup
     failure.  In development mode, they produce warnings.
     """
+    from .dependencies import store as _active_store
+
     issues: list[str] = []
 
     if settings.jwt_secret_key == "dev-secret-key-change-in-production":
@@ -48,11 +50,19 @@ def _validate_startup_config() -> None:
     if any(origin == "*" for origin in settings.cors_origins):
         issues.append("CORS_ORIGINS contains wildcard '*'. Restrict origins in production.")
 
+    if not settings.cors_origins:
+        issues.append("CORS_ORIGINS is empty. Set explicit origins for production.")
+
     if settings.auto_seed_demo_data:
         issues.append("AUTO_SEED_DEMO_DATA is enabled. Disable demo seeding in production.")
 
     if settings.allow_inmemory_fallback:
         issues.append("ALLOW_INMEMORY_FALLBACK is enabled. Disable to prevent silent data loss.")
+
+    # Warn if the active store is in-memory (data won't survive restart)
+    store_type = type(_active_store).__name__
+    if store_type == "InMemoryStore":
+        issues.append(f"Active store is {store_type} — data will NOT be persisted.")
 
     if settings.is_production and issues:
         for issue in issues:
@@ -272,10 +282,23 @@ _ensure_contract_wizard_mount(app)
 
 @app.get("/health")
 def health() -> dict:
+    from .dependencies import _use_sql_store, store as _active_store
+
+    db_ok = True
+    if _use_sql_store:
+        try:
+            from .db.session import engine
+            with engine.connect() as conn:
+                conn.execute(__import__("sqlalchemy").text("SELECT 1"))
+        except Exception:
+            db_ok = False
+
     return {
-        "status": "ok",
+        "status": "ok" if db_ok else "degraded",
         "version": settings.app_version,
-        "environment": settings.environment,
+        "environment": settings.environment.value,
+        "store_backend": type(_active_store).__name__,
+        "database_connected": db_ok,
         "contract_wizard_available": CONTRACT_WIZARD_STATUS["available"],
         "contract_wizard_reason": CONTRACT_WIZARD_STATUS["reason"],
     }

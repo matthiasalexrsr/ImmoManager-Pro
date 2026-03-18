@@ -1,9 +1,62 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
+
+/** Inline toast-style notification hook. */
+function useToast() {
+  const [toast, setToast] = useState(null);
+  const timerRef = useRef(null);
+  const show = (message, type = 'error') => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    setToast({ message, type });
+    timerRef.current = setTimeout(() => setToast(null), 5000);
+  };
+  const dismiss = () => { setToast(null); if (timerRef.current) clearTimeout(timerRef.current); };
+  const Toast = toast ? (
+    <div
+      className={`toast toast-${toast.type}`}
+      onClick={dismiss}
+      style={{ position: 'fixed', bottom: '1.5rem', right: '1.5rem', zIndex: 9999,
+               padding: '0.75rem 1.25rem', borderRadius: '8px', cursor: 'pointer',
+               background: toast.type === 'success' ? 'var(--teal, #0d9488)' : 'var(--color-error, #dc2626)',
+               color: '#fff', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', maxWidth: '400px' }}
+    >
+      {toast.message}
+    </div>
+  ) : null;
+  return { show, Toast };
+}
+
+/** Simple prompt modal to replace window.prompt. */
+function PromptModal({ title, defaultValue, onConfirm, onCancel }) {
+  const [value, setValue] = useState(defaultValue || '');
+  return (
+    <div className="modal-overlay" onClick={onCancel}>
+      <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '450px' }}>
+        <div className="modal-header">
+          <h3>{title}</h3>
+          <button className="btn btn-sm" onClick={onCancel}>&times;</button>
+        </div>
+        <div className="modal-body">
+          <input
+            className="form-input"
+            value={value}
+            onChange={e => setValue(e.target.value)}
+            autoFocus
+            style={{ width: '100%' }}
+          />
+        </div>
+        <div className="modal-footer" style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', padding: '0.75rem 1rem' }}>
+          <button className="btn btn-sm btn-secondary" onClick={onCancel}>Abbrechen</button>
+          <button className="btn btn-sm btn-primary" onClick={() => onConfirm(value)}>OK</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function getColumns(t) {
   return [
@@ -25,7 +78,7 @@ function getCostColumns(t) {
   ];
 }
 
-function getStmtColumns(t) {
+function getStmtColumns(t, onError) {
   return [
     { key: 'unit_label', label: t('pages.statements.colUnit') || 'Einheit' },
     { key: 'total_cost', label: t('pages.statements.colShare') || 'Anteil (€)', type: 'number', align: 'right',
@@ -45,7 +98,7 @@ function getStmtColumns(t) {
         <button
           className="btn btn-sm btn-secondary"
           title={t('pages.statements.pdfDownload') || 'PDF herunterladen'}
-          onClick={(e) => { e.stopPropagation(); downloadStatementPdf(row.id); }}
+          onClick={(e) => { e.stopPropagation(); downloadStatementPdf(row.id, onError); }}
         >
           PDF
         </button>
@@ -54,7 +107,7 @@ function getStmtColumns(t) {
 }
 
 /** Trigger browser download of a single statement PDF. */
-function downloadStatementPdf(statementId) {
+function downloadStatementPdf(statementId, onError) {
   const token = localStorage.getItem('access_token');
   fetch(`/api/v1/billing/statements/${statementId}/pdf`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -70,7 +123,7 @@ function downloadStatementPdf(statementId) {
     a.click();
     a.remove();
     window.URL.revokeObjectURL(url);
-  }).catch(err => window.alert(err.message));
+  }).catch(err => onError?.(err.message) || console.error(err.message));
 }
 
 /** Helper: is a period in a mutable (editable) state? */
@@ -80,6 +133,7 @@ function isMutable(status) {
 
 export default function Statements() {
   const { t } = useTranslation();
+  const toast = useToast();
   const [periods, setPeriods] = useState([]);
   const [costItems, setCostItems] = useState([]);
   const [statements, setStatements] = useState([]);
@@ -87,6 +141,7 @@ export default function Statements() {
   const [units, setUnits] = useState([]);
   const [allocationKeys, setAllocationKeys] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [modal, setModal] = useState(null);
   const [selectedPeriod, setSelectedPeriod] = useState(null);
   const [costModal, setCostModal] = useState(null);
@@ -103,15 +158,17 @@ export default function Statements() {
   const [ocrDraft, setOcrDraft] = useState(null);
   const [ocrUploading, setOcrUploading] = useState(false);
   const [disputing, setDisputing] = useState(false);
+  const [promptModal, setPromptModal] = useState(null);
 
   const loadData = () => {
+    setLoadError(null);
     Promise.all([
-      api.get('/billing/periods').catch(() => []),
-      api.get('/billing/cost-items').catch(() => []),
-      api.get('/billing/statements').catch(() => []),
-      api.get('/properties').catch(() => []),
-      api.get('/units').catch(() => []),
-      api.get('/billing/allocation-keys').catch(() => []),
+      api.get('/billing/periods'),
+      api.get('/billing/cost-items'),
+      api.get('/billing/statements'),
+      api.get('/properties'),
+      api.get('/units'),
+      api.get('/billing/allocation-keys'),
     ]).then(([bp, ci, us, props, u, ak]) => {
       setPeriods(bp || []);
       setCostItems(ci || []);
@@ -119,6 +176,9 @@ export default function Statements() {
       setProperties(props || []);
       setUnits(u || []);
       setAllocationKeys(ak || []);
+    }).catch(err => {
+      setLoadError(err.message || 'Daten konnten nicht geladen werden');
+      toast.show(err.message || 'Daten konnten nicht geladen werden');
     }).finally(() => setLoading(false));
   };
 
@@ -204,7 +264,7 @@ export default function Statements() {
       const pf = await api.get(`/billing/periods/${selectedPeriod.id}/preflight`).catch(() => null);
       setPreflight(pf);
     } catch (err) {
-      window.alert(err.message || 'Generierung fehlgeschlagen');
+      toast.show(err.message || 'Generierung fehlgeschlagen');
     } finally {
       setGenerating(false);
     }
@@ -218,7 +278,7 @@ export default function Statements() {
       setSelectedPeriod(updated);
       await loadData();
     } catch (err) {
-      window.alert(err.message || 'Statuswechsel fehlgeschlagen');
+      toast.show(err.message || 'Statuswechsel fehlgeschlagen');
     } finally {
       setSubmittingReview(false);
     }
@@ -231,7 +291,7 @@ export default function Statements() {
       setSelectedPeriod(updated);
       await loadData();
     } catch (err) {
-      window.alert(err.message || 'Zurücksetzen fehlgeschlagen');
+      toast.show(err.message || 'Zurücksetzen fehlgeschlagen');
     }
   };
 
@@ -245,7 +305,7 @@ export default function Statements() {
       const pf = await api.get(`/billing/periods/${selectedPeriod.id}/preflight`).catch(() => null);
       setPreflight(pf);
     } catch (err) {
-      window.alert(err.message || 'Finalisierung fehlgeschlagen');
+      toast.show(err.message || 'Finalisierung fehlgeschlagen');
     } finally {
       setFinalizing(false);
     }
@@ -265,7 +325,7 @@ export default function Statements() {
       const refreshedPeriod = await api.get(`/billing/periods/${selectedPeriod.id}`).catch(() => selectedPeriod);
       setSelectedPeriod(refreshedPeriod || selectedPeriod);
     } catch (err) {
-      window.alert(err.message || 'Zustellstatus konnte nicht gesetzt werden');
+      toast.show(err.message || 'Zustellstatus konnte nicht gesetzt werden');
     } finally {
       setMarkingDelivered(false);
     }
@@ -276,52 +336,62 @@ export default function Statements() {
     setCreatingReceivables(true);
     try {
       const res = await api.post(`/billing/periods/${selectedPeriod.id}/create-receivables`, {});
-      window.alert(`Forderungen erzeugt: ${res?.created_receivables ?? 0}`);
+      toast.show(`Forderungen erzeugt: ${res?.created_receivables ?? 0}`, 'success');
     } catch (err) {
-      window.alert(err.message || 'Forderungen konnten nicht erzeugt werden');
+      toast.show(err.message || 'Forderungen konnten nicht erzeugt werden');
     } finally {
       setCreatingReceivables(false);
     }
   };
 
-  const handleCreateRevision = async () => {
+  const handleCreateRevision = () => {
     if (!selectedPeriod) return;
-    const notes = window.prompt(t('pages.statements.revisionReason') || 'Grund für Korrektur (optional):', '') || '';
-    setCreatingRevision(true);
-    try {
-      const res = await api.post(
-        `/billing/periods/${selectedPeriod.id}/revisions?revision_notes=${encodeURIComponent(notes)}`,
-        {}
-      );
-      await loadData();
-      if (res?.new_period_id) {
-        const allPeriods = await api.get('/billing/periods').catch(() => []);
-        const newPeriod = (allPeriods || []).find(p => p.id === res.new_period_id);
-        if (newPeriod) handleSelectPeriod(newPeriod);
-      }
-    } catch (err) {
-      window.alert(err.message || t('pages.statements.revisionError') || 'Korrektur konnte nicht erstellt werden');
-    } finally {
-      setCreatingRevision(false);
-    }
+    setPromptModal({
+      title: t('pages.statements.revisionReason') || 'Grund für Korrektur (optional):',
+      onConfirm: async (notes) => {
+        setPromptModal(null);
+        setCreatingRevision(true);
+        try {
+          const res = await api.post(
+            `/billing/periods/${selectedPeriod.id}/revisions?revision_notes=${encodeURIComponent(notes)}`,
+            {}
+          );
+          await loadData();
+          if (res?.new_period_id) {
+            const allPeriods = await api.get('/billing/periods').catch(() => []);
+            const newPeriod = (allPeriods || []).find(p => p.id === res.new_period_id);
+            if (newPeriod) handleSelectPeriod(newPeriod);
+          }
+        } catch (err) {
+          toast.show(err.message || t('pages.statements.revisionError') || 'Korrektur konnte nicht erstellt werden');
+        } finally {
+          setCreatingRevision(false);
+        }
+      },
+    });
   };
 
-  const handleDispute = async () => {
+  const handleDispute = () => {
     if (!selectedPeriod) return;
-    const reason = window.prompt(t('pages.statements.disputeReason') || 'Grund für Widerspruch:', '') || '';
-    setDisputing(true);
-    try {
-      const updated = await api.post(
-        `/billing/periods/${selectedPeriod.id}/dispute?reason=${encodeURIComponent(reason)}`,
-        {}
-      );
-      setSelectedPeriod(updated);
-      await loadData();
-    } catch (err) {
-      window.alert(err.message || 'Widerspruch konnte nicht eingelegt werden');
-    } finally {
-      setDisputing(false);
-    }
+    setPromptModal({
+      title: t('pages.statements.disputeReason') || 'Grund für Widerspruch:',
+      onConfirm: async (reason) => {
+        setPromptModal(null);
+        setDisputing(true);
+        try {
+          const updated = await api.post(
+            `/billing/periods/${selectedPeriod.id}/dispute?reason=${encodeURIComponent(reason)}`,
+            {}
+          );
+          setSelectedPeriod(updated);
+          await loadData();
+        } catch (err) {
+          toast.show(err.message || 'Widerspruch konnte nicht eingelegt werden');
+        } finally {
+          setDisputing(false);
+        }
+      },
+    });
   };
 
   const handleOcrUpload = async (e) => {
@@ -351,10 +421,10 @@ export default function Statements() {
       if (ocrRes?.success) {
         setOcrDraft(ocrRes);
       } else {
-        window.alert(ocrRes?.error || 'OCR-Erkennung fehlgeschlagen');
+        toast.show(ocrRes?.error || 'OCR-Erkennung fehlgeschlagen');
       }
     } catch (err) {
-      window.alert(err.message || 'Import fehlgeschlagen');
+      toast.show(err.message || 'Import fehlgeschlagen');
     } finally {
       setOcrUploading(false);
       // Reset file input
@@ -377,7 +447,7 @@ export default function Statements() {
       setOcrDraft(null);
       loadData();
     } catch (err) {
-      window.alert(err.message || 'Kostenposition konnte nicht gespeichert werden');
+      toast.show(err.message || 'Kostenposition konnte nicht gespeichert werden');
     }
   };
 
@@ -407,7 +477,7 @@ export default function Statements() {
       a.remove();
       window.URL.revokeObjectURL(url);
     } catch (err) {
-      window.alert(err.message || 'Export fehlgeschlagen');
+      toast.show(err.message || 'Export fehlgeschlagen');
     } finally {
       setExporting(false);
     }
@@ -439,7 +509,7 @@ export default function Statements() {
       a.remove();
       window.URL.revokeObjectURL(url);
     } catch (err) {
-      window.alert(err.message || 'ZIP-Export fehlgeschlagen');
+      toast.show(err.message || 'ZIP-Export fehlgeschlagen');
     } finally {
       setExporting(false);
     }
@@ -470,7 +540,7 @@ export default function Statements() {
 
   const COLUMNS = getColumns(t);
   const COST_COLUMNS = getCostColumns(t);
-  const STMT_COLUMNS = getStmtColumns(t);
+  const STMT_COLUMNS = getStmtColumns(t, msg => toast.show(msg));
 
   if (loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
 
