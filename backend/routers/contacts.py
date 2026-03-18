@@ -52,7 +52,7 @@ def update_contact(contact_id: str, payload: ContactCreate) -> Contact:
 @router.patch("/{contact_id}", response_model=Contact)
 def patch_contact(contact_id: str, payload: ContactPatch) -> Contact:
     try:
-        return store._patch_entity(None, contact_id, payload, "Kontakt nicht gefunden")
+        return store._patch_entity("contact", contact_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 

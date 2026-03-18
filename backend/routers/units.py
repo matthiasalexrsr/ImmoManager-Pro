@@ -54,7 +54,7 @@ def update_unit(unit_id: str, payload: UnitCreate) -> Unit:
 @router.patch("/{unit_id}", response_model=Unit)
 def patch_unit(unit_id: str, payload: UnitPatch) -> Unit:
     try:
-        return store._patch_entity(None, unit_id, payload, "Einheit nicht gefunden")
+        return store._patch_entity("unit", unit_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 

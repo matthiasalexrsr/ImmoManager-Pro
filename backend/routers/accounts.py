@@ -54,7 +54,7 @@ def update_account(account_id: str, payload: AccountCreate) -> Account:
 @router.patch("/{account_id}", response_model=Account)
 def patch_account(account_id: str, payload: AccountPatch) -> Account:
     try:
-        return store._patch_entity(None, account_id, payload, "Konto nicht gefunden")
+        return store._patch_entity("account", account_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 

@@ -58,7 +58,7 @@ def update_rent_charge(charge_id: str, payload: RentChargeCreate) -> RentCharge:
 @router.patch("/{charge_id}", response_model=RentCharge)
 def patch_rent_charge(charge_id: str, payload: RentChargePatch) -> RentCharge:
     try:
-        return store._patch_entity(None, charge_id, payload, "Sollstellung nicht gefunden")
+        return store._patch_entity("rent_charge", charge_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 

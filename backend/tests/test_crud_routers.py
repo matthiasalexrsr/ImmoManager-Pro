@@ -504,12 +504,12 @@ class TestUnits:
 
     def test_list_units_with_filter(self) -> None:
         units.create_unit(
-            UnitCreate(property_id=self.prop.id, label="1", unit_type="Wohnung", status="rented")
+            UnitCreate(property_id=self.prop.id, label="1", unit_type="Wohnung", status="occupied")
         )
         units.create_unit(
             UnitCreate(property_id=self.prop.id, label="2", unit_type="Wohnung", status="vacant")
         )
-        assert len(_list_units(status_filter="rented")) == 1
+        assert len(_list_units(status_filter="occupied")) == 1
         assert len(_list_units(property_id=self.prop.id)) == 2
 
     def test_list_units_pagination(self) -> None:

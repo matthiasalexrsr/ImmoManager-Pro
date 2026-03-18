@@ -49,7 +49,7 @@ def get_thread(thread_id: str) -> MessageThread:
 @router.patch("/threads/{thread_id}", response_model=MessageThread)
 def patch_thread(thread_id: str, payload: MessageThreadPatch) -> MessageThread:
     try:
-        return store._patch_entity(None, thread_id, payload, "Thread nicht gefunden")
+        return store._patch_entity("message_thread", thread_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 

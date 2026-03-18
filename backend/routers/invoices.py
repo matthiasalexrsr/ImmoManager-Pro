@@ -73,7 +73,7 @@ def update_invoice(invoice_id: str, payload: InvoiceCreate) -> Invoice:
 @router.patch("/{invoice_id}", response_model=Invoice)
 def patch_invoice(invoice_id: str, payload: InvoicePatch) -> Invoice:
     try:
-        return store._patch_entity(None, invoice_id, payload, "Rechnung nicht gefunden")
+        return store._patch_entity("invoice", invoice_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 

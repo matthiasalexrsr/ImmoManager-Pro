@@ -134,6 +134,9 @@ def _prefs_to_dict(prefs) -> dict:
         "items_per_page": prefs.items_per_page,
         "date_format": prefs.date_format,
         "currency": prefs.currency,
+        "default_due_day": prefs.default_due_day,
+        "email_notifications": prefs.email_notifications,
+        "reminder_days": prefs.reminder_days,
     }
 
 

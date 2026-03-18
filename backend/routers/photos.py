@@ -51,7 +51,7 @@ async def upload_photo(
 @router.patch("/{photo_id}", response_model=EntityPhoto)
 def patch_photo(photo_id: str, payload: EntityPhotoPatch) -> EntityPhoto:
     try:
-        return store._patch_entity(None, photo_id, payload, "Foto nicht gefunden")
+        return store._patch_entity("entity_photo", photo_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

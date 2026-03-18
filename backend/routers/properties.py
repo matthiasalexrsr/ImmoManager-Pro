@@ -54,7 +54,7 @@ def update_property(property_id: str, payload: PropertyCreate) -> Property:
 @router.patch("/{property_id}", response_model=Property)
 def patch_property(property_id: str, payload: PropertyPatch) -> Property:
     try:
-        return store._patch_entity(None, property_id, payload, "Immobilie nicht gefunden")
+        return store._patch_entity("property", property_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 

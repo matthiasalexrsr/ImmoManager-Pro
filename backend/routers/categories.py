@@ -54,7 +54,7 @@ def update_category(category_id: str, payload: CategoryCreate) -> Category:
 @router.patch("/{category_id}", response_model=Category)
 def patch_category(category_id: str, payload: CategoryPatch) -> Category:
     try:
-        return store._patch_entity(None, category_id, payload, "Kategorie nicht gefunden")
+        return store._patch_entity("category", category_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 

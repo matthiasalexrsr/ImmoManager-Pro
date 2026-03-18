@@ -500,7 +500,7 @@ def dsgvo_anonymize_tenant(tenant_id: str):
     if patch_fields:
         try:
             patch = TenantPatch(**patch_fields)
-            store._patch_entity(None, tenant_id, patch, "Mieter nicht gefunden")
+            store._patch_entity("tenant", tenant_id, patch)
         except Exception as exc:
             logger.warning("Tenant patch failed during anonymization: %s", exc)
 

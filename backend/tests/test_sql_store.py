@@ -140,7 +140,7 @@ class TestPortfolios:
             store.get_portfolio("nonexistent")
 
     def test_patch(self, store, portfolio):
-        patched = store._patch_entity(None, portfolio.id, PortfolioPatch(name="Patched"), "Portfolio nicht gefunden")
+        patched = store._patch_entity("portfolio", portfolio.id, PortfolioPatch(name="Patched"))
         assert patched.name == "Patched"
         assert patched.currency == "EUR"  # unchanged
 

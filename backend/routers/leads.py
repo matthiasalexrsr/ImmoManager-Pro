@@ -57,7 +57,7 @@ def update_lead(lead_id: str, payload: LeadCreate) -> Lead:
 @router.patch("/{lead_id}", response_model=Lead)
 def patch_lead(lead_id: str, payload: LeadPatch) -> Lead:
     try:
-        return store._patch_entity(None, lead_id, payload, "Interessent nicht gefunden")
+        return store._patch_entity("lead", lead_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 

@@ -8,10 +8,10 @@ from backend.domain.property_engine import PropertyEngine, PropertySnapshot, Uni
 def test_property_performance_computation() -> None:
     prop = PropertySnapshot(property_id="p-1", property_name="Objekt A", market_value=Decimal("550000"))
     units = [
-        UnitSnapshot(property_id="p-1", unit_id="u-1", status="rented", cold_rent=Decimal("1000")),
+        UnitSnapshot(property_id="p-1", unit_id="u-1", status="occupied", cold_rent=Decimal("1000")),
         UnitSnapshot(property_id="p-1", unit_id="u-2", status="vacant", cold_rent=Decimal("900")),
-        UnitSnapshot(property_id="p-1", unit_id="u-3", status="rented", cold_rent=Decimal("1100")),
-        UnitSnapshot(property_id="p-2", unit_id="u-x", status="rented", cold_rent=Decimal("999")),
+        UnitSnapshot(property_id="p-1", unit_id="u-3", status="occupied", cold_rent=Decimal("1100")),
+        UnitSnapshot(property_id="p-2", unit_id="u-x", status="occupied", cold_rent=Decimal("999")),
     ]
 
     perf = PropertyEngine.property_performance(prop, units)
@@ -31,9 +31,9 @@ def test_portfolio_summary_aggregation() -> None:
         PropertySnapshot(property_id="p-2", property_name="Objekt B", market_value=Decimal("600000")),
     ]
     units = [
-        UnitSnapshot(property_id="p-1", unit_id="u-1", status="rented", cold_rent=Decimal("800")),
+        UnitSnapshot(property_id="p-1", unit_id="u-1", status="occupied", cold_rent=Decimal("800")),
         UnitSnapshot(property_id="p-1", unit_id="u-2", status="vacant", cold_rent=Decimal("700")),
-        UnitSnapshot(property_id="p-2", unit_id="u-3", status="rented", cold_rent=Decimal("1200")),
+        UnitSnapshot(property_id="p-2", unit_id="u-3", status="occupied", cold_rent=Decimal("1200")),
     ]
 
     summary = PropertyEngine.portfolio_summary(properties, units)
@@ -55,7 +55,7 @@ def test_snapshot_validation() -> None:
         PropertySnapshot(property_id="", property_name="Objekt")
 
     with pytest.raises(ValueError):
-        UnitSnapshot(property_id="p-1", unit_id="", status="rented")
+        UnitSnapshot(property_id="p-1", unit_id="", status="occupied")
 
     with pytest.raises(ValueError):
-        UnitSnapshot(property_id="p-1", unit_id="u-1", status="rented", cold_rent=Decimal("-1"))
+        UnitSnapshot(property_id="p-1", unit_id="u-1", status="occupied", cold_rent=Decimal("-1"))

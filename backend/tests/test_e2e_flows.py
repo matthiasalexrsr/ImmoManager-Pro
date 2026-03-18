@@ -139,13 +139,13 @@ class TestPropertyManagementFlow:
         # Step 4: PATCH the unit to update its rent
         patch_resp = client.patch(
             f"/api/v1/units/{unit_id}",
-            json={"cold_rent": 850.0, "status": "rented"},
+            json={"cold_rent": 850.0, "status": "occupied"},
             headers=auth_headers,
         )
         assert patch_resp.status_code == 200
         patched = patch_resp.json()
         assert patched["cold_rent"] == 850.0
-        assert patched["status"] == "rented"
+        assert patched["status"] == "occupied"
 
         # Step 5: Delete the property (should cascade-delete the unit)
         del_resp = client.delete(

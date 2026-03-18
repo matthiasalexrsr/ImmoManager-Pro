@@ -180,7 +180,7 @@ def test_reports_occupancy() -> None:
             property_id=property_item.id,
             label="1.1",
             unit_type="Wohnung",
-            status="rented",
+            status="occupied",
         )
     )
     store.create_unit(

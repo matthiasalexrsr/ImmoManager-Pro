@@ -169,9 +169,7 @@ def patch_billing_period(period_id: str, payload: BillingPeriodPatch) -> Billing
     try:
         existing = store.get_billing_period(period_id)
         _assert_period_mutable(existing)
-        return store._patch_entity(
-            None, period_id, payload, "Abrechnungsperiode nicht gefunden"
-        )
+        return store._patch_entity("billing_period", period_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -235,9 +233,7 @@ def update_allocation_key(key_id: str, payload: AllocationKeyCreate) -> Allocati
 @router.patch("/allocation-keys/{key_id}", response_model=AllocationKey)
 def patch_allocation_key(key_id: str, payload: AllocationKeyPatch) -> AllocationKey:
     try:
-        return store._patch_entity(
-            None, key_id, payload, "Verteilerschlüssel nicht gefunden"
-        )
+        return store._patch_entity("allocation_key", key_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -310,9 +306,7 @@ def patch_cost_item(item_id: str, payload: CostItemPatch) -> CostItem:
         existing = store.get_cost_item(item_id)
         period = store.get_billing_period(existing.billing_period_id)
         _assert_period_mutable(period)
-        return store._patch_entity(
-            None, item_id, payload, "Kostenposition nicht gefunden"
-        )
+        return store._patch_entity("cost_item", item_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -589,10 +583,9 @@ def finalize_billing_period(period_id: str) -> BillingPeriod:
             patch_data["snapshot_hash"] = snapshot
         if patch_data:
             store._patch_entity(
-                None,
+                "utility_statement",
                 stmt.id,
                 UtilityStatementPatch(**patch_data),
-                "Betriebskostenabrechnung nicht gefunden",
             )
 
     return finalized
@@ -635,9 +628,7 @@ def patch_utility_statement(statement_id: str, payload: UtilityStatementPatch) -
         existing = store.get_utility_statement(statement_id)
         period = store.get_billing_period(existing.billing_period_id)
         _assert_period_mutable(period)
-        return store._patch_entity(
-            None, statement_id, payload, "Betriebskostenabrechnung nicht gefunden"
-        )
+        return store._patch_entity("utility_statement", statement_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -946,7 +937,7 @@ def mark_statement_delivered(
         )
 
     return store._patch_entity(
-        None,
+        "utility_statement",
         statement_id,
         UtilityStatementPatch(
             delivery_status="delivered",
@@ -954,7 +945,6 @@ def mark_statement_delivered(
             delivery_channel=channel,
             status="delivered",
         ),
-        "Betriebskostenabrechnung nicht gefunden",
     )
 
 

@@ -70,7 +70,7 @@ def update_maintenance_case(case_id: str, payload: MaintenanceCaseCreate) -> Mai
 @router.patch("/{case_id}", response_model=MaintenanceCase)
 def patch_maintenance_case(case_id: str, payload: MaintenanceCasePatch) -> MaintenanceCase:
     try:
-        return store._patch_entity(None, case_id, payload, "Instandhaltungsfall nicht gefunden")
+        return store._patch_entity("maintenance", case_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 

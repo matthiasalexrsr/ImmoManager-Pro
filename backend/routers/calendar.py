@@ -50,7 +50,7 @@ def update_calendar_event(event_id: str, payload: CalendarEventCreate) -> Calend
 @router.patch("/{event_id}", response_model=CalendarEvent)
 def patch_calendar_event(event_id: str, payload: CalendarEventPatch) -> CalendarEvent:
     try:
-        return store._patch_entity(None, event_id, payload, "Termin nicht gefunden")
+        return store._patch_entity("calendar", event_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 

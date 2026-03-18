@@ -87,7 +87,7 @@ def update_contract(contract_id: str, payload: ContractCreate) -> Contract:
 @router.patch("/{contract_id}", response_model=Contract)
 def patch_contract(contract_id: str, payload: ContractPatch) -> Contract:
     try:
-        return store._patch_entity(None, contract_id, payload, "Vertrag nicht gefunden")
+        return store._patch_entity("contract", contract_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 

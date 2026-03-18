@@ -87,7 +87,7 @@ def update_budget(budget_id: str, payload: BudgetCreate):
 @router.patch("/{budget_id}", response_model=Budget)
 def patch_budget(budget_id: str, payload: BudgetPatch):
     try:
-        return store._patch_entity(None, budget_id, payload, "Budget nicht gefunden")
+        return store._patch_entity("budget", budget_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

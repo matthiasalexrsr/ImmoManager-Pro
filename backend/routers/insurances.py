@@ -59,7 +59,7 @@ def update_insurance(insurance_id: str, payload: InsuranceCreate) -> Insurance:
 @router.patch("/{insurance_id}", response_model=Insurance)
 def patch_insurance(insurance_id: str, payload: InsurancePatch) -> Insurance:
     try:
-        return store._patch_entity(None, insurance_id, payload, "Versicherung nicht gefunden")
+        return store._patch_entity("insurance", insurance_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

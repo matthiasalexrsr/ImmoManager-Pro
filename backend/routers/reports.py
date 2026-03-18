@@ -130,7 +130,7 @@ def get_finance_report(format: str | None = Query(None, alias="format")):
 def get_occupancy_report(format: str | None = Query(None, alias="format")):
     all_units = store.list_units()
     total_units = len(all_units)
-    rented_units = sum(1 for unit in all_units if unit.status == "rented")
+    rented_units = sum(1 for unit in all_units if unit.status == "occupied")
     occupancy_rate = (rented_units / total_units) if total_units else 0.0
 
     if format == "csv":

@@ -65,7 +65,7 @@ def _setup_data():
         portfolio_id=pf.id, name="Haus", property_type="residential"
     ))
     unit = store.create_unit(UnitCreate(
-        property_id=prop.id, label="W1", unit_type="apartment", status="rented"
+        property_id=prop.id, label="W1", unit_type="apartment", status="occupied"
     ))
     tenant = store.create_tenant(TenantCreate(full_name="Max"))
     contract = store.create_contract(ContractCreate(
@@ -249,9 +249,8 @@ class TestRecurringTasks:
         # Generate and complete first instance
         created = generate_recurring_tasks(as_of=date(2024, 2, 15))
         store._patch_entity(
-            store.tasks, created[0].id,
+            "task", created[0].id,
             type("P", (), {"model_dump": lambda self, **kw: {"status": "completed"}})(),
-            "Aufgabe nicht gefunden",
         )
         # Now it should generate the next one
         created2 = generate_recurring_tasks(as_of=date(2024, 3, 15))
@@ -266,7 +265,7 @@ class TestRecurringTasks:
         assert len(created) == 1
         # Complete the child
         from backend.models import TaskPatch
-        store._patch_entity(store.tasks, created[0].id, TaskPatch(status="completed"), "Aufgabe nicht gefunden")
+        store._patch_entity("task", created[0].id, TaskPatch(status="completed"))
         # COUNT=1 means only 1 child, so no more
         created2 = generate_recurring_tasks(as_of=date(2024, 3, 15))
         assert len(created2) == 0

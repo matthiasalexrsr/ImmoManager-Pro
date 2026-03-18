@@ -64,7 +64,7 @@ def update_meter(meter_id: str, payload: MeterCreate) -> Meter:
 @router.patch("/{meter_id}", response_model=Meter)
 def patch_meter(meter_id: str, payload: MeterPatch) -> Meter:
     try:
-        return store._patch_entity(None, meter_id, payload, "Zähler nicht gefunden")
+        return store._patch_entity("meter", meter_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 

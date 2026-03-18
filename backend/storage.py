@@ -1113,59 +1113,55 @@ class InMemoryStore:
             raise NotFoundError("Benachrichtigungsvorlage nicht gefunden")
         del self.notification_templates[template_id]
 
-    def _get_collection(self, not_found_msg: str) -> dict:
-        """Look up the right collection dict from a not-found message."""
-        _msg_to_collection = {
-            "Portfolio nicht gefunden": self.portfolios,
-            "Immobilie nicht gefunden": self.properties,
-            "Einheit nicht gefunden": self.units,
-            "Mieter nicht gefunden": self.tenants,
-            "Vertrag nicht gefunden": self.contracts,
-            "Konto nicht gefunden": self.accounts,
-            "Kategorie nicht gefunden": self.categories,
-            "Buchung nicht gefunden": self.bookings,
-            "Forderung nicht gefunden": self.receivables,
-            "Rechnung nicht gefunden": self.invoices,
-            "Instandhaltungsfall nicht gefunden": self.maintenance_cases,
-            "Dokument nicht gefunden": self.documents,
-            "Aufgabe nicht gefunden": self.tasks,
-            "Termin nicht gefunden": self.calendar_events,
-            "Inserat nicht gefunden": self.listings,
-            "Inseratsfoto nicht gefunden": self.listing_photos,
-            "Interessent nicht gefunden": self.leads,
-            "Besichtigungstermin nicht gefunden": self.viewing_appointments,
-            "Abrechnungsperiode nicht gefunden": self.billing_periods,
-            "Verteilerschlüssel nicht gefunden": self.allocation_keys,
-            "Kostenposition nicht gefunden": self.cost_items,
-            "Betriebskostenabrechnung nicht gefunden": self.utility_statements,
-            "Kaution nicht gefunden": self.deposits,
-            "Benachrichtigung nicht gefunden": self.notifications,
-            "Benachrichtigungsvorlage nicht gefunden": self.notification_templates,
-            "Steuersatz nicht gefunden": self.tax_rates,
-            "Mietanpassung nicht gefunden": self.rent_adjustments,
-            "Übergabeprotokoll nicht gefunden": self.handover_protocols,
-            "Budget nicht gefunden": self.budgets,
-            "Eskalationsregel nicht gefunden": self.escalation_rules,
-            "Zählerstand nicht gefunden": self.meter_readings,
-            "Kontakt nicht gefunden": self.contacts,
-            "Zähler nicht gefunden": self.meters,
-            "Ablesung nicht gefunden": self.standalone_meter_readings,
-            "Thread nicht gefunden": self.message_threads,
-            "Nachricht nicht gefunden": self.messages,
-            "Sollstellung nicht gefunden": self.rent_charges,
-        }
-        collection = _msg_to_collection.get(not_found_msg)
-        if collection is None:
-            raise ValueError(f"Unknown entity type for message: {not_found_msg}")
-        return collection
+    _ENTITY_TYPE_MAP = {
+        "portfolio": ("portfolios", "Portfolio nicht gefunden"),
+        "property": ("properties", "Immobilie nicht gefunden"),
+        "unit": ("units", "Einheit nicht gefunden"),
+        "tenant": ("tenants", "Mieter nicht gefunden"),
+        "contract": ("contracts", "Vertrag nicht gefunden"),
+        "account": ("accounts", "Konto nicht gefunden"),
+        "category": ("categories", "Kategorie nicht gefunden"),
+        "booking": ("bookings", "Buchung nicht gefunden"),
+        "receivable": ("receivables", "Forderung nicht gefunden"),
+        "invoice": ("invoices", "Rechnung nicht gefunden"),
+        "maintenance": ("maintenance_cases", "Instandhaltungsfall nicht gefunden"),
+        "document": ("documents", "Dokument nicht gefunden"),
+        "task": ("tasks", "Aufgabe nicht gefunden"),
+        "calendar": ("calendar_events", "Termin nicht gefunden"),
+        "listing": ("listings", "Inserat nicht gefunden"),
+        "listing_photo": ("listing_photos", "Inseratsfoto nicht gefunden"),
+        "lead": ("leads", "Interessent nicht gefunden"),
+        "viewing": ("viewing_appointments", "Besichtigungstermin nicht gefunden"),
+        "billing_period": ("billing_periods", "Abrechnungsperiode nicht gefunden"),
+        "allocation_key": ("allocation_keys", "Verteilerschlüssel nicht gefunden"),
+        "cost_item": ("cost_items", "Kostenposition nicht gefunden"),
+        "utility_statement": ("utility_statements", "Betriebskostenabrechnung nicht gefunden"),
+        "deposit": ("deposits", "Kaution nicht gefunden"),
+        "notification": ("notifications", "Benachrichtigung nicht gefunden"),
+        "notification_template": ("notification_templates", "Benachrichtigungsvorlage nicht gefunden"),
+        "tax_rate": ("tax_rates", "Steuersatz nicht gefunden"),
+        "rent_adjustment": ("rent_adjustments", "Mietanpassung nicht gefunden"),
+        "handover_protocol": ("handover_protocols", "Übergabeprotokoll nicht gefunden"),
+        "meter_reading": ("meter_readings", "Zählerstand nicht gefunden"),
+        "budget": ("budgets", "Budget nicht gefunden"),
+        "escalation_rule": ("escalation_rules", "Eskalationsregel nicht gefunden"),
+        "insurance": ("insurances", "Versicherung nicht gefunden"),
+        "entity_photo": ("entity_photos", "Foto nicht gefunden"),
+        "contact": ("contacts", "Kontakt nicht gefunden"),
+        "meter": ("meters", "Zähler nicht gefunden"),
+        "standalone_reading": ("standalone_meter_readings", "Ablesung nicht gefunden"),
+        "message_thread": ("message_threads", "Thread nicht gefunden"),
+        "message": ("messages", "Nachricht nicht gefunden"),
+        "rent_charge": ("rent_charges", "Sollstellung nicht gefunden"),
+    }
 
-    def _patch_entity(self, _collection_unused, entity_id: str, patch: PydanticBaseModel, not_found_msg: str):
-        """Apply a partial update to an entity. Only non-None fields in the patch are applied.
-
-        The first argument is unused (kept for API compatibility) — the collection
-        is resolved from not_found_msg, matching SQLAlchemyStore behaviour.
-        """
-        collection = self._get_collection(not_found_msg)
+    def _patch_entity(self, entity_type: str, entity_id: str, patch: PydanticBaseModel):
+        """Apply a partial update to an entity. Only non-None fields in the patch are applied."""
+        entry = self._ENTITY_TYPE_MAP.get(entity_type)
+        if entry is None:
+            raise ValueError(f"Unknown entity type: {entity_type}")
+        attr_name, not_found_msg = entry
+        collection = getattr(self, attr_name)
         if entity_id not in collection:
             raise NotFoundError(not_found_msg)
         old = collection[entity_id]

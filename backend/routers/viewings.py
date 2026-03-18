@@ -54,9 +54,7 @@ def update_viewing(appointment_id: str, payload: ViewingAppointmentCreate) -> Vi
 @router.patch("/{appointment_id}", response_model=ViewingAppointment)
 def patch_viewing(appointment_id: str, payload: ViewingAppointmentPatch) -> ViewingAppointment:
     try:
-        return store._patch_entity(
-            None, appointment_id, payload, "Besichtigungstermin nicht gefunden"
-        )
+        return store._patch_entity("viewing", appointment_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 

@@ -55,7 +55,7 @@ def update_rule(rule_id: str, payload: EscalationRuleCreate):
 @router.patch("/rules/{rule_id}", response_model=EscalationRule)
 def patch_rule(rule_id: str, payload: EscalationRulePatch):
     try:
-        return store._patch_entity(None, rule_id, payload, "Eskalationsregel nicht gefunden")
+        return store._patch_entity("escalation_rule", rule_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

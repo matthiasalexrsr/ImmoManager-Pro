@@ -79,7 +79,7 @@ def update_handover_protocol(protocol_id: str, payload: HandoverProtocolCreate):
 @router.patch("/{protocol_id}", response_model=HandoverProtocol)
 def patch_handover_protocol(protocol_id: str, payload: HandoverProtocolPatch):
     try:
-        return store._patch_entity(None, protocol_id, payload, "Übergabeprotokoll nicht gefunden")
+        return store._patch_entity("handover_protocol", protocol_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -138,7 +138,7 @@ def patch_meter_reading(protocol_id: str, reading_id: str, payload: MeterReading
         updates = payload.model_dump(exclude_unset=True)
         if "handover_id" in updates and updates["handover_id"] != protocol_id:
             raise ValidationError("handover_id muss der URL-Protokoll-ID entsprechen")
-        return store._patch_entity(None, reading_id, payload, "Zählerstand nicht gefunden")
+        return store._patch_entity("meter_reading", reading_id, payload)
     except (NotFoundError, ValidationError) as exc:
         code = 404 if isinstance(exc, NotFoundError) else 400
         raise HTTPException(status_code=code, detail=str(exc)) from exc

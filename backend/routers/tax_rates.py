@@ -39,7 +39,7 @@ def update_tax_rate(tax_rate_id: str, payload: TaxRateCreate):
 @router.patch("/{tax_rate_id}", response_model=TaxRate)
 def patch_tax_rate(tax_rate_id: str, payload: TaxRatePatch):
     try:
-        return store._patch_entity(None, tax_rate_id, payload, "Steuersatz nicht gefunden")
+        return store._patch_entity("tax_rate", tax_rate_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

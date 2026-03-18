@@ -73,7 +73,7 @@ def update_listing_photo(photo_id: str, payload: ListingPhotoCreate) -> ListingP
 @router.patch("/photos/{photo_id}", response_model=ListingPhoto)
 def patch_listing_photo(photo_id: str, payload: ListingPhotoPatch) -> ListingPhoto:
     try:
-        return store._patch_entity(None, photo_id, payload, "Inseratsfoto nicht gefunden")
+        return store._patch_entity("listing_photo", photo_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -109,7 +109,7 @@ def update_listing(listing_id: str, payload: ListingCreate) -> Listing:
 @router.patch("/{listing_id}", response_model=Listing)
 def patch_listing(listing_id: str, payload: ListingPatch) -> Listing:
     try:
-        return store._patch_entity(None, listing_id, payload, "Inserat nicht gefunden")
+        return store._patch_entity("listing", listing_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 

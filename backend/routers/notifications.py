@@ -68,9 +68,7 @@ def update_notification_template(template_id: str, payload: NotificationTemplate
 @router.patch("/templates/{template_id}", response_model=NotificationTemplate)
 def patch_notification_template(template_id: str, payload: NotificationTemplatePatch) -> NotificationTemplate:
     try:
-        return store._patch_entity(
-            None, template_id, payload, "Benachrichtigungsvorlage nicht gefunden"
-        )
+        return store._patch_entity("notification_template", template_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -254,9 +252,7 @@ def mark_notification_read(notification_id: str) -> Notification:
 @router.patch("/{notification_id}", response_model=Notification)
 def patch_notification(notification_id: str, payload: NotificationPatch) -> Notification:
     try:
-        return store._patch_entity(
-            None, notification_id, payload, "Benachrichtigung nicht gefunden"
-        )
+        return store._patch_entity("notification", notification_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 

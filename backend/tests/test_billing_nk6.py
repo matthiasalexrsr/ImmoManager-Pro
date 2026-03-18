@@ -160,8 +160,7 @@ def test_dispute_delivered_period():
         billing.mark_statement_delivered(stmt.id)
 
     from backend.models import BillingPeriodPatch
-    store._patch_entity(None, period.id, BillingPeriodPatch(status="delivered"),
-                        "Abrechnungsperiode nicht gefunden")
+    store._patch_entity("billing_period", period.id, BillingPeriodPatch(status="delivered"))
 
     result = billing.dispute_billing_period(period.id)
     assert result.status == "disputed"

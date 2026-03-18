@@ -264,11 +264,7 @@ def test_finalize_rejects_delivered_status():
 
     # Patch period to delivered status
     from backend.models import BillingPeriodPatch
-    store._patch_entity(
-        None, period.id,
-        BillingPeriodPatch(status="delivered"),
-        "Abrechnungsperiode nicht gefunden",
-    )
+    store._patch_entity("billing_period", period.id, BillingPeriodPatch(status="delivered"))
     refreshed = store.get_billing_period(period.id)
     assert refreshed.status == "delivered"
 

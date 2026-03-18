@@ -1301,57 +1301,54 @@ class SQLAlchemyStore:
 
     # --- Generic patch (mirrors InMemoryStore._patch_entity) ---
 
-    def _patch_entity(self, collection_unused, entity_id: str, patch: PydanticBaseModel, not_found_msg: str):
-        """Apply a partial update. Matches InMemoryStore._patch_entity signature.
+    _ENTITY_TYPE_MAP = {
+        "portfolio": "_portfolios",
+        "property": "_properties",
+        "unit": "_units",
+        "tenant": "_tenants",
+        "contract": "_contracts",
+        "account": "_accounts",
+        "category": "_categories",
+        "booking": "_bookings",
+        "receivable": "_receivables",
+        "invoice": "_invoices",
+        "maintenance": "_maintenance",
+        "document": "_documents",
+        "task": "_tasks",
+        "calendar": "_calendar",
+        "listing": "_listings",
+        "listing_photo": "_listing_photos",
+        "lead": "_leads",
+        "viewing": "_viewings",
+        "billing_period": "_billing_periods",
+        "allocation_key": "_allocation_keys",
+        "cost_item": "_cost_items",
+        "utility_statement": "_utility_statements",
+        "deposit": "_deposits",
+        "notification": "_notifications",
+        "notification_template": "_notification_templates",
+        "tax_rate": "_tax_rates",
+        "rent_adjustment": "_rent_adjustments",
+        "handover_protocol": "_handover_protocols",
+        "meter_reading": "_meter_readings",
+        "budget": "_budgets",
+        "escalation_rule": "_escalation_rules",
+        "insurance": "_insurances",
+        "entity_photo": "_entity_photos",
+        "contact": "_contacts",
+        "meter": "_meters",
+        "standalone_reading": "_standalone_readings",
+        "message_thread": "_message_threads",
+        "message": "_messages",
+        "rent_charge": "_rent_charges",
+    }
 
-        The `collection_unused` parameter exists for API compatibility with InMemoryStore
-        (where it's a dict reference). In SQL mode, we determine the ORM class from not_found_msg.
-        """
-        # Map not_found_msg to the correct repository
-        repo_map = {
-            "Portfolio nicht gefunden": self._portfolios,
-            "Immobilie nicht gefunden": self._properties,
-            "Einheit nicht gefunden": self._units,
-            "Mieter nicht gefunden": self._tenants,
-            "Vertrag nicht gefunden": self._contracts,
-            "Konto nicht gefunden": self._accounts,
-            "Kategorie nicht gefunden": self._categories,
-            "Buchung nicht gefunden": self._bookings,
-            "Forderung nicht gefunden": self._receivables,
-            "Rechnung nicht gefunden": self._invoices,
-            "Instandhaltungsfall nicht gefunden": self._maintenance,
-            "Dokument nicht gefunden": self._documents,
-            "Aufgabe nicht gefunden": self._tasks,
-            "Termin nicht gefunden": self._calendar,
-            "Inserat nicht gefunden": self._listings,
-            "Inseratsfoto nicht gefunden": self._listing_photos,
-            "Interessent nicht gefunden": self._leads,
-            "Besichtigungstermin nicht gefunden": self._viewings,
-            "Abrechnungsperiode nicht gefunden": self._billing_periods,
-            "Verteilerschlüssel nicht gefunden": self._allocation_keys,
-            "Kostenposition nicht gefunden": self._cost_items,
-            "Betriebskostenabrechnung nicht gefunden": self._utility_statements,
-            "Kaution nicht gefunden": self._deposits,
-            "Benachrichtigung nicht gefunden": self._notifications,
-            "Benachrichtigungsvorlage nicht gefunden": self._notification_templates,
-            "Steuersatz nicht gefunden": self._tax_rates,
-            "Mietanpassung nicht gefunden": self._rent_adjustments,
-            "Übergabeprotokoll nicht gefunden": self._handover_protocols,
-            "Zählerstand nicht gefunden": self._meter_readings,
-            "Budget nicht gefunden": self._budgets,
-            "Eskalationsregel nicht gefunden": self._escalation_rules,
-            "Versicherung nicht gefunden": self._insurances,
-            "Foto nicht gefunden": self._entity_photos,
-            "Kontakt nicht gefunden": self._contacts,
-            "Zähler nicht gefunden": self._meters,
-            "Ablesung nicht gefunden": self._standalone_readings,
-            "Thread nicht gefunden": self._message_threads,
-            "Nachricht nicht gefunden": self._messages,
-            "Sollstellung nicht gefunden": self._rent_charges,
-        }
-        repo = repo_map.get(not_found_msg)
-        if repo is None:
-            raise ValueError(f"Unknown entity type for message: {not_found_msg}")
+    def _patch_entity(self, entity_type: str, entity_id: str, patch: PydanticBaseModel):
+        """Apply a partial update using the entity type string to resolve the repository."""
+        attr_name = self._ENTITY_TYPE_MAP.get(entity_type)
+        if attr_name is None:
+            raise ValueError(f"Unknown entity type: {entity_type}")
+        repo = getattr(self, attr_name)
         result = repo.patch(entity_id, patch)
         self._commit()
         return result
