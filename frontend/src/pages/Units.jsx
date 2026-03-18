@@ -31,6 +31,7 @@ export default function Units() {
     ]},
     { key: 'area_sqm', label: t('units.list.columns.area') || 'Fläche (m²)', type: 'number' },
     { key: 'rooms', label: t('units.form.rooms') || 'Zimmer', type: 'number' },
+    { key: 'person_count', label: t('units.form.personCount') || 'Personenzahl', type: 'number', placeholder: 'Bewohneranzahl für NK-Abrechnung' },
     { key: 'floor', label: t('units.form.floor') || 'Etage' },
     { key: 'cold_rent', label: t('units.list.columns.coldRent') || 'Kaltmiete (€)', type: 'number' },
     { key: 'service_charge_advance', label: t('units.form.serviceChargeAdvance') || 'NK-Vorauszahlung (€)', type: 'number' },

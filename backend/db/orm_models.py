@@ -90,6 +90,7 @@ class UnitORM(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False, default="vacant")
     area_sqm: Mapped[float | None] = mapped_column(Float)
     rooms: Mapped[float | None] = mapped_column(Float)
+    person_count: Mapped[int | None] = mapped_column(Integer)
     floor: Mapped[str | None] = mapped_column(Text)
     cold_rent: Mapped[float | None] = mapped_column(Float)
     service_charge_advance: Mapped[float | None] = mapped_column(Float)

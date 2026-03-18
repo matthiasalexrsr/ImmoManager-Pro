@@ -61,6 +61,7 @@ export default function UnitOverview() {
               <dt>Etage</dt><dd>{unit.floor ?? '—'}</dd>
               <dt>Fläche</dt><dd>{unit.area_sqm ? `${unit.area_sqm} m²` : '—'}</dd>
               <dt>Zimmer</dt><dd>{unit.rooms ?? '—'}</dd>
+              <dt>Personenzahl</dt><dd>{unit.person_count ?? '—'}</dd>
               <dt>Ausstattung</dt><dd>{unit.features || '—'}</dd>
               <dt>Kaltmiete</dt><dd>{unit.base_rent ? `${Number(unit.base_rent).toFixed(2)} €` : '—'}</dd>
               <dt>Nebenkosten</dt><dd>{unit.service_charge ? `${Number(unit.service_charge).toFixed(2)} €` : '—'}</dd>

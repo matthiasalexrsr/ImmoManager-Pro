@@ -57,6 +57,7 @@ class UnitCreate(BaseModel):
     service_charge_advance: Optional[float] = None
     heating_advance: Optional[float] = None
     features: Optional[str] = None
+    person_count: Optional[int] = None
 
 
 class Unit(UnitCreate):
@@ -369,6 +370,7 @@ class UnitPatch(BaseModel):
     service_charge_advance: Optional[float] = None
     heating_advance: Optional[float] = None
     features: Optional[str] = None
+    person_count: Optional[int] = None
 
 
 class TenantPatch(BaseModel):

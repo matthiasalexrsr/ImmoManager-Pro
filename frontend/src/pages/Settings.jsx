@@ -56,7 +56,7 @@ export default function Settings() {
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      console.warn('[Settings] export:', err.message);
+      setBackupStatus(`Export fehlgeschlagen: ${err.message}`);
     } finally {
       setExportLoading(false);
     }

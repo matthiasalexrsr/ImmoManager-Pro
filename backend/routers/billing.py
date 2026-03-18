@@ -391,7 +391,8 @@ def _run_billing_period_preflight(period_id: str) -> BillingPreflightResult:
 
         if requires_area and (unit.area_sqm is None or unit.area_sqm <= 0):
             area_missing_unit_ids.append(unit.id)
-        if requires_person_count and (unit.rooms is None or unit.rooms <= 0):
+        _pc = unit.person_count if getattr(unit, "person_count", None) else unit.rooms
+        if requires_person_count and (_pc is None or _pc <= 0):
             missing_person_count_unit_ids.append(unit.id)
 
         monthly_advance = float((unit.service_charge_advance or 0) + (unit.heating_advance or 0))
@@ -426,7 +427,7 @@ def _run_billing_period_preflight(period_id: str) -> BillingPreflightResult:
         add_issue(
             "blocker",
             "MISSING_PERSON_COUNT",
-            "rooms fehlt oder ist 0 für person_count-Verteilung",
+            "person_count (oder rooms als Fallback) fehlt oder ist 0 für person_count-Verteilung",
             ", ".join(sorted(set(missing_person_count_unit_ids))),
         )
     if requires_consumption and not consumption_units_with_data and contracts_in_period:
@@ -736,7 +737,8 @@ def generate_utility_statements(period_id: str) -> list[UtilityStatement]:
             elif key.key_type == "unit_count":
                 share_value = Decimal("1")
             elif key.key_type == "person_count":
-                share_value = Decimal(str(unit.rooms or 0))
+                _pc = unit.person_count if getattr(unit, "person_count", None) else unit.rooms
+                share_value = Decimal(str(_pc or 0))
             elif key.key_type == "consumption":
                 share_value = consumption_by_unit.get(unit.id, Decimal("0"))
             else:

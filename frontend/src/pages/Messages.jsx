@@ -10,6 +10,7 @@ export default function Messages() {
   const [selectedThread, setSelectedThread] = useState(null);
   const [threadMessages, setThreadMessages] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const { t } = useTranslation();
   const [view, setView] = useState('notifications');
   const [selected, setSelected] = useState(null);
@@ -40,15 +41,20 @@ export default function Messages() {
 
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedThread) return;
-    await api.post(`/messages/threads/${selectedThread.id}/messages`, {
-      thread_id: selectedThread.id,
-      sender_name: 'Ich',
-      body: newMessage,
-    }).catch(() => {});
-    setNewMessage('');
-    loadThreadMessages(selectedThread);
-    const thr = await api.get('/messages/threads').catch(() => []);
-    setThreads(thr || []);
+    setError(null);
+    try {
+      await api.post(`/messages/threads/${selectedThread.id}/messages`, {
+        thread_id: selectedThread.id,
+        sender_name: 'Ich',
+        body: newMessage,
+      });
+      setNewMessage('');
+      loadThreadMessages(selectedThread);
+      const thr = await api.get('/messages/threads').catch(() => []);
+      setThreads(thr || []);
+    } catch (err) {
+      setError(err.message || 'Nachricht konnte nicht gesendet werden');
+    }
   };
 
   const handleCreateThread = async (data) => {
@@ -75,6 +81,13 @@ export default function Messages() {
   return (
     <div className="page">
       <h1 className="page-title">{t('pages.messages.title')}</h1>
+
+      {error && (
+        <div className="alert alert-danger" style={{ marginBottom: '1rem', padding: '0.75rem', background: 'var(--color-error-bg, #fef2f2)', border: '1px solid var(--color-error, #dc2626)', borderRadius: '6px', color: 'var(--color-error, #dc2626)' }}>
+          {error}
+          <button className="btn btn-sm" onClick={() => setError(null)} style={{ float: 'right' }}>&times;</button>
+        </div>
+      )}
 
       <div className="tab-bar" style={{ marginBottom: '1rem' }}>
         <button

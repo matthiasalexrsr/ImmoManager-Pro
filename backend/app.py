@@ -56,6 +56,9 @@ def _validate_startup_config() -> None:
     if settings.auto_seed_demo_data:
         issues.append("AUTO_SEED_DEMO_DATA is enabled. Disable demo seeding in production.")
 
+    if settings.auto_migrate:
+        issues.append("AUTO_MIGRATE is enabled. Run migrations explicitly via CI/CD in production.")
+
     if settings.allow_inmemory_fallback:
         issues.append("ALLOW_INMEMORY_FALLBACK is enabled. Disable to prevent silent data loss.")
 

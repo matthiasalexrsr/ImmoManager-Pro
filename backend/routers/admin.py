@@ -14,6 +14,20 @@ from ..config import settings
 from ..dependencies import store
 from ..plugins import get_plugins
 
+# Re-export the CONTRACT_WIZARD_STATUS lazily to avoid circular imports.
+_CONTRACT_WIZARD_STATUS = None
+
+
+def _get_wizard_status() -> dict:
+    global _CONTRACT_WIZARD_STATUS
+    if _CONTRACT_WIZARD_STATUS is None:
+        try:
+            from ..app import CONTRACT_WIZARD_STATUS
+            _CONTRACT_WIZARD_STATUS = CONTRACT_WIZARD_STATUS
+        except Exception:
+            _CONTRACT_WIZARD_STATUS = {"available": False, "reason": "unknown"}
+    return _CONTRACT_WIZARD_STATUS
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -70,12 +84,29 @@ def _export_store_data() -> dict:
 
 def _clear_store_data() -> None:
     """Delete exported entities in reverse dependency order."""
+    # Children / leaves first, then parents.
     delete_order = [
+        ("list_meter_readings", "delete_meter_reading"),
+        ("list_handover_protocols", "delete_handover_protocol"),
+        ("list_contacts", "delete_contact"),
+        ("list_escalation_rules", "delete_escalation_rule"),
+        ("list_rent_charges", "delete_rent_charge"),
+        ("list_rent_adjustments", "delete_rent_adjustment"),
+        ("list_tax_rates", "delete_tax_rate"),
+        ("list_viewings", "delete_viewing_appointment"),
+        ("list_listings", "delete_listing"),
+        ("list_leads", "delete_lead"),
+        ("list_budgets", "delete_budget"),
+        ("list_notification_templates", "delete_notification_template"),
+        ("list_notifications", "delete_notification"),
+        ("list_deposits", "delete_deposit"),
+        ("list_insurances", "delete_insurance"),
         ("list_tasks", "delete_task"),
         ("list_documents", "delete_document"),
         ("list_maintenance_cases", "delete_maintenance_case"),
         ("list_invoices", "delete_invoice"),
         ("list_bookings", "delete_booking"),
+        ("list_categories", "delete_category"),
         ("list_accounts", "delete_account"),
         ("list_contracts", "delete_contract"),
         ("list_tenants", "delete_tenant"),
@@ -85,28 +116,54 @@ def _clear_store_data() -> None:
     ]
 
     for list_fn_name, delete_fn_name in delete_order:
-        list_fn = getattr(store, list_fn_name)
-        delete_fn = getattr(store, delete_fn_name)
+        list_fn = getattr(store, list_fn_name, None)
+        delete_fn = getattr(store, delete_fn_name, None)
+        if not list_fn or not delete_fn:
+            continue
         for item in list_fn():
-            delete_fn(item.id)
+            try:
+                delete_fn(item.id)
+            except Exception:
+                logger.warning("Clear failed for %s/%s", delete_fn_name, item.id)
 
 
 def _import_store_data(data: dict, *, replace_existing: bool) -> dict:
-    """Import store data from export/backup JSON."""
+    """Import store data from export/backup JSON.
+
+    Covers all entity types that _export_store_data() can produce so that
+    export → import round-trips are lossless.
+    """
     from ..models import (
         AccountCreate,
         BookingCreate,
+        BudgetCreate,
+        CategoryCreate,
+        ContactCreate,
         ContractCreate,
+        DepositCreate,
         DocumentCreate,
+        EscalationRuleCreate,
+        HandoverProtocolCreate,
+        InsuranceCreate,
         InvoiceCreate,
+        LeadCreate,
+        ListingCreate,
         MaintenanceCaseCreate,
+        MeterReadingCreate,
+        NotificationCreate,
+        NotificationTemplateCreate,
         PortfolioCreate,
         PropertyCreate,
+        RentAdjustmentCreate,
+        RentChargeCreate,
         TaskCreate,
+        TaxRateCreate,
         TenantCreate,
         UnitCreate,
+        ViewingAppointmentCreate,
     )
 
+    # Import order follows dependency chain (parents before children).
     entity_configs = [
         ("portfolios", PortfolioCreate, store.create_portfolio),
         ("properties", PropertyCreate, store.create_property),
@@ -114,11 +171,28 @@ def _import_store_data(data: dict, *, replace_existing: bool) -> dict:
         ("tenants", TenantCreate, store.create_tenant),
         ("contracts", ContractCreate, store.create_contract),
         ("accounts", AccountCreate, store.create_account),
+        ("categories", CategoryCreate, store.create_category),
         ("bookings", BookingCreate, store.create_booking),
         ("invoices", InvoiceCreate, store.create_invoice),
+        ("receivables", None, None),  # placeholder — handled if model exists
         ("maintenance_cases", MaintenanceCaseCreate, store.create_maintenance_case),
         ("documents", DocumentCreate, store.create_document),
         ("tasks", TaskCreate, store.create_task),
+        ("deposits", DepositCreate, store.create_deposit),
+        ("insurances", InsuranceCreate, store.create_insurance),
+        ("notifications", NotificationCreate, store.create_notification),
+        ("notification_templates", NotificationTemplateCreate, store.create_notification_template),
+        ("budgets", BudgetCreate, store.create_budget),
+        ("leads", LeadCreate, store.create_lead),
+        ("listings", ListingCreate, store.create_listing),
+        ("viewings", ViewingAppointmentCreate, store.create_viewing_appointment),
+        ("tax_rates", TaxRateCreate, store.create_tax_rate),
+        ("rent_charges", RentChargeCreate, store.create_rent_charge),
+        ("rent_adjustments", RentAdjustmentCreate, store.create_rent_adjustment),
+        ("escalation_rules", EscalationRuleCreate, store.create_escalation_rule),
+        ("contacts", ContactCreate, store.create_contact),
+        ("handover_protocols", HandoverProtocolCreate, store.create_handover_protocol),
+        ("meter_readings", MeterReadingCreate, store.create_meter_reading),
     ]
 
     if replace_existing:
@@ -126,15 +200,22 @@ def _import_store_data(data: dict, *, replace_existing: bool) -> dict:
 
     counts = {}
     for key, model_cls, create_fn in entity_configs:
+        if model_cls is None or create_fn is None:
+            continue
         items = data.get(key, [])
+        if not items:
+            continue
         imported = 0
         for item in items:
-            cleaned_item = dict(item)
-            for skip in ("id", "created_at", "updated_at"):
-                cleaned_item.pop(skip, None)
-            obj = model_cls(**cleaned_item)
-            create_fn(obj)
-            imported += 1
+            try:
+                cleaned_item = dict(item)
+                for skip in ("id", "created_at", "updated_at"):
+                    cleaned_item.pop(skip, None)
+                obj = model_cls(**cleaned_item)
+                create_fn(obj)
+                imported += 1
+            except Exception:
+                logger.warning("Import failed for %s item: %s", key, item.get("id", "?"), exc_info=True)
         counts[key] = imported
 
     return {"imported": counts, "replace_existing": replace_existing}
@@ -153,6 +234,45 @@ def get_version():
         "python_version": platform.python_version(),
         "database": db_type,
         "plugins": plugins,
+        "default_locale": settings.default_locale,
+    }
+
+
+# ─── System Status ───────────────────────────────────────────────────────────
+
+@router.get("/system-status")
+def system_status():
+    """Comprehensive system status for admin diagnostics."""
+    from ..dependencies import _use_sql_store, store as active_store
+
+    store_type = type(active_store).__name__
+
+    db_ok = True
+    if _use_sql_store:
+        try:
+            from ..db.session import engine
+            import sqlalchemy
+            with engine.connect() as conn:
+                conn.execute(sqlalchemy.text("SELECT 1"))
+        except Exception:
+            db_ok = False
+
+    wizard_status = _get_wizard_status()
+
+    return {
+        "version": settings.app_version,
+        "environment": settings.environment.value,
+        "active_store": store_type,
+        "persistent": store_type != "InMemoryStore",
+        "database_connected": db_ok,
+        "allow_inmemory_fallback": settings.allow_inmemory_fallback,
+        "auto_seed_demo_data": settings.auto_seed_demo_data,
+        "auto_migrate": settings.auto_migrate,
+        "contract_wizard_available": wizard_status.get("available", False),
+        "contract_wizard_reason": wizard_status.get("reason"),
+        "plugin_dirs": settings.plugin_dirs,
+        "loaded_plugins": [p.to_dict() for p in get_plugins()],
+        "max_upload_size_bytes": settings.max_upload_size_bytes,
         "default_locale": settings.default_locale,
     }
 

@@ -111,7 +111,7 @@ export default function Documents() {
         setOcrResult({ success: false, guessedType: guessDocType(file.name), message: 'Dateityp nicht OCR-fähig' });
       }
     } catch (err) {
-      console.warn('[Documents] upload failed:', err.message);
+      setOcrResult({ success: false, guessedType: 'Sonstiges', message: `Upload fehlgeschlagen: ${err.message}` });
     } finally {
       setUploading(false);
     }
