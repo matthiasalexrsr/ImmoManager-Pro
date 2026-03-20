@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
@@ -15,8 +15,8 @@ class PortfolioCreate(BaseModel):
 
 class Portfolio(PortfolioCreate):
     id: str = Field(..., min_length=1)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class PropertyCreate(BaseModel):
@@ -41,8 +41,8 @@ class PropertyCreate(BaseModel):
 
 class Property(PropertyCreate):
     id: str = Field(..., min_length=1)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class UnitCreate(BaseModel):
@@ -62,8 +62,8 @@ class UnitCreate(BaseModel):
 
 class Unit(UnitCreate):
     id: str = Field(..., min_length=1)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class TenantCreate(BaseModel):
@@ -89,8 +89,8 @@ class TenantCreate(BaseModel):
 
 class Tenant(TenantCreate):
     id: str = Field(..., min_length=1)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 _VALID_CONTRACT_STATUSES = {"active", "terminated", "expired", "draft"}
@@ -127,8 +127,8 @@ class ContractCreate(BaseModel):
 
 class Contract(ContractCreate):
     id: str = Field(..., min_length=1)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class AccountCreate(BaseModel):
@@ -144,8 +144,8 @@ class AccountCreate(BaseModel):
 
 class Account(AccountCreate):
     id: str = Field(..., min_length=1)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class CategoryCreate(BaseModel):
@@ -156,8 +156,8 @@ class CategoryCreate(BaseModel):
 
 class Category(CategoryCreate):
     id: str = Field(..., min_length=1)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class BookingCreate(BaseModel):
@@ -175,8 +175,8 @@ class BookingCreate(BaseModel):
 
 class Booking(BookingCreate):
     id: str = Field(..., min_length=1)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class ReceivableCreate(BaseModel):
@@ -190,8 +190,8 @@ class ReceivableCreate(BaseModel):
 
 class Receivable(ReceivableCreate):
     id: str = Field(..., min_length=1)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class InvoiceCreate(BaseModel):
@@ -209,8 +209,8 @@ class InvoiceCreate(BaseModel):
 
 class Invoice(InvoiceCreate):
     id: str = Field(..., min_length=1)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class MaintenanceCaseCreate(BaseModel):
@@ -231,8 +231,8 @@ class MaintenanceCaseCreate(BaseModel):
 
 class MaintenanceCase(MaintenanceCaseCreate):
     id: str = Field(..., min_length=1)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class DocumentCreate(BaseModel):
@@ -249,8 +249,8 @@ class DocumentCreate(BaseModel):
 
 class Document(DocumentCreate):
     id: str = Field(..., min_length=1)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class TaskCreate(BaseModel):
@@ -268,8 +268,8 @@ class TaskCreate(BaseModel):
 
 class Task(TaskCreate):
     id: str = Field(..., min_length=1)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class CalendarEventCreate(BaseModel):
@@ -286,8 +286,8 @@ class CalendarEventCreate(BaseModel):
 
 class CalendarEvent(CalendarEventCreate):
     id: str = Field(..., min_length=1)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class ListingCreate(BaseModel):
@@ -306,8 +306,8 @@ class ListingCreate(BaseModel):
 
 class Listing(ListingCreate):
     id: str = Field(..., min_length=1)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class ListingPhotoCreate(BaseModel):
@@ -320,8 +320,8 @@ class ListingPhotoCreate(BaseModel):
 
 class ListingPhoto(ListingPhotoCreate):
     id: str = Field(..., min_length=1)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 # ---------------------------------------------------------------------------
@@ -554,8 +554,8 @@ class LeadCreate(BaseModel):
 
 class Lead(LeadCreate):
     id: str = Field(..., min_length=1)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class LeadPatch(BaseModel):
@@ -581,8 +581,8 @@ class ViewingAppointmentCreate(BaseModel):
 
 class ViewingAppointment(ViewingAppointmentCreate):
     id: str = Field(..., min_length=1)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class ViewingAppointmentPatch(BaseModel):
@@ -617,8 +617,8 @@ class BillingPeriodCreate(BaseModel):
 
 class BillingPeriod(BillingPeriodCreate):
     id: str = Field(..., min_length=1)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class BillingPeriodPatch(BaseModel):
@@ -638,8 +638,8 @@ class AllocationKeyCreate(BaseModel):
 
 class AllocationKey(AllocationKeyCreate):
     id: str = Field(..., min_length=1)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class AllocationKeyPatch(BaseModel):
@@ -664,8 +664,8 @@ class CostItemCreate(BaseModel):
 
 class CostItem(CostItemCreate):
     id: str = Field(..., min_length=1)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class CostItemPatch(BaseModel):
@@ -701,8 +701,8 @@ class UtilityStatementCreate(BaseModel):
 
 class UtilityStatement(UtilityStatementCreate):
     id: str = Field(..., min_length=1)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class UtilityStatementPatch(BaseModel):
@@ -756,8 +756,8 @@ class DepositCreate(BaseModel):
 
 class Deposit(DepositCreate):
     id: str = Field(..., min_length=1)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class DepositPatch(BaseModel):
@@ -789,8 +789,8 @@ class NotificationCreate(BaseModel):
 class Notification(NotificationCreate):
     id: str = Field(..., min_length=1)
     read_at: Optional[datetime] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class NotificationPatch(BaseModel):
@@ -814,8 +814,8 @@ class NotificationTemplateCreate(BaseModel):
 
 class NotificationTemplate(NotificationTemplateCreate):
     id: str = Field(..., min_length=1)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class NotificationTemplatePatch(BaseModel):
@@ -863,8 +863,8 @@ class UserRead(BaseModel):
     full_name: str
     role: str
     is_active: bool = True
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class UserPatch(BaseModel):
@@ -910,7 +910,7 @@ class AuditLogEntry(BaseModel):
     entity_type: str  # portfolio, property, unit, etc.
     entity_id: str
     changes: Optional[str] = None  # JSON diff
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 # ---------------------------------------------------------------------------
@@ -932,8 +932,8 @@ class TaxRateCreate(BaseModel):
 
 class TaxRate(TaxRateCreate):
     id: str = Field(..., min_length=1)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class TaxRatePatch(BaseModel):
@@ -965,8 +965,8 @@ class RentAdjustmentCreate(BaseModel):
 
 class RentAdjustment(RentAdjustmentCreate):
     id: str = Field(..., min_length=1)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class RentAdjustmentPatch(BaseModel):
@@ -999,8 +999,8 @@ class MeterReadingCreate(BaseModel):
 
 class MeterReading(MeterReadingCreate):
     id: str = Field(..., min_length=1)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class MeterReadingPatch(BaseModel):
@@ -1033,8 +1033,8 @@ class HandoverProtocolCreate(BaseModel):
 
 class HandoverProtocol(HandoverProtocolCreate):
     id: str = Field(..., min_length=1)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class HandoverProtocolPatch(BaseModel):
@@ -1068,7 +1068,7 @@ class ChangeHistoryEntry(BaseModel):
     old_value: Optional[str] = None
     new_value: Optional[str] = None
     changed_by: Optional[str] = None  # user_id
-    changed_at: datetime = Field(default_factory=datetime.utcnow)
+    changed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     reason: Optional[str] = None
 
 
@@ -1088,8 +1088,8 @@ class BudgetCreate(BaseModel):
 
 class Budget(BudgetCreate):
     id: str = Field(..., min_length=1)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @property
     def deviation(self) -> float:
@@ -1129,8 +1129,8 @@ class EscalationRuleCreate(BaseModel):
 
 class EscalationRule(EscalationRuleCreate):
     id: str = Field(..., min_length=1)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class EscalationRulePatch(BaseModel):
@@ -1177,8 +1177,8 @@ class ContactCreate(BaseModel):
 
 class Contact(ContactCreate):
     id: str = Field(..., min_length=1)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class ContactPatch(BaseModel):
@@ -1218,8 +1218,8 @@ class MeterCreate(BaseModel):
 
 class Meter(MeterCreate):
     id: str = Field(..., min_length=1)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class MeterPatch(BaseModel):
@@ -1249,8 +1249,8 @@ class StandaloneMeterReadingCreate(BaseModel):
 
 class StandaloneMeterReading(StandaloneMeterReadingCreate):
     id: str = Field(..., min_length=1)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 # ---------------------------------------------------------------------------
@@ -1277,8 +1277,8 @@ class InsuranceCreate(BaseModel):
 
 class Insurance(InsuranceCreate):
     id: str = Field(..., min_length=1)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class StandaloneMeterReadingPatch(BaseModel):
@@ -1307,8 +1307,8 @@ class MessageThread(MessageThreadCreate):
     id: str = Field(..., min_length=1)
     last_message_at: Optional[datetime] = None
     message_count: int = 0
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class MessageThreadPatch(BaseModel):
@@ -1328,7 +1328,7 @@ class MessageCreate(BaseModel):
 
 class Message(MessageCreate):
     id: str = Field(..., min_length=1)
-    sent_at: datetime = Field(default_factory=datetime.utcnow)
+    sent_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class MessagePatch(BaseModel):
@@ -1353,8 +1353,8 @@ class RentChargeCreate(BaseModel):
 
 class RentCharge(RentChargeCreate):
     id: str = Field(..., min_length=1)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class RentChargePatch(BaseModel):
@@ -1401,7 +1401,7 @@ class EntityPhotoCreate(BaseModel):
 
 class EntityPhoto(EntityPhotoCreate):
     id: str = Field(..., min_length=1)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class EntityPhotoPatch(BaseModel):

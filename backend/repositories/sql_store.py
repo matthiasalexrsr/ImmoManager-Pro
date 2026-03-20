@@ -4,7 +4,7 @@ This class provides full database persistence while maintaining API compatibilit
 with the in-memory store used for testing.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from pydantic import BaseModel as PydanticBaseModel
@@ -909,8 +909,8 @@ class SQLAlchemyStore:
         if orm_obj is None:
             raise NotFoundError("Benachrichtigung nicht gefunden")
         orm_obj.status = "read"
-        orm_obj.read_at = datetime.utcnow()
-        orm_obj.updated_at = datetime.utcnow()
+        orm_obj.read_at = datetime.now(timezone.utc)
+        orm_obj.updated_at = datetime.now(timezone.utc)
         self.db.flush()
         self.db.refresh(orm_obj)
         self._commit()
@@ -1264,7 +1264,7 @@ class SQLAlchemyStore:
             ).first()
             if thread_orm:
                 thread_orm.message_count = (thread_orm.message_count or 0) + 1
-                thread_orm.last_message_at = datetime.utcnow()
+                thread_orm.last_message_at = datetime.now(timezone.utc)
         except Exception:
             pass
         self._commit()

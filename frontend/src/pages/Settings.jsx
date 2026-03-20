@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useAuth } from '../contexts/AuthContext';
 import { usePreferences } from '../contexts/PreferencesContext';
 import { useDevMode } from '../contexts/DevModeContext';
 import { useTranslation } from '../i18n';
@@ -8,8 +9,10 @@ const BASE = (import.meta.env.VITE_API_URL || '/api/v1');
 
 export default function Settings() {
   const { prefs, toggleTheme, toggleSidebar, updatePrefs } = usePreferences();
+  const auth = useAuth();
   const devMode = useDevMode();
   const { t, locale, setLocale } = useTranslation();
+  const isAdmin = auth?.isAdmin;
   const [backupStatus, setBackupStatus] = useState(null);
   const [dbInfo, setDbInfo] = useState(null);
   const [exportLoading, setExportLoading] = useState(false);
@@ -331,7 +334,7 @@ export default function Settings() {
           </div>
         </div>
 
-        <div className="panel">
+        {isAdmin && (<div className="panel">
           <div className="panel-header">{t('pages.settings.dataBackup')}</div>
           <div className="panel-body settings-section">
             <div className="settings-row">
@@ -403,9 +406,9 @@ export default function Settings() {
               </div>
             )}
           </div>
-        </div>
+        </div>)}
 
-        <div className="panel">
+        {isAdmin && (<div className="panel">
           <div className="panel-header">{tr('settings.update.title', 'Updates')}</div>
           <div className="panel-body settings-section">
             <div className="settings-row">
@@ -600,7 +603,7 @@ export default function Settings() {
               </div>
             )}
           </div>
-        </div>
+        </div>)}
 
         <div className="panel">
           <div className="panel-header">{t('pages.settings.docsOcr')}</div>
@@ -626,7 +629,7 @@ export default function Settings() {
           </div>
         </div>
 
-        <div className="panel">
+        {isAdmin && (<div className="panel">
           <div className="panel-header">{tr('devMode.title', 'Developer Mode')}</div>
           <div className="panel-body settings-section">
             <div className="settings-row">
@@ -750,6 +753,7 @@ export default function Settings() {
             )}
           </div>
         </div>
+        )}
         )}
 
         <div className="panel">

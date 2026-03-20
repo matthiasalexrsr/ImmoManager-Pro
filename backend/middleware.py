@@ -1,7 +1,8 @@
 """HTTP middleware for ImmoManager Pro.
 
 Extracted from app.py for clarity and maintainability.
-Contains: request logging, locale parsing, DB session cleanup, and audit logging.
+Contains: request logging, locale parsing, DB session cleanup, audit logging,
+and RBAC enforcement for write operations.
 """
 
 import logging
@@ -11,6 +12,7 @@ from uuid import uuid4
 
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
 
 from .audit import log_action
 from .config import settings
@@ -212,3 +214,62 @@ class AuditMiddleware(BaseHTTPMiddleware):
                     )
 
         return response
+
+
+# ─── RBAC Write Guard Middleware ─────────────────────────────────────────────
+
+_RBAC_WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+_RBAC_SKIP_PATHS = {
+    "/api/v1/auth/login",
+    "/api/v1/auth/register",
+    "/api/v1/auth/refresh",
+    "/api/v1/auth/logout",
+    "/api/v1/dev-notes",  # dev notes are informational, not business data
+}
+
+
+class RBACWriteGuardMiddleware(BaseHTTPMiddleware):
+    """Blocks write operations from users with the 'readonly' role.
+
+    Readonly users can access GET/HEAD/OPTIONS endpoints, but any
+    POST/PUT/PATCH/DELETE on protected API routes is rejected with 403.
+
+    This acts as a defence-in-depth layer — individual endpoints can
+    apply finer-grained role checks via require_role().
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        if (
+            request.method in _RBAC_WRITE_METHODS
+            and request.url.path.startswith("/api/v1/")
+            and not any(request.url.path.startswith(p) for p in _RBAC_SKIP_PATHS)
+        ):
+            role = self._get_user_role(request)
+            if role == "readonly":
+                logger.warning(
+                    "RBAC blocked: readonly user attempted %s %s",
+                    request.method, request.url.path,
+                )
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "Lesezugriff-Rolle hat keine Schreibberechtigung"},
+                )
+
+        return await call_next(request)
+
+    @staticmethod
+    def _get_user_role(request: Request) -> str | None:
+        """Extract user role from Bearer token (best-effort)."""
+        auth_header = request.headers.get("authorization", "")
+        if not auth_header.lower().startswith("bearer "):
+            return None
+        token = auth_header[7:]
+        try:
+            from .auth import decode_token, get_user_by_id
+            payload = decode_token(token)
+            if payload.type != "access":
+                return None
+            user = get_user_by_id(payload.sub)
+            return user.get("role") if user else None
+        except Exception:
+            return None

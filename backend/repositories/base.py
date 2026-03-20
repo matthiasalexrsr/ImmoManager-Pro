@@ -6,7 +6,7 @@ to DatabaseOperationError with proper logging.
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Generic, TypeVar
 from uuid import uuid4
 
@@ -108,7 +108,7 @@ class BaseRepository(Generic[ORM, ReadModel, CreateModel]):
             raise NotFoundError(self.not_found_msg)
         for key, value in data.model_dump().items():
             setattr(orm_obj, key, value)
-        orm_obj.updated_at = datetime.utcnow()
+        orm_obj.updated_at = datetime.now(timezone.utc)
         self.db.flush()
         self.db.refresh(orm_obj)
         return self._to_pydantic(orm_obj)
@@ -121,7 +121,7 @@ class BaseRepository(Generic[ORM, ReadModel, CreateModel]):
         updates = data.model_dump(exclude_unset=True)
         for key, value in updates.items():
             setattr(orm_obj, key, value)
-        orm_obj.updated_at = datetime.utcnow()
+        orm_obj.updated_at = datetime.now(timezone.utc)
         self.db.flush()
         self.db.refresh(orm_obj)
         return self._to_pydantic(orm_obj)

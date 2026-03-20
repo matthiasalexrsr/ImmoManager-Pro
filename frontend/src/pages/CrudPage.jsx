@@ -11,12 +11,39 @@ function endpointKey(ep) {
   return ep.replace(/^\//, '').replace(/\//g, '_');
 }
 
+// Relationship map: when entity X changes, also refresh these related entities.
+// This enables targeted invalidation instead of refetching every cached entity.
+const _RELATED_ENTITIES = {
+  properties: ['portfolios', 'units', 'contracts'],
+  units: ['properties', 'contracts', 'listings', 'meters'],
+  tenants: ['contracts'],
+  contracts: ['properties', 'units', 'tenants', 'deposits', 'receivables', 'rent_adjustments'],
+  accounts: ['portfolios', 'bookings'],
+  bookings: ['accounts', 'receivables'],
+  invoices: ['contracts', 'receivables'],
+  deposits: ['contracts'],
+  receivables: ['contracts', 'bookings'],
+  maintenance: ['properties', 'units'],
+  insurances: ['properties'],
+  rent_adjustments: ['contracts'],
+  rent_charges: ['contracts'],
+  listings: ['units'],
+  categories: ['bookings'],
+};
+
 export default function CrudPage({ title, endpoint, columns, formFields, onRowClick }) {
   const { t } = useTranslation();
   const store = useDataStore();
-  const { items, loading, error, reload } = useEntities(endpointKey(endpoint), endpoint);
+  const eKey = endpointKey(endpoint);
+  const { items, loading, error, reload } = useEntities(eKey, endpoint);
   const [modal, setModal] = useState(null); // null | 'create' | item
   const [deleteError, setDeleteError] = useState(null);
+
+  const invalidateAfterMutation = () => {
+    if (!store) { reload(); return; }
+    const related = _RELATED_ENTITIES[eKey] || [];
+    store.invalidateRelated(eKey, ...related);
+  };
 
   const handleSave = async (data) => {
     if (modal === 'create') {
@@ -24,9 +51,7 @@ export default function CrudPage({ title, endpoint, columns, formFields, onRowCl
     } else {
       await api.put(`${endpoint}/${modal.id}`, data);
     }
-    // Invalidate all caches so every page sees fresh data
-    if (store) store.invalidateAll();
-    else reload();
+    invalidateAfterMutation();
   };
 
   const handleDelete = async (row) => {
@@ -35,8 +60,7 @@ export default function CrudPage({ title, endpoint, columns, formFields, onRowCl
     setDeleteError(null);
     try {
       await api.del(`${endpoint}/${row.id}`);
-      if (store) store.invalidateAll();
-      else reload();
+      invalidateAfterMutation();
     } catch (err) {
       setDeleteError(err.message || 'Löschen fehlgeschlagen');
     }

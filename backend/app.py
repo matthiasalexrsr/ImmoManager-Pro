@@ -22,6 +22,7 @@ from .middleware import (
     AcceptLanguageMiddleware,
     AuditMiddleware,
     DBSessionMiddleware,
+    RBACWriteGuardMiddleware,
     RequestLoggingMiddleware,
 )
 from .plugins import get_plugins, load_plugins
@@ -166,6 +167,7 @@ app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(AcceptLanguageMiddleware)
 app.add_middleware(DBSessionMiddleware)
 app.add_middleware(AuditMiddleware)
+app.add_middleware(RBACWriteGuardMiddleware)
 
 
 # ─── API Routers ─────────────────────────────────────────────────────────────
