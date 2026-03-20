@@ -34,6 +34,7 @@ _REQUIRED_PACKAGES = {
     'sqlalchemy': 'sqlalchemy',
     'jinja2': 'jinja2',
     'reportlab': 'reportlab',
+    'httpx': 'httpx',
 }
 _missing = []
 for import_name, pip_name in _REQUIRED_PACKAGES.items():
@@ -83,6 +84,8 @@ _THIRD_PARTY_PACKAGES = [
     'jinja2',
     'markupsafe',
     'reportlab',
+    'httpx',
+    'httpcore',
 ]
 
 collected_hiddenimports = []
@@ -202,6 +205,13 @@ _EXPLICIT_THIRD_PARTY = [
     'jinja2',
     'markupsafe',
     'reportlab',
+    # httpx (used by updater)
+    'httpx',
+    'httpx._transports',
+    'httpx._transports.default',
+    'httpcore',
+    'httpcore._async',
+    'httpcore._sync',
 ]
 
 # ---------------------------------------------------------------------------
@@ -304,6 +314,7 @@ a = Analysis(
         'mietvertrag_wizard.fastapi_integration',
         # --- All routers ---
         'backend.routers',
+        'backend.routers._helpers',
         'backend.routers.accounts',
         'backend.routers.admin',
         'backend.routers.audit',
@@ -313,29 +324,45 @@ a = Analysis(
         'backend.routers.budgets',
         'backend.routers.calendar',
         'backend.routers.categories',
+        'backend.routers.contacts',
         'backend.routers.contracts',
+        'backend.routers.data_exchange',
         'backend.routers.deposits',
+        'backend.routers.dev_notes',
+        'backend.routers.diagnostics',
         'backend.routers.documents',
         'backend.routers.escalation',
+        'backend.routers.files',
         'backend.routers.handover_protocols',
         'backend.routers.history',
         'backend.routers.i18n',
+        'backend.routers.insurances',
+        'backend.routers.integrations',
         'backend.routers.invoices',
         'backend.routers.leads',
         'backend.routers.listings',
         'backend.routers.maintenance',
+        'backend.routers.messages',
+        'backend.routers.meters_standalone',
         'backend.routers.notifications',
+        'backend.routers.photos',
         'backend.routers.portfolios',
         'backend.routers.properties',
         'backend.routers.receivables',
         'backend.routers.rent_adjustments',
+        'backend.routers.rent_charges',
         'backend.routers.reports',
         'backend.routers.search',
         'backend.routers.tasks',
         'backend.routers.tax_rates',
         'backend.routers.tenants',
         'backend.routers.units',
+        'backend.routers.updates',
+        'backend.routers.validators',
         'backend.routers.viewings',
+        # --- Routing + updater ---
+        'backend.routing',
+        'backend.updater',
     ],
     hookspath=[],
     hooksconfig={},

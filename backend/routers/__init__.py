@@ -13,6 +13,7 @@ from . import (
     data_exchange,
     deposits,
     dev_notes,
+    diagnostics,
     documents,
     escalation,
     files,
@@ -40,6 +41,7 @@ from . import (
     tax_rates,
     tenants,
     units,
+    updates,
     viewings,
 )
 
@@ -58,6 +60,7 @@ __all__ = [
     "data_exchange",
     "deposits",
     "dev_notes",
+    "diagnostics",
     "documents",
     "escalation",
     "files",
@@ -85,5 +88,6 @@ __all__ = [
     "tax_rates",
     "tenants",
     "units",
+    "updates",
     "viewings",
 ]
