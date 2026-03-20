@@ -5,7 +5,7 @@ Extracted from app.py. Assembles the v1 API router with all domain routers.
 
 from fastapi import APIRouter, Depends
 
-from .auth import require_auth
+from .auth import require_auth, require_role
 from .routers import (
     accounts,
     admin,
@@ -62,7 +62,8 @@ def build_api_v1() -> APIRouter:
 
     # Protected routes
     _auth_dep = [Depends(require_auth)]
-    api_v1.include_router(admin.router, dependencies=_auth_dep)
+    _admin_dep = [Depends(require_role("eigentuemer", "verwalter"))]
+    api_v1.include_router(admin.router, dependencies=_admin_dep)
     api_v1.include_router(audit.router, dependencies=_auth_dep)
     api_v1.include_router(search.router, dependencies=_auth_dep)
     api_v1.include_router(portfolios.router, dependencies=_auth_dep)
@@ -100,9 +101,9 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(insurances.router, dependencies=_auth_dep)
     api_v1.include_router(photos.router, dependencies=_auth_dep)
     api_v1.include_router(files.router, dependencies=_auth_dep)
-    api_v1.include_router(data_exchange.router, dependencies=_auth_dep)
+    api_v1.include_router(data_exchange.router, dependencies=_admin_dep)
     api_v1.include_router(dev_notes.router, dependencies=_auth_dep)
-    api_v1.include_router(diagnostics.router, dependencies=_auth_dep)
+    api_v1.include_router(diagnostics.router, dependencies=_admin_dep)
 
     return api_v1
 

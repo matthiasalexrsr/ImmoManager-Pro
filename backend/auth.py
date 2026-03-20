@@ -194,16 +194,18 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 
 def create_access_token(user_id: str) -> str:
-    """Create a JWT access token."""
+    """Create a JWT access token with a unique jti."""
     expires = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    payload = {"sub": user_id, "exp": expires, "type": "access"}
+    jti = str(uuid4())
+    payload = {"sub": user_id, "exp": expires, "type": "access", "jti": jti}
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
 def create_refresh_token(user_id: str) -> str:
-    """Create a JWT refresh token."""
+    """Create a JWT refresh token with a unique jti for rotation tracking."""
     expires = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
-    payload = {"sub": user_id, "exp": expires, "type": "refresh"}
+    jti = str(uuid4())
+    payload = {"sub": user_id, "exp": expires, "type": "refresh", "jti": jti}
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 

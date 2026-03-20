@@ -884,11 +884,13 @@ class TokenPayload(BaseModel):
     sub: str  # user_id
     exp: datetime
     type: str  # access or refresh
+    jti: Optional[str] = None  # unique token identifier for rotation
 
 
 class LoginRequest(BaseModel):
     username: str
     password: str
+    totp_code: Optional[str] = None  # required when 2FA is enabled
 
 
 class RefreshRequest(BaseModel):

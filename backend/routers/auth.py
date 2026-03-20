@@ -62,13 +62,26 @@ def register(payload: UserCreate) -> UserRead:
 
 @router.post("/login", response_model=TokenResponse)
 def login(payload: LoginRequest) -> TokenResponse:
-    """Authenticate and receive JWT tokens."""
+    """Authenticate and receive JWT tokens. Enforces TOTP when enabled."""
     user = authenticate_user(payload.username, payload.password)
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Ungültige Anmeldedaten",
         )
+    # Enforce TOTP when 2FA is enabled for this user
+    if user.get("totp_enabled") and user.get("totp_secret"):
+        if not payload.totp_code:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Zwei-Faktor-Code erforderlich",
+                headers={"X-2FA-Required": "true"},
+            )
+        if not verify_totp(user["totp_secret"], payload.totp_code):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Ungültiger Zwei-Faktor-Code",
+            )
     return TokenResponse(
         access_token=create_access_token(user["id"]),
         refresh_token=create_refresh_token(user["id"]),
@@ -77,7 +90,12 @@ def login(payload: LoginRequest) -> TokenResponse:
 
 @router.post("/refresh", response_model=TokenResponse)
 def refresh(payload: RefreshRequest) -> TokenResponse:
-    """Refresh access token using a refresh token."""
+    """Refresh access token using a refresh token.
+
+    Implements token rotation: the old refresh token is revoked on use,
+    and a new refresh token is issued alongside the new access token.
+    This prevents replay attacks with stolen refresh tokens.
+    """
     token_data = decode_token(payload.refresh_token)
     if token_data.type != "refresh":
         raise HTTPException(
@@ -90,6 +108,8 @@ def refresh(payload: RefreshRequest) -> TokenResponse:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Benutzer nicht gefunden oder deaktiviert",
         )
+    # Rotate: revoke the old refresh token so it cannot be reused
+    revoke_token(payload.refresh_token)
     return TokenResponse(
         access_token=create_access_token(user["id"]),
         refresh_token=create_refresh_token(user["id"]),

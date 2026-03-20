@@ -151,7 +151,39 @@ _SKIP_PATHS = {"/api/v1/auth/login", "/api/v1/auth/register", "/api/v1/auth/refr
 
 
 class AuditMiddleware(BaseHTTPMiddleware):
+    """Logs write operations with user attribution.
+
+    Extracts the authenticated user from the Authorization header before
+    the request is dispatched so that audit entries always include actor
+    identity when a valid bearer token is present.
+    """
+
+    @staticmethod
+    def _extract_user_from_token(request: Request) -> tuple:
+        """Best-effort user extraction from Bearer token. Returns (user_id, username)."""
+        auth_header = request.headers.get("authorization", "")
+        if not auth_header.lower().startswith("bearer "):
+            return None, None
+        token = auth_header[7:]
+        try:
+            from .auth import decode_token, get_user_by_id
+            payload = decode_token(token)
+            if payload.type != "access":
+                return None, None
+            user = get_user_by_id(payload.sub)
+            if user:
+                return user.get("id"), user.get("username")
+        except Exception:
+            pass
+        return None, None
+
     async def dispatch(self, request: Request, call_next):
+        # Pre-resolve user identity for audit attribution
+        if request.method in _WRITE_METHODS and request.url.path not in _SKIP_PATHS:
+            uid, uname = self._extract_user_from_token(request)
+            request.state.audit_user_id = uid
+            request.state.audit_username = uname
+
         response: Response = await call_next(request)
 
         if request.method in _WRITE_METHODS and request.url.path not in _SKIP_PATHS:
@@ -161,12 +193,8 @@ class AuditMiddleware(BaseHTTPMiddleware):
                 entity_id = match.group(2) or "new"
                 action = _METHOD_TO_ACTION.get(request.method, request.method.lower())
 
-                user_id = None
-                username = None
-                if hasattr(request.state, "user"):
-                    user = request.state.user
-                    user_id = getattr(user, "id", None)
-                    username = getattr(user, "username", None)
+                user_id = getattr(request.state, "audit_user_id", None)
+                username = getattr(request.state, "audit_username", None)
 
                 try:
                     log_action(
