@@ -13,8 +13,6 @@ from io import BytesIO
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
 
-from ..dependencies import store
-
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/data", tags=["Daten-Export/Import"])

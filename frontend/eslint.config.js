@@ -28,4 +28,10 @@ export default defineConfig([
       'react-hooks/immutability': 'off',
     },
   },
+  {
+    files: ['src/test/**/*.{js,jsx}'],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
 ])

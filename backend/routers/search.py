@@ -38,7 +38,7 @@ def global_search(q: str = Query(..., min_length=1, description="Search query"))
                 "id": t.id,
                 "display": t.full_name,
                 "detail": getattr(t, "email", "") or "",
-                "url": f"/tenants",
+                "url": "/tenants",
             })
 
     # Search units

@@ -845,7 +845,7 @@ def export_billing_period(period_id: str, export_format: str = Query("csv", alia
     from starlette.responses import Response as RawResponse
 
     try:
-        period = store.get_billing_period(period_id)
+        store.get_billing_period(period_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -885,7 +885,7 @@ def export_billing_period_zip(period_id: str):
     from starlette.responses import Response as RawResponse
 
     try:
-        period = store.get_billing_period(period_id)
+        store.get_billing_period(period_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -924,7 +924,8 @@ def mark_statement_delivered(
 
     ``channel`` may be ``email``, ``post``, or ``portal``.
     """
-    from datetime import datetime as _dt, timezone as _tz
+    from datetime import datetime as _dt
+    from datetime import timezone as _tz
 
     try:
         stmt = store.get_utility_statement(statement_id)
@@ -1103,7 +1104,7 @@ def import_cost_item_from_ocr(
     Does NOT persist the cost item — the user must POST /cost-items to save.
     """
     from ..services.file_storage import get_file_storage
-    from ..services.ocr_service import extract_text_from_bytes, _extract_invoice_fields
+    from ..services.ocr_service import _extract_invoice_fields, extract_text_from_bytes
 
     # Validate period exists and is mutable
     try:
@@ -1178,12 +1179,12 @@ def download_utility_statement_pdf(statement_id: str):
 
     # Try to build a real PDF with reportlab
     try:
+        import io
+
         from reportlab.lib.pagesizes import A4
         from reportlab.lib.styles import getSampleStyleSheet
         from reportlab.lib.units import mm
         from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
-
-        import io
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=20*mm, rightMargin=20*mm,
                                 topMargin=25*mm, bottomMargin=18*mm)

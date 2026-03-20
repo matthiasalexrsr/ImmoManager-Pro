@@ -113,6 +113,7 @@ class AutotestRunner:
 
         # Create a test client
         from fastapi.testclient import TestClient
+
         from ...app import app
 
         client = TestClient(app, raise_server_exceptions=False)
@@ -226,8 +227,8 @@ def format_report_markdown(report: AutotestReport) -> str:
         "",
         "## Summary",
         "",
-        f"| Metric | Count |",
-        f"|--------|-------|",
+        "| Metric | Count |",
+        "|--------|-------|",
         f"| Total Tests | {report.total_tests} |",
         f"| Passed | {report.total_passed} |",
         f"| Failed | {report.total_failed} |",
@@ -255,11 +256,11 @@ def format_report_markdown(report: AutotestReport) -> str:
                     if t.line_hint:
                         lines.append(f"- **Location Hint:** {t.line_hint}")
                     if t.details:
-                        lines.append(f"- **Details:**")
-                        lines.append(f"  ```")
+                        lines.append("- **Details:**")
+                        lines.append("  ```")
                         for dl in t.details.strip().split("\n"):
                             lines.append(f"  {dl}")
-                        lines.append(f"  ```")
+                        lines.append("  ```")
                     lines.append("")
 
     if report.total_warnings > 0:
@@ -287,8 +288,8 @@ def format_report_markdown(report: AutotestReport) -> str:
         lines.append(f"### [{status}] {mod.module_name}")
         lines.append(f"*{mod.description}*")
         lines.append("")
-        lines.append(f"| Passed | Failed | Warnings | Duration |")
-        lines.append(f"|--------|--------|----------|----------|")
+        lines.append("| Passed | Failed | Warnings | Duration |")
+        lines.append("|--------|--------|----------|----------|")
         lines.append(f"| {mod.passed} | {mod.failed} | {mod.warnings} | {mod.duration_ms:.0f}ms |")
         lines.append("")
 

@@ -9,7 +9,6 @@ from ..models import (
     MeterPatch,
     StandaloneMeterReading,
     StandaloneMeterReadingCreate,
-    StandaloneMeterReadingPatch,
 )
 from ..storage import NotFoundError, ValidationError
 from ._helpers import apply_sort

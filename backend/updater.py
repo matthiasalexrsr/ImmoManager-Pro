@@ -25,10 +25,8 @@ import re
 import shutil
 import subprocess
 import sys
-import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 import httpx
 
@@ -298,7 +296,6 @@ def _create_pre_update_backup() -> str | None:
     backup_path = _BACKUP_DIR / backup_name
 
     try:
-        from .dependencies import store
 
         # Use the same export logic as admin.py
         from .routers.admin import _export_store_data
@@ -597,7 +594,7 @@ def apply_update(target_version: str | None = None) -> dict:
         mig_ok, mig_msg = _run_migrations()
         result["steps"].append(mig_msg)
         if not mig_ok:
-            result["message"] = f"Migration fehlgeschlagen — Rollback wird durchgeführt"
+            result["message"] = "Migration fehlgeschlagen — Rollback wird durchgeführt"
             _rollback(previous_commit, stashed, result)
             # Restore DB snapshot if available
             if db_snapshot and "sqlite" in settings.database_url:

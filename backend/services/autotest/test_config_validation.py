@@ -72,7 +72,7 @@ def test_config_validation(ctx: TestContext) -> list[TestResult]:
 
     # ── Store backend ─────────────────────────────────────────────────────
 
-    from ...dependencies import store, _use_sql_store
+    from ...dependencies import _use_sql_store, store
 
     store_name = type(store).__name__
     results.append(TestResult(

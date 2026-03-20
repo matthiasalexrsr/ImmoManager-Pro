@@ -245,15 +245,17 @@ def get_version():
 @router.get("/system-status")
 def system_status():
     """Comprehensive system status for admin diagnostics."""
-    from ..dependencies import _use_sql_store, store as active_store
+    from ..dependencies import _use_sql_store
+    from ..dependencies import store as active_store
 
     store_type = type(active_store).__name__
 
     db_ok = True
     if _use_sql_store:
         try:
-            from ..db.session import engine
             import sqlalchemy
+
+            from ..db.session import engine
             with engine.connect() as conn:
                 conn.execute(sqlalchemy.text("SELECT 1"))
         except Exception:
@@ -617,7 +619,7 @@ def dsgvo_anonymize_tenant(tenant_id: str):
     for field in ["email", "phone", "mobile", "address", "iban", "tax_id",
                    "notes", "emergency_contact", "employer"]:
         if hasattr(tenant, field) and getattr(tenant, field) is not None:
-            patch_fields[field] = f"[DSGVO gelöscht]"
+            patch_fields[field] = "[DSGVO gelöscht]"
 
     if patch_fields:
         try:

@@ -6,11 +6,8 @@ Maps to the PostgreSQL schema in db/schema.sql. Also works with SQLite for dev/t
 import uuid
 from datetime import date, datetime, timezone
 
-
-def _utcnow():
-    return datetime.now(timezone.utc)
-
 from sqlalchemy import (
+    JSON,
     Boolean,
     CheckConstraint,
     Date,
@@ -19,13 +16,16 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
-    JSON,
     String,
     Text,
     UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+
+def _utcnow():
+    return datetime.now(timezone.utc)
 
 
 def _uuid() -> str:

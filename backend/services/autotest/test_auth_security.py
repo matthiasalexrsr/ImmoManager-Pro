@@ -12,7 +12,6 @@ from .runner import TestContext, TestResult, test_module
 @test_module("auth_security", "Authentication, authorization, and token security")
 def test_auth_security(ctx: TestContext) -> list[TestResult]:
     results = []
-    headers = {"Authorization": f"Bearer {ctx.token}"} if ctx.token else {}
 
     # ── Registration validation ───────────────────────────────────────────
 

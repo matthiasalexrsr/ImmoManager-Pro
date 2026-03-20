@@ -94,7 +94,7 @@ def test_frontend_contracts(ctx: TestContext) -> list[TestResult]:
                     name=f"contract::{path}::shape",
                     passed=True,
                     duration_ms=dur,
-                    message=f"Returns empty list (shape OK, fields untested)",
+                    message="Returns empty list (shape OK, fields untested)",
                     severity="info",
                     file_path=f"backend/routers/{path.replace('-', '_')}.py",
                 ))

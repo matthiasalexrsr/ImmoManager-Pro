@@ -293,7 +293,8 @@ _ensure_contract_wizard_mount(app)
 
 @app.get("/health")
 def health() -> dict:
-    from .dependencies import _use_sql_store, store as _active_store
+    from .dependencies import _use_sql_store
+    from .dependencies import store as _active_store
 
     db_ok = True
     if _use_sql_store:
