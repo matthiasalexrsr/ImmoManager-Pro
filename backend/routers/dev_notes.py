@@ -8,7 +8,7 @@ improvements.
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 from uuid import uuid4
@@ -73,7 +73,7 @@ def _write_log_file() -> None:
 
     lines = [
         "# ImmoManager Pro — Developer Notes",
-        f"# Generated: {datetime.utcnow().isoformat()}Z",
+        f"# Generated: {datetime.now(timezone.utc).isoformat()}Z",
         f"# Total unresolved: {len(unresolved)}",
         "",
     ]
@@ -127,7 +127,7 @@ def list_dev_notes(
 def create_dev_note(payload: DevNoteCreate) -> DevNote:
     note = DevNote(
         id=str(uuid4()),
-        created_at=datetime.utcnow().isoformat() + "Z",
+        created_at=datetime.now(timezone.utc).isoformat() + "Z",
         **payload.model_dump(),
     )
     _notes[note.id] = note

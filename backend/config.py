@@ -104,6 +104,12 @@ class Settings(BaseSettings):
     update_channel: str = "stable"
     # Optional GitHub personal access token for private repos / higher rate limits
     update_github_token: str = ""
+    # Allow self-update in production (default False for safety)
+    update_allow_in_production: bool = False
+
+    # --- Diagnostics ---
+    # Allow diagnostics endpoint in production (default False)
+    diagnostics_allow_in_production: bool = False
 
     # --- Integrations ---
     integration_state_file: str | None = None

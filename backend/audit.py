@@ -8,7 +8,7 @@ Supports two storage backends:
 import json
 import logging
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from uuid import uuid4
 
@@ -172,7 +172,7 @@ def log_action(
         entity_type=entity_type,
         entity_id=entity_id,
         changes=json.dumps(changes, default=str) if changes else None,
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
     )
     _audit_store.add(entry)
     return entry

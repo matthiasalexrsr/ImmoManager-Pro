@@ -4,7 +4,7 @@ import json
 import logging
 import platform
 import shutil
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, UploadFile
@@ -51,7 +51,7 @@ def _export_store_data() -> dict:
     """Build a JSON-serializable snapshot of the active store backend."""
     return {
         "version": settings.app_version,
-        "exported_at": datetime.utcnow().isoformat(),
+        "exported_at": datetime.now(timezone.utc).isoformat(),
         "portfolios": _safe_list("list_portfolios"),
         "properties": _safe_list("list_properties"),
         "units": _safe_list("list_units"),
@@ -336,7 +336,7 @@ def create_backup():
     """Create a backup of the currently active store backend."""
     _BACKUP_DIR.mkdir(exist_ok=True)
 
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     backup_name = f"backup_{timestamp}.json"
     backup_path = _BACKUP_DIR / backup_name
     payload = _export_store_data()
@@ -382,7 +382,7 @@ def restore_backup(backup_name: str):
 
     db_path = settings.database_url.replace("sqlite:///", "")
     # Create a safety backup before restoring
-    safety = _BACKUP_DIR / f"pre_restore_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.db"
+    safety = _BACKUP_DIR / f"pre_restore_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.db"
     if Path(db_path).exists():
         shutil.copy2(db_path, safety)
     shutil.copy2(backup_path, db_path)
@@ -567,7 +567,7 @@ def dsgvo_export_tenant_data(tenant_id: str):
 
     export = {
         "export_type": "DSGVO_Datenauskunft",
-        "exported_at": datetime.utcnow().isoformat(),
+        "exported_at": datetime.now(timezone.utc).isoformat(),
         "tenant": tenant_data,
         "contracts": contracts,
         "bookings": bookings,

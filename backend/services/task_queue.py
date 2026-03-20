@@ -10,7 +10,7 @@ Configure via TASK_QUEUE_BACKEND environment variable.
 
 import logging
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 from uuid import uuid4
 
@@ -25,7 +25,7 @@ class TaskResult:
         self.status = status  # pending, running, completed, failed
         self.result = result
         self.error = error
-        self.created_at = datetime.utcnow()
+        self.created_at = datetime.now(timezone.utc)
 
 
 class TaskQueue(ABC):

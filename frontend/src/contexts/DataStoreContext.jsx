@@ -124,17 +124,21 @@ export function DataStoreProvider({ children }) {
   }, [fetchEntity]);
 
   /**
-   * Invalidate all caches — called after any mutation to ensure
-   * cross-page consistency. This is the key to data persistence:
-   * when you create/update/delete on one page, all other pages
-   * will see fresh data when they mount or are already mounted.
+   * Invalidate caches that have active subscribers (mounted components).
+   * This avoids refetching every cached entity after every mutation —
+   * only entities that are currently displayed get refreshed immediately.
+   * Remaining stale caches will be refreshed via TTL on next access.
    */
   const invalidateAll = useCallback(() => {
     const entries = cacheRef.current;
+    const subs = subsRef.current;
     for (const key of Object.keys(entries)) {
       const entry = entries[key];
-      if (entry?.endpoint) {
+      if (entry?.endpoint && subs[key]?.size > 0) {
         fetchEntity(key, entry.endpoint);
+      } else if (entry) {
+        // Mark as stale so ensureLoaded refetches on next mount
+        entry.fetchedAt = 0;
       }
     }
   }, [fetchEntity]);

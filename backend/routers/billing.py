@@ -924,7 +924,7 @@ def mark_statement_delivered(
 
     ``channel`` may be ``email``, ``post``, or ``portal``.
     """
-    from datetime import datetime as _dt
+    from datetime import datetime as _dt, timezone as _tz
 
     try:
         stmt = store.get_utility_statement(statement_id)
@@ -943,7 +943,7 @@ def mark_statement_delivered(
         statement_id,
         UtilityStatementPatch(
             delivery_status="delivered",
-            delivered_at=_dt.utcnow(),
+            delivered_at=_dt.now(_tz.utc),
             delivery_channel=channel,
             status="delivered",
         ),

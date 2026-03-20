@@ -39,6 +39,18 @@ export default function NotificationBell() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  // Close on Escape key
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => {
+      if (e.key === 'Escape') {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [open]);
+
   const markRead = async (id) => {
     try {
       await api.patch(`/notifications/${id}`, { status: 'read' });
@@ -59,14 +71,27 @@ export default function NotificationBell() {
     fetchNotifications();
   };
 
+  const handleKeyDown = (e, id) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      markRead(id);
+    }
+  };
+
   return (
     <div className="notification-bell" ref={ref}>
-      <button className="notification-bell-btn" onClick={() => setOpen(!open)} title={t('topBar.notifications')}>
+      <button
+        className="notification-bell-btn"
+        onClick={() => setOpen(!open)}
+        aria-label={t('topBar.notifications')}
+        aria-expanded={open}
+        aria-haspopup="true"
+      >
         <BellIcon size={18} />
-        {unreadCount > 0 && <span className="notification-badge">{unreadCount}</span>}
+        {unreadCount > 0 && <span className="notification-badge" aria-label={`${unreadCount} unread`}>{unreadCount}</span>}
       </button>
       {open && (
-        <div className="notification-dropdown">
+        <div className="notification-dropdown" role="menu" aria-label={t('topBar.notifications')}>
           <div className="notification-dropdown-header">
             <span>{t('topBar.notifications')}</span>
             {notifications.length > 0 && (
@@ -75,12 +100,19 @@ export default function NotificationBell() {
               </button>
             )}
           </div>
-          <div className="notification-dropdown-body">
+          <div className="notification-dropdown-body" role="list">
             {notifications.length === 0 ? (
-              <div className="notification-empty">{t('emptyStates.generic.title')}</div>
+              <div className="notification-empty" role="listitem">{t('emptyStates.generic.title')}</div>
             ) : (
               notifications.map(n => (
-                <div key={n.id} className={`notification-item notification-${n.severity || 'info'}`} onClick={() => markRead(n.id)}>
+                <div
+                  key={n.id}
+                  className={`notification-item notification-${n.severity || 'info'}`}
+                  onClick={() => markRead(n.id)}
+                  onKeyDown={(e) => handleKeyDown(e, n.id)}
+                  role="listitem"
+                  tabIndex={0}
+                >
                   <div className="notification-item-title">{n.title}</div>
                   <div className="notification-item-content">{n.content}</div>
                 </div>

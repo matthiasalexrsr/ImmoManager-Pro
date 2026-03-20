@@ -10,7 +10,7 @@ import hmac
 import logging
 import secrets
 from abc import ABC, abstractmethod
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from uuid import uuid4
 
@@ -75,7 +75,7 @@ def check_login_rate_limit(username: str) -> bool:
     """T21: Check if login is rate-limited. Returns True if blocked."""
     if _auth_session_factory is not None:
         return _check_login_rate_limit_db(username)
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     cutoff = now - timedelta(minutes=LOCKOUT_DURATION_MINUTES)
     attempts = _login_attempts.get(username, [])
     recent = [t for t in attempts if t > cutoff]
@@ -88,7 +88,7 @@ def _check_login_rate_limit_db(username: str) -> bool:
     from .db.orm_models import LoginAttemptORM
     session = _auth_session_factory()
     try:
-        cutoff = datetime.utcnow() - timedelta(minutes=LOCKOUT_DURATION_MINUTES)
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=LOCKOUT_DURATION_MINUTES)
         count = session.query(LoginAttemptORM).filter(
             LoginAttemptORM.username == username,
             LoginAttemptORM.success == False,  # noqa: E712
@@ -108,7 +108,7 @@ def record_failed_login(username: str) -> None:
         _record_login_attempt_db(username, success=False)
     if username not in _login_attempts:
         _login_attempts[username] = []
-    _login_attempts[username].append(datetime.utcnow())
+    _login_attempts[username].append(datetime.now(timezone.utc))
 
 
 def _record_login_attempt_db(username: str, *, success: bool) -> None:
@@ -195,7 +195,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 def create_access_token(user_id: str) -> str:
     """Create a JWT access token with a unique jti."""
-    expires = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    expires = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     jti = str(uuid4())
     payload = {"sub": user_id, "exp": expires, "type": "access", "jti": jti}
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
@@ -203,7 +203,7 @@ def create_access_token(user_id: str) -> str:
 
 def create_refresh_token(user_id: str) -> str:
     """Create a JWT refresh token with a unique jti for rotation tracking."""
-    expires = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    expires = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     jti = str(uuid4())
     payload = {"sub": user_id, "exp": expires, "type": "refresh", "jti": jti}
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
@@ -281,7 +281,7 @@ def _is_token_revoked_db(token: str) -> bool:
 
 def _cleanup_blacklist() -> None:
     """Remove expired tokens from the blacklist."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     expired = [t for t, exp in _blacklist_expiry.items() if exp < now]
     for t in expired:
         _token_blacklist.discard(t)
@@ -297,7 +297,7 @@ def _cleanup_blacklist_db() -> None:
     session = _auth_session_factory()
     try:
         session.query(RevokedTokenORM).filter(
-            RevokedTokenORM.expires_at < datetime.utcnow()
+            RevokedTokenORM.expires_at < datetime.now(timezone.utc)
         ).delete()
         session.commit()
     except Exception:
@@ -387,7 +387,7 @@ class InMemoryUserStore(UserStore):
         for key, value in updates.items():
             if value is not None and key not in ("id", "hashed_password", "created_at"):
                 user[key] = value
-        user["updated_at"] = datetime.utcnow()
+        user["updated_at"] = datetime.now(timezone.utc)
         return user
 
     def delete(self, user_id: str) -> Optional[dict]:
@@ -483,7 +483,7 @@ class SQLUserStore(UserStore):
             for key, value in updates.items():
                 if value is not None and key not in ("id", "hashed_password", "created_at"):
                     setattr(obj, key, value)
-            obj.updated_at = datetime.utcnow()
+            obj.updated_at = datetime.now(timezone.utc)
             session.commit()
             session.refresh(obj)
             return self._to_dict(obj)
@@ -567,7 +567,7 @@ def register_user(username: str, email: str, full_name: str, password: str, role
             detail=f"Passwort zu schwach: {'; '.join(pw_errors)}",
         )
     user_id = str(uuid4())
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     user_data = {
         "id": user_id,
         "username": username,

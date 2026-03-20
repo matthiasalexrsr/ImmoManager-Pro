@@ -4,7 +4,11 @@ Maps to the PostgreSQL schema in db/schema.sql. Also works with SQLite for dev/t
 """
 
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timezone
+
+
+def _utcnow():
+    return datetime.now(timezone.utc)
 
 from sqlalchemy import (
     Boolean,
@@ -548,8 +552,8 @@ class TaxRateORM(Base):
     is_default: Mapped[bool] = mapped_column(default=False)
     valid_from: Mapped[date | None] = mapped_column(Date)
     valid_until: Mapped[date | None] = mapped_column(Date)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
 
 class RentAdjustmentORM(Base):
@@ -565,8 +569,8 @@ class RentAdjustmentORM(Base):
     index_value: Mapped[float | None] = mapped_column(Float)
     notes: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(20), default="pending")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
 
 class HandoverProtocolORM(Base):
@@ -587,8 +591,8 @@ class HandoverProtocolORM(Base):
     tenant_signature: Mapped[str | None] = mapped_column(Text)
     landlord_signature: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(20), default="draft")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
 
 class MeterReadingORM(Base):
@@ -601,8 +605,8 @@ class MeterReadingORM(Base):
     unit: Mapped[str] = mapped_column(String(10), default="kWh")
     photo_url: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
 
 class BudgetORM(Base):
@@ -614,8 +618,8 @@ class BudgetORM(Base):
     planned_amount: Mapped[float] = mapped_column(Float)
     actual_amount: Mapped[float] = mapped_column(Float, default=0.0)
     notes: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
 
 class EscalationRuleORM(Base):
@@ -629,8 +633,8 @@ class EscalationRuleORM(Base):
     target_role: Mapped[str | None] = mapped_column(String(50))
     notification_severity: Mapped[str] = mapped_column(String(20), default="warning")
     is_active: Mapped[bool] = mapped_column(default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
 
 class ChangeHistoryORM(Base):
@@ -642,7 +646,7 @@ class ChangeHistoryORM(Base):
     old_value: Mapped[str | None] = mapped_column(Text)
     new_value: Mapped[str | None] = mapped_column(Text)
     changed_by: Mapped[str | None] = mapped_column(String(36))
-    changed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    changed_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     reason: Mapped[str | None] = mapped_column(Text)
 
 
@@ -745,8 +749,8 @@ class ContactORM(Base):
     bank_name: Mapped[str | None] = mapped_column(String(100))
     tax_id: Mapped[str | None] = mapped_column(String(50))
     notes: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
 
 class MeterORM(Base):
@@ -760,8 +764,8 @@ class MeterORM(Base):
     next_inspection: Mapped[date | None] = mapped_column(Date)
     supplier: Mapped[str | None] = mapped_column(String(200))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
 
 class StandaloneMeterReadingORM(Base):
@@ -773,8 +777,8 @@ class StandaloneMeterReadingORM(Base):
     recorded_by: Mapped[str | None] = mapped_column(String(100))
     photo_url: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
 
 class MessageThreadORM(Base):
@@ -787,8 +791,8 @@ class MessageThreadORM(Base):
     contract_id: Mapped[str | None] = mapped_column(String(36))
     last_message_at: Mapped[datetime | None] = mapped_column(DateTime)
     message_count: Mapped[int] = mapped_column(Integer, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
 
 class MessageORM(Base):
@@ -798,7 +802,7 @@ class MessageORM(Base):
     sender_name: Mapped[str] = mapped_column(String(200), default="System")
     body: Mapped[str] = mapped_column(Text)
     attachment_ids: Mapped[str | None] = mapped_column(Text)
-    sent_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    sent_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
 
 class RentChargeORM(Base):
@@ -812,8 +816,8 @@ class RentChargeORM(Base):
     other_charges: Mapped[float] = mapped_column(Float, default=0.0)
     amount_paid: Mapped[float] = mapped_column(Float, default=0.0)
     status: Mapped[str] = mapped_column(String(20), default="open")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
     __table_args__ = (Index("idx_rent_charges_contract_month", "contract_id", "month"),)
 

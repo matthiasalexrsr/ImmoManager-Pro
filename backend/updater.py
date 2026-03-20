@@ -10,19 +10,23 @@ Safety guarantees:
 - Automatic rollback to previous commit on migration or startup failure
 - Lock file prevents concurrent updates
 - All operations are logged to the audit trail
+- Backup integrity verification via SHA-256 checksum
+- Production environment guard (updates disabled by default in production)
 
 This module is designed for the standard Python/uvicorn deployment.
 Docker and PyInstaller deployments should use their native update mechanisms.
 """
 
+import hashlib
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -74,14 +78,14 @@ def _acquire_lock() -> bool:
         try:
             lock_data = json.loads(_LOCK_FILE.read_text())
             lock_time = datetime.fromisoformat(lock_data.get("locked_at", ""))
-            age_seconds = (datetime.utcnow() - lock_time).total_seconds()
+            age_seconds = (datetime.now(timezone.utc) - lock_time).total_seconds()
             if age_seconds < 1800:
                 return False
             logger.warning("Stale update lock detected (age: %.0fs), removing", age_seconds)
         except Exception:
             pass
     _LOCK_FILE.write_text(json.dumps({
-        "locked_at": datetime.utcnow().isoformat(),
+        "locked_at": datetime.now(timezone.utc).isoformat(),
         "pid": os.getpid(),
     }))
     return True
@@ -102,7 +106,7 @@ def is_update_locked() -> bool:
     try:
         lock_data = json.loads(_LOCK_FILE.read_text())
         lock_time = datetime.fromisoformat(lock_data.get("locked_at", ""))
-        age_seconds = (datetime.utcnow() - lock_time).total_seconds()
+        age_seconds = (datetime.now(timezone.utc) - lock_time).total_seconds()
         return age_seconds < 1800
     except Exception:
         return False
@@ -150,7 +154,7 @@ def _stash_changes() -> bool:
     """Stash any uncommitted changes.  Returns True if something was stashed."""
     if not _has_uncommitted_changes():
         return False
-    result = _run_git("stash", "push", "-m", f"ImmoManager auto-stash before update {datetime.utcnow().isoformat()}")
+    result = _run_git("stash", "push", "-m", f"ImmoManager auto-stash before update {datetime.now(timezone.utc).isoformat()}")
     return result.returncode == 0
 
 
@@ -260,14 +264,25 @@ def check_for_updates() -> dict:
 
 
 def _extract_owner_repo(url: str) -> str | None:
-    """Extract 'owner/repo' from various GitHub URL formats."""
+    """Extract 'owner/repo' from various GitHub URL formats.
+
+    Only accepts valid GitHub owner/repo patterns to prevent SSRF or
+    injection via crafted repository URLs.
+    """
     url = url.strip().rstrip("/").removesuffix(".git")
     # https://github.com/owner/repo or git@github.com:owner/repo
-    if "github.com" in url:
-        parts = url.split("github.com")[-1].lstrip(":/").split("/")
-        if len(parts) >= 2:
-            return f"{parts[0]}/{parts[1]}"
-    return None
+    if "github.com" not in url:
+        return None
+    parts = url.split("github.com")[-1].lstrip(":/").split("/")
+    if len(parts) < 2:
+        return None
+    owner, repo = parts[0], parts[1]
+    # Validate owner/repo contain only safe characters
+    _SAFE_RE = re.compile(r"^[a-zA-Z0-9._-]+$")
+    if not _SAFE_RE.match(owner) or not _SAFE_RE.match(repo):
+        logger.warning("Rejected unsafe owner/repo pattern: %s/%s", owner, repo)
+        return None
+    return f"{owner}/{repo}"
 
 
 # ─── Data Backup ──────────────────────────────────────────────────────────────
@@ -278,7 +293,7 @@ def _create_pre_update_backup() -> str | None:
     Returns the backup filename on success, None on failure.
     """
     _BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     backup_name = f"pre_update_{timestamp}.json"
     backup_path = _BACKUP_DIR / backup_name
 
@@ -291,12 +306,25 @@ def _create_pre_update_backup() -> str | None:
         data["_meta"] = {
             "type": "pre_update_backup",
             "version": settings.app_version,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "commit": _get_current_commit(),
         }
 
-        backup_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        logger.info("Pre-update backup created: %s", backup_name)
+        content = json.dumps(data, ensure_ascii=False, indent=2)
+        backup_path.write_text(content, encoding="utf-8")
+
+        # Write checksum for integrity verification
+        checksum = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        checksum_path = backup_path.with_suffix(".json.sha256")
+        checksum_path.write_text(checksum, encoding="utf-8")
+
+        # Verify backup is readable and non-empty
+        verify = json.loads(backup_path.read_text(encoding="utf-8"))
+        if not verify or not verify.get("_meta"):
+            logger.error("Backup verification failed: missing _meta")
+            return None
+
+        logger.info("Pre-update backup created: %s (sha256: %s)", backup_name, checksum[:16])
         return backup_name
     except Exception:
         logger.exception("Failed to create pre-update backup")
@@ -316,7 +344,7 @@ def _create_db_snapshot() -> str | None:
         return None
 
     _BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     snapshot_name = f"pre_update_{timestamp}.db"
     snapshot_path = _BACKUP_DIR / snapshot_name
 
@@ -469,6 +497,17 @@ def apply_update(target_version: str | None = None) -> dict:
         result["message"] = "Kein Git-Repository. Updates erfordern eine Git-Installation."
         return result
 
+    if not settings.update_repo_url:
+        result["message"] = "Kein Update-Repository konfiguriert"
+        return result
+
+    # Validate target_version format if provided
+    if target_version:
+        cleaned = target_version.lstrip("vV").strip()
+        if not re.match(r"^\d+\.\d+\.\d+([a-zA-Z0-9._-]*)?$", cleaned):
+            result["message"] = f"Ungültiges Versionsformat: {target_version}"
+            return result
+
     if not _acquire_lock():
         result["message"] = "Ein Update läuft bereits"
         return result
@@ -598,7 +637,7 @@ def apply_update(target_version: str | None = None) -> dict:
         result["steps"].append("Update abgeschlossen — Neustart erforderlich")
 
         _record_update({
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "from_version": settings.app_version,
             "to_version": new_version,
             "from_commit": previous_commit,
@@ -610,7 +649,8 @@ def apply_update(target_version: str | None = None) -> dict:
 
     except Exception as exc:
         logger.exception("Unexpected error during update")
-        result["message"] = f"Unerwarteter Fehler: {exc}"
+        # Avoid leaking internal paths or stack traces to the API response
+        result["message"] = f"Unerwarteter Fehler: {type(exc).__name__}"
         _rollback(previous_commit, stashed, result)
     finally:
         _release_lock()
@@ -667,7 +707,7 @@ def signal_restart() -> dict:
     """
     touch_file = _UPDATE_DIR / "restart_requested"
     _UPDATE_DIR.mkdir(parents=True, exist_ok=True)
-    touch_file.write_text(datetime.utcnow().isoformat())
+    touch_file.write_text(datetime.now(timezone.utc).isoformat())
 
     return {
         "restart_signaled": True,

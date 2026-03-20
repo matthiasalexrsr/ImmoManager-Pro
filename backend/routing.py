@@ -10,6 +10,7 @@ from .routers import (
     accounts,
     admin,
     audit,
+    autotest,
     auth,
     billing,
     bookings,
@@ -104,8 +105,9 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(files.router, dependencies=_auth_dep)
     api_v1.include_router(updates.router, dependencies=_admin_dep)
     api_v1.include_router(data_exchange.router, dependencies=_admin_dep)
-    api_v1.include_router(dev_notes.router, dependencies=_auth_dep)
+    api_v1.include_router(dev_notes.router, dependencies=_admin_dep)
     api_v1.include_router(diagnostics.router, dependencies=_admin_dep)
+    api_v1.include_router(autotest.router, dependencies=_admin_dep)
 
     return api_v1
 

@@ -22,6 +22,7 @@ from .middleware import (
     AcceptLanguageMiddleware,
     AuditMiddleware,
     DBSessionMiddleware,
+    RBACWriteGuardMiddleware,
     RequestLoggingMiddleware,
 )
 from .plugins import get_plugins, load_plugins
@@ -61,6 +62,12 @@ def _validate_startup_config() -> None:
 
     if settings.allow_inmemory_fallback:
         issues.append("ALLOW_INMEMORY_FALLBACK is enabled. Disable to prevent silent data loss.")
+
+    if settings.update_allow_in_production:
+        issues.append("UPDATE_ALLOW_IN_PRODUCTION is enabled. Self-updates in production carry risk.")
+
+    if settings.diagnostics_allow_in_production:
+        issues.append("DIAGNOSTICS_ALLOW_IN_PRODUCTION is enabled. Diagnostics expose internal structure.")
 
     # Warn if the active store is in-memory (data won't survive restart)
     store_type = type(_active_store).__name__
@@ -160,6 +167,7 @@ app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(AcceptLanguageMiddleware)
 app.add_middleware(DBSessionMiddleware)
 app.add_middleware(AuditMiddleware)
+app.add_middleware(RBACWriteGuardMiddleware)
 
 
 # ─── API Routers ─────────────────────────────────────────────────────────────
