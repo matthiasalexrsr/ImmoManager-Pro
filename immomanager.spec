@@ -275,6 +275,7 @@ a = Analysis(
     datas=backend_data,
     hiddenimports=collected_hiddenimports + _EXPLICIT_THIRD_PARTY + [
         # --- Backend core ---
+        'backend',
         'backend.app',
         'backend.config',
         'backend.dependencies',
@@ -284,7 +285,11 @@ a = Analysis(
         'backend.audit',
         'backend.exceptions',
         'backend.events',
+        'backend.error_helpers',
         'backend.logging_config',
+        'backend.middleware',
+        'backend.routing',
+        'backend.updater',
         'backend.plugins',
         'backend.plugins.base',
         # --- Database ---
@@ -300,6 +305,7 @@ a = Analysis(
         'backend.domain.dunning_engine',
         'backend.domain.invoice_matching',
         'backend.domain.billing_engine',
+        'backend.domain.property_engine',
         # --- Services ---
         'backend.services',
         'backend.services.email_service',
@@ -308,6 +314,23 @@ a = Analysis(
         'backend.services.portal_adapter',
         'backend.services.ocr_service',
         'backend.services.task_queue',
+        'backend.services.integration_service',
+        # --- Autotest service ---
+        'backend.services.autotest',
+        'backend.services.autotest.runner',
+        'backend.services.autotest.test_api_routes',
+        'backend.services.autotest.test_auth_security',
+        'backend.services.autotest.test_config_validation',
+        'backend.services.autotest.test_data_integrity',
+        'backend.services.autotest.test_frontend_contracts',
+        'backend.services.autotest.test_security_posture',
+        'backend.services.autotest.test_store_operations',
+        # --- Integrations service ---
+        'backend.services.integrations',
+        'backend.services.integrations.base',
+        'backend.services.integrations.config_store',
+        'backend.services.integrations.manager',
+        'backend.services.integrations.providers',
         # --- Mietvertrag wizard ---
         'mietvertrag_wizard',
         'mietvertrag_wizard.pdf_reportlab',
@@ -319,6 +342,7 @@ a = Analysis(
         'backend.routers.admin',
         'backend.routers.audit',
         'backend.routers.auth',
+        'backend.routers.autotest',
         'backend.routers.billing',
         'backend.routers.bookings',
         'backend.routers.budgets',
@@ -360,9 +384,6 @@ a = Analysis(
         'backend.routers.updates',
         'backend.routers.validators',
         'backend.routers.viewings',
-        # --- Routing + updater ---
-        'backend.routing',
-        'backend.updater',
     ],
     hookspath=[],
     hooksconfig={},
