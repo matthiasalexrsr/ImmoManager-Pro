@@ -211,11 +211,20 @@ def download_file(key: str = Query(...)) -> Response:
     if not safe_key:
         raise HTTPException(status_code=400, detail="Ungültiger Dateischlüssel")
 
+    # Additional path traversal protection
+    if ".." in safe_key or safe_key.startswith("/"):
+        raise HTTPException(status_code=400, detail="Ungültiger Dateischlüssel")
+
     data = storage.get(safe_key)
     if data is None:
         raise HTTPException(status_code=404, detail="Datei nicht gefunden")
 
     ext = safe_key.rsplit(".", 1)[-1].lower() if "." in safe_key else ""
+
+    # Block download of dangerous file types
+    if ext in _BLOCKED_EXTENSIONS:
+        raise HTTPException(status_code=403, detail="Dateityp nicht erlaubt")
+
     content_types = {
         "pdf": "application/pdf",
         "png": "image/png",
@@ -223,9 +232,21 @@ def download_file(key: str = Query(...)) -> Response:
         "jpeg": "image/jpeg",
         "txt": "text/plain",
         "json": "application/json",
+        "xml": "application/xml",
+        "csv": "text/csv",
     }
     ct = content_types.get(ext, "application/octet-stream")
-    return Response(content=data, media_type=ct)
+
+    # Extract safe filename for Content-Disposition
+    filename = safe_key.rsplit("/", 1)[-1] if "/" in safe_key else safe_key
+    # Sanitize filename to prevent header injection
+    filename = filename.replace('"', "").replace("\n", "").replace("\r", "")
+
+    headers = {
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        "X-Content-Type-Options": "nosniff",
+    }
+    return Response(content=data, media_type=ct, headers=headers)
 
 
 @router.get("/ocr-text")

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from '../i18n';
 import { CloseIcon } from './Icons';
 
@@ -7,6 +7,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
   const [values, setValues] = useState({});
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
+  const modalRef = useRef(null);
 
   useEffect(() => {
     const init = {};
@@ -15,6 +16,42 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
     });
     setValues(init);
   }, [initial, fields]);
+
+  // Escape key to close
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  // Focus trap
+  useEffect(() => {
+    const modal = modalRef.current;
+    if (!modal) return;
+    const focusable = modal.querySelectorAll(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    if (focusable.length > 0) focusable[0].focus();
+
+    const trapFocus = (e) => {
+      if (e.key !== 'Tab' || focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    modal.addEventListener('keydown', trapFocus);
+    return () => modal.removeEventListener('keydown', trapFocus);
+  }, [fields]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -45,8 +82,15 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()}>
+    <div className="modal-overlay" onClick={onClose} role="presentation">
+      <div
+        className="modal"
+        ref={modalRef}
+        onClick={e => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+      >
         <div className="modal-header">
           <h3>{title}</h3>
           <button onClick={onClose} className="btn-close" aria-label={t('ui.buttons.close')}>
@@ -55,38 +99,44 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
         </div>
         <form onSubmit={handleSubmit}>
           <div className="modal-body">
-            {error && <div className="alert-error">{error}</div>}
-            {fields.map(f => (
-              <div key={f.key} className="form-group">
-                <label>{f.label}{f.required && ' *'}</label>
-                {f.type === 'select' ? (
-                  <select
-                    value={values[f.key] || ''}
-                    onChange={e => setValues({ ...values, [f.key]: e.target.value })}
-                    required={f.required}
-                  >
-                    <option value="">{t('ui.form.pleaseSelect')}</option>
-                    {f.options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
-                ) : f.type === 'textarea' ? (
-                  <textarea
-                    value={values[f.key] || ''}
-                    onChange={e => setValues({ ...values, [f.key]: e.target.value })}
-                    required={f.required}
-                    rows={3}
-                  />
-                ) : (
-                  <input
-                    type={f.type || 'text'}
-                    value={values[f.key] ?? ''}
-                    onChange={e => setValues({ ...values, [f.key]: e.target.value })}
-                    required={f.required}
-                    step={f.type === 'number' ? '0.01' : undefined}
-                    placeholder={f.placeholder}
-                  />
-                )}
-              </div>
-            ))}
+            {error && <div className="alert-error" role="alert">{error}</div>}
+            {fields.map(f => {
+              const inputId = `form-field-${f.key}`;
+              return (
+                <div key={f.key} className="form-group">
+                  <label htmlFor={inputId}>{f.label}{f.required && ' *'}</label>
+                  {f.type === 'select' ? (
+                    <select
+                      id={inputId}
+                      value={values[f.key] || ''}
+                      onChange={e => setValues({ ...values, [f.key]: e.target.value })}
+                      required={f.required}
+                    >
+                      <option value="">{t('ui.form.pleaseSelect')}</option>
+                      {f.options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  ) : f.type === 'textarea' ? (
+                    <textarea
+                      id={inputId}
+                      value={values[f.key] || ''}
+                      onChange={e => setValues({ ...values, [f.key]: e.target.value })}
+                      required={f.required}
+                      rows={3}
+                    />
+                  ) : (
+                    <input
+                      id={inputId}
+                      type={f.type || 'text'}
+                      value={values[f.key] ?? ''}
+                      onChange={e => setValues({ ...values, [f.key]: e.target.value })}
+                      required={f.required}
+                      step={f.type === 'number' ? '0.01' : undefined}
+                      placeholder={f.placeholder}
+                    />
+                  )}
+                </div>
+              );
+            })}
           </div>
           <div className="modal-footer">
             <button type="button" onClick={onClose} className="btn btn-secondary">{t('ui.buttons.cancel')}</button>

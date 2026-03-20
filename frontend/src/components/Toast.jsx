@@ -42,12 +42,19 @@ export function ToastProvider({ children }) {
   return (
     <ToastContext.Provider value={toast}>
       {children}
-      <div className="toast-container">
+      <div className="toast-container" aria-live="polite" aria-atomic="true" role="status">
         {toasts.map(t => {
           const IconComp = TOAST_ICONS[t.type] || InfoIcon;
           return (
-            <div key={t.id} className={`toast toast-${t.type}`} onClick={() => removeToast(t.id)}>
-              <span className="toast-icon">
+            <div
+              key={t.id}
+              className={`toast toast-${t.type}`}
+              onClick={() => removeToast(t.id)}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') removeToast(t.id); }}
+              role={t.type === 'error' ? 'alert' : 'status'}
+              tabIndex={0}
+            >
+              <span className="toast-icon" aria-hidden="true">
                 <IconComp size={18} />
               </span>
               <span className="toast-message">{t.message}</span>

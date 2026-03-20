@@ -320,12 +320,12 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
                   {(onEdit || onDelete) && (
                     <td className="action-cell" onClick={e => e.stopPropagation()}>
                       {onEdit && (
-                        <button onClick={() => onEdit(row)} className="btn btn-sm btn-ghost" title={t('ui.buttons.edit')}>
+                        <button onClick={() => onEdit(row)} className="btn btn-sm btn-ghost" aria-label={t('ui.buttons.edit')} title={t('ui.buttons.edit')}>
                           <EditIcon size={15} />
                         </button>
                       )}
                       {onDelete && (
-                        <button onClick={() => onDelete(row)} className="btn btn-sm btn-ghost" title={t('ui.buttons.delete')} style={{ color: 'var(--color-danger)' }}>
+                        <button onClick={() => onDelete(row)} className="btn btn-sm btn-ghost" aria-label={t('ui.buttons.delete')} title={t('ui.buttons.delete')} style={{ color: 'var(--color-danger)' }}>
                           <TrashIcon size={15} />
                         </button>
                       )}
@@ -352,12 +352,12 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
           >
             {PAGE_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
-          <div className="pagination-btns">
-            <button disabled={safePage === 0} onClick={() => setPage(0)} className="btn btn-sm btn-secondary">\u00AB</button>
-            <button disabled={safePage === 0} onClick={() => setPage(p => p - 1)} className="btn btn-sm btn-secondary">\u2039</button>
-            <span className="page-indicator">{safePage + 1} / {totalPages}</span>
-            <button disabled={safePage >= totalPages - 1} onClick={() => setPage(p => p + 1)} className="btn btn-sm btn-secondary">\u203A</button>
-            <button disabled={safePage >= totalPages - 1} onClick={() => setPage(totalPages - 1)} className="btn btn-sm btn-secondary">\u00BB</button>
+          <div className="pagination-btns" role="navigation" aria-label={t('ui.table.pagination') || 'Pagination'}>
+            <button disabled={safePage === 0} onClick={() => setPage(0)} className="btn btn-sm btn-secondary" aria-label={t('ui.table.firstPage') || 'First page'}>{'\u00AB'}</button>
+            <button disabled={safePage === 0} onClick={() => setPage(p => p - 1)} className="btn btn-sm btn-secondary" aria-label={t('ui.table.previousPage') || 'Previous page'}>{'\u2039'}</button>
+            <span className="page-indicator" aria-current="page">{safePage + 1} / {totalPages}</span>
+            <button disabled={safePage >= totalPages - 1} onClick={() => setPage(p => p + 1)} className="btn btn-sm btn-secondary" aria-label={t('ui.table.nextPage') || 'Next page'}>{'\u203A'}</button>
+            <button disabled={safePage >= totalPages - 1} onClick={() => setPage(totalPages - 1)} className="btn btn-sm btn-secondary" aria-label={t('ui.table.lastPage') || 'Last page'}>{'\u00BB'}</button>
           </div>
         </div>
       </div>

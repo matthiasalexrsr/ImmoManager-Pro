@@ -14,14 +14,29 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
+from ..config import settings
 from ..dependencies import get_store
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/diagnostics", tags=["Diagnostics"])
+
+
+def _check_diagnostics_allowed():
+    """Guard: block diagnostics in production unless explicitly enabled.
+
+    Diagnostics can expose entity counts, FK relationships, and internal
+    structure. In production, this endpoint is disabled by default to
+    prevent information leakage.  Enable via DIAGNOSTICS_ALLOW_IN_PRODUCTION=true.
+    """
+    if settings.is_production and not settings.diagnostics_allow_in_production:
+        raise HTTPException(
+            status_code=403,
+            detail="Diagnostics sind in der Produktionsumgebung deaktiviert.",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -446,7 +461,7 @@ def _write_diagnostics_log(report: DiagnosticsReport) -> None:
 # Endpoint
 # ---------------------------------------------------------------------------
 
-@router.get("/run", response_model=DiagnosticsReport)
+@router.get("/run", response_model=DiagnosticsReport, dependencies=[Depends(_check_diagnostics_allowed)])
 def run_diagnostics(store=Depends(get_store)):
     """Run all diagnostic tests and return the report."""
     start = time.monotonic()

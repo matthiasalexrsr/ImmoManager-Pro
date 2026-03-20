@@ -2,11 +2,19 @@
 
 Provides endpoints for checking, applying, and monitoring application updates
 from GitHub. All endpoints require admin role (eigentuemer/verwalter).
+
+Security considerations:
+- All endpoints are admin-only (enforced via routing.py dependencies)
+- The /configure endpoint does NOT persist changes (restart resets them)
+- The /apply endpoint validates target_version format before delegating
+- Error responses are sanitized to avoid leaking internal details
 """
 
 import logging
+import re
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, field_validator
 
 from ..config import settings
 from ..updater import (
@@ -20,6 +28,40 @@ from ..updater import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/updates", tags=["Updates"])
+
+
+class ApplyUpdateRequest(BaseModel):
+    target_version: str | None = None
+
+    @field_validator("target_version")
+    @classmethod
+    def validate_version(cls, v):
+        if v is not None:
+            cleaned = v.lstrip("vV").strip()
+            if not re.match(r"^\d+\.\d+\.\d+([a-zA-Z0-9._-]*)?$", cleaned):
+                raise ValueError("Ungültiges Versionsformat")
+        return v
+
+
+class ConfigureUpdateRequest(BaseModel):
+    repo_url: str | None = None
+    channel: str | None = None
+    token: str | None = None
+
+    @field_validator("channel")
+    @classmethod
+    def validate_channel(cls, v):
+        if v is not None and v not in ("stable", "preview"):
+            raise ValueError("Ungültiger Kanal. Erlaubt: 'stable', 'preview'")
+        return v
+
+    @field_validator("repo_url")
+    @classmethod
+    def validate_repo_url(cls, v):
+        if v is not None and v != "":
+            if not re.match(r"^https?://github\.com/[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+", v):
+                raise ValueError("Nur GitHub-Repository-URLs sind erlaubt")
+        return v
 
 
 @router.get("/check")
@@ -49,7 +91,7 @@ def update_status():
 
 
 @router.post("/apply")
-def apply_update_endpoint(payload: dict | None = None):
+def apply_update_endpoint(payload: ApplyUpdateRequest | None = None):
     """Apply an available update.
 
     Optional body: {"target_version": "1.2.0"} to update to a specific version.
@@ -65,15 +107,25 @@ def apply_update_endpoint(payload: dict | None = None):
 
     Returns detailed step-by-step progress and result.
     """
+    if settings.is_production and not settings.update_allow_in_production:
+        raise HTTPException(
+            status_code=403,
+            detail="Updates sind in der Produktionsumgebung deaktiviert. Setzen Sie UPDATE_ALLOW_IN_PRODUCTION=true.",
+        )
+
     if not settings.update_repo_url:
         raise HTTPException(
             status_code=400,
             detail="Kein GitHub-Repository konfiguriert. Setzen Sie UPDATE_REPO_URL in der .env Datei.",
         )
 
-    target = None
-    if payload and isinstance(payload, dict):
-        target = payload.get("target_version")
+    if is_update_locked():
+        raise HTTPException(
+            status_code=409,
+            detail="Ein Update läuft bereits. Bitte warten Sie.",
+        )
+
+    target = payload.target_version if payload else None
 
     result = apply_update(target_version=target)
     return result
@@ -96,29 +148,32 @@ def update_history():
 
 
 @router.post("/configure")
-def configure_update(payload: dict):
+def configure_update(payload: ConfigureUpdateRequest):
     """Update the update configuration at runtime.
 
     Accepts: {"repo_url": "...", "channel": "stable|preview", "token": "..."}
 
     Note: These changes are NOT persisted to .env — they only last until restart.
     To persist, edit .env manually.
+
+    Security: Only GitHub URLs are accepted for repo_url. Token values are
+    never returned in responses (only whether one is set).
     """
     changed = []
 
-    if "repo_url" in payload:
-        settings.update_repo_url = payload["repo_url"]
+    if payload.repo_url is not None:
+        settings.update_repo_url = payload.repo_url
         changed.append("update_repo_url")
 
-    if "channel" in payload:
-        if payload["channel"] not in ("stable", "preview"):
-            raise HTTPException(400, "Ungültiger Kanal. Erlaubt: 'stable', 'preview'")
-        settings.update_channel = payload["channel"]
+    if payload.channel is not None:
+        settings.update_channel = payload.channel
         changed.append("update_channel")
 
-    if "token" in payload:
-        settings.update_github_token = payload["token"]
+    if payload.token is not None:
+        settings.update_github_token = payload.token
         changed.append("update_github_token")
+
+    logger.info("Update configuration changed: %s", ", ".join(changed) if changed else "none")
 
     return {
         "message": f"Konfiguration aktualisiert: {', '.join(changed)}" if changed else "Keine Änderungen",

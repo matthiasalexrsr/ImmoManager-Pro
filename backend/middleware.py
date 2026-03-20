@@ -34,8 +34,9 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         response: Response = await call_next(request)
         duration_ms = round((time.monotonic() - start) * 1000, 1)
 
-        # Add request ID header
+        # Add security and request ID headers
         response.headers["X-Request-ID"] = rid
+        response.headers["X-Content-Type-Options"] = "nosniff"
 
         # Log the request with appropriate level based on status code
         if request.url.path.startswith("/api/"):

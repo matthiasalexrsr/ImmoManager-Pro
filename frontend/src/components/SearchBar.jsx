@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
@@ -45,7 +45,9 @@ export default function SearchBar() {
   const [results, setResults] = useState([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
   const inputRef = useRef(null);
+  const listRef = useRef(null);
   const navigate = useNavigate();
 
   // Keyboard shortcut: Ctrl+K
@@ -55,10 +57,6 @@ export default function SearchBar() {
         e.preventDefault();
         inputRef.current?.focus();
         setOpen(true);
-      }
-      if (e.key === 'Escape') {
-        setOpen(false);
-        inputRef.current?.blur();
       }
     };
     document.addEventListener('keydown', handler);
@@ -73,7 +71,7 @@ export default function SearchBar() {
     const timer = setTimeout(() => {
       setLoading(true);
       api.get(`/search?q=${encodeURIComponent(query)}`)
-        .then(data => setResults(data.results || []))
+        .then(data => { setResults(data.results || []); setActiveIndex(-1); })
         .catch(() => setResults([]))
         .finally(() => setLoading(false));
     }, 300);
@@ -83,19 +81,59 @@ export default function SearchBar() {
   // Clear results when query is too short
   const currentResults = query.length < 2 ? [] : results;
 
-  const handleSelect = (result) => {
+  const handleSelect = useCallback((result) => {
     setOpen(false);
     setQuery('');
-    // Use the URL from backend if available (may include entity ID)
-    // Fall back to entity route map
+    setActiveIndex(-1);
     const route = result.url || ENTITY_ROUTES[result.entity_type] || '/';
     navigate(route);
+  }, [navigate]);
+
+  const handleKeyDown = (e) => {
+    if (!open || currentResults.length === 0) {
+      if (e.key === 'Escape') {
+        setOpen(false);
+        inputRef.current?.blur();
+      }
+      return;
+    }
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setActiveIndex(prev => Math.min(prev + 1, currentResults.length - 1));
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setActiveIndex(prev => Math.max(prev - 1, -1));
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (activeIndex >= 0 && activeIndex < currentResults.length) {
+          handleSelect(currentResults[activeIndex]);
+        }
+        break;
+      case 'Escape':
+        e.preventDefault();
+        setOpen(false);
+        inputRef.current?.blur();
+        setActiveIndex(-1);
+        break;
+    }
   };
+
+  // Scroll active item into view
+  useEffect(() => {
+    if (activeIndex >= 0 && listRef.current) {
+      const items = listRef.current.querySelectorAll('[role="option"]');
+      items[activeIndex]?.scrollIntoView({ block: 'nearest' });
+    }
+  }, [activeIndex]);
 
   return (
     <div className="search-bar-global">
-      <div className="search-bar-input-wrapper">
-        <span className="search-bar-icon"><SearchIcon size={16} /></span>
+      <div className="search-bar-input-wrapper" role="combobox" aria-expanded={open && query.length >= 2} aria-haspopup="listbox" aria-owns="search-results-listbox">
+        <span className="search-bar-icon" aria-hidden="true"><SearchIcon size={16} /></span>
         <input
           ref={inputRef}
           type="text"
@@ -103,25 +141,43 @@ export default function SearchBar() {
           value={query}
           onChange={e => { setQuery(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)}
+          onKeyDown={handleKeyDown}
           className="search-bar-input"
+          role="searchbox"
+          aria-label={t('ui.form.search')}
+          aria-autocomplete="list"
+          aria-activedescendant={activeIndex >= 0 ? `search-result-${activeIndex}` : undefined}
         />
         {query ? (
-          <button className="search-bar-clear" onClick={() => { setQuery(''); setResults([]); }}>
+          <button
+            className="search-bar-clear"
+            onClick={() => { setQuery(''); setResults([]); setActiveIndex(-1); }}
+            aria-label={t('ui.buttons.clear') || 'Clear search'}
+          >
             <CloseIcon size={14} />
           </button>
         ) : (
-          <span className="search-bar-shortcut">Ctrl+K</span>
+          <span className="search-bar-shortcut" aria-hidden="true">Ctrl+K</span>
         )}
       </div>
       {open && query.length >= 2 && (
-        <div className="search-bar-dropdown">
-          {loading && <div className="search-bar-loading">{t('ui.table.loading')}</div>}
-          {!loading && currentResults.length === 0 && <div className="search-bar-empty">{t('search.global.noResults')}</div>}
+        <div className="search-bar-dropdown" id="search-results-listbox" role="listbox" ref={listRef} aria-label={t('ui.form.search')}>
+          {loading && <div className="search-bar-loading" role="status">{t('ui.table.loading')}</div>}
+          {!loading && currentResults.length === 0 && <div className="search-bar-empty" role="status">{t('search.global.noResults')}</div>}
           {!loading && currentResults.map((r, i) => {
             const EntityIcon = ENTITY_ICON_MAP[r.entity_type];
             return (
-              <div key={i} className="search-bar-result" onClick={() => handleSelect(r)}>
-                <span className="search-bar-result-icon">
+              <div
+                key={i}
+                id={`search-result-${i}`}
+                className={`search-bar-result${i === activeIndex ? ' search-bar-result-active' : ''}`}
+                onClick={() => handleSelect(r)}
+                onMouseEnter={() => setActiveIndex(i)}
+                role="option"
+                aria-selected={i === activeIndex}
+                tabIndex={-1}
+              >
+                <span className="search-bar-result-icon" aria-hidden="true">
                   {EntityIcon ? <EntityIcon size={16} /> : <SearchIcon size={16} />}
                 </span>
                 <div className="search-bar-result-text">
@@ -133,7 +189,7 @@ export default function SearchBar() {
           })}
         </div>
       )}
-      {open && <div className="search-bar-backdrop" onClick={() => setOpen(false)} />}
+      {open && <div className="search-bar-backdrop" onClick={() => { setOpen(false); setActiveIndex(-1); }} aria-hidden="true" />}
     </div>
   );
 }
