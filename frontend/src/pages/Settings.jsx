@@ -652,9 +652,9 @@ export default function Settings() {
               </div>
             </div>
           </div>
-        </div>
+        </div>)}
 
-        {devMode?.enabled && (
+        {isAdmin && devMode?.enabled && (
         <div className="panel">
           <div className="panel-header">Autotest — Self-Diagnostic Suite</div>
           <div className="panel-body settings-section">
@@ -753,7 +753,6 @@ export default function Settings() {
             )}
           </div>
         </div>
-        )}
         )}
 
         <div className="panel">
