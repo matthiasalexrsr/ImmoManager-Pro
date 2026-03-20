@@ -745,6 +745,31 @@
       "title": "Acerca de ImmoManager Pro",
       "type": "Tipo",
       "localApp": "Aplicación local (sin nube, privada)"
+    },
+    "update": {
+      "title": "Actualizaciones",
+      "currentVersion": "Versión actual",
+      "checkLabel": "Buscar actualizaciones",
+      "checking": "Comprobando...",
+      "checkNow": "Comprobar ahora",
+      "latestVersion": "Última versión",
+      "available": "¡Actualización disponible!",
+      "upToDate": "Ya está actualizado",
+      "releaseNotes": "Notas de la versión",
+      "showNotes": "Mostrar",
+      "applyLabel": "Instalar actualización",
+      "applying": "Instalando...",
+      "applyNow": "Instalar ahora",
+      "frozenHint": "No disponible en modo empaquetado",
+      "confirmApply": "¿Aplicar actualización ahora? Se creará una copia de seguridad automáticamente.",
+      "error": "Error",
+      "result": "Resultado",
+      "showSteps": "Mostrar pasos",
+      "restartRequired": "Reinicie la aplicación para activar la actualización.",
+      "rolledBack": "Se realizó una reversión automática. Sus datos no han cambiado.",
+      "history": "Historial de actualizaciones",
+      "showHistory": "Mostrar",
+      "noHistory": "Aún no se han realizado actualizaciones"
     }
   },
   "search": {

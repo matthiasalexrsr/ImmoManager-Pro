@@ -97,6 +97,14 @@ class Settings(BaseSettings):
     # --- File upload limits ---
     max_upload_size_bytes: int = 50 * 1024 * 1024  # 50 MB
 
+    # --- Updates ---
+    # GitHub repository URL for checking updates (e.g. "https://github.com/owner/repo")
+    update_repo_url: str = ""
+    # "stable" = only released versions; "preview" = include pre-releases
+    update_channel: str = "stable"
+    # Optional GitHub personal access token for private repos / higher rate limits
+    update_github_token: str = ""
+
     # --- Integrations ---
     integration_state_file: str | None = None
 
