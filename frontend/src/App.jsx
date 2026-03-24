@@ -1,52 +1,54 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { isLoggedIn, api } from './api';
 import Layout from './components/Layout';
 import DevModeOverlay from './components/DevModeOverlay';
+import LoadingSpinner from './components/LoadingSpinner';
 import { useAuth } from './contexts/AuthContext';
 import { useDevMode } from './contexts/DevModeContext';
 import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
-import Portfolios from './pages/Portfolios';
-import Properties from './pages/Properties';
-import PropertyOverview from './pages/PropertyOverview';
-import Units from './pages/Units';
-import UnitOverview from './pages/UnitOverview';
-import Tenants from './pages/Tenants';
-import Contracts from './pages/Contracts';
-import Accounts from './pages/Accounts';
-import Bookings from './pages/Bookings';
-import Invoices from './pages/Invoices';
-import Maintenance from './pages/Maintenance';
-import Tasks from './pages/Tasks';
-import Documents from './pages/Documents';
-import RentOverview from './pages/RentOverview';
-import Meters from './pages/Meters';
-import Contacts from './pages/Contacts';
-import Statements from './pages/Statements';
-import Messages from './pages/Messages';
-import Settings from './pages/Settings';
-import PropertyDetail from './pages/PropertyDetail';
-import Categories from './pages/Categories';
-import Deposits from './pages/Deposits';
-import Insurances from './pages/Insurances';
-import Integrations from './pages/Integrations';
-import Calendar from './pages/Calendar';
-import Leads from './pages/Leads';
-import Listings from './pages/Listings';
-import Viewings from './pages/Viewings';
-import RentAdjustments from './pages/RentAdjustments';
-import Budgets from './pages/Budgets';
-import TaxRates from './pages/TaxRates';
-import ContractWizard from './pages/ContractWizard';
-import Receivables from './pages/Receivables';
-import RentCharges from './pages/RentCharges';
-import EscalationRules from './pages/EscalationRules';
-import NotificationTemplates from './pages/NotificationTemplates';
-import History from './pages/History';
-import AllocationKeys from './pages/AllocationKeys';
-import HandoverProtocols from './pages/HandoverProtocols';
-import NotFound from './pages/NotFound';
+
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Portfolios = lazy(() => import('./pages/Portfolios'));
+const Properties = lazy(() => import('./pages/Properties'));
+const PropertyOverview = lazy(() => import('./pages/PropertyOverview'));
+const Units = lazy(() => import('./pages/Units'));
+const UnitOverview = lazy(() => import('./pages/UnitOverview'));
+const Tenants = lazy(() => import('./pages/Tenants'));
+const Contracts = lazy(() => import('./pages/Contracts'));
+const Accounts = lazy(() => import('./pages/Accounts'));
+const Bookings = lazy(() => import('./pages/Bookings'));
+const Invoices = lazy(() => import('./pages/Invoices'));
+const Maintenance = lazy(() => import('./pages/Maintenance'));
+const Tasks = lazy(() => import('./pages/Tasks'));
+const Documents = lazy(() => import('./pages/Documents'));
+const RentOverview = lazy(() => import('./pages/RentOverview'));
+const Meters = lazy(() => import('./pages/Meters'));
+const Contacts = lazy(() => import('./pages/Contacts'));
+const Statements = lazy(() => import('./pages/Statements'));
+const Messages = lazy(() => import('./pages/Messages'));
+const Settings = lazy(() => import('./pages/Settings'));
+const PropertyDetail = lazy(() => import('./pages/PropertyDetail'));
+const Categories = lazy(() => import('./pages/Categories'));
+const Deposits = lazy(() => import('./pages/Deposits'));
+const Insurances = lazy(() => import('./pages/Insurances'));
+const Integrations = lazy(() => import('./pages/Integrations'));
+const Calendar = lazy(() => import('./pages/Calendar'));
+const Leads = lazy(() => import('./pages/Leads'));
+const Listings = lazy(() => import('./pages/Listings'));
+const Viewings = lazy(() => import('./pages/Viewings'));
+const RentAdjustments = lazy(() => import('./pages/RentAdjustments'));
+const Budgets = lazy(() => import('./pages/Budgets'));
+const TaxRates = lazy(() => import('./pages/TaxRates'));
+const ContractWizard = lazy(() => import('./pages/ContractWizard'));
+const Receivables = lazy(() => import('./pages/Receivables'));
+const RentCharges = lazy(() => import('./pages/RentCharges'));
+const EscalationRules = lazy(() => import('./pages/EscalationRules'));
+const NotificationTemplates = lazy(() => import('./pages/NotificationTemplates'));
+const History = lazy(() => import('./pages/History'));
+const AllocationKeys = lazy(() => import('./pages/AllocationKeys'));
+const HandoverProtocols = lazy(() => import('./pages/HandoverProtocols'));
+const NotFound = lazy(() => import('./pages/NotFound'));
 
 function ProtectedRoute({ children }) {
   const [status, setStatus] = useState(isLoggedIn() ? 'validating' : 'unauthenticated');
@@ -100,6 +102,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <DevModeWrapper>
+      <Suspense fallback={<LoadingSpinner />}>
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
@@ -145,6 +148,7 @@ export default function App() {
           <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>
+      </Suspense>
       </DevModeWrapper>
     </BrowserRouter>
   );

@@ -134,6 +134,45 @@ class BaseRepository(Generic[ORM, ReadModel, CreateModel]):
         self.db.delete(orm_obj)
         self.db.flush()
 
+    @safe_db_operation("list_paginated")
+    def list_paginated(
+        self,
+        skip: int = 0,
+        limit: int = 100,
+        filters: dict[str, Any] | None = None,
+        order_by: str | None = None,
+        order_desc: bool = False,
+    ) -> list[ReadModel]:
+        """List entities with DB-level pagination, filtering, and ordering.
+
+        Args:
+            skip: Number of records to skip.
+            limit: Maximum number of records to return.
+            filters: Column-value pairs to filter by (None values are skipped).
+            order_by: Column name to order by.
+            order_desc: If True, order descending.
+        """
+        query = self.db.query(self.orm_class)
+        if filters:
+            for key, value in filters.items():
+                if value is not None and hasattr(self.orm_class, key):
+                    query = query.filter(getattr(self.orm_class, key) == value)
+        if order_by and hasattr(self.orm_class, order_by):
+            col = getattr(self.orm_class, order_by)
+            query = query.order_by(col.desc() if order_desc else col.asc())
+        query = query.offset(skip).limit(limit)
+        return [self._to_pydantic(o) for o in query.all()]
+
+    @safe_db_operation("count")
+    def count(self, filters: dict[str, Any] | None = None) -> int:
+        """Count entities matching the given filters."""
+        query = self.db.query(self.orm_class)
+        if filters:
+            for key, value in filters.items():
+                if value is not None and hasattr(self.orm_class, key):
+                    query = query.filter(getattr(self.orm_class, key) == value)
+        return query.count()
+
     @safe_db_operation("filter_by")
     def filter_by(self, **kwargs) -> list[ReadModel]:
         """Filter entities by column values. None values are skipped."""

@@ -17,6 +17,7 @@ from uuid import uuid4
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
+from sqlalchemy.exc import SQLAlchemyError
 
 from .config import settings
 from .models import TokenPayload, UserRead
@@ -41,12 +42,77 @@ MAX_LOGIN_ATTEMPTS = 5
 LOCKOUT_DURATION_MINUTES = 15
 _login_attempts: dict[str, list[datetime]] = {}  # username -> list of failed attempt times
 
+# Generic rate limiting
+MAX_REGISTER_ATTEMPTS = 5
+REGISTER_WINDOW_MINUTES = 60
+
+
+class RateLimiter:
+    """Generic in-memory rate limiter with configurable key, threshold, and window."""
+
+    def __init__(self, max_attempts: int, window_minutes: int, max_keys: int = 10_000):
+        self.max_attempts = max_attempts
+        self.window_minutes = window_minutes
+        self.max_keys = max_keys
+        self._attempts: dict[str, list[datetime]] = {}
+
+    def is_limited(self, key: str) -> bool:
+        """Return True if the key has exceeded the rate limit."""
+        self._cleanup_key(key)
+        return len(self._attempts.get(key, [])) >= self.max_attempts
+
+    def record(self, key: str) -> None:
+        """Record an attempt for the given key."""
+        now = datetime.now(timezone.utc)
+        if key not in self._attempts:
+            # Evict oldest keys if at capacity
+            if len(self._attempts) >= self.max_keys:
+                self._evict_oldest()
+            self._attempts[key] = []
+        self._attempts[key].append(now)
+
+    def _cleanup_key(self, key: str) -> None:
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=self.window_minutes)
+        if key in self._attempts:
+            self._attempts[key] = [t for t in self._attempts[key] if t > cutoff]
+            if not self._attempts[key]:
+                del self._attempts[key]
+
+    def _evict_oldest(self) -> None:
+        """Remove the key with the oldest last-attempt timestamp."""
+        if not self._attempts:
+            return
+        oldest_key = min(
+            self._attempts,
+            key=lambda k: self._attempts[k][-1] if self._attempts[k] else datetime.min.replace(tzinfo=timezone.utc),
+        )
+        del self._attempts[oldest_key]
+
+    def cleanup_expired(self) -> None:
+        """Remove all expired entries (for periodic background cleanup)."""
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=self.window_minutes)
+        expired_keys = [
+            k for k, attempts in self._attempts.items()
+            if not any(t > cutoff for t in attempts)
+        ]
+        for k in expired_keys:
+            del self._attempts[k]
+
+
+# Rate limiter instances
+_register_limiter = RateLimiter(
+    max_attempts=MAX_REGISTER_ATTEMPTS,
+    window_minutes=REGISTER_WINDOW_MINUTES,
+)
+
 # HTTP Bearer scheme
 security = HTTPBearer(auto_error=False)
 
 # Token blacklist for logout/revocation
 _token_blacklist: set[str] = set()
 _blacklist_expiry: dict[str, datetime] = {}  # token -> expiry time for cleanup
+_MAX_BLACKLIST_SIZE = 10_000
+_MAX_LOGIN_ATTEMPT_KEYS = 10_000
 
 # DB-backed session factory for auth security state (set by enable_sql_auth_state)
 _auth_session_factory = None
@@ -95,7 +161,7 @@ def _check_login_rate_limit_db(username: str) -> bool:
             LoginAttemptORM.attempted_at > cutoff,
         ).count()
         return count >= MAX_LOGIN_ATTEMPTS
-    except Exception:
+    except SQLAlchemyError:
         logger.warning("DB rate-limit check failed, falling back to in-memory", exc_info=True)
         return len([t for t in _login_attempts.get(username, []) if t > cutoff]) >= MAX_LOGIN_ATTEMPTS
     finally:
@@ -107,8 +173,27 @@ def record_failed_login(username: str) -> None:
     if _auth_session_factory is not None:
         _record_login_attempt_db(username, success=False)
     if username not in _login_attempts:
+        # Evict oldest key if at capacity
+        if len(_login_attempts) >= _MAX_LOGIN_ATTEMPT_KEYS:
+            _evict_oldest_login_attempts()
         _login_attempts[username] = []
     _login_attempts[username].append(datetime.now(timezone.utc))
+
+
+def _evict_oldest_login_attempts() -> None:
+    """Remove the login attempts key with the oldest last-attempt timestamp."""
+    if not _login_attempts:
+        return
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=LOCKOUT_DURATION_MINUTES)
+    # First try to evict expired keys
+    expired = [k for k, v in _login_attempts.items() if not any(t > cutoff for t in v)]
+    if expired:
+        for k in expired:
+            del _login_attempts[k]
+        return
+    # Otherwise evict the oldest key
+    oldest = min(_login_attempts, key=lambda k: _login_attempts[k][-1] if _login_attempts[k] else datetime.min.replace(tzinfo=timezone.utc))
+    del _login_attempts[oldest]
 
 
 def _record_login_attempt_db(username: str, *, success: bool) -> None:
@@ -118,7 +203,7 @@ def _record_login_attempt_db(username: str, *, success: bool) -> None:
     try:
         session.add(LoginAttemptORM(username=username, success=success))
         session.commit()
-    except Exception:
+    except SQLAlchemyError:
         session.rollback()
         logger.warning("Failed to persist login attempt", exc_info=True)
     finally:
@@ -130,6 +215,16 @@ def clear_login_attempts(username: str) -> None:
     _login_attempts.pop(username, None)
     if _auth_session_factory is not None:
         _record_login_attempt_db(username, success=True)
+
+
+def check_register_rate_limit(client_ip: str) -> bool:
+    """Check if registration is rate-limited for the given IP. Returns True if blocked."""
+    return _register_limiter.is_limited(client_ip)
+
+
+def record_registration_attempt(client_ip: str) -> None:
+    """Record a registration attempt from the given IP."""
+    _register_limiter.record(client_ip)
 
 
 # ---------------------------------------------------------------------------
@@ -241,7 +336,7 @@ def _revoke_token_db(token: str, expires_at: datetime) -> None:
         if not exists:
             session.add(RevokedTokenORM(token_jti=jti, expires_at=expires_at))
             session.commit()
-    except Exception:
+    except SQLAlchemyError:
         session.rollback()
         logger.warning("Failed to persist token revocation to DB", exc_info=True)
     finally:
@@ -272,7 +367,7 @@ def _is_token_revoked_db(token: str) -> bool:
             _token_blacklist.add(token)
             return True
         return False
-    except Exception:
+    except SQLAlchemyError:
         logger.warning("DB token revocation check failed", exc_info=True)
         return False
     finally:
@@ -280,12 +375,19 @@ def _is_token_revoked_db(token: str) -> bool:
 
 
 def _cleanup_blacklist() -> None:
-    """Remove expired tokens from the blacklist."""
+    """Remove expired tokens from the blacklist and enforce size cap."""
     now = datetime.now(timezone.utc)
     expired = [t for t, exp in _blacklist_expiry.items() if exp < now]
     for t in expired:
         _token_blacklist.discard(t)
         _blacklist_expiry.pop(t, None)
+    # Enforce size cap: evict soonest-to-expire tokens if over limit
+    if len(_token_blacklist) > _MAX_BLACKLIST_SIZE:
+        by_expiry = sorted(_blacklist_expiry.items(), key=lambda x: x[1])
+        excess = len(_token_blacklist) - _MAX_BLACKLIST_SIZE
+        for t, _ in by_expiry[:excess]:
+            _token_blacklist.discard(t)
+            _blacklist_expiry.pop(t, None)
     # Clean expired DB entries periodically
     if _auth_session_factory is not None and expired:
         _cleanup_blacklist_db()
@@ -300,7 +402,7 @@ def _cleanup_blacklist_db() -> None:
             RevokedTokenORM.expires_at < datetime.now(timezone.utc)
         ).delete()
         session.commit()
-    except Exception:
+    except SQLAlchemyError:
         session.rollback()
         logger.debug("Failed to clean expired revoked tokens from DB", exc_info=True)
     finally:

@@ -35,7 +35,7 @@ def emit(event: str, **kwargs) -> None:
     for handler in _handlers.get(event, []):
         try:
             handler(event, **kwargs)
-        except Exception:
+        except Exception:  # Intentionally broad: plugin handlers must not break main flow
             logger.exception("Error in event handler %s for event %s", handler.__name__, event)
 
 

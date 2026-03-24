@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 from typing import Optional
 from uuid import uuid4
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from .models import AuditLogEntry
 
 logger = logging.getLogger(__name__)
@@ -89,7 +91,7 @@ class SQLAuditStore(AuditStore):
             )
             session.add(obj)
             session.commit()
-        except Exception:
+        except SQLAlchemyError:
             session.rollback()
             logger.exception("Failed to persist audit log entry")
         finally:

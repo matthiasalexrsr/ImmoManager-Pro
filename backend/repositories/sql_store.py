@@ -1352,3 +1352,30 @@ class SQLAlchemyStore:
         result = repo.patch(entity_id, patch)
         self._commit()
         return result
+
+    def _list_paginated(
+        self,
+        entity_type: str,
+        skip: int = 0,
+        limit: int = 100,
+        filters: dict | None = None,
+        order_by: str | None = None,
+        order_desc: bool = False,
+    ) -> list:
+        """Generic paginated list using entity type to resolve the repository."""
+        attr_name = self._ENTITY_TYPE_MAP.get(entity_type)
+        if attr_name is None:
+            raise ValueError(f"Unknown entity type: {entity_type}")
+        repo = getattr(self, attr_name)
+        return repo.list_paginated(
+            skip=skip, limit=limit, filters=filters,
+            order_by=order_by, order_desc=order_desc,
+        )
+
+    def _count(self, entity_type: str, filters: dict | None = None) -> int:
+        """Generic count using entity type to resolve the repository."""
+        attr_name = self._ENTITY_TYPE_MAP.get(entity_type)
+        if attr_name is None:
+            raise ValueError(f"Unknown entity type: {entity_type}")
+        repo = getattr(self, attr_name)
+        return repo.count(filters=filters)

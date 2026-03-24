@@ -4,6 +4,7 @@ Central module wiring together middleware, routers, plugins, and error handling.
 Middleware implementations live in middleware.py; router assembly in routing.py.
 """
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -130,7 +131,22 @@ async def lifespan(app: FastAPI):
         except Exception:
             logger.exception("Auto-seed failed (non-fatal)")
 
+    # Start periodic cleanup of auth in-memory stores
+    async def _periodic_auth_cleanup():
+        from .auth import _cleanup_blacklist, _register_limiter
+        while True:
+            await asyncio.sleep(300)  # Every 5 minutes
+            try:
+                _cleanup_blacklist()
+                _register_limiter.cleanup_expired()
+            except Exception:
+                logger.debug("Periodic auth cleanup error (non-fatal)", exc_info=True)
+
+    cleanup_task = asyncio.create_task(_periodic_auth_cleanup())
+
     yield
+
+    cleanup_task.cancel()
 
     # Shutdown plugins
     for plugin in get_plugins():
@@ -158,8 +174,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=settings.cors_methods,
+    allow_headers=settings.cors_headers,
 )
 
 # Application middleware (added in reverse execution order)

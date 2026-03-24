@@ -65,6 +65,14 @@ class Settings(BaseSettings):
         "http://localhost:3000",
         "http://localhost:5173",
     ]
+    cors_methods: list[str] = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+    cors_headers: list[str] = [
+        "Authorization",
+        "Content-Type",
+        "Accept",
+        "Accept-Language",
+        "X-Request-ID",
+    ]
 
     # --- Logging ---
     log_level: str = "INFO"

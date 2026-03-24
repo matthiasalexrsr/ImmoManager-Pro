@@ -1,9 +1,10 @@
 """Authentication router: login, register, refresh, user management."""
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from ..auth import (
     authenticate_user,
+    check_register_rate_limit,
     create_access_token,
     create_refresh_token,
     decode_token,
@@ -12,6 +13,7 @@ from ..auth import (
     get_totp_uri,
     get_user_by_id,
     list_users,
+    record_registration_attempt,
     register_user,
     require_auth,
     require_role,
@@ -48,9 +50,16 @@ _DEFAULT_PREFERENCES = {
 
 
 @router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
-def register(payload: UserCreate) -> UserRead:
+def register(payload: UserCreate, request: Request) -> UserRead:
     """Register a new user. Self-registration is restricted to readonly/techniker roles."""
+    client_ip = request.client.host if request.client else "unknown"
+    if check_register_rate_limit(client_ip):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Zu viele Registrierungsversuche. Bitte versuchen Sie es später erneut.",
+        )
     role = payload.role if payload.role in _ALLOWED_SELF_REGISTER_ROLES else "readonly"
+    record_registration_attempt(client_ip)
     return register_user(
         username=payload.username,
         email=payload.email,
