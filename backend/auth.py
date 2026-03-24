@@ -219,7 +219,7 @@ def revoke_token(token: str) -> None:
     _cleanup_blacklist()
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        exp = datetime.utcfromtimestamp(payload["exp"])
+        exp = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
         _token_blacklist.add(token)
         _blacklist_expiry[token] = exp
         # Also persist to DB for cross-restart durability

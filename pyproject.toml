@@ -51,6 +51,13 @@ ignore = ["E501"]
 testpaths = ["backend/tests"]
 python_files = ["test_*.py"]
 
+[tool.coverage.run]
+omit = [
+    "backend/__main__.py",
+    "backend/updater.py",
+    "backend/services/autotest/*",
+]
+
 [tool.mypy]
 python_version = "3.11"
 warn_return_any = true
