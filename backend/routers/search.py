@@ -155,7 +155,7 @@ def global_search(q: str = Query(..., min_length=1, description="Search query"))
                     "url": "/contacts",
                 })
     except Exception:
-        pass
+        logger.debug("Search failed for entity type 'contact'", exc_info=True)
 
     # Search deposits
     try:
@@ -173,7 +173,7 @@ def global_search(q: str = Query(..., min_length=1, description="Search query"))
                     "url": "/deposits",
                 })
     except Exception:
-        pass
+        logger.debug("Search failed for entity type 'deposit'", exc_info=True)
 
     # Search categories
     try:
@@ -188,7 +188,7 @@ def global_search(q: str = Query(..., min_length=1, description="Search query"))
                     "url": "/categories",
                 })
     except Exception:
-        pass
+        logger.debug("Search failed for entity type 'category'", exc_info=True)
 
     # Search leads
     try:
@@ -206,7 +206,7 @@ def global_search(q: str = Query(..., min_length=1, description="Search query"))
                     "url": "/leads",
                 })
     except Exception:
-        pass
+        logger.debug("Search failed for entity type 'lead'", exc_info=True)
 
     # Search listings
     try:
@@ -224,7 +224,7 @@ def global_search(q: str = Query(..., min_length=1, description="Search query"))
                     "url": "/listings",
                 })
     except Exception:
-        pass
+        logger.debug("Search failed for entity type 'listing'", exc_info=True)
 
     # Search insurances
     try:
@@ -243,6 +243,6 @@ def global_search(q: str = Query(..., min_length=1, description="Search query"))
                     "url": "/insurances",
                 })
     except Exception:
-        pass
+        logger.debug("Search failed for entity type 'insurance'", exc_info=True)
 
     return {"query": q, "count": len(results), "results": results[:50]}

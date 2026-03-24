@@ -25,6 +25,7 @@ def _get_wizard_status() -> dict:
             from ..app import CONTRACT_WIZARD_STATUS
             _CONTRACT_WIZARD_STATUS = CONTRACT_WIZARD_STATUS
         except Exception:
+            logger.debug("Could not import CONTRACT_WIZARD_STATUS", exc_info=True)
             _CONTRACT_WIZARD_STATUS = {"available": False, "reason": "unknown"}
     return _CONTRACT_WIZARD_STATUS
 
@@ -259,6 +260,7 @@ def system_status():
             with engine.connect() as conn:
                 conn.execute(sqlalchemy.text("SELECT 1"))
         except Exception:
+            logger.warning("Database connectivity check failed", exc_info=True)
             db_ok = False
 
     wizard_status = _get_wizard_status()
@@ -565,7 +567,7 @@ def dsgvo_export_tenant_data(tenant_id: str):
             if getattr(msg, "tenant_id", None) == tenant_id:
                 messages.append(msg.model_dump(mode="json"))
     except Exception:
-        pass  # messages may not have tenant_id field
+        logger.debug("Could not collect messages for DSGVO export of tenant %s", tenant_id, exc_info=True)
 
     export = {
         "export_type": "DSGVO_Datenauskunft",
@@ -636,7 +638,7 @@ def dsgvo_anonymize_tenant(tenant_id: str):
                 store.delete_document(doc.id)
                 anonymized_docs += 1
             except Exception:
-                pass
+                logger.warning("Failed to delete document %s during DSGVO anonymization", doc.id, exc_info=True)
 
     # Delete messages
     deleted_messages = 0
@@ -647,9 +649,9 @@ def dsgvo_anonymize_tenant(tenant_id: str):
                     store.delete_message(msg.id)
                     deleted_messages += 1
                 except Exception:
-                    pass
+                    logger.warning("Failed to delete message %s during DSGVO anonymization", msg.id, exc_info=True)
     except Exception:
-        pass
+        logger.debug("Could not list messages for DSGVO anonymization of tenant %s", tenant_id, exc_info=True)
 
     logger.info(
         "DSGVO anonymization for tenant %s: fields=%d, docs=%d, messages=%d",

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
+import { useToast } from '../components/Toast';
 import StatusBadge from '../components/StatusBadge';
 import {
   PortfolioIcon, PropertyIcon, UnitIcon, TenantIcon,
@@ -376,9 +377,10 @@ export default function Dashboard() {
 
 function RecentAuditLog() {
   const [entries, setEntries] = useState([]);
+  const toast = useToast();
   useEffect(() => {
-    api.get('/audit?limit=10').then(data => setEntries(Array.isArray(data) ? data : data?.items || [])).catch(() => {});
-  }, []);
+    api.get('/audit?limit=10').then(data => setEntries(Array.isArray(data) ? data : data?.items || [])).catch(() => { toast.error('Audit-Log konnte nicht geladen werden'); });
+  }, [toast]);
 
   const actionLabels = { create: 'Erstellt', update: 'Aktualisiert', patch: 'Geändert', delete: 'Gelöscht' };
 

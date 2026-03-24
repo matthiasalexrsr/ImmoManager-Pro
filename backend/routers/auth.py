@@ -1,5 +1,7 @@
 """Authentication router: login, register, refresh, user management."""
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from ..auth import (
@@ -152,6 +154,7 @@ def _get_preferences_session():
         from ..db.session import SessionLocal
         return SessionLocal()
     except Exception:
+        logging.getLogger(__name__).debug("Could not create preferences DB session", exc_info=True)
         return None
 
 

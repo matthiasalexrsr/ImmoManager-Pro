@@ -319,6 +319,7 @@ def health() -> dict:
             with engine.connect() as conn:
                 conn.execute(__import__("sqlalchemy").text("SELECT 1"))
         except Exception:
+            logger.warning("Health check: database connectivity failed", exc_info=True)
             db_ok = False
 
     return {

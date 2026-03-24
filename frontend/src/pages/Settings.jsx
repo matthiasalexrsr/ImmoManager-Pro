@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { usePreferences } from '../contexts/PreferencesContext';
 import { useDevMode } from '../contexts/DevModeContext';
 import { useTranslation } from '../i18n';
+import { useToast } from '../components/Toast';
 import { api } from '../api';
 
 const BASE = (import.meta.env.VITE_API_URL || '/api/v1');
@@ -12,6 +13,7 @@ export default function Settings() {
   const auth = useAuth();
   const devMode = useDevMode();
   const { t, locale, setLocale } = useTranslation();
+  const toast = useToast();
   const isAdmin = auth?.isAdmin;
   const [backupStatus, setBackupStatus] = useState(null);
   const [dbInfo, setDbInfo] = useState(null);
@@ -35,8 +37,8 @@ export default function Settings() {
   const [autotestUploadResult, setAutotestUploadResult] = useState(null);
 
   useEffect(() => {
-    api.get('/admin/version').then(setVersionInfo).catch(() => {});
-  }, []);
+    api.get('/admin/version').then(setVersionInfo).catch(() => { toast.error('Versionsinformationen konnten nicht geladen werden'); });
+  }, [toast]);
 
   const tr = (key, fallback) => {
     const result = t(key);
@@ -102,7 +104,7 @@ export default function Settings() {
       });
       setUpdateResult(data);
       if (data.restart_required) {
-        api.post('/updates/restart').catch(() => {});
+        api.post('/updates/restart').catch(() => { toast.error('Neustart konnte nicht ausgelöst werden'); });
       }
     } catch (err) {
       setUpdateResult({ success: false, message: err.message || 'Update fehlgeschlagen' });

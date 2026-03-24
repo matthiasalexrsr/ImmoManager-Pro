@@ -144,6 +144,7 @@ class S3Storage(FileStorage):
             response = self._client.get_object(Bucket=self.bucket, Key=key)
             return response["Body"].read()
         except Exception:
+            logger.warning("S3 get failed for key %s", key, exc_info=True)
             return None
 
     def delete(self, key: str) -> bool:
@@ -154,6 +155,7 @@ class S3Storage(FileStorage):
             logger.info("S3 file deleted: %s/%s", self.bucket, key)
             return True
         except Exception:
+            logger.warning("S3 delete failed for key %s", key, exc_info=True)
             return False
 
     def exists(self, key: str) -> bool:
@@ -163,6 +165,7 @@ class S3Storage(FileStorage):
             self._client.head_object(Bucket=self.bucket, Key=key)
             return True
         except Exception:
+            logger.debug("S3 exists check failed for key %s", key, exc_info=True)
             return False
 
     def get_url(self, key: str) -> str:

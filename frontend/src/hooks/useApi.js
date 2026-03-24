@@ -25,7 +25,7 @@ export function useList(path, deps = []) {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true); // eslint-disable-line react-hooks/set-state-in-effect -- data-fetching effect needs loading state
+    setLoading(true);
     api.get(path)
       .then(data => {
         if (!cancelled && mountedRef.current) {
@@ -69,7 +69,7 @@ export function useDetail(path) {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true); // eslint-disable-line react-hooks/set-state-in-effect -- data-fetching effect needs loading state
+    setLoading(true);
     api.get(path)
       .then(data => {
         if (!cancelled && mountedRef.current) {

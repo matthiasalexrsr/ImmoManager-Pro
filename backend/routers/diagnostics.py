@@ -105,6 +105,7 @@ def _safe_get(store, method_name: str, entity_id: str):
             return None
         return fn(entity_id)
     except Exception:
+        logger.debug("Safe get failed for %s/%s", method_name, entity_id, exc_info=True)
         return None
 
 

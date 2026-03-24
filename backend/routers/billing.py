@@ -10,6 +10,7 @@ Status machine for billing periods:
 
 import hashlib
 import json
+import logging
 from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -80,6 +81,8 @@ def _compute_snapshot_hash(period_id: str) -> str:
         })
     raw = json.dumps(payload, sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/billing", tags=["Abrechnung"])
 
@@ -386,6 +389,7 @@ def _run_billing_period_preflight(period_id: str) -> BillingPreflightResult:
             unit = store.get_unit(contract.unit_id)
             unit_cache[contract.id] = unit
         except Exception:
+            logger.debug("Unit %s for contract %s not found during billing validation", contract.unit_id, contract.id, exc_info=True)
             missing_unit_contract_ids.append(contract.id)
             continue
 
@@ -716,10 +720,9 @@ def generate_utility_statements(period_id: str) -> list[UtilityStatement]:
         try:
             unit_cache[contract.unit_id] = store.get_unit(contract.unit_id)
         except Exception:
-            import logging as _log
-            _log.getLogger(__name__).warning(
+            logger.warning(
                 "Unit %s for contract %s not found — skipping in billing calculation",
-                contract.unit_id, contract.id,
+                contract.unit_id, contract.id, exc_info=True,
             )
 
     contract_unit_ids = {c.unit_id for c in contracts_in_period}
@@ -1200,7 +1203,7 @@ def download_utility_statement_pdf(statement_id: str):
             unit = store.get_unit(stmt.unit_id)
             unit_label = unit.label or stmt.unit_id
         except Exception:
-            pass
+            logger.debug("Could not resolve unit label for %s", stmt.unit_id, exc_info=True)
 
         story.append(Paragraph(f"Einheit: {unit_label}", styles["Normal"]))
         story.append(Paragraph(f"Vertrag: {stmt.contract_id}", styles["Normal"]))

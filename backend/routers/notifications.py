@@ -6,6 +6,7 @@ of notifications (overdue payments, expiring contracts, due tasks).
 Route ordering: static paths (/templates, /generate/*) before path params (/{notification_id}).
 """
 
+import logging
 from datetime import date
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -20,6 +21,8 @@ from ..models import (
     NotificationTemplatePatch,
 )
 from ..storage import NotFoundError, ValidationError
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/notifications", tags=["Benachrichtigungen"])
 
@@ -103,9 +106,9 @@ def generate_overdue_payment_notifications(
                     tenant = store.get_tenant(contract.tenant_id)
                     tenant_name = tenant.full_name
                 except Exception:
-                    pass
+                    logger.debug("Could not resolve tenant for contract %s", receivable.contract_id, exc_info=True)
             except Exception:
-                pass
+                logger.debug("Could not resolve contract %s for receivable %s", receivable.contract_id, receivable.id, exc_info=True)
 
             notification = store.create_notification(
                 NotificationCreate(
@@ -148,7 +151,7 @@ def generate_expiring_contract_notifications(
                 tenant = store.get_tenant(contract.tenant_id)
                 tenant_name = tenant.full_name
             except Exception:
-                pass
+                logger.debug("Could not resolve tenant for contract %s", contract.id, exc_info=True)
 
             notification = store.create_notification(
                 NotificationCreate(
