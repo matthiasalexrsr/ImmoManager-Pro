@@ -1017,7 +1017,30 @@
     "addNote": "Añadir nota",
     "notes": "Notas",
     "exportLog": "Exportar registro",
-    "exit": "Salir"
+    "exit": "Salir",
+    "form": {
+      "titlePlaceholder": "Título / Resumen...",
+      "componentPlaceholder": "Componente / Sección (opcional)",
+      "descriptionPlaceholder": "Descripción detallada (opcional)...",
+      "cancel": "Cancelar"
+    },
+    "list": {
+      "all": "Todos",
+      "thisPage": "Esta página",
+      "resolved": "Resuelto",
+      "empty": "Sin notas aún",
+      "resolve": "Resolver",
+      "delete": "Eliminar"
+    },
+    "logPreview": {
+      "title": "Registro de notas",
+      "copy": "Copiar",
+      "download": "Descargar",
+      "close": "Cerrar"
+    },
+    "diagnostics": "Diagnóstico",
+    "newNote": "Nueva nota de desarrollador",
+    "developerNotes": "Notas de desarrollador"
   },
   "pages": {
     "statements": {
@@ -1124,13 +1147,534 @@
       "actionCreated": "Creado",
       "actionUpdated": "Actualizado",
       "actionPatched": "Modificado",
-      "actionDeleted": "Eliminado"
+      "actionDeleted": "Eliminado",
+      "title": "Panel de control",
+      "portfolios": "Carteras",
+      "properties": "Inmuebles",
+      "units": "Unidades",
+      "tenants": "Inquilinos",
+      "activeContracts": "Contratos activos",
+      "accounts": "Cuentas",
+      "openMaintenance": "Mantenimiento abierto",
+      "occupancy": "Ocupación",
+      "occupancyChart": "Ocupación",
+      "occupied": "Ocupado",
+      "reserved": "Reservado",
+      "vacant": "Vacante",
+      "noUnits": "No hay unidades",
+      "cashflow": "Flujo de caja",
+      "income": "Ingresos",
+      "expenses": "Gastos",
+      "net": "Neto",
+      "noBookings": "Sin datos de reservas",
+      "receivablesAging": "Antigüedad de cuentas por cobrar",
+      "agingCurrent": "Actual",
+      "aging1to30": "1–30 d.",
+      "aging31to60": "31–60 d.",
+      "aging61to90": "61–90 d.",
+      "aging90plus": "90+ d.",
+      "noReceivables": "Sin cuentas por cobrar pendientes",
+      "liquidityForecast": "Previsión de liquidez (6 meses)",
+      "balance": "Saldo",
+      "noForecast": "Sin datos de previsión",
+      "maintenanceCosts": "Costes de mantenimiento por categoría",
+      "noMaintenanceCosts": "Sin costes de mantenimiento",
+      "financeByCategory": "Finanzas por categoría",
+      "noFinanceData": "Sin datos financieros",
+      "openTasks": "Tareas abiertas",
+      "noOpenTasks": "Sin tareas abiertas",
+      "allTasks": "Todas las tareas",
+      "expiringContracts": "Contratos por vencer (90 días)",
+      "noExpiringContracts": "Sin contratos por vencer",
+      "days": "días",
+      "allContracts": "Todos los contratos",
+      "notifications": "Notificaciones",
+      "noNotifications": "Sin notificaciones nuevas"
     },
     "invoices": {
       "markPaidConfirm": "¿marcar como pagada?"
     },
     "tenants": {
       "archiveConfirm": "¿archivar? El inquilino será eliminado de la lista activa."
+    },
+    "loading": "Cargando…",
+    "confirmDelete": "¿Eliminar \"{{name}}\" realmente?",
+    "deleteFailed": "Error al eliminar",
+    "login": {
+      "subtitle": "Gestión inmobiliaria",
+      "username": "Nombre de usuario",
+      "usernamePlaceholder": "Su nombre de usuario",
+      "email": "Correo electrónico",
+      "emailPlaceholder": "nombre@empresa.es",
+      "fullName": "Nombre completo",
+      "fullNamePlaceholder": "Juan García",
+      "password": "Contraseña",
+      "passwordPlaceholder": "Mínimo 8 caracteres",
+      "passwordHint": "Mín. 8 caracteres, 1 mayúscula, 1 minúscula, 1 número",
+      "pleaseWait": "Espere por favor…",
+      "registerAndLogin": "Registrarse e iniciar sesión",
+      "loginBtn": "Iniciar sesión",
+      "alreadyRegistered": "¿Ya está registrado?",
+      "noAccount": "¿Sin cuenta?",
+      "loginLink": "Iniciar sesión",
+      "registerLink": "Registrarse"
+    },
+    "settings": {
+      "title": "Configuración",
+      "appearance": "Apariencia",
+      "theme": "Tema",
+      "light": "Claro",
+      "dark": "Oscuro",
+      "sidebar": "Barra lateral",
+      "show": "Mostrar",
+      "hide": "Ocultar",
+      "language": "Idioma",
+      "tables": "Tablas",
+      "itemsPerPage": "Entradas por página",
+      "dateFormat": "Formato de fecha",
+      "currency": "Moneda",
+      "eurLabel": "Euro (€)",
+      "chfLabel": "CHF (Fr.)",
+      "usdLabel": "USD ($)",
+      "notificationsSection": "Notificaciones",
+      "emailNotifications": "Notificaciones por correo",
+      "emailAll": "Todas",
+      "emailImportant": "Solo importantes",
+      "emailNone": "Ninguna",
+      "reminders": "Recordatorios",
+      "days3": "3 días antes",
+      "days7": "7 días antes",
+      "days14": "14 días antes",
+      "days30": "30 días antes",
+      "dataBackup": "Datos y respaldo",
+      "database": "Base de datos",
+      "dbType": "SQLite (Persistente)",
+      "exportData": "Exportar datos",
+      "exporting": "Exportando…",
+      "jsonExport": "Exportación JSON",
+      "importData": "Importar datos",
+      "importResult": "Resultado de importación",
+      "imported": "importado",
+      "errorsIn": "Errores en:",
+      "docsOcr": "Documentos y OCR",
+      "autoOcr": "OCR automático",
+      "ocrActive": "Activo (para PDF, PNG, JPG, TIFF)",
+      "ocrLanguages": "Idiomas OCR",
+      "ocrLangs": "Alemán + Inglés",
+      "fileStorage": "Almacenamiento de archivos",
+      "fileStorageLocal": "Local (uploads/)"
+    },
+    "messages": {
+      "title": "Mensajes",
+      "all": "Todos",
+      "unread": "No leídos",
+      "noMessages": "Sin mensajes",
+      "type": "Tipo",
+      "noContent": "Sin contenido",
+      "selectMessage": "Seleccione un mensaje para ver detalles"
+    },
+    "meters": {
+      "title": "Contadores",
+      "readings": "Lecturas",
+      "recordReading": "Registrar lectura",
+      "handoverProtocol": "Protocolo de entrega",
+      "moveIn": "Entrada",
+      "moveOut": "Salida",
+      "meterType": "Tipo de contador",
+      "meterNumber": "Número de contador",
+      "meterReading": "Lectura",
+      "measureUnit": "Unidad de medida",
+      "photoUrl": "URL de foto",
+      "notes": "Notas",
+      "electricity": "Electricidad",
+      "gas": "Gas",
+      "water": "Agua",
+      "heating": "Calefacción"
+    },
+    "propertyOverview": {
+      "notFound": "Inmueble no encontrado",
+      "back": "Volver",
+      "keyData": "Datos clave",
+      "type": "Tipo",
+      "yearBuilt": "Año de construcción",
+      "livingArea": "Superficie habitable",
+      "usableArea": "Superficie útil",
+      "plotArea": "Superficie del terreno",
+      "purchasePrice": "Precio de compra",
+      "marketValue": "Valor de mercado",
+      "rentalStatus": "Estado de alquiler",
+      "units": "Unidades",
+      "rented": "Alquilado",
+      "occupancy": "Ocupación",
+      "totalRentMonth": "Alquiler total/mes",
+      "activeContracts": "Contratos activos",
+      "noActiveContracts": "Sin contratos activos",
+      "insurances": "Seguros",
+      "noInsurances": "Sin seguros"
+    },
+    "unitOverview": {
+      "notFound": "Unidad no encontrada",
+      "back": "Volver",
+      "keyData": "Datos clave",
+      "type": "Tipo",
+      "area": "Superficie",
+      "rooms": "Habitaciones",
+      "floor": "Planta",
+      "baseRent": "Alquiler base",
+      "serviceCharge": "Anticipo de gastos",
+      "features": "Equipamiento",
+      "rentalStatus": "Estado de alquiler",
+      "indefinite": "Indefinido",
+      "notRented": "No alquilado",
+      "contractHistory": "Historial de contratos",
+      "noContracts": "Sin contratos",
+      "insurances": "Seguros",
+      "noUnitInsurances": "Sin seguros específicos de unidad",
+      "unitNumber": "Nº de unidad",
+      "personCount": "Nº de personas",
+      "heatingAdvance": "Costes de calefacción",
+      "contract": "Contrato",
+      "tenant": "Inquilino",
+      "start": "Inicio",
+      "end": "Fin",
+      "deposit": "Depósito",
+      "unitLabel": "Unidad"
+    },
+    "integrations": {
+      "title": "Integraciones",
+      "subtitle": "Gestionar módulos de integración, validar configuración y ejecutar pruebas.",
+      "planned": "Planificado",
+      "plannedFeatures": "Funciones planificadas:",
+      "loading": "Cargando integraciones...",
+      "active": "Activo",
+      "inactive": "Inactivo",
+      "category": "Categoría",
+      "configured": "Configurado",
+      "notConfigured": "No configurado",
+      "health": "Estado",
+      "requiredConfig": "Configuración requerida",
+      "none": "Ninguna",
+      "disable": "Desactivar",
+      "enable": "Activar",
+      "runTest": "Ejecutar prueba",
+      "capabilities": "Capacidades:",
+      "error": "Error",
+      "actionExecuted": "Acción ejecutada"
+    },
+    "documents": {
+      "title": "Documentos",
+      "upload": {
+        "uploading": "Subiendo...",
+        "dropHint": "Arrastra documentos aquí o haz clic (múltiples archivos)",
+        "supportedFormats": "Soportado: PDF, PNG, JPG, TIFF, DOC, DOCX, XLS, XLSX — OCR automático para imágenes y PDFs",
+        "uploaded": "Subido:",
+        "failed": "Error en la subida",
+        "ocrUnavailable": "OCR no disponible",
+        "ocrUnsupported": "Tipo de archivo no compatible con OCR"
+      },
+      "uploaded": "Subido:",
+      "totalDocs": "Total de documentos",
+      "withFile": "Con archivo",
+      "columns": {
+        "title": "Título",
+        "type": "Tipo",
+        "date": "Fecha",
+        "tags": "Etiquetas",
+        "file": "Archivo",
+        "filePresent": "Disponible",
+        "ocr": "OCR"
+      },
+      "ocr": {
+        "completed": "✓ Reconocido",
+        "processing": "⏳ Procesando...",
+        "failed": "✗ Error"
+      },
+      "docTypes": {
+        "mietvertrag": "Contrato de alquiler",
+        "rechnung": "Factura",
+        "nebenkostenabrechnung": "Liquidación de gastos",
+        "protokoll": "Protocolo",
+        "versicherung": "Seguro",
+        "grundbuchauszug": "Extracto del registro",
+        "energieausweis": "Certificado energético",
+        "betriebskostenabrechnung": "Liquidación de gastos operativos",
+        "mahnung": "Aviso de pago",
+        "kuendigung": "Rescisión",
+        "uebergabeprotokoll": "Protocolo de entrega",
+        "handwerkerrechnung": "Factura de contratista",
+        "steuerbescheid": "Notificación fiscal",
+        "sonstiges": "Otros"
+      },
+      "form": {
+        "title": "Título",
+        "docType": "Tipo de documento",
+        "date": "Fecha",
+        "property": "Inmueble",
+        "noneOption": "— Ninguno —",
+        "noContract": "— Ninguno —",
+        "unit": "Unidad",
+        "contract": "Contrato",
+        "description": "Descripción",
+        "tags": "Etiquetas",
+        "tagsPlaceholder": "separadas por comas",
+        "fileUrl": "URL del archivo",
+        "fileUrlPlaceholder": "/uploads/documents/..."
+      },
+      "aiAnalysis": "Análisis IA:",
+      "recognizedType": "Tipo reconocido:"
+    },
+    "insurances": {
+      "title": "Seguros",
+      "columns": {
+        "provider": "Aseguradora",
+        "type": "Tipo",
+        "policyNumber": "Nº de póliza",
+        "premium": "Prima (€)",
+        "interval": "Intervalo",
+        "endDate": "Vencimiento",
+        "status": "Estado"
+      },
+      "form": {
+        "property": "Inmueble",
+        "unit": "Unidad (opcional)",
+        "type": "Tipo de seguro",
+        "provider": "Aseguradora",
+        "providerPlaceholder": "p.ej. Allianz",
+        "policyNumber": "Número de póliza",
+        "policyNumberPlaceholder": "p.ej. VP-2024-12345",
+        "coverageAmount": "Suma asegurada (€)",
+        "premiumAmount": "Prima (€)",
+        "paymentInterval": "Intervalo de pago",
+        "startDate": "Inicio del contrato",
+        "endDate": "Fin del contrato",
+        "contactPerson": "Persona de contacto",
+        "phone": "Teléfono",
+        "notes": "Notas",
+        "status": "Estado"
+      },
+      "types": {
+        "building": "Seguro de edificio",
+        "liability": "Responsabilidad civil",
+        "contents": "Contenido",
+        "legal": "Protección jurídica",
+        "rentLoss": "Pérdida de alquiler",
+        "other": "Otros"
+      },
+      "interval": {
+        "monthly": "Mensual",
+        "quarterly": "Trimestral",
+        "annual": "Anual"
+      },
+      "status": {
+        "active": "Activo",
+        "expired": "Vencido",
+        "cancelled": "Cancelado"
+      }
+    },
+    "categories": {
+      "title": "Categorías",
+      "columns": {
+        "name": "Nombre",
+        "type": "Tipo"
+      },
+      "form": {
+        "portfolio": "Cartera",
+        "name": "Nombre",
+        "type": "Tipo"
+      },
+      "options": {
+        "income": "Ingreso",
+        "expense": "Gasto",
+        "maintenance": "Mantenimiento",
+        "other": "Otros"
+      }
+    },
+    "maintenance": {
+      "title": "Mantenimiento y reparaciones",
+      "columns": {
+        "title": "Título",
+        "category": "Categoría",
+        "priority": "Prioridad",
+        "assignee": "Responsable",
+        "cost": "Coste (€)",
+        "dueDate": "Fecha límite",
+        "status": "Estado"
+      },
+      "form": {
+        "property": "Inmueble",
+        "unit": "Unidad",
+        "noneOption": "— Ninguno —",
+        "title": "Título",
+        "description": "Descripción",
+        "category": "Categoría",
+        "priority": "Prioridad",
+        "reportedBy": "Reportado por",
+        "assignee": "Responsable",
+        "contractor": "Contratista",
+        "dueDate": "Fecha límite",
+        "appointment": "Cita",
+        "estimatedCost": "Coste estimado (€)",
+        "status": "Estado"
+      },
+      "categories": {
+        "plumbing": "Fontanería",
+        "electrical": "Electricidad",
+        "heating": "Calefacción",
+        "roof": "Tejado",
+        "facade": "Fachada",
+        "other": "Otros"
+      },
+      "priority": {
+        "low": "Baja",
+        "medium": "Media",
+        "high": "Alta",
+        "urgent": "Urgente"
+      },
+      "status": {
+        "open": "Abierto",
+        "inProgress": "En progreso",
+        "completed": "Completado",
+        "cancelled": "Cancelado"
+      }
+    },
+    "tasks": {
+      "title": "Tareas",
+      "columns": {
+        "title": "Título",
+        "assignee": "Responsable",
+        "dueDate": "Fecha límite",
+        "priority": "Prioridad",
+        "status": "Estado"
+      },
+      "form": {
+        "title": "Título",
+        "description": "Descripción",
+        "assignee": "Responsable",
+        "property": "Inmueble",
+        "unit": "Unidad",
+        "noneOption": "— Ninguno —",
+        "dueDate": "Fecha límite",
+        "recurrence": "Recurrencia (iCal RRULE)",
+        "recurrencePlaceholder": "p.ej. FREQ=MONTHLY;COUNT=12",
+        "priority": "Prioridad",
+        "status": "Estado"
+      },
+      "priority": {
+        "low": "Baja",
+        "medium": "Media",
+        "high": "Alta",
+        "urgent": "Urgente"
+      },
+      "status": {
+        "open": "Abierto",
+        "inProgress": "En progreso",
+        "completed": "Completado"
+      }
+    },
+    "taxRates": {
+      "title": "Tipos impositivos",
+      "columns": {
+        "name": "Denominación",
+        "rate": "Tipo (%)",
+        "description": "Descripción",
+        "isDefault": "Predeterminado",
+        "validFrom": "Válido desde",
+        "validUntil": "Válido hasta",
+        "yes": "Sí",
+        "no": "No"
+      },
+      "form": {
+        "name": "Denominación",
+        "namePlaceholder": "p.ej. Tipo general",
+        "rate": "Tipo impositivo (%)",
+        "ratePlaceholder": "p.ej. 19.0",
+        "description": "Descripción",
+        "isDefault": "Predeterminado",
+        "yes": "Sí",
+        "no": "No",
+        "validFrom": "Válido desde",
+        "validUntil": "Válido hasta"
+      }
+    },
+    "errorBoundary": {
+      "title": "Algo salió mal",
+      "message": "Se produjo un error inesperado. Por favor, recargue la página.",
+      "details": "Detalles del error",
+      "reload": "Recargar página"
+    },
+    "notFound": {
+      "title": "Página no encontrada",
+      "message": "La página solicitada no existe.",
+      "back": "Ir al inicio"
+    },
+    "rentOverview": {
+      "title": "Resumen de alquileres",
+      "totalReceivables": "Cuentas por cobrar totales",
+      "paid": "Pagado",
+      "open": "Abierto",
+      "overdue": "Vencido"
     }
+  },
+  "comp": {
+    "dataTable": {
+      "search": "Buscar…",
+      "clearFilter": "Filtro ✕",
+      "columns": "Columnas",
+      "csv": "CSV",
+      "new": "Nuevo",
+      "all": "Todos",
+      "noEntries": "No hay entradas",
+      "noEntriesFiltered": "No se encontraron entradas",
+      "showing": "{{start}}–{{end}} de {{total}}",
+      "totalFiltered": "({{total}} total)",
+      "perPage": "/ página",
+      "actions": "Acciones",
+      "edit": "Editar",
+      "delete": "Eliminar",
+      "filterFrom": "Desde",
+      "filterTo": "Hasta",
+      "filterMin": "Mín",
+      "filterMax": "Máx",
+      "filterText": "Filtro…"
+    },
+    "fileViewer": {
+      "title": "Vista de archivo",
+      "original": "Original",
+      "ocrText": "Texto OCR",
+      "copied": "¡Copiado!",
+      "copyText": "Copiar texto",
+      "document": "Documento",
+      "noPreview": "Vista previa no disponible",
+      "download": "Descargar archivo"
+    },
+    "formModal": {
+      "selectPlaceholder": "— Seleccionar —",
+      "cancel": "Cancelar",
+      "saving": "Guardando…",
+      "save": "Guardar",
+      "create": "Crear {{title}}",
+      "editTitle": "Editar {{title}}"
+    },
+    "notifications": {
+      "title": "Notificaciones",
+      "markAllRead": "Marcar todo como leído",
+      "empty": "Sin notificaciones nuevas"
+    },
+    "photoDropZone": {
+      "confirmDelete": "¿Eliminar foto realmente?",
+      "uploading": "Subiendo…",
+      "dropHint": "Arrastra fotos aquí o haz clic"
+    },
+    "searchBar": {
+      "placeholder": "Buscar…",
+      "shortcut": "Ctrl+K",
+      "searching": "Buscando…",
+      "noResults": "Sin resultados"
+    }
+  },
+  "sidebar": {
+    "expand": "Expandir",
+    "collapse": "Contraer",
+    "toggleTheme": "Cambiar tema"
   }
 }

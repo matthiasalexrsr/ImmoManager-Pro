@@ -1,6 +1,7 @@
 """Tests for authentication: registration, login, JWT tokens, RBAC."""
 
 import pytest
+from unittest.mock import MagicMock
 from fastapi import HTTPException
 
 from backend.auth import (
@@ -159,10 +160,12 @@ class TestUserManagement:
 
 class TestAuthRouter:
     def test_register_endpoint(self):
+        mock_request = MagicMock()
+        mock_request.client.host = "127.0.0.1"
         result = register(UserCreate(
             username="test", email="test@example.com",
             full_name="Test User", password="Pass1234"
-        ))
+        ), request=mock_request)
         assert result.username == "test"
 
     def test_login_endpoint(self):

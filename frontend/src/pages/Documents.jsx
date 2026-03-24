@@ -4,25 +4,10 @@ import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import CrudPage from './CrudPage';
 import FileViewer from '../components/FileViewer';
 import { PlusIcon } from '../components/Icons';
+import { useTranslation } from '../i18n';
 
 const BASE = (import.meta.env.VITE_API_URL || '/api/v1');
 
-const DOC_TYPES = [
-  { value: 'Mietvertrag', label: 'Mietvertrag' },
-  { value: 'Rechnung', label: 'Rechnung' },
-  { value: 'Nebenkostenabrechnung', label: 'Nebenkostenabrechnung' },
-  { value: 'Protokoll', label: 'Protokoll' },
-  { value: 'Versicherung', label: 'Versicherung' },
-  { value: 'Grundbuchauszug', label: 'Grundbuchauszug' },
-  { value: 'Energieausweis', label: 'Energieausweis' },
-  { value: 'Betriebskostenabrechnung', label: 'Betriebskostenabrechnung' },
-  { value: 'Mahnung', label: 'Mahnung' },
-  { value: 'Kündigung', label: 'Kündigung' },
-  { value: 'Übergabeprotokoll', label: 'Übergabeprotokoll' },
-  { value: 'Handwerkerrechnung', label: 'Handwerkerrechnung' },
-  { value: 'Steuerbescheid', label: 'Steuerbescheid' },
-  { value: 'Sonstiges', label: 'Sonstiges' },
-];
 
 function guessDocType(filename) {
   const lower = (filename || '').toLowerCase();
@@ -39,21 +24,39 @@ function guessDocType(filename) {
   return 'Sonstiges';
 }
 
-const COLUMNS = [
-  { key: 'title', label: 'Titel', filterType: 'text' },
-  { key: 'document_type', label: 'Typ', filterType: 'select' },
-  { key: 'document_date', label: 'Datum', type: 'date', filterType: 'dateRange' },
-  { key: 'tags', label: 'Tags', filterType: 'text' },
-  { key: 'file_url', label: 'Datei', render: v => v ? 'Vorhanden' : '—' },
-  { key: 'ocr_status', label: 'OCR', render: v => {
-    if (v === 'completed') return '✓ Erkannt';
-    if (v === 'processing') return '⏳ Läuft...';
-    if (v === 'failed') return '✗ Fehler';
-    return '—';
-  }},
-];
-
 export default function Documents() {
+  const { t } = useTranslation();
+
+  const DOC_TYPES = [
+    { value: 'Mietvertrag', label: t('pages.documents.docTypes.mietvertrag') || 'Mietvertrag' },
+    { value: 'Rechnung', label: t('pages.documents.docTypes.rechnung') || 'Rechnung' },
+    { value: 'Nebenkostenabrechnung', label: t('pages.documents.docTypes.nebenkostenabrechnung') || 'Nebenkostenabrechnung' },
+    { value: 'Protokoll', label: t('pages.documents.docTypes.protokoll') || 'Protokoll' },
+    { value: 'Versicherung', label: t('pages.documents.docTypes.versicherung') || 'Versicherung' },
+    { value: 'Grundbuchauszug', label: t('pages.documents.docTypes.grundbuchauszug') || 'Grundbuchauszug' },
+    { value: 'Energieausweis', label: t('pages.documents.docTypes.energieausweis') || 'Energieausweis' },
+    { value: 'Betriebskostenabrechnung', label: t('pages.documents.docTypes.betriebskostenabrechnung') || 'Betriebskostenabrechnung' },
+    { value: 'Mahnung', label: t('pages.documents.docTypes.mahnung') || 'Mahnung' },
+    { value: 'Kündigung', label: t('pages.documents.docTypes.kuendigung') || 'Kündigung' },
+    { value: 'Übergabeprotokoll', label: t('pages.documents.docTypes.uebergabeprotokoll') || 'Übergabeprotokoll' },
+    { value: 'Handwerkerrechnung', label: t('pages.documents.docTypes.handwerkerrechnung') || 'Handwerkerrechnung' },
+    { value: 'Steuerbescheid', label: t('pages.documents.docTypes.steuerbescheid') || 'Steuerbescheid' },
+    { value: 'Sonstiges', label: t('pages.documents.docTypes.sonstiges') || 'Sonstiges' },
+  ];
+
+  const COLUMNS = [
+    { key: 'title', label: t('pages.documents.columns.title') || 'Titel', filterType: 'text' },
+    { key: 'document_type', label: t('pages.documents.columns.type') || 'Typ', filterType: 'select' },
+    { key: 'document_date', label: t('pages.documents.columns.date') || 'Datum', type: 'date', filterType: 'dateRange' },
+    { key: 'tags', label: t('pages.documents.columns.tags') || 'Tags', filterType: 'text' },
+    { key: 'file_url', label: t('pages.documents.columns.file') || 'Datei', render: v => v ? (t('pages.documents.columns.filePresent') || 'Vorhanden') : '—' },
+    { key: 'ocr_status', label: t('pages.documents.columns.ocr') || 'OCR', render: v => {
+      if (v === 'completed') return t('pages.documents.ocr.completed') || '✓ Erkannt';
+      if (v === 'processing') return t('pages.documents.ocr.processing') || '⏳ Läuft...';
+      if (v === 'failed') return t('pages.documents.ocr.failed') || '✗ Fehler';
+      return '—';
+    }},
+  ];
   const store = useDataStore();
   const { items: properties } = useEntities('properties', '/properties');
   const { items: units } = useEntities('units', '/units');
@@ -94,7 +97,7 @@ export default function Documents() {
         body: formData,
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) throw new Error('Upload fehlgeschlagen');
+      if (!res.ok) throw new Error(t('pages.documents.upload.failed') || 'Upload fehlgeschlagen');
       const data = await res.json();
       if (data.file_url) setUploadedUrl(data.file_url);
 
@@ -105,13 +108,13 @@ export default function Documents() {
           const ocrRes = await api.post('/documents/ocr-analyze', { file_url: data.file_url });
           setOcrResult({ success: true, ...ocrRes, guessedType: guessDocType(file.name) });
         } catch {
-          setOcrResult({ success: false, guessedType: guessDocType(file.name), message: 'OCR nicht verfügbar' });
+          setOcrResult({ success: false, guessedType: guessDocType(file.name), message: t('pages.documents.upload.ocrUnavailable') || 'OCR nicht verfügbar' });
         }
       } else {
-        setOcrResult({ success: false, guessedType: guessDocType(file.name), message: 'Dateityp nicht OCR-fähig' });
+        setOcrResult({ success: false, guessedType: guessDocType(file.name), message: t('pages.documents.upload.ocrUnsupported') || 'Dateityp nicht OCR-fähig' });
       }
     } catch (err) {
-      setOcrResult({ success: false, guessedType: 'Sonstiges', message: `Upload fehlgeschlagen: ${err.message}` });
+      setOcrResult({ success: false, guessedType: 'Sonstiges', message: `${t('pages.documents.upload.failed') || 'Upload fehlgeschlagen'}: ${err.message}` });
     } finally {
       setUploading(false);
     }
@@ -140,18 +143,18 @@ export default function Documents() {
   }, [uploadFile, handleMultiUpload]);
 
   const fields = [
-    { key: 'title', label: 'Titel', required: true },
-    { key: 'document_type', label: 'Dokumententyp', type: 'select', options: DOC_TYPES },
-    { key: 'document_date', label: 'Datum', type: 'date' },
-    { key: 'property_id', label: 'Immobilie', type: 'select',
-      options: [{ value: '', label: '— Keine —' }, ...properties.map(p => ({ value: p.id, label: p.name }))] },
-    { key: 'unit_id', label: 'Einheit', type: 'select',
-      options: [{ value: '', label: '— Keine —' }, ...units.map(u => ({ value: u.id, label: u.label }))] },
-    { key: 'contract_id', label: 'Vertrag', type: 'select',
-      options: [{ value: '', label: '— Kein —' }, ...contracts.map(c => ({ value: c.id, label: c.contract_number }))] },
-    { key: 'description', label: 'Beschreibung', type: 'textarea' },
-    { key: 'tags', label: 'Tags', placeholder: 'kommagetrennt' },
-    { key: 'file_url', label: 'Datei-URL', required: true, placeholder: '/uploads/documents/...', default: uploadedUrl },
+    { key: 'title', label: t('pages.documents.form.title') || 'Titel', required: true },
+    { key: 'document_type', label: t('pages.documents.form.docType') || 'Dokumententyp', type: 'select', options: DOC_TYPES },
+    { key: 'document_date', label: t('pages.documents.form.date') || 'Datum', type: 'date' },
+    { key: 'property_id', label: t('pages.documents.form.property') || 'Immobilie', type: 'select',
+      options: [{ value: '', label: t('pages.documents.form.noneOption') || '— Keine —' }, ...properties.map(p => ({ value: p.id, label: p.name }))] },
+    { key: 'unit_id', label: t('pages.documents.form.unit') || 'Einheit', type: 'select',
+      options: [{ value: '', label: t('pages.documents.form.noneOption') || '— Keine —' }, ...units.map(u => ({ value: u.id, label: u.label }))] },
+    { key: 'contract_id', label: t('pages.documents.form.contract') || 'Vertrag', type: 'select',
+      options: [{ value: '', label: t('pages.documents.form.noContract') || '— Kein —' }, ...contracts.map(c => ({ value: c.id, label: c.contract_number }))] },
+    { key: 'description', label: t('pages.documents.form.description') || 'Beschreibung', type: 'textarea' },
+    { key: 'tags', label: t('pages.documents.form.tags') || 'Tags', placeholder: t('pages.documents.form.tagsPlaceholder') || 'kommagetrennt' },
+    { key: 'file_url', label: t('pages.documents.form.fileUrl') || 'Datei-URL', required: true, placeholder: '/uploads/documents/...', default: uploadedUrl },
   ];
 
   return (
@@ -161,16 +164,16 @@ export default function Documents() {
         <div style={{ padding: '1rem 1.5rem 0', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
           <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '120px', textAlign: 'center' }}>
             <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{stats.total}</div>
-            <div className="text-muted" style={{ fontSize: '0.8rem' }}>Dokumente gesamt</div>
+            <div className="text-muted" style={{ fontSize: '0.8rem' }}>{t('pages.documents.totalDocs') || 'Dokumente gesamt'}</div>
           </div>
           <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '120px', textAlign: 'center' }}>
             <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{stats.withFile}</div>
-            <div className="text-muted" style={{ fontSize: '0.8rem' }}>Mit Datei</div>
+            <div className="text-muted" style={{ fontSize: '0.8rem' }}>{t('pages.documents.withFile') || 'Mit Datei'}</div>
           </div>
-          {stats.byType.slice(0, 5).map(t => (
-            <div key={t.label} className="panel" style={{ padding: '0.75rem 1rem', minWidth: '100px', textAlign: 'center' }}>
-              <div style={{ fontSize: '1.25rem', fontWeight: 600 }}>{t.count}</div>
-              <div className="text-muted" style={{ fontSize: '0.75rem' }}>{t.label}</div>
+          {stats.byType.slice(0, 5).map(item => (
+            <div key={item.label} className="panel" style={{ padding: '0.75rem 1rem', minWidth: '100px', textAlign: 'center' }}>
+              <div style={{ fontSize: '1.25rem', fontWeight: 600 }}>{item.count}</div>
+              <div className="text-muted" style={{ fontSize: '0.75rem' }}>{item.label}</div>
             </div>
           ))}
         </div>
@@ -198,11 +201,11 @@ export default function Documents() {
             }}
           />
           <PlusIcon size={24} />
-          <span>{uploading ? 'Wird hochgeladen...' : 'Dokumente hierher ziehen oder klicken (mehrere Dateien möglich)'}</span>
+          <span>{uploading ? (t('pages.documents.upload.uploading') || 'Wird hochgeladen...') : (t('pages.documents.upload.dropHint') || 'Dokumente hierher ziehen oder klicken (mehrere Dateien möglich)')}</span>
           <span className="text-muted" style={{ fontSize: '0.8rem' }}>
-            Unterstützt: PDF, PNG, JPG, TIFF, DOC, DOCX, XLS, XLSX — Auto-OCR für Bilddateien und PDFs
+            {t('pages.documents.upload.supportedFormats') || 'Unterstützt: PDF, PNG, JPG, TIFF, DOC, DOCX, XLS, XLSX — Auto-OCR für Bilddateien und PDFs'}
           </span>
-          {uploadedUrl && <span className="text-muted">Hochgeladen: {uploadedUrl}</span>}
+          {uploadedUrl && <span className="text-muted">{t('pages.documents.upload.uploaded') || 'Hochgeladen:'} {uploadedUrl}</span>}
         </div>
       </div>
 
@@ -221,17 +224,17 @@ export default function Documents() {
       {ocrResult && (
         <div style={{ padding: '0.5rem 1.5rem' }}>
           <div className="panel" style={{ padding: '0.75rem 1rem', background: ocrResult.success ? 'var(--success-bg, #f0fdf4)' : 'var(--bg-secondary)' }}>
-            <strong>KI-Analyse:</strong>{' '}
+            <strong>{t('pages.documents.aiAnalysis') || 'KI-Analyse:'}</strong>{' '}
             {ocrResult.success ? (
               <>
-                Erkannter Typ: <strong>{ocrResult.guessedType}</strong>
+                {t('pages.documents.recognizedType') || 'Erkannter Typ:'} <strong>{ocrResult.guessedType}</strong>
                 {ocrResult.extracted_text && (
                   <span className="text-muted"> — {ocrResult.extracted_text.slice(0, 150)}...</span>
                 )}
               </>
             ) : (
               <>
-                Erkannter Typ: <strong>{ocrResult.guessedType}</strong>
+                {t('pages.documents.recognizedType') || 'Erkannter Typ:'} <strong>{ocrResult.guessedType}</strong>
                 <span className="text-muted"> — {ocrResult.message}</span>
               </>
             )}
@@ -240,7 +243,7 @@ export default function Documents() {
       )}
 
       <CrudPage
-        title="Dokumente"
+        title={t('pages.documents.title') || 'Dokumente'}
         endpoint="/documents"
         columns={COLUMNS}
         formFields={fields}

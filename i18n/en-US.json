@@ -910,7 +910,7 @@
   "shortcuts": {
     "openSearch": "/ Open Search",
     "createNew": "N Create New",
-    "save": "Ctrl/\u2318 + S Save",
+    "save": "Ctrl/⌘ + S Save",
     "closeDialog": "Esc Close Dialog"
   },
   "errorPages": {
@@ -1359,18 +1359,99 @@
       "contractHistory": "Contract History",
       "noContracts": "No contracts",
       "insurances": "Insurances",
-      "noUnitInsurances": "No unit-specific insurances"
+      "noUnitInsurances": "No unit-specific insurances",
+      "unitNumber": "Unit No.",
+      "personCount": "Person Count",
+      "heatingAdvance": "Heating Costs",
+      "contract": "Contract",
+      "tenant": "Tenant",
+      "start": "Start",
+      "end": "End",
+      "deposit": "Deposit",
+      "unitLabel": "Unit"
     },
     "integrations": {
       "title": "Integrations",
       "subtitle": "Future integrations for enhanced communication and automation.",
       "planned": "Planned",
-      "plannedFeatures": "Planned Features:"
+      "plannedFeatures": "Planned Features:",
+      "loading": "Loading integrations...",
+      "active": "Active",
+      "inactive": "Inactive",
+      "category": "Category",
+      "configured": "Configured",
+      "notConfigured": "Not configured",
+      "health": "Health",
+      "requiredConfig": "Required Configuration",
+      "none": "None",
+      "disable": "Disable",
+      "enable": "Enable",
+      "runTest": "Run Test",
+      "capabilities": "Capabilities:",
+      "error": "Error",
+      "actionExecuted": "Action executed"
     },
     "documents": {
-      "upload": "Upload File",
+      "upload": {
+        "uploading": "Uploading...",
+        "dropHint": "Drag documents here or click (multiple files supported)",
+        "supportedFormats": "Supported: PDF, PNG, JPG, TIFF, DOC, DOCX, XLS, XLSX — Auto-OCR for images and PDFs",
+        "uploaded": "Uploaded:",
+        "failed": "Upload failed",
+        "ocrUnavailable": "OCR not available",
+        "ocrUnsupported": "File type not OCR-capable"
+      },
       "uploaded": "Uploaded:",
-      "title": "Documents"
+      "title": "Documents",
+      "totalDocs": "Total Documents",
+      "withFile": "With File",
+      "columns": {
+        "title": "Title",
+        "type": "Type",
+        "date": "Date",
+        "tags": "Tags",
+        "file": "File",
+        "filePresent": "Available",
+        "ocr": "OCR"
+      },
+      "ocr": {
+        "completed": "✓ Recognized",
+        "processing": "⏳ Processing...",
+        "failed": "✗ Error"
+      },
+      "docTypes": {
+        "mietvertrag": "Lease Agreement",
+        "rechnung": "Invoice",
+        "nebenkostenabrechnung": "Service Charge Statement",
+        "protokoll": "Protocol",
+        "versicherung": "Insurance",
+        "grundbuchauszug": "Land Registry Extract",
+        "energieausweis": "Energy Certificate",
+        "betriebskostenabrechnung": "Operating Cost Statement",
+        "mahnung": "Reminder",
+        "kuendigung": "Termination",
+        "uebergabeprotokoll": "Handover Protocol",
+        "handwerkerrechnung": "Contractor Invoice",
+        "steuerbescheid": "Tax Assessment",
+        "sonstiges": "Other"
+      },
+      "form": {
+        "title": "Title",
+        "docType": "Document Type",
+        "date": "Date",
+        "property": "Property",
+        "noneOption": "— None —",
+        "noContract": "— None —",
+        "unit": "Unit",
+        "contract": "Contract",
+        "description": "Description",
+        "tags": "Tags",
+        "tagsPlaceholder": "comma-separated",
+        "fileUrl": "File URL",
+        "fileUrlPlaceholder": "/uploads/documents/..."
+      },
+      "aiAnalysis": "AI Analysis:",
+      "recognizedType": "Recognized Type:"
     },
     "errorBoundary": {
       "title": "Something went wrong",
@@ -1382,6 +1463,179 @@
       "title": "Page not found",
       "message": "The requested page does not exist.",
       "back": "Go to Home"
+    },
+    "categories": {
+      "title": "Categories",
+      "columns": {
+        "name": "Name",
+        "type": "Type"
+      },
+      "form": {
+        "portfolio": "Portfolio",
+        "name": "Name",
+        "type": "Type"
+      },
+      "options": {
+        "income": "Income",
+        "expense": "Expense",
+        "maintenance": "Maintenance",
+        "other": "Other"
+      }
+    },
+    "maintenance": {
+      "title": "Maintenance & Repairs",
+      "columns": {
+        "title": "Title",
+        "category": "Category",
+        "priority": "Priority",
+        "assignee": "Assignee",
+        "cost": "Cost (€)",
+        "dueDate": "Due Date",
+        "status": "Status"
+      },
+      "form": {
+        "property": "Property",
+        "unit": "Unit",
+        "noneOption": "— None —",
+        "title": "Title",
+        "description": "Description",
+        "category": "Category",
+        "priority": "Priority",
+        "reportedBy": "Reported By",
+        "assignee": "Assignee",
+        "contractor": "Contractor",
+        "dueDate": "Due Date",
+        "appointment": "Appointment",
+        "estimatedCost": "Estimated Cost (€)",
+        "status": "Status"
+      },
+      "categories": {
+        "plumbing": "Plumbing",
+        "electrical": "Electrical",
+        "heating": "Heating",
+        "roof": "Roof",
+        "facade": "Facade",
+        "other": "Other"
+      },
+      "priority": {
+        "low": "Low",
+        "medium": "Medium",
+        "high": "High",
+        "urgent": "Urgent"
+      },
+      "status": {
+        "open": "Open",
+        "inProgress": "In Progress",
+        "completed": "Completed",
+        "cancelled": "Cancelled"
+      }
+    },
+    "tasks": {
+      "title": "Tasks",
+      "columns": {
+        "title": "Title",
+        "assignee": "Assignee",
+        "dueDate": "Due Date",
+        "priority": "Priority",
+        "status": "Status"
+      },
+      "form": {
+        "title": "Title",
+        "description": "Description",
+        "assignee": "Assignee",
+        "property": "Property",
+        "unit": "Unit",
+        "noneOption": "— None —",
+        "dueDate": "Due Date",
+        "recurrence": "Recurrence (iCal RRULE)",
+        "recurrencePlaceholder": "e.g. FREQ=MONTHLY;COUNT=12",
+        "priority": "Priority",
+        "status": "Status"
+      },
+      "priority": {
+        "low": "Low",
+        "medium": "Medium",
+        "high": "High",
+        "urgent": "Urgent"
+      },
+      "status": {
+        "open": "Open",
+        "inProgress": "In Progress",
+        "completed": "Completed"
+      }
+    },
+    "taxRates": {
+      "title": "Tax Rates",
+      "columns": {
+        "name": "Name",
+        "rate": "Rate (%)",
+        "description": "Description",
+        "isDefault": "Default",
+        "validFrom": "Valid From",
+        "validUntil": "Valid Until",
+        "yes": "Yes",
+        "no": "No"
+      },
+      "form": {
+        "name": "Name",
+        "namePlaceholder": "e.g. Standard Rate",
+        "rate": "Tax Rate (%)",
+        "ratePlaceholder": "e.g. 19.0",
+        "description": "Description",
+        "isDefault": "Default",
+        "yes": "Yes",
+        "no": "No",
+        "validFrom": "Valid From",
+        "validUntil": "Valid Until"
+      }
+    },
+    "insurances": {
+      "title": "Insurances",
+      "columns": {
+        "provider": "Provider",
+        "type": "Type",
+        "policyNumber": "Policy No.",
+        "premium": "Premium (€)",
+        "interval": "Interval",
+        "endDate": "Expiry",
+        "status": "Status"
+      },
+      "form": {
+        "property": "Property",
+        "unit": "Unit (optional)",
+        "type": "Insurance Type",
+        "provider": "Provider",
+        "providerPlaceholder": "e.g. Allianz",
+        "policyNumber": "Policy Number",
+        "policyNumberPlaceholder": "e.g. VP-2024-12345",
+        "coverageAmount": "Coverage Amount (€)",
+        "premiumAmount": "Premium (€)",
+        "paymentInterval": "Payment Interval",
+        "startDate": "Start Date",
+        "endDate": "End Date",
+        "contactPerson": "Contact Person",
+        "phone": "Phone",
+        "notes": "Notes",
+        "status": "Status"
+      },
+      "types": {
+        "building": "Building Insurance",
+        "liability": "Liability",
+        "contents": "Contents",
+        "legal": "Legal Protection",
+        "rentLoss": "Rent Loss",
+        "other": "Other"
+      },
+      "interval": {
+        "monthly": "Monthly",
+        "quarterly": "Quarterly",
+        "annual": "Annual"
+      },
+      "status": {
+        "active": "Active",
+        "expired": "Expired",
+        "cancelled": "Cancelled"
+      }
     }
   },
   "sidebar": {
@@ -1398,6 +1652,29 @@
     "addNote": "Add Note",
     "notes": "Notes",
     "exportLog": "Export Log",
-    "exit": "Exit"
+    "exit": "Exit",
+    "form": {
+      "titlePlaceholder": "Title / Summary...",
+      "componentPlaceholder": "Component / Section (optional)",
+      "descriptionPlaceholder": "Detailed description (optional)...",
+      "cancel": "Cancel"
+    },
+    "list": {
+      "all": "All",
+      "thisPage": "This Page",
+      "resolved": "Resolved",
+      "empty": "No notes yet",
+      "resolve": "Resolve",
+      "delete": "Delete"
+    },
+    "logPreview": {
+      "title": "Dev Notes Log",
+      "copy": "Copy",
+      "download": "Download",
+      "close": "Close"
+    },
+    "diagnostics": "Diagnostics",
+    "newNote": "New Developer Note",
+    "developerNotes": "Developer Notes"
   }
 }

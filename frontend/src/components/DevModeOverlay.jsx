@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useDevMode } from '../contexts/DevModeContext';
+import { useTranslation } from '../i18n';
 import DiagnosticsPanel from './DiagnosticsPanel';
 
 const CATEGORIES = [
@@ -35,6 +36,7 @@ function NoteForm({ onSubmit, onCancel, initialPage }) {
   const [priority, setPriority] = useState('medium');
   const [component, setComponent] = useState('');
   const titleRef = useRef(null);
+  const { t } = useTranslation();
 
   useEffect(() => {
     titleRef.current?.focus();
@@ -60,7 +62,7 @@ function NoteForm({ onSubmit, onCancel, initialPage }) {
         <input
           ref={titleRef}
           type="text"
-          placeholder="Title / Summary..."
+          placeholder={t('devMode.form.titlePlaceholder') || 'Title / Summary...'}
           value={title}
           onChange={e => setTitle(e.target.value)}
           className="dev-note-input"
@@ -70,7 +72,7 @@ function NoteForm({ onSubmit, onCancel, initialPage }) {
       <div className="dev-note-form-row">
         <input
           type="text"
-          placeholder="Component / Section (optional)"
+          placeholder={t('devMode.form.componentPlaceholder') || 'Component / Section (optional)'}
           value={component}
           onChange={e => setComponent(e.target.value)}
           className="dev-note-input"
@@ -78,7 +80,7 @@ function NoteForm({ onSubmit, onCancel, initialPage }) {
       </div>
       <div className="dev-note-form-row">
         <textarea
-          placeholder="Detailed description (optional)..."
+          placeholder={t('devMode.form.descriptionPlaceholder') || 'Detailed description (optional)...'}
           value={description}
           onChange={e => setDescription(e.target.value)}
           className="dev-note-textarea"
@@ -98,8 +100,8 @@ function NoteForm({ onSubmit, onCancel, initialPage }) {
         </select>
       </div>
       <div className="dev-note-form-actions">
-        <button type="submit" className="dev-btn dev-btn-primary">Add Note</button>
-        <button type="button" className="dev-btn dev-btn-secondary" onClick={onCancel}>Cancel</button>
+        <button type="submit" className="dev-btn dev-btn-primary">{t('devMode.addNote') || 'Add Note'}</button>
+        <button type="button" className="dev-btn dev-btn-secondary" onClick={onCancel}>{t('devMode.form.cancel') || 'Cancel'}</button>
       </div>
     </form>
   );
@@ -110,6 +112,7 @@ function NoteForm({ onSubmit, onCancel, initialPage }) {
 // ---------------------------------------------------------------------------
 
 function NotesList({ notes, onResolve, onDelete, filterPage }) {
+  const { t } = useTranslation();
   const [filter, setFilter] = useState(filterPage ? 'page' : 'all');
   const [showResolved, setShowResolved] = useState(false);
 
@@ -129,19 +132,19 @@ function NotesList({ notes, onResolve, onDelete, filterPage }) {
           <button
             className={`dev-btn dev-btn-xs ${filter === 'all' ? 'dev-btn-primary' : 'dev-btn-ghost'}`}
             onClick={() => setFilter('all')}
-          >All ({notes.filter(n => showResolved || !n.resolved).length})</button>
+          >{t('devMode.list.all') || 'All'} ({notes.filter(n => showResolved || !n.resolved).length})</button>
           <button
             className={`dev-btn dev-btn-xs ${filter === 'page' ? 'dev-btn-primary' : 'dev-btn-ghost'}`}
             onClick={() => setFilter('page')}
-          >This Page</button>
+          >{t('devMode.list.thisPage') || 'This Page'}</button>
           <label className="dev-checkbox-label">
             <input type="checkbox" checked={showResolved} onChange={e => setShowResolved(e.target.checked)} />
-            Resolved
+            {t('devMode.list.resolved') || 'Resolved'}
           </label>
         </div>
       </div>
       {filtered.length === 0 && (
-        <div className="dev-notes-empty">No notes yet</div>
+        <div className="dev-notes-empty">{t('devMode.list.empty') || 'No notes yet'}</div>
       )}
       {filtered.map(note => (
         <div key={note.id} className={`dev-note-item ${note.resolved ? 'dev-note-resolved' : ''}`}>
@@ -158,9 +161,9 @@ function NotesList({ notes, onResolve, onDelete, filterPage }) {
           {note.description && <div className="dev-note-item-desc">{note.description}</div>}
           <div className="dev-note-item-actions">
             {!note.resolved && (
-              <button className="dev-btn dev-btn-xs dev-btn-ghost" onClick={() => onResolve(note.id)}>Resolve</button>
+              <button className="dev-btn dev-btn-xs dev-btn-ghost" onClick={() => onResolve(note.id)}>{t('devMode.list.resolve') || 'Resolve'}</button>
             )}
-            <button className="dev-btn dev-btn-xs dev-btn-danger" onClick={() => onDelete(note.id)}>Delete</button>
+            <button className="dev-btn dev-btn-xs dev-btn-danger" onClick={() => onDelete(note.id)}>{t('devMode.list.delete') || 'Delete'}</button>
           </div>
         </div>
       ))}
@@ -173,8 +176,9 @@ function NotesList({ notes, onResolve, onDelete, filterPage }) {
 // ---------------------------------------------------------------------------
 
 function LogPreview({ onClose }) {
+  const { t } = useTranslation();
   const { exportLog } = useDevMode();
-  const [content, setContent] = useState('Loading...');
+  const [content, setContent] = useState(t('pages.loading') || 'Loading...');
 
   useEffect(() => {
     exportLog().then(c => setContent(c || '(empty)'));
@@ -199,11 +203,11 @@ function LogPreview({ onClose }) {
   return (
     <div className="dev-log-preview">
       <div className="dev-log-preview-header">
-        <span>Dev Notes Log</span>
+        <span>{t('devMode.logPreview.title') || 'Dev Notes Log'}</span>
         <div>
-          <button className="dev-btn dev-btn-xs dev-btn-ghost" onClick={handleCopy}>Copy</button>
-          <button className="dev-btn dev-btn-xs dev-btn-ghost" onClick={handleDownload}>Download</button>
-          <button className="dev-btn dev-btn-xs dev-btn-ghost" onClick={onClose}>Close</button>
+          <button className="dev-btn dev-btn-xs dev-btn-ghost" onClick={handleCopy}>{t('devMode.logPreview.copy') || 'Copy'}</button>
+          <button className="dev-btn dev-btn-xs dev-btn-ghost" onClick={handleDownload}>{t('devMode.logPreview.download') || 'Download'}</button>
+          <button className="dev-btn dev-btn-xs dev-btn-ghost" onClick={onClose}>{t('devMode.logPreview.close') || 'Close'}</button>
         </div>
       </div>
       <pre className="dev-log-preview-content">{content}</pre>
@@ -217,6 +221,7 @@ function LogPreview({ onClose }) {
 
 export default function DevModeOverlay() {
   const { enabled, notes, startAnnotating, stopAnnotating, createNote, resolveNote, deleteNote, toggle } = useDevMode();
+  const { t } = useTranslation();
   const location = useLocation();
   const [showPanel, setShowPanel] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -273,7 +278,7 @@ export default function DevModeOverlay() {
       {/* Dev Mode Indicator Bar */}
       <div className="dev-mode-bar">
         <div className="dev-mode-bar-left">
-          <span className="dev-mode-indicator">DEV MODE</span>
+          <span className="dev-mode-indicator">{t('devMode.title') || 'DEV MODE'}</span>
           <span className="dev-mode-page">{currentPath}</span>
           {pageNotes.length > 0 && (
             <span className="dev-mode-page-count">{pageNotes.length} note{pageNotes.length !== 1 ? 's' : ''} on this page</span>
@@ -281,19 +286,19 @@ export default function DevModeOverlay() {
         </div>
         <div className="dev-mode-bar-right">
           <button className="dev-btn dev-btn-sm dev-btn-accent" onClick={handleNewNote}>
-            + Add Note
+            {t('devMode.addNote') || '+ Add Note'}
           </button>
           <button className="dev-btn dev-btn-sm dev-btn-ghost" onClick={handleShowPanel}>
-            Notes ({unresolvedCount})
+            {t('devMode.notes') || 'Notes'} ({unresolvedCount})
           </button>
           <button className="dev-btn dev-btn-sm dev-btn-ghost" onClick={handleShowDiag}>
-            Diagnostics
+            {t('devMode.diagnostics') || 'Diagnostics'}
           </button>
           <button className="dev-btn dev-btn-sm dev-btn-ghost" onClick={handleShowLog}>
-            Export Log
+            {t('devMode.exportLog') || 'Export Log'}
           </button>
           <button className="dev-btn dev-btn-sm dev-btn-ghost" onClick={toggle} title="Ctrl+Shift+D">
-            Exit
+            {t('devMode.exit') || 'Exit'}
           </button>
         </div>
       </div>
@@ -301,7 +306,7 @@ export default function DevModeOverlay() {
       {/* Annotation Form */}
       {showForm && (
         <div className="dev-panel dev-panel-form">
-          <div className="dev-panel-title">New Developer Note — {currentPath}</div>
+          <div className="dev-panel-title">{t('devMode.newNote') || 'New Developer Note'} — {currentPath}</div>
           <NoteForm
             initialPage={currentPath}
             onSubmit={handleCreateNote}
@@ -313,7 +318,7 @@ export default function DevModeOverlay() {
       {/* Notes List Panel */}
       {showPanel && (
         <div className="dev-panel dev-panel-list">
-          <div className="dev-panel-title">Developer Notes</div>
+          <div className="dev-panel-title">{t('devMode.developerNotes') || 'Developer Notes'}</div>
           <NotesList
             notes={notes}
             filterPage={currentPath}

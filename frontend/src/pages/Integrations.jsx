@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from '../i18n';
 import { api } from '../api';
 import { AlertIcon, MessageIcon, ContractIcon, DocumentIcon, BuildingIcon } from '../components/Icons';
 
@@ -26,6 +27,7 @@ const runPayloadFor = (integrationId) => {
 };
 
 export default function Integrations() {
+  const { t } = useTranslation();
   const [integrations, setIntegrations] = useState([]);
   const [messages, setMessages] = useState({});
   const [loading, setLoading] = useState(true);
@@ -47,35 +49,35 @@ export default function Integrations() {
       await api.patch(`/integrations/${id}`, { enabled });
       setIntegrations((prev) => prev.map((it) => (it.id === id ? { ...it, enabled } : it)));
     } catch (err) {
-      setMessages((prev) => ({ ...prev, [id]: `Fehler: ${err.message}` }));
+      setMessages((prev) => ({ ...prev, [id]: `${t('pages.integrations.error') || 'Fehler'}: ${err.message}` }));
     }
   };
 
   const runIntegration = async (id) => {
     try {
       const res = await api.post(`/integrations/${id}/run`, { payload: runPayloadFor(id) });
-      setMessages((prev) => ({ ...prev, [id]: res.message || 'Aktion ausgeführt' }));
+      setMessages((prev) => ({ ...prev, [id]: res.message || t('pages.integrations.actionExecuted') || 'Aktion ausgeführt' }));
       const history = await api.get(`/integrations/${id}/history?limit=1`);
       const latest = history?.items?.[0];
       if (latest) {
         setMessages((prev) => ({
           ...prev,
-          [id]: `${res.message || 'Aktion ausgeführt'} (${latest.created_at})`,
+          [id]: `${res.message || t('pages.integrations.actionExecuted') || 'Aktion ausgeführt'} (${latest.created_at})`,
         }));
       }
     } catch (err) {
-      setMessages((prev) => ({ ...prev, [id]: `Fehler: ${err.message}` }));
+      setMessages((prev) => ({ ...prev, [id]: `${t('pages.integrations.error') || 'Fehler'}: ${err.message}` }));
     }
   };
 
   return (
     <div className="page">
-      <h1 className="page-title">Integrationen</h1>
+      <h1 className="page-title">{t('pages.integrations.title') || 'Integrationen'}</h1>
       <p className="text-muted" style={{ marginBottom: '1.5rem' }}>
-        Integrationsmodule verwalten, Konfiguration validieren und Testläufe ausführen.
+        {t('pages.integrations.subtitle') || 'Integrationsmodule verwalten, Konfiguration validieren und Testläufe ausführen.'}
       </p>
 
-      {loading && <p className="text-muted">Lade Integrationen...</p>}
+      {loading && <p className="text-muted">{t('pages.integrations.loading') || 'Lade Integrationen...'}</p>}
 
       <div className="integrations-grid">
         {integrations.map((intg) => {
@@ -86,32 +88,32 @@ export default function Integrations() {
                 <Ico size={20} />
                 <span>{intg.name}</span>
                 <span className={`badge ${intg.enabled ? 'badge-green' : 'badge-planned'}`} style={{ marginLeft: 'auto' }}>
-                  <AlertIcon size={12} /> {intg.message || (intg.enabled ? 'Aktiv' : 'Inaktiv')}
+                  <AlertIcon size={12} /> {intg.message || (intg.enabled ? t('pages.integrations.active') || 'Aktiv' : t('pages.integrations.inactive') || 'Inaktiv')}
                 </span>
               </div>
               <div className="panel-body">
                 <p style={{ marginBottom: '0.5rem' }}>{intg.description}</p>
                 <p className="text-muted" style={{ marginBottom: '0.5rem', fontSize: '0.85rem' }}>
-                  Kategorie: {intg.category} · {intg.configured ? 'Konfiguriert' : 'Nicht konfiguriert'}
+                  {t('pages.integrations.category') || 'Kategorie'}: {intg.category} · {intg.configured ? t('pages.integrations.configured') || 'Konfiguriert' : t('pages.integrations.notConfigured') || 'Nicht konfiguriert'}
                 </p>
                 <p className="text-muted" style={{ marginBottom: '0.5rem', fontSize: '0.85rem' }}>
                   Health: {intg.health?.status || 'unknown'}
                 </p>
                 <p className="text-muted" style={{ marginBottom: '1rem', fontSize: '0.85rem' }}>
-                  Pflicht-Konfiguration: {(intg.required_config_keys || []).join(', ') || 'Keine'}
+                  {t('pages.integrations.requiredConfig') || 'Pflicht-Konfiguration'}: {(intg.required_config_keys || []).join(', ') || t('pages.integrations.none') || 'Keine'}
                 </p>
 
                 <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
                   <button className="btn btn-sm btn-secondary" onClick={() => toggleIntegration(intg.id, !intg.enabled)}>
-                    {intg.enabled ? 'Deaktivieren' : 'Aktivieren'}
+                    {intg.enabled ? t('pages.integrations.disable') || 'Deaktivieren' : t('pages.integrations.enable') || 'Aktivieren'}
                   </button>
                   <button className="btn btn-sm btn-primary" onClick={() => runIntegration(intg.id)}>
-                    Test ausführen
+                    {t('pages.integrations.runTest') || 'Test ausführen'}
                   </button>
                 </div>
                 {messages[intg.id] && <div className="text-muted" style={{ marginBottom: '1rem' }}>{messages[intg.id]}</div>}
 
-                <h4 style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>Capabilities:</h4>
+                <h4 style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>{t('pages.integrations.capabilities') || 'Capabilities:'}</h4>
                 <ul className="integration-features">
                   {(intg.capabilities || []).map((feature, i) => (
                     <li key={i}>{feature}</li>

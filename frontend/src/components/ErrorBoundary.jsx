@@ -1,4 +1,27 @@
+/* eslint-disable react-refresh/only-export-components */
 import { Component } from 'react';
+import { useTranslation } from '../i18n';
+
+function ErrorContent({ error, onReload }) {
+  const { t } = useTranslation();
+  return (
+    <div className="error-boundary">
+      <div className="error-boundary-content">
+        <h1>{t('pages.errorBoundary.title') || 'Etwas ist schiefgelaufen'}</h1>
+        <p>{t('pages.errorBoundary.message') || 'Ein unerwarteter Fehler ist aufgetreten. Bitte laden Sie die Seite neu.'}</p>
+        {error && (
+          <details>
+            <summary>{t('pages.errorBoundary.details') || 'Fehlerdetails'}</summary>
+            <pre>{error.toString()}</pre>
+          </details>
+        )}
+        <button className="btn btn-primary" onClick={onReload}>
+          {t('pages.errorBoundary.reload') || 'Seite neu laden'}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default class ErrorBoundary extends Component {
   constructor(props) {
@@ -17,27 +40,13 @@ export default class ErrorBoundary extends Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="error-boundary">
-          <div className="error-boundary-content">
-            <h1>Etwas ist schiefgelaufen</h1>
-            <p>Ein unerwarteter Fehler ist aufgetreten. Bitte laden Sie die Seite neu.</p>
-            {this.state.error && (
-              <details>
-                <summary>Fehlerdetails</summary>
-                <pre>{this.state.error.toString()}</pre>
-              </details>
-            )}
-            <button
-              className="btn btn-primary"
-              onClick={() => {
-                this.setState({ hasError: false, error: null });
-                window.location.reload();
-              }}
-            >
-              Seite neu laden
-            </button>
-          </div>
-        </div>
+        <ErrorContent
+          error={this.state.error}
+          onReload={() => {
+            this.setState({ hasError: false, error: null });
+            window.location.reload();
+          }}
+        />
       );
     }
     return this.props.children;

@@ -1359,18 +1359,99 @@
       "contractHistory": "Vertragshistorie",
       "noContracts": "Keine Verträge",
       "insurances": "Versicherungen",
-      "noUnitInsurances": "Keine einheitsspezifischen Versicherungen"
+      "noUnitInsurances": "Keine einheitsspezifischen Versicherungen",
+      "unitNumber": "Einheitsnr.",
+      "personCount": "Personenzahl",
+      "heatingAdvance": "Heizkosten",
+      "contract": "Vertrag",
+      "tenant": "Mieter",
+      "start": "Beginn",
+      "end": "Ende",
+      "deposit": "Kaution",
+      "unitLabel": "Einheit"
     },
     "integrations": {
       "title": "Integrationen",
       "subtitle": "Zukünftige Integrationen für erweiterte Kommunikation und Automatisierung.",
       "planned": "Geplant",
-      "plannedFeatures": "Geplante Funktionen:"
+      "plannedFeatures": "Geplante Funktionen:",
+      "loading": "Lade Integrationen...",
+      "active": "Aktiv",
+      "inactive": "Inaktiv",
+      "category": "Kategorie",
+      "configured": "Konfiguriert",
+      "notConfigured": "Nicht konfiguriert",
+      "health": "Health",
+      "requiredConfig": "Pflicht-Konfiguration",
+      "none": "Keine",
+      "disable": "Deaktivieren",
+      "enable": "Aktivieren",
+      "runTest": "Test ausführen",
+      "capabilities": "Capabilities:",
+      "error": "Fehler",
+      "actionExecuted": "Aktion ausgeführt"
     },
     "documents": {
-      "upload": "Datei hochladen",
+      "upload": {
+        "uploading": "Wird hochgeladen...",
+        "dropHint": "Dokumente hierher ziehen oder klicken (mehrere Dateien möglich)",
+        "supportedFormats": "Unterstützt: PDF, PNG, JPG, TIFF, DOC, DOCX, XLS, XLSX — Auto-OCR für Bilddateien und PDFs",
+        "uploaded": "Hochgeladen:",
+        "failed": "Upload fehlgeschlagen",
+        "ocrUnavailable": "OCR nicht verfügbar",
+        "ocrUnsupported": "Dateityp nicht OCR-fähig"
+      },
       "uploaded": "Hochgeladen:",
-      "title": "Dokumente"
+      "title": "Dokumente",
+      "totalDocs": "Dokumente gesamt",
+      "withFile": "Mit Datei",
+      "columns": {
+        "title": "Titel",
+        "type": "Typ",
+        "date": "Datum",
+        "tags": "Tags",
+        "file": "Datei",
+        "filePresent": "Vorhanden",
+        "ocr": "OCR"
+      },
+      "ocr": {
+        "completed": "✓ Erkannt",
+        "processing": "⏳ Läuft...",
+        "failed": "✗ Fehler"
+      },
+      "docTypes": {
+        "mietvertrag": "Mietvertrag",
+        "rechnung": "Rechnung",
+        "nebenkostenabrechnung": "Nebenkostenabrechnung",
+        "protokoll": "Protokoll",
+        "versicherung": "Versicherung",
+        "grundbuchauszug": "Grundbuchauszug",
+        "energieausweis": "Energieausweis",
+        "betriebskostenabrechnung": "Betriebskostenabrechnung",
+        "mahnung": "Mahnung",
+        "kuendigung": "Kündigung",
+        "uebergabeprotokoll": "Übergabeprotokoll",
+        "handwerkerrechnung": "Handwerkerrechnung",
+        "steuerbescheid": "Steuerbescheid",
+        "sonstiges": "Sonstiges"
+      },
+      "form": {
+        "title": "Titel",
+        "docType": "Dokumententyp",
+        "date": "Datum",
+        "property": "Immobilie",
+        "noneOption": "— Keine —",
+        "noContract": "— Kein —",
+        "unit": "Einheit",
+        "contract": "Vertrag",
+        "description": "Beschreibung",
+        "tags": "Tags",
+        "tagsPlaceholder": "kommagetrennt",
+        "fileUrl": "Datei-URL",
+        "fileUrlPlaceholder": "/uploads/documents/..."
+      },
+      "aiAnalysis": "KI-Analyse:",
+      "recognizedType": "Erkannter Typ:"
     },
     "errorBoundary": {
       "title": "Etwas ist schiefgelaufen",
@@ -1382,6 +1463,179 @@
       "title": "Seite nicht gefunden",
       "message": "Die gewünschte Seite existiert nicht.",
       "back": "Zur Startseite"
+    },
+    "categories": {
+      "title": "Kategorien",
+      "columns": {
+        "name": "Name",
+        "type": "Typ"
+      },
+      "form": {
+        "portfolio": "Portfolio",
+        "name": "Name",
+        "type": "Typ"
+      },
+      "options": {
+        "income": "Einnahme",
+        "expense": "Ausgabe",
+        "maintenance": "Instandhaltung",
+        "other": "Sonstige"
+      }
+    },
+    "maintenance": {
+      "title": "Wartung & Instandhaltung",
+      "columns": {
+        "title": "Titel",
+        "category": "Kategorie",
+        "priority": "Priorität",
+        "assignee": "Zuständig",
+        "cost": "Kosten (€)",
+        "dueDate": "Fällig am",
+        "status": "Status"
+      },
+      "form": {
+        "property": "Immobilie",
+        "unit": "Einheit",
+        "noneOption": "— Keine —",
+        "title": "Titel",
+        "description": "Beschreibung",
+        "category": "Kategorie",
+        "priority": "Priorität",
+        "reportedBy": "Gemeldet von",
+        "assignee": "Zuständig",
+        "contractor": "Handwerker",
+        "dueDate": "Fällig am",
+        "appointment": "Termin",
+        "estimatedCost": "Geschätzte Kosten (€)",
+        "status": "Status"
+      },
+      "categories": {
+        "plumbing": "Sanitär",
+        "electrical": "Elektrik",
+        "heating": "Heizung",
+        "roof": "Dach",
+        "facade": "Fassade",
+        "other": "Sonstiges"
+      },
+      "priority": {
+        "low": "Niedrig",
+        "medium": "Mittel",
+        "high": "Hoch",
+        "urgent": "Dringend"
+      },
+      "status": {
+        "open": "Offen",
+        "inProgress": "In Bearbeitung",
+        "completed": "Erledigt",
+        "cancelled": "Abgebrochen"
+      }
+    },
+    "tasks": {
+      "title": "Aufgaben",
+      "columns": {
+        "title": "Titel",
+        "assignee": "Zuständig",
+        "dueDate": "Fällig am",
+        "priority": "Priorität",
+        "status": "Status"
+      },
+      "form": {
+        "title": "Titel",
+        "description": "Beschreibung",
+        "assignee": "Zuständig",
+        "property": "Immobilie",
+        "unit": "Einheit",
+        "noneOption": "— Keine —",
+        "dueDate": "Fällig am",
+        "recurrence": "Wiederholung (iCal RRULE)",
+        "recurrencePlaceholder": "z.B. FREQ=MONTHLY;COUNT=12",
+        "priority": "Priorität",
+        "status": "Status"
+      },
+      "priority": {
+        "low": "Niedrig",
+        "medium": "Mittel",
+        "high": "Hoch",
+        "urgent": "Dringend"
+      },
+      "status": {
+        "open": "Offen",
+        "inProgress": "In Bearbeitung",
+        "completed": "Erledigt"
+      }
+    },
+    "taxRates": {
+      "title": "Steuersätze",
+      "columns": {
+        "name": "Bezeichnung",
+        "rate": "Satz (%)",
+        "description": "Beschreibung",
+        "isDefault": "Standard",
+        "validFrom": "Gültig ab",
+        "validUntil": "Gültig bis",
+        "yes": "Ja",
+        "no": "Nein"
+      },
+      "form": {
+        "name": "Bezeichnung",
+        "namePlaceholder": "z.B. Regelsteuersatz",
+        "rate": "Steuersatz (%)",
+        "ratePlaceholder": "z.B. 19.0",
+        "description": "Beschreibung",
+        "isDefault": "Standard",
+        "yes": "Ja",
+        "no": "Nein",
+        "validFrom": "Gültig ab",
+        "validUntil": "Gültig bis"
+      }
+    },
+    "insurances": {
+      "title": "Versicherungen",
+      "columns": {
+        "provider": "Versicherer",
+        "type": "Art",
+        "policyNumber": "Policennr.",
+        "premium": "Prämie (€)",
+        "interval": "Intervall",
+        "endDate": "Ablauf",
+        "status": "Status"
+      },
+      "form": {
+        "property": "Immobilie",
+        "unit": "Einheit (optional)",
+        "type": "Versicherungsart",
+        "provider": "Versicherer",
+        "providerPlaceholder": "z.B. Allianz",
+        "policyNumber": "Policennummer",
+        "policyNumberPlaceholder": "z.B. VP-2024-12345",
+        "coverageAmount": "Deckungssumme (€)",
+        "premiumAmount": "Prämie (€)",
+        "paymentInterval": "Zahlungsintervall",
+        "startDate": "Vertragsbeginn",
+        "endDate": "Vertragsende",
+        "contactPerson": "Ansprechpartner",
+        "phone": "Telefon",
+        "notes": "Notizen",
+        "status": "Status"
+      },
+      "types": {
+        "building": "Gebäudeversicherung",
+        "liability": "Haftpflicht",
+        "contents": "Hausrat",
+        "legal": "Rechtsschutz",
+        "rentLoss": "Mietausfall",
+        "other": "Sonstige"
+      },
+      "interval": {
+        "monthly": "Monatlich",
+        "quarterly": "Vierteljährlich",
+        "annual": "Jährlich"
+      },
+      "status": {
+        "active": "Aktiv",
+        "expired": "Abgelaufen",
+        "cancelled": "Gekündigt"
+      }
     }
   },
   "sidebar": {
@@ -1398,6 +1652,29 @@
     "addNote": "Notiz hinzufügen",
     "notes": "Notizen",
     "exportLog": "Log exportieren",
-    "exit": "Beenden"
+    "exit": "Beenden",
+    "form": {
+      "titlePlaceholder": "Titel / Zusammenfassung...",
+      "componentPlaceholder": "Komponente / Abschnitt (optional)",
+      "descriptionPlaceholder": "Detaillierte Beschreibung (optional)...",
+      "cancel": "Abbrechen"
+    },
+    "list": {
+      "all": "Alle",
+      "thisPage": "Diese Seite",
+      "resolved": "Gelöst",
+      "empty": "Noch keine Notizen",
+      "resolve": "Lösen",
+      "delete": "Löschen"
+    },
+    "logPreview": {
+      "title": "Entwickler-Notizen Log",
+      "copy": "Kopieren",
+      "download": "Herunterladen",
+      "close": "Schließen"
+    },
+    "diagnostics": "Diagnose",
+    "newNote": "Neue Entwicklernotiz",
+    "developerNotes": "Entwicklernotizen"
   }
 }
