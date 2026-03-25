@@ -5,6 +5,7 @@ import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
+import { useConfirm } from '../components/ConfirmDialog';
 
 // Derive a cache key from endpoint, e.g. "/properties" → "properties"
 function endpointKey(ep) {
@@ -33,6 +34,7 @@ const _RELATED_ENTITIES = {
 
 export default function CrudPage({ title, endpoint, columns, formFields, onRowClick }) {
   const { t } = useTranslation();
+  const confirm = useConfirm();
   const store = useDataStore();
   const eKey = endpointKey(endpoint);
   const { items, loading, error, reload } = useEntities(eKey, endpoint);
@@ -56,7 +58,7 @@ export default function CrudPage({ title, endpoint, columns, formFields, onRowCl
 
   const handleDelete = async (row) => {
     const name = row[columns[0]?.key] || row.id;
-    if (!window.confirm(`"${name}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`"${name}" ${t('modals.confirmDelete.body')}`)) return;
     setDeleteError(null);
     try {
       await api.del(`${endpoint}/${row.id}`);

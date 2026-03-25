@@ -30,6 +30,8 @@ async function fetchWithRetry(url, options, retriesLeft = MAX_RETRIES) {
   try {
     return await fetch(url, options);
   } catch (err) {
+    // Don't retry aborted requests
+    if (err.name === 'AbortError') throw err;
     // Only retry on network errors (TypeError: Failed to fetch)
     if (retriesLeft > 0 && err instanceof TypeError) {
       const delay = RETRY_DELAYS[MAX_RETRIES - retriesLeft] || 1000;
@@ -112,13 +114,15 @@ function networkError(originalError) {
 
 async function request(path, options = {}) {
   const token = getToken();
-  const headers = { 'Content-Type': 'application/json', ...options.headers };
+  const { signal, ...rest } = options;
+  const headers = { 'Content-Type': 'application/json', ...rest.headers };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
   let res;
   try {
-    res = await fetchWithRetry(`${BASE}${path}`, { ...options, headers });
+    res = await fetchWithRetry(`${BASE}${path}`, { ...rest, headers, signal });
   } catch (err) {
+    if (err.name === 'AbortError') throw err;
     // All retries exhausted — network error
     throw networkError(err);
   }
@@ -162,11 +166,11 @@ async function request(path, options = {}) {
 // ---------------------------------------------------------------------------
 
 export const api = {
-  get: (path) => request(path),
-  post: (path, data) => request(path, { method: 'POST', body: JSON.stringify(data) }),
-  put: (path, data) => request(path, { method: 'PUT', body: JSON.stringify(data) }),
-  patch: (path, data) => request(path, { method: 'PATCH', body: JSON.stringify(data) }),
-  del: (path) => request(path, { method: 'DELETE' }),
+  get: (path, { signal } = {}) => request(path, { signal }),
+  post: (path, data, { signal } = {}) => request(path, { method: 'POST', body: JSON.stringify(data), signal }),
+  put: (path, data, { signal } = {}) => request(path, { method: 'PUT', body: JSON.stringify(data), signal }),
+  patch: (path, data, { signal } = {}) => request(path, { method: 'PATCH', body: JSON.stringify(data), signal }),
+  del: (path, { signal } = {}) => request(path, { method: 'DELETE', signal }),
 };
 
 export async function login(username, password) {

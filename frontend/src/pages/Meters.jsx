@@ -6,6 +6,7 @@ import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
+import { useConfirm } from '../components/ConfirmDialog';
 
 const METER_TYPE_LABELS = {
   cold_water: 'Kaltwasser',
@@ -52,6 +53,7 @@ const READING_COLUMNS = [
 
 export default function Meters() {
   const { t } = useTranslation();
+  const confirm = useConfirm();
   const toast = useToast();
   const store = useDataStore();
   const { items: units } = useEntities('units', '/units');
@@ -167,7 +169,7 @@ export default function Meters() {
   };
 
   const handleDeleteMeter = async (row) => {
-    if (!window.confirm(`"${row.serial_number || row.id}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`"${row.serial_number || row.id}" ${t('modals.confirmDelete.body')}`)) return;
     await api.del(`/meters/${row.id}`);
     if (selectedMeter?.id === row.id) {
       setSelectedMeter(null);

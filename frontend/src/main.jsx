@@ -4,6 +4,7 @@ import './index.css'
 import App from './App.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 import { ToastProvider } from './components/Toast.jsx'
+import { ConfirmProvider } from './components/ConfirmDialog.jsx'
 import { I18nProvider } from './i18n.jsx'
 import { PreferencesProvider } from './contexts/PreferencesContext.jsx'
 import { DevModeProvider } from './contexts/DevModeContext.jsx'
@@ -19,7 +20,9 @@ createRoot(document.getElementById('root')).render(
             <DataStoreProvider>
               <DevModeProvider>
                 <ToastProvider>
-                  <App />
+                  <ConfirmProvider>
+                    <App />
+                  </ConfirmProvider>
                 </ToastProvider>
               </DevModeProvider>
             </DataStoreProvider>

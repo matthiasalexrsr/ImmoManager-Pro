@@ -1,10 +1,12 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { api } from '../api';
 import { PlusIcon, TrashIcon } from './Icons';
+import { useConfirm } from './ConfirmDialog';
 
 const BASE = (import.meta.env.VITE_API_URL || '/api/v1');
 
 export default function PhotoDropZone({ entityType, entityId }) {
+  const confirm = useConfirm();
   const [photos, setPhotos] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
@@ -46,7 +48,7 @@ export default function PhotoDropZone({ entityType, entityId }) {
   }, [entityType, entityId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleDelete = async (photoId) => {
-    if (!window.confirm('Foto wirklich löschen?')) return;
+    if (!await confirm('Foto wirklich löschen?')) return;
     try {
       await api.del(`/photos/${photoId}`);
       loadPhotos();

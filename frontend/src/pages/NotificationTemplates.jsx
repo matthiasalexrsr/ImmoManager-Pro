@@ -3,9 +3,11 @@ import { api } from '../api';
 import { useTranslation } from '../i18n';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
+import { useConfirm } from '../components/ConfirmDialog';
 
 export default function NotificationTemplates() {
   const { t } = useTranslation();
+  const confirm = useConfirm();
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -79,7 +81,7 @@ export default function NotificationTemplates() {
   };
 
   const handleDelete = async (row) => {
-    if (!window.confirm(`${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`${t('modals.confirmDelete.body')}`)) return;
     setDeleteError(null);
     try {
       await api.del(`/notifications/templates/${row.id}`);

@@ -4,6 +4,7 @@ import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
+import { useConfirm } from '../components/ConfirmDialog';
 
 const TYPE_OPTIONS = [
   { value: 'move_in', label: 'Einzug' },
@@ -38,6 +39,7 @@ const COLUMNS = [
 
 export default function HandoverProtocols() {
   const { t } = useTranslation();
+  const confirm = useConfirm();
   const store = useDataStore();
   const { items: units } = useEntities('units', '/units');
   const { items: contracts } = useEntities('contracts', '/contracts');
@@ -106,7 +108,7 @@ export default function HandoverProtocols() {
 
   const handleDelete = async (row) => {
     const name = `${TYPE_LABELS[row.protocol_type] || row.protocol_type} ${row.protocol_date || ''}`;
-    if (!window.confirm(`"${name}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`"${name}" ${t('modals.confirmDelete.body')}`)) return;
     setDeleteError(null);
     try {
       await api.del(`/handover-protocols/${row.id}`);

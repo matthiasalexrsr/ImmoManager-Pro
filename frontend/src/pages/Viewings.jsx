@@ -5,6 +5,7 @@ import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
+import { useConfirm } from '../components/ConfirmDialog';
 
 const STATUS_COLORS = {
   scheduled: 'var(--primary)',
@@ -134,6 +135,7 @@ function MiniCalendar({ viewings, currentMonth, onMonthChange, onSelectDate, sel
 
 export default function Viewings() {
   const { t } = useTranslation();
+  const confirm = useConfirm();
   const store = useDataStore();
   const { items: leads } = useEntities('leads', '/leads');
   const { items: units } = useEntities('units', '/units');
@@ -222,7 +224,7 @@ export default function Viewings() {
   };
 
   const handleDelete = async (row) => {
-    if (!window.confirm(`"${row.lead_name}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`"${row.lead_name}" ${t('modals.confirmDelete.body')}`)) return;
     setDeleteError(null);
     try {
       await api.del(`/viewings/${row.id}`);

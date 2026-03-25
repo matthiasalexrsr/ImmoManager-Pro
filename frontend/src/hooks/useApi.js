@@ -5,7 +5,7 @@ import { api } from '../api';
  * Hook for fetching a list of items from the API.
  *
  * Features:
- *   - Safe unmount handling (no setState after unmount)
+ *   - AbortController to cancel in-flight requests on unmount or re-fetch
  *   - Full error context preserved (code, requestId, isNetwork)
  *   - Automatic reload capability
  */
@@ -24,24 +24,25 @@ export function useList(path, deps = []) {
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
     setLoading(true);
-    api.get(path)
+    api.get(path, { signal: controller.signal })
       .then(data => {
-        if (!cancelled && mountedRef.current) {
+        if (mountedRef.current) {
           setItems(Array.isArray(data) ? data : []);
           setError(null);
         }
       })
       .catch(e => {
-        if (!cancelled && mountedRef.current) {
+        if (e.name === 'AbortError') return;
+        if (mountedRef.current) {
           setError(e.message);
         }
       })
       .finally(() => {
-        if (!cancelled && mountedRef.current) setLoading(false);
+        if (mountedRef.current) setLoading(false);
       });
-    return () => { cancelled = true; };
+    return () => { controller.abort(); };
   }, [path, depsKey, reloadCount]);
 
   const reload = useCallback(() => setReloadCount(c => c + 1), []);
@@ -53,7 +54,7 @@ export function useList(path, deps = []) {
  * Hook for fetching a single item from the API.
  *
  * Features:
- *   - Safe unmount handling (no setState after unmount)
+ *   - AbortController to cancel in-flight requests on unmount
  *   - Full error context
  */
 export function useDetail(path) {
@@ -68,24 +69,25 @@ export function useDetail(path) {
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
     setLoading(true);
-    api.get(path)
+    api.get(path, { signal: controller.signal })
       .then(data => {
-        if (!cancelled && mountedRef.current) {
+        if (mountedRef.current) {
           setItem(data);
           setError(null);
         }
       })
       .catch(e => {
-        if (!cancelled && mountedRef.current) {
+        if (e.name === 'AbortError') return;
+        if (mountedRef.current) {
           setError(e.message);
         }
       })
       .finally(() => {
-        if (!cancelled && mountedRef.current) setLoading(false);
+        if (mountedRef.current) setLoading(false);
       });
-    return () => { cancelled = true; };
+    return () => { controller.abort(); };
   }, [path]);
 
   return { item, loading, error };

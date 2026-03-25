@@ -4,6 +4,7 @@ import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
+import { useConfirm } from '../components/ConfirmDialog';
 
 function fmt(v) {
   return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(v || 0);
@@ -38,6 +39,7 @@ const COLUMNS = [
 
 export default function Budgets() {
   const { t } = useTranslation();
+  const confirm = useConfirm();
   const store = useDataStore();
   const { items: properties } = useEntities('properties', '/properties');
   const [budgets, setBudgets] = useState([]);
@@ -91,7 +93,7 @@ export default function Budgets() {
   };
 
   const handleDelete = async (row) => {
-    if (!window.confirm(`"${row.property_name} ${row.year}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`"${row.property_name} ${row.year}" ${t('modals.confirmDelete.body')}`)) return;
     setDeleteError(null);
     try {
       await api.del(`/budgets/${row.id}`);

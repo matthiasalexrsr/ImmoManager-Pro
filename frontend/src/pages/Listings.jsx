@@ -5,6 +5,7 @@ import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
+import { useConfirm } from '../components/ConfirmDialog';
 
 const PORTAL_TEMPLATES = {
   immoscout24: {
@@ -76,6 +77,7 @@ const COLUMNS = [
 
 export default function Listings() {
   const { t } = useTranslation();
+  const confirm = useConfirm();
   const store = useDataStore();
   const { items: units } = useEntities('units', '/units');
   const [listings, setListings] = useState([]);
@@ -145,7 +147,7 @@ export default function Listings() {
   };
 
   const handleDelete = async (row) => {
-    if (!window.confirm(`"${row.title}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`"${row.title}" ${t('modals.confirmDelete.body')}`)) return;
     setDeleteError(null);
     try {
       await api.del(`/listings/${row.id}`);

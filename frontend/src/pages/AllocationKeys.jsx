@@ -4,6 +4,7 @@ import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
+import { useConfirm } from '../components/ConfirmDialog';
 
 const KEY_TYPE_OPTIONS = [
   { value: 'area_sqm', label: 'Fläche (m²)' },
@@ -23,6 +24,7 @@ const COLUMNS = [
 
 export default function AllocationKeys() {
   const { t } = useTranslation();
+  const confirm = useConfirm();
   const store = useDataStore();
   const { items: properties } = useEntities('properties', '/properties');
   const [keys, setKeys] = useState([]);
@@ -70,7 +72,7 @@ export default function AllocationKeys() {
 
   const handleDelete = async (row) => {
     const name = row.name || row.id;
-    if (!window.confirm(`"${name}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`"${name}" ${t('modals.confirmDelete.body')}`)) return;
     setDeleteError(null);
     try {
       await api.del(`/billing/allocation-keys/${row.id}`);

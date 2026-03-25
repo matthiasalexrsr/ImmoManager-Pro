@@ -4,6 +4,7 @@ import { useTranslation } from '../i18n';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
+import { useConfirm } from '../components/ConfirmDialog';
 
 const PRIORITY_COLORS = { 1: 'var(--danger)', 2: 'var(--warning)', 3: 'var(--info)' };
 
@@ -35,6 +36,7 @@ const COLUMNS = [
 
 export default function Leads() {
   const { t } = useTranslation();
+  const confirm = useConfirm();
   const [leads, setLeads] = useState([]);
   const [units, setUnits] = useState([]);
   const [listings, setListings] = useState([]);
@@ -151,7 +153,7 @@ export default function Leads() {
   };
 
   const handleDelete = async (row) => {
-    if (!window.confirm(`"${row.full_name}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`"${row.full_name}" ${t('modals.confirmDelete.body')}`)) return;
     setDeleteError(null);
     try {
       await api.del(`/leads/${row.id}`);

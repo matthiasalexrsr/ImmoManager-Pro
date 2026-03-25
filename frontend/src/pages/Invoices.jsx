@@ -5,6 +5,7 @@ import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
+import { useConfirm } from '../components/ConfirmDialog';
 
 const STATUS_OPTIONS = [
   { value: 'open', label: 'Offen' },
@@ -39,6 +40,7 @@ const COLUMNS = [
 
 export default function Invoices() {
   const { t } = useTranslation();
+  const confirm = useConfirm();
   const store = useDataStore();
   const { items: properties } = useEntities('properties', '/properties');
   const { items: taxRates } = useEntities('taxRates', '/tax-rates');
@@ -139,7 +141,7 @@ export default function Invoices() {
   };
 
   const handleDelete = async (row) => {
-    if (!window.confirm(`"${row.supplier}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`"${row.supplier}" ${t('modals.confirmDelete.body')}`)) return;
     await api.del(`/invoices/${row.id}`);
     refreshData();
     if (store) store.invalidateRelated('invoices', 'contracts', 'receivables');
@@ -206,9 +208,9 @@ export default function Invoices() {
         onAdd={() => setModal('create')}
         onEdit={row => setModal(row)}
         onDelete={handleDelete}
-        onRowClick={row => {
+        onRowClick={async (row) => {
           if (row.status === 'open' || row.status === 'overdue') {
-            if (window.confirm(`"${row.supplier}" ${t('pages.invoices.markPaidConfirm') || 'als bezahlt markieren?'}`)) markPaid(row);
+            if (await confirm(`"${row.supplier}" ${t('pages.invoices.markPaidConfirm') || 'als bezahlt markieren?'}`)) markPaid(row);
           }
         }}
       />

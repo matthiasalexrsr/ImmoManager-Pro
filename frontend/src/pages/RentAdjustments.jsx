@@ -5,6 +5,7 @@ import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
+import { useConfirm } from '../components/ConfirmDialog';
 
 const COLUMNS = [
   { key: 'contract_number', label: 'Vertrag', filterType: 'text' },
@@ -23,6 +24,7 @@ const COLUMNS = [
 
 export default function RentAdjustments() {
   const { t } = useTranslation();
+  const confirm = useConfirm();
   const store = useDataStore();
   const { items: contracts } = useEntities('contracts', '/contracts');
   const [adjustments, setAdjustments] = useState([]);
@@ -84,7 +86,7 @@ export default function RentAdjustments() {
   };
 
   const handleDelete = async (row) => {
-    if (!window.confirm(`"${row.contract_number}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`"${row.contract_number}" ${t('modals.confirmDelete.body')}`)) return;
     setDeleteError(null);
     try {
       await api.del(`/rent-adjustments/${row.id}`);

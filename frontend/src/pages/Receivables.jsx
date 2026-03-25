@@ -5,9 +5,11 @@ import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
+import { useConfirm } from '../components/ConfirmDialog';
 
 export default function Receivables() {
   const { t } = useTranslation();
+  const confirm = useConfirm();
   const store = useDataStore();
   const { items: contracts } = useEntities('contracts', '/contracts');
   const [receivables, setReceivables] = useState([]);
@@ -75,7 +77,7 @@ export default function Receivables() {
   };
 
   const handleDelete = async (row) => {
-    if (!window.confirm(`${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`${t('modals.confirmDelete.body')}`)) return;
     setDeleteError(null);
     try {
       await api.del(`/receivables/${row.id}`);

@@ -4,6 +4,7 @@ import { useTranslation } from '../i18n';
 import { useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
+import { useConfirm } from '../components/ConfirmDialog';
 
 const COLUMNS = [
   { key: 'full_name', label: 'Name', filterType: 'text' },
@@ -36,6 +37,7 @@ const FIELDS = [
 
 export default function Tenants() {
   const { t } = useTranslation();
+  const confirm = useConfirm();
   const store = useDataStore();
   const [tenants, setTenants] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -89,7 +91,7 @@ export default function Tenants() {
 
   const handleDelete = async (row) => {
     const name = row.full_name || row.id;
-    if (!window.confirm(`"${name}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`"${name}" ${t('modals.confirmDelete.body')}`)) return;
     setError(null);
     try {
       await api.del(`/tenants/${row.id}`);
@@ -100,7 +102,7 @@ export default function Tenants() {
   };
 
   const handleArchive = async (tenant) => {
-    if (!window.confirm(`"${tenant.full_name}" ${t('pages.tenants.archiveConfirm') || 'archivieren? Der Mieter wird aus der aktiven Liste entfernt.'}`)) return;
+    if (!await confirm(`"${tenant.full_name}" ${t('pages.tenants.archiveConfirm') || 'archivieren? Der Mieter wird aus der aktiven Liste entfernt.'}`)) return;
     try {
       await api.patch(`/tenants/${tenant.id}/archive`, {});
       afterMutation();
