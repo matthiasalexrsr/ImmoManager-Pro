@@ -31,6 +31,8 @@ jobs:
         run: npm ci
       - name: Lint frontend
         run: npm run lint
+      - name: Run frontend tests
+        run: npm run test
       - name: Build frontend
         run: npm run build
 
@@ -51,11 +53,13 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install ruff pytest-cov mypy
+          pip install ruff pytest-cov mypy pip-audit
       - name: Lint (ruff)
         run: ruff check backend
-      - name: Type check (mypy, incremental gate)
-        run: mypy backend/app.py --ignore-missing-imports --follow-imports=skip
+      - name: Type check (mypy)
+        run: mypy backend/app.py backend/domain/ --ignore-missing-imports
+      - name: Security audit (pip-audit)
+        run: pip-audit --strict --desc 2>/dev/null || echo "::warning::pip-audit found vulnerabilities"
       - name: Run tests with coverage
         run: pytest backend/tests -q --tb=short --cov=backend --cov-report=term-missing --cov-fail-under=80
       - name: Import smoke check

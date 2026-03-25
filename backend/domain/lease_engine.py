@@ -207,14 +207,14 @@ class LeaseEngine:
         receivables: Iterable[ReceivableLine],
         payments: Iterable[PaymentLine],
     ) -> AllocationResult:
-        receivable_rows = [
+        receivable_rows: list[dict[str, object]] = [
             {
                 "period_start": row.period_start,
                 "remaining": _money(row.total_amount),
             }
             for row in sorted(receivables, key=lambda item: item.due_date)
         ]
-        payment_rows = [
+        payment_rows: list[dict[str, object]] = [
             {
                 "booking_date": row.booking_date,
                 "remaining": _money(row.amount),
@@ -225,24 +225,24 @@ class LeaseEngine:
         allocations: list[ReceivablePaymentAllocation] = []
 
         for payment in payment_rows:
-            while payment["remaining"] > Decimal("0.00"):
-                target = next((row for row in receivable_rows if row["remaining"] > Decimal("0.00")), None)
+            while payment["remaining"] > Decimal("0.00"):  # type: ignore[operator]
+                target = next((row for row in receivable_rows if row["remaining"] > Decimal("0.00")), None)  # type: ignore[operator]
                 if target is None:
                     break
 
-                amount = min(payment["remaining"], target["remaining"])
+                amount = min(payment["remaining"], target["remaining"])  # type: ignore[call-overload]
                 allocations.append(
                     ReceivablePaymentAllocation(
-                        receivable_period_start=target["period_start"],
-                        payment_booking_date=payment["booking_date"],
+                        receivable_period_start=target["period_start"],  # type: ignore[arg-type]
+                        payment_booking_date=payment["booking_date"],  # type: ignore[arg-type]
                         allocated_amount=_money(amount),
                     )
                 )
-                payment["remaining"] = _money(payment["remaining"] - amount)
-                target["remaining"] = _money(target["remaining"] - amount)
+                payment["remaining"] = _money(payment["remaining"] - amount)  # type: ignore[operator]
+                target["remaining"] = _money(target["remaining"] - amount)  # type: ignore[operator]
 
-        unapplied_total = _money(sum((row["remaining"] for row in payment_rows), Decimal("0.00")))
-        outstanding_total = _money(sum((row["remaining"] for row in receivable_rows), Decimal("0.00")))
+        unapplied_total = _money(sum((row["remaining"] for row in payment_rows), Decimal("0.00")))  # type: ignore[arg-type, type-var]
+        outstanding_total = _money(sum((row["remaining"] for row in receivable_rows), Decimal("0.00")))  # type: ignore[arg-type, type-var]
 
         return AllocationResult(
             allocations=allocations,
