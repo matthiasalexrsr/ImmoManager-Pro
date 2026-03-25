@@ -141,7 +141,7 @@ export default function Statements() {
   const [units, setUnits] = useState([]);
   const [allocationKeys, setAllocationKeys] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(null);
+  const [, setLoadError] = useState(null);
   const [modal, setModal] = useState(null);
   const [selectedPeriod, setSelectedPeriod] = useState(null);
   const [costModal, setCostModal] = useState(null);
@@ -158,7 +158,7 @@ export default function Statements() {
   const [ocrDraft, setOcrDraft] = useState(null);
   const [ocrUploading, setOcrUploading] = useState(false);
   const [disputing, setDisputing] = useState(false);
-  const [promptModal, setPromptModal] = useState(null);
+  const [, setPromptModal] = useState(null);
 
   const loadData = () => {
     setLoadError(null);
@@ -182,7 +182,7 @@ export default function Statements() {
     }).finally(() => setLoading(false));
   };
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadData(); }, []); // eslint-disable-line react-hooks/exhaustive-deps -- loadData is stable, called on mount only
 
   const propMap = Object.fromEntries(properties.map(p => [p.id, p]));
   const unitMap = Object.fromEntries(units.map(u => [u.id, u]));
@@ -237,7 +237,7 @@ export default function Statements() {
             description: cost.description,
             amount: 0,
             allocation_key_id: cost.allocation_key_id,
-          }).catch(() => {});
+          }).catch(() => { toast.show('Kostenposition konnte nicht kopiert werden'); });
         }
       }
     } else {

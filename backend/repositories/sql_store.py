@@ -4,6 +4,7 @@ This class provides full database persistence while maintaining API compatibilit
 with the in-memory store used for testing.
 """
 
+import logging
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -1266,7 +1267,7 @@ class SQLAlchemyStore:
                 thread_orm.message_count = (thread_orm.message_count or 0) + 1
                 thread_orm.last_message_at = datetime.now(timezone.utc)
         except Exception:
-            pass
+            logging.getLogger(__name__).debug("Failed to update message thread stats for thread %s", data.thread_id, exc_info=True)
         self._commit()
         return result
 

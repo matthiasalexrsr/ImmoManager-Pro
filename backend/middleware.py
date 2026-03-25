@@ -177,7 +177,7 @@ class AuditMiddleware(BaseHTTPMiddleware):
             if user:
                 return user.get("id"), user.get("username")
         except Exception:
-            pass
+            logger.debug("Could not extract user from token for audit", exc_info=True)
         return None, None
 
     async def dispatch(self, request: Request, call_next):
@@ -272,4 +272,5 @@ class RBACWriteGuardMiddleware(BaseHTTPMiddleware):
             user = get_user_by_id(payload.sub)
             return user.get("role") if user else None
         except Exception:
+            logger.debug("Could not extract role from token for RBAC", exc_info=True)
             return None

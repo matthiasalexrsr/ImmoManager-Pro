@@ -1,7 +1,8 @@
 """Tests for authentication: registration, login, JWT tokens, RBAC."""
 
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 from fastapi import HTTPException
 
 from backend.auth import (

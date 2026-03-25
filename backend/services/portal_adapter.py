@@ -55,9 +55,11 @@ class PortalAdapter(ABC):
 
 
 class ImmobilienScout24Adapter(PortalAdapter):
-    """Adapter for ImmobilienScout24 (IS24) API.
+    """Stub adapter for ImmobilienScout24 (IS24) API.
 
-    Requires API credentials configured via environment variables:
+    This is a placeholder implementation that returns 'not configured' errors
+    for all operations. To enable IS24 integration, implement the actual API
+    calls and configure the following environment variables:
     - IS24_API_KEY
     - IS24_API_SECRET
     - IS24_ACCESS_TOKEN
@@ -96,7 +98,12 @@ class ImmobilienScout24Adapter(PortalAdapter):
 
 
 class ImmoweltAdapter(PortalAdapter):
-    """Adapter for Immowelt API."""
+    """Stub adapter for Immowelt API.
+
+    This is a placeholder implementation that returns 'not configured' errors
+    for all operations. To enable Immowelt integration, implement the actual
+    API calls and configure the required API credentials.
+    """
 
     @property
     def portal_name(self) -> str:

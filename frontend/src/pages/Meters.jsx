@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
+import { useToast } from '../components/Toast';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
@@ -51,6 +52,7 @@ const READING_COLUMNS = [
 
 export default function Meters() {
   const { t } = useTranslation();
+  const toast = useToast();
   const store = useDataStore();
   const { items: units } = useEntities('units', '/units');
   const { items: properties } = useEntities('properties', '/properties');
@@ -61,7 +63,7 @@ export default function Meters() {
   const [modal, setModal] = useState(null);
   const [groupBy, setGroupBy] = useState('none'); // 'none' | 'property' | 'type' | 'supplier'
 
-  const refreshData = () => {
+  const refreshData = useCallback(() => {
     const unitMap = Object.fromEntries(units.map(x => [x.id, x]));
     const propMap = Object.fromEntries(properties.map(x => [x.id, x]));
 
@@ -99,10 +101,10 @@ export default function Meters() {
 
         setMeters([...enriched]);
       }).catch(() => setMeters(enriched));
-    }).catch(() => {}).finally(() => setLoading(false));
-  };
+    }).catch(() => { toast.error('Zählerstände konnten nicht geladen werden'); }).finally(() => setLoading(false));
+  }, [units, properties, toast]);
 
-  useEffect(() => { refreshData(); }, [units, properties]);
+  useEffect(() => { refreshData(); }, [refreshData]);
 
   const handleSelectMeter = (meter) => {
     setSelectedMeter(meter);

@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { api } from '../api';
-import { useEntities, useDataStore } from '../contexts/DataStoreContext';
+import { useEntities } from '../contexts/DataStoreContext';
 import CrudPage from './CrudPage';
 import FileViewer from '../components/FileViewer';
 import { PlusIcon } from '../components/Icons';
@@ -27,7 +27,7 @@ function guessDocType(filename) {
 export default function Documents() {
   const { t } = useTranslation();
 
-  const DOC_TYPES = [
+  const DOC_TYPES = useMemo(() => [
     { value: 'Mietvertrag', label: t('pages.documents.docTypes.mietvertrag') || 'Mietvertrag' },
     { value: 'Rechnung', label: t('pages.documents.docTypes.rechnung') || 'Rechnung' },
     { value: 'Nebenkostenabrechnung', label: t('pages.documents.docTypes.nebenkostenabrechnung') || 'Nebenkostenabrechnung' },
@@ -42,7 +42,7 @@ export default function Documents() {
     { value: 'Handwerkerrechnung', label: t('pages.documents.docTypes.handwerkerrechnung') || 'Handwerkerrechnung' },
     { value: 'Steuerbescheid', label: t('pages.documents.docTypes.steuerbescheid') || 'Steuerbescheid' },
     { value: 'Sonstiges', label: t('pages.documents.docTypes.sonstiges') || 'Sonstiges' },
-  ];
+  ], [t]);
 
   const COLUMNS = [
     { key: 'title', label: t('pages.documents.columns.title') || 'Titel', filterType: 'text' },
@@ -57,7 +57,6 @@ export default function Documents() {
       return '—';
     }},
   ];
-  const store = useDataStore();
   const { items: properties } = useEntities('properties', '/properties');
   const { items: units } = useEntities('units', '/units');
   const { items: contracts } = useEntities('contracts', '/contracts');
@@ -82,7 +81,7 @@ export default function Documents() {
         })).filter(x => x.count > 0),
       });
     });
-  }, []);
+  }, [DOC_TYPES]);
 
   const uploadFile = useCallback(async (file) => {
     if (!file) return;
@@ -118,7 +117,7 @@ export default function Documents() {
     } finally {
       setUploading(false);
     }
-  }, []);
+  }, [t]);
 
   const handleMultiUpload = useCallback(async (files) => {
     const fileList = Array.from(files);

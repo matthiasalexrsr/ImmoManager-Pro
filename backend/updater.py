@@ -81,7 +81,7 @@ def _acquire_lock() -> bool:
                 return False
             logger.warning("Stale update lock detected (age: %.0fs), removing", age_seconds)
         except Exception:
-            pass
+            logger.debug("Could not parse update lock file", exc_info=True)
     _LOCK_FILE.write_text(json.dumps({
         "locked_at": datetime.now(timezone.utc).isoformat(),
         "pid": os.getpid(),
@@ -107,6 +107,7 @@ def is_update_locked() -> bool:
         age_seconds = (datetime.now(timezone.utc) - lock_time).total_seconds()
         return age_seconds < 1800
     except Exception:
+        logger.debug("Could not read update lock status", exc_info=True)
         return False
 
 
@@ -426,6 +427,7 @@ def _load_history() -> list[dict]:
     try:
         return json.loads(_HISTORY_FILE.read_text(encoding="utf-8"))
     except Exception:
+        logger.debug("Could not load update history file", exc_info=True)
         return []
 
 
