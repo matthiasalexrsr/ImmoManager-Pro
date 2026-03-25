@@ -155,14 +155,14 @@ export default function Meters() {
       await api.put(`/meters/${modal.id}`, data);
     }
     refreshData();
-    if (store) store.invalidateAll();
+    if (store) store.invalidateRelated('meters', 'units');
   };
 
   const handleSaveReading = async (data) => {
     const meterId = data.meter_id;
     await api.post(`/meters/${meterId}/readings`, data);
     refreshData();
-    if (store) store.invalidateAll();
+    if (store) store.invalidateRelated('meters', 'units');
     if (selectedMeter) handleSelectMeter(selectedMeter);
   };
 
@@ -174,7 +174,7 @@ export default function Meters() {
       setReadings([]);
     }
     refreshData();
-    if (store) store.invalidateAll();
+    if (store) store.invalidateRelated('meters', 'units');
   };
 
   // Group meters

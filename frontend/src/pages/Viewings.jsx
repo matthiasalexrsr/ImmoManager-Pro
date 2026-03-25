@@ -218,7 +218,7 @@ export default function Viewings() {
       await api.put(`/viewings/${modal.id}`, data);
     }
     refreshData();
-    if (store) store.invalidateAll();
+    if (store) store.invalidateRelated('viewings', 'leads', 'units');
   };
 
   const handleDelete = async (row) => {
@@ -227,7 +227,7 @@ export default function Viewings() {
     try {
       await api.del(`/viewings/${row.id}`);
       refreshData();
-      if (store) store.invalidateAll();
+      if (store) store.invalidateRelated('viewings', 'leads', 'units');
     } catch (err) {
       setDeleteError(err.message || 'Löschen fehlgeschlagen');
     }

@@ -87,7 +87,7 @@ export default function Budgets() {
       await api.put(`/budgets/${modal.id}`, data);
     }
     refreshData();
-    if (store) store.invalidateAll();
+    if (store) store.invalidateRelated('budgets');
   };
 
   const handleDelete = async (row) => {
@@ -96,7 +96,7 @@ export default function Budgets() {
     try {
       await api.del(`/budgets/${row.id}`);
       refreshData();
-      if (store) store.invalidateAll();
+      if (store) store.invalidateRelated('budgets');
     } catch (err) {
       setDeleteError(err.message || 'Löschen fehlgeschlagen');
     }

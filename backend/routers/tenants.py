@@ -3,7 +3,6 @@ from fastapi import APIRouter, HTTPException, Query, status
 from ..dependencies import store
 from ..models import Tenant, TenantCreate, TenantPatch
 from ..storage import NotFoundError, ValidationError
-from ._helpers import apply_sort
 
 router = APIRouter(prefix="/tenants", tags=["Mieter"])
 
@@ -17,13 +16,21 @@ def list_tenants(
     archived: bool | None = Query(None, description="Filter by archived status"),
     include_archived: bool = Query(False, description="Include archived tenants"),
 ) -> list[Tenant]:
-    results = store.list_tenants()
     if archived is not None:
-        results = [t for t in results if getattr(t, "archived", False) == archived]
+        filters = {"archived": archived}
     elif not include_archived:
-        results = [t for t in results if not getattr(t, "archived", False)]
-    results = apply_sort(results, sort_by, sort_order)
-    return results[skip : skip + limit]
+        filters = {"archived": False}
+    else:
+        filters = {}
+    results = store._list_paginated(
+        entity_type="tenant",
+        skip=skip,
+        limit=limit,
+        filters=filters,
+        order_by=sort_by,
+        order_desc=(sort_order == "desc"),
+    )
+    return results
 
 
 @router.patch("/{tenant_id}/archive", response_model=Tenant)

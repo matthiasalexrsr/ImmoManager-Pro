@@ -1170,6 +1170,34 @@ class InMemoryStore:
         collection[entity_id] = updated
         return updated
 
+    def _list_paginated(
+        self,
+        entity_type: str,
+        skip: int = 0,
+        limit: int = 100,
+        filters: dict | None = None,
+        order_by: str | None = None,
+        order_desc: bool = False,
+    ) -> list:
+        """Generic paginated list with filtering and sorting for in-memory store."""
+        entry = self._ENTITY_TYPE_MAP.get(entity_type)
+        if entry is None:
+            raise ValueError(f"Unknown entity type: {entity_type}")
+        attr_name, _not_found_msg = entry
+        collection = getattr(self, attr_name)
+        results = list(collection.values())
+        if filters:
+            for key, value in filters.items():
+                if value is None:
+                    continue
+                results = [r for r in results if getattr(r, key, None) == value]
+        if order_by and isinstance(order_by, str):
+            results.sort(
+                key=lambda r: (getattr(r, order_by, None) is None, getattr(r, order_by, None)),
+                reverse=order_desc,
+            )
+        return results[skip : skip + limit]
+
     def _delete_contract(self, contract_id: str) -> None:
         for receivable_id, receivable in list(self.receivables.items()):
             if receivable.contract_id == contract_id:

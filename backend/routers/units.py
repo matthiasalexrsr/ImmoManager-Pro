@@ -3,7 +3,6 @@ from fastapi import APIRouter, HTTPException, Query, status
 from ..dependencies import store
 from ..models import Unit, UnitCreate, UnitPatch
 from ..storage import NotFoundError, ValidationError
-from ._helpers import apply_sort
 
 router = APIRouter(prefix="/units", tags=["Einheiten"])
 
@@ -17,13 +16,16 @@ def list_units(
     sort_by: str | None = Query(None),
     sort_order: str = Query("asc"),
 ) -> list[Unit]:
-    results = store.list_units()
-    if property_id:
-        results = [u for u in results if u.property_id == property_id]
-    if status_filter:
-        results = [u for u in results if u.status == status_filter]
-    results = apply_sort(results, sort_by, sort_order)
-    return results[skip : skip + limit]
+    filters = {"property_id": property_id, "status": status_filter}
+    results = store._list_paginated(
+        entity_type="unit",
+        skip=skip,
+        limit=limit,
+        filters=filters,
+        order_by=sort_by,
+        order_desc=(sort_order == "desc"),
+    )
+    return results
 
 
 @router.post("", response_model=Unit, status_code=status.HTTP_201_CREATED)

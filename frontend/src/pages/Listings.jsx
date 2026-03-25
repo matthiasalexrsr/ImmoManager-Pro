@@ -141,7 +141,7 @@ export default function Listings() {
       await api.put(`/listings/${modal.id}`, data);
     }
     refreshData();
-    if (store) store.invalidateAll();
+    if (store) store.invalidateRelated('listings', 'units');
   };
 
   const handleDelete = async (row) => {
@@ -150,7 +150,7 @@ export default function Listings() {
     try {
       await api.del(`/listings/${row.id}`);
       refreshData();
-      if (store) store.invalidateAll();
+      if (store) store.invalidateRelated('listings', 'units');
     } catch (err) {
       setDeleteError(err.message || 'Löschen fehlgeschlagen');
     }

@@ -5,7 +5,6 @@ from fastapi import APIRouter, HTTPException, Query, status
 from ..dependencies import store
 from ..models import Booking, BookingCreate, BookingPatch
 from ..storage import NotFoundError, ValidationError
-from ._helpers import apply_sort
 
 router = APIRouter(prefix="/bookings", tags=["Buchungen"])
 
@@ -22,13 +21,16 @@ def list_bookings(
     date_from: date | None = Query(None),
     date_to: date | None = Query(None),
 ) -> list[Booking]:
-    results = store.list_bookings()
-    if account_id:
-        results = [b for b in results if b.account_id == account_id]
-    if tenant_id:
-        results = [b for b in results if b.tenant_id == tenant_id]
-    if status_filter:
-        results = [b for b in results if b.status == status_filter]
+    filters = {"account_id": account_id, "tenant_id": tenant_id, "status": status_filter}
+    has_date_filter = isinstance(date_from, date) or isinstance(date_to, date)
+    results = store._list_paginated(
+        entity_type="booking",
+        skip=0 if has_date_filter else skip,
+        limit=10000 if has_date_filter else limit,
+        filters=filters,
+        order_by=sort_by,
+        order_desc=(sort_order == "desc"),
+    )
     if isinstance(date_from, date):
         results = [
             r for r in results
@@ -41,8 +43,9 @@ def list_bookings(
             if getattr(r, 'booking_date', None)
             and r.booking_date <= date_to
         ]
-    results = apply_sort(results, sort_by, sort_order)
-    return results[skip : skip + limit]
+    if has_date_filter:
+        results = results[skip : skip + limit]
+    return results
 
 
 @router.post("", response_model=Booking, status_code=status.HTTP_201_CREATED)

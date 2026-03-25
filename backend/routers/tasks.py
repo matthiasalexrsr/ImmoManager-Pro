@@ -5,7 +5,6 @@ from fastapi import APIRouter, HTTPException, Query, status
 from ..dependencies import store
 from ..models import Task, TaskCreate, TaskPatch
 from ..storage import NotFoundError, ValidationError
-from ._helpers import apply_sort
 
 router = APIRouter(prefix="/tasks", tags=["Aufgaben"])
 
@@ -50,11 +49,16 @@ def list_tasks(
     date_from: date | None = Query(None),
     date_to: date | None = Query(None),
 ) -> list[Task]:
-    results = store.list_tasks()
-    if status_filter:
-        results = [t for t in results if t.status == status_filter]
-    if assignee:
-        results = [t for t in results if t.assignee == assignee]
+    filters = {"status": status_filter, "assignee": assignee}
+    has_date_filter = isinstance(date_from, date) or isinstance(date_to, date)
+    results = store._list_paginated(
+        entity_type="task",
+        skip=0 if has_date_filter else skip,
+        limit=10000 if has_date_filter else limit,
+        filters=filters,
+        order_by=sort_by,
+        order_desc=(sort_order == "desc"),
+    )
     if isinstance(date_from, date):
         results = [
             r for r in results
@@ -67,8 +71,9 @@ def list_tasks(
             if getattr(r, 'due_date', None)
             and r.due_date <= date_to
         ]
-    results = apply_sort(results, sort_by, sort_order)
-    return results[skip : skip + limit]
+    if has_date_filter:
+        results = results[skip : skip + limit]
+    return results
 
 
 @router.post("", response_model=Task, status_code=status.HTTP_201_CREATED)

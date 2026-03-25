@@ -114,6 +114,7 @@ class UnitORM(Base):
 
 class TenantORM(Base):
     __tablename__ = "tenants"
+    __table_args__ = (Index("idx_tenants_archived", "archived"),)
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     full_name: Mapped[str] = mapped_column(Text, nullable=False)
@@ -222,6 +223,10 @@ class BookingORM(Base):
 
 class ReceivableORM(Base):
     __tablename__ = "receivables"
+    __table_args__ = (
+        Index("idx_receivables_contract", "contract_id"),
+        Index("idx_receivables_status", "status"),
+    )
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     contract_id: Mapped[str] = mapped_column(ForeignKey("contracts.id", ondelete="CASCADE"), nullable=False)
@@ -236,6 +241,11 @@ class ReceivableORM(Base):
 
 class InvoiceORM(Base):
     __tablename__ = "invoices"
+    __table_args__ = (
+        Index("idx_invoices_property", "property_id"),
+        Index("idx_invoices_status", "status"),
+        Index("idx_invoices_date", "invoice_date"),
+    )
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     property_id: Mapped[str | None] = mapped_column(ForeignKey("properties.id", ondelete="SET NULL"))
@@ -277,6 +287,10 @@ class MaintenanceCaseORM(Base):
 
 class DocumentORM(Base):
     __tablename__ = "documents"
+    __table_args__ = (
+        Index("idx_documents_property", "property_id"),
+        Index("idx_documents_contract", "contract_id"),
+    )
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     property_id: Mapped[str | None] = mapped_column(ForeignKey("properties.id", ondelete="SET NULL"))
@@ -294,6 +308,10 @@ class DocumentORM(Base):
 
 class TaskORM(Base):
     __tablename__ = "tasks"
+    __table_args__ = (
+        Index("idx_tasks_status", "status"),
+        Index("idx_tasks_property", "property_id"),
+    )
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     title: Mapped[str] = mapped_column(Text, nullable=False)

@@ -80,7 +80,7 @@ export default function RentAdjustments() {
       await api.put(`/rent-adjustments/${modal.id}`, data);
     }
     refreshData();
-    if (store) store.invalidateAll();
+    if (store) store.invalidateRelated('rent_adjustments', 'contracts');
   };
 
   const handleDelete = async (row) => {
@@ -89,7 +89,7 @@ export default function RentAdjustments() {
     try {
       await api.del(`/rent-adjustments/${row.id}`);
       refreshData();
-      if (store) store.invalidateAll();
+      if (store) store.invalidateRelated('rent_adjustments', 'contracts');
     } catch (err) {
       setDeleteError(err.message || 'Löschen fehlgeschlagen');
     }

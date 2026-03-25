@@ -3,7 +3,6 @@ from fastapi import APIRouter, HTTPException, Query, status
 from ..dependencies import store
 from ..models import Receivable, ReceivableCreate, ReceivablePatch
 from ..storage import NotFoundError, ValidationError
-from ._helpers import apply_sort
 
 router = APIRouter(prefix="/receivables", tags=["Forderungen"])
 
@@ -17,13 +16,16 @@ def list_receivables(
     sort_by: str | None = Query(None),
     sort_order: str = Query("asc"),
 ) -> list[Receivable]:
-    results = store.list_receivables()
-    if contract_id:
-        results = [r for r in results if r.contract_id == contract_id]
-    if status_filter:
-        results = [r for r in results if r.status == status_filter]
-    results = apply_sort(results, sort_by, sort_order)
-    return results[skip : skip + limit]
+    filters = {"contract_id": contract_id, "status": status_filter}
+    results = store._list_paginated(
+        entity_type="receivable",
+        skip=skip,
+        limit=limit,
+        filters=filters,
+        order_by=sort_by,
+        order_desc=(sort_order == "desc"),
+    )
+    return results
 
 
 @router.post("", response_model=Receivable, status_code=status.HTTP_201_CREATED)

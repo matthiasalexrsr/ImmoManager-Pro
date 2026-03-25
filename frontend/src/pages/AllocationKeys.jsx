@@ -65,7 +65,7 @@ export default function AllocationKeys() {
       await api.put(`/billing/allocation-keys/${modal.id}`, data);
     }
     refreshData();
-    if (store) store.invalidateAll();
+    if (store) store.invalidateRelated('allocation_keys');
   };
 
   const handleDelete = async (row) => {
@@ -75,7 +75,7 @@ export default function AllocationKeys() {
     try {
       await api.del(`/billing/allocation-keys/${row.id}`);
       refreshData();
-      if (store) store.invalidateAll();
+      if (store) store.invalidateRelated('allocation_keys');
     } catch (err) {
       setDeleteError(err.message || 'Löschen fehlgeschlagen');
     }

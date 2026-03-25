@@ -3,7 +3,6 @@ from fastapi import APIRouter, HTTPException, Query, status
 from ..dependencies import store
 from ..models import Property, PropertyCreate, PropertyPatch
 from ..storage import NotFoundError, ValidationError
-from ._helpers import apply_sort
 
 router = APIRouter(prefix="/properties", tags=["Immobilien"])
 
@@ -17,13 +16,16 @@ def list_properties(
     sort_by: str | None = Query(None),
     sort_order: str = Query("asc"),
 ) -> list[Property]:
-    results = store.list_properties()
-    if portfolio_id:
-        results = [p for p in results if p.portfolio_id == portfolio_id]
-    if status_filter:
-        results = [p for p in results if p.status == status_filter]
-    results = apply_sort(results, sort_by, sort_order)
-    return results[skip : skip + limit]
+    filters = {"portfolio_id": portfolio_id, "status": status_filter}
+    results = store._list_paginated(
+        entity_type="property",
+        skip=skip,
+        limit=limit,
+        filters=filters,
+        order_by=sort_by,
+        order_desc=(sort_order == "desc"),
+    )
+    return results
 
 
 @router.post("", response_model=Property, status_code=status.HTTP_201_CREATED)

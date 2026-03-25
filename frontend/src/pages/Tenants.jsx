@@ -75,7 +75,7 @@ export default function Tenants() {
   // Invalidate global cache so other pages see updated tenant data
   const afterMutation = () => {
     refreshData();
-    if (store) store.invalidateAll();
+    if (store) store.invalidateRelated('tenants', 'contracts');
   };
 
   const handleSave = async (data) => {

@@ -71,7 +71,7 @@ export default function RentCharges() {
       await api.put(`/rent-charges/${modal.id}`, data);
     }
     refreshData();
-    if (store) store.invalidateAll();
+    if (store) store.invalidateRelated('rent_charges', 'contracts');
   };
 
   const handleDelete = async (row) => {
@@ -80,7 +80,7 @@ export default function RentCharges() {
     try {
       await api.del(`/rent-charges/${row.id}`);
       refreshData();
-      if (store) store.invalidateAll();
+      if (store) store.invalidateRelated('rent_charges', 'contracts');
     } catch (err) {
       setDeleteError(err.message || t('pages.deleteFailed'));
     }

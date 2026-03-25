@@ -135,20 +135,20 @@ export default function Invoices() {
       await api.put(`/invoices/${modal.id}`, data);
     }
     refreshData();
-    if (store) store.invalidateAll();
+    if (store) store.invalidateRelated('invoices', 'contracts', 'receivables');
   };
 
   const handleDelete = async (row) => {
     if (!window.confirm(`"${row.supplier}" ${t('modals.confirmDelete.body')}`)) return;
     await api.del(`/invoices/${row.id}`);
     refreshData();
-    if (store) store.invalidateAll();
+    if (store) store.invalidateRelated('invoices', 'contracts', 'receivables');
   };
 
   const markPaid = async (row) => {
     await api.patch(`/invoices/${row.id}`, { status: 'paid' });
     refreshData();
-    if (store) store.invalidateAll();
+    if (store) store.invalidateRelated('invoices', 'contracts', 'receivables');
   };
 
   if (loading) return <div className="page-loading">Lade Rechnungen...</div>;

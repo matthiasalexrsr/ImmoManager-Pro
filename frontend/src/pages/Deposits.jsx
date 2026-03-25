@@ -74,7 +74,7 @@ export default function Deposits() {
       await api.put(`/deposits/${modal.id}`, data);
     }
     refreshData();
-    if (store) store.invalidateAll();
+    if (store) store.invalidateRelated('deposits', 'contracts');
   };
 
   const handleDelete = async (row) => {
@@ -84,7 +84,7 @@ export default function Deposits() {
     try {
       await api.del(`/deposits/${row.id}`);
       refreshData();
-      if (store) store.invalidateAll();
+      if (store) store.invalidateRelated('deposits', 'contracts');
     } catch (err) {
       setDeleteError(err.message || 'Löschen fehlgeschlagen');
     }

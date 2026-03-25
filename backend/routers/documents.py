@@ -7,7 +7,6 @@ from ..models import Document, DocumentCreate, DocumentPatch
 from ..routers.files import _perform_ocr
 from ..services.file_storage import get_file_storage
 from ..storage import NotFoundError, ValidationError
-from ._helpers import apply_sort
 
 router = APIRouter(prefix="/documents", tags=["Dokumente"])
 
@@ -21,13 +20,16 @@ def list_documents(
     sort_by: str | None = Query(None),
     sort_order: str = Query("asc"),
 ) -> list[Document]:
-    results = store.list_documents()
-    if property_id:
-        results = [d for d in results if d.property_id == property_id]
-    if contract_id:
-        results = [d for d in results if d.contract_id == contract_id]
-    results = apply_sort(results, sort_by, sort_order)
-    return results[skip : skip + limit]
+    filters = {"property_id": property_id, "contract_id": contract_id}
+    results = store._list_paginated(
+        entity_type="document",
+        skip=skip,
+        limit=limit,
+        filters=filters,
+        order_by=sort_by,
+        order_desc=(sort_order == "desc"),
+    )
+    return results
 
 
 @router.post("", response_model=Document, status_code=status.HTTP_201_CREATED)

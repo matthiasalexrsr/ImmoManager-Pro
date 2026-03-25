@@ -5,7 +5,6 @@ from fastapi import APIRouter, HTTPException, Query, status
 from ..dependencies import store
 from ..models import MaintenanceCase, MaintenanceCaseCreate, MaintenanceCasePatch
 from ..storage import NotFoundError, ValidationError
-from ._helpers import apply_sort
 
 router = APIRouter(prefix="/maintenance", tags=["Instandhaltung"])
 
@@ -21,11 +20,16 @@ def list_maintenance_cases(
     date_from: date | None = Query(None),
     date_to: date | None = Query(None),
 ) -> list[MaintenanceCase]:
-    results = store.list_maintenance_cases()
-    if property_id:
-        results = [c for c in results if c.property_id == property_id]
-    if status_filter:
-        results = [c for c in results if c.status == status_filter]
+    filters = {"property_id": property_id, "status": status_filter}
+    has_date_filter = isinstance(date_from, date) or isinstance(date_to, date)
+    results = store._list_paginated(
+        entity_type="maintenance",
+        skip=0 if has_date_filter else skip,
+        limit=10000 if has_date_filter else limit,
+        filters=filters,
+        order_by=sort_by,
+        order_desc=(sort_order == "desc"),
+    )
     if isinstance(date_from, date):
         results = [
             r for r in results
@@ -38,8 +42,9 @@ def list_maintenance_cases(
             if getattr(r, 'due_date', None)
             and r.due_date <= date_to
         ]
-    results = apply_sort(results, sort_by, sort_order)
-    return results[skip : skip + limit]
+    if has_date_filter:
+        results = results[skip : skip + limit]
+    return results
 
 
 @router.post("", response_model=MaintenanceCase, status_code=status.HTTP_201_CREATED)

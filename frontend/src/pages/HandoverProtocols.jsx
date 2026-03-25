@@ -101,7 +101,7 @@ export default function HandoverProtocols() {
       await api.put(`/handover-protocols/${modal.id}`, data);
     }
     refreshData();
-    if (store) store.invalidateAll();
+    if (store) store.invalidateRelated('handover_protocols', 'contracts', 'units');
   };
 
   const handleDelete = async (row) => {
@@ -111,7 +111,7 @@ export default function HandoverProtocols() {
     try {
       await api.del(`/handover-protocols/${row.id}`);
       refreshData();
-      if (store) store.invalidateAll();
+      if (store) store.invalidateRelated('handover_protocols', 'contracts', 'units');
     } catch (err) {
       setDeleteError(err.message || 'Löschen fehlgeschlagen');
     }

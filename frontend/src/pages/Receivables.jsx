@@ -71,7 +71,7 @@ export default function Receivables() {
       await api.put(`/receivables/${modal.id}`, data);
     }
     refreshData();
-    if (store) store.invalidateAll();
+    if (store) store.invalidateRelated('receivables', 'contracts', 'bookings');
   };
 
   const handleDelete = async (row) => {
@@ -80,7 +80,7 @@ export default function Receivables() {
     try {
       await api.del(`/receivables/${row.id}`);
       refreshData();
-      if (store) store.invalidateAll();
+      if (store) store.invalidateRelated('receivables', 'contracts', 'bookings');
     } catch (err) {
       setDeleteError(err.message || t('pages.deleteFailed'));
     }
