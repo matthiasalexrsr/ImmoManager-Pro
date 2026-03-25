@@ -1676,5 +1676,18 @@
     "diagnostics": "Diagnostics",
     "newNote": "New Developer Note",
     "developerNotes": "Developer Notes"
+  },
+  "errors": {
+    "notFound": "Not found",
+    "badRequest": "Invalid request",
+    "unauthorized": "Not authenticated. Please log in again.",
+    "forbidden": "Access denied",
+    "conflict": "Conflict: The resource has already been modified",
+    "serverError": "Server error. Please try again later.",
+    "networkError": "Connection to server failed. Please check your internet connection.",
+    "validationFailed": "Validation failed. Please check the inputs.",
+    "fileNotFound": "File not found",
+    "fileTypeNotAllowed": "File type not allowed",
+    "uploadFailed": "Upload failed"
   }
 }

@@ -1676,5 +1676,18 @@
     "expand": "Expandir",
     "collapse": "Contraer",
     "toggleTheme": "Cambiar tema"
+  },
+  "errors": {
+    "notFound": "No encontrado",
+    "badRequest": "Solicitud no válida",
+    "unauthorized": "No autenticado. Por favor, inicie sesión de nuevo.",
+    "forbidden": "Acceso denegado",
+    "conflict": "Conflicto: El recurso ya ha sido modificado",
+    "serverError": "Error del servidor. Por favor, inténtelo de nuevo más tarde.",
+    "networkError": "Conexión al servidor fallida. Por favor, verifique su conexión a internet.",
+    "validationFailed": "Validación fallida. Por favor, verifique las entradas.",
+    "fileNotFound": "Archivo no encontrado",
+    "fileTypeNotAllowed": "Tipo de archivo no permitido",
+    "uploadFailed": "Carga fallida"
   }
 }

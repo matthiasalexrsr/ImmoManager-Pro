@@ -1,5 +1,5 @@
 # Development/test dependencies
 -r requirements.txt
-pytest>=7.0.0
-httpx>=0.24.0
-ruff>=0.1.0
+pytest==9.0.2
+httpx==0.28.1
+ruff==0.15.4

@@ -1676,5 +1676,18 @@
     "diagnostics": "Diagnose",
     "newNote": "Neue Entwicklernotiz",
     "developerNotes": "Entwicklernotizen"
+  },
+  "errors": {
+    "notFound": "Nicht gefunden",
+    "badRequest": "Ungültige Anfrage",
+    "unauthorized": "Nicht authentifiziert. Bitte melden Sie sich erneut an.",
+    "forbidden": "Zugriff verweigert",
+    "conflict": "Konflikt: Die Ressource wurde bereits geändert",
+    "serverError": "Serverfehler. Bitte versuchen Sie es später erneut.",
+    "networkError": "Verbindung zum Server fehlgeschlagen. Bitte prüfen Sie Ihre Internetverbindung.",
+    "validationFailed": "Validierung fehlgeschlagen. Bitte prüfen Sie die Eingaben.",
+    "fileNotFound": "Datei nicht gefunden",
+    "fileTypeNotAllowed": "Dateityp nicht erlaubt",
+    "uploadFailed": "Upload fehlgeschlagen"
   }
 }
