@@ -209,6 +209,7 @@ class InvoiceCreate(BaseModel):
 
 class Invoice(InvoiceCreate):
     id: str = Field(..., min_length=1)
+    source_document_id: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -249,6 +250,12 @@ class DocumentCreate(BaseModel):
 
 class Document(DocumentCreate):
     id: str = Field(..., min_length=1)
+    ai_document_type: Optional[str] = None
+    ai_summary: Optional[str] = None
+    ai_entities_json: Optional[str] = None
+    ai_confidence: Optional[float] = None
+    ai_model: Optional[str] = None
+    ai_analyzed_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -1307,6 +1314,9 @@ class MessageThread(MessageThreadCreate):
     id: str = Field(..., min_length=1)
     last_message_at: Optional[datetime] = None
     message_count: int = 0
+    ai_summary: Optional[str] = None
+    ai_action_items: Optional[str] = None
+    ai_summarized_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 

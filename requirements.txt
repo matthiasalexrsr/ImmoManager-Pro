@@ -21,5 +21,12 @@ reportlab==4.4.10
 # HTTP client (updater + autotest)
 httpx==0.28.1
 
+# AI / Hugging Face (optional — features degrade gracefully when absent)
+transformers>=4.40.0
+sentence-transformers>=3.0.0
+huggingface-hub>=0.23.0
+faiss-cpu>=1.8.0
+torch>=2.2.0
+
 # Testing
 pytest==9.0.2

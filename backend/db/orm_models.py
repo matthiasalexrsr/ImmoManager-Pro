@@ -259,6 +259,7 @@ class InvoiceORM(Base):
     vat_rate: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), default=19.0)
     payment_terms: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="open")
+    source_document_id: Mapped[str | None] = mapped_column(String, ForeignKey("documents.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
@@ -303,6 +304,13 @@ class DocumentORM(Base):
     tags: Mapped[str | None] = mapped_column(Text)
     description: Mapped[str | None] = mapped_column(Text)
     file_url: Mapped[str] = mapped_column(Text, nullable=False)
+    # AI metadata fields
+    ai_document_type: Mapped[str | None] = mapped_column(Text)
+    ai_summary: Mapped[str | None] = mapped_column(Text)
+    ai_entities_json: Mapped[str | None] = mapped_column(Text)
+    ai_confidence: Mapped[float | None] = mapped_column(Float)
+    ai_model: Mapped[str | None] = mapped_column(Text)
+    ai_analyzed_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
@@ -810,6 +818,9 @@ class MessageThreadORM(Base):
     contract_id: Mapped[str | None] = mapped_column(String(36))
     last_message_at: Mapped[datetime | None] = mapped_column(DateTime)
     message_count: Mapped[int] = mapped_column(Integer, default=0)
+    ai_summary: Mapped[str | None] = mapped_column(Text)
+    ai_action_items: Mapped[str | None] = mapped_column(Text)
+    ai_summarized_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 

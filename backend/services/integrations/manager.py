@@ -8,6 +8,7 @@ from dataclasses import asdict
 from ...config import settings
 from .base import IntegrationProvider, IntegrationRunRecord
 from .config_store import InMemoryIntegrationConfigStore, JsonFileIntegrationConfigStore
+from .huggingface import HuggingFaceProvider
 from .providers import (
     ContractWizardProvider,
     DeutschePostProvider,
@@ -38,6 +39,7 @@ class IntegrationManager:
             ContractWizardProvider(),
             DeutschePostProvider(),
             ListingPortalProvider(),
+            HuggingFaceProvider(),
         ):
             self.register(provider)
         self._load_state()

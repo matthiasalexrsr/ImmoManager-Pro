@@ -122,6 +122,16 @@ class Settings(BaseSettings):
     # --- Integrations ---
     integration_state_file: str | None = None
 
+    # --- AI / Hugging Face ---
+    ai_enabled: bool = True  # Master toggle for AI features
+    ai_device: str = "cpu"  # "cpu" or "cuda"
+    ai_cache_dir: str = ""  # HF model cache directory (empty = default)
+    ai_summarization_model: str = "facebook/bart-large-cnn"
+    ai_zero_shot_model: str = "facebook/bart-large-mnli"
+    ai_ner_model: str = "dslim/bert-base-NER"
+    ai_embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    ai_max_input_length: int = 4096
+
     # --- Contract wizard runtime behavior ---
     contract_wizard_required: bool = False
 

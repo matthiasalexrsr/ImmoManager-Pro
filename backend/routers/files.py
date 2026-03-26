@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import mimetypes
 import posixpath
 import uuid
+from datetime import datetime, timezone
 from io import BytesIO
 from urllib.parse import unquote, urlparse
 
@@ -13,6 +15,7 @@ from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 
 from ..config import settings
+from ..services.ai.document_ai import analyze_document
 from ..services.file_storage import get_file_storage
 from ..services.ocr_service import extract_text_from_bytes
 
@@ -266,3 +269,61 @@ def get_ocr_text(file_url: str = Query(...)) -> dict:
         return {"has_ocr": False, "text": None}
 
     return {"has_ocr": True, "text": ocr_data.decode("utf-8", errors="replace")}
+
+
+@router.post("/analyze")
+def analyze_file(
+    file_url: str = Query(..., description="URL of an already-uploaded file"),
+    use_ai: bool = Query(True, description="Use AI models (False = regex only)"),
+) -> dict:
+    """AI-powered document analysis: classification, summarization, entity extraction.
+
+    Reads the OCR text of a previously uploaded file and runs it through
+    HF models (zero-shot classification, summarization, NER). Falls back
+    gracefully to regex-based extraction when models are unavailable.
+    """
+    storage = get_file_storage()
+    file_key = _file_url_to_key(file_url)
+    if not file_key:
+        raise HTTPException(status_code=400, detail="Ungültige Datei-URL")
+
+    # Try to get existing OCR text first
+    ocr_key = _ocr_key_from_file_key(file_key)
+    ocr_text = None
+    if ocr_key:
+        ocr_data = storage.get(ocr_key)
+        if ocr_data is not None:
+            ocr_text = ocr_data.decode("utf-8", errors="replace")
+
+    # If no OCR text, try to extract it now
+    if not ocr_text:
+        ext = file_key.rsplit(".", 1)[-1].lower() if "." in file_key else ""
+        if ext not in SUPPORTED_OCR_EXTENSIONS:
+            raise HTTPException(status_code=400, detail="Dateityp nicht für Analyse unterstützt")
+        ocr_text = _perform_ocr(storage, file_key, ext)
+
+    if not ocr_text:
+        return {
+            "analyzed": False,
+            "message": "Kein Text extrahierbar",
+            "result": None,
+        }
+
+    result = analyze_document(ocr_text, use_ai=use_ai)
+
+    return {
+        "analyzed": True,
+        "message": "Analyse abgeschlossen",
+        "result": {
+            "document_type": result.document_type,
+            "document_type_confidence": result.document_type_confidence,
+            "summary": result.summary,
+            "entities": result.entities,
+            "invoice_number": result.invoice_number,
+            "invoice_date": result.invoice_date,
+            "total_amount": result.total_amount,
+            "supplier": result.supplier,
+            "cost_category": result.cost_category,
+            "ai_model": result.ai_model,
+        },
+    }

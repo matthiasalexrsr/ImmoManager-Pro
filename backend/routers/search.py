@@ -5,15 +5,58 @@ import logging
 from fastapi import APIRouter, Query
 
 from ..dependencies import store
+from ..services.ai.schemas import SearchHit
+from ..services.ai.semantic_search import IndexEntry, search_index
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/search", tags=["Search"])
 
 
+def _rebuild_search_index() -> None:
+    """Populate the semantic search index from all entities."""
+    if not search_index.is_available:
+        return
+
+    entries: list[IndexEntry] = []
+
+    for p in store.list_properties():
+        text = " ".join(filter(None, [p.name, getattr(p, "street", None), getattr(p, "city", None)]))
+        entries.append(IndexEntry("property", p.id, p.name, getattr(p, "city", "") or "", f"/properties/{p.id}", text))
+
+    for t in store.list_tenants():
+        text = " ".join(filter(None, [t.full_name, getattr(t, "email", None)]))
+        entries.append(IndexEntry("tenant", t.id, t.full_name, getattr(t, "email", "") or "", "/tenants", text))
+
+    for u in store.list_units():
+        entries.append(IndexEntry("unit", u.id, u.label, u.unit_type, f"/units/{u.id}", u.label))
+
+    for d in store.list_documents():
+        text = " ".join(filter(None, [d.title, getattr(d, "description", None)]))
+        entries.append(IndexEntry("document", d.id, d.title, getattr(d, "doc_type", "") or "", "/documents", text))
+
+    for m in store.list_maintenance_cases():
+        text = " ".join(filter(None, [m.title, getattr(m, "description", None)]))
+        entries.append(IndexEntry("maintenance", m.id, m.title, m.status, "/maintenance", text))
+
+    search_index.clear()
+    search_index.add_entries(entries)
+    search_index.rebuild()
+
+
+@router.post("/reindex")
+def reindex_search() -> dict:
+    """Rebuild the semantic search index."""
+    _rebuild_search_index()
+    return {"reindexed": True, "entries": search_index.entry_count, "semantic_available": search_index.is_available}
+
+
 @router.get("")
-def global_search(q: str = Query(..., min_length=1, description="Search query")):
-    """Search across all major entity types."""
+def global_search(
+    q: str = Query(..., min_length=1, description="Search query"),
+    semantic: bool = Query(True, description="Enable semantic re-ranking"),
+):
+    """Search across all major entity types with optional semantic re-ranking."""
     query = q.lower().strip()
     results = []
 
@@ -245,4 +288,30 @@ def global_search(q: str = Query(..., min_length=1, description="Search query"))
     except Exception:
         logger.debug("Search failed for entity type 'insurance'", exc_info=True)
 
-    return {"query": q, "count": len(results), "results": results[:50]}
+    # Apply semantic re-ranking if available and requested
+    if semantic and search_index.is_available and search_index.entry_count > 0:
+        keyword_hits = [
+            SearchHit(
+                entity_type=r["entity_type"],
+                entity_id=r["id"],
+                display=r["display"],
+                detail=r["detail"],
+                url=r["url"],
+            )
+            for r in results
+        ]
+        reranked = search_index.search(q, keyword_hits, top_k=50)
+        reranked_results = [
+            {
+                "entity_type": h.entity_type,
+                "id": h.entity_id,
+                "display": h.display,
+                "detail": h.detail,
+                "url": h.url,
+                "score": h.combined_score,
+            }
+            for h in reranked
+        ]
+        return {"query": q, "count": len(reranked_results), "results": reranked_results, "semantic": True}
+
+    return {"query": q, "count": len(results), "results": results[:50], "semantic": False}
