@@ -37,17 +37,7 @@ from backend.routers.tasks import (
 
 
 def _clear_store():
-    for collection in (
-        store.portfolios, store.properties, store.units, store.tenants,
-        store.contracts, store.accounts, store.bookings, store.receivables,
-        store.invoices, store.maintenance_cases, store.categories,
-        store.documents, store.tasks, store.calendar_events,
-        store.listings, store.listing_photos, store.leads,
-        store.viewing_appointments, store.billing_periods,
-        store.allocation_keys, store.cost_items, store.utility_statements,
-        store.deposits, store.notifications, store.notification_templates,
-    ):
-        collection.clear()
+    store.clear_all()
 
 
 @pytest.fixture(autouse=True)

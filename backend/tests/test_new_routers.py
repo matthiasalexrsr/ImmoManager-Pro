@@ -99,23 +99,7 @@ def _list_history(**kw):
 
 def _clear_store() -> None:
     """Clear all store collections used by these routers."""
-    for collection in (
-        store.tax_rates,
-        store.rent_adjustments,
-        store.handover_protocols,
-        store.meter_readings,
-        store.budgets,
-        store.escalation_rules,
-        store.change_history,
-        store.portfolios,
-        store.properties,
-        store.units,
-        store.tenants,
-        store.contracts,
-        store.tasks,
-        store.notifications,
-    ):
-        collection.clear()
+    store.clear_all()
 
 
 def _create_contract_chain():

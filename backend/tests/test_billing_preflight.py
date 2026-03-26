@@ -16,18 +16,7 @@ from backend.routers import billing
 
 
 def _clear_store() -> None:
-    for collection in (
-        store.portfolios,
-        store.properties,
-        store.units,
-        store.tenants,
-        store.contracts,
-        store.billing_periods,
-        store.allocation_keys,
-        store.cost_items,
-        store.utility_statements,
-    ):
-        collection.clear()
+    store.clear_all()
 
 
 def test_preflight_reports_blockers_and_warnings():
@@ -35,7 +24,7 @@ def test_preflight_reports_blockers_and_warnings():
 
     portfolio = store.create_portfolio(PortfolioCreate(name='P'))
     prop = store.create_property(PropertyCreate(portfolio_id=portfolio.id, name='Haus', property_type='MFH'))
-    unit = store.create_unit(UnitCreate(property_id=prop.id, label='EG', unit_type='Wohnung', area_sqm=0.0))
+    unit = store.create_unit(UnitCreate(property_id=prop.id, label='EG', unit_type='Wohnung'))
     tenant = store.create_tenant(TenantCreate(full_name='Max'))
     store.create_contract(
         ContractCreate(

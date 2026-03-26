@@ -15,25 +15,7 @@ from backend.routers import contracts, invoices
 
 
 def _clear_store() -> None:
-    for collection in (
-        store.portfolios,
-        store.properties,
-        store.units,
-        store.tenants,
-        store.contracts,
-        store.accounts,
-        store.bookings,
-        store.receivables,
-        store.invoices,
-        store.maintenance_cases,
-        store.categories,
-        store.documents,
-        store.tasks,
-        store.calendar_events,
-        store.listings,
-        store.listing_photos,
-    ):
-        collection.clear()
+    store.clear_all()
 
 
 def _seed_contract_with_payments() -> tuple:

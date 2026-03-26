@@ -19,12 +19,7 @@ from backend.routers import billing
 
 
 def _clear_store() -> None:
-    for collection in (
-        store.portfolios, store.properties, store.units, store.tenants,
-        store.contracts, store.billing_periods, store.allocation_keys,
-        store.cost_items, store.utility_statements, store.receivables,
-    ):
-        collection.clear()
+    store.clear_all()
 
 
 def _setup_full_scenario():

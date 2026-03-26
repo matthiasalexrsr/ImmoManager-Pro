@@ -37,12 +37,13 @@ jobs:
         run: npm run build
 
   backend:
-    name: Backend lint + tests (py${{ matrix.python-version }})
+    name: Backend ${{ matrix.store-backend }} (py${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         python-version: ['3.11', '3.12']
+        store-backend: ['memory', 'sql']
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python ${{ matrix.python-version }}
@@ -55,14 +56,20 @@ jobs:
           pip install -r requirements.txt
           pip install ruff pytest-cov mypy pip-audit
       - name: Lint (ruff)
+        if: matrix.store-backend == 'memory'
         run: ruff check backend
       - name: Type check (mypy)
+        if: matrix.store-backend == 'memory'
         run: mypy backend/app.py backend/domain/ --ignore-missing-imports
       - name: Security audit (pip-audit)
+        if: matrix.store-backend == 'memory'
         run: pip-audit --strict --desc 2>/dev/null || echo "::warning::pip-audit found vulnerabilities"
       - name: Run tests with coverage
+        env:
+          TEST_STORE_BACKEND: ${{ matrix.store-backend }}
         run: pytest backend/tests -q --tb=short --cov=backend --cov-report=term-missing --cov-fail-under=80
       - name: Import smoke check
+        if: matrix.store-backend == 'memory'
         run: python -c "from backend.app import app; print('App imports OK')"
 
   e2e-smoke:

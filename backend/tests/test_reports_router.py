@@ -18,16 +18,7 @@ from backend.routers import reports
 
 
 def test_reports_summary_counts() -> None:
-    store.portfolios.clear()
-    store.properties.clear()
-    store.units.clear()
-    store.contracts.clear()
-    store.bookings.clear()
-    store.receivables.clear()
-    store.invoices.clear()
-    store.maintenance_cases.clear()
-    store.accounts.clear()
-    store.tenants.clear()
+    store.clear_all()
 
     portfolio = store.create_portfolio(PortfolioCreate(name="Portfolio"))
     property_item = store.create_property(
@@ -45,7 +36,7 @@ def test_reports_summary_counts() -> None:
         )
     )
     tenant = store.create_tenant(TenantCreate(full_name="Test Tenant"))
-    store.create_contract(
+    contract = store.create_contract(
         ContractCreate(
             contract_number="C-300",
             property_id=property_item.id,
@@ -70,7 +61,7 @@ def test_reports_summary_counts() -> None:
     )
     store.create_receivable(
         ReceivableCreate(
-            contract_id=next(iter(store.contracts)),
+            contract_id=contract.id,
             due_date=datetime.date(2024, 5, 1),
             amount_due=500.0,
             status="open",
@@ -104,17 +95,7 @@ def test_reports_summary_counts() -> None:
 
 
 def test_reports_finance_groups_by_category() -> None:
-    store.portfolios.clear()
-    store.properties.clear()
-    store.units.clear()
-    store.contracts.clear()
-    store.bookings.clear()
-    store.receivables.clear()
-    store.invoices.clear()
-    store.maintenance_cases.clear()
-    store.accounts.clear()
-    store.tenants.clear()
-    store.categories.clear()
+    store.clear_all()
 
     portfolio = store.create_portfolio(PortfolioCreate(name="Portfolio"))
     account = store.create_account(
@@ -155,17 +136,7 @@ def test_reports_finance_groups_by_category() -> None:
 
 
 def test_reports_occupancy() -> None:
-    store.portfolios.clear()
-    store.properties.clear()
-    store.units.clear()
-    store.contracts.clear()
-    store.bookings.clear()
-    store.receivables.clear()
-    store.invoices.clear()
-    store.maintenance_cases.clear()
-    store.accounts.clear()
-    store.tenants.clear()
-    store.categories.clear()
+    store.clear_all()
 
     portfolio = store.create_portfolio(PortfolioCreate(name="Portfolio"))
     property_item = store.create_property(
@@ -200,17 +171,7 @@ def test_reports_occupancy() -> None:
 
 
 def test_reports_receivables_aging() -> None:
-    store.portfolios.clear()
-    store.properties.clear()
-    store.units.clear()
-    store.contracts.clear()
-    store.bookings.clear()
-    store.receivables.clear()
-    store.invoices.clear()
-    store.maintenance_cases.clear()
-    store.accounts.clear()
-    store.tenants.clear()
-    store.categories.clear()
+    store.clear_all()
 
     portfolio = store.create_portfolio(PortfolioCreate(name="Portfolio"))
     property_item = store.create_property(
@@ -291,17 +252,7 @@ def test_reports_receivables_aging() -> None:
 
 
 def test_reports_cashflow() -> None:
-    store.portfolios.clear()
-    store.properties.clear()
-    store.units.clear()
-    store.contracts.clear()
-    store.bookings.clear()
-    store.receivables.clear()
-    store.invoices.clear()
-    store.maintenance_cases.clear()
-    store.accounts.clear()
-    store.tenants.clear()
-    store.categories.clear()
+    store.clear_all()
 
     portfolio = store.create_portfolio(PortfolioCreate(name="Portfolio"))
     account = store.create_account(
@@ -334,17 +285,7 @@ def test_reports_cashflow() -> None:
 
 
 def test_reports_contracts_expiring() -> None:
-    store.portfolios.clear()
-    store.properties.clear()
-    store.units.clear()
-    store.contracts.clear()
-    store.bookings.clear()
-    store.receivables.clear()
-    store.invoices.clear()
-    store.maintenance_cases.clear()
-    store.accounts.clear()
-    store.tenants.clear()
-    store.categories.clear()
+    store.clear_all()
 
     portfolio = store.create_portfolio(PortfolioCreate(name="Portfolio"))
     property_item = store.create_property(
@@ -393,17 +334,7 @@ def test_reports_contracts_expiring() -> None:
 
 
 def test_reports_maintenance_costs() -> None:
-    store.portfolios.clear()
-    store.properties.clear()
-    store.units.clear()
-    store.contracts.clear()
-    store.bookings.clear()
-    store.receivables.clear()
-    store.invoices.clear()
-    store.maintenance_cases.clear()
-    store.accounts.clear()
-    store.tenants.clear()
-    store.categories.clear()
+    store.clear_all()
 
     portfolio = store.create_portfolio(PortfolioCreate(name="Portfolio"))
     property_item = store.create_property(

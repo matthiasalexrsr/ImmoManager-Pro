@@ -207,6 +207,13 @@ class SQLAlchemyStore:
     def _commit(self):
         self.db.commit()
 
+    def clear_all(self) -> None:
+        """Delete all rows from every mapped table. Used by tests to reset state."""
+        from ..db.orm_models import Base
+        for table in reversed(Base.metadata.sorted_tables):
+            self.db.execute(table.delete())
+        self._commit()
+
     # --- Portfolios ---
 
     def list_portfolios(self) -> list[Portfolio]:

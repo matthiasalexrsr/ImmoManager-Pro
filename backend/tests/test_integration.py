@@ -11,18 +11,7 @@ from backend.dependencies import store
 @pytest.fixture(autouse=True)
 def _clean():
     """Clear store and users before each test."""
-    for attr in [
-        "portfolios", "properties", "units", "tenants", "contracts",
-        "accounts", "bookings", "categories", "receivables", "invoices",
-        "maintenance_cases", "documents", "tasks", "calendar_events",
-        "listings", "listing_photos", "leads", "viewing_appointments",
-        "billing_periods", "allocation_keys", "cost_items",
-        "utility_statements", "deposits", "notifications",
-        "notification_templates",
-    ]:
-        collection = getattr(store, attr, None)
-        if collection is not None and isinstance(collection, dict):
-            collection.clear()
+    store.clear_all()
     clear_users()
     yield
     clear_users()

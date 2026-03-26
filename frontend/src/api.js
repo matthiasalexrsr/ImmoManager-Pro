@@ -20,7 +20,7 @@ function getToken() {
 }
 
 // ---------------------------------------------------------------------------
-// Retry helper — retries on network errors only (not HTTP errors)
+// Retry helper — retries safe methods on network errors only (not HTTP errors)
 // ---------------------------------------------------------------------------
 
 const MAX_RETRIES = 2;
@@ -32,8 +32,10 @@ async function fetchWithRetry(url, options, retriesLeft = MAX_RETRIES) {
   } catch (err) {
     // Don't retry aborted requests
     if (err.name === 'AbortError') throw err;
-    // Only retry on network errors (TypeError: Failed to fetch)
-    if (retriesLeft > 0 && err instanceof TypeError) {
+    // Only retry safe (idempotent) methods on network errors
+    const method = (options?.method || 'GET').toUpperCase();
+    const isSafe = method === 'GET' || method === 'HEAD' || method === 'OPTIONS';
+    if (isSafe && retriesLeft > 0 && err instanceof TypeError) {
       const delay = RETRY_DELAYS[MAX_RETRIES - retriesLeft] || 1000;
       console.warn(`[API] Network error, retrying in ${delay}ms (${retriesLeft} left):`, err.message);
       await new Promise(r => setTimeout(r, delay));

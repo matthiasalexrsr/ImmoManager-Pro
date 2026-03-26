@@ -123,8 +123,21 @@ class TestLoginRateLimiting:
     @pytest.fixture(autouse=True)
     def _clean_attempts(self):
         _login_attempts.clear()
+        # Also clear DB-backed login attempts when SQL backend is active
+        from backend.auth import _auth_session_factory
+        if _auth_session_factory is not None:
+            from backend.db.orm_models import LoginAttemptORM
+            session = _auth_session_factory()
+            session.query(LoginAttemptORM).delete()
+            session.commit()
+            session.close()
         yield
         _login_attempts.clear()
+        if _auth_session_factory is not None:
+            session = _auth_session_factory()
+            session.query(LoginAttemptORM).delete()
+            session.commit()
+            session.close()
 
     def test_not_blocked_initially(self):
         assert check_login_rate_limit("testuser") is False

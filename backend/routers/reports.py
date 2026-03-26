@@ -1,12 +1,13 @@
 import csv
 import io
-from datetime import date, timedelta
+from datetime import date
 
 from fastapi import APIRouter, Body, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from ..dependencies import store
+from ..services import report_service
 
 router = APIRouter(prefix="/reports", tags=["Berichte"])
 
@@ -30,56 +31,27 @@ def _csv_response(rows: list[dict], filename: str) -> StreamingResponse:
 
 @router.get("/summary")
 def get_summary(format: str | None = Query(None, alias="format")):
-    all_properties = store.list_properties()
-    all_units = store.list_units()
-    all_contracts = store.list_contracts()
-    all_receivables = store.list_receivables()
-    all_bookings = store.list_bookings()
-    all_invoices = store.list_invoices()
-    all_maintenance = store.list_maintenance_cases()
-
-    total_properties = len(all_properties)
-    total_units = len(all_units)
-    total_contracts = len(all_contracts)
-    open_receivables = sum(
-        r.amount_due for r in all_receivables if r.status in {"open", "overdue"}
+    data = report_service.compute_summary(
+        properties=store.list_properties(),
+        units=store.list_units(),
+        contracts=store.list_contracts(),
+        receivables=store.list_receivables(),
+        bookings=store.list_bookings(),
+        invoices=store.list_invoices(),
+        maintenance_cases=store.list_maintenance_cases(),
     )
-    overdue_receivables = sum(
-        r.amount_due for r in all_receivables if r.status == "overdue"
-    )
-    total_bookings = sum(b.amount for b in all_bookings)
-    total_invoices = sum(inv.gross_amount for inv in all_invoices)
-    open_maintenance_cases = sum(
-        1 for case in all_maintenance if case.status in {"open", "in_progress"}
-    )
-
-    data = {
-        "totals": {
-            "properties": total_properties,
-            "units": total_units,
-            "contracts": total_contracts,
-        },
-        "finance": {
-            "bookingsTotal": total_bookings,
-            "invoicesTotal": total_invoices,
-            "openReceivables": open_receivables,
-            "overdueReceivables": overdue_receivables,
-        },
-        "maintenance": {
-            "openCases": open_maintenance_cases,
-        },
-    }
 
     if format == "csv":
+        f = data["finance"]
         rows = [{
-            "Immobilien": total_properties,
-            "Einheiten": total_units,
-            "Verträge": total_contracts,
-            "Buchungen Gesamt": total_bookings,
-            "Rechnungen Gesamt": total_invoices,
-            "Offene Forderungen": open_receivables,
-            "Überfällige Forderungen": overdue_receivables,
-            "Offene Wartungsfälle": open_maintenance_cases,
+            "Immobilien": data["totals"]["properties"],
+            "Einheiten": data["totals"]["units"],
+            "Verträge": data["totals"]["contracts"],
+            "Buchungen Gesamt": f["bookingsTotal"],
+            "Rechnungen Gesamt": f["invoicesTotal"],
+            "Offene Forderungen": f["openReceivables"],
+            "Überfällige Forderungen": f["overdueReceivables"],
+            "Offene Wartungsfälle": data["maintenance"]["openCases"],
         }]
         return _csv_response(rows, "zusammenfassung.csv")
 
@@ -88,132 +60,74 @@ def get_summary(format: str | None = Query(None, alias="format")):
 
 @router.get("/finance")
 def get_finance_report(format: str | None = Query(None, alias="format")):
-    categories = {category.id: category for category in store.list_categories()}
-    totals_by_category = {}
-    uncategorized_total = 0.0
-
-    for booking in store.list_bookings():
-        if booking.category_id and booking.category_id in categories:
-            category = categories[booking.category_id]
-            entry = totals_by_category.setdefault(
-                booking.category_id,
-                {
-                    "categoryId": booking.category_id,
-                    "categoryName": category.name,
-                    "categoryType": category.category_type,
-                    "total": 0.0,
-                },
-            )
-            entry["total"] += booking.amount
-        else:
-            uncategorized_total += booking.amount
-
-    totals = sorted(totals_by_category.values(), key=lambda item: item["categoryName"])
+    data = report_service.compute_finance(
+        bookings=store.list_bookings(),
+        categories=store.list_categories(),
+    )
 
     if format == "csv":
         rows = [
             {"Kategorie": t["categoryName"], "Typ": t["categoryType"], "Betrag": t["total"]}
-            for t in totals
+            for t in data["totalsByCategory"]
         ]
-        if uncategorized_total:
-            rows.append({"Kategorie": "Unkategorisiert", "Typ": "-", "Betrag": uncategorized_total})
+        if data["uncategorizedTotal"]:
+            rows.append({"Kategorie": "Unkategorisiert", "Typ": "-", "Betrag": data["uncategorizedTotal"]})
         return _csv_response(rows, "finanzbericht.csv")
 
-    return {
-        "totalsByCategory": totals,
-        "uncategorizedTotal": uncategorized_total,
-        "bookingsTotal": sum(booking.amount for booking in store.list_bookings()),
-    }
+    return data
 
 
 @router.get("/occupancy")
 def get_occupancy_report(format: str | None = Query(None, alias="format")):
-    all_units = store.list_units()
-    total_units = len(all_units)
-    rented_units = sum(1 for unit in all_units if unit.status == "occupied")
-    occupancy_rate = (rented_units / total_units) if total_units else 0.0
+    data = report_service.compute_occupancy(units=store.list_units())
 
     if format == "csv":
+        rate = data["occupancyRate"]
         rows = [{
-            "Einheiten Gesamt": total_units,
-            "Vermietet": rented_units,
-            "Leerstandsquote": f"{(1 - occupancy_rate) * 100:.1f}%",
-            "Belegungsquote": f"{occupancy_rate * 100:.1f}%",
+            "Einheiten Gesamt": data["totalUnits"],
+            "Vermietet": data["rentedUnits"],
+            "Leerstandsquote": f"{(1 - rate) * 100:.1f}%",
+            "Belegungsquote": f"{rate * 100:.1f}%",
         }]
         return _csv_response(rows, "belegungsquote.csv")
 
-    return {
-        "totalUnits": total_units,
-        "rentedUnits": rented_units,
-        "occupancyRate": occupancy_rate,
-    }
+    return data
 
 
 @router.get("/receivables-aging")
 def get_receivables_aging(format: str | None = Query(None, alias="format")):
-    today = date.today()
-    buckets = {
-        "current": 0.0,
-        "days1to30": 0.0,
-        "days31to60": 0.0,
-        "days61to90": 0.0,
-        "days90plus": 0.0,
-    }
-    open_total = 0.0
-
-    for receivable in store.list_receivables():
-        if receivable.status not in {"open", "overdue"}:
-            continue
-        open_total += receivable.amount_due
-        days_overdue = (today - receivable.due_date).days
-        if days_overdue <= 0:
-            buckets["current"] += receivable.amount_due
-        elif days_overdue <= 30:
-            buckets["days1to30"] += receivable.amount_due
-        elif days_overdue <= 60:
-            buckets["days31to60"] += receivable.amount_due
-        elif days_overdue <= 90:
-            buckets["days61to90"] += receivable.amount_due
-        else:
-            buckets["days90plus"] += receivable.amount_due
+    data = report_service.compute_receivables_aging(
+        receivables=store.list_receivables(),
+    )
 
     if format == "csv":
+        b = data["buckets"]
         rows = [{
-            "Aktuell": buckets["current"],
-            "1-30 Tage": buckets["days1to30"],
-            "31-60 Tage": buckets["days31to60"],
-            "61-90 Tage": buckets["days61to90"],
-            "90+ Tage": buckets["days90plus"],
-            "Gesamt": open_total,
+            "Aktuell": b["current"],
+            "1-30 Tage": b["days1to30"],
+            "31-60 Tage": b["days31to60"],
+            "61-90 Tage": b["days61to90"],
+            "90+ Tage": b["days90plus"],
+            "Gesamt": data["openTotal"],
         }]
         return _csv_response(rows, "forderungsalter.csv")
 
-    return {
-        "openTotal": open_total,
-        "buckets": buckets,
-    }
+    return data
 
 
 @router.get("/cashflow")
 def get_cashflow_report(format: str | None = Query(None, alias="format")):
-    all_bookings = store.list_bookings()
-    income = sum(b.amount for b in all_bookings if b.amount >= 0)
-    expenses = sum(-b.amount for b in all_bookings if b.amount < 0)
-    net = income - expenses
+    data = report_service.compute_cashflow(bookings=store.list_bookings())
 
     if format == "csv":
         rows = [{
-            "Einnahmen": income,
-            "Ausgaben": expenses,
-            "Netto": net,
+            "Einnahmen": data["incomeTotal"],
+            "Ausgaben": data["expenseTotal"],
+            "Netto": data["netTotal"],
         }]
         return _csv_response(rows, "cashflow.csv")
 
-    return {
-        "incomeTotal": income,
-        "expenseTotal": expenses,
-        "netTotal": net,
-    }
+    return data
 
 
 @router.get("/contracts-expiring")
@@ -224,27 +138,10 @@ def get_contracts_expiring_report(
     if days <= 0:
         days = 90
 
-    today = date.today()
-    threshold = today + timedelta(days=days)
-
-    expiring = []
-    for contract in store.list_contracts():
-        if contract.end_date is None:
-            continue
-        if today <= contract.end_date <= threshold:
-            expiring.append(
-                {
-                    "contractId": contract.id,
-                    "contractNumber": contract.contract_number,
-                    "propertyId": contract.property_id,
-                    "unitId": contract.unit_id,
-                    "tenantId": contract.tenant_id,
-                    "endDate": contract.end_date.isoformat(),
-                    "daysRemaining": (contract.end_date - today).days,
-                }
-            )
-
-    expiring.sort(key=lambda item: item["daysRemaining"])
+    data = report_service.compute_contracts_expiring(
+        contracts=store.list_contracts(),
+        days=days,
+    )
 
     if format == "csv":
         rows = [
@@ -254,48 +151,27 @@ def get_contracts_expiring_report(
                 "Tage verbleibend": c["daysRemaining"],
                 "Vertrags-ID": c["contractId"],
             }
-            for c in expiring
+            for c in data["contracts"]
         ]
         return _csv_response(rows, "auslaufende_vertraege.csv")
 
-    return {
-        "windowDays": days,
-        "count": len(expiring),
-        "contracts": expiring,
-    }
+    return data
 
 
 @router.get("/maintenance-costs")
 def get_maintenance_costs_report(format: str | None = Query(None, alias="format")):
-    total_estimated_cost = 0.0
-    by_category = {}
-    open_cases = 0
-
-    for case in store.list_maintenance_cases():
-        if case.status in {"open", "in_progress"}:
-            open_cases += 1
-        amount = case.estimated_cost or 0.0
-        total_estimated_cost += amount
-        category_name = case.category or "Unkategorisiert"
-        by_category[category_name] = by_category.get(category_name, 0.0) + amount
-
-    categories_list = [
-        {"category": name, "estimatedCost": value}
-        for name, value in sorted(by_category.items(), key=lambda item: item[0])
-    ]
+    data = report_service.compute_maintenance_costs(
+        maintenance_cases=store.list_maintenance_cases(),
+    )
 
     if format == "csv":
         rows = [
             {"Kategorie": c["category"], "Geschätzte Kosten": c["estimatedCost"]}
-            for c in categories_list
+            for c in data["categories"]
         ]
         return _csv_response(rows, "instandhaltungskosten.csv")
 
-    return {
-        "openCases": open_cases,
-        "totalEstimatedCost": total_estimated_cost,
-        "categories": categories_list,
-    }
+    return data
 
 
 # ---------------------------------------------------------------------------
@@ -445,54 +321,14 @@ def liquidity_forecast(
     property_id: str | None = Query(None),
 ):
     """T28: Liquidity forecast for 3/6/12 months based on historical data."""
-    from collections import defaultdict
-
-    today = date.today()
     bookings = store.list_bookings()
     if property_id:
         bookings = [b for b in bookings if b.property_id == property_id]
 
-    # Calculate monthly averages from last 12 months
-    cutoff = today - timedelta(days=365)
-    recent = [b for b in bookings if b.booking_date >= cutoff]
-
-    monthly_income = defaultdict(float)
-    monthly_expense = defaultdict(float)
-    for b in recent:
-        key = f"{b.booking_date.year}-{b.booking_date.month:02d}"
-        if b.amount > 0:
-            monthly_income[key] += b.amount
-        else:
-            monthly_expense[key] += abs(b.amount)
-
-    n_months = max(len(monthly_income), 1)
-    avg_income = sum(monthly_income.values()) / n_months
-    avg_expense = sum(monthly_expense.values()) / n_months
-
-    # Current balance
-    current_balance = sum(b.amount for b in bookings)
-
-    # Project forward
-    forecast = []
-    balance = current_balance
-    for i in range(1, months + 1):
-        month_date = today + timedelta(days=30 * i)
-        balance += avg_income - avg_expense
-        forecast.append({
-            "month": f"{month_date.year}-{month_date.month:02d}",
-            "projected_income": round(avg_income, 2),
-            "projected_expense": round(avg_expense, 2),
-            "projected_balance": round(balance, 2),
-        })
-
-    return {
-        "current_balance": round(current_balance, 2),
-        "avg_monthly_income": round(avg_income, 2),
-        "avg_monthly_expense": round(avg_expense, 2),
-        "avg_monthly_net": round(avg_income - avg_expense, 2),
-        "forecast_months": months,
-        "forecast": forecast,
-    }
+    return report_service.compute_liquidity_forecast(
+        bookings=bookings,
+        months=months,
+    )
 
 
 @router.get("/pdf/{report_name}", response_model=None)

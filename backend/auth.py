@@ -214,7 +214,19 @@ def clear_login_attempts(username: str) -> None:
     """T21: Clear login attempts after successful login."""
     _login_attempts.pop(username, None)
     if _auth_session_factory is not None:
-        _record_login_attempt_db(username, success=True)
+        from .db.orm_models import LoginAttemptORM
+        session = _auth_session_factory()
+        try:
+            session.query(LoginAttemptORM).filter(
+                LoginAttemptORM.username == username,
+                LoginAttemptORM.success == False,  # noqa: E712
+            ).delete()
+            session.commit()
+        except Exception:
+            session.rollback()
+            logger.warning("Failed to clear DB login attempts", exc_info=True)
+        finally:
+            session.close()
 
 
 def check_register_rate_limit(client_ip: str) -> bool:

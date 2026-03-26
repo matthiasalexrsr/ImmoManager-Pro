@@ -21,12 +21,7 @@ from backend.services.ocr_service import _extract_invoice_fields, _infer_cost_ca
 
 
 def _clear_store() -> None:
-    for collection in (
-        store.portfolios, store.properties, store.units, store.tenants,
-        store.contracts, store.billing_periods, store.allocation_keys,
-        store.cost_items, store.utility_statements, store.receivables,
-    ):
-        collection.clear()
+    store.clear_all()
 
 
 def _setup_full_scenario():

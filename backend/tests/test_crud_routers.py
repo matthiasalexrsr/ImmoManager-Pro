@@ -98,6 +98,7 @@ def _list_portfolios(**kw):
     return portfolios.list_portfolios(
         skip=kw.get("skip", S), limit=kw.get("limit", L),
         status_filter=kw.get("status_filter"),
+        sort_by=None, sort_order="asc",
     )
 
 
@@ -106,6 +107,7 @@ def _list_properties(**kw):
         skip=kw.get("skip", S), limit=kw.get("limit", L),
         portfolio_id=kw.get("portfolio_id"),
         status_filter=kw.get("status_filter"),
+        sort_by=None, sort_order="asc",
     )
 
 
@@ -114,6 +116,7 @@ def _list_units(**kw):
         skip=kw.get("skip", S), limit=kw.get("limit", L),
         property_id=kw.get("property_id"),
         status_filter=kw.get("status_filter"),
+        sort_by=None, sort_order="asc",
     )
 
 
@@ -121,6 +124,7 @@ def _list_tenants(**kw):
     return tenants.list_tenants(
         skip=kw.get("skip", S), limit=kw.get("limit", L),
         archived=None, include_archived=True,
+        sort_by=None, sort_order="asc",
     )
 
 
@@ -130,6 +134,7 @@ def _list_contracts(**kw):
         property_id=kw.get("property_id"),
         tenant_id=kw.get("tenant_id"),
         status_filter=kw.get("status_filter"),
+        sort_by=None, sort_order="asc",
     )
 
 
@@ -138,6 +143,7 @@ def _list_accounts(**kw):
         skip=kw.get("skip", S), limit=kw.get("limit", L),
         portfolio_id=kw.get("portfolio_id"),
         account_type=kw.get("account_type"),
+        sort_by=None, sort_order="asc",
     )
 
 
@@ -147,6 +153,7 @@ def _list_bookings(**kw):
         account_id=kw.get("account_id"),
         tenant_id=kw.get("tenant_id"),
         status_filter=kw.get("status_filter"),
+        sort_by=None, sort_order="asc",
     )
 
 
@@ -155,6 +162,7 @@ def _list_categories(**kw):
         skip=kw.get("skip", S), limit=kw.get("limit", L),
         portfolio_id=kw.get("portfolio_id"),
         category_type=kw.get("category_type"),
+        sort_by=None, sort_order="asc",
     )
 
 
@@ -163,6 +171,7 @@ def _list_receivables(**kw):
         skip=kw.get("skip", S), limit=kw.get("limit", L),
         contract_id=kw.get("contract_id"),
         status_filter=kw.get("status_filter"),
+        sort_by=None, sort_order="asc",
     )
 
 
@@ -171,6 +180,7 @@ def _list_invoices(**kw):
         skip=kw.get("skip", S), limit=kw.get("limit", L),
         supplier=kw.get("supplier"),
         status_filter=kw.get("status_filter"),
+        sort_by=None, sort_order="asc",
     )
 
 
@@ -179,6 +189,7 @@ def _list_maintenance(**kw):
         skip=kw.get("skip", S), limit=kw.get("limit", L),
         property_id=kw.get("property_id"),
         status_filter=kw.get("status_filter"),
+        sort_by=None, sort_order="asc",
     )
 
 
@@ -187,6 +198,7 @@ def _list_documents(**kw):
         skip=kw.get("skip", S), limit=kw.get("limit", L),
         property_id=kw.get("property_id"),
         contract_id=kw.get("contract_id"),
+        sort_by=None, sort_order="asc",
     )
 
 
@@ -195,6 +207,7 @@ def _list_tasks(**kw):
         skip=kw.get("skip", S), limit=kw.get("limit", L),
         status_filter=kw.get("status_filter"),
         assignee=kw.get("assignee"),
+        sort_by=None, sort_order="asc",
     )
 
 
@@ -278,6 +291,7 @@ def _list_deposits(**kw):
         skip=kw.get("skip", S), limit=kw.get("limit", L),
         contract_id=kw.get("contract_id"),
         status_filter=kw.get("status_filter"),
+        sort_by=None, sort_order="asc",
     )
 
 
@@ -298,34 +312,7 @@ def _list_notification_templates(**kw):
 
 
 def _clear_store() -> None:
-    for collection in (
-        store.portfolios,
-        store.properties,
-        store.units,
-        store.tenants,
-        store.contracts,
-        store.accounts,
-        store.bookings,
-        store.receivables,
-        store.invoices,
-        store.maintenance_cases,
-        store.categories,
-        store.documents,
-        store.tasks,
-        store.calendar_events,
-        store.listings,
-        store.listing_photos,
-        store.leads,
-        store.viewing_appointments,
-        store.billing_periods,
-        store.allocation_keys,
-        store.cost_items,
-        store.utility_statements,
-        store.deposits,
-        store.notifications,
-        store.notification_templates,
-    ):
-        collection.clear()
+    store.clear_all()
 
 
 # ---------------------------------------------------------------------------
@@ -1818,9 +1805,9 @@ class TestLeads:
                 scheduled_at=datetime.datetime(2025, 6, 1, 10, 0),
             )
         )
-        assert len(list(store.viewing_appointments.values())) == 1
+        assert len(store.list_viewing_appointments()) == 1
         leads.delete_lead(lead.id)
-        assert len(list(store.viewing_appointments.values())) == 0
+        assert len(store.list_viewing_appointments()) == 0
 
 
 # ---------------------------------------------------------------------------
@@ -2390,8 +2377,8 @@ class TestGenerateUtilityStatements:
 
     def test_generate_no_contracts_400(self) -> None:
         # Remove all contracts
-        for cid in list(store.contracts.keys()):
-            store.contracts.pop(cid)
+        for c in store.list_contracts():
+            store.delete_contract(c.id)
         store.create_cost_item(
             CostItemCreate(
                 billing_period_id=self.bp.id, description="X",

@@ -1,5 +1,9 @@
 # ImmoManager Pro – Codebase Evaluation & Implementation Plan
 
+> **Note (2026-03):** This document is an archived evaluation from an earlier stage of development. The codebase has since undergone significant changes: SQLAlchemy persistence is now the default backend, 35+ routers exist (up from 17), 33 test files with 780+ tests are in place, JWT auth with RBAC is implemented, full i18n coverage spans 3 locales, and many of the issues and implementation items listed below have been addressed. Refer to `README.md` and `backend/README.md` for the current architecture.
+
+---
+
 ## 1. Current State Summary
 
 | Layer | Files | Status |

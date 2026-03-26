@@ -143,6 +143,13 @@ class InMemoryStore:
     insurances: Dict[str, Insurance] = field(default_factory=dict)
     entity_photos: Dict[str, EntityPhoto] = field(default_factory=dict)
 
+    def clear_all(self) -> None:
+        """Clear all entity collections. Used by tests to reset state."""
+        for name, val in self.__dataclass_fields__.items():
+            attr = getattr(self, name)
+            if isinstance(attr, dict):
+                attr.clear()
+
     def list_portfolios(self) -> List[Portfolio]:
         return list(self.portfolios.values())
 
