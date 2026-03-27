@@ -82,7 +82,7 @@ def global_search(
 ):
     """Search across all major entity types with optional semantic re-ranking."""
     query = q.lower().strip()
-    results = []
+    results: list[dict] = []
 
     # Define search targets: (list_fn, entity_type, fields, url, display_fn, detail_fn)
     # NOTE: This still loads all entities per type. For large datasets, move to DB-side
