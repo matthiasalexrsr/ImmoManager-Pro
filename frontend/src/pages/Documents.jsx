@@ -153,7 +153,7 @@ export default function Documents() {
       options: [{ value: '', label: t('pages.documents.form.noContract') || '— Kein —' }, ...contracts.map(c => ({ value: c.id, label: c.contract_number }))] },
     { key: 'description', label: t('pages.documents.form.description') || 'Beschreibung', type: 'textarea' },
     { key: 'tags', label: t('pages.documents.form.tags') || 'Tags', placeholder: t('pages.documents.form.tagsPlaceholder') || 'kommagetrennt' },
-    { key: 'file_url', label: t('pages.documents.form.fileUrl') || 'Datei-URL', required: true, placeholder: '/uploads/documents/...', default: uploadedUrl },
+    { key: 'file_url', type: 'hidden', required: true, default: uploadedUrl },
   ];
 
   return (

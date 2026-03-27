@@ -17,7 +17,7 @@
       "tasks": "Aufgaben",
       "calendar": "Kalender",
       "reports": "Berichte",
-      "integrations": "Integrationen",
+      "integrations": "Schnittstellen",
       "settings": "Einstellungen",
       "help": "Hilfe",
       "contacts": "Kontakte",
@@ -33,15 +33,22 @@
       "viewings": "Besichtigungen",
       "rentAdjustments": "Mietanpassungen",
       "budgets": "Budgets",
-      "taxRates": "Steuersätze"
+      "taxRates": "Steuersätze",
+      "receivables": "Forderungen",
+      "rentCharges": "Sollstellungen",
+      "allocationKeys": "Verteilerschlüssel",
+      "escalationRules": "Eskalationsregeln",
+      "handoverProtocols": "Übergabeprotokolle",
+      "history": "Änderungsprotokoll"
     },
     "sections": {
       "overview": "Übersicht",
       "portfolio": "Portfolio",
       "tenants": "Mieter & Verträge",
       "finance": "Finanzen",
-      "operations": "Verwaltung",
-      "vacancy": "Leerstand"
+      "operations": "Betrieb",
+      "vacancy": "Leerstand",
+      "configuration": "Konfiguration"
     },
     "secondary": {
       "overview": "Übersicht",

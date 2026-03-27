@@ -33,15 +33,22 @@
       "viewings": "Visitas",
       "rentAdjustments": "Ajustes de alquiler",
       "budgets": "Presupuestos",
-      "taxRates": "Tipos impositivos"
+      "taxRates": "Tipos impositivos",
+      "receivables": "Cuentas por cobrar",
+      "rentCharges": "Cargos de alquiler",
+      "allocationKeys": "Claves de reparto",
+      "escalationRules": "Reglas de escalamiento",
+      "handoverProtocols": "Protocolos de entrega",
+      "history": "Registro de cambios"
     },
     "sections": {
       "overview": "Resumen",
       "portfolio": "Cartera",
       "tenants": "Inquilinos y contratos",
       "finance": "Finanzas",
-      "operations": "Administración",
-      "vacancy": "Vacantes"
+      "operations": "Operaciones",
+      "vacancy": "Vacantes",
+      "configuration": "Configuración"
     },
     "secondary": {
       "overview": "Resumen",

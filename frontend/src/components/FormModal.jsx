@@ -101,6 +101,9 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
           <div className="modal-body">
             {error && <div className="alert-error" role="alert">{error}</div>}
             {fields.map(f => {
+              if (f.type === 'hidden') {
+                return <input type="hidden" key={f.key} name={f.key} value={values[f.key] || ''} />;
+              }
               const inputId = `form-field-${f.key}`;
               return (
                 <div key={f.key} className="form-group">

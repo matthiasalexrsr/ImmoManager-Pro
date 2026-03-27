@@ -1383,6 +1383,22 @@ a:hover {
   margin-top: 0.1rem;
 }
 
+.search-bar-group-header {
+  padding: 0.4rem 1.25rem 0.25rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  border-top: 1px solid var(--color-border);
+  margin-top: 0.25rem;
+}
+
+.search-bar-group-header:first-child {
+  border-top: none;
+  margin-top: 0;
+}
+
 /* =============================================================
    NOTIFICATION BELL
    ============================================================= */

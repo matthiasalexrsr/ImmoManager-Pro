@@ -39,6 +39,40 @@ const ENTITY_ROUTES = {
   rent_adjustment: '/rent-adjustments',
 };
 
+const ENTITY_LABELS = {
+  property: 'Immobilien',
+  unit: 'Einheiten',
+  tenant: 'Mieter',
+  contract: 'Verträge',
+  account: 'Konten',
+  booking: 'Buchungen',
+  invoice: 'Rechnungen',
+  maintenance: 'Wartung',
+  task: 'Aufgaben',
+  document: 'Dokumente',
+  meter: 'Zähler',
+  statement: 'Abrechnungen',
+  contact: 'Kontakte',
+  portfolio: 'Portfolios',
+  deposit: 'Kautionen',
+  category: 'Kategorien',
+  insurance: 'Versicherungen',
+  lead: 'Interessenten',
+  listing: 'Inserate',
+  integration: 'Schnittstellen',
+  message: 'Nachrichten',
+  receivable: 'Forderungen',
+  rent_charge: 'Sollstellungen',
+  allocation_key: 'Verteilerschlüssel',
+  handover_protocol: 'Übergabeprotokolle',
+  escalation_rule: 'Eskalationsregeln',
+  budget: 'Budgets',
+  tax_rate: 'Steuersätze',
+  calendar_event: 'Kalender',
+  viewing: 'Besichtigungen',
+  rent_adjustment: 'Mietanpassungen',
+};
+
 export default function SearchBar() {
   const { t } = useTranslation();
   const [query, setQuery] = useState('');
@@ -164,29 +198,44 @@ export default function SearchBar() {
         <div className="search-bar-dropdown" id="search-results-listbox" role="listbox" ref={listRef} aria-label={t('ui.form.search')}>
           {loading && <div className="search-bar-loading" role="status">{t('ui.table.loading')}</div>}
           {!loading && currentResults.length === 0 && <div className="search-bar-empty" role="status">{t('search.global.noResults')}</div>}
-          {!loading && currentResults.map((r, i) => {
-            const EntityIcon = ENTITY_ICON_MAP[r.entity_type];
-            return (
-              <div
-                key={i}
-                id={`search-result-${i}`}
-                className={`search-bar-result${i === activeIndex ? ' search-bar-result-active' : ''}`}
-                onClick={() => handleSelect(r)}
-                onMouseEnter={() => setActiveIndex(i)}
-                role="option"
-                aria-selected={i === activeIndex}
-                tabIndex={-1}
-              >
-                <span className="search-bar-result-icon" aria-hidden="true">
-                  {EntityIcon ? <EntityIcon size={16} /> : <SearchIcon size={16} />}
-                </span>
-                <div className="search-bar-result-text">
-                  <span className="search-bar-result-title">{r.display}</span>
-                  <span className="search-bar-result-detail">{r.entity_type}{r.detail ? ` — ${r.detail}` : ''}</span>
-                </div>
+          {!loading && (() => {
+            const grouped = {};
+            currentResults.forEach(r => {
+              const type = r.entity_type;
+              if (!grouped[type]) grouped[type] = [];
+              grouped[type].push(r);
+            });
+            let globalIndex = 0;
+            return Object.entries(grouped).map(([type, items]) => (
+              <div key={type}>
+                <div className="search-bar-group-header">{ENTITY_LABELS[type] || type}</div>
+                {items.map(r => {
+                  const idx = globalIndex++;
+                  const EntityIcon = ENTITY_ICON_MAP[r.entity_type];
+                  return (
+                    <div
+                      key={idx}
+                      id={`search-result-${idx}`}
+                      className={`search-bar-result${idx === activeIndex ? ' search-bar-result-active' : ''}`}
+                      onClick={() => handleSelect(r)}
+                      onMouseEnter={() => setActiveIndex(idx)}
+                      role="option"
+                      aria-selected={idx === activeIndex}
+                      tabIndex={-1}
+                    >
+                      <span className="search-bar-result-icon" aria-hidden="true">
+                        {EntityIcon ? <EntityIcon size={16} /> : <SearchIcon size={16} />}
+                      </span>
+                      <div className="search-bar-result-text">
+                        <span className="search-bar-result-title">{r.display}</span>
+                        <span className="search-bar-result-detail">{r.detail || ''}</span>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })}
+            ));
+          })()}
         </div>
       )}
       {open && <div className="search-bar-backdrop" onClick={() => { setOpen(false); setActiveIndex(-1); }} aria-hidden="true" />}
