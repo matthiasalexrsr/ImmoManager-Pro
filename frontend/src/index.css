@@ -925,6 +925,20 @@ a:hover {
    FORMS
    ============================================================= */
 
+.form-section {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.form-section-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-text);
+  padding: 0 0.4rem;
+}
+
 .form-group {
   margin-bottom: 1.1rem;
 }

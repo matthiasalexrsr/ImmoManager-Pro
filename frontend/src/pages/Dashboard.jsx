@@ -61,6 +61,8 @@ export default function Dashboard() {
   const [forecast, setForecast] = useState(null);
   const [expiring, setExpiring] = useState(null);
   const [financeReport, setFinanceReport] = useState(null);
+  const [dashView, setDashView] = useState('work');
+  const [auditOpen, setAuditOpen] = useState(false);
 
   useEffect(() => {
     const safeFetch = (path, fallback) =>
@@ -177,7 +179,23 @@ export default function Dashboard() {
     <div className="page">
       <h1 className="page-title">{t('pages.dashboard.title')}</h1>
 
-      {/* KPI Cards */}
+      {/* Dashboard mode toggle */}
+      <div className="tab-bar" style={{ marginBottom: '1.25rem' }}>
+        <button
+          className={`detail-tab ${dashView === 'work' ? 'active' : ''}`}
+          onClick={() => setDashView('work')}
+        >
+          {t('pages.dashboard.workTab') || 'Arbeit'}
+        </button>
+        <button
+          className={`detail-tab ${dashView === 'analysis' ? 'active' : ''}`}
+          onClick={() => setDashView('analysis')}
+        >
+          {t('pages.dashboard.analysisTab') || 'Analyse'}
+        </button>
+      </div>
+
+      {/* KPI Cards — always visible */}
       <div className="stats-grid">
         <StatCard icon={PortfolioIcon} label={t('pages.dashboard.portfolios')} value={stats.portfolios} to="/portfolios" />
         <StatCard icon={PropertyIcon} label={t('pages.dashboard.properties')} value={stats.properties} to="/properties" />
@@ -189,233 +207,248 @@ export default function Dashboard() {
         <StatCard icon={ChartIcon} label={t('pages.dashboard.occupancy')} value={`${occupancyRate}%`} to="/units" color="stat-highlight" />
       </div>
 
-      {/* Charts Row 1 */}
-      <div className="dashboard-charts">
-        {/* Occupancy Pie */}
-        <ChartPanel title={t('pages.dashboard.occupancyChart')}>
-          {occupancyData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={220}>
-              <PieChart>
-                <Pie data={occupancyData} dataKey="value" nameKey="name"
-                  cx="50%" cy="50%" innerRadius={50} outerRadius={80}
-                  paddingAngle={2} label={({ name, value }) => `${name}: ${value}`}>
-                  {occupancyData.map((_, i) => (
-                    <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+      {dashView === 'work' && (
+        <>
+          {/* Quick Actions Bar */}
+          <div className="panel" style={{ padding: '1rem', marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
+              <span style={{ fontWeight: 600, marginRight: '0.5rem' }}>{t('pages.dashboard.quickAccess') || 'Schnellzugriff:'}</span>
+              <Link to="/contract-wizard" className="btn btn-sm btn-primary">{t('pages.dashboard.quickNewContract') || '+ Mietvertrag'}</Link>
+              <Link to="/tenants" className="btn btn-sm btn-secondary">{t('pages.dashboard.quickNewTenant') || '+ Mieter'}</Link>
+              <Link to="/invoices" className="btn btn-sm btn-secondary">{t('pages.dashboard.quickNewInvoice') || '+ Rechnung'}</Link>
+              <Link to="/maintenance" className="btn btn-sm btn-secondary">{t('pages.dashboard.quickNewMaint') || '+ Wartung'}</Link>
+              <Link to="/documents" className="btn btn-sm btn-secondary">{t('pages.dashboard.quickNewDoc') || '+ Dokument'}</Link>
+              <Link to="/meters" className="btn btn-sm btn-secondary">{t('pages.dashboard.quickMeters') || 'Zähler ablesen'}</Link>
+              <Link to="/viewings" className="btn btn-sm btn-secondary">{t('pages.dashboard.quickViewing') || 'Besichtigung planen'}</Link>
+            </div>
+          </div>
+
+          {/* Activity Panels */}
+          <div className="dashboard-panels">
+            <div className="panel">
+              <h3>{t('pages.dashboard.openTasks')}</h3>
+              {tasks.length === 0 ? <p className="empty-text">{t('pages.dashboard.noOpenTasks')}</p> : (
+                <ul className="activity-list">
+                  {tasks.map(tk => (
+                    <li key={tk.id}>
+                      <span className="activity-title">{tk.title}</span>
+                      {tk.due_date && <span className="activity-date">{tk.due_date}</span>}
+                      <StatusBadge status={tk.priority} />
+                    </li>
                   ))}
-                </Pie>
-                <Tooltip formatter={v => v} />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
-          ) : <p className="chart-empty">{t('pages.dashboard.noUnits')}</p>}
-        </ChartPanel>
+                </ul>
+              )}
+              <Link to="/tasks" className="panel-link">
+                {t('tasks.list.title')} <ArrowRightIcon size={14} />
+              </Link>
+            </div>
 
-        {/* Cashflow Bar */}
-        <ChartPanel title={t('pages.dashboard.cashflow')}>
-          {cashflowData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={cashflowData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
-                <Tooltip formatter={v => fmt(v)} />
-                <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                  {cashflowData.map((entry, i) => (
-                    <Cell key={i} fill={entry.value >= 0 ? '#16a34a' : '#dc2626'} />
+            <div className="panel">
+              <h3>{t('dashboard.widgets.contractTerms')}</h3>
+              {!expiring?.contracts?.length ? <p className="empty-text">{t('emptyStates.generic.title')}</p> : (
+                <ul className="activity-list">
+                  {expiring.contracts.slice(0, 5).map(c => (
+                    <li key={c.contractId}>
+                      <span className="activity-title">{c.contractNumber}</span>
+                      <span className="activity-date">{c.endDate}</span>
+                      <StatusBadge status={c.daysRemaining <= 30 ? 'overdue' : 'warning'} />
+                      <span className="text-muted" style={{ fontSize: '0.75rem' }}>
+                        {c.daysRemaining} {t('pages.dashboard.days')}
+                      </span>
+                    </li>
                   ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          ) : <p className="chart-empty">{t('pages.dashboard.noBookings')}</p>}
-        </ChartPanel>
+                </ul>
+              )}
+              <Link to="/contracts" className="panel-link">
+                {t('tenantsContracts.contracts.title')} <ArrowRightIcon size={14} />
+              </Link>
+            </div>
 
-        {/* Receivables Aging */}
-        <ChartPanel title={t('pages.dashboard.receivablesAging')}>
-          {agingData.some(d => d.value > 0) ? (
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={agingData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
-                <Tooltip formatter={v => fmt(v)} />
-                <Bar dataKey="value" fill="#d97706" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : <p className="chart-empty">{t('pages.dashboard.noReceivables')}</p>}
-        </ChartPanel>
-      </div>
-
-      {/* Charts Row 2 */}
-      <div className="dashboard-charts">
-        {/* Liquidity Forecast */}
-        <ChartPanel title={t('analyticsLabels.forecast')}>
-          {forecastData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={220}>
-              <LineChart data={forecastData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
-                <Tooltip formatter={v => fmt(v)} />
-                <Legend />
-                <Line type="monotone" dataKey={forecastBalanceLabel} stroke="#2563eb" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey={forecastIncomeLabel} stroke="#16a34a" strokeWidth={1} dot={false} strokeDasharray="4 2" />
-                <Line type="monotone" dataKey={forecastExpenseLabel} stroke="#dc2626" strokeWidth={1} dot={false} strokeDasharray="4 2" />
-              </LineChart>
-            </ResponsiveContainer>
-          ) : <p className="chart-empty">{t('pages.dashboard.noForecast')}</p>}
-        </ChartPanel>
-
-        {/* Maintenance Costs by Category */}
-        <ChartPanel title={t('pages.dashboard.maintenanceCosts')}>
-          {maintData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={maintData} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={v => `${v.toFixed(0)} \u20AC`} />
-                <YAxis type="category" dataKey="category" tick={{ fontSize: 11 }} width={100} />
-                <Tooltip formatter={v => fmt(v)} />
-                <Bar dataKey="estimatedCost" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : <p className="chart-empty">{t('pages.dashboard.noMaintenanceCosts')}</p>}
-        </ChartPanel>
-
-        {/* Finance by Category */}
-        <ChartPanel title={t('pages.dashboard.financeByCategory')}>
-          {financeData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={220}>
-              <PieChart>
-                <Pie data={financeData} dataKey="value" nameKey="name"
-                  cx="50%" cy="50%" outerRadius={80}
-                  label={({ name }) => name}>
-                  {financeData.map((_, i) => (
-                    <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+            <div className="panel">
+              <h3>{t('pages.dashboard.notifications')}</h3>
+              {notifications.length === 0 ? <p className="empty-text">{t('pages.dashboard.noNotifications')}</p> : (
+                <ul className="activity-list">
+                  {notifications.map(n => (
+                    <li key={n.id}>
+                      <span className="activity-title">{n.title}</span>
+                      <StatusBadge status={n.severity} />
+                    </li>
                   ))}
-                </Pie>
-                <Tooltip formatter={v => fmt(v)} />
-              </PieChart>
-            </ResponsiveContainer>
-          ) : <p className="chart-empty">{t('pages.dashboard.noFinanceData')}</p>}
-        </ChartPanel>
+                </ul>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {dashView === 'analysis' && (
+        <>
+          {/* Charts Row 1 */}
+          <div className="dashboard-charts">
+            <ChartPanel title={t('pages.dashboard.occupancyChart')}>
+              {occupancyData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={220}>
+                  <PieChart>
+                    <Pie data={occupancyData} dataKey="value" nameKey="name"
+                      cx="50%" cy="50%" innerRadius={50} outerRadius={80}
+                      paddingAngle={2} label={({ name, value }) => `${name}: ${value}`}>
+                      {occupancyData.map((_, i) => (
+                        <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={v => v} />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : <p className="chart-empty">{t('pages.dashboard.noUnits')}</p>}
+            </ChartPanel>
+
+            <ChartPanel title={t('pages.dashboard.cashflow')}>
+              {cashflowData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={cashflowData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                    <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
+                    <Tooltip formatter={v => fmt(v)} />
+                    <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                      {cashflowData.map((entry, i) => (
+                        <Cell key={i} fill={entry.value >= 0 ? '#16a34a' : '#dc2626'} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : <p className="chart-empty">{t('pages.dashboard.noBookings')}</p>}
+            </ChartPanel>
+
+            <ChartPanel title={t('pages.dashboard.receivablesAging')}>
+              {agingData.some(d => d.value > 0) ? (
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={agingData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
+                    <Tooltip formatter={v => fmt(v)} />
+                    <Bar dataKey="value" fill="#d97706" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : <p className="chart-empty">{t('pages.dashboard.noReceivables')}</p>}
+            </ChartPanel>
+          </div>
+
+          {/* Charts Row 2 */}
+          <div className="dashboard-charts">
+            <ChartPanel title={t('analyticsLabels.forecast')}>
+              {forecastData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={220}>
+                  <LineChart data={forecastData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
+                    <Tooltip formatter={v => fmt(v)} />
+                    <Legend />
+                    <Line type="monotone" dataKey={forecastBalanceLabel} stroke="#2563eb" strokeWidth={2} dot={false} />
+                    <Line type="monotone" dataKey={forecastIncomeLabel} stroke="#16a34a" strokeWidth={1} dot={false} strokeDasharray="4 2" />
+                    <Line type="monotone" dataKey={forecastExpenseLabel} stroke="#dc2626" strokeWidth={1} dot={false} strokeDasharray="4 2" />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : <p className="chart-empty">{t('pages.dashboard.noForecast')}</p>}
+            </ChartPanel>
+
+            <ChartPanel title={t('pages.dashboard.maintenanceCosts')}>
+              {maintData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={maintData} layout="vertical">
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={v => `${v.toFixed(0)} \u20AC`} />
+                    <YAxis type="category" dataKey="category" tick={{ fontSize: 11 }} width={100} />
+                    <Tooltip formatter={v => fmt(v)} />
+                    <Bar dataKey="estimatedCost" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : <p className="chart-empty">{t('pages.dashboard.noMaintenanceCosts')}</p>}
+            </ChartPanel>
+
+            <ChartPanel title={t('pages.dashboard.financeByCategory')}>
+              {financeData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={220}>
+                  <PieChart>
+                    <Pie data={financeData} dataKey="value" nameKey="name"
+                      cx="50%" cy="50%" outerRadius={80}
+                      label={({ name }) => name}>
+                      {financeData.map((_, i) => (
+                        <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={v => fmt(v)} />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : <p className="chart-empty">{t('pages.dashboard.noFinanceData')}</p>}
+            </ChartPanel>
+          </div>
+        </>
+      )}
+
+      {/* Recent Audit Log — collapsible */}
+      <div className="panel" style={{ marginTop: '1.5rem' }}>
+        <div
+          className="panel-header"
+          style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+          onClick={() => setAuditOpen(prev => !prev)}
+        >
+          <span>{t('pages.dashboard.recentActivity') || 'Letzte Aktivitäten'}</span>
+          <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>{auditOpen ? '▲' : '▼'}</span>
+        </div>
+        {auditOpen && <RecentAuditLog />}
       </div>
-
-      {/* Quick Actions Bar */}
-      <div className="panel" style={{ padding: '1rem', marginBottom: '1.5rem' }}>
-        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ fontWeight: 600, marginRight: '0.5rem' }}>Schnellzugriff:</span>
-          <Link to="/contract-wizard" className="btn btn-sm btn-primary">+ Mietvertrag</Link>
-          <Link to="/tenants" className="btn btn-sm btn-secondary">+ Mieter</Link>
-          <Link to="/invoices" className="btn btn-sm btn-secondary">+ Rechnung</Link>
-          <Link to="/maintenance" className="btn btn-sm btn-secondary">+ Wartung</Link>
-          <Link to="/documents" className="btn btn-sm btn-secondary">+ Dokument</Link>
-          <Link to="/meters" className="btn btn-sm btn-secondary">Zähler ablesen</Link>
-          <Link to="/viewings" className="btn btn-sm btn-secondary">Besichtigung planen</Link>
-        </div>
-      </div>
-
-      {/* Activity Panels */}
-      <div className="dashboard-panels">
-        <div className="panel">
-          <h3>{t('pages.dashboard.openTasks')}</h3>
-          {tasks.length === 0 ? <p className="empty-text">{t('pages.dashboard.noOpenTasks')}</p> : (
-            <ul className="activity-list">
-              {tasks.map(t => (
-                <li key={t.id}>
-                  <span className="activity-title">{t.title}</span>
-                  {t.due_date && <span className="activity-date">{t.due_date}</span>}
-                  <StatusBadge status={t.priority} />
-                </li>
-              ))}
-            </ul>
-          )}
-          <Link to="/tasks" className="panel-link">
-            {t('tasks.list.title')} <ArrowRightIcon size={14} />
-          </Link>
-        </div>
-
-        <div className="panel">
-          <h3>{t('dashboard.widgets.contractTerms')}</h3>
-          {!expiring?.contracts?.length ? <p className="empty-text">{t('emptyStates.generic.title')}</p> : (
-            <ul className="activity-list">
-              {expiring.contracts.slice(0, 5).map(c => (
-                <li key={c.contractId}>
-                  <span className="activity-title">{c.contractNumber}</span>
-                  <span className="activity-date">{c.endDate}</span>
-                  <StatusBadge status={c.daysRemaining <= 30 ? 'overdue' : 'warning'} />
-                  <span className="text-muted" style={{ fontSize: '0.75rem' }}>
-                    {c.daysRemaining} {t('pages.dashboard.days')}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-          <Link to="/contracts" className="panel-link">
-            {t('tenantsContracts.contracts.title')} <ArrowRightIcon size={14} />
-          </Link>
-        </div>
-
-        <div className="panel">
-          <h3>{t('pages.dashboard.notifications')}</h3>
-          {notifications.length === 0 ? <p className="empty-text">{t('pages.dashboard.noNotifications')}</p> : (
-            <ul className="activity-list">
-              {notifications.map(n => (
-                <li key={n.id}>
-                  <span className="activity-title">{n.title}</span>
-                  <StatusBadge status={n.severity} />
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </div>
-
-      {/* Recent Audit Log */}
-      <RecentAuditLog />
     </div>
   );
 }
 
 function RecentAuditLog() {
+  const { t } = useTranslation();
   const [entries, setEntries] = useState([]);
   const toast = useToast();
   useEffect(() => {
-    api.get('/audit?limit=10').then(data => setEntries(Array.isArray(data) ? data : data?.items || [])).catch(() => { toast.error('Audit-Log konnte nicht geladen werden'); });
-  }, [toast]);
+    api.get('/audit?limit=10').then(data => setEntries(Array.isArray(data) ? data : data?.items || [])).catch(() => { toast.error(t('pages.dashboard.auditLoadError') || 'Audit-Log konnte nicht geladen werden'); });
+  }, [toast, t]);
 
-  const actionLabels = { create: 'Erstellt', update: 'Aktualisiert', patch: 'Geändert', delete: 'Gelöscht' };
+  const actionLabels = {
+    create: t('pages.dashboard.auditCreated') || 'Erstellt',
+    update: t('pages.dashboard.auditUpdated') || 'Aktualisiert',
+    patch: t('pages.dashboard.auditChanged') || 'Geändert',
+    delete: t('pages.dashboard.auditDeleted') || 'Gelöscht',
+  };
 
-  if (entries.length === 0) return null;
+  if (entries.length === 0) return <div className="panel-body"><p className="empty-text">{t('pages.dashboard.noActivity') || 'Keine Aktivitäten'}</p></div>;
 
   return (
-    <div className="panel" style={{ marginTop: '1.5rem' }}>
-      <div className="panel-header">Letzte Aktivitäten</div>
-      <div className="panel-body">
-        <table style={{ width: '100%', fontSize: '0.85rem', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-              <th style={{ textAlign: 'left', padding: '4px 8px' }}>Aktion</th>
-              <th style={{ textAlign: 'left', padding: '4px 8px' }}>Bereich</th>
-              <th style={{ textAlign: 'left', padding: '4px 8px' }}>Benutzer</th>
-              <th style={{ textAlign: 'left', padding: '4px 8px' }}>Zeitpunkt</th>
+    <div className="panel-body">
+      <table style={{ width: '100%', fontSize: '0.85rem', borderCollapse: 'collapse' }}>
+        <thead>
+          <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+            <th style={{ textAlign: 'left', padding: '4px 8px' }}>{t('pages.dashboard.auditAction') || 'Aktion'}</th>
+            <th style={{ textAlign: 'left', padding: '4px 8px' }}>{t('pages.dashboard.auditArea') || 'Bereich'}</th>
+            <th style={{ textAlign: 'left', padding: '4px 8px' }}>{t('pages.dashboard.auditUser') || 'Benutzer'}</th>
+            <th style={{ textAlign: 'left', padding: '4px 8px' }}>{t('pages.dashboard.auditTime') || 'Zeitpunkt'}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {entries.map((e, i) => (
+            <tr key={i} style={{ borderBottom: '1px solid var(--border-color)' }}>
+              <td style={{ padding: '4px 8px' }}>
+                <StatusBadge status={e.action === 'delete' ? 'cancelled' : e.action === 'create' ? 'active' : 'warning'} />
+                {' '}{actionLabels[e.action] || e.action}
+              </td>
+              <td style={{ padding: '4px 8px' }}>{e.entity_type?.replace(/_/g, ' ')}</td>
+              <td style={{ padding: '4px 8px' }}>{e.username || '—'}</td>
+              <td style={{ padding: '4px 8px', color: 'var(--text-secondary)' }}>
+                {e.timestamp ? new Date(e.timestamp).toLocaleString('de-DE') : '—'}
+              </td>
             </tr>
-          </thead>
-          <tbody>
-            {entries.map((e, i) => (
-              <tr key={i} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                <td style={{ padding: '4px 8px' }}>
-                  <StatusBadge status={e.action === 'delete' ? 'cancelled' : e.action === 'create' ? 'active' : 'warning'} />
-                  {' '}{actionLabels[e.action] || e.action}
-                </td>
-                <td style={{ padding: '4px 8px' }}>{e.entity_type?.replace(/_/g, ' ')}</td>
-                <td style={{ padding: '4px 8px' }}>{e.username || '—'}</td>
-                <td style={{ padding: '4px 8px', color: 'var(--text-secondary)' }}>
-                  {e.timestamp ? new Date(e.timestamp).toLocaleString('de-DE') : '—'}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
