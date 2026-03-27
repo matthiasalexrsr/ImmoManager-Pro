@@ -11,6 +11,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Ensure frontend/dist exists (may not be pre-built in CI)
+mkdir -p frontend/dist
+
 docker compose "${COMPOSE_FILES[@]}" up -d --build
 
 for _ in {1..60}; do
