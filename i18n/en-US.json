@@ -33,15 +33,22 @@
       "viewings": "Viewings",
       "rentAdjustments": "Rent Adjustments",
       "budgets": "Budgets",
-      "taxRates": "Tax Rates"
+      "taxRates": "Tax Rates",
+      "receivables": "Receivables",
+      "rentCharges": "Rent Charges",
+      "allocationKeys": "Allocation Keys",
+      "escalationRules": "Escalation Rules",
+      "handoverProtocols": "Handover Protocols",
+      "history": "Change Log"
     },
     "sections": {
       "overview": "Overview",
       "portfolio": "Portfolio",
       "tenants": "Tenants & Contracts",
       "finance": "Finance",
-      "operations": "Administration",
-      "vacancy": "Vacancy"
+      "operations": "Operations",
+      "vacancy": "Vacancy",
+      "configuration": "Configuration"
     },
     "secondary": {
       "overview": "Overview",

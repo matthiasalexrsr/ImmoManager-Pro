@@ -93,7 +93,6 @@ def _extract_action_items(text: str) -> list[str]:
         "dringend", "termin", "vereinbaren", "überweisen", "reparieren",
         "beauftragen", "prüfen", "klären",
     ]
-    text_lower = text.lower()
     sentences = [s.strip() for s in text.replace("\n", ". ").split(". ") if s.strip()]
     items = []
     for sentence in sentences:

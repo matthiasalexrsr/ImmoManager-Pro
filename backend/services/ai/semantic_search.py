@@ -7,9 +7,9 @@ Falls back to keyword-only search when HF models are unavailable.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from threading import Lock
-from typing import Any, Optional
+from typing import Any
 
 from .hf_runtime import runtime
 from .schemas import SearchHit

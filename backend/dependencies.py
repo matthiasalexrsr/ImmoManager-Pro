@@ -42,6 +42,9 @@ if _use_sql_store:
         from .db.session import SessionLocal, create_tables
         from .repositories import SQLAlchemyStore
 
+        # TODO: Move create_tables() into app.py lifespan to avoid import-time
+        # side effects. Requires conftest.py changes to ensure tables exist before
+        # tests run with SQL backend. See architecture review Phase 3.1.
         create_tables()
         # Use scoped_session for thread-safe, request-scoped sessions.
         # Each thread gets its own session, preventing cross-request state mixing.

@@ -76,7 +76,7 @@ def list_thread_messages(
         store.get_message_thread(thread_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    results = [m for m in store.list_messages() if m.thread_id == thread_id]
+    results = store.list_messages(thread_id=thread_id)
     results.sort(key=lambda m: m.sent_at)
     return results[skip : skip + limit]
 
@@ -106,7 +106,7 @@ def summarize_thread_endpoint(thread_id: str) -> dict:
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
-    messages = [m for m in store.list_messages() if m.thread_id == thread_id]
+    messages = store.list_messages(thread_id=thread_id)
     messages.sort(key=lambda m: m.sent_at)
 
     msg_dicts = [{"sender_name": m.sender_name, "body": m.body} for m in messages]

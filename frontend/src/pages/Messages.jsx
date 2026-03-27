@@ -17,6 +17,11 @@ export default function Messages() {
   const [filter, setFilter] = useState('all');
   const [modal, setModal] = useState(null);
   const [newMessage, setNewMessage] = useState('');
+  const [contacts, setContacts] = useState([]);
+
+  useEffect(() => {
+    api.get('/contacts').then(c => setContacts(c || [])).catch(() => []);
+  }, []);
 
   useEffect(() => {
     Promise.all([
@@ -68,8 +73,9 @@ export default function Messages() {
   };
 
   const threadFields = [
-    { key: 'subject', label: 'Betreff', required: true },
-    { key: 'participant_ids', label: 'Teilnehmer (IDs)', placeholder: 'Kommagetrennte Kontakt-IDs' },
+    { key: 'subject', label: t('pages.messages.subject') || 'Betreff', required: true },
+    { key: 'participant_ids', label: t('pages.messages.participants') || 'Teilnehmer', type: 'select',
+      options: contacts.map(c => ({ value: c.id, label: c.name || c.email || c.id })) },
   ];
 
   const filteredNotifs = filter === 'all'

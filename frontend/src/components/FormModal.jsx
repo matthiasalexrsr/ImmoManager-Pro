@@ -100,43 +100,71 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
         <form onSubmit={handleSubmit}>
           <div className="modal-body">
             {error && <div className="alert-error" role="alert">{error}</div>}
-            {fields.map(f => {
-              const inputId = `form-field-${f.key}`;
-              return (
-                <div key={f.key} className="form-group">
-                  <label htmlFor={inputId}>{f.label}{f.required && ' *'}</label>
-                  {f.type === 'select' ? (
-                    <select
-                      id={inputId}
-                      value={values[f.key] || ''}
-                      onChange={e => setValues({ ...values, [f.key]: e.target.value })}
-                      required={f.required}
-                    >
-                      <option value="">{t('ui.form.pleaseSelect')}</option>
-                      {f.options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                    </select>
-                  ) : f.type === 'textarea' ? (
-                    <textarea
-                      id={inputId}
-                      value={values[f.key] || ''}
-                      onChange={e => setValues({ ...values, [f.key]: e.target.value })}
-                      required={f.required}
-                      rows={3}
-                    />
-                  ) : (
-                    <input
-                      id={inputId}
-                      type={f.type || 'text'}
-                      value={values[f.key] ?? ''}
-                      onChange={e => setValues({ ...values, [f.key]: e.target.value })}
-                      required={f.required}
-                      step={f.type === 'number' ? '0.01' : undefined}
-                      placeholder={f.placeholder}
-                    />
-                  )}
-                </div>
-              );
-            })}
+            {(() => {
+              const renderField = (f) => {
+                if (f.type === 'hidden') {
+                  return <input type="hidden" key={f.key} name={f.key} value={values[f.key] || ''} />;
+                }
+                const inputId = `form-field-${f.key}`;
+                return (
+                  <div key={f.key} className="form-group">
+                    <label htmlFor={inputId}>{f.label}{f.required && ' *'}</label>
+                    {f.type === 'select' ? (
+                      <select
+                        id={inputId}
+                        value={values[f.key] || ''}
+                        onChange={e => setValues({ ...values, [f.key]: e.target.value })}
+                        required={f.required}
+                      >
+                        <option value="">{t('ui.form.pleaseSelect')}</option>
+                        {f.options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                    ) : f.type === 'textarea' ? (
+                      <textarea
+                        id={inputId}
+                        value={values[f.key] || ''}
+                        onChange={e => setValues({ ...values, [f.key]: e.target.value })}
+                        required={f.required}
+                        rows={3}
+                      />
+                    ) : (
+                      <input
+                        id={inputId}
+                        type={f.type || 'text'}
+                        value={values[f.key] ?? ''}
+                        onChange={e => setValues({ ...values, [f.key]: e.target.value })}
+                        required={f.required}
+                        step={f.type === 'number' ? '0.01' : undefined}
+                        placeholder={f.placeholder}
+                      />
+                    )}
+                  </div>
+                );
+              };
+
+              // Group fields by section (preserve order, backward compatible)
+              const sections = [];
+              let currentSection = null;
+              fields.forEach(f => {
+                const section = f.section || null;
+                if (section !== currentSection || sections.length === 0) {
+                  sections.push({ label: section, fields: [] });
+                  currentSection = section;
+                }
+                sections[sections.length - 1].fields.push(f);
+              });
+
+              return sections.map((section, i) => (
+                section.label ? (
+                  <fieldset key={i} className="form-section">
+                    <legend className="form-section-label">{section.label}</legend>
+                    {section.fields.map(renderField)}
+                  </fieldset>
+                ) : (
+                  <div key={i}>{section.fields.map(renderField)}</div>
+                )
+              ));
+            })()}
           </div>
           <div className="modal-footer">
             <button type="button" onClick={onClose} className="btn btn-secondary">{t('ui.buttons.cancel')}</button>

@@ -1556,8 +1556,11 @@ class InMemoryStore:
         del self.message_threads[thread_id]
 
     # --- Messages ---
-    def list_messages(self) -> List[Message]:
-        return list(self.messages.values())
+    def list_messages(self, *, thread_id: str | None = None) -> List[Message]:
+        msgs = list(self.messages.values())
+        if thread_id is not None:
+            msgs = [m for m in msgs if m.thread_id == thread_id]
+        return msgs
 
     def create_message(self, data: MessageCreate) -> Message:
         message = Message(id=_generate_id(), **data.model_dump())
