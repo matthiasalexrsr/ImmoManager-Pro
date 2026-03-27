@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from ..ocr_service import _extract_invoice_fields, _infer_cost_category
+from ..ocr_service import _extract_invoice_fields
 from .hf_runtime import runtime
 from .schemas import DocumentAIResult
 

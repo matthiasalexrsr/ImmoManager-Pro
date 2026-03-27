@@ -5,8 +5,6 @@ All tests mock HF models so they run without GPU/model downloads.
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from backend.services.ai.document_ai import (
     _infer_document_type_regex,
     analyze_document,
@@ -23,7 +21,6 @@ from backend.services.ai.schemas import (
     ThreadSummaryResult,
 )
 from backend.services.ai.semantic_search import IndexEntry, SemanticSearchIndex
-
 
 # ---------------------------------------------------------------------------
 # schemas

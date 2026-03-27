@@ -1260,7 +1260,9 @@ class SQLAlchemyStore:
 
     # --- Messages ---
 
-    def list_messages(self) -> list[Message]:
+    def list_messages(self, *, thread_id: str | None = None) -> list[Message]:
+        if thread_id is not None:
+            return self._messages.filter_by(thread_id=thread_id)
         return self._messages.list_all()
 
     def create_message(self, data: MessageCreate) -> Message:

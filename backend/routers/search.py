@@ -51,6 +51,30 @@ def reindex_search() -> dict:
     return {"reindexed": True, "entries": search_index.entry_count, "semantic_available": search_index.is_available}
 
 
+_MAX_RESULTS_PER_TYPE = 10  # Cap per entity type to limit scan overhead
+_MAX_TOTAL_RESULTS = 50  # Stop scanning once we have enough results
+
+
+def _search_entities(entity_list, query, entity_type, fields, url, display_fn, detail_fn, results):
+    """Search a single entity type and append matches to results."""
+    hits = 0
+    for item in entity_list:
+        if len(results) >= _MAX_TOTAL_RESULTS:
+            return
+        searchable = " ".join(filter(None, [getattr(item, f, None) for f in fields])).lower()
+        if query in searchable:
+            results.append({
+                "entity_type": entity_type,
+                "id": item.id,
+                "display": display_fn(item),
+                "detail": detail_fn(item),
+                "url": url(item) if callable(url) else url,
+            })
+            hits += 1
+            if hits >= _MAX_RESULTS_PER_TYPE:
+                return
+
+
 @router.get("")
 def global_search(
     q: str = Query(..., min_length=1, description="Search query"),
@@ -60,233 +84,109 @@ def global_search(
     query = q.lower().strip()
     results = []
 
-    # Search properties
-    for p in store.list_properties():
-        searchable = " ".join(filter(None, [p.name, getattr(p, "street", None), getattr(p, "city", None)])).lower()
-        if query in searchable:
-            results.append({
-                "entity_type": "property",
-                "id": p.id,
-                "display": p.name,
-                "detail": getattr(p, "city", "") or "",
-                "url": f"/properties/{p.id}",
-            })
+    # Define search targets: (list_fn, entity_type, fields, url, display_fn, detail_fn)
+    # NOTE: This still loads all entities per type. For large datasets, move to DB-side
+    # ILIKE/text-search queries in a dedicated SearchService.
+    _search_entities(
+        store.list_properties(), query, "property",
+        ["name", "street", "city"],
+        lambda p: f"/properties/{p.id}",
+        lambda p: p.name,
+        lambda p: getattr(p, "city", "") or "",
+        results,
+    )
+    _search_entities(
+        store.list_tenants(), query, "tenant",
+        ["full_name", "email"],
+        "/tenants",
+        lambda t: t.full_name,
+        lambda t: getattr(t, "email", "") or "",
+        results,
+    )
+    _search_entities(
+        store.list_units(), query, "unit",
+        ["label"],
+        lambda u: f"/units/{u.id}",
+        lambda u: u.label,
+        lambda u: u.unit_type,
+        results,
+    )
+    _search_entities(
+        store.list_contracts(), query, "contract",
+        ["contract_number"],
+        "/contracts",
+        lambda c: c.contract_number,
+        lambda c: c.status,
+        results,
+    )
+    _search_entities(
+        store.list_tasks(), query, "task",
+        ["title", "description"],
+        "/tasks",
+        lambda t: t.title,
+        lambda t: t.status,
+        results,
+    )
+    _search_entities(
+        store.list_invoices(), query, "invoice",
+        ["supplier", "payment_terms"],
+        "/invoices",
+        lambda i: i.supplier,
+        lambda i: str(i.gross_amount),
+        results,
+    )
+    _search_entities(
+        store.list_accounts(), query, "account",
+        ["name", "bank_name", "iban"],
+        "/accounts",
+        lambda a: a.name,
+        lambda a: getattr(a, "account_type", "") or "",
+        results,
+    )
+    _search_entities(
+        store.list_bookings(), query, "booking",
+        ["description", "payment_text"],
+        "/bookings",
+        lambda b: getattr(b, "description", None) or getattr(b, "payment_text", "") or str(b.id)[:8],
+        lambda b: str(getattr(b, "amount", "")),
+        results,
+    )
+    _search_entities(
+        store.list_maintenance_cases(), query, "maintenance",
+        ["title", "description"],
+        "/maintenance",
+        lambda m: m.title,
+        lambda m: m.status,
+        results,
+    )
+    _search_entities(
+        store.list_documents(), query, "document",
+        ["title", "description"],
+        "/documents",
+        lambda d: d.title,
+        lambda d: getattr(d, "doc_type", "") or "",
+        results,
+    )
 
-    # Search tenants
-    for t in store.list_tenants():
-        searchable = " ".join(filter(None, [t.full_name, getattr(t, "email", None)])).lower()
-        if query in searchable:
-            results.append({
-                "entity_type": "tenant",
-                "id": t.id,
-                "display": t.full_name,
-                "detail": getattr(t, "email", "") or "",
-                "url": "/tenants",
-            })
-
-    # Search units
-    for u in store.list_units():
-        if query in u.label.lower():
-            results.append({
-                "entity_type": "unit",
-                "id": u.id,
-                "display": u.label,
-                "detail": u.unit_type,
-                "url": f"/units/{u.id}",
-            })
-
-    # Search contracts
-    for c in store.list_contracts():
-        if query in c.contract_number.lower():
-            results.append({
-                "entity_type": "contract",
-                "id": c.id,
-                "display": c.contract_number,
-                "detail": c.status,
-                "url": "/contracts",
-            })
-
-    # Search tasks
-    for t in store.list_tasks():
-        searchable = " ".join(filter(None, [t.title, getattr(t, "description", None)])).lower()
-        if query in searchable:
-            results.append({
-                "entity_type": "task",
-                "id": t.id,
-                "display": t.title,
-                "detail": t.status,
-                "url": "/tasks",
-            })
-
-    # Search invoices
-    for i in store.list_invoices():
-        searchable = " ".join(filter(None, [i.supplier, getattr(i, "payment_terms", None)])).lower()
-        if query in searchable:
-            results.append({
-                "entity_type": "invoice",
-                "id": i.id,
-                "display": i.supplier,
-                "detail": str(i.gross_amount),
-                "url": "/invoices",
-            })
-
-    # Search accounts
-    for a in store.list_accounts():
-        searchable = " ".join(filter(None, [a.name, getattr(a, "bank_name", None), getattr(a, "iban", None)])).lower()
-        if query in searchable:
-            results.append({
-                "entity_type": "account",
-                "id": a.id,
-                "display": a.name,
-                "detail": getattr(a, "account_type", "") or "",
-                "url": "/accounts",
-            })
-
-    # Search bookings
-    for b in store.list_bookings():
-        searchable = " ".join(filter(None, [
-            getattr(b, "description", None),
-            getattr(b, "payment_text", None),
-        ])).lower()
-        if query in searchable:
-            results.append({
-                "entity_type": "booking",
-                "id": b.id,
-                "display": getattr(b, "description", None) or getattr(b, "payment_text", "") or str(b.id)[:8],
-                "detail": str(getattr(b, "amount", "")),
-                "url": "/bookings",
-            })
-
-    # Search maintenance cases
-    for m in store.list_maintenance_cases():
-        searchable = " ".join(filter(None, [m.title, getattr(m, "description", None)])).lower()
-        if query in searchable:
-            results.append({
-                "entity_type": "maintenance",
-                "id": m.id,
-                "display": m.title,
-                "detail": m.status,
-                "url": "/maintenance",
-            })
-
-    # Search documents
-    for d in store.list_documents():
-        searchable = " ".join(filter(None, [d.title, getattr(d, "description", None)])).lower()
-        if query in searchable:
-            results.append({
-                "entity_type": "document",
-                "id": d.id,
-                "display": d.title,
-                "detail": getattr(d, "doc_type", "") or "",
-                "url": "/documents",
-            })
-
-    # Search contacts
-    try:
-        for ct in store.list_contacts():
-            searchable = " ".join(filter(None, [
-                getattr(ct, "name", None),
-                getattr(ct, "email", None),
-                getattr(ct, "company", None),
-            ])).lower()
-            if query in searchable:
-                results.append({
-                    "entity_type": "contact",
-                    "id": ct.id,
-                    "display": getattr(ct, "name", "") or str(ct.id)[:8],
-                    "detail": getattr(ct, "company", "") or "",
-                    "url": "/contacts",
-                })
-    except Exception:
-        logger.debug("Search failed for entity type 'contact'", exc_info=True)
-
-    # Search deposits
-    try:
-        for dep in store.list_deposits():
-            searchable = " ".join(filter(None, [
-                getattr(dep, "notes", None),
-                str(getattr(dep, "amount", "")),
-            ])).lower()
-            if query in searchable:
-                results.append({
-                    "entity_type": "deposit",
-                    "id": dep.id,
-                    "display": f"Kaution {str(dep.id)[:8]}",
-                    "detail": getattr(dep, "status", "") or "",
-                    "url": "/deposits",
-                })
-    except Exception:
-        logger.debug("Search failed for entity type 'deposit'", exc_info=True)
-
-    # Search categories
-    try:
-        for cat in store.list_categories():
-            searchable = " ".join(filter(None, [cat.name, getattr(cat, "description", None)])).lower()
-            if query in searchable:
-                results.append({
-                    "entity_type": "category",
-                    "id": cat.id,
-                    "display": cat.name,
-                    "detail": getattr(cat, "category_type", "") or "",
-                    "url": "/categories",
-                })
-    except Exception:
-        logger.debug("Search failed for entity type 'category'", exc_info=True)
-
-    # Search leads
-    try:
-        for lead in store.list_leads():
-            searchable = " ".join(filter(None, [
-                getattr(lead, "name", None),
-                getattr(lead, "email", None),
-            ])).lower()
-            if query in searchable:
-                results.append({
-                    "entity_type": "lead",
-                    "id": lead.id,
-                    "display": getattr(lead, "name", "") or str(lead.id)[:8],
-                    "detail": getattr(lead, "status", "") or "",
-                    "url": "/leads",
-                })
-    except Exception:
-        logger.debug("Search failed for entity type 'lead'", exc_info=True)
-
-    # Search listings
-    try:
-        for lst in store.list_listings():
-            searchable = " ".join(filter(None, [
-                getattr(lst, "title", None),
-                getattr(lst, "description", None),
-            ])).lower()
-            if query in searchable:
-                results.append({
-                    "entity_type": "listing",
-                    "id": lst.id,
-                    "display": getattr(lst, "title", "") or str(lst.id)[:8],
-                    "detail": getattr(lst, "status", "") or "",
-                    "url": "/listings",
-                })
-    except Exception:
-        logger.debug("Search failed for entity type 'listing'", exc_info=True)
-
-    # Search insurances
-    try:
-        for ins in store.list_insurances():
-            searchable = " ".join(filter(None, [
-                getattr(ins, "provider", None),
-                getattr(ins, "policy_number", None),
-                getattr(ins, "insurance_type", None),
-            ])).lower()
-            if query in searchable:
-                results.append({
-                    "entity_type": "insurance",
-                    "id": ins.id,
-                    "display": getattr(ins, "provider", "") or str(ins.id)[:8],
-                    "detail": getattr(ins, "insurance_type", "") or "",
-                    "url": "/insurances",
-                })
-    except Exception:
-        logger.debug("Search failed for entity type 'insurance'", exc_info=True)
+    # Entity types that may not exist in all store backends
+    for entity_type, list_fn, fields, url, display_fn, detail_fn in [
+        ("contact", store.list_contacts, ["name", "email", "company"], "/contacts",
+         lambda x: getattr(x, "name", "") or str(x.id)[:8], lambda x: getattr(x, "company", "") or ""),
+        ("deposit", store.list_deposits, ["notes"], "/deposits",
+         lambda x: f"Kaution {str(x.id)[:8]}", lambda x: getattr(x, "status", "") or ""),
+        ("category", store.list_categories, ["name", "description"], "/categories",
+         lambda x: x.name, lambda x: getattr(x, "category_type", "") or ""),
+        ("lead", store.list_leads, ["name", "email"], "/leads",
+         lambda x: getattr(x, "name", "") or str(x.id)[:8], lambda x: getattr(x, "status", "") or ""),
+        ("listing", store.list_listings, ["title", "description"], "/listings",
+         lambda x: getattr(x, "title", "") or str(x.id)[:8], lambda x: getattr(x, "status", "") or ""),
+        ("insurance", store.list_insurances, ["provider", "policy_number", "insurance_type"], "/insurances",
+         lambda x: getattr(x, "provider", "") or str(x.id)[:8], lambda x: getattr(x, "insurance_type", "") or ""),
+    ]:
+        try:
+            _search_entities(list_fn(), query, entity_type, fields, url, display_fn, detail_fn, results)
+        except Exception:
+            logger.debug("Search failed for entity type %r", entity_type, exc_info=True)
 
     # Apply semantic re-ranking if available and requested
     if semantic and search_index.is_available and search_index.entry_count > 0:

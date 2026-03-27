@@ -1,0 +1,10 @@
+# AI / Hugging Face (optional — features degrade gracefully when absent)
+# Install alongside the base requirements:
+#   pip install -r requirements.txt -r requirements-ai.txt
+-r requirements.txt
+
+transformers>=4.40.0
+sentence-transformers>=3.0.0
+huggingface-hub>=0.23.0
+faiss-cpu>=1.8.0
+torch>=2.2.0

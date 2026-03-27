@@ -31,6 +31,13 @@ dev = [
     "pytest>=7.0.0",
     "ruff>=0.1.0",
 ]
+ai = [
+    "transformers>=4.40.0",
+    "sentence-transformers>=3.0.0",
+    "huggingface-hub>=0.23.0",
+    "faiss-cpu>=1.8.0",
+    "torch>=2.2.0",
+]
 build = ["pyinstaller>=6.0.0"]
 
 [project.scripts]
