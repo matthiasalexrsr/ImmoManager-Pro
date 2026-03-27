@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { api } from '../api';
+import { useEntities } from '../contexts/DataStoreContext';
 import StatusBadge from '../components/StatusBadge';
 import { useTranslation } from '../i18n';
 import FormModal from '../components/FormModal';
@@ -18,6 +19,9 @@ export default function Messages() {
   const [modal, setModal] = useState(null);
   const [newMessage, setNewMessage] = useState('');
   const [contacts, setContacts] = useState([]);
+  const { items: properties } = useEntities('properties', '/properties');
+  const { items: units } = useEntities('units', '/units');
+  const { items: contracts } = useEntities('contracts', '/contracts');
 
   useEffect(() => {
     api.get('/contacts').then(c => setContacts(c || [])).catch(() => []);
@@ -78,9 +82,36 @@ export default function Messages() {
       options: contacts.map(c => ({ value: c.id, label: c.name || c.email || c.id })) },
   ];
 
-  const filteredNotifs = filter === 'all'
-    ? notifications
-    : notifications.filter(n => n.status === filter);
+  // Entity lookup maps for references
+  const propMap = useMemo(() => Object.fromEntries(properties.map(p => [p.id, p.name])), [properties]);
+  const unitMap = useMemo(() => Object.fromEntries(units.map(u => [u.id, u.label])), [units]);
+  const contractMap = useMemo(() => Object.fromEntries(contracts.map(c => [c.id, c.contract_number])), [contracts]);
+
+  // Helper to resolve entity reference from a notification
+  const resolveEntityRef = (n) => {
+    if (n.entity_type === 'property' && n.entity_id) return propMap[n.entity_id];
+    if (n.entity_type === 'unit' && n.entity_id) return unitMap[n.entity_id];
+    if (n.entity_type === 'contract' && n.entity_id) return contractMap[n.entity_id];
+    return null;
+  };
+
+  // Thread entity references
+  const resolveThreadRef = (thr) => {
+    const parts = [];
+    if (thr.property_id && propMap[thr.property_id]) parts.push(propMap[thr.property_id]);
+    if (thr.unit_id && unitMap[thr.unit_id]) parts.push(unitMap[thr.unit_id]);
+    if (thr.contract_id && contractMap[thr.contract_id]) parts.push(contractMap[thr.contract_id]);
+    return parts.length > 0 ? parts.join(' / ') : null;
+  };
+
+  const unreadCount = notifications.filter(n => n.status === 'unread').length;
+
+  const filteredNotifs = useMemo(() => {
+    if (filter === 'all') return notifications;
+    if (filter === 'unread') return notifications.filter(n => n.status === 'unread');
+    // Filter by severity
+    return notifications.filter(n => n.severity === filter);
+  }, [notifications, filter]);
 
   if (loading) return <div className="page-loading">{t('pages.loading')}</div>;
 
@@ -113,15 +144,19 @@ export default function Messages() {
       {view === 'notifications' && (
         <div className="messages-layout">
           <div className="messages-sidebar">
-            <div className="messages-filters">
-              <button
-                className={`btn btn-sm ${filter === 'all' ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => setFilter('all')}
-              >{t('pages.messages.all')} ({notifications.length})</button>
-              <button
-                className={`btn btn-sm ${filter === 'unread' ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => setFilter('unread')}
-              >{t('pages.messages.unread')} ({notifications.filter(n => n.status === 'unread').length})</button>
+            <div className="messages-filters" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
+              <button className={`btn btn-sm ${filter === 'all' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setFilter('all')}>
+                Alle ({notifications.length})
+              </button>
+              <button className={`btn btn-sm ${filter === 'unread' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setFilter('unread')}>
+                Ungelesen ({unreadCount})
+              </button>
+              <button className={`btn btn-sm ${filter === 'error' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setFilter('error')}>
+                Fehler
+              </button>
+              <button className={`btn btn-sm ${filter === 'warning' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setFilter('warning')}>
+                Warnungen
+              </button>
             </div>
             <div className="messages-list">
               {filteredNotifs.length === 0 ? (
@@ -139,6 +174,11 @@ export default function Messages() {
                   <div className="message-item-preview">
                     {(n.content || '').slice(0, 80)}{(n.content || '').length > 80 ? '...' : ''}
                   </div>
+                  {resolveEntityRef(n) && (
+                    <div className="text-muted" style={{ fontSize: '0.7rem', marginTop: '2px' }}>
+                      📎 {resolveEntityRef(n)}
+                    </div>
+                  )}
                   <div className="message-item-date">{n.created_at?.slice(0, 10)}</div>
                 </div>
               ))}
@@ -191,6 +231,11 @@ export default function Messages() {
                       {thr.message_count} {t('pages.messages.messagesCount') || 'Nachrichten'}
                     </span>
                   </div>
+                  {resolveThreadRef(thr) && (
+                    <div className="text-muted" style={{ fontSize: '0.7rem' }}>
+                      📎 {resolveThreadRef(thr)}
+                    </div>
+                  )}
                   <div className="message-item-date">
                     {thr.last_message_at?.slice(0, 10) || thr.created_at?.slice(0, 10)}
                   </div>

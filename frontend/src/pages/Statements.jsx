@@ -64,7 +64,8 @@ function getColumns(t) {
     { key: 'period_label', label: t('pages.statements.colPeriod') || 'Abrechnungszeitraum', filterType: 'text' },
     { key: 'total_costs', label: t('pages.statements.colTotalCosts') || 'Gesamtkosten (€)', type: 'number', align: 'right',
       render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
-    { key: 'units_count', label: t('pages.statements.colUnits') || 'Einheiten', type: 'number' },
+    { key: 'cost_item_count', label: 'Kostenpositionen', type: 'number' },
+    { key: 'units_count', label: t('pages.statements.colUnits') || 'Einzelabrechnungen', type: 'number' },
     { key: 'status', label: t('ui.form.status') || 'Status', type: 'status', filterType: 'select' },
   ];
 }
@@ -81,6 +82,7 @@ function getCostColumns(t) {
 function getStmtColumns(t, onError) {
   return [
     { key: 'unit_label', label: t('pages.statements.colUnit') || 'Einheit' },
+    { key: 'tenant_name', label: 'Mieter' },
     { key: 'total_cost', label: t('pages.statements.colShare') || 'Anteil (€)', type: 'number', align: 'right',
       render: v => `${Number(v || 0).toFixed(2)} €` },
     { key: 'advance_paid', label: t('pages.statements.colAdvancePaid') || 'Vorauszahlung (€)', type: 'number', align: 'right',
@@ -140,6 +142,8 @@ export default function Statements() {
   const [properties, setProperties] = useState([]);
   const [units, setUnits] = useState([]);
   const [allocationKeys, setAllocationKeys] = useState([]);
+  const [contracts, setContracts] = useState([]);
+  const [tenants, setTenants] = useState([]);
   const [loading, setLoading] = useState(true);
   const [, setLoadError] = useState(null);
   const [modal, setModal] = useState(null);
@@ -169,13 +173,17 @@ export default function Statements() {
       api.get('/properties'),
       api.get('/units'),
       api.get('/billing/allocation-keys'),
-    ]).then(([bp, ci, us, props, u, ak]) => {
+      api.get('/contracts'),
+      api.get('/tenants'),
+    ]).then(([bp, ci, us, props, u, ak, ctr, tn]) => {
       setPeriods(bp || []);
       setCostItems(ci || []);
       setStatements(us || []);
       setProperties(props || []);
       setUnits(u || []);
       setAllocationKeys(ak || []);
+      setContracts(ctr || []);
+      setTenants(tn || []);
     }).catch(err => {
       setLoadError(err.message || 'Daten konnten nicht geladen werden');
       toast.show(err.message || 'Daten konnten nicht geladen werden');
@@ -187,6 +195,8 @@ export default function Statements() {
   const propMap = Object.fromEntries(properties.map(p => [p.id, p]));
   const unitMap = Object.fromEntries(units.map(u => [u.id, u]));
   const akMap = Object.fromEntries(allocationKeys.map(k => [k.id, k]));
+  const contractMap = Object.fromEntries(contracts.map(c => [c.id, c]));
+  const tenantMap = Object.fromEntries(tenants.map(tn => [tn.id, tn.full_name]));
 
   const enriched = periods.map(bp => {
     const costs = costItems.filter(ci => ci.billing_period_id === bp.id);
@@ -197,6 +207,7 @@ export default function Statements() {
       property_name: propMap[bp.property_id]?.name || '—',
       period_label: `${bp.start_date || '?'} – ${bp.end_date || '?'}`,
       total_costs: totalCosts,
+      cost_item_count: costs.length,
       units_count: stmts.length,
     };
   });
@@ -548,7 +559,14 @@ export default function Statements() {
     const periodCosts = costItems.filter(ci => ci.billing_period_id === selectedPeriod.id)
       .map(ci => ({ ...ci, allocation_key_name: akMap[ci.allocation_key_id]?.name || '—' }));
     const periodStmts = statements.filter(s => s.billing_period_id === selectedPeriod.id)
-      .map(s => ({ ...s, unit_label: unitMap[s.unit_id]?.label || '—' }));
+      .map(s => {
+        const contract = contractMap[s.contract_id];
+        return {
+          ...s,
+          unit_label: unitMap[s.unit_id]?.label || '—',
+          tenant_name: contract ? (tenantMap[contract.tenant_id] || '—') : '—',
+        };
+      });
     const totalCosts = periodCosts.reduce((s, c) => s + (c.amount || 0), 0);
     const editable = isMutable(selectedPeriod.status);
     const isFinalized = selectedPeriod.status === 'finalized';
