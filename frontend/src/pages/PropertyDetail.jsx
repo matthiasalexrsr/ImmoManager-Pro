@@ -25,16 +25,16 @@ export default function PropertyDetail() {
   useEffect(() => {
     Promise.all([
       api.get(`/properties/${id}`).catch(() => null),
-      api.get('/units').catch(() => []),
-      api.get('/contracts').catch(() => []),
-      api.get('/documents').catch(() => []),
-      api.get('/maintenance').catch(() => []),
-    ]).then(([prop, allUnits, allContracts, allDocs, allMaint]) => {
+      api.get(`/units?property_id=${id}`).catch(() => []),
+      api.get(`/contracts?property_id=${id}`).catch(() => []),
+      api.get(`/documents?property_id=${id}`).catch(() => []),
+      api.get(`/maintenance?property_id=${id}`).catch(() => []),
+    ]).then(([prop, propUnits, propContracts, propDocs, propMaint]) => {
       setProperty(prop);
-      setUnits((allUnits || []).filter(u => u.property_id === id));
-      setContracts((allContracts || []).filter(c => c.property_id === id));
-      setDocuments((allDocs || []).filter(d => d.property_id === id));
-      setMaintenance((allMaint || []).filter(m => m.property_id === id));
+      setUnits(propUnits || []);
+      setContracts(propContracts || []);
+      setDocuments(propDocs || []);
+      setMaintenance(propMaint || []);
     }).finally(() => setLoading(false));
   }, [id]);
 

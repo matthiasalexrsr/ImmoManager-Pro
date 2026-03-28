@@ -16,6 +16,7 @@ from ..config import settings
 from ..services.ai.document_ai import analyze_document
 from ..services.file_storage import get_file_storage
 from ..services.ocr_service import extract_text_from_bytes
+from ..services.task_queue import get_queue
 
 logger = logging.getLogger(__name__)
 
@@ -167,15 +168,24 @@ async def upload_file(
     }
 
     if ext in SUPPORTED_OCR_EXTENSIONS:
-        try:
+        def _ocr_and_save():
+            """Run OCR and persist the extracted text."""
             ocr_text = _perform_ocr(storage, key, ext)
             if ocr_text:
                 ocr_key = _ocr_key_from_file_key(key)
                 storage.save(ocr_key, BytesIO(ocr_text.encode("utf-8")), content_type="text/plain")
-                result["ocr_url"] = storage.get_url(ocr_key)
-                result["has_ocr"] = True
-        except Exception:
-            logger.warning("OCR failed for %s", key, exc_info=True)
+                return {"ocr_url": storage.get_url(ocr_key), "has_ocr": True}
+            return {"has_ocr": False}
+
+        task_result = get_queue().enqueue(_ocr_and_save)
+
+        if task_result.status == "completed" and task_result.result:
+            # SyncQueue: task completed immediately
+            result.update(task_result.result)
+        else:
+            # ThreadPoolQueue/CeleryQueue: task running in background
+            result["ocr_task_id"] = task_result.task_id
+            result["ocr_status"] = task_result.status
 
     return result
 

@@ -3,13 +3,19 @@
 Provides an abstract interface for background job processing.
 Supports:
 - SyncQueue (default): Runs tasks synchronously (for development)
+- ThreadPoolQueue: In-process thread pool (for moderate concurrency)
 - CeleryQueue: Redis + Celery backend (for production)
 
-Configure via TASK_QUEUE_BACKEND environment variable.
+Configure via TASK_QUEUE_BACKEND environment variable:
+  sync   — SyncQueue (default)
+  thread — ThreadPoolQueue
+  celery — CeleryQueue
 """
 
 import logging
+import os
 from abc import ABC, abstractmethod
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 from uuid import uuid4
@@ -84,6 +90,48 @@ class SyncQueue(TaskQueue):
         return False
 
 
+class ThreadPoolQueue(TaskQueue):
+    """Thread-pool-based task queue for in-process background execution.
+
+    Runs tasks in a bounded thread pool. No external infrastructure needed.
+    Suitable for moderate concurrency in single-process deployments.
+    """
+
+    def __init__(self, max_workers: int = 4):
+        self._pool = ThreadPoolExecutor(max_workers=max_workers)
+        self._results: dict[str, TaskResult] = {}
+
+    def enqueue(self, func: Callable, *args, **kwargs) -> TaskResult:
+        task_id = str(uuid4())
+        result = TaskResult(task_id, status="pending")
+        self._results[task_id] = result
+
+        def _run():
+            result.status = "running"
+            try:
+                ret = func(*args, **kwargs)
+                result.status = "completed"
+                result.result = ret
+            except Exception as exc:
+                result.status = "failed"
+                result.error = str(exc)
+                logger.exception("Task %s failed: %s", task_id, func.__name__)
+
+        self._pool.submit(_run)
+        return result
+
+    def get_status(self, task_id: str) -> Optional[TaskResult]:
+        return self._results.get(task_id)
+
+    def cancel(self, task_id: str) -> bool:
+        # ThreadPoolExecutor doesn't support cancellation of running tasks
+        result = self._results.get(task_id)
+        if result and result.status == "pending":
+            result.status = "cancelled"
+            return True
+        return False
+
+
 class CeleryQueue(TaskQueue):
     """Celery-based task queue using Redis as broker.
 
@@ -129,8 +177,18 @@ class CeleryQueue(TaskQueue):
         return True
 
 
-# Default: synchronous queue
-_queue: TaskQueue = SyncQueue()
+# Configure queue based on TASK_QUEUE_BACKEND environment variable
+_backend = os.getenv("TASK_QUEUE_BACKEND", "sync").lower()
+
+if _backend == "thread":
+    _queue: TaskQueue = ThreadPoolQueue()
+    logger.info("Task queue: ThreadPoolQueue")
+elif _backend == "celery":
+    _queue = CeleryQueue()
+    logger.info("Task queue: CeleryQueue")
+else:
+    _queue = SyncQueue()
+    logger.info("Task queue: SyncQueue (synchronous)")
 
 
 def get_queue() -> TaskQueue:
