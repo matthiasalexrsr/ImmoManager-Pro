@@ -1,12 +1,15 @@
 """Document domain repository — documents, entity photos."""
 
 import logging
+
 from sqlalchemy.orm import Session
 
 from ..db.orm_models import DocumentORM, EntityPhotoORM
 from ..models import (
-    Document, DocumentCreate,
-    EntityPhoto, EntityPhotoCreate,
+    Document,
+    DocumentCreate,
+    EntityPhoto,
+    EntityPhotoCreate,
 )
 from ..storage import ValidationError
 from .base import BaseRepository
