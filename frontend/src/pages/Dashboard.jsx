@@ -72,14 +72,8 @@ export default function Dashboard() {
       });
 
     Promise.all([
-      safeFetch('/portfolios', []),
-      safeFetch('/properties', []),
-      safeFetch('/units', []),
-      safeFetch('/tenants', []),
-      safeFetch('/contracts', []),
-      safeFetch('/accounts', []),
+      safeFetch('/dashboard/stats', {}),
       safeFetch('/tasks?status=open&limit=5', []),
-      safeFetch('/maintenance?status=open&limit=5', []),
       safeFetch('/notifications?status=unread&limit=5', []),
       safeFetch('/reports/cashflow', null),
       safeFetch('/reports/receivables-aging', null),
@@ -89,34 +83,25 @@ export default function Dashboard() {
       safeFetch('/reports/contracts-expiring?days=90', null),
       safeFetch('/reports/finance', null),
     ]).then(([
-      portfolios, properties, units, tenants, contracts, accounts,
-      openTasks, maintenance, notifs,
+      dashStats,
+      openTasks, notifs,
       cf, ag, , mc, fc, exp, fin,
     ]) => {
-      const safePortfolios = asArray(portfolios);
-      const safeProperties = asArray(properties);
-      const safeUnits = asArray(units);
-      const safeTenants = asArray(tenants);
-      const safeContracts = asArray(contracts);
-      const safeAccounts = asArray(accounts);
-      const safeOpenTasks = asArray(openTasks);
-      const safeMaintenance = asArray(maintenance);
-      const safeNotifications = asArray(notifs);
-
+      const s = dashStats || {};
       setStats({
-        portfolios: safePortfolios.length,
-        properties: safeProperties.length,
-        units: safeUnits.length,
-        unitsOccupied: safeUnits.filter(u => u.status === 'occupied').length,
-        unitsReserved: safeUnits.filter(u => u.status === 'reserved').length,
-        tenants: safeTenants.length,
-        contracts: safeContracts.length,
-        contractsActive: safeContracts.filter(c => c.status === 'active').length,
-        accounts: safeAccounts.length,
-        openMaintenance: safeMaintenance.length,
+        portfolios: s.portfolio_count || 0,
+        properties: s.property_count || 0,
+        units: s.unit_count || 0,
+        unitsOccupied: s.occupied_units || 0,
+        unitsReserved: s.reserved_units || 0,
+        tenants: s.tenant_count || 0,
+        contracts: s.contract_count || 0,
+        contractsActive: s.active_contracts || 0,
+        accounts: s.account_count || 0,
+        openMaintenance: s.open_maintenance || 0,
       });
-      setTasks(safeOpenTasks);
-      setNotifications(safeNotifications);
+      setTasks(asArray(openTasks));
+      setNotifications(asArray(notifs));
       setCashflow(cf);
       setAging(ag);
       setMaintCosts(mc);

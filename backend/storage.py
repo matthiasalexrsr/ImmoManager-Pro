@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Dict, List
+from typing import Any, Dict, List
 from uuid import uuid4
 
 from pydantic import BaseModel as PydanticBaseModel
@@ -149,6 +149,27 @@ class InMemoryStore:
             attr = getattr(self, name)
             if isinstance(attr, dict):
                 attr.clear()
+
+    def count_entities(self, entity_type: str, filters: Dict[str, Any] | None = None) -> int:
+        """Count entities of a given type, optionally filtered."""
+        repo_map: Dict[str, Dict] = {
+            "portfolio": self.portfolios,
+            "property": self.properties,
+            "unit": self.units,
+            "tenant": self.tenants,
+            "contract": self.contracts,
+            "account": self.accounts,
+            "maintenance": self.maintenance_cases,
+        }
+        collection = repo_map.get(entity_type)
+        if collection is None:
+            raise ValueError(f"Unknown entity type: {entity_type}")
+        if not filters:
+            return len(collection)
+        return sum(
+            1 for item in collection.values()
+            if all(getattr(item, k, None) == v for k, v in filters.items())
+        )
 
     def list_portfolios(self) -> List[Portfolio]:
         return list(self.portfolios.values())

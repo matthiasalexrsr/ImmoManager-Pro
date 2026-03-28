@@ -19,6 +19,7 @@ from .routers import (
     categories,
     contacts,
     contracts,
+    dashboard,
     data_exchange,
     deposits,
     dev_notes,
@@ -47,6 +48,7 @@ from .routers import (
     reports,
     search,
     tasks,
+    tasks_status,
     tax_rates,
     tenants,
     units,
@@ -67,6 +69,7 @@ def build_api_v1() -> APIRouter:
     _admin_dep = [Depends(require_role("eigentuemer", "verwalter"))]
     api_v1.include_router(admin.router, dependencies=_admin_dep)
     api_v1.include_router(audit.router, dependencies=_auth_dep)
+    api_v1.include_router(dashboard.router, dependencies=_auth_dep)
     api_v1.include_router(search.router, dependencies=_auth_dep)
     api_v1.include_router(portfolios.router, dependencies=_auth_dep)
     api_v1.include_router(properties.router, dependencies=_auth_dep)
@@ -103,6 +106,7 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(insurances.router, dependencies=_auth_dep)
     api_v1.include_router(photos.router, dependencies=_auth_dep)
     api_v1.include_router(files.router, dependencies=_auth_dep)
+    api_v1.include_router(tasks_status.router, dependencies=_auth_dep)
     api_v1.include_router(updates.router, dependencies=_admin_dep)
     api_v1.include_router(data_exchange.router, dependencies=_admin_dep)
     api_v1.include_router(dev_notes.router, dependencies=_admin_dep)
