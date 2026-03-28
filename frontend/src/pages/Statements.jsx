@@ -133,6 +133,52 @@ function isMutable(status) {
   return status === 'draft' || status === 'review';
 }
 
+/** Determine the current workflow step (1-6) based on period state. */
+function getWorkflowStep(period, costCount, stmtCount) {
+  if (period.status === 'delivered') return 6;
+  if (period.status === 'finalized') return 5;
+  if (period.status === 'review') return 4;
+  // draft status
+  if (stmtCount > 0) return 3;
+  if (costCount > 0) return 3;
+  return 2;
+}
+
+const WORKFLOW_STEPS = [
+  { num: 1, key: 'create' },
+  { num: 2, key: 'costs' },
+  { num: 3, key: 'preflight' },
+  { num: 4, key: 'generate' },
+  { num: 5, key: 'finalize' },
+  { num: 6, key: 'deliver' },
+];
+
+function StepIndicator({ currentStep, t: tr }) {
+  const labels = {
+    create: tr('pages.statements.stepCreate') || 'Erstellen',
+    costs: tr('pages.statements.stepCosts') || 'Kosten',
+    preflight: tr('pages.statements.stepPreflight') || 'Prüfung',
+    generate: tr('pages.statements.stepGenerate') || 'Generieren',
+    finalize: tr('pages.statements.stepFinalize') || 'Finalisieren',
+    deliver: tr('pages.statements.stepDeliver') || 'Zustellen',
+  };
+  return (
+    <div className="step-indicator">
+      {WORKFLOW_STEPS.map((step, i) => {
+        let cls = 'step-indicator-item';
+        if (step.num < currentStep) cls += ' step-completed';
+        else if (step.num === currentStep) cls += ' step-active';
+        return (
+          <span key={step.num}>
+            {i > 0 && <span className="step-indicator-sep"> → </span>}
+            <span className={cls}>{step.num}. {labels[step.key]}</span>
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function Statements() {
   const { t } = useTranslation();
   const toast = useToast();
@@ -570,10 +616,15 @@ export default function Statements() {
     const totalCosts = periodCosts.reduce((s, c) => s + (c.amount || 0), 0);
     const editable = isMutable(selectedPeriod.status);
     const isFinalized = selectedPeriod.status === 'finalized';
+    const isDelivered = selectedPeriod.status === 'delivered';
     const revisionHistory = getRevisionHistory();
+    const workflowStep = getWorkflowStep(selectedPeriod, periodCosts.length, periodStmts.length);
 
     return (
       <div className="page">
+        {/* Workflow step indicator */}
+        <StepIndicator currentStep={workflowStep} t={t} />
+
         <div className="detail-header">
           <button className="btn btn-sm btn-secondary" onClick={() => setView('list')}>
             &larr; {t('pages.statements.back') || 'Zurück'}
@@ -587,16 +638,36 @@ export default function Statements() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
             <StatusBadge status={selectedPeriod.status} />
 
-            {/* Workflow buttons based on status */}
-            {selectedPeriod.status === 'draft' && (
+            {/* Primary workflow action based on current step */}
+            {workflowStep === 3 && selectedPeriod.status === 'draft' && (
               <button
-                className="btn btn-sm btn-secondary"
+                className="btn btn-sm btn-primary"
                 onClick={handleSubmitReview}
                 disabled={submittingReview}
               >
                 {submittingReview ? t('pages.statements.submitting') : t('pages.statements.submitReview')}
               </button>
             )}
+            {workflowStep === 4 && (
+              <button
+                className="btn btn-sm btn-primary"
+                onClick={handleFinalizePeriod}
+                disabled={finalizing || preflightLoading || preflight?.has_blockers}
+              >
+                {finalizing ? t('pages.statements.finalizing') : t('pages.statements.finalize')}
+              </button>
+            )}
+            {workflowStep === 5 && (
+              <button
+                className="btn btn-sm btn-primary"
+                onClick={handleMarkDelivered}
+                disabled={markingDelivered}
+              >
+                {markingDelivered ? t('pages.statements.markingDelivered') : t('pages.statements.markDelivered')}
+              </button>
+            )}
+
+            {/* Secondary actions */}
             {selectedPeriod.status === 'review' && (
               <button
                 className="btn btn-sm btn-secondary"
@@ -617,19 +688,22 @@ export default function Statements() {
               </button>
             )}
 
+            {isFinalized && (
+              <button
+                className="btn btn-sm btn-secondary"
+                onClick={handleCreateReceivables}
+                disabled={creatingReceivables}
+              >
+                {creatingReceivables ? t('pages.statements.creatingReceivables') : t('pages.statements.createReceivables')}
+              </button>
+            )}
+
             <button
               className="btn btn-sm btn-secondary"
               onClick={handleCreateRevision}
               disabled={creatingRevision}
             >
               {creatingRevision ? t('pages.statements.creating') : t('pages.statements.startCorrection')}
-            </button>
-            <button
-              className="btn btn-sm btn-secondary"
-              onClick={handleCreateReceivables}
-              disabled={creatingReceivables || !isFinalized}
-            >
-              {creatingReceivables ? t('pages.statements.creatingReceivables') : t('pages.statements.createReceivables')}
             </button>
             <button
               className="btn btn-sm btn-secondary"
@@ -647,14 +721,7 @@ export default function Statements() {
                 {exporting ? t('pages.statements.exporting') : t('pages.statements.zipExport')}
               </button>
             )}
-            <button
-              className="btn btn-sm btn-secondary"
-              onClick={handleMarkDelivered}
-              disabled={markingDelivered || !isFinalized}
-            >
-              {markingDelivered ? t('pages.statements.markingDelivered') : t('pages.statements.markDelivered')}
-            </button>
-            {(isFinalized || selectedPeriod.status === 'delivered') && (
+            {(isFinalized || isDelivered) && (
               <button
                 className="btn btn-sm btn-secondary"
                 onClick={handleDispute}
@@ -664,13 +731,6 @@ export default function Statements() {
                 {disputing ? t('pages.statements.submitting') : t('pages.statements.dispute')}
               </button>
             )}
-            <button
-              className="btn btn-sm btn-primary"
-              onClick={handleFinalizePeriod}
-              disabled={!editable || finalizing || preflightLoading || preflight?.has_blockers}
-            >
-              {finalizing ? t('pages.statements.finalizing') : (isFinalized ? t('pages.statements.finalized') : t('pages.statements.finalize'))}
-            </button>
           </div>
         </div>
 
