@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { api } from '../api';
-import { useEntities } from '../contexts/DataStoreContext';
-import CrudPage from './CrudPage';
+import { useEntities, useDataStore } from '../contexts/DataStoreContext';
+import DataTable from '../components/DataTable';
+import FormModal from '../components/FormModal';
 import FileViewer from '../components/FileViewer';
 import { PlusIcon } from '../components/Icons';
+import { useConfirm } from '../components/ConfirmDialog';
 import { useTranslation } from '../i18n';
 
 const BASE = (import.meta.env.VITE_API_URL || '/api/v1');
-
 
 function guessDocType(filename) {
   const lower = (filename || '').toLowerCase();
@@ -26,6 +27,22 @@ function guessDocType(filename) {
 
 export default function Documents() {
   const { t } = useTranslation();
+  const confirm = useConfirm();
+  const store = useDataStore();
+  const { items: properties } = useEntities('properties', '/properties');
+  const { items: units } = useEntities('units', '/units');
+  const { items: contracts } = useEntities('contracts', '/contracts');
+  const [documents, setDocuments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState(null);
+  const [viewerFile, setViewerFile] = useState(null);
+  const [uploadedUrl, setUploadedUrl] = useState('');
+  const [dragActive, setDragActive] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadQueue, setUploadQueue] = useState([]);
+  const [ocrResult, setOcrResult] = useState(null);
+  const [filter, setFilter] = useState('all');
+  const fileRef = useRef(null);
 
   const DOC_TYPES = useMemo(() => [
     { value: 'Mietvertrag', label: t('pages.documents.docTypes.mietvertrag') || 'Mietvertrag' },
@@ -44,12 +61,56 @@ export default function Documents() {
     { value: 'Sonstiges', label: t('pages.documents.docTypes.sonstiges') || 'Sonstiges' },
   ], [t]);
 
-  const COLUMNS = [
+  const refreshData = () => {
+    setLoading(true);
+    api.get('/documents').catch(() => [])
+      .then(data => setDocuments(Array.isArray(data) ? data : []))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    api.get('/documents').catch(() => [])
+      .then(data => { if (!cancelled) setDocuments(Array.isArray(data) ? data : []); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Lookup maps
+  const propMap = Object.fromEntries(properties.map(p => [p.id, p.name]));
+  const unitMap = Object.fromEntries(units.map(u => [u.id, u.label]));
+  const contractMap = Object.fromEntries(contracts.map(c => [c.id, c.contract_number]));
+
+  const enriched = documents.map(doc => ({
+    ...doc,
+    property_name: propMap[doc.property_id] || '—',
+    unit_label: unitMap[doc.unit_id] || '—',
+    contract_label: contractMap[doc.contract_id] || '—',
+    has_file: !!doc.file_url,
+  }));
+
+  const filtered = useMemo(() => {
+    if (filter === 'all') return enriched;
+    if (filter === 'no_assignment') return enriched.filter(d => !d.property_id && !d.unit_id && !d.contract_id);
+    if (filter === 'ocr_open') return enriched.filter(d => d.ocr_status === 'processing' || (!d.ocr_status && d.file_url));
+    return enriched;
+  }, [enriched, filter]);
+
+  // Summary stats
+  const withFile = enriched.filter(d => d.file_url).length;
+  const noAssignment = enriched.filter(d => !d.property_id && !d.unit_id && !d.contract_id).length;
+  const ocrCompleted = enriched.filter(d => d.ocr_status === 'completed').length;
+
+  const columns = [
     { key: 'title', label: t('pages.documents.columns.title') || 'Titel', filterType: 'text' },
     { key: 'document_type', label: t('pages.documents.columns.type') || 'Typ', filterType: 'select' },
+    { key: 'property_name', label: 'Immobilie', filterType: 'text' },
+    { key: 'unit_label', label: 'Einheit', filterType: 'text' },
+    { key: 'contract_label', label: 'Vertrag', filterType: 'text' },
     { key: 'document_date', label: t('pages.documents.columns.date') || 'Datum', type: 'date', filterType: 'dateRange' },
     { key: 'tags', label: t('pages.documents.columns.tags') || 'Tags', filterType: 'text' },
-    { key: 'file_url', label: t('pages.documents.columns.file') || 'Datei', render: v => v ? (t('pages.documents.columns.filePresent') || 'Vorhanden') : '—' },
+    { key: 'has_file', label: t('pages.documents.columns.file') || 'Datei',
+      render: v => v ? (t('pages.documents.columns.filePresent') || '✓ Vorhanden') : '—' },
     { key: 'ocr_status', label: t('pages.documents.columns.ocr') || 'OCR', render: v => {
       if (v === 'completed') return t('pages.documents.ocr.completed') || '✓ Erkannt';
       if (v === 'processing') return t('pages.documents.ocr.processing') || '⏳ Läuft...';
@@ -57,31 +118,6 @@ export default function Documents() {
       return '—';
     }},
   ];
-  const { items: properties } = useEntities('properties', '/properties');
-  const { items: units } = useEntities('units', '/units');
-  const { items: contracts } = useEntities('contracts', '/contracts');
-  const [viewerFile, setViewerFile] = useState(null);
-  const [uploadedUrl, setUploadedUrl] = useState('');
-  const [dragActive, setDragActive] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [uploadQueue, setUploadQueue] = useState([]);
-  const [ocrResult, setOcrResult] = useState(null);
-  const [stats, setStats] = useState(null);
-  const fileRef = useRef(null);
-
-  useEffect(() => {
-    api.get('/documents').catch(() => []).then(docs => {
-      const docArr = Array.isArray(docs) ? docs : [];
-      setStats({
-        total: docArr.length,
-        withFile: docArr.filter(d => d.file_url).length,
-        byType: DOC_TYPES.map(t => ({
-          label: t.label,
-          count: docArr.filter(d => d.document_type === t.value).length,
-        })).filter(x => x.count > 0),
-      });
-    });
-  }, [DOC_TYPES]);
 
   const uploadFile = useCallback(async (file) => {
     if (!file) return;
@@ -100,7 +136,6 @@ export default function Documents() {
       const data = await res.json();
       if (data.file_url) setUploadedUrl(data.file_url);
 
-      // Try OCR analysis for supported file types
       const ext = file.name.split('.').pop().toLowerCase();
       if (['pdf', 'png', 'jpg', 'jpeg', 'tiff', 'tif'].includes(ext) && data.file_url) {
         try {
@@ -156,30 +191,66 @@ export default function Documents() {
     { key: 'file_url', type: 'hidden', required: true, default: uploadedUrl },
   ];
 
+  const handleSave = async (data) => {
+    if (modal === 'create') {
+      await api.post('/documents', data);
+    } else {
+      await api.put(`/documents/${modal.id}`, data);
+    }
+    refreshData();
+    if (store) store.invalidateRelated('documents');
+  };
+
+  const handleDelete = async (row) => {
+    if (!await confirm(`"${row.title}" ${t('modals.confirmDelete.body')}`)) return;
+    await api.del(`/documents/${row.id}`);
+    refreshData();
+    if (store) store.invalidateRelated('documents');
+  };
+
+  if (loading) return <div className="page-loading">Lade Dokumente...</div>;
+
   return (
-    <div>
-      {/* Stats bar */}
-      {stats && (
-        <div style={{ padding: '1rem 1.5rem 0', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-          <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '120px', textAlign: 'center' }}>
-            <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{stats.total}</div>
-            <div className="text-muted" style={{ fontSize: '0.8rem' }}>{t('pages.documents.totalDocs') || 'Dokumente gesamt'}</div>
-          </div>
-          <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '120px', textAlign: 'center' }}>
-            <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{stats.withFile}</div>
-            <div className="text-muted" style={{ fontSize: '0.8rem' }}>{t('pages.documents.withFile') || 'Mit Datei'}</div>
-          </div>
-          {stats.byType.slice(0, 5).map(item => (
-            <div key={item.label} className="panel" style={{ padding: '0.75rem 1rem', minWidth: '100px', textAlign: 'center' }}>
-              <div style={{ fontSize: '1.25rem', fontWeight: 600 }}>{item.count}</div>
-              <div className="text-muted" style={{ fontSize: '0.75rem' }}>{item.label}</div>
-            </div>
-          ))}
+    <div className="page">
+      <h1 className="page-title">{t('pages.documents.title') || 'Dokumente'}</h1>
+
+      {/* Summary cards */}
+      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
+        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '120px', textAlign: 'center' }}>
+          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{enriched.length}</div>
+          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Gesamt</div>
         </div>
-      )}
+        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '120px', textAlign: 'center' }}>
+          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{withFile}</div>
+          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Mit Datei</div>
+        </div>
+        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '120px', textAlign: 'center' }}>
+          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{ocrCompleted}</div>
+          <div className="text-muted" style={{ fontSize: '0.8rem' }}>OCR erkannt</div>
+        </div>
+        {noAssignment > 0 && (
+          <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '120px', textAlign: 'center' }}>
+            <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--warning)' }}>{noAssignment}</div>
+            <div className="text-muted" style={{ fontSize: '0.8rem' }}>Ohne Zuordnung</div>
+          </div>
+        )}
+      </div>
+
+      {/* Filter tabs */}
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+        {[
+          { key: 'all', label: 'Alle' },
+          { key: 'no_assignment', label: 'Ohne Zuordnung' },
+          { key: 'ocr_open', label: 'OCR offen' },
+        ].map(f => (
+          <button key={f.key} className={`btn btn-sm ${filter === f.key ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setFilter(f.key)}>
+            {f.label}
+          </button>
+        ))}
+      </div>
 
       {/* Upload zone */}
-      <div className="photo-drop-zone-container" style={{ padding: '1rem 1.5rem 0' }}>
+      <div style={{ marginBottom: '1rem' }}>
         <div
           className={`photo-drop-zone ${dragActive ? 'drag-active' : ''}`}
           onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
@@ -210,7 +281,7 @@ export default function Documents() {
 
       {/* Upload queue */}
       {uploadQueue.length > 0 && (
-        <div style={{ padding: '0.5rem 1.5rem' }}>
+        <div style={{ marginBottom: '0.5rem' }}>
           {uploadQueue.map((q, i) => (
             <div key={i} className="text-muted" style={{ fontSize: '0.85rem' }}>
               {q.status === 'uploading' ? '⏳' : q.status === 'done' ? '✓' : '○'} {q.name}
@@ -221,7 +292,7 @@ export default function Documents() {
 
       {/* OCR result banner */}
       {ocrResult && (
-        <div style={{ padding: '0.5rem 1.5rem' }}>
+        <div style={{ marginBottom: '1rem' }}>
           <div className="panel" style={{ padding: '0.75rem 1rem', background: ocrResult.success ? 'var(--success-bg, #f0fdf4)' : 'var(--bg-secondary)' }}>
             <strong>{t('pages.documents.aiAnalysis') || 'KI-Analyse:'}</strong>{' '}
             {ocrResult.success ? (
@@ -241,13 +312,25 @@ export default function Documents() {
         </div>
       )}
 
-      <CrudPage
+      <DataTable
         title={t('pages.documents.title') || 'Dokumente'}
-        endpoint="/documents"
-        columns={COLUMNS}
-        formFields={fields}
+        columns={columns}
+        data={filtered}
+        onAdd={() => setModal('create')}
+        onEdit={row => setModal(row)}
+        onDelete={handleDelete}
         onRowClick={row => row.file_url && setViewerFile(row.file_url)}
       />
+
+      {modal && (
+        <FormModal
+          title={modal === 'create' ? 'Dokument erstellen' : 'Dokument bearbeiten'}
+          fields={fields}
+          initial={modal === 'create' ? null : modal}
+          onSave={handleSave}
+          onClose={() => setModal(null)}
+        />
+      )}
       {viewerFile && <FileViewer key={viewerFile} fileUrl={viewerFile} onClose={() => setViewerFile(null)} />}
     </div>
   );

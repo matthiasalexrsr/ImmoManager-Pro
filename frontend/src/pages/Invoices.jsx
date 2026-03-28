@@ -15,10 +15,17 @@ const STATUS_OPTIONS = [
   { value: 'cancelled', label: 'Storniert' },
 ];
 
+const CATEGORY_LABELS = {
+  instandhaltung: 'Instandhaltung', versicherung: 'Versicherung', verwaltung: 'Verwaltung',
+  steuer: 'Steuer & Abgaben', energie: 'Energie & Versorger', sonstiges: 'Sonstiges',
+};
+
 const COLUMNS = [
   { key: 'invoice_number', label: 'Rechnungs-Nr.', filterType: 'text' },
   { key: 'supplier', label: 'Lieferant', filterType: 'text' },
   { key: 'property_name', label: 'Immobilie', filterType: 'text' },
+  { key: 'category', label: 'Kategorie', filterType: 'select',
+    render: v => CATEGORY_LABELS[v] || v || '—' },
   { key: 'invoice_date', label: 'Rechnungsdatum', type: 'date', filterType: 'dateRange' },
   { key: 'due_date', label: 'Fällig am', type: 'date', filterType: 'dateRange',
     render: (v, row) => {
@@ -34,6 +41,7 @@ const COLUMNS = [
     render: (_, row) => row.vat_rate != null ? `${Number(row.vat_rate).toFixed(1)}% (${Number(row.vat_amount || 0).toFixed(2)} €)` : '—' },
   { key: 'gross_amount', label: 'Brutto (€)', type: 'number', align: 'right', filterType: 'numberRange',
     render: v => v != null ? <strong>{Number(v).toFixed(2)} €</strong> : '—' },
+  { key: 'payment_reference', label: 'Zahlungsreferenz' },
   { key: 'status', label: 'Status', type: 'status', filterType: 'select',
     render: v => <StatusBadge status={v} /> },
 ];
@@ -203,16 +211,24 @@ export default function Invoices() {
 
       <DataTable
         title="Rechnungen"
-        columns={COLUMNS}
+        columns={[...COLUMNS, {
+          key: '_actions', label: '', sortable: false,
+          render: (_, row) => (row.status === 'open' || row.status === 'overdue') ? (
+            <button
+              className="btn btn-sm btn-secondary"
+              onClick={async (e) => {
+                e.stopPropagation();
+                if (await confirm(`"${row.supplier}" ${t('pages.invoices.markPaidConfirm') || 'als bezahlt markieren?'}`)) markPaid(row);
+              }}
+            >
+              ✓ Bezahlt
+            </button>
+          ) : null,
+        }]}
         data={filtered}
         onAdd={() => setModal('create')}
         onEdit={row => setModal(row)}
         onDelete={handleDelete}
-        onRowClick={async (row) => {
-          if (row.status === 'open' || row.status === 'overdue') {
-            if (await confirm(`"${row.supplier}" ${t('pages.invoices.markPaidConfirm') || 'als bezahlt markieren?'}`)) markPaid(row);
-          }
-        }}
       />
 
       {modal && (
