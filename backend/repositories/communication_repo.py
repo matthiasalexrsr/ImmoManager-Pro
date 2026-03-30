@@ -6,17 +6,29 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from ..db.orm_models import (
-    CalendarEventORM, ContactORM, MessageORM, MessageThreadORM,
-    NotificationORM, NotificationTemplateORM, TaskORM,
+    CalendarEventORM,
+    ContactORM,
+    MessageORM,
+    MessageThreadORM,
+    NotificationORM,
+    NotificationTemplateORM,
+    TaskORM,
 )
 from ..models import (
-    CalendarEvent, CalendarEventCreate,
-    Contact, ContactCreate,
-    Message, MessageCreate,
-    MessageThread, MessageThreadCreate,
-    Notification, NotificationCreate,
-    NotificationTemplate, NotificationTemplateCreate,
-    Task, TaskCreate,
+    CalendarEvent,
+    CalendarEventCreate,
+    Contact,
+    ContactCreate,
+    Message,
+    MessageCreate,
+    MessageThread,
+    MessageThreadCreate,
+    Notification,
+    NotificationCreate,
+    NotificationTemplate,
+    NotificationTemplateCreate,
+    Task,
+    TaskCreate,
 )
 from ..storage import NotFoundError, ValidationError
 from .base import BaseRepository

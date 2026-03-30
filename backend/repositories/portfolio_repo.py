@@ -1,19 +1,29 @@
 """Portfolio domain repository — portfolios, properties, units, accounts, categories."""
 
 import logging
+
 from sqlalchemy.orm import Session
 
 from ..db.orm_models import (
-    AccountORM, CategoryORM, PortfolioORM, PropertyORM, UnitORM,
+    AccountORM,
+    CategoryORM,
+    PortfolioORM,
+    PropertyORM,
+    UnitORM,
 )
 from ..models import (
-    Account, AccountCreate,
-    Category, CategoryCreate,
-    Portfolio, PortfolioCreate,
-    Property, PropertyCreate,
-    Unit, UnitCreate,
+    Account,
+    AccountCreate,
+    Category,
+    CategoryCreate,
+    Portfolio,
+    PortfolioCreate,
+    Property,
+    PropertyCreate,
+    Unit,
+    UnitCreate,
 )
-from ..storage import NotFoundError, ValidationError
+from ..storage import ValidationError
 from .base import BaseRepository
 
 logger = logging.getLogger(__name__)

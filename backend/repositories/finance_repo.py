@@ -1,24 +1,42 @@
 """Finance domain repository — bookings, invoices, receivables, tax, budgets, meters."""
 
 import logging
+
 from sqlalchemy.orm import Session
 
 from ..db.orm_models import (
-    BookingORM, BudgetORM, EscalationRuleORM, InsuranceORM, InvoiceORM,
-    MeterORM, ReceivableORM, RentChargeORM,
-    StandaloneMeterReadingORM, TaxRateORM,
+    BookingORM,
+    BudgetORM,
+    EscalationRuleORM,
+    InsuranceORM,
+    InvoiceORM,
+    MeterORM,
+    ReceivableORM,
+    RentChargeORM,
+    StandaloneMeterReadingORM,
+    TaxRateORM,
 )
 from ..models import (
-    Booking, BookingCreate,
-    Budget, BudgetCreate,
-    EscalationRule, EscalationRuleCreate,
-    Insurance, InsuranceCreate,
-    Invoice, InvoiceCreate,
-    Meter, MeterCreate,
-    Receivable, ReceivableCreate,
-    RentCharge, RentChargeCreate,
-    StandaloneMeterReading, StandaloneMeterReadingCreate,
-    TaxRate, TaxRateCreate,
+    Booking,
+    BookingCreate,
+    Budget,
+    BudgetCreate,
+    EscalationRule,
+    EscalationRuleCreate,
+    Insurance,
+    InsuranceCreate,
+    Invoice,
+    InvoiceCreate,
+    Meter,
+    MeterCreate,
+    Receivable,
+    ReceivableCreate,
+    RentCharge,
+    RentChargeCreate,
+    StandaloneMeterReading,
+    StandaloneMeterReadingCreate,
+    TaxRate,
+    TaxRateCreate,
 )
 from ..storage import ValidationError
 from .base import BaseRepository

@@ -1,16 +1,24 @@
 """Billing domain repository — billing periods, allocation keys, cost items, utility statements."""
 
 import logging
+
 from sqlalchemy.orm import Session
 
 from ..db.orm_models import (
-    AllocationKeyORM, BillingPeriodORM, CostItemORM, UtilityStatementORM,
+    AllocationKeyORM,
+    BillingPeriodORM,
+    CostItemORM,
+    UtilityStatementORM,
 )
 from ..models import (
-    AllocationKey, AllocationKeyCreate,
-    BillingPeriod, BillingPeriodCreate,
-    CostItem, CostItemCreate,
-    UtilityStatement, UtilityStatementCreate,
+    AllocationKey,
+    AllocationKeyCreate,
+    BillingPeriod,
+    BillingPeriodCreate,
+    CostItem,
+    CostItemCreate,
+    UtilityStatement,
+    UtilityStatementCreate,
 )
 from ..storage import ValidationError
 from .base import BaseRepository

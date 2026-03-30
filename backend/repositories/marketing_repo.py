@@ -1,12 +1,15 @@
 """Marketing domain repository — listings, listing photos."""
 
 import logging
+
 from sqlalchemy.orm import Session
 
 from ..db.orm_models import ListingORM, ListingPhotoORM
 from ..models import (
-    Listing, ListingCreate,
-    ListingPhoto, ListingPhotoCreate,
+    Listing,
+    ListingCreate,
+    ListingPhoto,
+    ListingPhotoCreate,
 )
 from ..storage import ValidationError
 from .base import BaseRepository
