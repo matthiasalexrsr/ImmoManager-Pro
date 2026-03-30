@@ -142,6 +142,11 @@ class CommunicationRepository:
         self._commit()
         return self._notifications._to_pydantic(orm_obj)
 
+    def update_notification(self, notification_id: str, data: NotificationCreate) -> Notification:
+        result = self._notifications.update(notification_id, data)
+        self._commit()
+        return result
+
     def delete_notification(self, notification_id: str) -> None:
         self._notifications.delete(notification_id)
         self._commit()
