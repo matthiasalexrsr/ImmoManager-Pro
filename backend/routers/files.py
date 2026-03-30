@@ -52,7 +52,7 @@ def _normalize_storage_key(value: str) -> str:
     if normalized in {"", ".", "/"}:
         return ""
     normalized = normalized.lstrip("/")
-    if normalized.startswith("../") or normalized == "..":
+    if ".." in normalized.split("/"):
         return ""
     return normalized
 

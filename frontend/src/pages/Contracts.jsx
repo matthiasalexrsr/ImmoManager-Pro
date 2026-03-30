@@ -87,7 +87,7 @@ export default function Contracts() {
     { key: 'start_date', label: t('tenantsContracts.contracts.form.startDate') || 'Beginn', type: 'date', filterType: 'dateRange' },
     { key: 'end_date', label: t('tenantsContracts.contracts.form.endDate') || 'Ende', type: 'date', filterType: 'dateRange' },
     { key: 'remaining_days', label: 'Restlaufzeit', type: 'number', align: 'right',
-      render: (v, row) => {
+      render: (v) => {
         if (v == null) return <span className="text-muted">unbefristet</span>;
         if (v < 0) return <span style={{ color: 'var(--danger)', fontWeight: 600 }}>abgelaufen</span>;
         const color = v <= 30 ? 'var(--danger)' : v <= 90 ? 'var(--warning)' : 'inherit';

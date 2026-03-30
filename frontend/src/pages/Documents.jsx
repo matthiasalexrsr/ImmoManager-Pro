@@ -15,7 +15,8 @@ function guessDocType(filename) {
   if (/mietvertrag|lease|vertrag/.test(lower)) return 'Mietvertrag';
   if (/rechnung|invoice|faktura/.test(lower)) return 'Rechnung';
   if (/nebenkosten|betriebskosten/.test(lower)) return 'Nebenkostenabrechnung';
-  if (/protokoll|übergabe/.test(lower)) return 'Protokoll';
+  if (/übergabe/.test(lower)) return 'Übergabeprotokoll';
+  if (/protokoll/.test(lower)) return 'Protokoll';
   if (/versicherung|police/.test(lower)) return 'Versicherung';
   if (/grundbuch/.test(lower)) return 'Grundbuchauszug';
   if (/energie/.test(lower)) return 'Energieausweis';
