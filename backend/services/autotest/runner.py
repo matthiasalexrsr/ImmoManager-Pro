@@ -10,7 +10,7 @@ import time
 import traceback
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Callable
+from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -75,9 +75,9 @@ def test_module(name: str, description: str = ""):
 @dataclass
 class TestContext:
     """Shared context passed to every test module."""
-    app: object  # FastAPI app
-    client: object  # httpx.AsyncClient or TestClient
-    store: object  # data store
+    app: Any  # FastAPI app
+    client: Any  # httpx.AsyncClient or TestClient
+    store: Any  # data store
     token: str = ""  # admin auth token
     base_url: str = "/api/v1"
 
