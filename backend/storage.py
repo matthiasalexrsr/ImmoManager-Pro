@@ -1104,6 +1104,17 @@ class InMemoryStore:
         self.notifications[notification_id] = updated
         return updated
 
+    def update_notification(self, notification_id: str, data: NotificationCreate) -> Notification:
+        if notification_id not in self.notifications:
+            raise NotFoundError("Benachrichtigung nicht gefunden")
+        old = self.notifications[notification_id]
+        notification = Notification(
+            id=notification_id, created_at=old.created_at,
+            updated_at=datetime.now(timezone.utc), **data.model_dump(),
+        )
+        self.notifications[notification_id] = notification
+        return notification
+
     def delete_notification(self, notification_id: str) -> None:
         if notification_id not in self.notifications:
             raise NotFoundError("Benachrichtigung nicht gefunden")

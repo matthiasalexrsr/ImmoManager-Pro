@@ -89,7 +89,7 @@ def upload_report_to_github():
     - update_repo_url to be configured
     - update_github_token to be set (needs repo write access)
     """
-    if _last_report_md is None:
+    if _last_report_md is None or _last_report is None:
         raise HTTPException(
             status_code=400,
             detail="Kein Bericht vorhanden. Bitte zuerst /autotest/run ausführen.",

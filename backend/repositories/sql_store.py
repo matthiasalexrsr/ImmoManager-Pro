@@ -604,6 +604,9 @@ class SQLAlchemyStore:
     def mark_notification_read(self, notification_id: str) -> Notification:
         return self.communication.mark_notification_read(notification_id)
 
+    def update_notification(self, notification_id: str, data: NotificationCreate) -> Notification:
+        return self.communication.update_notification(notification_id, data)
+
     def delete_notification(self, notification_id: str) -> None:
         self.communication.delete_notification(notification_id)
 
