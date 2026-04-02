@@ -189,6 +189,8 @@ def get_my_preferences(user: UserRead = Depends(require_auth)) -> dict:
             return _prefs_to_dict(prefs)
     except (ImportError, OSError, RuntimeError):
         logging.getLogger(__name__).warning("Failed to load user preferences, using defaults")
+    except Exception as exc:
+        logging.getLogger(__name__).warning("Failed to load user preferences: %s", exc)
     finally:
         session.close()
     return _DEFAULT_PREFERENCES.copy()
@@ -222,6 +224,10 @@ def update_my_preferences(payload: dict, user: UserRead = Depends(require_auth))
     except (ImportError, OSError, RuntimeError):
         session.rollback()
         logging.getLogger(__name__).warning("Failed to persist user preferences update")
+        return {**_DEFAULT_PREFERENCES, **clean}
+    except Exception as exc:
+        session.rollback()
+        logging.getLogger(__name__).warning("Failed to persist user preferences update: %s", exc)
         return {**_DEFAULT_PREFERENCES, **clean}
     finally:
         session.close()

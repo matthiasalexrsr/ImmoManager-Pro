@@ -186,7 +186,10 @@ if _backend == "thread":
 elif _backend == "celery":
     _queue = CeleryQueue()
     if _queue._app is None:
-        logger.warning("Task queue: CeleryQueue configured but celery not installed — falling back to sync")
+        logger.warning(
+            "TASK_QUEUE_BACKEND=celery but Celery is not installed. "
+            "All tasks will execute synchronously as a fallback."
+        )
     else:
         logger.info("Task queue: CeleryQueue")
 else:
