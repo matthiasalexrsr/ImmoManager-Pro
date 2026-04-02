@@ -1,6 +1,7 @@
 """Maintenance domain repository."""
 
 import logging
+
 from sqlalchemy.orm import Session
 
 from ..db.orm_models import MaintenanceCaseORM

@@ -107,7 +107,7 @@ def _build_charge_and_payments(contract: Contract) -> tuple[ChargeConfig, list[P
     """Derive ChargeConfig from the unit and collect tenant payment bookings."""
     try:
         unit = store.get_unit(contract.unit_id)
-    except Exception:
+    except NotFoundError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Einheit zum Vertrag nicht gefunden",

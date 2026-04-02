@@ -71,13 +71,13 @@ export default function Dashboard() {
         return fallback;
       });
 
+    let cancelled = false;
     Promise.all([
       safeFetch('/dashboard/stats', {}),
       safeFetch('/tasks?status=open&limit=5', []),
       safeFetch('/notifications?status=unread&limit=5', []),
       safeFetch('/reports/cashflow', null),
       safeFetch('/reports/receivables-aging', null),
-      safeFetch('/reports/occupancy', null),
       safeFetch('/reports/maintenance-costs', null),
       safeFetch('/reports/liquidity-forecast?months=6', null),
       safeFetch('/reports/contracts-expiring?days=90', null),
@@ -85,8 +85,9 @@ export default function Dashboard() {
     ]).then(([
       dashStats,
       openTasks, notifs,
-      cf, ag, , mc, fc, exp, fin,
+      cf, ag, mc, fc, exp, fin,
     ]) => {
+      if (cancelled) return;
       const s = dashStats || {};
       setStats({
         portfolios: s.portfolio_count || 0,
@@ -108,7 +109,8 @@ export default function Dashboard() {
       setForecast(fc);
       setExpiring(exp);
       setFinanceReport(fin);
-    }).finally(() => setLoading(false));
+    }).finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   if (loading) return <div className="page-loading">{t('pages.loading')}</div>;
@@ -121,7 +123,7 @@ export default function Dashboard() {
   const occupancyData = stats.units > 0 ? [
     { name: t('pages.dashboard.occupied'), value: stats.unitsOccupied },
     { name: t('pages.dashboard.reserved'), value: stats.unitsReserved || 0 },
-    { name: t('pages.dashboard.vacant'), value: stats.units - stats.unitsOccupied - (stats.unitsReserved || 0) },
+    { name: t('pages.dashboard.vacant'), value: Math.max(0, stats.units - stats.unitsOccupied - (stats.unitsReserved || 0)) },
   ].filter(d => d.value > 0) : [];
 
   // Cashflow bar data

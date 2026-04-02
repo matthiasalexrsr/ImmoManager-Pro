@@ -185,7 +185,13 @@ if _backend == "thread":
     logger.info("Task queue: ThreadPoolQueue")
 elif _backend == "celery":
     _queue = CeleryQueue()
-    logger.info("Task queue: CeleryQueue")
+    if _queue._app is None:
+        logger.warning(
+            "TASK_QUEUE_BACKEND=celery but Celery is not installed. "
+            "All tasks will execute synchronously as a fallback."
+        )
+    else:
+        logger.info("Task queue: CeleryQueue")
 else:
     _queue = SyncQueue()
     logger.info("Task queue: SyncQueue (synchronous)")

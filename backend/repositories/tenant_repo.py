@@ -1,21 +1,36 @@
 """Tenant domain repository — tenants, contracts, viewings, handover protocols, leads."""
 
 import logging
+
 from sqlalchemy.orm import Session
 
 from ..db.orm_models import (
-    ContractORM, DepositORM, HandoverProtocolORM, LeadORM,
-    MeterReadingORM, RentAdjustmentORM, TenantORM, ViewingAppointmentORM,
+    ContractORM,
+    DepositORM,
+    HandoverProtocolORM,
+    LeadORM,
+    MeterReadingORM,
+    RentAdjustmentORM,
+    TenantORM,
+    ViewingAppointmentORM,
 )
 from ..models import (
-    Contract, ContractCreate,
-    Deposit, DepositCreate,
-    HandoverProtocol, HandoverProtocolCreate,
-    Lead, LeadCreate,
-    MeterReading, MeterReadingCreate,
-    RentAdjustment, RentAdjustmentCreate,
-    Tenant, TenantCreate,
-    ViewingAppointment, ViewingAppointmentCreate,
+    Contract,
+    ContractCreate,
+    Deposit,
+    DepositCreate,
+    HandoverProtocol,
+    HandoverProtocolCreate,
+    Lead,
+    LeadCreate,
+    MeterReading,
+    MeterReadingCreate,
+    RentAdjustment,
+    RentAdjustmentCreate,
+    Tenant,
+    TenantCreate,
+    ViewingAppointment,
+    ViewingAppointmentCreate,
 )
 from ..storage import NotFoundError, ValidationError
 from .base import BaseRepository

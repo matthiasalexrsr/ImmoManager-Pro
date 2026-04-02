@@ -12,6 +12,7 @@ psycopg2-binary>=2.9.0
 
 # Authentication
 python-jose[cryptography]==3.5.0
+cryptography>=44.0.0
 cffi==2.0.0
 
 # Mietvertrag-Wizard
