@@ -35,9 +35,9 @@ class EmailIntegrationProvider:
             return IntegrationActionResult(success=False, message="Empfänger fehlt")
 
         sent = send_email(
-            to_email=recipient,
+            to=recipient,
             subject=payload.get("subject", "ImmoManager Pro Test"),
-            html_body=payload.get("body", "Dies ist eine Testnachricht."),
+            body_html=payload.get("body", "Dies ist eine Testnachricht."),
         )
         return IntegrationActionResult(
             success=bool(sent),
