@@ -18,18 +18,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Materialize frontend package-lock.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.0
+
+      - name: Generate frontend package-lock.json
         run: |
-          cat \
-            .codex/package-lock-fix/part00 \
-            .codex/package-lock-fix/part01 \
-            .codex/package-lock-fix/part02 \
-            .codex/package-lock-fix/part03 \
-            .codex/package-lock.json.gz.b64.part2 \
-            .codex/package-lock.json.gz.b64.part3 \
-            > /tmp/package-lock.json.gz.b64
-          base64 -d /tmp/package-lock.json.gz.b64 | gzip -d > frontend/package-lock.json
-          test "$(sha256sum frontend/package-lock.json | awk '{print $1}')" = "a5a32359ac3e0cd312286f8410401fd207e1d2a30f83ec4e85b4f8eaee61570b"
+          cd frontend
+          npm install --package-lock-only --ignore-scripts
 
       - name: Commit materialized lockfile
         run: |
