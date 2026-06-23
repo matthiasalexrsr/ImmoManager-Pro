@@ -1,0 +1,42 @@
+name: Codex Audit Fix package-lock
+
+on:
+  push:
+    branches:
+      - codex/production-ready-v1
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  audit-fix-lockfile:
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.0
+
+      - name: Audit-fix frontend package-lock.json
+        run: |
+          cd frontend
+          npm audit fix --package-lock-only
+          npm ci
+          npm audit --audit-level=low
+
+      - name: Commit audit-fixed lockfile
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/package-lock.json
+          if git diff --cached --quiet; then
+            echo "No lockfile changes"
+          else
+            git commit -m "Materialize audit-fixed frontend package lock"
+            git push
+          fi
