@@ -210,6 +210,8 @@ if __name__ == "__main__":
     finally:
         if _log_fh:
             try:
+                sys.stdout = sys.__stdout__
+                sys.stderr = sys.__stderr__
                 _log_fh.close()
             except OSError:
                 pass

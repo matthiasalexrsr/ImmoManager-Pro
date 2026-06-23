@@ -1,0 +1,33 @@
+name: Codex materialize package lock
+
+on:
+  push:
+    branches:
+      - codex/production-ready-v1
+
+permissions:
+  contents: write
+
+jobs:
+  materialize-package-lock:
+    runs-on: ubuntu-latest
+    if: ${{ github.ref == 'refs/heads/codex/production-ready-v1' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Materialize package-lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f .codex/package-lock.json.gz.b64.part0
+          cat .codex/package-lock.json.gz.b64.part* | base64 -d | gzip -d > frontend/package-lock.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/package-lock.json
+          if git diff --cached --quiet; then
+            echo "package-lock already materialized"
+          else
+            git commit -m "chore: materialize frontend package lock"
+            git push
+          fi
