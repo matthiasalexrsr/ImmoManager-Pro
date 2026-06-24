@@ -7,6 +7,8 @@ import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 
+const money = value => value != null ? `${Number(value).toFixed(2)} EUR` : '-';
+
 export default function RentCharges() {
   const { t } = useTranslation();
   const confirm = useConfirm();
@@ -37,33 +39,52 @@ export default function RentCharges() {
 
   const contractMap = Object.fromEntries(contracts.map(c => [c.id, c]));
 
-  const enriched = charges.map(c => ({
-    ...c,
-    contract_label: contractMap[c.contract_id]?.contract_number || '—',
-  }));
+  const enriched = charges.map(c => {
+    const totalDue = (
+      Number(c.cold_rent || 0) +
+      Number(c.service_charge || 0) +
+      Number(c.heating_charge || 0) +
+      Number(c.other_charges || 0)
+    );
+    const paid = Number(c.amount_paid || 0);
+    return {
+      ...c,
+      contract_label: contractMap[c.contract_id]?.contract_number || '-',
+      total_due: totalDue,
+      remaining: Math.max(0, totalDue - paid),
+    };
+  });
 
   const COLUMNS = [
     { key: 'contract_label', label: t('tenantsContracts.contracts.title'), filterType: 'text' },
     { key: 'month', label: 'Monat', filterType: 'text' },
-    { key: 'amount', label: t('finance.bookings.amount'), type: 'number', align: 'right',
-      render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
+    { key: 'cold_rent', label: 'Kaltmiete', type: 'number', align: 'right', render: money },
+    { key: 'service_charge', label: 'Betriebskosten', type: 'number', align: 'right', render: money },
+    { key: 'heating_charge', label: 'Heizkosten', type: 'number', align: 'right', render: money },
+    { key: 'other_charges', label: 'Sonstige', type: 'number', align: 'right', render: money },
+    { key: 'total_due', label: 'Soll gesamt', type: 'number', align: 'right', render: v => <strong>{money(v)}</strong> },
+    { key: 'amount_paid', label: 'Bezahlt', type: 'number', align: 'right', render: money },
+    { key: 'remaining', label: 'Offen', type: 'number', align: 'right', render: money },
     { key: 'status', label: 'Status', type: 'status', filterType: 'select',
       render: v => <StatusBadge status={v} /> },
-    { key: 'due_date', label: t('finance.receivables.dueDate'), type: 'date' },
   ];
 
+  const numberDefaults = { type: 'number', required: true, default: 0 };
   const fields = [
     { key: 'contract_id', label: t('tenantsContracts.contracts.title'), required: true, type: 'select',
       options: contracts.map(c => ({ value: c.id, label: c.contract_number })) },
-    { key: 'month', label: 'Monat (YYYY-MM)', required: true },
-    { key: 'amount', label: t('finance.bookings.amount') + ' (€)', type: 'number', required: true },
+    { key: 'month', label: 'Monat (YYYY-MM)', required: true, placeholder: '2026-06' },
+    { key: 'cold_rent', label: 'Kaltmiete (EUR)', ...numberDefaults },
+    { key: 'service_charge', label: 'Betriebskosten (EUR)', ...numberDefaults },
+    { key: 'heating_charge', label: 'Heizkosten (EUR)', ...numberDefaults },
+    { key: 'other_charges', label: 'Sonstige Kosten (EUR)', ...numberDefaults },
+    { key: 'amount_paid', label: 'Bereits bezahlt (EUR)', ...numberDefaults },
     { key: 'status', label: 'Status', type: 'select', default: 'open', options: [
       { value: 'open', label: t('status.payment.open') },
+      { value: 'partial', label: t('status.payment.partial') || 'Teilweise bezahlt' },
       { value: 'paid', label: t('status.payment.paid') },
       { value: 'overdue', label: t('status.payment.overdue') },
     ]},
-    { key: 'due_date', label: t('finance.receivables.dueDate'), type: 'date' },
-    { key: 'description', label: t('ui.form.description'), type: 'textarea' },
   ];
 
   const handleSave = async (data) => {
@@ -96,7 +117,7 @@ export default function RentCharges() {
       {deleteError && (
         <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
           {deleteError}
-          <button onClick={() => setDeleteError(null)} style={{ marginLeft: '1rem', cursor: 'pointer' }}>✕</button>
+          <button onClick={() => setDeleteError(null)} style={{ marginLeft: '1rem', cursor: 'pointer' }}>x</button>
         </div>
       )}
       <DataTable
