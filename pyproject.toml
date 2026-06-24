@@ -76,4 +76,3 @@ follow_imports = "silent"
 [[tool.mypy.overrides]]
 module = "backend.domain.*"
 disallow_untyped_defs = true
-
