@@ -31,14 +31,14 @@ for _ in {1..60}; do
 done
 
 curl -fsS http://localhost:8000/health | tee /tmp/health.json
-curl -fsSI http://localhost:8000/mietvertrag/ >/tmp/wizard_headers.txt
+curl -fsS -o /tmp/wizard.html -w '%{http_code}' http://localhost:8000/mietvertrag/ >/tmp/wizard_status.txt
 curl -fsS http://localhost:8000/ >/tmp/spa_root.html
 curl -fsS http://localhost:8000/contract-wizard >/tmp/spa_contract_wizard.html
 curl -fsS http://localhost:9090/-/ready >/dev/null
 curl -fsS http://localhost:3001/api/health >/dev/null
 
 grep -q '"status":"ok"' /tmp/health.json
-grep -qi '200 OK' /tmp/wizard_headers.txt
+grep -q '^200$' /tmp/wizard_status.txt
 grep -q '<div id="root"' /tmp/spa_root.html
 grep -q '<div id="root"' /tmp/spa_contract_wizard.html
 
