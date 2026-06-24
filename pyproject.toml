@@ -73,17 +73,7 @@ disallow_untyped_defs = false
 check_untyped_defs = true
 ignore_missing_imports = true
 follow_imports = "silent"
-disable_error_code = [
-    "arg-type",
-    "assignment",
-    "attr-defined",
-    "call-arg",
-    "misc",
-    "operator",
-    "return-value",
-    "var-annotated",
-]
-
 [[tool.mypy.overrides]]
 module = "backend.domain.*"
 disallow_untyped_defs = true
+
