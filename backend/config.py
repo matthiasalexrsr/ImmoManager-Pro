@@ -5,9 +5,12 @@ All environment variables are consolidated here. Import `settings` to use them.
 
 import enum
 import importlib.metadata
+import json
 from pathlib import Path
+from typing import Annotated
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 def _get_version() -> str:
@@ -30,6 +33,28 @@ class Environment(str, enum.Enum):
     development = "development"
     staging = "staging"
     production = "production"
+
+
+def _parse_string_list(value: object) -> list[str]:
+    """Accept JSON arrays and comma-separated strings for list settings."""
+    if value is None:
+        return []
+    if isinstance(value, list | tuple | set):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if not isinstance(value, str):
+        return [str(value).strip()]
+
+    raw = value.strip()
+    if not raw:
+        return []
+
+    if raw.startswith("["):
+        parsed = json.loads(raw)
+        if not isinstance(parsed, list):
+            raise ValueError("expected a JSON array")
+        return [str(item).strip() for item in parsed if str(item).strip()]
+
+    return [item.strip() for item in raw.split(",") if item.strip()]
 
 
 class Settings(BaseSettings):
@@ -61,12 +86,12 @@ class Settings(BaseSettings):
 
     # --- CORS ---
     # In production, explicit origins are required (no wildcards).
-    cors_origins: list[str] = [
+    cors_origins: Annotated[list[str], NoDecode] = [
         "http://localhost:3000",
         "http://localhost:5173",
     ]
-    cors_methods: list[str] = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
-    cors_headers: list[str] = [
+    cors_methods: Annotated[list[str], NoDecode] = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+    cors_headers: Annotated[list[str], NoDecode] = [
         "Authorization",
         "Content-Type",
         "Accept",
@@ -83,7 +108,7 @@ class Settings(BaseSettings):
     default_locale: str = "de-DE"
 
     # --- Plugins ---
-    plugin_dirs: list[str] = []
+    plugin_dirs: Annotated[list[str], NoDecode] = []
 
     # --- Auto-migration ---
     auto_migrate: bool = False
@@ -134,6 +159,11 @@ class Settings(BaseSettings):
 
     # --- Contract wizard runtime behavior ---
     contract_wizard_required: bool = False
+
+    @field_validator("cors_origins", "cors_methods", "cors_headers", "plugin_dirs", mode="before")
+    @classmethod
+    def parse_string_list_settings(cls, value: object) -> list[str]:
+        return _parse_string_list(value)
 
     @property
     def is_production(self) -> bool:
