@@ -7,6 +7,11 @@ COMPOSE_FILES=(
 )
 
 cleanup() {
+  status=$?
+  if [ "$status" -ne 0 ]; then
+    docker compose "${COMPOSE_FILES[@]}" ps || true
+    docker compose "${COMPOSE_FILES[@]}" logs --no-color app || true
+  fi
   docker compose "${COMPOSE_FILES[@]}" down -v --remove-orphans || true
 }
 trap cleanup EXIT
