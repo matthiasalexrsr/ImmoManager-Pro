@@ -11,7 +11,6 @@ import Login from './pages/Login';
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Portfolios = lazy(() => import('./pages/Portfolios'));
 const Properties = lazy(() => import('./pages/Properties'));
-const PropertyOverview = lazy(() => import('./pages/PropertyOverview'));
 const Units = lazy(() => import('./pages/Units'));
 const UnitOverview = lazy(() => import('./pages/UnitOverview'));
 const Tenants = lazy(() => import('./pages/Tenants'));

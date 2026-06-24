@@ -39,6 +39,7 @@ const NAV_SECTIONS = [
     items: [
       { to: '/tenants', labelKey: 'tenantsContracts.tenants.title', fallback: 'Mieter', icon: TenantIcon },
       { to: '/contracts', labelKey: 'tenantsContracts.contracts.title', fallback: 'Verträge', icon: ContractIcon },
+      { to: '/contract-wizard', labelKey: 'navigation.main.contractWizard', fallback: 'Mietvertrag-Wizard', icon: ContractIcon },
       { to: '/contacts', labelKey: 'navigation.main.contacts', fallback: 'Kontakte', icon: ContactIcon },
       { to: '/deposits', labelKey: 'navigation.main.deposits', fallback: 'Kautionen', icon: DepositIcon },
       { to: '/rent-adjustments', labelKey: 'navigation.main.rentAdjustments', fallback: 'Mietanpassungen', icon: RentIcon },
@@ -89,6 +90,8 @@ const NAV_SECTIONS = [
       { to: '/allocation-keys', labelKey: 'navigation.main.allocationKeys', fallback: 'Verteilerschlüssel', icon: StatementIcon },
       { to: '/integrations', labelKey: 'navigation.main.integrations', fallback: 'Schnittstellen', icon: IntegrationIcon },
       { to: '/escalation-rules', labelKey: 'navigation.main.escalationRules', fallback: 'Eskalationsregeln', icon: MaintenanceIcon },
+      { to: '/notification-templates', labelKey: 'navigation.main.notificationTemplates', fallback: 'Benachrichtigungsvorlagen', icon: MessageIcon },
+      { to: '/history', labelKey: 'navigation.main.history', fallback: 'Änderungsprotokoll', icon: DocumentIcon },
       { to: '/settings', labelKey: 'navigation.main.settings', fallback: 'Einstellungen', icon: SettingsIcon },
     ],
   },

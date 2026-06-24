@@ -20,6 +20,9 @@ frontend/dist/
 *.egg-info/
 dist/
 build/
+*.log
+*.zip
+*.mhtml
 
 # Uploads
 uploads/

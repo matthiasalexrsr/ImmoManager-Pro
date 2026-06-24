@@ -60,9 +60,9 @@ i18n/                 # Locale files (de-DE, en-US, es-ES)
 | `DATABASE_URL` | `sqlite:///./immo_manager.db` | Database connection string |
 | `SQLITE_PERSISTENT_STORE` | `true` | Use SQLAlchemy persistence for SQLite |
 | `ALLOW_INMEMORY_FALLBACK` | `false` | Fall back to in-memory store on DB failure |
-| `JWT_SECRET` | (generated) | Secret key for JWT token signing |
+| `JWT_SECRET_KEY` | `dev-secret-key-change-in-production` | Secret key for JWT token signing; must be overridden in production |
 | `ENVIRONMENT` | `development` | `development` or `production` |
-| `CORS_ORIGINS` | `*` | Allowed CORS origins |
+| `CORS_ORIGINS` | `http://localhost:3000,http://localhost:5173` | Allowed CORS origins |
 
 ## Testing
 
@@ -73,8 +73,16 @@ pytest backend/tests -q
 # Run against SQL store
 TEST_STORE_BACKEND=sql pytest backend/tests -q
 
-# Frontend lint + build
-cd frontend && npm run lint && npm run build
+# Backend lint + scoped type-check
+ruff check backend
+mypy backend/app.py backend/domain backend/repositories --ignore-missing-imports
+
+# Frontend lint + tests + build
+cd frontend && npm ci && npm run lint && npm run test && npm run build
+
+# Release smoke
+bash scripts/e2e_smoke.sh
+python -m py_compile immomanager.spec
 ```
 
 ## API Overview
@@ -85,8 +93,15 @@ All endpoints are under `/api/v1`. Full interactive docs at `/docs`.
 
 **Financial:** reports (summary, finance, occupancy, cashflow, receivables-aging, contracts-expiring, maintenance-costs, DATEV export, liquidity forecast), billing, rent charges, rent adjustments, budgets, deposits, tax rates
 
-**Operations:** auth, admin, audit, diagnostics, files (upload/OCR), notifications, escalation rules, contacts, insurances, leads, viewings, handover protocols, listings, integrations, meters, search, data exchange
+**Operations:** auth, admin, audit, diagnostics, files (upload/OCR), notifications, notification templates, escalation rules, contacts, insurances, leads, viewings, handover protocols, listings, integrations, meters, search, data exchange, `/health` readiness including contract-wizard status
+
+## Deployment
+
+- Docker and Docker Compose run the FastAPI app under `/api/v1`, serve the built SPA, and include the Mietvertrag-Wizard assets.
+- Local Windows builds use the PyInstaller spec and SQLite by default.
+- External portal integrations are modeled through adapter interfaces/placeholders until real credentials are provided.
+- Production mode (`ENVIRONMENT=production`) fails startup for unsafe defaults such as wildcard CORS, demo seeding, in-memory fallback, or default JWT secrets.
 
 ## License
 
-Proprietary.
+MIT.

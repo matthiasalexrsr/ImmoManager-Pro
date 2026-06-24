@@ -16,8 +16,8 @@
 - Photo grid display with delete capability per photo
 - Stored via `FileStorage` abstraction (local or S3)
 
-### Property & Unit Overview Pages
-- `PropertyOverview.jsx` — detail view with photos, key data (area, price), rental status (occupancy rate, total rent), active contracts, insurances
+### Property & Unit Detail Pages
+- `PropertyDetail.jsx` — detail view with linked units, documents, maintenance, and property master data
 - `UnitOverview.jsx` — detail view with photos, unit specs, current tenant info, contract history, insurances
 - Routes: `/properties/:id` and `/units/:id`
 - New CSS for overview grid, stats, definition lists
@@ -68,7 +68,7 @@
 - `backend/routers/files.py` — File upload, download, OCR endpoints
 - `backend/routers/data_exchange.py` — Data export/import endpoints
 - `frontend/src/pages/Insurances.jsx` — Insurance management UI
-- `frontend/src/pages/PropertyOverview.jsx` — Property detail view
+- `frontend/src/pages/PropertyDetail.jsx` — Property detail view
 - `frontend/src/pages/UnitOverview.jsx` — Unit detail view
 - `frontend/src/pages/Integrations.jsx` — Integration placeholders
 - `frontend/src/components/PhotoDropZone.jsx` — Photo upload component

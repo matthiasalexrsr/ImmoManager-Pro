@@ -6,6 +6,42 @@ const I18nContext = createContext(null);
 // Cache loaded translations
 const translationCache = {};
 
+const BUILTIN_TRANSLATIONS = {
+  'de-DE': {
+    navigation: {
+      main: {
+        contractWizard: 'Mietvertrag-Wizard',
+        notificationTemplates: 'Benachrichtigungsvorlagen',
+      },
+    },
+    contractWizard: {
+      description: 'Erstellen Sie Schritt fuer Schritt einen rechtssicheren Mietvertrag.',
+    },
+  },
+  'en-US': {
+    navigation: {
+      main: {
+        contractWizard: 'Lease Wizard',
+        notificationTemplates: 'Notification Templates',
+      },
+    },
+    contractWizard: {
+      description: 'Create a legally sound lease agreement step by step.',
+    },
+  },
+  'es-ES': {
+    navigation: {
+      main: {
+        contractWizard: 'Asistente de contrato',
+        notificationTemplates: 'Plantillas de notificacion',
+      },
+    },
+    contractWizard: {
+      description: 'Cree paso a paso un contrato de arrendamiento juridicamente solido.',
+    },
+  },
+};
+
 function getNestedValue(obj, path) {
   return path.split('.').reduce((o, key) => (o && o[key] !== undefined ? o[key] : null), obj);
 }
@@ -54,6 +90,8 @@ export function I18nProvider({ children }) {
   const t = useCallback((key, params) => {
     let value = getNestedValue(translations, key)
       || getNestedValue(fallback, key)
+      || getNestedValue(BUILTIN_TRANSLATIONS[locale], key)
+      || getNestedValue(BUILTIN_TRANSLATIONS['de-DE'], key)
       || key;
     if (params && typeof value === 'string') {
       Object.entries(params).forEach(([k, v]) => {
@@ -61,7 +99,7 @@ export function I18nProvider({ children }) {
       });
     }
     return value;
-  }, [translations, fallback]);
+  }, [translations, fallback, locale]);
 
   return (
     <I18nContext.Provider value={{ t, locale, setLocale }}>
