@@ -17,8 +17,12 @@ Error handling:
 import logging
 from collections.abc import Generator
 
+from .compat.ui_contracts import ensure_ui_contracts
 from .config import settings
-from .storage import InMemoryStore
+
+ensure_ui_contracts()
+
+from .storage import InMemoryStore  # noqa: E402
 
 logger = logging.getLogger(__name__)
 

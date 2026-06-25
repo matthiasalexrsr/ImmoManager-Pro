@@ -1,7 +1,7 @@
 fastapi==0.135.1
 pydantic==2.12.5
-pydantic-settings==2.13.1
-python-multipart==0.0.22
+pydantic-settings==2.14.2
+python-multipart==0.0.31
 uvicorn==0.41.0
 
 # Database
@@ -26,4 +26,4 @@ httpx==0.28.1
 # Install with: pip install -r requirements-ai.txt
 
 # Testing
-pytest==9.0.2
+pytest==9.0.3

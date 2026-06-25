@@ -96,6 +96,9 @@ echo ======================================
 echo  Installation abgeschlossen!
 echo ======================================
 echo.
+echo Empfohlener Windows-Start:
+echo   start.bat
+echo.
 echo Server starten:
 echo   .venv\Scripts\activate
 echo   python -m backend

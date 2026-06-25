@@ -9,6 +9,7 @@ from .auth import require_auth, require_role
 from .routers import (
     accounts,
     admin,
+    admin_runtime,
     audit,
     auth,
     autotest,
@@ -67,6 +68,7 @@ def build_api_v1() -> APIRouter:
     # Protected routes
     _auth_dep = [Depends(require_auth)]
     _admin_dep = [Depends(require_role("eigentuemer", "verwalter"))]
+    api_v1.include_router(admin_runtime.router, dependencies=_admin_dep)
     api_v1.include_router(admin.router, dependencies=_admin_dep)
     api_v1.include_router(audit.router, dependencies=_auth_dep)
     api_v1.include_router(dashboard.router, dependencies=_auth_dep)

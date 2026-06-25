@@ -141,7 +141,12 @@ export default function Documents() {
       if (['pdf', 'png', 'jpg', 'jpeg', 'tiff', 'tif'].includes(ext) && data.file_url) {
         try {
           const ocrRes = await api.post('/documents/ocr-analyze', { file_url: data.file_url });
-          setOcrResult({ success: true, ...ocrRes, guessedType: guessDocType(file.name) });
+          setOcrResult({
+            success: Boolean(ocrRes.success ?? ocrRes.analyzed),
+            ...ocrRes,
+            guessedType: ocrRes.guessedType || ocrRes.document_type || guessDocType(file.name),
+            extracted_text: ocrRes.extracted_text || ocrRes.summary || null,
+          });
         } catch {
           setOcrResult({ success: false, guessedType: guessDocType(file.name), message: t('pages.documents.upload.ocrUnavailable') || 'OCR nicht verfügbar' });
         }

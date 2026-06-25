@@ -26,6 +26,7 @@ from .middleware import (
     RBACWriteGuardMiddleware,
     RequestLoggingMiddleware,
 )
+from .paths import ensure_runtime_dirs, get_uploads_dir
 from .plugins import get_plugins, load_plugins
 from .routing import build_api_v1, get_i18n_router
 
@@ -93,6 +94,7 @@ def _validate_startup_config() -> None:
 async def lifespan(app: FastAPI):
     """Startup / shutdown lifecycle."""
     logger.info("ImmoManager Pro %s starting up", settings.app_version)
+    ensure_runtime_dirs()
 
     # Auto-migrate if enabled
     if settings.auto_migrate:
@@ -191,7 +193,7 @@ app.add_middleware(RBACWriteGuardMiddleware)
 app.include_router(build_api_v1())
 app.include_router(get_i18n_router())
 
-_UPLOADS_DIR = Path(__file__).resolve().parent.parent / "uploads"
+_UPLOADS_DIR = get_uploads_dir()
 _UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=_UPLOADS_DIR), name="uploads")
 

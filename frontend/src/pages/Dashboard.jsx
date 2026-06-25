@@ -4,6 +4,7 @@ import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useToast } from '../components/Toast';
 import StatusBadge from '../components/StatusBadge';
+import DashboardWorkflow from '../components/DashboardWorkflow';
 import {
   PortfolioIcon, PropertyIcon, UnitIcon, TenantIcon,
   ContractIcon, AccountIcon, MaintenanceIcon, ChartIcon,
@@ -100,6 +101,36 @@ export default function Dashboard() {
         contractsActive: s.active_contracts || 0,
         accounts: s.account_count || 0,
         openMaintenance: s.open_maintenance || 0,
+        invoices: s.invoice_count || 0,
+        openInvoices: s.open_invoices || 0,
+        paidInvoices: s.paid_invoices || 0,
+        receivables: s.receivable_count || 0,
+        openReceivables: s.open_receivables || 0,
+        paidReceivables: s.paid_receivables || 0,
+        overdueReceivables: s.overdue_receivables || 0,
+        dunningReceivables: s.dunning_receivables || 0,
+        documents: s.document_count || 0,
+        missingContractDocuments: s.active_contracts_missing_documents || 0,
+        overdueMaintenance: s.overdue_maintenance || 0,
+        activeEscalationRules: s.active_escalation_rules || 0,
+        maintenanceEscalationCandidates: s.maintenance_escalation_candidates || 0,
+        tasks: s.task_count || 0,
+        openTasks: s.open_tasks || 0,
+        notifications: s.notification_count || 0,
+        unreadNotifications: s.unread_notifications || 0,
+        rentCharges: s.rent_charge_count || 0,
+        openRentCharges: s.open_rent_charges || 0,
+        overdueRentCharges: s.overdue_rent_charges || 0,
+        billingPeriods: s.billing_period_count || 0,
+        draftBillingPeriods: s.draft_billing_periods || 0,
+        finalizedBillingPeriods: s.finalized_billing_periods || 0,
+        billingPreflightPeriodsChecked: s.billing_preflight_periods_checked || 0,
+        billingPreflightBlockers: s.billing_preflight_blockers || 0,
+        billingPreflightWarnings: s.billing_preflight_warnings || 0,
+        allocationKeys: s.allocation_key_count || 0,
+        utilityStatements: s.utility_statement_count || 0,
+        draftUtilityStatements: s.draft_utility_statements || 0,
+        finalizedUtilityStatements: s.finalized_utility_statements || 0,
       });
       setTasks(asArray(openTasks));
       setNotifications(asArray(notifs));
@@ -196,19 +227,13 @@ export default function Dashboard() {
 
       {dashView === 'work' && (
         <>
-          {/* Quick Actions Bar */}
-          <div className="panel" style={{ padding: '1rem', marginBottom: '1.5rem' }}>
-            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
-              <span style={{ fontWeight: 600, marginRight: '0.5rem' }}>{t('pages.dashboard.quickAccess') || 'Schnellzugriff:'}</span>
-              <Link to="/contract-wizard" className="btn btn-sm btn-primary">{t('pages.dashboard.quickNewContract') || '+ Mietvertrag'}</Link>
-              <Link to="/tenants" className="btn btn-sm btn-secondary">{t('pages.dashboard.quickNewTenant') || '+ Mieter'}</Link>
-              <Link to="/invoices" className="btn btn-sm btn-secondary">{t('pages.dashboard.quickNewInvoice') || '+ Rechnung'}</Link>
-              <Link to="/maintenance" className="btn btn-sm btn-secondary">{t('pages.dashboard.quickNewMaint') || '+ Wartung'}</Link>
-              <Link to="/documents" className="btn btn-sm btn-secondary">{t('pages.dashboard.quickNewDoc') || '+ Dokument'}</Link>
-              <Link to="/meters" className="btn btn-sm btn-secondary">{t('pages.dashboard.quickMeters') || 'Zähler ablesen'}</Link>
-              <Link to="/viewings" className="btn btn-sm btn-secondary">{t('pages.dashboard.quickViewing') || 'Besichtigung planen'}</Link>
-            </div>
-          </div>
+          <DashboardWorkflow
+            stats={stats}
+            aging={aging}
+            expiring={expiring}
+            notifications={notifications}
+            t={t}
+          />
 
           {/* Activity Panels */}
           <div className="dashboard-panels">

@@ -1,6 +1,8 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 *.db
 *.db-shm
 *.db-wal
@@ -18,9 +20,13 @@ frontend/dist/
 *.egg-info/
 dist/
 build/
+*.log
+*.zip
+*.mhtml
 
 # Uploads
 uploads/
+backups/
 
 # Developer mode runtime files
 dev_notes.log

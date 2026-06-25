@@ -1,14 +1,20 @@
 import uuid
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
+from pydantic import BaseModel
 
 from ..dependencies import store
 from ..models import Document, DocumentCreate, DocumentPatch
-from ..routers.files import _perform_ocr
+from ..routers.files import _perform_ocr, analyze_file, process_ocr
 from ..services.file_storage import get_file_storage
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/documents", tags=["Dokumente"])
+
+
+class DocumentOcrAnalyzeRequest(BaseModel):
+    file_url: str
+    use_ai: bool = True
 
 
 @router.get("", response_model=list[Document])
@@ -82,6 +88,35 @@ async def import_document(
         return store.create_document(payload)
     except ValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.post("/ocr-analyze")
+def ocr_analyze_document(payload: DocumentOcrAnalyzeRequest) -> dict:
+    """Run OCR and structured analysis for a document upload."""
+    ocr_result = process_ocr(payload.file_url)
+    analysis = analyze_file(payload.file_url, use_ai=payload.use_ai)
+    result = analysis.get("result") or {}
+    extracted_text = result.get("summary")
+
+    return {
+        "success": bool(analysis.get("analyzed") or ocr_result.get("has_ocr")),
+        "processed": bool(ocr_result.get("processed")),
+        "has_ocr": bool(ocr_result.get("has_ocr")),
+        "ocr_url": ocr_result.get("ocr_url"),
+        "analyzed": bool(analysis.get("analyzed")),
+        "message": analysis.get("message"),
+        "document_type": result.get("document_type"),
+        "guessedType": result.get("document_type"),
+        "extracted_text": extracted_text,
+        "summary": extracted_text,
+        "entities": result.get("entities"),
+        "invoice_number": result.get("invoice_number"),
+        "invoice_date": result.get("invoice_date"),
+        "total_amount": result.get("total_amount"),
+        "supplier": result.get("supplier"),
+        "cost_category": result.get("cost_category"),
+        "result": result,
+    }
 
 
 @router.get("/{document_id}", response_model=Document)

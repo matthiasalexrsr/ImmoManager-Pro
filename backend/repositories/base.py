@@ -7,7 +7,7 @@ to DatabaseOperationError with proper logging.
 
 import logging
 from datetime import datetime, timezone
-from typing import Any, Generic, TypeVar
+from typing import Any
 from uuid import uuid4
 
 from pydantic import BaseModel as PydanticBaseModel
@@ -18,11 +18,6 @@ from ..error_helpers import safe_db_operation
 from ..storage import NotFoundError
 
 logger = logging.getLogger(__name__)
-
-ORM = TypeVar("ORM", bound=Base)
-ReadModel = TypeVar("ReadModel", bound=PydanticBaseModel)
-CreateModel = TypeVar("CreateModel", bound=PydanticBaseModel)
-
 
 def _generate_id() -> str:
     return str(uuid4())
@@ -37,7 +32,7 @@ def _orm_to_dict(orm_obj: Base) -> dict[str, Any]:
         raise
 
 
-class BaseRepository(Generic[ORM, ReadModel, CreateModel]):
+class BaseRepository:
     """Generic CRUD repository for a single entity type.
 
     Error handling strategy:
@@ -49,8 +44,8 @@ class BaseRepository(Generic[ORM, ReadModel, CreateModel]):
     def __init__(
         self,
         db: Session,
-        orm_class: type[ORM],
-        read_class: type[ReadModel],
+        orm_class: type[Base],
+        read_class: type[PydanticBaseModel],
         not_found_msg: str,
     ):
         self.db = db
@@ -58,7 +53,7 @@ class BaseRepository(Generic[ORM, ReadModel, CreateModel]):
         self.read_class = read_class
         self.not_found_msg = not_found_msg
 
-    def _to_pydantic(self, orm_obj: ORM) -> ReadModel:
+    def _to_pydantic(self, orm_obj: Base) -> Any:
         try:
             return self.read_class.model_validate(_orm_to_dict(orm_obj))
         except Exception as exc:
@@ -71,19 +66,19 @@ class BaseRepository(Generic[ORM, ReadModel, CreateModel]):
             raise
 
     @safe_db_operation("list_all")
-    def list_all(self) -> list[ReadModel]:
+    def list_all(self) -> list[Any]:
         objs = self.db.query(self.orm_class).all()
         return [self._to_pydantic(o) for o in objs]
 
     @safe_db_operation("get")
-    def get(self, entity_id: str) -> ReadModel:
+    def get(self, entity_id: str) -> Any:
         obj = self.db.get(self.orm_class, entity_id)
         if obj is None:
             raise NotFoundError(self.not_found_msg)
         return self._to_pydantic(obj)
 
     @safe_db_operation("get_orm")
-    def get_orm(self, entity_id: str) -> ORM:
+    def get_orm(self, entity_id: str) -> Base:
         obj = self.db.get(self.orm_class, entity_id)
         if obj is None:
             raise NotFoundError(self.not_found_msg)
@@ -94,7 +89,7 @@ class BaseRepository(Generic[ORM, ReadModel, CreateModel]):
         return self.db.get(self.orm_class, entity_id) is not None
 
     @safe_db_operation("create")
-    def create(self, data: CreateModel) -> ReadModel:
+    def create(self, data: PydanticBaseModel) -> Any:
         orm_obj = self.orm_class(id=_generate_id(), **data.model_dump())
         self.db.add(orm_obj)
         self.db.flush()
@@ -102,26 +97,26 @@ class BaseRepository(Generic[ORM, ReadModel, CreateModel]):
         return self._to_pydantic(orm_obj)
 
     @safe_db_operation("update")
-    def update(self, entity_id: str, data: CreateModel) -> ReadModel:
+    def update(self, entity_id: str, data: PydanticBaseModel) -> Any:
         orm_obj = self.db.get(self.orm_class, entity_id)
         if orm_obj is None:
             raise NotFoundError(self.not_found_msg)
         for key, value in data.model_dump().items():
             setattr(orm_obj, key, value)
-        orm_obj.updated_at = datetime.now(timezone.utc)
+        setattr(orm_obj, "updated_at", datetime.now(timezone.utc))
         self.db.flush()
         self.db.refresh(orm_obj)
         return self._to_pydantic(orm_obj)
 
     @safe_db_operation("patch")
-    def patch(self, entity_id: str, data: PydanticBaseModel) -> ReadModel:
+    def patch(self, entity_id: str, data: PydanticBaseModel) -> Any:
         orm_obj = self.db.get(self.orm_class, entity_id)
         if orm_obj is None:
             raise NotFoundError(self.not_found_msg)
         updates = data.model_dump(exclude_unset=True)
         for key, value in updates.items():
             setattr(orm_obj, key, value)
-        orm_obj.updated_at = datetime.now(timezone.utc)
+        setattr(orm_obj, "updated_at", datetime.now(timezone.utc))
         self.db.flush()
         self.db.refresh(orm_obj)
         return self._to_pydantic(orm_obj)
@@ -142,7 +137,7 @@ class BaseRepository(Generic[ORM, ReadModel, CreateModel]):
         filters: dict[str, Any] | None = None,
         order_by: str | None = None,
         order_desc: bool = False,
-    ) -> list[ReadModel]:
+    ) -> list[Any]:
         """List entities with DB-level pagination, filtering, and ordering.
 
         Args:
@@ -174,7 +169,7 @@ class BaseRepository(Generic[ORM, ReadModel, CreateModel]):
         return query.count()
 
     @safe_db_operation("filter_by")
-    def filter_by(self, **kwargs) -> list[ReadModel]:
+    def filter_by(self, **kwargs) -> list[Any]:
         """Filter entities by column values. None values are skipped."""
         query = self.db.query(self.orm_class)
         for key, value in kwargs.items():

@@ -24,11 +24,13 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '20.19.0'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Install frontend dependencies
         run: npm ci
+      - name: Audit frontend dependencies
+        run: npm audit --audit-level=low
       - name: Lint frontend
         run: npm run lint
       - name: Run frontend tests
@@ -60,10 +62,10 @@ jobs:
         run: ruff check backend
       - name: Type check (mypy)
         if: matrix.store-backend == 'memory'
-        run: mypy backend/app.py backend/domain/ --ignore-missing-imports || echo "::warning::mypy reported type errors — see log above"
+        run: mypy backend/app.py backend/domain backend/repositories --ignore-missing-imports
       - name: Security audit (pip-audit)
         if: matrix.store-backend == 'memory'
-        run: pip-audit --strict --desc 2>/dev/null || echo "::warning::pip-audit found vulnerabilities"
+        run: pip-audit -r requirements.txt --strict --desc
       - name: Run tests with coverage
         env:
           TEST_STORE_BACKEND: ${{ matrix.store-backend }}
@@ -76,11 +78,14 @@ jobs:
     name: E2E smoke (docker-compose)
     runs-on: ubuntu-latest
     needs: [backend]
-    # E2E requires full Docker stack (Postgres, Prometheus, Grafana) and
-    # pre-built frontend — allow failure until CI artifact sharing is set up.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.19.0'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
       - name: Run E2E smoke checks
         run: bash scripts/e2e_smoke.sh
 
@@ -93,11 +98,9 @@ jobs:
       - name: Gate on pipeline status
         run: |
           if [ "${{ needs.frontend.result }}" != "success" ] || \
-             [ "${{ needs.backend.result }}" != "success" ]; then
+             [ "${{ needs.backend.result }}" != "success" ] || \
+             [ "${{ needs.e2e-smoke.result }}" != "success" ]; then
             echo "Pipeline not deployment-ready"
             exit 1
-          fi
-          if [ "${{ needs.e2e-smoke.result }}" != "success" ]; then
-            echo "::warning::E2E smoke tests did not pass — see logs"
           fi
           echo "Pipeline deployment-ready"

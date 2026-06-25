@@ -43,39 +43,35 @@ export default function NotificationTemplates() {
   const COLUMNS = [
     { key: 'name', label: 'Name', filterType: 'text' },
     { key: 'notification_type', label: 'Typ', filterType: 'select' },
-    { key: 'subject', label: 'Betreff', filterType: 'text' },
+    { key: 'title_template', label: 'Titelvorlage', filterType: 'text' },
+    { key: 'content_template', label: 'Inhaltsvorlage', filterType: 'text',
+      render: v => v ? `${String(v).slice(0, 80)}${String(v).length > 80 ? '...' : ''}` : '-' },
     { key: 'severity', label: 'Schwere', filterType: 'select' },
-    { key: 'is_active', label: 'Aktiv', render: v => v ? '✓' : '—' },
   ];
 
   const fields = [
     { key: 'name', label: 'Name', required: true },
     { key: 'notification_type', label: 'Typ', required: true, type: 'select', options: [
-      { value: 'overdue_payment', label: 'Überfällige Zahlung' },
+      { value: 'overdue_payment', label: 'Ueberfaellige Zahlung' },
       { value: 'contract_expiry', label: 'Vertragsende' },
-      { value: 'task_due', label: 'Aufgabe fällig' },
+      { value: 'task_due', label: 'Aufgabe faellig' },
       { value: 'escalation', label: 'Eskalation' },
       { value: 'general', label: 'Allgemein' },
     ]},
-    { key: 'subject', label: 'Betreff', required: true },
-    { key: 'body_template', label: 'Vorlage', type: 'textarea', required: true },
+    { key: 'title_template', label: 'Titelvorlage', required: true },
+    { key: 'content_template', label: 'Inhaltsvorlage', type: 'textarea', required: true },
     { key: 'severity', label: 'Schwere', type: 'select', default: 'info', options: [
       { value: 'info', label: 'Info' },
       { value: 'warning', label: 'Warnung' },
       { value: 'critical', label: 'Kritisch' },
     ]},
-    { key: 'is_active', label: 'Aktiv', type: 'select', default: 'true', options: [
-      { value: 'true', label: 'Ja' },
-      { value: 'false', label: 'Nein' },
-    ]},
   ];
 
   const handleSave = async (data) => {
-    const payload = { ...data, is_active: data.is_active === 'true' || data.is_active === true };
     if (modal === 'create') {
-      await api.post('/notifications/templates', payload);
+      await api.post('/notifications/templates', data);
     } else {
-      await api.put(`/notifications/templates/${modal.id}`, payload);
+      await api.put(`/notifications/templates/${modal.id}`, data);
     }
     refreshData();
   };
@@ -99,7 +95,7 @@ export default function NotificationTemplates() {
       {deleteError && (
         <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
           {deleteError}
-          <button onClick={() => setDeleteError(null)} style={{ marginLeft: '1rem', cursor: 'pointer' }}>✕</button>
+          <button onClick={() => setDeleteError(null)} style={{ marginLeft: '1rem', cursor: 'pointer' }}>x</button>
         </div>
       )}
       <DataTable
