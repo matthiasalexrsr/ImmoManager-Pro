@@ -77,6 +77,13 @@ class Settings(BaseSettings):
     # --- Database ---
     database_url: str = "sqlite:///./immo_manager.db"
 
+    # --- Runtime data paths ---
+    # Leave empty for source/Docker defaults. Windows launchers and frozen
+    # bundles set these to a persistent per-user data directory.
+    data_dir: str = ""
+    uploads_dir: str = ""
+    backup_dir: str = ""
+
     # --- Authentication ---
     # In production, this MUST be overridden — startup will fail if left at the
     # default value when ENVIRONMENT=production.

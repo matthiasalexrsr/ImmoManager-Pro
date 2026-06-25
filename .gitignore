@@ -26,6 +26,7 @@ build/
 
 # Uploads
 uploads/
+backups/
 
 # Developer mode runtime files
 dev_notes.log

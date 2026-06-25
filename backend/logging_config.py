@@ -10,6 +10,7 @@ import logging.handlers
 import sys
 from contextvars import ContextVar
 from datetime import datetime, timezone
+from pathlib import Path
 
 from .config import settings
 
@@ -117,6 +118,7 @@ def setup_logging() -> None:
 
     # Optional file handler with rotation
     if settings.log_file:
+        Path(settings.log_file).expanduser().resolve().parent.mkdir(parents=True, exist_ok=True)
         file_handler = logging.handlers.RotatingFileHandler(
             settings.log_file,
             maxBytes=10 * 1024 * 1024,  # 10 MB

@@ -22,6 +22,16 @@ DESCRIPTION = "Immobilienverwaltung für private Vermieter"
 ROOT = Path(__file__).resolve().parent.parent
 
 
+def default_data_dir() -> Path:
+    configured = os.environ.get("DATA_DIR")
+    if configured:
+        return Path(configured).expanduser().resolve()
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    if local_app_data:
+        return Path(local_app_data) / "ImmoManagerPro"
+    return Path.home() / "AppData" / "Local" / "ImmoManagerPro"
+
+
 def find_nssm() -> str:
     """Find NSSM executable."""
     # Check PATH
@@ -46,20 +56,40 @@ def find_nssm() -> str:
 def install():
     nssm = find_nssm()
     python = sys.executable
-    script = str(ROOT / "backend" / "__main__.py")
+    data_dir = default_data_dir()
+    logs_dir = data_dir / "logs"
+    logs_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"Installiere Dienst '{SERVICE_NAME}'...")
-    subprocess.run([nssm, "install", SERVICE_NAME, python, script, "--no-browser"], check=True)
+    subprocess.run(
+        [
+            nssm, "install", SERVICE_NAME, python,
+            "-m", "backend",
+            "--no-browser",
+            "--data-dir", str(data_dir),
+        ],
+        check=True,
+    )
     subprocess.run([nssm, "set", SERVICE_NAME, "DisplayName", DISPLAY_NAME], check=True)
     subprocess.run([nssm, "set", SERVICE_NAME, "Description", DESCRIPTION], check=True)
     subprocess.run([nssm, "set", SERVICE_NAME, "AppDirectory", str(ROOT)], check=True)
     subprocess.run([nssm, "set", SERVICE_NAME, "Start", "SERVICE_AUTO_START"], check=True)
-    subprocess.run([nssm, "set", SERVICE_NAME, "AppStdout", str(ROOT / "logs" / "service.log")], check=True)
-    subprocess.run([nssm, "set", SERVICE_NAME, "AppStderr", str(ROOT / "logs" / "service-error.log")], check=True)
+    subprocess.run([nssm, "set", SERVICE_NAME, "AppStdout", str(logs_dir / "service.log")], check=True)
+    subprocess.run([nssm, "set", SERVICE_NAME, "AppStderr", str(logs_dir / "service-error.log")], check=True)
+    subprocess.run(
+        [
+            nssm, "set", SERVICE_NAME, "AppEnvironmentExtra",
+            "ENVIRONMENT=production",
+            "ALLOW_INMEMORY_FALLBACK=false",
+            "SQLITE_PERSISTENT_STORE=true",
+            "CONTRACT_WIZARD_REQUIRED=true",
+        ],
+        check=True,
+    )
 
-    (ROOT / "logs").mkdir(exist_ok=True)
     print(f"Dienst '{SERVICE_NAME}' erfolgreich installiert.")
-    print(f"Starten mit: python scripts/windows_service.py start")
+    print(f"Datenverzeichnis: {data_dir}")
+    print("Starten mit: python scripts/windows_service.py start")
 
 
 def remove():

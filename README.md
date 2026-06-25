@@ -14,6 +14,38 @@ Full-stack property management application for German real estate portfolios.
 
 ## Quick Start
 
+### Windows 11
+
+Double-click `start.bat` or run:
+
+```powershell
+.\start.bat
+```
+
+The starter checks Python 3.11+, creates `.venv` when needed, installs the backend, builds the frontend when `frontend/dist` is missing, generates a persistent local secret, and stores runtime data under `%LOCALAPPDATA%\ImmoManagerPro` by default:
+
+- SQLite database: `%LOCALAPPDATA%\ImmoManagerPro\immo_manager.db`
+- Uploads: `%LOCALAPPDATA%\ImmoManagerPro\uploads`
+- Backups: `%LOCALAPPDATA%\ImmoManagerPro\backups`
+- Logs: `%LOCALAPPDATA%\ImmoManagerPro\logs`
+
+Useful variants:
+
+```powershell
+.\start.bat -Port 9000
+.\start.bat -Seed
+.\start.bat -DataDir D:\ImmoManagerProData
+```
+
+Backups can be created manually or scheduled via Windows Task Scheduler:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\backup_scheduler.py run
+.\.venv\Scripts\python.exe scripts\backup_scheduler.py schedule
+```
+
+### Development
+
 ```bash
 # Backend
 python -m venv .venv && source .venv/bin/activate
@@ -58,6 +90,9 @@ i18n/                 # Locale files (de-DE, en-US, es-ES)
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `DATABASE_URL` | `sqlite:///./immo_manager.db` | Database connection string |
+| `DATA_DIR` | project root, `%LOCALAPPDATA%\ImmoManagerPro` for Windows starter/.exe | Persistent runtime directory |
+| `UPLOADS_DIR` | `<DATA_DIR>/uploads` | Uploaded document/photo storage |
+| `BACKUP_DIR` | `<DATA_DIR>/backups` | Backup storage |
 | `SQLITE_PERSISTENT_STORE` | `true` | Use SQLAlchemy persistence for SQLite |
 | `ALLOW_INMEMORY_FALLBACK` | `false` | Fall back to in-memory store on DB failure |
 | `JWT_SECRET_KEY` | `dev-secret-key-change-in-production` | Secret key for JWT token signing; must be overridden in production |
