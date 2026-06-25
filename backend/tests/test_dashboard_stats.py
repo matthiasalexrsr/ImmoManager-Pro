@@ -7,7 +7,9 @@ from backend.models import (
     BillingPeriodCreate,
     ContractCreate,
     DocumentCreate,
+    EscalationRuleCreate,
     InvoiceCreate,
+    MaintenanceCaseCreate,
     NotificationCreate,
     PortfolioCreate,
     PropertyCreate,
@@ -70,6 +72,7 @@ def test_dashboard_stats_include_operational_workflow_counts() -> None:
             contract_id=contract.id,
             due_date=date(2026, 1, 1),
             amount_due=120,
+            dunning_level="level_1",
             status="overdue",
         ),
     )
@@ -91,6 +94,26 @@ def test_dashboard_stats_include_operational_workflow_counts() -> None:
         ),
     )
     store.create_task(TaskCreate(title="Heizung prüfen", property_id=property_.id, status="open"))
+    store.create_maintenance_case(
+        MaintenanceCaseCreate(
+            property_id=property_.id,
+            title="Wasserschaden",
+            status="open",
+            priority="high",
+            due_date=date(2000, 1, 1),
+        ),
+    )
+    store.create_escalation_rule(
+        EscalationRuleCreate(
+            name="Wartung eskalieren",
+            entity_type="maintenance",
+            condition_field="due_date",
+            days_overdue=0,
+            action="notify",
+            notification_severity="critical",
+            is_active=True,
+        ),
+    )
     store.create_notification(
         NotificationCreate(
             notification_type="task_due",
@@ -136,7 +159,13 @@ def test_dashboard_stats_include_operational_workflow_counts() -> None:
     assert stats["receivable_count"] == 2
     assert stats["open_receivables"] == 1
     assert stats["overdue_receivables"] == 1
+    assert stats["dunning_receivables"] == 1
     assert stats["document_count"] == 1
+    assert stats["active_contracts_missing_documents"] == 1
+    assert stats["open_maintenance"] == 1
+    assert stats["overdue_maintenance"] == 1
+    assert stats["active_escalation_rules"] == 1
+    assert stats["maintenance_escalation_candidates"] == 1
     assert stats["task_count"] == 1
     assert stats["open_tasks"] == 1
     assert stats["notification_count"] == 1
@@ -145,4 +174,7 @@ def test_dashboard_stats_include_operational_workflow_counts() -> None:
     assert stats["open_rent_charges"] == 1
     assert stats["billing_period_count"] == 1
     assert stats["draft_billing_periods"] == 1
+    assert stats["billing_preflight_periods_checked"] == 1
+    assert stats["billing_preflight_blockers"] == 1
+    assert stats["billing_preflight_warnings"] == 0
     assert stats["allocation_key_count"] == 1

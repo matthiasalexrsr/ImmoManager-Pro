@@ -10,6 +10,171 @@
   min-width: 0;
 }
 
+.process-journey {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-xs);
+  padding: 1rem;
+  margin-bottom: 0.85rem;
+}
+
+.process-journey-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.85rem;
+}
+
+.process-journey-header h3 {
+  margin: 0;
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.process-journey-header p {
+  margin: 0.25rem 0 0;
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.process-next-action,
+.process-next-complete {
+  min-width: 210px;
+  border: 1px solid var(--color-primary-light);
+  border-radius: var(--radius-sm);
+  background: var(--color-primary-50);
+  color: var(--color-primary);
+  padding: 0.55rem 0.65rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  text-decoration: none;
+}
+
+.process-next-action:hover {
+  background: var(--color-primary-light);
+  text-decoration: none;
+}
+
+.process-next-attention {
+  border-color: var(--color-warning-light);
+  background: var(--color-warning-light);
+  color: var(--color-warning);
+}
+
+.process-next-complete {
+  border-color: var(--color-success-light);
+  background: var(--color-success-light);
+  color: var(--color-success);
+}
+
+.process-next-action small,
+.process-next-complete small {
+  display: block;
+  color: var(--color-text-secondary);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.process-next-action strong,
+.process-next-complete strong {
+  display: block;
+  margin-top: 0.15rem;
+  color: inherit;
+  font-size: 0.86rem;
+  line-height: 1.2;
+}
+
+.process-steps {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(96px, 1fr));
+  gap: 0.5rem;
+}
+
+.process-step {
+  min-height: 96px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  background: var(--color-bg);
+  padding: 0.6rem;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 0.45rem;
+  text-decoration: none;
+}
+
+.process-step:hover {
+  border-color: var(--color-primary-light);
+  background: var(--color-primary-50);
+  text-decoration: none;
+}
+
+.process-step:focus-visible,
+.process-next-action:focus-visible,
+.workflow-secondary-link:focus-visible,
+.workflow-step:focus-visible,
+.workflow-action:focus-visible,
+.attention-item:focus-visible {
+  outline: 3px solid var(--color-primary-light);
+  outline-offset: 2px;
+}
+
+.process-step-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-primary);
+  background: var(--color-surface);
+}
+
+.process-step-label {
+  min-width: 0;
+  color: var(--color-text);
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.process-step strong {
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
+}
+
+.process-step-done {
+  border-color: var(--color-success-light);
+}
+
+.process-step-done .process-step-icon {
+  color: var(--color-success);
+  background: var(--color-success-light);
+}
+
+.process-step-attention {
+  border-color: var(--color-warning-light);
+  background: var(--color-warning-light);
+}
+
+.process-step-attention .process-step-icon {
+  color: var(--color-warning);
+  background: var(--color-surface);
+}
+
+.process-step-active {
+  border-color: var(--color-primary-light);
+  background: var(--color-primary-50);
+}
+
 .workflow-section-header {
   display: flex;
   justify-content: space-between;
@@ -316,6 +481,10 @@
   .workflow-cockpit {
     grid-template-columns: 1fr;
   }
+
+  .process-steps {
+    grid-template-columns: repeat(4, minmax(110px, 1fr));
+  }
 }
 
 @media (max-width: 768px) {
@@ -327,10 +496,28 @@
   .workflow-secondary-link {
     white-space: normal;
   }
+
+  .process-journey-header {
+    flex-direction: column;
+  }
+
+  .process-next-action,
+  .process-next-complete {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .process-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 480px) {
   .workflow-card-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .process-steps {
     grid-template-columns: 1fr;
   }
 

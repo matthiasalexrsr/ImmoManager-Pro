@@ -2,6 +2,29 @@ import { describe, expect, it } from 'vitest';
 import { buildDashboardWorkflow } from '../utils/dashboardWorkflow.js';
 
 describe('DashboardWorkflow', () => {
+  it('guides the core process to the next missing setup step', () => {
+    const { processSteps, nextStep } = buildDashboardWorkflow({
+      stats: {
+        properties: 1,
+        units: 2,
+      },
+    });
+
+    expect(processSteps.map(step => step.id)).toEqual([
+      'property',
+      'unit',
+      'tenant',
+      'contract',
+      'charge',
+      'payment',
+      'dunning',
+    ]);
+    expect(processSteps.find(step => step.id === 'property').status).toBe('done');
+    expect(processSteps.find(step => step.id === 'unit').status).toBe('done');
+    expect(nextStep.id).toBe('process-tenant');
+    expect(nextStep.to).toBe('/tenants');
+  });
+
   it('marks the portfolio workflow as complete when core inventory exists', () => {
     const { workflows } = buildDashboardWorkflow({
       stats: {
@@ -43,6 +66,39 @@ describe('DashboardWorkflow', () => {
     expect(finance.actionTo).toBe('/receivables');
     expect(attentionItems.map(item => item.id)).toContain('overdue-receivables');
     expect(attentionItems.map(item => item.id)).toContain('open-receivables');
+  });
+
+  it('raises operational attention for dunning, billing preflight, documents, and escalations', () => {
+    const { workflows, attentionItems, nextStep } = buildDashboardWorkflow({
+      stats: {
+        properties: 1,
+        units: 1,
+        tenants: 1,
+        contractsActive: 1,
+        rentCharges: 1,
+        openReceivables: 2,
+        overdueReceivables: 1,
+        dunningReceivables: 1,
+        billingPeriods: 1,
+        allocationKeys: 1,
+        billingPreflightBlockers: 1,
+        documents: 1,
+        missingContractDocuments: 1,
+        openMaintenance: 1,
+        overdueMaintenance: 1,
+        maintenanceEscalationCandidates: 1,
+      },
+    });
+
+    const ids = attentionItems.map(item => item.id);
+    expect(ids).toContain('dunning-receivables');
+    expect(ids).toContain('billing-preflight-blockers');
+    expect(ids).toContain('maintenance-escalations');
+    expect(ids).toContain('missing-contract-documents');
+    expect(workflows.find(item => item.id === 'billing').status).toBe('attention');
+    expect(workflows.find(item => item.id === 'operations').status).toBe('attention');
+    expect(nextStep.id).toBe('process-payment');
+    expect(nextStep.tone).toBe('attention');
   });
 
   it('returns an empty attention queue when no operational blockers exist', () => {
