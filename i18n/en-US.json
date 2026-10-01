@@ -2285,5 +2285,24 @@
     "retrying": "Saving settings…",
     "versionError": "Version information is currently unavailable.",
     "retryVersion": "Reload version"
+  },
+  "editConflict": {
+    "title": "Reconcile changes",
+    "preserved": "Your entries are preserved. Review the current record before saving again.",
+    "inspect": "Review current record",
+    "refresh": "Reload current record",
+    "loading": "Loading current record…",
+    "explanation": "Unchanged fields take the current value. If both edits changed the same field, choose which value to use.",
+    "current": "Current record",
+    "draft": "Your draft",
+    "choose": "Choose a value for {{field}}",
+    "choosePlaceholder": "Choose explicitly",
+    "keepDraft": "Keep my draft",
+    "useCurrent": "Use current value",
+    "reconcile": "Apply reconciliation",
+    "noAutoSave": "Reconciliation does not save anything. Review the form, then select Save.",
+    "deleted": "The record was deleted. Your draft is preserved; it cannot be saved again.",
+    "loadFailed": "The current record could not be loaded. Please try again.",
+    "missingRevision": "The response has no valid edit revision. A safe reconciliation is unavailable."
   }
 }

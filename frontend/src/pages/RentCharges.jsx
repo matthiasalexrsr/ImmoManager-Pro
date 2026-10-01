@@ -1,3 +1,4 @@
+import { revisionOptions, revisionSource } from '../editRevision';
 import { useState } from 'react';
 import { api } from '../api';
 import { useFinanceData } from '../hooks/useFinanceData';
@@ -75,7 +76,8 @@ export default function RentCharges() {
     if (modal === 'create') {
       await api.post('/rent-charges', data);
     } else {
-      await api.put(`/rent-charges/${modal.id}`, { ...data, amount_paid: modal.amount_paid, status: modal.status });
+      const source = revisionSource(data, modal);
+      await api.put(`/rent-charges/${modal.id}`, { ...data, amount_paid: source.amount_paid, status: source.status });
     }
     setModal(null);
     refreshData();
@@ -86,7 +88,7 @@ export default function RentCharges() {
     if (!await confirm(`${t('modals.confirmDelete.body')}`)) return;
     setDeleteError(null);
     try {
-      await api.del(`/rent-charges/${row.id}`);
+      await api.del(`/rent-charges/${row.id}`, revisionOptions(row));
       refreshData();
       if (store) store.invalidateRelated('rent_charges', 'contracts');
     } catch (err) {

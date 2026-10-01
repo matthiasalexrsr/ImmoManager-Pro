@@ -3,7 +3,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
 
 
 class PortfolioCreate(BaseModel):
@@ -940,6 +940,12 @@ class UserRead(BaseModel):
     is_active: bool = True
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    @computed_field  # type: ignore[prop-decorator]  # Pydantic wraps the property.
+    @property
+    def write_permissions(self) -> list[str]:
+        from .permissions import write_capabilities
+        return write_capabilities(self.role)
 
 
 class UserPatch(BaseModel):

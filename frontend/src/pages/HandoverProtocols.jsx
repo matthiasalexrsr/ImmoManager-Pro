@@ -1,3 +1,4 @@
+import { revisionOptions } from '../editRevision';
 import { useState, useEffect } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
@@ -111,7 +112,7 @@ export default function HandoverProtocols() {
     if (!await confirm(`"${name}" ${t('modals.confirmDelete.body')}`)) return;
     setDeleteError(null);
     try {
-      await api.del(`/handover-protocols/${row.id}`);
+      await api.del(`/handover-protocols/${row.id}`, revisionOptions(row));
       refreshData();
       if (store) store.invalidateRelated('handover_protocols', 'contracts', 'units');
     } catch (err) {

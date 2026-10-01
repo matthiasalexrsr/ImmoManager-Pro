@@ -1,3 +1,4 @@
+import { revisionOptions } from '../editRevision';
 import { useState, useEffect } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
@@ -84,7 +85,7 @@ export default function EscalationRules() {
     if (!await confirm(`${t('modals.confirmDelete.body')}`)) return;
     setDeleteError(null);
     try {
-      await api.del(`/escalation/rules/${row.id}`);
+      await api.del(`/escalation/rules/${row.id}`, revisionOptions(row));
       loadData();
     } catch (err) {
       setDeleteError(err.message || t('pages.deleteFailed'));

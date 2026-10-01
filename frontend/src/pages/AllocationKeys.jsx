@@ -1,3 +1,4 @@
+import { revisionOptions } from '../editRevision';
 import { useState } from 'react';
 import { api } from '../api';
 import { useFinanceData } from '../hooks/useFinanceData';
@@ -63,7 +64,7 @@ export default function AllocationKeys() {
     if (!await confirm(`"${name}" ${t('modals.confirmDelete.body')}`)) return;
     setDeleteError(null);
     try {
-      await api.del(`/billing/allocation-keys/${row.id}`);
+      await api.del(`/billing/allocation-keys/${row.id}`, revisionOptions(row));
       refreshData();
       if (store) store.invalidateRelated('allocation_keys');
     } catch (err) {

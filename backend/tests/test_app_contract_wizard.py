@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend import app as app_module
+from backend import auth
 
 
 def _dummy_build_pdf(data):
@@ -55,15 +56,26 @@ def test_wizard_endpoints_functional(monkeypatch):
     app_module._mount_contract_wizard_if_available(test_app)
     client = TestClient(test_app)
 
+    monkeypatch.setattr(auth, "_user_store", auth.InMemoryUserStore())
+    monkeypatch.setattr(auth, "_auth_session_factory", None)
+    user = auth.register_user("wizard-owner", "wizard@example.invalid", "Synthetic owner", "Strong123", "eigentuemer")
+    headers = {"Authorization": "Bearer " + auth.create_access_token(user.id)}
+    assert client.get("/mietvertrag/").status_code == 401
+    assert client.post("/mietvertrag/api/pdf", json={}).status_code == 401
+
     # Wizard HTML page
-    r = client.get("/mietvertrag/")
+    r = client.get("/mietvertrag/", headers=headers)
     assert r.status_code == 200
     assert "Mietvertrag Wizard" in r.text
 
     # PDF endpoint
-    r2 = client.post("/mietvertrag/api/pdf", json={"vermieter": [{"name": "V"}]})
+    r2 = client.post("/mietvertrag/api/pdf", headers=headers, json={"vermieter": [{"name": "V"}]})
     assert r2.status_code == 200
     assert r2.content == b"%PDF-dummy"
+    assert r2.headers["cache-control"] == "private, no-store"
+    assert client.get("/api/v1/contract-wizard/page", headers=headers).status_code == 200
+    reader = auth.register_user("wizard-reader", "reader@example.invalid", "Reader", "Strong123", "readonly")
+    assert client.post("/mietvertrag/api/pdf", json={}, headers={"Authorization": "Bearer " + auth.create_access_token(reader.id)}).status_code == 403
 
 
 def test_mietvertrag_no_slash_redirects(monkeypatch):

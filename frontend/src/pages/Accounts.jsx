@@ -1,3 +1,4 @@
+import { revisionOptions } from '../editRevision';
 import { useState, useMemo } from 'react';
 import { api } from '../api';
 import { useFinanceData } from '../hooks/useFinanceData';
@@ -81,7 +82,7 @@ export default function Accounts() {
     if (!await confirm(`"${row.name || row.id}" ${t('modals.confirmDelete.body')}`)) return;
     setActionError(null);
     try {
-      await api.del(`/accounts/${row.id}`);
+      await api.del(`/accounts/${row.id}`, revisionOptions(row));
       setModal(null);
       refreshData();
       if (store) store.invalidateRelated('accounts', 'portfolios', 'bookings');

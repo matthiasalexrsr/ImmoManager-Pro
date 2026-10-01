@@ -656,9 +656,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 collectFormData();
                 const res = await fetch(apiBase.replace(/\/$/, '') + '/pdf', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('access_token') || '') },
                     body: JSON.stringify(formData)
                 });
+                if (res.status === 401 || res.status === 403) {
+                    alert('Anmeldung oder Vertragsberechtigung fehlt. Bitte melden Sie sich erneut an.');
+                    return true; // An authorization denial must not invoke a local PDF fallback.
+                }
                 if (!res.ok) return false;
                 const blob = await res.blob();
                 const url = URL.createObjectURL(blob);

@@ -85,14 +85,14 @@ class HuggingFaceProvider:
             if not messages:
                 return IntegrationActionResult(success=False, message="Keine Nachrichten angegeben")
             from ..ai.message_ai import summarize_thread
-            result = summarize_thread(messages, subject=subject)
+            thread_summary = summarize_thread(messages, subject=subject)
             return IntegrationActionResult(
                 success=True,
                 message="Zusammenfassung erstellt",
                 details={
-                    "summary": result.summary,
-                    "key_points": result.key_points,
-                    "action_items": result.action_items,
+                    "summary": thread_summary.summary,
+                    "key_points": thread_summary.key_points,
+                    "action_items": thread_summary.action_items,
                 },
             )
 

@@ -1,3 +1,4 @@
+import { revisionOptions } from '../editRevision';
 import { useState, useEffect, useMemo } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
@@ -163,7 +164,7 @@ export default function Tasks() {
 
   const handleDelete = async (row) => {
     if (!await confirm(`"${row.title || row.id}" ${t('modals.confirmDelete.body')}`)) return;
-    await api.del(`/tasks/${row.id}`);
+    await api.del(`/tasks/${row.id}`, revisionOptions(row));
     refreshData();
     if (store) store.invalidateRelated('tasks', 'properties', 'units');
   };

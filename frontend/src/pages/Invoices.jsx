@@ -1,3 +1,4 @@
+import { revisionOptions } from '../editRevision';
 import { useState, useMemo } from 'react';
 import { api } from '../api';
 import { useFinanceData } from '../hooks/useFinanceData';
@@ -143,7 +144,7 @@ export default function Invoices() {
     if (!await confirm(`"${row.supplier}" ${t('modals.confirmDelete.body')}`)) return;
     setActionError(null);
     try {
-      await api.del(`/invoices/${row.id}`);
+      await api.del(`/invoices/${row.id}`, revisionOptions(row));
       setModal(null);
       refreshData();
       if (store) store.invalidateRelated('invoices', 'contracts', 'receivables');
@@ -155,7 +156,7 @@ export default function Invoices() {
   const markPaid = async (row) => {
     setActionError(null);
     try {
-      await api.patch(`/invoices/${row.id}`, { status: 'paid' });
+      await api.patch(`/invoices/${row.id}`, { status: 'paid' }, revisionOptions(row));
       setModal(null);
       refreshData();
       if (store) store.invalidateRelated('invoices', 'contracts', 'receivables');

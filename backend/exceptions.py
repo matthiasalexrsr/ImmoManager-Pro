@@ -18,6 +18,7 @@ request ID, user ID, exception type, and traceback where applicable.
 import logging
 import traceback
 from enum import Enum
+from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -56,7 +57,7 @@ class ServiceUnavailableError(Exception):
 
 def _request_context(request: Request) -> dict:
     """Extract detailed context from a request for logging."""
-    ctx = {
+    ctx: dict[str, Any] = {
         "method": request.method,
         "path": request.url.path,
         "request_id": request_id_var.get() or "-",
@@ -80,7 +81,7 @@ def _error_response(
     details: list | None = None,
 ) -> JSONResponse:
     """Build a standardized error JSON response."""
-    body = {
+    body: dict[str, Any] = {
         "error": {
             "code": code.value,
             "message": message,
@@ -94,6 +95,14 @@ def _error_response(
 
 def register_exception_handlers(app: FastAPI) -> None:
     """Register global exception handlers on the FastAPI application."""
+
+    from .services.integrations.config_store import ConfigStoreError
+
+    @app.exception_handler(ConfigStoreError)
+    async def integration_config_failure(request: Request, exc: ConfigStoreError):
+        logger.error("Integration configuration unavailable: code=%s request_id=%s", exc.code, request_id_var.get())
+        return _error_response(503, ErrorCode.INTERNAL_ERROR,
+                               "Integrationskonfiguration konnte nicht verlässlich gelesen oder gespeichert werden. Lokale Konfiguration prüfen.")
 
     @app.exception_handler(NotFoundError)
     async def not_found_handler(request: Request, exc: NotFoundError):

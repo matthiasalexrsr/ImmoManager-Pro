@@ -1,3 +1,4 @@
+import { revisionOptions } from '../editRevision';
 import { useState, useEffect } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
@@ -73,7 +74,7 @@ export default function Contacts() {
 
   const handleDelete = async (row) => {
     if (!await confirm(`"${row.display_name}" ${t('modals.confirmDelete.body')}`)) return;
-    await api.del(`/contacts/${row.id}`);
+    await api.del(`/contacts/${row.id}`, revisionOptions(row));
     loadData();
   };
 

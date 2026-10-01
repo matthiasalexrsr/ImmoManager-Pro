@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { test, expect } from '@playwright/test';
+import { test, expect, germanWorkspaceReady } from './demoFixtures.mjs';
 
 const image = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aO5cAAAAASUVORK5CYII=', 'base64');
 
@@ -26,6 +26,7 @@ async function login(page, username = 'demo', password = 'Demo1234') {
   await page.getByLabel('Passwort', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Anmelden', exact: true }).click();
   await expect(page).toHaveURL(/\/$/);
+  await germanWorkspaceReady(page);
   return { Authorization: `Bearer ${await page.evaluate(() => localStorage.getItem('access_token'))}` };
 }
 

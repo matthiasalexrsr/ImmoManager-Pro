@@ -1,3 +1,4 @@
+import { revisionOptions } from '../editRevision';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { api } from '../api';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
@@ -209,7 +210,7 @@ export default function Documents() {
 
   const handleDelete = async (row) => {
     if (!await confirm(`"${row.title}" ${t('modals.confirmDelete.body')}`)) return;
-    await api.del(`/documents/${row.id}`);
+    await api.del(`/documents/${row.id}`, revisionOptions(row));
     refreshData();
     if (store) store.invalidateRelated('documents');
   };

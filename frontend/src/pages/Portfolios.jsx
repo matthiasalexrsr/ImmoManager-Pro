@@ -1,3 +1,4 @@
+import { revisionOptions } from '../editRevision';
 import { useState, useEffect } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
@@ -135,7 +136,7 @@ export default function Portfolios() {
 
   const handleDelete = async (row) => {
     if (!await confirm(`"${row.name}" ${t('modals.confirmDelete.body')}`)) return;
-    await api.del(`/portfolios/${row.id}`);
+    await api.del(`/portfolios/${row.id}`, revisionOptions(row));
     refreshData();
   };
 

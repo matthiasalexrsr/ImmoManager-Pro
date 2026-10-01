@@ -1,3 +1,4 @@
+import { revisionOptions } from '../editRevision';
 import { useState } from 'react';
 import { api } from '../api';
 import { useFinanceData } from '../hooks/useFinanceData';
@@ -78,7 +79,7 @@ export default function RentAdjustments() {
     if (!await confirm(`"${row.contract_number}" ${t('modals.confirmDelete.body')}`)) return;
     setDeleteError(null);
     try {
-      await api.del(`/rent-adjustments/${row.id}`);
+      await api.del(`/rent-adjustments/${row.id}`, revisionOptions(row));
       refreshData();
       if (store) store.invalidateRelated('rent_adjustments', 'contracts');
     } catch (err) {

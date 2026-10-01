@@ -1,17 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { test as base, expect } from '@playwright/test';
+import { test, expect, germanWorkspaceReady } from './demoFixtures.mjs';
 
 // Every workflow uses the real rendered app and seeded SQL-backed API.
 // No requests are intercepted and no business data is replaced with mocks.
-const test = base.extend({
-  page: async ({ page }, use) => {
-    const errors = [];
-    page.on('pageerror', error => errors.push(error.message));
-    await page.addInitScript(() => localStorage.setItem('locale', 'de-DE'));
-    await use(page);
-    expect(errors, 'The browser must not emit uncaught JavaScript errors').toEqual([]);
-  },
-});
+
 
 async function login(page) {
   await page.goto('/login');
@@ -19,6 +11,7 @@ async function login(page) {
   await page.locator('form input[type="password"]').fill('Demo1234');
   await page.getByRole('button', { name: 'Anmelden', exact: true }).click();
   await expect(page).toHaveURL(/\/$/);
+  await germanWorkspaceReady(page);
   const token = await page.evaluate(() => localStorage.getItem('access_token'));
   expect(token).toBeTruthy();
   return { Authorization: `Bearer ${token}` };

@@ -1,3 +1,4 @@
+import { revisionOptions } from '../editRevision';
 import { useState } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
@@ -32,7 +33,7 @@ export default function FinanceCrudPage({ title, endpoint, columns, formFields, 
     if (!await confirm(`"${row[columns[0]?.key] || row.id}" ${t('modals.confirmDelete.body')}`)) return;
     setDeleteError(null);
     try {
-      await api.del(`${endpoint}/${row.id}`);
+      await api.del(`${endpoint}/${row.id}`, revisionOptions(row));
       refresh();
     } catch (err) {
       setDeleteError(err.message);

@@ -10,13 +10,14 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict
 
-from fastapi import Body, FastAPI, Request, Response
+from fastapi import Body, Depends, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.responses import RedirectResponse
 
+from .auth import require_auth, require_role
 from .config import settings
 from .exceptions import register_exception_handlers
 from .logging_config import setup_logging
@@ -31,6 +32,7 @@ from .paths import ensure_runtime_dirs, get_uploads_dir
 from .plugins import get_plugins, load_plugins, start_plugins, stop_plugins
 from .plugins.runtime import AuthenticatedPlugin
 from .routing import build_api_v1, get_i18n_router
+from .services.concurrency import ConcurrencyMiddleware
 from .static_access import PrivateStaticFiles, frontend_response
 
 # Initialize logging first
@@ -179,6 +181,7 @@ app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(AcceptLanguageMiddleware)
 app.add_middleware(AuditMiddleware)
 app.add_middleware(RBACWriteGuardMiddleware)
+app.add_middleware(ConcurrencyMiddleware)
 app.add_middleware(DBSessionMiddleware)
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.trusted_hosts, www_redirect=False)
 
@@ -259,25 +262,28 @@ def _mount_contract_wizard_if_available(target_app: FastAPI) -> bool:
         name="mietvertrag_wizard_static",
     )
 
-    @wizard_app.get("/", response_class=HTMLResponse)
-    @wizard_app.get("", response_class=HTMLResponse)
+    @target_app.get("/api/v1/contract-wizard/page", response_class=HTMLResponse, dependencies=[Depends(require_auth)])
+    @wizard_app.get("/", response_class=HTMLResponse, dependencies=[Depends(require_auth)])
+    @wizard_app.get("", response_class=HTMLResponse, dependencies=[Depends(require_auth)])
     async def wizard_page(request: Request):
         return templates.TemplateResponse(
             request,
             "mietvertrag_wizard/index.html",
             {
                 "static_prefix": "/mietvertrag/static/mietvertrag_wizard",
-                "api_base": "/mietvertrag/api",
+                "api_base": "/api/v1/contract-wizard",
             },
+            headers={"Cache-Control": "private, no-store"},
         )
 
-    @wizard_app.post("/api/pdf")
-    async def pdf_endpoint(payload: Dict[str, Any] = Body(...)):
+    @target_app.post("/api/v1/contract-wizard/pdf", dependencies=[Depends(require_role("eigentuemer", "verwalter"))])
+    @wizard_app.post("/api/pdf", dependencies=[Depends(require_role("eigentuemer", "verwalter"))])
+    def pdf_endpoint(payload: Dict[str, Any] = Body(...)):
         pdf_bytes = build_contract_pdf(payload)
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
-            headers={"Content-Disposition": 'attachment; filename="mietvertrag.pdf"'},
+            headers={"Content-Disposition": 'attachment; filename="mietvertrag.pdf"', "Cache-Control": "private, no-store"},
         )
 
     target_app.mount("/mietvertrag", wizard_app)

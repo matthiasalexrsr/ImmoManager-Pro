@@ -1,3 +1,4 @@
+import { revisionOptions } from '../editRevision';
 import { useState, useEffect } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
@@ -150,7 +151,7 @@ export default function Listings() {
     if (!await confirm(`"${row.title}" ${t('modals.confirmDelete.body')}`)) return;
     setDeleteError(null);
     try {
-      await api.del(`/listings/${row.id}`);
+      await api.del(`/listings/${row.id}`, revisionOptions(row));
       refreshData();
       if (store) store.invalidateRelated('listings', 'units');
     } catch (err) {

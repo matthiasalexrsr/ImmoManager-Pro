@@ -1,3 +1,4 @@
+import { revisionOptions } from '../editRevision';
 import { useState, useEffect, useMemo } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
@@ -227,7 +228,7 @@ export default function Viewings() {
     if (!await confirm(`"${row.lead_name}" ${t('modals.confirmDelete.body')}`)) return;
     setDeleteError(null);
     try {
-      await api.del(`/viewings/${row.id}`);
+      await api.del(`/viewings/${row.id}`, revisionOptions(row));
       refreshData();
       if (store) store.invalidateRelated('viewings', 'leads', 'units');
     } catch (err) {

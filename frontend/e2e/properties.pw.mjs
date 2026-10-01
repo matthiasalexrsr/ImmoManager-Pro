@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { test, expect } from '@playwright/test';
+import { test, expect, germanWorkspaceReady } from './demoFixtures.mjs';
 
 test('property inventory: real creation, weighted occupancy, filters and persistent edit', async ({ page }, testInfo) => {
   test.setTimeout(120_000);
@@ -11,6 +11,7 @@ test('property inventory: real creation, weighted occupancy, filters and persist
   await page.getByLabel('Passwort', { exact: true }).fill('Demo1234');
   await page.getByRole('button', { name: 'Anmelden', exact: true }).click();
   await expect(page).toHaveURL(/\/$/);
+  await germanWorkspaceReady(page);
   const headers = { Authorization: `Bearer ${await page.evaluate(() => localStorage.getItem('access_token'))}` };
   const api = async (path, data) => {
     const response = data === undefined

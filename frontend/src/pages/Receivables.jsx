@@ -1,3 +1,4 @@
+import { bindEditRevision, revisionOptions, revisionSource, snapshotRevision } from '../editRevision';
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api';
@@ -58,13 +59,14 @@ export default function Receivables() {
   const handleSave = async (data) => {
     if (readonlyRef.current) throw new Error(t('pages.receivables.readonly'));
     // Payment state is receipt-managed. Only accept editable business fields.
-    const payload = { contract_id: data.contract_id, amount_due: data.amount_due,
-      due_date: data.due_date, description: data.description };
+    const payload = bindEditRevision({ contract_id: data.contract_id, amount_due: data.amount_due,
+      due_date: data.due_date, description: data.description }, snapshotRevision(data));
     if (modal === 'create') {
       await api.post('/receivables', { ...payload, status: 'open' });
     } else {
-      await api.put(`/receivables/${modal.id}`, { ...payload, status: modal.status,
-        statement_id: modal.statement_id ?? null });
+      const source = revisionSource(data, modal);
+      await api.put(`/receivables/${modal.id}`, { ...payload, status: source.status,
+        statement_id: source.statement_id ?? null });
     }
     setModal(null);
     refreshData();
@@ -76,7 +78,7 @@ export default function Receivables() {
     if (!await confirm(`${t('modals.confirmDelete.body')}`) || readonlyRef.current) return;
     setDeleteError(null);
     try {
-      await api.del(`/receivables/${row.id}`);
+      await api.del(`/receivables/${row.id}`, revisionOptions(row));
       refreshData();
       if (store) store.invalidateRelated('receivables', 'contracts', 'bookings');
     } catch (err) {

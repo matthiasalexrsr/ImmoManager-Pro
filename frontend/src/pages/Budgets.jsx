@@ -1,3 +1,4 @@
+import { revisionOptions } from '../editRevision';
 import { useState } from 'react';
 import { api } from '../api';
 import { useFinanceData } from '../hooks/useFinanceData';
@@ -86,7 +87,7 @@ export default function Budgets() {
     if (!await confirm(`"${row.property_name} ${row.year}" ${t('modals.confirmDelete.body')}`)) return;
     setDeleteError(null);
     try {
-      await api.del(`/budgets/${row.id}`);
+      await api.del(`/budgets/${row.id}`, revisionOptions(row));
       refreshData();
       if (store) store.invalidateRelated('budgets');
     } catch (err) {

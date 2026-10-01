@@ -1,19 +1,8 @@
-import { test as base, expect } from '@playwright/test';
+import { test, expect, germanWorkspaceReady } from './demoFixtures.mjs';
 
 // The existing runner owns the isolated, seeded SQL server. These checks only
 // read genuine records and navigate the rendered app; API requests are not mocked.
-const test = base.extend({
-  page: async ({ page }, use) => {
-    const errors = [];
-    page.on('pageerror', error => errors.push(error.message));
-    await page.addInitScript(() => {
-      if (!localStorage.getItem('locale')) localStorage.setItem('locale', 'de-DE');
-      if (!localStorage.getItem('user_preferences')) localStorage.setItem('user_preferences', JSON.stringify({ theme: 'light', sidebar_collapsed: false }));
-    });
-    await use(page);
-    expect(errors, 'Navigation must not emit uncaught browser errors').toEqual([]);
-  },
-});
+
 
 const primaryNavigation = (page, includeHidden = false) => page.getByRole('navigation', { includeHidden })
   .filter({ has: page.locator('a[href="/properties"]') }).filter({ has: page.locator('a[href="/contracts"]') });
@@ -25,6 +14,7 @@ async function login(page) {
   await page.getByLabel('Passwort', { exact: true }).fill('Demo1234');
   await page.getByRole('button', { name: 'Anmelden', exact: true }).click();
   await expect(page).toHaveURL(url => url.pathname === '/');
+  await germanWorkspaceReady(page);
   await expect(page.getByRole('main').getByRole('heading', { level: 1 }).first()).toBeVisible();
   const token = await page.evaluate(() => localStorage.getItem('access_token'));
   expect(token).toBeTruthy();

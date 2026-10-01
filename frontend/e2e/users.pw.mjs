@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, germanWorkspaceReady } from './demoFixtures.mjs';
 
 const passphrase = 'Browser Users Passphrase 2026';
 const owner = { username: 'demo', password: 'Demo1234' };
@@ -14,7 +14,7 @@ async function login(page, account, success = true) {
   await page.getByRole('button', { name: 'Anmelden', exact: true }).click();
   const response = await completed;
   expect(response.status()).toBe(success ? 200 : 401);
-  if (success) await expect(page).toHaveURL(/\/$/);
+  if (success) { await expect(page).toHaveURL(/\/$/); await germanWorkspaceReady(page); }
   else { await expect(page.getByRole('alert')).toBeVisible(); await expect(page).toHaveURL(/\/login$/); }
 }
 

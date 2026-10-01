@@ -9,6 +9,8 @@
  *   - Safe JSON parsing with fallbacks
  */
 
+import { annotateRevisions, conditionalHeaders, revisionOptions } from './editRevision';
+
 const BASE = '/api/v1';
 
 // ---------------------------------------------------------------------------
@@ -101,6 +103,7 @@ function parseApiError(body, statusCode) {
   }
   err.statusCode = statusCode;
   err.isNetwork = false;
+  err.isEditConflict = statusCode === 412;
   return err;
 }
 
@@ -161,13 +164,15 @@ async function request(path, options = {}) {
   if (res.status === 204) return null;
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw parseApiError(body, res.status);
+    const error = parseApiError(body, res.status);
+    error.resourcePath = path.split('?')[0];
+    throw error;
   }
 
   // Safe JSON parsing for success responses
   if (responseType === 'blob') return res.blob();
   try {
-    return await res.json();
+    return annotateRevisions(await res.json(), path, res.headers?.get('ETag'));
   } catch {
     console.warn('[API] Failed to parse JSON response for', path);
     return null;
@@ -194,9 +199,10 @@ export const api = {
   getBlob: (path, { signal } = {}) => request(path, { signal, responseType: 'blob' }),
   postForm: (path, formData, { signal } = {}) => request(path, { method: 'POST', body: formData, signal }),
   post: (path, data, { signal } = {}) => request(path, { method: 'POST', body: JSON.stringify(data), signal }),
-  put: (path, data, { signal } = {}) => request(path, { method: 'PUT', body: JSON.stringify(data), signal }),
-  patch: (path, data, { signal } = {}) => request(path, { method: 'PATCH', body: JSON.stringify(data), signal }),
-  del: (path, { signal } = {}) => request(path, { method: 'DELETE', signal }),
+  versionOptions: revisionOptions,
+  put: (path, data, options = {}) => request(path, { method: 'PUT', body: JSON.stringify(data), signal: options.signal, headers: conditionalHeaders(path, data, options) }),
+  patch: (path, data, options = {}) => request(path, { method: 'PATCH', body: JSON.stringify(data), signal: options.signal, headers: conditionalHeaders(path, data, options) }),
+  del: (path, options = {}) => request(path, { method: 'DELETE', signal: options.signal, headers: conditionalHeaders(path, null, options) }),
 };
 
 export async function login(username, password, totp_code) {

@@ -110,6 +110,49 @@ def _payment_mutation(method):
     return guarded
 
 
+def _version_mutation(method):
+    """Check and change under the same lock as payment-backed memory writes.
+
+    A cascade belongs to its outer resource mutation: nested child deletions
+    keep their domain guards without incorrectly applying the parent's ETag.
+    """
+    from inspect import signature
+    parameters = tuple(signature(method).parameters)
+
+    @wraps(method)
+    def guarded(self, *args, **kwargs):
+        from .services.concurrency import guard_memory_revision, memory_mutation_depth, next_updated_at
+        from .services.payments import _memory_lock
+        arguments = dict(zip(parameters[1:], args)) | kwargs
+        if method.__name__ == "_patch_entity":
+            entity_type, entity_id = arguments["entity_type"], arguments["entity_id"]
+        else:
+            entity_type = method.__name__.split("_", 1)[1]
+            entity_type = {"maintenance_case": "maintenance", "calendar_event": "calendar",
+                           "viewing_appointment": "viewing", "standalone_meter_reading": "standalone_reading"}.get(entity_type, entity_type)
+            entity_id = arguments[parameters[1]]
+        entry = self._ENTITY_TYPE_MAP.get(entity_type)
+        if entry is None:
+            return method(self, *args, **kwargs)
+        table, _ = entry
+        with _memory_lock:
+            collection = getattr(self, table)
+            previous = collection.get(entity_id)
+            if memory_mutation_depth.get() == 0:
+                guard_memory_revision(table, entity_id, previous)
+            token = memory_mutation_depth.set(memory_mutation_depth.get() + 1)
+            try:
+                result = method(self, *args, **kwargs)
+                if result is not None and hasattr(result, "updated_at"):
+                    stamp = next_updated_at(getattr(previous, "updated_at", None), result.updated_at)
+                    result = result.model_copy(update={"updated_at": stamp})
+                    collection[entity_id] = result
+                return result
+            finally:
+                memory_mutation_depth.reset(token)
+    return guarded
+
+
 @dataclass
 class InMemoryStore:
     accounts: Dict[str, Account] = field(default_factory=dict)
@@ -213,6 +256,7 @@ class InMemoryStore:
         except KeyError as exc:
             raise NotFoundError("Portfolio nicht gefunden") from exc
 
+    @_version_mutation
     def update_portfolio(self, portfolio_id: str, data: PortfolioCreate) -> Portfolio:
         if portfolio_id not in self.portfolios:
             raise NotFoundError("Portfolio nicht gefunden")
@@ -225,6 +269,7 @@ class InMemoryStore:
         return portfolio
 
     @_payment_mutation
+    @_version_mutation
     def delete_portfolio(self, portfolio_id: str) -> None:
         from .services.payment_integrity import guard_memory_delete
         guard_memory_delete(self, "portfolio", portfolio_id)
@@ -270,6 +315,7 @@ class InMemoryStore:
         except KeyError as exc:
             raise NotFoundError("Kategorie nicht gefunden") from exc
 
+    @_version_mutation
     def update_category(self, category_id: str, data: CategoryCreate) -> Category:
         if category_id not in self.categories:
             raise NotFoundError("Kategorie nicht gefunden")
@@ -283,6 +329,7 @@ class InMemoryStore:
         self.categories[category_id] = category
         return category
 
+    @_version_mutation
     def delete_category(self, category_id: str) -> None:
         if category_id not in self.categories:
             raise NotFoundError("Kategorie nicht gefunden")
@@ -292,6 +339,7 @@ class InMemoryStore:
                 self.bookings[booking_id] = updated
         del self.categories[category_id]
 
+    @_version_mutation
     def update_account(self, account_id: str, data: AccountCreate) -> Account:
         if account_id not in self.accounts:
             raise NotFoundError("Konto nicht gefunden")
@@ -303,6 +351,7 @@ class InMemoryStore:
         return account
 
     @_payment_mutation
+    @_version_mutation
     def delete_account(self, account_id: str) -> None:
         from .services.payment_integrity import guard_memory_delete
         guard_memory_delete(self, "account", account_id)
@@ -329,6 +378,7 @@ class InMemoryStore:
         except KeyError as exc:
             raise NotFoundError("Immobilie nicht gefunden") from exc
 
+    @_version_mutation
     def update_property(self, property_id: str, data: PropertyCreate) -> Property:
         if property_id not in self.properties:
             raise NotFoundError("Immobilie nicht gefunden")
@@ -343,6 +393,7 @@ class InMemoryStore:
         return property_item
 
     @_payment_mutation
+    @_version_mutation
     def delete_property(self, property_id: str) -> None:
         from .services.payment_integrity import guard_memory_delete
         guard_memory_delete(self, "property", property_id)
@@ -389,6 +440,7 @@ class InMemoryStore:
         except KeyError as exc:
             raise NotFoundError("Einheit nicht gefunden") from exc
 
+    @_version_mutation
     def update_unit(self, unit_id: str, data: UnitCreate) -> Unit:
         if unit_id not in self.units:
             raise NotFoundError("Einheit nicht gefunden")
@@ -400,6 +452,7 @@ class InMemoryStore:
         return unit
 
     @_payment_mutation
+    @_version_mutation
     def delete_unit(self, unit_id: str) -> None:
         from .services.payment_integrity import guard_memory_delete
         guard_memory_delete(self, "unit", unit_id)
@@ -442,6 +495,7 @@ class InMemoryStore:
         except KeyError as exc:
             raise NotFoundError("Mieter nicht gefunden") from exc
 
+    @_version_mutation
     def update_tenant(self, tenant_id: str, data: TenantCreate) -> Tenant:
         if tenant_id not in self.tenants:
             raise NotFoundError("Mieter nicht gefunden")
@@ -451,6 +505,7 @@ class InMemoryStore:
         return tenant
 
     @_payment_mutation
+    @_version_mutation
     def delete_tenant(self, tenant_id: str) -> None:
         from .services.payment_integrity import guard_memory_delete
         guard_memory_delete(self, "tenant", tenant_id)
@@ -489,6 +544,7 @@ class InMemoryStore:
             raise NotFoundError("Vertrag nicht gefunden") from exc
 
     @_payment_mutation
+    @_version_mutation
     def update_contract(self, contract_id: str, data: ContractCreate) -> Contract:
         if contract_id not in self.contracts:
             raise NotFoundError("Vertrag nicht gefunden")
@@ -517,6 +573,7 @@ class InMemoryStore:
         return contract
 
     @_payment_mutation
+    @_version_mutation
     def delete_contract(self, contract_id: str) -> None:
         from .services.payment_integrity import guard_memory_delete
         guard_memory_delete(self, "contract", contract_id)
@@ -549,6 +606,7 @@ class InMemoryStore:
             raise NotFoundError("Buchung nicht gefunden") from exc
 
     @_payment_mutation
+    @_version_mutation
     def update_booking(self, booking_id: str, data: BookingCreate) -> Booking:
         if booking_id not in self.bookings:
             raise NotFoundError("Buchung nicht gefunden")
@@ -570,6 +628,7 @@ class InMemoryStore:
         return booking
 
     @_payment_mutation
+    @_version_mutation
     def delete_booking(self, booking_id: str) -> None:
         from .services.payment_integrity import guard_memory_delete
         guard_memory_delete(self, "booking", booking_id)
@@ -596,6 +655,7 @@ class InMemoryStore:
             raise NotFoundError("Forderung nicht gefunden") from exc
 
     @_payment_mutation
+    @_version_mutation
     def update_receivable(self, receivable_id: str, data: ReceivableCreate) -> Receivable:
         if receivable_id not in self.receivables:
             raise NotFoundError("Forderung nicht gefunden")
@@ -615,6 +675,7 @@ class InMemoryStore:
         return receivable
 
     @_payment_mutation
+    @_version_mutation
     def delete_receivable(self, receivable_id: str) -> None:
         from .services.billing_settlement import guard_receivable
         guard_receivable(self.get_receivable(receivable_id))
@@ -642,6 +703,7 @@ class InMemoryStore:
         except KeyError as exc:
             raise NotFoundError("Rechnung nicht gefunden") from exc
 
+    @_version_mutation
     def update_invoice(self, invoice_id: str, data: InvoiceCreate) -> Invoice:
         if invoice_id not in self.invoices:
             raise NotFoundError("Rechnung nicht gefunden")
@@ -652,6 +714,7 @@ class InMemoryStore:
         self.invoices[invoice_id] = invoice
         return invoice
 
+    @_version_mutation
     def delete_invoice(self, invoice_id: str) -> None:
         if invoice_id not in self.invoices:
             raise NotFoundError("Rechnung nicht gefunden")
@@ -675,6 +738,7 @@ class InMemoryStore:
         except KeyError as exc:
             raise NotFoundError("Instandhaltungsfall nicht gefunden") from exc
 
+    @_version_mutation
     def update_maintenance_case(self, case_id: str, data: MaintenanceCaseCreate) -> MaintenanceCase:
         if case_id not in self.maintenance_cases:
             raise NotFoundError("Instandhaltungsfall nicht gefunden")
@@ -687,6 +751,7 @@ class InMemoryStore:
         self.maintenance_cases[case_id] = case
         return case
 
+    @_version_mutation
     def delete_maintenance_case(self, case_id: str) -> None:
         if case_id not in self.maintenance_cases:
             raise NotFoundError("Instandhaltungsfall nicht gefunden")
@@ -712,6 +777,7 @@ class InMemoryStore:
         except KeyError as exc:
             raise NotFoundError("Dokument nicht gefunden") from exc
 
+    @_version_mutation
     def update_document(self, document_id: str, data: DocumentCreate) -> Document:
         if document_id not in self.documents:
             raise NotFoundError("Dokument nicht gefunden")
@@ -729,6 +795,7 @@ class InMemoryStore:
         self.documents[document_id] = document
         return document
 
+    @_version_mutation
     def delete_document(self, document_id: str) -> None:
         if document_id not in self.documents:
             raise NotFoundError("Dokument nicht gefunden")
@@ -752,6 +819,7 @@ class InMemoryStore:
         except KeyError as exc:
             raise NotFoundError("Aufgabe nicht gefunden") from exc
 
+    @_version_mutation
     def update_task(self, task_id: str, data: TaskCreate) -> Task:
         if task_id not in self.tasks:
             raise NotFoundError("Aufgabe nicht gefunden")
@@ -764,6 +832,7 @@ class InMemoryStore:
         self.tasks[task_id] = task
         return task
 
+    @_version_mutation
     def delete_task(self, task_id: str) -> None:
         if task_id not in self.tasks:
             raise NotFoundError("Aufgabe nicht gefunden")
@@ -787,6 +856,7 @@ class InMemoryStore:
         except KeyError as exc:
             raise NotFoundError("Termin nicht gefunden") from exc
 
+    @_version_mutation
     def update_calendar_event(self, event_id: str, data: CalendarEventCreate) -> CalendarEvent:
         if event_id not in self.calendar_events:
             raise NotFoundError("Termin nicht gefunden")
@@ -799,6 +869,7 @@ class InMemoryStore:
         self.calendar_events[event_id] = event
         return event
 
+    @_version_mutation
     def delete_calendar_event(self, event_id: str) -> None:
         if event_id not in self.calendar_events:
             raise NotFoundError("Termin nicht gefunden")
@@ -820,6 +891,7 @@ class InMemoryStore:
         except KeyError as exc:
             raise NotFoundError("Inserat nicht gefunden") from exc
 
+    @_version_mutation
     def update_listing(self, listing_id: str, data: ListingCreate) -> Listing:
         if listing_id not in self.listings:
             raise NotFoundError("Inserat nicht gefunden")
@@ -830,6 +902,7 @@ class InMemoryStore:
         self.listings[listing_id] = listing
         return listing
 
+    @_version_mutation
     def delete_listing(self, listing_id: str) -> None:
         if listing_id not in self.listings:
             raise NotFoundError("Inserat nicht gefunden")
@@ -854,6 +927,7 @@ class InMemoryStore:
         except KeyError as exc:
             raise NotFoundError("Inseratsfoto nicht gefunden") from exc
 
+    @_version_mutation
     def update_listing_photo(self, photo_id: str, data: ListingPhotoCreate) -> ListingPhoto:
         if photo_id not in self.listing_photos:
             raise NotFoundError("Inseratsfoto nicht gefunden")
@@ -864,6 +938,7 @@ class InMemoryStore:
         self.listing_photos[photo_id] = photo
         return photo
 
+    @_version_mutation
     def delete_listing_photo(self, photo_id: str) -> None:
         if photo_id not in self.listing_photos:
             raise NotFoundError("Inseratsfoto nicht gefunden")
@@ -889,6 +964,7 @@ class InMemoryStore:
         except KeyError as exc:
             raise NotFoundError("Interessent nicht gefunden") from exc
 
+    @_version_mutation
     def update_lead(self, lead_id: str, data: LeadCreate) -> Lead:
         if lead_id not in self.leads:
             raise NotFoundError("Interessent nicht gefunden")
@@ -901,6 +977,7 @@ class InMemoryStore:
         self.leads[lead_id] = lead
         return lead
 
+    @_version_mutation
     def delete_lead(self, lead_id: str) -> None:
         if lead_id not in self.leads:
             raise NotFoundError("Interessent nicht gefunden")
@@ -930,6 +1007,7 @@ class InMemoryStore:
         except KeyError as exc:
             raise NotFoundError("Besichtigungstermin nicht gefunden") from exc
 
+    @_version_mutation
     def update_viewing_appointment(self, appointment_id: str, data: ViewingAppointmentCreate) -> ViewingAppointment:
         if appointment_id not in self.viewing_appointments:
             raise NotFoundError("Besichtigungstermin nicht gefunden")
@@ -945,6 +1023,7 @@ class InMemoryStore:
         self.viewing_appointments[appointment_id] = appointment
         return appointment
 
+    @_version_mutation
     def delete_viewing_appointment(self, appointment_id: str) -> None:
         if appointment_id not in self.viewing_appointments:
             raise NotFoundError("Besichtigungstermin nicht gefunden")
@@ -972,6 +1051,7 @@ class InMemoryStore:
             raise NotFoundError("Abrechnungsperiode nicht gefunden") from exc
 
     @_payment_mutation
+    @_version_mutation
     def update_billing_period(self, period_id: str, data: BillingPeriodCreate) -> BillingPeriod:
         from .services.billing_settlement import guard_entity
         guard_entity(self, "billing_period", self.get_billing_period(period_id), data)
@@ -987,6 +1067,7 @@ class InMemoryStore:
         return period
 
     @_payment_mutation
+    @_version_mutation
     def delete_billing_period(self, period_id: str) -> None:
         from .services.billing_settlement import guard_entity
         guard_entity(self, "billing_period", self.get_billing_period(period_id))
@@ -1021,6 +1102,7 @@ class InMemoryStore:
             raise NotFoundError("Verteilerschlüssel nicht gefunden") from exc
 
     @_payment_mutation
+    @_version_mutation
     def update_allocation_key(self, key_id: str, data: AllocationKeyCreate) -> AllocationKey:
         from .services.billing_settlement import guard_entity
         guard_entity(self, "allocation_key", self.get_allocation_key(key_id), data)
@@ -1034,6 +1116,7 @@ class InMemoryStore:
         return key
 
     @_payment_mutation
+    @_version_mutation
     def delete_allocation_key(self, key_id: str) -> None:
         from .services.billing_settlement import guard_entity
         guard_entity(self, "allocation_key", self.get_allocation_key(key_id))
@@ -1070,6 +1153,7 @@ class InMemoryStore:
             raise NotFoundError("Kostenposition nicht gefunden") from exc
 
     @_payment_mutation
+    @_version_mutation
     def update_cost_item(self, item_id: str, data: CostItemCreate) -> CostItem:
         from .services.billing_settlement import guard_entity
         guard_entity(self, "cost_item", self.get_cost_item(item_id), data)
@@ -1085,6 +1169,7 @@ class InMemoryStore:
         return item
 
     @_payment_mutation
+    @_version_mutation
     def delete_cost_item(self, item_id: str) -> None:
         from .services.billing_settlement import guard_entity
         guard_entity(self, "cost_item", self.get_cost_item(item_id))
@@ -1119,6 +1204,7 @@ class InMemoryStore:
             raise NotFoundError("Betriebskostenabrechnung nicht gefunden") from exc
 
     @_payment_mutation
+    @_version_mutation
     def update_utility_statement(self, statement_id: str, data: UtilityStatementCreate) -> UtilityStatement:
         from .services.billing_settlement import guard_entity
         guard_entity(self, "utility_statement", self.get_utility_statement(statement_id), data)
@@ -1136,6 +1222,7 @@ class InMemoryStore:
         return statement
 
     @_payment_mutation
+    @_version_mutation
     def delete_utility_statement(self, statement_id: str) -> None:
         from .services.billing_settlement import guard_entity
         guard_entity(self, "utility_statement", self.get_utility_statement(statement_id))
@@ -1161,6 +1248,7 @@ class InMemoryStore:
         except KeyError as exc:
             raise NotFoundError("Kaution nicht gefunden") from exc
 
+    @_version_mutation
     def update_deposit(self, deposit_id: str, data: DepositCreate) -> Deposit:
         if deposit_id not in self.deposits:
             raise NotFoundError("Kaution nicht gefunden")
@@ -1171,6 +1259,7 @@ class InMemoryStore:
         self.deposits[deposit_id] = deposit
         return deposit
 
+    @_version_mutation
     def delete_deposit(self, deposit_id: str) -> None:
         if deposit_id not in self.deposits:
             raise NotFoundError("Kaution nicht gefunden")
@@ -1203,6 +1292,7 @@ class InMemoryStore:
         self.notifications[notification_id] = updated
         return updated
 
+    @_version_mutation
     def update_notification(self, notification_id: str, data: NotificationCreate) -> Notification:
         if notification_id not in self.notifications:
             raise NotFoundError("Benachrichtigung nicht gefunden")
@@ -1214,6 +1304,7 @@ class InMemoryStore:
         self.notifications[notification_id] = notification
         return notification
 
+    @_version_mutation
     def delete_notification(self, notification_id: str) -> None:
         if notification_id not in self.notifications:
             raise NotFoundError("Benachrichtigung nicht gefunden")
@@ -1235,6 +1326,7 @@ class InMemoryStore:
         except KeyError as exc:
             raise NotFoundError("Benachrichtigungsvorlage nicht gefunden") from exc
 
+    @_version_mutation
     def update_notification_template(self, template_id: str, data: NotificationTemplateCreate) -> NotificationTemplate:
         if template_id not in self.notification_templates:
             raise NotFoundError("Benachrichtigungsvorlage nicht gefunden")
@@ -1246,6 +1338,7 @@ class InMemoryStore:
         self.notification_templates[template_id] = template
         return template
 
+    @_version_mutation
     def delete_notification_template(self, template_id: str) -> None:
         if template_id not in self.notification_templates:
             raise NotFoundError("Benachrichtigungsvorlage nicht gefunden")
@@ -1294,6 +1387,7 @@ class InMemoryStore:
     }
 
     @_payment_mutation
+    @_version_mutation
     def _patch_entity(self, entity_type: str, entity_id: str, patch: PydanticBaseModel):
         """Apply a partial update to an entity. Only non-None fields in the patch are applied."""
         entry = self._ENTITY_TYPE_MAP.get(entity_type)
@@ -1400,6 +1494,7 @@ class InMemoryStore:
         except KeyError as exc:
             raise NotFoundError("Steuersatz nicht gefunden") from exc
 
+    @_version_mutation
     def update_tax_rate(self, tax_rate_id: str, data: TaxRateCreate) -> TaxRate:
         if tax_rate_id not in self.tax_rates:
             raise NotFoundError("Steuersatz nicht gefunden")
@@ -1408,6 +1503,7 @@ class InMemoryStore:
         self.tax_rates[tax_rate_id] = item
         return item
 
+    @_version_mutation
     def delete_tax_rate(self, tax_rate_id: str) -> None:
         if tax_rate_id not in self.tax_rates:
             raise NotFoundError("Steuersatz nicht gefunden")
@@ -1430,6 +1526,7 @@ class InMemoryStore:
         except KeyError as exc:
             raise NotFoundError("Mietanpassung nicht gefunden") from exc
 
+    @_version_mutation
     def update_rent_adjustment(self, adj_id: str, data: RentAdjustmentCreate) -> RentAdjustment:
         if adj_id not in self.rent_adjustments:
             raise NotFoundError("Mietanpassung nicht gefunden")
@@ -1438,6 +1535,7 @@ class InMemoryStore:
         self.rent_adjustments[adj_id] = item
         return item
 
+    @_version_mutation
     def delete_rent_adjustment(self, adj_id: str) -> None:
         if adj_id not in self.rent_adjustments:
             raise NotFoundError("Mietanpassung nicht gefunden")
@@ -1462,6 +1560,7 @@ class InMemoryStore:
         except KeyError as exc:
             raise NotFoundError("Übergabeprotokoll nicht gefunden") from exc
 
+    @_version_mutation
     def update_handover_protocol(self, proto_id: str, data: HandoverProtocolCreate) -> HandoverProtocol:
         if proto_id not in self.handover_protocols:
             raise NotFoundError("Übergabeprotokoll nicht gefunden")
@@ -1473,6 +1572,7 @@ class InMemoryStore:
         self.handover_protocols[proto_id] = item
         return item
 
+    @_version_mutation
     def delete_handover_protocol(self, proto_id: str) -> None:
         if proto_id not in self.handover_protocols:
             raise NotFoundError("Übergabeprotokoll nicht gefunden")
@@ -1499,6 +1599,7 @@ class InMemoryStore:
         except KeyError as exc:
             raise NotFoundError("Zählerstand nicht gefunden") from exc
 
+    @_version_mutation
     def update_meter_reading(self, reading_id: str, data: MeterReadingCreate) -> MeterReading:
         if reading_id not in self.meter_readings:
             raise NotFoundError("Zählerstand nicht gefunden")
@@ -1507,6 +1608,7 @@ class InMemoryStore:
         self.meter_readings[reading_id] = item
         return item
 
+    @_version_mutation
     def delete_meter_reading(self, reading_id: str) -> None:
         if reading_id not in self.meter_readings:
             raise NotFoundError("Zählerstand nicht gefunden")
@@ -1549,6 +1651,7 @@ class InMemoryStore:
         except KeyError as exc:
             raise NotFoundError("Budget nicht gefunden") from exc
 
+    @_version_mutation
     def update_budget(self, budget_id: str, data: BudgetCreate) -> Budget:
         if budget_id not in self.budgets:
             raise NotFoundError("Budget nicht gefunden")
@@ -1557,6 +1660,7 @@ class InMemoryStore:
         self.budgets[budget_id] = item
         return item
 
+    @_version_mutation
     def delete_budget(self, budget_id: str) -> None:
         if budget_id not in self.budgets:
             raise NotFoundError("Budget nicht gefunden")
@@ -1577,6 +1681,7 @@ class InMemoryStore:
         except KeyError as exc:
             raise NotFoundError("Eskalationsregel nicht gefunden") from exc
 
+    @_version_mutation
     def update_escalation_rule(self, rule_id: str, data: EscalationRuleCreate) -> EscalationRule:
         if rule_id not in self.escalation_rules:
             raise NotFoundError("Eskalationsregel nicht gefunden")
@@ -1585,6 +1690,7 @@ class InMemoryStore:
         self.escalation_rules[rule_id] = item
         return item
 
+    @_version_mutation
     def delete_escalation_rule(self, rule_id: str) -> None:
         if rule_id not in self.escalation_rules:
             raise NotFoundError("Eskalationsregel nicht gefunden")
@@ -1605,6 +1711,7 @@ class InMemoryStore:
         except KeyError as exc:
             raise NotFoundError("Kontakt nicht gefunden") from exc
 
+    @_version_mutation
     def update_contact(self, contact_id: str, data: ContactCreate) -> Contact:
         if contact_id not in self.contacts:
             raise NotFoundError("Kontakt nicht gefunden")
@@ -1613,6 +1720,7 @@ class InMemoryStore:
         self.contacts[contact_id] = contact
         return contact
 
+    @_version_mutation
     def delete_contact(self, contact_id: str) -> None:
         if contact_id not in self.contacts:
             raise NotFoundError("Kontakt nicht gefunden")
@@ -1633,6 +1741,7 @@ class InMemoryStore:
         except KeyError as exc:
             raise NotFoundError("Zähler nicht gefunden") from exc
 
+    @_version_mutation
     def update_meter(self, meter_id: str, data: MeterCreate) -> Meter:
         if meter_id not in self.meters:
             raise NotFoundError("Zähler nicht gefunden")
@@ -1641,6 +1750,7 @@ class InMemoryStore:
         self.meters[meter_id] = meter
         return meter
 
+    @_version_mutation
     def delete_meter(self, meter_id: str) -> None:
         if meter_id not in self.meters:
             raise NotFoundError("Zähler nicht gefunden")
@@ -1661,6 +1771,7 @@ class InMemoryStore:
         except KeyError as exc:
             raise NotFoundError("Ablesung nicht gefunden") from exc
 
+    @_version_mutation
     def update_standalone_meter_reading(self, reading_id: str, data: StandaloneMeterReadingCreate) -> StandaloneMeterReading:
         if reading_id not in self.standalone_meter_readings:
             raise NotFoundError("Ablesung nicht gefunden")
@@ -1669,6 +1780,7 @@ class InMemoryStore:
         self.standalone_meter_readings[reading_id] = reading
         return reading
 
+    @_version_mutation
     def delete_standalone_meter_reading(self, reading_id: str) -> None:
         if reading_id not in self.standalone_meter_readings:
             raise NotFoundError("Ablesung nicht gefunden")
@@ -1689,6 +1801,7 @@ class InMemoryStore:
         except KeyError as exc:
             raise NotFoundError("Thread nicht gefunden") from exc
 
+    @_version_mutation
     def update_message_thread(self, thread_id: str, data: MessageThreadCreate) -> MessageThread:
         if thread_id not in self.message_threads:
             raise NotFoundError("Thread nicht gefunden")
@@ -1697,6 +1810,7 @@ class InMemoryStore:
         self.message_threads[thread_id] = thread
         return thread
 
+    @_version_mutation
     def delete_message_thread(self, thread_id: str) -> None:
         if thread_id not in self.message_threads:
             raise NotFoundError("Thread nicht gefunden")
@@ -1732,6 +1846,7 @@ class InMemoryStore:
         except KeyError as exc:
             raise NotFoundError("Nachricht nicht gefunden") from exc
 
+    @_version_mutation
     def delete_message(self, message_id: str) -> None:
         if message_id not in self.messages:
             raise NotFoundError("Nachricht nicht gefunden")
@@ -1756,6 +1871,7 @@ class InMemoryStore:
             raise NotFoundError("Sollstellung nicht gefunden") from exc
 
     @_payment_mutation
+    @_version_mutation
     def update_rent_charge(self, charge_id: str, data: RentChargeCreate) -> RentCharge:
         from .services.payments import reconcile_financial_edit
         from .services.rent_ledger import _generation_lock, validate_charge_identity, validate_unique_month
@@ -1777,6 +1893,7 @@ class InMemoryStore:
             return charge
 
     @_payment_mutation
+    @_version_mutation
     def delete_rent_charge(self, charge_id: str) -> None:
         from .services.payment_integrity import guard_memory_delete
         guard_memory_delete(self, "rent_charge", charge_id)
@@ -1804,6 +1921,7 @@ class InMemoryStore:
         except KeyError as exc:
             raise NotFoundError("Versicherung nicht gefunden") from exc
 
+    @_version_mutation
     def update_insurance(self, insurance_id: str, data: InsuranceCreate) -> Insurance:
         if insurance_id not in self.insurances:
             raise NotFoundError("Versicherung nicht gefunden")
@@ -1812,6 +1930,7 @@ class InMemoryStore:
         self.insurances[insurance_id] = item
         return item
 
+    @_version_mutation
     def delete_insurance(self, insurance_id: str) -> None:
         if insurance_id not in self.insurances:
             raise NotFoundError("Versicherung nicht gefunden")
@@ -1833,6 +1952,7 @@ class InMemoryStore:
         except KeyError as exc:
             raise NotFoundError("Foto nicht gefunden") from exc
 
+    @_version_mutation
     def delete_entity_photo(self, photo_id: str) -> None:
         if photo_id not in self.entity_photos:
             raise NotFoundError("Foto nicht gefunden")

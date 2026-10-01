@@ -1,21 +1,22 @@
 import { readFile } from 'node:fs/promises';
-import { test as base, expect } from '@playwright/test';
+import { test, expect, germanWorkspaceReady } from './demoFixtures.mjs';
 
 // Real browser events, downloads and SQL-backed endpoints. No intercepted API.
-const test = base.extend({
-  page: async ({ page }, use) => {
-    const errors = [];
-    page.on('pageerror', error => errors.push(error.message));
-    await page.addInitScript(() => localStorage.setItem('locale', 'de-DE'));
-    await use(page);
-    expect(errors, 'The browser must not emit uncaught JavaScript errors').toEqual([]);
-  },
-});
+
 
 async function get(page, path, headers) {
   const response = await page.request.get(`/api/v1${path}`, { headers });
   expect(response.ok(), `${path}: ${response.status()}`).toBeTruthy();
   return response.json();
+}
+
+async function allCharges(page, headers) {
+  const rows = [];
+  for (let skip = 0; ; skip += 100) {
+    const batch = await get(page, `/rent-charges?skip=${skip}&limit=100`, headers);
+    rows.push(...batch);
+    if (batch.length < 100) return rows;
+  }
 }
 
 async function previewOneUnbookedMonth(page) {
@@ -24,11 +25,12 @@ async function previewOneUnbookedMonth(page) {
   await page.getByLabel('Passwort', { exact: true }).fill('Demo1234');
   await page.getByRole('button', { name: 'Anmelden', exact: true }).click();
   await expect(page).toHaveURL(/\/$/);
+  await germanWorkspaceReady(page);
   const token = await page.evaluate(() => localStorage.getItem('access_token'));
   expect(token).toBeTruthy();
   const headers = { Authorization: `Bearer ${token}` };
   const contracts = await get(page, '/contracts', headers);
-  const before = await get(page, '/rent-charges', headers);
+  const before = await allCharges(page, headers);
   const contract = contracts.find(item => item.status === 'active' && !item.end_date);
   expect(contract, 'The real seed provides an active, open-ended lease').toBeTruthy();
   const monthDate = new Date(`${contract.start_date.slice(0, 7)}-01T12:00:00Z`);
@@ -76,7 +78,7 @@ for (const interaction of ['search Enter', 'column selection', 'CSV download']) 
     const { headers, before, contract, month, dialog, commit, preview, generationRequests } = state;
     const expectUnbooked = async () => {
       // Reading the actual database also detects a completed accidental submit.
-      const current = await get(page, '/rent-charges', headers);
+      const current = await allCharges(page, headers);
       expect(generationRequests, 'Preview interaction must never submit the generation endpoint').toHaveLength(0);
       expect(current).toEqual(before);
       await expect(dialog).toBeVisible();
@@ -84,7 +86,7 @@ for (const interaction of ['search Enter', 'column selection', 'CSV download']) 
     };
 
     if (interaction === 'search Enter') {
-      const search = dialog.getByRole('searchbox').or(dialog.getByRole('textbox'));
+      const search = dialog.getByRole('textbox', { name: /^Suchen / });
       await search.fill(contract.contract_number);
       await search.press('Enter');
     } else if (interaction === 'column selection') {
@@ -124,7 +126,7 @@ for (const interaction of ['search Enter', 'column selection', 'CSV download']) 
     }]);
     await expect(dialog).not.toBeVisible();
     await page.reload();
-    const persisted = (await get(page, '/rent-charges', headers))
+    const persisted = (await allCharges(page, headers))
       .filter(item => item.contract_id === contract.id && item.month === month);
     expect(persisted).toHaveLength(1);
     expect(Number(persisted[0].amount_paid)).toBe(0);

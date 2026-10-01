@@ -2285,5 +2285,24 @@
     "retrying": "Guardando ajustes…",
     "versionError": "La información de versión no está disponible actualmente.",
     "retryVersion": "Volver a cargar versión"
+  },
+  "editConflict": {
+    "title": "Comparar cambios",
+    "preserved": "Sus datos se conservan. Revise el registro actual antes de volver a guardar.",
+    "inspect": "Revisar registro actual",
+    "refresh": "Volver a cargar el registro actual",
+    "loading": "Cargando registro actual…",
+    "explanation": "Los campos sin cambios adoptan el valor actual. Si ambas ediciones cambiaron el mismo campo, elija el valor que desea usar.",
+    "current": "Registro actual",
+    "draft": "Su borrador",
+    "choose": "Elegir valor para {{field}}",
+    "choosePlaceholder": "Elija expresamente",
+    "keepDraft": "Conservar mi borrador",
+    "useCurrent": "Usar valor actual",
+    "reconcile": "Aplicar comparación",
+    "noAutoSave": "La comparación no guarda nada. Revise el formulario y pulse Guardar.",
+    "deleted": "El registro se eliminó. Su borrador se conserva y no se puede volver a guardar.",
+    "loadFailed": "No se pudo cargar el registro actual. Vuelva a intentarlo.",
+    "missingRevision": "La respuesta no contiene una versión válida. No es posible comparar de forma segura."
   }
 }

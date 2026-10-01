@@ -1,3 +1,4 @@
+import { revisionOptions } from '../editRevision';
 import { useState, useEffect } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
@@ -80,7 +81,7 @@ export default function NotificationTemplates() {
     if (!await confirm(`${t('modals.confirmDelete.body')}`)) return;
     setDeleteError(null);
     try {
-      await api.del(`/notifications/templates/${row.id}`);
+      await api.del(`/notifications/templates/${row.id}`, revisionOptions(row));
       refreshData();
     } catch (err) {
       setDeleteError(err.message || t('pages.deleteFailed'));

@@ -55,6 +55,8 @@ def bootstrap_owner(username: str, email: str, full_name: str, password: str) ->
 
     from backend import auth
     from backend.config import settings
+    from backend.db.auth_models import AuthSetupORM
+    from backend.db.orm_models import UserORM
     from backend.models import UserCreate
 
     payload = UserCreate(username=username, email=email, full_name=full_name, password=password)
@@ -74,6 +76,13 @@ def bootstrap_owner(username: str, email: str, full_name: str, password: str) ->
         schema = inspect(engine)
         if not all(schema.has_table(table) for table in ("users", "auth_setup")):
             raise ValueError("Datenbankschema fehlt; zuerst die Servermigrationen ausführen")
+        for model in (UserORM, AuthSetupORM):
+            present = {column["name"] for column in schema.get_columns(model.__tablename__)}
+            if not set(model.__table__.columns.keys()) <= present:
+                # Checking tables alone hid missing TOTP columns in PostgreSQL:
+                # health succeeds, but a full user read fails before bootstrap.
+                # Do not repair or replace an installation implicitly here.
+                raise ValueError("Authentifizierungsschema ist unvollständig; zuerst die aktuellen Servermigrationen ausführen")
         # This deliberately ignores development fallback/seed flags. Importing
         # app/dependencies here would allow a different persistence backend.
         auth.enable_sql_users(sessionmaker(bind=engine))
@@ -113,6 +122,7 @@ def main(argv: list[str] | None = None) -> int:
             "Die konfigurierte SQLite-Installationsdatenbank fehlt",
             "SQLite-URI-Optionen werden für die Ersteinrichtung nicht unterstützt",
             "Datenbankschema fehlt; zuerst die Servermigrationen ausführen",
+            "Authentifizierungsschema ist unvollständig; zuerst die aktuellen Servermigrationen ausführen",
         }:
             message = str(error)
         else:

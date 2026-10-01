@@ -1,0 +1,13 @@
+.edit-conflict-panel { margin: 0 0 1rem; padding: 1rem; border: 1px solid var(--color-border, #ced8df); border-radius: var(--radius-lg, 12px); background: var(--color-bg, #f7f8fa); color: var(--color-text, #172838); overflow-wrap: anywhere; }
+.edit-conflict-panel h4 { margin: 0 0 .5rem; }
+.edit-conflict-panel p { margin: .5rem 0 .85rem; }
+.edit-conflict-panel small { display: block; margin-top: .65rem; color: var(--color-text-secondary, #546675); }
+.edit-conflict-fields { display: grid; gap: .75rem; margin: 1rem 0; }
+.edit-conflict-field { padding: .8rem; border: 1px solid var(--color-border, #ced8df); border-radius: var(--radius-md, 8px); background: var(--color-surface, #fff); min-width: 0; }
+.edit-conflict-field dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; margin: .65rem 0; }
+.edit-conflict-field dt { font-size: .75rem; color: var(--color-text-secondary, #546675); }
+.edit-conflict-field dd { margin: .25rem 0 0; white-space: pre-wrap; }
+.edit-conflict-field label { display: grid; gap: .4rem; font-size: .85rem; }
+.edit-conflict-field select { width: 100%; min-width: 0; }
+.edit-conflict-load-error { color: var(--color-danger, #a83232); }
+@media (max-width: 420px) { .edit-conflict-panel { padding: .75rem; } .edit-conflict-field dl { grid-template-columns: 1fr; } .edit-conflict-panel .btn { max-width: 100%; white-space: normal; } }

@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from '../i18n';
+import { api } from '../api';
 
 export default function ContractWizard() {
   const { t } = useTranslation();
   const iframeRef = useRef(null);
+  const [wizardHtml, setWizardHtml] = useState(null);
+  const [pageError, setPageError] = useState(null);
 
   const [wizardStatus, setWizardStatus] = useState({
     loading: true,
@@ -13,6 +16,18 @@ export default function ContractWizard() {
 
   const label = t('navigation.main.contractWizard');
   const title = label === 'navigation.main.contractWizard' ? 'Mietvertrag-Wizard' : label;
+
+  useEffect(() => {
+    if (!wizardStatus.available) return;
+    const controller = new AbortController();
+    api.getBlob('/contract-wizard/page', { signal: controller.signal })
+      .then(blob => blob.text()).then(html => {
+        if (!controller.signal.aborted) setWizardHtml(html);
+      }).catch(error => {
+        if (!controller.signal.aborted) setPageError(error.message);
+      });
+    return () => controller.abort();
+  }, [wizardStatus.available]);
 
   useEffect(() => {
     let cancelled = false;
@@ -104,12 +119,14 @@ export default function ContractWizard() {
       <p className="text-muted" style={{ margin: '0 0 16px 0' }}>
         {t('contractWizard.description') !== 'contractWizard.description'
           ? t('contractWizard.description')
-          : 'Erstellen Sie Schritt für Schritt einen rechtssicheren Mietvertrag.'}
+          : 'Bereiten Sie Ihren Mietvertrag Schritt für Schritt zur Prüfung vor.'}
       </p>
+
+      {pageError && <p role="alert">{pageError}</p>}
 
       <iframe
         ref={iframeRef}
-        src="/mietvertrag/"
+        srcDoc={wizardHtml || '<p>Vertragsentwurf wird geladen …</p>'}
         title={title}
         style={{
           flex: 1,

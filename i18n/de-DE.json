@@ -2285,5 +2285,24 @@
     "retrying": "Einstellungen werden gespeichert…",
     "versionError": "Versionsinformationen sind derzeit nicht verfügbar.",
     "retryVersion": "Version erneut laden"
+  },
+  "editConflict": {
+    "title": "Änderungen abgleichen",
+    "preserved": "Ihre Eingaben bleiben erhalten. Prüfen Sie den aktuellen Datensatz, bevor Sie erneut speichern.",
+    "inspect": "Aktuellen Stand prüfen",
+    "refresh": "Aktuellen Stand erneut laden",
+    "loading": "Aktueller Stand wird geladen…",
+    "explanation": "Unveränderte Felder übernehmen den aktuellen Stand. Wenn beide Bearbeitungen dasselbe Feld geändert haben, wählen Sie den gewünschten Wert.",
+    "current": "Aktueller Stand",
+    "draft": "Ihr Entwurf",
+    "choose": "Wert für {{field}} auswählen",
+    "choosePlaceholder": "Bitte bewusst auswählen",
+    "keepDraft": "Meinen Entwurf behalten",
+    "useCurrent": "Aktuellen Wert übernehmen",
+    "reconcile": "Abgleich übernehmen",
+    "noAutoSave": "Der Abgleich speichert nichts. Prüfen Sie anschließend das Formular und wählen Sie Speichern.",
+    "deleted": "Der Datensatz wurde entfernt. Ihr Entwurf bleibt erhalten; ein erneutes Speichern ist nicht möglich.",
+    "loadFailed": "Der aktuelle Stand konnte nicht geladen werden. Bitte versuchen Sie es erneut.",
+    "missingRevision": "Die Antwort enthält keinen gültigen Bearbeitungsstand. Ein sicherer Abgleich ist nicht möglich."
   }
 }

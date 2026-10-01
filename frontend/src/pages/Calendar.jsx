@@ -1,3 +1,4 @@
+import { revisionOptions } from '../editRevision';
 import { useState, useEffect } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
@@ -89,7 +90,7 @@ export default function Calendar() {
     if (!await confirm(`"${row.title}" ${t('modals.confirmDelete.body')}`)) return;
     setDeleteError(null);
     try {
-      await api.del(`/calendar/${row.id}`);
+      await api.del(`/calendar/${row.id}`, revisionOptions(row));
       refreshData();
     } catch (err) {
       setDeleteError(err.message || 'Löschen fehlgeschlagen');

@@ -1,3 +1,4 @@
+import { revisionOptions } from '../editRevision';
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
@@ -148,7 +149,7 @@ export default function Units() {
 
   const handleDelete = async (row) => {
     if (!await confirm(`"${row.label}" ${t('modals.confirmDelete.body')}`)) return;
-    await api.del(`/units/${row.id}`);
+    await api.del(`/units/${row.id}`, revisionOptions(row));
     refreshData();
     if (store) store.invalidateRelated('units', 'properties', 'contracts');
   };

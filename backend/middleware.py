@@ -231,13 +231,10 @@ _RBAC_SKIP_PATHS = {
 
 
 class RBACWriteGuardMiddleware(BaseHTTPMiddleware):
-    """Blocks write operations from users with the 'readonly' role.
+    """Apply each approved account's domain write capabilities.
 
-    Readonly users can access GET/HEAD/OPTIONS endpoints, but any
-    POST/PUT/PATCH/DELETE on protected API routes is rejected with 403.
-
-    This acts as a defence-in-depth layer — individual endpoints can
-    apply finer-grained role checks via require_role().
+    Own security and display settings remain available to every role.
+    Endpoint dependencies enforce authentication and finer action permissions.
     """
 
     async def dispatch(self, request: Request, call_next):
@@ -247,14 +244,16 @@ class RBACWriteGuardMiddleware(BaseHTTPMiddleware):
             and request.url.path not in _RBAC_SKIP_PATHS
         ):
             role = self._get_user_role(request)
-            if role == "readonly":
+            from .permissions import may_write_resource
+            resource = request.url.path[len("/api/v1/"):].split("/", 1)[0]
+            if role is not None and not may_write_resource(role, resource):
                 logger.warning(
-                    "RBAC blocked: readonly user attempted %s %s",
+                    "RBAC blocked: role cannot write %s %s",
                     request.method, request.url.path,
                 )
                 return JSONResponse(
                     status_code=403,
-                    content={"detail": "Lesezugriff-Rolle hat keine Schreibberechtigung"},
+                    content={"detail": "Ihre Rolle hat für diesen Verwaltungsbereich keine Schreibberechtigung."},
                 )
 
         return await call_next(request)

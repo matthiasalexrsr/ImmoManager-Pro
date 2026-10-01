@@ -6,17 +6,19 @@ to DatabaseOperationError with proper logging.
 """
 
 import logging
-from datetime import datetime, timezone
-from typing import Any, cast
+from typing import Any, NoReturn, cast
 from uuid import uuid4
 
+from fastapi import HTTPException
 from pydantic import BaseModel as PydanticBaseModel
-from sqlalchemy import exists, select, update
+from sqlalchemy import String, delete, exists, or_, select, update
+from sqlalchemy import cast as sql_cast
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session
 
 from ..db.orm_models import Base
 from ..error_helpers import safe_db_operation
+from ..services.concurrency import conflict, expected_revision, next_updated_at
 from ..storage import NotFoundError, ValidationError
 
 logger = logging.getLogger(__name__)
@@ -67,25 +69,72 @@ class BaseRepository:
             )
             raise
 
-    def _guarded_booking_update(self, orm_obj, updates) -> bool:
+    def _booking_condition(self, orm_obj, updates):
         if self.orm_class.__tablename__ != "bookings":
-            return False
+            return None
         from ..db.orm_models import PaymentORM
         from ..services.payment_integrity import BOOKING_FIELDS, guard_booking_edit
         has_receipts = self.db.scalar(select(PaymentORM.id).where(PaymentORM.booking_id == orm_obj.id).limit(1)) is not None
         guard_booking_edit(orm_obj, updates, has_receipts)
         if not any(key in updates and updates[key] != getattr(orm_obj, key) for key in BOOKING_FIELDS):
-            return False
+            return None
         # Allocation may race a booking edit. Both writes arbitrate on the booking row.
-        result = self.db.execute(update(self.orm_class).where(
-            getattr(self.orm_class, "id") == orm_obj.id,
-            ~exists(select(PaymentORM.id).where(PaymentORM.booking_id == orm_obj.id)),
-        ).values(**updates, updated_at=datetime.now(timezone.utc)).execution_options(synchronize_session=False))
+        return ~exists(select(PaymentORM.id).where(PaymentORM.booking_id == orm_obj.id))
+
+    def _revision_condition(self, entity_id):
+        try:
+            expected = expected_revision(self.orm_class.__tablename__, entity_id)
+        except HTTPException:
+            self.db.rollback()
+            raise
+        if expected is None:
+            return None
+        column = getattr(self.orm_class, "updated_at", None)
+        if column is None:
+            self.db.rollback()
+            raise conflict()
+        # Existing DateTime columns are UTC without timezone on SQLite/PostgreSQL.
+        stamp = expected.updated_at if column.type.timezone else expected.updated_at.replace(tzinfo=None)
+        if self.db.get_bind().dialect.name == "sqlite" and stamp.microsecond == 0:
+            # SQLite CURRENT_TIMESTAMP stores seconds without a fraction, while
+            # SQLAlchemy's DateTime bind always includes .000000. Keep exact
+            # equality for both existing representations, without truncating
+            # microseconds or changing historical rows just to create a token.
+            return or_(column == stamp, sql_cast(column, String) == stamp.strftime("%Y-%m-%d %H:%M:%S"))
+        return column == stamp
+
+    def _missing(self, entity_id) -> NoReturn:
+        if self._revision_condition(entity_id) is not None:
+            self.db.rollback()
+            raise conflict()
+        raise NotFoundError(self.not_found_msg)
+
+    def _write(self, entity_id, updates):
+        orm_obj = self.db.get(self.orm_class, entity_id, populate_existing=True)
+        if orm_obj is None:
+            self._missing(entity_id)
+        self._guard_contract_update(orm_obj, updates)
+        booking_condition = self._booking_condition(orm_obj, updates)
+        revision_condition = self._revision_condition(entity_id)
+        conditions = [getattr(self.orm_class, "id") == entity_id]
+        if booking_condition is not None:
+            conditions.append(booking_condition)
+        if revision_condition is not None:
+            conditions.append(revision_condition)
+        if hasattr(self.orm_class, "updated_at"):
+            stamp = next_updated_at(getattr(orm_obj, "updated_at", None))
+            column = getattr(self.orm_class, "updated_at")
+            updates = {**updates, "updated_at": stamp if column.type.timezone else stamp.replace(tzinfo=None)}
+        result = self.db.execute(update(self.orm_class).where(*conditions).values(**updates)
+                                 .execution_options(synchronize_session=False))
         if cast(CursorResult, result).rowcount != 1:
             self.db.rollback()
+            if revision_condition is not None:
+                raise conflict()
             raise ValidationError("Die Bankbuchung wurde zwischenzeitlich zugeordnet. Bitte neu laden.")
         self.db.expire(orm_obj)
-        return True
+        self.db.refresh(orm_obj)
+        return self._to_pydantic(orm_obj)
 
     def _guard_contract_update(self, orm_obj, updates) -> None:
         if self.orm_class.__tablename__ == "contracts" and any(
@@ -96,19 +145,19 @@ class BaseRepository:
 
     @safe_db_operation("list_all")
     def list_all(self) -> list[Any]:
-        objs = self.db.query(self.orm_class).all()
+        objs = self.db.query(self.orm_class).populate_existing().all()
         return [self._to_pydantic(o) for o in objs]
 
     @safe_db_operation("get")
     def get(self, entity_id: str) -> Any:
-        obj = self.db.get(self.orm_class, entity_id)
+        obj = self.db.get(self.orm_class, entity_id, populate_existing=True)
         if obj is None:
             raise NotFoundError(self.not_found_msg)
         return self._to_pydantic(obj)
 
     @safe_db_operation("get_orm")
     def get_orm(self, entity_id: str) -> Base:
-        obj = self.db.get(self.orm_class, entity_id)
+        obj = self.db.get(self.orm_class, entity_id, populate_existing=True)
         if obj is None:
             raise NotFoundError(self.not_found_msg)
         return obj
@@ -127,43 +176,31 @@ class BaseRepository:
 
     @safe_db_operation("update")
     def update(self, entity_id: str, data: PydanticBaseModel) -> Any:
-        orm_obj = self.db.get(self.orm_class, entity_id)
-        if orm_obj is None:
-            raise NotFoundError(self.not_found_msg)
-        self._guard_contract_update(orm_obj, data.model_dump())
-        if self._guarded_booking_update(orm_obj, data.model_dump()):
-            return self._to_pydantic(orm_obj)
-        for key, value in data.model_dump().items():
-            setattr(orm_obj, key, value)
-        setattr(orm_obj, "updated_at", datetime.now(timezone.utc))
-        self.db.flush()
-        self.db.refresh(orm_obj)
-        return self._to_pydantic(orm_obj)
+        return self._write(entity_id, data.model_dump())
 
     @safe_db_operation("patch")
     def patch(self, entity_id: str, data: PydanticBaseModel) -> Any:
-        orm_obj = self.db.get(self.orm_class, entity_id)
-        if orm_obj is None:
-            raise NotFoundError(self.not_found_msg)
-        updates = data.model_dump(exclude_unset=True)
-        self._guard_contract_update(orm_obj, updates)
-        if self._guarded_booking_update(orm_obj, updates):
-            return self._to_pydantic(orm_obj)
-        for key, value in updates.items():
-            setattr(orm_obj, key, value)
-        setattr(orm_obj, "updated_at", datetime.now(timezone.utc))
-        self.db.flush()
-        self.db.refresh(orm_obj)
-        return self._to_pydantic(orm_obj)
+        return self._write(entity_id, data.model_dump(exclude_unset=True))
 
     @safe_db_operation("delete")
     def delete(self, entity_id: str) -> None:
-        orm_obj = self.db.get(self.orm_class, entity_id)
+        orm_obj = self.db.get(self.orm_class, entity_id, populate_existing=True)
         if orm_obj is None:
-            raise NotFoundError(self.not_found_msg)
+            self._missing(entity_id)
         from ..services.payment_integrity import guard_sql_delete
         guard_sql_delete(self.db, self.orm_class.__tablename__, entity_id)
-        self.db.delete(orm_obj)
+        revision_condition = self._revision_condition(entity_id)
+        if revision_condition is None:
+            self.db.delete(orm_obj)
+        else:
+            result = self.db.execute(delete(self.orm_class).where(
+                getattr(self.orm_class, "id") == entity_id, revision_condition,
+            ).execution_options(synchronize_session=False))
+            if cast(CursorResult, result).rowcount != 1:
+                self.db.rollback()
+                raise conflict()
+            # Database cascades also invalidate already-loaded child objects.
+            self.db.expire_all()
         self.db.flush()
 
     @safe_db_operation("list_paginated")
@@ -184,7 +221,7 @@ class BaseRepository:
             order_by: Column name to order by.
             order_desc: If True, order descending.
         """
-        query = self.db.query(self.orm_class)
+        query = self.db.query(self.orm_class).populate_existing()
         if filters:
             for key, value in filters.items():
                 if value is not None and hasattr(self.orm_class, key):
@@ -208,7 +245,7 @@ class BaseRepository:
     @safe_db_operation("filter_by")
     def filter_by(self, **kwargs) -> list[Any]:
         """Filter entities by column values. None values are skipped."""
-        query = self.db.query(self.orm_class)
+        query = self.db.query(self.orm_class).populate_existing()
         for key, value in kwargs.items():
             if value is not None:
                 query = query.filter(getattr(self.orm_class, key) == value)

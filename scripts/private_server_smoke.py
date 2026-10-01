@@ -25,6 +25,7 @@ from uuid import uuid4
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from scripts.configure_private_server import configure  # noqa: E402
+from scripts.private_server_backup import BackupError, backup, restore  # noqa: E402
 
 PASSWORD = "synthetic private test passphrase"
 FILE_BYTES = b"Private server acceptance file; synthetic data only.\n"
@@ -162,6 +163,7 @@ def main() -> int:
             port = probe.getsockname()[1]
         environment = configure(work / "server.env", "https://synthetic.private.example", port)
         source = Installation("immo-private-ci-" + uuid4().hex[:12], environment, port)
+        restored = Installation("immo-private-ci-" + uuid4().hex[:12], work / "restored.env", port)
         try:
             source.compose("up", "-d", "--build", "--wait", "app")
             assert source.request("/health")["database_connected"] is True
@@ -177,8 +179,30 @@ def main() -> int:
             references = seed(source, source.login())
             source.compose("up", "-d", "--force-recreate", "--no-deps", "--wait", "app")
             verify(source, references)
-            print("Private PostgreSQL container: setup guard, concurrent users, receipt history, TOTP, preferences, uploads and recreation passed.")
+            package = work / "private-recovery.immo"
+            backup(project=source.project, destination=package, compose_file=ROOT / "compose.private-server.yml",
+                   env_file=environment, password=PASSWORD)
+            # Backup must resume the source app; validate that independently.
+            verify(source, references)
+            try:
+                restore(project=restored.project, source=package, compose_file=ROOT / "compose.private-server.yml",
+                        env_output=restored.environment, password="wrong synthetic recovery passphrase")
+            except BackupError:
+                pass
+            else:
+                raise AssertionError("A wrong recovery passphrase must fail.")
+            assert not restored.environment.exists()
+            # Remove only this script's disposable source, including both volumes.
+            # Restoration cannot read source state after this point.
+            source.compose("down", "--volumes", "--remove-orphans", timeout=120)
+            restore(project=restored.project, source=package, compose_file=ROOT / "compose.private-server.yml",
+                    env_output=restored.environment, password=PASSWORD)
+            assert restored.request("/health")["database_connected"] is True
+            verify(restored, references)
+            print("Private PostgreSQL server passed: concurrent users, receipts/reversal, TOTP, preferences, uploads, recreation and encrypted recovery after source deletion.")
         finally:
+            if restored.environment.exists():
+                restored.compose("down", "--volumes", "--remove-orphans", timeout=120)
             source.compose("down", "--volumes", "--remove-orphans", timeout=120)
     return 0
 

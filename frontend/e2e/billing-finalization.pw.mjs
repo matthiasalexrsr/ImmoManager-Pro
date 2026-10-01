@@ -1,19 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
-import { test as base, expect } from '@playwright/test';
+import { test, expect, germanWorkspaceReady } from './demoFixtures.mjs';
 import { extractReportlabText } from './reportlabPdfText.mjs';
 import { createPaidMonthlyFixture, assertActualAdvances } from './billingPaidFixture.mjs';
 
 // Reuse the existing isolated SQL-backed runner; never intercept business requests.
-const test = base.extend({
-  page: async ({ page }, use) => {
-    const errors = [];
-    page.on('pageerror', error => errors.push(error.message));
-    await page.addInitScript(() => localStorage.setItem('locale', 'de-DE'));
-    await use(page);
-    expect(errors, 'No uncaught browser errors').toEqual([]);
-  },
-});
+
 
 async function json(page, headers, path, data) {
   const response = await page.request.fetch(`/api/v1${path}`, {
@@ -29,6 +21,7 @@ async function scenario(page, costAmount = 800) {
   await page.locator('form input[type="password"]').fill('Demo1234');
   await page.getByRole('button', { name: 'Anmelden', exact: true }).click();
   await expect(page).toHaveURL(/\/$/);
+  await germanWorkspaceReady(page);
   const token = await page.evaluate(() => localStorage.getItem('access_token'));
   expect(token).toBeTruthy();
   const headers = { Authorization: `Bearer ${token}` };

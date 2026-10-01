@@ -6,6 +6,8 @@ import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import { useConfirm } from '../components/ConfirmDialog';
+import { useAuth } from '../contexts/AuthContext';
+import { revisionOptions } from '../editRevision';
 
 // Derive a cache key from endpoint, e.g. "/properties" → "properties"
 function endpointKey(ep) {
@@ -35,8 +37,10 @@ const _RELATED_ENTITIES = {
 export default function CrudPage({ title, endpoint, columns, formFields, onRowClick }) {
   const { t } = useTranslation();
   const confirm = useConfirm();
+  const auth = useAuth();
   const store = useDataStore();
   const eKey = endpointKey(endpoint);
+  const canWrite = auth.canWrite ? auth.canWrite(endpoint) : !auth.isReadonly;
   const { items, loading, error, reload } = useEntities(eKey, endpoint);
   const [modal, setModal] = useState(null); // null | 'create' | item
   const [deleteError, setDeleteError] = useState(null);
@@ -61,7 +65,7 @@ export default function CrudPage({ title, endpoint, columns, formFields, onRowCl
     if (!await confirm(`"${name}" ${t('modals.confirmDelete.body')}`)) return;
     setDeleteError(null);
     try {
-      await api.del(`${endpoint}/${row.id}`);
+      await api.del(`${endpoint}/${row.id}`, revisionOptions(row));
       invalidateAfterMutation();
     } catch (err) {
       setDeleteError(err.message || 'Löschen fehlgeschlagen');
@@ -75,27 +79,26 @@ export default function CrudPage({ title, endpoint, columns, formFields, onRowCl
       : undefined),
   }));
 
-  if (loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
-  if (error) return <div className="page"><div className="alert alert-error">{error}</div></div>;
-
   return (
     <div className="page">
+      {loading && <div className="page-loading" role="status">{t('ui.table.loading')}</div>}
+      {error && <div className="alert alert-error" role="alert">{error}<button type="button" className="btn btn-secondary" onClick={reload}>{t('ui.buttons.retry')}</button></div>}
       {deleteError && (
         <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
           {deleteError}
           <button onClick={() => setDeleteError(null)} style={{ marginLeft: '1rem', cursor: 'pointer' }}>✕</button>
         </div>
       )}
-      <DataTable
+      {!loading && !error && <DataTable
         title={title}
         columns={tableColumns}
         data={items}
-        onAdd={() => setModal('create')}
-        onEdit={(row) => setModal(row)}
-        onDelete={handleDelete}
+        onAdd={canWrite ? () => setModal('create') : undefined}
+        onEdit={canWrite ? (row) => setModal(row) : undefined}
+        onDelete={canWrite ? handleDelete : undefined}
         onRowClick={onRowClick}
-      />
-      {modal && (
+      />}
+      {modal && canWrite && (
         <FormModal
           title={modal === 'create' ? `${title} ${t('ui.buttons.create').toLowerCase()}` : `${title} ${t('ui.buttons.edit').toLowerCase()}`}
           fields={formFields}

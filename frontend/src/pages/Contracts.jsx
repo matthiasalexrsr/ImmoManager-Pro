@@ -1,3 +1,4 @@
+import { revisionOptions } from '../editRevision';
 import { useState, useEffect, useMemo } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
@@ -143,7 +144,7 @@ export default function Contracts() {
 
   const handleDelete = async (row) => {
     if (!await confirm(`"${row.contract_number}" ${t('modals.confirmDelete.body')}`)) return;
-    await api.del(`/contracts/${row.id}`);
+    await api.del(`/contracts/${row.id}`, revisionOptions(row));
     refreshData();
     if (store) store.invalidateRelated('contracts', 'properties', 'units', 'tenants', 'deposits', 'receivables', 'rent_adjustments');
   };

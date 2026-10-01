@@ -1,3 +1,4 @@
+import { revisionOptions } from '../editRevision';
 import { useState, useEffect, useMemo } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
@@ -136,7 +137,7 @@ export default function Tenants() {
     if (!await confirm(`"${name}" ${t('modals.confirmDelete.body')}`)) return;
     setError(null);
     try {
-      await api.del(`/tenants/${row.id}`);
+      await api.del(`/tenants/${row.id}`, revisionOptions(row));
       afterMutation();
     } catch (err) {
       setError(err.message || 'Löschen fehlgeschlagen');

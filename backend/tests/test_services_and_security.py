@@ -367,17 +367,17 @@ class TestEmailService:
         assert cfg.is_configured is False
 
     def test_email_config_is_configured(self):
-        cfg = EmailConfig(smtp_host="mail.example.com", smtp_user="user")
+        cfg = EmailConfig(smtp_host="mail.example.com", smtp_user="user", smtp_password="synthetic")
         assert cfg.is_configured is True
 
     def test_send_email_not_configured_does_not_raise(self):
-        # Default config is not configured, should just log and return True
+        # Missing SMTP configuration must never claim an accepted message.
         result = send_email(
             to="test@example.com",
             subject="Test",
             body_html="<p>Hello</p>",
         )
-        assert result is True
+        assert result is False
 
     def test_send_email_with_body_text(self):
         result = send_email(
@@ -386,4 +386,4 @@ class TestEmailService:
             body_html="<p>Hello</p>",
             body_text="Hello",
         )
-        assert result is True
+        assert result is False

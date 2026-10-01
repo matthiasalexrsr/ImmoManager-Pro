@@ -6,8 +6,14 @@ import ipaddress
 import os
 import re
 import secrets
+import sys
 from pathlib import Path
 from urllib.parse import urlsplit
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+from scripts.private_server_backup import BackupError, protected_new_file  # noqa: E402
 
 
 def validated_origin(value: str) -> tuple[str, str]:
@@ -41,10 +47,10 @@ def configure(path: Path, origin: str, port: int = 8080) -> Path:
                f"POSTGRES_PASSWORD={secrets.token_hex(32)}\nJWT_SECRET_KEY={secrets.token_hex(48)}\n")
     path = path.absolute()
     path.parent.mkdir(parents=True, exist_ok=True)
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
-    descriptor = os.open(path, flags, 0o600)
-    with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as target:
-        target.write(content)
+    if os.path.lexists(path):
+        raise FileExistsError("The installation environment already exists.")
+    with protected_new_file(path) as target:
+        target.write(content.encode("utf-8"))
         target.flush()
         os.fsync(target.fileno())
     return path
@@ -58,7 +64,7 @@ def main() -> int:
     args = parser.parse_args()
     try:
         path = configure(args.output, args.origin, args.port)
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, BackupError) as exc:
         parser.exit(1, f"Configuration was not created: {exc}\n")
     print(f"Created {path}. Preserve this file with your server backups; keys were not printed.")
     return 0

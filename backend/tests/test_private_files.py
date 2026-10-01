@@ -58,6 +58,9 @@ def test_uploads_and_download_require_valid_authentication_and_allow_readonly(pr
     assert direct.headers["content-security-policy"].startswith("sandbox;")
     assert direct.headers["x-content-type-options"] == "nosniff"
     assert client.head(paths[0], headers=headers).status_code == 200
+    # Deactivation must keep another active owner in this installation.
+    if role == "eigentuemer":
+        auth.register_user("remaining-owner", "remaining@example.com", "Remaining owner", "Strong123", "eigentuemer")
     auth.update_user(user.id, {"is_active": False})
     assert client.get(paths[0], headers=headers).status_code == 403
 

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, germanWorkspaceReady } from './demoFixtures.mjs';
 
 test('dashboard: actual SQL figures, six reports, mobile layouts and dark presentation', async ({ page }, testInfo) => {
   const errors = [];
@@ -9,6 +9,7 @@ test('dashboard: actual SQL figures, six reports, mobile layouts and dark presen
   await page.getByLabel('Passwort', { exact: true }).fill('Demo1234');
   await page.getByRole('button', { name: 'Anmelden', exact: true }).click();
   await expect(page).toHaveURL(/\/$/);
+  await germanWorkspaceReady(page);
   const headers = { Authorization: `Bearer ${await page.evaluate(() => localStorage.getItem('access_token'))}` };
   const get = async path => {
     const response = await page.request.get(`/api/v1${path}`, { headers });

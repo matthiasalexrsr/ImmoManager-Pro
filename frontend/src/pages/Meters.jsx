@@ -1,3 +1,4 @@
+import { revisionOptions } from '../editRevision';
 import { useState, useMemo } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
@@ -141,7 +142,7 @@ export default function Meters() {
     if (!await confirm(`"${row.serial_number || row.id}" ${t('modals.confirmDelete.body')}`)) return;
     setActionError(null);
     try {
-      await api.del(`/meters/${row.id}`);
+      await api.del(`/meters/${row.id}`, revisionOptions(row));
       if (selectedMeter?.id === row.id) {
         setSelectedMeterId(null);
       }

@@ -1,3 +1,4 @@
+import { revisionOptions } from '../editRevision';
 import { useState, useEffect } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
@@ -156,7 +157,7 @@ export default function Leads() {
     if (!await confirm(`"${row.full_name}" ${t('modals.confirmDelete.body')}`)) return;
     setDeleteError(null);
     try {
-      await api.del(`/leads/${row.id}`);
+      await api.del(`/leads/${row.id}`, revisionOptions(row));
       refreshData();
     } catch (err) {
       setDeleteError(err.message || 'Löschen fehlgeschlagen');

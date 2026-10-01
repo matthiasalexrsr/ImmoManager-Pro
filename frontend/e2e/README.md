@@ -35,6 +35,14 @@ from blocked preflight to generated and persisted individual statements. Both
 workflows check a 390-pixel mobile viewport and uncaught browser errors. Each run
 starts with fresh demo data, so repeated execution does not change user data.
 
+Normal suites use `demoFixtures.mjs` to persist German, light-theme, expanded
+navigation prerequisites for the shared demo account before each UI login, then
+wait for account preferences to load. This preserves genuine preference tests
+without leaking their chosen language into later suites. The fresh-install
+suite deliberately does not use this demo fixture. Monthly-generation tests
+read every API page before selecting an unused month and explicitly fill both
+month fields; earlier billing scenarios can leave more than 100 rent charges.
+
 `--fresh-install` starts an empty database without demo users and runs the initial
 owner and authenticator workflow. It verifies the local owner form, closed second
 setup and public registration, authenticator enrollment, challenged login,

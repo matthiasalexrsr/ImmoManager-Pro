@@ -1,3 +1,4 @@
+import { revisionOptions } from '../editRevision';
 import { useState, useEffect, useMemo } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
@@ -157,7 +158,7 @@ export default function Maintenance() {
 
   const handleDelete = async (row) => {
     if (!await confirm(`"${row.title}" ${t('modals.confirmDelete.body')}`)) return;
-    await api.del(`/maintenance/${row.id}`);
+    await api.del(`/maintenance/${row.id}`, revisionOptions(row));
     refreshData();
     if (store) store.invalidateRelated('maintenance', 'properties', 'units');
   };

@@ -1,3 +1,4 @@
+import { revisionOptions } from '../editRevision';
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Building2, MapPin, ArrowUpRight, Plus, Search, LayoutGrid, List, RefreshCw, Pencil, Trash2, Wrench, Home } from 'lucide-react';
@@ -171,7 +172,7 @@ export default function Properties() {
     setActionError(null);
     setBusyId(row.id);
     try {
-      await api.del(`/properties/${row.id}`);
+      await api.del(`/properties/${row.id}`, revisionOptions(row));
       void refreshData();
       invalidate();
     } catch (err) { setActionError(err.message); }

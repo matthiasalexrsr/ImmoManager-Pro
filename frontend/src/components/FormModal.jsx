@@ -1,7 +1,9 @@
-import { useState, useEffect, useRef, useId } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useId } from 'react';
 import { CircleAlert, LoaderCircle } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { CloseIcon } from './Icons';
+import { bindEditRevision, snapshotRevision } from '../editRevision';
+import EditConflictPanel from './EditConflictPanel';
 import './SharedComponents.css';
 
 const initialValues = (fields, initial) => Object.fromEntries(fields.map(field =>
@@ -24,6 +26,8 @@ export default function FormModal({ title, fields, initial, onSave, onClose, chi
   const [values, setValues] = useState(() => initialValues(fields, initial));
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
+  const original = useRef(initial);
+  const editRevision = useRef(snapshotRevision(initial));
   const modalRef = useRef(null);
   const errorRef = useRef(null);
   const primaryAction = useRef(null);
@@ -34,12 +38,20 @@ export default function FormModal({ title, fields, initial, onSave, onClose, chi
   const previousInitial = useRef(initialSignature);
 
   useEffect(() => {
-    const replace = previousInitial.current !== initialSignature;
+    const changed = previousInitial.current !== initialSignature;
+    // A background refresh of the same record cannot silently replace the
+    // draft or upgrade its original revision. Reconciliation is explicit.
+    const replace = changed && (!editRevision.current || original.current?.id !== initial?.id);
     previousInitial.current = initialSignature;
+    if (replace) {
+      original.current = initial;
+      editRevision.current = snapshotRevision(initial);
+      setError(null);
+    }
     setValues(current => {
       const next = replace ? initialValues(fields, initial) : { ...current };
       if (!replace) fields.forEach(field => {
-        if (!(field.key in next) || field.type === 'hidden') next[field.key] = initial?.[field.key] ?? field.default ?? '';
+        if (!(field.key in next) || field.type === 'hidden') next[field.key] = original.current?.[field.key] ?? field.default ?? '';
       });
       return Object.keys(next).length === Object.keys(current).length
         && Object.keys(next).every(key => Object.is(next[key], current[key])) ? current : next;
@@ -55,7 +67,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose, chi
     return () => { if (opener?.isConnected && typeof opener.focus === 'function') opener.focus(); };
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (saving) modalRef.current?.focus();
     else if (error) errorRef.current?.focus();
     else if (wasSaving.current) {
@@ -103,10 +115,11 @@ export default function FormModal({ title, fields, initial, onSave, onClose, chi
         else if (value === '') value = field.required ? value : null;
         cleaned[field.key] = value;
       });
-      await onSave(cleaned);
+      await onSave(bindEditRevision(cleaned, editRevision.current));
       if (closeOnSave) onClose();
     } catch (err) {
-      setError({ message: err.message || t('ui.form.saveFailed'), details: err.details });
+      setError({ message: err.message || t('ui.form.saveFailed'), details: err.details,
+        isEditConflict: err.isEditConflict, resourcePath: err.resourcePath });
     } finally {
       submitting.current = false;
       setSaving(false);
@@ -164,6 +177,14 @@ export default function FormModal({ title, fields, initial, onSave, onClose, chi
       <form onSubmit={handleSubmit} aria-busy={saving}>
         <div className="modal-body">
           {error && <div className="alert-error shared-form-error" role="alert" ref={errorRef} tabIndex={-1}><CircleAlert size={18} aria-hidden="true" /><span>{error.message}</span></div>}
+          {error?.isEditConflict && <EditConflictPanel error={error} fields={fields} original={original.current} draft={values}
+            onReconcile={(nextValues, current) => {
+              setValues(nextValues);
+              original.current = current;
+              editRevision.current = snapshotRevision(current);
+              setError(null);
+              primaryAction.current?.focus();
+            }} />}
           <fieldset className="shared-modal-body-fields" disabled={saving}>
             {children}
             {sections.map((section, index) => {
