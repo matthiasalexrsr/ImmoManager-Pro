@@ -1,5 +1,10 @@
 """Tests for authentication: registration, login, JWT tokens, RBAC."""
 
+import base64
+import hashlib
+import hmac
+import json
+import time
 from unittest.mock import MagicMock
 
 import pytest
@@ -75,6 +80,25 @@ class TestPasswordHashing:
 # === JWT Tokens ===
 
 class TestTokens:
+    @pytest.mark.parametrize("expires_in,status", [(3600, 200), (-3600, 401)])
+    def test_existing_hs256_tokens_remain_compatible(self, expires_in, status):
+        from backend.auth import SECRET_KEY
+
+        def encoded(value):
+            return base64.urlsafe_b64encode(json.dumps(value, separators=(",", ":")).encode()).rstrip(b"=")
+
+        header = encoded({"alg": "HS256", "typ": "JWT"})
+        body = encoded({"sub": "legacy-user", "exp": int(time.time()) + expires_in, "type": "access", "jti": "legacy-session"})
+        signing_input = header + b"." + body
+        signature = base64.urlsafe_b64encode(hmac.new(SECRET_KEY.encode(), signing_input, hashlib.sha256).digest()).rstrip(b"=")
+        token = (signing_input + b"." + signature).decode()
+        if status == 200:
+            assert decode_token(token).sub == "legacy-user"
+        else:
+            with pytest.raises(HTTPException) as exc:
+                decode_token(token)
+            assert exc.value.status_code == 401
+
     def test_create_access_token(self):
         token = create_access_token("user-123")
         payload = decode_token(token)

@@ -47,6 +47,9 @@ Aktualisierungen, Erweiterungen, Sprachen und konfigurierbare Ansichten vorgeseh
 9. Neue UI-Texte in Deutsch, Englisch und Spanisch; übersetzte Zahlungsstatusanzeigen.
 10. Layoutkorrektur für mobile Breiten und lesbare Summenkarten.
 11. npm-Lockdatei aktualisiert: zwölf gemeldete Sicherheitslücken behoben.
+12. JWT-Bibliothek auf PyJWT umgestellt, um die ungepatchte transitive ecdsa-Abhängigkeit
+    zu entfernen; HS256-Tokenkompatibilität bleibt erhalten. Siehe
+    [PyJWT-API](https://pyjwt.readthedocs.io/en/stable/api.html).
 
 ## Grenzen dieses Stands
 
