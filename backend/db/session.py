@@ -13,6 +13,7 @@ from .access_models import UserAccessORM  # noqa: F401 — register access metad
 from .auth_models import AuthSetupORM  # noqa: F401 — register auth metadata before create_all
 from .bank_import_models import BankImportORM  # noqa: F401 — register retained bank import provenance
 from .booking_indexes import BOOKING_INDEXES  # noqa: F401 — register scaled booking indexes
+from .contract_wizard_models import ContractDraftORM  # noqa: F401 — register reviewed contract metadata
 from .credit_models import CreditReceiptORM  # noqa: F401 — register immutable credit metadata
 from .datev_models import DatevProfileORM  # noqa: F401 — register DATEV metadata
 from .operational_models import OperationalTickORM  # noqa: F401 — register scheduler metadata
@@ -53,8 +54,10 @@ def create_tables() -> None:
     """Create all tables (dev/test convenience). Use Alembic for production."""
     bootstrap_legacy_access = not inspect(engine).has_table("user_portfolio_access")
     Base.metadata.create_all(bind=engine)
+    from ..services.invoice_payment_schema import ensure_invoice_payment_columns, ensure_invoice_payment_immutability
     from ..services.portfolio_scope import ensure_portfolio_access_schema
     from .bank_import_schema import ensure_bank_import_schema
+    from .contract_wizard_models import ensure_contract_wizard_schema
     from .outbox_models import ensure_outbox_schema
     from .rent_batch_schema import ensure_rent_batch_schema
     from .session_models import ensure_session_schema
@@ -64,6 +67,9 @@ def create_tables() -> None:
         ensure_outbox_schema(connection)
         ensure_session_schema(connection)
         ensure_bank_import_schema(connection)
+        ensure_contract_wizard_schema(connection)
+        ensure_invoice_payment_columns(connection)
+        ensure_invoice_payment_immutability(connection)
     # Local installations historically used create_all without Alembic stamping.
     # Apply this additive column upgrade there as well, preserving existing data.
     if engine.dialect.name == "sqlite":

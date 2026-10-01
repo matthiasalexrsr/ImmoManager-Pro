@@ -91,6 +91,8 @@ class Installation:
 LEGACY_PAIR = """
 import json, sys
 from backend import auth
+from backend.db.session import SessionLocal
+auth.enable_sql_users(SessionLocal)
 values = json.load(sys.stdin)
 user = auth.authenticate_user('viewer0', values['password'])
 assert user is not None

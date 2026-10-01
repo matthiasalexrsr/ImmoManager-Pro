@@ -32,8 +32,11 @@ it('loads the authenticated endpoint after login and tolerates a damaged account
   const view = render(app());
   localStorage.setItem('user_preferences:alice', '{broken');
   mocks.get.mockResolvedValue({ theme: 'dark', locale: 'en-US' });
-  mocks.user = { id: 'alice' }; view.rerender(app());
-  await waitFor(() => expect(preferences().theme).toBe('dark'));
+  await act(async () => {
+    mocks.user = { id: 'alice' };
+    view.rerender(app());
+  });
+  expect(preferences().theme).toBe('dark');
   expect(mocks.get).toHaveBeenCalledWith('/auth/users/me/preferences', expect.objectContaining({ signal: expect.any(AbortSignal) }));
   expect(JSON.parse(localStorage.getItem('user_preferences:alice')).locale).toBe('en-US');
   expect(mocks.setLocale).toHaveBeenLastCalledWith('en-US');

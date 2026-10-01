@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import re
 import sqlite3
 import stat
 import time
@@ -145,7 +146,44 @@ def _covered_key(key, old_root, catalog):
     return key
 
 
-def _scan(db, old_root, destination, catalog):
+def _embedded_contract_pdf(db, key, reference, deadline=None):
+    """Prove an exact virtual PDF is fully stored in this recovery image."""
+    match = re.fullmatch(r"contract-wizard/([a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12})\.pdf", key)
+    if match is None or reference != "/uploads/" + key:
+        return False
+    if not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='contract_wizard_drafts'").fetchone():
+        return False
+    row = db.execute("""SELECT w.rowid, w.pdf_sha256, length(w.pdf), w.data,
+        c.property_id, c.unit_id, c.tenant_id, w.published_tenant_id
+        FROM contract_wizard_drafts w JOIN documents d ON d.id=w.document_id
+        JOIN contracts c ON c.id=w.contract_id JOIN properties p ON p.id=c.property_id
+        WHERE w.id=? AND w.state IN ('committed','signed') AND typeof(w.pdf)='blob'
+          AND d.file_url=? AND d.contract_id=c.id AND d.property_id=c.property_id
+          AND d.unit_id=c.unit_id AND p.portfolio_id=w.portfolio_id""", (match[1], reference)).fetchone()
+    if row is None:
+        raise RecoveryError("Der eingebettete Vertrags-PDF-Verweis besitzt keinen vollständigen Veröffentlichungsbeleg.")
+    rowid, expected_hash, size, raw_data, property_id, unit_id, tenant_id, published_tenant_id = row
+    data = json.loads(raw_data)
+    if (not isinstance(data, dict) or data.get("property_id") != property_id or data.get("unit_id") != unit_id
+            or tenant_id != published_tenant_id or not isinstance(expected_hash, str)
+            or re.fullmatch(r"[a-f0-9]{64}", expected_hash) is None or size < 5):
+        raise RecoveryError("Der eingebettete Vertrags-PDF-Beleg ist unvollständig oder falsch zugeordnet.")
+    digest = hashlib.sha256()
+    with db.blobopen("contract_wizard_drafts", "pdf", rowid, readonly=True) as source:
+        prefix = source.read(5)
+        if prefix != b"%PDF-":
+            raise RecoveryError("Dem eingebetteten Vertragsstand fehlt der PDF-Dateikopf.")
+        digest.update(prefix)
+        while block := source.read(64 * 1024):
+            if deadline is not None and time.monotonic() >= deadline:
+                raise RecoveryError("Zeitlimit der eingebetteten Vertrags-PDF-Prüfung überschritten.")
+            digest.update(block)
+    if digest.hexdigest() != expected_hash:
+        raise RecoveryError("Die Prüfsumme des eingebetteten Vertrags-PDF stimmt nicht überein.")
+    return True
+
+
+def _scan(db, old_root, destination, catalog, deadline=None):
     root = PureWindowsPath(old_root) if PureWindowsPath(old_root).drive else PurePosixPath(old_root)
     if not root.is_absolute():
         raise RecoveryError("Der gesicherte Upload-Wurzelpfad muss absolut sein.")
@@ -167,6 +205,10 @@ def _scan(db, old_root, destination, catalog):
                     rebased = reference
                     if key is None:
                         external_count += 1
+                    elif _embedded_contract_pdf(db, key, reference, deadline):
+                        # Immutable bytes are part of database.sqlite3, not the
+                        # physical uploads manifest. Keep the virtual URL exact.
+                        local_count += 1
                     else:
                         covered = _covered_key(key, old_root, catalog)
                         files.add(covered)
@@ -224,7 +266,7 @@ def validate_file_references(database: Path, old_root: str, *, expected_upload_f
             db.execute("PRAGMA trusted_schema=OFF")
             _deadline(db, deadline)
             db.execute("BEGIN")
-            return _scan(db, old_root, None, _catalog(expected_upload_files))[1]
+            return _scan(db, old_root, None, _catalog(expected_upload_files), deadline)[1]
     except (sqlite3.Error, UnicodeError, ValueError) as exc:
         if isinstance(exc, RecoveryError):
             raise
@@ -249,7 +291,7 @@ def rebase_file_references(database: Path, old_root: str, destination: Path | No
             _deadline(db, deadline)
             db.execute("BEGIN IMMEDIATE")
             try:
-                updates, _ = _scan(db, old_root, destination, _catalog(expected_upload_files))
+                updates, _ = _scan(db, old_root, destination, _catalog(expected_upload_files), deadline)
                 if not updates:
                     db.rollback()
                     return 0

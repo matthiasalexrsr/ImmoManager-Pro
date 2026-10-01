@@ -1,6 +1,6 @@
 import { ReadableStream, WritableStream } from 'node:stream/web';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { streamBookingCsv } from '../utils/bookingCsv';
+import { saveBlob, streamBookingCsv } from '../utils/bookingCsv';
 
 const get = vi.hoisted(() => vi.fn());
 vi.mock('../api', () => ({ api: { get } }));
@@ -65,4 +65,19 @@ it('propagates cancellation to the native stream and aborts the writable file', 
   vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, body: body() })));
   await expect(streamBookingCsv('/bookings/export.csv?', { signal: controller.signal })).rejects.toMatchObject({ name: 'AbortError' });
   expect(abort).toHaveBeenCalledOnce(); expect(get).not.toHaveBeenCalled();
+});
+
+it.each([[undefined, 'bookings.csv'], ['Original Ä.sta', 'Original Ä.sta']])('keeps the CSV default while supporting an explicit original filename (%s)', (filename, expected) => {
+  vi.useFakeTimers();
+  const create = vi.fn(() => 'blob:synthetic-local-original'), revoke = vi.fn();
+  const names = [];
+  vi.stubGlobal('URL', { createObjectURL: create, revokeObjectURL: revoke });
+  const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function () { names.push(this.download); });
+  try {
+    const blob = new Blob(['synthetic']);
+    saveBlob(blob, filename);
+    expect(names).toEqual([expected]); expect(create).toHaveBeenCalledWith(blob);
+    expect(revoke).not.toHaveBeenCalled();
+    vi.runAllTimers(); expect(revoke).toHaveBeenCalledWith('blob:synthetic-local-original');
+  } finally { click.mockRestore(); vi.useRealTimers(); }
 });

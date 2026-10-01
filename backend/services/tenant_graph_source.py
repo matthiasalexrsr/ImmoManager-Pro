@@ -85,8 +85,8 @@ class TenantGraphSource:
                       if hasattr(row, name) and name != "reversal"}
             result.append(Payment(**fields,
                 credit_receipt_id=credit_receipts.get(row.id),
-                entity_type="receivable" if row.receivable_id else "rent_charge",
-                entity_id=row.receivable_id or row.rent_charge_id or "",
+                entity_type="receivable" if row.receivable_id else "rent_charge" if row.rent_charge_id else "invoice",
+                entity_id=row.receivable_id or row.rent_charge_id or row.invoice_id or "",
                 reversal=reversals.get(row.id)))
         return result
 

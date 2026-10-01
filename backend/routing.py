@@ -15,12 +15,14 @@ from .routers import (
     auth,
     autotest,
     bank_imports,
+    bank_matching,
     billing,
     bookings,
     budgets,
     calendar,
     categories,
     contacts,
+    contract_wizard,
     contracts,
     dashboard,
     data_exchange,
@@ -83,8 +85,10 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(units.router, dependencies=_auth_dep)
     api_v1.include_router(tenants.router, dependencies=_auth_dep)
     api_v1.include_router(contracts.router, dependencies=_auth_dep)
+    api_v1.include_router(contract_wizard.router, dependencies=_auth_dep)
     api_v1.include_router(accounts.router, dependencies=_auth_dep)
     api_v1.include_router(bank_imports.router, dependencies=_auth_dep)
+    api_v1.include_router(bank_matching.router, dependencies=_auth_dep)
     api_v1.include_router(bookings.router, dependencies=_auth_dep)
     api_v1.include_router(receivables.router, dependencies=_auth_dep)
     api_v1.include_router(invoices.router, dependencies=_auth_dep)

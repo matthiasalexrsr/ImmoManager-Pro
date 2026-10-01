@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict
 
-from fastapi import Body, Depends, FastAPI, Request, Response
+from fastapi import Body, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -296,7 +296,12 @@ def _mount_contract_wizard_if_available(target_app: FastAPI) -> bool:
     @target_app.post("/api/v1/contract-wizard/pdf", dependencies=[Depends(require_role("eigentuemer", "verwalter"))])
     @wizard_app.post("/api/pdf", dependencies=[Depends(require_role("eigentuemer", "verwalter"))])
     def pdf_endpoint(payload: Dict[str, Any] = Body(...)):
-        pdf_bytes = build_contract_pdf(payload)
+        from mietvertrag_wizard.validation import ContractValidationError
+
+        try:
+            pdf_bytes = build_contract_pdf(payload)
+        except ContractValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",

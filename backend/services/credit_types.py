@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from .payments import EntityType
+CreditTarget = Literal["receivable", "rent_charge"]
 
 
 def credit_money(value) -> Decimal:
@@ -72,7 +72,7 @@ class CreditPayoutCreate(CreditCommand):
 
 
 class CreditOffsetCreate(CreditCommand):
-    target_type: EntityType
+    target_type: CreditTarget
     target_id: str = Field(min_length=1)
 
 
@@ -109,7 +109,7 @@ class CreditReceipt(BaseModel):
     transaction_date: date
     method: Literal["cash", "bank", "offset"]
     booking_id: str | None = None
-    target_type: EntityType | None = None
+    target_type: CreditTarget | None = None
     target_id: str | None = None
     payment_id: str | None = None
     note: str | None = None

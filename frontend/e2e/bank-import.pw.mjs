@@ -1,4 +1,5 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { test, expect, germanWorkspaceReady } from './demoFixtures.mjs';
 
 async function workspace(page) {
@@ -87,6 +88,29 @@ test('bank CSV: stored errors, exact preview, explicit atomic approval, history 
   const committed = await approve(page, panel);
   expect(committed.published_count).toBe(3);
   await expect(panel.getByText('Veröffentlichte Buchungen: 3', { exact: true })).toBeVisible();
+  const originalReceived = page.waitForEvent('download');
+  await panel.getByRole('button', { name: 'Originaldatei herunterladen', exact: true }).click();
+  const original = await originalReceived;
+  expect(original.suggestedFilename()).toBe('reviewed.csv');
+  const originalBytes = await readFile(await original.path());
+  expect(originalBytes.toString('utf8')).toBe(source);
+  expect(createHash('sha256').update(originalBytes).digest('hex')).toBe(job.source_sha256);
+  // Use a real browser WritableFileStream; only the native destination picker
+  // is replaced, while the authenticated original API remains untouched.
+  await page.evaluate(async () => {
+    const directory = await navigator.storage.getDirectory();
+    window.bankSourceFile = await directory.getFileHandle('bank-original-acceptance.csv', { create: true });
+    window.showSaveFilePicker = async () => window.bankSourceFile;
+  });
+  const streamed = page.waitForResponse(response => new URL(response.url()).pathname
+    === `/api/v1/bookings/imports/${job.id}/source`);
+  await panel.getByRole('button', { name: 'Originaldatei direkt speichern', exact: true }).click();
+  const sourceResponse = await streamed;
+  expect(sourceResponse.ok()).toBeTruthy();
+  expect(sourceResponse.headers()['x-content-sha256']).toBe(job.source_sha256);
+  expect(sourceResponse.request().headers().authorization).toMatch(/^Bearer /);
+  expect(new URL(sourceResponse.url()).search).toBe('');
+  await expect.poll(() => page.evaluate(async () => (await window.bankSourceFile.getFile()).text())).toBe(source);
   const bookings = (await api(`/bookings/page?account_id=${account.id}&page_size=25`)).items;
   expect(bookings).toHaveLength(3);
   expect(bookings.filter(row => row.payment_text === `${prefix} same`)).toHaveLength(2);

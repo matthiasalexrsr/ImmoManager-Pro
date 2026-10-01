@@ -6,6 +6,8 @@ import useWriteAccess from '../hooks/useWriteAccess';
 import useBookingChoices from '../hooks/useBookingChoices';
 import { useConfirm } from './ConfirmDialog';
 import { checkedBankImport, checkedBankPreview } from '../utils/bankImport';
+import { saveBlob } from '../utils/bookingCsv';
+import { streamBankOriginal } from '../utils/bankImportSource';
 import './BankImportPanel.css';
 
 const initialMapping = { version: 1, format: 'csv', encoding: 'utf-8-sig', delimiter: ';', date_column: 'date',
@@ -132,7 +134,7 @@ export default function BankImportPanel({ initialAccount = '', onClose, onImport
     });
   };
   const money = cents => cents === null ? '—' : new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR' }).format(cents / 100);
-  const errorMessage = error === 'bankImport.invalidResponse' ? text('invalidResponse') : error;
+  const errorMessage = ['bankImport.invalidResponse', 'bankImport.sourceFailed', 'bankImport.sourceUnsupported'].includes(error) ? t(error) : error;
   return <section className="card bank-import-panel" aria-label={text('title')} aria-busy={busy}>
     <div className="card-header"><h2>{text('title')}</h2><button type="button" className="btn btn-secondary" disabled={busy} onClick={onClose}>{t('ui.buttons.close')}</button></div>
     <div className="card-body"><p>{text('description')}</p><p className="text-muted">{text('duplicatesHint')}</p>
@@ -171,6 +173,12 @@ export default function BankImportPanel({ initialAccount = '', onClose, onImport
         <h3>{text('preview')}: {job.filename}</h3><p role="status">{text(job.state)} · {job.row_count} {text('rows')} · {job.error_count} {text('errors')} · {job.duplicate_count} {text('duplicates')}</p>
         {!job.persistent && <p className="alert alert-warning">{text('memoryHint')}</p>}
         <dl className="bank-import-provenance"><dt>SHA-256</dt><dd>{job.source_sha256}</dd><dt>{text('mappingHash')}</dt><dd>{job.mapping_hash}</dd></dl>
+        <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => perform(async (signal, captured) => {
+          const blob = await api.getBlob(`/bookings/imports/${encodeURIComponent(job.id)}/source`, { signal });
+          if (!signal.aborted && captured === generation.current) saveBlob(blob, job.filename);
+        })}>{text('downloadOriginal')}</button>
+        {typeof window.showSaveFilePicker === 'function' && <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => perform(signal =>
+          streamBankOriginal(`/bookings/imports/${encodeURIComponent(job.id)}/source`, job.filename, { signal }))}>{text('saveOriginalDirect')}</button>}
         <label><input type="checkbox" checked={errorsOnly} onChange={event => { setErrorsOnly(event.target.checked); setPreviewHistory([null]); setPreviewPage(0); }} />{text('errorsOnly')}</label>
         {loading && <p role="status">{t('ui.table.loading')}</p>}
         {preview && <><div className="table-scroll" tabIndex={0} role="region" aria-label={text('preview')}><table className="data-table"><thead><tr>

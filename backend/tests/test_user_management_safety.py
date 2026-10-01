@@ -14,6 +14,7 @@ from backend.app import app
 from backend.db.access_models import UserAccessORM, UserPortfolioORM
 from backend.db.auth_models import AuthSetupORM
 from backend.db.orm_models import Base, LoginAttemptORM, PortfolioORM, RevokedTokenORM, UserORM
+from backend.db.session_models import AuthRefreshORM, AuthSessionORM
 
 
 @pytest.fixture(params=["memory", "sqlite"])
@@ -23,7 +24,8 @@ def managed_users(request, monkeypatch, tmp_path):
     if request.param == "sqlite":
         engine = create_engine(f"sqlite:///{tmp_path / 'users.db'}", connect_args={"check_same_thread": False})
         Base.metadata.create_all(engine, tables=[UserORM.__table__, AuthSetupORM.__table__, LoginAttemptORM.__table__, RevokedTokenORM.__table__,
-                                                PortfolioORM.__table__, UserAccessORM.__table__, UserPortfolioORM.__table__])
+                                                PortfolioORM.__table__, UserAccessORM.__table__, UserPortfolioORM.__table__,
+                                                AuthSessionORM.__table__, AuthRefreshORM.__table__])
         factory = sessionmaker(bind=engine)
         store = auth.SQLUserStore(factory)
     else:

@@ -5,11 +5,12 @@ import de from '../../../i18n/de-DE.json';
 import en from '../../../i18n/en-US.json';
 import es from '../../../i18n/es-ES.json';
 
-const mocks = vi.hoisted(() => ({ get: vi.fn(), postForm: vi.fn(), post: vi.fn(), confirm: vi.fn(), invalidateRelated: vi.fn(), role: 'buchhaltung', locale: 'de-DE' }));
+const mocks = vi.hoisted(() => ({ get: vi.fn(), getBlob: vi.fn(), saveBlob: vi.fn(), postForm: vi.fn(), post: vi.fn(), confirm: vi.fn(), invalidateRelated: vi.fn(), role: 'buchhaltung', locale: 'de-DE' }));
 vi.mock('../api', () => ({ api: mocks }));
 vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 'synthetic-user', role: mocks.role } }) }));
 vi.mock('../contexts/DataStoreContext', () => ({ useDataStore: () => mocks }));
 vi.mock('../components/ConfirmDialog', () => ({ useConfirm: () => mocks.confirm }));
+vi.mock('../utils/bookingCsv', () => ({ saveBlob: mocks.saveBlob }));
 vi.mock('../i18n', () => ({ useTranslation: () => ({ locale: mocks.locale,
   t: (key, params = {}) => (key.split('.').reduce((value, part) => value?.[part], { 'de-DE': de, 'en-US': en, 'es-ES': es }[mocks.locale]) || key)
     .replace(/\{\{(\w+)\}\}/g, (match, name) => params[name] ?? match) }) }));
@@ -35,6 +36,7 @@ beforeEach(() => {
   mocks.locale = 'de-DE'; mocks.role = 'buchhaltung'; mocks.confirm.mockReset().mockResolvedValue(true);
   mocks.invalidateRelated.mockReset(); mocks.post.mockReset().mockResolvedValue(job({ state: 'committed', revision: 1, published_count: 2 }));
   mocks.postForm.mockReset().mockResolvedValue(job());
+  mocks.getBlob.mockReset().mockResolvedValue(new Blob(['synthetic original'])); mocks.saveBlob.mockReset();
   mocks.get.mockReset().mockImplementation(async path => {
     if (path.startsWith('/bookings/lookup/accounts')) return { items: [{ id: 'account', label: 'Synthetic bank' }], selected: null, has_more: false, next_cursor: null };
     if (path.startsWith('/bookings/imports?')) return { items: [job()], has_more: false, next_cursor: null };
@@ -129,6 +131,20 @@ describe('reviewed bank import', () => {
     fireEvent.submit(screen.getByLabelText(labels.file, { exact: true }).closest('form'));
     expect(await screen.findByRole('alert')).toHaveTextContent(labels.invalidResponse);
     expect(screen.queryByRole('button', { name: labels.approve })).not.toBeInTheDocument();
+    expect(mocks.post).not.toHaveBeenCalled();
+  });
+
+  it('downloads the protected original for readonly without putting tokens in a URL', async () => {
+    mocks.role = 'readonly';
+    render(view());
+    const history = screen.getByText(labels.history).closest('details'); history.open = true;
+    fireEvent.click(await within(history).findByRole('button', { name: /synthetic.csv/ }));
+    await waitFor(() => expect(screen.getByRole('button', { name: labels.downloadOriginal })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: labels.downloadOriginal }));
+    await waitFor(() => expect(mocks.saveBlob).toHaveBeenCalledOnce());
+    expect(mocks.getBlob).toHaveBeenCalledWith('/bookings/imports/saved-import/source', { signal: expect.any(AbortSignal) });
+    expect(mocks.saveBlob.mock.calls[0][0]).toBeInstanceOf(Blob);
+    expect(mocks.saveBlob.mock.calls[0][1]).toBe('synthetic.csv');
     expect(mocks.post).not.toHaveBeenCalled();
   });
 

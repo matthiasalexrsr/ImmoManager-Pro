@@ -2,6 +2,7 @@
 .bank-import-panel .card-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
 .bank-import-panel :is(form, .bank-import-preview, .bank-import-history) { min-width: 0; max-width: 100%; }
 .bank-import-panel .card-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: .75rem; }
+.bank-import-panel .btn { max-width: 100%; white-space: normal; }
 .bank-import-panel label { display: grid; gap: .4rem; }
 .bank-import-panel label:has(input[type="checkbox"]) { display: flex; align-items: center; }
 .bank-import-panel input[type="checkbox"] { width: auto; flex: none; }

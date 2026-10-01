@@ -217,6 +217,7 @@ class InvoiceCreate(BaseModel):
 
 
 class Invoice(InvoiceCreate):
+    amount_paid: float = Field(default=0.0, ge=0)
     id: str = Field(..., min_length=1)
     source_document_id: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

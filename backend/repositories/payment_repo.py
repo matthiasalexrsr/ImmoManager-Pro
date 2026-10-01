@@ -10,7 +10,7 @@ from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from ..db.orm_models import BookingORM, ContractORM, PaymentORM, PaymentReversalORM, ReceivableORM, RentChargeORM
+from ..db.orm_models import BookingORM, InvoiceORM, PaymentORM, PaymentReversalORM, ReceivableORM, RentChargeORM
 from ..services.payments import (
     EntityType,
     Payment,
@@ -19,7 +19,7 @@ from ..services.payments import (
     PaymentReversalCreate,
     next_balance,
     reversed_balance,
-    validate_booking,
+    validate_payment_booking,
     validate_replay,
     validate_reversal_replay,
 )
@@ -35,8 +35,8 @@ def _read(db: Session, row: PaymentORM) -> Payment:
     return Payment(
         id=row.id, idempotency_key=row.idempotency_key, amount=Decimal(str(row.amount)),
         payment_date=row.payment_date, note=row.note, created_at=row.created_at, booking_id=row.booking_id,
-        entity_type="receivable" if row.receivable_id else "rent_charge",
-        entity_id=row.receivable_id or row.rent_charge_id or "",
+        entity_type="receivable" if row.receivable_id else "rent_charge" if row.rent_charge_id else "invoice",
+        entity_id=row.receivable_id or row.rent_charge_id or row.invoice_id or "",
         reversal=_read_reversal(reversal) if reversal else None,
         credit_receipt_id=_credit_receipt_id(db, row),
     )
@@ -52,13 +52,13 @@ def _credit_receipt_id(db, row):
 def list_payments(db: Session, entity_type=None, entity_id=None) -> list[Payment]:
     query = select(PaymentORM).order_by(PaymentORM.payment_date, PaymentORM.created_at, PaymentORM.id)
     if entity_type:
-        column = PaymentORM.receivable_id if entity_type == "receivable" else PaymentORM.rent_charge_id
+        column = getattr(PaymentORM, f"{entity_type}_id")
         query = query.where(column == entity_id) if entity_id else query.where(column.is_not(None))
     return [_read(db, row) for row in db.scalars(query)]
 
 
 def _target(db, entity_type, entity_id):
-    cls = ReceivableORM if entity_type == "receivable" else RentChargeORM
+    cls = {"receivable": ReceivableORM, "rent_charge": RentChargeORM, "invoice": InvoiceORM}[entity_type]
     row = db.get(cls, entity_id, populate_existing=True)
     if row is None:
         raise NotFoundError("Zahlungsposten nicht gefunden")
@@ -67,17 +67,34 @@ def _target(db, entity_type, entity_id):
 
 def _update_target(db, cls, target, paid, status):
     # Compare-and-swap also protects concurrent total/status edits.
-    fields = ("amount_due",) if cls == ReceivableORM else (
+    fields = ("gross_amount",) if cls == InvoiceORM else ("amount_due",) if cls == ReceivableORM else (
         "cold_rent", "service_charge", "heating_charge", "other_charges"
     )
-    predicates = [cls.id == target.id, cls.amount_paid == target.amount_paid, cls.status == target.status,
-                  cls.contract_id == target.contract_id]
+    predicates = [cls.id == target.id, cls.amount_paid == target.amount_paid, cls.status == target.status]
+    parent_field = "property_id" if cls == InvoiceORM else "contract_id"
+    predicates.append(getattr(cls, parent_field) == getattr(target, parent_field))
     predicates.extend(getattr(cls, field) == getattr(target, field) for field in fields)
     result = db.execute(update(cls).where(*predicates).values(
         amount_paid=float(paid), status=status, updated_at=datetime.now(timezone.utc)
     ).execution_options(synchronize_session=False))
     if cast(CursorResult, result).rowcount != 1:
         raise ValidationError("Der Posten wurde zwischenzeitlich geändert. Bitte neu laden.")
+
+
+def _lock_target(db, entity_type, entity_id):
+    if entity_type == "invoice":
+        if db.get_bind().dialect.name == "sqlite":
+            connection = db.connection()
+            driver = connection.connection.driver_connection
+            if driver is not None and not driver.in_transaction:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+        if db.scalar(select(InvoiceORM).where(InvoiceORM.id == entity_id).with_for_update()
+                     .execution_options(populate_existing=True)) is None:
+            raise NotFoundError("Rechnung nicht gefunden")
+    else:
+        from ..services.credit_ledger import lock_contract
+        _, target = _target(db, entity_type, entity_id)
+        lock_contract(db, target.contract_id)
 
 
 def _booking(db, booking_id):
@@ -101,6 +118,10 @@ def _update_booking(db, booking, allocated):
 
 def record_payment(db: Session, entity_type: EntityType, entity_id: str, payload: PaymentCreate, *, commit=True,
                    expected_contract_id=None) -> Payment:
+    if entity_type == "invoice":
+        from ..services.invoice_payment_schema import require_invoice_payment_schema
+        require_invoice_payment_schema(db.connection())
+        _lock_target(db, entity_type, entity_id)
     cls, target = _target(db, entity_type, entity_id)
     if expected_contract_id is not None and target.contract_id != expected_contract_id:
         raise ValidationError("Die Forderung gehört nicht mehr zum Vertrag der Guthabenquelle.")
@@ -108,18 +129,17 @@ def record_payment(db: Session, entity_type: EntityType, entity_id: str, payload
     if existing:
         return validate_replay(_read(db, existing), entity_type, entity_id, payload)
     try:
-        from ..services.credit_ledger import lock_contract
-        lock_contract(db, target.contract_id)
+        _lock_target(db, entity_type, entity_id)
         cls, target = _target(db, entity_type, entity_id)
         if expected_contract_id is not None and target.contract_id != expected_contract_id:
             raise ValidationError("Die Forderung gehört nicht mehr zum Vertrag der Guthabenquelle.")
         paid, status = next_balance(entity_type, target, payload)
         if payload.booking_id:
             booking = _booking(db, payload.booking_id)
-            contract = db.get(ContractORM, target.contract_id)
-            if contract is None:
-                raise NotFoundError("Vertrag nicht gefunden")
-            allocated = validate_booking(booking, contract, payload.amount)
+            from .sql_store import SQLAlchemyStore
+            allocated = validate_payment_booking(SQLAlchemyStore(db), entity_type, target, booking, payload.amount)
+            if entity_type == "invoice" and payload.payment_date != booking.booking_date:
+                raise ValidationError("Zahlungsdatum und Bankbuchungsdatum müssen übereinstimmen.")
             _update_booking(db, booking, allocated)
         _update_target(db, cls, target, paid, status)
         row = PaymentORM(id=str(uuid4()), **payload.model_dump(), **{f"{entity_type}_id": entity_id})
@@ -162,9 +182,8 @@ def reverse_payment(db: Session, entity_type: EntityType, entity_id: str, paymen
     if payment.reversal:
         raise ValidationError("Dieser Zahlungsbeleg wurde bereits storniert.")
     try:
-        from ..services.credit_ledger import lock_contract
         if not credit_internal:
-            lock_contract(db, target.contract_id)
+            _lock_target(db, entity_type, entity_id)
         cls, target = _target(db, entity_type, entity_id)
         # Re-read the receipt after the serialization lock, including its reversal.
         current_row = db.get(PaymentORM, payment_id, populate_existing=True)
@@ -222,13 +241,17 @@ def import_payment(db: Session, payment: Payment) -> Payment:
         if payment.booking_id:
             booking = _booking(db, payment.booking_id)
             # Restored bank counters derive from active receipts, never the snapshot field.
-            active = sum((item.amount for item in list_payments(db)
-                          if item.booking_id == payment.booking_id and not item.reversal), Decimal("0"))
-            contract = db.get(ContractORM, target.contract_id)
-            if contract is None:
-                raise NotFoundError("Vertrag nicht gefunden")
-            allocated = validate_booking(booking, contract, Decimal("0") if payment.reversal else payment.amount,
-                                         allocated=active)
+            from ..db.credit_models import CreditReceiptORM, CreditReversalORM
+            from ..services.credit_ledger import money
+            active = sum((Decimal(str(amount)) for amount in db.scalars(select(PaymentORM.amount).outerjoin(PaymentReversalORM,
+                PaymentReversalORM.payment_id == PaymentORM.id).where(PaymentORM.booking_id == payment.booking_id,
+                    PaymentReversalORM.id.is_(None)))), Decimal("0"))
+            active += sum((money(int(amount)) for amount in db.scalars(select(CreditReceiptORM.amount_cents)
+                .outerjoin(CreditReversalORM, CreditReversalORM.receipt_id == CreditReceiptORM.id)
+                .where(CreditReceiptORM.booking_id == payment.booking_id, CreditReversalORM.id.is_(None)))), Decimal("0"))
+            from .sql_store import SQLAlchemyStore
+            allocated = validate_payment_booking(SQLAlchemyStore(db), payment.entity_type, target, booking,
+                Decimal("0") if payment.reversal else payment.amount, allocated=active)
             _update_booking(db, booking, allocated)
         db.add(PaymentORM(**payment.model_dump(exclude={"entity_type", "entity_id", "reversal", "credit_receipt_id"}),
                           **{f"{payment.entity_type}_id": payment.entity_id}))

@@ -6,6 +6,7 @@ to DatabaseOperationError with proper logging.
 """
 
 import logging
+from contextvars import ContextVar
 from typing import Any, NoReturn, cast
 from uuid import uuid4
 
@@ -21,6 +22,8 @@ from ..error_helpers import safe_db_operation
 from ..safe_diagnostics import exception_diagnostic
 from ..services.concurrency import conflict, expected_revision, next_updated_at
 from ..storage import NotFoundError, ValidationError
+
+_invoice_transfer_balance = ContextVar("invoice_transfer_balance", default=False)
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +124,11 @@ class BaseRepository:
         from ..services.portfolio_scope import guard_sql_write
         guard_sql_write(self.db, self.orm_class.__table__, {**_orm_to_dict(orm_obj), **updates}, entity_id=entity_id)
         self._guard_contract_update(orm_obj, updates)
+        if self.orm_class.__tablename__ == "invoices" and not _invoice_transfer_balance.get():
+            from ..db.orm_models import PaymentORM
+            from ..services.payment_integrity import guard_invoice_edit
+            updates = guard_invoice_edit(orm_obj, updates, self.db.scalar(select(PaymentORM.id)
+                .where(PaymentORM.invoice_id == entity_id).limit(1)) is not None)
         booking_condition = self._booking_condition(orm_obj, updates)
         revision_condition = self._revision_condition(entity_id)
         conditions = [getattr(self.orm_class, "id") == entity_id]
@@ -144,6 +152,17 @@ class BaseRepository:
         return self._to_pydantic(orm_obj)
 
     def _guard_contract_update(self, orm_obj, updates) -> None:
+        if self.orm_class.__tablename__ == "contracts" and any(
+                field in updates and updates[field] != getattr(orm_obj, field)
+                for field in ("property_id", "unit_id", "start_date", "end_date", "status")):
+            from types import SimpleNamespace
+
+            from ..services.contract_occupancy import creation_guard
+            from .sql_store import SQLAlchemyStore
+            with creation_guard(SQLAlchemyStore(self.db),
+                    SimpleNamespace(**{**_orm_to_dict(orm_obj), **updates}), exclude_id=orm_obj.id,
+                    previous=orm_obj):
+                pass
         if self.orm_class.__tablename__ == "contracts" and any(
                 field in updates and updates[field] != getattr(orm_obj, field)
                 for field in ("tenant_id", "property_id", "unit_id")):
@@ -175,6 +194,11 @@ class BaseRepository:
 
     @safe_db_operation("create")
     def create(self, data: PydanticBaseModel) -> Any:
+        if self.orm_class.__tablename__ == "contracts":
+            from ..services.contract_occupancy import creation_guard
+            from .sql_store import SQLAlchemyStore
+            with creation_guard(SQLAlchemyStore(self.db), data):
+                pass
         orm_obj = self.orm_class(id=_generate_id(), **data.model_dump())
         self.db.add(orm_obj)
         self.db.flush()
@@ -187,7 +211,11 @@ class BaseRepository:
 
     @safe_db_operation("patch")
     def patch(self, entity_id: str, data: PydanticBaseModel) -> Any:
-        return self._write(entity_id, data.model_dump(exclude_unset=True))
+        token = _invoice_transfer_balance.set(self.orm_class.__tablename__ == "invoices" and type(data).__name__ == "TransferExtraFields")
+        try:
+            return self._write(entity_id, data.model_dump(exclude_unset=True))
+        finally:
+            _invoice_transfer_balance.reset(token)
 
     @safe_db_operation("delete")
     def delete(self, entity_id: str) -> None:

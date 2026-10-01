@@ -162,7 +162,11 @@ migrated SQL server. Invalid cents persist as row errors without any bookings.
 Explicit locale mapping, two legitimate identical transactions, cancellation,
 one atomic confirmation, provenance receipts, reload and exact-file replay are
 checked through the real UI/API. MT940 opening/closing balances and all physical
-transactions remain distinct. No requests are intercepted. The CSV preview is
+transactions remain distinct. No requests are intercepted. The original CSV is
+downloaded with its filename and byte-for-byte SHA-256 match. Direct
+saving uses a real browser OPFS writable stream; only its destination chooser
+is substituted, and the original HTTP request carries credentials exclusively
+in the Authorization header. The CSV preview is
 visually reviewed at 1440, 390 and 320 pixels with focused panel screenshots,
 page-overflow checks and the shared uncaught-error guard.
 

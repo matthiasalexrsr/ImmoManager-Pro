@@ -46,6 +46,27 @@ Sie prüft sichtbare Oberflächenaktionen und die gespeicherten API-Ergebnisse:
 
 ## Prüfergebnisse
 
+Aktueller Integrationsstand vom 2. Oktober 2026: 693 Frontendtests in 56 Dateien,
+ESLint und 45 vollständige reale Edge-/SQLite-Browserabläufe bestanden. Der
+CI-Typcheck umfasst nach der Bankzuordnung 73 kritische Quellen und ist lokal
+grün; Ruff ist grün. Nach Integration der Rechnungszahlungsbelege bestanden
+129 gemeinsame SQLite-Prüfungen (10 explizite Skips), darunter Migration,
+Stornos, gemeinsames Guthabenbudget, Quellverlust-Wiederherstellung und die
+korrigierten Billing-/Mietanpassungs-Testdaten. Zwei zusätzliche tatsächliche
+API-Routerabläufe prüfen autorisierten Zugriff, genau einen Rechnungsbeleg und
+keine zweite Cashbuchung mit Memory und SQLite.
+
+Der vollständige gepinnte SQLite-Stand `51f69ef` ergab 2.649 bestandene,
+82 übersprungene und 25 fehlgeschlagene Fälle. Diese Fehler lagen beim Aufbau
+historischer Testdaten mit inzwischen unzulässiger Doppelbelegung; die
+betroffenen Fixtures werden separat korrigiert, ohne die Produktprüfung oder
+fachlichen Assertions abzuschwächen. Dieser Lauf ist **keine grüne
+Gesamtfreigabe**. Die gemeinsame neue Gesamtsuite und der tatsächliche
+PostgreSQL-CI-Lauf bleiben für den aktuellen Integrationsstand erforderlich.
+Die neue Bankvorschlags-/Rechnungs-API ist integriert; ihre zusätzliche
+Oberfläche wird noch umgesetzt. Ausführliche Beleg- und Upgradebeschreibung:
+[Bankzuordnung](BANK_MATCHING.md).
+
 Zusätzlicher integrierter Stand nach den unten dokumentierten früheren Gates:
 578 Frontendtests in 46 Dateien, ESLint und Produktionsbuild bestanden.
 Der gemeinsame Backend-Memory-Stand mit Portfoliozugriff und DATEV bestand

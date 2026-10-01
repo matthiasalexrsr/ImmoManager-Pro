@@ -63,6 +63,15 @@ def contract_setup(store):
     return contract, historical
 
 
+def independent_contract(store, contract, number):
+    """Another active contract must occupy its own unit, including in race fixtures."""
+    original_unit = store.get_unit(contract.unit_id)
+    unit = store.create_unit(UnitCreate(**{
+        **original_unit.model_dump(include=set(UnitCreate.model_fields)), "label": f"{original_unit.label}-{number}"}))
+    return store.create_contract(ContractCreate(**{
+        **contract.model_dump(include=set(ContractCreate.model_fields)), "contract_number": number, "unit_id": unit.id}))
+
+
 def adjustment(store, contract, **overrides):
     return store.create_rent_adjustment(RentAdjustmentCreate(**{
         "contract_id": contract.id, "adjustment_type": "stepped", "effective_date": date(2025, 2, 1),
@@ -97,8 +106,7 @@ def test_pending_rejected_and_another_contract_do_not_change_prices_or_hash(ledg
     original = preview_generation(ledger_store, request(contract))
     adjustment(ledger_store, contract, status="pending", new_rent=850)
     adjustment(ledger_store, contract, status="rejected", new_rent=950)
-    other = ledger_store.create_contract(ContractCreate(**{
-        **contract.model_dump(include=set(ContractCreate.model_fields)), "contract_number": "other-synthetic-contract"}))
+    other = independent_contract(ledger_store, contract, "other-synthetic-contract")
     adjustment(ledger_store, other, new_rent=700)
     current = preview_generation(ledger_store, request(contract))
     assert current["preview_hash"] == original["preview_hash"]
@@ -340,8 +348,7 @@ def test_moved_adjustment_cannot_be_changed_under_an_old_parent_lock(transaction
         store = SQLAlchemyStore(session)
         contract, _ = contract_setup(store)
         rule = adjustment(store, contract)
-        another = store.create_contract(ContractCreate(**{
-            **contract.model_dump(include=set(ContractCreate.model_fields)), "contract_number": "V-Moved"}))
+        another = independent_contract(store, contract, "V-Moved")
     has_read_parent, release_writer = Event(), Event()
 
     @event.listens_for(engine, "before_cursor_execute")

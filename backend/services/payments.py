@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ..storage import ValidationError
 
-EntityType = Literal["receivable", "rent_charge"]
+EntityType = Literal["receivable", "rent_charge", "invoice"]
 _memory_lock = RLock()
 
 
@@ -50,6 +50,7 @@ class PaymentReversal(PaymentReversalCreate):
 
 
 class Payment(PaymentCreate):
+    model_config = ConfigDict(frozen=True)
     id: str
     entity_type: EntityType
     entity_id: str
@@ -67,6 +68,8 @@ class FinancialConsistencyError(ValidationError):
 
 
 def payment_total(entity_type: EntityType, target) -> Decimal:
+    if entity_type == "invoice":
+        return Decimal(str(target.gross_amount))
     if entity_type == "receivable":
         return Decimal(str(target.amount_due))
     return sum((Decimal(str(getattr(target, field) or 0)) for field in
@@ -129,6 +132,43 @@ def validate_booking(booking, contract, amount: Decimal, *, allocated: Decimal |
     return paid.quantize(Decimal("0.01"))
 
 
+def validate_invoice_booking(booking, invoice, amount: Decimal, *, allocated=None) -> Decimal:
+    """Invoice payments consume the same absolute negative booking budget as payouts."""
+    if Decimal(str(booking.amount)) >= 0:
+        raise ValidationError("Eine Rechnungszahlung benötigt eine negative Bankbuchung.")
+    if booking.property_id and booking.property_id != invoice.property_id:
+        raise ValidationError("Die Bankbuchung gehört zu einem anderen Rechnungsobjekt.")
+    used = (Decimal(str(booking.allocated_amount or 0)) if allocated is None else allocated) + amount
+    if not 0 <= used <= -Decimal(str(booking.amount)):
+        raise ValidationError("Der Betrag übersteigt das verfügbare Bankbuchungsbudget.")
+    return used.quantize(Decimal("0.01"))
+
+
+def validate_payment_booking(store, entity_type, target, booking, amount, *, allocated=None):
+    if hasattr(store, "db"):
+        from sqlalchemy import select
+
+        from ..db.orm_models import AccountORM, PropertyORM
+        # Match the confirmation lock order: target, booking, account, property.
+        store.db.scalar(select(AccountORM.id).where(AccountORM.id == booking.account_id).with_for_update())
+        parent_id = target.property_id if entity_type == "invoice" else store.get_contract(target.contract_id).property_id
+        if parent_id:
+            store.db.scalar(select(PropertyORM.id).where(PropertyORM.id == parent_id).with_for_update())
+    if entity_type == "invoice":
+        parent = store.get_property(target.property_id) if target.property_id else None
+        reference = target
+    else:
+        reference = store.get_contract(target.contract_id)
+        parent = store.get_property(reference.property_id)
+    account = store.get_account(booking.account_id)
+    if parent is not None and parent.portfolio_id != account.portfolio_id:
+        raise ValidationError("Bankkonto und Zahlungsposten gehören nicht zum selben Portfolio.")
+    if booking.status in {"cancelled", "void"}:
+        raise ValidationError("Diese Bankbuchung ist abgeschlossen oder storniert.")
+    return (validate_invoice_booking(booking, reference, amount, allocated=allocated) if entity_type == "invoice"
+        else validate_booking(booking, reference, amount, allocated=allocated))
+
+
 def validate_reversal_replay(reversal: PaymentReversal, payment_id: str, payload: PaymentReversalCreate) -> PaymentReversal:
     if (reversal.payment_id != payment_id or
             reversal.model_dump(include=set(PaymentReversalCreate.model_fields)) != payload.model_dump()):
@@ -146,7 +186,9 @@ def record_memory_payment(store, entity_type: EntityType, entity_id: str, payloa
             return validate_replay(existing, entity_type, entity_id, payload)
         paid, status = next_balance(entity_type, target, payload)
         booking = store.get_booking(payload.booking_id) if payload.booking_id else None
-        allocated = validate_booking(booking, store.get_contract(target.contract_id), payload.amount) if booking else None
+        allocated = validate_payment_booking(store, entity_type, target, booking, payload.amount) if booking else None
+        if booking and entity_type == "invoice" and payload.payment_date != booking.booking_date:
+            raise ValidationError("Zahlungsdatum und Bankbuchungsdatum müssen übereinstimmen.")
         payment = Payment(id=str(uuid4()), entity_type=entity_type, entity_id=entity_id, **payload.model_dump())
         target.amount_paid = float(paid)
         target.status = status
@@ -215,8 +257,11 @@ def import_memory_payment(store, payment: Payment) -> Payment:
         if booking:
             active = sum((item.amount for item in store.payments.values()
                           if item.booking_id == booking.id and not item.reversal), Decimal("0"))
-            allocated = validate_booking(booking, store.get_contract(target.contract_id),
-                                         Decimal("0") if payment.reversal else payment.amount, allocated=active)
+            reversed_credits = {row.receipt_id for row in store.credit_reversals.values()}
+            active += sum((row.amount for row in store.credit_receipts.values()
+                if row.booking_id == booking.id and row.id not in reversed_credits), Decimal("0"))
+            allocated = validate_payment_booking(store, payment.entity_type, target, booking,
+                Decimal("0") if payment.reversal else payment.amount, allocated=active)
             booking.allocated_amount = float(allocated)
         store.payments[payment.idempotency_key] = payment
         return payment

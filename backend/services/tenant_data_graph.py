@@ -183,6 +183,13 @@ def _graph(store: Any, tenant_id: str) -> dict:
     reversal_ids = set()
     for payment in _read(store, "list_payments", Payment):
         kind, key = payment["entity_type"], _id(payment["entity_id"])
+        if kind == "invoice":
+            # Landlord supplier invoices are outside this tenant contract graph.
+            # Never omit evidence from a bank source explicitly assigned to the
+            # tenant: that requires a reviewed extension of the export scope.
+            if _id(payment["booking_id"], optional=True) in own_bookings:
+                _fail("Tenant bank source has invoice evidence outside the supported tenant export scope")
+            continue
         if kind not in {"receivable", "rent_charge"}:
             _fail("Unknown payment target type")
         bank_id = _id(payment["booking_id"], optional=True)

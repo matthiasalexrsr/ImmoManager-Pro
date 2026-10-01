@@ -10,8 +10,37 @@ document.addEventListener('DOMContentLoaded', () => {
     const steps = Array.from(document.querySelectorAll('.step'));
     const progressItems = Array.from(document.querySelectorAll('.progressbar li'));
 
-    // LocalStorage Key
-    const STORAGE_KEY = 'mietvertragWizardFormState_v2';
+    // Persisted browser state deliberately excludes banking data.
+    const STORAGE_KEY = 'mietvertragWizardFormState_v3';
+    const LEGACY_STORAGE_KEYS = ['mietvertragWizardFormState_v2'];
+    const SENSITIVE_PERSISTED_FIELDS = new Set([
+        'zahlung-iban', 'zahlung-bic', 'mandat-inhaber', 'mandat-iban', 'mandat-bic'
+    ]);
+
+    function sanitizePersistentState(state) {
+        const clean = JSON.parse(JSON.stringify(state || { fields: {} }));
+        clean.fields = clean.fields || {};
+        SENSITIVE_PERSISTED_FIELDS.forEach(key => delete clean.fields[key]);
+        return clean;
+    }
+
+    function readPersistentState() {
+        const keys = [STORAGE_KEY, ...LEGACY_STORAGE_KEYS];
+        for (const key of keys) {
+            const raw = localStorage.getItem(key);
+            if (!raw) continue;
+            const clean = sanitizePersistentState(JSON.parse(raw));
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(clean));
+            LEGACY_STORAGE_KEYS.forEach(legacy => localStorage.removeItem(legacy));
+            return clean;
+        }
+        return null;
+    }
+
+    function clearPersistentState() {
+        localStorage.removeItem(STORAGE_KEY);
+        LEGACY_STORAGE_KEYS.forEach(key => localStorage.removeItem(key));
+    }
 
     // ---------- Eingabe-Hilfen (de-DE) ----------
     const DATE_RE = /^\d{2}\.\d{2}\.\d{4}$/;
@@ -20,8 +49,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const s = (str || '').toString().trim();
         if (!s) return '';
         const cleaned = s.replace(/\s/g, '').replace(/€/g, '');
-        const raw = cleaned.replace(/\./g, '').replace(/,/g, '.');
-        if (!/^[-+]?\d*(\.\d+)?$/.test(raw)) return '';
+        let raw;
+        if (cleaned.includes(',')) {
+            raw = cleaned.replace(/\./g, '').replace(/,/g, '.');
+        } else if (/^[-+]?\d{1,3}(\.\d{3})+$/.test(cleaned)) {
+            raw = cleaned.replace(/\./g, '');
+        } else {
+            raw = cleaned;
+        }
+        if (!/^[-+]?\d+(\.\d+)?$/.test(raw)) return '';
         return raw;
     }
 
@@ -30,6 +66,20 @@ document.addEventListener('DOMContentLoaded', () => {
         const n = Number(numStr);
         if (!isFinite(n)) return '';
         return new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+    }
+
+    function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, char => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        })[char]);
+    }
+
+    function escapeContractHtmlData(value) {
+        if (Array.isArray(value)) return value.map(escapeContractHtmlData);
+        if (value && typeof value === 'object') {
+            return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, escapeContractHtmlData(item)]));
+        }
+        return typeof value === 'string' ? escapeHtml(value) : value;
     }
 
     function attachMoneyBehavior(el) {
@@ -67,12 +117,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Nach dem Laden: Versuche, gespeicherte Eingaben zu laden und Expertenmodus zu setzen
     try {
-        const savedRaw = localStorage.getItem(STORAGE_KEY);
-        if (savedRaw) {
-            const savedState = JSON.parse(savedRaw);
-            applyFormState(savedState);
-        }
+        const savedState = readPersistentState();
+        if (savedState) applyFormState(savedState);
     } catch (err) {
+        clearPersistentState();
         console.warn('Konnte gespeicherte Eingaben nicht laden:', err);
     }
 
@@ -93,10 +141,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (btnSaveLocal) {
         btnSaveLocal.addEventListener('click', () => {
-            const state = serializeFormState();
+            const state = sanitizePersistentState(serializeFormState());
             try {
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-                alert('Eingaben wurden lokal im Browser gespeichert.');
+                LEGACY_STORAGE_KEYS.forEach(key => localStorage.removeItem(key));
+                alert('Eingaben wurden lokal gespeichert. Bankdaten werden dabei nicht dauerhaft abgelegt.');
             } catch (e) {
                 alert('Speichern nicht möglich: ' + e.message);
             }
@@ -104,13 +153,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (btnLoadLocal) {
         btnLoadLocal.addEventListener('click', () => {
-            const raw = localStorage.getItem(STORAGE_KEY);
-            if (!raw) {
-                alert('Es sind keine gespeicherten Daten vorhanden.');
-                return;
-            }
             try {
-                const state = JSON.parse(raw);
+                const state = readPersistentState();
+                if (!state) {
+                    alert('Es sind keine gespeicherten Daten vorhanden.');
+                    return;
+                }
                 applyFormState(state);
                 alert('Gespeicherte Eingaben wurden geladen.');
             } catch (e) {
@@ -120,7 +168,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (btnClearLocal) {
         btnClearLocal.addEventListener('click', () => {
-            localStorage.removeItem(STORAGE_KEY);
+            clearPersistentState();
             alert('Gespeicherte Formulardaten wurden gelöscht.');
         });
     }
@@ -178,7 +226,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Speichere das Flag im State, ohne andere Felder zu überschreiben
             try {
                 const raw = localStorage.getItem(STORAGE_KEY);
-                let state = raw ? JSON.parse(raw) : { fields: {} };
+                let state = raw ? sanitizePersistentState(JSON.parse(raw)) : { fields: {} };
                 state.expertMode = !!enabled;
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
             } catch (e) {
@@ -408,7 +456,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Hilfsfunktion: HTML‑Vertrag mit einfacher Formatierung erstellen
         function generateContractHTML() {
-            const v = formData;
+            const v = escapeContractHtmlData(formData);
             // Hilfsfunktionen zum Formatieren
             const parseDate = (dateStr) => {
                 if (!dateStr) return null;
@@ -647,7 +695,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         // PDF-Export (serverseitig, FastAPI): sendet Wizard-Daten als JSON und lädt PDF.
-        // Fallback: falls Endpoint nicht erreichbar ist, nutzt clientseitiges pdfMake.
+        // pdfMake bleibt nur für Standalone-Einbettungen ohne konfigurierte Server-API verfügbar.
         const apiBase = (document.querySelector('meta[name="mw-api-base"]') || {}).content || '';
 
         async function downloadPdfServerSide() {
@@ -663,7 +711,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     alert('Anmeldung oder Vertragsberechtigung fehlt. Bitte melden Sie sich erneut an.');
                     return true; // An authorization denial must not invoke a local PDF fallback.
                 }
-                if (!res.ok) return false;
+                if (res.status >= 400 && res.status < 500) {
+                    const body = await res.json().catch(() => ({}));
+                    const detail = typeof body.detail === 'string'
+                        ? body.detail
+                        : 'Der Vertragsentwurf ist unvollständig oder widersprüchlich.';
+                    alert('PDF kann noch nicht erstellt werden: ' + detail);
+                    return true; // Validation/client errors are authoritative and must not fall back locally.
+                }
+                if (!res.ok) {
+                    alert('Serverseitige PDF-Erstellung ist derzeit nicht verfügbar. Bitte versuchen Sie es erneut.');
+                    return true;
+                }
                 const blob = await res.blob();
                 const url = URL.createObjectURL(blob);
                 const link = document.createElement('a');
@@ -676,9 +735,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 return true;
             } catch (e) {
                 console.warn('Server-PDF nicht verfügbar:', e);
-                return false;
+                alert('Serverseitige PDF-Erstellung ist derzeit nicht erreichbar. Bitte versuchen Sie es erneut.');
+                return true;
             }
         }
+
+        const printButton = document.getElementById('print-contract');
+        if (printButton) printButton.addEventListener('click', () => window.print());
 
         document.getElementById('download-pdf').addEventListener('click', async () => {
             const ok = await downloadPdfServerSide();

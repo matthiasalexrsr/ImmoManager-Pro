@@ -23,7 +23,7 @@ from ..models import (
     Unit,
     UnitCreate,
 )
-from ..storage import ValidationError
+from ..storage import NotFoundError, ValidationError
 from .account_repo import AccountRepository
 from .base import BaseRepository
 
@@ -62,7 +62,10 @@ class PortfolioRepository:
         return result
 
     def delete_portfolio(self, portfolio_id: str) -> None:
-        self._portfolios.get(portfolio_id)
+        try:
+            self._portfolios.get(portfolio_id)
+        except NotFoundError:
+            self._portfolios._missing(portfolio_id)
         from ..services.bank_import_guards import guard_bank_import_portfolio_delete
         guard_bank_import_portfolio_delete(self, portfolio_id)
         self._portfolios.delete(portfolio_id)
@@ -90,7 +93,10 @@ class PortfolioRepository:
         return result
 
     def delete_account(self, account_id: str) -> None:
-        self._accounts.get(account_id)
+        try:
+            self._accounts.get(account_id)
+        except NotFoundError:
+            self._accounts._missing(account_id)
         from ..services.bank_import_guards import guard_bank_import_account_delete
         guard_bank_import_account_delete(self, account_id)
         self._accounts.delete(account_id)

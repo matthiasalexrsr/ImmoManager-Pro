@@ -3,7 +3,7 @@ import json
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import ValidationError
 
 from ..auth import get_user_by_id, require_auth
@@ -20,6 +20,7 @@ from ..services.bank_import import (
     preview_import,
     stage_import,
 )
+from ..services.bank_import_download import prepare_source_download, source_chunks
 from ..services.bank_import_parser import BankMapping
 from ..services.portfolio_scope import scope_from_user
 
@@ -88,3 +89,11 @@ def confirm(import_id: str, payload: BankConfirm, store=Depends(get_store), scop
 def receipts(import_id: str, after: int = Query(0, ge=0), page_size: int = Query(100, ge=1),
              store=Depends(get_store), scope=Depends(actor)):
     return call(import_receipts, store, import_id, after=after, page_size=page_size, scope=scope)
+
+
+@router.get("/{import_id}/source")
+def source(import_id: str, store=Depends(get_store), scope=Depends(actor)):
+    plan = call(prepare_source_download, store, import_id, scope=scope)
+    if isinstance(plan, JSONResponse):
+        return plan
+    return StreamingResponse(source_chunks(store, plan, scope=scope), media_type="application/octet-stream", headers=plan.headers)

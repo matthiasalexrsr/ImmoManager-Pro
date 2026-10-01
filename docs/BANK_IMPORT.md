@@ -99,6 +99,20 @@ Booking-IDs durch technische Seiten (`items`, `has_more`, `next_after`). Die
 Originalprovenanz bleibt erhalten, auch wenn eine unzugeordnete Buchung später
 bearbeitet oder entfernt wird. Eine Wiederholung legt sie dann nicht erneut an.
 
+`GET /bookings/imports/{id}/source` lädt die Originalbytes als Attachment mit
+SHA-256-Header, festem Octet-Stream-MIME und `nosniff` herunter. Vor Responsebeginn
+werden Originalhash und aktuelle Kontoberechtigung geprüft. Der Stream liest
+höchstens 64 KiB pro Schritt und prüft Scope und aktuellen Account in einer
+frischen, danach geschlossenen SQL-Session für jeden Chunk. Berechtigungsverlust
+bricht den Stream ab. Keine Transaktion oder ContextVar bleibt über ein Yield
+offen; Tokens stehen ausschließlich im Authorization-Header. Die Oberfläche
+bietet den Originaldownload auch für berechtigte Readonly-Konten an.
+Browser mit File System Access API können die Originaldatei direkt als Stream
+speichern; dabei puffert die Oberfläche keinen vollständigen Blob. Der normale
+Download bleibt als kompatibler Weg verfügbar und erhält den Originalnamen.
+Ein abgebrochener Stream wird sichtbar gemeldet und nicht automatisch als
+vollständiger Download wiederholt.
+
 Rolle und Bestandsrechte werden beim Eingang, jedem bestätigten Chunk und direkt
 vor dem Commit serverfrisch geprüft; das gegenwärtige Konto wird erneut gelesen
 und gesperrt. Kontowechsel des Portfolios nach Vorschau verweigert Bestätigung.

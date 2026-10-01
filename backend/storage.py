@@ -230,6 +230,8 @@ class InMemoryStore:
         """Clear all entity collections. Used by tests to reset state."""
         from .services.portfolio_scope import require_installation_scope
         require_installation_scope()
+        from .services.contract_wizard import guard_destructive_reset
+        guard_destructive_reset(self)
         from .services.annual_tax_storage import guard_destructive_reset
         guard_destructive_reset(self)
         from .services.bank_import_guards import guard_bank_import_reset
@@ -556,6 +558,11 @@ class InMemoryStore:
         return list(self.contracts.values())
 
     def create_contract(self, data: ContractCreate) -> Contract:
+        from .services.contract_occupancy import creation_guard
+        with creation_guard(self, data):
+            return self._create_contract_guarded(data)
+
+    def _create_contract_guarded(self, data: ContractCreate) -> Contract:
         if data.property_id not in self.properties:
             raise ValidationError("Immobilie existiert nicht")
         if data.unit_id not in self.units:
@@ -595,6 +602,10 @@ class InMemoryStore:
         ):
             raise ValidationError("Vertragsnummer existiert bereits")
         old = self.contracts[contract_id]
+        from .services.contract_occupancy import assert_occupancy
+        if any(getattr(data, field) != getattr(old, field) for field in
+               ("property_id", "unit_id", "start_date", "end_date", "status")):
+            assert_occupancy(self, data, exclude_id=contract_id)
         if any(getattr(data, field) != getattr(old, field) for field in ("tenant_id", "property_id", "unit_id")):
             from .services.payment_integrity import guard_memory_delete
             guard_memory_delete(self, "contract", contract_id)
@@ -727,7 +738,8 @@ class InMemoryStore:
     def create_invoice(self, data: InvoiceCreate) -> Invoice:
         if data.property_id and data.property_id not in self.properties:
             raise ValidationError("Immobilie existiert nicht")
-        invoice = Invoice(id=_generate_id(), **data.model_dump())
+        invoice = Invoice(id=_generate_id(), amount_paid=data.gross_amount if data.status == "paid" else 0,
+            **data.model_dump())
         self.invoices[invoice.id] = invoice
         return invoice
 
@@ -737,6 +749,7 @@ class InMemoryStore:
         except KeyError as exc:
             raise NotFoundError("Rechnung nicht gefunden") from exc
 
+    @_payment_mutation
     @_version_mutation
     def update_invoice(self, invoice_id: str, data: InvoiceCreate) -> Invoice:
         if invoice_id not in self.invoices:
@@ -744,14 +757,20 @@ class InMemoryStore:
         if data.property_id and data.property_id not in self.properties:
             raise ValidationError("Immobilie existiert nicht")
         old = self.invoices[invoice_id]
-        invoice = Invoice(id=invoice_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc), **data.model_dump())
+        from .services.payment_integrity import guard_invoice_edit
+        values = guard_invoice_edit(old, data.model_dump(), bool(self.list_payments("invoice", invoice_id)))
+        invoice = Invoice(id=invoice_id, amount_paid=old.amount_paid, created_at=old.created_at,
+            updated_at=datetime.now(timezone.utc), **values)
         self.invoices[invoice_id] = invoice
         return invoice
 
+    @_payment_mutation
     @_version_mutation
     def delete_invoice(self, invoice_id: str) -> None:
         if invoice_id not in self.invoices:
             raise NotFoundError("Rechnung nicht gefunden")
+        from .services.payment_integrity import guard_memory_delete
+        guard_memory_delete(self, "invoice", invoice_id)
         del self.invoices[invoice_id]
 
     def list_maintenance_cases(self) -> List[MaintenanceCase]:
@@ -831,6 +850,8 @@ class InMemoryStore:
 
     @_version_mutation
     def delete_document(self, document_id: str) -> None:
+        from .services.contract_wizard import guard_delete_link
+        guard_delete_link(self, "documents", document_id)
         if document_id not in self.documents:
             raise NotFoundError("Dokument nicht gefunden")
         del self.documents[document_id]
@@ -1452,6 +1473,9 @@ class InMemoryStore:
             from .services.payment_integrity import guard_booking_edit
             guard_booking_edit(old, updates, any(p.booking_id == entity_id
                 for p in (*self.payments.values(), *self.credit_receipts.values())))
+        if entity_type == "invoice" and type(patch).__name__ != "TransferExtraFields":
+            from .services.payment_integrity import guard_invoice_edit
+            updates = guard_invoice_edit(old, updates, bool(self.list_payments("invoice", entity_id)))
         if entity_type == "contract" and any(field in updates and updates[field] != getattr(old, field)
                                              for field in ("tenant_id", "property_id", "unit_id")):
             from .services.payment_integrity import guard_memory_delete

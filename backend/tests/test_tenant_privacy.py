@@ -46,13 +46,15 @@ def privacy_store(request, tmp_path):
 def seed(active_store):
     portfolio = active_store.create_portfolio(m.PortfolioCreate(name="Shared portfolio"))
     prop = active_store.create_property(m.PropertyCreate(portfolio_id=portfolio.id, name="Shared house", property_type="residential"))
-    unit = active_store.create_unit(m.UnitCreate(property_id=prop.id, label="Shared unit", unit_type="apartment"))
+    units = [active_store.create_unit(m.UnitCreate(property_id=prop.id, label=f"Shared unit {index}", unit_type="apartment"))
+             for index in range(2)]
+    unit = units[0]
     own = active_store.create_tenant(m.TenantCreate(full_name="Synthetic own person", email="own@example.com", phone="123456",
         address_line="Synthetic street", postal_code="10115", city="Berlin", country="DE", payment_method="cash",
         sepa_mandate="Own mandate", notes="Own profile note"))
     foreign = active_store.create_tenant(m.TenantCreate(full_name="FOREIGN PERSON MUST NOT LEAK", email="foreign@example.com"))
     contracts = [active_store.create_contract(m.ContractCreate(contract_number=f"Synthetic-{index}", property_id=prop.id,
-        unit_id=unit.id, tenant_id=tenant.id, start_date=date(2026, 1, 1), status="terminated"))
+        unit_id=units[index].id, tenant_id=tenant.id, start_date=date(2026, 1, 1), status="terminated"))
         for index, tenant in enumerate((own, foreign))]
     account = active_store.create_account(m.AccountCreate(portfolio_id=portfolio.id, name="Synthetic account", account_type="bank"))
     bank = active_store.create_booking(m.BookingCreate(account_id=account.id, booking_date=date(2026, 9, 5), amount=100,
@@ -63,7 +65,7 @@ def seed(active_store):
     receipt = active_store.record_payment("rent_charge", charge.id, payload().model_copy(update={"booking_id": bank.id}))
     active_store.reverse_payment("rent_charge", charge.id, receipt.id,
         PaymentReversalCreate(idempotency_key="synthetic-reversal", reversal_date=date(2026, 9, 7), reason="Synthetic reversal"))
-    docs = [active_store.create_document(m.DocumentCreate(contract_id=contract.id, property_id=prop.id, unit_id=unit.id,
+    docs = [active_store.create_document(m.DocumentCreate(contract_id=contract.id, property_id=prop.id, unit_id=contract.unit_id,
         title=f"Document {index}", file_url=f"/uploads/private-{index}.pdf")) for index, contract in enumerate(contracts)]
     thread = active_store.create_message_thread(m.MessageThreadCreate(subject="Own thread", contract_id=contracts[0].id,
         participant_ids="opaque-shared-contact", property_id=prop.id, unit_id=unit.id))

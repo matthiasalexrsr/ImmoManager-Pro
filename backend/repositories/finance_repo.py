@@ -165,6 +165,11 @@ class FinanceRepository:
         if data.property_id and pr and not pr._properties.exists(data.property_id):
             raise ValidationError("Immobilie existiert nicht")
         result = self._invoices.create(data)
+        if data.status == "paid":
+            row = self._invoices.get_orm(result.id)
+            row.amount_paid = data.gross_amount
+            self.db.flush()
+            result = self._invoices.get(result.id)
         self._commit()
         return result
 

@@ -74,6 +74,20 @@ it('loads only the requested server page and uses returned cursors for next/back
   expect(mocks.get.mock.calls.every(([path]) => path.startsWith('/bookings/page?') || path.startsWith('/bookings/lookup/'))).toBe(true);
 });
 
+it('applies a valid account drilldown URL to the initial server page and lookup', async () => {
+  const previous = window.location.href;
+  window.history.replaceState({}, '', '/bookings?account_id=bank-source');
+  try {
+    render(<Bookings />);
+    await loaded();
+    const path = mocks.get.mock.calls.find(([value]) => value.startsWith('/bookings/page'))[0];
+    expect(new URL(path, 'http://localhost').searchParams.get('account_id')).toBe('bank-source');
+    expect(screen.getByText(german.accountBalance.filteredBookings)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Selected bank-source' })).toBeInTheDocument());
+    expect(mocks.get.mock.calls.some(([value]) => value.includes('selected_id=bank-source'))).toBe(true);
+  } finally { window.history.replaceState({}, '', previous); }
+});
+
 it('aborts an obsolete page request and cannot publish its late result after a filter change', async () => {
   let resolveOld;
   const standard = mocks.get.getMockImplementation();

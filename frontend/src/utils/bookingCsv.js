@@ -1,10 +1,10 @@
 import { api } from '../api';
 
-export function saveBlob(blob) {
+export function saveBlob(blob, filename = 'bookings.csv') {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = 'bookings.csv';
+  link.download = filename;
   link.click();
   // Keep the owned URL alive until the browser has begun its download.
   setTimeout(() => URL.revokeObjectURL(url), 1000);

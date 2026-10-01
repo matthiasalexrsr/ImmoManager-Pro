@@ -163,3 +163,37 @@ def test_health_includes_contract_wizard_status(monkeypatch):
     assert data["status"] == "ok"
     assert data["contract_wizard_available"] is False
     assert data["contract_wizard_reason"] == "missing assets"
+
+
+def test_wizard_pdf_validation_error_returns_422(monkeypatch):
+    def reject_payload(_data):
+        from mietvertrag_wizard.validation import ContractValidationError
+
+        raise ContractValidationError(["Grundmiete fehlt."])
+
+    monkeypatch.setattr(
+        app_module,
+        "_load_contract_wizard_mount",
+        lambda: (reject_payload, _pkg_path()),
+    )
+    monkeypatch.setattr(auth, "_user_store", auth.InMemoryUserStore())
+    monkeypatch.setattr(auth, "_auth_session_factory", None)
+    user = auth.register_user(
+        "wizard-validation-owner",
+        "wizard-validation@example.invalid",
+        "Synthetic owner",
+        "Strong123",
+        "eigentuemer",
+    )
+    headers = {"Authorization": "Bearer " + auth.create_access_token(user.id)}
+
+    app = FastAPI()
+    app_module._mount_contract_wizard_if_available(app)
+    response = TestClient(app).post(
+        "/api/v1/contract-wizard/pdf",
+        headers=headers,
+        json={},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Grundmiete fehlt."

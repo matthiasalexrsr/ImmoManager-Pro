@@ -8,18 +8,20 @@ from contextlib import nullcontext
 from datetime import date
 from decimal import Decimal
 from threading import Barrier
+from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
 from sqlalchemy import create_engine, select, text
 from sqlalchemy.orm import Session
 
-from backend.db.orm_models import Base, BillingSettlementORM, ReceivableORM
+from backend.db.orm_models import Base, BillingSettlementORM, ContractORM, ReceivableORM
 from backend.dependencies import store
 from backend.models import (
     AllocationKeyCreate,
     BillingPeriodCreate,
     BillingPeriodPatch,
+    Contract,
     ContractCreate,
     CostItemCreate,
     CostItemPatch,
@@ -469,8 +471,15 @@ def test_overlapping_tenancies_are_blocked_before_any_double_obligation():
     period, contracts, _, _ = scenario()
     first = contracts[0]
     tenant = store.create_tenant(TenantCreate(full_name="Überschneidung"))
-    store.create_contract(ContractCreate(contract_number="V-overlap", property_id=first.property_id,
-        unit_id=first.unit_id, tenant_id=tenant.id, start_date=date(2025, 1, 16)))
+    # Simulate corrupt historical data explicitly: normal contract creation now
+    # rejects this overlap before it can reach the billing preflight.
+    historical_overlap = Contract(id=str(uuid4()), contract_number="V-overlap", property_id=first.property_id,
+        unit_id=first.unit_id, tenant_id=tenant.id, start_date=date(2025, 1, 16))
+    if hasattr(store, "db"):
+        store.db.add(ContractORM(**historical_overlap.model_dump()))
+        store.db.commit()
+    else:
+        store.contracts[historical_overlap.id] = historical_overlap
     assert "OVERLAPPING_CONTRACTS" in {i.code for i in billing.get_billing_period_preflight(period.id).blockers}
     with pytest.raises(HTTPException) as error:
         billing.generate_utility_statements(period.id)

@@ -1,5 +1,8 @@
 import datetime
 
+import pytest
+from fastapi import HTTPException
+
 from backend.dependencies import store
 from backend.models import (
     AccountCreate,
@@ -287,14 +290,13 @@ def test_invoice_match_allocates_to_open_bookings() -> None:
         )
     )
 
-    result = invoices.match_invoice_to_bookings(invoice_id=invoice.id)
-
-    assert result["allocated_total"] == 297.50
-    assert result["unmatched_amount"] == 0.0
-    assert len(result["allocations"]) == 2
-    # First booking (200) fully used, second partially (97.50)
-    assert result["allocations"][0]["allocated_amount"] == 200.0
-    assert result["allocations"][1]["allocated_amount"] == 97.50
+    with pytest.raises(HTTPException) as rejected:
+        invoices.match_invoice_to_bookings(invoice_id=invoice.id)
+    assert rejected.value.status_code == 410
+    assert rejected.value.detail["code"] == "INVOICE_MATCH_REVIEW_REQUIRED"
+    assert rejected.value.detail["review_endpoint"].endswith("suggestions?kind=invoice")
+    assert store.list_payments() == []
+    assert all(item.allocated_amount == 0 for item in store.list_bookings())
 
 
 def test_invoice_match_partial_allocation() -> None:
@@ -325,11 +327,11 @@ def test_invoice_match_partial_allocation() -> None:
         )
     )
 
-    result = invoices.match_invoice_to_bookings(invoice_id=invoice.id)
-
-    assert result["allocated_total"] == 100.0
-    assert result["unmatched_amount"] == 100.0
-    assert len(result["allocations"]) == 1
+    with pytest.raises(HTTPException) as rejected:
+        invoices.match_invoice_to_bookings(invoice_id=invoice.id)
+    assert rejected.value.status_code == 410
+    assert rejected.value.detail["confirmation_endpoint"].endswith("/matching")
+    assert store.list_payments() == []
 
 
 def test_invoice_match_no_candidates() -> None:
@@ -343,11 +345,11 @@ def test_invoice_match_no_candidates() -> None:
         )
     )
 
-    result = invoices.match_invoice_to_bookings(invoice_id=invoice.id)
-
-    assert result["allocated_total"] == 0.0
-    assert result["unmatched_amount"] == 500.0
-    assert len(result["allocations"]) == 0
+    with pytest.raises(HTTPException) as rejected:
+        invoices.match_invoice_to_bookings(invoice_id=invoice.id)
+    assert rejected.value.status_code == 410
+    assert rejected.value.detail["navigation"] == "/bookings"
+    assert store.list_payments() == []
 
 
 def test_invoice_match_not_found() -> None:

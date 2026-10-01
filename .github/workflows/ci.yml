@@ -75,6 +75,12 @@ jobs:
           backend/services/annual_tax_projection.py backend/services/annual_tax_storage.py
           backend/db/bank_import_models.py backend/db/bank_import_schema.py
           backend/services/bank_import_parser.py backend/services/bank_import.py backend/routers/bank_imports.py
+          backend/services/bank_import_download.py backend/db/contract_wizard_models.py
+          backend/services/contract_wizard.py backend/services/contract_wizard_types.py
+          backend/services/contract_occupancy.py backend/services/contract_attachment.py backend/routers/contract_wizard.py
+          backend/services/account_balances.py backend/routers/accounts.py
+          backend/services/bank_matching.py backend/routers/bank_matching.py
+          backend/services/invoice_list.py backend/services/invoice_payment_schema.py
           backend/services/rent_ledger.py backend/services/billing_settlement.py backend/services/report_service.py
           backend/routers/billing.py backend/frontend_build.py backend/updater.py backend/maintenance.py
           scripts/backup_scheduler.py --ignore-missing-imports
@@ -143,10 +149,22 @@ jobs:
           TEST_SERVER_DATABASE_URL: postgresql://immo_ci:isolated_test_database@127.0.0.1:5432/immo_ci
         run: pytest backend/tests/test_annual_tax_postgres.py backend/tests/test_auth_sessions_postgres.py backend/tests/test_bank_imports_postgres.py backend/tests/test_restore_session_security.py::test_pg_offline_restore_streams_ciphertexts_rolls_back_then_revokes_without_dropping_receipts -q --tb=short
 
+      - name: Verify reviewed contracts, shared occupancy and account snapshots on PostgreSQL
+        env:
+          TEST_SERVER_DATABASE_URL: postgresql://immo_ci:isolated_test_database@127.0.0.1:5432/immo_ci
+        run: pytest backend/tests/test_contract_wizard_postgres.py backend/tests/test_account_balances.py::test_pg_real_repeatable_read_and_current_parent_checks -q --tb=short
+
+      - name: Verify reviewed bank matches and receipt schema preservation on PostgreSQL
+        env:
+          TEST_SERVER_DATABASE_URL: postgresql://immo_ci:isolated_test_database@127.0.0.1:5432/immo_ci
+        run: pytest backend/tests/test_bank_matching_postgres.py backend/tests/test_bank_matching_schema_recovery.py -q --tb=short
+
   browser-e2e:
     name: Browser workflows (Chromium + SQLite)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Dependency/browser installation and both real workflow suites share this
+    # job budget. Assertion and individual workflow timeouts remain unchanged.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python

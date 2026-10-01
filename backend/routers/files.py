@@ -232,6 +232,12 @@ def download_file(key: str = Query(...)) -> Response:
         raise HTTPException(status_code=400, detail="Ungültiger Dateischlüssel")
 
     data = storage.get(safe_key)
+    if data is None and safe_key.startswith("contract-wizard/"):
+        # Only exact server-generated wizard UUID keys are recognized. The
+        # snapshot service rechecks current portfolio/document/contract scope.
+        from ..dependencies import store
+        from ..services.contract_wizard import read_pdf_for_key
+        data = read_pdf_for_key(store, safe_key)
     if data is None:
         raise HTTPException(status_code=404, detail="Datei nicht gefunden")
 

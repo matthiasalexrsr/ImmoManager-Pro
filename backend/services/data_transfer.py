@@ -208,10 +208,10 @@ def _prepare(data: dict, specs: tuple[EntitySpec, ...], *, replace_existing: boo
         if spec.key == "tasks":
             prepared[spec.key] = _task_order(prepared[spec.key])
     balances = {}
-    for key in ("receivables", "rent_charges"):
+    for key in ("receivables", "rent_charges", "invoices"):
         for row in prepared.get(key, []):
-            paid = _money(row.get("amount_paid", 0))
-            total = (_money(row["amount_due"]) if key == "receivables" else
+            paid = _money(row.get("amount_paid", row.get("gross_amount", 0) if key == "invoices" and row.get("status") == "paid" else 0))
+            total = (_money(row["gross_amount"]) if key == "invoices" else _money(row["amount_due"]) if key == "receivables" else
                      sum((_money(row.get(field, 0) or 0) for field in
                           ("cold_rent", "service_charge", "heating_charge", "other_charges")), Decimal(0)))
             if paid > total:
@@ -235,7 +235,7 @@ def _prepare(data: dict, specs: tuple[EntitySpec, ...], *, replace_existing: boo
                 raise TransferError("Doppelte Storno-ID oder Stornoreferenz.")
             reversal_ids.add(reversal.id)
             reversal_keys.add(reversal.idempotency_key)
-        ledger_key = ("receivables" if payment.entity_type == "receivable" else "rent_charges", payment.entity_id)
+        ledger_key = ({"receivable": "receivables", "rent_charge": "rent_charges", "invoice": "invoices"}[payment.entity_type], payment.entity_id)
         if ledger_key not in balances or payment.idempotency_key in seen_keys:
             raise TransferError("Zahlungsbeleg ohne importierten Posten oder mit doppelter Zahlungsreferenz.")
         seen_keys.add(payment.idempotency_key)
@@ -388,7 +388,7 @@ def _apply(active_store, prepared: dict, specs: tuple[EntitySpec, ...]) -> dict:
         if rows:
             counts[spec.key] = len(rows)
     for row in prepared["payments"]:
-        key = "receivables" if row["entity_type"] == "receivable" else "rent_charges"
+        key = {"receivable": "receivables", "rent_charge": "rent_charges", "invoice": "invoices"}[row["entity_type"]]
         identity = str(uuid4())
         values = {**row, "id": identity, "idempotency_key": str(uuid4()),
                   "entity_id": id_map[(key, row["entity_id"])],
@@ -408,11 +408,13 @@ def import_store_data(active_store, data: dict, *, replace_existing: bool) -> di
     guard_bank_import_business_transfer(active_store, operation="replace" if replace_existing else "merge",
                                        memory_journal_preserved=not replace_existing)
     from .annual_tax_storage import guard_destructive_reset
+    from .contract_wizard import guard_destructive_reset as guard_contract_history
     from .credit_ledger import guard_partial_restore
     from .payments import FinancialConsistencyError
     try:
+        guard_contract_history(active_store)
         guard_partial_restore(active_store, data)
-    except FinancialConsistencyError as exc:
+    except (FinancialConsistencyError, ValueError) as exc:
         raise TransferError(str(exc)) from exc
     if replace_existing:
         try:
@@ -423,6 +425,7 @@ def import_store_data(active_store, data: dict, *, replace_existing: bool) -> di
     try:
         prepared = _prepare(data, specs, replace_existing=replace_existing)
         with _atomic_store(active_store) as staged:
+            guard_contract_history(staged)
             if replace_existing:
                 try:
                     guard_destructive_reset(staged)

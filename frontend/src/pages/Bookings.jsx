@@ -16,6 +16,10 @@ import './Bookings.css';
 
 const emptyFilters = { search: '', date_from: '', date_to: '', status: '', view: 'all', account_id: '', property_id: '', tenant_id: '' };
 const advancedKinds = ['accounts', 'properties', 'tenants'];
+function initialFilters() {
+  const identifier = new URLSearchParams(window.location.search).get('account_id');
+  return { ...emptyFilters, account_id: identifier && /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,99}$/.test(identifier) ? identifier : '' };
+}
 
 function ReferenceFilter({ kind, value, label, onChange }) {
   const { t } = useTranslation();
@@ -29,8 +33,8 @@ export default function Bookings() {
   const { t, locale } = useTranslation();
   const confirm = useConfirm();
   const store = useDataStore();
-  const [filters, setFilters] = useState(emptyFilters);
-  const [draft, setDraft] = useState(emptyFilters);
+  const [filters, setFilters] = useState(initialFilters);
+  const [draft, setDraft] = useState(initialFilters);
   const [pageSize, setPageSize] = useState(25);
   const [history, setHistory] = useState([null]);
   const [pageIndex, setPageIndex] = useState(0);
@@ -110,6 +114,7 @@ export default function Bookings() {
       <p className="text-muted">{t('bookingPages.description')}</p></div>
       {canWrite && <button className="btn btn-primary" disabled={result.loading || Boolean(result.error)}
         onClick={() => { if (isAllowed()) setModal('create'); }}>{t('ui.buttons.new')}</button>}</div>
+    {filters.account_id && <p className="text-muted">{t('accountBalance.filteredBookings')} <code>{filters.account_id}</code></p>}
     {actionError && <div className="alert alert-error" role="alert">{actionError}</div>}
     <div className="booking-import-action"><button type="button" className="btn btn-secondary" onClick={() => setShowImport(value => !value)}>{t('bankImport.title')}</button></div>
     {showImport && <BankImportPanel initialAccount={filters.account_id} onClose={() => setShowImport(false)} onImported={restart} />}

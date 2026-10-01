@@ -4,29 +4,44 @@ Ziel: robuste, offline-fähige PDF-Erstellung ohne Browser-Abhängigkeiten.
 
 Eingabeformat:
   Das JSON entspricht dem Output des Wizards (collectFormData / exportWizardData).
-  Felder sind optional; fehlende Felder werden unterdrückt.
+  Kerndaten werden vor der PDF-Erzeugung validiert; optionale Felder werden unterdrückt.
 """
 
 from __future__ import annotations
 
 import io
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from decimal import Decimal, localcontext
+from html import escape
+from typing import Any, Dict, List
 
-from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.platypus import (  # type: ignore
-    SimpleDocTemplate,
+    KeepTogether,
     Paragraph,
+    SimpleDocTemplate,
     Spacer,
     Table,
     TableStyle,
-    HRFlowable,
-    KeepTogether,
 )
 
+from .pdf_theme import (
+    BOTTOM_MARGIN,
+    CONTENT_WIDTH,
+    LEFT_MARGIN,
+    RIGHT_MARGIN,
+    TOP_MARGIN,
+    contract_styles,
+    data_table_style,
+    decorate_page,
+    party_table_style,
+    section_heading,
+    signature_table_style,
+    title_block,
+)
+from .validation import _has_exact_cents, parse_money_decimal, validate_contract_payload
 
 # -----------------------------
 # Hochwertiges Layout / Textbausteine
@@ -66,23 +81,47 @@ def _fmt_date_de(s: str | None) -> str:
         return s
 
 
-def _fmt_eur(x: Any) -> str:
-    if x is None:
-        return ""
-    s = str(x).strip()
-    if not s:
-        return ""
-    # akzeptiere bereits formatiertes de-DE (1.234,56) oder raw "1234.56"
-    # Versuche float
+def _parse_money(x: Any) -> Decimal | None:
     try:
-        s2 = s.replace("€", "").replace(" ", "")
-        s2 = s2.replace(".", "").replace(",", ".")
-        val = float(s2)
-        # de-DE
-        euros = f"{val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        return euros + " €"
-    except Exception:
-        return s + " €" if "€" not in s else s
+        value = parse_money_decimal(x)
+    except ValueError:
+        return None
+    if value is None or not value.is_finite() or not _has_exact_cents(value):
+        return None
+    return value
+
+
+def _sum_money(values: tuple[Any, ...]) -> Decimal:
+    parsed = [value for value in (_parse_money(item) for item in values) if value is not None]
+    if not parsed:
+        return Decimal("0")
+    integer_digits = max(
+        max(len(value.as_tuple().digits) + value.as_tuple().exponent, 1)
+        for value in parsed
+    )
+    fractional_digits = max(max(-value.as_tuple().exponent, 0) for value in parsed)
+    with localcontext() as context:
+        context.prec = max(28, integer_digits + fractional_digits + 2)
+        return sum(parsed, Decimal("0"))
+
+
+def _fmt_eur(x: Any) -> str:
+    value = _parse_money(x)
+    if value is None:
+        raw = str(x or "").strip()
+        return raw + " €" if raw and "€" not in raw else raw
+    euros = f"{value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return euros + " €"
+
+
+def _escape_markup(value: Any) -> Any:
+    if isinstance(value, str):
+        return escape(value, quote=False)
+    if isinstance(value, list):
+        return [_escape_markup(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _escape_markup(item) for key, item in value.items()}
+    return value
 
 
 def _join_address(p: Dict[str, Any]) -> str:
@@ -122,101 +161,30 @@ def _party_block(title: str, persons: List[Dict[str, Any]]) -> str:
 
 
 def build_contract_pdf(data: Dict[str, Any]) -> bytes:
-    """Erzeugt ein PDF als Bytes."""
+    """Erzeugt ein validiertes PDF als Bytes."""
 
+    validate_contract_payload(data)
+    data = _escape_markup(data)
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer,
         pagesize=A4,
-        leftMargin=20 * mm,
-        rightMargin=20 * mm,
-        topMargin=25 * mm,
-        bottomMargin=18 * mm,
+        leftMargin=LEFT_MARGIN,
+        rightMargin=RIGHT_MARGIN,
+        topMargin=TOP_MARGIN,
+        bottomMargin=BOTTOM_MARGIN,
         title="Wohnraum-Mietvertrag",
+        author="ImmoManager Pro",
     )
 
-    styles = getSampleStyleSheet()
-    base = ParagraphStyle(
-        "base",
-        parent=styles["Normal"],
-        fontName="Helvetica",
-        fontSize=10,
-        leading=14,
-        spaceAfter=4,
-    )
-    base_just = ParagraphStyle(
-        "base_just",
-        parent=base,
-        alignment=4,  # justify
-    )
-    h1 = ParagraphStyle(
-        "h1",
-        fontName="Helvetica-Bold",
-        fontSize=16,
-        leading=20,
-        alignment=1,
-        spaceAfter=6,
-    )
-    h2 = ParagraphStyle(
-        "h2",
-        fontName="Helvetica-Bold",
-        fontSize=12,
-        leading=14,
-        spaceBefore=8,
-        spaceAfter=6,
-    )
-    h2_box = ParagraphStyle(
-        "h2_box",
-        parent=h2,
-        backColor=colors.whitesmoke,
-        borderPadding=6,
-    )
-    small = ParagraphStyle(
-        "small",
-        parent=base,
-        fontSize=9,
-        leading=12,
-        textColor=colors.grey,
-    )
-
-    def on_page(canvas, doc_obj):
-        """Kopf-/Fußzeile (schwarz/weiß-drucktauglich)."""
-        canvas.saveState()
-        canvas.setStrokeColor(colors.grey)
-        canvas.setLineWidth(0.5)
-        canvas.line(doc_obj.leftMargin, A4[1] - 18 * mm, A4[0] - doc_obj.rightMargin, A4[1] - 18 * mm)
-        canvas.setFont("Helvetica", 9)
-        canvas.setFillColor(colors.black)
-        canvas.drawString(doc_obj.leftMargin, A4[1] - 14 * mm, "Wohnraum-Mietvertrag")
-        canvas.setFont("Helvetica", 8)
-        canvas.setFillColor(colors.grey)
-        canvas.drawRightString(A4[0] - doc_obj.rightMargin, A4[1] - 14 * mm, f"Seite {doc_obj.page}")
-        canvas.setStrokeColor(colors.lightgrey)
-        canvas.line(doc_obj.leftMargin, 14 * mm, A4[0] - doc_obj.rightMargin, 14 * mm)
-        canvas.setFont("Helvetica", 8)
-        canvas.setFillColor(colors.grey)
-        canvas.drawString(doc_obj.leftMargin, 10 * mm, "Erstellt mit Mietvertrag-Wizard")
-        canvas.restoreState()
+    styles = contract_styles()
+    base = styles["base"]
+    base_just = styles["body"]
+    small = styles["small"]
 
     story: List[Any] = []
 
-    title_table = Table(
-        [[Paragraph("WOHNRAUM-MIETVERTRAG", ParagraphStyle("t", parent=h1, textColor=colors.black))]],
-        colWidths=[A4[0] - doc.leftMargin - doc.rightMargin],
-    )
-    title_table.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, -1), colors.whitesmoke),
-                ("BOX", (0, 0), (-1, -1), 0.8, colors.black),
-                ("LEFTPADDING", (0, 0), (-1, -1), 10),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 10),
-                ("TOPPADDING", (0, 0), (-1, -1), 10),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
-            ]
-        )
-    )
-    story.append(title_table)
+    story.append(title_block(styles, CONTENT_WIDTH))
     story.append(Spacer(1, 8))
     story.append(Paragraph("Zwischen den nachfolgend genannten Parteien wird folgender Mietvertrag geschlossen.", base_just))
     story.append(Spacer(1, 8))
@@ -229,30 +197,16 @@ def build_contract_pdf(data: Dict[str, Any]) -> bytes:
             [Paragraph("<b>Vermieter</b>", base), Paragraph("<b>Mieter</b>", base)],
             [Paragraph(_party_block("", vermieter), base), Paragraph(_party_block("", mieter), base)],
         ],
-        colWidths=[85 * mm, 85 * mm],
+        colWidths=[CONTENT_WIDTH / 2, CONTENT_WIDTH / 2],
     )
-    parties_table.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
-                ("BOX", (0, 0), (-1, -1), 0.8, colors.black),
-                ("INNERGRID", (0, 0), (-1, -1), 0.3, colors.grey),
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 6),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-                ("TOPPADDING", (0, 0), (-1, -1), 6),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ]
-        )
-    )
+    parties_table.setStyle(party_table_style())
     story.append(parties_table)
-    story.append(Spacer(1, 10))
-    story.append(HRFlowable(width="100%", thickness=0.8, color=colors.black, spaceBefore=4, spaceAfter=6))
+    story.append(Spacer(1, 8))
 
     # § 1 Mieträume
     obj = data.get("objekt") or {}
-    story.append(Paragraph("§ 1 Mieträume", h2_box))
+    story.append(section_heading("§ 1 Mieträume", styles, CONTENT_WIDTH))
+    story.append(Spacer(1, 4))
     addr = " ".join([str(obj.get("strasse") or "").strip(), str(obj.get("plz") or "").strip(), str(obj.get("ort") or "").strip()]).strip()
     art = str(obj.get("art") or "Wohnung")
     wf = str(obj.get("wohnflaeche") or "").strip()
@@ -296,7 +250,8 @@ def build_contract_pdf(data: Dict[str, Any]) -> bytes:
 
     # § 2 Mietzeit
     mietzeit = data.get("mietzeit") or {}
-    story.append(Paragraph("§ 2 Mietzeit", h2_box))
+    story.append(section_heading("§ 2 Mietzeit", styles, CONTENT_WIDTH))
+    story.append(Spacer(1, 4))
     beginn = _fmt_date_de(mietzeit.get("beginn"))
     art_m = str(mietzeit.get("art") or "unbefristet")
     ende = _fmt_date_de(mietzeit.get("ende"))
@@ -313,48 +268,32 @@ def build_contract_pdf(data: Dict[str, Any]) -> bytes:
 
     # § 3 Miete
     miete = data.get("miete") or {}
-    story.append(Paragraph("§ 3 Miete", h2_box))
-    grund = miete.get("grund")
+    story.append(section_heading("§ 3 Miete", styles, CONTENT_WIDTH))
+    story.append(Spacer(1, 4))
+    grundmiete = miete.get("grund")
     betrieb = miete.get("betrieb")
     heizung = miete.get("heizung")
 
     rows = [["Position", "Betrag", "Einheit"]]
-    if grund:
-        rows.append(["Grundmiete", _fmt_eur(grund), "pro Monat"])
+    if grundmiete:
+        rows.append(["Grundmiete", _fmt_eur(grundmiete), "pro Monat"])
     if betrieb:
         rows.append(["Betriebskosten-VZ", _fmt_eur(betrieb), "pro Monat"])
     if heizung:
         rows.append(["Heizkosten-VZ", _fmt_eur(heizung), "pro Monat"])
 
-    try:
-        def _to_float(v):
-            s = str(v).replace("€", "").replace(" ", "")
-            s = s.replace(".", "").replace(",", ".")
-            return float(s)
-        total = 0.0
-        for v in (grund, betrieb, heizung):
-            if v:
-                total += _to_float(v)
-        if total > 0:
-            euros = f"{total:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") + " €"
-            rows.append(["Gesamt (monatlich)", euros, "pro Monat"])
-    except Exception:
-        pass
+    total = _sum_money((grundmiete, betrieb, heizung))
+    if total > 0:
+        euros = f"{total:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") + " €"
+        rows.append(["Gesamt (monatlich)", euros, "pro Monat"])
 
     if len(rows) > 1:
-        t = Table(rows, colWidths=[70 * mm, 35 * mm, 30 * mm])
-        t.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("BOX", (0, 0), (-1, -1), 0.6, colors.black),
-            ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.grey),
-            ("ALIGN", (1, 1), (1, -1), "RIGHT"),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("LEFTPADDING", (0, 0), (-1, -1), 6),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-            ("TOPPADDING", (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ]))
+        t = Table(
+            rows,
+            colWidths=[CONTENT_WIDTH * 0.52, CONTENT_WIDTH * 0.25, CONTENT_WIDTH * 0.23],
+        )
+        t.setStyle(data_table_style(last_row=len(rows) - 1))
+        t.setStyle(TableStyle([("ALIGN", (1, 1), (1, -1), "RIGHT")]))
         story.append(t)
 
     if miete.get("kaution"):
@@ -371,19 +310,8 @@ def build_contract_pdf(data: Dict[str, Any]) -> bytes:
                 rows.append([ab, betrag])
         if len(rows) > 1:
             story.append(Spacer(1, 4))
-            t = Table(rows, colWidths=[40 * mm, 45 * mm])
-            t.setStyle(TableStyle([
-                ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
-                ("BOX", (0, 0), (-1, -1), 0.4, colors.black),
-                ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.grey),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 6),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-                ("TOPPADDING", (0, 0), (-1, -1), 4),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-            ]))
+            t = Table(rows, colWidths=[45 * mm, 48 * mm])
+            t.setStyle(data_table_style())
             story.append(Spacer(1, 6))
             story.append(KeepTogether([
                 Paragraph("Staffelmiete", ParagraphStyle("bh", parent=base, fontName="Helvetica-Bold")),
@@ -399,7 +327,8 @@ def build_contract_pdf(data: Dict[str, Any]) -> bytes:
         story.append(Paragraph(txt, base))
 
     # § 4 Betriebskosten (hier als allgemeiner Absatz)
-    story.append(Paragraph("§ 4 Betriebskosten", h2_box))
+    story.append(section_heading("§ 4 Betriebskosten", styles, CONTENT_WIDTH))
+    story.append(Spacer(1, 4))
     story.append(Paragraph(
         "Neben der Grundmiete trägt der Mieter die Betriebskosten nach den gesetzlichen Vorschriften, soweit sie tatsächlich anfallen. Art und Umfang richten sich nach der Betriebskostenverordnung sowie den im Vertrag getroffenen Vereinbarungen.",
         base_just,
@@ -407,7 +336,8 @@ def build_contract_pdf(data: Dict[str, Any]) -> bytes:
 
     # § 5 Zahlung
     zahlung = data.get("zahlung") or {}
-    story.append(Paragraph("§ 5 Zahlung der Miete", h2_box))
+    story.append(section_heading("§ 5 Zahlung der Miete", styles, CONTENT_WIDTH))
+    story.append(Spacer(1, 4))
     fa = str(zahlung.get("faelligkeit") or "").strip()
     if fa:
         story.append(Paragraph(f"Die Miete ist monatlich im Voraus spätestens {fa} zu zahlen.", base))
@@ -433,7 +363,8 @@ def build_contract_pdf(data: Dict[str, Any]) -> bytes:
             story.append(Paragraph(f"BIC: {mandat.get('bic')}", base))
 
     # § 6 Weitere Vereinbarungen
-    story.append(Paragraph("§ 6 Weitere Vereinbarungen", h2_box))
+    story.append(section_heading("§ 6 Weitere Vereinbarungen", styles, CONTENT_WIDTH))
+    story.append(Spacer(1, 4))
     clauses = data.get("clauses") or {}
     added = 0
 
@@ -469,10 +400,12 @@ def build_contract_pdf(data: Dict[str, Any]) -> bytes:
     if added == 0:
         story.append(Paragraph("Es wurden keine weiteren Vereinbarungen getroffen.", base))
 
-    story.append(Spacer(1, 14))
-    story.append(HRFlowable(width="100%", thickness=0.8, color=colors.black, spaceBefore=6, spaceAfter=8))
-    story.append(Paragraph("Ort, Datum: ______________________________", base))
-    story.append(Spacer(1, 10))
+    story.append(Spacer(1, 12))
+    signature_start = len(story)
+    story.append(section_heading("Unterzeichnung", styles, CONTENT_WIDTH))
+    story.append(Spacer(1, 5))
+    story.append(Paragraph("Ort, Datum: ________________________________________________", base))
+    story.append(Spacer(1, 7))
 
     # Unterschriften: eine Zeile je Partei
     sig_rows = []
@@ -481,18 +414,23 @@ def build_contract_pdf(data: Dict[str, Any]) -> bytes:
         v_name = (vermieter[i].get("name") if i < len(vermieter) else "") or ""
         m_name = (mieter[i].get("name") if i < len(mieter) else "") or ""
         sig_rows.append([
-            Paragraph(f"_________________________<br/><font size=9>Vermieter {i+1}: {v_name}</font>", base),
-            Paragraph(f"_________________________<br/><font size=9>Mieter {i+1}: {m_name}</font>", base),
+            Paragraph(
+                f"<b>Vermieter {i + 1}</b><br/><br/>"
+                f"________________________________<br/>{v_name}",
+                styles["signature"],
+            ),
+            Paragraph(
+                f"<b>Mieter {i + 1}</b><br/><br/>"
+                f"________________________________<br/>{m_name}",
+                styles["signature"],
+            ),
         ])
-    sig_table = Table(sig_rows, colWidths=[85 * mm, 85 * mm])
-    sig_table.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("TOPPADDING", (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-    ]))
+    sig_table = Table(sig_rows, colWidths=[CONTENT_WIDTH / 2, CONTENT_WIDTH / 2])
+    sig_table.setStyle(signature_table_style())
     story.append(sig_table)
-    story.append(Spacer(1, 6))
-    story.append(Paragraph("(Zwei gleichlautende Exemplare)", small))
+    story.append(Spacer(1, 5))
+    story.append(Paragraph("Zwei gleichlautende Ausfertigungen für die Vertragsparteien.", small))
+    story[signature_start:] = [KeepTogether(story[signature_start:])]
 
-    doc.build(story, onFirstPage=on_page, onLaterPages=on_page)
+    doc.build(story, onFirstPage=decorate_page, onLaterPages=decorate_page)
     return buffer.getvalue()

@@ -151,6 +151,8 @@ class SQLAlchemyStore:
         """Reset a test store only while no durable reviewed history exists."""
         from ..services.portfolio_scope import require_installation_scope
         require_installation_scope()
+        from ..services.contract_wizard import guard_destructive_reset
+        guard_destructive_reset(self)
         from ..services.annual_tax_storage import guard_destructive_reset
         guard_destructive_reset(self)
         from ..services.bank_import_guards import guard_bank_import_reset

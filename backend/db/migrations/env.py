@@ -13,6 +13,7 @@ from backend.db.access_models import UserAccessORM  # noqa: F401 — register ac
 from backend.db.auth_models import AuthSetupORM  # noqa: F401 — register auth metadata
 from backend.db.bank_import_models import BankImportORM  # noqa: F401 — register retained bank import provenance
 from backend.db.booking_indexes import BOOKING_INDEXES  # noqa: F401 — register scaled booking indexes
+from backend.db.contract_wizard_models import ContractDraftORM  # noqa: F401 — register reviewed contract metadata
 from backend.db.credit_models import CreditReceiptORM  # noqa: F401 — register immutable credit metadata
 from backend.db.datev_models import DatevProfileORM  # noqa: F401 — register DATEV metadata
 from backend.db.operational_models import OperationalTickORM  # noqa: F401 — register scheduler metadata

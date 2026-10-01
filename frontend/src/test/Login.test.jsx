@@ -23,7 +23,7 @@ describe('Private installation login', () => {
   it('offers login and approved-account information without public self-registration', async () => {
     render(<Login />);
     await fillLogin();
-    expect(screen.getByLabelText('auth.login.username')).toHaveFocus();
+    await waitFor(() => expect(screen.getByLabelText('auth.login.username')).toHaveFocus());
     expect(screen.queryByText('auth.register.title')).not.toBeInTheDocument();
     expect(screen.getByText('auth.setup.approvedOnly')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'auth.login.submit' }));
@@ -60,11 +60,11 @@ describe('Private installation login', () => {
     await fillLogin();
     fireEvent.click(screen.getByRole('button', { name: 'auth.login.submit' }));
     const code = await screen.findByLabelText('auth.twoFactor.code');
-    expect(code).toHaveFocus();
+    await waitFor(() => expect(code).toHaveFocus());
     fireEvent.change(code, { target: { value: '123456' } });
     fireEvent.click(screen.getByRole('button', { name: 'auth.login.submit' }));
     await screen.findByText('Code invalid');
-    expect(code).toHaveFocus();
+    await waitFor(() => expect(code).toHaveFocus());
     expect(code).toHaveValue('123456');
     expect(screen.getByLabelText('auth.login.username')).toHaveValue('owner');
     fireEvent.change(code, { target: { value: '654321' } });
@@ -87,7 +87,8 @@ describe('Private installation login', () => {
     expect(screen.getByRole('status')).toHaveTextContent('ui.table.loading');
     expect(screen.queryByLabelText('auth.login.username')).not.toBeInTheDocument();
     resolveStatus({ setup_required: false, setup_allowed: true });
-    expect(await screen.findByLabelText('auth.login.username')).toHaveFocus();
+    const username = await screen.findByLabelText('auth.login.username');
+    await waitFor(() => expect(username).toHaveFocus());
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 
@@ -107,7 +108,7 @@ describe('Private installation login', () => {
     rejectLogin(new Error('Credentials rejected'));
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('Credentials rejected');
-    expect(alert).toHaveFocus();
+    await waitFor(() => expect(alert).toHaveFocus());
     expect(form).toHaveAttribute('aria-busy', 'false');
     expect(screen.getByLabelText('auth.login.username')).toBeEnabled();
     expect(mocks.navigate).not.toHaveBeenCalled();

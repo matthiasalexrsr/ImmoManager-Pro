@@ -645,6 +645,7 @@ class TestContracts:
                 unit_id=self.unit.id,
                 tenant_id=t2.id,
                 start_date=datetime.date(2025, 2, 1),
+                status="draft",
             )
         )
         assert len(_list_contracts(tenant_id=self.tenant.id)) == 1
@@ -652,7 +653,7 @@ class TestContracts:
 
     def test_list_contracts_pagination(self) -> None:
         contracts.create_contract(self._make_payload("C-1"))
-        contracts.create_contract(self._make_payload("C-2"))
+        contracts.create_contract(self._make_payload("C-2").model_copy(update={"status": "draft"}))
         assert len(_list_contracts(skip=0, limit=1)) == 1
 
     def test_get_contract(self) -> None:
@@ -1583,9 +1584,9 @@ class TestPatchEndpoints:
         inv = invoices.create_invoice(
             InvoiceCreate(supplier="Old", invoice_date=datetime.date(2025, 1, 1), net_amount=100.0, gross_amount=119.0)
         )
-        patched = invoices.patch_invoice(inv.id, InvoicePatch(status="paid"))
-        assert patched.status == "paid"
-        assert patched.supplier == "Old"
+        patched = invoices.patch_invoice(inv.id, InvoicePatch(supplier="Reviewed supplier"))
+        assert patched.status == "open"
+        assert patched.supplier == "Reviewed supplier"
 
     def test_patch_task(self) -> None:
         t = tasks.create_task(TaskCreate(title="Old", status="open"))

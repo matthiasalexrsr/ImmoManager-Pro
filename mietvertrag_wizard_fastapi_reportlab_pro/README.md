@@ -3,10 +3,10 @@
 ## Highlights
 
 - 8-Schritte-Wizard, Mehrfach-Vermieter/-Mieter
-- Vorschau im Browser + PDF-Export (serverseitig via FastAPI/ReportLab, Fallback: pdfMake)
+- Vorschau im Browser + validierter PDF-Export (serverseitig via FastAPI/ReportLab; pdfMake nur ohne konfigurierte Server-API)
 - Druckansicht per `@media print`
 - Tooltips: native Browser-Tooltips (`title`)
-- Speichern/Laden (localStorage) + JSON Export/Import **inkl. dynamischer Blöcke**
+- Speichern/Laden (localStorage) + JSON Export/Import **inkl. dynamischer Blöcke**; Bank-/SEPA-Daten werden nicht dauerhaft im Browser-State gespeichert
 - Expertenmodus (CSS: `body.expert-mode`)
 - Keine CDN-Abhängigkeiten
 

@@ -3,12 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict
 
-from fastapi import APIRouter, Body, FastAPI, Request
+from fastapi import APIRouter, Body, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .pdf_reportlab import build_contract_pdf
+from .validation import ContractValidationError
 
 
 def mount_fastapi(
@@ -51,12 +52,18 @@ def mount_fastapi(
 
     @router.post("/api/pdf")
     async def pdf_endpoint(payload: Dict[str, Any] = Body(...)):
-        """Erzeugt serverseitig ein PDF aus den vom Browser gesendeten Wizard-Daten."""
-        pdf_bytes = build_contract_pdf(payload)
+        """Erzeugt serverseitig ein validiertes PDF aus den Wizard-Daten."""
+        try:
+            pdf_bytes = build_contract_pdf(payload)
+        except ContractValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
-            headers={"Content-Disposition": 'attachment; filename="mietvertrag.pdf"'},
+            headers={
+                "Content-Disposition": 'attachment; filename="mietvertrag.pdf"',
+                "Cache-Control": "private, no-store",
+            },
         )
 
     app.include_router(router)
