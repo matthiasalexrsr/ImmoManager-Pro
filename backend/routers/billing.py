@@ -8,10 +8,9 @@ Status machine for billing periods:
   finalized -> corrected (via revision endpoint)
 """
 
-import hashlib
-import json
 import logging
 from decimal import Decimal
+from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Query, status
 
@@ -35,52 +34,35 @@ from ..models import (
     CostItemCreate,
     CostItemPatch,
     UtilityStatement,
-    UtilityStatementCreate,
     UtilityStatementPatch,
 )
+from ..services import billing_settlement as settlement
+from ..services.payments import FinancialConsistencyError
 from ..storage import NotFoundError, ValidationError
-
-# Valid status transitions for billing periods
-_PERIOD_TRANSITIONS: dict[str, set[str]] = {
-    "draft": {"review", "finalized"},
-    "review": {"draft", "finalized"},
-    "finalized": {"delivered", "corrected", "disputed"},
-    "delivered": {"disputed"},
-    "disputed": {"corrected"},
-    "corrected": set(),
-}
-
-_IMMUTABLE_STATUSES = {"finalized", "delivered", "corrected"}
 
 
 def _assert_period_mutable(period: BillingPeriod) -> None:
-    """Raise 409 if the period is in an immutable state."""
-    if period.status in _IMMUTABLE_STATUSES:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Periode ist '{period.status}' und kann nicht mehr bearbeitet werden",
-        )
+    try:
+        settlement.assert_mutable(period)
+    except FinancialConsistencyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+def _billing_call(operation, *args):
+    try:
+        return operation(store, *args)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except FinancialConsistencyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 def _compute_snapshot_hash(period_id: str) -> str:
-    """Compute a deterministic SHA-256 hash over all statement data for a period."""
-    stmts = sorted(
-        [s for s in store.list_utility_statements() if s.billing_period_id == period_id],
-        key=lambda s: s.id,
-    )
-    payload = []
-    for s in stmts:
-        payload.append({
-            "id": s.id,
-            "unit_id": s.unit_id,
-            "contract_id": s.contract_id,
-            "total_cost": float(s.total_cost),
-            "advance_paid": float(s.advance_paid),
-            "balance": float(s.balance),
-            "line_items": s.line_items or [],
-        })
-    raw = json.dumps(payload, sort_keys=True, ensure_ascii=False)
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    return settlement.snapshot_hash([s for s in store.list_utility_statements() if s.billing_period_id == period_id],
+        store.get_billing_period(period_id).owner_cost_share)
+
 
 logger = logging.getLogger(__name__)
 
@@ -141,6 +123,8 @@ def list_billing_periods(
 
 @router.post("/periods", response_model=BillingPeriod, status_code=status.HTTP_201_CREATED)
 def create_billing_period(payload: BillingPeriodCreate) -> BillingPeriod:
+    if payload.status != "draft":
+        raise HTTPException(status_code=400, detail="Neue Perioden beginnen als Entwurf.")
     try:
         return store.create_billing_period(payload)
     except ValidationError as exc:
@@ -151,6 +135,8 @@ def create_billing_period(payload: BillingPeriodCreate) -> BillingPeriod:
 def get_billing_period(period_id: str) -> BillingPeriod:
     try:
         return store.get_billing_period(period_id)
+    except FinancialConsistencyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -161,6 +147,8 @@ def update_billing_period(period_id: str, payload: BillingPeriodCreate) -> Billi
         existing = store.get_billing_period(period_id)
         _assert_period_mutable(existing)
         return store.update_billing_period(period_id, payload)
+    except FinancialConsistencyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ValidationError as exc:
@@ -173,6 +161,8 @@ def patch_billing_period(period_id: str, payload: BillingPeriodPatch) -> Billing
         existing = store.get_billing_period(period_id)
         _assert_period_mutable(existing)
         return store._patch_entity("billing_period", period_id, payload)
+    except FinancialConsistencyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -183,6 +173,8 @@ def delete_billing_period(period_id: str) -> None:
         existing = store.get_billing_period(period_id)
         _assert_period_mutable(existing)
         store.delete_billing_period(period_id)
+    except FinancialConsistencyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -219,6 +211,8 @@ def create_allocation_key(payload: AllocationKeyCreate) -> AllocationKey:
 def get_allocation_key(key_id: str) -> AllocationKey:
     try:
         return store.get_allocation_key(key_id)
+    except FinancialConsistencyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -227,6 +221,8 @@ def get_allocation_key(key_id: str) -> AllocationKey:
 def update_allocation_key(key_id: str, payload: AllocationKeyCreate) -> AllocationKey:
     try:
         return store.update_allocation_key(key_id, payload)
+    except FinancialConsistencyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ValidationError as exc:
@@ -237,6 +233,8 @@ def update_allocation_key(key_id: str, payload: AllocationKeyCreate) -> Allocati
 def patch_allocation_key(key_id: str, payload: AllocationKeyPatch) -> AllocationKey:
     try:
         return store._patch_entity("allocation_key", key_id, payload)
+    except FinancialConsistencyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -245,6 +243,8 @@ def patch_allocation_key(key_id: str, payload: AllocationKeyPatch) -> Allocation
 def delete_allocation_key(key_id: str) -> None:
     try:
         store.delete_allocation_key(key_id)
+    except FinancialConsistencyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -286,6 +286,8 @@ def create_cost_item(payload: CostItemCreate) -> CostItem:
 def get_cost_item(item_id: str) -> CostItem:
     try:
         return store.get_cost_item(item_id)
+    except FinancialConsistencyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -297,6 +299,8 @@ def update_cost_item(item_id: str, payload: CostItemCreate) -> CostItem:
         period = store.get_billing_period(existing.billing_period_id)
         _assert_period_mutable(period)
         return store.update_cost_item(item_id, payload)
+    except FinancialConsistencyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ValidationError as exc:
@@ -310,6 +314,8 @@ def patch_cost_item(item_id: str, payload: CostItemPatch) -> CostItem:
         period = store.get_billing_period(existing.billing_period_id)
         _assert_period_mutable(period)
         return store._patch_entity("cost_item", item_id, payload)
+    except FinancialConsistencyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -321,6 +327,8 @@ def delete_cost_item(item_id: str) -> None:
         period = store.get_billing_period(existing.billing_period_id)
         _assert_period_mutable(period)
         store.delete_cost_item(item_id)
+    except FinancialConsistencyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -333,6 +341,8 @@ def get_billing_period_preflight(period_id: str) -> BillingPreflightResult:
 def _run_billing_period_preflight(period_id: str) -> BillingPreflightResult:
     try:
         period = store.get_billing_period(period_id)
+    except FinancialConsistencyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -346,22 +356,19 @@ def _run_billing_period_preflight(period_id: str) -> BillingPreflightResult:
         else:
             warnings.append(issue)
 
-    contracts_in_period = [
-        c
-        for c in store.list_contracts()
-        if c.property_id == period.property_id
-        and c.status == "active"
-        and c.start_date <= period.end_date
-        and (c.end_date is None or c.end_date >= period.start_date)
-    ]
+    contracts_in_period = settlement.eligible_contracts(store, period)
+    overlaps = settlement.overlapping_contract_ids(contracts_in_period, period)
+    if overlaps:
+        add_issue("blocker", "OVERLAPPING_CONTRACTS", "Vertragszeiträume derselben Einheit überschneiden sich", ", ".join(sorted(overlaps)))
 
-    cost_items = [ci for ci in store.list_cost_items() if ci.billing_period_id == period_id]
+    all_cost_items = [ci for ci in store.list_cost_items() if ci.billing_period_id == period_id]
+    cost_items = [ci for ci in all_cost_items if ci.is_recoverable]
     used_key_ids = {ci.allocation_key_id for ci in cost_items}
     allocation_keys = {k.id: k for k in store.list_allocation_keys() if k.id in used_key_ids}
 
     if not contracts_in_period:
-        add_issue("blocker", "NO_ACTIVE_CONTRACTS", "Keine aktiven Verträge im Abrechnungszeitraum gefunden")
-    if not cost_items:
+        add_issue("blocker", "NO_ACTIVE_CONTRACTS", "Keine gültigen Verträge im Abrechnungszeitraum gefunden (Entwürfe und stornierte Verträge sind ausgeschlossen)")
+    if not all_cost_items:
         add_issue("blocker", "NO_COST_ITEMS", "Keine Kostenpositionen für diese Periode vorhanden")
 
     missing_key_ids = sorted([key_id for key_id in used_key_ids if key_id not in allocation_keys])
@@ -384,6 +391,24 @@ def _run_billing_period_preflight(period_id: str) -> BillingPreflightResult:
     requires_person_count = any(k.key_type == "person_count" for k in allocation_keys.values())
     requires_consumption = any(k.key_type == "consumption" for k in allocation_keys.values())
 
+    vacant_days = settlement.property_vacancy(store, period, contracts_in_period)
+    vacant_units = {uid: days for uid, days in vacant_days.items() if days > 0}
+    if vacant_units:
+        missing_owner_area = [uid for uid in vacant_units if requires_area and not (store.get_unit(uid).area_sqm or 0) > 0]
+        if missing_owner_area:
+            add_issue("blocker", "MISSING_OWNER_AREA", "Für den Eigentümeranteil fehlen Flächen leerstehender Einheiten", ", ".join(sorted(missing_owner_area)))
+        unsupported = [k.name for k in allocation_keys.values() if k.key_type in {"person_count", "consumption"}]
+        if unsupported:
+            add_issue("blocker", "VACANCY_ALLOCATION_BASIS_MISSING",
+                "Leerstand kann bei Personen-/Verbrauchsschlüsseln ohne datierte Bewohner- bzw. Verbrauchsanteile des Eigentümers nicht zuverlässig aufgeteilt werden",
+                ", ".join(unsupported))
+        else:
+            add_issue("warning", "OWNER_VACANCY_SHARE", "Leerstandsanteile werden dem Eigentümer zugeordnet; die Bezugsbasis umfasst alle aktuell konfigurierten Einheiten",
+                ", ".join(f"{store.get_unit(uid).label}: {days} Tage" for uid, days in sorted(vacant_units.items())))
+    unknown_keys = [k.name for k in allocation_keys.values() if k.key_type not in {"area_sqm", "unit_count", "person_count", "consumption"}]
+    if unknown_keys:
+        add_issue("blocker", "UNKNOWN_ALLOCATION_TYPE", "Verteilerschlüssel ohne unterstützte Berechnungsbasis", ", ".join(unknown_keys))
+
     for contract in contracts_in_period:
         try:
             unit = store.get_unit(contract.unit_id)
@@ -399,8 +424,8 @@ def _run_billing_period_preflight(period_id: str) -> BillingPreflightResult:
         if requires_person_count and (_pc is None or _pc <= 0):
             missing_person_count_unit_ids.append(unit.id)
 
-        monthly_advance = float((unit.service_charge_advance or 0) + (unit.heating_advance or 0))
-        if monthly_advance <= 0:
+        actual_advance, _ = settlement.actual_paid_advances(store, contract, period)
+        if actual_advance <= 0:
             missing_advance_contract_ids.append(contract.id)
 
     for ci in cost_items:
@@ -451,13 +476,15 @@ def _run_billing_period_preflight(period_id: str) -> BillingPreflightResult:
         add_issue(
             "warning",
             "MISSING_ADVANCE",
-            "Verträge ohne Nebenkosten-/Heizkostenvorauszahlung",
+            "Verträge ohne gebuchte bezahlte Nebenkosten-/Heizkostenvorauszahlung zum Periodenende",
             ", ".join(missing_advance_contract_ids),
         )
 
-    metrics = {
+    metrics: dict[str, float | int | str | bool] = {
         "contracts_in_period": len(contracts_in_period),
-        "cost_items": len(cost_items),
+        "cost_items": len(all_cost_items),
+        "vacant_units": len(vacant_units),
+        "vacant_unit_days": sum(vacant_units.values()),
         "allocation_keys_used": len(used_key_ids),
         "allocation_keys_missing": len(missing_key_ids),
         "units_missing": len(missing_unit_contract_ids),
@@ -482,6 +509,8 @@ def submit_period_for_review(period_id: str) -> BillingPeriod:
     """Transition period from draft to review status."""
     try:
         period = store.get_billing_period(period_id)
+    except FinancialConsistencyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -508,6 +537,8 @@ def revert_period_to_draft(period_id: str) -> BillingPeriod:
     """Revert period from review back to draft."""
     try:
         period = store.get_billing_period(period_id)
+    except FinancialConsistencyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -531,69 +562,8 @@ def revert_period_to_draft(period_id: str) -> BillingPeriod:
 
 @router.post("/periods/{period_id}/finalize", response_model=BillingPeriod)
 def finalize_billing_period(period_id: str) -> BillingPeriod:
-    """Finalize billing period after successful preflight and generated statements.
-
-    Allowed from 'draft' or 'review' status. Computes a snapshot hash for
-    immutability verification and stamps it on all statements.
-    """
-    try:
-        period = store.get_billing_period(period_id)
-    except NotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-
-    if period.status == "finalized":
-        return period
-
-    if period.status not in ("draft", "review"):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Finalisierung nur aus 'draft' oder 'review' möglich (aktuell: '{period.status}')",
-        )
-
-    preflight = _run_billing_period_preflight(period_id)
-    if preflight.has_blockers:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Finalisierung blockiert: Preflight enthält Blocker",
-        )
-
-    period_statements = [
-        s for s in store.list_utility_statements() if s.billing_period_id == period_id
-    ]
-    if not period_statements:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Finalisierung nicht möglich: Keine Einzelabrechnungen vorhanden",
-        )
-
-    # Compute immutable snapshot hash
-    snapshot = _compute_snapshot_hash(period_id)
-
-    finalized = store.update_billing_period(
-        period_id,
-        BillingPeriodCreate(
-            property_id=period.property_id,
-            label=period.label,
-            start_date=period.start_date,
-            end_date=period.end_date,
-            status="finalized",
-        ),
-    )
-
-    for stmt in period_statements:
-        patch_data = {}
-        if stmt.status != "finalized":
-            patch_data["status"] = "finalized"
-        if not stmt.snapshot_hash:
-            patch_data["snapshot_hash"] = snapshot
-        if patch_data:
-            store._patch_entity(
-                "utility_statement",
-                stmt.id,
-                UtilityStatementPatch(**patch_data),
-            )
-
-    return finalized
+    """Finalize all statement snapshots and the period in a single transaction."""
+    return _billing_call(settlement.finalize_period, period_id, lambda: _run_billing_period_preflight(period_id))
 
 
 # ---------------------------------------------------------------------------
@@ -623,6 +593,8 @@ def list_utility_statements(
 def get_utility_statement(statement_id: str) -> UtilityStatement:
     try:
         return store.get_utility_statement(statement_id)
+    except FinancialConsistencyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -634,6 +606,8 @@ def patch_utility_statement(statement_id: str, payload: UtilityStatementPatch) -
         period = store.get_billing_period(existing.billing_period_id)
         _assert_period_mutable(period)
         return store._patch_entity("utility_statement", statement_id, payload)
+    except FinancialConsistencyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -645,6 +619,8 @@ def delete_utility_statement(statement_id: str) -> None:
         period = store.get_billing_period(existing.billing_period_id)
         _assert_period_mutable(period)
         store.delete_utility_statement(statement_id)
+    except FinancialConsistencyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -660,49 +636,28 @@ def delete_utility_statement(statement_id: str) -> None:
     status_code=status.HTTP_201_CREATED,
 )
 def generate_utility_statements(period_id: str) -> list[UtilityStatement]:
-    """Auto-generate utility statements for all contracts in the billing period.
+    """Generate historic occupied-tenancy statements from paid monthly snapshots."""
+    return _billing_call(settlement.replace_statements, period_id,
+        lambda period: _build_utility_statements(period))
 
-    Uses cost items, allocation keys, and unit shares (area_sqm from units)
-    to distribute costs. Compares with service charge advances from contracts
-    to compute the balance (Nachzahlung/Guthaben).
 
-    Existing statements for this period are deleted first (regeneration).
-    """
-    try:
-        period = store.get_billing_period(period_id)
-    except NotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-
-    _assert_period_mutable(period)
-
-    property_id = period.property_id
-
-    # Find all active contracts for the property whose dates overlap the period
-    contracts_in_period = [
-        c for c in store.list_contracts()
-        if c.property_id == property_id
-        and c.status == "active"
-        and c.start_date <= period.end_date
-        and (c.end_date is None or c.end_date >= period.start_date)
-    ]
+def _build_utility_statements(period: BillingPeriod) -> tuple[list[UtilityStatement], dict]:
+    period_id = period.id
+    contracts_in_period = settlement.eligible_contracts(store, period)
+    if settlement.overlapping_contract_ids(contracts_in_period, period):
+        raise HTTPException(status_code=400, detail="Überschneidende Vertragszeiträume derselben Einheit müssen vor der Abrechnung geklärt werden.")
 
     if not contracts_in_period:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Keine aktiven Verträge im Abrechnungszeitraum gefunden",
+            detail="Keine gültigen Verträge im Abrechnungszeitraum gefunden (Entwürfe und stornierte Verträge sind ausgeschlossen)",
         )
 
-    # Find cost items for this period
-    cost_items = [
-        ci for ci in store.list_cost_items()
-        if ci.billing_period_id == period_id
-    ]
-
-    if not cost_items:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Keine Kostenpositionen für diese Abrechnungsperiode vorhanden",
-        )
+    preflight = _run_billing_period_preflight(period_id)
+    if preflight.has_blockers:
+        raise HTTPException(status_code=400, detail="Abrechnung blockiert: " + "; ".join(i.message for i in preflight.blockers))
+    all_cost_items = sorted((ci for ci in store.list_cost_items() if ci.billing_period_id == period_id), key=lambda ci: ci.id)
+    cost_items = [ci for ci in all_cost_items if ci.is_recoverable]
 
     # Build the engine
     engine = BillingEngine()
@@ -714,16 +669,11 @@ def generate_utility_statements(period_id: str) -> list[UtilityStatement]:
         if k.id in used_key_ids
     }
 
-    # Pre-fetch units for the contracts (log missing units instead of silent skip)
-    unit_cache = {}
-    for contract in contracts_in_period:
-        try:
-            unit_cache[contract.unit_id] = store.get_unit(contract.unit_id)
-        except Exception:
-            logger.warning(
-                "Unit %s for contract %s not found — skipping in billing calculation",
-                contract.unit_id, contract.id, exc_info=True,
-            )
+    if used_key_ids - set(allocation_keys):
+        raise HTTPException(status_code=400, detail="Verteilerschlüssel fehlen.")
+    unit_cache = {u.id: u for u in store.list_units() if u.property_id == period.property_id}
+    vacant_days = settlement.property_vacancy(store, period, contracts_in_period)
+    period_days = (period.end_date - period.start_date).days + 1
 
     contract_unit_ids = {c.unit_id for c in contracts_in_period}
     consumption_by_unit = _build_consumption_by_unit(period, contract_unit_ids)
@@ -745,8 +695,7 @@ def generate_utility_statements(period_id: str) -> list[UtilityStatement]:
             elif key.key_type == "consumption":
                 share_value = consumption_by_unit.get(unit.id, Decimal("0"))
             else:
-                # Default: equal distribution
-                share_value = Decimal("1")
+                raise HTTPException(status_code=400, detail=f"Nicht unterstützter Verteilerschlüssel: {key.key_type}")
 
             if share_value <= Decimal("0"):
                 raise HTTPException(
@@ -757,6 +706,11 @@ def generate_utility_statements(period_id: str) -> list[UtilityStatement]:
                     ),
                 )
 
+            overlap_start = max(contract.start_date, period.start_date)
+            overlap_end = min(contract.end_date or period.end_date, period.end_date)
+            occupied_days = (overlap_end - overlap_start).days + 1
+            period_days = (period.end_date - period.start_date).days + 1
+            share_value = share_value * Decimal(occupied_days) / Decimal(period_days)
             engine.add_unit_share(
                 key_id,
                 UnitShare(
@@ -765,6 +719,23 @@ def generate_utility_statements(period_id: str) -> list[UtilityStatement]:
                     share_value=share_value,
                 ),
             )
+
+    # Even a period containing owner-only costs can produce zero-cost tenant
+    # statements and refund actually paid advances without inventing rent debts.
+    for contract in contracts_in_period:
+        engine.add_unit_share("__tenancies__", UnitShare(unit_id=contract.unit_id,
+            contract_id=contract.id, share_value=Decimal("1")))
+    owner_ids = set()
+    for unit_id, vacant in sorted(vacant_days.items()):
+        if not vacant:
+            continue
+        unit = unit_cache[unit_id]
+        owner_id = f"owner:{unit_id}"
+        owner_ids.add(owner_id)
+        for key_id, key in allocation_keys.items():
+            base = Decimal(str(unit.area_sqm)) if key.key_type == "area_sqm" else Decimal("1")
+            engine.add_unit_share(key_id, UnitShare(unit_id=unit_id, contract_id=owner_id,
+                share_value=base * vacant / period_days))
 
     # Add cost entries
     for ci in cost_items:
@@ -776,62 +747,36 @@ def generate_utility_statements(period_id: str) -> list[UtilityStatement]:
             )
         )
 
-    # Calculate advances: sum of service_charge_advance * months in period for each contract
+    advance_evidence = {}
     for contract in contracts_in_period:
-        unit = unit_cache.get(contract.unit_id)
-        monthly_advance = (
-            Decimal(str((unit.service_charge_advance or 0) + (unit.heating_advance or 0)))
-            if unit else Decimal("0")
-        )
-
-        # Calculate overlapping months
-        overlap_start = max(contract.start_date, period.start_date)
-        overlap_end = min(contract.end_date, period.end_date) if contract.end_date else period.end_date
-        if overlap_end < overlap_start:
-            continue
-        months = ((overlap_end.year - overlap_start.year) * 12
-                  + overlap_end.month - overlap_start.month + 1)
-        total_advance = monthly_advance * months
-
-        engine.add_advance(
-            AdvancePayment(
-                unit_id=contract.unit_id,
-                contract_id=contract.id,
-                total_advance=total_advance,
-            )
-        )
+        total_advance, details = settlement.actual_paid_advances(store, contract, period)
+        advance_evidence[contract.id] = details
+        engine.add_advance(AdvancePayment(unit_id=contract.unit_id,
+            contract_id=contract.id, total_advance=total_advance))
 
     generated = engine.generate()
 
-    # Delete existing statements for this period
-    existing_statements = [
-        us for us in store.list_utility_statements()
-        if us.billing_period_id == period_id
-    ]
-    for us in existing_statements:
-        store.delete_utility_statement(us.id)
-
-    # Create new statements
-    results: list[UtilityStatement] = []
-    for stmt in generated:
-        line_items_data = [
-            {"description": li.description, "allocated_amount": float(li.allocated_amount)}
-            for li in stmt.line_items
-        ]
-        created = store.create_utility_statement(
-            UtilityStatementCreate(
-                billing_period_id=period_id,
-                contract_id=stmt.contract_id,
-                unit_id=stmt.unit_id,
-                total_cost=float(stmt.total_cost),
-                advance_paid=float(stmt.advance_paid),
-                balance=float(stmt.balance),
-                line_items=line_items_data,
-            )
-        )
-        results.append(created)
-
-    return results
+    owner_lines = [{"cost_item_id": cost_items[index].id, "description": line.description,
+        "allocated_amount": float(line.allocated_amount), "unit_id": stmt.unit_id, "reason": "vacancy"}
+        for stmt in generated if stmt.contract_id in owner_ids for index, line in enumerate(stmt.line_items)
+        if line.allocated_amount != 0]
+    owner_lines.extend({"cost_item_id": ci.id, "description": ci.description, "allocated_amount": ci.amount,
+        "unit_id": None, "reason": "non_recoverable"} for ci in all_cost_items if not ci.is_recoverable)
+    vacancy_amount = sum((stmt.total_cost for stmt in generated if stmt.contract_id in owner_ids), Decimal("0"))
+    non_recoverable = sum((Decimal(str(ci.amount)) for ci in all_cost_items if not ci.is_recoverable), Decimal("0"))
+    owner = {"total_amount": float(vacancy_amount + non_recoverable),
+        "recoverable_vacancy_amount": float(vacancy_amount), "non_recoverable_amount": float(non_recoverable),
+        "property_cost_total": float(sum((Decimal(str(ci.amount)) for ci in all_cost_items), Decimal("0"))),
+        "tenant_cost_total": float(sum((stmt.total_cost for stmt in generated if stmt.contract_id not in owner_ids), Decimal("0"))),
+        "vacant_unit_days": {uid: days for uid, days in vacant_days.items() if days},
+        "line_items": owner_lines, "policy": "property_units_occupied_days"}
+    statements = [UtilityStatement(id=str(uuid4()), billing_period_id=period_id,
+        contract_id=stmt.contract_id, unit_id=stmt.unit_id, total_cost=float(stmt.total_cost),
+        advance_paid=float(stmt.advance_paid), balance=float(stmt.balance),
+        advance_details=advance_evidence[stmt.contract_id],
+        line_items=[{"description": li.description, "allocated_amount": float(li.allocated_amount)}
+                    for li in stmt.line_items]) for stmt in generated if stmt.contract_id not in owner_ids]
+    return statements, owner
 
 
 # ---------------------------------------------------------------------------
@@ -849,6 +794,8 @@ def export_billing_period(period_id: str, export_format: str = Query("csv", alia
 
     try:
         store.get_billing_period(period_id)
+    except FinancialConsistencyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -889,6 +836,8 @@ def export_billing_period_zip(period_id: str):
 
     try:
         store.get_billing_period(period_id)
+    except FinancialConsistencyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -919,175 +868,29 @@ def export_billing_period_zip(period_id: str):
 
 
 @router.post("/statements/{statement_id}/mark-delivered", response_model=UtilityStatement)
-def mark_statement_delivered(
-    statement_id: str,
-    channel: str = "email",
-):
-    """Mark a utility statement as delivered. Requires finalized period.
-
-    ``channel`` may be ``email``, ``post``, or ``portal``.
-    """
-    from datetime import datetime as _dt
-    from datetime import timezone as _tz
-
-    try:
-        stmt = store.get_utility_statement(statement_id)
-    except NotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-
-    period = store.get_billing_period(stmt.billing_period_id)
-    if period.status not in ("finalized", "delivered"):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Zustellung nur für finalisierte Perioden möglich",
-        )
-
-    return store._patch_entity(
-        "utility_statement",
-        statement_id,
-        UtilityStatementPatch(
-            delivery_status="delivered",
-            delivered_at=_dt.now(_tz.utc),
-            delivery_channel=channel,
-            status="delivered",
-        ),
-    )
+def mark_statement_delivered(statement_id: str, channel: str = "email") -> UtilityStatement:
+    return _billing_call(settlement.mark_delivered, statement_id, channel)
 
 
 @router.post("/periods/{period_id}/create-receivables")
 def create_receivables_from_period(period_id: str):
-    """Create receivables/refund bookings from finalized statement balances."""
-    from ..models import ReceivableCreate
+    """Book each finalized debt or available credit exactly once, atomically."""
+    return _billing_call(settlement.post_settlements, period_id)
 
-    try:
-        period = store.get_billing_period(period_id)
-    except NotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
-    if period.status != "finalized":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Forderungen können nur aus finalisierten Perioden erzeugt werden",
-        )
-
-    period_statements = [
-        s for s in store.list_utility_statements() if s.billing_period_id == period_id
-    ]
-
-    created_count = 0
-    for stmt in period_statements:
-        if stmt.balance > 0:
-            # Nachzahlung -> Forderung
-            store.create_receivable(
-                ReceivableCreate(
-                    contract_id=stmt.contract_id,
-                    due_date=period.end_date,
-                    amount_due=stmt.balance,
-                    status="open",
-                    statement_id=stmt.id,
-                )
-            )
-            created_count += 1
-        elif stmt.balance < 0:
-            # Guthaben -> negative receivable for tracking
-            store.create_receivable(
-                ReceivableCreate(
-                    contract_id=stmt.contract_id,
-                    due_date=period.end_date,
-                    amount_due=stmt.balance,
-                    status="open",
-                    statement_id=stmt.id,
-                )
-            )
-            created_count += 1
-
-    return {"period_id": period_id, "created_receivables": created_count}
+@router.get("/periods/{period_id}/settlements")
+def list_period_settlements(period_id: str):
+    return _billing_call(settlement.settlement_summary, period_id)
 
 
 @router.post("/periods/{period_id}/revisions")
-def create_period_revision(
-    period_id: str,
-    revision_notes: str = Query("", alias="revision_notes"),
-):
-    """Create a correction revision of a finalized billing period.
-
-    Copies the period and its cost items into a new draft period with
-    incremented revision numbers on all statements.
-    """
-    try:
-        period = store.get_billing_period(period_id)
-    except NotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-
-    # Determine next revision number
-    existing_stmts = [
-        s for s in store.list_utility_statements() if s.billing_period_id == period_id
-    ]
-    max_revision = max((s.revision for s in existing_stmts), default=1)
-    new_revision = max_revision + 1
-
-    # Create new period (draft copy)
-    new_period = store.create_billing_period(
-        BillingPeriodCreate(
-            property_id=period.property_id,
-            label=f"{period.label} (Korrektur Rev. {new_revision})",
-            start_date=period.start_date,
-            end_date=period.end_date,
-            status="draft",
-        )
-    )
-
-    # Copy cost items
-    cost_items = [ci for ci in store.list_cost_items() if ci.billing_period_id == period_id]
-    for ci in cost_items:
-        store.create_cost_item(
-            CostItemCreate(
-                billing_period_id=new_period.id,
-                description=ci.description,
-                amount=ci.amount,
-                allocation_key_id=ci.allocation_key_id,
-            )
-        )
-
-    return {
-        "new_period_id": new_period.id,
-        "source_period_id": period_id,
-        "revision": new_revision,
-        "revision_notes": revision_notes,
-    }
+def create_period_revision(period_id: str, revision_notes: str = Query("", alias="revision_notes")):
+    return _billing_call(settlement.create_revision, period_id, revision_notes if isinstance(revision_notes, str) else "")
 
 
 @router.post("/periods/{period_id}/dispute", response_model=BillingPeriod)
-def dispute_billing_period(
-    period_id: str,
-    reason: str = Query("", alias="reason"),
-) -> BillingPeriod:
-    """Mark a finalized or delivered period as disputed.
-
-    The period can then be corrected via the revision endpoint.
-    """
-    try:
-        period = store.get_billing_period(period_id)
-    except NotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-
-    allowed = _PERIOD_TRANSITIONS.get(period.status, set())
-    if "disputed" not in allowed:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Widerspruch nur aus 'finalized' oder 'delivered' möglich (aktuell: '{period.status}')",
-        )
-
-    return store.update_billing_period(
-        period_id,
-        BillingPeriodCreate(
-            property_id=period.property_id,
-            label=period.label,
-            start_date=period.start_date,
-            end_date=period.end_date,
-            status="disputed",
-        ),
-    )
+def dispute_billing_period(period_id: str, reason: str = Query("", alias="reason")) -> BillingPeriod:
+    return _billing_call(settlement.dispute_period, period_id)
 
 
 # ---------------------------------------------------------------------------
@@ -1112,6 +915,8 @@ def import_cost_item_from_ocr(
     # Validate period exists and is mutable
     try:
         period = store.get_billing_period(billing_period_id)
+    except FinancialConsistencyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     _assert_period_mutable(period)
@@ -1177,6 +982,8 @@ def download_utility_statement_pdf(statement_id: str):
 
     try:
         stmt = store.get_utility_statement(statement_id)
+    except FinancialConsistencyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 

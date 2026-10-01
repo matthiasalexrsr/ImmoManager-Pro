@@ -3,15 +3,10 @@
 Checks GitHub for new releases, downloads and applies updates via git,
 runs database migrations, and can roll back on failure.
 
-Safety guarantees:
-- Automatic JSON backup of all data before every update
-- Database snapshot (SQLite) or migration dry-run (PostgreSQL) before applying
-- Git stash of local changes before pull
-- Automatic rollback to previous commit on migration or startup failure
-- Lock file prevents concurrent updates
-- All operations are logged to the audit trail
-- Backup integrity verification via SHA-256 checksum
-- Production environment guard (updates disabled by default in production)
+Updates check every install/build/migration result and preserve the previous
+frontend. SQLite snapshots use the online backup API. Restoring a database is
+restricted to an explicitly offline operation: this module has no server
+maintenance gate or restart supervisor. Incomplete recovery is reported honestly.
 
 This module is designed for the standard Python/uvicorn deployment.
 Docker and PyInstaller deployments should use their native update mechanisms.
@@ -23,25 +18,35 @@ import logging
 import os
 import re
 import shutil
+import sqlite3
 import subprocess
 import sys
+import tempfile
+import time
+from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
+from uuid import uuid4
 
 import httpx
+from sqlalchemy.engine import make_url
 
 from .config import settings
+from .frontend_build import FrontendBuildError, ensure_frontend, promote_dist, validate_dist
 
 logger = logging.getLogger(__name__)
 
 # ─── Constants ────────────────────────────────────────────────────────────────
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
-_BACKUP_DIR = _PROJECT_ROOT / "backups"
-_UPDATE_DIR = _PROJECT_ROOT / ".updates"
+_RUNTIME_DIR = Path(settings.data_dir).expanduser().resolve() if settings.data_dir else _PROJECT_ROOT
+_BACKUP_DIR = Path(settings.backup_dir).expanduser().resolve() if settings.backup_dir else _RUNTIME_DIR / "backups"
+_UPDATE_DIR = _RUNTIME_DIR / ".updates"
 _LOCK_FILE = _UPDATE_DIR / "update.lock"
 _HISTORY_FILE = _UPDATE_DIR / "history.json"
 _FRONTEND_DIST = _PROJECT_ROOT / "frontend" / "dist"
+_lock_token: str | None = None
 
 # Timeout for GitHub API requests
 _HTTP_TIMEOUT = 30.0
@@ -70,45 +75,37 @@ def is_newer_version(remote: str, local: str) -> bool:
 
 def _acquire_lock() -> bool:
     """Try to acquire the update lock.  Returns False if already locked."""
+    global _lock_token
     _UPDATE_DIR.mkdir(parents=True, exist_ok=True)
-    if _LOCK_FILE.exists():
-        # Check for stale lock (older than 30 minutes)
-        try:
-            lock_data = json.loads(_LOCK_FILE.read_text())
-            lock_time = datetime.fromisoformat(lock_data.get("locked_at", ""))
-            age_seconds = (datetime.now(timezone.utc) - lock_time).total_seconds()
-            if age_seconds < 1800:
-                return False
-            logger.warning("Stale update lock detected (age: %.0fs), removing", age_seconds)
-        except Exception:
-            logger.debug("Could not parse update lock file", exc_info=True)
-    _LOCK_FILE.write_text(json.dumps({
-        "locked_at": datetime.now(timezone.utc).isoformat(),
-        "pid": os.getpid(),
-    }))
+    # Never steal an update lock on elapsed time alone; a slow install may still
+    # be running. A crashed process requires deliberate removal of its lock.
+    try:
+        descriptor = os.open(_LOCK_FILE, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    except FileExistsError:
+        return False
+    token = uuid4().hex
+    with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+        stream.write(json.dumps({"locked_at": datetime.now(timezone.utc).isoformat(),
+                                "pid": os.getpid(), "token": token}))
+    _lock_token = token
     return True
 
 
 def _release_lock() -> None:
     """Release the update lock."""
+    global _lock_token
     try:
-        _LOCK_FILE.unlink(missing_ok=True)
-    except OSError:
-        pass
+        if _lock_token and json.loads(_LOCK_FILE.read_text(encoding="utf-8")).get("token") == _lock_token:
+            _LOCK_FILE.unlink(missing_ok=True)
+    except (OSError, ValueError):
+        logger.warning("Update lock could not be released", exc_info=True)
+    finally:
+        _lock_token = None
 
 
 def is_update_locked() -> bool:
     """Check whether an update is currently in progress."""
-    if not _LOCK_FILE.exists():
-        return False
-    try:
-        lock_data = json.loads(_LOCK_FILE.read_text())
-        lock_time = datetime.fromisoformat(lock_data.get("locked_at", ""))
-        age_seconds = (datetime.now(timezone.utc) - lock_time).total_seconds()
-        return age_seconds < 1800
-    except Exception:
-        logger.debug("Could not read update lock status", exc_info=True)
-        return False
+    return _LOCK_FILE.exists()
 
 
 # ─── Git Helpers ──────────────────────────────────────────────────────────────
@@ -116,13 +113,10 @@ def is_update_locked() -> bool:
 def _run_git(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess:
     """Run a git command and return the result."""
     cmd = ["git"] + list(args)
-    return subprocess.run(
-        cmd,
-        cwd=cwd or _PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
+    try:
+        return subprocess.run(cmd, cwd=cwd or _PROJECT_ROOT, capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return subprocess.CompletedProcess(cmd, 127, stdout="", stderr=f"Git fehlgeschlagen: {type(exc).__name__}")
 
 
 def _is_git_repo() -> bool:
@@ -145,16 +139,33 @@ def _get_current_branch() -> str | None:
 
 def _has_uncommitted_changes() -> bool:
     """Check for uncommitted changes in the working tree."""
-    result = _run_git("status", "--porcelain")
+    result = _run_git("status", "--porcelain", "--", ".", *_runtime_excludes())
     return bool(result.stdout.strip()) if result.returncode == 0 else True
+
+
+def _runtime_excludes() -> list[str]:
+    excluded = {".updates", "backups", "frontend/dist"}
+    root = _PROJECT_ROOT.resolve()
+    for path in (_UPDATE_DIR, _BACKUP_DIR, Path(settings.data_dir) if settings.data_dir else root):
+        resolved = path.resolve()
+        if resolved != root and resolved.is_relative_to(root):
+            excluded.add(resolved.relative_to(root).as_posix())
+    return [f":(exclude,literal){path}" for path in sorted(excluded)]
 
 
 def _stash_changes() -> bool:
     """Stash any uncommitted changes.  Returns True if something was stashed."""
     if not _has_uncommitted_changes():
         return False
-    result = _run_git("stash", "push", "-m", f"ImmoManager auto-stash before update {datetime.now(timezone.utc).isoformat()}")
-    return result.returncode == 0
+    previous_stash = _run_git("rev-parse", "--verify", "refs/stash").stdout.strip()
+    result = _run_git("stash", "push", "--include-untracked", "-m",
+                      f"ImmoManager auto-stash before update {datetime.now(timezone.utc).isoformat()}",
+                      "--", ".", *_runtime_excludes())
+    if result.returncode:
+        raise RuntimeError("Lokale Änderungen konnten nicht gesichert werden")
+    if _run_git("rev-parse", "--verify", "refs/stash").stdout.strip() == previous_stash:
+        return False
+    return True
 
 
 def _stash_pop() -> bool:
@@ -194,6 +205,8 @@ def check_for_updates() -> dict:
         "is_git_repo": _is_git_repo(),
         "update_channel": channel,
         "is_frozen": getattr(sys, "frozen", False),
+        "live_apply_supported": False,
+        "maintenance_hint": "Anwendung stoppen und den Offline-Updateweg verwenden: python -m backend.maintenance --offline --data-dir <Datenordner>",
     }
 
     if not repo_url:
@@ -292,7 +305,7 @@ def _create_pre_update_backup() -> str | None:
     Returns the backup filename on success, None on failure.
     """
     _BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
     backup_name = f"pre_update_{timestamp}.json"
     backup_path = _BACKUP_DIR / backup_name
 
@@ -330,29 +343,57 @@ def _create_pre_update_backup() -> str | None:
 
 
 def _create_db_snapshot() -> str | None:
-    """For SQLite: copy the database file as a binary snapshot.
-
-    Returns the snapshot filename on success, None otherwise.
-    """
-    if "sqlite" not in settings.database_url:
+    """Snapshot committed SQLite data, including uncheckpointed WAL pages."""
+    db_path = _sqlite_database_path()
+    if db_path is None or not db_path.is_file():
         return None
-
-    db_path = Path(settings.database_url.replace("sqlite:///", ""))
-    if not db_path.exists():
-        return None
-
     _BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    snapshot_name = f"pre_update_{timestamp}.db"
+    snapshot_name = f"pre_update_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S_%f')}.db"
     snapshot_path = _BACKUP_DIR / snapshot_name
-
     try:
-        shutil.copy2(db_path, snapshot_path)
+        with closing(sqlite3.connect(_readonly_uri(db_path), uri=True, timeout=10)) as source:
+            with closing(sqlite3.connect(snapshot_path, timeout=10)) as destination:
+                _sqlite_backup(source, destination)
+                _verify_sqlite(destination)
+        snapshot_path.with_suffix(".db.sha256").write_text(_file_checksum(snapshot_path), encoding="ascii")
         logger.info("Database snapshot created: %s", snapshot_name)
         return snapshot_name
     except Exception:
         logger.exception("Failed to create database snapshot")
+        snapshot_path.unlink(missing_ok=True)
         return None
+
+
+def _sqlite_database_path() -> Path | None:
+    url = make_url(settings.database_url)
+    if not url.drivername.startswith("sqlite") or not url.database or url.database == ":memory:":
+        return None
+    return Path(url.database).expanduser().resolve()
+
+
+def _readonly_uri(path: Path) -> str:
+    return path.resolve().as_uri() + "?mode=ro"
+
+
+def _file_checksum(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _verify_sqlite(connection) -> None:
+    if connection.execute("PRAGMA integrity_check").fetchall() != [("ok",)]:
+        raise RuntimeError("SQLite integrity verification failed")
+
+
+def _sqlite_backup(source, destination) -> None:
+    deadline = time.monotonic() + 60
+    def progress(status, remaining, total):
+        if time.monotonic() > deadline:
+            raise TimeoutError("SQLite backup exceeded 60 seconds")
+    source.backup(destination, pages=100, progress=progress, sleep=0.1)
 
 
 # ─── Migration ────────────────────────────────────────────────────────────────
@@ -360,11 +401,15 @@ def _create_db_snapshot() -> str | None:
 def _run_migrations() -> tuple[bool, str]:
     """Run Alembic migrations.  Returns (success, message)."""
     try:
-        from alembic import command
-        from alembic.config import Config
-
-        alembic_cfg = Config(str(_PROJECT_ROOT / "alembic.ini"))
-        command.upgrade(alembic_cfg, "head")
+        # A subprocess loads the updated files/dependencies instead of modules
+        # cached by the running server, and cannot change its logging config.
+        completed = subprocess.run(
+            [sys.executable, "-m", "alembic", "-c", str(_PROJECT_ROOT / "alembic.ini"), "upgrade", "head"],
+            cwd=_PROJECT_ROOT, env={**os.environ, "DATABASE_URL": settings.database_url},
+            capture_output=True, text=True, timeout=300,
+        )
+        if completed.returncode:
+            return False, "Migrationen fehlgeschlagen (Exit %s)" % completed.returncode
         return True, "Migrationen erfolgreich angewendet"
     except Exception as exc:
         logger.exception("Migration failed during update")
@@ -374,48 +419,23 @@ def _run_migrations() -> tuple[bool, str]:
 # ─── Frontend Rebuild ─────────────────────────────────────────────────────────
 
 def _rebuild_frontend() -> tuple[bool, str]:
-    """Rebuild the frontend if npm/node is available.
-
-    Returns (success, message).
-    """
-    frontend_dir = _PROJECT_ROOT / "frontend"
-    if not (frontend_dir / "package.json").exists():
-        return True, "Kein Frontend-Verzeichnis gefunden, übersprungen"
-
-    # Check if node/npm is available
+    """Build only if stale; missing npm is an error when assets need rebuilding."""
     try:
-        subprocess.run(["node", "--version"], capture_output=True, timeout=10)
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        return True, "Node.js nicht installiert, Frontend-Build übersprungen"
+        return True, ensure_frontend(_PROJECT_ROOT)
+    except (FrontendBuildError, OSError) as exc:
+        return False, str(exc)
 
+
+def _install_dependencies() -> tuple[bool, str]:
     try:
-        # Install dependencies if needed
-        result = subprocess.run(
-            ["npm", "install", "--production=false"],
-            cwd=frontend_dir,
-            capture_output=True,
-            text=True,
-            timeout=300,
-        )
-        if result.returncode != 0:
-            return False, f"npm install fehlgeschlagen: {result.stderr[:500]}"
-
-        # Build
-        result = subprocess.run(
-            ["npx", "vite", "build"],
-            cwd=frontend_dir,
-            capture_output=True,
-            text=True,
-            timeout=300,
-        )
-        if result.returncode != 0:
-            return False, f"Frontend-Build fehlgeschlagen: {result.stderr[:500]}"
-
-        return True, "Frontend erfolgreich gebaut"
-    except subprocess.TimeoutExpired:
-        return False, "Frontend-Build Zeitüberschreitung"
-    except Exception as exc:
-        return False, f"Frontend-Build Fehler: {exc}"
+        for arguments in (("install", "-r", str(_PROJECT_ROOT / "requirements.txt"), "-q"), ("check",)):
+            completed = subprocess.run([sys.executable, "-m", "pip", *arguments], cwd=_PROJECT_ROOT,
+                                       capture_output=True, text=True, timeout=300)
+            if completed.returncode:
+                return False, f"Python-Abhängigkeiten fehlgeschlagen (Exit {completed.returncode})"
+        return True, "Python-Abhängigkeiten installiert und geprüft"
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return False, f"Python-Abhängigkeiten fehlgeschlagen: {type(exc).__name__}"
 
 
 # ─── Update History ──────────────────────────────────────────────────────────
@@ -457,237 +477,276 @@ def get_update_history() -> list[dict]:
 
 # ─── Core Update Logic ───────────────────────────────────────────────────────
 
-def apply_update(target_version: str | None = None) -> dict:
-    """Apply an update from GitHub.
+def _capture_frontend() -> Path | None:
+    if not _FRONTEND_DIST.exists():
+        return None
+    validate_dist(_FRONTEND_DIST)
+    _UPDATE_DIR.mkdir(parents=True, exist_ok=True)
+    saved = Path(tempfile.mkdtemp(prefix="frontend-before-", dir=_UPDATE_DIR))
+    try:
+        shutil.copytree(_FRONTEND_DIST, saved / "dist")
+    except Exception:
+        _remove_frontend_capture(saved)
+        raise
+    return saved
 
-    Steps:
-    1. Acquire lock
-    2. Verify git repo and connectivity
-    3. Create data backup (JSON + SQLite snapshot)
-    4. Stash uncommitted changes
-    5. Git fetch + merge (or reset to tag)
-    6. Install updated Python dependencies
-    7. Run database migrations
-    8. Rebuild frontend
-    9. Record success in history
-    10. Signal restart needed
 
-    On failure at any step, rolls back to the previous commit.
+def _restore_frontend(saved: Path | None) -> bool:
+    if saved is None:
+        return False
+    staged = None
+    try:
+        staged = Path(tempfile.mkdtemp(prefix=".immomanager-build-", dir=_FRONTEND_DIST.parent))
+        shutil.copytree(saved / "dist", staged, dirs_exist_ok=True)
+        promote_dist(staged, _FRONTEND_DIST.parent)
+        return True
+    except (OSError, FrontendBuildError):
+        logger.exception("Previous frontend could not be restored")
+        return False
+    finally:
+        if staged and staged.exists() and staged.resolve().parent == _FRONTEND_DIST.parent.resolve() and not staged.is_symlink():
+            try:
+                shutil.rmtree(staged)
+            except OSError:
+                logger.warning("Frontend restore staging could not be removed", exc_info=True)
 
-    Returns a result dict with status, messages, and whether restart is needed.
+
+def _remove_frontend_capture(saved: Path | None) -> None:
+    if saved and not saved.is_symlink() and saved.resolve().parent == _UPDATE_DIR.resolve() and saved.name.startswith("frontend-before-"):
+        shutil.rmtree(saved)
+
+
+def _code_version() -> str:
+    import tomllib
+    with (_PROJECT_ROOT / "pyproject.toml").open("rb") as stream:
+        return str(tomllib.load(stream)["project"]["version"])
+
+
+def configure_runtime_paths() -> None:
+    """Refresh runtime paths after the offline CLI loads its data-directory config."""
+    global _RUNTIME_DIR, _BACKUP_DIR, _UPDATE_DIR, _LOCK_FILE, _HISTORY_FILE
+    _RUNTIME_DIR = Path(settings.data_dir).expanduser().resolve() if settings.data_dir else _PROJECT_ROOT
+    _BACKUP_DIR = Path(settings.backup_dir).expanduser().resolve() if settings.backup_dir else _RUNTIME_DIR / "backups"
+    _UPDATE_DIR = _RUNTIME_DIR / ".updates"
+    _LOCK_FILE = _UPDATE_DIR / "update.lock"
+    _HISTORY_FILE = _UPDATE_DIR / "history.json"
+
+
+def apply_update(target_version: str | None = None, *, offline: bool = False) -> dict:
+    """Apply verified updates. Offline restoration requires a stopped application.
+
+    HTTP callers always leave offline=False. This updater has no supervisor or
+    maintenance gate, so it cannot safely overwrite their live database.
     """
-    result = {
-        "success": False,
-        "message": "",
-        "steps": [],
-        "restart_required": False,
-        "backup_name": None,
-        "previous_version": settings.app_version,
-        "new_version": None,
-        "rollback_performed": False,
+    result: dict[str, Any] = {
+        "success": False, "message": "", "steps": [], "restart_required": False,
+        "backup_name": None, "previous_version": settings.app_version, "new_version": None,
+        "rollback_performed": False, "rollback_completed": False, "startup_ready": False,
+        "manual_recovery_required": False, "database_restore_required": False,
+        "frontend_restore_required": False, "frontend_backup_name": None,
+        "offline_update_required": False,
     }
-
-    # Preflight checks
     if getattr(sys, "frozen", False):
         result["message"] = "Updates sind im PyInstaller-Bundle nicht verfügbar"
         return result
-
+    if settings.is_production and not settings.update_allow_in_production:
+        result["message"] = "Updates sind in der Produktionsumgebung deaktiviert"
+        return result
     if not _is_git_repo():
         result["message"] = "Kein Git-Repository. Updates erfordern eine Git-Installation."
         return result
-
     if not settings.update_repo_url:
         result["message"] = "Kein Update-Repository konfiguriert"
         return result
-
-    # Validate target_version format if provided
-    if target_version:
-        cleaned = target_version.lstrip("vV").strip()
-        if not re.match(r"^\d+\.\d+\.\d+([a-zA-Z0-9._-]*)?$", cleaned):
-            result["message"] = f"Ungültiges Versionsformat: {target_version}"
-            return result
-
+    if target_version and not re.fullmatch(r"\d+\.\d+\.\d+([a-zA-Z0-9._-]*)?", target_version.lstrip("vV").strip()):
+        result["message"] = "Ungültiges Versionsformat"
+        return result
+    if not offline:
+        result["offline_update_required"] = True
+        result["message"] = ("Updates mit Datenbank-Migrationen erfordern eine gestoppte Anwendung. "
+                             "Bitte den Offline-Updateweg verwenden: python -m backend.maintenance --offline --data-dir <Datenordner>")
+        return result
     if not _acquire_lock():
         result["message"] = "Ein Update läuft bereits"
         return result
 
     previous_commit = _get_current_commit()
     stashed = False
-
+    code_changed = False
+    dependencies_started = False
+    migration_started = False
+    db_snapshot = None
+    saved_frontend = None
     try:
-        # Step 1: Create backups
+        if not previous_commit:
+            raise RuntimeError("Vorheriger Commit konnte nicht ermittelt werden")
+        branch = _get_current_branch()
+        if not target_version and (not branch or branch == "HEAD"):
+            raise RuntimeError("Bitte eine konkrete Update-Version für diesen detached HEAD wählen")
         result["steps"].append("Erstelle Datensicherung...")
         backup_name = _create_pre_update_backup()
         if not backup_name:
-            result["message"] = "Datensicherung fehlgeschlagen — Update abgebrochen"
-            return result
+            raise RuntimeError("Datensicherung fehlgeschlagen")
         result["backup_name"] = backup_name
         result["steps"].append(f"Backup erstellt: {backup_name}")
-
         db_snapshot = _create_db_snapshot()
+        if make_url(settings.database_url).drivername.startswith("sqlite") and not db_snapshot:
+            raise RuntimeError("SQLite-Snapshot fehlgeschlagen; Update wurde vor Änderungen abgebrochen")
         if db_snapshot:
             result["steps"].append(f"Datenbank-Snapshot erstellt: {db_snapshot}")
-
-        # Step 2: Stash local changes
+        saved_frontend = _capture_frontend()
         stashed = _stash_changes()
         if stashed:
-            result["steps"].append("Lokale Änderungen gesichert (git stash)")
-
-        # Step 3: Fetch from remote
-        result["steps"].append("Hole Updates von GitHub...")
-        branch = _get_current_branch() or "main"
-
-        fetch_result = _run_git("fetch", "origin", branch)
-        if fetch_result.returncode != 0:
-            result["message"] = f"Git fetch fehlgeschlagen: {fetch_result.stderr.strip()}"
-            _rollback(previous_commit, stashed, result)
-            return result
-
-        # Step 4: Check out target version or merge
+            result["steps"].append("Lokale Änderungen einschließlich unversionierter Dateien gesichert")
+        fetch = _run_git("fetch", "--tags", "origin", *([branch] if branch and branch != "HEAD" else []))
+        if fetch.returncode:
+            raise RuntimeError("Git fetch fehlgeschlagen")
+        code_changed = True
         if target_version:
-            # Check out a specific tag
-            tag_name = target_version if target_version.startswith("v") else f"v{target_version}"
-            # First try the tag, then without 'v' prefix
-            checkout = _run_git("checkout", tag_name)
-            if checkout.returncode != 0:
+            tag = target_version if target_version.startswith("v") else f"v{target_version}"
+            checkout = _run_git("checkout", tag)
+            if checkout.returncode:
                 checkout = _run_git("checkout", target_version)
-            if checkout.returncode != 0:
-                result["message"] = f"Version {target_version} nicht gefunden"
-                _rollback(previous_commit, stashed, result)
-                return result
-            result["steps"].append(f"Version {target_version} ausgecheckt")
+            if checkout.returncode:
+                raise RuntimeError("Gewählte Version wurde nicht gefunden")
         else:
-            # Merge latest from remote
-            merge_result = _run_git("merge", f"origin/{branch}", "--ff-only")
-            if merge_result.returncode != 0:
-                # Try rebase if fast-forward fails
-                merge_result = _run_git("merge", f"origin/{branch}")
-                if merge_result.returncode != 0:
-                    result["message"] = f"Merge fehlgeschlagen: {merge_result.stderr.strip()}"
-                    _rollback(previous_commit, stashed, result)
-                    return result
-            result["steps"].append("Code aktualisiert")
-
+            merged = _run_git("merge", f"origin/{branch}", "--ff-only")
+            if merged.returncode:
+                raise RuntimeError("Git-Update kann nicht als Fast-Forward angewendet werden")
         new_commit = _get_current_commit()
+        if not new_commit:
+            raise RuntimeError("Aktualisierter Commit konnte nicht ermittelt werden")
         if new_commit == previous_commit:
-            result["success"] = True
-            result["message"] = "Bereits auf dem neuesten Stand"
-            result["steps"].append("Keine Änderungen erforderlich")
-            if stashed:
-                _stash_pop()
-            return result
-
-        # Step 5: Install updated dependencies
-        result["steps"].append("Installiere Abhängigkeiten...")
-        pip_result = subprocess.run(
-            [sys.executable, "-m", "pip", "install", "-r", str(_PROJECT_ROOT / "requirements.txt"), "-q"],
-            capture_output=True,
-            text=True,
-            timeout=300,
-        )
-        if pip_result.returncode != 0:
-            logger.warning("pip install had issues: %s", pip_result.stderr[:500])
-            result["steps"].append("Abhängigkeiten: Warnungen (nicht kritisch)")
-        else:
-            result["steps"].append("Abhängigkeiten aktualisiert")
-
-        # Step 6: Run database migrations
-        result["steps"].append("Führe Datenbank-Migrationen aus...")
-        mig_ok, mig_msg = _run_migrations()
-        result["steps"].append(mig_msg)
-        if not mig_ok:
-            result["message"] = "Migration fehlgeschlagen — Rollback wird durchgeführt"
-            _rollback(previous_commit, stashed, result)
-            # Restore DB snapshot if available
-            if db_snapshot and "sqlite" in settings.database_url:
-                _restore_db_snapshot(db_snapshot)
-                result["steps"].append("Datenbank-Snapshot wiederhergestellt")
-            return result
-
-        # Step 7: Rebuild frontend
-        result["steps"].append("Baue Frontend neu...")
-        fe_ok, fe_msg = _rebuild_frontend()
-        result["steps"].append(fe_msg)
-        if not fe_ok:
-            result["message"] = "Frontend-Build fehlgeschlagen — Rollback wird durchgeführt"
-            _rollback(previous_commit, stashed, result)
-            if db_snapshot and "sqlite" in settings.database_url:
-                _restore_db_snapshot(db_snapshot)
-                result["steps"].append("Datenbank-Snapshot wiederhergestellt")
-            return result
-
-        # Step 8: Re-apply stashed changes
-        if stashed:
-            if _stash_pop():
-                result["steps"].append("Lokale Änderungen wiederhergestellt")
-            else:
-                result["steps"].append("Lokale Änderungen konnten nicht automatisch wiederhergestellt werden (im Stash gespeichert)")
+            code_changed = False
+            if stashed and not _stash_pop():
+                raise RuntimeError("Lokale Änderungen konnten nicht wiederhergestellt werden")
             stashed = False
+            frontend_ok, frontend_message = _rebuild_frontend()
+            result["steps"].append(frontend_message)
+            if not frontend_ok:
+                raise RuntimeError("Code ist aktuell; das Frontend ist nicht startbereit")
+            result.update(success=True, message="Bereits auf dem neuesten Stand", startup_ready=True)
+            return result
 
-        # Read new version from updated pyproject.toml
-        from .config import _get_version
-        new_version = _get_version()
-        result["new_version"] = new_version
-
-        # Success!
-        result["success"] = True
-        result["restart_required"] = True
-        result["message"] = f"Update von {settings.app_version} auf {new_version} erfolgreich"
-        result["steps"].append("Update abgeschlossen — Neustart erforderlich")
-
-        _record_update({
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "from_version": settings.app_version,
-            "to_version": new_version,
-            "from_commit": previous_commit,
-            "to_commit": new_commit,
-            "backup": backup_name,
-            "db_snapshot": db_snapshot,
-            "success": True,
-        })
-
+        dependencies_started = True
+        dependency_ok, dependency_message = _install_dependencies()
+        result["steps"].append(dependency_message)
+        if not dependency_ok:
+            raise RuntimeError("Installation der Python-Abhängigkeiten fehlgeschlagen")
+        # Build first, so missing npm or compile errors cannot leave a migrated DB.
+        frontend_ok, frontend_message = _rebuild_frontend()
+        result["steps"].append(frontend_message)
+        if not frontend_ok:
+            raise RuntimeError("Frontend-Build fehlgeschlagen")
+        migration_started = True
+        migration_ok, migration_message = _run_migrations()
+        result["steps"].append(migration_message)
+        if not migration_ok:
+            raise RuntimeError("Datenbank-Migration fehlgeschlagen")
+        version = _code_version()
+        if stashed:
+            if not _stash_pop():
+                raise RuntimeError("Lokale Änderungen konnten nicht wiederhergestellt werden; Stash bleibt erhalten")
+            stashed = False
+            result["steps"].append("Lokale Änderungen wiederhergestellt")
+        result.update(success=True, restart_required=True, startup_ready=True, new_version=version,
+                      message=f"Update auf {version} geprüft. Bitte die Anwendung manuell neu starten.")
+        result["steps"].append("Installation, Frontend und Migration erfolgreich; manueller Neustart erforderlich")
+        try:
+            _record_update({"timestamp": datetime.now(timezone.utc).isoformat(), "from_version": settings.app_version,
+                            "to_version": version, "from_commit": previous_commit, "to_commit": new_commit,
+                            "backup": backup_name, "db_snapshot": db_snapshot, "success": True})
+        except OSError:
+            logger.exception("Update history could not be written")
+            result["steps"].append("Update-Historie konnte nicht gespeichert werden")
     except Exception as exc:
-        logger.exception("Unexpected error during update")
-        # Avoid leaking internal paths or stack traces to the API response
-        result["message"] = f"Unerwarteter Fehler: {type(exc).__name__}"
-        _rollback(previous_commit, stashed, result)
+        logger.exception("Update failed")
+        result["message"] = str(exc) if isinstance(exc, RuntimeError) else f"Update fehlgeschlagen: {type(exc).__name__}"
+        if code_changed or stashed or dependencies_started:
+            _rollback(previous_commit, stashed, result, reset_code=code_changed,
+                      restore_dependencies=dependencies_started, saved_frontend=saved_frontend,
+                      db_snapshot=db_snapshot if migration_started else None,
+                      database_touched=migration_started, offline=offline)
+            if result["manual_recovery_required"]:
+                result["message"] += ". Wiederherstellung ist unvollständig; Anwendung stoppen und manuell prüfen."
+        else:
+            result["steps"].append("Update vor Änderungen abgebrochen")
+        try:
+            _record_update({"timestamp": datetime.now(timezone.utc).isoformat(), "from_version": settings.app_version,
+                            "backup": result["backup_name"], "db_snapshot": db_snapshot, "success": False,
+                            "rollback_completed": result["rollback_completed"], "message": result["message"]})
+        except OSError:
+            logger.exception("Failed update history could not be written")
     finally:
+        try:
+            if saved_frontend and result["frontend_restore_required"]:
+                result["frontend_backup_name"] = saved_frontend.name
+                result["steps"].append(f"Vorherige Frontend-Dateien bleiben für die Wiederherstellung erhalten: {saved_frontend.name}")
+            else:
+                _remove_frontend_capture(saved_frontend)
+        except OSError:
+            logger.warning("Temporary frontend capture could not be removed", exc_info=True)
         _release_lock()
-
     return result
 
 
-def _rollback(previous_commit: str | None, stashed: bool, result: dict) -> None:
-    """Roll back to the previous commit."""
-    if not previous_commit:
+def _rollback(previous_commit: str | None, stashed: bool, result: dict, *, reset_code: bool = True,
+              restore_dependencies: bool = False, saved_frontend: Path | None = None,
+              db_snapshot: str | None = None, database_touched: bool = False, offline: bool = False) -> None:
+    code_ok = not reset_code
+    if reset_code and previous_commit:
+        reset = _run_git("reset", "--hard", previous_commit)
+        code_ok = reset.returncode == 0
+        result["rollback_performed"] = code_ok
+        result["steps"].append("Vorherigen Code wiederhergestellt" if code_ok else "Code-Rollback fehlgeschlagen")
+    elif reset_code:
         result["steps"].append("Rollback nicht möglich: vorheriger Commit unbekannt")
-        return
+    stash_ok = not stashed or _stash_pop()
+    if not stash_ok:
+        result["steps"].append("Lokale Änderungen verbleiben im Git-Stash und müssen manuell geprüft werden")
+    dependencies_ok = True
+    if restore_dependencies:
+        dependencies_ok, message = _install_dependencies()
+        result["steps"].append("Vorherige Abhängigkeiten: " + message)
+    frontend_ok = True
+    if saved_frontend:
+        frontend_ok = _restore_frontend(saved_frontend)
+        result["steps"].append("Vorheriges Frontend wiederhergestellt" if frontend_ok else "Frontend-Rollback fehlgeschlagen")
+    elif restore_dependencies:
+        frontend_ok = False
+        result["steps"].append("Kein vorheriges Frontend vorhanden; passender Build erforderlich")
+    result["frontend_restore_required"] = not frontend_ok
+    database_ok = not database_touched
+    if database_touched:
+        database_ok = bool(db_snapshot and _restore_db_snapshot(db_snapshot, offline=offline))
+        result["database_restore_required"] = not database_ok
+        result["steps"].append("Datenbank-Snapshot geprüft und wiederhergestellt" if database_ok else
+                               "Datenbank nicht automatisch wiederhergestellt; Anwendung stoppen und Snapshot manuell zurückspielen")
+    complete = code_ok and stash_ok and dependencies_ok and frontend_ok and database_ok
+    result.update(rollback_completed=complete, startup_ready=complete, manual_recovery_required=not complete,
+                  restart_required=restore_dependencies)
 
-    logger.warning("Rolling back to commit %s", previous_commit)
-    reset = _run_git("reset", "--hard", previous_commit)
-    if reset.returncode == 0:
-        result["steps"].append(f"Rollback auf {previous_commit[:8]} durchgeführt")
-        result["rollback_performed"] = True
-    else:
-        result["steps"].append(f"Rollback fehlgeschlagen: {reset.stderr.strip()}")
 
-    if stashed:
-        _stash_pop()
-
-
-def _restore_db_snapshot(snapshot_name: str) -> bool:
-    """Restore a SQLite database snapshot."""
-    if "sqlite" not in settings.database_url:
+def _restore_db_snapshot(snapshot_name: str, *, offline: bool = False) -> bool:
+    """Restore via SQLite's backup API only after the application was stopped."""
+    if not offline:
+        logger.error("Refusing to overwrite a live database without a maintenance gate")
         return False
-
-    db_path = Path(settings.database_url.replace("sqlite:///", ""))
+    db_path = _sqlite_database_path()
     snapshot_path = _BACKUP_DIR / snapshot_name
-
-    if not snapshot_path.exists():
+    if db_path is None or snapshot_path.is_symlink() or snapshot_path.resolve().parent != _BACKUP_DIR.resolve() or not snapshot_path.is_file():
         return False
-
     try:
-        shutil.copy2(snapshot_path, db_path)
+        if snapshot_path.with_suffix(".db.sha256").read_text(encoding="ascii").strip() != _file_checksum(snapshot_path):
+            raise RuntimeError("Snapshot checksum mismatch")
+        database_module = sys.modules.get("backend.db.session")
+        if database_module is not None:
+            database_module.engine.dispose()
+        with closing(sqlite3.connect(_readonly_uri(snapshot_path), uri=True, timeout=10)) as source:
+            _verify_sqlite(source)
+            with closing(sqlite3.connect(db_path, timeout=10)) as destination:
+                _sqlite_backup(source, destination)
+                _verify_sqlite(destination)
         logger.info("Database restored from snapshot: %s", snapshot_name)
         return True
     except Exception:
@@ -698,22 +757,13 @@ def _restore_db_snapshot(snapshot_name: str) -> bool:
 # ─── Restart Signal ──────────────────────────────────────────────────────────
 
 def signal_restart() -> dict:
-    """Signal that the application should restart.
-
-    For uvicorn, we create a touch file that a process manager (systemd, etc.)
-    can watch.  The endpoint returns instructions for manual restart if no
-    process manager is detected.
-    """
-    touch_file = _UPDATE_DIR / "restart_requested"
-    _UPDATE_DIR.mkdir(parents=True, exist_ok=True)
-    touch_file.write_text(datetime.now(timezone.utc).isoformat())
-
+    """Report manual restart instructions; there is no marker-file supervisor."""
     return {
-        "restart_signaled": True,
+        "restart_signaled": False,
+        "restart_required": True,
+        "manual_restart_required": True,
         "message": (
-            "Neustart-Signal gesetzt. "
-            "Bitte starten Sie die Anwendung neu, um das Update zu aktivieren. "
-            "Befehl: python -m backend"
+            "Ein automatischer Neustart ist nicht eingerichtet. Bitte die Anwendung stoppen "
+            "und mit start.bat bzw. python -m backend erneut starten."
         ),
-        "touch_file": str(touch_file),
     }

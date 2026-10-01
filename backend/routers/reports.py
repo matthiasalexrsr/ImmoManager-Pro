@@ -36,6 +36,7 @@ def get_summary(format: str | None = Query(None, alias="format")):
         units=store.list_units(),
         contracts=store.list_contracts(),
         receivables=store.list_receivables(),
+        rent_charges=store.list_rent_charges(),
         bookings=store.list_bookings(),
         invoices=store.list_invoices(),
         maintenance_cases=store.list_maintenance_cases(),
@@ -98,6 +99,7 @@ def get_occupancy_report(format: str | None = Query(None, alias="format")):
 def get_receivables_aging(format: str | None = Query(None, alias="format")):
     data = report_service.compute_receivables_aging(
         receivables=store.list_receivables(),
+        rent_charges=store.list_rent_charges(),
     )
 
     if format == "csv":

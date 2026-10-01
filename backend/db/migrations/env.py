@@ -9,6 +9,7 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+from backend.db.auth_models import AuthSetupORM  # noqa: F401 — register auth metadata
 from backend.db.orm_models import Base
 
 config = context.config
@@ -19,7 +20,7 @@ if database_url:
     config.set_main_option("sqlalchemy.url", database_url)
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = Base.metadata
 

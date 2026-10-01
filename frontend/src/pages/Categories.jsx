@@ -1,10 +1,11 @@
-import { useEntities } from '../contexts/DataStoreContext';
 import { useTranslation } from '../i18n';
-import CrudPage from './CrudPage';
+import FinanceCrudPage from '../components/FinanceCrudPage';
+import { useFinanceData } from '../hooks/useFinanceData';
 
 export default function Categories() {
   const { t } = useTranslation();
-  const { items: portfolios } = useEntities('portfolios', '/portfolios');
+  const listState = useFinanceData({"items": "/categories", "portfolios": "/portfolios"});
+  const { portfolios } = listState.data;
 
   const COLUMNS = [
     { key: 'name', label: t('pages.categories.columns.name') || 'Name', filterType: 'text' },
@@ -23,5 +24,5 @@ export default function Categories() {
     ]},
   ];
 
-  return <CrudPage title={t('pages.categories.title') || 'Kategorien'} endpoint="/categories" columns={COLUMNS} formFields={fields} />;
+  return <FinanceCrudPage relatedKeys={['bookings']} listState={listState} title={t('pages.categories.title') || 'Kategorien'} endpoint="/categories" columns={COLUMNS} formFields={fields} />;
 }

@@ -14,6 +14,8 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import BinaryIO, Optional
 
+from ..paths import get_uploads_dir
+
 logger = logging.getLogger(__name__)
 
 
@@ -75,8 +77,11 @@ class LocalStorage(FileStorage):
         return str(path)
 
     def get(self, key: str) -> Optional[bytes]:
-        path = self._path(key)
-        if not path.exists():
+        try:
+            path = self._path(key)
+        except ValueError:
+            return None
+        if not path.is_file():
             return None
         return path.read_bytes()
 
@@ -173,7 +178,7 @@ class S3Storage(FileStorage):
 
 
 # Default: local storage
-_storage: FileStorage = LocalStorage()
+_storage: FileStorage = LocalStorage(str(get_uploads_dir()))
 
 
 def get_file_storage() -> FileStorage:

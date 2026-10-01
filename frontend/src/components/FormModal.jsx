@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from '../i18n';
 import { CloseIcon } from './Icons';
 
-export default function FormModal({ title, fields, initial, onSave, onClose }) {
+export default function FormModal({ title, fields, initial, onSave, onClose, children, saveDisabled = false, closeOnSave = true, saveLabel }) {
   const { t } = useTranslation();
   const [values, setValues] = useState({});
   const [error, setError] = useState(null);
@@ -55,6 +55,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (saving || saveDisabled) return;
     setSaving(true);
     setError(null);
     try {
@@ -73,13 +74,17 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
         cleaned[f.key] = v;
       });
       await onSave(cleaned);
-      onClose();
+      if (closeOnSave) onClose();
     } catch (err) {
       setError(err.message);
     } finally {
       setSaving(false);
     }
   };
+
+  const changeField = (field, value) => setValues(current => ({
+    ...current, [field.key]: value, ...field.onChange?.(value, current),
+  }));
 
   return (
     <div className="modal-overlay" onClick={onClose} role="presentation">
@@ -100,6 +105,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
         <form onSubmit={handleSubmit}>
           <div className="modal-body">
             {error && <div className="alert-error" role="alert">{error}</div>}
+            {children}
             {(() => {
               const renderField = (f) => {
                 if (f.type === 'hidden') {
@@ -109,21 +115,23 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
                 return (
                   <div key={f.key} className="form-group">
                     <label htmlFor={inputId}>{f.label}{f.required && ' *'}</label>
-                    {f.type === 'select' ? (
+                    {['select', 'multiselect'].includes(f.type) ? (
                       <select
                         id={inputId}
-                        value={values[f.key] || ''}
-                        onChange={e => setValues({ ...values, [f.key]: e.target.value })}
+                        value={f.type === 'multiselect' ? values[f.key] || [] : values[f.key] || ''}
+                        multiple={f.type === 'multiselect'}
+                        onChange={e => changeField(f, f.type === 'multiselect'
+                          ? [...e.target.selectedOptions].map(option => option.value) : e.target.value)}
                         required={f.required}
                       >
-                        <option value="">{t('ui.form.pleaseSelect')}</option>
+                        {f.type !== 'multiselect' && <option value="">{t('ui.form.pleaseSelect')}</option>}
                         {f.options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                       </select>
                     ) : f.type === 'textarea' ? (
                       <textarea
                         id={inputId}
                         value={values[f.key] || ''}
-                        onChange={e => setValues({ ...values, [f.key]: e.target.value })}
+                        onChange={e => changeField(f, e.target.value)}
                         required={f.required}
                         rows={3}
                       />
@@ -132,11 +140,11 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
                         id={inputId}
                         type={f.type || 'text'}
                         value={values[f.key] ?? ''}
-                        onChange={e => setValues({ ...values, [f.key]: e.target.value })}
+                        onChange={e => changeField(f, e.target.value)}
                         required={f.required}
                         step={f.type === 'number' ? '0.01' : undefined}
                         min={f.min}
-                        max={f.max}
+                        max={typeof f.max === 'function' ? f.max(values) : f.max}
                         placeholder={f.placeholder}
                       />
                     )}
@@ -170,8 +178,8 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
           </div>
           <div className="modal-footer">
             <button type="button" onClick={onClose} className="btn btn-secondary">{t('ui.buttons.cancel')}</button>
-            <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? `${t('ui.buttons.save')}...` : t('ui.buttons.save')}
+            <button type="submit" className="btn btn-primary" disabled={saving || saveDisabled}>
+              {saving ? `${saveLabel || t('ui.buttons.save')}...` : saveLabel || t('ui.buttons.save')}
             </button>
           </div>
         </form>

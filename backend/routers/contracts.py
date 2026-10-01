@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from ..dependencies import store
 from ..domain.lease_engine import ChargeConfig, LeaseEngine, PaymentLine
 from ..models import Contract, ContractCreate, ContractPatch
+from ..services.rent_ledger import contract_ledger_inputs, ungenerated_contract_preview
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/contracts", tags=["Verträge"])
@@ -117,22 +118,26 @@ def _build_charge_and_payments(contract: Contract) -> tuple[ChargeConfig, list[P
         service_charge_advance=Decimal(str(unit.service_charge_advance or 0)),
         heating_advance=Decimal(str(unit.heating_advance or 0)),
     )
-    # Filter bookings by tenant, scoped to this contract's property when possible
+    receipts = store.list_payments()
+    linked_bookings = {receipt.booking_id for receipt in receipts if receipt.booking_id}
+    # Preserve historical tenant matches only for bookings with no explicit allocation.
     payments = [
         PaymentLine(
             booking_date=booking.booking_date,
             amount=Decimal(str(booking.amount)),
         )
         for booking in store.list_bookings()
-        if booking.tenant_id == contract.tenant_id
+        if booking.id not in linked_bookings
+        and booking.tenant_id == contract.tenant_id
         and (not booking.property_id or booking.property_id == contract.property_id)
+        and (not booking.unit_id or booking.unit_id == contract.unit_id)
         and booking.amount > 0
     ]
     charge_ids = {item.id for item in store.list_rent_charges() if item.contract_id == contract.id}
     payments.extend(
         PaymentLine(booking_date=receipt.payment_date, amount=receipt.amount)
-        for receipt in store.list_payments("rent_charge")
-        if receipt.entity_id in charge_ids
+        for receipt in receipts
+        if receipt.entity_type == "rent_charge" and receipt.entity_id in charge_ids and not receipt.reversal
     )
     return charge, payments
 
@@ -150,6 +155,7 @@ def get_contract_settlement(
 
     today = as_of or date.today()
     charge, payments = _build_charge_and_payments(contract)
+    charge_lines, payments = contract_ledger_inputs(store, contract, today)
 
     dashboard = LeaseEngine.build_dashboard(
         contract_start=contract.start_date,
@@ -157,9 +163,12 @@ def get_contract_settlement(
         charge=charge,
         payments=payments,
         today=today,
+        charge_lines=charge_lines,
     )
 
     result = asdict(dashboard)
+    result["source"] = "booked_rent_charges"
+    result["ungenerated_preview"] = ungenerated_contract_preview(store, contract, today)
     # Convert Decimal/date values for JSON serialisation
     return _serialise(result)
 
@@ -180,6 +189,7 @@ def create_dunning_campaign(
 
     today = as_of or date.today()
     charge, payments = _build_charge_and_payments(contract)
+    charge_lines, payments = contract_ledger_inputs(store, contract, today)
 
     dunning_policy = None
     if policy:
@@ -199,6 +209,7 @@ def create_dunning_campaign(
         payments=payments,
         today=today,
         policy=dunning_policy,
+        charge_lines=charge_lines,
     )
 
     return _serialise(asdict(campaign))

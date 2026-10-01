@@ -69,12 +69,13 @@ class IntegrationManager:
             "planned": manifest.planned,
             "enabled": enabled,
             "configured": configured,
+            "operational": not manifest.planned and enabled and configured and health.get("status") == "ok",
             "capabilities": manifest.capabilities,
             "health": health,
             "config": self._safe_config(manifest, config),
             "required_config_keys": manifest.required_config_keys,
             "secret_config_keys": manifest.secret_config_keys,
-            "message": self._to_message(configured=configured, enabled=enabled, health=health),
+            "message": "Geplant — Adapter noch nicht implementiert" if manifest.planned else self._to_message(configured=configured, enabled=enabled, health=health),
         }
 
     def get_schema(self, integration_id: str) -> dict:
@@ -131,6 +132,10 @@ class IntegrationManager:
             return result
 
         config = self._config.get(integration_id, {})
+        if provider.manifest.planned:
+            result = {"success": False, "message": "Adapter noch nicht implementiert; keine externe Aktion ausgeführt", "details": {"planned": True, "implemented": False}}
+            self._append_history(integration_id, payload, result)
+            return result
         validation = self.validate_config(integration_id, config)
         if not validation.get("valid"):
             result = {

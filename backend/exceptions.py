@@ -182,7 +182,9 @@ def register_exception_handlers(app: FastAPI) -> None:
             exc.status_code, request.method, request.url.path,
             code.value, msg, ctx,
         )
-        return _error_response(exc.status_code, code, msg)
+        response = _error_response(exc.status_code, code, msg)
+        response.headers.update(exc.headers or {})
+        return response
 
     @app.exception_handler(Exception)
     async def general_exception_handler(request: Request, exc: Exception):

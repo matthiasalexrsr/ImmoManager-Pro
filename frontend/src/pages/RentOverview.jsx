@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { api } from '../api';
 import DataTable from '../components/DataTable';
 import StatusBadge from '../components/StatusBadge';
@@ -6,6 +6,7 @@ import { useTranslation } from '../i18n';
 import { useAuth } from '../contexts/AuthContext';
 import { useDataStore } from '../contexts/DataStoreContext';
 import FormModal from '../components/FormModal';
+import BankPaymentModal from '../components/BankPaymentModal';
 
 function enrich(items, type, contracts, tenants, units) {
   const contractMap = Object.fromEntries(contracts.map(row => [row.id, row]));
@@ -19,6 +20,7 @@ function enrich(items, type, contracts, tenants, units) {
     const paid = Number(item.amount_paid || 0);
     return {
       ...item, entityType: type,
+      tenant_id: contract?.tenant_id, property_id: contract?.property_id, unit_id: contract?.unit_id,
       contract_number: contract?.contract_number || '—',
       tenant_name: tenantMap[contract?.tenant_id]?.full_name || '—',
       unit_label: unitMap[contract?.unit_id]?.label || '—',
@@ -39,6 +41,8 @@ export default function RentOverview() {
   const [tab, setTab] = useState('rent_charge');
   const [paymentModal, setPaymentModal] = useState(null);
   const [history, setHistory] = useState(null);
+  const [reversalModal, setReversalModal] = useState(null);
+  const historyRequest = useRef(0);
   const [success, setSuccess] = useState(false);
   const [onlyOpen, setOnlyOpen] = useState(true);
 
@@ -63,25 +67,52 @@ export default function RentOverview() {
   const fmt = value => new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR' }).format(value || 0);
   const text = key => t(`pages.rentOverview.${key}`);
   const endpoint = row => `/${row.entityType === 'rent_charge' ? 'rent-charges' : 'receivables'}/${row.id}/payments`;
-  const startPayment = row => {
+  const startPayment = (row, kind = 'manual') => {
     setSuccess(false);
     const now = new Date();
     const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    setPaymentModal({ row, key: crypto.randomUUID(), initial: { amount: row.remaining, payment_date: localDate } });
+    setPaymentModal({ row, kind, key: crypto.randomUUID(), initial: { amount: row.remaining, payment_date: localDate } });
   };
   const handleRecordPayment = async values => {
     await api.post(endpoint(paymentModal.row), { ...values, idempotency_key: paymentModal.key });
-    setSuccess(true);
-    cache?.invalidateRelated('rent_charges', 'receivables');
+    setSuccess(paymentModal.kind === 'bank' ? 'allocationSaved' : 'paymentSaved');
+    cache?.invalidateRelated('rent_charges', 'receivables', 'bookings');
     setRevision(value => value + 1);
   };
   const showHistory = async row => {
+    const request = ++historyRequest.current;
     setHistory({ row, loading: true, payments: [] });
     try {
       const payments = await api.get(endpoint(row));
-      setHistory(current => current?.row.id === row.id ? { row, payments, loading: false } : current);
+      setHistory(current => request === historyRequest.current && current?.row.id === row.id
+        && current.row.entityType === row.entityType ? { row, payments, loading: false } : current);
     } catch (err) {
-      setHistory(current => current?.row.id === row.id ? { row, error: err.message, payments: [], loading: false } : current);
+      setHistory(current => request === historyRequest.current && current?.row.id === row.id
+        && current.row.entityType === row.entityType ? { row, error: err.message, payments: [], loading: false } : current);
+    }
+  };
+  const startReversal = payment => {
+    setReversalModal({ row: history.row, payment, key: crypto.randomUUID(),
+      initial: { reversal_date: new Date().toLocaleDateString('sv-SE') } });
+  };
+  const handleReversal = async values => {
+    const reason = values.reason?.trim();
+    if (!reason) throw new Error(text('reasonRequired'));
+    const row = reversalModal.row;
+    await api.post(`${endpoint(row)}/${reversalModal.payment.id}/reversal`, {
+      ...values, reason, idempotency_key: reversalModal.key,
+    });
+    setSuccess('reversalSaved');
+    cache?.invalidateRelated('rent_charges', 'receivables', 'bookings');
+    setRevision(value => value + 1);
+    const request = ++historyRequest.current;
+    try {
+      const payments = await api.get(endpoint(row));
+      setHistory(current => request === historyRequest.current && current?.row.id === row.id
+        && current.row.entityType === row.entityType ? { row, payments, loading: false } : current);
+    } catch (err) {
+      setHistory(current => request === historyRequest.current && current?.row.id === row.id
+        && current.row.entityType === row.entityType ? { ...current, error: err.message, loading: false } : current);
     }
   };
   const columns = [
@@ -98,6 +129,9 @@ export default function RentOverview() {
         {!auth?.isReadonly && <button className="btn btn-sm btn-primary"
           disabled={row.remaining <= 0 || ['paid', 'cancelled', 'void'].includes(row.status)}
           onClick={() => startPayment(row)}>{text('recordPayment')}</button>}
+        {!auth?.isReadonly && <button className="btn btn-sm btn-secondary"
+          disabled={row.remaining <= 0 || ['paid', 'cancelled', 'void'].includes(row.status)}
+          onClick={() => startPayment(row, 'bank')}>{text('allocateBooking')}</button>}
         <button className="btn btn-sm btn-secondary" onClick={() => showHistory(row)}>{text('history')}</button>
       </div>
     ) },
@@ -118,7 +152,7 @@ export default function RentOverview() {
       </div>
       <label className="rent-open-filter"><input type="checkbox" checked={onlyOpen}
         onChange={event => setOnlyOpen(event.target.checked)} /> {text('onlyOpen')}</label>
-      {success && <div role="status" className="alert alert-success">{text('paymentSaved')}</div>}
+      {success && <div role="status" className="alert alert-success">{text(success)}</div>}
       {error && <div role="alert" className="alert alert-error">{error} <button className="btn btn-secondary"
         onClick={() => setRevision(value => value + 1)}>{text('retry')}</button></div>}
       {loading ? <div className="page-loading">{t('pages.loading')}</div> : !error && <>
@@ -131,21 +165,34 @@ export default function RentOverview() {
         <DataTable title={text(tab === 'rent_charge' ? 'charges' : 'receivables')} columns={columns}
           data={onlyOpen ? data.filter(row => row.remaining > 0 && !['paid', 'cancelled', 'void'].includes(row.status)) : data} />
       </>}
-      {paymentModal && <FormModal title={`${text('recordPayment')} — ${paymentModal.row.tenant_name}`}
+      {paymentModal?.kind === 'bank' && <BankPaymentModal row={paymentModal.row}
+        onSave={handleRecordPayment} onClose={() => setPaymentModal(null)} />}
+      {paymentModal?.kind === 'manual' && <FormModal title={`${text('recordPayment')} — ${paymentModal.row.tenant_name}`}
         fields={[
           { key: 'amount', label: text('paymentAmount'), type: 'number', required: true, min: 0.01, max: paymentModal.row.remaining },
           { key: 'payment_date', label: text('paymentDate'), type: 'date', required: true },
           { key: 'note', label: text('note'), type: 'textarea' },
         ]}
         initial={paymentModal.initial} onSave={handleRecordPayment} onClose={() => setPaymentModal(null)} />}
+      {reversalModal && <FormModal title={`${text('reversePayment')} — ${fmt(Number(reversalModal.payment.amount))}`}
+        fields={[
+          { key: 'reversal_date', label: text('reversalDate'), type: 'date', required: true },
+          { key: 'reason', label: text('reversalReason'), type: 'textarea', required: true },
+        ]} initial={reversalModal.initial} onSave={handleReversal} onClose={() => setReversalModal(null)}>
+        <p>{text(reversalModal.payment.booking_id ? 'reverseAllocationHelp' : 'reversalHelp')}</p>
+      </FormModal>}
       {history && <div className="rent-payment-history" role="region" aria-label={text('history')}>
         <div className="page-header"><h2>{text('history')} — {history.row.tenant_name} ({history.row.month})</h2>
-          <button className="btn btn-secondary" onClick={() => setHistory(null)}>{t('ui.buttons.close')}</button></div>
+          <button className="btn btn-secondary" onClick={() => { historyRequest.current += 1; setHistory(null); }}>{t('ui.buttons.close')}</button></div>
         {history.loading ? <p>{t('pages.loading')}</p> : history.error ? <p role="alert">{history.error}</p>
           : <DataTable title={text('history')} data={history.payments} columns={[
             { key: 'payment_date', label: text('paymentDate'), type: 'date' },
             { key: 'amount', label: text('paymentAmount'), render: value => fmt(Number(value)) },
             { key: 'note', label: text('note') },
+            { key: 'source', label: text('paymentSource'), render: (_, receipt) => text(receipt.booking_id ? 'bankLinked' : 'manualPayment') },
+            { key: 'reversal', label: text('status'), render: value => value ? `${text('reversed')} · ${value.reversal_date} · ${value.reason}` : text('posted') },
+            ...(!auth?.isReadonly ? [{ key: 'actions', label: text('actions'), render: (_, receipt) => !receipt.reversal
+              && <button className="btn btn-sm btn-secondary" onClick={() => startReversal(receipt)}>{text('reversePayment')}</button> }] : []),
           ]} />}
       </div>}
     </div>

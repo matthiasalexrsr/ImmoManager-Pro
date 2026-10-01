@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useMemo } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
-import { useToast } from '../components/Toast';
-import { useEntities, useDataStore } from '../contexts/DataStoreContext';
+import { useFinanceData } from '../hooks/useFinanceData';
+import FinanceLoadState from '../components/FinanceLoadState';
+import { useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
@@ -54,73 +55,40 @@ const READING_COLUMNS = [
 export default function Meters() {
   const { t } = useTranslation();
   const confirm = useConfirm();
-  const toast = useToast();
   const store = useDataStore();
-  const { items: units } = useEntities('units', '/units');
-  const { items: properties } = useEntities('properties', '/properties');
-  const [meters, setMeters] = useState([]);
-  const [selectedMeter, setSelectedMeter] = useState(null);
-  const [readings, setReadings] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [selectedMeterId, setSelectedMeterId] = useState(null);
+  const [actionError, setActionError] = useState(null);
   const [modal, setModal] = useState(null);
   const [groupBy, setGroupBy] = useState('none'); // 'none' | 'property' | 'type' | 'supplier'
 
-  const refreshData = useCallback(() => {
-    const unitMap = Object.fromEntries(units.map(x => [x.id, x]));
-    const propMap = Object.fromEntries(properties.map(x => [x.id, x]));
-
-    api.get('/meters').catch(() => []).then(m => {
-      const enriched = (m || []).map(meter => {
-        const unit = unitMap[meter.unit_id];
-        const prop = unit?.property_id ? propMap[unit.property_id] : null;
-        return {
-          ...meter,
-          unit_label: unit?.label || meter.unit_id || '—',
-          property_name: prop?.name || '—',
-          property_id: unit?.property_id || null,
-          last_reading_value: '—',
-          last_reading_date: '—',
-        };
-      });
-
-      api.get('/meters/readings/all').then(allReadings => {
-        const readingsByMeter = {};
-        (allReadings || []).forEach(r => {
-          if (!readingsByMeter[r.meter_id]) readingsByMeter[r.meter_id] = [];
-          readingsByMeter[r.meter_id].push(r);
-        });
-
-        enriched.forEach(meter => {
-          const meterReadings = readingsByMeter[meter.id] || [];
-          if (meterReadings.length > 0) {
-            const sorted = meterReadings.sort((a, b) =>
-              (b.reading_date || '').localeCompare(a.reading_date || '')
-            );
-            meter.last_reading_value = sorted[0].value;
-            meter.last_reading_date = sorted[0].reading_date;
-          }
-        });
-
-        setMeters([...enriched]);
-      }).catch(() => setMeters(enriched));
-    }).catch(() => { toast.error('Zählerstände konnten nicht geladen werden'); }).finally(() => setLoading(false));
-  }, [units, properties, toast]);
-
-  useEffect(() => { refreshData(); }, [refreshData]);
-
-  const handleSelectMeter = (meter) => {
-    setSelectedMeter(meter);
-    api.get(`/meters/${meter.id}/readings`).then(r => {
-      const sorted = (r || []).sort((a, b) =>
-        (a.reading_date || '').localeCompare(b.reading_date || '')
-      );
-      const withConsumption = sorted.map((rd, i) => ({
-        ...rd,
-        consumption: i > 0 ? rd.value - sorted[i - 1].value : null,
-      }));
-      setReadings(withConsumption);
-    }).catch(() => setReadings([]));
-  };
+  const { data: { rawMeters, allReadings, units, properties }, loading, error, reload: refreshData } = useFinanceData({
+    rawMeters: '/meters', allReadings: '/meters/readings/all', units: '/units', properties: '/properties',
+  });
+  const readingsByMeter = useMemo(() => {
+    const grouped = new Map();
+    const ordered = [...allReadings].sort((a, b) => (a.reading_date || '').localeCompare(b.reading_date || ''));
+    for (const reading of ordered) {
+      if (!grouped.has(reading.meter_id)) grouped.set(reading.meter_id, []);
+      grouped.get(reading.meter_id).push(reading);
+    }
+    return grouped;
+  }, [allReadings]);
+  const meters = useMemo(() => {
+    const unitMap = Object.fromEntries(units.map(unit => [unit.id, unit]));
+    const propertyMap = Object.fromEntries(properties.map(property => [property.id, property]));
+    return rawMeters.map(meter => {
+      const unit = unitMap[meter.unit_id];
+      const latest = readingsByMeter.get(meter.id)?.at(-1);
+      return { ...meter, unit_label: unit?.label || meter.unit_id || '—',
+        property_name: propertyMap[unit?.property_id]?.name || '—', property_id: unit?.property_id || null,
+        last_reading_value: latest?.value ?? '—', last_reading_date: latest?.reading_date ?? '—' };
+    });
+  }, [rawMeters, units, properties, readingsByMeter]);
+  const selectedMeter = meters.find(meter => meter.id === selectedMeterId) || null;
+  const readings = (readingsByMeter.get(selectedMeterId) || []).map((reading, index, rows) => ({
+    ...reading, consumption: index > 0 ? Number(reading.value) - Number(rows[index - 1].value) : null,
+  }));
+  const handleSelectMeter = meter => setSelectedMeterId(meter.id);
 
   const meterFields = [
     { key: 'unit_id', label: 'Einheit', type: 'select', required: true,
@@ -156,6 +124,7 @@ export default function Meters() {
     } else if (modal && modal.id) {
       await api.put(`/meters/${modal.id}`, data);
     }
+    setModal(null);
     refreshData();
     if (store) store.invalidateRelated('meters', 'units');
   };
@@ -163,20 +132,25 @@ export default function Meters() {
   const handleSaveReading = async (data) => {
     const meterId = data.meter_id;
     await api.post(`/meters/${meterId}/readings`, data);
+    setModal(null);
     refreshData();
     if (store) store.invalidateRelated('meters', 'units');
-    if (selectedMeter) handleSelectMeter(selectedMeter);
   };
 
   const handleDeleteMeter = async (row) => {
     if (!await confirm(`"${row.serial_number || row.id}" ${t('modals.confirmDelete.body')}`)) return;
-    await api.del(`/meters/${row.id}`);
-    if (selectedMeter?.id === row.id) {
-      setSelectedMeter(null);
-      setReadings([]);
+    setActionError(null);
+    try {
+      await api.del(`/meters/${row.id}`);
+      if (selectedMeter?.id === row.id) {
+        setSelectedMeterId(null);
+      }
+      setModal(null);
+      refreshData();
+      if (store) store.invalidateRelated('meters', 'units');
+    } catch (err) {
+      setActionError(err.message);
     }
-    refreshData();
-    if (store) store.invalidateRelated('meters', 'units');
   };
 
   // Group meters
@@ -213,12 +187,13 @@ export default function Meters() {
     ),
   };
 
-  if (loading) return <div className="page-loading">Laden...</div>;
+  if (loading || error) return <FinanceLoadState loading={loading} error={error} onRetry={refreshData} />;
 
   const grouped = getGroupedMeters();
 
   return (
     <div className="page">
+      {actionError && <div className="alert alert-error" role="alert">{actionError}</div>}
       {/* Summary Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
         <div className="panel" style={{ padding: '1rem', textAlign: 'center' }}>
@@ -303,7 +278,7 @@ export default function Meters() {
                 <button className="btn btn-sm btn-secondary" onClick={() => setModal(selectedMeter)}>
                   Zähler bearbeiten
                 </button>
-                <button className="btn btn-sm btn-secondary" onClick={() => { setSelectedMeter(null); setReadings([]); }}>
+                <button className="btn btn-sm btn-secondary" onClick={() => { setSelectedMeterId(null); }}>
                   Schließen
                 </button>
               </div>

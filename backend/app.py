@@ -14,7 +14,7 @@ from fastapi import Body, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from starlette.responses import FileResponse, RedirectResponse
+from starlette.responses import RedirectResponse
 
 from .config import settings
 from .exceptions import register_exception_handlers
@@ -27,8 +27,10 @@ from .middleware import (
     RequestLoggingMiddleware,
 )
 from .paths import ensure_runtime_dirs, get_uploads_dir
-from .plugins import get_plugins, load_plugins
+from .plugins import get_plugins, load_plugins, start_plugins, stop_plugins
+from .plugins.runtime import AuthenticatedPlugin
 from .routing import build_api_v1, get_i18n_router
+from .static_access import PrivateStaticFiles, frontend_response
 
 # Initialize logging first
 setup_logging()
@@ -107,19 +109,13 @@ async def lifespan(app: FastAPI):
         except Exception:
             logger.exception("Auto-migration failed")
 
+    # Check core configuration before starting third-party lifecycle hooks.
+    _validate_startup_config()
+
     # Load plugins
     if settings.plugin_dirs:
         loaded = load_plugins(settings.plugin_dirs)
-        for plugin in loaded:
-            try:
-                plugin.register_routes(app, f"/api/v1/plugins/{plugin.name}")
-                plugin.on_startup()
-                logger.info("Plugin loaded: %s v%s", plugin.name, plugin.version)
-            except Exception:
-                logger.exception("Failed to start plugin: %s", plugin.name)
-
-    # --- Production safety checks ---
-    _validate_startup_config()
+        start_plugins(app, loaded)
 
     # Auto-seed demo data only when explicitly enabled
     if settings.auto_seed_demo_data:
@@ -145,19 +141,16 @@ async def lifespan(app: FastAPI):
                 logger.debug("Periodic auth cleanup error (non-fatal)", exc_info=True)
 
     cleanup_task = asyncio.create_task(_periodic_auth_cleanup())
+    from .dependencies import cleanup_session
+    cleanup_session()
 
-    yield
-
-    cleanup_task.cancel()
-
-    # Shutdown plugins
-    for plugin in get_plugins():
-        try:
-            plugin.on_shutdown()
-        except Exception:
-            logger.exception("Error shutting down plugin: %s", plugin.name)
-
-    logger.info("ImmoManager Pro shutting down")
+    try:
+        yield
+    finally:
+        cleanup_task.cancel()
+        stop_plugins(app, get_plugins())
+        cleanup_session()
+        logger.info("ImmoManager Pro shutting down")
 
 
 # ─── App ─────────────────────────────────────────────────────────────────────
@@ -183,9 +176,9 @@ app.add_middleware(
 # Application middleware (added in reverse execution order)
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(AcceptLanguageMiddleware)
-app.add_middleware(DBSessionMiddleware)
 app.add_middleware(AuditMiddleware)
 app.add_middleware(RBACWriteGuardMiddleware)
+app.add_middleware(DBSessionMiddleware)
 
 
 # ─── API Routers ─────────────────────────────────────────────────────────────
@@ -195,7 +188,7 @@ app.include_router(get_i18n_router())
 
 _UPLOADS_DIR = get_uploads_dir()
 _UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=_UPLOADS_DIR), name="uploads")
+app.mount("/uploads", AuthenticatedPlugin(PrivateStaticFiles(directory=_UPLOADS_DIR)), name="uploads")
 
 
 # ─── Contract Wizard ─────────────────────────────────────────────────────────
@@ -361,7 +354,4 @@ if _FRONTEND_DIR is not None:
 
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
-        file_path = _frontend_dir / full_path
-        if full_path and file_path.is_file():
-            return FileResponse(file_path)
-        return FileResponse(_frontend_dir / "index.html")
+        return frontend_response(_frontend_dir, full_path)

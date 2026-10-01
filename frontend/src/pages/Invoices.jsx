@@ -1,7 +1,9 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { api } from '../api';
+import { useFinanceData } from '../hooks/useFinanceData';
+import FinanceLoadState from '../components/FinanceLoadState';
 import { useTranslation } from '../i18n';
-import { useEntities, useDataStore } from '../contexts/DataStoreContext';
+import { useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
@@ -50,27 +52,15 @@ export default function Invoices() {
   const { t } = useTranslation();
   const confirm = useConfirm();
   const store = useDataStore();
-  const { items: properties } = useEntities('properties', '/properties');
-  const { items: taxRates } = useEntities('taxRates', '/tax-rates');
-  const [invoices, setInvoices] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { data: { invoices, properties, taxRates }, loading, error, reload: refreshData } = useFinanceData({
+    invoices: '/invoices',
+    properties: '/properties',
+    taxRates: '/tax-rates',
+  });
   const [modal, setModal] = useState(null);
+  const [actionError, setActionError] = useState(null);
   const [filter, setFilter] = useState('all');
 
-  const refreshData = () => {
-    setLoading(true);
-    api.get('/invoices').catch(() => [])
-      .then(inv => setInvoices(Array.isArray(inv) ? inv : []))
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(() => {
-    let cancelled = false;
-    api.get('/invoices').catch(err => { console.warn('[Invoices] invoices:', err.message); return []; })
-      .then(data => { if (!cancelled) setInvoices(Array.isArray(data) ? data : []); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
 
   const propMap = Object.fromEntries(properties.map(p => [p.id, p.name]));
   const enriched = invoices.map(inv => ({
@@ -144,27 +134,41 @@ export default function Invoices() {
     } else {
       await api.put(`/invoices/${modal.id}`, data);
     }
+    setModal(null);
     refreshData();
     if (store) store.invalidateRelated('invoices', 'contracts', 'receivables');
   };
 
   const handleDelete = async (row) => {
     if (!await confirm(`"${row.supplier}" ${t('modals.confirmDelete.body')}`)) return;
-    await api.del(`/invoices/${row.id}`);
-    refreshData();
-    if (store) store.invalidateRelated('invoices', 'contracts', 'receivables');
+    setActionError(null);
+    try {
+      await api.del(`/invoices/${row.id}`);
+      setModal(null);
+      refreshData();
+      if (store) store.invalidateRelated('invoices', 'contracts', 'receivables');
+    } catch (err) {
+      setActionError(err.message);
+    }
   };
 
   const markPaid = async (row) => {
-    await api.patch(`/invoices/${row.id}`, { status: 'paid' });
-    refreshData();
-    if (store) store.invalidateRelated('invoices', 'contracts', 'receivables');
+    setActionError(null);
+    try {
+      await api.patch(`/invoices/${row.id}`, { status: 'paid' });
+      setModal(null);
+      refreshData();
+      if (store) store.invalidateRelated('invoices', 'contracts', 'receivables');
+    } catch (err) {
+      setActionError(err.message);
+    }
   };
 
-  if (loading) return <div className="page-loading">Lade Rechnungen...</div>;
+  if (loading || error) return <FinanceLoadState loading={loading} error={error} onRetry={refreshData} />;
 
   return (
     <div className="page">
+      {actionError && <div className="alert alert-error" role="alert">{actionError}</div>}
       <h1 className="page-title">Rechnungen</h1>
 
       {/* Summary cards */}

@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { api } from '../api';
+import { useFinanceData } from '../hooks/useFinanceData';
+import FinanceLoadState from '../components/FinanceLoadState';
 import { useTranslation } from '../i18n';
-import { useEntities, useDataStore } from '../contexts/DataStoreContext';
+import { useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
@@ -11,28 +13,13 @@ export default function Deposits() {
   const { t } = useTranslation();
   const confirm = useConfirm();
   const store = useDataStore();
-  const { items: contracts } = useEntities('contracts', '/contracts');
-  const [deposits, setDeposits] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const { data: { deposits, contracts }, loading, error, reload: refreshData } = useFinanceData({
+    deposits: '/deposits',
+    contracts: '/contracts',
+  });
   const [modal, setModal] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
 
-  const refreshData = () => {
-    api.get('/deposits').catch(err => { console.warn('[Deposits] deposits:', err.message); return []; })
-      .then(data => setDeposits(data || []))
-      .catch(e => setError(e.message))
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(() => {
-    let cancelled = false;
-    api.get('/deposits').catch(err => { console.warn('[Deposits] deposits:', err.message); return []; })
-      .then(data => { if (!cancelled) setDeposits(data || []); })
-      .catch(e => { if (!cancelled) setError(e.message); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
 
   const contractMap = Object.fromEntries(contracts.map(c => [c.id, c]));
 
@@ -75,6 +62,7 @@ export default function Deposits() {
     } else {
       await api.put(`/deposits/${modal.id}`, data);
     }
+    setModal(null);
     refreshData();
     if (store) store.invalidateRelated('deposits', 'contracts');
   };
@@ -92,13 +80,12 @@ export default function Deposits() {
     }
   };
 
-  if (loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
-  if (error) return <div className="page"><div className="alert alert-error">{error}</div></div>;
+  if (loading || error) return <FinanceLoadState loading={loading} error={error} onRetry={refreshData} />;
 
   return (
     <div className="page">
       {deleteError && (
-        <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
+        <div className="alert alert-error" role="alert" style={{ marginBottom: '1rem' }}>
           {deleteError}
           <button onClick={() => setDeleteError(null)} style={{ marginLeft: '1rem', cursor: 'pointer' }}>✕</button>
         </div>

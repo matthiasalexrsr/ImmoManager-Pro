@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
-from typing import TYPE_CHECKING, Iterable, List, Optional
+from typing import TYPE_CHECKING, Iterable, List, Optional, cast
 
 CENTS = Decimal("0.01")
 
@@ -61,12 +61,14 @@ class ReceivableLine:
     service_charge_advance: Decimal
     heating_advance: Decimal
     total_amount: Decimal
+    other_charges: Decimal = Decimal("0.00")
 
 
 @dataclass(frozen=True)
 class PaymentLine:
     booking_date: date
     amount: Decimal
+    period_start: date | None = None
 
     def __post_init__(self) -> None:
         normalized_amount = _money(self.amount)
@@ -218,6 +220,7 @@ class LeaseEngine:
             {
                 "booking_date": row.booking_date,
                 "remaining": _money(row.amount),
+                "period_start": row.period_start,
             }
             for row in sorted(payments, key=lambda item: item.booking_date)
         ]
@@ -226,7 +229,8 @@ class LeaseEngine:
 
         for payment in payment_rows:
             while payment["remaining"] > Decimal("0.00"):  # type: ignore[operator]
-                target = next((row for row in receivable_rows if row["remaining"] > Decimal("0.00")), None)  # type: ignore[operator]
+                target = next((row for row in receivable_rows if cast(Decimal, row["remaining"]) > Decimal("0.00")
+                    and (payment["period_start"] is None or row["period_start"] == payment["period_start"])), None)  # type: ignore[operator]
                 if target is None:
                     break
 
@@ -359,9 +363,10 @@ class LeaseEngine:
         today: date,
         until_including: date | None = None,
         due_day: int = 3,
+        charge_lines: Iterable[ReceivableLine] | None = None,
     ) -> SettlementDashboard:
         horizon = until_including or today
-        receivables = LeaseEngine.build_monthly_receivables(
+        receivables = list(charge_lines) if charge_lines is not None else LeaseEngine.build_monthly_receivables(
             contract_start=contract_start,
             contract_end=contract_end,
             charge=charge,
@@ -406,6 +411,7 @@ class LeaseEngine:
         until_including: date | None = None,
         due_day: int = 3,
         current_level_by_period: dict[date, int] | None = None,
+        charge_lines: Iterable[ReceivableLine] | None = None,
     ) -> "DunningCampaign":
         from .dunning_engine import DunningEngine, ReceivableState
 
@@ -417,6 +423,7 @@ class LeaseEngine:
             today=today,
             until_including=until_including,
             due_day=due_day,
+            charge_lines=charge_lines,
         )
 
         levels = current_level_by_period or {}

@@ -100,7 +100,8 @@
       "confirm": "Bestätigen",
       "next": "Weiter",
       "back": "Zurück",
-      "done": "Fertig"
+      "done": "Fertig",
+      "retry": "Erneut versuchen"
     },
     "commonActions": {
       "viewDetails": "Details anzeigen",
@@ -121,7 +122,9 @@
       "selectDate": "Datum auswählen",
       "selectTime": "Zeit auswählen",
       "enterAmount": "Betrag eingeben",
-      "search": "Suchen"
+      "search": "Suchen",
+      "status": "Status",
+      "none": "— Keine —"
     },
     "table": {
       "adjustColumns": "Spalten anpassen",
@@ -133,7 +136,10 @@
       "nextPage": "Nächste Seite",
       "previousPage": "Vorherige Seite",
       "noResults": "Keine Ergebnisse",
-      "loading": "Laden…"
+      "loading": "Laden…",
+      "firstPage": "Erste Seite",
+      "lastPage": "Letzte Seite",
+      "pagination": "Seitennavigation"
     },
     "filterChips": {
       "active": "Aktiv",
@@ -202,7 +208,8 @@
       "password": "Passwort",
       "rememberMe": "Angemeldet bleiben",
       "forgotPassword": "Passwort vergessen?",
-      "submit": "Anmelden"
+      "submit": "Anmelden",
+      "username": "Benutzername"
     },
     "forgotPassword": {
       "title": "Passwort zurücksetzen",
@@ -221,13 +228,37 @@
     },
     "twoFactor": {
       "title": "Zwei-Faktor-Authentifizierung",
-      "enterCode": "Code eingeben",
-      "confirmCode": "Code bestätigen",
-      "resendCode": "Neuen Code senden"
+      "description": "Schützen Sie Ihr Konto mit einem zeitbasierten Code aus einer Authenticator-App.",
+      "code": "Authenticator-Code (6 Ziffern)",
+      "enabled": "Zwei-Faktor-Authentifizierung ist aktiviert.",
+      "disabled": "Zwei-Faktor-Authentifizierung ist deaktiviert.",
+      "setup": "Authenticator einrichten",
+      "secret": "Einrichtungsschlüssel",
+      "uri": "Authenticator-URI",
+      "copy": "Schlüssel kopieren",
+      "copied": "Schlüssel wurde kopiert.",
+      "copyFailed": "Kopieren war nicht möglich. Markieren und kopieren Sie den Schlüssel manuell.",
+      "enrollInstructions": "Legen Sie in Ihrer Authenticator-App ein zeitbasiertes Konto mit diesem Schlüssel an. Geben Sie anschließend den aktuellen Code ein.",
+      "verify": "Code bestätigen und aktivieren",
+      "disable": "Mit Code deaktivieren",
+      "enabledSuccess": "Zwei-Faktor-Authentifizierung wurde aktiviert.",
+      "disabledSuccess": "Zwei-Faktor-Authentifizierung wurde deaktiviert.",
+      "invalidStatus": "Der Zwei-Faktor-Status konnte nicht gelesen werden.",
+      "recovery": "Bei Verlust des Authenticators ist eine lokale Wiederherstellung durch die Person mit Zugriff auf die Installationsdateien erforderlich.",
+      "accountId": "Konto-ID für lokale Wiederherstellung"
     },
     "password": {
       "placeholder": "Mindestens 8 Zeichen",
       "requirements": "Mindestens 8 Zeichen, 1 Großbuchstabe, 1 Kleinbuchstabe, 1 Zahl"
+    },
+    "setup": {
+      "title": "Eigentümerkonto einrichten",
+      "description": "Richten Sie den Eigentümer dieser privaten Installation ein. Weitere Konten werden anschließend vom Eigentümer freigegeben.",
+      "submit": "Eigentümerkonto erstellen",
+      "fullName": "Vollständiger Name",
+      "localOnly": "Öffnen Sie diese Installation lokal über localhost oder 127.0.0.1, um das erste Eigentümerkonto einzurichten.",
+      "approvedOnly": "Weitere Konten werden vom Eigentümer dieser Installation freigegeben.",
+      "invalidStatus": "Der Einrichtungsstatus konnte nicht gelesen werden."
     }
   },
   "dashboard": {
@@ -291,6 +322,11 @@
       "create": "Portfolio erstellen",
       "edit": "Portfolio bearbeiten",
       "archive": "Portfolio archivieren"
+    },
+    "properties": {
+      "form": {
+        "name": "Immobilie"
+      }
     }
   },
   "properties": {
@@ -371,7 +407,10 @@
       "serviceCharge": "Nebenkosten-VZ",
       "warmRent": "Warmmiete",
       "status": "Status",
-      "tenant": "Mieter"
+      "tenant": "Mieter",
+      "columns": {
+        "label": "Einheit"
+      }
     },
     "types": {
       "apartment": "Wohnung",
@@ -467,7 +506,22 @@
       "type": "Kontotyp",
       "openingBalance": "Anfangssaldo",
       "balance": "Saldo",
-      "lastSync": "Letzte Synchronisation"
+      "lastSync": "Letzte Synchronisation",
+      "form": {
+        "accountType": "Kontotyp",
+        "balance": "Saldo (€)",
+        "bank": "Bank",
+        "currentBalance": "Aktueller Saldo (€)",
+        "name": "Kontoname",
+        "openingBalance": "Anfangssaldo (€)",
+        "type": "Typ"
+      },
+      "types": {
+        "checking": "Girokonto",
+        "deposit": "Kautionskonto",
+        "rent": "Mietkonto",
+        "savings": "Sparkonto"
+      }
     },
     "accountTypes": {
       "bank": "Bankkonto",
@@ -485,7 +539,19 @@
       "tenant": "Mieter",
       "paymentText": "Zahlungstext",
       "receipt": "Beleg",
-      "status": "Status"
+      "status": "Status",
+      "form": {
+        "amount": "Betrag (€)",
+        "bookingDate": "Buchungsdatum",
+        "category": "Kategorie",
+        "date": "Datum",
+        "paymentText": "Buchungstext",
+        "receiptUrl": "Beleg-URL"
+      },
+      "statusOptions": {
+        "booked": "Gebucht",
+        "matched": "Zugeordnet"
+      }
     },
     "categories": {
       "rentIncome": "Mieteinnahmen",
@@ -747,7 +813,23 @@
       "title": "Daten & Sicherung",
       "database": "Datenbank",
       "dbDetails": "DB-Details",
-      "createBackup": "Backup erstellen"
+      "createBackup": "Backup erstellen",
+      "businessBackup": "Teil-Geschäftsdaten sichern",
+      "businessScope": "Teil-Geschäftsdaten: JSON-Datensätze ohne Anhänge, Benutzerkonten und vollständige Abrechnungsdaten.",
+      "fullRecoveryHint": "Eine vollständige, passwortverschlüsselte Sicherung von SQLite, Uploads, Benutzern und Konfiguration erfolgt offline nach dem Stoppen der Anwendung. Folgen Sie der Wartungsanleitung für vollständige Offline-Sicherungen.",
+      "readOnlyHint": "Mit Leserechten können Sie exportieren; Sichern und Importieren erfordern Schreibrechte.",
+      "info": "Info",
+      "infoFailed": "Datenbankinfo fehlgeschlagen",
+      "backupRunning": "Sicherung läuft…",
+      "backupSaved": "Teil-Geschäftsdaten gespeichert",
+      "backupFailed": "Sicherung fehlgeschlagen",
+      "exportFailed": "Export fehlgeschlagen",
+      "invalidBackup": "Die Serverantwort bestätigt keine gültige Teil-Geschäftsdatensicherung.",
+      "invalidExport": "Die Antwort ist kein gültiger JSON-Geschäftsdatenexport.",
+      "invalidImport": "Die Serverantwort bestätigt keinen gültigen Import.",
+      "importRejected": "Der Server meldet Importfehler.",
+      "importFailed": "Import fehlgeschlagen",
+      "importSaved": "Teil-Geschäftsdaten importiert"
     },
     "about": {
       "title": "Über ImmoManager Pro",
@@ -774,10 +856,12 @@
       "result": "Ergebnis",
       "showSteps": "Schritte anzeigen",
       "restartRequired": "Bitte starten Sie die Anwendung neu, um das Update zu aktivieren.",
-      "rolledBack": "Automatischer Rollback wurde durchgeführt. Ihre Daten sind unverändert.",
+      "rolledBack": "Der vorherige Code wurde wiederhergestellt. Prüfen Sie die Wiederherstellungsschritte.",
       "history": "Update-Verlauf",
       "showHistory": "Anzeigen",
-      "noHistory": "Noch keine Updates durchgeführt"
+      "noHistory": "Noch keine Updates durchgeführt",
+      "manualRecovery": "Die Wiederherstellung ist unvollständig. Stoppen Sie die Anwendung und folgen Sie den Wiederherstellungsschritten.",
+      "maintenanceOnly": "Updates erfordern die gestoppte Anwendung und den Wartungsbefehl. Die Updateprüfung bleibt hier verfügbar."
     }
   },
   "search": {
@@ -1296,7 +1380,64 @@
       "receivablesFailed": "Forderungen konnten nicht erzeugt werden",
       "exportFailed": "Export fehlgeschlagen",
       "disputeFailed": "Widerspruch konnte nicht eingelegt werden",
-      "preflightBlockers": "Preflight-Blocker vorhanden"
+      "preflightBlockers": "Preflight-Blocker vorhanden",
+      "stepCreate": "Erstellen",
+      "stepCosts": "Kosten",
+      "stepPreflight": "Prüfung",
+      "stepGenerate": "Generieren",
+      "stepFinalize": "Finalisieren",
+      "stepDeliver": "Zustellen",
+      "settlements": {
+        "title": "Verbuchte Abrechnungsergebnisse",
+        "totals": "Summen der Verbuchung",
+        "debts": "Verbuchte Forderungen",
+        "credits": "Verfügbare Guthaben",
+        "net": "Netto (Forderungen − Guthaben)",
+        "contract": "Vertrag",
+        "delta": "Verbuchte Differenz (€)",
+        "amount": "Verbuchter Betrag (€)",
+        "receivable": "Forderungs-ID",
+        "entries": "Einzelposten",
+        "deltaHelp": "Korrekturen buchen nur die Differenz zur bereits verbuchten Abrechnungskette; frühere Posten bleiben erhalten.",
+        "notPaidOut": "Guthaben sind verfügbar. Eine Auszahlung wird hier weder erfasst noch bestätigt.",
+        "empty": "Für diese Periode wurden noch keine Abrechnungsergebnisse verbucht.",
+        "invalidResponse": "Die Abrechnungsübersicht ist unvollständig oder widersprüchlich. Bitte erneut laden.",
+        "loadFailed": "Abrechnungsergebnisse konnten nicht geladen werden.",
+        "book": "Forderungen und Guthaben verbuchen",
+        "booking": "Verbuchung läuft…",
+        "posted": "Neue Forderungen: {{debts}} · Neue Guthaben: {{credits}} · Bereits vorhanden: {{existing}}",
+        "postFailed": "Abrechnungsergebnisse konnten nicht verbucht werden.",
+        "postingUnknown": "Die Antwort der Verbuchung ist unvollständig. Bitte das gespeicherte Ergebnis erneut laden, bevor die Aktion wiederholt wird.",
+        "revision": "Revision",
+        "sourcePeriod": "Ursprungsperiode",
+        "revisionNotes": "Korrekturbegründung",
+        "status": {
+          "receivable_created": "Forderung angelegt",
+          "credit_available": "Guthaben verfügbar (keine Auszahlung bestätigt)",
+          "no_adjustment": "Keine Anpassung erforderlich"
+        },
+        "reference": "Belegreferenz",
+        "historicalReference": "Historische Belegreferenz"
+      },
+      "ownerShare": {
+        "title": "Eigentümeranteil der Kostenverteilung",
+        "notTenantDebt": "Dieser Anteil verbleibt beim Eigentümer. Er ist keine Mieterforderung und kein Mieterguthaben.",
+        "snapshotHelp": "Gespeicherte Kostenverteilung der letzten Generierung. Nach Kostenänderungen erneut generieren.",
+        "notCalculated": "Noch keine gespeicherte Kostenverteilung. Der Eigentümeranteil wird nach der Generierung angezeigt.",
+        "invalidResponse": "Die gespeicherte Kostenverteilung ist unvollständig oder widersprüchlich. Bitte erneut laden.",
+        "loadFailed": "Der Eigentümeranteil konnte nicht geladen werden.",
+        "total": "Eigentümeranteil gesamt",
+        "vacancy": "Leerstandsanteil umlagefähiger Kosten",
+        "nonRecoverable": "Nicht umlagefähige Kosten",
+        "propertyCosts": "Objektkosten gesamt",
+        "tenantCosts": "Auf Mieter verteilte Kosten",
+        "unit": "Einheit",
+        "reason": "Zuordnung",
+        "amount": "Eigentümerbetrag (€)",
+        "lineItems": "Eigentümer-Kostenpositionen",
+        "vacantDays": "Leerstandstage je Einheit",
+        "non_recoverable": "Nicht umlagefähig"
+      }
     },
     "invoices": {
       "markPaidConfirm": "als bezahlt markieren?"
@@ -1326,7 +1467,24 @@
       "description": "Zahlungen zuordnen und offene Beträge verfolgen. Die Summen beziehen sich auf den ausgewählten Bereich.",
       "charges": "Sollstellungen",
       "receivables": "Forderungen",
-      "onlyOpen": "Nur offene Posten"
+      "onlyOpen": "Nur offene Posten",
+      "allocateBooking": "Bankbuchung zuordnen",
+      "bankBooking": "Bankbuchung",
+      "allocationHelp": "Wählen Sie einen Geldeingang. Betrag und Zahlungsdatum werden aus der Buchung übernommen; Teilzuordnungen sind möglich.",
+      "noAvailableBookings": "Keine passende Buchung mit offenem Zuordnungsbetrag vorhanden.",
+      "allocationSaved": "Bankbuchung zugeordnet.",
+      "paymentSource": "Zahlungsquelle",
+      "bankLinked": "Bankbuchung",
+      "manualPayment": "Manuell erfasst",
+      "posted": "Erfasst",
+      "reversed": "Storniert",
+      "reversePayment": "Stornieren",
+      "reversalDate": "Stornodatum",
+      "reversalReason": "Begründung",
+      "reasonRequired": "Bitte geben Sie eine Begründung für den Storno ein.",
+      "reversalSaved": "Zahlung storniert. Der offene Betrag wurde aktualisiert.",
+      "reversalHelp": "Der Zahlungsbeleg bleibt erhalten. Ein Gegenbeleg nimmt die Zahlung zurück und öffnet den Betrag wieder.",
+      "reverseAllocationHelp": "Die Zuordnung wird mit einem Gegenbeleg aufgehoben. Die Bankbuchung bleibt erhalten und kann erneut zugeordnet werden."
     },
     "meters": {
       "title": "Zähler",
@@ -1414,7 +1572,8 @@
       "runTest": "Test ausführen",
       "capabilities": "Capabilities:",
       "error": "Fehler",
-      "actionExecuted": "Aktion ausgeführt"
+      "actionExecuted": "Aktion ausgeführt",
+      "adapterPlanned": "Dieser Adapter ist noch nicht implementiert. Gespeicherte Zugangsdaten ermöglichen noch keinen Versand oder eine Veröffentlichung."
     },
     "documents": {
       "upload": {
@@ -1641,7 +1800,8 @@
         "contactPerson": "Ansprechpartner",
         "phone": "Telefon",
         "notes": "Notizen",
-        "status": "Status"
+        "status": "Status",
+        "contactPhone": "Telefon"
       },
       "types": {
         "building": "Gebäudeversicherung",
@@ -1661,6 +1821,58 @@
         "expired": "Abgelaufen",
         "cancelled": "Gekündigt"
       }
+    },
+    "rentGeneration": {
+      "title": "Monatliche Sollstellung",
+      "startMonth": "Ab Monat",
+      "endMonth": "Bis Monat",
+      "contracts": "Verträge (optional)",
+      "selectionHelp": "Ohne Auswahl werden alle aktiven Verträge berücksichtigt. Prüfen Sie zunächst die Vorschau.",
+      "policy": "Für jeden berührten Vertragsmonat wird der volle Monatsbetrag gebucht. Teilmonate sind gekennzeichnet. Bereits vorhandene Monate werden übersprungen.",
+      "invalidRange": "Der Endmonat muss nach dem Startmonat liegen oder ihm entsprechen.",
+      "invalidPreview": "Die Antwort ist unvollständig. Bitte laden Sie die Vorschau erneut.",
+      "preview": "Vorschau prüfen",
+      "generate": "Sollstellungen buchen",
+      "newItems": "Neue Sollstellungen",
+      "total": "Gesamtbetrag",
+      "existing": "Bereits vorhanden",
+      "skipped": "Nicht berücksichtigt",
+      "contract": "Vertrag",
+      "month": "Monat",
+      "dueDate": "Fällig am",
+      "amount": "Betrag",
+      "partialMonth": "Teilmonat",
+      "yes": "Ja",
+      "changeSelection": "Auswahl ändern",
+      "created": "Erstellt",
+      "paymentManaged": "Zahlungen und Stornos werden in der Mietübersicht mit Beleg erfasst."
+    },
+    "rentCharges": {
+      "title": "Sollstellungen",
+      "create": "Sollstellung erstellen",
+      "edit": "Sollstellung bearbeiten",
+      "columns": {
+        "month": "Monat",
+        "coldRent": "Kaltmiete",
+        "serviceCharge": "Betriebskosten",
+        "heatingCharge": "Heizkosten",
+        "otherCharges": "Sonstige",
+        "totalDue": "Soll gesamt",
+        "paid": "Bezahlt",
+        "remaining": "Offen"
+      },
+      "form": {
+        "month": "Monat (JJJJ-MM)",
+        "coldRent": "Kaltmiete (EUR)",
+        "serviceCharge": "Betriebskosten (EUR)",
+        "heatingCharge": "Heizkosten (EUR)",
+        "otherCharges": "Sonstige Kosten (EUR)"
+      }
+    },
+    "receivables": {
+      "paymentManaged": "Zahlungen und Stornos werden ausschließlich mit Belegen in der Mietübersicht erfasst.",
+      "openRentOverview": "Mietübersicht öffnen",
+      "readonly": "Nur Lesezugriff: Forderungen können nicht geändert werden."
     }
   },
   "sidebar": {

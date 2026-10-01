@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { api } from '../api';
+import { useFinanceData } from '../hooks/useFinanceData';
+import FinanceLoadState from '../components/FinanceLoadState';
 import { useTranslation } from '../i18n';
-import { useEntities, useDataStore } from '../contexts/DataStoreContext';
+import { useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
@@ -26,27 +28,13 @@ export default function RentAdjustments() {
   const { t } = useTranslation();
   const confirm = useConfirm();
   const store = useDataStore();
-  const { items: contracts } = useEntities('contracts', '/contracts');
-  const [adjustments, setAdjustments] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { data: { adjustments, contracts }, loading, error, reload: refreshData } = useFinanceData({
+    adjustments: '/rent-adjustments',
+    contracts: '/contracts',
+  });
   const [modal, setModal] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
 
-  const refreshData = () => {
-    setLoading(true);
-    api.get('/rent-adjustments').catch(err => { console.warn('[RentAdj]', err.message); return []; })
-      .then(adj => setAdjustments(adj || []))
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(() => {
-    let cancelled = false;
-    api.get('/rent-adjustments').catch(err => { console.warn('[RentAdjustments] adjustments:', err.message); return []; })
-      .then(data => { if (!cancelled) setAdjustments(data || []); })
-      .catch(e => { if (!cancelled) console.warn('[RentAdjustments] load failed:', e.message); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
 
   const contractMap = Object.fromEntries(contracts.map(c => [c.id, c]));
   const enriched = adjustments.map(a => ({
@@ -81,6 +69,7 @@ export default function RentAdjustments() {
     } else {
       await api.put(`/rent-adjustments/${modal.id}`, data);
     }
+    setModal(null);
     refreshData();
     if (store) store.invalidateRelated('rent_adjustments', 'contracts');
   };
@@ -97,12 +86,12 @@ export default function RentAdjustments() {
     }
   };
 
-  if (loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  if (loading || error) return <FinanceLoadState loading={loading} error={error} onRetry={refreshData} />;
 
   return (
     <div className="page">
       {deleteError && (
-        <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
+        <div className="alert alert-error" role="alert" style={{ marginBottom: '1rem' }}>
           {deleteError}
           <button onClick={() => setDeleteError(null)} style={{ marginLeft: '1rem', cursor: 'pointer' }}>✕</button>
         </div>

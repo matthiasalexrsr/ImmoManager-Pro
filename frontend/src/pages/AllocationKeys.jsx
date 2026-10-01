@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { api } from '../api';
+import { useFinanceData } from '../hooks/useFinanceData';
+import FinanceLoadState from '../components/FinanceLoadState';
 import { useTranslation } from '../i18n';
-import { useEntities, useDataStore } from '../contexts/DataStoreContext';
+import { useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import { useConfirm } from '../components/ConfirmDialog';
@@ -26,28 +28,13 @@ export default function AllocationKeys() {
   const { t } = useTranslation();
   const confirm = useConfirm();
   const store = useDataStore();
-  const { items: properties } = useEntities('properties', '/properties');
-  const [keys, setKeys] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const { data: { keys, properties }, loading, error, reload: refreshData } = useFinanceData({
+    keys: '/billing/allocation-keys',
+    properties: '/properties',
+  });
   const [modal, setModal] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
 
-  const refreshData = () => {
-    api.get('/billing/allocation-keys').catch(err => { console.warn('[AllocationKeys] keys:', err.message); return []; })
-      .then(k => setKeys(k || []))
-      .catch(e => setError(e.message))
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(() => {
-    let cancelled = false;
-    api.get('/billing/allocation-keys').catch(err => { console.warn('[AllocationKeys] keys:', err.message); return []; })
-      .then(data => { if (!cancelled) setKeys(data || []); })
-      .catch(e => { if (!cancelled) setError(e.message); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
 
   const propertyMap = Object.fromEntries(properties.map(p => [p.id, p.name]));
   const enriched = keys.map(k => ({ ...k, property_label: propertyMap[k.property_id] || '—' }));
@@ -66,6 +53,7 @@ export default function AllocationKeys() {
     } else {
       await api.put(`/billing/allocation-keys/${modal.id}`, data);
     }
+    setModal(null);
     refreshData();
     if (store) store.invalidateRelated('allocation_keys');
   };
@@ -83,13 +71,12 @@ export default function AllocationKeys() {
     }
   };
 
-  if (loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
-  if (error) return <div className="page"><div className="alert alert-error">{error}</div></div>;
+  if (loading || error) return <FinanceLoadState loading={loading} error={error} onRetry={refreshData} />;
 
   return (
     <div className="page">
       {deleteError && (
-        <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
+        <div className="alert alert-error" role="alert" style={{ marginBottom: '1rem' }}>
           {deleteError}
           <button onClick={() => setDeleteError(null)} style={{ marginLeft: '1rem', cursor: 'pointer' }}>✕</button>
         </div>

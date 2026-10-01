@@ -1,14 +1,19 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
+import BillingSettlementSummary from '../components/BillingSettlementSummary';
+import BillingOwnerShare from '../components/BillingOwnerShare';
+import { parseSettlementPosting } from '../utils/billingSettlements';
+import { useAuth } from '../contexts/AuthContext';
 
 /** Inline toast-style notification hook. */
 function useToast() {
   const [toast, setToast] = useState(null);
   const timerRef = useRef(null);
+  useEffect(() => () => clearTimeout(timerRef.current), []);
   const show = (message, type = 'error') => {
     if (timerRef.current) clearTimeout(timerRef.current);
     setToast({ message, type });
@@ -19,6 +24,9 @@ function useToast() {
     <div
       className={`toast toast-${toast.type}`}
       onClick={dismiss}
+      role={toast.type === 'error' ? 'alert' : 'status'}
+      tabIndex={0}
+      onKeyDown={e => { if (e.key === 'Escape' || e.key === 'Enter') dismiss(); }}
       style={{ position: 'fixed', bottom: '1.5rem', right: '1.5rem', zIndex: 9999,
                padding: '0.75rem 1.25rem', borderRadius: '8px', cursor: 'pointer',
                background: toast.type === 'success' ? 'var(--teal, #0d9488)' : 'var(--color-error, #dc2626)',
@@ -30,31 +38,22 @@ function useToast() {
   return { show, Toast };
 }
 
-/** Simple prompt modal to replace window.prompt. */
-function PromptModal({ title, defaultValue, onConfirm, onCancel }) {
-  const [value, setValue] = useState(defaultValue || '');
+/** Reuse the accessible form dialog for correction and dispute reasons. */
+function PromptModal({ title, required = false, onConfirm, onCancel }) {
+  const fields = useMemo(() => [
+    { key: 'reason', label: title, type: 'textarea', required },
+  ], [title, required]);
   return (
-    <div className="modal-overlay" onClick={onCancel}>
-      <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '450px' }}>
-        <div className="modal-header">
-          <h3>{title}</h3>
-          <button className="btn btn-sm" onClick={onCancel}>&times;</button>
-        </div>
-        <div className="modal-body">
-          <input
-            className="form-input"
-            value={value}
-            onChange={e => setValue(e.target.value)}
-            autoFocus
-            style={{ width: '100%' }}
-          />
-        </div>
-        <div className="modal-footer" style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', padding: '0.75rem 1rem' }}>
-          <button className="btn btn-sm btn-secondary" onClick={onCancel}>Abbrechen</button>
-          <button className="btn btn-sm btn-primary" onClick={() => onConfirm(value)}>OK</button>
-        </div>
-      </div>
-    </div>
+    <FormModal
+      title={title}
+      fields={fields}
+      onSave={({ reason }) => {
+        const value = (reason || '').trim();
+        if (required && !value) throw new Error(title);
+        return onConfirm(value);
+      }}
+      onClose={onCancel}
+    />
   );
 }
 
@@ -182,6 +181,7 @@ function StepIndicator({ currentStep, t: tr }) {
 export default function Statements() {
   const { t } = useTranslation();
   const toast = useToast();
+  const auth = useAuth();
   const [periods, setPeriods] = useState([]);
   const [costItems, setCostItems] = useState([]);
   const [statements, setStatements] = useState([]);
@@ -191,52 +191,110 @@ export default function Statements() {
   const [contracts, setContracts] = useState([]);
   const [tenants, setTenants] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [, setLoadError] = useState(null);
+  const [loadError, setLoadError] = useState(null);
   const [modal, setModal] = useState(null);
   const [selectedPeriod, setSelectedPeriod] = useState(null);
   const [costModal, setCostModal] = useState(null);
   const [view, setView] = useState('list');
   const [preflight, setPreflight] = useState(null);
   const [preflightLoading, setPreflightLoading] = useState(false);
+  const [preflightError, setPreflightError] = useState(null);
   const [finalizing, setFinalizing] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [submittingReview, setSubmittingReview] = useState(false);
   const [creatingRevision, setCreatingRevision] = useState(false);
   const [creatingReceivables, setCreatingReceivables] = useState(false);
+  const [settlementRefresh, setSettlementRefresh] = useState(0);
   const [markingDelivered, setMarkingDelivered] = useState(false);
   const [ocrDraft, setOcrDraft] = useState(null);
   const [ocrUploading, setOcrUploading] = useState(false);
   const [disputing, setDisputing] = useState(false);
-  const [, setPromptModal] = useState(null);
+  const [promptModal, setPromptModal] = useState(null);
 
-  const loadData = () => {
+  const loadRequestRef = useRef(null);
+  const preflightRequestRef = useRef(null);
+  const selectedPeriodRef = useRef(null);
+
+  const loadData = useCallback(async () => {
+    loadRequestRef.current?.abort();
+    const controller = new AbortController();
+    loadRequestRef.current = controller;
+    const { signal } = controller;
+    preflightRequestRef.current?.abort();
+    setPreflight(null);
+    setPreflightError(null);
+    setPreflightLoading(false);
+    setLoading(true);
     setLoadError(null);
-    Promise.all([
-      api.get('/billing/periods'),
-      api.get('/billing/cost-items'),
-      api.get('/billing/statements'),
-      api.get('/properties'),
-      api.get('/units'),
-      api.get('/billing/allocation-keys'),
-      api.get('/contracts'),
-      api.get('/tenants'),
-    ]).then(([bp, ci, us, props, u, ak, ctr, tn]) => {
-      setPeriods(bp || []);
-      setCostItems(ci || []);
-      setStatements(us || []);
-      setProperties(props || []);
-      setUnits(u || []);
-      setAllocationKeys(ak || []);
-      setContracts(ctr || []);
-      setTenants(tn || []);
-    }).catch(err => {
-      setLoadError(err.message || 'Daten konnten nicht geladen werden');
-      toast.show(err.message || 'Daten konnten nicht geladen werden');
-    }).finally(() => setLoading(false));
+    try {
+      const [bp, ci, us, props, u, ak, ctr, tn] = await Promise.all([
+        '/billing/periods', '/billing/cost-items', '/billing/statements',
+        '/properties', '/units', '/billing/allocation-keys', '/contracts', '/tenants',
+      ].map(path => api.getAll(path, { signal })));
+      if (signal.aborted) return false;
+      setPeriods(bp);
+      setCostItems(ci);
+      setStatements(us);
+      setProperties(props);
+      setUnits(u);
+      setAllocationKeys(ak);
+      setContracts(ctr);
+      setTenants(tn);
+      setSelectedPeriod(current => current ? bp.find(p => p.id === current.id) || null : null);
+      return true;
+    } catch (err) {
+      if (!signal.aborted && err.name !== 'AbortError') {
+        setLoadError(err.message || 'Daten konnten nicht geladen werden');
+      }
+      // A saved mutation must not look unsaved just because refreshing failed.
+      return false;
+    } finally {
+      if (!signal.aborted) setLoading(false);
+    }
+  }, []);
+
+  const loadPreflight = useCallback(async (periodId) => {
+    if (selectedPeriodRef.current !== periodId) return;
+    preflightRequestRef.current?.abort();
+    const controller = new AbortController();
+    preflightRequestRef.current = controller;
+    const { signal } = controller;
+    setPreflight(null);
+    setPreflightError(null);
+    setPreflightLoading(true);
+    try {
+      const result = await api.get(`/billing/periods/${periodId}/preflight`, { signal });
+      if (signal.aborted) return;
+      if (typeof result?.has_blockers !== 'boolean') throw new Error('Ungültige Prüfantwort des Servers.');
+      setPreflight(result);
+    } catch (err) {
+      if (!signal.aborted && err.name !== 'AbortError') {
+        setPreflightError(err.message || 'Prüfung konnte nicht geladen werden');
+      }
+    } finally {
+      if (!signal.aborted) setPreflightLoading(false);
+    }
+  }, []);
+
+  const refreshData = async () => {
+    const loaded = await loadData();
+    if (loaded && selectedPeriodRef.current) {
+      await loadPreflight(selectedPeriodRef.current);
+    }
+    return loaded;
   };
 
-  useEffect(() => { loadData(); }, []); // eslint-disable-line react-hooks/exhaustive-deps -- loadData is stable, called on mount only
+  useEffect(() => {
+    loadData();
+    return () => {
+      loadRequestRef.current?.abort();
+      preflightRequestRef.current?.abort();
+      selectedPeriodRef.current = null;
+    };
+  }, [loadData]);
+
+  const preflightReady = !preflightLoading && preflight?.has_blockers === false;
 
   const propMap = Object.fromEntries(properties.map(p => [p.id, p]));
   const unitMap = Object.fromEntries(units.map(u => [u.id, u]));
@@ -246,7 +304,7 @@ export default function Statements() {
 
   const enriched = periods.map(bp => {
     const costs = costItems.filter(ci => ci.billing_period_id === bp.id);
-    const totalCosts = costs.reduce((s, c) => s + (c.amount || 0), 0);
+    const totalCosts = costs.reduce((s, c) => s + Math.round(Number(c.amount || 0) * 100), 0) / 100;
     const stmts = statements.filter(s => s.billing_period_id === bp.id);
     return {
       ...bp,
@@ -258,7 +316,7 @@ export default function Statements() {
     };
   });
 
-  const fields = [
+  const fields = useMemo(() => [
     { key: 'property_id', label: t('pages.statements.formProperty') || 'Immobilie', type: 'select', required: true,
       options: properties.map(p => ({ value: p.id, label: p.name })) },
     { key: 'label', label: t('pages.statements.formLabel') || 'Bezeichnung', required: true, placeholder: 'z.B. NK-Abrechnung 2025' },
@@ -270,16 +328,19 @@ export default function Statements() {
       { value: 'finalized', label: t('status.general.completed') || 'Abgeschlossen' },
       { value: 'disputed', label: t('pages.statements.dispute') || 'Widerspruch' },
     ]},
-  ];
+  ], [properties, t]);
 
-  const costFields = [
+  const costFields = useMemo(() => [
     { key: 'billing_period_id', label: t('pages.statements.formPeriod') || 'Abrechnungsperiode', type: 'select', required: true,
       options: periods.map(p => ({ value: p.id, label: p.label || `${p.start_date} – ${p.end_date}` })) },
     { key: 'description', label: t('pages.statements.formCostType') || 'Kostenart', required: true, placeholder: 'z.B. Wasser, Heizung, Müll' },
     { key: 'amount', label: t('pages.statements.formAmount') || 'Betrag (€)', type: 'number', required: true },
     { key: 'allocation_key_id', label: t('pages.statements.formAllocationKey') || 'Verteilerschlüssel', type: 'select', required: true,
       options: allocationKeys.map(k => ({ value: k.id, label: `${k.name} (${k.key_type})` })) },
-  ];
+  ], [periods, allocationKeys, t]);
+  const selectedPeriodId = selectedPeriod?.id;
+  const costInitial = useMemo(() => costModal === 'create'
+    ? { billing_period_id: selectedPeriodId } : costModal, [costModal, selectedPeriodId]);
 
   const handleSave = async (data) => {
     if (modal === 'create') {
@@ -300,7 +361,7 @@ export default function Statements() {
     } else {
       await api.put(`/billing/periods/${modal.id}`, data);
     }
-    loadData();
+    await refreshData();
   };
 
   const handleSaveCost = async (data) => {
@@ -309,17 +370,15 @@ export default function Statements() {
     } else {
       await api.put(`/billing/cost-items/${costModal.id}`, data);
     }
-    loadData();
+    await refreshData();
   };
 
   const handleGenerateStatements = async () => {
-    if (!selectedPeriod) return;
+    if (!selectedPeriod || !preflightReady || generating || finalizing) return;
     setGenerating(true);
     try {
       await api.post(`/billing/periods/${selectedPeriod.id}/generate`, {});
-      await loadData();
-      const pf = await api.get(`/billing/periods/${selectedPeriod.id}/preflight`).catch(() => null);
-      setPreflight(pf);
+      await refreshData();
     } catch (err) {
       toast.show(err.message || 'Generierung fehlgeschlagen');
     } finally {
@@ -332,8 +391,8 @@ export default function Statements() {
     setSubmittingReview(true);
     try {
       const updated = await api.post(`/billing/periods/${selectedPeriod.id}/submit-review`, {});
-      setSelectedPeriod(updated);
-      await loadData();
+      if (selectedPeriodRef.current === selectedPeriod.id) setSelectedPeriod(updated);
+      await refreshData();
     } catch (err) {
       toast.show(err.message || 'Statuswechsel fehlgeschlagen');
     } finally {
@@ -345,22 +404,20 @@ export default function Statements() {
     if (!selectedPeriod) return;
     try {
       const updated = await api.post(`/billing/periods/${selectedPeriod.id}/revert-draft`, {});
-      setSelectedPeriod(updated);
-      await loadData();
+      if (selectedPeriodRef.current === selectedPeriod.id) setSelectedPeriod(updated);
+      await refreshData();
     } catch (err) {
       toast.show(err.message || 'Zurücksetzen fehlgeschlagen');
     }
   };
 
   const handleFinalizePeriod = async () => {
-    if (!selectedPeriod || !isMutable(selectedPeriod.status)) return;
+    if (!selectedPeriod || !isMutable(selectedPeriod.status) || !preflightReady || finalizing || generating) return;
     setFinalizing(true);
     try {
       const updated = await api.post(`/billing/periods/${selectedPeriod.id}/finalize`, {});
-      setSelectedPeriod(updated);
-      await loadData();
-      const pf = await api.get(`/billing/periods/${selectedPeriod.id}/preflight`).catch(() => null);
-      setPreflight(pf);
+      if (selectedPeriodRef.current === selectedPeriod.id) setSelectedPeriod(updated);
+      await refreshData();
     } catch (err) {
       toast.show(err.message || 'Finalisierung fehlgeschlagen');
     } finally {
@@ -378,9 +435,7 @@ export default function Statements() {
           await api.post(`/billing/statements/${stmt.id}/mark-delivered`, {});
         }
       }
-      await loadData();
-      const refreshedPeriod = await api.get(`/billing/periods/${selectedPeriod.id}`).catch(() => selectedPeriod);
-      setSelectedPeriod(refreshedPeriod || selectedPeriod);
+      await refreshData();
     } catch (err) {
       toast.show(err.message || 'Zustellstatus konnte nicht gesetzt werden');
     } finally {
@@ -389,14 +444,21 @@ export default function Statements() {
   };
 
   const handleCreateReceivables = async () => {
-    if (!selectedPeriod) return;
+    if (!selectedPeriod || creatingReceivables || auth?.isReadonly) return;
+    const periodId = selectedPeriod.id;
     setCreatingReceivables(true);
     try {
-      const res = await api.post(`/billing/periods/${selectedPeriod.id}/create-receivables`, {});
-      toast.show(`Forderungen erzeugt: ${res?.created_receivables ?? 0}`, 'success');
+      const response = await api.post(`/billing/periods/${periodId}/create-receivables`, {});
+      const result = parseSettlementPosting(response, periodId);
+      if (selectedPeriodRef.current === periodId) toast.show(t('pages.statements.settlements.posted', {
+        debts: result.created_receivables, credits: result.created_credits, existing: result.existing_count,
+      }), 'success');
     } catch (err) {
-      toast.show(err.message || 'Forderungen konnten nicht erzeugt werden');
+      if (selectedPeriodRef.current === periodId) toast.show(err.code === 'INVALID_SETTLEMENT_RESPONSE'
+        ? t('pages.statements.settlements.postingUnknown') : err.message || t('pages.statements.settlements.postFailed'));
     } finally {
+      // Reconcile via GET even after a lost response; retrying the read never repeats a write.
+      if (selectedPeriodRef.current === periodId) setSettlementRefresh(value => value + 1);
       setCreatingReceivables(false);
     }
   };
@@ -406,20 +468,22 @@ export default function Statements() {
     setPromptModal({
       title: t('pages.statements.revisionReason') || 'Grund für Korrektur (optional):',
       onConfirm: async (notes) => {
-        setPromptModal(null);
         setCreatingRevision(true);
+        let saved = false;
         try {
           const res = await api.post(
             `/billing/periods/${selectedPeriod.id}/revisions?revision_notes=${encodeURIComponent(notes)}`,
             {}
           );
-          await loadData();
+          saved = true;
+          setPromptModal(null);
+          await refreshData();
           if (res?.new_period_id) {
-            const allPeriods = await api.get('/billing/periods').catch(() => []);
-            const newPeriod = (allPeriods || []).find(p => p.id === res.new_period_id);
-            if (newPeriod) handleSelectPeriod(newPeriod);
+            const newPeriod = await api.get(`/billing/periods/${res.new_period_id}`);
+            if (newPeriod && selectedPeriodRef.current === selectedPeriod.id) handleSelectPeriod(newPeriod);
           }
         } catch (err) {
+          if (!saved) throw err;
           toast.show(err.message || t('pages.statements.revisionError') || 'Korrektur konnte nicht erstellt werden');
         } finally {
           setCreatingRevision(false);
@@ -432,17 +496,21 @@ export default function Statements() {
     if (!selectedPeriod) return;
     setPromptModal({
       title: t('pages.statements.disputeReason') || 'Grund für Widerspruch:',
+      required: true,
       onConfirm: async (reason) => {
-        setPromptModal(null);
         setDisputing(true);
+        let saved = false;
         try {
           const updated = await api.post(
             `/billing/periods/${selectedPeriod.id}/dispute?reason=${encodeURIComponent(reason)}`,
             {}
           );
-          setSelectedPeriod(updated);
-          await loadData();
+          saved = true;
+          setPromptModal(null);
+          if (selectedPeriodRef.current === selectedPeriod.id) setSelectedPeriod(updated);
+          await refreshData();
         } catch (err) {
+          if (!saved) throw err;
           toast.show(err.message || 'Widerspruch konnte nicht eingelegt werden');
         } finally {
           setDisputing(false);
@@ -502,7 +570,7 @@ export default function Statements() {
         source_document_id: draft.source_document_id,
       });
       setOcrDraft(null);
-      loadData();
+      await refreshData();
     } catch (err) {
       toast.show(err.message || 'Kostenposition konnte nicht gespeichert werden');
     }
@@ -573,14 +641,10 @@ export default function Statements() {
   };
 
   const handleSelectPeriod = (period) => {
+    selectedPeriodRef.current = period.id;
     setSelectedPeriod(period);
     setView('detail');
-    setPreflight(null);
-    setPreflightLoading(true);
-    api.get(`/billing/periods/${period.id}/preflight`)
-      .then(setPreflight)
-      .catch(() => setPreflight(null))
-      .finally(() => setPreflightLoading(false));
+    loadPreflight(period.id);
   };
 
   // Build revision history for the selected period (periods with same property + date range)
@@ -599,7 +663,20 @@ export default function Statements() {
   const COST_COLUMNS = getCostColumns(t);
   const STMT_COLUMNS = getStmtColumns(t, msg => toast.show(msg));
 
-  if (loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  const feedback = <>
+    {toast.Toast}
+    {promptModal && <PromptModal {...promptModal} onCancel={() => setPromptModal(null)} />}
+  </>;
+
+  if (loading) return <div className="page">
+    {feedback}
+    <div className="page-loading">{t('ui.table.loading')}</div>
+  </div>;
+  if (loadError) return <div className="page">
+    {feedback}
+    <div className="alert-error" role="alert">{loadError}</div>
+    <button className="btn btn-secondary" onClick={refreshData}>{t('ui.buttons.retry')}</button>
+  </div>;
 
   if (view === 'detail' && selectedPeriod) {
     const periodCosts = costItems.filter(ci => ci.billing_period_id === selectedPeriod.id)
@@ -613,7 +690,7 @@ export default function Statements() {
           tenant_name: contract ? (tenantMap[contract.tenant_id] || '—') : '—',
         };
       });
-    const totalCosts = periodCosts.reduce((s, c) => s + (c.amount || 0), 0);
+    const totalCosts = periodCosts.reduce((s, c) => s + Math.round(Number(c.amount || 0) * 100), 0) / 100;
     const editable = isMutable(selectedPeriod.status);
     const isFinalized = selectedPeriod.status === 'finalized';
     const isDelivered = selectedPeriod.status === 'delivered';
@@ -622,11 +699,12 @@ export default function Statements() {
 
     return (
       <div className="page">
+        {feedback}
         {/* Workflow step indicator */}
         <StepIndicator currentStep={workflowStep} t={t} />
 
         <div className="detail-header">
-          <button className="btn btn-sm btn-secondary" onClick={() => setView('list')}>
+          <button className="btn btn-sm btn-secondary" onClick={() => { selectedPeriodRef.current = null; preflightRequestRef.current?.abort(); setView('list'); }}>
             &larr; {t('pages.statements.back') || 'Zurück'}
           </button>
           <div className="detail-title">
@@ -652,7 +730,7 @@ export default function Statements() {
               <button
                 className="btn btn-sm btn-primary"
                 onClick={handleFinalizePeriod}
-                disabled={finalizing || preflightLoading || preflight?.has_blockers}
+                disabled={finalizing || generating || !preflightReady}
               >
                 {finalizing ? t('pages.statements.finalizing') : t('pages.statements.finalize')}
               </button>
@@ -681,20 +759,20 @@ export default function Statements() {
               <button
                 className="btn btn-sm btn-secondary"
                 onClick={handleGenerateStatements}
-                disabled={generating || preflightLoading || preflight?.has_blockers}
+                disabled={generating || finalizing || !preflightReady}
                 title={preflight?.has_blockers ? t('pages.statements.preflightBlockers') : ''}
               >
                 {generating ? t('pages.statements.generating') : t('pages.statements.generate')}
               </button>
             )}
 
-            {isFinalized && (
+            {(isFinalized || isDelivered) && !auth?.isReadonly && (
               <button
                 className="btn btn-sm btn-secondary"
                 onClick={handleCreateReceivables}
                 disabled={creatingReceivables}
               >
-                {creatingReceivables ? t('pages.statements.creatingReceivables') : t('pages.statements.createReceivables')}
+                {creatingReceivables ? t('pages.statements.settlements.booking') : t('pages.statements.settlements.book')}
               </button>
             )}
 
@@ -753,25 +831,26 @@ export default function Statements() {
           </div>
         </div>
 
+        <BillingOwnerShare periodId={selectedPeriod.id} units={unitMap}
+          refreshKey={periodStmts.map(statement => statement.id).join(',')} />
+
+        <BillingSettlementSummary period={selectedPeriod} contracts={contractMap} refreshKey={settlementRefresh} />
+
         <div className="card" style={{ marginBottom: '1rem' }}>
           <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <strong>{t('pages.statements.preflight')}</strong>
             <button
               className="btn btn-sm btn-secondary"
-              onClick={() => {
-                setPreflightLoading(true);
-                api.get(`/billing/periods/${selectedPeriod.id}/preflight`)
-                  .then(setPreflight)
-                  .catch(() => setPreflight(null))
-                  .finally(() => setPreflightLoading(false));
-              }}
+              onClick={() => loadPreflight(selectedPeriod.id)}
+              disabled={preflightLoading}
             >
               {t('pages.statements.recheck')}
             </button>
           </div>
           <div className="card-body">
             {preflightLoading && <span className="text-muted">{t('pages.statements.checking')}</span>}
-            {!preflightLoading && !preflight && <span className="text-muted">{t('pages.statements.noPreflightData')}</span>}
+            {preflightError && <div className="alert-error" role="alert">{preflightError}</div>}
+            {!preflightLoading && !preflight && !preflightError && <span className="text-muted">{t('pages.statements.noPreflightData')}</span>}
             {!preflightLoading && preflight && (
               <div style={{ display: 'grid', gap: '0.75rem' }}>
                 <div>
@@ -955,7 +1034,7 @@ export default function Statements() {
           <FormModal
             title={costModal === 'create' ? 'Kostenposition hinzufügen' : 'Kostenposition bearbeiten'}
             fields={costFields}
-            initial={costModal === 'create' ? { billing_period_id: selectedPeriod.id } : costModal}
+            initial={costInitial}
             onSave={handleSaveCost}
             onClose={() => setCostModal(null)}
           />
@@ -966,6 +1045,7 @@ export default function Statements() {
 
   return (
     <div className="page">
+      {feedback}
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
         {selectedPeriod && (
           <button className="btn btn-sm btn-secondary" onClick={() => setModal('copy')}>

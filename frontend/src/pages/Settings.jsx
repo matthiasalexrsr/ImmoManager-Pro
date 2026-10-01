@@ -8,6 +8,7 @@ import { api } from '../api';
 import UpdateSection from './settings/UpdateSection';
 import AutotestSection from './settings/AutotestSection';
 import BackupSection from './settings/BackupSection';
+import TwoFactorSection from './settings/TwoFactorSection';
 
 export default function Settings() {
   const { prefs, toggleTheme, toggleSidebar, updatePrefs } = usePreferences();
@@ -55,6 +56,7 @@ export default function Settings() {
         {/* Personal tab: Appearance + Language */}
         {settingsTab === 'personal' && (
           <>
+            <TwoFactorSection />
             <div className="panel">
               <div className="panel-header">{t('pages.settings.appearance')}</div>
               <div className="panel-body settings-section">

@@ -29,7 +29,7 @@ def _clean():
 
 @pytest.fixture
 def client():
-    return TestClient(app)
+    return TestClient(app, base_url="http://127.0.0.1", client=("127.0.0.1", 50000))
 
 
 @pytest.fixture
@@ -374,9 +374,9 @@ class TestAuthUserManagementFlow:
     """Register -> login -> get me -> create second user -> list users -> delete user."""
 
     def test_auth_full_flow(self, client):
-        # Step 1: Register a user (eigentuemer role via self-register gets capped to readonly)
+        # Step 1: Bootstrap the initial owner locally.
         reg_resp = client.post(
-            "/api/v1/auth/register",
+            "/api/v1/auth/setup",
             json={
                 "username": "admin1",
                 "email": "admin1@example.com",
@@ -407,9 +407,10 @@ class TestAuthUserManagementFlow:
         assert me["username"] == "admin1"
         assert me["email"] == "admin1@example.com"
 
-        # Step 4: Register a second user
+        assert user1["role"] == "eigentuemer"
+        # Step 4: The owner approves a second account.
         reg2_resp = client.post(
-            "/api/v1/auth/register",
+            "/api/v1/auth/users",
             json={
                 "username": "user2",
                 "email": "user2@example.com",
@@ -417,25 +418,21 @@ class TestAuthUserManagementFlow:
                 "password": "Secret456",
                 "role": "readonly",
             },
+            headers=me_headers,
         )
         assert reg2_resp.status_code == 201
         user2 = reg2_resp.json()
         user2_id = user2["id"]
 
-        # Step 5: List users (requires eigentuemer or verwalter role)
-        # The self-registered user is readonly, so we create an eigentuemer via the auth module
-        owner = register_user("owner", "owner@example.com", "Owner", "Secret789", "eigentuemer")
-        owner_token = create_access_token(owner.id)
-        owner_headers = {"Authorization": f"Bearer {owner_token}"}
+        # Step 5: List the installation's approved accounts.
+        owner_headers = me_headers
 
         users_resp = client.get("/api/v1/auth/users", headers=owner_headers)
         assert users_resp.status_code == 200
         users = users_resp.json()
-        # Should have at least admin1, user2, and owner
         usernames = {u["username"] for u in users}
         assert "admin1" in usernames
         assert "user2" in usernames
-        assert "owner" in usernames
 
         # Step 6: Delete user2 (only eigentuemer can delete)
         del_resp = client.delete(

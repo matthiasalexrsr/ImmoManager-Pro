@@ -10,7 +10,9 @@ import hmac
 import logging
 import secrets
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
+from threading import RLock
 from typing import Optional
 from uuid import uuid4
 
@@ -18,9 +20,11 @@ import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt.exceptions import InvalidTokenError as JWTError
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from .config import settings
+from .db.auth_models import AuthSetupORM
 from .models import TokenPayload, UserRead
 
 logger = logging.getLogger(__name__)
@@ -116,7 +120,13 @@ _MAX_BLACKLIST_SIZE = 10_000
 _MAX_LOGIN_ATTEMPT_KEYS = 10_000
 
 # DB-backed session factory for auth security state (set by enable_sql_auth_state)
-_auth_session_factory = None
+_auth_session_factory: Callable[[], Session] | None = None
+
+
+def _auth_session() -> Session:
+    if _auth_session_factory is None:
+        raise RuntimeError("SQL authentication has not been configured")
+    return _auth_session_factory()
 
 # Number of PBKDF2 iterations (OWASP recommended minimum for SHA-256)
 _PBKDF2_ITERATIONS = 600_000
@@ -153,7 +163,7 @@ def check_login_rate_limit(username: str) -> bool:
 def _check_login_rate_limit_db(username: str) -> bool:
     """DB-backed rate limit check."""
     from .db.orm_models import LoginAttemptORM
-    session = _auth_session_factory()
+    session = _auth_session()
     try:
         cutoff = datetime.now(timezone.utc) - timedelta(minutes=LOCKOUT_DURATION_MINUTES)
         count = session.query(LoginAttemptORM).filter(
@@ -200,7 +210,7 @@ def _evict_oldest_login_attempts() -> None:
 def _record_login_attempt_db(username: str, *, success: bool) -> None:
     """Persist a login attempt to the database."""
     from .db.orm_models import LoginAttemptORM
-    session = _auth_session_factory()
+    session = _auth_session()
     try:
         session.add(LoginAttemptORM(username=username, success=success))
         session.commit()
@@ -216,7 +226,7 @@ def clear_login_attempts(username: str) -> None:
     _login_attempts.pop(username, None)
     if _auth_session_factory is not None:
         from .db.orm_models import LoginAttemptORM
-        session = _auth_session_factory()
+        session = _auth_session()
         try:
             session.query(LoginAttemptORM).filter(
                 LoginAttemptORM.username == username,
@@ -264,7 +274,7 @@ def verify_totp(secret: str, code: str) -> bool:
     import struct
     import time
 
-    if not code or len(code) != 6 or not code.isdigit():
+    if not isinstance(code, str) or len(code) != 6 or not code.isdigit():
         return False
 
     import base64
@@ -340,7 +350,7 @@ def revoke_token(token: str) -> None:
 def _revoke_token_db(token: str, expires_at: datetime) -> None:
     """Persist token revocation to the database."""
     from .db.orm_models import RevokedTokenORM
-    session = _auth_session_factory()
+    session = _auth_session()
     try:
         jti = _token_jti(token)
         exists = session.query(RevokedTokenORM).filter(
@@ -369,7 +379,7 @@ def is_token_revoked(token: str) -> bool:
 def _is_token_revoked_db(token: str) -> bool:
     """Check DB for revoked token."""
     from .db.orm_models import RevokedTokenORM
-    session = _auth_session_factory()
+    session = _auth_session()
     try:
         jti = _token_jti(token)
         found = session.query(RevokedTokenORM).filter(
@@ -409,7 +419,7 @@ def _cleanup_blacklist() -> None:
 def _cleanup_blacklist_db() -> None:
     """Remove expired revoked tokens from the database."""
     from .db.orm_models import RevokedTokenORM
-    session = _auth_session_factory()
+    session = _auth_session()
     try:
         session.query(RevokedTokenORM).filter(
             RevokedTokenORM.expires_at < datetime.now(timezone.utc)
@@ -477,6 +487,18 @@ class UserStore(ABC):
     def clear(self) -> None:
         ...
 
+    @abstractmethod
+    def setup_required(self) -> bool:
+        ...
+
+    @abstractmethod
+    def create_initial_owner(self, user_data: dict) -> None:
+        ...
+
+    @abstractmethod
+    def prepare_totp(self, user_id: str, secret: str) -> dict:
+        ...
+
 
 class InMemoryUserStore(UserStore):
     """In-memory user storage for tests and development."""
@@ -484,6 +506,8 @@ class InMemoryUserStore(UserStore):
     def __init__(self):
         self._by_id: dict[str, dict] = {}
         self._by_username: dict[str, dict] = {}
+        self._lock = RLock()
+        self._setup_complete = False
 
     def get_by_id(self, user_id: str) -> Optional[dict]:
         return self._by_id.get(user_id)
@@ -492,15 +516,40 @@ class InMemoryUserStore(UserStore):
         return self._by_username.get(username)
 
     def create(self, user_data: dict) -> None:
-        self._by_id[user_data["id"]] = user_data
-        self._by_username[user_data["username"]] = user_data
+        with self._lock:
+            if user_data["username"] in self._by_username or any(u["email"] == user_data["email"] for u in self._by_id.values()):
+                raise HTTPException(status_code=409, detail="Benutzername oder E-Mail-Adresse existiert bereits")
+            self._by_id[user_data["id"]] = user_data
+            self._by_username[user_data["username"]] = user_data
+            self._setup_complete = True
+
+    def setup_required(self) -> bool:
+        with self._lock:
+            return not self._setup_complete and not self._by_id
+
+    def create_initial_owner(self, user_data: dict) -> None:
+        with self._lock:
+            if not self.setup_required():
+                raise HTTPException(status_code=409, detail="Ersteinrichtung wurde bereits abgeschlossen")
+            self.create(user_data)
+
+    def prepare_totp(self, user_id: str, secret: str) -> dict:
+        with self._lock:
+            user = self._by_id.get(user_id)
+            if user is None:
+                raise HTTPException(status_code=404, detail="Benutzer nicht gefunden")
+            if user.get("totp_enabled"):
+                raise HTTPException(status_code=409, detail="2FA ist bereits aktiviert")
+            if not user.get("totp_secret"):
+                user["totp_secret"] = secret
+            return user.copy()
 
     def update(self, user_id: str, updates: dict) -> Optional[dict]:
         user = self._by_id.get(user_id)
         if user is None:
             return None
         for key, value in updates.items():
-            if value is not None and key not in ("id", "hashed_password", "created_at"):
+            if (value is not None or key == "totp_secret") and key not in ("id", "hashed_password", "created_at"):
                 user[key] = value
         user["updated_at"] = datetime.now(timezone.utc)
         return user
@@ -517,6 +566,7 @@ class InMemoryUserStore(UserStore):
     def clear(self) -> None:
         self._by_id.clear()
         self._by_username.clear()
+        self._setup_complete = False
 
 
 class SQLUserStore(UserStore):
@@ -524,6 +574,19 @@ class SQLUserStore(UserStore):
 
     def __init__(self, session_factory):
         self._session_factory = session_factory
+
+    def close_existing_setup(self) -> None:
+        """Keep legacy installations closed after their final account is deleted."""
+        from .db.orm_models import UserORM
+        session = self._session_factory()
+        try:
+            if session.query(UserORM.id).first() is not None and session.get(AuthSetupORM, 1) is None:
+                session.add(AuthSetupORM(id=1))
+                session.commit()
+        except IntegrityError:
+            session.rollback()  # Another process has already closed setup.
+        finally:
+            self._finalize_session(session)
 
     def _finalize_session(self, session) -> None:
         """Return DB resources and clear scoped-session state when configured.
@@ -581,7 +644,68 @@ class SQLUserStore(UserStore):
         try:
             obj = UserORM(**user_data)
             session.add(obj)
+            session.flush()
+            # Seeded/admin-created installations also remain closed if accounts are deleted.
+            try:
+                with session.begin_nested():
+                    session.add(AuthSetupORM(id=1))
+                    session.flush()
+            except IntegrityError:
+                pass
             session.commit()
+        except IntegrityError as exc:
+            session.rollback()
+            raise HTTPException(status_code=409, detail="Benutzername oder E-Mail-Adresse existiert bereits") from exc
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            self._finalize_session(session)
+
+    def setup_required(self) -> bool:
+        from .db.orm_models import UserORM
+        session = self._session_factory()
+        try:
+            return session.get(AuthSetupORM, 1) is None and session.query(UserORM.id).first() is None
+        finally:
+            self._finalize_session(session)
+
+    def create_initial_owner(self, user_data: dict) -> None:
+        from .db.orm_models import UserORM
+        session = self._session_factory()
+        try:
+            # The unique marker is acquired before checking users. Other processes
+            # contend on this database constraint, without locking normal logins.
+            session.add(AuthSetupORM(id=1))
+            session.flush()
+            if session.query(UserORM.id).first() is not None:
+                session.commit()
+                raise HTTPException(status_code=409, detail="Ersteinrichtung wurde bereits abgeschlossen")
+            session.add(UserORM(**user_data))
+            session.commit()
+        except IntegrityError as exc:
+            session.rollback()
+            raise HTTPException(status_code=409, detail="Ersteinrichtung wurde bereits abgeschlossen") from exc
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            self._finalize_session(session)
+
+    def prepare_totp(self, user_id: str, secret: str) -> dict:
+        from .db.orm_models import UserORM
+        session = self._session_factory()
+        try:
+            session.query(UserORM).filter(
+                UserORM.id == user_id, UserORM.totp_enabled == False, UserORM.totp_secret.is_(None),  # noqa: E712
+            ).update({"totp_secret": secret}, synchronize_session=False)
+            session.commit()
+            user = session.get(UserORM, user_id)
+            if user is None:
+                raise HTTPException(status_code=404, detail="Benutzer nicht gefunden")
+            if user.totp_enabled:
+                raise HTTPException(status_code=409, detail="2FA ist bereits aktiviert")
+            return self._to_dict(user)
         except Exception:
             session.rollback()
             raise
@@ -596,7 +720,7 @@ class SQLUserStore(UserStore):
             if obj is None:
                 return None
             for key, value in updates.items():
-                if value is not None and key not in ("id", "hashed_password", "created_at"):
+                if (value is not None or key == "totp_secret") and key not in ("id", "hashed_password", "created_at"):
                     setattr(obj, key, value)
             obj.updated_at = datetime.now(timezone.utc)
             session.commit()
@@ -638,6 +762,7 @@ class SQLUserStore(UserStore):
         session = self._session_factory()
         try:
             session.query(UserORM).delete()
+            session.query(AuthSetupORM).delete()
             session.commit()
         except Exception:
             session.rollback()
@@ -658,6 +783,7 @@ def enable_sql_users(session_factory) -> None:
     """
     global _user_store, _auth_session_factory
     _user_store = SQLUserStore(session_factory)
+    _user_store.close_existing_setup()
     _auth_session_factory = session_factory
 
 
@@ -670,8 +796,7 @@ def _to_user_read(user_data: dict) -> UserRead:
 # ---------------------------------------------------------------------------
 
 
-def register_user(username: str, email: str, full_name: str, password: str, role: str = "readonly") -> UserRead:
-    """Register a new user with password policy enforcement (T21)."""
+def _new_user_data(username: str, email: str, full_name: str, password: str, role: str) -> dict:
     if _user_store.get_by_username(username) is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Benutzername existiert bereits")
     # T21: Validate password strength
@@ -681,10 +806,9 @@ def register_user(username: str, email: str, full_name: str, password: str, role
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Passwort zu schwach: {'; '.join(pw_errors)}",
         )
-    user_id = str(uuid4())
     now = datetime.now(timezone.utc)
-    user_data = {
-        "id": user_id,
+    return {
+        "id": str(uuid4()),
         "username": username,
         "email": email,
         "full_name": full_name,
@@ -696,11 +820,32 @@ def register_user(username: str, email: str, full_name: str, password: str, role
         "created_at": now,
         "updated_at": now,
     }
+
+
+def register_user(username: str, email: str, full_name: str, password: str, role: str = "readonly") -> UserRead:
+    """Create an approved/seeded user; public registration is disabled by the router."""
+    user_data = _new_user_data(username, email, full_name, password, role)
     _user_store.create(user_data)
     return _to_user_read(user_data)
 
 
-def authenticate_user(username: str, password: str) -> Optional[dict]:
+def setup_required() -> bool:
+    return _user_store.setup_required()
+
+
+def create_initial_owner(username: str, email: str, full_name: str, password: str) -> UserRead:
+    if not setup_required():
+        raise HTTPException(status_code=409, detail="Ersteinrichtung wurde bereits abgeschlossen")
+    data = _new_user_data(username, email, full_name, password, "eigentuemer")
+    _user_store.create_initial_owner(data)
+    return _to_user_read(data)
+
+
+def prepare_totp(user_id: str) -> dict:
+    return _user_store.prepare_totp(user_id, generate_totp_secret())
+
+
+def authenticate_user(username: str, password: str, *, complete: bool = True) -> Optional[dict]:
     """Authenticate a user by username and password with rate limiting (T21)."""
     # T21: Check rate limit
     if check_login_rate_limit(username):
@@ -719,7 +864,8 @@ def authenticate_user(username: str, password: str) -> Optional[dict]:
         record_failed_login(username)
         return None
     # Success: clear attempts
-    clear_login_attempts(username)
+    if complete:
+        clear_login_attempts(username)
     return user
 
 

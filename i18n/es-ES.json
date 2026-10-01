@@ -100,7 +100,8 @@
       "confirm": "Confirmar",
       "next": "Siguiente",
       "back": "Atrás",
-      "done": "Hecho"
+      "done": "Hecho",
+      "retry": "Reintentar"
     },
     "commonActions": {
       "viewDetails": "Ver detalles",
@@ -121,7 +122,9 @@
       "selectDate": "Seleccionar fecha",
       "selectTime": "Seleccionar hora",
       "enterAmount": "Introducir importe",
-      "search": "Buscar"
+      "search": "Buscar",
+      "status": "Estado",
+      "none": "— Ninguna —"
     },
     "table": {
       "adjustColumns": "Ajustar columnas",
@@ -133,7 +136,10 @@
       "nextPage": "Página siguiente",
       "previousPage": "Página anterior",
       "noResults": "Sin resultados",
-      "loading": "Cargando…"
+      "loading": "Cargando…",
+      "firstPage": "Primera página",
+      "lastPage": "Última página",
+      "pagination": "Paginación"
     },
     "filterChips": {
       "active": "Activo",
@@ -202,7 +208,8 @@
       "password": "Contraseña",
       "rememberMe": "Mantener sesión iniciada",
       "forgotPassword": "¿Olvidó su contraseña?",
-      "submit": "Iniciar sesión"
+      "submit": "Iniciar sesión",
+      "username": "Nombre de usuario"
     },
     "forgotPassword": {
       "title": "Restablecer contraseña",
@@ -221,13 +228,37 @@
     },
     "twoFactor": {
       "title": "Autenticación de dos factores",
-      "enterCode": "Introducir código",
-      "confirmCode": "Confirmar código",
-      "resendCode": "Reenviar código"
+      "description": "Proteja su cuenta con un código temporal de una aplicación de autenticación.",
+      "code": "Código de autenticación (6 dígitos)",
+      "enabled": "La autenticación de dos factores está activada.",
+      "disabled": "La autenticación de dos factores está desactivada.",
+      "setup": "Configurar autenticador",
+      "secret": "Clave de configuración",
+      "uri": "URI del autenticador",
+      "copy": "Copiar clave",
+      "copied": "Clave copiada.",
+      "copyFailed": "No se pudo copiar. Seleccione y copie la clave manualmente.",
+      "enrollInstructions": "Cree una cuenta temporal en su aplicación con esta clave e introduzca el código actual.",
+      "verify": "Confirmar código y activar",
+      "disable": "Desactivar con código",
+      "enabledSuccess": "Autenticación de dos factores activada.",
+      "disabledSuccess": "Autenticación de dos factores desactivada.",
+      "invalidStatus": "No se pudo leer el estado de autenticación.",
+      "recovery": "Si pierde el autenticador, la persona con acceso a los archivos de instalación debe realizar una recuperación local.",
+      "accountId": "ID de cuenta para recuperación local"
     },
     "password": {
       "placeholder": "Mínimo 8 caracteres",
       "requirements": "Mínimo 8 caracteres, 1 mayúscula, 1 minúscula, 1 número"
+    },
+    "setup": {
+      "title": "Configurar la cuenta del propietario",
+      "description": "Cree el propietario de esta instalación privada. Después, el propietario autoriza las cuentas adicionales.",
+      "submit": "Crear cuenta del propietario",
+      "fullName": "Nombre completo",
+      "localOnly": "Abra esta instalación localmente mediante localhost o 127.0.0.1 para configurar el primer propietario.",
+      "approvedOnly": "El propietario de esta instalación autoriza las cuentas adicionales.",
+      "invalidStatus": "No se pudo leer el estado de configuración."
     }
   },
   "dashboard": {
@@ -291,6 +322,11 @@
       "create": "Crear cartera",
       "edit": "Editar cartera",
       "archive": "Archivar cartera"
+    },
+    "properties": {
+      "form": {
+        "name": "Inmueble"
+      }
     }
   },
   "properties": {
@@ -371,7 +407,10 @@
       "serviceCharge": "Anticipo de gastos comunes",
       "warmRent": "Alquiler total",
       "status": "Estado",
-      "tenant": "Inquilino"
+      "tenant": "Inquilino",
+      "columns": {
+        "label": "Unidad"
+      }
     },
     "types": {
       "apartment": "Apartamento",
@@ -467,7 +506,22 @@
       "type": "Tipo de cuenta",
       "openingBalance": "Saldo inicial",
       "balance": "Saldo",
-      "lastSync": "Última sincronización"
+      "lastSync": "Última sincronización",
+      "form": {
+        "accountType": "Tipo de cuenta",
+        "balance": "Saldo (€)",
+        "bank": "Banco",
+        "currentBalance": "Saldo actual (€)",
+        "name": "Nombre de la cuenta",
+        "openingBalance": "Saldo inicial (€)",
+        "type": "Tipo"
+      },
+      "types": {
+        "checking": "Cuenta corriente",
+        "deposit": "Cuenta de fianzas",
+        "rent": "Cuenta de alquileres",
+        "savings": "Cuenta de ahorro"
+      }
     },
     "accountTypes": {
       "bank": "Cuenta bancaria",
@@ -485,7 +539,19 @@
       "tenant": "Inquilino",
       "paymentText": "Concepto de pago",
       "receipt": "Comprobante",
-      "status": "Estado"
+      "status": "Estado",
+      "form": {
+        "amount": "Importe (€)",
+        "bookingDate": "Fecha del movimiento",
+        "category": "Categoría",
+        "date": "Fecha",
+        "paymentText": "Concepto del movimiento",
+        "receiptUrl": "URL del justificante"
+      },
+      "statusOptions": {
+        "booked": "Contabilizada",
+        "matched": "Conciliada"
+      }
     },
     "categories": {
       "rentIncome": "Ingresos por alquiler",
@@ -747,7 +813,23 @@
       "title": "Datos y copias de seguridad",
       "database": "Base de datos",
       "dbDetails": "Detalles de BD",
-      "createBackup": "Crear copia de seguridad"
+      "createBackup": "Crear copia de seguridad",
+      "businessBackup": "Guardar datos de negocio parciales",
+      "businessScope": "Datos de negocio parciales: registros JSON sin archivos adjuntos, cuentas de usuario ni datos completos de liquidación.",
+      "fullRecoveryHint": "La copia completa cifrada con contraseña de SQLite, archivos, usuarios y configuración se realiza sin conexión después de detener la aplicación. Siga la guía de mantenimiento para copias completas sin conexión.",
+      "readOnlyHint": "El acceso de lectura permite exportar; las copias y las importaciones requieren permisos de escritura.",
+      "info": "Información",
+      "infoFailed": "Error al consultar la base de datos",
+      "backupRunning": "Guardando copia…",
+      "backupSaved": "Datos de negocio parciales guardados",
+      "backupFailed": "Error al guardar la copia",
+      "exportFailed": "Error de exportación",
+      "invalidBackup": "La respuesta del servidor no confirma una copia parcial válida de los datos de negocio.",
+      "invalidExport": "La respuesta no es una exportación JSON válida de datos de negocio.",
+      "invalidImport": "La respuesta del servidor no confirma una importación válida.",
+      "importRejected": "El servidor ha indicado errores de importación.",
+      "importFailed": "Error de importación",
+      "importSaved": "Datos de negocio parciales importados"
     },
     "about": {
       "title": "Acerca de ImmoManager Pro",
@@ -774,10 +856,12 @@
       "result": "Resultado",
       "showSteps": "Mostrar pasos",
       "restartRequired": "Reinicie la aplicación para activar la actualización.",
-      "rolledBack": "Se realizó una reversión automática. Sus datos no han cambiado.",
+      "rolledBack": "Se restauró el código anterior. Revise los pasos de recuperación.",
       "history": "Historial de actualizaciones",
       "showHistory": "Mostrar",
-      "noHistory": "Aún no se han realizado actualizaciones"
+      "noHistory": "Aún no se han realizado actualizaciones",
+      "manualRecovery": "La recuperación está incompleta. Detenga la aplicación y siga los pasos de recuperación.",
+      "maintenanceOnly": "Las actualizaciones requieren detener la aplicación y ejecutar el comando de mantenimiento. Aquí puede seguir buscando actualizaciones."
     }
   },
   "search": {
@@ -1143,7 +1227,64 @@
       "receivablesFailed": "No se pudieron crear las cuentas por cobrar",
       "exportFailed": "Error en la exportación",
       "disputeFailed": "No se pudo presentar la disputa",
-      "preflightBlockers": "Bloqueadores de preflight presentes"
+      "preflightBlockers": "Bloqueadores de preflight presentes",
+      "stepCreate": "Crear",
+      "stepCosts": "Costes",
+      "stepPreflight": "Comprobar",
+      "stepGenerate": "Generar",
+      "stepFinalize": "Finalizar",
+      "stepDeliver": "Entregar",
+      "settlements": {
+        "title": "Resultados de liquidación contabilizados",
+        "totals": "Totales contabilizados",
+        "debts": "Cuentas por cobrar contabilizadas",
+        "credits": "Saldos a favor disponibles",
+        "net": "Neto (cobros − saldos a favor)",
+        "contract": "Contrato",
+        "delta": "Diferencia contabilizada (€)",
+        "amount": "Importe contabilizado (€)",
+        "receivable": "ID de cuenta por cobrar",
+        "entries": "Partidas",
+        "deltaHelp": "Las correcciones contabilizan solo la diferencia respecto a la cadena de liquidaciones ya contabilizada; las partidas anteriores se conservan.",
+        "notPaidOut": "Los saldos a favor están disponibles. Esta vista no registra ni confirma ningún reembolso.",
+        "empty": "Todavía no se han contabilizado resultados para este período.",
+        "invalidResponse": "El resumen de liquidación está incompleto o es incoherente. Vuelva a cargarlo.",
+        "loadFailed": "No se pudieron cargar los resultados de liquidación.",
+        "book": "Contabilizar cobros y saldos a favor",
+        "booking": "Contabilizando…",
+        "posted": "Nuevos cobros: {{debts}} · Nuevos saldos a favor: {{credits}} · Ya registrados: {{existing}}",
+        "postFailed": "No se pudieron contabilizar los resultados de liquidación.",
+        "postingUnknown": "La respuesta de contabilización está incompleta. Vuelva a cargar los resultados guardados antes de repetir la acción.",
+        "revision": "Revisión",
+        "sourcePeriod": "Período de origen",
+        "revisionNotes": "Motivo de corrección",
+        "status": {
+          "receivable_created": "Cuenta por cobrar creada",
+          "credit_available": "Saldo a favor disponible (sin reembolso confirmado)",
+          "no_adjustment": "No se requiere ajuste"
+        },
+        "reference": "Referencia de justificante",
+        "historicalReference": "Referencia de justificante histórico"
+      },
+      "ownerShare": {
+        "title": "Parte de los costes correspondiente al propietario",
+        "notTenantDebt": "Esta parte corresponde al propietario. No es una deuda ni un saldo a favor del inquilino.",
+        "snapshotHelp": "Distribución guardada en la última generación. Vuelva a generar tras modificar los costes.",
+        "notCalculated": "Todavía no hay una distribución guardada. La parte del propietario aparecerá después de generar.",
+        "invalidResponse": "La distribución guardada está incompleta o es incoherente. Vuelva a cargarla.",
+        "loadFailed": "No se pudo cargar la parte del propietario.",
+        "total": "Total a cargo del propietario",
+        "vacancy": "Parte repercutible por desocupación",
+        "nonRecoverable": "Costes no repercutibles",
+        "propertyCosts": "Costes totales del inmueble",
+        "tenantCosts": "Costes asignados a inquilinos",
+        "unit": "Unidad",
+        "reason": "Asignación",
+        "amount": "Importe del propietario (€)",
+        "lineItems": "Partidas a cargo del propietario",
+        "vacantDays": "Días de desocupación por unidad",
+        "non_recoverable": "No repercutible"
+      }
     },
     "dashboard": {
       "quickAccess": "Acceso rápido",
@@ -1367,7 +1508,8 @@
       "runTest": "Ejecutar prueba",
       "capabilities": "Capacidades:",
       "error": "Error",
-      "actionExecuted": "Acción ejecutada"
+      "actionExecuted": "Acción ejecutada",
+      "adapterPlanned": "Este adaptador aún no está implementado. Las credenciales guardadas no permiten enviar ni publicar."
     },
     "documents": {
       "title": "Documentos",
@@ -1458,7 +1600,8 @@
         "contactPerson": "Persona de contacto",
         "phone": "Teléfono",
         "notes": "Notas",
-        "status": "Estado"
+        "status": "Estado",
+        "contactPhone": "Teléfono"
       },
       "types": {
         "building": "Seguro de edificio",
@@ -1637,7 +1780,76 @@
       "description": "Asignar pagos y seguir los importes pendientes. Los totales corresponden al registro seleccionado.",
       "charges": "Cargos de alquiler",
       "receivables": "Cuentas por cobrar",
-      "onlyOpen": "Solo partidas pendientes"
+      "onlyOpen": "Solo partidas pendientes",
+      "allocateBooking": "Asignar movimiento bancario",
+      "bankBooking": "Movimiento bancario",
+      "allocationHelp": "Seleccione un ingreso. El importe y la fecha se toman del movimiento; se permiten asignaciones parciales.",
+      "noAvailableBookings": "No hay movimientos bancarios compatibles con un importe disponible para asignar.",
+      "allocationSaved": "Movimiento bancario asignado.",
+      "paymentSource": "Origen del pago",
+      "bankLinked": "Movimiento bancario",
+      "manualPayment": "Registro manual",
+      "posted": "Registrado",
+      "reversed": "Anulado",
+      "reversePayment": "Anular pago",
+      "reversalDate": "Fecha de anulación",
+      "reversalReason": "Motivo",
+      "reasonRequired": "Indique un motivo para la anulación.",
+      "reversalSaved": "Pago anulado. Se ha actualizado el saldo pendiente.",
+      "reversalHelp": "Se conserva el comprobante del pago. Un comprobante de anulación cancela el pago y vuelve a abrir su importe.",
+      "reverseAllocationHelp": "Un comprobante de anulación libera esta asignación. El movimiento bancario se conserva y puede asignarse de nuevo."
+    },
+    "rentGeneration": {
+      "title": "Cargos mensuales de alquiler",
+      "startMonth": "Desde el mes",
+      "endMonth": "Hasta el mes",
+      "contracts": "Contratos (opcional)",
+      "selectionHelp": "Sin selección se incluyen todos los contratos activos. Revise primero la vista previa.",
+      "policy": "Se cobra el importe mensual completo por cada mes que coincida con el contrato. Los meses parciales están marcados. Se omiten los meses existentes.",
+      "invalidRange": "El mes final debe ser igual o posterior al mes inicial.",
+      "invalidPreview": "La respuesta está incompleta. Vuelva a cargar la vista previa.",
+      "preview": "Revisar vista previa",
+      "generate": "Crear cargos de alquiler",
+      "newItems": "Cargos nuevos",
+      "total": "Importe total",
+      "existing": "Ya existente",
+      "skipped": "No incluido",
+      "contract": "Contrato",
+      "month": "Mes",
+      "dueDate": "Vencimiento",
+      "amount": "Importe",
+      "partialMonth": "Mes parcial",
+      "yes": "Sí",
+      "changeSelection": "Cambiar selección",
+      "created": "Creado",
+      "paymentManaged": "Registre pagos y anulaciones con comprobante en el resumen de alquileres."
+    },
+    "rentCharges": {
+      "title": "Cargos de alquiler",
+      "create": "Crear cargo de alquiler",
+      "edit": "Editar cargo de alquiler",
+      "columns": {
+        "month": "Mes",
+        "coldRent": "Alquiler base",
+        "serviceCharge": "Gastos comunes",
+        "heatingCharge": "Calefacción",
+        "otherCharges": "Otros gastos",
+        "totalDue": "Total adeudado",
+        "paid": "Pagado",
+        "remaining": "Pendiente"
+      },
+      "form": {
+        "month": "Mes (AAAA-MM)",
+        "coldRent": "Alquiler base (EUR)",
+        "serviceCharge": "Gastos comunes (EUR)",
+        "heatingCharge": "Calefacción (EUR)",
+        "otherCharges": "Otros gastos (EUR)"
+      }
+    },
+    "receivables": {
+      "paymentManaged": "Los pagos y las anulaciones se registran únicamente con justificantes en el resumen de alquileres.",
+      "openRentOverview": "Abrir resumen de alquileres",
+      "readonly": "Acceso de solo lectura: no se pueden modificar las cuentas por cobrar."
     }
   },
   "comp": {

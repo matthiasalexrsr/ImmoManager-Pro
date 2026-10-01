@@ -2,6 +2,8 @@
 
 import logging
 
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..db.orm_models import (
@@ -11,6 +13,7 @@ from ..db.orm_models import (
     InsuranceORM,
     InvoiceORM,
     MeterORM,
+    PaymentORM,
     ReceivableORM,
     RentChargeORM,
     StandaloneMeterReadingORM,
@@ -116,6 +119,8 @@ class FinanceRepository:
         return self._receivables.list_all()
 
     def create_receivable(self, data: ReceivableCreate) -> Receivable:
+        from ..services.billing_settlement import guard_receivable
+        guard_receivable(data=data)
         tr = self._tenant_repo
         if tr and not tr._contracts.exists(data.contract_id):
             raise ValidationError("Vertrag existiert nicht")
@@ -135,11 +140,19 @@ class FinanceRepository:
         tr = self._tenant_repo
         if tr and not tr._contracts.exists(data.contract_id):
             raise ValidationError("Vertrag existiert nicht")
-        result = self._receivables.update(receivable_id, data)
+        from ..services.payments import reconcile_financial_edit
+
+        current = self._receivables.get(receivable_id)
+        from ..services.billing_settlement import guard_receivable
+        guard_receivable(current, data)
+        _paid, status = reconcile_financial_edit("receivable", current, data)
+        result = self._receivables.update(receivable_id, data.model_copy(update={"status": status}))
         self._commit()
         return result
 
     def delete_receivable(self, receivable_id: str) -> None:
+        from ..services.billing_settlement import guard_receivable
+        guard_receivable(self.get_receivable(receivable_id))
         self._receivables.delete(receivable_id)
         self._commit()
 
@@ -265,15 +278,43 @@ class FinanceRepository:
         return self._rent_charges.list_all()
 
     def create_rent_charge(self, data: RentChargeCreate) -> RentCharge:
-        result = self._rent_charges.create(data)
-        self._commit()
-        return result
+        if self._tenant_repo and not self._tenant_repo._contracts.exists(data.contract_id):
+            raise ValidationError("Vertrag existiert nicht")
+        if self.db.scalar(select(RentChargeORM.id).where(
+                RentChargeORM.contract_id == data.contract_id, RentChargeORM.month == data.month)):
+            raise ValidationError("Für diesen Vertrag und Monat besteht bereits eine Sollstellung.")
+        from uuid import uuid4
+        try:
+            row = RentChargeORM(id=str(uuid4()), **data.model_dump())
+            self.db.add(row)
+            self.db.flush()
+            result = RentCharge.model_validate(row, from_attributes=True)
+            self._commit()
+            return result
+        except IntegrityError as exc:
+            self.db.rollback()
+            raise ValidationError("Für diesen Vertrag und Monat besteht bereits eine Sollstellung oder der Vertrag fehlt.") from exc
 
     def get_rent_charge(self, charge_id: str) -> RentCharge:
         return self._rent_charges.get(charge_id)
 
     def update_rent_charge(self, charge_id: str, data: RentChargeCreate) -> RentCharge:
-        result = self._rent_charges.update(charge_id, data)
+        from ..services.payments import reconcile_financial_edit
+
+        current = self._rent_charges.get(charge_id)
+        from ..services.rent_ledger import validate_charge_identity
+        validate_charge_identity(current, data, self.db.scalar(select(PaymentORM.id).where(
+            PaymentORM.rent_charge_id == charge_id).limit(1)) is not None)
+        if self._tenant_repo and not self._tenant_repo._contracts.exists(data.contract_id):
+            raise ValidationError("Vertrag existiert nicht")
+        if self.db.scalar(select(RentChargeORM.id).where(RentChargeORM.contract_id == data.contract_id,
+                RentChargeORM.month == data.month, RentChargeORM.id != charge_id)):
+            raise ValidationError("Für diesen Vertrag und Monat besteht bereits eine Sollstellung.")
+        paid, status = reconcile_financial_edit("rent_charge", current, data)
+        result = self._rent_charges.update(
+            charge_id,
+            data.model_copy(update={"amount_paid": float(paid), "status": status}),
+        )
         self._commit()
         return result
 

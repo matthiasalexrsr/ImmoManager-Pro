@@ -7,15 +7,17 @@ to DatabaseOperationError with proper logging.
 
 import logging
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 from pydantic import BaseModel as PydanticBaseModel
+from sqlalchemy import exists, select, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session
 
 from ..db.orm_models import Base
 from ..error_helpers import safe_db_operation
-from ..storage import NotFoundError
+from ..storage import NotFoundError, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +67,33 @@ class BaseRepository:
             )
             raise
 
+    def _guarded_booking_update(self, orm_obj, updates) -> bool:
+        if self.orm_class.__tablename__ != "bookings":
+            return False
+        from ..db.orm_models import PaymentORM
+        from ..services.payment_integrity import BOOKING_FIELDS, guard_booking_edit
+        has_receipts = self.db.scalar(select(PaymentORM.id).where(PaymentORM.booking_id == orm_obj.id).limit(1)) is not None
+        guard_booking_edit(orm_obj, updates, has_receipts)
+        if not any(key in updates and updates[key] != getattr(orm_obj, key) for key in BOOKING_FIELDS):
+            return False
+        # Allocation may race a booking edit. Both writes arbitrate on the booking row.
+        result = self.db.execute(update(self.orm_class).where(
+            getattr(self.orm_class, "id") == orm_obj.id,
+            ~exists(select(PaymentORM.id).where(PaymentORM.booking_id == orm_obj.id)),
+        ).values(**updates, updated_at=datetime.now(timezone.utc)).execution_options(synchronize_session=False))
+        if cast(CursorResult, result).rowcount != 1:
+            self.db.rollback()
+            raise ValidationError("Die Bankbuchung wurde zwischenzeitlich zugeordnet. Bitte neu laden.")
+        self.db.expire(orm_obj)
+        return True
+
+    def _guard_contract_update(self, orm_obj, updates) -> None:
+        if self.orm_class.__tablename__ == "contracts" and any(
+                field in updates and updates[field] != getattr(orm_obj, field)
+                for field in ("tenant_id", "property_id", "unit_id")):
+            from ..services.payment_integrity import guard_sql_delete
+            guard_sql_delete(self.db, "contracts", orm_obj.id)
+
     @safe_db_operation("list_all")
     def list_all(self) -> list[Any]:
         objs = self.db.query(self.orm_class).all()
@@ -101,6 +130,9 @@ class BaseRepository:
         orm_obj = self.db.get(self.orm_class, entity_id)
         if orm_obj is None:
             raise NotFoundError(self.not_found_msg)
+        self._guard_contract_update(orm_obj, data.model_dump())
+        if self._guarded_booking_update(orm_obj, data.model_dump()):
+            return self._to_pydantic(orm_obj)
         for key, value in data.model_dump().items():
             setattr(orm_obj, key, value)
         setattr(orm_obj, "updated_at", datetime.now(timezone.utc))
@@ -114,6 +146,9 @@ class BaseRepository:
         if orm_obj is None:
             raise NotFoundError(self.not_found_msg)
         updates = data.model_dump(exclude_unset=True)
+        self._guard_contract_update(orm_obj, updates)
+        if self._guarded_booking_update(orm_obj, updates):
+            return self._to_pydantic(orm_obj)
         for key, value in updates.items():
             setattr(orm_obj, key, value)
         setattr(orm_obj, "updated_at", datetime.now(timezone.utc))
@@ -126,6 +161,8 @@ class BaseRepository:
         orm_obj = self.db.get(self.orm_class, entity_id)
         if orm_obj is None:
             raise NotFoundError(self.not_found_msg)
+        from ..services.payment_integrity import guard_sql_delete
+        guard_sql_delete(self.db, self.orm_class.__tablename__, entity_id)
         self.db.delete(orm_obj)
         self.db.flush()
 

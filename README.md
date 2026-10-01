@@ -8,7 +8,7 @@ Full-stack property management application for German real estate portfolios.
 |-------|-----------|
 | Backend | Python 3.11+, FastAPI, SQLAlchemy 2.0, Pydantic v2 |
 | Frontend | React 19, Vite, custom i18n (de-DE / en-US / es-ES) |
-| Database | SQLite (dev/test), PostgreSQL (production) |
+| Database | SQLite (verified local release); PostgreSQL adapter |
 | Auth | JWT (access + refresh tokens), role-based access control |
 | CI | GitHub Actions (lint, type-check, security audit, tests, build) |
 
@@ -22,12 +22,19 @@ Double-click `start.bat` or run:
 .\start.bat
 ```
 
-The starter checks Python 3.11+, creates `.venv` when needed, installs the backend, builds the frontend when `frontend/dist` is missing, generates a persistent local secret, and stores runtime data under `%LOCALAPPDATA%\ImmoManagerPro` by default:
+The starter checks Python 3.11+, creates `.venv` when needed, verifies backend dependencies, and builds the frontend when its source or configuration changes. A valid unchanged installation can restart offline. Failed builds preserve the previous compiled frontend. It generates a persistent local secret and stores runtime data under `%LOCALAPPDATA%\ImmoManagerPro` by default:
 
 - SQLite database: `%LOCALAPPDATA%\ImmoManagerPro\immo_manager.db`
 - Uploads: `%LOCALAPPDATA%\ImmoManagerPro\uploads`
 - Backups: `%LOCALAPPDATA%\ImmoManagerPro\backups`
 - Logs: `%LOCALAPPDATA%\ImmoManagerPro\logs`
+
+On a new installation, open the local login page and create your owner account.
+This one-time setup is available only on localhost. Further accounts require owner
+approval through the administration API; public registration closes permanently.
+Authenticator enrollment and login codes are available in personal settings.
+This release serves one private installation whose approved users share its
+portfolios. See [the access model and offline recovery](docs/ACCESS_MODEL.md).
 
 Useful variants:
 
@@ -37,12 +44,42 @@ Useful variants:
 .\start.bat -DataDir D:\ImmoManagerProData
 ```
 
-Backups can be created manually or scheduled via Windows Task Scheduler:
+`-Seed` creates synthetic demo data and a demo account. Use a separate data folder
+for demonstrations. Start without `-Seed` for your own installation.
+
+Updates run with the application stopped. The settings page checks for updates
+and displays maintenance instructions; it does not migrate a live database:
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\backup_scheduler.py run
-.\.venv\Scripts\python.exe scripts\backup_scheduler.py schedule
+.\.venv\Scripts\python.exe -m backend.maintenance --offline --data-dir "$env:LOCALAPPDATA\ImmoManagerPro" --port 8000
 ```
+
+Use the actual data directory and port. See [Windows runtime and recovery behavior](WINDOWS_RUNTIME_HANDOFF.md).
+
+Create a complete encrypted local recovery archive with the application and
+background writers stopped. The passphrase is requested interactively:
+
+```powershell
+.\.venv\Scripts\python.exe -m backend.recovery backup --offline --data-dir "$env:LOCALAPPDATA\ImmoManagerPro" --output "D:\Private Backups\ImmoManager.immobak"
+.\.venv\Scripts\python.exe -m backend.recovery restore --archive "D:\Private Backups\ImmoManager.immobak" --destination "D:\Recovered ImmoManager"
+.\.venv\Scripts\python.exe -m backend.recovery run --data-dir "D:\Recovered ImmoManager" --port 8000
+```
+
+The archive contains every SQLite table, local uploads, users, two-factor state,
+configuration and integration state. Restore requires a new directory and never
+replaces the existing installation. See [the recovery instructions](docs/RECOVERY.md),
+including legacy upload locations and external documents.
+
+The scheduler creates **database-only** SQLite snapshots. These contain all tables
+but omit uploaded files and external configuration/secrets:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\backup_scheduler.py run --data-dir "$env:LOCALAPPDATA\ImmoManagerPro"
+.\.venv\Scripts\python.exe scripts\backup_scheduler.py schedule --data-dir "$env:LOCALAPPDATA\ImmoManagerPro"
+```
+
+JSON backup/export in settings covers a defined business-data subset. Use the
+encrypted offline archive for full local recovery.
 
 ### Development
 
@@ -114,10 +151,24 @@ Partial payments, duplicate-request protection and payment history are supported
 By default the table shows outstanding items; turn off **Nur offene Posten** to
 inspect completed items. Totals refer to the selected ledger.
 
-Payments recorded here are manual allocations. They do not create bank-account
-bookings; imported bank transactions must not also be manually recorded for the
-same payment. Linking existing bank bookings and reversing payment receipts are
-the next financial workflow improvements.
+Use **Bankbuchung zuordnen** to allocate an existing positive bank transaction.
+Its remaining budget is shared across all linked items. Allocation changes the
+outstanding obligation and preserves the original bank transaction in cash flow.
+Payment history supports dated reversals with a reason and retained counter-receipt.
+Manual payments represent receipts without a bank link; enter each receipt once.
+
+**Finanzen → Sollstellungen → Monate erzeugen** previews active contracts and
+creates one stored price snapshot per contract/month, with duplicate protection.
+The current policy charges the full agreed month even when the tenancy covers only
+part of it; the preview identifies these months for review. Older unbooked months
+use current prices and must be reviewed before confirmation.
+
+Utility billing uses paid monthly advances. Finalized statements retain their
+values and PDF revisions; corrections post only the difference from the previous
+booked chain. Credits are recorded as available; refund reconciliation is a
+separate workflow.
+Vacancy and non-recoverable costs are shown as owner shares. Missing person or
+consumption data for vacancy blocks the affected calculation.
 
 SQLite installations automatically receive the additive payment schema upgrade
 on startup. For databases managed by Alembic, run `alembic upgrade head` before
@@ -133,11 +184,14 @@ pytest backend/tests -q
 TEST_STORE_BACKEND=sql pytest backend/tests -q
 
 # Backend lint + scoped type-check
-ruff check backend
-mypy backend/app.py backend/domain backend/repositories --ignore-missing-imports
+ruff check backend scripts/backup_scheduler.py
+# The complete required type-check scope is in .github/workflows/ci.yml.
+mypy backend/app.py backend/domain backend/repositories backend/plugins --ignore-missing-imports
 
 # Frontend lint + tests + build
 cd frontend && npm ci && npm run lint && npm run test && npm run build
+npm run test:e2e
+npm run test:e2e -- --fresh-install
 
 # Release smoke
 bash scripts/e2e_smoke.sh
@@ -158,7 +212,8 @@ All endpoints are under `/api/v1`. Full interactive docs at `/docs`.
 
 - Docker and Docker Compose run the FastAPI app under `/api/v1`, serve the built SPA, and include the Mietvertrag-Wizard assets.
 - Local Windows builds use the PyInstaller spec and SQLite by default.
-- External portal integrations are modeled through adapter interfaces/placeholders until real credentials are provided.
+- WhatsApp, postal dispatch and external portals are explicitly marked as planned;
+  they require a provider implementation and credentials before operational use.
 - Production mode (`ENVIRONMENT=production`) fails startup for unsafe defaults such as wildcard CORS, demo seeding, in-memory fallback, or default JWT secrets.
 
 ## License

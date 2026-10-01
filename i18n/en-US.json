@@ -100,7 +100,8 @@
       "confirm": "Confirm",
       "next": "Next",
       "back": "Back",
-      "done": "Done"
+      "done": "Done",
+      "retry": "Try again"
     },
     "commonActions": {
       "viewDetails": "View Details",
@@ -121,7 +122,9 @@
       "selectDate": "Select Date",
       "selectTime": "Select Time",
       "enterAmount": "Enter Amount",
-      "search": "Search"
+      "search": "Search",
+      "status": "Status",
+      "none": "— None —"
     },
     "table": {
       "adjustColumns": "Adjust Columns",
@@ -133,7 +136,10 @@
       "nextPage": "Next Page",
       "previousPage": "Previous Page",
       "noResults": "No Results",
-      "loading": "Loading..."
+      "loading": "Loading...",
+      "firstPage": "First page",
+      "lastPage": "Last page",
+      "pagination": "Pagination"
     },
     "filterChips": {
       "active": "Active",
@@ -202,7 +208,8 @@
       "password": "Password",
       "rememberMe": "Remember Me",
       "forgotPassword": "Forgot Password?",
-      "submit": "Log In"
+      "submit": "Log In",
+      "username": "Username"
     },
     "forgotPassword": {
       "title": "Reset Password",
@@ -220,14 +227,38 @@
       "submit": "Create Account"
     },
     "twoFactor": {
-      "title": "Two-Factor Authentication",
-      "enterCode": "Enter Code",
-      "confirmCode": "Confirm Code",
-      "resendCode": "Resend Code"
+      "title": "Two-factor authentication",
+      "description": "Protect your account with a time-based code from an authenticator app.",
+      "code": "Authenticator code (6 digits)",
+      "enabled": "Two-factor authentication is enabled.",
+      "disabled": "Two-factor authentication is disabled.",
+      "setup": "Set up authenticator",
+      "secret": "Setup secret",
+      "uri": "Authenticator URI",
+      "copy": "Copy secret",
+      "copied": "Secret copied.",
+      "copyFailed": "Copy failed. Select and copy the secret manually.",
+      "enrollInstructions": "Create a time-based account in your authenticator app using this secret, then enter its current code.",
+      "verify": "Confirm code and enable",
+      "disable": "Disable with code",
+      "enabledSuccess": "Two-factor authentication enabled.",
+      "disabledSuccess": "Two-factor authentication disabled.",
+      "invalidStatus": "The two-factor status could not be read.",
+      "recovery": "A lost authenticator requires local recovery by the person with access to the installation files.",
+      "accountId": "Account ID for local recovery"
     },
     "password": {
       "placeholder": "At least 8 characters",
       "requirements": "At least 8 characters, 1 uppercase, 1 lowercase, 1 number"
+    },
+    "setup": {
+      "title": "Set up the owner account",
+      "description": "Create the owner of this private installation. The owner then approves any additional accounts.",
+      "submit": "Create owner account",
+      "fullName": "Full name",
+      "localOnly": "Open this installation locally through localhost or 127.0.0.1 to set up the first owner.",
+      "approvedOnly": "Additional accounts are approved by this installation’s owner.",
+      "invalidStatus": "The setup status could not be read."
     }
   },
   "dashboard": {
@@ -291,6 +322,11 @@
       "create": "Create Portfolio",
       "edit": "Edit Portfolio",
       "archive": "Archive Portfolio"
+    },
+    "properties": {
+      "form": {
+        "name": "Property"
+      }
     }
   },
   "properties": {
@@ -371,7 +407,10 @@
       "serviceCharge": "Service Charge Advance",
       "warmRent": "Gross Rent",
       "status": "Status",
-      "tenant": "Tenant"
+      "tenant": "Tenant",
+      "columns": {
+        "label": "Unit"
+      }
     },
     "types": {
       "apartment": "Apartment",
@@ -467,7 +506,22 @@
       "type": "Account Type",
       "openingBalance": "Opening Balance",
       "balance": "Balance",
-      "lastSync": "Last Sync"
+      "lastSync": "Last Sync",
+      "form": {
+        "accountType": "Account type",
+        "balance": "Balance (€)",
+        "bank": "Bank",
+        "currentBalance": "Current balance (€)",
+        "name": "Account name",
+        "openingBalance": "Opening balance (€)",
+        "type": "Type"
+      },
+      "types": {
+        "checking": "Current account",
+        "deposit": "Security deposit account",
+        "rent": "Rental account",
+        "savings": "Savings account"
+      }
     },
     "accountTypes": {
       "bank": "Bank Account",
@@ -485,7 +539,19 @@
       "tenant": "Tenant",
       "paymentText": "Payment Reference",
       "receipt": "Receipt",
-      "status": "Status"
+      "status": "Status",
+      "form": {
+        "amount": "Amount (€)",
+        "bookingDate": "Booking date",
+        "category": "Category",
+        "date": "Date",
+        "paymentText": "Transaction description",
+        "receiptUrl": "Receipt URL"
+      },
+      "statusOptions": {
+        "booked": "Posted",
+        "matched": "Matched"
+      }
     },
     "categories": {
       "rentIncome": "Rent Income",
@@ -747,7 +813,23 @@
       "title": "Data & Backup",
       "database": "Database",
       "dbDetails": "DB Details",
-      "createBackup": "Create Backup"
+      "createBackup": "Create Backup",
+      "businessBackup": "Back up partial business data",
+      "businessScope": "Partial business data: JSON records excluding attachments, user accounts and complete billing data.",
+      "fullRecoveryHint": "A complete password-encrypted backup of SQLite, uploads, users and configuration runs offline after stopping the application. Follow the maintenance guide for full offline backups.",
+      "readOnlyHint": "Read access permits export; backups and imports require write access.",
+      "info": "Info",
+      "infoFailed": "Database information failed",
+      "backupRunning": "Backing up…",
+      "backupSaved": "Partial business data saved",
+      "backupFailed": "Backup failed",
+      "exportFailed": "Export failed",
+      "invalidBackup": "The server response does not confirm a valid partial business-data backup.",
+      "invalidExport": "The response is not a valid JSON business-data export.",
+      "invalidImport": "The server response does not confirm a valid import.",
+      "importRejected": "The server reported import errors.",
+      "importFailed": "Import failed",
+      "importSaved": "Partial business data imported"
     },
     "about": {
       "title": "About ImmoManager Pro",
@@ -774,10 +856,12 @@
       "result": "Result",
       "showSteps": "Show Steps",
       "restartRequired": "Please restart the application to activate the update.",
-      "rolledBack": "Automatic rollback was performed. Your data is unchanged.",
+      "rolledBack": "The previous code was restored. Review the recovery steps.",
       "history": "Update History",
       "showHistory": "Show",
-      "noHistory": "No updates performed yet"
+      "noHistory": "No updates performed yet",
+      "manualRecovery": "Recovery is incomplete. Stop the application and follow the recovery steps.",
+      "maintenanceOnly": "Updates require stopping the application and running the maintenance command. You can still check for updates here."
     }
   },
   "search": {
@@ -1296,7 +1380,64 @@
       "receivablesFailed": "Could not create receivables",
       "exportFailed": "Export failed",
       "disputeFailed": "Could not file dispute",
-      "preflightBlockers": "Preflight blockers present"
+      "preflightBlockers": "Preflight blockers present",
+      "stepCreate": "Create",
+      "stepCosts": "Costs",
+      "stepPreflight": "Check",
+      "stepGenerate": "Generate",
+      "stepFinalize": "Finalize",
+      "stepDeliver": "Deliver",
+      "settlements": {
+        "title": "Recorded billing results",
+        "totals": "Posting totals",
+        "debts": "Recorded receivables",
+        "credits": "Available credits",
+        "net": "Net (receivables − credits)",
+        "contract": "Contract",
+        "delta": "Recorded adjustment (€)",
+        "amount": "Recorded amount (€)",
+        "receivable": "Receivable ID",
+        "entries": "Entries",
+        "deltaHelp": "Corrections record only the difference from the previously posted billing chain; earlier entries are retained.",
+        "notPaidOut": "Credits are available. This view neither records nor confirms a payout.",
+        "empty": "No billing results have been posted for this period yet.",
+        "invalidResponse": "The billing summary is incomplete or inconsistent. Please reload it.",
+        "loadFailed": "Billing results could not be loaded.",
+        "book": "Post receivables and credits",
+        "booking": "Posting…",
+        "posted": "New receivables: {{debts}} · New credits: {{credits}} · Already recorded: {{existing}}",
+        "postFailed": "Billing results could not be posted.",
+        "postingUnknown": "The posting response is incomplete. Reload the saved results before repeating the action.",
+        "revision": "Revision",
+        "sourcePeriod": "Source period",
+        "revisionNotes": "Correction reason",
+        "status": {
+          "receivable_created": "Receivable created",
+          "credit_available": "Credit available (no payout confirmed)",
+          "no_adjustment": "No adjustment required"
+        },
+        "reference": "Evidence reference",
+        "historicalReference": "Historical evidence reference"
+      },
+      "ownerShare": {
+        "title": "Owner's share of allocated costs",
+        "notTenantDebt": "This share remains with the owner. It is neither a tenant receivable nor a tenant credit.",
+        "snapshotHelp": "Saved cost allocation from the latest generation. Regenerate after changing costs.",
+        "notCalculated": "No saved cost allocation yet. The owner's share will appear after generation.",
+        "invalidResponse": "The saved cost allocation is incomplete or inconsistent. Please reload it.",
+        "loadFailed": "The owner's share could not be loaded.",
+        "total": "Total owner's share",
+        "vacancy": "Vacancy share of recoverable costs",
+        "nonRecoverable": "Non-recoverable costs",
+        "propertyCosts": "Total property costs",
+        "tenantCosts": "Costs allocated to tenants",
+        "unit": "Unit",
+        "reason": "Allocation",
+        "amount": "Owner's amount (€)",
+        "lineItems": "Owner cost items",
+        "vacantDays": "Vacant days by unit",
+        "non_recoverable": "Non-recoverable"
+      }
     },
     "invoices": {
       "markPaidConfirm": "mark as paid?"
@@ -1326,7 +1467,24 @@
       "description": "Allocate payments and track outstanding amounts. Totals apply to the selected ledger.",
       "charges": "Rent charges",
       "receivables": "Receivables",
-      "onlyOpen": "Only outstanding items"
+      "onlyOpen": "Only outstanding items",
+      "allocateBooking": "Allocate bank transaction",
+      "bankBooking": "Bank transaction",
+      "allocationHelp": "Select an incoming payment. Its amount and date are filled from the transaction; partial allocations are possible.",
+      "noAvailableBookings": "No matching bank transaction has an amount available to allocate.",
+      "allocationSaved": "Bank transaction allocated.",
+      "paymentSource": "Payment source",
+      "bankLinked": "Bank transaction",
+      "manualPayment": "Manually recorded",
+      "posted": "Recorded",
+      "reversed": "Reversed",
+      "reversePayment": "Reverse payment",
+      "reversalDate": "Reversal date",
+      "reversalReason": "Reason",
+      "reasonRequired": "Please enter a reason for the reversal.",
+      "reversalSaved": "Payment reversed. The outstanding balance was updated.",
+      "reversalHelp": "The payment receipt is retained. A reversal receipt cancels the payment and reopens its amount.",
+      "reverseAllocationHelp": "A reversal receipt releases this allocation. The bank transaction is retained and can be allocated again."
     },
     "meters": {
       "title": "Meters",
@@ -1414,7 +1572,8 @@
       "runTest": "Run Test",
       "capabilities": "Capabilities:",
       "error": "Error",
-      "actionExecuted": "Action executed"
+      "actionExecuted": "Action executed",
+      "adapterPlanned": "This adapter is not implemented yet. Saved credentials do not enable sending or publishing."
     },
     "documents": {
       "upload": {
@@ -1641,7 +1800,8 @@
         "contactPerson": "Contact Person",
         "phone": "Phone",
         "notes": "Notes",
-        "status": "Status"
+        "status": "Status",
+        "contactPhone": "Phone"
       },
       "types": {
         "building": "Building Insurance",
@@ -1661,6 +1821,58 @@
         "expired": "Expired",
         "cancelled": "Cancelled"
       }
+    },
+    "rentGeneration": {
+      "title": "Monthly rent charges",
+      "startMonth": "From month",
+      "endMonth": "Through month",
+      "contracts": "Contracts (optional)",
+      "selectionHelp": "Leave the selection empty to include all active contracts. Review the preview first.",
+      "policy": "The full monthly amount is charged for every overlapping contract month. Partial months are marked. Existing months are skipped.",
+      "invalidRange": "The end month must be on or after the start month.",
+      "invalidPreview": "The response is incomplete. Please reload the preview.",
+      "preview": "Review preview",
+      "generate": "Create rent charges",
+      "newItems": "New charges",
+      "total": "Total amount",
+      "existing": "Already exists",
+      "skipped": "Not included",
+      "contract": "Contract",
+      "month": "Month",
+      "dueDate": "Due on",
+      "amount": "Amount",
+      "partialMonth": "Partial month",
+      "yes": "Yes",
+      "changeSelection": "Change selection",
+      "created": "Created",
+      "paymentManaged": "Record payments and reversals with a receipt in the rent overview."
+    },
+    "rentCharges": {
+      "title": "Rent charges",
+      "create": "Create rent charge",
+      "edit": "Edit rent charge",
+      "columns": {
+        "month": "Month",
+        "coldRent": "Base rent",
+        "serviceCharge": "Service charges",
+        "heatingCharge": "Heating charges",
+        "otherCharges": "Other charges",
+        "totalDue": "Total due",
+        "paid": "Paid",
+        "remaining": "Outstanding"
+      },
+      "form": {
+        "month": "Month (YYYY-MM)",
+        "coldRent": "Base rent (EUR)",
+        "serviceCharge": "Service charges (EUR)",
+        "heatingCharge": "Heating charges (EUR)",
+        "otherCharges": "Other charges (EUR)"
+      }
+    },
+    "receivables": {
+      "paymentManaged": "Payments and reversals are recorded only with receipts in the rent overview.",
+      "openRentOverview": "Open rent overview",
+      "readonly": "Read-only access: receivables cannot be changed."
     }
   },
   "sidebar": {

@@ -1,36 +1,25 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { api } from '../api';
+import { useFinanceData } from '../hooks/useFinanceData';
+import FinanceLoadState from '../components/FinanceLoadState';
 import { useTranslation } from '../i18n';
-import { useEntities, useDataStore } from '../contexts/DataStoreContext';
+import { useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
-import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 
 export default function Accounts() {
   const { t } = useTranslation();
   const confirm = useConfirm();
   const store = useDataStore();
-  const { items: portfolios } = useEntities('portfolios', '/portfolios');
+  const { data: { accounts, portfolios }, loading, error, reload: refreshData } = useFinanceData({
+    accounts: '/accounts',
+    portfolios: '/portfolios',
+  });
 
-  const [accounts, setAccounts] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
+  const [actionError, setActionError] = useState(null);
 
-  const refreshData = () => {
-    setLoading(true);
-    api.get('/accounts').catch(() => [])
-      .then(data => setAccounts(Array.isArray(data) ? data : []))
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(() => {
-    let cancelled = false;
-    api.get('/accounts').catch(err => { console.warn('[Accounts] load:', err.message); return []; })
-      .then(data => { if (!cancelled) setAccounts(Array.isArray(data) ? data : []); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
 
   // Lookup maps
   const portfolioMap = Object.fromEntries(portfolios.map(p => [p.id, p.name]));
@@ -83,21 +72,29 @@ export default function Accounts() {
     } else {
       await api.put(`/accounts/${modal.id}`, data);
     }
+    setModal(null);
     refreshData();
     if (store) store.invalidateRelated('accounts', 'portfolios', 'bookings');
   };
 
   const handleDelete = async (row) => {
     if (!await confirm(`"${row.name || row.id}" ${t('modals.confirmDelete.body')}`)) return;
-    await api.del(`/accounts/${row.id}`);
-    refreshData();
-    if (store) store.invalidateRelated('accounts', 'portfolios', 'bookings');
+    setActionError(null);
+    try {
+      await api.del(`/accounts/${row.id}`);
+      setModal(null);
+      refreshData();
+      if (store) store.invalidateRelated('accounts', 'portfolios', 'bookings');
+    } catch (err) {
+      setActionError(err.message);
+    }
   };
 
-  if (loading) return <div className="page-loading">Lade Konten...</div>;
+  if (loading || error) return <FinanceLoadState loading={loading} error={error} onRetry={refreshData} />;
 
   return (
     <div className="page">
+      {actionError && <div className="alert alert-error" role="alert">{actionError}</div>}
       <h1 className="page-title">{t('finance.accounts.title') || 'Konten'}</h1>
 
       {/* Summary cards */}

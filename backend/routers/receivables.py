@@ -2,7 +2,13 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
 from ..models import Receivable, ReceivableCreate, ReceivablePatch
-from ..services.payments import Payment, PaymentCreate
+from ..services.payments import (
+    FinancialConsistencyError,
+    Payment,
+    PaymentCreate,
+    PaymentReversal,
+    PaymentReversalCreate,
+)
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/receivables", tags=["Forderungen"])
@@ -49,6 +55,8 @@ def get_receivable(receivable_id: str) -> Receivable:
 def update_receivable(receivable_id: str, payload: ReceivableCreate) -> Receivable:
     try:
         return store.update_receivable(receivable_id, payload)
+    except FinancialConsistencyError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except (NotFoundError, ValidationError) as exc:
         status_code = status.HTTP_404_NOT_FOUND if isinstance(exc, NotFoundError) else status.HTTP_400_BAD_REQUEST
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
@@ -60,6 +68,8 @@ def patch_receivable(receivable_id: str, payload: ReceivablePatch) -> Receivable
         return store._patch_entity("receivable", receivable_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except FinancialConsistencyError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
 @router.delete("/{receivable_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -68,6 +78,8 @@ def delete_receivable(receivable_id: str) -> None:
         store.delete_receivable(receivable_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
 @router.get("/{receivable_id}/payments", response_model=list[Payment])
@@ -80,6 +92,16 @@ def list_receivable_payments(receivable_id: str) -> list[Payment]:
 def record_receivable_payment(receivable_id: str, payload: PaymentCreate) -> Payment:
     try:
         return store.record_payment("receivable", receivable_id, payload)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValidationError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/{receivable_id}/payments/{payment_id}/reversal", response_model=PaymentReversal, status_code=201)
+def reverse_receivable_payment(receivable_id: str, payment_id: str, payload: PaymentReversalCreate) -> PaymentReversal:
+    try:
+        return store.reverse_payment("receivable", receivable_id, payment_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValidationError as exc:

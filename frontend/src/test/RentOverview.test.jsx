@@ -14,6 +14,12 @@ const lists = {
   '/contracts': [{ id: 'contract', contract_number: 'V-1', tenant_id: 'tenant', unit_id: 'unit' }],
   '/tenants': [{ id: 'tenant', full_name: 'Max Mustermann' }],
   '/units': [{ id: 'unit', label: 'WE1' }],
+  '/bookings': [
+    { id: 'bank', booking_date: '2026-09-18', amount: 120, allocated_amount: 40, tenant_id: 'tenant', unit_id: 'unit', payment_text: 'Miete September' },
+    { id: 'foreign', booking_date: '2026-09-18', amount: 50, tenant_id: 'other', payment_text: 'Anderer Mieter' },
+    { id: 'expense', booking_date: '2026-09-18', amount: -20, payment_text: 'Ausgabe' },
+    { id: 'exhausted', booking_date: '2026-09-18', amount: 50, allocated_amount: 50, payment_text: 'Bereits zugeordnet' },
+  ],
 };
 
 describe('RentOverview payment workflow', () => {
@@ -74,8 +80,102 @@ describe('RentOverview payment workflow', () => {
     render(<RentOverview />);
     await screen.findByText('Max Mustermann');
     expect(screen.queryByRole('button', { name: 'recordPayment' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'allocateBooking' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'history' }));
     await screen.findByText('Teilzahlung');
     expect(mocks.get).toHaveBeenCalledWith('/rent-charges/charge/payments');
+    expect(screen.queryByRole('button', { name: 'reversePayment' })).not.toBeInTheDocument();
+  });
+
+  it('allocates a matching bank transaction using its available amount and date', async () => {
+    render(<RentOverview />);
+    await screen.findByText('Max Mustermann');
+    fireEvent.click(screen.getByRole('button', { name: 'allocateBooking' }));
+    const dialog = screen.getByRole('dialog');
+    const select = await within(dialog).findByLabelText(/bankBooking/);
+    expect(within(select).getByRole('option', { name: /80,00.*Miete September/ })).toBeInTheDocument();
+    expect(within(select).queryByRole('option', { name: /Anderer Mieter|Ausgabe|Bereits zugeordnet/ })).not.toBeInTheDocument();
+    fireEvent.change(select, { target: { value: 'bank' } });
+    expect(within(dialog).getByLabelText(/paymentAmount/)).toHaveValue(80);
+    expect(within(dialog).getByLabelText(/paymentAmount/)).toHaveAttribute('max', '80');
+    expect(within(dialog).getByLabelText(/paymentDate/)).toHaveValue('2026-09-18');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'save' }));
+    await screen.findByText('allocationSaved');
+    expect(mocks.post).toHaveBeenCalledWith('/rent-charges/charge/payments', expect.objectContaining({
+      booking_id: 'bank', amount: 80, payment_date: '2026-09-18', idempotency_key: expect.any(String),
+    }));
+  });
+
+  it('keeps bank lookup failures visible and retries without submitting an empty payment', async () => {
+    let failed = false;
+    mocks.getAll.mockImplementation(async path => {
+      if (path === '/bookings' && !failed) { failed = true; throw new Error('Bankliste nicht erreichbar'); }
+      return structuredClone(lists[path]);
+    });
+    render(<RentOverview />);
+    await screen.findByText('Max Mustermann');
+    fireEvent.click(screen.getByRole('button', { name: 'allocateBooking' }));
+    const dialog = screen.getByRole('dialog');
+    await within(dialog).findByText('Bankliste nicht erreichbar');
+    expect(within(dialog).getByRole('button', { name: 'save' })).toBeDisabled();
+    expect(mocks.post).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'retry' }));
+    await within(dialog).findByLabelText(/bankBooking/);
+    expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('records a reversal with a reason and preserves its reference on retry', async () => {
+    const receipt = { id: 'receipt', amount: '40.10', payment_date: '2026-09-05', note: 'Teilzahlung' };
+    mocks.get.mockResolvedValueOnce([receipt]).mockResolvedValueOnce([
+      { ...receipt, reversal: { reversal_date: '2026-09-25', reason: 'Falsche Zuordnung' } },
+    ]);
+    render(<RentOverview />);
+    await screen.findByText('Max Mustermann');
+    fireEvent.click(screen.getByRole('button', { name: 'history' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'reversePayment' }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText(/reversalDate/), { target: { value: '2026-09-25' } });
+    fireEvent.change(within(dialog).getByLabelText(/reversalReason/), { target: { value: '  Falsche Zuordnung  ' } });
+    mocks.post.mockRejectedValueOnce(new Error('Zeitüberschreitung'));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'save' }));
+    await within(dialog).findByText('Zeitüberschreitung');
+    const first = mocks.post.mock.calls[0];
+    expect(first).toEqual(['/rent-charges/charge/payments/receipt/reversal', expect.objectContaining({
+      reversal_date: '2026-09-25', reason: 'Falsche Zuordnung', idempotency_key: expect.any(String),
+    })]);
+    expect(within(dialog).getByLabelText(/reversalReason/)).toHaveValue('  Falsche Zuordnung  ');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'save' }));
+    await screen.findByText('reversalSaved');
+    expect(mocks.post.mock.calls[1][1].idempotency_key).toBe(first[1].idempotency_key);
+    await screen.findByText(/reversed.*2026-09-25.*Falsche Zuordnung/);
+    expect(screen.queryByRole('button', { name: 'reversePayment' })).not.toBeInTheDocument();
+  });
+
+  it('requires a nonblank reversal reason before sending the request', async () => {
+    mocks.get.mockResolvedValue([{ id: 'receipt', amount: '40.10', payment_date: '2026-09-05' }]);
+    render(<RentOverview />);
+    await screen.findByText('Max Mustermann');
+    fireEvent.click(screen.getByRole('button', { name: 'history' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'reversePayment' }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText(/reversalReason/), { target: { value: '   ' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'save' }));
+    await within(dialog).findByText('reasonRequired');
+    expect(mocks.post).not.toHaveBeenCalled();
+  });
+
+  it('ignores an older history response when the same panel has been reopened', async () => {
+    let resolveOld;
+    mocks.get.mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve; }))
+      .mockResolvedValueOnce([{ id: 'new', amount: '40', payment_date: '2026-09-05', note: 'Aktueller Stand' }]);
+    render(<RentOverview />);
+    await screen.findByText('Max Mustermann');
+    fireEvent.click(screen.getByRole('button', { name: 'history' }));
+    fireEvent.click(screen.getByRole('button', { name: 'close' }));
+    fireEvent.click(screen.getByRole('button', { name: 'history' }));
+    await screen.findByText('Aktueller Stand');
+    resolveOld([{ id: 'old', amount: '20', payment_date: '2026-09-01', note: 'Alter Stand' }]);
+    await waitFor(() => expect(screen.queryByText('Alter Stand')).not.toBeInTheDocument());
+    expect(screen.getByText('Aktueller Stand')).toBeInTheDocument();
   });
 });

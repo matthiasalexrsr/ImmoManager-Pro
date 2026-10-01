@@ -9,6 +9,7 @@ from __future__ import annotations
 from calendar import monthrange
 from collections import defaultdict
 from datetime import date, timedelta
+from decimal import Decimal
 from typing import Any
 
 # ---------------------------------------------------------------------------
@@ -28,6 +29,20 @@ def _add_months(d: date, months: int) -> date:
 # Report computations — each accepts pre-fetched entity lists
 # ---------------------------------------------------------------------------
 
+
+def _open_obligations(receivables: list, rent_charges: list):
+    from .payments import payment_total
+
+    for entity_type, targets in (("receivable", receivables), ("rent_charge", rent_charges)):
+        for target in targets:
+            if target.status in {"cancelled", "void"}:
+                continue
+            remaining = payment_total("rent_charge" if entity_type == "rent_charge" else "receivable", target) - Decimal(str(getattr(target, "amount_paid", 0) or 0))
+            if remaining <= 0:
+                continue
+            due = date.fromisoformat(f"{target.month}-03") if entity_type == "rent_charge" else target.due_date
+            yield {"entity_type": entity_type, "remaining": remaining.quantize(Decimal("0.01")), "due_date": due}
+
 def compute_summary(
     *,
     properties: list,
@@ -37,14 +52,11 @@ def compute_summary(
     bookings: list,
     invoices: list,
     maintenance_cases: list,
+    rent_charges: list | None = None,
 ) -> dict[str, Any]:
-    open_receivables = sum(
-        max(0, r.amount_due - getattr(r, "amount_paid", 0)) for r in receivables if r.status in {"open", "overdue", "partial"}
-    )
-    overdue_receivables = sum(
-        max(0, r.amount_due - getattr(r, "amount_paid", 0)) for r in receivables
-        if r.status == "overdue" or (r.status == "partial" and r.due_date < date.today())
-    )
+    obligations = list(_open_obligations(receivables, rent_charges or []))
+    open_receivables = float(sum((item["remaining"] for item in obligations), Decimal("0")))
+    overdue_receivables = float(sum((item["remaining"] for item in obligations if item["due_date"] < date.today()), Decimal("0")))
     total_bookings = sum(b.amount for b in bookings)
     total_invoices = sum(inv.gross_amount for inv in invoices)
     open_maintenance = sum(
@@ -61,6 +73,8 @@ def compute_summary(
             "invoicesTotal": total_invoices,
             "openReceivables": open_receivables,
             "overdueReceivables": overdue_receivables,
+            "openRentCharges": float(sum((item["remaining"] for item in obligations if item["entity_type"] == "rent_charge"), Decimal("0"))),
+            "openOtherReceivables": float(sum((item["remaining"] for item in obligations if item["entity_type"] == "receivable"), Decimal("0"))),
         },
         "maintenance": {
             "openCases": open_maintenance,
@@ -116,23 +130,22 @@ def compute_receivables_aging(
     *,
     receivables: list,
     today: date | None = None,
+    rent_charges: list | None = None,
 ) -> dict[str, Any]:
     today = today or date.today()
     buckets = {
-        "current": 0.0,
-        "days1to30": 0.0,
-        "days31to60": 0.0,
-        "days61to90": 0.0,
-        "days90plus": 0.0,
+        "current": Decimal("0"),
+        "days1to30": Decimal("0"),
+        "days31to60": Decimal("0"),
+        "days61to90": Decimal("0"),
+        "days90plus": Decimal("0"),
     }
-    open_total = 0.0
+    open_total = Decimal("0")
 
-    for r in receivables:
-        if r.status not in {"open", "overdue", "partial"}:
-            continue
-        remaining = max(0, r.amount_due - getattr(r, "amount_paid", 0))
+    for item in _open_obligations(receivables, rent_charges or []):
+        remaining = item["remaining"]
         open_total += remaining
-        days = (today - r.due_date).days
+        days = (today - item["due_date"]).days
         if days <= 0:
             buckets["current"] += remaining
         elif days <= 30:
@@ -144,7 +157,8 @@ def compute_receivables_aging(
         else:
             buckets["days90plus"] += remaining
 
-    return {"openTotal": open_total, "buckets": buckets}
+    return {"openTotal": float(open_total), "buckets": {key: float(value) for key, value in buckets.items()},
+            "source": "monthly_rent_and_other_receivables"}
 
 
 def compute_cashflow(*, bookings: list) -> dict[str, Any]:

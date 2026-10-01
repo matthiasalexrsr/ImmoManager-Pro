@@ -8,6 +8,7 @@ from backend.models import (
     InvoiceCreate,
     PortfolioCreate,
     PropertyCreate,
+    RentChargeCreate,
     TenantCreate,
     UnitCreate,
 )
@@ -73,6 +74,11 @@ def _seed_contract_with_payments() -> tuple:
             amount=1000.0,
         )
     )
+    # The account is based on booked historical snapshots, not current unit prices.
+    for month in range(1, 7):
+        store.create_rent_charge(RentChargeCreate(contract_id=contract.id, month=f"2025-{month:02}",
+            cold_rent=800, service_charge=150, heating_charge=50,
+            amount_paid=1000 if month <= 2 else 0, status="paid" if month <= 2 else "open"))
     return portfolio, prop, unit, tenant, contract, account
 
 
@@ -154,6 +160,8 @@ def test_settlement_no_payments() -> None:
             start_date=datetime.date(2025, 1, 1),
         )
     )
+    for month in ("2025-01", "2025-02"):
+        store.create_rent_charge(RentChargeCreate(contract_id=contract.id, month=month, cold_rent=500))
 
     result = contracts.get_contract_settlement(
         contract_id=contract.id,

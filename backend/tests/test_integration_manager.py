@@ -36,7 +36,7 @@ def test_secret_config_is_masked_in_output_and_persisted():
     assert raw["config"]["whatsapp"]["api_token"] == "secret"
 
 
-def test_listing_portal_provider_update_requires_listing_id():
+def test_listing_portal_provider_reports_unimplemented_adapter():
     manager = IntegrationManager()
     manager.register(ListingPortalProvider())
     manager.set_enabled("listing-portals", True)
@@ -44,7 +44,25 @@ def test_listing_portal_provider_update_requires_listing_id():
 
     result = manager.run("listing-portals", {"action": "update", "listing": {"title": "L1"}})
     assert result["success"] is False
-    assert "portal_listing_id" in result["message"]
+    assert "nicht implementiert" in result["message"]
+
+
+def test_saved_credentials_do_not_make_planned_providers_operational():
+    manager = IntegrationManager()
+    manager.seed_defaults()
+    for integration_id, config in (
+        ("whatsapp", {"phone_number_id": "synthetic", "api_token": "synthetic"}),
+        ("deutsche-post", {"api_key": "synthetic"}),
+        ("listing-portals", {"default_portal": "Immowelt"}),
+    ):
+        manager.set_enabled(integration_id, True)
+        manager.update_config(integration_id, config)
+        detail = manager.get_integration(integration_id)
+        assert detail["configured"] is True
+        assert detail["planned"] is True
+        assert detail["operational"] is False
+        assert detail["health"]["status"] == "planned"
+        assert manager.run(integration_id, {"action": "status", "portal_listing_id": "synthetic"})["success"] is False
 
 
 def test_metrics_counts_runs():

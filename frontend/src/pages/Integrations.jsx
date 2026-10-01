@@ -31,12 +31,14 @@ export default function Integrations() {
   const [integrations, setIntegrations] = useState([]);
   const [messages, setMessages] = useState({});
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
 
   const loadIntegrations = () => {
     setLoading(true);
+    setLoadError(null);
     api.get('/integrations')
       .then((res) => setIntegrations(res.integrations || []))
-      .catch((err) => console.warn('[Integrations] load:', err.message))
+      .catch((err) => setLoadError(err.message))
       .finally(() => setLoading(false));
   };
 
@@ -78,6 +80,7 @@ export default function Integrations() {
       </p>
 
       {loading && <p className="text-muted">{t('pages.integrations.loading') || 'Lade Integrationen...'}</p>}
+      {loadError && <div role="alert">{loadError} <button className="btn btn-secondary" onClick={loadIntegrations}>{t('ui.buttons.retry')}</button></div>}
 
       <div className="integrations-grid">
         {integrations.map((intg) => {
@@ -87,12 +90,13 @@ export default function Integrations() {
               <div className="panel-header" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <Ico size={20} />
                 <span>{intg.name}</span>
-                <span className={`badge ${intg.enabled ? 'badge-green' : 'badge-planned'}`} style={{ marginLeft: 'auto' }}>
+                <span className={`badge ${intg.operational ? 'badge-green' : 'badge-planned'}`} style={{ marginLeft: 'auto' }}>
                   <AlertIcon size={12} /> {intg.message || (intg.enabled ? t('pages.integrations.active') || 'Aktiv' : t('pages.integrations.inactive') || 'Inaktiv')}
                 </span>
               </div>
               <div className="panel-body">
                 <p style={{ marginBottom: '0.5rem' }}>{intg.description}</p>
+                {intg.planned && <p>{t('pages.integrations.adapterPlanned')}</p>}
                 <p className="text-muted" style={{ marginBottom: '0.5rem', fontSize: '0.85rem' }}>
                   {t('pages.integrations.category') || 'Kategorie'}: {intg.category} · {intg.configured ? t('pages.integrations.configured') || 'Konfiguriert' : t('pages.integrations.notConfigured') || 'Nicht konfiguriert'}
                 </p>
@@ -107,7 +111,7 @@ export default function Integrations() {
                   <button className="btn btn-sm btn-secondary" onClick={() => toggleIntegration(intg.id, !intg.enabled)}>
                     {intg.enabled ? t('pages.integrations.disable') || 'Deaktivieren' : t('pages.integrations.enable') || 'Aktivieren'}
                   </button>
-                  <button className="btn btn-sm btn-primary" onClick={() => runIntegration(intg.id)}>
+                  <button className="btn btn-sm btn-primary" disabled={intg.planned} onClick={() => runIntegration(intg.id)}>
                     {t('pages.integrations.runTest') || 'Test ausführen'}
                   </button>
                 </div>

@@ -187,11 +187,12 @@ class TestAuthRouter:
     def test_register_endpoint(self):
         mock_request = MagicMock()
         mock_request.client.host = "127.0.0.1"
-        result = register(UserCreate(
-            username="test", email="test@example.com",
-            full_name="Test User", password="Pass1234"
-        ), request=mock_request)
-        assert result.username == "test"
+        with pytest.raises(HTTPException) as exc:
+            register(UserCreate(
+                username="test", email="test@example.com",
+                full_name="Test User", password="Pass1234"
+            ), request=mock_request)
+        assert exc.value.status_code == 403
 
     def test_login_endpoint(self):
         _register_admin()

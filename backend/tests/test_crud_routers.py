@@ -1673,8 +1673,8 @@ class TestPatchEndpoints:
         r = receivables.create_receivable(
             ReceivableCreate(contract_id=contract.id, due_date=datetime.date(2025, 2, 1), amount_due=500.0)
         )
-        patched = receivables.patch_receivable(r.id, ReceivablePatch(status="paid"))
-        assert patched.status == "paid"
+        patched = receivables.patch_receivable(r.id, ReceivablePatch(status="overdue"))
+        assert patched.status == "overdue"
         assert patched.amount_due == 500.0
 
 
@@ -2025,11 +2025,11 @@ class TestBillingPeriods:
             BillingPeriodCreate(
                 property_id=self.prop.id, label="BK 2024 Final",
                 start_date=datetime.date(2024, 1, 1), end_date=datetime.date(2024, 12, 31),
-                status="finalized",
+                status="review",
             ),
         )
         assert updated.label == "BK 2024 Final"
-        assert updated.status == "finalized"
+        assert updated.status == "review"
 
     def test_create_bad_dates_400(self) -> None:
         with pytest.raises((HTTPException, Exception)):
@@ -2072,8 +2072,8 @@ class TestBillingPeriods:
                 start_date=datetime.date(2024, 1, 1), end_date=datetime.date(2024, 12, 31),
             )
         )
-        patched = billing.patch_billing_period(bp.id, BillingPeriodPatch(status="finalized"))
-        assert patched.status == "finalized"
+        patched = billing.patch_billing_period(bp.id, BillingPeriodPatch(status="review"))
+        assert patched.status == "review"
         assert patched.label == "BK 2024"
 
 
@@ -2285,6 +2285,13 @@ class TestGenerateUtilityStatements:
             AllocationKeyCreate(property_id=self.prop.id, name="Fläche", key_type="area_sqm")
         )
 
+        from backend.models import RentChargeCreate
+        for contract, service_amount, heating_amount in ((self.contract1, 150, 50), (self.contract2, 100, 30)):
+            for month in range(1, 13):
+                store.create_rent_charge(RentChargeCreate(contract_id=contract.id, month=f"2024-{month:02d}",
+                    service_charge=service_amount, heating_charge=heating_amount,
+                    amount_paid=service_amount + heating_amount, status="paid"))
+
     def test_generate_distributes_by_area(self) -> None:
         store.create_cost_item(
             CostItemCreate(
@@ -2353,7 +2360,7 @@ class TestGenerateUtilityStatements:
             ContractCreate(
                 contract_number="V-3", property_id=self.prop.id,
                 unit_id=self.unit1.id, tenant_id=self.tenant1.id,
-                start_date=datetime.date(2024, 1, 1), status="terminated",
+                start_date=datetime.date(2023, 1, 1), end_date=datetime.date(2023, 12, 31), status="terminated",
             )
         )
         draft = store.create_contract(
@@ -2376,9 +2383,9 @@ class TestGenerateUtilityStatements:
         assert statement_contract_ids == {self.contract1.id, self.contract2.id}
 
     def test_generate_no_contracts_400(self) -> None:
-        # Remove all contracts
+        # No eligible tenancies; booked historic snapshots remain intact.
         for c in store.list_contracts():
-            store.delete_contract(c.id)
+            store.update_contract(c.id, ContractCreate(**{**c.model_dump(include=set(ContractCreate.model_fields)), "status": "draft"}))
         store.create_cost_item(
             CostItemCreate(
                 billing_period_id=self.bp.id, description="X",
@@ -2542,9 +2549,9 @@ class TestGenerateUtilityStatements:
         )
         stmts = billing.generate_utility_statements(self.bp.id)
         patched = billing.patch_utility_statement(
-            stmts[0].id, UtilityStatementPatch(status="finalized")
+            stmts[0].id, UtilityStatementPatch(notes="Geprüft")
         )
-        assert patched.status == "finalized"
+        assert patched.notes == "Geprüft"
 
     def test_delete_utility_statement(self) -> None:
         store.create_cost_item(

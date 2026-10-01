@@ -1,7 +1,9 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { api } from '../api';
+import { useFinanceData } from '../hooks/useFinanceData';
+import FinanceLoadState from '../components/FinanceLoadState';
 import { useTranslation } from '../i18n';
-import { useEntities, useDataStore } from '../contexts/DataStoreContext';
+import { useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
@@ -11,33 +13,21 @@ export default function Bookings() {
   const { t } = useTranslation();
   const confirm = useConfirm();
   const store = useDataStore();
-  const { items: accounts } = useEntities('accounts', '/accounts');
-  const { items: categories } = useEntities('categories', '/categories');
-  const { items: properties } = useEntities('properties', '/properties');
-  const { items: units } = useEntities('units', '/units');
-  const { items: tenants } = useEntities('tenants', '/tenants');
+  const { data: { bookings, accounts, categories, properties, units, tenants }, loading, error, reload: refreshData } = useFinanceData({
+    bookings: '/bookings',
+    accounts: '/accounts',
+    categories: '/categories',
+    properties: '/properties',
+    units: '/units',
+    tenants: '/tenants',
+  });
 
-  const [bookings, setBookings] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
+  const [actionError, setActionError] = useState(null);
   const [filter, setFilter] = useState('all');
 
   const noneOpt = t('ui.form.none') || '— Keine —';
 
-  const refreshData = () => {
-    setLoading(true);
-    api.get('/bookings').catch(() => [])
-      .then(data => setBookings(Array.isArray(data) ? data : []))
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(() => {
-    let cancelled = false;
-    api.get('/bookings').catch(err => { console.warn('[Bookings] load:', err.message); return []; })
-      .then(data => { if (!cancelled) setBookings(Array.isArray(data) ? data : []); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
 
   // Lookup maps
   const accountMap = Object.fromEntries(accounts.map(a => [a.id, a.name]));
@@ -112,8 +102,8 @@ export default function Bookings() {
     { key: 'receipt_url', label: t('finance.bookings.form.receiptUrl') || 'Beleg-URL', placeholder: '/belege/beleg.pdf' },
     { key: 'status', label: t('ui.form.status') || 'Status', type: 'select', default: 'open', options: [
       { value: 'open', label: t('ui.filterChips.open') || 'Offen' },
-      { value: 'matched', label: t('finance.bookings.status.matched') || 'Zugeordnet' },
-      { value: 'booked', label: t('finance.bookings.status.booked') || 'Gebucht' },
+      { value: 'matched', label: t('finance.bookings.statusOptions.matched') || 'Zugeordnet' },
+      { value: 'booked', label: t('finance.bookings.statusOptions.booked') || 'Gebucht' },
     ]},
   ];
 
@@ -123,21 +113,29 @@ export default function Bookings() {
     } else {
       await api.put(`/bookings/${modal.id}`, data);
     }
+    setModal(null);
     refreshData();
     if (store) store.invalidateRelated('bookings', 'accounts', 'categories');
   };
 
   const handleDelete = async (row) => {
     if (!await confirm(`"${row.payment_text || row.id}" ${t('modals.confirmDelete.body')}`)) return;
-    await api.del(`/bookings/${row.id}`);
-    refreshData();
-    if (store) store.invalidateRelated('bookings', 'accounts', 'categories');
+    setActionError(null);
+    try {
+      await api.del(`/bookings/${row.id}`);
+      setModal(null);
+      refreshData();
+      if (store) store.invalidateRelated('bookings', 'accounts', 'categories');
+    } catch (err) {
+      setActionError(err.message);
+    }
   };
 
-  if (loading) return <div className="page-loading">Lade Buchungen...</div>;
+  if (loading || error) return <FinanceLoadState loading={loading} error={error} onRetry={refreshData} />;
 
   return (
     <div className="page">
+      {actionError && <div className="alert alert-error" role="alert">{actionError}</div>}
       <h1 className="page-title">{t('finance.bookings.title') || 'Buchungen'}</h1>
 
       {/* Summary cards */}

@@ -16,6 +16,9 @@ Error handling:
 
 import logging
 from collections.abc import Generator
+from contextvars import ContextVar
+from threading import get_ident
+from typing import cast
 
 from .compat.ui_contracts import ensure_ui_contracts
 from .config import settings
@@ -31,6 +34,12 @@ store = InMemoryStore()
 
 # Scoped session factory (set when using SQL backend)
 _scoped_session = None
+_request_session_scope: ContextVar[object | None] = ContextVar("immo_request_session_scope", default=None)
+
+
+def session_scope_key():
+    """Workers inherit the request's context; non-request callers retain thread scope."""
+    return _request_session_scope.get() or ("thread", get_ident())
 
 # Use SQLAlchemy store for all databases including SQLite (default).
 # InMemoryStore is only used when sqlite_persistent_store is explicitly False.
@@ -41,7 +50,7 @@ _use_sql_store = bool(_database_url) and (
 
 if _use_sql_store:
     try:
-        from sqlalchemy.orm import scoped_session
+        from sqlalchemy.orm import Session, scoped_session
 
         from .db.session import SessionLocal, create_tables
         from .repositories import SQLAlchemyStore
@@ -50,10 +59,10 @@ if _use_sql_store:
         # side effects. Requires conftest.py changes to ensure tables exist before
         # tests run with SQL backend. See architecture review Phase 3.1.
         create_tables()
-        # Use scoped_session for thread-safe, request-scoped sessions.
-        # Each thread gets its own session, preventing cross-request state mixing.
-        _scoped_session = scoped_session(SessionLocal)
-        store = SQLAlchemyStore(_scoped_session)  # type: ignore[assignment]
+        # FastAPI dispatches sync endpoints into workers and cleanup in ASGI.
+        # A thread-only registry cannot remove those worker sessions from ASGI.
+        _scoped_session = scoped_session(SessionLocal, scopefunc=session_scope_key)
+        store = SQLAlchemyStore(cast(Session, _scoped_session))  # type: ignore[assignment]
 
         # Enable SQL-backed user and audit storage for configured SQL store.
         from .audit import enable_sql_audit
@@ -107,6 +116,8 @@ def cleanup_session():
     Safe to call even if the session is in a bad state.
     """
     if _scoped_session is not None:
+        if not _scoped_session.registry.has():
+            return
         try:
             _scoped_session.rollback()
         except Exception:

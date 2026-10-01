@@ -136,19 +136,22 @@ class SQLAlchemyStore:
         return list_payments(self.db, entity_type, entity_id)
 
     def import_payment(self, payment):
-        from ..db.orm_models import PaymentORM
-        getattr(self, f"get_{payment.entity_type}")(payment.entity_id)
-        self.db.add(PaymentORM(
-            id=payment.id, **payment.model_dump(exclude={"id", "entity_type", "entity_id"}),
-            **{f"{payment.entity_type}_id": payment.entity_id},
-        ))
-        self._commit()
-        return payment
+        from .payment_repo import import_payment
+        return import_payment(self.db, payment)
+
+    def reverse_payment(self, entity_type, entity_id, payment_id, payload):
+        from .payment_repo import reverse_payment
+        return reverse_payment(self.db, entity_type, entity_id, payment_id, payload)
 
     def clear_all(self) -> None:
         """Delete all rows from every mapped table. Used by tests to reset state."""
         from ..db.orm_models import Base
         for table in reversed(Base.metadata.sorted_tables):
+            # Clearing an entire test/import store must remove correction leaves
+            # before roots because SQLite RESTRICT is checked row by row.
+            if table.name in {"billing_periods", "utility_statements"}:
+                source = "source_period_id" if table.name == "billing_periods" else "source_statement_id"
+                self.db.execute(table.update().values(**{source: None}))
             self.db.execute(table.delete())
         self._commit()
 
@@ -207,6 +210,24 @@ class SQLAlchemyStore:
 
     def _patch_entity(self, entity_type: str, entity_id: str, patch: PydanticBaseModel):
         """Apply a partial update using the entity type string to resolve the repository."""
+        if entity_type == "receivable" and type(patch).__name__ == "ReceivablePatch":
+            current = self.get_receivable(entity_id)
+            updates = patch.model_dump(exclude_unset=True)
+            data = ReceivableCreate(**{**current.model_dump(include=set(ReceivableCreate.model_fields)), **updates})
+            return self.update_receivable(entity_id, data)
+        if entity_type == "rent_charge" and type(patch).__name__ == "RentChargePatch":
+            current_charge = self.get_rent_charge(entity_id)
+            updates = patch.model_dump(exclude_unset=True)
+            charge_data = RentChargeCreate(**{**current_charge.model_dump(include=set(RentChargeCreate.model_fields)), **updates})
+            return self.update_rent_charge(entity_id, charge_data)
+        billing_creates: dict[str, type[PydanticBaseModel]] = {"billing_period": BillingPeriodCreate, "cost_item": CostItemCreate,
+            "utility_statement": UtilityStatementCreate, "allocation_key": AllocationKeyCreate}
+        if entity_type in billing_creates:
+            current = getattr(self, f"get_{entity_type}")(entity_id)
+            create_type = billing_creates[entity_type]
+            updates = patch.model_dump(exclude_unset=True)
+            billing_data = create_type(**{**current.model_dump(include=set(create_type.model_fields)), **updates})
+            return getattr(self, f"update_{entity_type}")(entity_id, billing_data)
         repo = self._resolve_repo(entity_type)
         result = repo.patch(entity_id, patch)
         self._commit()

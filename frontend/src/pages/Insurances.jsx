@@ -1,9 +1,11 @@
-import { useEntities } from '../contexts/DataStoreContext';
-import CrudPage from './CrudPage';
+import FinanceCrudPage from '../components/FinanceCrudPage';
+import { useFinanceData } from '../hooks/useFinanceData';
 import { useTranslation } from '../i18n';
 
 export default function Insurances() {
   const { t } = useTranslation();
+  const listState = useFinanceData({"items": "/insurances", "properties": "/properties", "units": "/units"});
+  const { properties, units } = listState.data;
 
   const COLUMNS = [
     { key: 'provider', label: t('pages.insurances.columns.provider') || 'Versicherer', filterType: 'text' },
@@ -15,9 +17,6 @@ export default function Insurances() {
     { key: 'end_date', label: t('pages.insurances.columns.endDate') || 'Ablauf', type: 'date', filterType: 'dateRange' },
     { key: 'status', label: t('pages.insurances.columns.status') || 'Status', type: 'status', filterType: 'select' },
   ];
-
-  const { items: properties } = useEntities('properties', '/properties');
-  const { items: units } = useEntities('units', '/units');
 
   const fields = [
     { key: 'property_id', label: t('pages.insurances.form.property') || 'Immobilie', required: true, type: 'select',
@@ -53,5 +52,5 @@ export default function Insurances() {
     ]},
   ];
 
-  return <CrudPage title={t('pages.insurances.title') || 'Versicherungen'} endpoint="/insurances" columns={COLUMNS} formFields={fields} />;
+  return <FinanceCrudPage relatedKeys={['properties']} listState={listState} title={t('pages.insurances.title') || 'Versicherungen'} endpoint="/insurances" columns={COLUMNS} formFields={fields} />;
 }

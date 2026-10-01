@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { api } from '../api';
+import { useFinanceData } from '../hooks/useFinanceData';
+import FinanceLoadState from '../components/FinanceLoadState';
 import { useTranslation } from '../i18n';
-import { useEntities, useDataStore } from '../contexts/DataStoreContext';
+import { useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import { useConfirm } from '../components/ConfirmDialog';
@@ -41,26 +43,13 @@ export default function Budgets() {
   const { t } = useTranslation();
   const confirm = useConfirm();
   const store = useDataStore();
-  const { items: properties } = useEntities('properties', '/properties');
-  const [budgets, setBudgets] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { data: { budgets, properties }, loading, error, reload: refreshData } = useFinanceData({
+    budgets: '/budgets',
+    properties: '/properties',
+  });
   const [modal, setModal] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
 
-  const refreshData = () => {
-    api.get('/budgets').catch(err => { console.warn('[Budgets]', err.message); return []; })
-      .then(b => setBudgets(b || []))
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(() => {
-    let cancelled = false;
-    api.get('/budgets').catch(err => { console.warn('[Budgets]', err.message); return []; })
-      .then(data => { if (!cancelled) setBudgets(data || []); })
-      .catch(e => { if (!cancelled) console.warn('[Budgets] load failed:', e.message); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
 
   const propMap = Object.fromEntries(properties.map(p => [p.id, p]));
   const enriched = budgets.map(b => ({
@@ -69,8 +58,8 @@ export default function Budgets() {
     variance: (b.actual_amount || 0) - (b.planned_amount || 0),
   }));
 
-  const totalPlanned = enriched.reduce((s, b) => s + (b.planned_amount || 0), 0);
-  const totalActual = enriched.reduce((s, b) => s + (b.actual_amount || 0), 0);
+  const totalPlanned = enriched.reduce((s, b) => s + Math.round(Number(b.planned_amount || 0) * 100), 0) / 100;
+  const totalActual = enriched.reduce((s, b) => s + Math.round(Number(b.actual_amount || 0) * 100), 0) / 100;
 
   const fields = [
     { key: 'property_id', label: 'Immobilie', required: true, type: 'select',
@@ -88,6 +77,7 @@ export default function Budgets() {
     } else {
       await api.put(`/budgets/${modal.id}`, data);
     }
+    setModal(null);
     refreshData();
     if (store) store.invalidateRelated('budgets');
   };
@@ -104,7 +94,7 @@ export default function Budgets() {
     }
   };
 
-  if (loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  if (loading || error) return <FinanceLoadState loading={loading} error={error} onRetry={refreshData} />;
 
   return (
     <div className="page">
@@ -126,7 +116,7 @@ export default function Budgets() {
       </div>
 
       {deleteError && (
-        <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
+        <div className="alert alert-error" role="alert" style={{ marginBottom: '1rem' }}>
           {deleteError}
           <button onClick={() => setDeleteError(null)} style={{ marginLeft: '1rem', cursor: 'pointer' }}>✕</button>
         </div>

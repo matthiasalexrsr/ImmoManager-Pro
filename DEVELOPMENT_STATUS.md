@@ -1,94 +1,91 @@
-# ImmoManager Pro – Entwicklungsstand
+# ImmoManager Pro – aktueller Entwicklungsstand
 
-Stand: 1. Oktober 2026. Ausgangspunkt: Commit `c64b2f1` auf
+Stand: 1. Oktober 2026. Ausgangspunkt: `c64b2f1` auf
 `claude/redesign-frontend-ui-RUPYS`, einschließlich PR #32.
+Die Fortsetzung wird in PR #33 auf `codex/continue-rental-workflows` gesichert.
 
-## Gefundenes Projekt und Produktziel
+## Projekt und Ziel
 
-Das aktive Repository ist `matthiasalexrsr/ImmoManager-Pro`. Lokale Kopien unter
-`C:\02_Projekte_Archiv\ImmoManager`, `Git-Repositories` und `Immobilienverwaltung`
-enthalten ältere Entwicklungsstände. Die Fortsetzung basiert auf dem aktuellen
-GitHub-Stand; diese Archivkopien wurden nicht verändert.
+Das aktive Repository ist `matthiasalexrsr/ImmoManager-Pro`. Die gefundenen lokalen
+Archivkopien unter `C:\02_Projekte_Archiv\ImmoManager`, `Git-Repositories` und
+`Immobilienverwaltung` enthalten ältere Stände und wurden nicht verändert.
+Entwickelt wird eine lokale Verwaltung für private Vermieter mit Bestand,
+Vermietung, Finanzen, Nebenkosten, Instandhaltung, Dokumenten und Berichten.
 
-Das Ziel aus ARCHITEKTURPLAN.md ist eine deutsche Immobilienverwaltung für private
-Vermieter mit rund 20 Immobilien: Bestand, Vermietung, Finanzen, Nebenkosten,
-Instandhaltung, Dokumente und Berichte. Ergänzend sind Windows-Betrieb,
-Aktualisierungen, Erweiterungen, Sprachen und konfigurierbare Ansichten vorgesehen.
+FastAPI, React, SQLAlchemy, Alembic, die Stammdatenmasken und fachlichen Engines
+waren bereits vorhanden. Die beiden bestehenden ChatGPT-Chats
+„Software verbessern und fertigstellen“ und „Software verbessern“ wurden für
+Import/Recovery sowie Finanz-/Abrechnungsoberfläche und Browserprüfungen eingebunden.
 
-## Tatsächlich vorhandener Unterbau
+## Umgesetzte Fortsetzung
 
-- FastAPI mit versionierter API, SQLAlchemy, SQLite/PostgreSQL und Alembic.
-- JWT-Anmeldung, Rollen, Audit-Logging und persistente lokale Laufzeitverzeichnisse.
-- React-Oberfläche mit Stammdaten, Vertragsverwaltung, Mietübersicht, Abrechnung,
-  Dokumenten, Instandhaltung, Vermarktung, Berichten und Einstellungen.
-- Geführtes Dashboard und Windows-Starter mit lokaler Datenhaltung und Backups.
-- Fachliche Engines für Vertragsabrechnung, Mahnungen und Betriebskosten.
-- CI, Backend- und Frontend-Tests. Viele Aufgaben in PLAN.md,
-  IMPLEMENTATION_PLAN.md und CODEBASE_AUDIT_TODO.md sind inzwischen umgesetzt.
-- Externe Integrationen sind teilweise Adapter/Platzhalter; echte Kontozugänge
-  und End-to-End-Verifikation der jeweiligen Dienste fehlen.
+| Bereich | Verhalten |
+|---|---|
+| Monatsforderungen | Vorschau aus aktiven Verträgen, gespeicherte Preise, atomare Erstellung, genau ein Datensatz je Vertrag/Monat und Wiederholungsschutz |
+| Zahlungen | Dauerhafte Belege, Centprüfung, Teilzahlungen, unveränderbarer Zahlungsstand bei normalen Formularänderungen |
+| Bankzuordnung | Gemeinsames verfügbares Buchungsbudget, Herkunftsprüfung, atomare Zuordnung und keine doppelte Bankzählung |
+| Storno | Datierter Gegenbeleg mit Grund; Original bleibt erhalten, Saldo und Bankbudget werden wiederhergestellt |
+| Offene Posten/Berichte | Monatsforderungen und sonstige Forderungen gemeinsam; historische Beleg-/Stornodatierung für Vertragskonto und Mahnlauf |
+| Nebenkosten | Tatsächlich bezahlte Vorschüsse mit Receipt-IDs, gespeicherte Finalisierung, korrekte PDF-Revisionen und Korrekturdifferenzen |
+| Guthaben/Leerstand | Verfügbare Guthaben getrennt von Forderungen; gespeicherter Eigentümeranteil, erhaltene Gesamtkosten, blockierende Vorprüfung bei fehlender Datenbasis |
+| Finanzoberfläche | Vollständige Pagination, sichtbare Fehler/Retry, abgesicherte Formularwerte, Readonly-Aktionen und neue Texte in Deutsch/Englisch/Spanisch |
+| Zugang | Einmalige lokale Eigentümeranlage, dauerhaft geschlossene öffentliche Registrierung, genehmigte Benutzer und vollständiger TOTP-Ablauf |
+| Dokumente/Fotos | Authentifizierte Downloads und Blob-Vorschauen, sichere Dateitypen und SPA-Pfade, korrektes konfiguriertes Upload-Verzeichnis |
+| JSON-Transfer | Vollständige Vorbereitung und eine atomare Veröffentlichung des unterstützten Geschäftsdaten-Teilsatzes; Benutzer/Installationsmarker bleiben erhalten |
+| Vollständige Recovery | Passwortverschlüsseltes Offline-Archiv aller SQLite-Tabellen, lokalen Uploads, Konten/2FA, Schlüsseln und Konfiguration; geprüfter Neustart in neuem Ordner |
+| Windows-Betrieb | Quellen-/Konfigurationsfingerprint, geprüfter Build, Offline-Neustart bei unverändertem Build, Erhalt vorheriger Oberfläche bei Fehlern |
+| Updates/Scheduler | Wartung bei gestoppter Anwendung; konsistente Datenbank-Snapshots, begrenzte Laufzeit, exklusive Veröffentlichung, echte Fehlerstatus |
+| Lokale Plugins | Geprüfte Initialisierung/Beendigung, geschützte HTTP-/WebSocket-Routen, sichtbarer Betriebsstatus |
+| Stabilität/Sicherheit | Anfragenbezogene Datenbank-Sessions einschließlich Streams, erweitertes Typechecking, PyJWT statt python-jose/ecdsa |
 
-## In dieser Fortsetzung umgesetzt
+SQLite erhält additive Schema-Ergänzungen; Alembic enthält eine eindeutige Kette
+bis `h1a2b3c4d5e6`. Mehrdeutige alte Finanzdaten und Downgrades mit bestehenden
+Abrechnungsnachweisen werden vor zerstörenden Änderungen abgewiesen.
 
-1. Zahlungsbelege für Forderungen und Sollstellungen: Betrag, Datum, Bemerkung,
-   dauerhafte Speicherung, Zahlungshistorie und korrekte Teilzahlungen.
-2. Atomare SQL-Transaktion für Beleg und Saldo, Schutz gegen verlorene parallele
-   Änderungen sowie idempotente Wiederholung identischer Zahlungsanforderungen.
-3. Serverseitige Prüfung positiver Cent-Beträge und des offenen Restbetrags.
-4. Mietübersicht vereinfacht: klare Aktionen, offene Posten als Standardansicht,
-   Summen je ausgewähltem Bereich, sichtbare Ladefehler und erneutes Laden.
-5. Vollständige paginierte Listenabrufe für die Mietübersicht und Forderungen.
-6. Teilzahlungen werden in Forderungsalterung, Dashboard und Berichten berücksichtigt;
-   erfasste Mietzahlungen erreichen auch die Vertragsabrechnung.
-7. Export/Import korrigiert Eltern-Kind-Verweise beim Erzeugen neuer IDs und erhält
-   Zahlungssalden und Belege. Importfehler werden im Ergebnis zurückgegeben.
-8. Additive SQLite-Aktualisierung und Alembic-Migration mit Übernahme bisher bereits
-   als bezahlt markierter Forderungen.
-9. Neue UI-Texte in Deutsch, Englisch und Spanisch; übersetzte Zahlungsstatusanzeigen.
-10. Layoutkorrektur für mobile Breiten und lesbare Summenkarten.
-11. npm-Lockdatei aktualisiert: zwölf gemeldete Sicherheitslücken behoben.
-12. JWT-Bibliothek auf PyJWT umgestellt, um die ungepatchte transitive ecdsa-Abhängigkeit
-    zu entfernen; HS256-Tokenkompatibilität bleibt erhalten. Siehe
-    [PyJWT-API](https://pyjwt.readthedocs.io/en/stable/api.html).
+## Fachliche Regeln und Umfang
 
-## Grenzen dieses Stands
+Die Monatsvorschau verwendet derzeit volle vereinbarte Monatsbeträge, auch bei
+Teilmonaten. Diese sind ausdrücklich erkennbar. Noch nicht gebuchte ältere Monate
+verwenden aktuelle Einheitenbeträge und benötigen Prüfung vor Bestätigung.
+Bereits gebuchte Monatsforderungen sind die Grundlage historischer Auswertungen;
+noch nicht gebuchte Monate erscheinen getrennt als Vorschau.
 
-Manuelle Zahlungszuordnungen erzeugen noch keine Bankbuchung. Derselbe Geldeingang
-darf nicht zusätzlich als eigenständige manuelle Zahlung und Bankbuchung in der
-Vertragsabrechnung erfasst werden. Die beiden Ansichten Sollstellungen/Forderungen
-sind weiterhin getrennte Register; es gibt noch keinen gemeinsamen Forderungsschlüssel.
-Zahlungsstorno und automatische Bankzuordnung sind noch nicht implementiert.
+Einzelabrechnungen berücksichtigen belegte Zahlungen anteilig über ihre
+Mietbestandteile. Undatierte übernommene Altzahlungen und Belege außerhalb des
+Stichtags sind ausdrücklich ausgewiesen. Finalisierte Werte bleiben erhalten;
+Korrekturen erzeugen eine neue Revision und buchen die Differenz zur bisherigen
+Kette. Guthaben werden als verfügbar geführt. Eine Auszahlung wird dadurch nicht
+behauptet. Eigentümeranteile erzeugen keine Mieterforderung.
 
-Der JSON-Export bildet die dort registrierten Geschäftsentitäten ab. Er ist keine
-vollständige Sicherung von Upload-Dateien, Benutzerkonten, allen Abrechnungstabellen
-oder externen Integrationszuständen. Eine vollständige Wiederherstellung muss diese
-Bestandteile zusätzlich sichern. Der Import meldet Fehler, ist aber noch kein
-vollständig atomarer Wiederherstellungsprozess.
+Diese Version dient einer privaten Installation. Genehmigte Benutzer teilen
+deren Portfolios; es wird keine Trennung voneinander unabhängiger Organisationen
+behauptet. Siehe [Zugangsmodell](docs/ACCESS_MODEL.md).
 
-## Nächste priorisierte Arbeitspakete
+JSON ist ein Teilsatztransfer und enthält keine Upload-Bytes, Benutzer oder
+komplette Abrechnung. Die vollständige lokale Recovery läuft offline und benötigt
+einen neuen Zielordner. Externe HTTP-/S3-Dateien und Plugin-Binaries sind separat
+zu erhalten. Gemischte alte Upload-Speicherorte verursachen einen Fehler, wenn
+Dateiverweise nicht vollständig gedeckt sind. Siehe [Recovery](docs/RECOVERY.md)
+und [private Dateien](docs/PRIVATE_FILES.md).
 
-| Priorität | Arbeitspaket | Fertig, wenn |
-|---|---|---|
-| P1 | Bankbuchungen und Zahlungszuordnungen verknüpfen | Bestehende Buchungen auswählbar, Doppelzählung ausgeschlossen, Abgleich nachvollziehbar |
-| P1 | Zahlungsstorno/Korrektur | Gegenbeleg statt stiller Löschung, Restbetrag und Berichte konsistent |
-| P1 | Vollständige Sicherung/Wiederherstellung | Datenbank, Uploads, Benutzer und Integrationszustände gemeinsam geprüft wiederherstellbar |
-| P1 | Restliche stille Datenladefehler | Nutzer sehen Ausfälle in allen Finanz- und Abrechnungsseiten |
-| P2 | Durchgehende Browser-E2E in CI | Anmeldung, Bestand, Vertrag, Zahlung und Abrechnung regelmäßig im Browser geprüft |
-| P2 | Wiederkehrende Sollstellung vereinfachen | Monatliche Erstellung aus aktiven Verträgen mit Vorschau und Duplikatschutz |
-| P2 | Einheitliche Forderungsquelle | Sollstellungen und sonstige Forderungen über explizite Links statt unabhängiger Statuspflege |
-| P2 | Datenmodell-/API-Kompatibilität vereinfachen | Dynamische Modellergänzungen aus backend/compat durch reguläre Modelle und Migrationen ersetzt |
-| P3 | Externe Kommunikation und Portale | Reale Zugangsdaten konfigurierbar und Adapter verifiziert |
-| P3 | Erweiterungen, Updates, 2FA und Portfoliozugriff | Konkrete Laufzeit- und Berechtigungsszenarien durch Integrationstests abgesichert |
+## Abnahme und Dokumentation
 
-## Prüfung
+Die finale Evidenz mit Gesamtzahlen, Coverage, Browserabläufen und Grenzen steht
+in [LOCAL_RELEASE.md](docs/LOCAL_RELEASE.md). CI verlangt Backendtests mit Memory
+und SQL auf Python 3.11/3.12, Ruff, Typechecking der kritischen Dienste, Pip-Audit,
+Frontendtests/-Build/-Audit, Browserabläufe auf SQLite sowie Compose-Smoke.
 
-- Backend: gesamte Suite mit Speicher- und SQLite-Backend; Mindestabdeckung 80 %.
-- Frontend: ESLint, Vitest, Produktionsbuild und npm-Audit.
-- Migration: Alembic-Kette auf leerer SQLite-Datenbank; wiederholbarer lokaler
-  Schema-Upgrade für eine bereits bestehende SQLite-Datenbank.
-- Browser: Edge, echter lokaler Server, Demo-Anmeldung, Zahlung speichern,
-  Beleg lesen, Desktop und mobile Breite; keine JavaScript-Laufzeitfehler.
-- PostgreSQL und Docker wurden auf diesem Windows-Rechner nicht ausgeführt.
+Historische Pläne und einzelne Übergaben beschreiben ihre jeweilige Basis.
+Dieser Entwicklungsstand, die Release-Evidenz und die aktuellen Laufzeitanleitungen
+sind für den vereinten Stand maßgeblich. Die ausführbaren Befehle stehen in README.md.
 
-Reproduzierbare Standardbefehle stehen in README.md. Die historische Roadmap bleibt
-als Kontext erhalten; dieser Stand und die tatsächlichen Tests führen die Fortsetzung.
+## Externe Voraussetzungen und spätere Erweiterungen
+
+WhatsApp, Postversand und externe Immobilienportale sind ausdrücklich als geplant
+gekennzeichnet. Ein gespeicherter Schlüssel gilt nicht als betriebsbereite
+Integration; Anbieterimplementierung und echte Zugangsdaten müssen folgen.
+Die lokalen Tests versenden keine Nachrichten und veröffentlichen keine Inserate.
+
+Produktive PostgreSQL-Installationen, separate Mandanten, Rückzahlungsabgleich,
+externe Dienstanbieter und zusätzliche optionale KI-Modelle benötigen eine eigene
+Einrichtung und Abnahme. Die vorhandenen Adapter bleiben dafür der Anschluss.

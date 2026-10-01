@@ -9,7 +9,9 @@ from fastapi import FastAPI
 class Plugin(ABC):
     """Base class all plugins must inherit from.
 
-    Plugins provide routes, migrations, locales, and lifecycle hooks.
+    Plugins are trusted local Python code with authenticated routes and lifecycle
+    hooks. Migration/locale methods are reserved extension points; the core does
+    not apply them automatically.
     """
 
     @property
@@ -33,7 +35,9 @@ class Plugin(ABC):
     def register_routes(self, app: FastAPI, prefix: str) -> None:
         """Register FastAPI routes under the given prefix.
 
-        Example: app.include_router(self.router, prefix=prefix)
+        The supplied application is isolated below /api/v1/plugins/{name}.
+        Example: app.include_router(self.router, prefix=prefix). Do not rely on
+        modifying the core application or registering routes outside this scope.
         """
         ...
 
@@ -59,4 +63,6 @@ class Plugin(ABC):
             "name": self.name,
             "version": self.version,
             "description": self.description,
+            "status": getattr(self, "_runtime_status", "discovered"),
+            "trusted_local_code": True,
         }

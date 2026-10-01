@@ -96,13 +96,10 @@ class TestAuthEndpoints:
             "full_name": "New User",
             "password": "Pass1234",
         })
-        assert resp.status_code == 201
-        data = resp.json()
-        assert data["username"] == "newuser"
-        assert data["role"] == "readonly"
+        assert resp.status_code == 403
 
     def test_register_role_restriction(self, client):
-        """Self-registration should restrict role to readonly/techniker."""
+        """Public registration is closed for privileged and viewer roles alike."""
         resp = client.post("/api/v1/auth/register", json={
             "username": "attacker",
             "email": "attacker@example.com",
@@ -110,10 +107,7 @@ class TestAuthEndpoints:
             "password": "Pass1234",
             "role": "eigentuemer",
         })
-        assert resp.status_code == 201
-        data = resp.json()
-        # Should be downgraded to readonly
-        assert data["role"] == "readonly"
+        assert resp.status_code == 403
 
     def test_login(self, client):
         register_user("loginuser", "login@example.com", "Login User", "Pass1234")

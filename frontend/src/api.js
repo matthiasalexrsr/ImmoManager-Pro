@@ -49,7 +49,14 @@ async function fetchWithRetry(url, options, retriesLeft = MAX_RETRIES) {
 // Token refresh
 // ---------------------------------------------------------------------------
 
-async function tryRefreshToken() {
+let refreshInFlight;
+
+function tryRefreshToken() {
+  if (!refreshInFlight) refreshInFlight = refreshTokenOnce().finally(() => { refreshInFlight = null; });
+  return refreshInFlight;
+}
+
+async function refreshTokenOnce() {
   const refreshToken = localStorage.getItem('refresh_token');
   if (!refreshToken) return false;
   try {
@@ -116,8 +123,8 @@ function networkError(originalError) {
 
 async function request(path, options = {}) {
   const token = getToken();
-  const { signal, ...rest } = options;
-  const headers = { 'Content-Type': 'application/json', ...rest.headers };
+  const { signal, responseType = 'json', ...rest } = options;
+  const headers = { ...(rest.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }), ...rest.headers };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
   let res;
@@ -131,12 +138,15 @@ async function request(path, options = {}) {
 
   // On 401, try refreshing the token once
   if (res.status === 401) {
-    const refreshed = await tryRefreshToken();
+    signal?.throwIfAborted();
+    const refreshed = Boolean(getToken() && getToken() !== token) || await tryRefreshToken();
+    signal?.throwIfAborted();
     if (refreshed) {
       headers['Authorization'] = `Bearer ${getToken()}`;
       try {
-        res = await fetch(`${BASE}${path}`, { ...options, headers });
+        res = await fetch(`${BASE}${path}`, { ...rest, headers, signal });
       } catch (err) {
+        if (err.name === 'AbortError') throw err;
         throw networkError(err);
       }
     }
@@ -155,6 +165,7 @@ async function request(path, options = {}) {
   }
 
   // Safe JSON parsing for success responses
+  if (responseType === 'blob') return res.blob();
   try {
     return await res.json();
   } catch {
@@ -180,32 +191,39 @@ export const api = {
     }
   },
   get: (path, { signal } = {}) => request(path, { signal }),
+  getBlob: (path, { signal } = {}) => request(path, { signal, responseType: 'blob' }),
+  postForm: (path, formData, { signal } = {}) => request(path, { method: 'POST', body: formData, signal }),
   post: (path, data, { signal } = {}) => request(path, { method: 'POST', body: JSON.stringify(data), signal }),
   put: (path, data, { signal } = {}) => request(path, { method: 'PUT', body: JSON.stringify(data), signal }),
   patch: (path, data, { signal } = {}) => request(path, { method: 'PATCH', body: JSON.stringify(data), signal }),
   del: (path, { signal } = {}) => request(path, { method: 'DELETE', signal }),
 };
 
-export async function login(username, password) {
+export async function login(username, password, totp_code) {
   let res;
   try {
     res = await fetchWithRetry(`${BASE}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username, password, ...(totp_code ? { totp_code } : {}) }),
     });
   } catch (err) {
     throw networkError(err);
   }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw parseApiError(body, res.status);
+    const error = parseApiError(body, res.status);
+    error.requiresTwoFactor = res.headers?.get('X-2FA-Required') === 'true';
+    throw error;
   }
   const data = await res.json();
   localStorage.setItem('access_token', data.access_token);
   localStorage.setItem('refresh_token', data.refresh_token);
   return data;
 }
+
+export const getSetupStatus = ({ signal } = {}) => api.get('/auth/setup-status', { signal });
+export const setupOwner = (username, email, full_name, password) => api.post('/auth/setup', { username, email, full_name, password });
 
 export async function register(username, email, full_name, password) {
   let res;

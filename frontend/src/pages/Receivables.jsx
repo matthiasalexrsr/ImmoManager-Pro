@@ -1,7 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api';
+import { useFinanceData } from '../hooks/useFinanceData';
+import FinanceLoadState from '../components/FinanceLoadState';
 import { useTranslation } from '../i18n';
-import { useEntities, useDataStore } from '../contexts/DataStoreContext';
+import { useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
@@ -11,29 +14,20 @@ export default function Receivables() {
   const { t } = useTranslation();
   const confirm = useConfirm();
   const store = useDataStore();
-  const { items: contracts } = useEntities('contracts', '/contracts');
-  const [receivables, setReceivables] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const auth = useAuth();
+  const isReadonly = !!auth?.isReadonly;
+  const readonlyRef = useRef(isReadonly);
+  const { data: { receivables, contracts }, loading, error, reload: refreshData } = useFinanceData({
+    receivables: '/receivables',
+    contracts: '/contracts',
+  });
   const [modal, setModal] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
-
-  const refreshData = () => {
-    setLoading(true);
-    api.getAll('/receivables')
-      .then(recs => setReceivables(recs || []))
-      .catch(e => setError(e.message))
-      .finally(() => setLoading(false));
-  };
-
   useEffect(() => {
-    let cancelled = false;
-    api.getAll('/receivables')
-      .then(data => { if (!cancelled) setReceivables(data || []); })
-      .catch(e => { if (!cancelled) setError(e.message); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
+    readonlyRef.current = isReadonly;
+    if (isReadonly) setModal(null);
+  }, [isReadonly]);
+
 
   const contractMap = Object.fromEntries(contracts.map(c => [c.id, c]));
 
@@ -48,7 +42,7 @@ export default function Receivables() {
       render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
     { key: 'amount_paid', label: t('pages.rentOverview.paid'), type: 'number', render: v => `${Number(v || 0).toFixed(2)} €` },
     { key: 'due_date', label: t('finance.receivables.dueDate'), type: 'date', filterType: 'dateRange' },
-    { key: 'status', label: 'Status', type: 'status', filterType: 'select',
+    { key: 'status', label: t('ui.form.status'), type: 'status', filterType: 'select',
       render: v => <StatusBadge status={v} /> },
     { key: 'description', label: t('ui.form.description') },
   ];
@@ -58,28 +52,28 @@ export default function Receivables() {
       options: contracts.map(c => ({ value: c.id, label: c.contract_number })) },
     { key: 'amount_due', label: t('finance.bookings.amount') + ' (€)', type: 'number', required: true },
     { key: 'due_date', label: t('finance.receivables.dueDate'), type: 'date', required: true },
-    { key: 'status', label: 'Status', type: 'select', default: 'open', options: [
-      { value: 'open', label: t('status.payment.open') },
-      { value: 'partial', label: t('status.payment.partial') },
-      { value: 'paid', label: t('status.payment.paid') },
-      { value: 'overdue', label: t('status.payment.overdue') },
-      { value: 'cancelled', label: t('status.payment.cancelled') },
-    ]},
     { key: 'description', label: t('ui.form.description'), type: 'textarea' },
   ];
 
   const handleSave = async (data) => {
+    if (readonlyRef.current) throw new Error(t('pages.receivables.readonly'));
+    // Payment state is receipt-managed. Only accept editable business fields.
+    const payload = { contract_id: data.contract_id, amount_due: data.amount_due,
+      due_date: data.due_date, description: data.description };
     if (modal === 'create') {
-      await api.post('/receivables', data);
+      await api.post('/receivables', { ...payload, status: 'open' });
     } else {
-      await api.put(`/receivables/${modal.id}`, data);
+      await api.put(`/receivables/${modal.id}`, { ...payload, status: modal.status,
+        statement_id: modal.statement_id ?? null });
     }
+    setModal(null);
     refreshData();
     if (store) store.invalidateRelated('receivables', 'contracts', 'bookings');
   };
 
   const handleDelete = async (row) => {
-    if (!await confirm(`${t('modals.confirmDelete.body')}`)) return;
+    if (readonlyRef.current) return;
+    if (!await confirm(`${t('modals.confirmDelete.body')}`) || readonlyRef.current) return;
     setDeleteError(null);
     try {
       await api.del(`/receivables/${row.id}`);
@@ -90,13 +84,15 @@ export default function Receivables() {
     }
   };
 
-  if (loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
-  if (error) return <div className="page"><div className="alert alert-error">{error}</div></div>;
+  if (loading || error) return <FinanceLoadState loading={loading} error={error} onRetry={refreshData} />;
 
   return (
     <div className="page">
+      <p>{t('pages.receivables.paymentManaged')} {' '}
+        <a href="/rent-overview">{t('pages.receivables.openRentOverview')}</a>
+      </p>
       {deleteError && (
-        <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
+        <div className="alert alert-error" role="alert" style={{ marginBottom: '1rem' }}>
           {deleteError}
           <button onClick={() => setDeleteError(null)} style={{ marginLeft: '1rem', cursor: 'pointer' }}>✕</button>
         </div>
@@ -105,11 +101,11 @@ export default function Receivables() {
         title={t('finance.receivables.openReceivables')}
         columns={COLUMNS}
         data={enriched}
-        onAdd={() => setModal('create')}
-        onEdit={row => setModal(row)}
-        onDelete={handleDelete}
+        onAdd={!isReadonly ? () => setModal('create') : undefined}
+        onEdit={!isReadonly ? row => setModal(row) : undefined}
+        onDelete={!isReadonly ? handleDelete : undefined}
       />
-      {modal && (
+      {modal && !isReadonly && (
         <FormModal
           title={modal === 'create' ? t('ui.buttons.create') : t('ui.buttons.edit')}
           fields={fields}

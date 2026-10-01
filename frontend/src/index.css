@@ -3269,3 +3269,22 @@ a:hover {
 .rent-payment-actions { display: flex; gap: .5rem; flex-wrap: wrap; }
 .rent-open-filter { display: flex; align-items: center; gap: .5rem; margin-top: 1rem; }
 .rent-payment-history { margin-top: 1.5rem; padding: 1rem; background: var(--color-surface); border-radius: 12px; }
+
+@media (max-width: 768px) {
+  .detail-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+  .detail-header > .btn {
+    align-self: flex-start;
+  }
+  .detail-title {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .card-header {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+}

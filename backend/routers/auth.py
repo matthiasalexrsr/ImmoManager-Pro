@@ -1,25 +1,29 @@
 """Authentication router: login, register, refresh, user management."""
 
 import logging
+from ipaddress import ip_address
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from ..auth import (
     authenticate_user,
-    check_register_rate_limit,
+    clear_login_attempts,
     create_access_token,
+    create_initial_owner,
     create_refresh_token,
     decode_token,
     delete_user,
-    generate_totp_secret,
     get_totp_uri,
     get_user_by_id,
     list_users,
-    record_registration_attempt,
+    prepare_totp,
+    record_failed_login,
     register_user,
     require_auth,
     require_role,
     revoke_token,
+    setup_required,
     update_user,
     verify_totp,
 )
@@ -33,9 +37,6 @@ from ..models import (
 )
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
-
-
-_ALLOWED_SELF_REGISTER_ROLES = {"readonly", "techniker"}
 
 
 _DEFAULT_PREFERENCES = {
@@ -53,28 +54,52 @@ _DEFAULT_PREFERENCES = {
 
 @router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
 def register(payload: UserCreate, request: Request) -> UserRead:
-    """Register a new user. Self-registration is restricted to readonly/techniker roles."""
-    client_ip = request.client.host if request.client else "unknown"
-    if check_register_rate_limit(client_ip):
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Zu viele Registrierungsversuche. Bitte versuchen Sie es später erneut.",
-        )
-    role = payload.role if payload.role in _ALLOWED_SELF_REGISTER_ROLES else "readonly"
-    record_registration_attempt(client_ip)
-    return register_user(
-        username=payload.username,
-        email=payload.email,
-        full_name=payload.full_name,
-        password=payload.password,
-        role=role,
-    )
+    """Private installations accept only accounts approved by an owner."""
+    raise HTTPException(status_code=403, detail="Öffentliche Registrierung ist deaktiviert. Bitte wenden Sie sich an den Eigentümer.")
+
+
+def _is_local_setup_request(request: Request) -> bool:
+    def loopback(host: str | None) -> bool:
+        if host == "localhost":
+            return True
+        try:
+            return bool(host and ip_address(host).is_loopback)
+        except ValueError:
+            return False
+
+    # Validate the peer and Host, not forwarded headers. The Host/Origin checks
+    # prevent a third-party website from bootstrapping through DNS rebinding.
+    if not request.client or not loopback(request.client.host) or not loopback(request.url.hostname):
+        return False
+    origin = request.headers.get("origin")
+    if origin:
+        parsed = urlsplit(origin)
+        if parsed.scheme not in {"http", "https"} or parsed.netloc != request.url.netloc or not loopback(parsed.hostname):
+            return False
+    return True
+
+
+@router.get("/setup-status")
+def get_setup_status(request: Request) -> dict:
+    return {
+        "setup_required": setup_required(),
+        "setup_allowed": _is_local_setup_request(request),
+        "registration_open": False,
+        "access_model": "private_installation",
+    }
+
+
+@router.post("/setup", response_model=UserRead, status_code=201)
+def setup_owner(payload: UserCreate, request: Request) -> UserRead:
+    if not _is_local_setup_request(request):
+        raise HTTPException(status_code=403, detail="Ersteinrichtung ist nur lokal über localhost oder 127.0.0.1 erlaubt")
+    return create_initial_owner(payload.username, payload.email, payload.full_name, payload.password)
 
 
 @router.post("/login", response_model=TokenResponse)
 def login(payload: LoginRequest) -> TokenResponse:
     """Authenticate and receive JWT tokens. Enforces TOTP when enabled."""
-    user = authenticate_user(payload.username, payload.password)
+    user = authenticate_user(payload.username, payload.password, complete=False)
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -89,10 +114,12 @@ def login(payload: LoginRequest) -> TokenResponse:
                 headers={"X-2FA-Required": "true"},
             )
         if not verify_totp(user["totp_secret"], payload.totp_code):
+            record_failed_login(payload.username)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Ungültiger Zwei-Faktor-Code",
             )
+    clear_login_attempts(payload.username)
     return TokenResponse(
         access_token=create_access_token(user["id"]),
         refresh_token=create_refresh_token(user["id"]),
@@ -244,6 +271,12 @@ def get_users(
     return users[skip : skip + limit]
 
 
+@router.post("/users", response_model=UserRead, status_code=201)
+def create_approved_user(payload: UserCreate, user: UserRead = Depends(require_role("eigentuemer"))) -> UserRead:
+    """Only installation owners may approve a new account and assign its role."""
+    return register_user(payload.username, payload.email, payload.full_name, payload.password, payload.role)
+
+
 @router.patch("/users/{user_id}", response_model=UserRead)
 def patch_user(
     user_id: str,
@@ -285,11 +318,10 @@ def remove_user(
 @router.post("/2fa/setup", response_model=None)
 def setup_2fa(user: UserRead = Depends(require_auth)) -> dict:
     """Generate a TOTP secret and return the setup URI for QR code generation."""
-    secret = generate_totp_secret()
+    data = prepare_totp(user.id)
+    secret = data["totp_secret"]
     uri = get_totp_uri(secret, user.username)
-    # Store secret temporarily (not yet enabled)
-    update_user(user.id, {"totp_secret": secret})
-    return {"secret": secret, "uri": uri, "message": "Scannen Sie den QR-Code mit einer Authenticator-App."}
+    return {"secret": secret, "uri": uri, "message": "Hinterlegen Sie den Schlüssel in Ihrer Authenticator-App und bestätigen Sie einen Code."}
 
 
 @router.post("/2fa/verify", response_model=None)

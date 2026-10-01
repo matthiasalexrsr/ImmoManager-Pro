@@ -65,12 +65,10 @@ class WhatsAppIntegrationProvider:
         return bool(config.get("phone_number_id") and config.get("api_token"))
 
     def health(self, config: dict) -> dict:
-        if self.is_configured(config):
-            return {"status": "configured", "provider": "meta"}
-        return {"status": "not_configured", "provider": "meta"}
+        return {"status": "planned", "provider": "meta", "implemented": False}
 
     def run(self, payload: dict, config: dict) -> IntegrationActionResult:
-        return IntegrationActionResult(success=False, message="Integration geplant, aber noch nicht konfiguriert")
+        return IntegrationActionResult(success=False, message="WhatsApp-Adapter noch nicht implementiert; gespeicherte Zugangsdaten ermöglichen keinen Versand")
 
 
 @dataclass
@@ -118,12 +116,10 @@ class DeutschePostProvider:
         return bool(config.get("api_key"))
 
     def health(self, config: dict) -> dict:
-        if self.is_configured(config):
-            return {"status": "configured", "provider": "deutsche_post"}
-        return {"status": "not_configured", "provider": "deutsche_post"}
+        return {"status": "planned", "provider": "deutsche_post", "implemented": False}
 
     def run(self, payload: dict, config: dict) -> IntegrationActionResult:
-        return IntegrationActionResult(success=False, message="Integration geplant, aber noch nicht konfiguriert")
+        return IntegrationActionResult(success=False, message="Post-Adapter noch nicht implementiert; gespeicherte Zugangsdaten ermöglichen keinen Versand")
 
 
 @dataclass
@@ -136,6 +132,7 @@ class ListingPortalProvider:
             name="Immobilienportale",
             category="listing",
             description=f"Zentrale Anbindung für Portal-Publishing ({adapters}).",
+            planned=True,
             capabilities=["Portal-Status", "Listing-Publishing", "Unpublish/Sync", "Statusprüfung"],
             required_config_keys=["default_portal"],
         )
@@ -144,7 +141,7 @@ class ListingPortalProvider:
         return bool(config.get("default_portal"))
 
     def health(self, config: dict) -> dict:
-        return {"status": "ok", "adapters": list_adapters()}
+        return {"status": "planned", "adapters": list_adapters(), "implemented": False}
 
     def run(self, payload: dict, config: dict) -> IntegrationActionResult:
         action = (payload.get("action") or "publish").lower()
@@ -173,7 +170,7 @@ class ListingPortalProvider:
             if not portal_listing_id:
                 return IntegrationActionResult(success=False, message="portal_listing_id fehlt für status")
             status_info = adapter.check_status(portal_listing_id)
-            return IntegrationActionResult(success=True, message="Status abgerufen", details=status_info)
+            return IntegrationActionResult(success=status_info.get("status") not in {"planned", "not_configured", "error"}, message="Status abgerufen", details=status_info)
         else:
             return IntegrationActionResult(success=False, message=f"Unbekannte Aktion: {action}")
 
