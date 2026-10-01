@@ -1,41 +1,36 @@
-from datetime import date, timedelta
+from datetime import date
+from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
 from ..models import Task, TaskCreate, TaskPatch
+from ..services.operational_schedule import (
+    TickRequest,
+    generate_tasks,
+    operational_tick,
+    recent_ticks,
+    scheduler_status,
+    validate_task_recurrence,
+)
+from ..services.recurrence import CatchUpLimit, occurrence_at, parse_plan
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/tasks", tags=["Aufgaben"])
 
 
 def _parse_rrule(rule: str) -> dict:
-    """Parse a simplified iCal RRULE string into a dict."""
-    parts = {}
-    for part in rule.split(";"):
-        if "=" in part:
-            key, value = part.split("=", 1)
-            parts[key.strip().upper()] = value.strip()
-    return parts
+    # Compatibility helpers use the same strict parser as the scheduler.
+    plan = parse_plan("compatibility", date(2000, 1, 1), rule, legacy_child_count=True)
+    return {"FREQ": plan.frequency, "INTERVAL": str(plan.interval)}
 
 
 def _next_due_date(current: date, rrule: dict) -> date:
-    """Calculate the next due date based on an RRULE."""
-    freq = rrule.get("FREQ", "MONTHLY").upper()
-    interval = int(rrule.get("INTERVAL", "1"))
-    if freq == "DAILY":
-        return current + timedelta(days=interval)
-    elif freq == "WEEKLY":
-        return current + timedelta(weeks=interval)
-    elif freq == "MONTHLY":
-        month = current.month + interval
-        year = current.year + (month - 1) // 12
-        month = (month - 1) % 12 + 1
-        day = min(current.day, 28)  # safe for all months
-        return date(year, month, day)
-    elif freq == "YEARLY":
-        return date(current.year + interval, current.month, min(current.day, 28))
-    return current + timedelta(days=30 * interval)
+    rule = ";".join(f"{key}={value}" for key, value in rrule.items())
+    result = occurrence_at(parse_plan("compatibility", current, rule), 1)
+    if result is None:
+        raise ValidationError("Das nächste Datum liegt außerhalb des unterstützten Bereichs.")
+    return result
 
 
 @router.get("", response_model=list[Task])
@@ -79,72 +74,40 @@ def list_tasks(
 @router.post("", response_model=Task, status_code=status.HTTP_201_CREATED)
 def create_task(payload: TaskCreate) -> Task:
     try:
+        validate_task_recurrence(payload)
         return store.create_task(payload)
     except ValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
-# Static path MUST come before /{task_id} to avoid route collision
+# Static paths precede /{task_id}.
 @router.post("/generate-recurring", response_model=list[Task])
-def generate_recurring_tasks(
-    as_of: date | None = Query(None),
-) -> list[Task]:
-    """Generate next instances of recurring tasks that are due.
+def generate_recurring_tasks(as_of: date | None = Query(None), full_catch_up: bool = False,
+                             max_items: Annotated[int, Query(ge=1, le=5000)] = 500,
+                             lookback_days: Annotated[int, Query(ge=1, le=3660)] = 366) -> list[Task]:
+    try:
+        return generate_tasks(store, as_of if isinstance(as_of, date) else date.today(),
+                              full_catch_up=full_catch_up, max_items=max_items, lookback_days=lookback_days)
+    except (ValidationError, CatchUpLimit) as exc:
+        raise HTTPException(409, str(exc)) from exc
 
-    Looks at all tasks with a recurrence_rule and creates the next instance
-    if the current instance is completed and the next due date is <= as_of.
-    """
-    if as_of is None:
-        as_of = date.today()
 
-    all_tasks = store.list_tasks()
-    recurring_templates = [t for t in all_tasks if t.recurrence_rule]
+@router.post("/operational-tick", response_model=None)
+def run_operational_tick(payload: TickRequest):
+    try:
+        return operational_tick(store, payload)
+    except (ValidationError, CatchUpLimit) as exc:
+        raise HTTPException(409, str(exc)) from exc
 
-    created = []
-    for template in recurring_templates:
-        # Skip if there's already an open child task
-        has_open_child = any(
-            t.parent_task_id == template.id and t.status in {"open", "in_progress"}
-            for t in all_tasks
-        )
-        if has_open_child:
-            continue
 
-        rrule = _parse_rrule(template.recurrence_rule)
-        base_date = template.due_date or date.today()
-        next_date = _next_due_date(base_date, rrule)
+@router.get("/operational-ticks", response_model=None)
+def list_operational_ticks(limit: int = Query(20, ge=1, le=100)):
+    return recent_ticks(store, limit)
 
-        # Check COUNT limit
-        count_limit = int(rrule.get("COUNT", "0"))
-        if count_limit > 0:
-            child_count = sum(1 for t in all_tasks if t.parent_task_id == template.id)
-            if child_count >= count_limit:
-                continue
 
-        # Check UNTIL limit
-        until = rrule.get("UNTIL")
-        if until:
-            try:
-                until_date = date.fromisoformat(until)
-                if next_date > until_date:
-                    continue
-            except ValueError:
-                pass
-
-        if next_date <= as_of:
-            new_task = store.create_task(TaskCreate(
-                title=template.title,
-                description=template.description,
-                assignee=template.assignee,
-                due_date=next_date,
-                priority=template.priority,
-                property_id=template.property_id,
-                unit_id=template.unit_id,
-                parent_task_id=template.id,
-            ))
-            created.append(new_task)
-
-    return created
+@router.get("/operational-status", response_model=None)
+def operational_status():
+    return scheduler_status()
 
 
 @router.get("/{task_id}", response_model=Task)
@@ -158,6 +121,10 @@ def get_task(task_id: str) -> Task:
 @router.put("/{task_id}", response_model=Task)
 def update_task(task_id: str, payload: TaskCreate) -> Task:
     try:
+        previous = store.get_task(task_id)
+        if previous.parent_task_id and "parent_task_id" not in payload.model_fields_set:
+            payload = payload.model_copy(update={"parent_task_id": previous.parent_task_id})
+        validate_task_recurrence(payload)
         return store.update_task(task_id, payload)
     except (NotFoundError, ValidationError) as exc:
         status_code = status.HTTP_404_NOT_FOUND if isinstance(exc, NotFoundError) else status.HTTP_400_BAD_REQUEST
@@ -167,9 +134,12 @@ def update_task(task_id: str, payload: TaskCreate) -> Task:
 @router.patch("/{task_id}", response_model=Task)
 def patch_task(task_id: str, payload: TaskPatch) -> Task:
     try:
+        current = store.get_task(task_id)
+        merged = TaskCreate(**{**current.model_dump(include=set(TaskCreate.model_fields)), **payload.model_dump(exclude_unset=True)})
+        validate_task_recurrence(merged)
         return store._patch_entity("task", task_id, payload)
-    except NotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except (NotFoundError, ValidationError) as exc:
+        raise HTTPException(404 if isinstance(exc, NotFoundError) else 400, str(exc)) from exc
 
 
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)

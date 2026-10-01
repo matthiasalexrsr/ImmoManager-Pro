@@ -11,6 +11,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, ConfigDict, Field
 
 from ..config import settings
 from ..dependencies import store
@@ -377,154 +378,74 @@ def bulk_delete(entity_type: str, payload: dict):
     return {"deleted": deleted, "errors": errors}
 
 
-# ─── DSGVO / GDPR Compliance ────────────────────────────────────────────────
+# ─── Tenant privacy: explicit relationship metadata and profile scope ──────
+
+
+def _privacy_read(action, tenant_id: str):
+    from ..services.tenant_data_graph import TenantExportError, TenantNotFoundError
+    try:
+        return action(store, tenant_id)
+    except TenantNotFoundError as exc:
+        raise HTTPException(404, "Mieter nicht gefunden.") from exc
+    except TenantExportError as exc:
+        raise HTTPException(503, "Die Datenauskunft konnte nicht vollständig erstellt werden.") from exc
 
 
 @router.get("/dsgvo/tenant/{tenant_id}/export", response_model=None)
 def dsgvo_export_tenant_data(tenant_id: str):
-    """T11: DSGVO Art. 15 — Export all personal data for a tenant.
+    """Export explicitly related metadata; excluded files/records are listed."""
+    import hashlib
 
-    Returns a JSON file containing all data associated with the given tenant,
-    including contracts, bookings, deposits, documents, maintenance cases,
-    messages, and handover protocols.
-    """
-    from io import BytesIO
+    from starlette.background import BackgroundTask
 
-    from fastapi.responses import StreamingResponse
-
-    # Get the tenant
+    from ..services.tenant_privacy import export_tenant_metadata, metadata_download
+    graph = _privacy_read(export_tenant_metadata, tenant_id)
+    graph["exported_at"] = datetime.now(timezone.utc).isoformat()
+    filename_id = hashlib.sha256(tenant_id.encode("utf-8")).hexdigest()[:16]
     try:
-        tenant = store.get_tenant(tenant_id)
-    except Exception:
-        raise HTTPException(404, f"Mieter mit ID {tenant_id} nicht gefunden")
+        output = metadata_download(graph)
+    except Exception as exc:
+        raise HTTPException(503, "Export konnte nicht gespeichert werden. Freien Speicher prüfen und erneut versuchen.") from exc
+    output.seek(0, 2)
+    size = output.tell()
+    output.seek(0)
+    return StreamingResponse(iter(lambda: output.read(64 * 1024), b""),
+                             background=BackgroundTask(output.close),
+                             media_type="application/json", headers={
+        "Content-Length": str(size),
+        "Content-Disposition": f'attachment; filename="tenant_metadata_{filename_id}.json"',
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+    })
 
-    tenant_data = tenant.model_dump(mode="json")
 
-    # Collect all related data
-    contracts = [c.model_dump(mode="json") for c in store.list_contracts()
-                 if c.tenant_id == tenant_id]
-    contract_ids = {c["id"] for c in contracts}
+@router.get("/dsgvo/tenant/{tenant_id}/anonymization-preview", response_model=None)
+def dsgvo_anonymization_preview(tenant_id: str):
+    from ..services.tenant_privacy import preview_tenant_anonymization
+    return _privacy_read(preview_tenant_anonymization, tenant_id)
 
-    bookings = [b.model_dump(mode="json") for b in store.list_bookings()
-                if getattr(b, "contract_id", None) in contract_ids]
 
-    deposits = [d.model_dump(mode="json") for d in store.list_deposits()
-                if getattr(d, "contract_id", None) in contract_ids]
-
-    documents = [d.model_dump(mode="json") for d in store.list_documents()
-                 if getattr(d, "tenant_id", None) == tenant_id]
-
-    maintenance = [m.model_dump(mode="json") for m in store.list_maintenance_cases()
-                   if getattr(m, "tenant_id", None) == tenant_id]
-
-    receivables = [r.model_dump(mode="json") for r in store.list_receivables()
-                   if getattr(r, "contract_id", None) in contract_ids]
-
-    handover_protocols = [h.model_dump(mode="json") for h in store.list_handover_protocols()
-                          if getattr(h, "contract_id", None) in contract_ids]
-
-    messages = []
-    try:
-        for msg in store.list_messages():
-            if getattr(msg, "tenant_id", None) == tenant_id:
-                messages.append(msg.model_dump(mode="json"))
-    except Exception:
-        logger.debug("Could not collect messages for DSGVO export of tenant %s", tenant_id, exc_info=True)
-
-    export = {
-        "export_type": "DSGVO_Datenauskunft",
-        "exported_at": datetime.now(timezone.utc).isoformat(),
-        "tenant": tenant_data,
-        "contracts": contracts,
-        "bookings": bookings,
-        "deposits": deposits,
-        "receivables": receivables,
-        "documents": documents,
-        "maintenance_cases": maintenance,
-        "handover_protocols": handover_protocols,
-        "messages": messages,
-    }
-
-    content = json.dumps(export, ensure_ascii=False, indent=2, default=str)
-    return StreamingResponse(
-        BytesIO(content.encode("utf-8")),
-        media_type="application/json",
-        headers={
-            "Content-Disposition": f'attachment; filename="dsgvo_export_tenant_{tenant_id}.json"',
-        },
-    )
+class TenantAnonymizationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    plan_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+    confirm_tenant_id: str = Field(min_length=1, max_length=128)
 
 
 @router.post("/dsgvo/tenant/{tenant_id}/anonymize", response_model=None)
-def dsgvo_anonymize_tenant(tenant_id: str):
-    """T11: DSGVO Art. 17 — Right to erasure / anonymization.
-
-    Anonymizes all personal data for a tenant while preserving financial
-    records required for tax retention periods (§ 147 AO: 10 years for
-    bookings/invoices). Replaces personal identifiers with anonymized
-    placeholders.
-    """
+def dsgvo_anonymize_tenant(tenant_id: str, body: TenantAnonymizationRequest):
+    """Atomically anonymize the reviewed, inactive tenant profile only."""
+    from ..services.tenant_data_graph import TenantExportError, TenantNotFoundError
+    from ..services.tenant_privacy import PrivacyConflict, anonymize_tenant_profile
     try:
-        tenant = store.get_tenant(tenant_id)
-    except Exception:
-        raise HTTPException(404, f"Mieter mit ID {tenant_id} nicht gefunden")
-
-    # Anonymize tenant personal data
-    from ..models import TenantPatch
-
-    anonymized_name = f"Anonymisiert-{tenant_id[:8]}"
-    patch_fields = {}
-
-    # Anonymize all personal fields that exist on the model
-    for field in ["first_name", "last_name", "name"]:
-        if hasattr(tenant, field):
-            patch_fields[field] = anonymized_name
-
-    for field in ["email", "phone", "mobile", "address", "iban", "tax_id",
-                   "notes", "emergency_contact", "employer"]:
-        if hasattr(tenant, field) and getattr(tenant, field) is not None:
-            patch_fields[field] = "[DSGVO gelöscht]"
-
-    if patch_fields:
-        try:
-            patch = TenantPatch(**patch_fields)
-            store._patch_entity("tenant", tenant_id, patch)
-        except Exception as exc:
-            logger.warning("Tenant patch failed during anonymization: %s", exc)
-
-    # Anonymize related documents (remove references, keep financial records)
-    anonymized_docs = 0
-    for doc in store.list_documents():
-        if getattr(doc, "tenant_id", None) == tenant_id:
-            try:
-                store.delete_document(doc.id)
-                anonymized_docs += 1
-            except Exception:
-                logger.warning("Failed to delete document %s during DSGVO anonymization", doc.id, exc_info=True)
-
-    # Delete messages
-    deleted_messages = 0
-    try:
-        for msg in store.list_messages():
-            if getattr(msg, "tenant_id", None) == tenant_id:
-                try:
-                    store.delete_message(msg.id)
-                    deleted_messages += 1
-                except Exception:
-                    logger.warning("Failed to delete message %s during DSGVO anonymization", msg.id, exc_info=True)
-    except Exception:
-        logger.debug("Could not list messages for DSGVO anonymization of tenant %s", tenant_id, exc_info=True)
-
-    logger.info(
-        "DSGVO anonymization for tenant %s: fields=%d, docs=%d, messages=%d",
-        tenant_id, len(patch_fields), anonymized_docs, deleted_messages,
-    )
-
-    return {
-        "status": "anonymized",
-        "tenant_id": tenant_id,
-        "anonymized_fields": list(patch_fields.keys()),
-        "deleted_documents": anonymized_docs,
-        "deleted_messages": deleted_messages,
-        "note": "Finanzdaten (Buchungen, Rechnungen) bleiben gemäß § 147 AO erhalten.",
-    }
+        return anonymize_tenant_profile(store, tenant_id, plan_hash=body.plan_hash,
+                                         confirm_tenant_id=body.confirm_tenant_id)
+    except TenantNotFoundError as exc:
+        raise HTTPException(404, "Mieter nicht gefunden.") from exc
+    except PrivacyConflict as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except HTTPException:
+        raise
+    except (TenantExportError, TransferError) as exc:
+        raise HTTPException(503, "Anonymisierung abgebrochen; keine Teiländerung gespeichert.") from exc
+    except Exception as exc:
+        raise HTTPException(503, "Anonymisierung abgebrochen; keine Teiländerung gespeichert.") from exc

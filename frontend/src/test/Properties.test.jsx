@@ -13,7 +13,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock('../api', () => ({ api: { get: mocks.get, getAll: mocks.getAll, post: mocks.post, put: mocks.put, del: mocks.del } }));
 vi.mock('../i18n', () => ({ useTranslation: () => ({ t: mocks.t, locale: mocks.locale }) }));
-vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ isReadonly: mocks.readonly }) }));
+vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ role: mocks.readonly ? 'readonly' : 'eigentuemer', isReadonly: mocks.readonly }) }));
 vi.mock('../contexts/DataStoreContext', () => ({
   useDataStore: () => ({ invalidateRelated: mocks.invalidateRelated }),
   useEntities: key => mocks.cache[key],

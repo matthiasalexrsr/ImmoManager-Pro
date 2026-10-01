@@ -220,6 +220,7 @@ class InMemoryStore:
             attr = getattr(self, name)
             if isinstance(attr, dict):
                 attr.clear()
+        self.__dict__.pop("_operational_state", None)
 
     def count_entities(self, entity_type: str, filters: Dict[str, Any] | None = None) -> int:
         """Count entities of a given type, optionally filtered."""
@@ -1405,6 +1406,9 @@ class InMemoryStore:
         if entity_type == "rent_charge" and type(patch).__name__ == "RentChargePatch":
             charge_data = RentChargeCreate(**{**old.model_dump(include=set(RentChargeCreate.model_fields)), **updates})
             return self.update_rent_charge(entity_id, charge_data)
+        if entity_type == "rent_adjustment":
+            adjustment_data = RentAdjustmentCreate(**{**old.model_dump(include=set(RentAdjustmentCreate.model_fields)), **updates})
+            return self.update_rent_adjustment(entity_id, adjustment_data)
         billing_creates: dict[str, type[PydanticBaseModel]] = {"billing_period": BillingPeriodCreate, "cost_item": CostItemCreate,
             "utility_statement": UtilityStatementCreate, "allocation_key": AllocationKeyCreate}
         if entity_type in billing_creates:
@@ -1514,11 +1518,12 @@ class InMemoryStore:
         return list(self.rent_adjustments.values())
 
     def create_rent_adjustment(self, data: RentAdjustmentCreate) -> RentAdjustment:
-        if data.contract_id not in self.contracts:
-            raise ValidationError("Vertrag nicht gefunden")
-        item = RentAdjustment(id=_generate_id(), **data.model_dump())
-        self.rent_adjustments[item.id] = item
-        return item
+        from .services.rent_adjustments import adjustment_write, validate_adjustment
+        with adjustment_write(self, [data.contract_id]):
+            validate_adjustment(self, data)
+            item = RentAdjustment(id=_generate_id(), **data.model_dump())
+            self.rent_adjustments[item.id] = item
+            return item
 
     def get_rent_adjustment(self, adj_id: str) -> RentAdjustment:
         try:
@@ -1528,18 +1533,20 @@ class InMemoryStore:
 
     @_version_mutation
     def update_rent_adjustment(self, adj_id: str, data: RentAdjustmentCreate) -> RentAdjustment:
-        if adj_id not in self.rent_adjustments:
-            raise NotFoundError("Mietanpassung nicht gefunden")
-        old = self.rent_adjustments[adj_id]
-        item = RentAdjustment(id=adj_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc), **data.model_dump())
-        self.rent_adjustments[adj_id] = item
-        return item
+        from .services.rent_adjustments import adjustment_write, validate_adjustment
+        with adjustment_write(self, [data.contract_id]):
+            old = self.get_rent_adjustment(adj_id)
+            validate_adjustment(self, data, exclude_id=adj_id)
+            item = RentAdjustment(id=adj_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc), **data.model_dump())
+            self.rent_adjustments[adj_id] = item
+            return item
 
     @_version_mutation
     def delete_rent_adjustment(self, adj_id: str) -> None:
-        if adj_id not in self.rent_adjustments:
-            raise NotFoundError("Mietanpassung nicht gefunden")
-        del self.rent_adjustments[adj_id]
+        from .services.rent_adjustments import adjustment_write
+        with adjustment_write(self, []):
+            self.get_rent_adjustment(adj_id)
+            del self.rent_adjustments[adj_id]
 
     # --- Handover Protocols (T16) ---
     def list_handover_protocols(self) -> List[HandoverProtocol]:

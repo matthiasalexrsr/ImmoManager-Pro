@@ -1,3 +1,4 @@
+import useWriteAccess from '../hooks/useWriteAccess';
 import { revisionOptions } from '../editRevision';
 import { useState, useEffect } from 'react';
 import { api } from '../api';
@@ -43,6 +44,7 @@ export default function Leads() {
   const [listings, setListings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
+  const { canWrite, isAllowed, requireWrite } = useWriteAccess('/leads', () => setModal(null));
   const [deleteError, setDeleteError] = useState(null);
   const [groupBy, setGroupBy] = useState('none');
 
@@ -144,6 +146,7 @@ export default function Leads() {
   ];
 
   const handleSave = async (data) => {
+    requireWrite();
     const payload = { ...data, priority: Number(data.priority) || 0 };
     if (modal === 'create') {
       await api.post('/leads', payload);
@@ -154,9 +157,11 @@ export default function Leads() {
   };
 
   const handleDelete = async (row) => {
+    if (!isAllowed()) return;
     if (!await confirm(`"${row.full_name}" ${t('modals.confirmDelete.body')}`)) return;
     setDeleteError(null);
     try {
+      if (!isAllowed()) return;
       await api.del(`/leads/${row.id}`, revisionOptions(row));
       refreshData();
     } catch (err) {
@@ -223,14 +228,14 @@ export default function Leads() {
             title={group.label ? '' : 'Interessenten'}
             columns={COLUMNS}
             data={group.leads}
-            onAdd={gi === 0 ? () => setModal('create') : undefined}
-            onEdit={row => setModal(row)}
-            onDelete={handleDelete}
+            onAdd={canWrite ? gi === 0 ? () => setModal('create') : undefined : undefined}
+            onEdit={canWrite ? row => setModal(row) : undefined}
+            onDelete={canWrite ? handleDelete : undefined}
           />
         </div>
       ))}
 
-      {modal && (
+      {modal && canWrite && (
         <FormModal
           title={modal === 'create' ? 'Interessent erstellen' : 'Interessent bearbeiten'}
           fields={fields}

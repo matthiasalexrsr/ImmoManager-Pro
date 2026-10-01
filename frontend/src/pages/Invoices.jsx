@@ -1,3 +1,4 @@
+import useWriteAccess from '../hooks/useWriteAccess';
 import { revisionOptions } from '../editRevision';
 import { useState, useMemo } from 'react';
 import { api } from '../api';
@@ -59,6 +60,7 @@ export default function Invoices() {
     taxRates: '/tax-rates',
   });
   const [modal, setModal] = useState(null);
+  const { canWrite, isAllowed, requireWrite } = useWriteAccess('/invoices', () => setModal(null));
   const [actionError, setActionError] = useState(null);
   const [filter, setFilter] = useState('all');
 
@@ -120,6 +122,7 @@ export default function Invoices() {
   ];
 
   const handleSave = async (data) => {
+    requireWrite();
     // Auto-calculate VAT and gross if net and rate are provided
     const net = Number(data.net_amount) || 0;
     const rate = Number(data.vat_rate) || 0;
@@ -141,9 +144,11 @@ export default function Invoices() {
   };
 
   const handleDelete = async (row) => {
+    if (!isAllowed()) return;
     if (!await confirm(`"${row.supplier}" ${t('modals.confirmDelete.body')}`)) return;
     setActionError(null);
     try {
+      if (!isAllowed()) return;
       await api.del(`/invoices/${row.id}`, revisionOptions(row));
       setModal(null);
       refreshData();
@@ -154,6 +159,7 @@ export default function Invoices() {
   };
 
   const markPaid = async (row) => {
+    if (!isAllowed()) return;
     setActionError(null);
     try {
       await api.patch(`/invoices/${row.id}`, { status: 'paid' }, revisionOptions(row));
@@ -218,7 +224,7 @@ export default function Invoices() {
         title="Rechnungen"
         columns={[...COLUMNS, {
           key: '_actions', label: '', sortable: false,
-          render: (_, row) => (row.status === 'open' || row.status === 'overdue') ? (
+          render: (_, row) => canWrite && (row.status === 'open' || row.status === 'overdue') ? (
             <button
               className="btn btn-sm btn-secondary"
               onClick={async (e) => {
@@ -231,12 +237,12 @@ export default function Invoices() {
           ) : null,
         }]}
         data={filtered}
-        onAdd={() => setModal('create')}
-        onEdit={row => setModal(row)}
-        onDelete={handleDelete}
+        onAdd={canWrite ? () => setModal('create') : undefined}
+        onEdit={canWrite ? row => setModal(row) : undefined}
+        onDelete={canWrite ? handleDelete : undefined}
       />
 
-      {modal && (
+      {modal && canWrite && (
         <FormModal
           title={modal === 'create' ? 'Rechnung erstellen' : 'Rechnung bearbeiten'}
           fields={fields}

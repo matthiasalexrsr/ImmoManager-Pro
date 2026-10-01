@@ -22,7 +22,7 @@ COPY mietvertrag_wizard_fastapi_reportlab_pro/ mietvertrag_wizard_fastapi_report
 COPY --from=frontend-build /frontend/dist/ frontend/dist/
 COPY docker-entrypoint.sh ./
 RUN sed -i 's/\r$//' docker-entrypoint.sh && chmod 755 docker-entrypoint.sh \
-    && mkdir -p /data/uploads /data/backups /data/logs \
+    && mkdir -p /data/uploads /data/backups /data/logs /data/tmp \
     && chown -R immo:immo /data
 USER immo
 EXPOSE 8000

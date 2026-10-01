@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from ..config import settings
 from .auth_models import AuthSetupORM  # noqa: F401 — register auth metadata before create_all
+from .operational_models import OperationalTickORM  # noqa: F401 — register scheduler metadata
 from .orm_models import Base
 
 DATABASE_URL = settings.database_url
@@ -22,6 +23,7 @@ engine = create_engine(
     DATABASE_URL,
     connect_args=_connect_args,
     pool_pre_ping=True,
+    hide_parameters=True,
 )
 
 # Enable WAL mode and foreign keys for SQLite
@@ -65,6 +67,10 @@ def create_tables() -> None:
             ensure_billing_schema(connection)
             from ..services.billing_settlement import ensure_owner_share_schema
             ensure_owner_share_schema(connection)
+            from ..services.operational_schedule import ensure_operational_schema
+            ensure_operational_schema(connection)
+            from ..services.rent_adjustments import ensure_rent_adjustment_schema
+            ensure_rent_adjustment_schema(connection)
 
 
 def get_db() -> Generator[Session, None, None]:

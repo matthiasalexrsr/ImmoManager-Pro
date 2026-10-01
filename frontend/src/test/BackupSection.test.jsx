@@ -6,7 +6,7 @@ import { api } from '../api';
 import german from '../../../i18n/de-DE.json';
 
 const mocks = vi.hoisted(() => ({ readonly: false, error: vi.fn(), invalidateAll: vi.fn(), createURL: vi.fn(), revokeURL: vi.fn() }));
-vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ isReadonly: mocks.readonly }) }));
+vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ role: mocks.readonly ? 'readonly' : 'eigentuemer', isReadonly: mocks.readonly }) }));
 vi.mock('../contexts/DataStoreContext', () => ({ useDataStore: () => ({ invalidateAll: mocks.invalidateAll }) }));
 vi.mock('../components/Toast', () => ({ useToast: () => ({ error: mocks.error }) }));
 vi.mock('../i18n', () => ({ useTranslation: () => ({ t: key => key.split('.').reduce((value, part) => value?.[part], german) || key }) }));
@@ -112,17 +112,15 @@ it('prevents duplicate backup clicks and conflicting uploads/exports while the r
   expect(screen.getByRole('button', { name: 'Backup erstellen' })).toBeEnabled();
 });
 
-it('blocks readonly mutations in handlers and leaves permitted export available', async () => {
+it('keeps administration backup, import and export unavailable to readonly accounts', () => {
   mocks.readonly = true;
   render(<BackupSection />);
-  expect(screen.getByRole('button', { name: 'Backup erstellen' })).toBeDisabled();
-  expect(screen.getByLabelText('Daten importieren')).toBeDisabled();
-  fireEvent.click(screen.getByRole('button', { name: 'Backup erstellen' }));
-  upload();
+  expect(screen.queryByRole('button', { name: 'Backup erstellen' })).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('Daten importieren')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'JSON-Export' })).not.toBeInTheDocument();
   expect(api.post).not.toHaveBeenCalled();
   expect(api.postForm).not.toHaveBeenCalled();
-  fireEvent.click(exportButton());
-  await waitFor(() => expect(mocks.createURL).toHaveBeenCalledTimes(1));
+  expect(api.getBlob).not.toHaveBeenCalled();
 });
 
 it('uploads multipart through the shared API, refreshes data only on confirmed success and clears input', async () => {

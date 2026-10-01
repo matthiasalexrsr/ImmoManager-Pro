@@ -7,14 +7,13 @@ import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
+import OperationalTickPanel from '../components/OperationalTickPanel';
+import useWriteAccess from '../hooks/useWriteAccess';
 
-function parseRecurrence(rule) {
+function parseRecurrence(rule, t) {
   if (!rule) return '—';
-  if (rule.includes('FREQ=DAILY')) return 'Täglich';
-  if (rule.includes('FREQ=WEEKLY')) return 'Wöchentlich';
-  if (rule.includes('FREQ=MONTHLY')) return 'Monatlich';
-  if (rule.includes('FREQ=YEARLY')) return 'Jährlich';
-  return rule;
+  const frequency = /(?:^|;)FREQ=(DAILY|WEEKLY|MONTHLY|YEARLY)(?:;|$)/.exec(rule.toUpperCase())?.[1];
+  return frequency ? t(`operational.frequency.${frequency}`) : rule;
 }
 
 function isOverdue(dueDate, status) {
@@ -47,7 +46,8 @@ function isWithinWeek(dueDate) {
 }
 
 export default function Tasks() {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
+  const { canWrite, isAllowed, requireWrite } = useWriteAccess('/tasks', () => setModal(null));
   const confirm = useConfirm();
   const store = useDataStore();
   const { items: properties } = useEntities('properties', '/properties');
@@ -57,23 +57,21 @@ export default function Tasks() {
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
   const [filter, setFilter] = useState('all');
+  const [error, setError] = useState(null);
+  const [revision, setRevision] = useState(0);
 
   const noneOpt = t('pages.tasks.form.noneOption') || '— Keine —';
 
-  const refreshData = () => {
-    setLoading(true);
-    api.get('/tasks').catch(() => [])
-      .then(data => setTasks(Array.isArray(data) ? data : []))
-      .finally(() => setLoading(false));
-  };
-
+  const refreshData = () => setRevision(value => value + 1);
   useEffect(() => {
-    let cancelled = false;
-    api.get('/tasks').catch(err => { console.warn('[Tasks] load:', err.message); return []; })
-      .then(data => { if (!cancelled) setTasks(Array.isArray(data) ? data : []); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
+    const controller = new AbortController();
+    setLoading(true); setError(null);
+    api.getAll('/tasks', { signal: controller.signal }).then(data => {
+      if (!controller.signal.aborted) setTasks(data);
+    }).catch(err => { if (!controller.signal.aborted) setError(err.message); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [revision]);
 
   // Lookup maps
   const propertyMap = Object.fromEntries(properties.map(p => [p.id, p.name]));
@@ -85,7 +83,7 @@ export default function Tasks() {
     property_name: propertyMap[task.property_id] || '—',
     unit_label: unitMap[task.unit_id] || '—',
     is_overdue: isOverdue(task.due_date, task.status),
-    recurrence_label: parseRecurrence(task.recurrence_rule),
+    recurrence_label: parseRecurrence(task.recurrence_rule, t),
   }));
 
   // Filtered data
@@ -115,7 +113,7 @@ export default function Tasks() {
     { key: 'due_date', label: t('pages.tasks.columns.dueDate') || 'Fällig am', type: 'date', filterType: 'dateRange',
       render: (v, row) => {
         if (!v) return '—';
-        const display = new Date(v).toLocaleDateString('de-DE');
+        const display = new Date(v).toLocaleDateString(locale);
         if (isOverdue(v, row.status)) {
           return <span style={{ color: 'var(--danger)', fontWeight: 700 }}>{display}</span>;
         }
@@ -130,6 +128,7 @@ export default function Tasks() {
   ];
 
   const fields = [
+    { key: 'parent_task_id', type: 'hidden' },
     { key: 'title', label: t('pages.tasks.form.title') || 'Titel', required: true },
     { key: 'description', label: t('pages.tasks.form.description') || 'Beschreibung', type: 'textarea' },
     { key: 'assignee', label: t('pages.tasks.form.assignee') || 'Zuständig' },
@@ -138,7 +137,7 @@ export default function Tasks() {
     { key: 'unit_id', label: t('pages.tasks.form.unit') || 'Einheit', type: 'select',
       options: [{ value: '', label: noneOpt }, ...units.map(u => ({ value: u.id, label: u.label }))] },
     { key: 'due_date', label: t('pages.tasks.form.dueDate') || 'Fällig am', type: 'date' },
-    { key: 'recurrence_rule', label: t('pages.tasks.form.recurrence') || 'Wiederholung (iCal RRULE)', placeholder: t('pages.tasks.form.recurrencePlaceholder') || 'z.B. FREQ=MONTHLY;COUNT=12' },
+    { key: 'recurrence_rule', label: t('pages.tasks.form.recurrence') || 'Wiederholung (iCal RRULE)', placeholder: 'FREQ=MONTHLY;COUNT=12', hint: t('operational.taskRuleHint') },
     { key: 'priority', label: t('pages.tasks.form.priority') || 'Priorität', type: 'select', default: 'medium', options: [
       { value: 'low', label: t('pages.tasks.priority.low') || 'Niedrig' },
       { value: 'medium', label: t('pages.tasks.priority.medium') || 'Mittel' },
@@ -153,6 +152,7 @@ export default function Tasks() {
   ];
 
   const handleSave = async (data) => {
+    requireWrite();
     if (modal === 'create') {
       await api.post('/tasks', data);
     } else {
@@ -163,7 +163,9 @@ export default function Tasks() {
   };
 
   const handleDelete = async (row) => {
+    if (!isAllowed()) return;
     if (!await confirm(`"${row.title || row.id}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!isAllowed()) return;
     await api.del(`/tasks/${row.id}`, revisionOptions(row));
     refreshData();
     if (store) store.invalidateRelated('tasks', 'properties', 'units');
@@ -175,6 +177,8 @@ export default function Tasks() {
     <div className="page">
       <h1 className="page-title">{t('pages.tasks.title') || 'Aufgaben'}</h1>
 
+      <OperationalTickPanel onCompleted={refreshData} />
+      {error && <div role="alert">{error} <button type="button" className="btn btn-secondary" onClick={refreshData}>{t('operational.retry')}</button></div>}
       {/* Summary cards */}
       <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
         <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
@@ -221,9 +225,9 @@ export default function Tasks() {
         title={t('pages.tasks.title') || 'Aufgaben'}
         columns={columns}
         data={filtered}
-        onAdd={() => setModal('create')}
-        onEdit={row => setModal(row)}
-        onDelete={handleDelete}
+        onAdd={canWrite ? () => setModal('create') : undefined}
+        onEdit={canWrite ? row => setModal(row) : undefined}
+        onDelete={canWrite ? handleDelete : undefined}
       />
 
       {modal && (

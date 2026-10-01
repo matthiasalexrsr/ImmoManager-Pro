@@ -10,6 +10,7 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from backend.db.auth_models import AuthSetupORM  # noqa: F401 — register auth metadata
+from backend.db.operational_models import OperationalTickORM  # noqa: F401 — register scheduler metadata
 from backend.db.orm_models import Base
 
 config = context.config

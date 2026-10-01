@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
 from ..models import RentAdjustment, RentAdjustmentCreate, RentAdjustmentPatch
+from ..services.rent_adjustments import RentAdjustmentConflict
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/rent-adjustments", tags=["Mietanpassungen"])
@@ -28,6 +29,8 @@ def list_rent_adjustments(
 def create_rent_adjustment(payload: RentAdjustmentCreate):
     try:
         return store.create_rent_adjustment(payload)
+    except RentAdjustmentConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -46,6 +49,10 @@ def update_rent_adjustment(adj_id: str, payload: RentAdjustmentCreate):
         return store.update_rent_adjustment(adj_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RentAdjustmentConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.patch("/{adj_id}", response_model=RentAdjustment)
@@ -54,6 +61,10 @@ def patch_rent_adjustment(adj_id: str, payload: RentAdjustmentPatch):
         return store._patch_entity("rent_adjustment", adj_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RentAdjustmentConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.delete("/{adj_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -62,3 +73,5 @@ def delete_rent_adjustment(adj_id: str):
         store.delete_rent_adjustment(adj_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RentAdjustmentConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc

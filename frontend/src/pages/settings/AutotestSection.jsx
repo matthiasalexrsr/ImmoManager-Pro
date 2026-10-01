@@ -1,15 +1,18 @@
+import useWriteAccess from '../../hooks/useWriteAccess';
 import { useState } from 'react';
 import { api } from '../../api';
 
 const BASE = (import.meta.env.VITE_API_URL || '/api/v1');
 
 export default function AutotestSection() {
+  const { canWrite, isAllowed } = useWriteAccess('/autotest');
   const [autotestRunning, setAutotestRunning] = useState(false);
   const [autotestResult, setAutotestResult] = useState(null);
   const [autotestUploading, setAutotestUploading] = useState(false);
   const [autotestUploadResult, setAutotestUploadResult] = useState(null);
 
   const handleRunAutotest = async () => {
+    if (!isAllowed()) return;
     setAutotestRunning(true);
     setAutotestResult(null);
     setAutotestUploadResult(null);
@@ -24,6 +27,7 @@ export default function AutotestSection() {
   };
 
   const handleDownloadReport = async () => {
+    if (!isAllowed()) return;
     try {
       const token = localStorage.getItem('access_token');
       const res = await fetch(`${BASE}/autotest/report/markdown`, {
@@ -44,6 +48,7 @@ export default function AutotestSection() {
   };
 
   const handleUploadReport = async () => {
+    if (!isAllowed()) return;
     setAutotestUploading(true);
     setAutotestUploadResult(null);
     try {
@@ -56,6 +61,7 @@ export default function AutotestSection() {
     }
   };
 
+  if (!canWrite) return null;
   return (
     <div className="panel">
       <div className="panel-header">Autotest — Self-Diagnostic Suite</div>

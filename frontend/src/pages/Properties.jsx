@@ -5,7 +5,7 @@ import { Building2, MapPin, ArrowUpRight, Plus, Search, LayoutGrid, List, Refres
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
-import { useAuth } from '../contexts/AuthContext';
+import useWriteAccess from '../hooks/useWriteAccess';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import { useConfirm } from '../components/ConfirmDialog';
@@ -26,7 +26,6 @@ export default function Properties() {
   const navigate = useNavigate();
   const confirm = useConfirm();
   const store = useDataStore();
-  const isReadonly = Boolean(useAuth()?.isReadonly);
   const portfoliosData = useEntities('portfolios', '/portfolios');
   const unitsData = useEntities('units', '/units');
   const maintenanceData = useEntities('maintenance', '/maintenance');
@@ -37,6 +36,7 @@ export default function Properties() {
   const [actionError, setActionError] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [modal, setModal] = useState(null);
+  const { canWrite, isAllowed, requireWrite } = useWriteAccess('/properties', () => setModal(null));
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [portfolioFilter, setPortfolioFilter] = useState('');
@@ -160,18 +160,19 @@ export default function Properties() {
 
   const invalidate = () => store?.invalidateRelated('properties', 'portfolios', 'units', 'contracts', 'maintenance', 'documents');
   const handleSave = async data => {
-    if (isReadonly) throw new Error(t('properties.readonly'));
+    requireWrite();
     if (modal === 'create') await api.post('/properties', data);
     else await api.put(`/properties/${modal.id}`, data);
     void refreshData();
     invalidate();
   };
   const handleDelete = async row => {
-    if (isReadonly || busyId) return;
+    if (!isAllowed() || busyId) return;
     if (!await confirm(`"${row.name}" ${t('modals.confirmDelete.body')}`)) return;
     setActionError(null);
     setBusyId(row.id);
     try {
+      if (!isAllowed()) return;
       await api.del(`/properties/${row.id}`, revisionOptions(row));
       void refreshData();
       invalidate();
@@ -183,10 +184,10 @@ export default function Properties() {
     <div className="page properties-page">
       <header className="property-page-heading">
         <div><span className="property-eyebrow">{t('properties.eyebrow')}</span><h1>{t('properties.list.title')}</h1><p>{t('properties.subtitle')}</p></div>
-        {!isReadonly && <button className="btn btn-primary" onClick={() => setModal('create')} disabled={portfoliosData.loading || Boolean(portfoliosData.error) || !portfolios.length}><Plus size={18} aria-hidden="true" />{t('properties.create')}</button>}
+        {canWrite && <button className="btn btn-primary" onClick={() => setModal('create')} disabled={portfoliosData.loading || Boolean(portfoliosData.error) || !portfolios.length}><Plus size={18} aria-hidden="true" />{t('properties.create')}</button>}
       </header>
 
-      {!isReadonly && !portfoliosData.loading && !portfoliosData.error && !portfolios.length && <div className="property-notice">{t('properties.needsPortfolio')} <Link to="/portfolios">{t('properties.managePortfolios')} <ArrowUpRight size={14} aria-hidden="true" /></Link></div>}
+      {canWrite && !portfoliosData.loading && !portfoliosData.error && !portfolios.length && <div className="property-notice">{t('properties.needsPortfolio')} <Link to="/portfolios">{t('properties.managePortfolios')} <ArrowUpRight size={14} aria-hidden="true" /></Link></div>}
       <section className="property-metrics" aria-label={t('properties.summary')}>
         <div className="property-metric"><span>{t('properties.objects')}</span><strong>{loading || error ? '—' : count(enriched.length)}</strong><small>{t('properties.recordedProperties')}</small></div>
         <div className="property-metric"><span>{t('properties.units')}</span><strong>{loading || error || totalUnits == null ? '—' : count(totalUnits)}</strong><small>{t('properties.acrossProperties')}</small></div>
@@ -212,7 +213,7 @@ export default function Properties() {
 
         {loading && <div className="property-state" role="status"><div className="property-state-icon"><Building2 size={27} aria-hidden="true" /></div><h3>{t('properties.loading')}</h3><p>{t('properties.loadingDescription')}</p></div>}
         {!loading && error && <div className="property-state property-state-error" role="alert"><h3>{t('properties.errors.properties')}</h3><p>{error}</p><button className="btn btn-primary" onClick={refreshData}><RefreshCw size={16} aria-hidden="true" />{t('properties.retry')}</button></div>}
-        {!loading && !error && !filtered.length && <div className="property-state"><div className="property-state-icon"><Building2 size={29} aria-hidden="true" /></div><h3>{t(hasFilters ? 'properties.noResults' : 'properties.emptyTitle')}</h3><p>{t(hasFilters ? 'properties.noResultsDescription' : 'properties.emptyDescription')}</p>{hasFilters ? <button className="btn btn-secondary" onClick={resetFilters}>{t('properties.reset')}</button> : !isReadonly && portfolios.length > 0 && <button className="btn btn-primary" onClick={() => setModal('create')}><Plus size={16} aria-hidden="true" />{t('properties.create')}</button>}</div>}
+        {!loading && !error && !filtered.length && <div className="property-state"><div className="property-state-icon"><Building2 size={29} aria-hidden="true" /></div><h3>{t(hasFilters ? 'properties.noResults' : 'properties.emptyTitle')}</h3><p>{t(hasFilters ? 'properties.noResultsDescription' : 'properties.emptyDescription')}</p>{hasFilters ? <button className="btn btn-secondary" onClick={resetFilters}>{t('properties.reset')}</button> : canWrite && portfolios.length > 0 && <button className="btn btn-primary" onClick={() => setModal('create')}><Plus size={16} aria-hidden="true" />{t('properties.create')}</button>}</div>}
         {!loading && !error && filtered.length > 0 && view === 'cards' && <div className="property-card-grid">{filtered.map(prop => <article className="property-card" key={prop.id}>
           <div className="property-card-top"><div className="property-object-icon"><Building2 size={22} aria-hidden="true" /></div><PropertyStatus status={prop.status} t={t} /></div>
           <p className="property-card-context">{prop.portfolio_name} <span>·</span> {typeLabel(prop.property_type)}</p>
@@ -220,12 +221,12 @@ export default function Properties() {
           <p className="property-card-address"><MapPin size={15} aria-hidden="true" /><span>{prop.address || t('properties.noAddress')}</span></p>
           <div className="property-card-metrics"><div><span>{t('properties.units')}</span><strong>{prop.unit_count ?? '—'}</strong></div><div><span>{t('properties.occupancy')}</span><strong>{prop.occupancy_rate == null ? '—' : `${prop.occupancy_rate}%`}</strong></div><div><span>{t('properties.monthlyRent')}</span><strong>{money(prop.total_rent)}</strong></div></div>
           <div className="property-occupancy-track" aria-hidden="true"><span style={{ width: `${prop.occupancy_rate ?? 0}%` }} /></div>
-          <div className="property-card-bottom"><div className="property-card-signals">{unitsReady && prop.vacant_count > 0 && <span><Home size={14} aria-hidden="true" />{t('properties.vacancyCount', { count: prop.vacant_count })}</span>}{maintenanceReady && prop.open_maintenance > 0 && <span><Wrench size={14} aria-hidden="true" />{t('properties.maintenanceCount', { count: prop.open_maintenance })}</span>}{unitsReady && maintenanceReady && !prop.vacant_count && !prop.open_maintenance && <span>{t('properties.noOpenItems')}</span>}</div>{!isReadonly && <div className="property-card-actions"><button className="property-icon-button" aria-label={t('properties.editNamed', { name: prop.name })} onClick={() => setModal(prop)} disabled={Boolean(busyId)}><Pencil size={15} aria-hidden="true" /></button><button className="property-icon-button property-delete" aria-label={t('properties.deleteNamed', { name: prop.name })} onClick={() => handleDelete(prop)} disabled={Boolean(busyId)}><Trash2 size={15} aria-hidden="true" /></button></div>}</div>
+          <div className="property-card-bottom"><div className="property-card-signals">{unitsReady && prop.vacant_count > 0 && <span><Home size={14} aria-hidden="true" />{t('properties.vacancyCount', { count: prop.vacant_count })}</span>}{maintenanceReady && prop.open_maintenance > 0 && <span><Wrench size={14} aria-hidden="true" />{t('properties.maintenanceCount', { count: prop.open_maintenance })}</span>}{unitsReady && maintenanceReady && !prop.vacant_count && !prop.open_maintenance && <span>{t('properties.noOpenItems')}</span>}</div>{canWrite && <div className="property-card-actions"><button className="property-icon-button" aria-label={t('properties.editNamed', { name: prop.name })} onClick={() => setModal(prop)} disabled={Boolean(busyId)}><Pencil size={15} aria-hidden="true" /></button><button className="property-icon-button property-delete" aria-label={t('properties.deleteNamed', { name: prop.name })} onClick={() => handleDelete(prop)} disabled={Boolean(busyId)}><Trash2 size={15} aria-hidden="true" /></button></div>}</div>
         </article>)}</div>}
-        {!loading && !error && filtered.length > 0 && view === 'table' && <DataTable title={t('properties.inventory')} columns={columns} data={filtered} onEdit={isReadonly ? undefined : row => setModal(row)} onDelete={isReadonly || busyId ? undefined : handleDelete} onRowClick={row => navigate(`/properties/${row.id}`)} />}
+        {!loading && !error && filtered.length > 0 && view === 'table' && <DataTable title={t('properties.inventory')} columns={columns} data={filtered} onEdit={!canWrite ? undefined : row => setModal(row)} onDelete={!canWrite || busyId ? undefined : handleDelete} onRowClick={row => navigate(`/properties/${row.id}`)} />}
         {!loading && !error && filtered.length > 0 && <p className="property-data-caption">{t('properties.rentBasis')}</p>}
       </section>
-      {modal && !isReadonly && <FormModal title={t(modal === 'create' ? 'properties.create' : 'properties.edit')} fields={fields} initial={modal === 'create' ? null : modal} onSave={handleSave} onClose={() => setModal(null)} />}
+      {modal && canWrite && <FormModal title={t(modal === 'create' ? 'properties.create' : 'properties.edit')} fields={fields} initial={modal === 'create' ? null : modal} onSave={handleSave} onClose={() => setModal(null)} />}
     </div>
   );
 }

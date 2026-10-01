@@ -1,3 +1,4 @@
+import useWriteAccess from '../../hooks/useWriteAccess';
 import { useState } from 'react';
 import { useTranslation } from '../../i18n';
 import { useConfirm } from '../../components/ConfirmDialog';
@@ -6,6 +7,7 @@ import { api } from '../../api';
 export default function UpdateSection({ versionInfo }) {
   const { t } = useTranslation();
   const confirm = useConfirm();
+  const { canWrite, isAllowed } = useWriteAccess('/updates');
 
   const [updateInfo, setUpdateInfo] = useState(null);
   const [updateChecking, setUpdateChecking] = useState(false);
@@ -19,6 +21,7 @@ export default function UpdateSection({ versionInfo }) {
   };
 
   const checkForUpdates = async () => {
+    if (!isAllowed()) return;
     setUpdateChecking(true);
     setUpdateInfo(null);
     setUpdateResult(null);
@@ -33,7 +36,9 @@ export default function UpdateSection({ versionInfo }) {
   };
 
   const applyUpdate = async () => {
+    if (!isAllowed()) return;
     if (!await confirm(tr('settings.update.confirmApply', 'Update jetzt anwenden? Es wird automatisch ein Backup erstellt.'))) return;
+    if (!isAllowed()) return;
     setUpdateApplying(true);
     setUpdateResult(null);
     try {
@@ -41,7 +46,7 @@ export default function UpdateSection({ versionInfo }) {
         target_version: updateInfo?.latest_version || null,
       });
       let restart;
-      if (data.success && data.restart_required) {
+      if (isAllowed() && data.success && data.restart_required) {
         try {
           restart = await api.post('/updates/restart');
         } catch (error) {
@@ -57,6 +62,7 @@ export default function UpdateSection({ versionInfo }) {
   };
 
   const loadUpdateHistory = async () => {
+    if (!isAllowed()) return;
     try {
       const data = await api.get('/updates/history');
       setUpdateHistory(data.history || []);
@@ -65,6 +71,7 @@ export default function UpdateSection({ versionInfo }) {
     }
   };
 
+  if (!canWrite) return null;
   return (
     <div className="panel">
       <div className="panel-header">{tr('settings.update.title', 'Updates')}</div>

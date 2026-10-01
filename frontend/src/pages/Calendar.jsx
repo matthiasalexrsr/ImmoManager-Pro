@@ -6,6 +6,8 @@ import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
+import OperationalTickPanel from '../components/OperationalTickPanel';
+import useWriteAccess from '../hooks/useWriteAccess';
 
 const EVENT_TYPES = [
   { value: 'viewing', label: 'Besichtigung' },
@@ -28,42 +30,43 @@ const COLUMNS = [
 
 export default function Calendar() {
   const { t } = useTranslation();
+  const { canWrite, isAllowed, requireWrite } = useWriteAccess('/calendar', () => { setModal(null); setScheduleEditor(null); });
   const confirm = useConfirm();
   const [events, setEvents] = useState([]);
   const [properties, setProperties] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
+  const [error, setError] = useState(null);
+  const [revision, setRevision] = useState(0);
+  const [scheduleEditor, setScheduleEditor] = useState(null);
 
-  const refreshData = () => {
-    Promise.all([
-      api.get('/calendar').catch(err => { console.warn('[Calendar]', err.message); return []; }),
-      api.get('/properties').catch(() => []),
-    ]).then(([ev, props]) => {
-      setEvents(ev || []);
-      setProperties(props || []);
-    }).finally(() => setLoading(false));
-  };
-
+  const refreshData = () => setRevision(value => value + 1);
   useEffect(() => {
-    let cancelled = false;
-    Promise.all([
-      api.get('/calendar').catch(err => { console.warn('[Calendar]', err.message); return []; }),
-      api.get('/properties').catch(err => { console.warn('[Calendar] properties:', err.message); return []; }),
-    ]).then(([first, second]) => {
-      if (cancelled) return;
-      setEvents(first || []);
-      setProperties(second || []);
-    }).catch(e => {
-      if (!cancelled) console.warn('[Calendar] load failed:', e.message);
-    }).finally(() => {
-      if (!cancelled) setLoading(false);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    const controller = new AbortController();
+    setLoading(true); setError(null);
+    Promise.all([api.getAll('/calendar', { signal: controller.signal }), api.getAll('/properties', { signal: controller.signal }),
+      api.get('/calendar/schedules', { signal: controller.signal })]).then(([rows, props, schedules]) => {
+      if (controller.signal.aborted) return;
+      setEvents(rows.map(row => ({ ...row, schedule: schedules.find(plan => plan.source_id === row.id) })));
+      setProperties(props);
+    }).catch(err => { if (!controller.signal.aborted) setError(err.message); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [revision]);
+  const columns = [...COLUMNS, { key: 'schedule', label: t('operational.recurrence'), render: (value, row) => <>
+    {value?.active ? value.recurrence_rule : '—'} {canWrite && <button type="button" className="btn btn-sm btn-secondary"
+      aria-label={`${t('operational.configure')} ${row.title}`} onClick={() => setScheduleEditor(row)}>{t('operational.configure')}</button>}
+  </> }];
+  const scheduleFields = [
+    { key: 'recurrence_rule', label: t('operational.recurrence'), required: true, placeholder: 'FREQ=MONTHLY;COUNT=12', hint: t('operational.calendarRuleHint') },
+    { key: 'active', label: t('operational.active'), type: 'select', required: true, options: [{ value: 'true', label: t('operational.yes') }, { value: 'false', label: t('operational.no') }] },
+  ];
+  const saveSchedule = async values => {
+    requireWrite();
+    await api.put(`/calendar/${scheduleEditor.id}/schedule`, { ...values, active: values.active === 'true', full_catch_up: true });
+    refreshData();
+  };
 
   const fields = [
     { key: 'title', label: 'Titel', required: true },
@@ -78,6 +81,7 @@ export default function Calendar() {
   ];
 
   const handleSave = async (data) => {
+    requireWrite();
     if (modal === 'create') {
       await api.post('/calendar', data);
     } else {
@@ -87,7 +91,9 @@ export default function Calendar() {
   };
 
   const handleDelete = async (row) => {
+    if (!isAllowed()) return;
     if (!await confirm(`"${row.title}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!isAllowed()) return;
     setDeleteError(null);
     try {
       await api.del(`/calendar/${row.id}`, revisionOptions(row));
@@ -101,6 +107,8 @@ export default function Calendar() {
 
   return (
     <div className="page">
+      <OperationalTickPanel onCompleted={refreshData} />
+      {error && <div role="alert">{error} <button type="button" className="btn btn-secondary" onClick={refreshData}>{t('operational.retry')}</button></div>}
       {deleteError && (
         <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
           {deleteError}
@@ -109,12 +117,15 @@ export default function Calendar() {
       )}
       <DataTable
         title={t('navigation.main.calendar') || 'Kalender'}
-        columns={COLUMNS}
+        columns={columns}
         data={events}
-        onAdd={() => setModal('create')}
-        onEdit={row => setModal(row)}
-        onDelete={handleDelete}
+        onAdd={canWrite ? () => setModal('create') : undefined}
+        onEdit={canWrite ? row => setModal(row) : undefined}
+        onDelete={canWrite ? handleDelete : undefined}
       />
+      {scheduleEditor && <FormModal title={t('operational.configure')} fields={scheduleFields}
+        initial={{ recurrence_rule: scheduleEditor.schedule?.recurrence_rule || 'FREQ=MONTHLY', active: scheduleEditor.schedule?.active === false ? 'false' : 'true' }}
+        onSave={saveSchedule} onClose={() => setScheduleEditor(null)} />}
       {modal && (
         <FormModal
           title={modal === 'create' ? 'Termin erstellen' : 'Termin bearbeiten'}

@@ -1,3 +1,4 @@
+import useWriteAccess from '../hooks/useWriteAccess';
 import { revisionOptions } from '../editRevision';
 import { useState, useEffect } from 'react';
 import { api } from '../api';
@@ -48,6 +49,7 @@ export default function HandoverProtocols() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [modal, setModal] = useState(null);
+  const { canWrite, isAllowed, requireWrite } = useWriteAccess('/handover-protocols', () => setModal(null));
   const [deleteError, setDeleteError] = useState(null);
 
   const refreshData = () => {
@@ -98,6 +100,7 @@ export default function HandoverProtocols() {
   ];
 
   const handleSave = async (data) => {
+    requireWrite();
     if (modal === 'create') {
       await api.post('/handover-protocols', data);
     } else {
@@ -108,10 +111,12 @@ export default function HandoverProtocols() {
   };
 
   const handleDelete = async (row) => {
+    if (!isAllowed()) return;
     const name = `${TYPE_LABELS[row.protocol_type] || row.protocol_type} ${row.protocol_date || ''}`;
     if (!await confirm(`"${name}" ${t('modals.confirmDelete.body')}`)) return;
     setDeleteError(null);
     try {
+      if (!isAllowed()) return;
       await api.del(`/handover-protocols/${row.id}`, revisionOptions(row));
       refreshData();
       if (store) store.invalidateRelated('handover_protocols', 'contracts', 'units');
@@ -135,11 +140,11 @@ export default function HandoverProtocols() {
         title="Übergabeprotokolle"
         columns={COLUMNS}
         data={enriched}
-        onAdd={() => setModal('create')}
-        onEdit={row => setModal(row)}
-        onDelete={handleDelete}
+        onAdd={canWrite ? () => setModal('create') : undefined}
+        onEdit={canWrite ? row => setModal(row) : undefined}
+        onDelete={canWrite ? handleDelete : undefined}
       />
-      {modal && (
+      {modal && canWrite && (
         <FormModal
           title={modal === 'create' ? 'Übergabeprotokoll erstellen' : 'Übergabeprotokoll bearbeiten'}
           fields={fields}

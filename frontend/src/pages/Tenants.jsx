@@ -1,9 +1,11 @@
+import useWriteAccess from '../hooks/useWriteAccess';
 import { revisionOptions } from '../editRevision';
 import { useState, useEffect, useMemo } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
+import TenantPrivacySection from '../components/TenantPrivacySection';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
@@ -20,22 +22,24 @@ export default function Tenants() {
   const [tenants, setTenants] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
+  const { canWrite, isAllowed, requireWrite } = useWriteAccess('/tenants', () => setModal(null));
   const [error, setError] = useState(null);
   const [filter, setFilter] = useState('active');
 
   const refreshData = () => {
     setLoading(true);
-    api.get('/tenants?include_archived=true')
+    setError(null);
+    api.getAll('/tenants?include_archived=true')
       .then(data => setTenants(data || []))
-      .catch(() => setTenants([]))
+      .catch(err => setError(err.message || 'Mieter konnten nicht geladen werden. Erneut versuchen.'))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     let cancelled = false;
-    api.get('/tenants?include_archived=true')
+    api.getAll('/tenants?include_archived=true')
       .then(data => { if (!cancelled) setTenants(data || []); })
-      .catch(() => { if (!cancelled) setTenants([]); })
+      .catch(err => { if (!cancelled) setError(err.message || 'Mieter konnten nicht geladen werden. Erneut versuchen.'); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, []);
@@ -124,6 +128,7 @@ export default function Tenants() {
   ];
 
   const handleSave = async (data) => {
+    requireWrite();
     if (modal === 'create') {
       await api.post('/tenants', data);
     } else {
@@ -133,10 +138,12 @@ export default function Tenants() {
   };
 
   const handleDelete = async (row) => {
+    if (!isAllowed()) return;
     const name = row.full_name || row.id;
     if (!await confirm(`"${name}" ${t('modals.confirmDelete.body')}`)) return;
     setError(null);
     try {
+      if (!isAllowed()) return;
       await api.del(`/tenants/${row.id}`, revisionOptions(row));
       afterMutation();
     } catch (err) {
@@ -145,12 +152,14 @@ export default function Tenants() {
   };
 
   const handleArchiveToggle = async (tenant) => {
+    if (!isAllowed()) return;
     const isArchived = tenant.archived;
     if (!isArchived) {
       if (!await confirm(`"${tenant.full_name}" ${t('pages.tenants.archiveConfirm') || 'archivieren? Der Mieter wird aus der aktiven Liste entfernt.'}`)) return;
     }
     setError(null);
     try {
+      if (!isAllowed()) return;
       await api.patch(`/tenants/${tenant.id}/${isArchived ? 'unarchive' : 'archive'}`, {});
       afterMutation();
     } catch (err) {
@@ -167,6 +176,7 @@ export default function Tenants() {
       {error && (
         <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
           {error}
+          <button type="button" className="btn btn-secondary" onClick={refreshData}>Erneut laden</button>
           <button onClick={() => setError(null)} style={{ marginLeft: '1rem', cursor: 'pointer' }}>✕</button>
         </div>
       )}
@@ -217,13 +227,13 @@ export default function Tenants() {
         title={`Mieter (${filtered.length})`}
         columns={columns}
         data={filtered}
-        onAdd={() => setModal('create')}
-        onEdit={row => setModal(row)}
-        onDelete={handleDelete}
+        onAdd={canWrite ? () => setModal('create') : undefined}
+        onEdit={canWrite ? row => setModal(row) : undefined}
+        onDelete={canWrite ? handleDelete : undefined}
       />
 
       {/* Inline archive/unarchive actions per visible tenant */}
-      {filtered.length > 0 && (
+      {canWrite && filtered.length > 0 && (
         <div style={{ marginTop: '0.5rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
           {filtered.map(tn => (
             <button
@@ -238,7 +248,9 @@ export default function Tenants() {
         </div>
       )}
 
-      {modal && (
+      <TenantPrivacySection tenants={tenants} onUpdated={afterMutation} />
+
+      {modal && canWrite && (
         <FormModal
           title={modal === 'create' ? 'Mieter erstellen' : 'Mieter bearbeiten'}
           fields={fields}

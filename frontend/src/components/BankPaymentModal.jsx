@@ -1,3 +1,4 @@
+import useWriteAccess from '../hooks/useWriteAccess';
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
@@ -11,9 +12,11 @@ export default function BankPaymentModal({ row, onSave, onClose }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [revision, setRevision] = useState(0);
+  const { canWrite, requireWrite } = useWriteAccess('/bookings', onClose);
   const text = key => t(`pages.rentOverview.${key}`);
 
   useEffect(() => {
+    if (!canWrite) return;
     const controller = new AbortController();
     setLoading(true);
     setError(null);
@@ -26,7 +29,7 @@ export default function BankPaymentModal({ row, onSave, onClose }) {
     }).catch(err => { if (!controller.signal.aborted) setError(err.message); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [row, revision]);
+  }, [row, revision, canWrite]);
 
   const fields = useMemo(() => {
     if (loading || error || !bookings.length) return [];
@@ -47,8 +50,9 @@ export default function BankPaymentModal({ row, onSave, onClose }) {
     ];
   }, [bookings, loading, error, row.remaining, t, locale]);
 
+  if (!canWrite) return null;
   return <FormModal title={`${text('allocateBooking')} — ${row.tenant_name}`} fields={fields}
-    onSave={onSave} onClose={onClose} saveDisabled={loading || !!error || !bookings.length}>
+    onSave={async values => { requireWrite(); await onSave(values); }} onClose={onClose} saveDisabled={loading || !!error || !bookings.length}>
     {loading ? <p role="status">{t('pages.loading')}</p> : error ? <div role="alert" className="alert alert-error">
       {error} <button type="button" className="btn btn-secondary" onClick={() => setRevision(value => value + 1)}>{text('retry')}</button>
     </div> : <p>{text(bookings.length ? 'allocationHelp' : 'noAvailableBookings')}</p>}

@@ -1,6 +1,6 @@
 import { bindEditRevision, revisionOptions, revisionSource, snapshotRevision } from '../editRevision';
-import { useState, useEffect, useRef } from 'react';
-import { useAuth } from '../contexts/AuthContext';
+import { useState } from 'react';
+import useWriteAccess from '../hooks/useWriteAccess';
 import { api } from '../api';
 import { useFinanceData } from '../hooks/useFinanceData';
 import FinanceLoadState from '../components/FinanceLoadState';
@@ -15,19 +15,13 @@ export default function Receivables() {
   const { t } = useTranslation();
   const confirm = useConfirm();
   const store = useDataStore();
-  const auth = useAuth();
-  const isReadonly = !!auth?.isReadonly;
-  const readonlyRef = useRef(isReadonly);
   const { data: { receivables, contracts }, loading, error, reload: refreshData } = useFinanceData({
     receivables: '/receivables',
     contracts: '/contracts',
   });
   const [modal, setModal] = useState(null);
+  const { canWrite, isAllowed, requireWrite } = useWriteAccess('/receivables', () => setModal(null));
   const [deleteError, setDeleteError] = useState(null);
-  useEffect(() => {
-    readonlyRef.current = isReadonly;
-    if (isReadonly) setModal(null);
-  }, [isReadonly]);
 
 
   const contractMap = Object.fromEntries(contracts.map(c => [c.id, c]));
@@ -57,7 +51,7 @@ export default function Receivables() {
   ];
 
   const handleSave = async (data) => {
-    if (readonlyRef.current) throw new Error(t('pages.receivables.readonly'));
+    requireWrite();
     // Payment state is receipt-managed. Only accept editable business fields.
     const payload = bindEditRevision({ contract_id: data.contract_id, amount_due: data.amount_due,
       due_date: data.due_date, description: data.description }, snapshotRevision(data));
@@ -74,8 +68,8 @@ export default function Receivables() {
   };
 
   const handleDelete = async (row) => {
-    if (readonlyRef.current) return;
-    if (!await confirm(`${t('modals.confirmDelete.body')}`) || readonlyRef.current) return;
+    if (!isAllowed()) return;
+    if (!await confirm(`${t('modals.confirmDelete.body')}`) || !isAllowed()) return;
     setDeleteError(null);
     try {
       await api.del(`/receivables/${row.id}`, revisionOptions(row));
@@ -103,11 +97,11 @@ export default function Receivables() {
         title={t('finance.receivables.openReceivables')}
         columns={COLUMNS}
         data={enriched}
-        onAdd={!isReadonly ? () => setModal('create') : undefined}
-        onEdit={!isReadonly ? row => setModal(row) : undefined}
-        onDelete={!isReadonly ? handleDelete : undefined}
+        onAdd={canWrite ? () => setModal('create') : undefined}
+        onEdit={canWrite ? row => setModal(row) : undefined}
+        onDelete={canWrite ? handleDelete : undefined}
       />
-      {modal && !isReadonly && (
+      {modal && canWrite && (
         <FormModal
           title={modal === 'create' ? t('ui.buttons.create') : t('ui.buttons.edit')}
           fields={fields}

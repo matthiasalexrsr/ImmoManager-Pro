@@ -1,3 +1,4 @@
+import useWriteAccess from '../hooks/useWriteAccess';
 import { revisionOptions } from '../editRevision';
 import { useState, useEffect } from 'react';
 import { api } from '../api';
@@ -13,6 +14,7 @@ export default function NotificationTemplates() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [modal, setModal] = useState(null);
+  const { canWrite, isAllowed, requireWrite } = useWriteAccess('/notifications', () => setModal(null));
   const [deleteError, setDeleteError] = useState(null);
 
   const refreshData = () => {
@@ -69,6 +71,7 @@ export default function NotificationTemplates() {
   ];
 
   const handleSave = async (data) => {
+    requireWrite();
     if (modal === 'create') {
       await api.post('/notifications/templates', data);
     } else {
@@ -78,9 +81,11 @@ export default function NotificationTemplates() {
   };
 
   const handleDelete = async (row) => {
+    if (!isAllowed()) return;
     if (!await confirm(`${t('modals.confirmDelete.body')}`)) return;
     setDeleteError(null);
     try {
+      if (!isAllowed()) return;
       await api.del(`/notifications/templates/${row.id}`, revisionOptions(row));
       refreshData();
     } catch (err) {
@@ -103,11 +108,11 @@ export default function NotificationTemplates() {
         title={t('settings.templates.dunning')}
         columns={COLUMNS}
         data={templates}
-        onAdd={() => setModal('create')}
-        onEdit={row => setModal(row)}
-        onDelete={handleDelete}
+        onAdd={canWrite ? () => setModal('create') : undefined}
+        onEdit={canWrite ? row => setModal(row) : undefined}
+        onDelete={canWrite ? handleDelete : undefined}
       />
-      {modal && (
+      {modal && canWrite && (
         <FormModal
           title={modal === 'create' ? t('ui.buttons.create') : t('ui.buttons.edit')}
           fields={fields}

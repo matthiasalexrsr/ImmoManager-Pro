@@ -16,6 +16,8 @@ from sqlalchemy.exc import IntegrityError
 from ..domain.lease_engine import PaymentLine, ReceivableLine
 from ..models import RentCharge, RentChargeCreate
 from ..storage import NotFoundError, ValidationError
+from .payments import _memory_lock
+from .rent_adjustments import adjustment_write, applied_timeline, effective_cold_rent
 
 Month = Annotated[str, StringConstraints(pattern=r"^[0-9]{4}-(0[1-9]|1[0-2])$")]
 CENT = Decimal("0.01")
@@ -60,12 +62,13 @@ def charge_total(charge) -> Decimal:
 
 def _preview(store, request: RentGenerationRequest) -> dict:
     contracts = {c.id: c for c in store.list_contracts()}
-    selected = request.contract_ids or sorted(contracts)
+    selected = sorted(request.contract_ids or contracts)
     unknown = set(selected) - set(contracts)
     if unknown:
         raise ValidationError("Ausgewählte Verträge existieren nicht: " + ", ".join(sorted(unknown)))
     existing = {(r.contract_id, r.month): r for r in store.list_rent_charges()}
-    candidates, already_booked, skipped = [], [], []
+    adjustments = store.list_rent_adjustments()
+    candidates, already_booked, skipped, pricing_rules = [], [], [], []
     start, end = month_date(request.start_month), month_date(request.end_month)
     for contract_id in selected:
         contract = contracts[contract_id]
@@ -77,6 +80,7 @@ def _preview(store, request: RentGenerationRequest) -> dict:
             skipped.append({"contract_id": contract_id, "reason": "outside_contract_term"})
             continue
         unit = store.get_unit(contract.unit_id)
+        timeline = applied_timeline(adjustments, contract_id)
         current = max(start, contract.start_date.replace(day=1))
         last = min(end, contract.end_date.replace(day=1)) if contract.end_date else end
         while current <= last:
@@ -85,8 +89,10 @@ def _preview(store, request: RentGenerationRequest) -> dict:
             if known:
                 already_booked.append({"contract_id": contract_id, "month": month, "charge_id": known.id})
             else:
+                cold_rent, pricing = effective_cold_rent(timeline, current, unit.cold_rent)
+                pricing_rules.append({"contract_id": contract_id, "month": month, **pricing})
                 payload = RentChargeCreate(contract_id=contract_id, month=month,
-                    cold_rent=unit.cold_rent or 0, service_charge=unit.service_charge_advance or 0,
+                    cold_rent=float(cold_rent), service_charge=unit.service_charge_advance or 0,
                     heating_charge=unit.heating_advance or 0)
                 candidates.append({**payload.model_dump(mode="json"),
                     "contract_number": contract.contract_number, "due_date": current.replace(day=3).isoformat(),
@@ -95,9 +101,9 @@ def _preview(store, request: RentGenerationRequest) -> dict:
                     "total_amount": float(charge_total(payload))})
             current = next_month(current)
     fingerprint = hashlib.sha256(json.dumps({"candidates": candidates, "existing": already_booked,
-        "skipped_contracts": skipped}, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+        "skipped_contracts": skipped, "pricing_rules": pricing_rules}, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     return {"policy": GENERATION_POLICY, "preview_hash": fingerprint,
-        "policy_description": "Aktuelle Einheitenbeträge, auch für ungebuchte Altmonate: vor dem Erzeugen prüfen. Jeder berührte Vertragsmonat wird vollständig berechnet; keine automatische Tagesanteilberechnung. Fälligkeit: 3. des Monats.",
+        "policy_description": "Kaltmiete: letzte am Monatsersten wirksame angewendete Vertragsanpassung; davor deren bisherige Miete. Ohne angewendete Anpassung sowie für Vorauszahlungen gelten aktuelle Einheitenbeträge. Jeder berührte Vertragsmonat wird vollständig berechnet; keine automatische Tagesanteilberechnung. Untermonatliche Anpassungen gelten ab dem nächsten Monat. Vor dem Erzeugen prüfen. Fälligkeit: 3. des Monats.",
         "start_month": request.start_month, "end_month": request.end_month,
         "candidates": candidates, "existing": already_booked, "skipped_contracts": skipped,
         "total_amount": float(sum((Decimal(str(c["total_amount"])) for c in candidates), Decimal("0"))),
@@ -106,13 +112,13 @@ def _preview(store, request: RentGenerationRequest) -> dict:
 
 def preview_generation(store, request: RentGenerationRequest) -> dict:
     """Read-only inclusive monthly preview; never changes existing obligations."""
-    with _generation_lock:
+    with _generation_lock, _memory_lock:
         return _preview(store, request)
 
 
 def generate_rent_charges(store, request: RentGenerationRequest) -> dict:
     """Create every candidate atomically, with DB uniqueness handling concurrent replays."""
-    with _generation_lock:
+    with _generation_lock, _memory_lock, adjustment_write(store, request.contract_ids or [row.id for row in store.list_contracts()]):
         result = _preview(store, request)
         if request.preview_hash and request.preview_hash != result["preview_hash"] and result["candidates"]:
             raise ValidationError("Die Vorschau wurde zwischenzeitlich geändert. Bitte erneut prüfen.")

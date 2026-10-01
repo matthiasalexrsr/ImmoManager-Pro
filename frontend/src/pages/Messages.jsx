@@ -1,3 +1,4 @@
+import useWriteAccess from '../hooks/useWriteAccess';
 import { useState, useEffect, useMemo } from 'react';
 import { api } from '../api';
 import { useEntities } from '../contexts/DataStoreContext';
@@ -18,6 +19,7 @@ export default function Messages() {
   const [filter, setFilter] = useState('all');
   const [modal, setModal] = useState(null);
   const [newMessage, setNewMessage] = useState('');
+  const { canWrite, isAllowed, requireWrite } = useWriteAccess('/messages', () => { setModal(null); setNewMessage(''); });
   const [contacts, setContacts] = useState([]);
   const { items: properties } = useEntities('properties', '/properties');
   const { items: units } = useEntities('units', '/units');
@@ -38,6 +40,7 @@ export default function Messages() {
   }, []);
 
   const markRead = async (id) => {
+    if (!isAllowed()) return;
     await api.patch(`/notifications/${id}`, { status: 'read' }).catch(err => console.warn('[Messages] mark read:', err.message));
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, status: 'read' } : n));
   };
@@ -49,7 +52,7 @@ export default function Messages() {
   };
 
   const handleSendMessage = async () => {
-    if (!newMessage.trim() || !selectedThread) return;
+    if (!isAllowed() || !newMessage.trim() || !selectedThread) return;
     setError(null);
     try {
       await api.post(`/messages/threads/${selectedThread.id}/messages`, {
@@ -67,6 +70,7 @@ export default function Messages() {
   };
 
   const handleCreateThread = async (data) => {
+    requireWrite();
     const thread = await api.post('/messages/threads', data);
     const thr = await api.get('/messages/threads').catch(() => []);
     setThreads(thr || []);
@@ -212,9 +216,9 @@ export default function Messages() {
         <div className="messages-layout">
           <div className="messages-sidebar">
             <div className="messages-filters">
-              <button className="btn btn-sm btn-primary" onClick={() => setModal('create')}>
+              {canWrite && <button className="btn btn-sm btn-primary" onClick={() => setModal('create')}>
                 + {t('pages.messages.newConversation') || 'Neue Konversation'}
-              </button>
+              </button>}
             </div>
             <div className="messages-list">
               {threads.length === 0 ? (
@@ -262,7 +266,7 @@ export default function Messages() {
                     </div>
                   ))}
                 </div>
-                <div className="thread-composer">
+                {canWrite && <div className="thread-composer">
                   <textarea
                     value={newMessage}
                     onChange={e => setNewMessage(e.target.value)}
@@ -273,7 +277,7 @@ export default function Messages() {
                   <button className="btn btn-primary" onClick={handleSendMessage} disabled={!newMessage.trim()}>
                     {t('pages.messages.send') || 'Senden'}
                   </button>
-                </div>
+                </div>}
               </>
             ) : (
               <div className="message-detail-empty">
@@ -284,7 +288,7 @@ export default function Messages() {
         </div>
       )}
 
-      {modal && (
+      {modal && canWrite && (
         <FormModal
           title={t('pages.messages.newConversation') || 'Neue Konversation'}
           fields={threadFields}

@@ -8,7 +8,7 @@ import es from '../../../i18n/es-ES.json';
 
 const mocks = vi.hoisted(() => ({ getAll: vi.fn(), put: vi.fn(), post: vi.fn(), readonly: false }));
 vi.mock('../api', () => ({ api: mocks }));
-vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ isReadonly: mocks.readonly }) }));
+vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ role: mocks.readonly ? 'readonly' : 'eigentuemer', isReadonly: mocks.readonly }) }));
 const catalogs = { 'de-DE': de, 'en-US': en, 'es-ES': es };
 const lookup = (messages, key) => key.split('.').reduce((value, part) => value?.[part], messages);
 const charge = { id: 'charge', contract_id: 'contract', month: '2026-01', cold_rent: 500,

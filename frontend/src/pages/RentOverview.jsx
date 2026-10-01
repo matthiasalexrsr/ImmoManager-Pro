@@ -5,7 +5,7 @@ import { api } from '../api';
 import DataTable from '../components/DataTable';
 import StatusBadge from '../components/StatusBadge';
 import { useTranslation } from '../i18n';
-import { useAuth } from '../contexts/AuthContext';
+import useWriteAccess from '../hooks/useWriteAccess';
 import { useDataStore } from '../contexts/DataStoreContext';
 import FormModal from '../components/FormModal';
 import BankPaymentModal from '../components/BankPaymentModal';
@@ -37,7 +37,6 @@ function enrich(items, type, contracts, tenants, units) {
 
 export default function RentOverview() {
   const { t, locale } = useTranslation();
-  const auth = useAuth();
   const cache = useDataStore();
   const [records, setRecords] = useState({ rent_charge: [], receivable: [] });
   const [loading, setLoading] = useState(true);
@@ -47,6 +46,7 @@ export default function RentOverview() {
   const [paymentModal, setPaymentModal] = useState(null);
   const [history, setHistory] = useState(null);
   const [reversalModal, setReversalModal] = useState(null);
+  const { canWrite, isAllowed, requireWrite } = useWriteAccess('/rent-charges', () => { setPaymentModal(null); setReversalModal(null); });
   const historyRequest = useRef(0);
   const historyPanel = useRef(null);
   const historyOrigin = useRef(null);
@@ -84,12 +84,14 @@ export default function RentOverview() {
   const text = key => t(`pages.rentOverview.${key}`);
   const endpoint = row => `/${row.entityType === 'rent_charge' ? 'rent-charges' : 'receivables'}/${row.id}/payments`;
   const startPayment = (row, kind = 'manual') => {
+    if (!isAllowed()) return;
     setSuccess(false);
     const now = new Date();
     const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     setPaymentModal({ row, kind, key: crypto.randomUUID(), initial: { amount: row.remaining, payment_date: localDate } });
   };
   const handleRecordPayment = async values => {
+    requireWrite();
     await api.post(endpoint(paymentModal.row), { ...values, idempotency_key: paymentModal.key });
     setSuccess(paymentModal.kind === 'bank' ? 'allocationSaved' : 'paymentSaved');
     cache?.invalidateRelated('rent_charges', 'receivables', 'bookings');
@@ -127,10 +129,12 @@ export default function RentOverview() {
     tabButtons.current[next]?.focus();
   };
   const startReversal = payment => {
+    if (!isAllowed()) return;
     setReversalModal({ row: history.row, payment, key: crypto.randomUUID(),
       initial: { reversal_date: new Date().toLocaleDateString('sv-SE') } });
   };
   const handleReversal = async values => {
+    requireWrite();
     const reason = values.reason?.trim();
     if (!reason) throw new Error(text('reasonRequired'));
     const row = reversalModal.row;
@@ -161,10 +165,10 @@ export default function RentOverview() {
     { key: 'status', label: text('status'), filterType: 'select', render: value => <StatusBadge status={value} /> },
     { key: 'actions', label: text('actions'), render: (_, row) => (
       <div className="rent-payment-actions">
-        {!auth?.isReadonly && <button className="btn btn-sm btn-primary"
+        {canWrite && <button className="btn btn-sm btn-primary"
           disabled={row.remaining <= 0 || ['paid', 'cancelled', 'void'].includes(row.status)}
           onClick={() => startPayment(row)}>{text('recordPayment')}</button>}
-        {!auth?.isReadonly && <button className="btn btn-sm btn-secondary"
+        {canWrite && <button className="btn btn-sm btn-secondary"
           disabled={row.remaining <= 0 || ['paid', 'cancelled', 'void'].includes(row.status)}
           onClick={() => startPayment(row, 'bank')}>{text('allocateBooking')}</button>}
         <button className="btn btn-sm btn-secondary" onClick={event => showHistory(row, event)}>{text('history')}</button>
@@ -223,7 +227,7 @@ export default function RentOverview() {
           { key: 'note', label: text('note'), type: 'textarea' },
         ]}
         initial={paymentModal.initial} onSave={handleRecordPayment} onClose={() => setPaymentModal(null)} />}
-      {reversalModal && <FormModal title={`${text('reversePayment')} — ${fmt(Number(reversalModal.payment.amount))}`}
+      {reversalModal && canWrite && <FormModal title={`${text('reversePayment')} — ${fmt(Number(reversalModal.payment.amount))}`}
         fields={[
           { key: 'reversal_date', label: text('reversalDate'), type: 'date', required: true },
           { key: 'reason', label: text('reversalReason'), type: 'textarea', required: true },
@@ -242,7 +246,7 @@ export default function RentOverview() {
             { key: 'note', label: text('note') },
             { key: 'source', label: text('paymentSource'), render: (_, receipt) => text(receipt.booking_id ? 'bankLinked' : 'manualPayment') },
             { key: 'reversal', label: text('status'), render: value => value ? `${text('reversed')} · ${value.reversal_date} · ${value.reason}` : text('posted') },
-            ...(!auth?.isReadonly ? [{ key: 'actions', label: text('actions'), render: (_, receipt) => !receipt.reversal
+            ...(canWrite ? [{ key: 'actions', label: text('actions'), render: (_, receipt) => !receipt.reversal
               && <button className="btn btn-sm btn-secondary" onClick={() => startReversal(receipt)}>{text('reversePayment')}</button> }] : []),
           ]} />}
       </div>}

@@ -143,6 +143,15 @@ async def lifespan(app: FastAPI):
             except Exception:
                 logger.debug("Periodic auth cleanup error (non-fatal)", exc_info=True)
 
+    from .dependencies import store as operational_store
+    from .services.operational_schedule import OperationalScheduler
+    scheduler = OperationalScheduler(
+        operational_store, enabled=settings.operational_scheduler_enabled,
+        interval_seconds=settings.operational_scheduler_interval_seconds,
+        max_items=settings.operational_scheduler_max_items,
+        lookback_days=settings.operational_scheduler_lookback_days,
+    )
+    scheduler.start()
     cleanup_task = asyncio.create_task(_periodic_auth_cleanup())
     from .dependencies import cleanup_session
     cleanup_session()
@@ -151,8 +160,11 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         cleanup_task.cancel()
-        stop_plugins(app, get_plugins())
-        cleanup_session()
+        try:
+            await asyncio.to_thread(scheduler.stop)
+        finally:
+            stop_plugins(app, get_plugins())
+            cleanup_session()
         logger.info("ImmoManager Pro shutting down")
 
 

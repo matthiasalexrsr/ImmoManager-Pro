@@ -9,6 +9,7 @@ import de from '../../../i18n/de-DE.json';
 import en from '../../../i18n/en-US.json';
 import es from '../../../i18n/es-ES.json';
 
+vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ role: 'eigentuemer' }) }));
 vi.mock('../api', () => ({ api: { getAll: vi.fn(async () => []) } }));
 const catalogs = { 'de-DE': de, 'en-US': en, 'es-ES': es };
 const lookup = (messages, key) => key.split('.').reduce((value, part) => value?.[part], messages);

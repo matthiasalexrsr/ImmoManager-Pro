@@ -1,3 +1,4 @@
+import useWriteAccess from '../hooks/useWriteAccess';
 import { revisionOptions } from '../editRevision';
 import { useState, useEffect, useMemo } from 'react';
 import { api } from '../api';
@@ -143,6 +144,7 @@ export default function Viewings() {
   const [viewings, setViewings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
+  const { canWrite, isAllowed, requireWrite } = useWriteAccess('/viewings', () => setModal(null));
   const [deleteError, setDeleteError] = useState(null);
   const [viewMode, setViewMode] = useState('calendar'); // 'calendar' | 'table'
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -215,6 +217,7 @@ export default function Viewings() {
   ];
 
   const handleSave = async (data) => {
+    requireWrite();
     if (modal === 'create') {
       await api.post('/viewings', data);
     } else {
@@ -225,9 +228,11 @@ export default function Viewings() {
   };
 
   const handleDelete = async (row) => {
+    if (!isAllowed()) return;
     if (!await confirm(`"${row.lead_name}" ${t('modals.confirmDelete.body')}`)) return;
     setDeleteError(null);
     try {
+      if (!isAllowed()) return;
       await api.del(`/viewings/${row.id}`, revisionOptions(row));
       refreshData();
       if (store) store.invalidateRelated('viewings', 'leads', 'units');
@@ -265,9 +270,9 @@ export default function Viewings() {
           >
             Tabelle
           </button>
-          <button className="btn btn-primary" onClick={() => setModal('create')}>
+          {canWrite && <button className="btn btn-primary" onClick={() => setModal('create')}>
             + Besichtigung
-          </button>
+          </button>}
         </div>
       </div>
 
@@ -313,9 +318,9 @@ export default function Viewings() {
                         style={{
                           padding: '1rem',
                           borderLeft: `4px solid ${STATUS_COLORS[v.status] || 'var(--primary)'}`,
-                          cursor: 'pointer',
+                          cursor: canWrite ? 'pointer' : 'default',
                         }}
-                        onClick={() => setModal(v)}
+                        onClick={canWrite ? () => setModal(v) : undefined}
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                           <div>
@@ -347,9 +352,9 @@ export default function Viewings() {
                         style={{
                           padding: '1rem',
                           borderLeft: `4px solid ${STATUS_COLORS[v.status] || 'var(--primary)'}`,
-                          cursor: 'pointer',
+                          cursor: canWrite ? 'pointer' : 'default',
                         }}
-                        onClick={() => setModal(v)}
+                        onClick={canWrite ? () => setModal(v) : undefined}
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                           <div>
@@ -374,13 +379,13 @@ export default function Viewings() {
           title=""
           columns={TABLE_COLUMNS}
           data={enriched}
-          onAdd={() => setModal('create')}
-          onEdit={row => setModal(row)}
-          onDelete={handleDelete}
+          onAdd={canWrite ? () => setModal('create') : undefined}
+          onEdit={canWrite ? row => setModal(row) : undefined}
+          onDelete={canWrite ? handleDelete : undefined}
         />
       )}
 
-      {modal && (
+      {modal && canWrite && (
         <FormModal
           title={modal === 'create' ? 'Besichtigung erstellen' : 'Besichtigung bearbeiten'}
           fields={fields}

@@ -1,119 +1,111 @@
 import { revisionOptions } from '../editRevision';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { api } from '../api';
 import { useFinanceData } from '../hooks/useFinanceData';
 import FinanceLoadState from '../components/FinanceLoadState';
 import { useTranslation } from '../i18n';
+import useWriteAccess from '../hooks/useWriteAccess';
 import { useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
-import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 
-const COLUMNS = [
-  { key: 'contract_number', label: 'Vertrag', filterType: 'text' },
-  { key: 'adjustment_type', label: 'Art', filterType: 'select',
-    render: v => v === 'index' ? 'Indexmiete' : v === 'stepped' ? 'Staffelmiete' : v || '—' },
-  { key: 'effective_date', label: 'Wirksamkeit', type: 'date', filterType: 'dateRange' },
-  { key: 'previous_rent', label: 'Bisherige Miete (€)', type: 'number', align: 'right',
-    render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
-  { key: 'new_rent', label: 'Neue Miete (€)', type: 'number', align: 'right',
-    render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
-  { key: 'increase_percent', label: 'Erhöhung (%)', type: 'number', align: 'right',
-    render: v => v != null ? `${Number(v).toFixed(1)} %` : '—' },
-  { key: 'status', label: 'Status', type: 'status', filterType: 'select',
-    render: v => <StatusBadge status={v} /> },
-];
-
 export default function RentAdjustments() {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const confirm = useConfirm();
   const store = useDataStore();
   const { data: { adjustments, contracts }, loading, error, reload: refreshData } = useFinanceData({
-    adjustments: '/rent-adjustments',
-    contracts: '/contracts',
+    adjustments: '/rent-adjustments', contracts: '/contracts',
   });
   const [modal, setModal] = useState(null);
+  const { canWrite, isAllowed, requireWrite } = useWriteAccess('/rent-adjustments', () => setModal(null));
   const [deleteError, setDeleteError] = useState(null);
-
-
-  const contractMap = Object.fromEntries(contracts.map(c => [c.id, c]));
-  const enriched = adjustments.map(a => ({
-    ...a,
-    contract_number: contractMap[a.contract_id]?.contract_number || '—',
+  const [deleting, setDeleting] = useState(false);
+  const deletionPending = useRef(false);
+  const writable = canWrite && !deleting;
+  const text = key => t(`pages.rentAdjustments.${key}`);
+  const money = value => value == null ? '—' : new Intl.NumberFormat(locale || 'de-DE', { style: 'currency', currency: 'EUR' }).format(value);
+  const contractMap = Object.fromEntries(contracts.map(contract => [contract.id, contract]));
+  const enriched = adjustments.map(adjustment => ({
+    ...adjustment, contract_number: contractMap[adjustment.contract_id]?.contract_number || '—',
   }));
-
-  const fields = [
-    { key: 'contract_id', label: 'Vertrag', required: true, type: 'select',
-      options: contracts.map(c => ({ value: c.id, label: c.contract_number })) },
-    { key: 'adjustment_type', label: 'Art', required: true, type: 'select', options: [
-      { value: 'index', label: 'Indexmiete' },
-      { value: 'stepped', label: 'Staffelmiete' },
-    ]},
-    { key: 'effective_date', label: 'Wirksamkeitsdatum', type: 'date', required: true },
-    { key: 'previous_rent', label: 'Bisherige Miete (€)', type: 'number', required: true },
-    { key: 'new_rent', label: 'Neue Miete (€)', type: 'number', required: true },
-    { key: 'increase_percent', label: 'Erhöhung (%)', type: 'number' },
-    { key: 'index_base_year', label: 'Index-Basisjahr', type: 'number' },
-    { key: 'index_value', label: 'Indexwert', type: 'number' },
-    { key: 'status', label: 'Status', type: 'select', default: 'pending', options: [
-      { value: 'pending', label: 'Ausstehend' },
-      { value: 'applied', label: 'Angewendet' },
-      { value: 'rejected', label: 'Abgelehnt' },
-    ]},
-    { key: 'notes', label: 'Notizen', type: 'textarea' },
+  const columns = [
+    { key: 'contract_number', label: text('contract'), filterType: 'text' },
+    { key: 'adjustment_type', label: text('type'), filterType: 'select',
+      render: value => value === 'index' || value === 'stepped' ? text(value) : value || '—' },
+    { key: 'effective_date', label: text('effectiveDate'), type: 'date', filterType: 'dateRange' },
+    { key: 'previous_rent', label: text('previousRent'), type: 'number', align: 'right', render: money },
+    { key: 'new_rent', label: text('newRent'), type: 'number', align: 'right', render: money },
+    { key: 'increase_percent', label: text('increasePercent'), type: 'number', align: 'right',
+      render: value => value == null ? '—' : `${new Intl.NumberFormat(locale || 'de-DE', { maximumFractionDigits: 2 }).format(value)} %` },
+    { key: 'status', label: text('status'), type: 'status', filterType: 'select', render: value =>
+      <span className={`badge ${value === 'applied' ? 'badge-green' : value === 'pending' ? 'badge-yellow' : 'badge-gray'}`}>
+        {['pending', 'applied', 'rejected'].includes(value) ? text(value) : value || '—'}
+      </span> },
   ];
-
-  const handleSave = async (data) => {
-    if (modal === 'create') {
-      await api.post('/rent-adjustments', data);
-    } else {
-      await api.put(`/rent-adjustments/${modal.id}`, data);
-    }
-    setModal(null);
+  const rentField = { type: 'number', required: true, min: 0, max: 9999999999.99, step: 0.01 };
+  const fields = [
+    { key: 'contract_id', label: text('contract'), required: true, type: 'select',
+      options: contracts.map(contract => ({ value: contract.id, label: contract.contract_number })) },
+    { key: 'adjustment_type', label: text('type'), required: true, type: 'select', options: [
+      { value: 'index', label: text('index') }, { value: 'stepped', label: text('stepped') },
+    ] },
+    { key: 'effective_date', label: text('effectiveDate'), type: 'date', required: true, hint: text('effectiveHint') },
+    { key: 'previous_rent', label: text('previousRent'), ...rentField, hint: text('baselineHint') },
+    { key: 'new_rent', label: text('newRent'), ...rentField },
+    { key: 'increase_percent', label: text('increasePercent'), type: 'number', step: 'any' },
+    { key: 'index_base_year', label: text('indexBaseYear'), type: 'number', step: 1 },
+    { key: 'index_value', label: text('indexValue'), type: 'number', step: 'any' },
+    { key: 'status', label: text('status'), type: 'select', required: true, default: 'pending', hint: text('statusHint'), options: [
+      { value: 'pending', label: text('pending') }, { value: 'applied', label: text('applied') },
+      { value: 'rejected', label: text('rejected') },
+    ] },
+    { key: 'notes', label: text('notes'), type: 'textarea' },
+  ];
+  const refresh = () => {
     refreshData();
-    if (store) store.invalidateRelated('rent_adjustments', 'contracts');
+    store?.invalidateRelated('rent_adjustments', 'contracts', 'rent_charges');
   };
-
-  const handleDelete = async (row) => {
-    if (!await confirm(`"${row.contract_number}" ${t('modals.confirmDelete.body')}`)) return;
-    setDeleteError(null);
+  const handleSave = async data => {
+    requireWrite();
+    if (deleting) throw new Error(text('deleting'));
+    if (modal === 'create') await api.post('/rent-adjustments', data);
+    else await api.put(`/rent-adjustments/${modal.id}`, data);
+    setModal(null);
+    refresh();
+  };
+  const handleDelete = async row => {
+    if (!isAllowed() || deletionPending.current) return;
+    deletionPending.current = true;
+    setDeleting(true);
     try {
+      if (!await confirm(`"${row.contract_number}" ${t('modals.confirmDelete.body')}`)) return;
+      if (!isAllowed()) return;
+      setDeleteError(null);
       await api.del(`/rent-adjustments/${row.id}`, revisionOptions(row));
-      refreshData();
-      if (store) store.invalidateRelated('rent_adjustments', 'contracts');
+      refresh();
     } catch (err) {
-      setDeleteError(err.message || 'Löschen fehlgeschlagen');
+      setDeleteError(err.message || t('pages.deleteFailed'));
+    } finally {
+      deletionPending.current = false;
+      setDeleting(false);
     }
   };
-
   if (loading || error) return <FinanceLoadState loading={loading} error={error} onRetry={refreshData} />;
-
   return (
     <div className="page">
-      {deleteError && (
-        <div className="alert alert-error" role="alert" style={{ marginBottom: '1rem' }}>
-          {deleteError}
-          <button onClick={() => setDeleteError(null)} style={{ marginLeft: '1rem', cursor: 'pointer' }}>✕</button>
-        </div>
-      )}
-      <DataTable
-        title="Mietanpassungen"
-        columns={COLUMNS}
-        data={enriched}
-        onAdd={() => setModal('create')}
-        onEdit={row => setModal(row)}
-        onDelete={handleDelete}
-      />
-      {modal && (
-        <FormModal
-          title={modal === 'create' ? 'Mietanpassung erstellen' : 'Mietanpassung bearbeiten'}
-          fields={fields}
-          initial={modal === 'create' ? null : modal}
-          onSave={handleSave}
-          onClose={() => setModal(null)}
-        />
-      )}
+      <div className="alert alert-info" role="note" style={{ marginBottom: '1rem' }}>
+        <strong>{text('policyTitle')}</strong><p style={{ margin: '0.35rem 0 0' }}>{text('policy')}</p>
+      </div>
+      {deleteError && <div className="alert alert-error" role="alert" style={{ marginBottom: '1rem' }}>
+        {deleteError}<button type="button" aria-label={t('ui.buttons.close')} onClick={() => setDeleteError(null)}>✕</button>
+      </div>}
+      {deleting && <p role="status">{text('deleting')}</p>}
+      <DataTable title={text('title')} columns={columns} data={enriched}
+        onAdd={writable ? () => setModal('create') : undefined}
+        onEdit={writable ? row => setModal(row) : undefined} onDelete={writable ? handleDelete : undefined} />
+      {modal && canWrite && <FormModal title={text(modal === 'create' ? 'create' : 'edit')} fields={fields}
+        initial={modal === 'create' ? null : modal} onSave={handleSave} saveDisabled={!writable} onClose={() => setModal(null)} />}
     </div>
   );
 }

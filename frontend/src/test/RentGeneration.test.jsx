@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import RentGenerationModal from '../components/RentGenerationModal';
 
 const mocks = vi.hoisted(() => ({ post: vi.fn() }));
+vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ role: 'eigentuemer' }) }));
 vi.mock('../api', () => ({ api: mocks }));
 const translate = key => key.split('.').at(-1);
 vi.mock('../i18n', () => ({ useTranslation: () => ({ locale: 'de-DE', t: translate }) }));

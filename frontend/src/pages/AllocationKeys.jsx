@@ -1,3 +1,4 @@
+import useWriteAccess from '../hooks/useWriteAccess';
 import { revisionOptions } from '../editRevision';
 import { useState } from 'react';
 import { api } from '../api';
@@ -34,6 +35,7 @@ export default function AllocationKeys() {
     properties: '/properties',
   });
   const [modal, setModal] = useState(null);
+  const { canWrite, isAllowed, requireWrite } = useWriteAccess('/billing', () => setModal(null));
   const [deleteError, setDeleteError] = useState(null);
 
 
@@ -49,6 +51,7 @@ export default function AllocationKeys() {
   ];
 
   const handleSave = async (data) => {
+    requireWrite();
     if (modal === 'create') {
       await api.post('/billing/allocation-keys', data);
     } else {
@@ -60,10 +63,12 @@ export default function AllocationKeys() {
   };
 
   const handleDelete = async (row) => {
+    if (!isAllowed()) return;
     const name = row.name || row.id;
     if (!await confirm(`"${name}" ${t('modals.confirmDelete.body')}`)) return;
     setDeleteError(null);
     try {
+      if (!isAllowed()) return;
       await api.del(`/billing/allocation-keys/${row.id}`, revisionOptions(row));
       refreshData();
       if (store) store.invalidateRelated('allocation_keys');
@@ -86,11 +91,11 @@ export default function AllocationKeys() {
         title="Verteilerschlüssel"
         columns={COLUMNS}
         data={enriched}
-        onAdd={() => setModal('create')}
-        onEdit={row => setModal(row)}
-        onDelete={handleDelete}
+        onAdd={canWrite ? () => setModal('create') : undefined}
+        onEdit={canWrite ? row => setModal(row) : undefined}
+        onDelete={canWrite ? handleDelete : undefined}
       />
-      {modal && (
+      {modal && canWrite && (
         <FormModal
           title={modal === 'create' ? 'Verteilerschlüssel erstellen' : 'Verteilerschlüssel bearbeiten'}
           fields={fields}

@@ -1280,6 +1280,33 @@
     "developerNotes": "Notas de desarrollador"
   },
   "pages": {
+    "rentAdjustments": {
+      "title": "Ajustes de alquiler",
+      "contract": "Contrato",
+      "type": "Tipo",
+      "index": "Alquiler indexado",
+      "stepped": "Alquiler escalonado",
+      "effectiveDate": "Fecha de efecto",
+      "previousRent": "Alquiler base anterior (€)",
+      "newRent": "Nuevo alquiler base (€)",
+      "increasePercent": "Incremento (%)",
+      "indexBaseYear": "Año base del índice",
+      "indexValue": "Valor del índice",
+      "status": "Estado",
+      "pending": "Pendiente",
+      "applied": "Aplicado",
+      "rejected": "Rechazado",
+      "notes": "Notas",
+      "create": "Crear ajuste de alquiler",
+      "edit": "Editar ajuste de alquiler",
+      "policyTitle": "Precios del contrato para los cargos mensuales",
+      "policy": "Solo los ajustes aplicados cambian el alquiler base de este contrato. Se usa el último ajuste vigente al inicio del mes; una fecha dentro del mes se aplica a partir del siguiente. Los cargos ya creados no cambian. Los anticipos siguen usando los valores de la unidad.",
+      "effectiveHint": "Vigente al inicio del mes o a partir del siguiente mes completo. Solo se permite un ajuste aplicado por contrato y fecha.",
+      "baselineHint": "El alquiler base anterior del primer ajuste aplicado se utiliza para meses anteriores cuyos cargos aún no se han creado.",
+      "statusHint": "Solo Aplicado se incluye en nuevos cargos. Los ajustes pendientes y rechazados no cambian los importes.",
+      "readonly": "No tiene permiso para cambiar los ajustes de alquiler.",
+      "deleting": "Esperando confirmación y procesando la eliminación…"
+    },
     "statements": {
       "revisionReason": "Motivo de la corrección (opcional):",
       "revisionError": "No se pudo crear la corrección",
@@ -2304,5 +2331,43 @@
     "deleted": "El registro se eliminó. Su borrador se conserva y no se puede volver a guardar.",
     "loadFailed": "No se pudo cargar el registro actual. Vuelva a intentarlo.",
     "missingRevision": "La respuesta no contiene una versión válida. No es posible comparar de forma segura."
+  },
+  "roleAccess": {
+    "denied": "Tus permisos actuales no permiten este cambio."
+  },
+  "operational": {
+    "title": "Procesamiento operativo",
+    "description": "Crea recurrencias vencidas, plazos del calendario y avisos locales. No se envían mensajes.",
+    "run": "Ejecutar procesamiento operativo",
+    "asOf": "Fecha de referencia",
+    "lookback": "Período de recuperación (días)",
+    "limit": "Máximo de nuevas entradas",
+    "catchUp": "Recuperar tareas recurrentes",
+    "oneOpen": "Una tarea siguiente abierta por serie",
+    "allDue": "Todas las instancias vencidas del período",
+    "catchUpHint": "No se crean instancias anteriores al período. Si se supera el límite, se revierte toda la ejecución.",
+    "automaticRunning": "El procesamiento automático está activo en este servidor.",
+    "automaticStopped": "El procesamiento automático está configurado, pero detenido.",
+    "automaticDisabled": "El procesamiento automático está desactivado. Se puede ejecutar manualmente.",
+    "retry": "Reintentar",
+    "invalidResult": "Resultado incompleto. Vuelva a cargar.",
+    "result": "{{tasks}} tareas nuevas · {{events}} eventos nuevos · {{notifications}} avisos nuevos",
+    "recurrence": "Regla de recurrencia",
+    "configure": "Configurar recurrencia",
+    "active": "Activo",
+    "yes": "Sí",
+    "no": "No",
+    "taskRuleHint": "DAILY, WEEKLY, MONTHLY o YEARLY; INTERVAL, COUNT y UNTIL. Se requiere una fecha de referencia. COUNT cuenta tareas siguientes. El día original se ajusta en meses más cortos.",
+    "calendarRuleHint": "DAILY, WEEKLY, MONTHLY o YEARLY; INTERVAL, COUNT y UNTIL. COUNT incluye el evento original. Se conserva la fecha de referencia original.",
+    "deadlineField": "Campo del plazo",
+    "dueDate": "Fecha de vencimiento",
+    "appointment": "Cita de mantenimiento (solo mantenimiento)",
+    "targetRole": "Rol destinatario (vacío = todos)",
+    "frequency": {
+      "DAILY": "Diaria",
+      "WEEKLY": "Semanal",
+      "MONTHLY": "Mensual",
+      "YEARLY": "Anual"
+    }
   }
 }

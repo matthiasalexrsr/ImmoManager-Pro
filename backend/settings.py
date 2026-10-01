@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 from typing import Annotated
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -135,6 +135,13 @@ class Settings(BaseSettings):
     # When True, seeds demo data on startup if the database is empty.
     # Defaults to False; must be explicitly enabled (e.g. for demo images).
     auto_seed_demo_data: bool = False
+
+    # Operational batch sizes bound work per tick, never total stored records.
+    operational_scheduler_enabled: bool = False
+    operational_scheduler_interval_seconds: int = Field(default=300, ge=10, le=86400)
+    operational_scheduler_max_items: int = Field(default=500, ge=1, le=5000)
+    operational_scheduler_lookback_days: int = Field(default=366, ge=1, le=3660)
+    booking_page_max_size: int = Field(default=500, ge=25, le=5000)
 
     # --- File upload limits ---
     max_upload_size_bytes: int = 50 * 1024 * 1024  # 50 MB

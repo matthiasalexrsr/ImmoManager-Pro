@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import UpdateSection from '../pages/settings/UpdateSection';
 
 const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), confirm: vi.fn() }));
+vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ role: 'eigentuemer' }) }));
 vi.mock('../api', () => ({ api: mocks }));
 vi.mock('../components/ConfirmDialog', () => ({ useConfirm: () => mocks.confirm }));
 vi.mock('../i18n', () => ({ useTranslation: () => ({ t: key => key }) }));

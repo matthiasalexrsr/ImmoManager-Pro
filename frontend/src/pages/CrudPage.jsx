@@ -6,7 +6,7 @@ import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import { useConfirm } from '../components/ConfirmDialog';
-import { useAuth } from '../contexts/AuthContext';
+import useWriteAccess from '../hooks/useWriteAccess';
 import { revisionOptions } from '../editRevision';
 
 // Derive a cache key from endpoint, e.g. "/properties" → "properties"
@@ -37,12 +37,11 @@ const _RELATED_ENTITIES = {
 export default function CrudPage({ title, endpoint, columns, formFields, onRowClick }) {
   const { t } = useTranslation();
   const confirm = useConfirm();
-  const auth = useAuth();
   const store = useDataStore();
   const eKey = endpointKey(endpoint);
-  const canWrite = auth.canWrite ? auth.canWrite(endpoint) : !auth.isReadonly;
   const { items, loading, error, reload } = useEntities(eKey, endpoint);
   const [modal, setModal] = useState(null); // null | 'create' | item
+  const { canWrite, isAllowed, requireWrite } = useWriteAccess(endpoint, () => setModal(null));
   const [deleteError, setDeleteError] = useState(null);
 
   const invalidateAfterMutation = () => {
@@ -52,6 +51,7 @@ export default function CrudPage({ title, endpoint, columns, formFields, onRowCl
   };
 
   const handleSave = async (data) => {
+    requireWrite();
     if (modal === 'create') {
       await api.post(endpoint, data);
     } else {
@@ -61,10 +61,12 @@ export default function CrudPage({ title, endpoint, columns, formFields, onRowCl
   };
 
   const handleDelete = async (row) => {
+    if (!isAllowed()) return;
     const name = row[columns[0]?.key] || row.id;
     if (!await confirm(`"${name}" ${t('modals.confirmDelete.body')}`)) return;
     setDeleteError(null);
     try {
+      if (!isAllowed()) return;
       await api.del(`${endpoint}/${row.id}`, revisionOptions(row));
       invalidateAfterMutation();
     } catch (err) {

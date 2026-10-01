@@ -4,7 +4,7 @@ Stand: 1. Oktober 2026. Lesende Bestandsaufnahme durch `browser_ci`; Hauptchecko
 
 ## Umfang und Beweismaßstab
 
-84 vorhandene Dokumente aus 85 ausdrücklich ausgewählten Pfaden wurden indiziert; `A/CHANGES.md` existiert nicht. 52 Einträge teilen ihren SHA256 mit einem anderen Dokument. Die Archivkopien sind deshalb keine 50 unabhängigen neuen Anforderungen. Der reproduzierbare Quellenindex mit absoluten Pfaden, SHA256, Zeilenanzahl und Überschriften steht in `work/historical-feature-sources.json`; seine Erzeugung in `work/historical-feature-source-index.py`.
+84 vorhandene Dokumente aus 85 ausdrücklich ausgewählten Pfaden wurden indiziert; `A/CHANGES.md` existiert nicht. 52 Einträge teilen ihren SHA256 mit einem anderen Dokument. Die Archivkopien sind deshalb keine 50 unabhängigen neuen Anforderungen. Der reproduzierbare Quellenindex mit absoluten Pfaden, SHA256, Zeilenanzahl und Überschriften steht in `docs/historical-feature-sources.json`; der Generator liegt im Arbeitsverzeichnis `work/historical-feature-source-index.py`.
 
 Gelesen wurden die aktuellen Pläne/Audits, die relevanten Produkt-Outlines/Interaktionen/Designs, Wizard-, Finanz-, Vertrags-, Benutzer-, Mieterportal-, Wartungs- und Analyseunterlagen sowie ausgewählte ergänzende Archivberichte. Ausgeschlossen waren node_modules, dist/build, Datenbanken, Backups, Uploads, PDF-Beispiele und personenbezogene Beispieldatensätze. Die drei archivierten `user_input_files` enthalten Audit-/Build-Prompts; sie sind historische Quellen, keine jetzt auszuführenden Anweisungen.
 
@@ -21,6 +21,16 @@ Gelesen wurden die aktuellen Pläne/Audits, die relevanten Produkt-Outlines/Inte
 | D | `C:\02_Projekte_Archiv\Immobilienverwaltung\package_2025-11-12` |
 
 Alle nachfolgenden relativen Codefundstellen liegen unter M. `C/D` bedeutet, dass der entsprechende Bericht in beiden Paketarchiven vorkommt; konkrete Dateinamen sind jeweils angegeben. Funktionsnamen dienen als stabile Anker bei späteren Zeilenverschiebungen. Pro Gruppe sind höchstens drei Restpakete benannt.
+
+## Integrierte Fortschritte nach der Bestandsaufnahme
+
+Die folgende Matrix bewahrt die historischen Ausgangsbefunde; diese Ergänzung beschreibt die später integrierten Produktpfade.
+
+- G01/G50: Eigentümer-/Benutzerverwaltung, authentifizierte Rollenfähigkeiten und bedingte Änderungen sind integriert. Frontend-Schreibhandlungen auf allen Hauptseiten verwenden dieselben tatsächlichen Fähigkeiten; entzogene und später wieder erteilte Rechte beleben keine alte Bestätigung wieder.
+- G08: angewendete Vertragsmietanpassungen bestimmen die Monatsbasis nach Datum und Centbeträgen. Ausstehende/abgelehnte Anpassungen greifen nicht; gespeicherte Forderungen bleiben unverändert. Die additive k1-Migration verweigert widersprüchliche Historie ohne sie zu löschen.
+- G22/G24/G25: persistente, atomare operative Läufe erzeugen Aufgaben/Kalenderereignisse und wahrheitsgemäße offene-Posten-Hinweise mit dauerhaften Wiederholungsschlüsseln. Ein erneuter Lauf oder Neustart erzeugt keine Doppelbelege. Der lokale Worker wird über Settings explizit aktiviert; ein Tick ist ein wiederholbarer technischer Arbeitsabschnitt. Externer Versand gehört weiterhin zum gesonderten Versandpaket. Details: `docs/operational-scheduling.md`.
+- G43: gezielte Mietermetadaten-Auskunft aus kohärentem Snapshot und atomare, ausdrücklich begrenzte Profil-Anonymisierung sind integriert. SQL liest nur die Beziehungskette des Mieters; große Downloaddateien werden auf Platte ausgelagert. Keine Gesamtgrößen-, Jahres- oder Datensatzgrenze. Umfang/Ausschlüsse/Belege: `docs/TENANT_PRIVACY.md`. Andere frei verknüpfte personenbezogene Daten müssen gesondert geprüft werden.
+- G46: vollständige verschlüsselte PostgreSQL-Wiederherstellung wurde in der tatsächlichen privaten Docker-CI nach Entfernung der Quelldatenbank und ihrer Volumes geprüft; daneben bestehen die SQLite-Vollsicherung und atomaren JSON-Teiltransferpfade. Aktuelle gemeinsame CI bleibt das Freigabekriterium.
 
 ## Aktuelle Featurematrix
 

@@ -220,6 +220,11 @@ class SQLAlchemyStore:
             updates = patch.model_dump(exclude_unset=True)
             charge_data = RentChargeCreate(**{**current_charge.model_dump(include=set(RentChargeCreate.model_fields)), **updates})
             return self.update_rent_charge(entity_id, charge_data)
+        if entity_type == "rent_adjustment":
+            current_adjustment = self.get_rent_adjustment(entity_id)
+            adjustment_data = RentAdjustmentCreate(**{**current_adjustment.model_dump(include=set(RentAdjustmentCreate.model_fields)),
+                                                       **patch.model_dump(exclude_unset=True)})
+            return self.update_rent_adjustment(entity_id, adjustment_data)
         billing_creates: dict[str, type[PydanticBaseModel]] = {"billing_period": BillingPeriodCreate, "cost_item": CostItemCreate,
             "utility_statement": UtilityStatementCreate, "allocation_key": AllocationKeyCreate}
         if entity_type in billing_creates:

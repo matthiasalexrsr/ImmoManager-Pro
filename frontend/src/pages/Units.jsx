@@ -1,3 +1,4 @@
+import useWriteAccess from '../hooks/useWriteAccess';
 import { revisionOptions } from '../editRevision';
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -20,6 +21,7 @@ export default function Units() {
   const [units, setUnits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
+  const { canWrite, isAllowed, requireWrite } = useWriteAccess('/units', () => setModal(null));
   const [filter, setFilter] = useState('all');
 
   const refreshData = () => {
@@ -138,6 +140,7 @@ export default function Units() {
   ];
 
   const handleSave = async (data) => {
+    requireWrite();
     if (modal === 'create') {
       await api.post('/units', data);
     } else {
@@ -148,7 +151,9 @@ export default function Units() {
   };
 
   const handleDelete = async (row) => {
+    if (!isAllowed()) return;
     if (!await confirm(`"${row.label}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!isAllowed()) return;
     await api.del(`/units/${row.id}`, revisionOptions(row));
     refreshData();
     if (store) store.invalidateRelated('units', 'properties', 'contracts');
@@ -205,13 +210,13 @@ export default function Units() {
         title={t('units.list.title') || 'Einheiten'}
         columns={columns}
         data={filtered}
-        onAdd={() => setModal('create')}
-        onEdit={row => setModal(row)}
-        onDelete={handleDelete}
+        onAdd={canWrite ? () => setModal('create') : undefined}
+        onEdit={canWrite ? row => setModal(row) : undefined}
+        onDelete={canWrite ? handleDelete : undefined}
         onRowClick={row => navigate(`/units/${row.id}`)}
       />
 
-      {modal && (
+      {modal && canWrite && (
         <FormModal
           title={modal === 'create' ? 'Einheit erstellen' : 'Einheit bearbeiten'}
           fields={fields}

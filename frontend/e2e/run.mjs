@@ -94,28 +94,34 @@ try {
   await run(process.execPath, [process.env.npm_execpath, 'run', 'build'], { cwd: frontendDir });
   const port = await freePort();
   const url = `http://127.0.0.1:${port}`;
+  const backendEnv = {
+    ...process.env,
+    PYTHONUTF8: '1',
+    PYTHONUNBUFFERED: '1',
+    ENVIRONMENT: 'development',
+    DATABASE_URL: `sqlite:///${join(dataDir, 'immo_manager.db').replaceAll('\\', '/')}`,
+    DATA_DIR: dataDir,
+    UPLOADS_DIR: join(dataDir, 'uploads'),
+    BACKUP_DIR: join(dataDir, 'backups'),
+    LOG_FILE: join(dataDir, 'application.log'),
+    INTEGRATION_STATE_FILE: join(dataDir, 'integrations.json'),
+    JWT_SECRET_KEY: randomBytes(48).toString('hex'),
+    SQLITE_PERSISTENT_STORE: 'true',
+    ALLOW_INMEMORY_FALLBACK: 'false',
+    AUTO_SEED_DEMO_DATA: 'false',
+    AUTO_MIGRATE: 'false',
+    OPERATIONAL_SCHEDULER_ENABLED: 'false',
+    BACKUP_SCHEDULER_ENABLED: 'false',
+    AI_ENABLED: 'false',
+    PLUGIN_DIRS: '[]',
+    CORS_ORIGINS: url,
+  };
+  // Migrate the owned empty database before app import/create_all. This exercises
+  // the same schema chain as a fresh installation without touching user data.
+  await run(python, ['-m', 'alembic', 'upgrade', 'head'], { env: backendEnv });
   backend = start(python, ['-m', 'backend', ...(freshInstallation ? [] : ['--seed']), '--no-browser', '--host', '127.0.0.1', '--port', String(port), '--data-dir', dataDir], {
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: {
-      ...process.env,
-      PYTHONUTF8: '1',
-      PYTHONUNBUFFERED: '1',
-      ENVIRONMENT: 'development',
-      DATABASE_URL: `sqlite:///${join(dataDir, 'immo_manager.db').replaceAll('\\', '/')}`,
-      DATA_DIR: dataDir,
-      UPLOADS_DIR: join(dataDir, 'uploads'),
-      BACKUP_DIR: join(dataDir, 'backups'),
-      LOG_FILE: join(dataDir, 'application.log'),
-      INTEGRATION_STATE_FILE: join(dataDir, 'integrations.json'),
-      JWT_SECRET_KEY: randomBytes(48).toString('hex'),
-      SQLITE_PERSISTENT_STORE: 'true',
-      ALLOW_INMEMORY_FALLBACK: 'false',
-      AUTO_SEED_DEMO_DATA: 'false',
-      AUTO_MIGRATE: 'false',
-      AI_ENABLED: 'false',
-      PLUGIN_DIRS: '[]',
-      CORS_ORIGINS: url,
-    },
+    env: backendEnv,
   });
   backendStopped = new Promise(resolveStopped => {
     backend.once('exit', resolveStopped);

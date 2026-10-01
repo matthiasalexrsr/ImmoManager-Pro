@@ -1049,8 +1049,8 @@ class TaxRatePatch(BaseModel):
 
 
 class RentAdjustmentCreate(BaseModel):
-    contract_id: str
-    adjustment_type: str  # "index" or "stepped"
+    contract_id: str = Field(min_length=1)
+    adjustment_type: Literal["index", "stepped"]
     effective_date: date
     previous_rent: float
     new_rent: float
@@ -1058,7 +1058,26 @@ class RentAdjustmentCreate(BaseModel):
     index_base_year: Optional[int] = None  # CPI base year for index rent
     index_value: Optional[float] = None  # CPI value at adjustment
     notes: Optional[str] = None
-    status: str = "pending"  # pending, applied, rejected
+    status: Literal["pending", "applied", "rejected"] = "pending"
+
+    @field_validator("previous_rent", "new_rent", mode="before")
+    @classmethod
+    def validate_rent_cents(cls, value):
+        try:
+            amount = Decimal(str(value))
+        except (InvalidOperation, ValueError) as exc:
+            raise ValueError("Ungültiger Mietbetrag") from exc
+        if (isinstance(value, bool) or not amount.is_finite() or amount < 0 or amount > Decimal("9999999999.99")
+                or amount != amount.quantize(Decimal("0.01"))):
+            raise ValueError("Mietbeträge müssen nichtnegativ sein und dürfen höchstens zwei Nachkommastellen enthalten")
+        return value
+
+    @field_validator("increase_percent", "index_value")
+    @classmethod
+    def validate_optional_rent_numbers(cls, value):
+        if value is not None and (not Decimal(str(value)).is_finite() or abs(value) > 9999999999.99):
+            raise ValueError("Kennzahl muss ein endlicher Wert im erlaubten Bereich sein")
+        return value
 
 
 class RentAdjustment(RentAdjustmentCreate):
@@ -1068,8 +1087,8 @@ class RentAdjustment(RentAdjustmentCreate):
 
 
 class RentAdjustmentPatch(BaseModel):
-    contract_id: Optional[str] = None
-    adjustment_type: Optional[str] = None
+    contract_id: Optional[str] = Field(default=None, min_length=1)
+    adjustment_type: Optional[Literal["index", "stepped"]] = None
     effective_date: Optional[date] = None
     previous_rent: Optional[float] = None
     new_rent: Optional[float] = None
@@ -1077,7 +1096,24 @@ class RentAdjustmentPatch(BaseModel):
     index_base_year: Optional[int] = None
     index_value: Optional[float] = None
     notes: Optional[str] = None
-    status: Optional[str] = None
+    status: Optional[Literal["pending", "applied", "rejected"]] = None
+
+    @field_validator("contract_id", "adjustment_type", "effective_date", "previous_rent", "new_rent", "status", mode="before")
+    @classmethod
+    def reject_null_required_rent_fields(cls, value):
+        if value is None:
+            raise ValueError("Pflichtfelder der Mietanpassung dürfen nicht geleert werden")
+        return value
+
+    @field_validator("previous_rent", "new_rent", mode="before")
+    @classmethod
+    def validate_patch_rent_cents(cls, value):
+        return RentAdjustmentCreate.validate_rent_cents(value)
+
+    @field_validator("increase_percent", "index_value")
+    @classmethod
+    def validate_patch_optional_rent_numbers(cls, value):
+        return RentAdjustmentCreate.validate_optional_rent_numbers(value)
 
 
 # ---------------------------------------------------------------------------

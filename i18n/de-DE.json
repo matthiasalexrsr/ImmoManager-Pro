@@ -1303,6 +1303,33 @@
     }
   },
   "pages": {
+    "rentAdjustments": {
+      "title": "Mietanpassungen",
+      "contract": "Vertrag",
+      "type": "Art",
+      "index": "Indexmiete",
+      "stepped": "Staffelmiete",
+      "effectiveDate": "Wirksamkeitsdatum",
+      "previousRent": "Bisherige Kaltmiete (€)",
+      "newRent": "Neue Kaltmiete (€)",
+      "increasePercent": "Erhöhung (%)",
+      "indexBaseYear": "Index-Basisjahr",
+      "indexValue": "Indexwert",
+      "status": "Status",
+      "pending": "Ausstehend",
+      "applied": "Angewendet",
+      "rejected": "Abgelehnt",
+      "notes": "Notizen",
+      "create": "Mietanpassung erstellen",
+      "edit": "Mietanpassung bearbeiten",
+      "policyTitle": "Vertragspreise für die monatliche Sollstellung",
+      "policy": "Nur angewendete Anpassungen ändern die Kaltmiete dieses Vertrags. Es gilt die zuletzt zum Monatsbeginn wirksame Anpassung; ein Datum innerhalb des Monats wirkt ab dem nächsten Monat. Bereits erzeugte Forderungen bleiben unverändert. Vorauszahlungen werden weiterhin aus der Einheit übernommen.",
+      "effectiveHint": "Wirksam zum Monatsbeginn oder ab dem nächsten vollen Monat. Je Vertrag und Datum ist nur eine angewendete Anpassung möglich.",
+      "baselineHint": "Die bisherige Kaltmiete der ersten angewendeten Anpassung gilt für davorliegende, noch nicht erzeugte Monate.",
+      "statusHint": "Nur „Angewendet“ wird in neuen Sollstellungen berücksichtigt. Ausstehende und abgelehnte Anpassungen ändern keine Beträge.",
+      "readonly": "Sie haben keine Berechtigung, Mietanpassungen zu ändern.",
+      "deleting": "Löschbestätigung und Verarbeitung laufen…"
+    },
     "loading": "Laden…",
     "confirmDelete": "\"{{name}}\" wirklich löschen?",
     "deleteFailed": "Löschen fehlgeschlagen",
@@ -2304,5 +2331,43 @@
     "deleted": "Der Datensatz wurde entfernt. Ihr Entwurf bleibt erhalten; ein erneutes Speichern ist nicht möglich.",
     "loadFailed": "Der aktuelle Stand konnte nicht geladen werden. Bitte versuchen Sie es erneut.",
     "missingRevision": "Die Antwort enthält keinen gültigen Bearbeitungsstand. Ein sicherer Abgleich ist nicht möglich."
+  },
+  "roleAccess": {
+    "denied": "Ihre aktuellen Berechtigungen erlauben diese Änderung nicht."
+  },
+  "operational": {
+    "title": "Operative Verarbeitung",
+    "description": "Erzeugt fällige Wiederholungen, Kalenderfristen und lokale Hinweise. Es werden keine Nachrichten versendet.",
+    "run": "Operativen Lauf ausführen",
+    "asOf": "Stichtag",
+    "lookback": "Nachholzeitraum (Tage)",
+    "limit": "Maximale neue Einträge",
+    "catchUp": "Wiederkehrende Aufgaben nachholen",
+    "oneOpen": "Eine offene Folgeaufgabe pro Serie",
+    "allDue": "Alle fälligen Instanzen im Zeitraum",
+    "catchUpHint": "Ältere Instanzen außerhalb des gewählten Zeitraums werden nicht erzeugt. Bei Überschreiten des Limits wird der gesamte Lauf zurückgesetzt.",
+    "automaticRunning": "Automatische Verarbeitung läuft auf diesem Server.",
+    "automaticStopped": "Automatische Verarbeitung ist konfiguriert, aber derzeit gestoppt.",
+    "automaticDisabled": "Automatische Verarbeitung ist deaktiviert. Ein manueller Lauf ist möglich.",
+    "retry": "Erneut versuchen",
+    "invalidResult": "Unvollständiges Laufergebnis. Bitte neu laden.",
+    "result": "{{tasks}} neue Aufgaben · {{events}} neue Kalendertermine · {{notifications}} neue Hinweise",
+    "recurrence": "Wiederholungsregel",
+    "configure": "Wiederholung festlegen",
+    "active": "Aktiv",
+    "yes": "Ja",
+    "no": "Nein",
+    "taskRuleHint": "DAILY, WEEKLY, MONTHLY oder YEARLY; INTERVAL, COUNT und UNTIL. Ankerdatum erforderlich. COUNT zählt Folgeaufgaben. Der Monatstag bleibt verankert; kurze Monate werden begrenzt.",
+    "calendarRuleHint": "DAILY, WEEKLY, MONTHLY oder YEARLY; INTERVAL, COUNT und UNTIL. COUNT zählt einschließlich des Ursprungstermins. Das ursprüngliche Ankerdatum bleibt erhalten.",
+    "deadlineField": "Fristfeld",
+    "dueDate": "Fälligkeitsdatum",
+    "appointment": "Wartungstermin (nur Instandhaltung)",
+    "targetRole": "Zielrolle (leer = alle)",
+    "frequency": {
+      "DAILY": "Täglich",
+      "WEEKLY": "Wöchentlich",
+      "MONTHLY": "Monatlich",
+      "YEARLY": "Jährlich"
+    }
   }
 }

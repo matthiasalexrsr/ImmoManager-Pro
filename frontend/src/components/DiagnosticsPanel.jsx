@@ -1,3 +1,4 @@
+import useWriteAccess from '../hooks/useWriteAccess';
 import { useState, useCallback } from 'react';
 import { api } from '../api';
 
@@ -14,22 +15,24 @@ const SEVERITY_ICONS = {
 };
 
 export default function DiagnosticsPanel({ onClose }) {
+  const { canWrite, isAllowed } = useWriteAccess('/diagnostics', onClose);
   const [report, setReport] = useState(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState(null);
 
   const runTests = useCallback(async () => {
+    if (!isAllowed()) return;
     setRunning(true);
     setError(null);
     try {
       const data = await api.get('/diagnostics/run');
-      setReport(data);
+      if (isAllowed()) setReport(data);
     } catch (err) {
       setError(err.message || 'Diagnostics failed');
     } finally {
       setRunning(false);
     }
-  }, []);
+  }, [isAllowed]);
 
   const handleDownload = useCallback(() => {
     if (!report) return;
@@ -58,6 +61,7 @@ export default function DiagnosticsPanel({ onClose }) {
     URL.revokeObjectURL(url);
   }, [report]);
 
+  if (!canWrite) return null;
   return (
     <div className="dev-panel dev-panel-diagnostics">
       <div className="dev-panel-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

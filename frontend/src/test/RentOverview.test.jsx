@@ -7,7 +7,7 @@ const render = component => renderComponent(<MemoryRouter>{component}</MemoryRou
 
 const mocks = vi.hoisted(() => ({ getAll: vi.fn(), get: vi.fn(), post: vi.fn(), readonly: false }));
 vi.mock('../api', () => ({ api: mocks }));
-vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ isReadonly: mocks.readonly }) }));
+vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ role: mocks.readonly ? 'readonly' : 'eigentuemer', isReadonly: mocks.readonly }) }));
 vi.mock('../contexts/DataStoreContext', () => ({ useDataStore: () => null }));
 vi.mock('../i18n', () => ({ useTranslation: () => ({ locale: 'de-DE', t: key => key.split('.').at(-1) }) }));
 

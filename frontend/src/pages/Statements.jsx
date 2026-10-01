@@ -7,7 +7,7 @@ import StatusBadge from '../components/StatusBadge';
 import BillingSettlementSummary from '../components/BillingSettlementSummary';
 import BillingOwnerShare from '../components/BillingOwnerShare';
 import { parseSettlementPosting } from '../utils/billingSettlements';
-import { useAuth } from '../contexts/AuthContext';
+import useWriteAccess from '../hooks/useWriteAccess';
 import './Statements.css';
 
 /** Inline toast-style notification hook. */
@@ -176,7 +176,6 @@ function StepIndicator({ currentStep, t: tr }) {
 export default function Statements() {
   const { t } = useTranslation();
   const toast = useToast();
-  const auth = useAuth();
   const [periods, setPeriods] = useState([]);
   const [costItems, setCostItems] = useState([]);
   const [statements, setStatements] = useState([]);
@@ -206,6 +205,7 @@ export default function Statements() {
   const [ocrUploading, setOcrUploading] = useState(false);
   const [disputing, setDisputing] = useState(false);
   const [promptModal, setPromptModal] = useState(null);
+  const { canWrite, isAllowed, requireWrite } = useWriteAccess('/billing', () => { setModal(null); setCostModal(null); setPromptModal(null); setOcrDraft(null); });
 
   const loadRequestRef = useRef(null);
   const preflightRequestRef = useRef(null);
@@ -338,6 +338,7 @@ export default function Statements() {
     ? { billing_period_id: selectedPeriodId } : costModal, [costModal, selectedPeriodId]);
 
   const handleSave = async (data) => {
+    requireWrite();
     if (modal === 'create') {
       await api.post('/billing/periods', data);
     } else if (modal === 'copy') {
@@ -345,6 +346,7 @@ export default function Statements() {
       if (newPeriod && selectedPeriod) {
         const prevCosts = costItems.filter(ci => ci.billing_period_id === selectedPeriod.id);
         for (const cost of prevCosts) {
+          requireWrite();
           await api.post('/billing/cost-items', {
             billing_period_id: newPeriod.id,
             description: cost.description,
@@ -360,6 +362,7 @@ export default function Statements() {
   };
 
   const handleSaveCost = async (data) => {
+    requireWrite();
     if (costModal === 'create') {
       await api.post('/billing/cost-items', data);
     } else {
@@ -369,6 +372,7 @@ export default function Statements() {
   };
 
   const handleGenerateStatements = async () => {
+    if (!isAllowed()) return;
     if (!selectedPeriod || !preflightReady || generating || finalizing) return;
     setGenerating(true);
     try {
@@ -382,6 +386,7 @@ export default function Statements() {
   };
 
   const handleSubmitReview = async () => {
+    if (!isAllowed()) return;
     if (!selectedPeriod) return;
     setSubmittingReview(true);
     try {
@@ -396,6 +401,7 @@ export default function Statements() {
   };
 
   const handleRevertDraft = async () => {
+    if (!isAllowed()) return;
     if (!selectedPeriod) return;
     try {
       const updated = await api.post(`/billing/periods/${selectedPeriod.id}/revert-draft`, {});
@@ -407,6 +413,7 @@ export default function Statements() {
   };
 
   const handleFinalizePeriod = async () => {
+    if (!isAllowed()) return;
     if (!selectedPeriod || !isMutable(selectedPeriod.status) || !preflightReady || finalizing || generating) return;
     setFinalizing(true);
     try {
@@ -421,12 +428,14 @@ export default function Statements() {
   };
 
   const handleMarkDelivered = async () => {
+    if (!isAllowed()) return;
     if (!selectedPeriod) return;
     setMarkingDelivered(true);
     try {
       const periodStatements = (statements || []).filter(s => s.billing_period_id === selectedPeriod.id);
       for (const stmt of periodStatements) {
         if (stmt.status !== 'delivered') {
+          requireWrite();
           await api.post(`/billing/statements/${stmt.id}/mark-delivered`, {});
         }
       }
@@ -439,7 +448,8 @@ export default function Statements() {
   };
 
   const handleCreateReceivables = async () => {
-    if (!selectedPeriod || creatingReceivables || auth?.isReadonly) return;
+    if (!isAllowed()) return;
+    if (!selectedPeriod || creatingReceivables) return;
     const periodId = selectedPeriod.id;
     setCreatingReceivables(true);
     try {
@@ -459,10 +469,12 @@ export default function Statements() {
   };
 
   const handleCreateRevision = () => {
+    if (!isAllowed()) return;
     if (!selectedPeriod) return;
     setPromptModal({
       title: t('pages.statements.revisionReason') || 'Grund für Korrektur (optional):',
       onConfirm: async (notes) => {
+        requireWrite();
         setCreatingRevision(true);
         let saved = false;
         try {
@@ -488,11 +500,13 @@ export default function Statements() {
   };
 
   const handleDispute = () => {
+    if (!isAllowed()) return;
     if (!selectedPeriod) return;
     setPromptModal({
       title: t('pages.statements.disputeReason') || 'Grund für Widerspruch:',
       required: true,
       onConfirm: async (reason) => {
+        requireWrite();
         setDisputing(true);
         let saved = false;
         try {
@@ -515,6 +529,7 @@ export default function Statements() {
   };
 
   const handleOcrUpload = async (e) => {
+    if (!isAllowed()) { e.target.value = ''; return; }
     const file = e.target.files?.[0];
     if (!file || !selectedPeriod) return;
     setOcrUploading(true);
@@ -525,12 +540,14 @@ export default function Statements() {
       formData.append('file', file);
       const uploadData = await api.postForm('/files/upload?folder=billing-ocr', formData);
 
+      requireWrite();
       // Step 2: Call OCR import endpoint
       const ocrRes = await api.post(
         `/billing/cost-items/import-ocr?billing_period_id=${selectedPeriod.id}&file_url=${encodeURIComponent(uploadData.file_url)}`,
         {}
       );
 
+      if (!isAllowed()) return;
       if (ocrRes?.success) {
         setOcrDraft(ocrRes);
       } else {
@@ -546,6 +563,7 @@ export default function Statements() {
   };
 
   const handleAcceptOcrDraft = async () => {
+    if (!isAllowed()) return;
     if (!ocrDraft?.draft) return;
     const draft = ocrDraft.draft;
     try {
@@ -629,7 +647,7 @@ export default function Statements() {
 
   const feedback = <>
     {toast.Toast}
-    {promptModal && <PromptModal {...promptModal} onCancel={() => setPromptModal(null)} />}
+    {promptModal && canWrite && <PromptModal {...promptModal} onCancel={() => setPromptModal(null)} />}
   </>;
 
   if (loading) return <div className="page">
@@ -655,7 +673,7 @@ export default function Statements() {
         };
       });
     const totalCosts = periodCosts.reduce((s, c) => s + Math.round(Number(c.amount || 0) * 100), 0) / 100;
-    const editable = isMutable(selectedPeriod.status);
+    const editable = canWrite && isMutable(selectedPeriod.status);
     const isFinalized = selectedPeriod.status === 'finalized';
     const isDelivered = selectedPeriod.status === 'delivered';
     const revisionHistory = getRevisionHistory();
@@ -681,7 +699,7 @@ export default function Statements() {
             <StatusBadge status={selectedPeriod.status} />
 
             {/* Primary workflow action based on current step */}
-            {workflowStep === 3 && selectedPeriod.status === 'draft' && (
+            {canWrite && workflowStep === 3 && selectedPeriod.status === 'draft' && (
               <button
                 className="btn btn-sm btn-primary"
                 onClick={handleSubmitReview}
@@ -690,7 +708,7 @@ export default function Statements() {
                 {submittingReview ? t('pages.statements.submitting') : t('pages.statements.submitReview')}
               </button>
             )}
-            {workflowStep === 4 && (
+            {canWrite && workflowStep === 4 && (
               <button
                 className="btn btn-sm btn-primary"
                 onClick={handleFinalizePeriod}
@@ -699,7 +717,7 @@ export default function Statements() {
                 {finalizing ? t('pages.statements.finalizing') : t('pages.statements.finalize')}
               </button>
             )}
-            {workflowStep === 5 && (
+            {canWrite && workflowStep === 5 && (
               <button
                 className="btn btn-sm btn-primary"
                 onClick={handleMarkDelivered}
@@ -710,7 +728,7 @@ export default function Statements() {
             )}
 
             {/* Secondary actions */}
-            {selectedPeriod.status === 'review' && (
+            {canWrite && selectedPeriod.status === 'review' && (
               <button
                 className="btn btn-sm btn-secondary"
                 onClick={handleRevertDraft}
@@ -730,7 +748,7 @@ export default function Statements() {
               </button>
             )}
 
-            {(isFinalized || isDelivered) && !auth?.isReadonly && (
+            {canWrite && (isFinalized || isDelivered) && (
               <button
                 className="btn btn-sm btn-secondary"
                 onClick={handleCreateReceivables}
@@ -740,13 +758,13 @@ export default function Statements() {
               </button>
             )}
 
-            <button
+            {canWrite && <button
               className="btn btn-sm btn-secondary"
               onClick={handleCreateRevision}
               disabled={creatingRevision}
             >
               {creatingRevision ? t('pages.statements.creating') : t('pages.statements.startCorrection')}
-            </button>
+            </button>}
             <button
               className="btn btn-sm btn-secondary"
               onClick={handleExportPeriod}
@@ -763,7 +781,7 @@ export default function Statements() {
                 {exporting ? t('pages.statements.exporting') : t('pages.statements.zipExport')}
               </button>
             )}
-            {(isFinalized || isDelivered) && (
+            {canWrite && (isFinalized || isDelivered) && (
               <button
                 className="btn btn-sm btn-secondary"
                 onClick={handleDispute}
@@ -1011,7 +1029,7 @@ export default function Statements() {
     <div className="page statements-page">
       {feedback}
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-        {selectedPeriod && (
+        {selectedPeriod && canWrite && (
           <button className="btn btn-sm btn-secondary" onClick={() => setModal('copy')}>
             Vorjahr kopieren
           </button>
@@ -1021,10 +1039,11 @@ export default function Statements() {
         title="Nebenkostenabrechnungen"
         columns={COLUMNS}
         data={enriched}
-        onAdd={() => setModal('create')}
-        onEdit={handleSelectPeriod}
+        onAdd={canWrite ? () => setModal('create') : undefined}
+        onRowClick={handleSelectPeriod}
+        onEdit={canWrite ? handleSelectPeriod : undefined}
       />
-      {(modal === 'create' || modal === 'copy') && (
+      {canWrite && (modal === 'create' || modal === 'copy') && (
         <FormModal
           title={modal === 'copy' ? 'Abrechnung kopieren (neuer Zeitraum)' : 'Abrechnung erstellen'}
           fields={fields}
@@ -1036,7 +1055,7 @@ export default function Statements() {
           onClose={() => setModal(null)}
         />
       )}
-      {modal && modal !== 'create' && modal !== 'copy' && modal.id && (
+      {canWrite && modal && modal !== 'create' && modal !== 'copy' && modal.id && (
         <FormModal
           title="Abrechnung bearbeiten"
           fields={fields}

@@ -3,6 +3,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import { api } from '../api';
 import PhotoDropZone from '../components/PhotoDropZone';
 
+vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ role: 'eigentuemer' }) }));
 vi.mock('../api', () => ({ api: { get: vi.fn(), getBlob: vi.fn(), postForm: vi.fn(), del: vi.fn() } }));
 vi.mock('../components/ConfirmDialog', () => ({ useConfirm: () => vi.fn().mockResolvedValue(true) }));
 const png = () => new Blob([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])], { type: 'image/png' });

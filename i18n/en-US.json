@@ -1303,6 +1303,33 @@
     }
   },
   "pages": {
+    "rentAdjustments": {
+      "title": "Rent adjustments",
+      "contract": "Contract",
+      "type": "Type",
+      "index": "Indexed rent",
+      "stepped": "Stepped rent",
+      "effectiveDate": "Effective date",
+      "previousRent": "Previous base rent (€)",
+      "newRent": "New base rent (€)",
+      "increasePercent": "Increase (%)",
+      "indexBaseYear": "Index base year",
+      "indexValue": "Index value",
+      "status": "Status",
+      "pending": "Pending",
+      "applied": "Applied",
+      "rejected": "Rejected",
+      "notes": "Notes",
+      "create": "Create rent adjustment",
+      "edit": "Edit rent adjustment",
+      "policyTitle": "Contract prices for monthly rent charges",
+      "policy": "Only applied adjustments change this contract's base rent. The most recent adjustment effective at the start of the month applies; a date within the month applies from the following month. Existing charges remain unchanged. Advances continue to use the unit's values.",
+      "effectiveHint": "Effective at the start of the month or from the next full month. Only one applied adjustment is allowed per contract and date.",
+      "baselineHint": "The first applied adjustment's previous base rent applies to earlier months that have not been charged yet.",
+      "statusHint": "Only Applied is included in new rent charges. Pending and rejected adjustments do not change amounts.",
+      "readonly": "You do not have permission to change rent adjustments.",
+      "deleting": "Waiting for confirmation and processing deletion…"
+    },
     "loading": "Loading…",
     "confirmDelete": "Really delete \"{{name}}\"?",
     "deleteFailed": "Delete failed",
@@ -2304,5 +2331,43 @@
     "deleted": "The record was deleted. Your draft is preserved; it cannot be saved again.",
     "loadFailed": "The current record could not be loaded. Please try again.",
     "missingRevision": "The response has no valid edit revision. A safe reconciliation is unavailable."
+  },
+  "roleAccess": {
+    "denied": "Your current permissions do not allow this change."
+  },
+  "operational": {
+    "title": "Operational processing",
+    "description": "Creates due recurring items, calendar deadlines and local alerts. No messages are sent.",
+    "run": "Run operational processing",
+    "asOf": "As of",
+    "lookback": "Catch-up window (days)",
+    "limit": "Maximum new entries",
+    "catchUp": "Catch up recurring tasks",
+    "oneOpen": "One open child task per series",
+    "allDue": "All due instances in the window",
+    "catchUpHint": "Older instances outside this window are not created. Exceeding the limit rolls back the whole run.",
+    "automaticRunning": "Automatic processing is running on this server.",
+    "automaticStopped": "Automatic processing is configured but currently stopped.",
+    "automaticDisabled": "Automatic processing is disabled. Manual processing is available.",
+    "retry": "Retry",
+    "invalidResult": "Incomplete processing result. Please reload.",
+    "result": "{{tasks}} new tasks · {{events}} new calendar events · {{notifications}} new alerts",
+    "recurrence": "Recurrence rule",
+    "configure": "Configure recurrence",
+    "active": "Active",
+    "yes": "Yes",
+    "no": "No",
+    "taskRuleHint": "DAILY, WEEKLY, MONTHLY or YEARLY; INTERVAL, COUNT and UNTIL. Anchor date required. COUNT counts child tasks. The original month day is clamped in shorter months.",
+    "calendarRuleHint": "DAILY, WEEKLY, MONTHLY or YEARLY; INTERVAL, COUNT and UNTIL. COUNT includes the original event. The original anchor date is retained.",
+    "deadlineField": "Deadline field",
+    "dueDate": "Due date",
+    "appointment": "Maintenance appointment (maintenance only)",
+    "targetRole": "Target role (empty = everyone)",
+    "frequency": {
+      "DAILY": "Daily",
+      "WEEKLY": "Weekly",
+      "MONTHLY": "Monthly",
+      "YEARLY": "Yearly"
+    }
   }
 }

@@ -5,6 +5,7 @@ import { emptySummary, postedSummary } from './fixtures/settlements';
 import { ownerPeriod } from './fixtures/ownerShare';
 
 const mocks = vi.hoisted(() => ({ getAll: vi.fn(), get: vi.fn(), post: vi.fn(), put: vi.fn() }));
+vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ role: 'eigentuemer' }) }));
 vi.mock('../api', () => ({ api: mocks }));
 vi.mock('../i18n', () => {
   const t = key => key.split('.').at(-1);

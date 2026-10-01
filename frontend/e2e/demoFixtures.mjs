@@ -17,7 +17,10 @@ export const test = base.extend({
     });
     expect(preferences.status(), 'Test prerequisites must persist before UI login').toBe(200);
     expect(await preferences.json()).toMatchObject({ locale: 'de-DE', theme: 'light', sidebar_collapsed: false });
-    await page.addInitScript(() => localStorage.setItem('locale', 'de-DE'));
+    await page.addInitScript(origin => {
+      // PDF viewers and blob/sandbox frames can have no localStorage.
+      if (window === window.top && location.origin === origin) localStorage.setItem('locale', 'de-DE');
+    }, new URL(process.env.IMMO_E2E_URL).origin);
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await use(page);

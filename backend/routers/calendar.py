@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
 from ..models import CalendarEvent, CalendarEventCreate, CalendarEventPatch
+from ..services.operational_schedule import CalendarScheduleInput, configure_calendar, list_schedules
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/calendar", tags=["Kalender"])
@@ -28,6 +29,19 @@ def create_calendar_event(payload: CalendarEventCreate) -> CalendarEvent:
         return store.create_calendar_event(payload)
     except ValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.get("/schedules", response_model=None)
+def calendar_schedules():
+    return list_schedules(store, "calendar")
+
+
+@router.put("/{event_id}/schedule", response_model=None)
+def set_calendar_schedule(event_id: str, payload: CalendarScheduleInput):
+    try:
+        return configure_calendar(store, event_id, payload)
+    except (NotFoundError, ValidationError) as exc:
+        raise HTTPException(404 if isinstance(exc, NotFoundError) else 400, str(exc)) from exc
 
 
 @router.get("/{event_id}", response_model=CalendarEvent)

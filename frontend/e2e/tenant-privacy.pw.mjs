@@ -1,0 +1,51 @@
+import { randomUUID } from 'node:crypto';
+import { test, expect, germanWorkspaceReady } from './demoFixtures.mjs';
+
+test('tenant privacy: private download, stale-plan recovery and explicit profile scope', async ({ page }) => {
+  await page.goto('/login');
+  await page.getByLabel('Benutzername', { exact: true }).fill('demo');
+  await page.getByLabel('Passwort', { exact: true }).fill('Demo1234');
+  await page.getByRole('button', { name: 'Anmelden', exact: true }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await germanWorkspaceReady(page);
+  const headers = { Authorization: `Bearer ${await page.evaluate(() => localStorage.getItem('access_token'))}` };
+  const fullName = `Browser Datenschutz ${randomUUID().slice(0, 8)}`;
+  const created = await page.request.post('/api/v1/tenants', {
+    headers, data: { full_name: fullName, email: 'synthetic-privacy@example.com', notes: 'Original note' },
+  });
+  expect(created.status()).toBe(201);
+  const tenant = await created.json();
+  const root = `/api/v1/admin/dsgvo/tenant/${tenant.id}`;
+  await page.goto('/tenants');
+  await page.getByText('Datenauskunft und Stammdaten-Anonymisierung', { exact: true }).click();
+  await page.getByLabel('Mieter auswählen', { exact: true }).selectOption(tenant.id);
+  const downloadEvent = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Datenauskunft herunterladen', exact: true }).click();
+  const download = await downloadEvent;
+  expect(download.suggestedFilename()).toBe('mieter-datenauskunft.json');
+  const exported = await page.request.get(root + '/export', { headers });
+  expect(exported.status()).toBe(200);
+  expect(exported.headers()['cache-control']).toBe('private, no-store');
+  const data = await exported.json();
+  expect(data.tenant.email).toBe('synthetic-privacy@example.com');
+  expect(data.scope.file_content).toContain('excluded');
+  await page.getByRole('button', { name: 'Anonymisierung prüfen', exact: true }).click();
+  await expect(page.getByText('Geprüfter Umfang: Mieterstammdaten', { exact: true })).toBeVisible();
+  await page.getByLabel('Bestätigung: vollständigen Namen eingeben', { exact: true }).fill(fullName);
+  const edited = await page.request.patch(`/api/v1/tenants/${tenant.id}`, { headers, data: { notes: 'Concurrent reviewed change' } });
+  expect(edited.status()).toBe(200);
+  const pending = page.waitForResponse(response => new URL(response.url()).pathname === root + '/anonymize' && response.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Stammdaten anonymisieren', exact: true }).click();
+  expect((await pending).status()).toBe(409);
+  await expect(page.getByRole('alert').filter({ hasText: 'Vorschau neu laden' })).toBeVisible();
+  await expect(page.getByLabel('Bestätigung: vollständigen Namen eingeben', { exact: true })).toHaveValue(fullName);
+  const unchanged = await page.request.get(`/api/v1/tenants/${tenant.id}`, { headers });
+  expect(await unchanged.json()).toMatchObject({ full_name: fullName, email: 'synthetic-privacy@example.com', notes: 'Concurrent reviewed change' });
+  await page.getByRole('button', { name: 'Vorschau neu laden', exact: true }).click();
+  const saved = page.waitForResponse(response => new URL(response.url()).pathname === root + '/anonymize' && response.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Stammdaten anonymisieren', exact: true }).click();
+  expect((await saved).status()).toBe(200);
+  const final = await page.request.get(`/api/v1/tenants/${tenant.id}`, { headers });
+  expect(await final.json()).toMatchObject({ full_name: `Anonymisiert-${tenant.id}`, email: null, notes: null, archived: true });
+});
+

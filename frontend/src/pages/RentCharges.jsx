@@ -8,7 +8,7 @@ import { useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import RentGenerationModal from '../components/RentGenerationModal';
-import { useAuth } from '../contexts/AuthContext';
+import useWriteAccess from '../hooks/useWriteAccess';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 
@@ -18,7 +18,6 @@ export default function RentCharges() {
   const { t } = useTranslation();
   const confirm = useConfirm();
   const store = useDataStore();
-  const auth = useAuth();
   const { data: { charges, contracts }, loading, error, reload: refreshData } = useFinanceData({
     charges: '/rent-charges',
     contracts: '/contracts',
@@ -27,6 +26,7 @@ export default function RentCharges() {
   const [deleteError, setDeleteError] = useState(null);
   const [generationOpen, setGenerationOpen] = useState(false);
   const [generationResult, setGenerationResult] = useState(null);
+  const { canWrite, isAllowed, requireWrite } = useWriteAccess('/rent-charges', () => { setModal(null); setGenerationOpen(false); });
 
 
   const contractMap = Object.fromEntries(contracts.map(c => [c.id, c]));
@@ -73,6 +73,7 @@ export default function RentCharges() {
   ];
 
   const handleSave = async (data) => {
+    requireWrite();
     if (modal === 'create') {
       await api.post('/rent-charges', data);
     } else {
@@ -85,9 +86,11 @@ export default function RentCharges() {
   };
 
   const handleDelete = async (row) => {
+    if (!isAllowed()) return;
     if (!await confirm(`${t('modals.confirmDelete.body')}`)) return;
     setDeleteError(null);
     try {
+      if (!isAllowed()) return;
       await api.del(`/rent-charges/${row.id}`, revisionOptions(row));
       refreshData();
       if (store) store.invalidateRelated('rent_charges', 'contracts');
@@ -100,7 +103,7 @@ export default function RentCharges() {
 
   return (
     <div className="page">
-      {!auth?.isReadonly && <button className="btn btn-primary" onClick={() => setGenerationOpen(true)}>
+      {canWrite && <button className="btn btn-primary" onClick={() => setGenerationOpen(true)}>
         {t('pages.rentGeneration.title')}
       </button>}
       <p>{t('pages.rentGeneration.paymentManaged')}</p>
@@ -117,18 +120,18 @@ export default function RentCharges() {
         title={t('pages.rentCharges.title')}
         columns={COLUMNS}
         data={enriched}
-        onAdd={!auth?.isReadonly ? () => setModal('create') : undefined}
-        onEdit={!auth?.isReadonly ? row => setModal(row) : undefined}
-        onDelete={!auth?.isReadonly ? handleDelete : undefined}
+        onAdd={canWrite ? () => setModal('create') : undefined}
+        onEdit={canWrite ? row => setModal(row) : undefined}
+        onDelete={canWrite ? handleDelete : undefined}
       />
-      {generationOpen && <RentGenerationModal contracts={contracts} onClose={() => setGenerationOpen(false)}
+      {generationOpen && canWrite && <RentGenerationModal contracts={contracts} onClose={() => setGenerationOpen(false)}
         onGenerated={result => {
           setGenerationResult(result);
           setGenerationOpen(false);
           refreshData();
           store?.invalidateRelated('rent_charges', 'contracts');
         }} />}
-      {modal && (
+      {modal && canWrite && (
         <FormModal
           title={modal === 'create' ? t('pages.rentCharges.create') : t('pages.rentCharges.edit')}
           fields={fields}

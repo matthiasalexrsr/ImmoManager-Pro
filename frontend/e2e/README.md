@@ -114,3 +114,19 @@ npm run test:e2e -- generation-form.pw.mjs
 See the [Playwright configuration documentation](https://playwright.dev/docs/test-configuration)
 and [Microsoft Edge documentation](https://learn.microsoft.com/en-us/microsoft-edge/playwright/)
 for browser configuration details.
+
+`operational.pw.mjs` exercises a real January-31 task series through the manual
+operations form, completes the February child through its normal edit form,
+checks March-31 generation and verifies repeat/reload persistence. Its second
+case configures a calendar plan through the UI and checks its clamped dates and
+deduplication. The task view is also checked at 390 pixels with an attached
+screenshot. Both use the shared German demo fixture and check uncaught page errors.
+
+```sh
+npm run test:e2e -- operational.pw.mjs
+```
+
+Before backend startup the runner applies `alembic upgrade head` to its own
+new temporary database. Automatic operational and backup workers are explicitly
+disabled for these deterministic manual workflows. The runner neither migrates
+nor changes any configured user database or uploads directory.

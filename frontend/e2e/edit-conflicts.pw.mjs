@@ -1,10 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { expect, test } from '@playwright/test';
+import { expect, test } from './demoFixtures.mjs';
 
 for (const kind of ['properties', 'tenants', 'accounts']) {
   test(`${kind}: two real editors retain old revision and reconcile deliberately`, async ({ page, browser }, testInfo) => {
     test.setTimeout(120_000);
-    await page.addInitScript(() => localStorage.setItem('locale', 'de-DE'));
     await page.goto('/login');
     await page.getByLabel('Benutzername', { exact: true }).fill('demo');
     await page.getByLabel('Passwort', { exact: true }).fill('Demo1234');

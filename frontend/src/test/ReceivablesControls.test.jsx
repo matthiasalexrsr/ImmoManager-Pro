@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   invalidateRelated: vi.fn(), readonly: false,
 }));
 vi.mock('../api', () => ({ api: mocks }));
-vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ isReadonly: mocks.readonly }) }));
+vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ role: mocks.readonly ? 'readonly' : 'eigentuemer', isReadonly: mocks.readonly }) }));
 vi.mock('../contexts/DataStoreContext', () => ({ useDataStore: () => mocks }));
 vi.mock('../components/ConfirmDialog', () => ({ useConfirm: () => mocks.confirm }));
 vi.mock('../i18n', () => ({ useTranslation: () => ({ t: key => key }) }));

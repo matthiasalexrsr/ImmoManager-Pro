@@ -660,6 +660,8 @@ class RentAdjustmentORM(Base):
     status: Mapped[str] = mapped_column(String(20), default="pending")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    __table_args__ = (Index("uq_applied_rent_adjustment_contract_date", "contract_id", "effective_date", unique=True,
+                           sqlite_where=status == "applied", postgresql_where=status == "applied"),)
 
 
 class HandoverProtocolORM(Base):

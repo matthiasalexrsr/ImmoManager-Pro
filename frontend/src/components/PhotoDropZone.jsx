@@ -1,3 +1,4 @@
+import useWriteAccess from '../hooks/useWriteAccess';
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { api } from '../api';
 import { PlusIcon, TrashIcon } from './Icons';
@@ -13,7 +14,7 @@ function PhotoThumbnail({ photo, onDelete }) {
       ? <img src={file.url} alt={photo.caption || 'Foto'} />
       : <p role="alert">Keine Bildvorschau verfügbar.</p>)}
     {photo.caption && <span className="photo-caption">{photo.caption}</span>}
-    <button className="photo-delete-btn" onClick={() => onDelete(photo.id)} title="Löschen" aria-label="Foto löschen"><TrashIcon size={14} /></button>
+    {onDelete && <button className="photo-delete-btn" onClick={() => onDelete(photo.id)} title="Löschen" aria-label="Foto löschen"><TrashIcon size={14} /></button>}
   </div>;
 }
 
@@ -26,6 +27,7 @@ export default function PhotoDropZone({ entityType, entityId }) {
   const fileRef = useRef(null);
   const requestRef = useRef(null);
   const entity = `${entityType}:${entityId}`;
+  const { canWrite, isAllowed, requireWrite } = useWriteAccess('/photos', () => { setDragActive(false); if (fileRef.current) fileRef.current.value = ''; });
 
   const loadPhotos = useCallback(async (signal) => {
     if (!entityId) return;
@@ -45,10 +47,11 @@ export default function PhotoDropZone({ entityType, entityId }) {
 
   const uploadFiles = useCallback(async (files) => {
     const controller = requestRef.current;
-    if (!controller || controller.signal.aborted || uploading) return;
+    if (!isAllowed() || !controller || controller.signal.aborted || uploading) return;
     setUploading(true); setError(null);
     try {
       for (const file of files) {
+        requireWrite();
         if (!file.type.startsWith('image/')) throw new Error('Bitte wählen Sie eine Bilddatei.');
         const formData = new FormData(); formData.append('file', file);
         await api.postForm(`/photos/upload?entity_type=${encodeURIComponent(entityType)}&entity_id=${encodeURIComponent(entityId)}`, formData, { signal: controller.signal });
@@ -56,11 +59,11 @@ export default function PhotoDropZone({ entityType, entityId }) {
       await loadPhotos(controller.signal);
     } catch (err) { if (!controller.signal.aborted) setError(err.message); }
     finally { if (!controller.signal.aborted) { setUploading(false); if (fileRef.current) fileRef.current.value = ''; } }
-  }, [entityType, entityId, loadPhotos, uploading]);
+  }, [entityType, entityId, loadPhotos, uploading, isAllowed, requireWrite]);
 
   const handleDelete = async photoId => {
     const controller = requestRef.current;
-    if (!await confirm('Foto wirklich löschen?') || controller.signal.aborted) return;
+    if (!isAllowed() || !controller || !await confirm('Foto wirklich löschen?') || controller.signal.aborted || !isAllowed()) return;
     try { await api.del(`/photos/${photoId}`, { signal: controller.signal }); await loadPhotos(controller.signal); }
     catch (err) { if (!controller.signal.aborted) setError(err.message); }
   };
@@ -69,13 +72,13 @@ export default function PhotoDropZone({ entityType, entityId }) {
   const items = photos.entity === entity ? photos.items : [];
   return <div className="photo-drop-zone-container">
     {error && <div role="alert"><p>{error}</p><button className="btn btn-secondary" onClick={() => loadPhotos(requestRef.current.signal)}>Fotos erneut laden</button></div>}
-    <div className={`photo-drop-zone ${dragActive ? 'drag-active' : ''}`}
+    {canWrite && <div className={`photo-drop-zone ${dragActive ? 'drag-active' : ''}`}
       onDragOver={event => { event.preventDefault(); setDragActive(true); }} onDragLeave={() => setDragActive(false)}
       onDrop={event => { event.preventDefault(); setDragActive(false); uploadFiles(Array.from(event.dataTransfer?.files || [])); }}
       onClick={() => { if (!uploading) fileRef.current?.click(); }}>
       <input ref={fileRef} aria-label="Fotos hochladen" type="file" accept="image/*" multiple disabled={uploading} style={{ display: 'none' }} onChange={event => uploadFiles(Array.from(event.target.files || []))} />
       <PlusIcon size={24} /><span>{uploading ? 'Wird hochgeladen...' : 'Fotos hierher ziehen oder klicken (automatisch speichern)'}</span>
-    </div>
-    {items.length > 0 && <div className="photo-grid">{items.map(photo => <PhotoThumbnail key={photo.id} photo={photo} onDelete={handleDelete} />)}</div>}
+    </div>}
+    {items.length > 0 && <div className="photo-grid">{items.map(photo => <PhotoThumbnail key={photo.id} photo={photo} onDelete={canWrite ? handleDelete : undefined} />)}</div>}
   </div>;
 }

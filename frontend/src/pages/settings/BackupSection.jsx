@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { useTranslation } from '../../i18n';
 import { useToast } from '../../components/Toast';
-import { useAuth } from '../../contexts/AuthContext';
+import useWriteAccess from '../../hooks/useWriteAccess';
 import { useDataStore } from '../../contexts/DataStoreContext';
 import { api } from '../../api';
 
@@ -10,7 +10,7 @@ const exportCollections = ['portfolios', 'properties', 'units', 'tenants', 'cont
 
 export default function BackupSection() {
   const { t } = useTranslation();
-  const auth = useAuth();
+  const { canWrite, isAllowed } = useWriteAccess('/admin');
   const cache = useDataStore();
   const toast = useToast();
   const [backupResult, setBackupResult] = useState(null);
@@ -24,8 +24,8 @@ export default function BackupSection() {
     const value = t(`settings.dataBackup.${key}`);
     return value === `settings.dataBackup.${key}` ? fallback : value;
   };
-  const begin = (operation, mutation = false) => {
-    if (inFlight.current || (mutation && auth?.isReadonly)) return false;
+  const begin = (operation) => {
+    if (inFlight.current || !isAllowed()) return false;
     inFlight.current = true;
     setBusy(operation);
     setError(null);
@@ -47,7 +47,7 @@ export default function BackupSection() {
   };
 
   const handleBackup = async () => {
-    if (!begin('backup', true)) return;
+    if (!begin('backup')) return;
     setBackupResult(null);
     try {
       const result = await api.post('/admin/backup');
@@ -96,7 +96,7 @@ export default function BackupSection() {
 
   const handleImport = async event => {
     const file = event.target.files?.[0];
-    if (!file || !begin('import', true)) return;
+    if (!file || !begin('import')) return;
     setImportResult(null);
     try {
       const formData = new FormData();
@@ -121,13 +121,13 @@ export default function BackupSection() {
     }
   };
 
+  if (!canWrite) return null;
   return (
     <div className="panel">
       <div className="panel-header">{t('pages.settings.dataBackup')}</div>
       <div className="panel-body settings-section">
         <p className="text-muted">{tr('businessScope', 'Teil-Geschäftsdaten: JSON-Datensätze ohne Anhänge, Benutzerkonten und vollständige Abrechnungsdaten.')}</p>
         <p className="text-muted">{tr('fullRecoveryHint', 'Eine vollständige, passwortverschlüsselte Sicherung von SQLite, Uploads, Benutzern und Konfiguration erfolgt offline nach dem Stoppen der Anwendung. Folgen Sie der Wartungsanleitung für vollständige Offline-Sicherungen.')}</p>
-        {auth?.isReadonly && <p>{tr('readOnlyHint', 'Mit Leserechten können Sie exportieren; Sichern und Importieren erfordern Schreibrechte.')}</p>}
         {error && <div role="alert" className="alert alert-error">
           <p>{error.message}</p>
           {error.details && <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
@@ -152,7 +152,7 @@ export default function BackupSection() {
         <div className="settings-row">
           <label>{tr('businessBackup', 'Teil-Geschäftsdaten sichern')}</label>
           <div className="settings-control">
-            <button className="btn btn-sm btn-primary" onClick={handleBackup} disabled={!!busy || auth?.isReadonly}>
+            <button className="btn btn-sm btn-primary" onClick={handleBackup} disabled={!!busy || !canWrite}>
               {busy === 'backup' ? tr('backupRunning', 'Sicherung läuft…') : tr('createBackup', 'Backup erstellen')}
             </button>
             {backupResult && <span role="status" style={{ marginLeft: '0.5rem', fontSize: '0.8rem' }}>
@@ -169,7 +169,7 @@ export default function BackupSection() {
         <div className="settings-row">
           <label htmlFor="business-data-import">{t('pages.settings.importData')}</label>
           <div className="settings-control"><input id="business-data-import" ref={fileRef} type="file" accept=".json"
-            onChange={handleImport} disabled={!!busy || auth?.isReadonly} style={{ fontSize: '0.85rem' }} /></div>
+            onChange={handleImport} disabled={!!busy || !canWrite} style={{ fontSize: '0.85rem' }} /></div>
         </div>
         {importResult && <div className="settings-row">
           <label>{t('pages.settings.importResult')}</label>

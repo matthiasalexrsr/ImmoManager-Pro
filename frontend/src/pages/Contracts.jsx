@@ -1,3 +1,4 @@
+import useWriteAccess from '../hooks/useWriteAccess';
 import { revisionOptions } from '../editRevision';
 import { useState, useEffect, useMemo } from 'react';
 import { api } from '../api';
@@ -27,6 +28,7 @@ export default function Contracts() {
   const [contracts, setContracts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
+  const { canWrite, isAllowed, requireWrite } = useWriteAccess('/contracts', () => setModal(null));
   const [filter, setFilter] = useState('all');
 
   const refreshData = () => {
@@ -133,6 +135,7 @@ export default function Contracts() {
   ];
 
   const handleSave = async (data) => {
+    requireWrite();
     if (modal === 'create') {
       await api.post('/contracts', data);
     } else {
@@ -143,7 +146,9 @@ export default function Contracts() {
   };
 
   const handleDelete = async (row) => {
+    if (!isAllowed()) return;
     if (!await confirm(`"${row.contract_number}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!isAllowed()) return;
     await api.del(`/contracts/${row.id}`, revisionOptions(row));
     refreshData();
     if (store) store.invalidateRelated('contracts', 'properties', 'units', 'tenants', 'deposits', 'receivables', 'rent_adjustments');
@@ -199,12 +204,12 @@ export default function Contracts() {
         title={t('tenantsContracts.contracts.title') || 'Verträge'}
         columns={columns}
         data={filtered}
-        onAdd={() => setModal('create')}
-        onEdit={row => setModal(row)}
-        onDelete={handleDelete}
+        onAdd={canWrite ? () => setModal('create') : undefined}
+        onEdit={canWrite ? row => setModal(row) : undefined}
+        onDelete={canWrite ? handleDelete : undefined}
       />
 
-      {modal && (
+      {modal && canWrite && (
         <FormModal
           title={modal === 'create' ? 'Vertrag erstellen' : 'Vertrag bearbeiten'}
           fields={fields}

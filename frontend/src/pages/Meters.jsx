@@ -1,3 +1,4 @@
+import useWriteAccess from '../hooks/useWriteAccess';
 import { revisionOptions } from '../editRevision';
 import { useState, useMemo } from 'react';
 import { api } from '../api';
@@ -60,6 +61,7 @@ export default function Meters() {
   const [selectedMeterId, setSelectedMeterId] = useState(null);
   const [actionError, setActionError] = useState(null);
   const [modal, setModal] = useState(null);
+  const { canWrite, isAllowed, requireWrite } = useWriteAccess('/meters', () => setModal(null));
   const [groupBy, setGroupBy] = useState('none'); // 'none' | 'property' | 'type' | 'supplier'
 
   const { data: { rawMeters, allReadings, units, properties }, loading, error, reload: refreshData } = useFinanceData({
@@ -120,6 +122,7 @@ export default function Meters() {
   ];
 
   const handleSaveMeter = async (data) => {
+    requireWrite();
     if (modal === 'create-meter') {
       await api.post('/meters', data);
     } else if (modal && modal.id) {
@@ -131,6 +134,7 @@ export default function Meters() {
   };
 
   const handleSaveReading = async (data) => {
+    requireWrite();
     const meterId = data.meter_id;
     await api.post(`/meters/${meterId}/readings`, data);
     setModal(null);
@@ -139,9 +143,11 @@ export default function Meters() {
   };
 
   const handleDeleteMeter = async (row) => {
+    if (!isAllowed()) return;
     if (!await confirm(`"${row.serial_number || row.id}" ${t('modals.confirmDelete.body')}`)) return;
     setActionError(null);
     try {
+      if (!isAllowed()) return;
       await api.del(`/meters/${row.id}`, revisionOptions(row));
       if (selectedMeter?.id === row.id) {
         setSelectedMeterId(null);
@@ -249,9 +255,10 @@ export default function Meters() {
             title={group.label ? '' : 'Zähler'}
             columns={METER_COLUMNS}
             data={group.meters}
-            onEdit={handleSelectMeter}
-            onAdd={gi === 0 ? () => setModal('create-meter') : undefined}
-            onDelete={handleDeleteMeter}
+            onEdit={canWrite ? handleSelectMeter : undefined}
+            onRowClick={handleSelectMeter}
+            onAdd={canWrite && gi === 0 ? () => setModal('create-meter') : undefined}
+            onDelete={canWrite ? handleDeleteMeter : undefined}
           />
         </div>
       ))}
@@ -273,12 +280,12 @@ export default function Meters() {
                 </div>
               </div>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button className="btn btn-sm btn-primary" onClick={() => setModal('create-reading')}>
+                {canWrite && <button className="btn btn-sm btn-primary" onClick={() => setModal('create-reading')}>
                   + Ablesung erfassen
-                </button>
-                <button className="btn btn-sm btn-secondary" onClick={() => setModal(selectedMeter)}>
+                </button>}
+                {canWrite && <button className="btn btn-sm btn-secondary" onClick={() => setModal(selectedMeter)}>
                   Zähler bearbeiten
-                </button>
+                </button>}
                 <button className="btn btn-sm btn-secondary" onClick={() => { setSelectedMeterId(null); }}>
                   Schließen
                 </button>
@@ -293,7 +300,7 @@ export default function Meters() {
         </div>
       )}
 
-      {modal === 'create-meter' && (
+      {canWrite && modal === 'create-meter' && (
         <FormModal
           title="Zähler anlegen"
           fields={meterFields}
@@ -302,7 +309,7 @@ export default function Meters() {
           onClose={() => setModal(null)}
         />
       )}
-      {modal && modal !== 'create-meter' && modal !== 'create-reading' && modal.id && (
+      {canWrite && modal && modal !== 'create-meter' && modal !== 'create-reading' && modal.id && (
         <FormModal
           title="Zähler bearbeiten"
           fields={meterFields}
@@ -311,7 +318,7 @@ export default function Meters() {
           onClose={() => setModal(null)}
         />
       )}
-      {modal === 'create-reading' && (
+      {canWrite && modal === 'create-reading' && (
         <FormModal
           title="Ablesung erfassen"
           fields={readingFields}

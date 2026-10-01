@@ -1,3 +1,4 @@
+import useWriteAccess from '../hooks/useWriteAccess';
 import { useMemo, useState } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
@@ -11,6 +12,7 @@ export default function RentGenerationModal({ contracts, onGenerated, onClose })
     start_month: new Date().toLocaleDateString('sv-SE').slice(0, 7),
     end_month: new Date().toLocaleDateString('sv-SE').slice(0, 7), contract_ids: [],
   }));
+  const { canWrite, isAllowed, requireWrite } = useWriteAccess('/rent-charges', onClose);
   const text = key => t(`pages.rentGeneration.${key}`);
   const money = value => new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR' }).format(Number(value));
   const fields = useMemo(() => [
@@ -21,6 +23,7 @@ export default function RentGenerationModal({ contracts, onGenerated, onClose })
   ], [contracts, t]);
 
   const inspect = async values => {
+    requireWrite();
     if (values.start_month > values.end_month) throw new Error(text('invalidRange'));
     const request = { start_month: values.start_month, end_month: values.end_month,
       ...(values.contract_ids.length ? { contract_ids: values.contract_ids } : {}) };
@@ -29,10 +32,12 @@ export default function RentGenerationModal({ contracts, onGenerated, onClose })
       || !Array.isArray(result.existing) || !Array.isArray(result.skipped_contracts)
       || typeof result.preview_hash !== 'string'
       || !Number.isFinite(Number(result.total_amount))) throw new Error(text('invalidPreview'));
+    if (!isAllowed()) return;
     setParameters(values);
     setPreview(result);
   };
   const generate = async () => {
+    requireWrite();
     const result = await api.post('/rent-charges/generate', {
       start_month: parameters.start_month, end_month: parameters.end_month,
       ...(parameters.contract_ids.length ? { contract_ids: parameters.contract_ids } : {}),
@@ -41,9 +46,10 @@ export default function RentGenerationModal({ contracts, onGenerated, onClose })
     if (!Number.isInteger(result?.created_count) || !Number.isInteger(result?.skipped_count)) {
       throw new Error(text('invalidPreview'));
     }
-    onGenerated(result);
+    if (isAllowed()) onGenerated(result);
   };
 
+  if (!canWrite) return null;
   return <FormModal title={text('title')} fields={preview ? [] : fields} initial={parameters}
     onSave={preview ? generate : inspect} onClose={onClose} closeOnSave={!!preview}
     saveLabel={text(preview ? 'generate' : 'preview')} saveDisabled={!!preview && !preview.candidates.length}>

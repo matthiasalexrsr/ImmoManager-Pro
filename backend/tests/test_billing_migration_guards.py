@@ -11,7 +11,7 @@ from alembic.script import ScriptDirectory
 
 ROOT = Path(__file__).resolve().parents[2]
 BEFORE_BILLING = "f0a1b2c3d4e5"
-HEAD = "h1a2b3c4d5e6"
+BILLING_HEAD = "h1a2b3c4d5e6"
 
 
 @pytest.fixture
@@ -75,11 +75,13 @@ def _seed(database, *, statement_updates=None, period_updates=None):
 
 def test_complete_empty_upgrade_downgrade_upgrade_has_one_head(migration_database):
     config, database = migration_database
-    assert ScriptDirectory.from_config(config).get_heads() == [HEAD]
-    command.upgrade(config, "head")
+    assert len(ScriptDirectory.from_config(config).get_heads()) == 1
+    # This gate verifies the frozen billing migration's own rollback contract.
+    # Later feature revisions intentionally require full-backup recovery.
+    command.upgrade(config, BILLING_HEAD)
     before_rows, before_structure = _state(database)[1], _structure(database)
     command.downgrade(config, BEFORE_BILLING)
-    command.upgrade(config, "head")
+    command.upgrade(config, BILLING_HEAD)
     assert _state(database)[1] == before_rows
     assert _structure(database) == before_structure
 
@@ -105,7 +107,7 @@ def test_unposted_evidence_refuses_downgrade_before_any_mutation(
     migration_database, statement_updates, period_updates,
 ):
     config, database = migration_database
-    command.upgrade(config, "head")
+    command.upgrade(config, BILLING_HEAD)
     _seed(database, statement_updates=statement_updates, period_updates=period_updates)
     before = _state(database)
     with pytest.raises(RuntimeError, match="history exists|evidence exists|snapshots exist"):
@@ -115,7 +117,7 @@ def test_unposted_evidence_refuses_downgrade_before_any_mutation(
 
 def test_posted_settlement_refuses_before_owner_or_evidence_columns_change(migration_database):
     config, database = migration_database
-    command.upgrade(config, "head")
+    command.upgrade(config, BILLING_HEAD)
     _seed(database)
     with closing(sqlite3.connect(database)) as db:
         db.execute(
@@ -132,7 +134,7 @@ def test_posted_settlement_refuses_before_owner_or_evidence_columns_change(migra
 
 def test_finalized_statement_without_settlement_keeps_actual_receipt_evidence(migration_database):
     config, database = migration_database
-    command.upgrade(config, "head")
+    command.upgrade(config, BILLING_HEAD)
     _seed(database, statement_updates={
         "status": "finalized",
         "advance_details": '[{"receipt_ids":["real-payment-id"], "legacy_undated_paid":0}]',
@@ -141,5 +143,14 @@ def test_finalized_statement_without_settlement_keeps_actual_receipt_evidence(mi
     before = _state(database)
     assert before[1]["billing_settlements"] == ()
     with pytest.raises(RuntimeError, match="statement evidence exists"):
+        command.downgrade(config, BEFORE_BILLING)
+    assert _state(database) == before
+
+
+def test_feature_completion_revision_refuses_schema_loss_before_any_mutation(migration_database):
+    config, database = migration_database
+    command.upgrade(config, "i2a2b3c4d5e6")
+    before = _state(database)
+    with pytest.raises(RuntimeError, match="preserved|history exists|evidence exists|snapshots exist"):
         command.downgrade(config, BEFORE_BILLING)
     assert _state(database) == before

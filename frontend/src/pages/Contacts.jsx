@@ -1,3 +1,4 @@
+import useWriteAccess from '../hooks/useWriteAccess';
 import { revisionOptions } from '../editRevision';
 import { useState, useEffect } from 'react';
 import { api } from '../api';
@@ -48,6 +49,7 @@ export default function Contacts() {
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
+  const { canWrite, isAllowed, requireWrite } = useWriteAccess('/contacts', () => setModal(null));
   const [tab, setTab] = useState('all');
 
   const loadData = () => {
@@ -64,6 +66,7 @@ export default function Contacts() {
   useEffect(() => { loadData(); }, []);
 
   const handleSave = async (data) => {
+    requireWrite();
     if (modal === 'create') {
       await api.post('/contacts', data);
     } else {
@@ -73,7 +76,9 @@ export default function Contacts() {
   };
 
   const handleDelete = async (row) => {
+    if (!isAllowed()) return;
     if (!await confirm(`"${row.display_name}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!isAllowed()) return;
     await api.del(`/contacts/${row.id}`, revisionOptions(row));
     loadData();
   };
@@ -113,11 +118,11 @@ export default function Contacts() {
         title="Kontakte"
         columns={COLUMNS}
         data={filtered}
-        onAdd={() => setModal('create')}
-        onEdit={row => setModal(row)}
-        onDelete={handleDelete}
+        onAdd={canWrite ? () => setModal('create') : undefined}
+        onEdit={canWrite ? row => setModal(row) : undefined}
+        onDelete={canWrite ? handleDelete : undefined}
       />
-      {modal && (
+      {modal && canWrite && (
         <FormModal
           title={modal === 'create' ? 'Kontakt erstellen' : 'Kontakt bearbeiten'}
           fields={FIELDS}

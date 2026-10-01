@@ -15,6 +15,7 @@ import Insurances from '../pages/Insurances';
 import Meters from '../pages/Meters';
 
 const mocks = vi.hoisted(() => ({ lists: {}, invalidateRelated: vi.fn(), confirm: vi.fn(), toast: { error: vi.fn() } }));
+vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ role: 'eigentuemer' }) }));
 vi.mock('../i18n', () => ({ useTranslation: () => ({ t: key => key.split('.').at(-1) }) }));
 vi.mock('../contexts/DataStoreContext', () => ({
   useDataStore: () => ({ invalidateRelated: mocks.invalidateRelated }),

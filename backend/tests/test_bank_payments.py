@@ -319,14 +319,16 @@ def test_alembic_fresh_upgrade_and_downgrade(tmp_path, monkeypatch):
     monkeypatch.setattr(logging.config, "fileConfig", lambda *args, **kwargs: None)
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'alembic-bank.db'}")
     config = Config("alembic.ini")
-    command.upgrade(config, "head")
+    # Exercise the payment migration itself, independently of later feature
+    # revisions that preserve security/document history through full recovery.
+    command.upgrade(config, "d8e9f0a1b2c3")
     engine = create_engine(f"sqlite:///{tmp_path / 'alembic-bank.db'}")
     assert "payment_reversals" in inspect(engine).get_table_names()
     assert "allocated_amount" in {column["name"] for column in inspect(engine).get_columns("bookings")}
     assert all(fk["options"].get("ondelete") == "RESTRICT" for fk in inspect(engine).get_foreign_keys("payments"))
     command.downgrade(config, "a7b8c9d0e1f2")
     assert "payment_reversals" not in inspect(engine).get_table_names()
-    command.upgrade(config, "head")
+    command.upgrade(config, "d8e9f0a1b2c3")
     engine.dispose()
 
 

@@ -1,3 +1,4 @@
+import useWriteAccess from '../hooks/useWriteAccess';
 import { useEffect, useState } from 'react';
 import { useTranslation } from '../i18n';
 import { api } from '../api';
@@ -32,6 +33,7 @@ export default function Integrations() {
   const [messages, setMessages] = useState({});
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
+  const { canWrite, isAllowed } = useWriteAccess('/integrations');
 
   const loadIntegrations = () => {
     setLoading(true);
@@ -47,6 +49,7 @@ export default function Integrations() {
   }, []);
 
   const toggleIntegration = async (id, enabled) => {
+    if (!isAllowed()) return;
     try {
       await api.patch(`/integrations/${id}`, { enabled });
       setIntegrations((prev) => prev.map((it) => (it.id === id ? { ...it, enabled } : it)));
@@ -56,6 +59,7 @@ export default function Integrations() {
   };
 
   const runIntegration = async (id) => {
+    if (!isAllowed()) return;
     try {
       const res = await api.post(`/integrations/${id}/run`, { payload: runPayloadFor(id) });
       setMessages((prev) => ({ ...prev, [id]: res.message || t('pages.integrations.actionExecuted') || 'Aktion ausgeführt' }));
@@ -107,14 +111,14 @@ export default function Integrations() {
                   {t('pages.integrations.requiredConfig') || 'Pflicht-Konfiguration'}: {(intg.required_config_keys || []).join(', ') || t('pages.integrations.none') || 'Keine'}
                 </p>
 
-                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+                {canWrite && <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
                   <button className="btn btn-sm btn-secondary" onClick={() => toggleIntegration(intg.id, !intg.enabled)}>
                     {intg.enabled ? t('pages.integrations.disable') || 'Deaktivieren' : t('pages.integrations.enable') || 'Aktivieren'}
                   </button>
                   <button className="btn btn-sm btn-primary" disabled={intg.planned} onClick={() => runIntegration(intg.id)}>
                     {t('pages.integrations.runTest') || 'Test ausführen'}
                   </button>
-                </div>
+                </div>}
                 {messages[intg.id] && <div className="text-muted" style={{ marginBottom: '1rem' }}>{messages[intg.id]}</div>}
 
                 <h4 style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>{t('pages.integrations.capabilities') || 'Capabilities:'}</h4>
