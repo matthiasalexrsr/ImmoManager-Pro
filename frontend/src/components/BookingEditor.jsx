@@ -35,6 +35,7 @@ export default function BookingEditor({ initial, onSave, onClose }) {
       { value: 'open', label: t('ui.filterChips.open') },
       { value: 'matched', label: t('finance.bookings.statusOptions.matched') },
       { value: 'booked', label: t('finance.bookings.statusOptions.booked') },
+      { value: 'confirmed', label: t('finance.bookings.statusOptions.confirmed') },
     ] },
   ];
   return <div onKeyDownCapture={event => {

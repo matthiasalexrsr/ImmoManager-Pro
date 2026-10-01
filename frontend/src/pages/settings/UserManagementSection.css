@@ -48,3 +48,5 @@
 .user-management .user-management-form-note { color: var(--color-text-secondary, #53646a); font-size: .82rem; line-height: 1.7; margin-bottom: 20px; }
 @media (max-width: 1000px) { .user-management .user-management-heading { flex-direction: column; } .user-management .user-management-header-actions { justify-content: start; } }
 @media (max-width: 480px) { .user-management { padding: 18px; } .user-management .user-management-filters > div { flex: 1; min-width: 100px; } .user-management .user-management-filters > div:first-child { flex-basis: 100%; min-width: 0; } .user-management .user-management-error { flex-direction: column; align-items: start; } .user-management .user-management-summary { gap: 16px; } .user-management .user-management-header-actions { width: 100%; } .user-management .user-management-header-actions .btn { flex: 1; } }
+ .user-management-scope { max-width: 20rem; overflow-wrap: anywhere; }
+ .user-management-scope small { display: block; color: var(--color-text-muted, #657986); font-size: .75rem; margin-top: .3rem; }

@@ -1,9 +1,14 @@
 """Account IBAN binds/results are encrypted transparently at the SQL boundary."""
 
 from sqlalchemy import Text, event, inspect
+from sqlalchemy.exc import DontWrapMixin
 from sqlalchemy.types import TypeDecorator
 
-from ..services.iban_encryption import current_keyring, decrypt_iban, encrypt_iban
+from ..services.iban_encryption import IBANEncryptionError, current_keyring, decrypt_iban, encrypt_iban
+
+
+class SQLIBANEncryptionError(IBANEncryptionError, DontWrapMixin):
+    """Prevent SQLAlchemy from attaching parameters to a failed IBAN bind."""
 
 
 class EncryptedIBAN(TypeDecorator[str]):
@@ -11,7 +16,10 @@ class EncryptedIBAN(TypeDecorator[str]):
     cache_ok = True
 
     def process_bind_param(self, value, dialect):
-        return encrypt_iban(value) if value and value.strip() else None
+        try:
+            return encrypt_iban(value) if value and value.strip() else None
+        except IBANEncryptionError as error:
+            raise SQLIBANEncryptionError(error.code) from None
 
     def process_result_value(self, value, dialect):
         return decrypt_iban(value)

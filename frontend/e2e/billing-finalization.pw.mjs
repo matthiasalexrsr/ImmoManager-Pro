@@ -368,6 +368,34 @@ test('available credits persist without creating negative receivables or claimin
   expect(reversed.status()).toBe(201);
   await expect(journal.getByRole('row').filter({ hasText: receipt.id })).toContainText('Storniert');
   expect((await json(page, fixture.headers, `/billing/contracts/${contract.id}/credits`)).available_amount).toBe(originalAmount.toFixed(2));
+  const claim = await json(page, fixture.headers, '/receivables', {
+    contract_id: contract.id, due_date: '2026-10-01', amount_due: 25,
+    description: 'E2E Guthabenverrechnung',
+  });
+  await journal.getByRole('button', { name: 'Guthaben verrechnen', exact: true }).click();
+  const offsetDialog = page.getByRole('dialog', { name: 'Guthaben verrechnen', exact: true });
+  await offsetDialog.getByLabel('Betrag (€)', { exact: false }).fill('10.00');
+  const choiceSearch = offsetDialog.getByRole('searchbox');
+  await choiceSearch.fill('E2E Guthabenverrechnung');
+  const target = offsetDialog.locator('select[name="target"]');
+  await expect(target.locator(`option[value="receivable:${claim.id}"]`)).toHaveCount(1);
+  await target.selectOption(`receivable:${claim.id}`);
+  await expect(offsetDialog.getByRole('button', { name: 'Beleg verbindlich erfassen', exact: true })).toBeEnabled();
+  await offsetDialog.getByRole('button', { name: 'Beleg verbindlich erfassen', exact: true }).click();
+  const [offsetResponse] = await Promise.all([
+    page.waitForResponse(res => new URL(res.url()).pathname === '/api/v1/billing/credit-offsets' && res.request().method() === 'POST'),
+    page.locator('.confirm-dialog').getByRole('button', { name: 'Bestätigen', exact: true }).click(),
+  ]);
+  expect(offsetResponse.status(), await offsetResponse.text()).toBe(201);
+  const offset = await offsetResponse.json();
+  expect(offset).toMatchObject({ contract_id: contract.id, source_settlement_id: source.id,
+    amount: '10.00', method: 'offset', target_type: 'receivable', target_id: claim.id });
+  expect(offset.payment_id).toBeTruthy();
+  expect(cents((await json(page, fixture.headers, `/receivables/${claim.id}`)).amount_paid)).toBe(1000);
+  await openPeriod(page, fixture, 50);
+  journal = await openJournal();
+  await expect(journal.getByText(offset.id, { exact: true })).toBeVisible();
+  expect((await json(page, fixture.headers, `/billing/contracts/${contract.id}/credits`)).available_amount).toBe((originalAmount - 10).toFixed(2));
   await mobileEvidence(page, testInfo, 'available-credit-mobile');
 });
 

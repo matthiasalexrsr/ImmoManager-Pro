@@ -121,7 +121,8 @@ export default function Bookings() {
           onChange={event => setDraft(current => ({ ...current, date_to: event.target.value }))} /></label>
         <label>{t('ui.form.status')}<select value={draft.status} onChange={event => setDraft(current => ({ ...current, status: event.target.value }))}>
           <option value="">{t('bookingPages.all')}</option><option value="open">{t('ui.filterChips.open')}</option>
-          <option value="matched">{t('finance.bookings.statusOptions.matched')}</option><option value="booked">{t('finance.bookings.statusOptions.booked')}</option></select></label>
+          <option value="matched">{t('finance.bookings.statusOptions.matched')}</option><option value="booked">{t('finance.bookings.statusOptions.booked')}</option>
+          <option value="confirmed">{t('finance.bookings.statusOptions.confirmed')}</option></select></label>
         <label>{t('bookingPages.view')}<select value={draft.view} onChange={event => setDraft(current => ({ ...current, view: event.target.value }))}>
           {['all', 'uncategorized', 'no_receipt', 'income', 'expense'].map(view => <option key={view} value={view}>{t(`bookingPages.${view}`)}</option>)}</select></label>
       </div>
@@ -135,7 +136,7 @@ export default function Bookings() {
     </form>
     <div className="booking-toolbar">
       <p className="text-muted">{t('bookingPages.order')}</p>
-      <div className="booking-export-actions"><button className="btn btn-secondary" disabled={exporting} onClick={() => exportCsv(false)}>{t('bookingPages.csv')}</button>
+      <div className="booking-export-actions"><a className="btn btn-secondary" href="/datev">{t('pages.datev.title')}</a><button className="btn btn-secondary" disabled={exporting} onClick={() => exportCsv(false)}>{t('bookingPages.csv')}</button>
         {typeof window.showSaveFilePicker === 'function' && <button className="btn btn-secondary" disabled={exporting} onClick={() => exportCsv(true)}>{t('bookingPages.directCsv')}</button>}</div>
       <details className="booking-columns"><summary>{t('bookingPages.columns')}</summary>
         {optional.map(([key, label]) => <label key={key}><input type="checkbox" checked={extraColumns.includes(key)}
@@ -153,7 +154,9 @@ export default function Bookings() {
           {canWrite && <th scope="col">{t('bookingPages.actions')}</th>}</tr></thead><tbody>
           {result.items.map(row => <tr key={row.id}>
             {columns.map(([key]) => <td key={key}>{key === 'amount' ? <span className={Number(row.amount) < 0 ? 'text-red' : 'text-green'}>{money.format(Number(row.amount))}</span>
-              : key === 'status' ? <StatusBadge status={row.status} /> : row[key] || '—'}</td>)}
+              : key === 'status' ? row.status === 'confirmed'
+                ? <span className="badge badge-green">{t('finance.bookings.statusOptions.confirmed')}</span>
+                : <StatusBadge status={row.status} /> : row[key] || '—'}</td>)}
             {canWrite && <td><div className="booking-row-actions"><button className="btn btn-sm btn-secondary" onClick={() => { if (isAllowed()) setModal(row); }}
               aria-label={`${t('bookingPages.edit')} ${row.payment_text || row.id}`}>{t('bookingPages.edit')}</button>
               <button className="btn btn-sm btn-danger" onClick={() => handleDelete(row)}

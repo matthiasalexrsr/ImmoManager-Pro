@@ -10,7 +10,8 @@ vi.mock('../api', () => ({ api: mocks }));
 vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 'user', role: mocks.role } }) }));
 vi.mock('../components/ConfirmDialog', () => ({ useConfirm: () => mocks.confirm }));
 vi.mock('../i18n', () => ({ useTranslation: () => ({ locale: mocks.locale,
-  t: key => key.split('.').reduce((value, part) => value?.[part], { 'de-DE': de, 'en-US': en, 'es-ES': es }[mocks.locale]) || key }) }));
+  t: (key, params = {}) => (key.split('.').reduce((value, part) => value?.[part], { 'de-DE': de, 'en-US': en, 'es-ES': es }[mocks.locale]) || key)
+    .replace(/\{\{(\w+)\}\}/g, (match, name) => params[name] ?? match) }) }));
 
 const labels = de.pages.statements.credits;
 const summary = () => ({ contract_id: 'contract', remaining_amount: '100.00', reserved_amount: '40.00', available_amount: '60.00',
@@ -27,7 +28,15 @@ const openPayout = async () => {
 };
 beforeEach(() => {
   mocks.role = 'buchhaltung'; mocks.locale = 'de-DE';
-  mocks.get.mockReset().mockImplementation(async path => path.includes('credit-receipts?') ? journal() : summary());
+  mocks.get.mockReset().mockImplementation(async path => {
+    if (path.includes('credit-choices/')) {
+      const kind = path.includes('/booking?') ? 'booking' : path.includes('/rent_charge?') ? 'rent_charge' : 'receivable';
+      return { contract_id: 'contract', items: kind === 'receivable' ? [
+        { id: 'claim', kind, date: '2026-09-01', text: 'Synthetic claim', available_amount: '40.00' }] : [],
+        selected: null, has_more: false, next_cursor: null };
+    }
+    return path.includes('credit-receipts?') ? journal() : summary();
+  });
   mocks.getAll.mockReset().mockImplementation(async path => path === '/receivables' ? [{ id: 'claim', contract_id: 'contract', due_date: '2026-09-01', amount_due: 40, amount_paid: 0, status: 'open' }] : []);
   mocks.post.mockReset().mockImplementation(async (_, body) => ({ id: 'receipt', contract_id: 'contract', ...body }));
   mocks.confirm.mockReset().mockResolvedValue(true);
@@ -83,7 +92,9 @@ describe('credit receipt workflow', () => {
     fireEvent.click(await screen.findByRole('button', { name: labels.offset }));
     const dialog = await screen.findByRole('dialog');
     fireEvent.change(within(dialog).getByLabelText(labels.amount, { exact: false }), { target: { value: '40' } });
-    fireEvent.change(within(dialog).getByLabelText(labels.target, { exact: false }), { target: { value: 'receivable:claim' } });
+    await within(dialog).findByRole('option', { name: /Synthetic claim/ });
+    fireEvent.change(within(dialog).getByLabelText(labels.target, { exact: false, selector: 'select' }), { target: { value: 'receivable:claim' } });
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: labels.record })).toBeEnabled());
     mocks.confirm.mockResolvedValueOnce(false);
     fireEvent.click(within(dialog).getByRole('button', { name: labels.record }));
     await waitFor(() => expect(mocks.confirm).toHaveBeenCalled());
@@ -117,6 +128,46 @@ describe('credit receipt workflow', () => {
     render(view());
     expect(await screen.findByRole('alert')).toHaveTextContent(labels.invalidResponse);
     expect(screen.queryByRole('button', { name: labels.payout })).not.toBeInTheDocument();
+    expect(mocks.post).not.toHaveBeenCalled();
+  });
+
+  it('uses bounded live choices and preserves the draft while loading later pages', async () => {
+    const regular = mocks.get.getMockImplementation();
+    mocks.get.mockImplementation(async (path, options) => {
+      if (!path.includes('credit-choices/')) return regular(path, options);
+      const url = new URL(path, 'https://synthetic.invalid');
+      const selected = url.searchParams.has('selected_id') ? { id: 'first', kind: 'receivable', date: '2026-09-01', text: 'First page claim', available_amount: '40.00' } : null;
+      const later = url.searchParams.has('cursor');
+      return { contract_id: 'contract', items: [later ? { id: 'later', kind: 'receivable', date: '2026-10-01', text: 'Later page claim', available_amount: '20.00' }
+        : { id: 'first', kind: 'receivable', date: '2026-09-01', text: 'First page claim', available_amount: '40.00' }],
+        selected, has_more: !later, next_cursor: later ? null : 'verified-cursor' };
+    });
+    render(view());
+    fireEvent.click(await screen.findByRole('button', { name: labels.offset }));
+    const dialog = await screen.findByRole('dialog');
+    await within(dialog).findByRole('option', { name: /First page claim/ });
+    fireEvent.change(within(dialog).getByLabelText(labels.amount, { exact: false }), { target: { value: '40' } });
+    fireEvent.change(within(dialog).getByLabelText(labels.target, { exact: false, selector: 'select' }), { target: { value: 'receivable:first' } });
+    const nextLabel = de.bookingPages.nextChoices.replace('{{label}}', labels.target);
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: nextLabel })).toBeEnabled());
+    fireEvent.click(within(dialog).getByRole('button', { name: nextLabel }));
+    await within(dialog).findByRole('option', { name: /Later page claim/ });
+    expect(within(dialog).getByLabelText(labels.target, { exact: false, selector: 'select' })).toHaveValue('receivable:first');
+    expect(within(dialog).getByLabelText(labels.amount, { exact: false })).toHaveValue('40');
+    expect(mocks.get.mock.calls.some(([path]) => path.includes('page_size=25') && path.includes('cursor=verified-cursor'))).toBe(true);
+    expect(mocks.getAll).not.toHaveBeenCalled();
+  });
+
+  it('loads bank choices only for bank payouts and fails closed on malformed choices', async () => {
+    const regular = mocks.get.getMockImplementation();
+    mocks.get.mockImplementation(async (path, options) => path.includes('credit-choices/') ? { contract_id: 'foreign', items: [] } : regular(path, options));
+    render(view());
+    const dialog = await openPayout();
+    expect(mocks.get.mock.calls.some(([path]) => path.includes('credit-choices/'))).toBe(false);
+    fireEvent.change(within(dialog).getByLabelText(labels.method, { exact: false, selector: 'select' }), { target: { value: 'bank' } });
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(labels.invalidResponse);
+    expect(within(dialog).getByRole('button', { name: labels.record })).toBeDisabled();
+    expect(mocks.getAll).not.toHaveBeenCalled();
     expect(mocks.post).not.toHaveBeenCalled();
   });
 });

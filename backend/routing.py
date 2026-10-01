@@ -22,6 +22,7 @@ from .routers import (
     contracts,
     dashboard,
     data_exchange,
+    datev,
     deposits,
     dev_notes,
     diagnostics,
@@ -40,11 +41,13 @@ from .routers import (
     messages,
     meters_standalone,
     notifications,
+    outbox,
     photos,
     portfolios,
     properties,
     receivables,
     rent_adjustments,
+    rent_batches,
     rent_charges,
     reports,
     search,
@@ -94,6 +97,7 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(deposits.router, dependencies=_auth_dep)
     api_v1.include_router(notifications.router, dependencies=_auth_dep)
     api_v1.include_router(reports.router, dependencies=_auth_dep)
+    api_v1.include_router(datev.router, dependencies=_auth_dep)
     api_v1.include_router(tax_rates.router, dependencies=_auth_dep)
     api_v1.include_router(rent_adjustments.router, dependencies=_auth_dep)
     api_v1.include_router(handover_protocols.router, dependencies=_auth_dep)
@@ -102,7 +106,9 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(history.router, dependencies=_auth_dep)
     api_v1.include_router(contacts.router, dependencies=_auth_dep)
     api_v1.include_router(meters_standalone.router, dependencies=_auth_dep)
+    api_v1.include_router(outbox.router, dependencies=_auth_dep)
     api_v1.include_router(messages.router, dependencies=_auth_dep)
+    api_v1.include_router(rent_batches.router, dependencies=_auth_dep)
     api_v1.include_router(rent_charges.router, dependencies=_auth_dep)
     api_v1.include_router(integrations.router, dependencies=_auth_dep)
     api_v1.include_router(insurances.router, dependencies=_auth_dep)

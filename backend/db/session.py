@@ -9,11 +9,15 @@ from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from ..config import settings
+from .access_models import UserAccessORM  # noqa: F401 — register access metadata before create_all
 from .auth_models import AuthSetupORM  # noqa: F401 — register auth metadata before create_all
 from .booking_indexes import BOOKING_INDEXES  # noqa: F401 — register scaled booking indexes
 from .credit_models import CreditReceiptORM  # noqa: F401 — register immutable credit metadata
+from .datev_models import DatevProfileORM  # noqa: F401 — register DATEV metadata
 from .operational_models import OperationalTickORM  # noqa: F401 — register scheduler metadata
 from .orm_models import Base
+from .outbox_models import OutboxMessageORM  # noqa: F401 — register durable SMTP metadata
+from .rent_batch_models import RentBatchORM  # noqa: F401 — register durable rental metadata
 
 DATABASE_URL = settings.database_url
 
@@ -44,11 +48,21 @@ SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
 def create_tables() -> None:
     """Create all tables (dev/test convenience). Use Alembic for production."""
+    bootstrap_legacy_access = not inspect(engine).has_table("user_portfolio_access")
     Base.metadata.create_all(bind=engine)
+    from ..services.portfolio_scope import ensure_portfolio_access_schema
+    from .outbox_models import ensure_outbox_schema
+    from .rent_batch_schema import ensure_rent_batch_schema
+    with engine.begin() as connection:
+        ensure_portfolio_access_schema(connection, bootstrap_legacy=bootstrap_legacy_access)
+        ensure_rent_batch_schema(connection)
+        ensure_outbox_schema(connection)
     # Local installations historically used create_all without Alembic stamping.
     # Apply this additive column upgrade there as well, preserving existing data.
     if engine.dialect.name == "sqlite":
         with engine.begin() as connection:
+            from ..compat.ui_contracts import ensure_ui_contract_schema
+            ensure_ui_contract_schema(connection)
             if "amount_paid" not in {column["name"] for column in inspect(connection).get_columns("receivables")}:
                 connection.execute(text("ALTER TABLE receivables ADD COLUMN amount_paid NUMERIC(12, 2) NOT NULL DEFAULT 0"))
                 connection.execute(text("UPDATE receivables SET amount_paid = amount_due WHERE status = 'paid'"))

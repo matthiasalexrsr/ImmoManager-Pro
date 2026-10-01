@@ -15,7 +15,7 @@ export default function Settings() {
   const auth = useAuth();
   const devMode = useDevMode();
   const { t, locale, setLocale } = useTranslation();
-  const isAdmin = auth?.isAdmin;
+  const isAdmin = auth?.isAdmin && (auth?.role === 'eigentuemer' || auth?.user?.portfolio_access !== 'selected');
   const [versionInfo, setVersionInfo] = useState(null);
   const [versionError, setVersionError] = useState(null);
   const [versionRevision, setVersionRevision] = useState(0);

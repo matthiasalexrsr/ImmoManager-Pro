@@ -1,0 +1,33 @@
+.datev-workspace { max-width: 1240px; margin: 0 auto; display: grid; gap: 1.35rem; color: var(--text-primary); }
+.datev-heading, .datev-section-head { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
+.datev-heading h1 { font-size: clamp(1.7rem, 3vw, 2.4rem); letter-spacing: -.035em; margin: .2rem 0 .65rem; }
+.datev-heading p { max-width: 70ch; color: var(--text-secondary); line-height: 1.55; }
+.datev-eyebrow { font-size: .75rem; letter-spacing: .12em; text-transform: uppercase; font-weight: 700; }
+.datev-guidance { border-left: 3px solid #168b85; border-radius: 0 12px 12px 0; padding: .8rem 1.2rem; background: var(--bg-secondary); }
+.datev-guidance p { margin: .4rem 0; line-height: 1.55; font-size: .9rem; }
+.datev-panel { background: var(--bg-card, var(--bg-secondary)); border: 1px solid var(--border-color); border-radius: 16px; padding: clamp(1rem, 2vw, 1.65rem); min-width: 0; }
+.datev-panel h2 { margin: 0 0 1rem; font-size: 1.2rem; letter-spacing: -.02em; }
+.datev-workspace label { display: grid; gap: .45rem; font-size: .88rem; font-weight: 600; }
+.datev-workspace input, .datev-workspace select { min-height: 42px; width: 100%; padding: .55rem .7rem; border: 1px solid var(--border-color); background: var(--bg-input, var(--bg-primary)); color: var(--text-primary); border-radius: 8px; min-width: 0; }
+.datev-workspace fieldset { border: 0; min-width: 0; padding: 0; margin: 0; }
+.datev-field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 1rem; }
+.datev-workspace .datev-rule { border: 1px solid var(--border-color); border-radius: 12px; padding: 1rem; margin: 1.1rem 0; }
+.datev-rule legend { padding: 0 .5rem; font-weight: 700; }
+.datev-rule > button { margin-top: 1rem; }
+.datev-workspace .datev-review { display: flex; align-items: flex-start; margin: 1.5rem 0; line-height: 1.55; }
+.datev-review input { min-height: 0; width: auto; margin-top: .35rem; flex-shrink: 0; }
+.datev-actions, .datev-period { display: flex; gap: .8rem; align-items: end; flex-wrap: wrap; }
+.datev-actions { align-items: center; margin-top: 1.2rem; }
+.datev-portfolio { max-width: 480px; }
+.datev-profile-summary { padding-top: 1rem; font-size: .9rem; }
+.datev-profile-summary p, .datev-preview p { overflow-wrap: anywhere; }
+.datev-preview { border-top: 1px solid var(--border-color); margin-top: 1.3rem; padding-top: 1.2rem; }
+.datev-table { overflow-x: auto; margin: 1rem 0; }
+.datev-table table { border-collapse: collapse; width: 100%; font-size: .88rem; text-align: left; }
+.datev-table th { color: var(--text-secondary); font-weight: 600; }
+.datev-table th, .datev-table td { padding: .85rem .65rem; border-bottom: 1px solid var(--border-color); vertical-align: top; }
+.datev-table small { display: block; margin-top: .35rem; color: var(--text-secondary); }
+.datev-table caption { text-align: left; font-weight: 600; padding-bottom: .7rem; }
+.datev-notice { padding: .8rem 1rem; border-radius: 10px; background: var(--bg-secondary); }
+.datev-workspace :focus-visible { outline: 3px solid #168b85; outline-offset: 3px; }
+@media (max-width: 640px) { .datev-heading, .datev-section-head { flex-direction: column; } .datev-period { display: grid; grid-template-columns: 1fr; } .datev-actions .btn { flex: 1; } }

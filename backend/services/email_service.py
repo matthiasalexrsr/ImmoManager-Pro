@@ -153,7 +153,7 @@ class EmailResult:
         return self.accepted
 
 
-def _wire_message(config, to, subject, body_html, body_text):
+def _wire_message(config, to, subject, body_html, body_text, *, message_id=None, date_header=None):
     _mailbox(to)
     _header(subject)
     for body in (body_html, body_text):
@@ -165,8 +165,10 @@ def _wire_message(config, to, subject, body_html, body_text):
     message["From"] = formataddr((config.from_name, config.from_address))
     message["To"] = to
     message["Subject"] = subject
-    message["Date"] = formatdate(usegmt=True)
-    message["Message-ID"] = f"<{uuid4().hex}@immomanager.invalid>"
+    message["Date"] = _header(date_header) if date_header is not None else formatdate(usegmt=True)
+    if message_id is not None and not re.fullmatch(r"<[A-Za-z0-9.-]+@[A-Za-z0-9.-]+>", _header(message_id)):
+        raise EmailConfigError("invalid_message_id")
+    message["Message-ID"] = message_id or f"<{uuid4().hex}@immomanager.invalid>"
     message.set_content(body_text or "", cte="quoted-printable")
     message.add_alternative(body_html, subtype="html", cte="quoted-printable")
     wire = message.as_bytes()
@@ -175,7 +177,7 @@ def _wire_message(config, to, subject, body_html, body_text):
     return wire
 
 
-def _smtp_exchange(config, recipient, wire):
+def _smtp_exchange(config, recipient, wire, *, before_data=None):
     """Runs only in the disposable worker; tests replace both SMTP factories."""
     client: smtplib.SMTP | None = None
     submitting = False
@@ -197,10 +199,30 @@ def _smtp_exchange(config, recipient, wire):
                 return EmailResult("not_sent", "smtp_greeting_rejected")
         if config.smtp_user:
             client.login(config.smtp_user, config.smtp_password)
-        submitting = True
-        refused = client.sendmail(config.from_address, [recipient], wire)
-        if refused:
-            return EmailResult("not_sent", "recipient_rejected")
+        if before_data is None:
+            submitting = True
+            refused = client.sendmail(config.from_address, [recipient], wire)
+            if refused:
+                return EmailResult("not_sent", "recipient_rejected")
+        else:
+            # The durable outbox owns the envelope/content. MAIL/RCPT cannot
+            # submit a body. DATA is released only after the parent commits
+            # its claim/rights checkpoint and returns an explicit GO.
+            mail_options = [f"size={len(wire)}"] if client.has_extn("size") else []
+            code, _ = client.mail(config.from_address, mail_options)
+            if code != 250:
+                return EmailResult("not_sent", "sender_rejected")
+            code, _ = client.rcpt(recipient)
+            if code not in (250, 251):
+                return EmailResult("not_sent", "recipient_rejected")
+            if not before_data():
+                return EmailResult("not_sent", "data_not_authorized")
+            submitting = True
+            code, _ = client.data(wire)
+            if code != 250:
+                # Only a definitive negative final reply proves nonacceptance.
+                # A nonstandard positive/intermediate reply cannot justify retry.
+                return EmailResult("not_sent", "smtp_rejected") if 400 <= code < 600 else EmailResult("unknown", "unexpected_data_reply")
         return EmailResult("accepted", "smtp_accepted")
     except (smtplib.SMTPRecipientsRefused, smtplib.SMTPSenderRefused,
             smtplib.SMTPDataError):
@@ -221,13 +243,18 @@ def _smtp_exchange(config, recipient, wire):
                 pass
 
 
-def _smtp_worker(connection, config, recipient, wire):
+def _smtp_worker(connection, config, recipient, wire, guarded=False):
     try:
-        result = _smtp_exchange(config, recipient, wire)
-        connection.send((result.status, result.code))
+        def checkpoint():
+            connection.send(("before_data",))
+            # A dead parent or absent durable acknowledgement never releases
+            # DATA. This also bounds an orphaned child after a parent crash.
+            return connection.poll(config.timeout_seconds) and connection.recv() == ("go",)
+        result = _smtp_exchange(config, recipient, wire, before_data=checkpoint if guarded else None)
+        connection.send(("result", result.status, result.code) if guarded else (result.status, result.code))
     except Exception:
         try:
-            connection.send(("unknown", "worker_failed"))
+            connection.send(("result", "unknown", "worker_failed") if guarded else ("unknown", "worker_failed"))
         except Exception:
             pass
     finally:
@@ -282,6 +309,76 @@ def submit_email(to, subject, body_html, body_text=None, *, config=None):
         return _bounded_exchange(selected, to, wire)
     finally:
         _SLOTS.release()
+
+
+def submit_prepared_email(recipient, wire, *, config, before_data, context=None):
+    """Send immutable reviewed MIME with a durable parent checkpoint before DATA.
+
+    Unknown means possible relay acceptance, never confirmed delivery. No
+    retries occur here. The caller persists the result against its claim token.
+    Existing submit_email behavior and its configured budgets remain unchanged.
+    """
+    try:
+        config.validate()
+        _mailbox(recipient)
+        if not isinstance(wire, bytes) or not wire or len(wire) > MAX_MESSAGE_BYTES:
+            raise EmailConfigError("message_too_large")
+    except (TypeError, ValueError, UnicodeError):
+        return EmailResult("not_sent", "invalid_or_missing_config_or_message")
+    if not _SLOTS.acquire(blocking=False):
+        return EmailResult("not_sent", "busy")
+    reader = writer = process = None
+    started, released = False, False
+    deadline = time.monotonic() + config.timeout_seconds
+    try:
+        context = context or mp.get_context("spawn")
+        reader, writer = context.Pipe(duplex=True)
+        process = context.Process(target=_smtp_worker, args=(writer, config, recipient, wire, True), daemon=True)
+        process.start()
+        started = True
+        writer.close()
+        while reader.poll(max(0.0, deadline - time.monotonic())):
+            result = reader.recv()
+            if result == ("before_data",) and not released:
+                try:
+                    before_data()
+                except Exception:
+                    return EmailResult("not_sent", "data_not_authorized")
+                if time.monotonic() >= deadline:
+                    return EmailResult("not_sent", "deadline_before_data")
+                # Commit happened before this GO. A crash from here onward is
+                # conservatively possible DATA, including a lost final reply.
+                released = True
+                reader.send(("go",))
+            elif len(result) == 3 and result[0] == "result":
+                status, code = result[1:]
+                if status not in {"accepted", "not_sent", "unknown"}:
+                    break
+                if status == "accepted" and not released:
+                    break
+                return EmailResult("unknown" if status == "unknown" and released else
+                    "not_sent" if status == "unknown" else status, code)
+            else:
+                break
+        return EmailResult("unknown" if released else "not_sent", "deadline_exceeded")
+    except Exception:
+        return EmailResult("unknown" if released else "not_sent", "worker_failed")
+    finally:
+        if reader is not None:
+            reader.close()
+        if writer is not None:
+            writer.close()
+        try:
+            if started and process is not None:
+                process.join(0.05)
+                if process.is_alive():
+                    process.kill()
+                    process.join(0.5)
+                if process.is_alive():
+                    raise RuntimeError("smtp_worker_cleanup_failed") from None
+                process.close()
+        finally:
+            _SLOTS.release()
 
 
 def send_email(to, subject, body_html, body_text=None, *, config=None) -> bool:

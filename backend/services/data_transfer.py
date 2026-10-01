@@ -321,9 +321,12 @@ def _check_unexported_sql_rows(db, exported_tables):
     from sqlalchemy import func, select
 
     metadata = next(iter(exported_tables)).metadata
-    # This singleton coordinates workers; it has no business rows or foreign
-    # keys to the imported entities and must survive a partial import.
-    independent = {"users", "user_preferences", "audit_logs", "change_history", "revoked_tokens", "login_attempts", "auth_setup", "operational_lock"}
+    # These tables survive the supported-subset import. Source revisions are
+    # derived, monotonic trigger metadata without foreign keys; retaining them
+    # prevents an import from resetting a source revision. Actual saved rental
+    # jobs/contracts/prices/results remain unsupported business data below and
+    # therefore still require a full recovery backup before replacement.
+    independent = {"users", "user_preferences", "audit_logs", "change_history", "revoked_tokens", "login_attempts", "auth_setup", "operational_lock", "rent_source_revisions"}
     for table in metadata.tables.values():
         if table not in exported_tables and table.name not in independent:
             if db.scalar(select(func.count()).select_from(table)):

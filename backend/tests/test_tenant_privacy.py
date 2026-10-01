@@ -93,6 +93,7 @@ def test_metadata_graph_follows_actual_relationships_without_shared_tenant_or_op
     assert "photos" not in graph["handover_protocols"][0]
     assert "photo_url" not in graph["meter_readings"][0]
     assert "notifications" in graph["scope"]["not_covered"]
+    assert {"outbox_messages", "outbox_events", "outbox_commands"}.issubset(graph["scope"]["not_covered"])
     assert records["docs"][1].id not in encoded
     # Redacting the export must not mutate the stored records.
     assert privacy_store.get_document(records["docs"][0].id).file_url.endswith("private-0.pdf")

@@ -264,16 +264,18 @@ def test_settlement_counts_exact_contract_allocations_once_and_ignores_reversal(
     contract = active_store.get_contract(target.contract_id)
     booking = bank_booking(active_store, target, tenant_id=contract.tenant_id)
     receipt = active_store.record_payment("rent_charge", target.id, linked_payload(booking))
-    _, lines = contracts._build_charge_and_payments(contract)
+    _, lines = contracts.contract_ledger_inputs(active_store, contract, date(2026, 10, 2))
     assert sum((line.amount for line in lines), Decimal("0")) == Decimal("40.10")
     active_store.reverse_payment("rent_charge", target.id, receipt.id, reversal())
-    assert contracts._build_charge_and_payments(contract)[1] == []
+    assert contracts.contract_ledger_inputs(active_store, contract, date(2026, 10, 2))[1] == []
     manual = active_store.record_payment("rent_charge", target.id, payload("10.10"))
-    assert contracts._build_charge_and_payments(contract)[1][0].amount == Decimal("10.10")
+    assert contracts.contract_ledger_inputs(active_store, contract, date(2026, 10, 2))[1][0].amount == Decimal("10.10")
     active_store.reverse_payment("rent_charge", target.id, manual.id, reversal())
-    assert contracts._build_charge_and_payments(contract)[1] == []
-    legacy = bank_booking(active_store, target, amount=30.30, tenant_id=contract.tenant_id, unit_id=contract.unit_id)
-    assert contracts._build_charge_and_payments(contract)[1][0].amount == Decimal(str(legacy.amount))
+    assert contracts.contract_ledger_inputs(active_store, contract, date(2026, 10, 2))[1] == []
+    bank_booking(active_store, target, amount=30.30, tenant_id=contract.tenant_id, unit_id=contract.unit_id)
+    # A tenant/unit label is not an allocation; unallocated bank rows never
+    # manufacture a rent receipt, including after a reversal.
+    assert contracts.contract_ledger_inputs(active_store, contract, date(2026, 10, 2))[1] == []
 
 
 def test_linked_bank_payment_is_not_reused_for_another_contract_of_the_same_tenant(monkeypatch, active_store):
@@ -287,8 +289,8 @@ def test_linked_bank_payment_is_not_reused_for_another_contract_of_the_same_tena
                                                         unit_id=unit.id, tenant_id=original.tenant_id, start_date=date(2026, 1, 1)))
     booking = bank_booking(active_store, target, tenant_id=original.tenant_id)
     active_store.record_payment("rent_charge", target.id, linked_payload(booking))
-    assert contracts._build_charge_and_payments(other)[1] == []
-    assert contracts._build_charge_and_payments(original)[1][0].amount == Decimal("40.10")
+    assert contracts.contract_ledger_inputs(active_store, other, date(2026, 10, 2))[1] == []
+    assert contracts.contract_ledger_inputs(active_store, original, date(2026, 10, 2))[1][0].amount == Decimal("40.10")
 
 
 def test_existing_sqlite_bank_receipt_upgrade_is_repeatable_and_preserves_history(tmp_path, monkeypatch):

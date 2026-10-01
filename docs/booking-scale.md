@@ -13,7 +13,7 @@ Status. Migration `l1a2b3c4d5e6` folgt auf `k1a2b3c4d5e6` und verändert keine
 Geschäftsdaten; ihr Downgrade entfernt nur diese zusätzlichen Indizes.
 
 Ein Aufruf akzeptiert `account_id`, `property_id`, `tenant_id`, `status`
-(`open`, `matched`, `booked`), `date_from`, `date_to`, `search`, `view`,
+(`open`, `matched`, `booked`, `confirmed`), `date_from`, `date_to`, `search`, `view`,
 `page_size` und `cursor`. Datumsfilter verwenden `YYYY-MM-DD`. `search` sucht
 literal nach Buchungstext oder ID; `%` und `_` werden nicht zu Wildcards.
 Suchtexte sind auf 200 Zeichen begrenzt. `view` ist `all`, `uncategorized`,
@@ -30,7 +30,7 @@ Kleine referenzierte Anzeigenamen werden innerhalb derselben begrenzten Abfrage
 eine Seite im Auswahlheap und ist weiterhin ein explizit transienter Testmodus.
 
 Der versionierte HMAC-Cursor bindet die normalisierten Filter, Seitengröße,
-Sortierung und letzte tatsächlich gelesene Position. Ein Cursor ist keine
+Sortierung, Benutzer, Rolle, Portfoliozugriff und letzte tatsächlich gelesene Position. Ein Cursor ist keine
 Zugangsberechtigung: alle Aufrufe verlangen weiterhin die normale Anmeldung.
 Manipulation, abgelaufene Cursor (eine Stunde) und Filterwechsel liefern HTTP 400
 mit einem maschinenlesbaren `clear_code` und `recovery=restart_page`.
@@ -51,6 +51,16 @@ einschließlich mehr als 10.000, aus einem eigenen Lesesnapshot. SQLite verwende
 einen ausdrücklichen Lesetransaktionsbeginn, PostgreSQL `REPEATABLE READ` und
 `READ ONLY`. Der erste Lesezugriff erfolgt vor Ausgabe des Headers. Unabhängige
 spätere Änderungen oder Einfügungen ändern die laufende Datei nicht.
+
+Der Export erfasst den Portfoliozugriff bereits im ursprünglichen Request,
+bevor ein Iterator im Worker läuft. Vor Kopfzeile und jedem Datenabschnitt
+werden Benutzerstatus, Rolle und Portfoliozuordnung frisch geprüft. Ein
+Rechtewechsel bricht den Stream mit Fehler ab. Bei ausgewählten Portfolios
+prüft eine unabhängige aktuelle Verbindung außerdem die Sichtbarkeit aller
+Zeilen des nächsten Abschnitts: auch eine verschobene Buchung oder Immobilie
+darf durch den älteren Lesesnapshot keine Daten mehr liefern. Der Memorypfad
+prüft die aktuellen Zeilen und Elternzuordnungen entsprechend. Es werden
+keine stillen Teilergebnisse als vollständiger Export abgeschlossen.
 
 SQL wird in Schritten von 1000 Datensätzen gelesen und als UTF-8-CSV mit BOM und
 Semikolon übertragen. Die Datei wird serverseitig nicht vollständig gesammelt.
@@ -73,7 +83,9 @@ Filtern. Veraltete Antworten werden nach Filterwechsel oder Schließen ignoriert
 oder SQL-Namen sind ausgeschlossen. Suchbegriffe sind auf 200 Zeichen begrenzt,
 die übertragenen Seiten auf die konfigurierte technische Größe. Die tatsächlich
 ausgewählte ID wird separat exakt gelesen, auch wenn sie außerhalb der Seite
-liegt. Signierte Auswahlcursor binden Art, Suche und Seitengröße. Fehler bleiben
+liegt. Die separate Auswahlprüfung ist ebenfalls auf erlaubte Portfolios
+begrenzt. Signierte Auswahlcursor binden Art, Suche, Seitengröße und
+Benutzerzugriff. Fehler bleiben
 sichtbar und wiederholbar. Diese Endpunkte übernehmen die reguläre
 Installationauthentifizierung und erlauben genehmigten Lesekonten die Auswahl.
 

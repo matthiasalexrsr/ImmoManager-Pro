@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from ..db.orm_models import BookingORM
 from ..models import Booking
+from .portfolio_scope import scoped_clause
 
 SORT_FIELDS = frozenset(BookingORM.__table__.columns.keys())
 
@@ -13,6 +14,9 @@ SORT_FIELDS = frozenset(BookingORM.__table__.columns.keys())
 def legacy_booking_list(store, *, skip, limit, filters, sort_by, descending, date_from, date_to):
     if hasattr(store, "db"):
         statement = select(BookingORM.__table__)
+        clause = scoped_clause(BookingORM.__table__)
+        if clause is not None:
+            statement = statement.where(clause)
         for field, value in filters.items():
             if value is not None:
                 statement = statement.where(getattr(BookingORM, field) == value)

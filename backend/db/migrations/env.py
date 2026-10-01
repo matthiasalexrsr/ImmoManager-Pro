@@ -9,11 +9,15 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+from backend.db.access_models import UserAccessORM  # noqa: F401 — register access metadata
 from backend.db.auth_models import AuthSetupORM  # noqa: F401 — register auth metadata
 from backend.db.booking_indexes import BOOKING_INDEXES  # noqa: F401 — register scaled booking indexes
 from backend.db.credit_models import CreditReceiptORM  # noqa: F401 — register immutable credit metadata
+from backend.db.datev_models import DatevProfileORM  # noqa: F401 — register DATEV metadata
 from backend.db.operational_models import OperationalTickORM  # noqa: F401 — register scheduler metadata
 from backend.db.orm_models import Base
+from backend.db.outbox_models import OutboxMessageORM  # noqa: F401 — register durable SMTP metadata
+from backend.db.rent_batch_models import RentBatchORM  # noqa: F401 — register durable rental metadata
 
 config = context.config
 

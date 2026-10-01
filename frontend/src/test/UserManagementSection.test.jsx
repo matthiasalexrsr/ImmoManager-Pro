@@ -48,8 +48,8 @@ beforeEach(() => {
   mocks.locale = 'de-DE'; mocks.t = translate; setRole('eigentuemer');
   mocks.saveError = null; mocks.retrySave.mockResolvedValue(undefined);
   mocks.get.mockResolvedValue({ version: '1.0' });
-  mocks.getAll.mockImplementation(async () => records);
-  mocks.post.mockImplementation(async (_path, payload) => ({ id: 'new-account', ...payload, is_active: true }));
+  mocks.getAll.mockImplementation(async path => path === '/portfolios' ? [{ id: 'a', name: 'Portfolio A' }, { id: 'b', name: 'Portfolio B' }] : records);
+  mocks.post.mockImplementation(async (_path, payload) => ({ id: 'new-account', ...payload, is_active: true, portfolio_access_origin: 'owner_assignment' }));
   mocks.patch.mockImplementation(async (path, payload) => ({ ...records.find(row => row.id === path.split('/').at(-1)), ...payload }));
 });
 
@@ -85,7 +85,7 @@ describe('User account management', () => {
     expect(screen.getByRole('button', { name: 'Benutzer anlegen', exact: true })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Erneut laden' }));
     expect(await screen.findByText('Rene Lesen')).toBeVisible();
-    expect(mocks.getAll).toHaveBeenCalledTimes(2);
+    expect(mocks.getAll.mock.calls.filter(([path]) => path === '/auth/users')).toHaveLength(2);
   });
 
   it('rejects an incomplete or duplicate-ID list and distinguishes a confirmed empty list', async () => {
@@ -122,7 +122,7 @@ describe('User account management', () => {
     expect(within(dialog).getByLabelText('Startpassphrase *')).toHaveAttribute('minlength', '12');
     expect(dialog).toHaveTextContent('Es wird keine Einladung per E-Mail versendet.');
     fillCreate(); submit();
-    await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/auth/users', { username: 'newreader', full_name: 'Neue Person', email: 'new@example.com', password: 'lange geheime passphrase', role: 'readonly' }, expect.objectContaining({ signal: expect.any(AbortSignal) })));
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/auth/users', { username: 'newreader', full_name: 'Neue Person', email: 'new@example.com', password: 'lange geheime passphrase', role: 'readonly', portfolio_access: 'selected', portfolio_ids: [] }, expect.objectContaining({ signal: expect.any(AbortSignal) })));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(screen.getByRole('table')).toHaveTextContent('Neue Person');
     expect(screen.getByRole('table')).not.toHaveTextContent('lange geheime passphrase');
@@ -186,6 +186,93 @@ describe('User account management', () => {
     expect(screen.getByRole('table')).toHaveTextContent('Technik');
   });
 
+  it('creates an explicitly selected portfolio scope and renders the persisted names', async () => {
+    const user = userEvent.setup();
+    renderSection(); await screen.findByText('Rene Lesen');
+    fireEvent.click(screen.getByRole('button', { name: 'Benutzer anlegen', exact: true })); fillCreate();
+    expect(screen.getByLabelText('Portfoliozugriff *')).toHaveValue('selected');
+    expect(screen.getByLabelText('Zugewiesene Portfolios')).toHaveValue([]);
+    await user.selectOptions(screen.getByLabelText('Zugewiesene Portfolios'), ['b', 'a']); submit();
+    await waitFor(() => expect(mocks.post.mock.calls[0][1]).toMatchObject({ portfolio_access: 'selected', portfolio_ids: ['a', 'b'] }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    const row = screen.getByText('Neue Person', { exact: true }).closest('tr');
+    expect(row).toHaveTextContent('Portfolio A, Portfolio B');
+    expect(row).not.toHaveTextContent('Bisheriger Zugriff beibehalten');
+  });
+
+  it('patches both scope fields together only when selection changes and restores the server selection on reopen', async () => {
+    const user = userEvent.setup();
+    records[3] = { ...records[3], portfolio_access: 'selected', portfolio_ids: ['a'], portfolio_access_origin: 'owner_assignment' };
+    renderSection(); await edit('Rene Lesen');
+    expect(screen.getByLabelText('Zugewiesene Portfolios')).toHaveValue(['a']);
+    await user.deselectOptions(screen.getByLabelText('Zugewiesene Portfolios'), ['a']);
+    await user.selectOptions(screen.getByLabelText('Zugewiesene Portfolios'), ['b']); submit();
+    await waitFor(() => expect(mocks.patch.mock.calls[0][1]).toEqual({ portfolio_access: 'selected', portfolio_ids: ['b'] }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.getByText('Rene Lesen', { exact: true }).closest('tr')).toHaveTextContent('Portfolio B');
+    await edit('Rene Lesen'); expect(screen.getByLabelText('Zugewiesene Portfolios')).toHaveValue(['b']); submit();
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(mocks.patch).toHaveBeenCalledOnce();
+  });
+
+  it('switches explicitly to all access and clears selected IDs, while a new owner always saves all access', async () => {
+    const user = userEvent.setup();
+    renderSection(); await screen.findByText('Rene Lesen');
+    fireEvent.click(screen.getByRole('button', { name: 'Benutzer anlegen', exact: true })); fillCreate();
+    await user.selectOptions(screen.getByLabelText('Zugewiesene Portfolios'), ['a']);
+    fireEvent.change(screen.getByLabelText('Portfoliozugriff *'), { target: { value: 'all' } });
+    expect(screen.getByLabelText('Zugewiesene Portfolios')).toHaveValue([]); submit();
+    await waitFor(() => expect(mocks.post.mock.calls[0][1]).toMatchObject({ portfolio_access: 'all', portfolio_ids: [] }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Benutzer anlegen', exact: true })); fillCreate();
+    await user.selectOptions(screen.getByLabelText('Zugewiesene Portfolios'), ['b']);
+    fireEvent.change(screen.getByLabelText('Rolle *'), { target: { value: 'eigentuemer' } });
+    expect(screen.getByLabelText('Portfoliozugriff *')).toHaveValue('all'); submit();
+    await waitFor(() => expect(mocks.post.mock.calls[1][1]).toMatchObject({ role: 'eigentuemer', portfolio_access: 'all', portfolio_ids: [] }));
+  });
+
+  it('reports an unavailable portfolio source and retries without inventing an empty scope list', async () => {
+    mocks.getAll.mockImplementation(async path => {
+      if (path === '/portfolios') throw new Error('Portfolioquelle offline');
+      return records;
+    });
+    renderSection(); expect(await screen.findByRole('alert')).toHaveTextContent('Portfolioquelle offline');
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Benutzer anlegen', exact: true })).toBeDisabled();
+    mocks.getAll.mockImplementation(async path => path === '/portfolios' ? [{ id: 'a', name: 'Portfolio A' }] : records);
+    fireEvent.click(screen.getByRole('button', { name: 'Erneut laden' }));
+    await screen.findByText('Rene Lesen'); expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('rejects malformed server grants and duplicate portfolio source IDs', async () => {
+    records[3] = { ...records[3], portfolio_access: 'all', portfolio_ids: ['a'] };
+    renderSection(); expect(await screen.findByRole('alert')).toHaveTextContent('Die Benutzerliste ist unvollständig oder ungültig.');
+    records[3] = { ...fixtures[3] };
+    mocks.getAll.mockImplementation(async path => path === '/portfolios' ? [{ id: 'a', name: 'A' }, { id: 'a', name: 'Duplicate' }] : records);
+    fireEvent.click(screen.getByRole('button', { name: 'Erneut laden' }));
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Die verfügbaren Portfolios konnten nicht vollständig geladen werden.'));
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+  });
+
+  it('hides installations administration for a selected manager without making protected calls', async () => {
+    setRole('verwalter'); mocks.auth.user.portfolio_access = 'selected'; mocks.auth.user.portfolio_ids = ['a'];
+    render(<Settings />); await act(async () => {});
+    expect(screen.queryByRole('button', { name: 'Benutzer', exact: true })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /System/ }));
+    expect(mocks.getAll).not.toHaveBeenCalled(); expect(mocks.get).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Persönlich', exact: true }));
+    expect(screen.getByText('Authenticator')).toBeVisible();
+  });
+
+  it('closes and discards an account edit when the current manager scope is revoked', async () => {
+    setRole('verwalter'); const view = renderSection(); await edit('Rene Lesen');
+    fireEvent.change(screen.getByLabelText('Vollständiger Name *'), { target: { value: 'Discarded draft' } });
+    mocks.auth = { ...mocks.auth, user: { ...mocks.auth.user, portfolio_access: 'selected', portfolio_ids: ['a'] } };
+    view.rerender(<UserManagementSection />);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument(); expect(screen.queryByRole('region')).not.toBeInTheDocument();
+    expect(mocks.patch).not.toHaveBeenCalled();
+  });
+
   it('does not send a patch for an unchanged account', async () => {
     renderSection(); await edit('Rene Lesen'); submit();
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
@@ -245,7 +332,8 @@ describe('User account management', () => {
     expect(await screen.findByRole('heading', { name: 'Benutzerverwaltung' })).toBeVisible();
     view.unmount(); setRole('readonly'); render(<Settings />);
     expect(screen.queryByRole('button', { name: 'Benutzer', exact: true })).not.toBeInTheDocument();
-    expect(mocks.getAll).toHaveBeenCalledOnce();
+    expect(mocks.getAll.mock.calls.filter(([path]) => path === '/auth/users')).toHaveLength(1);
+    expect(mocks.getAll.mock.calls.filter(([path]) => path === '/portfolios')).toHaveLength(1);
   });
 
   it('persists a language choice for the account as well as updating the visible locale', () => {

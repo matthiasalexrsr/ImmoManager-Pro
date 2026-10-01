@@ -164,12 +164,13 @@ def get_me(user: UserRead = Depends(require_auth)) -> UserRead:
 
 
 def _get_preferences_session():
-    from ..dependencies import _use_sql_store
-    if not _use_sql_store:
+    from ..auth import _auth_session_factory
+    if _auth_session_factory is None:
         return None
     try:
-        from ..db.session import SessionLocal
-        return SessionLocal()
+        # Preferences belong to the same account database that authenticated
+        # this user, including isolated installations and runtime store swaps.
+        return _auth_session_factory()
     except Exception:
         logging.getLogger(__name__).warning("Could not open display preferences database")
         raise HTTPException(503, "Anzeigeeinstellungen sind derzeit nicht verfügbar.") from None
@@ -201,7 +202,8 @@ def get_users(
 @router.post("/users", response_model=UserRead, status_code=201)
 def create_approved_user(payload: UserCreate, user: UserRead = Depends(require_role("eigentuemer"))) -> UserRead:
     """Only installation owners may approve a new account and assign its role."""
-    return register_user(payload.username, payload.email, payload.full_name, payload.password, payload.role)
+    return register_user(payload.username, payload.email, payload.full_name, payload.password, payload.role,
+                         portfolio_access=payload.portfolio_access, portfolio_ids=payload.portfolio_ids, actor_id=user.id)
 
 
 @router.patch("/users/{user_id}", response_model=UserRead)

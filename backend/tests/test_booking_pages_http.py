@@ -32,6 +32,20 @@ def test_page_and_export_require_authentication_and_allow_approved_reader(instal
         assert installation.get(path, headers=headers).status_code == 200
 
 
+def test_explicit_confirmation_keeps_conditional_revision_and_stale_editor_cannot_overwrite(installation):
+    headers = credentials("eigentuemer")
+    path = "/api/v1/bookings/booking-00000000"
+    before = installation.get(path, headers=headers)
+    assert before.status_code == 200 and before.json()["status"] == "open"
+    token = before.headers["etag"]
+    saved = installation.patch(path, headers={**headers, "If-Match": token}, json={"status": "confirmed"})
+    assert saved.status_code == 200 and saved.json()["status"] == "confirmed"
+    stale = installation.patch(path, headers={**headers, "If-Match": token}, json={"status": "open"})
+    assert stale.status_code == 412
+    page = installation.get("/api/v1/bookings/page?status=confirmed", headers=headers)
+    assert page.status_code == 200 and [item["id"] for item in page.json()["items"]] == ["booking-00000000"]
+
+
 def test_typed_page_and_cursor_failure_are_recoverable_without_wrong_retry(installation):
     headers = credentials()
     first = installation.get("/api/v1/bookings/page", params={"page_size": 2}, headers=headers)

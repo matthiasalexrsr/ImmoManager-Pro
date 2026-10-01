@@ -149,6 +149,7 @@ class Settings(BaseSettings):
     operational_scheduler_max_items: int = Field(default=500, ge=1, le=5000)
     operational_scheduler_lookback_days: int = Field(default=366, ge=1, le=3660)
     booking_page_max_size: int = Field(default=500, ge=25, le=5000)
+    rent_batch_max_size: int = Field(default=500, ge=25, le=5000)
 
     # --- File upload limits ---
     max_upload_size_bytes: int = 50 * 1024 * 1024  # 50 MB

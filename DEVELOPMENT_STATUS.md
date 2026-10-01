@@ -21,7 +21,7 @@ Import/Recovery sowie Finanz-/Abrechnungsoberfläche und Browserprüfungen einge
 
 | Bereich | Verhalten |
 |---|---|
-| Monatsforderungen | Vorschau aus aktiven Verträgen, gespeicherte Preise, atomare Erstellung, genau ein Datensatz je Vertrag/Monat und Wiederholungsschutz |
+| Monatsforderungen | Vorschau aus aktiven Verträgen, gespeicherte Preise, atomare Erstellung, genau ein Datensatz je Vertrag/Monat; große Serien als gespeicherte, ausdrücklich freigegebene Läufe mit Pause und Wiederaufnahme |
 | Zahlungen | Dauerhafte Belege, Centprüfung, Teilzahlungen, unveränderbarer Zahlungsstand bei normalen Formularänderungen |
 | Bankzuordnung | Gemeinsames verfügbares Buchungsbudget, Herkunftsprüfung, atomare Zuordnung und keine doppelte Bankzählung |
 | Storno | Datierter Gegenbeleg mit Grund; Original bleibt erhalten, Saldo und Bankbudget werden wiederhergestellt |
@@ -30,6 +30,8 @@ Import/Recovery sowie Finanz-/Abrechnungsoberfläche und Browserprüfungen einge
 | Guthaben/Leerstand | Verfügbare Guthaben getrennt von Forderungen; gespeicherter Eigentümeranteil, erhaltene Gesamtkosten, blockierende Vorprüfung bei fehlender Datenbasis |
 | Finanzoberfläche | Vollständige Pagination, sichtbare Fehler/Retry, abgesicherte Formularwerte, Readonly-Aktionen und neue Texte in Deutsch/Englisch/Spanisch |
 | Zugang | Einmalige lokale Eigentümeranlage, dauerhaft geschlossene öffentliche Registrierung, genehmigte Benutzer und vollständiger TOTP-Ablauf |
+| Portfoliozugriff | Ausdrückliche All-/Auswahlzuordnung durch Eigentümer, aktuelle serverseitige Prüfung auch bei alten Tokens, geschützte Referenzen und Dateien |
+| DATEV | Geprüfte unveränderliche Kontenzuordnungen, vollständige Vorschau, reproduzierbare Dateien mit Quellenreferenzen; keine Übermittlung oder Importzertifizierung |
 | Dokumente/Fotos | Authentifizierte Downloads und Blob-Vorschauen, sichere Dateitypen und SPA-Pfade, korrektes konfiguriertes Upload-Verzeichnis |
 | JSON-Transfer | Vollständige Vorbereitung und eine atomare Veröffentlichung des unterstützten Geschäftsdaten-Teilsatzes; Benutzer/Installationsmarker bleiben erhalten |
 | Vollständige Recovery | Passwortverschlüsseltes Offline-Archiv aller SQLite-Tabellen, lokalen Uploads, Konten/2FA, Schlüsseln und Konfiguration; geprüfter Neustart in neuem Ordner |
@@ -39,7 +41,7 @@ Import/Recovery sowie Finanz-/Abrechnungsoberfläche und Browserprüfungen einge
 | Stabilität/Sicherheit | Anfragenbezogene Datenbank-Sessions einschließlich Streams, erweitertes Typechecking, PyJWT statt python-jose/ecdsa |
 
 SQLite erhält additive Schema-Ergänzungen; Alembic enthält eine eindeutige Kette
-bis `h1a2b3c4d5e6`. Mehrdeutige alte Finanzdaten und Downgrades mit bestehenden
+bis `q1a2b3c4d5e6`. Mehrdeutige alte Finanzdaten und Downgrades mit bestehenden
 Abrechnungsnachweisen werden vor zerstörenden Änderungen abgewiesen.
 
 ## Fachliche Regeln und Umfang
@@ -57,9 +59,14 @@ Korrekturen erzeugen eine neue Revision und buchen die Differenz zur bisherigen
 Kette. Guthaben werden als verfügbar geführt. Eine Auszahlung wird dadurch nicht
 behauptet. Eigentümeranteile erzeugen keine Mieterforderung.
 
-Diese Version dient einer privaten Installation. Genehmigte Benutzer teilen
-deren Portfolios; es wird keine Trennung voneinander unabhängiger Organisationen
-behauptet. Siehe [Zugangsmodell](docs/ACCESS_MODEL.md).
+Diese Version dient einer privaten Installation. Genehmigte Benutzer erhalten
+ausdrücklich zugewiesene Portfoliozugriffe; Rollen bestimmen zusätzlich die
+zulässigen Handlungen. Siehe [Zugangsmodell](docs/ACCESS_MODEL.md).
+
+WISO Steuer für Windows ist der gewünschte Steuerimport. Das offizielle
+Hausverwalter-Handbuch beschreibt einen XML-Export; dessen reale Dateistruktur
+und Importannahme werden mit der installierten Testversion untersucht. DATEV-
+oder allgemeine CSV-Dateien werden nicht als verifizierter WISO-Import ausgegeben.
 
 JSON ist ein Teilsatztransfer und enthält keine Upload-Bytes, Benutzer oder
 komplette Abrechnung. Die vollständige lokale Recovery läuft offline und benötigt

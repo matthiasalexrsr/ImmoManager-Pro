@@ -16,6 +16,7 @@ from ..config import settings
 from ..services.ai.document_ai import analyze_document
 from ..services.file_storage import get_file_storage
 from ..services.ocr_service import extract_text_from_bytes
+from ..services.portfolio_scope import register_upload, require_assigned_scope, require_file_access
 from ..services.task_queue import get_queue
 
 logger = logging.getLogger(__name__)
@@ -141,6 +142,7 @@ async def upload_file(
     folder: str = Query("documents", description="Storage folder"),
 ) -> dict:
     """Upload a file and return URLs. Triggers OCR for eligible files."""
+    require_assigned_scope()
     # Enforce file size limit by reading up to the limit + 1 byte
     max_size = settings.max_upload_size_bytes
     contents = await file.read(max_size + 1)
@@ -157,6 +159,7 @@ async def upload_file(
     ext = _safe_extension(file.filename)
     key = f"{safe_folder}/{uuid.uuid4().hex}.{ext}"
     storage.save(key, BytesIO(contents), content_type=file.content_type or "application/octet-stream")
+    register_upload(key)
     file_url = storage.get_url(key)
 
     result = {
@@ -193,6 +196,7 @@ async def upload_file(
 @router.post("/ocr-process")
 def process_ocr(file_url: str = Query(..., description="Public file URL")) -> dict:
     """Process OCR for an already uploaded file and persist OCR text file."""
+    require_file_access(file_url)
     storage = get_file_storage()
     key = _file_url_to_key(file_url)
     if not key:
@@ -217,6 +221,7 @@ def process_ocr(file_url: str = Query(..., description="Public file URL")) -> di
 @router.get("/download")
 def download_file(key: str = Query(...)) -> Response:
     """Download a file by its storage key."""
+    require_file_access(key)
     storage = get_file_storage()
     safe_key = _normalize_storage_key(key)
     if not safe_key:
@@ -263,6 +268,7 @@ def download_file(key: str = Query(...)) -> Response:
 @router.get("/ocr-text")
 def get_ocr_text(file_url: str = Query(...)) -> dict:
     """Get OCR text for a file if available."""
+    require_file_access(file_url)
     storage = get_file_storage()
     file_key = _file_url_to_key(file_url)
     if not file_key:
@@ -290,6 +296,7 @@ def analyze_file(
     HF models (zero-shot classification, summarization, NER). Falls back
     gracefully to regex-based extraction when models are unavailable.
     """
+    require_file_access(file_url)
     storage = get_file_storage()
     file_key = _file_url_to_key(file_url)
     if not file_key:

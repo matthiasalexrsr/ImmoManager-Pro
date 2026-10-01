@@ -20,7 +20,9 @@ from .booking_query import (
     _signature,
     _unb64,
     maximum_page_size,
+    scope_binding,
 )
+from .portfolio_scope import scoped_clause
 
 LookupKind = Literal["accounts", "categories", "properties", "units", "tenants"]
 REFERENCES: dict[str, tuple[Any, str]] = {"accounts": (AccountORM, "name"), "categories": (CategoryORM, "name"),
@@ -53,7 +55,7 @@ class BookingChoices(BaseModel):
 
 
 def _binding(kind, query):
-    values = {"kind": kind, "search": query.search, "page_size": query.page_size}
+    values = {"kind": kind, "search": query.search, "page_size": query.page_size, "scope": scope_binding()}
     return hashlib.sha256(json.dumps(values, sort_keys=True).encode()).hexdigest()
 
 
@@ -71,7 +73,7 @@ def _after(kind, query):
         if type(value["expires"]) is not int or time() >= value["expires"]:
             raise BookingQueryError("cursor_expired", "Die Auswahl ist abgelaufen. Bitte erneut suchen.")
         if value["binding"] != _binding(kind, query):
-            raise BookingQueryError("cursor_filter_mismatch", "Die Auswahlfilter haben sich geändert. Bitte erneut suchen.")
+            raise BookingQueryError("cursor_filter_mismatch", "Auswahlfilter oder Zugriffsrechte haben sich geändert. Bitte erneut suchen.")
         if not isinstance(value["id"], str) or not re.fullmatch(_ID, value["id"]):
             raise ValueError("Invalid position")
         return value["id"]
@@ -95,6 +97,9 @@ def booking_choices(store, kind, query):
     selected = None
     if hasattr(store, "db"):
         statement = select(model.id, getattr(model, label).label("label"))
+        clause = scoped_clause(model)
+        if clause is not None:
+            statement = statement.where(clause)
         if query.search:
             escaped = query.search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
             statement = statement.where(getattr(model, label).ilike(f"%{escaped}%", escape="\\"))
@@ -104,7 +109,10 @@ def booking_choices(store, kind, query):
             values = store.db.execute(statement.order_by(bytewise_id(model.id).desc()).limit(query.page_size + 1)).mappings()
             rows = [BookingChoice.model_validate(value) for value in values]
             if query.selected_id:
-                choice = store.db.execute(select(model.id, getattr(model, label).label("label")).where(model.id == query.selected_id)).mappings().first()
+                selected_statement = select(model.id, getattr(model, label).label("label")).where(model.id == query.selected_id)
+                if clause is not None:
+                    selected_statement = selected_statement.where(clause)
+                choice = store.db.execute(selected_statement).mappings().first()
                 selected = BookingChoice.model_validate(choice) if choice else None
     else:
         import heapq

@@ -83,6 +83,24 @@ def test_all_pages_have_exact_stable_date_and_id_order_without_duplicates(bookin
     assert all_pages(bookings_store, page_size=1) == expected
 
 
+def test_filtered_tie_rows_are_included_in_full_dataset_reference(bookings_store):
+    ties = [row(1000 + n, id=value, booking_date=date(2026, 10, 1)) for n, value in enumerate(["a", "B", "b"])]
+    insert_rows(bookings_store, ties)
+    dataset = [row(n) for n in range(53)] + ties
+    expected = sorted((value for value in dataset if value["account_id"] == "account-1"
+        and "miete" in value["payment_text"].lower()), key=lambda value: (value["booking_date"], value["id"]), reverse=True)
+    assert expected[0]["id"] == "B"
+    assert all_pages(bookings_store, page_size=7, account_id="account-1", search="miete") == [value["id"] for value in expected]
+
+
+def test_confirmed_filter_is_explicit_and_never_changes_other_booking_statuses(bookings_store):
+    before = [item.status for item in get_booking_page(bookings_store, BookingPageQuery()).items]
+    assert all_pages(bookings_store, status="confirmed") == []
+    insert_rows(bookings_store, [row(700, status="confirmed"), row(701, status="confirmed")])
+    assert all_pages(bookings_store, page_size=1, status="confirmed") == [row(701)["id"], row(700)["id"]]
+    assert [item.status for item in get_booking_page(bookings_store, BookingPageQuery()).items if item.id not in {row(700)["id"], row(701)["id"]}] == before
+
+
 @pytest.mark.parametrize("filters,predicate", [
     ({"account_id": "account-1"}, lambda value: value["account_id"] == "account-1"),
     ({"property_id": "property-0", "tenant_id": "tenant-0", "status": "open"}, lambda value: value["property_id"] == "property-0" and value["status"] == "open"),

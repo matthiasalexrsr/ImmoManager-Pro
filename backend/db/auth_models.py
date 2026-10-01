@@ -5,6 +5,12 @@ from datetime import datetime
 from sqlalchemy import CheckConstraint, DateTime, Integer, func
 from sqlalchemy.orm import Mapped, mapped_column
 
+from .access_models import (  # noqa: F401 — register access metadata
+    ResourcePortfolioORM,
+    UploadAccessORM,
+    UserAccessORM,
+    UserPortfolioORM,
+)
 from .orm_models import Base
 
 

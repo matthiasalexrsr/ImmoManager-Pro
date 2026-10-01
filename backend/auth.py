@@ -26,6 +26,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from .config import settings
+from .db.access_models import UserAccessORM, UserPortfolioORM
 from .db.auth_models import AuthSetupORM
 from .models import TokenPayload, UserRead
 
@@ -466,6 +467,8 @@ def _check_user_change(target: dict, updates: dict, users: list[dict], *, actor_
             raise HTTPException(status_code=403, detail="Benutzerverwaltung ist nicht erlaubt")
         if actor["role"] != "eigentuemer" and (deleting or target["role"] == "eigentuemer" or "role" in updates):
             raise HTTPException(status_code=403, detail="Nur Eigentümer dürfen Eigentümerkonten oder Rollen ändern")
+        if {"portfolio_access", "portfolio_ids"} & updates.keys() and actor["role"] != "eigentuemer":
+            raise HTTPException(403, "Nur Eigentümer dürfen Portfoliozugriff ändern")
         if actor_id == target["id"] and (deleting or updates.get("is_active") is False
                                          or ("role" in updates and updates["role"] != target["role"])):
             raise HTTPException(status_code=409, detail="Das eigene Konto darf nicht deaktiviert oder in seiner Rolle herabgestuft werden")
@@ -487,7 +490,7 @@ class UserStore(ABC):
         ...
 
     @abstractmethod
-    def create(self, user_data: dict) -> None:
+    def create(self, user_data: dict, *, actor_id: str | None = None) -> None:
         ...
 
     @abstractmethod
@@ -538,8 +541,9 @@ class InMemoryUserStore(UserStore):
             user = self._by_username.get(username)
             return user.copy() if user else None
 
-    def create(self, user_data: dict) -> None:
+    def create(self, user_data: dict, *, actor_id: str | None = None) -> None:
         with self._lock:
+            _require_owner_actor(self._by_id.get(actor_id) if actor_id else None, actor_id)
             if user_data["username"] in self._by_username or any(u["email"] == user_data["email"] for u in self._by_id.values()):
                 raise HTTPException(status_code=409, detail="Benutzername oder E-Mail-Adresse existiert bereits")
             self._by_id[user_data["id"]] = user_data
@@ -573,12 +577,17 @@ class InMemoryUserStore(UserStore):
             if user is None:
                 return None
             _check_user_change(user, updates, list(self._by_id.values()), actor_id=actor_id)
+            if updates.get("role") == "eigentuemer" and not ({"portfolio_access", "portfolio_ids"} & updates.keys()):
+                updates = {**updates, "portfolio_access": "all", "portfolio_ids": []}
+            _validate_user_scope({**user, **updates})
             if "email" in updates and any(item["id"] != user_id and item["email"] == updates["email"] for item in self._by_id.values()):
                 raise HTTPException(status_code=409, detail="E-Mail-Adresse existiert bereits")
             for key, value in updates.items():
                 if (value is not None or key == "totp_secret") and key not in ("id", "hashed_password", "created_at"):
                     user[key] = value
             user["updated_at"] = datetime.now(timezone.utc)
+            if {"portfolio_access", "portfolio_ids"} & updates.keys():
+                user["portfolio_access_origin"] = "owner_assignment"
             return user.copy()
 
     def delete(self, user_id: str, *, actor_id: str | None = None) -> Optional[dict]:
@@ -638,7 +647,13 @@ class SQLUserStore(UserStore):
 
         session.close()
 
-    def _to_dict(self, orm_obj) -> dict:
+    def _to_dict(self, orm_obj, access_cache=None, grants_cache=None) -> dict:
+        from sqlalchemy.orm import object_session
+        session = object_session(orm_obj)
+        if session is None:
+            raise RuntimeError("Benutzerscope benötigt eine aktive Datenbanksitzung")
+        access = access_cache.get(orm_obj.id) if access_cache is not None else session.get(UserAccessORM, orm_obj.id)
+        grants = grants_cache.get(orm_obj.id, []) if grants_cache is not None else [row[0] for row in session.query(UserPortfolioORM.portfolio_id).filter(UserPortfolioORM.user_id == orm_obj.id).all()]
         return {
             "id": orm_obj.id,
             "username": orm_obj.username,
@@ -651,7 +666,20 @@ class SQLUserStore(UserStore):
             "totp_enabled": orm_obj.totp_enabled,
             "created_at": orm_obj.created_at,
             "updated_at": orm_obj.updated_at,
+            "portfolio_access": "all" if orm_obj.role == "eigentuemer" else access.mode if access else "selected",
+            "portfolio_ids": sorted(grants) if orm_obj.role != "eigentuemer" else [],
+            "portfolio_access_origin": access.origin if access else "unassigned",
         }
+
+    def _users_data(self, session) -> list[dict]:
+        from .db.orm_models import UserORM
+        # Three bounded queries, rather than two additional queries per account.
+        users = session.query(UserORM).all()
+        accesses = {row.user_id: row for row in session.query(UserAccessORM).all()}
+        grants: dict[str, list[str]] = {}
+        for row in session.query(UserPortfolioORM).all():
+            grants.setdefault(row.user_id, []).append(row.portfolio_id)
+        return [self._to_dict(user, accesses, grants) for user in users]
 
     def get_by_id(self, user_id: str) -> Optional[dict]:
         from .db.orm_models import UserORM
@@ -671,13 +699,18 @@ class SQLUserStore(UserStore):
         finally:
             self._finalize_session(session)
 
-    def create(self, user_data: dict) -> None:
+    def create(self, user_data: dict, *, actor_id: str | None = None) -> None:
         from .db.orm_models import UserORM
         session = self._session_factory()
         try:
-            obj = UserORM(**user_data)
+            if actor_id is not None:
+                self._lock_management(session)
+                actor = session.get(UserORM, actor_id, populate_existing=True)
+                _require_owner_actor(self._to_dict(actor) if actor else None, actor_id)
+            obj = UserORM(**{key: value for key, value in user_data.items() if key not in _SCOPE_FIELDS})
             session.add(obj)
             session.flush()
+            _write_sql_user_scope(session, user_data["id"], user_data)
             # Seeded/admin-created installations also remain closed if accounts are deleted.
             try:
                 with session.begin_nested():
@@ -714,7 +747,9 @@ class SQLUserStore(UserStore):
             if session.query(UserORM.id).first() is not None:
                 session.commit()
                 raise HTTPException(status_code=409, detail="Ersteinrichtung wurde bereits abgeschlossen")
-            session.add(UserORM(**user_data))
+            session.add(UserORM(**{key: value for key, value in user_data.items() if key not in _SCOPE_FIELDS}))
+            session.flush()
+            _write_sql_user_scope(session, user_data["id"], user_data)
             session.commit()
         except IntegrityError as exc:
             session.rollback()
@@ -768,10 +803,14 @@ class SQLUserStore(UserStore):
             obj = session.get(UserORM, user_id)
             if obj is None:
                 return None
-            users = [self._to_dict(item) for item in session.query(UserORM).all()]
+            users = self._users_data(session)
             _check_user_change(self._to_dict(obj), updates, users, actor_id=actor_id)
+            if updates.get("role") == "eigentuemer" and not ({"portfolio_access", "portfolio_ids"} & updates.keys()):
+                updates = {**updates, "portfolio_access": "all", "portfolio_ids": []}
+            if {"portfolio_access", "portfolio_ids"} & updates.keys():
+                _write_sql_user_scope(session, user_id, {**self._to_dict(obj), **updates})
             for key, value in updates.items():
-                if (value is not None or key == "totp_secret") and key not in ("id", "hashed_password", "created_at"):
+                if (value is not None or key == "totp_secret") and key not in ("id", "hashed_password", "created_at", *_SCOPE_FIELDS):
                     setattr(obj, key, value)
             obj.updated_at = datetime.now(timezone.utc)
             session.commit()
@@ -795,7 +834,7 @@ class SQLUserStore(UserStore):
             if obj is None:
                 return None
             data = self._to_dict(obj)
-            users = [self._to_dict(item) for item in session.query(UserORM).all()]
+            users = self._users_data(session)
             _check_user_change(data, {}, users, actor_id=actor_id, deleting=True)
             session.delete(obj)
             session.commit()
@@ -807,10 +846,9 @@ class SQLUserStore(UserStore):
             self._finalize_session(session)
 
     def list_all(self) -> list[dict]:
-        from .db.orm_models import UserORM
         session = self._session_factory()
         try:
-            return [self._to_dict(obj) for obj in session.query(UserORM).all()]
+            return self._users_data(session)
         finally:
             self._finalize_session(session)
 
@@ -818,6 +856,8 @@ class SQLUserStore(UserStore):
         from .db.orm_models import UserORM
         session = self._session_factory()
         try:
+            session.query(UserPortfolioORM).delete()
+            session.query(UserAccessORM).delete()
             session.query(UserORM).delete()
             session.query(AuthSetupORM).delete()
             session.commit()
@@ -830,6 +870,43 @@ class SQLUserStore(UserStore):
 
 # Default: in-memory store
 _user_store: UserStore = InMemoryUserStore()
+
+_SCOPE_FIELDS = {"portfolio_access", "portfolio_ids", "portfolio_access_origin"}
+
+
+def _require_owner_actor(actor, actor_id):
+    if actor_id is not None and (not actor or not actor["is_active"] or actor["role"] != "eigentuemer"):
+        raise HTTPException(403, "Nur aktive Eigentümer dürfen Konten und Portfoliozugriff anlegen")
+
+
+def _validate_user_scope(data):
+    from .dependencies import store
+    mode, ids = data.get("portfolio_access", "all"), data.get("portfolio_ids", [])
+    if data.get("role") == "eigentuemer" and (mode != "all" or ids):
+        raise HTTPException(409, "Eigentümer benötigen zur Verwaltung und Wiederherstellung Zugriff auf alle Portfolios")
+    if mode not in {"all", "selected"} or (mode == "all" and ids) or len(ids) != len(set(ids)):
+        raise HTTPException(422, "Ungültige Portfolioauswahl")
+    for pid in ids:
+        try:
+            store.get_portfolio(pid)
+        except KeyError:
+            raise HTTPException(422, "Ein ausgewähltes Portfolio existiert nicht") from None
+
+
+def _write_sql_user_scope(session, user_id, data):
+    from .db.orm_models import PortfolioORM
+    mode, ids = data.get("portfolio_access", "all"), data.get("portfolio_ids", [])
+    if data.get("role") == "eigentuemer" and (mode != "all" or ids):
+        raise HTTPException(409, "Eigentümer benötigen Zugriff auf alle Portfolios")
+    if ids and session.query(PortfolioORM.id).filter(PortfolioORM.id.in_(ids)).count() != len(ids):
+        raise HTTPException(422, "Ein ausgewähltes Portfolio existiert nicht")
+    access = session.get(UserAccessORM, user_id)
+    if access is None:
+        access = UserAccessORM(user_id=user_id, mode=mode, origin="owner_assignment")
+        session.add(access)
+    access.mode, access.origin, access.updated_at = mode, "owner_assignment", datetime.now(timezone.utc)
+    session.query(UserPortfolioORM).filter(UserPortfolioORM.user_id == user_id).delete(synchronize_session=False)
+    session.add_all(UserPortfolioORM(user_id=user_id, portfolio_id=pid) for pid in ids)
 
 
 def enable_sql_users(session_factory) -> None:
@@ -880,13 +957,19 @@ def _new_user_data(username: str, email: str, full_name: str, password: str, rol
         "totp_enabled": False,
         "created_at": now,
         "updated_at": now,
+        "portfolio_access": "all",
+        "portfolio_ids": [],
+        "portfolio_access_origin": "owner_assignment",
     }
 
 
-def register_user(username: str, email: str, full_name: str, password: str, role: str = "readonly") -> UserRead:
+def register_user(username: str, email: str, full_name: str, password: str, role: str = "readonly", *, portfolio_access="all", portfolio_ids=None, actor_id=None) -> UserRead:
     """Create an approved/seeded user; public registration is disabled by the router."""
     user_data = _new_user_data(username, email, full_name, password, role)
-    _user_store.create(user_data)
+    user_data.update(portfolio_access="all" if role == "eigentuemer" else portfolio_access,
+                     portfolio_ids=[] if role == "eigentuemer" else list(portfolio_ids or []))
+    _validate_user_scope(user_data)
+    _user_store.create(user_data, actor_id=actor_id)
     return _to_user_read(user_data)
 
 

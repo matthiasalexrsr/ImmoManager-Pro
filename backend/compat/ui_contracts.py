@@ -1,78 +1,43 @@
-"""Bridge UI/API field drift without changing existing route contracts."""
+"""Stable UI contracts and additive upgrades for unversioned local databases.
 
-from __future__ import annotations
+Fields belong to their declared Pydantic/ORM classes. Replacing model classes at
+import time makes repositories and routes depend on their import order.
+"""
 
-from datetime import date
-from typing import Any, Optional
+from sqlalchemy import inspect, text
 
-from pydantic import BaseModel, create_model
-from sqlalchemy import Column, Date, ForeignKey, Numeric, String, Text
-
-from .. import models as model_module
+from .. import models
 from ..db import orm_models
 
-_APPLIED = False
-
-
-def _extend_model(name: str, fields: dict[str, tuple[Any, Any]]) -> None:
-    model_cls = getattr(model_module, name)
-    if not issubclass(model_cls, BaseModel):
-        return
-
-    missing = {field_name: spec for field_name, spec in fields.items() if field_name not in model_cls.model_fields}
-    if not missing:
-        return
-
-    extended = create_model(
-        name,
-        __base__=model_cls,
-        __module__=model_cls.__module__,
-        **missing,
-    )
-    setattr(model_module, name, extended)
-
-
-def _append_column(model_cls: type[Any], name: str, column: Column[Any]) -> None:
-    if name in model_cls.__table__.c:
-        return
-    setattr(model_cls, name, column)
+UI_COLUMNS = {
+    "receivables": {"description": "TEXT"},
+    "invoices": {"invoice_number": "TEXT", "payment_reference": "TEXT", "category": "TEXT", "notes": "TEXT"},
+    "meters": {"contract_number": "VARCHAR(100)", "contract_end_date": "DATE"},
+}
 
 
 def ensure_ui_contracts() -> None:
-    """Expose fields used by current UI screens in models and SQL metadata."""
-    global _APPLIED
-    if _APPLIED:
-        return
+    """Validate declarations without changing any model or imported reference."""
+    for name, table, orm in (
+        ("Receivable", "receivables", orm_models.ReceivableORM),
+        ("Invoice", "invoices", orm_models.InvoiceORM),
+        ("Meter", "meters", orm_models.MeterORM),
+    ):
+        fields = set(UI_COLUMNS[table])
+        for suffix in ("", "Create", "Patch"):
+            if not fields <= set(getattr(models, name + suffix).model_fields):
+                raise RuntimeError("Declared UI model fields are incomplete")
+        if not fields <= set(orm.__table__.c.keys()):
+            raise RuntimeError("Declared UI database fields are incomplete")
 
-    receivable_fields = {"description": (Optional[str], None)}
-    invoice_fields = {
-        "invoice_number": (Optional[str], None),
-        "payment_reference": (Optional[str], None),
-        "category": (Optional[str], None),
-        "notes": (Optional[str], None),
-    }
-    meter_fields = {
-        "contract_number": (Optional[str], None),
-        "contract_end_date": (Optional[date], None),
-    }
 
-    for name in ("ReceivableCreate", "Receivable", "ReceivablePatch"):
-        _extend_model(name, receivable_fields)
-    for name in ("InvoiceCreate", "Invoice", "InvoicePatch"):
-        _extend_model(name, invoice_fields)
-    for name in ("MeterCreate", "Meter", "MeterPatch"):
-        _extend_model(name, meter_fields)
-
-    _append_column(orm_models.ReceivableORM, "description", Column(Text))
-    _append_column(orm_models.ReceivableORM, "statement_id", Column(String))
-    _append_column(orm_models.InvoiceORM, "invoice_number", Column(Text))
-    _append_column(orm_models.InvoiceORM, "vat_rate", Column(Numeric(12, 2, asdecimal=False), default=19.0))
-    _append_column(orm_models.InvoiceORM, "payment_reference", Column(Text))
-    _append_column(orm_models.InvoiceORM, "category", Column(Text))
-    _append_column(orm_models.InvoiceORM, "notes", Column(Text))
-    _append_column(orm_models.InvoiceORM, "source_document_id", Column(String, ForeignKey("documents.id", ondelete="SET NULL")))
-    _append_column(orm_models.MeterORM, "contract_number", Column(String(100)))
-    _append_column(orm_models.MeterORM, "contract_end_date", Column(Date))
-
-    _APPLIED = True
-
+def ensure_ui_contract_schema(connection) -> None:
+    """Preserve rows and add only the UI columns already in Alembic f6."""
+    if connection.dialect.name != "sqlite":
+        raise RuntimeError("Use Alembic for versioned server schema upgrades")
+    inspector = inspect(connection)
+    for table, columns in UI_COLUMNS.items():
+        existing = {column["name"] for column in inspector.get_columns(table)}
+        for column, sql_type in columns.items():
+            if column not in existing:
+                connection.execute(text(f'ALTER TABLE "{table}" ADD COLUMN "{column}" {sql_type}'))

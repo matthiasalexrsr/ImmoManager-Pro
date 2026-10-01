@@ -44,6 +44,7 @@ const NAV_SECTIONS = [
   { labelKey: 'navigation.sections.finance', items: [
     ['/accounts', 'finance.accounts.title', AccountIcon],
     ['/bookings', 'finance.bookings.title', BookingIcon],
+    ['/datev', 'pages.datev.title', DocumentIcon],
     ['/invoices', 'finance.invoices.title', InvoiceIcon],
     ['/rent-overview', 'navigation.main.rentOverview', RentIcon],
     ['/statements', 'navigation.main.statements', StatementIcon],
@@ -57,6 +58,7 @@ const NAV_SECTIONS = [
     ['/documents', 'navigation.main.documents', DocumentIcon],
     ['/meters', 'navigation.main.meters', MeterIcon],
     ['/messages', 'navigation.main.messages', MessageIcon],
+    ['/outbox', 'pages.outbox.title', MessageIcon],
   ] },
   { labelKey: 'navigation.sections.configuration', items: [
     ['/categories', 'navigation.main.categories', CategoryIcon],

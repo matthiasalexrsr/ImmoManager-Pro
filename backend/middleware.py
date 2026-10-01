@@ -18,6 +18,7 @@ from .audit import log_action
 from .config import settings
 from .dependencies import _request_session_scope, cleanup_session
 from .logging_config import request_id_var
+from .safe_diagnostics import query_count, request_route
 
 logger = logging.getLogger(__name__)
 
@@ -44,35 +45,30 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         if request.url.path.startswith("/api/"):
             extra = {
                 "method": request.method,
-                "path": request.url.path,
+                "path": request_route(request),
                 "status_code": response.status_code,
                 "duration_ms": duration_ms,
             }
-            query = str(request.url.query) if request.url.query else None
-            if query:
-                extra["query"] = query
-            client = request.client
-            if client:
-                extra["client_ip"] = client.host
+            extra["query_count"] = query_count(request)
 
             if response.status_code >= 500:
                 logger.error(
                     "%s %s → %d (%.1fms) [SERVER ERROR]",
-                    request.method, request.url.path,
+                    request.method, request_route(request),
                     response.status_code, duration_ms,
                     extra=extra,
                 )
             elif response.status_code >= 400:
                 logger.warning(
                     "%s %s → %d (%.1fms) [CLIENT ERROR]",
-                    request.method, request.url.path,
+                    request.method, request_route(request),
                     response.status_code, duration_ms,
                     extra=extra,
                 )
             else:
                 logger.info(
                     "%s %s → %d (%.1fms)",
-                    request.method, request.url.path,
+                    request.method, request_route(request),
                     response.status_code, duration_ms,
                     extra=extra,
                 )

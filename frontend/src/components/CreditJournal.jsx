@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import useWriteAccess from '../hooks/useWriteAccess';
+import useCreditChoices from '../hooks/useCreditChoices';
 import { useConfirm } from './ConfirmDialog';
 import DataTable from './DataTable';
 import FormModal from './FormModal';
@@ -20,11 +21,21 @@ export default function CreditJournal({ contractId, sourceId, onClose, onBusyCha
   const [refresh, setRefresh] = useState(0);
   const [page, setPage] = useState(0);
   const [state, setState] = useState({ data: null, error: null });
-  const [choices, setChoices] = useState(null);
+  const [references, setReferences] = useState({ target_kind: 'receivable', method: 'cash' });
   const [working, setWorking] = useState(false);
   const [success, setSuccess] = useState(null);
   const key = useRef(null);
   const submitting = useRef(false);
+  const onValuesChange = useCallback(values => setReferences(previous => {
+    const fields = ['target_kind', 'target', 'method', 'booking_id'];
+    return fields.every(field => previous[field] === values[field]) ? previous
+      : Object.fromEntries(fields.map(field => [field, values[field]]));
+  }), []);
+  const targetKind = references.target_kind === 'rent_charge' ? 'rent_charge' : 'receivable';
+  const targetId = references.target?.startsWith(`${targetKind}:`) ? references.target.slice(targetKind.length + 1) : null;
+  const targets = useCreditChoices(contractId, targetKind, targetId, text('target'), modal?.kind === 'offset', key.current);
+  const bankChoices = useCreditChoices(contractId, 'booking', references.booking_id, text('booking'),
+    modal?.kind === 'payout' && references.method === 'bank', key.current);
   useEffect(() => { onBusyChange?.(working); return () => onBusyChange?.(false); }, [onBusyChange, working]);
   const requestKey = `${contractId}:${page}:${refresh}`;
   useEffect(() => {
@@ -55,17 +66,8 @@ export default function CreditJournal({ contractId, sourceId, onClose, onBusyCha
     setWorking(true);
     try {
       requireWrite();
-      const values = kind === 'reversal' ? null : await Promise.all([
-        api.getAll('/rent-charges'), api.getAll('/receivables'), api.getAll('/bookings')]);
-      requireWrite();
-      if (values) {
-        const [charges, receivables, bookings] = values;
-        setChoices({ targets: [...charges.map(row => ({ ...row, type: 'rent_charge', total: ['cold_rent', 'service_charge', 'heating_charge', 'other_charges'].reduce((sum, field) => sum + Number(row[field] || 0), 0) })),
-          ...receivables.map(row => ({ ...row, type: 'receivable', total: Number(row.amount_due) }))]
-          .filter(row => row.contract_id === contractId && !['cancelled', 'void', 'paid'].includes(row.status) && row.total > Number(row.amount_paid)),
-        bookings: bookings.filter(row => Number(row.amount) < 0 && Math.abs(Number(row.amount)) > Number(row.allocated_amount || 0)) });
-      }
       key.current = crypto.randomUUID();
+      setReferences({ target_kind: 'receivable', method: 'cash' });
       setModal({ kind, receipt });
     } catch (error) { setState(value => ({ ...value, error })); }
     finally { submitting.current = false; setWorking(false); }
@@ -86,10 +88,10 @@ export default function CreditJournal({ contractId, sourceId, onClose, onBusyCha
         path = `/billing/credit-receipts/${modal.receipt.id}/reversal`;
         body = { idempotency_key: key.current, reversal_date: values.reversal_date, reason: values.reason };
       } else if (modal.kind === 'offset') {
-        const selected = choices.targets.find(row => `${row.type}:${row.id}` === values.target);
+        const selected = targets.items.find(row => `${row.kind}:${row.id}` === values.target);
         if (!selected) throw new Error(text('targetRequired'));
         path = '/billing/credit-offsets';
-        body = { ...shared, target_type: selected.type, target_id: selected.id };
+        body = { ...shared, target_type: selected.kind, target_id: selected.id };
       } else {
         path = '/billing/credit-payouts';
         body = { ...shared, method: values.method, booking_id: values.method === 'bank' ? values.booking_id : null,
@@ -115,10 +117,14 @@ export default function CreditJournal({ contractId, sourceId, onClose, onBusyCha
       options: sources.filter(source => Number(source.remaining_amount) > 0).map(source => ({ value: source.id, label: `${source.id} · ${money(source.remaining_amount)}` })), hint: text('sourceHint') },
     { key: 'amount', label: text('amount'), required: true, pattern: '(0|[1-9][0-9]*)(\\.[0-9]{1,2})?', hint: text('amountHint') },
     { key: 'transaction_date', label: text('date'), type: 'date', required: true },
-    ...(modal?.kind === 'offset' ? [{ key: 'target', label: text('target'), type: 'select', required: true,
-      options: choices?.targets.map(row => ({ value: `${row.type}:${row.id}`, label: `${row.type === 'rent_charge' ? text('rentCharge') : text('receivable')} · ${row.month || row.due_date} · ${money(row.total - Number(row.amount_paid))} · ${row.id}` })), hint: text('offsetHint') }] : [
+    ...(modal?.kind === 'offset' ? [
+      { key: 'target_kind', label: text('targetType'), type: 'select', required: true, default: 'receivable', options: [
+        { value: 'receivable', label: text('receivable') }, { value: 'rent_charge', label: text('rentCharge') }] },
+      { key: 'target', label: text('target'), type: 'select', required: true,
+        ...targets, hint: <>{text('offsetHint')}{targets.hint}</> }] : [
       { key: 'method', label: text('method'), type: 'select', required: true, options: [{ value: 'cash', label: text('cash') }, { value: 'bank', label: text('bank') }] },
-      { key: 'booking_id', label: text('booking'), type: 'select', options: choices?.bookings.map(row => ({ value: row.id, label: `${row.booking_date} · ${money(Math.abs(Number(row.amount)) - Number(row.allocated_amount || 0))} · ${row.payment_text || row.id}` })), hint: text('bookingHint') },
+      { key: 'booking_id', label: text('booking'), type: 'select', required: references.method === 'bank', ...bankChoices,
+        hint: <>{text('bookingHint')}{bankChoices.hint}</> },
       { key: 'confirmed_payment', label: text('completedPayment'), type: 'select', required: true, options: [{ value: 'confirmed', label: text('completedConfirmation') }], hint: text('payoutHint') },
     ]),
     { key: 'note', label: text('note'), type: 'textarea', maxLength: 2000 },
@@ -146,9 +152,12 @@ export default function CreditJournal({ contractId, sourceId, onClose, onBusyCha
         <DataTable title={text('receipts')} data={current.data.journal.receipts} columns={columns} />
         <div className="btn-group" aria-label={text('pages')}><button type="button" className="btn btn-secondary" disabled={working || page === 0} onClick={() => setPage(value => value - 1)}>{t('ui.table.previousPage')}</button><span>{page + 1} · {current.data.journal.total} {text('receipts')}</span><button type="button" className="btn btn-secondary" disabled={working || (page + 1) * 50 >= current.data.journal.total} onClick={() => setPage(value => value + 1)}>{t('ui.table.nextPage')}</button></div>
       </>}
-      {modal && <FormModal title={text(modal.kind === 'reversal' ? 'reverse' : modal.kind)} fields={fields}
-        initial={modal.kind === 'reversal' ? { reversal_date: today(), reason: '' } : { source_settlement_id: sourceId || sources[0]?.id, amount: '', transaction_date: today(), method: 'cash', note: '' }}
-        onSave={submit} onClose={() => setModal(null)} closeOnSave={false} saveDisabled={!canWrite} saveLabel={text('record')} />}
+      {modal && <div onKeyDownCapture={event => {
+        if (event.key === 'Enter' && event.target.name?.startsWith('lookup_')) event.preventDefault();
+      }}><FormModal title={text(modal.kind === 'reversal' ? 'reverse' : modal.kind)} fields={fields}
+        initial={modal.kind === 'reversal' ? { reversal_date: today(), reason: '' } : { source_settlement_id: sourceId || sources[0]?.id, amount: '', transaction_date: today(), method: 'cash', target_kind: 'receivable', note: '' }}
+        onSave={submit} onClose={() => setModal(null)} onValuesChange={onValuesChange} closeOnSave={false}
+        saveDisabled={!canWrite || targets.disabled || bankChoices.disabled} saveLabel={text('record')} /></div>}
     </div>
   </section>;
 }

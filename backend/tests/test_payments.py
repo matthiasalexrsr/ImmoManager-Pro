@@ -152,6 +152,12 @@ def test_export_restore_preserves_relationships_balance_and_receipts():
     try:
         target = seed(store, "receivable")
         store.record_payment("receivable", target.id, payload())
+        before_revisions = {}
+        if hasattr(store, "db"):
+            from backend.db.rent_batch_models import RentSourceRevisionORM
+            before_revisions = {(row.entity_type, row.entity_id): row.revision for row in store.db.scalars(
+                select(RentSourceRevisionORM).where(RentSourceRevisionORM.entity_id == target.contract_id))}
+            assert before_revisions, "Current SQL startup installs actual source-revision triggers"
         snapshot = _export_store_data()
         result = _import_store_data(snapshot, replace_existing=True)
         assert result["errors"] == []
@@ -160,17 +166,56 @@ def test_export_restore_preserves_relationships_balance_and_receipts():
         assert store.get_contract(restored.contract_id).contract_number == "P-1"
         assert restored.amount_paid == 40.10
         assert store.list_payments("receivable", restored.id)[0].amount == Decimal("40.10")
+        if before_revisions:
+            after_revisions = {(row.entity_type, row.entity_id): row.revision for row in store.db.scalars(
+                select(RentSourceRevisionORM).where(RentSourceRevisionORM.entity_id == target.contract_id))}
+            assert all(after_revisions[key] >= revision for key, revision in before_revisions.items())
     finally:
         store.clear_all()
 
 
+def test_partial_restore_refuses_real_saved_rental_snapshots_and_preserves_source_counters(tmp_path):
+    from backend.db.rent_batch_models import RentBatchContractORM, RentSourceRevisionORM
+    from backend.db.rent_batch_schema import ensure_rent_batch_schema
+    from backend.services.data_transfer import TransferError
+    from backend.services.rent_batch import BatchAdvance, BatchCreate, advance_batch, create_batch, get_batch
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'saved-rent-restore.db'}")
+    Base.metadata.create_all(engine)
+    with engine.begin() as connection:
+        ensure_rent_batch_schema(connection)
+    try:
+        with Session(engine) as db:
+            active = SQLAlchemyStore(db)
+            target = seed(active, "rent_charge")
+            snapshot = _export_store_data(active)
+            job = create_batch(active, BatchCreate(start_month="2026-10", end_month="2026-12",
+                contract_ids=[target.contract_id], idempotency_key="protected-source"))
+            for _ in range(10):
+                if job["state"] == "ready":
+                    break
+                job = advance_batch(active, job["id"], BatchAdvance(cursor=job["cursor"], budget=2))
+            assert job["state"] == "ready"
+            assert db.scalar(select(RentBatchContractORM.contract_id).where(RentBatchContractORM.batch_id == job["id"])) == target.contract_id
+            db.expire_all()
+            original = active.get_rent_charge(target.id)
+            counters = [(row.entity_type, row.entity_id, row.revision) for row in db.scalars(select(RentSourceRevisionORM))]
+            with pytest.raises(TransferError, match="rent_generation_"):
+                _import_store_data(snapshot, replace_existing=True, active_store=active)
+            assert active.get_rent_charge(target.id) == original
+            assert get_batch(active, job["id"])["plan_hash"] == job["plan_hash"]
+            assert [(row.entity_type, row.entity_id, row.revision) for row in db.scalars(select(RentSourceRevisionORM))] == counters
+    finally:
+        engine.dispose()
+
+
 def test_recorded_rent_payment_reaches_contract_settlement():
-    from backend.routers.contracts import _build_charge_and_payments
+    from backend.services.rent_ledger import contract_ledger_inputs
     store.clear_all()
     try:
         target = seed(store, "rent_charge")
         store.record_payment("rent_charge", target.id, payload())
-        _, payments = _build_charge_and_payments(store.get_contract(target.contract_id))
+        _, payments = contract_ledger_inputs(store, store.get_contract(target.contract_id), date(2026, 9, 30))
         assert len(payments) == 1
         assert payments[0].amount == Decimal("40.10")
         assert payments[0].booking_date == date(2026, 9, 5)

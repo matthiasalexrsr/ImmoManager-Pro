@@ -1,6 +1,8 @@
 """Rent charges (Sollstellung) router: monthly rent ledger entries."""
 
-from fastapi import APIRouter, HTTPException, Query, status
+from uuid import uuid4
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from ..dependencies import store
 from ..models import RentCharge, RentChargeCreate, RentChargePatch
@@ -11,9 +13,17 @@ from ..services.payments import (
     PaymentReversal,
     PaymentReversalCreate,
 )
-from ..services.rent_ledger import RentGenerationRequest, generate_rent_charges, list_open_items, preview_generation
+from ..services.rent_batch import BatchCreate, BatchError, create_batch
+from ..services.rent_ledger import (
+    RentGenerationRequest,
+    generate_rent_charges,
+    generation_requires_batch,
+    list_open_items,
+    preview_generation,
+)
 from ..storage import NotFoundError, ValidationError
 from ._helpers import apply_sort
+from .rent_batches import writer
 
 router = APIRouter(prefix="/rent-charges", tags=["Sollstellung"])
 
@@ -24,19 +34,33 @@ def open_rental_items() -> dict:
 
 
 @router.post("/preview", response_model=None)
-def preview_rent_generation(payload: RentGenerationRequest) -> dict:
+def preview_rent_generation(payload: RentGenerationRequest, identity=Depends(writer)) -> dict:
     try:
+        if generation_requires_batch(store, payload):
+            return _delegate(payload, identity)
         return preview_generation(store, payload)
     except (ValidationError, NotFoundError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/generate", response_model=None)
-def generate_monthly_rent(payload: RentGenerationRequest) -> dict:
+def generate_monthly_rent(payload: RentGenerationRequest, identity=Depends(writer)) -> dict:
     try:
+        if generation_requires_batch(store, payload):
+            return _delegate(payload, identity)
         return generate_rent_charges(store, payload)
     except (ValidationError, NotFoundError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+def _delegate(payload, identity):
+    try:
+        request = BatchCreate(start_month=payload.start_month, end_month=payload.end_month,
+            contract_ids=payload.contract_ids, idempotency_key=payload.idempotency_key or str(uuid4()))
+        return {"policy": "durable_batch", "batch": create_batch(store, request, **identity),
+            "created_count": 0, "requires_confirmation": True}
+    except BatchError as exc:
+        raise HTTPException(exc.status, exc.detail) from exc
 
 
 @router.get("", response_model=list[RentCharge])

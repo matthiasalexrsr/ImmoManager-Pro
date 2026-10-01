@@ -21,6 +21,7 @@ from ..config import settings
 from ..db.booking_order import bytewise_id
 from ..db.orm_models import AccountORM, BookingORM, CategoryORM, PropertyORM, TenantORM, UnitORM
 from ..models import Booking
+from .portfolio_scope import current_scope, scoped_clause
 
 ORDER: Literal["booking_date_desc_id_desc"] = "booking_date_desc_id_desc"
 CURSOR_LIFETIME_SECONDS = 3600
@@ -32,7 +33,7 @@ class BookingFilters(BaseModel):
     account_id: str | None = Field(default=None, pattern=_ID, max_length=100)
     property_id: str | None = Field(default=None, pattern=_ID, max_length=100)
     tenant_id: str | None = Field(default=None, pattern=_ID, max_length=100)
-    status: Literal["open", "matched", "booked"] | None = None
+    status: Literal["open", "matched", "booked", "confirmed"] | None = None
     date_from: date | None = None
     date_to: date | None = None
     search: str | None = Field(default=None, max_length=200)
@@ -102,8 +103,18 @@ def _filter_values(query):
     return BookingFilters.model_validate(query.model_dump(include=set(BookingFilters.model_fields))).model_dump(mode="json")
 
 
+def scope_binding():
+    """A continuation must never silently switch principal or portfolio grants."""
+    scope = current_scope()
+    return None if scope is None else {
+        "user_id": scope.user_id, "role": scope.role, "unrestricted": scope.unrestricted,
+        "portfolio_ids": scope.portfolio_ids,
+    }
+
+
 def _binding(query):
-    value = {"filters": _filter_values(query), "page_size": query.page_size, "order": query.order}
+    value = {"filters": _filter_values(query), "page_size": query.page_size, "order": query.order,
+             "scope": scope_binding()}
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
 
 
@@ -156,7 +167,7 @@ def decode_cursor(query, *, now=None):
         if current >= value["expires"]:
             raise BookingQueryError("cursor_expired", "Die Buchungsseite ist abgelaufen. Bitte die erste Seite neu laden.")
         if not hmac.compare_digest(value["binding"], _binding(query)):
-            raise BookingQueryError("cursor_filter_mismatch", "Die Filter oder Seitengröße wurden geändert. Bitte die erste Seite laden.")
+            raise BookingQueryError("cursor_filter_mismatch", "Filter, Seitengröße oder Zugriffsrechte wurden geändert. Bitte die erste Seite laden.")
         if not isinstance(value["id"], str) or not re.fullmatch(_ID, value["id"]):
             raise ValueError("Invalid position")
         if not isinstance(value["date"], str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value["date"]):
@@ -168,9 +179,12 @@ def decode_cursor(query, *, now=None):
         raise BookingQueryError("cursor_invalid", "Die Buchungsseite konnte nicht geprüft werden. Bitte die erste Seite neu laden.") from None
 
 
-def booking_statement(filters, *, after=None, limit, include_labels=False):
+def booking_statement(filters, *, after=None, limit, include_labels=False, scope=None):
     """Fixed columns only; user filters are bound SQL parameters."""
     query = select(BookingORM.__table__)
+    clause = scoped_clause(BookingORM.__table__, scope=scope)
+    if clause is not None:
+        query = query.where(clause)
     if include_labels:
         query = query.add_columns(AccountORM.name.label("account_name"), CategoryORM.name.label("category_name"),
             PropertyORM.name.label("property_name"), UnitORM.label.label("unit_label"), TenantORM.full_name.label("tenant_name"))

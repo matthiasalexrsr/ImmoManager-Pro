@@ -7,6 +7,7 @@ from ..dependencies import store
 from ..models import Document, DocumentCreate, DocumentPatch
 from ..routers.files import _perform_ocr, analyze_file, process_ocr
 from ..services.file_storage import get_file_storage
+from ..services.portfolio_scope import register_upload, require_assigned_scope
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/documents", tags=["Dokumente"])
@@ -59,10 +60,12 @@ async def import_document(
     contract_id: str | None = Form(None),
 ) -> Document:
     """Import a document in one step: upload + OCR + metadata persistence."""
+    require_assigned_scope()
     storage = get_file_storage()
     ext = (file.filename or "file").rsplit(".", 1)[-1].lower()
     key = f"documents/{uuid.uuid4().hex}_{(file.filename or 'file').replace(' ', '_')}"
     storage.save(key, file.file, content_type=file.content_type or "application/octet-stream")
+    register_upload(key)
     file_url = storage.get_url(key)
 
     if ext in {"pdf", "png", "jpg", "jpeg", "tiff", "tif", "bmp"}:

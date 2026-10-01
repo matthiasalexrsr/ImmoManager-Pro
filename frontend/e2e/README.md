@@ -144,3 +144,15 @@ screenshots and the shared uncaught-error guard.
 ```sh
 npm run test:e2e -- bookings-scale.pw.mjs
 ```
+
+`rent-batch.pw.mjs` saves a genuine 132-month generation plan in isolated SQLite,
+advances one bounded preparation step and pauses through the authenticated API.
+After reload, the UI restores that same persisted job and resumes preparation.
+No charges may exist before the user explicitly approves the sealed price plan.
+Approval creates exactly 132 distinct contractual months; the result and plan
+hash survive reload. The preview is inspected at desktop, 390 and 320 pixels
+with screenshots, overflow checks and the shared JavaScript-error guard.
+
+```sh
+npm run test:e2e -- rent-batch.pw.mjs
+```

@@ -20,7 +20,7 @@ Für eine separate Demonstration:
 ```
 
 Das Demokonto ist `demo` / `Demo1234`. Ohne `-Seed` eigene Bestandsdaten erfassen.
-Genehmigte weitere Benutzer teilen die Portfolios dieser Installation; siehe
+Eigentümer weisen weiteren Benutzern ausdrücklich Portfoliozugriffe zu; siehe
 [Zugangsmodell](ACCESS_MODEL.md). Alte lokale Projektarchive wurden nicht
 verschoben oder gelöscht. Die Entwicklung und ihre Tests verwenden synthetische
 Daten in getrennten Ordnern.
@@ -45,6 +45,15 @@ Sie prüft sichtbare Oberflächenaktionen und die gespeicherten API-Ergebnisse:
 8. Geschützte PDF-/Bilddateien und Einheitenfoto nach erneuter Anmeldung.
 
 ## Prüfergebnisse
+
+Zusätzlicher integrierter Stand nach den unten dokumentierten früheren Gates:
+578 Frontendtests in 46 Dateien, ESLint und Produktionsbuild bestanden.
+Der gemeinsame Backend-Memory-Stand mit Portfoliozugriff und DATEV bestand
+2.121 Tests (43 ausdrücklich übersprungen). Danach bestanden 27 echte
+Fehlerdiagnostik-/Rollbackfälle, 57 Mietserien-/Quellabfragefälle (5 Skips),
+vier Startup-/Router-/Resetfälle und eine vollständige frische Alembic-Migration.
+Diese lokalen Zahlen sind keine PostgreSQL- oder Gesamtfreigabe; aktuelle
+SQL-, Browser- und PostgreSQL-CI-Prüfungen bleiben erforderlich.
 
 Die lokale Abnahme erfolgt auf Windows mit Python 3.14.7 und Microsoft Edge.
 Die CI ergänzt Python 3.11/3.12 auf Linux, Playwrights gepinntes Chromium und

@@ -11,12 +11,11 @@ Exception hierarchy:
   - HTTPException → mapped by status code
   - Exception (catch-all) → 500 INTERNAL_ERROR
 
-All errors are logged with full context: request method, path, query params,
-request ID, user ID, exception type, and traceback where applicable.
+Logs retain request IDs, route templates and code locations. Input values,
+SQL parameters and exception messages are excluded from diagnostics.
 """
 
 import logging
-import traceback
 from enum import Enum
 from typing import Any
 
@@ -25,6 +24,7 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError as PydanticValidationError
 
 from .logging_config import request_id_var
+from .safe_diagnostics import exception_diagnostic, query_count, request_route
 from .storage import NotFoundError, ValidationError
 
 logger = logging.getLogger(__name__)
@@ -56,21 +56,16 @@ class ServiceUnavailableError(Exception):
 
 
 def _request_context(request: Request) -> dict:
-    """Extract detailed context from a request for logging."""
+    """Trace a request without exposing search values or user profile fields."""
     ctx: dict[str, Any] = {
         "method": request.method,
-        "path": request.url.path,
+        "path": request_route(request),
+        "query_count": query_count(request),
         "request_id": request_id_var.get() or "-",
     }
-    if request.url.query:
-        ctx["query"] = str(request.url.query)
     if hasattr(request.state, "user"):
         user = request.state.user
         ctx["user_id"] = getattr(user, "id", None)
-        ctx["username"] = getattr(user, "username", None)
-    client = request.client
-    if client:
-        ctx["client_ip"] = client.host
     return ctx
 
 
@@ -109,8 +104,8 @@ def register_exception_handlers(app: FastAPI) -> None:
         msg = str(exc) or "Ressource nicht gefunden"
         ctx = _request_context(request)
         logger.info(
-            "NOT_FOUND: %s %s – %s | context=%s",
-            request.method, request.url.path, msg, ctx,
+            "NOT_FOUND: context=%s",
+            ctx,
         )
         return _error_response(404, ErrorCode.NOT_FOUND, msg)
 
@@ -119,8 +114,8 @@ def register_exception_handlers(app: FastAPI) -> None:
         msg = str(exc) or "Validierungsfehler"
         ctx = _request_context(request)
         logger.warning(
-            "VALIDATION_ERROR: %s %s – %s | context=%s",
-            request.method, request.url.path, msg, ctx,
+            "VALIDATION_ERROR: context=%s",
+            ctx,
         )
         return _error_response(400, ErrorCode.VALIDATION_ERROR, msg)
 
@@ -132,8 +127,8 @@ def register_exception_handlers(app: FastAPI) -> None:
             details.append({"field": field, "message": err.get("msg", "")})
         ctx = _request_context(request)
         logger.warning(
-            "PYDANTIC_VALIDATION: %s %s – %d field errors: %s | context=%s",
-            request.method, request.url.path, len(details), details, ctx,
+            "PYDANTIC_VALIDATION: %d field errors | context=%s",
+            len(details), ctx,
         )
         return _error_response(422, ErrorCode.VALIDATION_ERROR, "Ungültige Eingabe", details)
 
@@ -144,16 +139,9 @@ def register_exception_handlers(app: FastAPI) -> None:
         @app.exception_handler(DatabaseOperationError)
         async def db_operation_handler(request: Request, exc: DatabaseOperationError):
             ctx = _request_context(request)
-            # Log the full chain of causes for maximum debuggability
-            cause_chain = []
-            cause = exc.__cause__
-            while cause:
-                cause_chain.append(f"{type(cause).__name__}: {cause}")
-                cause = cause.__cause__
             logger.error(
-                "DB_ERROR: %s %s – op=%s detail=%s | cause_chain=%s | context=%s | traceback=%s",
-                request.method, request.url.path, exc.operation, exc.detail,
-                cause_chain, ctx, traceback.format_exc(),
+                "DB_ERROR: op=%s | diagnostic=%s | context=%s",
+                exc.operation, exception_diagnostic(exc), ctx,
             )
             # Return 409 for integrity errors instead of 500
             status_code = 500
@@ -187,9 +175,8 @@ def register_exception_handlers(app: FastAPI) -> None:
         log_level = logging.WARNING if exc.status_code < 500 else logging.ERROR
         logger.log(
             log_level,
-            "HTTP_%d: %s %s – code=%s message=%s | context=%s",
-            exc.status_code, request.method, request.url.path,
-            code.value, msg, ctx,
+            "HTTP_%d: code=%s | context=%s",
+            exc.status_code, code.value, ctx,
         )
         response = _error_response(exc.status_code, code, msg)
         response.headers.update(exc.headers or {})
@@ -199,10 +186,8 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def general_exception_handler(request: Request, exc: Exception):
         ctx = _request_context(request)
         logger.critical(
-            "UNHANDLED_EXCEPTION: %s %s – type=%s message=%s | context=%s | traceback:\n%s",
-            request.method, request.url.path,
-            type(exc).__name__, exc, ctx,
-            traceback.format_exc(),
+            "UNHANDLED_EXCEPTION: diagnostic=%s | context=%s",
+            exception_diagnostic(exc), ctx,
         )
         return _error_response(
             500,

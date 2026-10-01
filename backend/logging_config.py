@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .config import settings
+from .safe_diagnostics import DiagnosticFormatter
 
 # Context variables for request-scoped data
 request_id_var: ContextVar[str | None] = ContextVar("request_id", default=None)
@@ -28,7 +29,7 @@ class RequestContextFilter(logging.Filter):
         return True
 
 
-class JSONFormatter(logging.Formatter):
+class JSONFormatter(DiagnosticFormatter):
     """Outputs log records as single-line JSON objects.
 
     Captures all structured extra fields (method, path, status_code, etc.)
@@ -38,7 +39,7 @@ class JSONFormatter(logging.Formatter):
     # Extra fields to capture from log records (set via extra={} or attributes)
     _EXTRA_FIELDS = (
         "method", "path", "status_code", "duration_ms",
-        "query", "client_ip",
+        "query_count",
     )
 
     def format(self, record):
@@ -46,7 +47,7 @@ class JSONFormatter(logging.Formatter):
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "level": record.levelname,
             "logger": record.name,
-            "message": record.getMessage(),
+            "message": self.safe_message(record),
             "request_id": getattr(record, "request_id", "-"),
             "user_id": getattr(record, "user_id", "-"),
         }
@@ -61,12 +62,12 @@ class JSONFormatter(logging.Formatter):
             log_entry["exception"] = self.formatException(record.exc_info)
         # Include source location for ERROR and above
         if record.levelno >= logging.ERROR:
-            log_entry["source"] = f"{record.pathname}:{record.lineno}"
+            log_entry["source"] = f"{Path(record.pathname).name}:{record.lineno}"
             log_entry["func"] = record.funcName
         return json.dumps(log_entry, ensure_ascii=False)
 
 
-class TextFormatter(logging.Formatter):
+class TextFormatter(DiagnosticFormatter):
     """Human-readable colored text formatter for development.
 
     Includes source location and traceback for errors.
@@ -86,11 +87,11 @@ class TextFormatter(logging.Formatter):
         rid = getattr(record, "request_id", "-")
         prefix = f"{color}{record.levelname:8s}{self.RESET}"
         ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
-        msg = record.getMessage()
+        msg = self.safe_message(record)
         base = f"{ts} {prefix} [{rid}] {record.name}: {msg}"
         # Add source location for ERROR and above
         if record.levelno >= logging.ERROR:
-            base += f" [{record.pathname}:{record.lineno} in {record.funcName}]"
+            base += f" [{Path(record.pathname).name}:{record.lineno} in {record.funcName}]"
         if record.exc_info and record.exc_info[1]:
             base += "\n" + self.formatException(record.exc_info)
         return base

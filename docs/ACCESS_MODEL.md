@@ -1,10 +1,14 @@
 # Private installation and first-owner setup
 
-ImmoManager currently serves one private installation. Every approved user sees
-the installation's portfolios; roles control write and administrative actions.
-`readonly` is an approved installation-wide viewer, not a tenant portal. Tenant
-accounts with separate portfolios or object-level permissions require a dedicated
-access model and are not available yet.
+ImmoManager serves one private installation with explicitly assigned portfolio
+access. Owners assign either all portfolios or a selected set in Settings → Users.
+New non-owner accounts default to an empty selected set until access is assigned.
+Roles separately control write and administrative actions. Lists, direct IDs,
+searches, references, reports, exports and private files apply the current portfolio
+scope; a rights change applies to an already issued access token immediately.
+Installation-wide administration requires an appropriate role and all-portfolio
+access. A selected manager can still edit their own preferences. Portfolio access
+does not itself create a tenant portal or separate independent organizations.
 
 Start a new installation without demo data and open its local address, for example
 `http://127.0.0.1:8000`. The login page checks `/api/v1/auth/setup-status` and presents

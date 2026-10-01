@@ -155,6 +155,15 @@ def _version_mutation(method):
 
 @dataclass
 class InMemoryStore:
+    def __getattribute__(self, name):
+        value = object.__getattribute__(self, name)
+        if isinstance(value, dict) and name in object.__getattribute__(self, "__dataclass_fields__"):
+            from .services.portfolio_scope import ScopedCollection, current_scope
+            scope = current_scope()
+            if scope is not None and not scope.unrestricted:
+                return ScopedCollection(self, name, value)
+        return value
+
     accounts: Dict[str, Account] = field(default_factory=dict)
     bookings: Dict[str, Booking] = field(default_factory=dict)
     calendar_events: Dict[str, CalendarEvent] = field(default_factory=dict)
@@ -218,11 +227,18 @@ class InMemoryStore:
 
     def clear_all(self) -> None:
         """Clear all entity collections. Used by tests to reset state."""
+        from .services.portfolio_scope import require_installation_scope
+        require_installation_scope()
+        rental_engine = self.__dict__.pop("_rent_batch_engine", None)
+        if rental_engine is not None:
+            rental_engine.dispose()
         for name, val in self.__dataclass_fields__.items():
             attr = getattr(self, name)
             if isinstance(attr, dict):
                 attr.clear()
         self.__dict__.pop("_operational_state", None)
+        self.__dict__.pop("_resource_grants", None)
+        self.__dict__.pop("_upload_grants", None)
 
     def count_entities(self, entity_type: str, filters: Dict[str, Any] | None = None) -> int:
         """Count entities of a given type, optionally filtered."""

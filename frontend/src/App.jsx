@@ -17,6 +17,8 @@ const Tenants = lazy(() => import('./pages/Tenants'));
 const Contracts = lazy(() => import('./pages/Contracts'));
 const Accounts = lazy(() => import('./pages/Accounts'));
 const Bookings = lazy(() => import('./pages/Bookings'));
+const DatevExport = lazy(() => import('./pages/DatevExport'));
+const Outbox = lazy(() => import('./pages/Outbox'));
 const Invoices = lazy(() => import('./pages/Invoices'));
 const Maintenance = lazy(() => import('./pages/Maintenance'));
 const Tasks = lazy(() => import('./pages/Tasks'));
@@ -115,6 +117,7 @@ export default function App() {
           <Route path="contracts" element={<Contracts />} />
           <Route path="accounts" element={<Accounts />} />
           <Route path="bookings" element={<Bookings />} />
+          <Route path="datev" element={<DatevExport />} />
           <Route path="invoices" element={<Invoices />} />
           <Route path="maintenance" element={<Maintenance />} />
           <Route path="tasks" element={<Tasks />} />
@@ -124,6 +127,7 @@ export default function App() {
           <Route path="contacts" element={<Contacts />} />
           <Route path="statements" element={<Statements />} />
           <Route path="messages" element={<Messages />} />
+          <Route path="outbox" element={<Outbox />} />
           <Route path="categories" element={<Categories />} />
           <Route path="deposits" element={<Deposits />} />
           <Route path="insurances" element={<Insurances />} />

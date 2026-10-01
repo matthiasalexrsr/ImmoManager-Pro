@@ -123,38 +123,12 @@ class TestCSVExport:
 # === DATEV Export Tests ===
 
 class TestDATEVExport:
-    def test_datev_export_basic(self, _setup_data):
-        pf, prop, unit, tenant, contract, account, category = _setup_data
-        store.create_booking(BookingCreate(
-            account_id=account.id, booking_date=date(2024, 3, 15),
-            amount=800.0, payment_text="Miete März",
-            category_id=category.id
-        ))
-        store.create_booking(BookingCreate(
-            account_id=account.id, booking_date=date(2024, 3, 20),
-            amount=-150.0, payment_text="Reparatur"
-        ))
-        result = datev_export(start_date=None, end_date=None)
-        assert isinstance(result, StreamingResponse)
-        assert "EXTF_Buchungsstapel.csv" in result.headers["content-disposition"]
-
-    def test_datev_export_date_filter(self, _setup_data):
-        pf, prop, unit, tenant, contract, account, category = _setup_data
-        store.create_booking(BookingCreate(
-            account_id=account.id, booking_date=date(2024, 1, 15), amount=100.0
-        ))
-        store.create_booking(BookingCreate(
-            account_id=account.id, booking_date=date(2024, 6, 15), amount=200.0
-        ))
-        result = datev_export(
-            start_date=date(2024, 6, 1),
-            end_date=date(2024, 6, 30),
-        )
-        assert isinstance(result, StreamingResponse)
-
-    def test_datev_export_empty(self):
-        result = datev_export(start_date=None, end_date=None)
-        assert isinstance(result, StreamingResponse)
+    def test_legacy_unreviewed_export_has_explicit_migration_and_csv_alternative(self):
+        from fastapi import HTTPException
+        with pytest.raises(HTTPException) as error:
+            datev_export(start_date=None, end_date=None)
+        assert error.value.status_code == 410
+        assert "/datev" in error.value.detail and "/bookings/export.csv" in error.value.detail
 
 
 # === Bank Import Tests ===

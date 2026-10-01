@@ -21,8 +21,9 @@ from sqlalchemy.orm import sessionmaker
 
 from backend import auth
 from backend.app import app
+from backend.db.access_models import UserAccessORM, UserPortfolioORM
 from backend.db.auth_models import AuthSetupORM
-from backend.db.orm_models import AuditLogORM, Base, LoginAttemptORM, RevokedTokenORM, UserORM
+from backend.db.orm_models import AuditLogORM, Base, LoginAttemptORM, PortfolioORM, RevokedTokenORM, UserORM
 from scripts.reset_2fa import reset_totp
 
 
@@ -34,7 +35,8 @@ def user_store(request, monkeypatch, tmp_path):
         factory = None
     else:
         engine = create_engine(f"sqlite:///{tmp_path / 'immo_manager.db'}", connect_args={"check_same_thread": False})
-        Base.metadata.create_all(engine, tables=[UserORM.__table__, AuthSetupORM.__table__, LoginAttemptORM.__table__, RevokedTokenORM.__table__, AuditLogORM.__table__])
+        Base.metadata.create_all(engine, tables=[UserORM.__table__, AuthSetupORM.__table__, LoginAttemptORM.__table__, RevokedTokenORM.__table__, AuditLogORM.__table__,
+                                                PortfolioORM.__table__, UserAccessORM.__table__, UserPortfolioORM.__table__])
         factory = sessionmaker(bind=engine)
         store = auth.SQLUserStore(factory)
     monkeypatch.setattr(auth, "_user_store", store)
@@ -168,7 +170,8 @@ def test_readonly_can_enroll_own_two_factor_without_business_writes(local_client
 
 def test_offline_recovery_changes_only_the_recorded_account_and_audits(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'immo_manager.db'}")
-    Base.metadata.create_all(engine, tables=[UserORM.__table__, AuthSetupORM.__table__, AuditLogORM.__table__])
+    Base.metadata.create_all(engine, tables=[UserORM.__table__, AuthSetupORM.__table__, AuditLogORM.__table__,
+                                            PortfolioORM.__table__, UserAccessORM.__table__, UserPortfolioORM.__table__])
     factory = sessionmaker(bind=engine)
     store = auth.SQLUserStore(factory)
     users = []
@@ -212,6 +215,7 @@ def test_auth_migration_marks_existing_users_and_keeps_empty_installation_open(t
         migration = importlib.import_module("backend.db.migrations.versions.e9f0a1b2c3d4_close_initial_owner_setup")
         with Operations.context(MigrationContext.configure(connection)):
             migration.upgrade()
+    Base.metadata.create_all(engine, tables=[PortfolioORM.__table__, UserAccessORM.__table__, UserPortfolioORM.__table__])
     store = auth.SQLUserStore(sessionmaker(bind=engine))
     assert store.setup_required() is not has_existing_user
     if has_existing_user:

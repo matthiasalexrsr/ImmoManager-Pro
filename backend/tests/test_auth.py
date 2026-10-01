@@ -246,23 +246,23 @@ class TestAuthRouter:
 
     def test_update_my_preferences_reports_failure_when_session_init_fails(self, monkeypatch):
         user = _register_admin()
-
-        monkeypatch.setattr("backend.db.session.DATABASE_URL", "postgresql://db/test")
+        before = get_my_preferences(user)
 
         def _raise_session_error():
             raise RuntimeError("db down")
 
-        monkeypatch.setattr("backend.db.session.SessionLocal", _raise_session_error)
-        monkeypatch.setattr("backend.dependencies._use_sql_store", True)
-
-        with pytest.raises(HTTPException) as error:
-            update_my_preferences({"theme": "dark", "locale": "en-US", "ignored": "x"}, user)
+        with monkeypatch.context() as patch:
+            patch.setattr("backend.auth._auth_session_factory", _raise_session_error)
+            with pytest.raises(HTTPException) as error:
+                update_my_preferences({"theme": "dark", "locale": "en-US", "ignored": "x"}, user)
         assert error.value.status_code == 503
+        assert get_my_preferences(user) == before
 
     def test_update_my_preferences_reports_failure_when_commit_fails(self, monkeypatch):
-        user = _register_admin()
+        from backend.auth import _auth_session_factory
 
-        monkeypatch.setattr("backend.db.session.DATABASE_URL", "postgresql://db/test")
+        user = _register_admin()
+        before = update_my_preferences({"theme": "system", "locale": "es-ES"}, user)
 
         class _BrokenSession:
             def execute(self, _statement):
@@ -290,12 +290,28 @@ class TestAuthRouter:
             def close(self):
                 return None
 
-        monkeypatch.setattr("backend.db.session.SessionLocal", lambda: _BrokenSession())
-        monkeypatch.setattr("backend.dependencies._use_sql_store", True)
+        if _auth_session_factory is None:
+            session = MagicMock(wraps=_BrokenSession())
+        else:
+            # Exercise real pending SQL changes and rollback, not a fake store.
+            actual_session = _auth_session_factory()
+            session = MagicMock(wraps=actual_session)
 
-        with pytest.raises(HTTPException) as error:
-            update_my_preferences({"theme": "dark", "currency": "USD"}, user)
+            def _fail_commit():
+                actual_session.flush()
+                raise RuntimeError("commit failed")
+
+            session.commit.side_effect = _fail_commit
+
+        with monkeypatch.context() as patch:
+            patch.setattr("backend.auth._auth_session_factory", lambda: session)
+            with pytest.raises(HTTPException) as error:
+                update_my_preferences({"theme": "dark", "currency": "USD"}, user)
         assert error.value.status_code == 503
+        session.commit.assert_called_once()
+        session.rollback.assert_called_once()
+        session.close.assert_called_once()
+        assert get_my_preferences(user) == before
 
 
 

@@ -20,13 +20,11 @@ from functools import lru_cache
 from pathlib import Path
 from types import MappingProxyType
 
-from sqlalchemy.exc import DontWrapMixin
-
 _CONTEXT = b"immomanager/account.iban/aes-siv/v1"
 _KEY_ID = re.compile(r"[A-Za-z0-9_-]{1,64}\Z")
 
 
-class IBANEncryptionError(Exception, DontWrapMixin):
+class IBANEncryptionError(Exception):
     """Safe error: no key, plaintext, ciphertext or SQL parameters in its text."""
 
     def __init__(self, code: str):

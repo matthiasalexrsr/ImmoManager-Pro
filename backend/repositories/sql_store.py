@@ -5,10 +5,14 @@ maintaining the same public API for backward compatibility with routers and test
 """
 
 import logging
+from typing import cast
 
+from fastapi import HTTPException
 from pydantic import BaseModel as PydanticBaseModel
+from sqlalchemy import Table, select
 from sqlalchemy.orm import Session
 
+from ..db.outbox_models import OutboxCommandORM, OutboxEventORM, OutboxMessageORM
 from ..models import (
     Account,
     AccountCreate,
@@ -144,15 +148,37 @@ class SQLAlchemyStore:
         return reverse_payment(self.db, entity_type, entity_id, payment_id, payload)
 
     def clear_all(self) -> None:
-        """Delete all rows from every mapped table. Used by tests to reset state."""
+        """Reset a test store only while no durable reviewed SMTP history exists."""
+        from ..services.portfolio_scope import require_installation_scope
+        require_installation_scope()
         from ..db.orm_models import Base
+        from ..db.rent_batch_models import RENT_BATCH_TABLES, RentSourceRevisionORM
+        # Durable reviewed content and factual transport history cannot be
+        # discarded by an ordinary business/test reset. Full offline recovery
+        # replaces the complete database through its separate explicit workflow.
+        if any(self.db.scalar(select(model.id).limit(1)) is not None
+                for model in (OutboxMessageORM, OutboxEventORM, OutboxCommandORM)):
+            self.db.rollback()
+            raise HTTPException(409, "outbox_history_exists: full offline recovery is required")
+        # Snapshot IDs intentionally preserve historical references without
+        # foreign keys to live contracts. Remove them before their live sources.
+        # SQLAlchemy annotates Declarative __table__ as FromClause, although
+        # these mapped values are the concrete Tables required for DML.
+        snapshot_tables = tuple(cast(Table, table) for table in RENT_BATCH_TABLES)
+        rental_tables = {table.name for table in snapshot_tables}
+        for table in reversed(snapshot_tables[1:]):
+            self.db.execute(table.delete())
         for table in reversed(Base.metadata.sorted_tables):
+            if table.name in rental_tables:
+                continue
             # Clearing an entire test/import store must remove correction leaves
             # before roots because SQLite RESTRICT is checked row by row.
             if table.name in {"billing_periods", "utility_statements"}:
                 source = "source_period_id" if table.name == "billing_periods" else "source_statement_id"
                 self.db.execute(table.update().values(**{source: None}))
             self.db.execute(table.delete())
+        # Live-source DELETE triggers increment revisions during the reset.
+        self.db.execute(cast(Table, RentSourceRevisionORM.__table__).delete())
         self._commit()
 
     # ── Generic helpers (used by search, admin, etc.) ──

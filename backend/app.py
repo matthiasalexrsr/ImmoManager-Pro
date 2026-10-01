@@ -34,6 +34,7 @@ from .plugins.runtime import AuthenticatedPlugin
 from .routing import build_api_v1, get_i18n_router
 from .services.concurrency import ConcurrencyMiddleware
 from .services.iban_http import register_iban_exception_handler
+from .services.portfolio_http import PortfolioScopeMiddleware
 from .static_access import PrivateStaticFiles, frontend_response
 
 # Initialize logging first
@@ -196,6 +197,7 @@ app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(AcceptLanguageMiddleware)
 app.add_middleware(AuditMiddleware)
 app.add_middleware(RBACWriteGuardMiddleware)
+app.add_middleware(PortfolioScopeMiddleware)
 app.add_middleware(ConcurrencyMiddleware)
 app.add_middleware(DBSessionMiddleware)
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.trusted_hosts, www_redirect=False)

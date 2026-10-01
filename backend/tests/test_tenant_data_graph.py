@@ -163,6 +163,8 @@ def store(request):
         values = {name: [r.model_dump() for r in rows] for name, rows in seed.items()}
         values["payment_reversals"] = []
         for row in values["payments"]:
+            # Derived from credit_receipts.payment_id; no duplicate DB column.
+            assert row.pop("credit_receipt_id") is None
             kind, target = row.pop("entity_type"), row.pop("entity_id")
             row[f"{kind}_id"] = target
             reversal = row.pop("reversal")

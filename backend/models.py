@@ -184,6 +184,7 @@ class Booking(BookingCreate):
 
 class ReceivableCreate(BaseModel):
     contract_id: str
+    description: Optional[str] = None
     due_date: date
     amount_due: float
     dunning_level: Optional[str] = None
@@ -201,6 +202,10 @@ class Receivable(ReceivableCreate):
 class InvoiceCreate(BaseModel):
     property_id: Optional[str] = None
     supplier: str
+    invoice_number: Optional[str] = None
+    payment_reference: Optional[str] = None
+    category: Optional[str] = None
+    notes: Optional[str] = None
     invoice_date: date
     due_date: Optional[date] = None
     net_amount: float
@@ -451,6 +456,7 @@ class BookingPatch(BaseModel):
 
 class ReceivablePatch(BaseModel):
     contract_id: Optional[str] = None
+    description: Optional[str] = None
     due_date: Optional[date] = None
     amount_due: Optional[float] = None
     dunning_level: Optional[str] = None
@@ -461,6 +467,10 @@ class ReceivablePatch(BaseModel):
 class InvoicePatch(BaseModel):
     property_id: Optional[str] = None
     supplier: Optional[str] = None
+    invoice_number: Optional[str] = None
+    payment_reference: Optional[str] = None
+    category: Optional[str] = None
+    notes: Optional[str] = None
     invoice_date: Optional[date] = None
     due_date: Optional[date] = None
     net_amount: Optional[float] = None
@@ -915,6 +925,21 @@ class UserCreate(BaseModel):
     full_name: str
     password: str = Field(..., min_length=6)
     role: str = "readonly"  # eigentuemer, verwalter, buchhaltung, techniker, readonly
+    portfolio_access: Literal["all", "selected"] = "selected"
+    portfolio_ids: list[str] = Field(default_factory=list)
+
+    @field_validator("portfolio_ids")
+    @classmethod
+    def validate_portfolios(cls, value):
+        if len(value) != len(set(value)) or any(not item.strip() for item in value):
+            raise ValueError("Portfolios müssen eindeutig und nicht leer sein")
+        return value
+
+    @model_validator(mode="after")
+    def validate_portfolio_scope(self):
+        if self.portfolio_access == "all" and self.portfolio_ids:
+            raise ValueError("Zugriff auf alle Portfolios benötigt keine Einzelauswahl")
+        return self
 
     @field_validator("email")
     @classmethod
@@ -938,6 +963,9 @@ class UserRead(BaseModel):
     full_name: str
     role: str
     is_active: bool = True
+    portfolio_access: Literal["all", "selected"] = "all"
+    portfolio_ids: list[str] = Field(default_factory=list)
+    portfolio_access_origin: str = "legacy_all"
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -953,6 +981,21 @@ class UserPatch(BaseModel):
     full_name: Optional[str] = None
     role: Optional[str] = None
     is_active: Optional[bool] = None
+    portfolio_access: Optional[Literal["all", "selected"]] = None
+    portfolio_ids: Optional[list[str]] = None
+
+    @model_validator(mode="after")
+    def validate_scope_pair(self):
+        scope_fields = {"portfolio_access", "portfolio_ids"} & self.model_fields_set
+        if scope_fields and scope_fields != {"portfolio_access", "portfolio_ids"}:
+            raise ValueError("Zugriff und Portfolioauswahl müssen zusammen angegeben werden")
+        if scope_fields:
+            if self.portfolio_access is None or self.portfolio_ids is None:
+                raise ValueError("Explizit leere Zugriffsfelder sind nicht erlaubt")
+            UserCreate.validate_portfolios(self.portfolio_ids)
+            if self.portfolio_access == "all" and self.portfolio_ids:
+                raise ValueError("Zugriff auf alle Portfolios benötigt keine Einzelauswahl")
+        return self
 
     @field_validator("email", "full_name", "role", "is_active", mode="before")
     @classmethod
@@ -1341,6 +1384,8 @@ class ContactPatch(BaseModel):
 
 class MeterCreate(BaseModel):
     unit_id: str
+    contract_number: Optional[str] = None
+    contract_end_date: Optional[date] = None
     meter_type: str  # cold_water, hot_water, heating, electricity, gas
     serial_number: Optional[str] = None
     location: Optional[str] = None
@@ -1358,6 +1403,8 @@ class Meter(MeterCreate):
 
 class MeterPatch(BaseModel):
     unit_id: Optional[str] = None
+    contract_number: Optional[str] = None
+    contract_end_date: Optional[date] = None
     meter_type: Optional[str] = None
     serial_number: Optional[str] = None
     location: Optional[str] = None

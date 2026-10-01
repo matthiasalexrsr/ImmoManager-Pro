@@ -13,12 +13,13 @@ frontend/API consumer reference.
 """
 
 import logging
-import traceback
 from decimal import Decimal, InvalidOperation
 from functools import wraps
 from typing import Any, TypeVar
 
 from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
+
+from .safe_diagnostics import exception_diagnostic
 
 logger = logging.getLogger(__name__)
 
@@ -120,10 +121,9 @@ def _rollback_session(instance: Any, operation_name: str) -> None:
         )
     except Exception as rollback_exc:
         logger.error(
-            "Failed to rollback session after %s error: %s\n%s",
+            "Failed to rollback session after %s error: diagnostic=%s",
             operation_name,
-            rollback_exc,
-            traceback.format_exc(),
+            exception_diagnostic(rollback_exc),
         )
 
 
@@ -131,7 +131,7 @@ def safe_db_operation(operation_name: str):
     """Decorator that wraps a function with SQLAlchemy error handling.
 
     Catches IntegrityError, OperationalError, and generic SQLAlchemyError,
-    logs them with full context (including SQL statement and parameters),
+    logs code locations and exception types without SQL or input values,
     **rolls back the session** to prevent cascading failures, and re-raises
     as DatabaseOperationError so the global exception handler can return a
     proper error response.
@@ -148,14 +148,9 @@ def safe_db_operation(operation_name: str):
             try:
                 return func(*args, **kwargs)
             except IntegrityError as exc:
-                # Extract detailed SQL context for debugging
-                sql_stmt = str(exc.statement) if exc.statement else "(no statement)"
-                sql_params = str(exc.params) if exc.params else "(no params)"
-                orig_msg = str(exc.orig) if exc.orig else str(exc)
                 logger.error(
-                    "Integrity error in %s: %s | SQL: %s | Params: %s | Full: %s",
-                    operation_name, orig_msg, sql_stmt, sql_params, exc,
-                    exc_info=True,
+                    "Integrity error in %s: diagnostic=%s",
+                    operation_name, exception_diagnostic(exc),
                 )
                 # CRITICAL: rollback session to prevent cascading failures
                 if args:
@@ -165,13 +160,9 @@ def safe_db_operation(operation_name: str):
                     "Datenintegritätsfehler — möglicherweise doppelter Eintrag oder ungültige Referenz.",
                 ) from exc
             except OperationalError as exc:
-                sql_stmt = str(exc.statement) if exc.statement else "(no statement)"
-                sql_params = str(exc.params) if exc.params else "(no params)"
-                orig_msg = str(exc.orig) if exc.orig else str(exc)
                 logger.error(
-                    "Operational error in %s: %s | SQL: %s | Params: %s | Full: %s",
-                    operation_name, orig_msg, sql_stmt, sql_params, exc,
-                    exc_info=True,
+                    "Operational error in %s: diagnostic=%s",
+                    operation_name, exception_diagnostic(exc),
                 )
                 # CRITICAL: rollback session to prevent cascading failures
                 if args:
@@ -182,9 +173,8 @@ def safe_db_operation(operation_name: str):
                 ) from exc
             except SQLAlchemyError as exc:
                 logger.error(
-                    "Database error in %s: %s | Type: %s",
-                    operation_name, exc, type(exc).__name__,
-                    exc_info=True,
+                    "Database error in %s: diagnostic=%s",
+                    operation_name, exception_diagnostic(exc),
                 )
                 # CRITICAL: rollback session to prevent cascading failures
                 if args:
@@ -215,7 +205,7 @@ def safe_parse_decimal(value: Any, fallback: Decimal = Decimal("0")) -> Decimal:
     try:
         return Decimal(str(value))
     except (InvalidOperation, ValueError, TypeError):
-        logger.warning("Could not parse decimal value: %r, using fallback %s", value, fallback)
+        logger.warning("Could not parse decimal value; using the declared fallback")
         return fallback
 
 
@@ -236,9 +226,8 @@ def safe_get_related(fetch_fn, entity_id: str, entity_label: str = "entity") -> 
         return fetch_fn(entity_id)
     except Exception as exc:
         logger.warning(
-            "Failed to fetch related %s (id=%s): %s",
+            "Failed to fetch related %s: diagnostic=%s",
             entity_label,
-            entity_id,
-            exc,
+            exception_diagnostic(exc),
         )
         return None

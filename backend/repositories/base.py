@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from ..db.orm_models import Base
 from ..error_helpers import safe_db_operation
+from ..safe_diagnostics import exception_diagnostic
 from ..services.concurrency import conflict, expected_revision, next_updated_at
 from ..storage import NotFoundError, ValidationError
 
@@ -62,10 +63,10 @@ class BaseRepository:
             return self.read_class.model_validate(_orm_to_dict(orm_obj))
         except Exception as exc:
             logger.error(
-                "Failed to validate %s from ORM %s: %s",
+                "Failed to validate %s from ORM %s: diagnostic=%s",
                 self.read_class.__name__,
                 type(orm_obj).__name__,
-                exc,
+                exception_diagnostic(exc),
             )
             raise
 
@@ -117,6 +118,8 @@ class BaseRepository:
         orm_obj = self.db.get(self.orm_class, entity_id, populate_existing=True)
         if orm_obj is None:
             self._missing(entity_id)
+        from ..services.portfolio_scope import guard_sql_write
+        guard_sql_write(self.db, self.orm_class.__table__, {**_orm_to_dict(orm_obj), **updates}, entity_id=entity_id)
         self._guard_contract_update(orm_obj, updates)
         booking_condition = self._booking_condition(orm_obj, updates)
         revision_condition = self._revision_condition(entity_id)
@@ -168,7 +171,7 @@ class BaseRepository:
 
     @safe_db_operation("exists")
     def exists(self, entity_id: str) -> bool:
-        return self.db.get(self.orm_class, entity_id) is not None
+        return self.db.get(self.orm_class, entity_id, populate_existing=True) is not None
 
     @safe_db_operation("create")
     def create(self, data: PydanticBaseModel) -> Any:

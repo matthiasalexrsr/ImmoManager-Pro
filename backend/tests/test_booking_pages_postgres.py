@@ -16,10 +16,14 @@ def test_pg_bytewise_tie_order_and_composite_filter_pagination(postgres_database
     seed_references(engine)
     with factory() as db:
         active = SQLAlchemyStore(db)
-        insert_rows(active, [row(n) for n in range(103)])
-        insert_rows(active, [row(1000 + n, id=value, booking_date=date(2026, 10, 1)) for n, value in enumerate(["a", "B", "b"])])
+        dataset = [row(n) for n in range(103)] + [row(1000 + n, id=value, booking_date=date(2026, 10, 1))
+            for n, value in enumerate(["a", "B", "b"])]
+        insert_rows(active, dataset)
         assert [item.id for item in get_booking_page(active, BookingPageQuery(page_size=3)).items] == ["b", "a", "B"]
-        expected = sorted((row(n) for n in range(103) if n % 2), key=lambda value: (value["booking_date"], value["id"]), reverse=True)
+        # B is index1001: account-1 and Miete, so it belongs to this filter too.
+        expected = sorted((value for value in dataset if value["account_id"] == "account-1"
+            and "miete" in value["payment_text"].lower()), key=lambda value: (value["booking_date"], value["id"]), reverse=True)
+        assert expected[0]["id"] == "B"
         assert all_pages(active, page_size=7, account_id="account-1", search="miete") == [value["id"] for value in expected]
     assert engine.pool.checkedout() == 0
 

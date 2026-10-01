@@ -21,7 +21,7 @@ async function login(page, account, success = true) {
 async function headers(page) { return { Authorization: `Bearer ${await page.evaluate(() => localStorage.getItem('access_token'))}` }; }
 async function createFixture(page, role, prefix) {
   const username = unique(prefix);
-  const response = await page.request.post('/api/v1/auth/users', { headers: await headers(page), data: { username, email: `${username}@example.com`, full_name: username, password: passphrase, role } });
+  const response = await page.request.post('/api/v1/auth/users', { headers: await headers(page), data: { username, email: `${username}@example.com`, full_name: username, password: passphrase, role, portfolio_access: 'all', portfolio_ids: [] } });
   expect(response.status(), await response.text()).toBe(201);
   return { ...(await response.json()), password: passphrase };
 }
@@ -78,11 +78,12 @@ test('owner: create account, persist changed fields and role, deactivate, reacti
   await page.getByRole('button', { name: 'Benutzer', exact: true }).click();
   const updatedName = `${name} gespeichert`;
   const updatedEmail = `${username}-updated@example.com`;
-  const changes = { full_name: updatedName, email: updatedEmail, role: 'verwalter' };
+  const changes = { full_name: updatedName, email: updatedEmail, role: 'verwalter', portfolio_access: 'all', portfolio_ids: [] };
   const editDialog = await edit(page, section, name);
   await editDialog.getByLabel(/^Vollständiger Name/).fill(updatedName);
   await editDialog.getByLabel(/^E-Mail-Adresse/).fill(updatedEmail);
   await editDialog.getByLabel(/^Rolle/).selectOption('verwalter');
+  await editDialog.getByLabel(/^Portfoliozugriff/).selectOption('all');
   expect(await savePatch(page, editDialog, account.id, changes)).toMatchObject(changes);
   await page.reload(); await page.getByRole('button', { name: 'Benutzer', exact: true }).click();
   const row = section.getByRole('row').filter({ hasText: updatedEmail });

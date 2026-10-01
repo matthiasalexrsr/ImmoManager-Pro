@@ -1,0 +1,43 @@
+.outbox-workspace { max-width: 1180px; margin: 0 auto; display: grid; gap: 1.2rem; color: #233844; }
+.outbox-heading, .outbox-section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.outbox-heading h1 { margin: .15rem 0 .5rem; font-size: clamp(1.75rem, 3vw, 2.25rem); }
+.outbox-heading p { max-width: 760px; line-height: 1.6; margin: .25rem 0; }
+.outbox-eyebrow { font-size: .78rem; letter-spacing: .1em; text-transform: uppercase; color: #246e69; font-weight: 700; }
+.outbox-panel { background: #fffefa; border: 1px solid #dfe6e5; border-radius: 16px; padding: clamp(1rem, 3vw, 1.5rem); box-shadow: 0 4px 22px #23384406; min-width: 0; }
+.outbox-panel h2 { margin-top: 0; font-size: 1.2rem; }
+.outbox-guidance { background: #edf5f3; border-left: 3px solid #438b81; padding: .85rem 1rem; border-radius: 6px; line-height: 1.6; }
+.outbox-guidance p { margin: .2rem 0; }
+.outbox-workspace label { display: grid; gap: .4rem; font-weight: 600; font-size: .9rem; }
+.outbox-workspace input:not([type=checkbox]), .outbox-workspace select, .outbox-workspace textarea { width: 100%; padding: .65rem .8rem; border: 1px solid #cbd8d8; border-radius: 7px; background: #fff; color: #233844; font: inherit; box-sizing: border-box; }
+.outbox-workspace input[readonly] { background: #f0f3f2; }
+.outbox-workspace textarea { resize: vertical; }
+.outbox-portfolio { max-width: 440px; }
+.outbox-field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+.outbox-panel fieldset { padding: 0; border: 0; margin: 0; min-width: 0; }
+.outbox-panel .outbox-review { display: flex; align-items: flex-start; gap: .6rem; margin: 1rem 0; line-height: 1.55; }
+.outbox-review input { margin-top: .35rem; flex-shrink: 0; }
+.outbox-actions, .outbox-pagination { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; margin: .9rem 0 0; }
+.outbox-pagination { justify-content: flex-end; }
+.outbox-table { overflow-x: auto; margin-top: 1rem; }
+.outbox-table table { width: 100%; border-collapse: collapse; text-align: left; }
+.outbox-table caption { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.outbox-table th, .outbox-table td { padding: .9rem .7rem; border-bottom: 1px solid #e6ebea; vertical-align: top; }
+.outbox-table th { color: #526872; font-size: .8rem; background: #f3f6f4; }
+.outbox-table td:nth-child(1), .outbox-table td:nth-child(2) { overflow-wrap: anywhere; min-width: 160px; }
+.outbox-state { display: inline-block; padding: .25rem .55rem; border-radius: 6px; font-size: .8rem; font-weight: 700; background: #eef1f3; color: #3d5262; }
+.outbox-state-sent { background: #e4f3ee; color: #176453; }
+.outbox-state-unknown, .outbox-state-claimed { background: #fff2d4; color: #79540e; }
+.outbox-state-failed { background: #f9e8e7; color: #8a3a32; }
+.outbox-metadata { display: grid; grid-template-columns: minmax(90px, 150px) minmax(0, 1fr); gap: .6rem 1rem; }
+.outbox-metadata dt { color: #59707b; font-size: .9rem; }
+.outbox-metadata dd { margin: 0; overflow-wrap: anywhere; }
+.outbox-body { white-space: pre-wrap; overflow-wrap: anywhere; background: #f6f7f3; border: 1px solid #e4e8e2; border-radius: 8px; padding: 1rem; font: inherit; line-height: 1.7; }
+.outbox-workspace code { overflow-wrap: anywhere; word-break: break-word; }
+.outbox-unknown-hint { padding: 1rem; border-radius: 8px; background: #fff4db; color: #6a4a0c; line-height: 1.6; }
+.outbox-decision { margin: 1.5rem 0; border-top: 1px solid #e1e7e4; padding-top: 1rem; }
+.outbox-decision legend { font-weight: 700; margin-bottom: .85rem; }
+.outbox-decision label { margin-bottom: .85rem; }
+.outbox-events { list-style: none; padding: 0; margin: 0; display: grid; gap: .6rem; }
+.outbox-events li { padding: .8rem 1rem; border-left: 3px solid #d2e6e0; background: #f5f8f5; font-size: .86rem; line-height: 1.6; overflow-wrap: anywhere; }
+.outbox-events p { margin: .4rem 0 0; white-space: pre-wrap; }
+@media (max-width: 640px) { .outbox-heading, .outbox-section-head { flex-direction: column; } .outbox-field-grid { grid-template-columns: 1fr; } .outbox-metadata { grid-template-columns: 1fr; gap: .2rem; } .outbox-metadata dd { margin-bottom: .7rem; } .outbox-pagination { justify-content: flex-start; } }

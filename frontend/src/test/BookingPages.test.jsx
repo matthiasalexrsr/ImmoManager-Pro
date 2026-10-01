@@ -39,6 +39,26 @@ beforeEach(() => {
 const editorForm = () => screen.getByRole('dialog').querySelector('form');
 const loaded = () => screen.findByRole('button', { name: 'Buchung bearbeiten first', exact: true });
 
+it('confirms a booking only after explicit save with its original revision, then filters confirmed rows', async () => {
+  render(<Bookings />);
+  await loaded();
+  expect(mocks.put).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Buchung bearbeiten first', exact: true }));
+  const dialog = screen.getByRole('dialog');
+  await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Speichern', exact: true })).toBeEnabled());
+  expect(within(dialog).getByLabelText('Status')).toHaveValue('open');
+  fireEvent.change(within(dialog).getByLabelText('Status'), { target: { value: 'confirmed' } });
+  expect(mocks.put).not.toHaveBeenCalled();
+  fireEvent.submit(editorForm());
+  await waitFor(() => expect(mocks.put).toHaveBeenCalledOnce());
+  expect(mocks.put.mock.calls[0][1].status).toBe('confirmed');
+  expect(mocks.put.mock.calls[0][1][EDIT_REVISION]).toMatchObject({ id: 'first', updatedAt: '2026-10-01T08:00:00.123456' });
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'confirmed' } });
+  fireEvent.submit(screen.getByRole('button', { name: 'Filter anwenden' }).closest('form'));
+  await waitFor(() => expect(mocks.get.mock.calls.some(([path]) => path.includes('status=confirmed'))).toBe(true));
+});
+
 it('loads only the requested server page and uses returned cursors for next/back without getAll', async () => {
   render(<Bookings />);
   await loaded();

@@ -71,7 +71,7 @@ if _use_sql_store:
         enable_sql_users(SessionLocal)
         enable_sql_audit(SessionLocal)
 
-        logger.info("SQL backend initialized successfully (url=%s...)", _database_url[:30])
+        logger.info("SQL backend initialized successfully (dialect=%s)", SessionLocal.kw["bind"].dialect.name)
     except Exception:
         if not settings.allow_inmemory_fallback:
             raise RuntimeError(

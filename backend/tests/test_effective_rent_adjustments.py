@@ -271,7 +271,7 @@ def test_schema_upgrade_preserves_conflicting_rows_and_is_repeatable(tmp_path):
         engine.dispose()
 
 
-def test_generation_snapshot_holds_database_price_lock_until_batch_commit(transaction_database, monkeypatch):
+def test_generation_snapshot_holds_database_price_lock_until_batch_commit(transaction_database):
     """A second SQL session cannot change a rule halfway through confirmed generation."""
     engine = transaction_database
     with Session(engine) as session:
@@ -287,16 +287,19 @@ def test_generation_snapshot_holds_database_price_lock_until_batch_commit(transa
         if current_thread().name.startswith("price-writer") and statement.startswith("UPDATE contracts"):
             attempted_write.set()
 
+    @event.listens_for(engine, "after_cursor_execute")
+    def capture_snapshot(_connection, _cursor, statement, _parameters, _context, _executemany):
+        # Generation now reads only the selected contracts' price rules through
+        # SQL. Observe the actual read under its database lock, rather than an
+        # obsolete global list method that generation no longer calls.
+        if (current_thread().name.startswith("price-generator")
+                and statement.lstrip().upper().startswith("SELECT") and "FROM rent_adjustments" in statement):
+            snapshot_ready.set()
+            assert release_generation.wait(timeout=10)
+
     def generate():
         with Session(engine) as session:
             store = SQLAlchemyStore(session)
-            read_rules = store.list_rent_adjustments
-            def capture_snapshot():
-                rows = read_rules()
-                snapshot_ready.set()
-                assert release_generation.wait(timeout=10)
-                return rows
-            monkeypatch.setattr(store, "list_rent_adjustments", capture_snapshot)
             return generate_rent_charges(store, request(contract, "2025-03", "2025-03", preview_hash=confirmed))
 
     def edit():
@@ -326,6 +329,8 @@ def test_generation_snapshot_holds_database_price_lock_until_batch_commit(transa
             assert store.get_contract(contract.id).updated_at.replace(tzinfo=None) == original_contract_stamp.replace(tzinfo=None)
     finally:
         release_generation.set()
+        event.remove(engine, "before_cursor_execute", detect_writer)
+        event.remove(engine, "after_cursor_execute", capture_snapshot)
 
 
 @pytest.mark.parametrize("operation", ["update", "delete"])

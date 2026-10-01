@@ -128,7 +128,7 @@ def test_invalid_month_money_and_status_rejected(changes):
         RentChargeCreate(**{"contract_id": "c", "month": "2026-10", "cold_rent": 10, **changes})
 
 
-@pytest.mark.parametrize("start,end", [("2026-13", "2026-14"), ("2026-11", "2026-10"), ("2000-01", "2020-01")])
+@pytest.mark.parametrize("start,end", [("2026-13", "2026-14"), ("2026-11", "2026-10"), ("0000-01", "2020-01")])
 def test_invalid_generation_ranges(start, end):
     with pytest.raises(PydanticValidationError):
         RentGenerationRequest(start_month=start, end_month=end)

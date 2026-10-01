@@ -10,9 +10,11 @@ Status machine for billing periods:
 
 import logging
 from decimal import Decimal
+from typing import Annotated
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import JSONResponse
 
 from ..auth import get_current_user
 from ..dependencies import store
@@ -39,6 +41,9 @@ from ..models import (
 )
 from ..services import billing_settlement as settlement
 from ..services import credit_ledger
+from ..services.booking_lookup import BookingLookupQuery
+from ..services.booking_query import BookingQueryError
+from ..services.credit_choices import CreditChoiceKind, CreditChoices, credit_choices
 from ..services.credit_types import (
     CreditOffsetCreate,
     CreditPayoutCreate,
@@ -86,6 +91,15 @@ def credit_summary(contract_id: str):
 @router.get("/contracts/{contract_id}/credit-receipts")
 def credit_receipts(contract_id: str, offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=1000)):
     return _billing_call(lambda active, cid: credit_ledger.journal(active, cid, offset=offset, limit=limit), contract_id)
+
+
+@router.get("/contracts/{contract_id}/credit-choices/{kind}", response_model=CreditChoices)
+def live_credit_choices(contract_id: str, kind: CreditChoiceKind, query: Annotated[BookingLookupQuery, Query()]):
+    try:
+        return _billing_call(credit_choices, contract_id, kind, query)
+    except BookingQueryError as exc:
+        return JSONResponse(status_code=400, content={"error": {
+            "code": exc.clear_code, "message": str(exc), "details": [exc.detail]}})
 
 
 @router.post("/credit-payouts", response_model=CreditReceipt, status_code=201)

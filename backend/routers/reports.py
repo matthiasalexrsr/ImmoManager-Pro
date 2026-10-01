@@ -181,78 +181,8 @@ def get_maintenance_costs_report(format: str | None = Query(None, alias="format"
 # ---------------------------------------------------------------------------
 
 @router.get("/datev-export")
-def datev_export(
-    start_date: date | None = Query(None),
-    end_date: date | None = Query(None),
-) -> StreamingResponse:
-    """Export bookings in DATEV-compliant CSV format (Buchungsstapel).
-
-    DATEV Buchungsstapel format uses semicolons, German number formatting,
-    and specific column headers recognized by DATEV accounting software.
-    """
-    bookings = store.list_bookings()
-
-    if start_date:
-        bookings = [b for b in bookings if b.booking_date >= start_date]
-    if end_date:
-        bookings = [b for b in bookings if b.booking_date <= end_date]
-
-    bookings.sort(key=lambda b: b.booking_date)
-
-    # DATEV Buchungsstapel columns (simplified)
-    output = io.StringIO()
-    writer = csv.writer(output, delimiter=";", quoting=csv.QUOTE_MINIMAL)
-
-    # Header row
-    writer.writerow([
-        "Umsatz (ohne Soll/Haben-Kz)",
-        "Soll/Haben-Kennzeichen",
-        "WKZ Umsatz",
-        "Konto",
-        "Gegenkonto (ohne BU-Schlüssel)",
-        "BU-Schlüssel",
-        "Belegdatum",
-        "Belegfeld 1",
-        "Buchungstext",
-    ])
-
-    accounts = {acc.id: acc for acc in store.list_accounts()}
-    categories = {cat.id: cat for cat in store.list_categories()}
-
-    for booking in bookings:
-        amount = abs(booking.amount)
-        # S = Soll (debit), H = Haben (credit)
-        soll_haben = "S" if booking.amount >= 0 else "H"
-        # Format amount with comma as decimal separator (German)
-        amount_str = f"{amount:.2f}".replace(".", ",")
-        # DATEV date format: DDMM
-        beleg_datum = booking.booking_date.strftime("%d%m")
-        # Account info
-        konto = accounts.get(booking.account_id, None)
-        konto_name = konto.name if konto else booking.account_id
-        # Category as Gegenkonto
-        gegen_konto = ""
-        if booking.category_id and booking.category_id in categories:
-            gegen_konto = categories[booking.category_id].name
-
-        writer.writerow([
-            amount_str,
-            soll_haben,
-            "EUR",
-            konto_name,
-            gegen_konto,
-            "",
-            beleg_datum,
-            booking.id[:8],
-            booking.payment_text or "",
-        ])
-
-    output.seek(0)
-    return StreamingResponse(
-        output,
-        media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": 'attachment; filename="EXTF_Buchungsstapel.csv"'},
-    )
+def datev_export(start_date: date | None = Query(None), end_date: date | None = Query(None)):
+    raise HTTPException(410, "DATEV requires an explicitly reviewed mapping profile. Open /datev and use /api/v1/reports/datev/profiles and /preview. For general historical data use /api/v1/bookings/export.csv.")
 
 
 # ---------------------------------------------------------------------------
