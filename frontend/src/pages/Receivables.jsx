@@ -20,7 +20,7 @@ export default function Receivables() {
 
   const refreshData = () => {
     setLoading(true);
-    api.get('/receivables').catch(() => [])
+    api.getAll('/receivables')
       .then(recs => setReceivables(recs || []))
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
@@ -28,7 +28,7 @@ export default function Receivables() {
 
   useEffect(() => {
     let cancelled = false;
-    api.get('/receivables').catch(err => { console.warn('[Receivables] receivables:', err.message); return []; })
+    api.getAll('/receivables')
       .then(data => { if (!cancelled) setReceivables(data || []); })
       .catch(e => { if (!cancelled) setError(e.message); })
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -46,6 +46,7 @@ export default function Receivables() {
     { key: 'contract_label', label: t('tenantsContracts.contracts.title'), filterType: 'text' },
     { key: 'amount_due', label: t('finance.bookings.amount'), type: 'number', align: 'right',
       render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
+    { key: 'amount_paid', label: t('pages.rentOverview.paid'), type: 'number', render: v => `${Number(v || 0).toFixed(2)} €` },
     { key: 'due_date', label: t('finance.receivables.dueDate'), type: 'date', filterType: 'dateRange' },
     { key: 'status', label: 'Status', type: 'status', filterType: 'select',
       render: v => <StatusBadge status={v} /> },
@@ -59,6 +60,7 @@ export default function Receivables() {
     { key: 'due_date', label: t('finance.receivables.dueDate'), type: 'date', required: true },
     { key: 'status', label: 'Status', type: 'select', default: 'open', options: [
       { value: 'open', label: t('status.payment.open') },
+      { value: 'partial', label: t('status.payment.partial') },
       { value: 'paid', label: t('status.payment.paid') },
       { value: 'overdue', label: t('status.payment.overdue') },
       { value: 'cancelled', label: t('status.payment.cancelled') },

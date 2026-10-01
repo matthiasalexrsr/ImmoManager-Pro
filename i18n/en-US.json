@@ -167,7 +167,8 @@
       "partiallyPaid": "Partially Paid",
       "open": "Open",
       "overdue": "Overdue",
-      "cancelled": "Cancelled"
+      "cancelled": "Cancelled",
+      "partial": "Partially Paid"
     },
     "contract": {
       "active": "Active",
@@ -1308,7 +1309,24 @@
       "paid": "Paid",
       "open": "Open",
       "overdue": "Overdue",
-      "title": "Rent Overview"
+      "title": "Rent Overview",
+      "contract": "Contract",
+      "tenant": "Tenant",
+      "unit": "Unit",
+      "month": "Month",
+      "status": "Status",
+      "actions": "Actions",
+      "recordPayment": "Record payment",
+      "history": "Payment history",
+      "paymentSaved": "Payment saved.",
+      "retry": "Retry",
+      "paymentAmount": "Payment amount (€)",
+      "paymentDate": "Payment date",
+      "note": "Note",
+      "description": "Allocate payments and track outstanding amounts. Totals apply to the selected ledger.",
+      "charges": "Rent charges",
+      "receivables": "Receivables",
+      "onlyOpen": "Only outstanding items"
     },
     "meters": {
       "title": "Meters",

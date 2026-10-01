@@ -189,6 +189,7 @@ class ReceivableCreate(BaseModel):
 
 
 class Receivable(ReceivableCreate):
+    amount_paid: float = 0.0
     id: str = Field(..., min_length=1)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

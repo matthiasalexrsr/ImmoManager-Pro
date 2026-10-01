@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
 from ..models import RentCharge, RentChargeCreate, RentChargePatch
+from ..services.payments import Payment, PaymentCreate
 from ..storage import NotFoundError, ValidationError
 from ._helpers import apply_sort
 
@@ -69,3 +70,19 @@ def delete_rent_charge(charge_id: str) -> None:
         store.delete_rent_charge(charge_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.get("/{charge_id}/payments", response_model=list[Payment])
+def list_charge_payments(charge_id: str) -> list[Payment]:
+    store.get_rent_charge(charge_id)
+    return store.list_payments("rent_charge", charge_id)
+
+
+@router.post("/{charge_id}/payments", response_model=Payment, status_code=201)
+def record_charge_payment(charge_id: str, payload: PaymentCreate) -> Payment:
+    try:
+        return store.record_payment("rent_charge", charge_id, payload)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValidationError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc

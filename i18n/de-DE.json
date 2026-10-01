@@ -167,7 +167,8 @@
       "partiallyPaid": "Teilbezahlt",
       "open": "Offen",
       "overdue": "Überfällig",
-      "cancelled": "Storniert"
+      "cancelled": "Storniert",
+      "partial": "Teilbezahlt"
     },
     "contract": {
       "active": "Aktiv",
@@ -1308,7 +1309,24 @@
       "paid": "Bezahlt",
       "open": "Offen",
       "overdue": "Überfällig",
-      "title": "Mietübersicht"
+      "title": "Mietübersicht",
+      "contract": "Vertrag",
+      "tenant": "Mieter",
+      "unit": "Einheit",
+      "month": "Monat",
+      "status": "Status",
+      "actions": "Aktionen",
+      "recordPayment": "Zahlung erfassen",
+      "history": "Zahlungshistorie",
+      "paymentSaved": "Zahlung wurde gespeichert.",
+      "retry": "Erneut laden",
+      "paymentAmount": "Zahlungsbetrag (€)",
+      "paymentDate": "Zahlungsdatum",
+      "note": "Bemerkung",
+      "description": "Zahlungen zuordnen und offene Beträge verfolgen. Die Summen beziehen sich auf den ausgewählten Bereich.",
+      "charges": "Sollstellungen",
+      "receivables": "Forderungen",
+      "onlyOpen": "Nur offene Posten"
     },
     "meters": {
       "title": "Zähler",

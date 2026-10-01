@@ -168,6 +168,17 @@ async function request(path, options = {}) {
 // ---------------------------------------------------------------------------
 
 export const api = {
+  getAll: async (path, { signal } = {}) => {
+    const rows = [];
+    const pageSize = 1000;
+    for (let skip = 0; ; skip += pageSize) {
+      const separator = path.includes('?') ? '&' : '?';
+      const page = await request(`${path}${separator}skip=${skip}&limit=${pageSize}`, { signal });
+      if (!Array.isArray(page)) throw new Error('Ungültige Listenantwort des Servers.');
+      rows.push(...page);
+      if (page.length < pageSize) return rows;
+    }
+  },
   get: (path, { signal } = {}) => request(path, { signal }),
   post: (path, data, { signal } = {}) => request(path, { method: 'POST', body: JSON.stringify(data), signal }),
   put: (path, data, { signal } = {}) => request(path, { method: 'PUT', body: JSON.stringify(data), signal }),

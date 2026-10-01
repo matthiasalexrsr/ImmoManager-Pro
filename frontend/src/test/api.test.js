@@ -70,6 +70,22 @@ describe('API client', () => {
     const { api } = await import('../api.js');
     await expect(api.get('/admin/version')).rejects.toThrow();
   });
+
+  it('loads every page instead of truncating financial lists at the API default', async () => {
+    const firstPage = Array.from({ length: 1000 }, (_, id) => ({ id }));
+    mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => firstPage });
+    mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => [{ id: 1000 }] });
+    const { api } = await import('../api.js');
+    const rows = await api.getAll('/rent-charges?status=open');
+    expect(rows).toHaveLength(1001);
+    expect(mockFetch.mock.calls[1][0]).toBe('/api/v1/rent-charges?status=open&skip=1000&limit=1000');
+  });
+
+  it('rejects malformed list responses instead of displaying an empty ledger', async () => {
+    mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => null });
+    const { api } = await import('../api.js');
+    await expect(api.getAll('/receivables')).rejects.toThrow('Ungültige Listenantwort');
+  });
 });
 
 describe('isLoggedIn', () => {

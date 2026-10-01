@@ -7,7 +7,7 @@ Full-stack property management application for German real estate portfolios.
 | Layer | Technology |
 |-------|-----------|
 | Backend | Python 3.11+, FastAPI, SQLAlchemy 2.0, Pydantic v2 |
-| Frontend | React 18, Vite, custom i18n (de-DE / en-US / es-ES) |
+| Frontend | React 19, Vite, custom i18n (de-DE / en-US / es-ES) |
 | Database | SQLite (dev/test), PostgreSQL (production) |
 | Auth | JWT (access + refresh tokens), role-based access control |
 | CI | GitHub Actions (lint, type-check, security audit, tests, build) |
@@ -100,6 +100,30 @@ i18n/                 # Locale files (de-DE, en-US, es-ES)
 | `CORS_ORIGINS` | `http://localhost:3000,http://localhost:5173` | Allowed CORS origins |
 
 ## Testing
+
+The current implementation assessment and prioritized remaining work are in
+[DEVELOPMENT_STATUS.md](DEVELOPMENT_STATUS.md). Historical audit documents are
+planning inputs, not a current checklist of missing features.
+
+## Recording payments
+
+Open **Finanzen → Mietübersicht**, select rent charges or receivables, and use
+**Zahlung erfassen**. Enter the amount, date and an optional note. Each payment
+creates a persistent receipt and reduces the allocated outstanding balance.
+Partial payments, duplicate-request protection and payment history are supported.
+By default the table shows outstanding items; turn off **Nur offene Posten** to
+inspect completed items. Totals refer to the selected ledger.
+
+Payments recorded here are manual allocations. They do not create bank-account
+bookings; imported bank transactions must not also be manually recorded for the
+same payment. Linking existing bank bookings and reversing payment receipts are
+the next financial workflow improvements.
+
+SQLite installations automatically receive the additive payment schema upgrade
+on startup. For databases managed by Alembic, run `alembic upgrade head` before
+starting the updated application.
+
+## Validation commands
 
 ```bash
 # Run all backend tests (in-memory store)

@@ -197,9 +197,10 @@ def get_dashboard_stats() -> dict:
         "open_invoices": _count_items(invoices, {"status": "open"}),
         "paid_invoices": _count_items(invoices, {"status": "paid"}),
         "receivable_count": _count_items(receivables),
-        "open_receivables": _count_items(receivables, {"status": "open"}),
+        "open_receivables": sum(1 for item in receivables if item.status in {"open", "partial"}),
         "paid_receivables": _count_items(receivables, {"status": "paid"}),
-        "overdue_receivables": _count_items(receivables, {"status": "overdue"}),
+        "overdue_receivables": sum(1 for item in receivables if item.status == "overdue"
+                                   or (item.status == "partial" and item.due_date < today)),
         "dunning_receivables": _count_dunning_receivables(receivables),
         "document_count": _count_items(documents),
         "active_contracts_missing_documents": _count_missing_contract_documents(
@@ -218,7 +219,7 @@ def get_dashboard_stats() -> dict:
         "notification_count": _count_items(notifications),
         "unread_notifications": _count_items(notifications, {"status": "unread"}),
         "rent_charge_count": _count_items(rent_charges),
-        "open_rent_charges": _count_items(rent_charges, {"status": "open"}),
+        "open_rent_charges": sum(1 for item in rent_charges if item.status in {"open", "partial"}),
         "overdue_rent_charges": _count_items(rent_charges, {"status": "overdue"}),
         "billing_period_count": _count_items(billing_periods),
         "draft_billing_periods": _count_items(billing_periods, {"status": "draft"}),

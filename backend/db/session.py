@@ -5,7 +5,7 @@ Supports PostgreSQL (prod) and SQLite (dev/test) via settings.database_url.
 
 from collections.abc import Generator
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from ..config import settings
@@ -40,6 +40,13 @@ SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 def create_tables() -> None:
     """Create all tables (dev/test convenience). Use Alembic for production."""
     Base.metadata.create_all(bind=engine)
+    # Local installations historically used create_all without Alembic stamping.
+    # Apply this additive column upgrade there as well, preserving existing data.
+    if engine.dialect.name == "sqlite":
+        with engine.begin() as connection:
+            if "amount_paid" not in {column["name"] for column in inspect(connection).get_columns("receivables")}:
+                connection.execute(text("ALTER TABLE receivables ADD COLUMN amount_paid NUMERIC(12, 2) NOT NULL DEFAULT 0"))
+                connection.execute(text("UPDATE receivables SET amount_paid = amount_due WHERE status = 'paid'"))
 
 
 def get_db() -> Generator[Session, None, None]:

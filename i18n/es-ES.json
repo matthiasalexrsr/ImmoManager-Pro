@@ -167,7 +167,8 @@
       "partiallyPaid": "Parcialmente pagado",
       "open": "Abierto",
       "overdue": "Vencido",
-      "cancelled": "Anulado"
+      "cancelled": "Anulado",
+      "partial": "Parcialmente pagado"
     },
     "contract": {
       "active": "Activo",
@@ -1619,7 +1620,24 @@
       "totalReceivables": "Cuentas por cobrar totales",
       "paid": "Pagado",
       "open": "Abierto",
-      "overdue": "Vencido"
+      "overdue": "Vencido",
+      "contract": "Contrato",
+      "tenant": "Inquilino",
+      "unit": "Unidad",
+      "month": "Mes",
+      "status": "Estado",
+      "actions": "Acciones",
+      "recordPayment": "Registrar pago",
+      "history": "Historial de pagos",
+      "paymentSaved": "Pago guardado.",
+      "retry": "Reintentar",
+      "paymentAmount": "Importe del pago (€)",
+      "paymentDate": "Fecha del pago",
+      "note": "Nota",
+      "description": "Asignar pagos y seguir los importes pendientes. Los totales corresponden al registro seleccionado.",
+      "charges": "Cargos de alquiler",
+      "receivables": "Cuentas por cobrar",
+      "onlyOpen": "Solo partidas pendientes"
     }
   },
   "comp": {

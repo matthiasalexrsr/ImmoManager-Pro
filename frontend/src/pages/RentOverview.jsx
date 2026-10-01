@@ -3,229 +3,151 @@ import { api } from '../api';
 import DataTable from '../components/DataTable';
 import StatusBadge from '../components/StatusBadge';
 import { useTranslation } from '../i18n';
+import { useAuth } from '../contexts/AuthContext';
+import { useDataStore } from '../contexts/DataStoreContext';
 import FormModal from '../components/FormModal';
 
-function fmt(v) {
-  return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(v || 0);
+function enrich(items, type, contracts, tenants, units) {
+  const contractMap = Object.fromEntries(contracts.map(row => [row.id, row]));
+  const tenantMap = Object.fromEntries(tenants.map(row => [row.id, row]));
+  const unitMap = Object.fromEntries(units.map(row => [row.id, row]));
+  return items.map(item => {
+    const contract = contractMap[item.contract_id];
+    const total = type === 'rent_charge'
+      ? ['cold_rent', 'service_charge', 'heating_charge', 'other_charges'].reduce((sum, key) => sum + Number(item[key] || 0), 0)
+      : Number(item.amount_due || 0);
+    const paid = Number(item.amount_paid || 0);
+    return {
+      ...item, entityType: type,
+      contract_number: contract?.contract_number || '—',
+      tenant_name: tenantMap[contract?.tenant_id]?.full_name || '—',
+      unit_label: unitMap[contract?.unit_id]?.label || '—',
+      month: item.month || item.due_date?.slice(0, 7) || '—',
+      total_due: total, amount_paid: paid, remaining: Math.round((total - paid) * 100) / 100,
+    };
+  });
 }
 
-const COLUMNS = [
-  { key: 'contract_number', label: 'Vertrag', filterType: 'text' },
-  { key: 'tenant_name', label: 'Mieter', filterType: 'text' },
-  { key: 'unit_label', label: 'Einheit', filterType: 'text' },
-  { key: 'month', label: 'Monat', filterType: 'text' },
-  { key: 'total_due', label: 'Forderung (€)', type: 'number', align: 'right',
-    render: v => v != null ? fmt(v) : '—' },
-  { key: 'amount_paid', label: 'Bezahlt (€)', type: 'number', align: 'right',
-    render: v => v != null ? fmt(v) : '—' },
-  { key: 'remaining', label: 'Offen (€)', type: 'number', align: 'right',
-    render: (v) => {
-      const cls = v > 0 ? 'text-red' : v < 0 ? 'text-green' : '';
-      return <span className={cls}>{fmt(v)}</span>;
-    }},
-  { key: 'status', label: 'Status', type: 'status', filterType: 'select' },
-];
-
 export default function RentOverview() {
-  const [charges, setCharges] = useState([]);
-  const [receivables, setReceivables] = useState([]);
+  const { t, locale } = useTranslation();
+  const auth = useAuth();
+  const cache = useDataStore();
+  const [records, setRecords] = useState({ rent_charge: [], receivable: [] });
   const [loading, setLoading] = useState(true);
-  const { t } = useTranslation();
   const [error, setError] = useState(null);
+  const [revision, setRevision] = useState(0);
+  const [tab, setTab] = useState('rent_charge');
   const [paymentModal, setPaymentModal] = useState(null);
-  const [tab, setTab] = useState('charges');
-
-  const refreshData = () => {
-    setLoading(true);
-    Promise.all([
-      api.get('/rent-charges').catch(() => []),
-      api.get('/receivables').catch(() => []),
-      api.get('/contracts').catch(() => []),
-      api.get('/tenants').catch(() => []),
-      api.get('/units').catch(() => []),
-    ]).then(([chargesList, recList, contracts, tenants, units]) => {
-      const contractMap = Object.fromEntries((contracts || []).map(c => [c.id, c]));
-      const tenantMap = Object.fromEntries((tenants || []).map(t => [t.id, t]));
-      const unitMap = Object.fromEntries((units || []).map(u => [u.id, u]));
-
-      const enrichedCharges = (chargesList || []).map(r => {
-        const contract = contractMap[r.contract_id] || {};
-        const tenant = tenantMap[contract.tenant_id] || {};
-        const unit = unitMap[contract.unit_id] || {};
-        const totalDue = (r.cold_rent || 0) + (r.service_charge || 0) + (r.heating_charge || 0) + (r.other_charges || 0);
-        return {
-          ...r, _type: 'charge',
-          contract_number: contract.contract_number || '—',
-          tenant_name: tenant.full_name || '—',
-          unit_label: unit.label || '—',
-          total_due: totalDue,
-          remaining: totalDue - (r.amount_paid || 0),
-        };
-      });
-
-      const enrichedReceivables = (recList || []).map(r => {
-        const contract = contractMap[r.contract_id] || {};
-        const tenant = tenantMap[contract.tenant_id] || {};
-        const unit = unitMap[contract.unit_id] || {};
-        return {
-          ...r, _type: 'receivable',
-          contract_number: contract.contract_number || '—',
-          tenant_name: tenant.full_name || '—',
-          unit_label: unit.label || '—',
-          month: r.due_date?.slice(0, 7) || '—',
-          total_due: r.amount_due || 0,
-          amount_paid: r.amount_paid || 0,
-          remaining: (r.amount_due || 0) - (r.amount_paid || 0),
-        };
-      });
-
-      setCharges(enrichedCharges);
-      setReceivables(enrichedReceivables);
-    }).catch(e => setError(e.message)).finally(() => setLoading(false));
-  };
+  const [history, setHistory] = useState(null);
+  const [success, setSuccess] = useState(false);
+  const [onlyOpen, setOnlyOpen] = useState(true);
 
   useEffect(() => {
-    let cancelled = false;
-    Promise.all([
-      api.get('/rent-charges').catch(() => []),
-      api.get('/receivables').catch(() => []),
-      api.get('/contracts').catch(() => []),
-      api.get('/tenants').catch(() => []),
-      api.get('/units').catch(() => []),
-    ]).then(([chargesList, recList, contracts, tenants, units]) => {
-      if (cancelled) return;
-      const contractMap = Object.fromEntries((contracts || []).map(c => [c.id, c]));
-      const tenantMap = Object.fromEntries((tenants || []).map(t => [t.id, t]));
-      const unitMap = Object.fromEntries((units || []).map(u => [u.id, u]));
+    const controller = new AbortController();
+    setLoading(true);
+    setError(null);
+    Promise.all(['/rent-charges', '/receivables', '/contracts', '/tenants', '/units']
+      .map(path => api.getAll(path, { signal: controller.signal })))
+      .then(([charges, receivables, contracts, tenants, units]) => {
+        if (controller.signal.aborted) return;
+        setRecords({
+          rent_charge: enrich(charges, 'rent_charge', contracts, tenants, units),
+          receivable: enrich(receivables, 'receivable', contracts, tenants, units),
+        });
+      })
+      .catch(err => { if (!controller.signal.aborted) setError(err.message); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [revision]);
 
-      const enrichedCharges = (chargesList || []).map(r => {
-        const contract = contractMap[r.contract_id] || {};
-        const tenant = tenantMap[contract.tenant_id] || {};
-        const unit = unitMap[contract.unit_id] || {};
-        const totalDue = (r.cold_rent || 0) + (r.service_charge || 0) + (r.heating_charge || 0) + (r.other_charges || 0);
-        return {
-          ...r, _type: 'charge',
-          contract_number: contract.contract_number || '—',
-          tenant_name: tenant.full_name || '—',
-          unit_label: unit.label || '—',
-          total_due: totalDue,
-          remaining: totalDue - (r.amount_paid || 0),
-        };
-      });
-
-      const enrichedReceivables = (recList || []).map(r => {
-        const contract = contractMap[r.contract_id] || {};
-        const tenant = tenantMap[contract.tenant_id] || {};
-        const unit = unitMap[contract.unit_id] || {};
-        return {
-          ...r, _type: 'receivable',
-          contract_number: contract.contract_number || '—',
-          tenant_name: tenant.full_name || '—',
-          unit_label: unit.label || '—',
-          month: r.due_date?.slice(0, 7) || '—',
-          total_due: r.amount_due || 0,
-          amount_paid: r.amount_paid || 0,
-          remaining: (r.amount_due || 0) - (r.amount_paid || 0),
-        };
-      });
-
-      setCharges(enrichedCharges);
-      setReceivables(enrichedReceivables);
-    }).catch(e => {
-      if (!cancelled) setError(e.message);
-    }).finally(() => {
-      if (!cancelled) setLoading(false);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const handleRecordPayment = async (formData) => {
-    if (paymentModal._type === 'charge') {
-      const newPaid = (paymentModal.amount_paid || 0) + Number(formData.payment_amount);
-      const newStatus = newPaid >= paymentModal.total_due ? 'paid' : 'partial';
-      await api.patch(`/rent-charges/${paymentModal.id}`, {
-        amount_paid: newPaid,
-        status: newStatus,
-      });
-    } else {
-      await api.patch(`/receivables/${paymentModal.id}`, {
-        status: Number(formData.payment_amount) >= paymentModal.remaining ? 'paid' : 'partial',
-      });
-    }
-    refreshData();
+  const fmt = value => new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR' }).format(value || 0);
+  const text = key => t(`pages.rentOverview.${key}`);
+  const endpoint = row => `/${row.entityType === 'rent_charge' ? 'rent-charges' : 'receivables'}/${row.id}/payments`;
+  const startPayment = row => {
+    setSuccess(false);
+    const now = new Date();
+    const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    setPaymentModal({ row, key: crypto.randomUUID(), initial: { amount: row.remaining, payment_date: localDate } });
   };
-
-  const paymentFields = [
-    { key: 'payment_amount', label: 'Zahlungsbetrag (€)', type: 'number', required: true },
-    { key: 'payment_date', label: 'Zahlungsdatum', type: 'date', required: true },
-    { key: 'payment_note', label: 'Bemerkung', type: 'textarea' },
+  const handleRecordPayment = async values => {
+    await api.post(endpoint(paymentModal.row), { ...values, idempotency_key: paymentModal.key });
+    setSuccess(true);
+    cache?.invalidateRelated('rent_charges', 'receivables');
+    setRevision(value => value + 1);
+  };
+  const showHistory = async row => {
+    setHistory({ row, loading: true, payments: [] });
+    try {
+      const payments = await api.get(endpoint(row));
+      setHistory(current => current?.row.id === row.id ? { row, payments, loading: false } : current);
+    } catch (err) {
+      setHistory(current => current?.row.id === row.id ? { row, error: err.message, payments: [], loading: false } : current);
+    }
+  };
+  const columns = [
+    { key: 'contract_number', label: text('contract'), filterType: 'text' },
+    { key: 'tenant_name', label: text('tenant'), filterType: 'text' },
+    { key: 'unit_label', label: text('unit'), filterType: 'text' },
+    { key: 'month', label: text('month'), filterType: 'text' },
+    { key: 'total_due', label: text('totalReceivables'), type: 'number', render: fmt },
+    { key: 'amount_paid', label: text('paid'), type: 'number', render: fmt },
+    { key: 'remaining', label: text('open'), type: 'number', render: fmt },
+    { key: 'status', label: text('status'), filterType: 'select', render: value => <StatusBadge status={value} /> },
+    { key: 'actions', label: text('actions'), render: (_, row) => (
+      <div className="rent-payment-actions">
+        {!auth?.isReadonly && <button className="btn btn-sm btn-primary"
+          disabled={row.remaining <= 0 || ['paid', 'cancelled', 'void'].includes(row.status)}
+          onClick={() => startPayment(row)}>{text('recordPayment')}</button>}
+        <button className="btn btn-sm btn-secondary" onClick={() => showHistory(row)}>{text('history')}</button>
+      </div>
+    ) },
   ];
-
-  if (loading) return <div className="page-loading">{t('pages.loading')}</div>;
-  if (error) return <div className="page"><div className="alert alert-error">{error}</div></div>;
-
-  const data = tab === 'charges' ? charges : receivables;
-  const allData = [...charges, ...receivables];
-  const totalDue = allData.reduce((s, r) => s + (r.total_due || 0), 0);
-  const totalPaid = allData.reduce((s, r) => s + (r.amount_paid || 0), 0);
-  const totalOpen = totalDue - totalPaid;
-  const overdueCount = allData.filter(r => r.status === 'overdue').length;
+  const data = records[tab];
+  // Separate ledger totals avoid counting an obligation in both tabs.
+  const active = data.filter(row => !['cancelled', 'void'].includes(row.status));
+  const sum = key => active.reduce((total, row) => total + row[key], 0);
 
   return (
     <div className="page">
-      <div className="stats-grid" style={{ marginBottom: '1rem' }}>
-        <div className="stat-card">
-          <div className="stat-label">{t('pages.rentOverview.totalReceivables')}</div>
-          <div className="stat-value">{fmt(totalDue)}</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">{t('pages.rentOverview.paid')}</div>
-          <div className="stat-value text-green">{fmt(totalPaid)}</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">{t('pages.rentOverview.open')}</div>
-          <div className="stat-value text-red">{fmt(totalOpen)}</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">{t('pages.rentOverview.overdue')}</div>
-          <div className="stat-value">{overdueCount} <StatusBadge status="overdue" /></div>
-        </div>
+      <div className="page-header"><div><h1>{text('title')}</h1><p>{text('description')}</p></div></div>
+      <div className="tab-bar" role="tablist" aria-label={text('title')}>
+        {['rent_charge', 'receivable'].map(type => <button key={type} role="tab" aria-selected={tab === type}
+          className={`detail-tab ${tab === type ? 'active' : ''}`} onClick={() => setTab(type)}>
+          {text(type === 'rent_charge' ? 'charges' : 'receivables')} ({records[type].length})
+        </button>)}
       </div>
-
-      <div className="tab-bar" style={{ marginBottom: '1rem' }}>
-        <button
-          className={`detail-tab ${tab === 'charges' ? 'active' : ''}`}
-          onClick={() => setTab('charges')}
-        >
-          {t('pages.rentOverview.charges') || 'Sollstellungen'} ({charges.length})
-        </button>
-        <button
-          className={`detail-tab ${tab === 'receivables' ? 'active' : ''}`}
-          onClick={() => setTab('receivables')}
-        >
-          {t('pages.rentOverview.receivables') || 'Forderungen'} ({receivables.length})
-        </button>
-      </div>
-
-      <DataTable
-        title={t('pages.rentOverview.title')}
-        columns={COLUMNS}
-        data={data}
-        onEdit={row => setPaymentModal(row)}
-      />
-
-      {paymentModal && (
-        <FormModal
-          title={`Zahlung erfassen — ${paymentModal.tenant_name} (${paymentModal.month || '—'})`}
-          fields={paymentFields}
-          initial={{ payment_amount: paymentModal.remaining, payment_date: new Date().toISOString().slice(0, 10) }}
-          onSave={handleRecordPayment}
-          onClose={() => setPaymentModal(null)}
-        />
-      )}
+      <label className="rent-open-filter"><input type="checkbox" checked={onlyOpen}
+        onChange={event => setOnlyOpen(event.target.checked)} /> {text('onlyOpen')}</label>
+      {success && <div role="status" className="alert alert-success">{text('paymentSaved')}</div>}
+      {error && <div role="alert" className="alert alert-error">{error} <button className="btn btn-secondary"
+        onClick={() => setRevision(value => value + 1)}>{text('retry')}</button></div>}
+      {loading ? <div className="page-loading">{t('pages.loading')}</div> : !error && <>
+        <div className="stats-grid rent-summary">
+          {[['totalReceivables', 'total_due'], ['paid', 'amount_paid'], ['open', 'remaining']].map(([label, key]) => (
+            <div className="stat-card" key={key}><div className="stat-label">{text(label)}</div>
+              <div className="stat-value">{fmt(sum(key))}</div></div>
+          ))}
+        </div>
+        <DataTable title={text(tab === 'rent_charge' ? 'charges' : 'receivables')} columns={columns}
+          data={onlyOpen ? data.filter(row => row.remaining > 0 && !['paid', 'cancelled', 'void'].includes(row.status)) : data} />
+      </>}
+      {paymentModal && <FormModal title={`${text('recordPayment')} — ${paymentModal.row.tenant_name}`}
+        fields={[
+          { key: 'amount', label: text('paymentAmount'), type: 'number', required: true, min: 0.01, max: paymentModal.row.remaining },
+          { key: 'payment_date', label: text('paymentDate'), type: 'date', required: true },
+          { key: 'note', label: text('note'), type: 'textarea' },
+        ]}
+        initial={paymentModal.initial} onSave={handleRecordPayment} onClose={() => setPaymentModal(null)} />}
+      {history && <div className="rent-payment-history" role="region" aria-label={text('history')}>
+        <div className="page-header"><h2>{text('history')} — {history.row.tenant_name} ({history.row.month})</h2>
+          <button className="btn btn-secondary" onClick={() => setHistory(null)}>{t('ui.buttons.close')}</button></div>
+        {history.loading ? <p>{t('pages.loading')}</p> : history.error ? <p role="alert">{history.error}</p>
+          : <DataTable title={text('history')} data={history.payments} columns={[
+            { key: 'payment_date', label: text('paymentDate'), type: 'date' },
+            { key: 'amount', label: text('paymentAmount'), render: value => fmt(Number(value)) },
+            { key: 'note', label: text('note') },
+          ]} />}
+      </div>}
     </div>
   );
 }

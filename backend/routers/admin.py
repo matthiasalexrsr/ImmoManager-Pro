@@ -76,6 +76,7 @@ def _export_store_data() -> dict:
         "viewings": _safe_list("list_viewings"),
         "tax_rates": _safe_list("list_tax_rates"),
         "rent_charges": _safe_list("list_rent_charges"),
+        "payments": _safe_list("list_payments"),
         "escalation_rules": _safe_list("list_escalation_rules"),
         "contacts": _safe_list("list_contacts"),
         "handover_protocols": _safe_list("list_handover_protocols"),
@@ -201,7 +202,13 @@ def _import_store_data(data: dict, *, replace_existing: bool) -> dict:
     if replace_existing:
         _clear_store_data()
 
+    from uuid import uuid4
+
+    from ..services.payments import Payment, ReceivableBalance
+
     counts = {}
+    id_map = {}
+    errors = []
     for key, model_cls, create_fn in entity_configs:
         if model_cls is None or create_fn is None:
             continue
@@ -214,14 +221,34 @@ def _import_store_data(data: dict, *, replace_existing: bool) -> dict:
                 cleaned_item = dict(item)
                 for skip in ("id", "created_at", "updated_at"):
                     cleaned_item.pop(skip, None)
+                # New IDs must be propagated to children during a restore/import.
+                for field, value in list(cleaned_item.items()):
+                    if field.endswith("_id") and isinstance(value, str) and value in id_map:
+                        cleaned_item[field] = id_map[value]
                 obj = model_cls(**cleaned_item)
-                create_fn(obj)
+                created = create_fn(obj)
+                if item.get("id"):
+                    id_map[item["id"]] = created.id
+                if key == "receivables" and "amount_paid" in item:
+                    store._patch_entity("receivable", created.id, ReceivableBalance(amount_paid=item["amount_paid"]))
                 imported += 1
             except Exception:
                 logger.warning("Import failed for %s item: %s", key, item.get("id", "?"), exc_info=True)
+                errors.append({"entity": key, "id": item.get("id"), "message": "Datensatz konnte nicht importiert werden"})
         counts[key] = imported
 
-    return {"imported": counts, "replace_existing": replace_existing}
+    if data.get("payments"):
+        counts["payments"] = 0
+        for item in data["payments"]:
+            try:
+                target_id = id_map[item["entity_id"]]
+                payment = Payment(**{**item, "id": str(uuid4()), "idempotency_key": str(uuid4()), "entity_id": target_id})
+                store.import_payment(payment)
+                counts["payments"] += 1
+            except Exception:
+                logger.warning("Payment receipt import failed", exc_info=True)
+                errors.append({"entity": "payments", "id": item.get("id"), "message": "Zahlungsbeleg konnte nicht importiert werden"})
+    return {"imported": counts, "replace_existing": replace_existing, "errors": errors}
 
 
 # ─── Version ────────────────────────────────────────────────────────────────

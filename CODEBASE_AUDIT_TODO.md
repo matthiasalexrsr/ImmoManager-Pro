@@ -1,5 +1,9 @@
 # ImmoManager-Pro – Full Codebase Audit TODO (v2)
 
+> Historischer Audit: mehrere unten als offen bezeichnete Punkte sind inzwischen
+> umgesetzt. Der geprüfte Stand und die nächsten Arbeitspakete stehen in
+> [DEVELOPMENT_STATUS.md](DEVELOPMENT_STATUS.md), aktualisiert am 1. Oktober 2026.
+
 Dieses Dokument ersetzt die vorherige, zu grobe Fassung durch einen **konkreten, umsetzbaren Backlog** mit klaren Arbeitspaketen.
 
 ## 0) Audit-Umfang

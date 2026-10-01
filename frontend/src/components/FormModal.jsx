@@ -135,6 +135,8 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
                         onChange={e => setValues({ ...values, [f.key]: e.target.value })}
                         required={f.required}
                         step={f.type === 'number' ? '0.01' : undefined}
+                        min={f.min}
+                        max={f.max}
                         placeholder={f.placeholder}
                       />
                     )}

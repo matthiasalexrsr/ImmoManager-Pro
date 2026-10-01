@@ -222,7 +222,27 @@ class BookingORM(Base):
     )
 
 
+class PaymentORM(Base):
+    __tablename__ = "payments"
+    __table_args__ = (
+        CheckConstraint("amount > 0", name="ck_payments_positive"),
+        CheckConstraint("(receivable_id IS NULL) != (rent_charge_id IS NULL)", name="ck_payments_one_target"),
+        Index("idx_payments_receivable", "receivable_id"),
+        Index("idx_payments_rent_charge", "rent_charge_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    idempotency_key: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    receivable_id: Mapped[str | None] = mapped_column(ForeignKey("receivables.id", ondelete="CASCADE"))
+    rent_charge_id: Mapped[str | None] = mapped_column(ForeignKey("rent_charges.id", ondelete="CASCADE"))
+    amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    payment_date: Mapped[date] = mapped_column(Date, nullable=False)
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
+
+
 class ReceivableORM(Base):
+    amount_paid: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), nullable=False, default=0.0, server_default="0")
     __tablename__ = "receivables"
     __table_args__ = (
         Index("idx_receivables_contract", "contract_id"),

@@ -128,6 +128,12 @@ def _build_charge_and_payments(contract: Contract) -> tuple[ChargeConfig, list[P
         and (not booking.property_id or booking.property_id == contract.property_id)
         and booking.amount > 0
     ]
+    charge_ids = {item.id for item in store.list_rent_charges() if item.contract_id == contract.id}
+    payments.extend(
+        PaymentLine(booking_date=receipt.payment_date, amount=receipt.amount)
+        for receipt in store.list_payments("rent_charge")
+        if receipt.entity_id in charge_ids
+    )
     return charge, payments
 
 

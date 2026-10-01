@@ -127,6 +127,24 @@ class SQLAlchemyStore:
     def _commit(self):
         self.db.commit()
 
+    def record_payment(self, entity_type, entity_id, payload):
+        from .payment_repo import record_payment
+        return record_payment(self.db, entity_type, entity_id, payload)
+
+    def list_payments(self, entity_type=None, entity_id=None):
+        from .payment_repo import list_payments
+        return list_payments(self.db, entity_type, entity_id)
+
+    def import_payment(self, payment):
+        from ..db.orm_models import PaymentORM
+        getattr(self, f"get_{payment.entity_type}")(payment.entity_id)
+        self.db.add(PaymentORM(
+            id=payment.id, **payment.model_dump(exclude={"id", "entity_type", "entity_id"}),
+            **{f"{payment.entity_type}_id": payment.entity_id},
+        ))
+        self._commit()
+        return payment
+
     def clear_all(self) -> None:
         """Delete all rows from every mapped table. Used by tests to reset state."""
         from ..db.orm_models import Base

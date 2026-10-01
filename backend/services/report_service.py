@@ -39,10 +39,11 @@ def compute_summary(
     maintenance_cases: list,
 ) -> dict[str, Any]:
     open_receivables = sum(
-        r.amount_due for r in receivables if r.status in {"open", "overdue"}
+        max(0, r.amount_due - getattr(r, "amount_paid", 0)) for r in receivables if r.status in {"open", "overdue", "partial"}
     )
     overdue_receivables = sum(
-        r.amount_due for r in receivables if r.status == "overdue"
+        max(0, r.amount_due - getattr(r, "amount_paid", 0)) for r in receivables
+        if r.status == "overdue" or (r.status == "partial" and r.due_date < date.today())
     )
     total_bookings = sum(b.amount for b in bookings)
     total_invoices = sum(inv.gross_amount for inv in invoices)
@@ -127,20 +128,21 @@ def compute_receivables_aging(
     open_total = 0.0
 
     for r in receivables:
-        if r.status not in {"open", "overdue"}:
+        if r.status not in {"open", "overdue", "partial"}:
             continue
-        open_total += r.amount_due
+        remaining = max(0, r.amount_due - getattr(r, "amount_paid", 0))
+        open_total += remaining
         days = (today - r.due_date).days
         if days <= 0:
-            buckets["current"] += r.amount_due
+            buckets["current"] += remaining
         elif days <= 30:
-            buckets["days1to30"] += r.amount_due
+            buckets["days1to30"] += remaining
         elif days <= 60:
-            buckets["days31to60"] += r.amount_due
+            buckets["days31to60"] += remaining
         elif days <= 90:
-            buckets["days61to90"] += r.amount_due
+            buckets["days61to90"] += remaining
         else:
-            buckets["days90plus"] += r.amount_due
+            buckets["days90plus"] += remaining
 
     return {"openTotal": open_total, "buckets": buckets}
 

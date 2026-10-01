@@ -120,6 +120,11 @@ class FinanceRepository:
         if tr and not tr._contracts.exists(data.contract_id):
             raise ValidationError("Vertrag existiert nicht")
         result = self._receivables.create(data)
+        if data.status == "paid":
+            row = self.db.get(ReceivableORM, result.id)
+            assert row is not None
+            row.amount_paid = data.amount_due
+            result.amount_paid = data.amount_due
         self._commit()
         return result
 

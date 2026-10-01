@@ -140,8 +140,26 @@ class InMemoryStore:
     message_threads: Dict[str, MessageThread] = field(default_factory=dict)
     messages: Dict[str, Message] = field(default_factory=dict)
     rent_charges: Dict[str, RentCharge] = field(default_factory=dict)
+    payments: Dict[str, Any] = field(default_factory=dict)
     insurances: Dict[str, Insurance] = field(default_factory=dict)
     entity_photos: Dict[str, EntityPhoto] = field(default_factory=dict)
+
+    def record_payment(self, entity_type, entity_id, payload):
+        from .services.payments import record_memory_payment
+        return record_memory_payment(self, entity_type, entity_id, payload)
+
+    def list_payments(self, entity_type=None, entity_id=None):
+        from .services.payments import list_memory_payments
+        return list_memory_payments(self, entity_type, entity_id)
+
+    def import_payment(self, payment):
+        from .services.payments import validate_replay
+        getattr(self, f"get_{payment.entity_type}")(payment.entity_id)
+        existing = self.payments.get(payment.idempotency_key)
+        if existing:
+            return validate_replay(existing, payment.entity_type, payment.entity_id, payment)
+        self.payments[payment.idempotency_key] = payment
+        return payment
 
     def clear_all(self) -> None:
         """Clear all entity collections. Used by tests to reset state."""
@@ -527,7 +545,7 @@ class InMemoryStore:
     def create_receivable(self, data: ReceivableCreate) -> Receivable:
         if data.contract_id not in self.contracts:
             raise ValidationError("Vertrag existiert nicht")
-        receivable = Receivable(id=_generate_id(), **data.model_dump())
+        receivable = Receivable(id=_generate_id(), amount_paid=data.amount_due if data.status == "paid" else 0.0, **data.model_dump())
         self.receivables[receivable.id] = receivable
         return receivable
 
@@ -544,7 +562,7 @@ class InMemoryStore:
             raise ValidationError("Vertrag existiert nicht")
         old = self.receivables[receivable_id]
         receivable = Receivable(
-            id=receivable_id, created_at=old.created_at,
+            id=receivable_id, created_at=old.created_at, amount_paid=old.amount_paid,
             updated_at=datetime.now(timezone.utc), **data.model_dump(),
         )
         self.receivables[receivable_id] = receivable
@@ -554,6 +572,8 @@ class InMemoryStore:
         if receivable_id not in self.receivables:
             raise NotFoundError("Forderung nicht gefunden")
         del self.receivables[receivable_id]
+        self.payments = {key: p for key, p in self.payments.items()
+                         if not (p.entity_type == "receivable" and p.entity_id == receivable_id)}
 
     def list_invoices(self) -> List[Invoice]:
         return list(self.invoices.values())
@@ -1240,7 +1260,7 @@ class InMemoryStore:
     def _delete_contract(self, contract_id: str) -> None:
         for receivable_id, receivable in list(self.receivables.items()):
             if receivable.contract_id == contract_id:
-                del self.receivables[receivable_id]
+                self.delete_receivable(receivable_id)
         for document_id, document in list(self.documents.items()):
             if document.contract_id == contract_id:
                 del self.documents[document_id]
@@ -1645,6 +1665,8 @@ class InMemoryStore:
         if charge_id not in self.rent_charges:
             raise NotFoundError("Sollstellung nicht gefunden")
         del self.rent_charges[charge_id]
+        self.payments = {key: p for key, p in self.payments.items()
+                         if not (p.entity_type == "rent_charge" and p.entity_id == charge_id)}
 
     # --- Insurances ---
 
