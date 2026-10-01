@@ -150,6 +150,7 @@ class TestUserManagement:
 
     def test_authenticate_inactive_user(self):
         u = _register_admin()
+        register_user("retained-owner", "retained@example.com", "Retained Owner", "Secret123", "eigentuemer")
         update_user(u.id, {"is_active": False})
         user = authenticate_user("admin", "Secret123")
         assert user is None
@@ -172,8 +173,9 @@ class TestUserManagement:
 
     def test_delete_user(self):
         u = _register_admin()
+        retained = register_user("retained-owner", "retained@example.com", "Retained Owner", "Secret123", "eigentuemer")
         delete_user(u.id)
-        assert len(list_users()) == 0
+        assert [user.id for user in list_users()] == [retained.id]
 
     def test_delete_nonexistent(self):
         with pytest.raises(HTTPException) as exc_info:
@@ -242,7 +244,7 @@ class TestAuthRouter:
         assert updated["locale"] == "de-DE"
         assert updated["currency"] == "EUR"
 
-    def test_update_my_preferences_returns_fallback_when_session_init_fails(self, monkeypatch):
+    def test_update_my_preferences_reports_failure_when_session_init_fails(self, monkeypatch):
         user = _register_admin()
 
         monkeypatch.setattr("backend.db.session.DATABASE_URL", "postgresql://db/test")
@@ -251,18 +253,22 @@ class TestAuthRouter:
             raise RuntimeError("db down")
 
         monkeypatch.setattr("backend.db.session.SessionLocal", _raise_session_error)
+        monkeypatch.setattr("backend.dependencies._use_sql_store", True)
 
-        updated = update_my_preferences({"theme": "dark", "locale": "en-US", "ignored": "x"}, user)
-        assert updated["theme"] == "dark"
-        assert updated["locale"] == "en-US"
-        assert "ignored" not in updated
+        with pytest.raises(HTTPException) as error:
+            update_my_preferences({"theme": "dark", "locale": "en-US", "ignored": "x"}, user)
+        assert error.value.status_code == 503
 
-    def test_update_my_preferences_returns_fallback_when_commit_fails(self, monkeypatch):
+    def test_update_my_preferences_reports_failure_when_commit_fails(self, monkeypatch):
         user = _register_admin()
 
         monkeypatch.setattr("backend.db.session.DATABASE_URL", "postgresql://db/test")
 
         class _BrokenSession:
+            def execute(self, _statement):
+                from types import SimpleNamespace
+                return SimpleNamespace(rowcount=1)
+
             def query(self, _model):
                 return self
 
@@ -285,10 +291,11 @@ class TestAuthRouter:
                 return None
 
         monkeypatch.setattr("backend.db.session.SessionLocal", lambda: _BrokenSession())
+        monkeypatch.setattr("backend.dependencies._use_sql_store", True)
 
-        updated = update_my_preferences({"theme": "dark", "currency": "USD"}, user)
-        assert updated["theme"] == "dark"
-        assert updated["currency"] == "USD"
+        with pytest.raises(HTTPException) as error:
+            update_my_preferences({"theme": "dark", "currency": "USD"}, user)
+        assert error.value.status_code == 503
 
 
 

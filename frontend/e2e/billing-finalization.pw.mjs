@@ -117,7 +117,7 @@ async function downloadPdf(page, testInfo, statement, unitLabel, name, expectedR
   const row = statementTable(page).getByRole('row').filter({ hasText: unitLabel });
   const [download, response] = await Promise.all([
     page.waitForEvent('download'),
-    page.waitForResponse(res => new URL(res.url()).pathname === `/api/v1/billing/statements/${statement.id}/pdf`),
+    page.waitForResponse(res => new URL(res.url()).pathname === `/api/v1/billing/statements/${statement.id}/pdf` && res.status() !== 401),
     row.getByRole('button', { name: 'PDF', exact: true }).click(),
   ]);
   expect(response.status()).toBe(200);
@@ -180,7 +180,13 @@ test('finalization locks costs and persists snapshots with a genuine PDF downloa
   await openPeriod(page, fixture);
   await expect(page.getByRole('button', { name: 'Abrechnungen generieren', exact: true })).toHaveCount(0);
   await expect(statementTable(page).locator('tbody tr')).toHaveCount(2);
+  // A long editing session must refresh expired access before downloading the
+  // persistent PDF; the ordinary refresh token remains valid.
+  await page.evaluate(() => localStorage.setItem('access_token', 'expired-pdf-session'));
+  const expiredDownload = page.waitForResponse(res => new URL(res.url()).pathname === `/api/v1/billing/statements/${first.id}/pdf` && res.status() === 401);
   await downloadPdf(page, testInfo, first, fixture.units[0].label, 'finalized-source');
+  expect((await expiredDownload).status()).toBe(401);
+  expect(await page.evaluate(() => localStorage.getItem('access_token'))).not.toBe('expired-pdf-session');
   const anonymous = await page.request.get(`/api/v1/billing/statements/${first.id}/pdf`);
   expect(anonymous.status()).toBe(401);
   await mobileEvidence(page, testInfo, 'finalized-mobile');

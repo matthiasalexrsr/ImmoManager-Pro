@@ -225,6 +225,7 @@ _RBAC_SKIP_PATHS = {
     "/api/v1/auth/2fa/setup",  # Own account security is allowed for every role.
     "/api/v1/auth/2fa/verify",
     "/api/v1/auth/2fa/disable",
+    "/api/v1/auth/users/me/preferences",  # Display settings belong to one's own account.
     "/api/v1/dev-notes",  # dev notes are informational, not business data
 }
 

@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({ getAll: vi.fn(), get: vi.fn(), post: vi.fn(), 
 vi.mock('../api', () => ({ api: mocks }));
 vi.mock('../i18n', () => {
   const t = key => key.split('.').at(-1);
-  return { useTranslation: () => ({ t }) };
+  return { useTranslation: () => ({ t, locale: 'de-DE' }) };
 });
 vi.mock('../components/StatusBadge', () => ({ default: ({ status }) => <span>{status}</span> }));
 vi.mock('../components/DataTable', () => ({

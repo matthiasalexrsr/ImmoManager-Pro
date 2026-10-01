@@ -1,276 +1,165 @@
-import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import { ArrowLeft, ArrowUpRight, Building2, MapPin, Home, FileText, Wrench, Wallet, RefreshCw, FileCheck2 } from 'lucide-react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import DataTable from '../components/DataTable';
-import StatusBadge from '../components/StatusBadge';
-import { ArrowRightIcon } from '../components/Icons';
+import './Properties.css';
 
-function fmt(v) {
-  return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(v || 0);
+const number = value => value == null || value === '' || !Number.isFinite(Number(value)) ? null : Number(value);
+const sumKnown = (items, key) => items.every(item => number(item[key]) != null) ? items.reduce((sum, item) => sum + number(item[key]), 0) : null;
+function PropertyStatus({ status, t }) {
+  if (!status) return null;
+  const key = `properties.statusLabels.${status}`;
+  const label = t(key);
+  return <span className="property-status" data-status={status}>{label === key ? status : label}</span>;
 }
 
+const occupied = unit => ['occupied', 'rented'].includes(unit.status);
+const emptySources = { units: [], contracts: [], documents: [], maintenance: [] };
+
 export default function PropertyDetail() {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const { id } = useParams();
-  const navigate = useNavigate();
   const [property, setProperty] = useState(null);
-  const [units, setUnits] = useState([]);
-  const [contracts, setContracts] = useState([]);
-  const [documents, setDocuments] = useState([]);
-  const [maintenance, setMaintenance] = useState([]);
+  const [sources, setSources] = useState(emptySources);
+  const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('overview');
+  const requestRef = useRef(null);
+  const load = useCallback(async () => {
+    requestRef.current?.abort();
+    const controller = new AbortController();
+    requestRef.current = controller;
+    setLoading(true);
+    const paths = [
+      ['property', `/properties/${encodeURIComponent(id)}`],
+      ...Object.keys(emptySources).map(key => [key, `/${key}?property_id=${encodeURIComponent(id)}`]),
+    ];
+    const results = await Promise.allSettled(paths.map(async ([key, path]) => {
+      const data = await (key === 'property' ? api.get : api.getAll)(path, { signal: controller.signal });
+      if (key === 'property' ? !data || Array.isArray(data) || typeof data !== 'object' : !Array.isArray(data)) throw new Error(t('properties.invalidData'));
+      return data;
+    }));
+    if (controller.signal.aborted) return;
+    const nextErrors = {}, nextSources = { ...emptySources };
+    let nextProperty = null;
+    results.forEach((result, index) => {
+      const key = paths[index][0];
+      if (result.status === 'rejected') nextErrors[key] = result.reason?.message || t('properties.loadFailed');
+      else if (key === 'property') nextProperty = result.value;
+      else nextSources[key] = result.value;
+    });
+    setProperty(nextProperty);
+    setSources(nextSources);
+    setErrors(nextErrors);
+    setLoading(false);
+  }, [id, t]);
 
   useEffect(() => {
-    Promise.all([
-      api.get(`/properties/${id}`).catch(() => null),
-      api.get(`/units?property_id=${id}`).catch(() => []),
-      api.get(`/contracts?property_id=${id}`).catch(() => []),
-      api.get(`/documents?property_id=${id}`).catch(() => []),
-      api.get(`/maintenance?property_id=${id}`).catch(() => []),
-    ]).then(([prop, propUnits, propContracts, propDocs, propMaint]) => {
-      setProperty(prop);
-      setUnits(propUnits || []);
-      setContracts(propContracts || []);
-      setDocuments(propDocs || []);
-      setMaintenance(propMaint || []);
-    }).finally(() => setLoading(false));
-  }, [id]);
+    void load();
+    return () => requestRef.current?.abort();
+  }, [load]);
+  useEffect(() => { setTab('overview'); }, [id]);
 
-  if (loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
-  if (!property) return <div className="page"><div className="alert alert-error">{t('pages.propertyOverview.notFound') || 'Immobilie nicht gefunden'}</div></div>;
-
-  const totalArea = units.reduce((s, u) => s + (u.area_sqm || 0), 0);
-  const totalColdRent = units.reduce((s, u) => s + (u.cold_rent || 0), 0);
-  const occupiedCount = units.filter(u => u.status === 'occupied').length;
-  const vacantCount = units.filter(u => u.status === 'vacant').length;
-  const rentPerSqm = totalArea > 0 ? totalColdRent / totalArea : 0;
-  const activeContracts = contracts.filter(c => c.status === 'active').length;
-  const openMaintenance = maintenance.filter(m => m.status === 'open' || m.status === 'in_progress').length;
-
-  const unitLabel = t('units.list.title') || 'Einheiten';
-  const docLabel = t('navigation.main.documents') || 'Dokumente';
-  const maintLabel = t('navigation.main.maintenance') || 'Wartung';
-
-  const TABS = [
-    { key: 'overview', label: t('pages.propertyOverview.keyData') || 'Übersicht' },
-    { key: 'units', label: `${unitLabel} (${units.length})` },
-    { key: 'finance', label: t('navigation.sections.finance') || 'Finanzen' },
-    { key: 'documents', label: `${docLabel} (${documents.length})` },
-    { key: 'maintenance', label: `${maintLabel} (${openMaintenance})` },
+  const { units, contracts, documents, maintenance } = sources;
+  const ready = key => !loading && !errors[key];
+  const money = value => value == null ? '—' : new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 }).format(value);
+  const decimal = value => value == null ? '—' : new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(value);
+  const typeLabel = (value, root) => {
+    const key = `${root}.${value}`;
+    return t(key) === key ? value || '—' : t(key);
+  };
+  const unitLabel = t('properties.units');
+  const totalArea = ready('units') ? sumKnown(units, 'area_sqm') : null;
+  const totalColdRent = ready('units') ? sumKnown(units, 'cold_rent') : null;
+  const occupiedCount = units.filter(occupied).length;
+  const vacantCount = units.filter(unit => unit.status === 'vacant').length;
+  const occupancyRate = ready('units') && units.length ? Math.round(occupiedCount / units.length * 100) : null;
+  const rentPerSqm = totalArea > 0 && totalColdRent != null ? totalColdRent / totalArea : null;
+  const openMaintenance = ready('maintenance') ? maintenance.filter(item => ['open', 'in_progress'].includes(item.status)).length : null;
+  const activeContracts = ready('contracts') ? contracts.filter(contract => contract.status === 'active').length : null;
+  const tabs = [
+    { key: 'overview', label: t('properties.overview'), icon: Building2 },
+    { key: 'units', label: `${unitLabel} (${ready('units') ? units.length : '—'})`, icon: Home },
+    { key: 'finance', label: t('properties.finance'), icon: Wallet },
+    { key: 'contracts', label: `${t('properties.contracts')} (${ready('contracts') ? contracts.length : '—'})`, icon: FileCheck2 },
+    { key: 'documents', label: `${t('properties.documents')} (${ready('documents') ? documents.length : '—'})`, icon: FileText },
+    { key: 'maintenance', label: `${t('properties.maintenance')} (${openMaintenance ?? '—'})`, icon: Wrench },
   ];
+  const activateTab = key => {
+    setTab(key);
+    document.getElementById(`property-tab-${key}`)?.focus();
+  };
+  const onTabKeyDown = (event, index) => {
+    const next = event.key === 'ArrowRight' ? (index + 1) % tabs.length
+      : event.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length
+        : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : null;
+    if (next != null) { event.preventDefault(); activateTab(tabs[next].key); }
+  };
+  const errorNotice = key => errors[key] && <div className="property-notice property-notice-error" role="alert"><div><strong>{t(`properties.errors.${key}`)}</strong><p>{errors[key]}</p></div><button className="btn btn-secondary btn-sm" onClick={load}><RefreshCw size={15} aria-hidden="true" />{t('properties.retry')}</button></div>;
+  const columns = {
+    units: [
+      { key: 'label', label: t('units.list.columns.label'), render: (value, unit) => <Link className="property-table-identity" to={`/units/${unit.id}`}><strong>{value}</strong></Link> },
+      { key: 'unit_type', label: t('units.list.columns.type'), render: value => typeLabel(value, 'units.types') },
+      { key: 'area_sqm', label: t('units.list.columns.area'), type: 'number', align: 'right', render: value => value == null ? '—' : `${decimal(number(value))} m²` },
+      { key: 'cold_rent', label: t('properties.monthlyRent'), type: 'number', align: 'right', render: value => money(number(value)) },
+      { key: 'status', label: t('ui.form.status'), render: value => <PropertyStatus status={value} t={t} /> },
+    ],
+    contracts: [
+      { key: 'contract_number', label: t('properties.contractNumber') },
+      { key: 'start_date', label: t('properties.startDate'), type: 'date' },
+      { key: 'end_date', label: t('properties.endDate'), type: 'date' },
+      { key: 'status', label: t('ui.form.status'), render: value => <PropertyStatus status={value} t={t} /> },
+    ],
+    documents: [
+      { key: 'title', label: t('pages.propertyDetail.docTitle') },
+      { key: 'document_type', label: t('units.list.columns.type') },
+      { key: 'document_date', label: t('finance.bookings.form.date'), type: 'date' },
+    ],
+    maintenance: [
+      { key: 'title', label: t('pages.propertyDetail.docTitle') },
+      { key: 'priority', label: t('pages.propertyDetail.priority'), render: value => <PropertyStatus status={value} t={t} /> },
+      { key: 'status', label: t('ui.form.status'), render: value => <PropertyStatus status={value} t={t} /> },
+      { key: 'due_date', label: t('pages.propertyDetail.dueDate'), type: 'date' },
+    ],
+  };
+  const display = (value, unit = '') => value == null || value === '' ? '—' : `${decimal(number(value))}${unit}`;
 
-  const UNIT_COLUMNS = [
-    { key: 'label', label: t('units.list.columns.label') || 'Bezeichnung', filterType: 'text' },
-    { key: 'unit_type', label: t('units.list.columns.type') || 'Typ', filterType: 'select' },
-    { key: 'area_sqm', label: t('units.list.columns.area') || 'Fläche (m²)', type: 'number', align: 'right',
-      render: v => v != null ? `${Number(v).toLocaleString('de-DE')} m²` : '—' },
-    { key: 'cold_rent', label: t('units.list.columns.coldRent') || 'Kaltmiete (€)', type: 'number', align: 'right',
-      render: v => v != null ? fmt(v) : '—' },
-    { key: 'status', label: t('ui.form.status') || 'Status', type: 'status', filterType: 'select' },
-  ];
+  if (loading && (!property || property.id !== id)) return <div className="page property-detail-page"><Link className="property-back-link" to="/properties"><ArrowLeft size={17} aria-hidden="true" />{t('properties.backToProperties')}</Link><div className="property-state" role="status"><Building2 size={30} aria-hidden="true" /><h1>{t('properties.loading')}</h1><p>{t('properties.loadingDescription')}</p></div></div>;
+  if (!property) return <div className="page property-detail-page"><Link className="property-back-link" to="/properties"><ArrowLeft size={17} aria-hidden="true" />{t('properties.backToProperties')}</Link>{errorNotice('property')}</div>;
 
-  const DOC_COLUMNS = [
-    { key: 'title', label: t('pages.propertyDetail.docTitle') || 'Titel', filterType: 'text' },
-    { key: 'document_type', label: t('units.list.columns.type') || 'Typ', filterType: 'select' },
-    { key: 'document_date', label: t('finance.bookings.form.date') || 'Datum', type: 'date' },
-  ];
-
-  const MAINT_COLUMNS = [
-    { key: 'title', label: t('pages.propertyDetail.docTitle') || 'Titel', filterType: 'text' },
-    { key: 'priority', label: t('pages.propertyDetail.priority') || 'Priorität', type: 'status' },
-    { key: 'status', label: t('ui.form.status') || 'Status', type: 'status', filterType: 'select' },
-    { key: 'due_date', label: t('pages.propertyDetail.dueDate') || 'Fällig', type: 'date' },
-  ];
-
+  const address = [property.address_line, [property.postal_code, property.city].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+  const recentDocuments = [...documents].sort((a, b) => String(b.document_date || b.created_at || '').localeCompare(String(a.document_date || a.created_at || ''))).slice(0, 4);
   return (
-    <div className="page">
-      <div className="detail-header">
-        <button className="btn btn-sm btn-secondary" onClick={() => navigate('/properties')}>
-          ← {t('pages.propertyOverview.back') || 'Zurück'}
-        </button>
-        <div className="detail-title">
-          <h1>{property.name}</h1>
-          <span className="text-muted">
-            {[property.address_line, property.postal_code, property.city].filter(Boolean).join(', ') || t('pages.propertyDetail.noAddress') || 'Keine Adresse'}
-          </span>
-        </div>
-        <StatusBadge status={property.status} />
-      </div>
-
-      {/* KPI Summary */}
-      <div className="stats-grid" style={{ marginBottom: '1rem' }}>
-        <div className="stat-card">
-          <div className="stat-label">{t('pages.propertyDetail.totalColdRent') || 'Kaltmiete gesamt'}</div>
-          <div className="stat-value">{fmt(totalColdRent)}</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">€/m²</div>
-          <div className="stat-value">{rentPerSqm.toFixed(2)} €</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">{t('pages.propertyDetail.totalArea') || 'Gesamtfläche'}</div>
-          <div className="stat-value">{totalArea.toLocaleString('de-DE')} m²</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">{unitLabel}</div>
-          <div className="stat-value">
-            <span className="text-green">{occupiedCount}</span>
-            {' / '}
-            {units.length}
-            {vacantCount > 0 && <span className="text-red"> ({vacantCount} {t('units.status.vacant') || 'leer'})</span>}
-          </div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">{t('pages.propertyOverview.activeContracts') || 'Aktive Verträge'}</div>
-          <div className="stat-value">{activeContracts}</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">{t('pages.dashboard.openMaintenance') || 'Offene Wartung'}</div>
-          <div className={`stat-value ${openMaintenance > 0 ? 'text-red' : ''}`}>{openMaintenance}</div>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="detail-tabs">
-        {TABS.map(tb => (
-          <button
-            key={tb.key}
-            className={`detail-tab ${tab === tb.key ? 'active' : ''}`}
-            onClick={() => setTab(tb.key)}
-          >
-            {tb.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Tab Content */}
-      <div className="detail-tab-content">
-        {tab === 'overview' && (
-          <div className="detail-overview-grid">
-            <div className="panel">
-              <div className="panel-header">{t('pages.propertyDetail.propertyDetails') || 'Immobiliendetails'}</div>
-              <div className="panel-body">
-                <div className="detail-field"><span>{t('portfolio.properties.form.type') || 'Typ'}:</span> {property.property_type || '—'}</div>
-                <div className="detail-field"><span>{t('portfolio.properties.form.yearBuilt') || 'Baujahr'}:</span> {property.year_built || '—'}</div>
-                <div className="detail-field"><span>{t('portfolio.properties.form.livingArea') || 'Wohnfläche'}:</span> {property.living_area_sqm ? `${property.living_area_sqm} m²` : '—'}</div>
-                <div className="detail-field"><span>{t('portfolio.properties.form.plotArea') || 'Grundstück'}:</span> {property.plot_area_sqm ? `${property.plot_area_sqm} m²` : '—'}</div>
-                <div className="detail-field"><span>{t('portfolio.properties.form.purchasePrice') || 'Kaufpreis'}:</span> {property.purchase_price ? fmt(property.purchase_price) : '—'}</div>
-                <div className="detail-field"><span>{t('portfolio.properties.form.marketValue') || 'Marktwert'}:</span> {property.market_value ? fmt(property.market_value) : '—'}</div>
-              </div>
-            </div>
-            <div className="panel">
-              <div className="panel-header">{t('pages.propertyDetail.unitsOverview') || 'Einheiten-Übersicht'}</div>
-              <div className="panel-body">
-                {units.length === 0 ? <p className="empty-text">{t('pages.propertyDetail.noUnits') || 'Keine Einheiten'}</p> : (
-                  <ul className="activity-list">
-                    {units.slice(0, 8).map(u => (
-                      <li key={u.id}>
-                        <span className="activity-title">{u.label}</span>
-                        <span className="text-muted">{u.unit_type} · {u.area_sqm || '—'} m²</span>
-                        <StatusBadge status={u.status} />
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {units.length > 8 && (
-                  <button className="panel-link" onClick={() => setTab('units')}>
-                    {t('pages.propertyDetail.allUnits') || `Alle ${units.length} Einheiten`} <ArrowRightIcon size={14} />
-                  </button>
-                )}
-              </div>
-            </div>
-            <div className="panel">
-              <div className="panel-header">{t('pages.propertyDetail.recentDocuments') || 'Letzte Dokumente'}</div>
-              <div className="panel-body">
-                {documents.length === 0 ? <p className="empty-text">{t('pages.propertyDetail.noDocuments') || 'Keine Dokumente'}</p> : (
-                  <ul className="activity-list">
-                    {documents.slice(0, 5).map(d => (
-                      <li key={d.id}>
-                        <span className="activity-title">{d.title}</span>
-                        <span className="text-muted">{d.document_type || t('pages.propertyDetail.other') || 'Sonstig'}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {tab === 'units' && (
-          <DataTable title={unitLabel} columns={UNIT_COLUMNS} data={units} />
-        )}
-
-        {tab === 'finance' && (
-          <div className="panel">
-            <div className="panel-header">{t('pages.propertyDetail.financeOverview') || 'Finanzübersicht'}</div>
-            <div className="panel-body">
-              <div className="stats-grid">
-                <div className="stat-card">
-                  <div className="stat-label">{t('pages.propertyDetail.monthlyColdRent') || 'Monatliche Kaltmiete'}</div>
-                  <div className="stat-value">{fmt(totalColdRent)}</div>
-                </div>
-                <div className="stat-card">
-                  <div className="stat-label">{t('pages.propertyDetail.annualRent') || 'Jahresmiete (Kalt)'}</div>
-                  <div className="stat-value">{fmt(totalColdRent * 12)}</div>
-                </div>
-                <div className="stat-card">
-                  <div className="stat-label">{t('pages.propertyDetail.avgPerSqm') || 'Durchschnitt €/m²'}</div>
-                  <div className="stat-value">{rentPerSqm.toFixed(2)} €</div>
-                </div>
-              </div>
-              <div style={{ marginTop: '1rem' }}>
-                <h4>{t('pages.propertyDetail.rentByUnit') || 'Mietübersicht nach Einheit'}</h4>
-                <table className="simple-table">
-                  <thead>
-                    <tr>
-                      <th>{unitLabel}</th>
-                      <th>{t('units.list.columns.type') || 'Typ'}</th>
-                      <th style={{ textAlign: 'right' }}>{t('units.list.columns.coldRent') || 'Kaltmiete'}</th>
-                      <th style={{ textAlign: 'right' }}>{t('pages.propertyDetail.serviceCharge') || 'NK'}</th>
-                      <th style={{ textAlign: 'right' }}>{t('pages.propertyDetail.heating') || 'Heizung'}</th>
-                      <th style={{ textAlign: 'right' }}>{t('pages.propertyDetail.total') || 'Gesamt'}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {units.map(u => (
-                      <tr key={u.id}>
-                        <td>{u.label}</td>
-                        <td>{u.unit_type}</td>
-                        <td style={{ textAlign: 'right' }}>{fmt(u.cold_rent)}</td>
-                        <td style={{ textAlign: 'right' }}>{fmt(u.service_charge_advance)}</td>
-                        <td style={{ textAlign: 'right' }}>{fmt(u.heating_advance)}</td>
-                        <td style={{ textAlign: 'right', fontWeight: 600 }}>
-                          {fmt((u.cold_rent || 0) + (u.service_charge_advance || 0) + (u.heating_advance || 0))}
-                        </td>
-                      </tr>
-                    ))}
-                    <tr style={{ fontWeight: 700, borderTop: '2px solid var(--color-border)' }}>
-                      <td colSpan={2}>{t('pages.propertyDetail.total') || 'Gesamt'}</td>
-                      <td style={{ textAlign: 'right' }}>{fmt(totalColdRent)}</td>
-                      <td style={{ textAlign: 'right' }}>{fmt(units.reduce((s, u) => s + (u.service_charge_advance || 0), 0))}</td>
-                      <td style={{ textAlign: 'right' }}>{fmt(units.reduce((s, u) => s + (u.heating_advance || 0), 0))}</td>
-                      <td style={{ textAlign: 'right' }}>
-                        {fmt(units.reduce((s, u) => s + (u.cold_rent || 0) + (u.service_charge_advance || 0) + (u.heating_advance || 0), 0))}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {tab === 'documents' && (
-          <DataTable title={docLabel} columns={DOC_COLUMNS} data={documents} />
-        )}
-
-        {tab === 'maintenance' && (
-          <DataTable title={t('pages.propertyDetail.maintenanceTitle') || 'Wartung & Instandhaltung'} columns={MAINT_COLUMNS} data={maintenance} />
-        )}
-      </div>
+    <div className="page property-detail-page" aria-busy={loading}>
+      <Link className="property-back-link" to="/properties"><ArrowLeft size={17} aria-hidden="true" />{t('properties.backToProperties')}</Link>
+      <header className="property-detail-hero"><div className="property-detail-object-icon"><Building2 size={31} aria-hidden="true" /></div><div className="property-detail-identity"><div className="property-detail-heading-line"><span className="property-eyebrow">{typeLabel(property.property_type, 'properties.typeLabels')}</span><PropertyStatus status={property.status} t={t} /></div><h1>{property.name}</h1><p><MapPin size={16} aria-hidden="true" />{address || t('properties.noAddress')}</p></div><button className="property-icon-button" aria-label={t('properties.refresh')} onClick={load} disabled={loading}><RefreshCw size={18} aria-hidden="true" /></button></header>
+      {loading && <p className="property-data-caption" role="status">{t('properties.refreshing')}</p>}
+      <section className="property-metrics" aria-label={t('properties.summary')}>
+        <div className="property-metric"><span>{t('properties.monthlyRent')}</span><strong>{money(totalColdRent)}</strong><small>{t('properties.currentUnitValues')}</small></div>
+        <div className="property-metric"><span>{t('properties.occupancy')}</span><strong>{occupancyRate == null ? '—' : `${occupancyRate}%`}</strong><small>{ready('units') ? t('properties.occupiedOf', { occupied: occupiedCount, total: units.length }) : t('properties.notAvailable')}</small></div>
+        <div className="property-metric"><span>{t('properties.unitArea')}</span><strong>{totalArea == null ? '—' : `${decimal(totalArea)} m²`}</strong><small>{t('properties.recordedUnitArea')}</small></div>
+        <div className="property-metric"><span>{t('properties.openMaintenance')}</span><strong>{openMaintenance ?? '—'}</strong><small>{t('properties.maintenanceBasis')}</small></div>
+      </section>
+      <nav className="property-detail-tabs" role="tablist" aria-label={t('properties.detailSections')}>{tabs.map((item, index) => { const { key, label } = item; const Icon = item.icon; return <button key={key} id={`property-tab-${key}`} role="tab" aria-selected={tab === key} aria-controls={`property-panel-${key}`} tabIndex={tab === key ? 0 : -1} onClick={() => setTab(key)} onKeyDown={event => onTabKeyDown(event, index)}><Icon size={17} aria-hidden="true" />{label}</button>; })}</nav>
+      <section className="property-detail-content" role="tabpanel" id={`property-panel-${tab}`} aria-labelledby={`property-tab-${tab}`} tabIndex={0}>
+        {tab === 'overview' && <div className="property-overview-grid">
+          <section className="property-section property-facts"><div className="property-section-heading"><h2>{t('properties.keyData')}</h2><Building2 size={19} aria-hidden="true" /></div><dl>
+            <div><dt>{t('properties.form.general.type')}</dt><dd>{typeLabel(property.property_type, 'properties.typeLabels')}</dd></div>
+            <div><dt>{t('properties.form.metrics.yearBuilt')}</dt><dd>{property.year_built ?? '—'}</dd></div>
+            <div><dt>{t('properties.form.metrics.livingArea')}</dt><dd>{display(property.living_area_sqm, ' m²')}</dd></div>
+            <div><dt>{t('properties.form.metrics.usableArea')}</dt><dd>{display(property.usable_area_sqm, ' m²')}</dd></div>
+            <div><dt>{t('properties.form.metrics.plotArea')}</dt><dd>{display(property.plot_area_sqm, ' m²')}</dd></div>
+            <div><dt>{t('properties.form.ownership.ownershipShare')}</dt><dd>{display(property.ownership_share, ' %')}</dd></div>
+          </dl><p className="property-data-caption">{t('properties.propertyAreaBasis')}</p></section>
+          <section className="property-section"><div className="property-section-heading"><div><h2>{unitLabel}</h2><p>{ready('units') ? t('properties.vacancyCount', { count: vacantCount }) : t('properties.notAvailable')}</p></div><button className="property-text-action" onClick={() => activateTab('units')}>{t('properties.viewAll')}<ArrowUpRight size={16} aria-hidden="true" /></button></div>{errorNotice('units')}{ready('units') && (units.length ? <div className="property-unit-list">{units.slice(0, 5).map(unit => <Link to={`/units/${unit.id}`} key={unit.id}><div className="property-unit-icon"><Home size={18} aria-hidden="true" /></div><div><strong>{unit.label}</strong><span>{typeLabel(unit.unit_type, 'units.types')} · {number(unit.area_sqm) == null ? '—' : `${decimal(number(unit.area_sqm))} m²`}</span></div><PropertyStatus status={unit.status} t={t} /><ArrowUpRight size={16} aria-hidden="true" /></Link>)}</div> : <div className="property-section-empty"><Home size={24} aria-hidden="true" /><p>{t('properties.noUnits')}</p><Link className="property-text-action" to="/units">{t('properties.manageUnits')}<ArrowUpRight size={15} aria-hidden="true" /></Link></div>)}</section>
+          <section className="property-section"><div className="property-section-heading"><h2>{t('properties.rentalAndOperations')}</h2><FileCheck2 size={19} aria-hidden="true" /></div>{errorNotice('contracts')}{errorNotice('maintenance')}<div className="property-operating-summary"><button onClick={() => activateTab('contracts')}><span>{t('properties.activeContracts')}</span><strong>{activeContracts ?? '—'}</strong><ArrowUpRight size={17} aria-hidden="true" /></button><button onClick={() => activateTab('maintenance')}><span>{t('properties.openMaintenance')}</span><strong>{openMaintenance ?? '—'}</strong><ArrowUpRight size={17} aria-hidden="true" /></button></div><p className="property-data-caption">{t('properties.contractBasis')}</p></section>
+          <section className="property-section"><div className="property-section-heading"><h2>{t('properties.recentDocuments')}</h2><button className="property-text-action" onClick={() => activateTab('documents')}>{t('properties.viewAll')}<ArrowUpRight size={16} aria-hidden="true" /></button></div>{errorNotice('documents')}{ready('documents') && (recentDocuments.length ? <ul className="property-document-list">{recentDocuments.map(document => <li key={document.id}><FileText size={18} aria-hidden="true" /><div><strong>{document.title}</strong><span>{document.document_date ? new Intl.DateTimeFormat(locale).format(new Date(`${document.document_date}T00:00:00`)) : t('properties.noDocumentDate')}</span></div></li>)}</ul> : <div className="property-section-empty"><FileText size={24} aria-hidden="true" /><p>{t('properties.noDocuments')}</p></div>)}</section>
+        </div>}
+        {tab === 'finance' && <section className="property-section">{errorNotice('units')}<div className="property-section-heading"><div><h2>{t('properties.rentStructure')}</h2><p>{t('properties.rentBasis')}</p></div><Wallet size={21} aria-hidden="true" /></div><div className="property-finance-summary"><div><span>{t('properties.monthlyRent')}</span><strong>{money(totalColdRent)}</strong></div><div><span>{t('properties.annualProjection')}</span><strong>{money(totalColdRent == null ? null : totalColdRent * 12)}</strong></div><div><span>{t('properties.rentPerSqm')}</span><strong>{money(rentPerSqm)}</strong></div></div><p className="property-data-caption">{t('properties.projectionBasis')}</p>{ready('units') && (units.length ? <div className="property-finance-table-scroll" role="region" aria-label={t('properties.rentStructure')} tabIndex={0}><table className="property-finance-table"><thead><tr><th scope="col">{unitLabel}</th><th scope="col">{t('properties.monthlyRent')}</th><th scope="col">{t('properties.serviceAdvance')}</th><th scope="col">{t('properties.heatingAdvance')}</th><th scope="col">{t('properties.total')}</th></tr></thead><tbody>{units.map(unit => { const parts = ['cold_rent', 'service_charge_advance', 'heating_advance'].map(key => number(unit[key])); return <tr key={unit.id}><th scope="row"><Link to={`/units/${unit.id}`}>{unit.label}</Link></th>{parts.map((amount, index) => <td key={index}>{money(amount)}</td>)}<td>{money(parts.every(amount => amount != null) ? parts.reduce((sum, amount) => sum + amount, 0) : null)}</td></tr>; })}</tbody><tfoot><tr><th scope="row">{t('properties.total')}</th><td>{money(totalColdRent)}</td><td>{money(sumKnown(units, 'service_charge_advance'))}</td><td>{money(sumKnown(units, 'heating_advance'))}</td><td>{money(units.every(unit => ['cold_rent', 'service_charge_advance', 'heating_advance'].every(key => number(unit[key]) != null)) ? units.reduce((sum, unit) => sum + number(unit.cold_rent) + number(unit.service_charge_advance) + number(unit.heating_advance), 0) : null)}</td></tr></tfoot></table></div> : <p className="property-section-empty">{t('properties.noUnits')}</p>)}<div className="property-valuation"><dl><div><dt>{t('properties.form.ownership.purchasePrice')}</dt><dd>{money(number(property.purchase_price))}</dd></div><div><dt>{t('properties.form.ownership.marketValue')}</dt><dd>{money(number(property.market_value))}</dd></div></dl></div></section>}
+        {['units', 'contracts', 'documents', 'maintenance'].includes(tab) && <section className="property-section property-detail-list"><div className="property-section-heading"><div><h2>{t(`properties.${tab}`)}</h2><p>{t(`properties.sectionDescriptions.${tab}`)}</p></div><Link className="btn btn-secondary btn-sm" to={`/${tab}`}>{t(`properties.manage.${tab}`)}<ArrowUpRight size={15} aria-hidden="true" /></Link></div>{errorNotice(tab)}{ready(tab) && <DataTable title={t(`properties.${tab}`)} columns={columns[tab]} data={sources[tab]} />}</section>}
+      </section>
     </div>
   );
 }

@@ -71,6 +71,38 @@ Its browser requests use authenticated downloads and Blob URLs. The default
 native PDF plug-in is available, as described in the
 [browser documentation](https://playwright.dev/docs/browsers#chromium-new-headless-mode).
 
+`navigation.pw.mjs` checks the sidebar's principal work areas, active route links
+and breadcrumb return navigation in German, English and Spanish. Route selection
+uses stable hrefs rather than translated menu labels. It checks actual API search
+results for a seeded property with Ctrl+K, arrows and Enter on desktop and mobile,
+plus Escape and a genuine empty search. The collapsed desktop sidebar retains
+accessible route names and tooltips and supports navigation before expansion.
+Its account preference must persist on the server and survive reload.
+At 390 and 320 pixels the closed menu must
+stay out of keyboard focus, the open menu must receive and contain focus, and
+Escape, backdrop click and route selection must close it. Escape/backdrop dismissal
+must return focus to the menu button. Document width and uncaught browser errors
+are checked throughout. Three attached screenshots provide a desktop and two mobile
+reference for visual review without prescribing pixels, colours or wording.
+
+Run only these navigation checks with the same isolated SQL runner:
+
+```sh
+npm run test:e2e -- navigation.pw.mjs
+```
+
+`generation-form.pw.mjs` checks the real monthly-rent preview inside its form.
+Search with Enter, column selection and CSV export each have an independent test.
+Every interaction must leave the SQL charge list unchanged and send no generation
+POST. The CSV must contain the previewed contract and month. Only activating the
+explicit booking button may submit the preview hash and create one unpaid charge;
+the amount and single record must persist after reload. An unused month is picked
+from an actual seeded lease, so the tests need no additional business fixtures.
+
+```sh
+npm run test:e2e -- generation-form.pw.mjs
+```
+
 See the [Playwright configuration documentation](https://playwright.dev/docs/test-configuration)
 and [Microsoft Edge documentation](https://learn.microsoft.com/en-us/microsoft-edge/playwright/)
 for browser configuration details.

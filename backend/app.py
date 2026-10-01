@@ -14,6 +14,7 @@ from fastapi import Body, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.responses import RedirectResponse
 
 from .config import settings
@@ -179,6 +180,7 @@ app.add_middleware(AcceptLanguageMiddleware)
 app.add_middleware(AuditMiddleware)
 app.add_middleware(RBACWriteGuardMiddleware)
 app.add_middleware(DBSessionMiddleware)
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.trusted_hosts, www_redirect=False)
 
 
 # ─── API Routers ─────────────────────────────────────────────────────────────

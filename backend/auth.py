@@ -13,13 +13,15 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from threading import RLock
-from typing import Optional
+from typing import Optional, cast
 from uuid import uuid4
 
 import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt.exceptions import InvalidTokenError as JWTError
+from sqlalchemy import update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -456,6 +458,23 @@ def decode_token(token: str) -> TokenPayload:
 # ---------------------------------------------------------------------------
 
 
+def _check_user_change(target: dict, updates: dict, users: list[dict], *, actor_id: str | None, deleting: bool = False) -> None:
+    """Check permissions and the owner invariant inside the same storage lock."""
+    if actor_id is not None:
+        actor = next((item for item in users if item["id"] == actor_id), None)
+        if actor is None or not actor["is_active"] or actor["role"] not in {"eigentuemer", "verwalter"}:
+            raise HTTPException(status_code=403, detail="Benutzerverwaltung ist nicht erlaubt")
+        if actor["role"] != "eigentuemer" and (deleting or target["role"] == "eigentuemer" or "role" in updates):
+            raise HTTPException(status_code=403, detail="Nur Eigentümer dürfen Eigentümerkonten oder Rollen ändern")
+        if actor_id == target["id"] and (deleting or updates.get("is_active") is False
+                                         or ("role" in updates and updates["role"] != target["role"])):
+            raise HTTPException(status_code=409, detail="Das eigene Konto darf nicht deaktiviert oder in seiner Rolle herabgestuft werden")
+    losing_owner = deleting or updates.get("is_active") is False or ("role" in updates and updates["role"] != "eigentuemer")
+    if target["role"] == "eigentuemer" and target["is_active"] and losing_owner:
+        if sum(item["role"] == "eigentuemer" and item["is_active"] for item in users) <= 1:
+            raise HTTPException(status_code=409, detail="Der letzte aktive Eigentümer muss erhalten bleiben")
+
+
 class UserStore(ABC):
     """Abstract interface for user persistence."""
 
@@ -472,11 +491,11 @@ class UserStore(ABC):
         ...
 
     @abstractmethod
-    def update(self, user_id: str, updates: dict) -> Optional[dict]:
+    def update(self, user_id: str, updates: dict, *, actor_id: str | None = None) -> Optional[dict]:
         ...
 
     @abstractmethod
-    def delete(self, user_id: str) -> Optional[dict]:
+    def delete(self, user_id: str, *, actor_id: str | None = None) -> Optional[dict]:
         ...
 
     @abstractmethod
@@ -510,10 +529,14 @@ class InMemoryUserStore(UserStore):
         self._setup_complete = False
 
     def get_by_id(self, user_id: str) -> Optional[dict]:
-        return self._by_id.get(user_id)
+        with self._lock:
+            user = self._by_id.get(user_id)
+            return user.copy() if user else None
 
     def get_by_username(self, username: str) -> Optional[dict]:
-        return self._by_username.get(username)
+        with self._lock:
+            user = self._by_username.get(username)
+            return user.copy() if user else None
 
     def create(self, user_data: dict) -> None:
         with self._lock:
@@ -544,29 +567,39 @@ class InMemoryUserStore(UserStore):
                 user["totp_secret"] = secret
             return user.copy()
 
-    def update(self, user_id: str, updates: dict) -> Optional[dict]:
-        user = self._by_id.get(user_id)
-        if user is None:
-            return None
-        for key, value in updates.items():
-            if (value is not None or key == "totp_secret") and key not in ("id", "hashed_password", "created_at"):
-                user[key] = value
-        user["updated_at"] = datetime.now(timezone.utc)
-        return user
+    def update(self, user_id: str, updates: dict, *, actor_id: str | None = None) -> Optional[dict]:
+        with self._lock:
+            user = self._by_id.get(user_id)
+            if user is None:
+                return None
+            _check_user_change(user, updates, list(self._by_id.values()), actor_id=actor_id)
+            if "email" in updates and any(item["id"] != user_id and item["email"] == updates["email"] for item in self._by_id.values()):
+                raise HTTPException(status_code=409, detail="E-Mail-Adresse existiert bereits")
+            for key, value in updates.items():
+                if (value is not None or key == "totp_secret") and key not in ("id", "hashed_password", "created_at"):
+                    user[key] = value
+            user["updated_at"] = datetime.now(timezone.utc)
+            return user.copy()
 
-    def delete(self, user_id: str) -> Optional[dict]:
-        user = self._by_id.pop(user_id, None)
-        if user:
+    def delete(self, user_id: str, *, actor_id: str | None = None) -> Optional[dict]:
+        with self._lock:
+            user = self._by_id.get(user_id)
+            if user is None:
+                return None
+            _check_user_change(user, {}, list(self._by_id.values()), actor_id=actor_id, deleting=True)
+            self._by_id.pop(user_id)
             self._by_username.pop(user["username"], None)
-        return user
+            return user.copy()
 
     def list_all(self) -> list[dict]:
-        return list(self._by_id.values())
+        with self._lock:
+            return [user.copy() for user in self._by_id.values()]
 
     def clear(self) -> None:
-        self._by_id.clear()
-        self._by_username.clear()
-        self._setup_complete = False
+        with self._lock:
+            self._by_id.clear()
+            self._by_username.clear()
+            self._setup_complete = False
 
 
 class SQLUserStore(UserStore):
@@ -712,13 +745,31 @@ class SQLUserStore(UserStore):
         finally:
             self._finalize_session(session)
 
-    def update(self, user_id: str, updates: dict) -> Optional[dict]:
+    def _lock_management(self, session: Session) -> None:
+        # A real DML row lock serializes management across sessions/processes on
+        # PostgreSQL and acquires SQLite's write lock BEFORE any user snapshot.
+        # The permanent setup marker exists after bootstrap or legacy startup.
+        statement = update(AuthSetupORM).where(AuthSetupORM.id == 1).values(completed_at=AuthSetupORM.completed_at)
+        result = session.execute(statement)
+        if cast(CursorResult, result).rowcount == 0:
+            try:
+                with session.begin_nested():
+                    session.add(AuthSetupORM(id=1))
+                    session.flush()
+            except IntegrityError:
+                pass  # Another transaction initialized the same marker.
+            session.execute(statement)
+
+    def update(self, user_id: str, updates: dict, *, actor_id: str | None = None) -> Optional[dict]:
         from .db.orm_models import UserORM
         session = self._session_factory()
         try:
+            self._lock_management(session)
             obj = session.get(UserORM, user_id)
             if obj is None:
                 return None
+            users = [self._to_dict(item) for item in session.query(UserORM).all()]
+            _check_user_change(self._to_dict(obj), updates, users, actor_id=actor_id)
             for key, value in updates.items():
                 if (value is not None or key == "totp_secret") and key not in ("id", "hashed_password", "created_at"):
                     setattr(obj, key, value)
@@ -726,20 +777,26 @@ class SQLUserStore(UserStore):
             session.commit()
             session.refresh(obj)
             return self._to_dict(obj)
+        except IntegrityError as exc:
+            session.rollback()
+            raise HTTPException(status_code=409, detail="Benutzername oder E-Mail-Adresse existiert bereits") from exc
         except Exception:
             session.rollback()
             raise
         finally:
             self._finalize_session(session)
 
-    def delete(self, user_id: str) -> Optional[dict]:
+    def delete(self, user_id: str, *, actor_id: str | None = None) -> Optional[dict]:
         from .db.orm_models import UserORM
         session = self._session_factory()
         try:
+            self._lock_management(session)
             obj = session.get(UserORM, user_id)
             if obj is None:
                 return None
             data = self._to_dict(obj)
+            users = [self._to_dict(item) for item in session.query(UserORM).all()]
+            _check_user_change(data, {}, users, actor_id=actor_id, deleting=True)
             session.delete(obj)
             session.commit()
             return data
@@ -796,11 +853,15 @@ def _to_user_read(user_data: dict) -> UserRead:
 # ---------------------------------------------------------------------------
 
 
-def _new_user_data(username: str, email: str, full_name: str, password: str, role: str) -> dict:
+def _new_user_data(username: str, email: str, full_name: str, password: str, role: str, *, server_password: bool = False) -> dict:
     if _user_store.get_by_username(username) is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Benutzername existiert bereits")
     # T21: Validate password strength
-    pw_errors = validate_password_strength(password)
+    # Private-server bootstrap and production creation accept long passphrases.
+    # Authentication of existing accounts never applies creation policy again.
+    pw_errors = (["Mindestens 12 Zeichen erforderlich"] if len(password) < 12 else []) if (
+        server_password or settings.environment == "production"
+    ) else validate_password_strength(password)
     if pw_errors:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -833,10 +894,10 @@ def setup_required() -> bool:
     return _user_store.setup_required()
 
 
-def create_initial_owner(username: str, email: str, full_name: str, password: str) -> UserRead:
+def create_initial_owner(username: str, email: str, full_name: str, password: str, *, server_password: bool = False) -> UserRead:
     if not setup_required():
         raise HTTPException(status_code=409, detail="Ersteinrichtung wurde bereits abgeschlossen")
-    data = _new_user_data(username, email, full_name, password, "eigentuemer")
+    data = _new_user_data(username, email, full_name, password, "eigentuemer", server_password=server_password)
     _user_store.create_initial_owner(data)
     return _to_user_read(data)
 
@@ -879,17 +940,17 @@ def list_users() -> list[UserRead]:
     return [_to_user_read(u) for u in _user_store.list_all()]
 
 
-def update_user(user_id: str, updates: dict) -> UserRead:
+def update_user(user_id: str, updates: dict, *, actor_id: str | None = None) -> UserRead:
     """Update user fields."""
-    user = _user_store.update(user_id, updates)
+    user = _user_store.update(user_id, updates, actor_id=actor_id)
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Benutzer nicht gefunden")
     return _to_user_read(user)
 
 
-def delete_user(user_id: str) -> None:
+def delete_user(user_id: str, *, actor_id: str | None = None) -> None:
     """Delete a user."""
-    user = _user_store.delete(user_id)
+    user = _user_store.delete(user_id, actor_id=actor_id)
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Benutzer nicht gefunden")
 

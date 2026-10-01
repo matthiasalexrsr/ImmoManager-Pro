@@ -1,266 +1,292 @@
-import { useEffect, useState } from 'react';
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { logout } from '../api';
 import { useTranslation } from '../i18n';
 import { usePreferences } from '../contexts/PreferencesContext';
+import { useAuth } from '../contexts/AuthContext';
 import SearchBar from './SearchBar';
 import NotificationBell from './NotificationBell';
+import './AppShell.css';
 import {
-  DashboardIcon, PortfolioIcon, PropertyIcon, UnitIcon,
-  TenantIcon, ContractIcon, AccountIcon, BookingIcon,
-  InvoiceIcon, MaintenanceIcon, TaskIcon, DocumentIcon,
-  SunIcon, MoonIcon, LogoutIcon, ChevronLeftIcon, ChevronRightIcon,
-  RentIcon, MeterIcon, ContactIcon, StatementIcon, MessageIcon, SettingsIcon,
-  CategoryIcon, DepositIcon, InsuranceIcon, IntegrationIcon,
-  CalendarIcon, ChartIcon, SearchIcon, MenuIcon, CloseIcon,
+  DashboardIcon, PortfolioIcon, PropertyIcon, UnitIcon, TenantIcon, ContractIcon,
+  AccountIcon, BookingIcon, InvoiceIcon, MaintenanceIcon, TaskIcon, DocumentIcon,
+  SunIcon, MoonIcon, LogoutIcon, ChevronLeftIcon, ChevronRightIcon, RentIcon,
+  MeterIcon, ContactIcon, StatementIcon, MessageIcon, SettingsIcon, CategoryIcon,
+  DepositIcon, InsuranceIcon, IntegrationIcon, CalendarIcon, ChartIcon, SearchIcon,
+  MenuIcon, CloseIcon,
 } from './Icons';
 
+// Route paths and existing translation keys stay unchanged. SearchBar owns search.
 const NAV_SECTIONS = [
-  {
-    labelKey: 'navigation.sections.overview',
-    fallback: 'Overview',
-    items: [
-      { to: '/', labelKey: 'navigation.main.dashboard', fallback: 'Dashboard', icon: DashboardIcon },
-    ],
-  },
-  {
-    labelKey: 'navigation.sections.portfolio',
-    fallback: 'Portfolio',
-    items: [
-      { to: '/portfolios', labelKey: 'navigation.main.portfolio', fallback: 'Portfolios', icon: PortfolioIcon },
-      { to: '/properties', labelKey: 'navigation.main.properties', fallback: 'Immobilien', icon: PropertyIcon },
-      { to: '/units', labelKey: 'units.list.title', fallback: 'Einheiten', icon: UnitIcon },
-      { to: '/insurances', labelKey: 'navigation.main.insurances', fallback: 'Versicherungen', icon: InsuranceIcon },
-    ],
-  },
-  {
-    labelKey: 'navigation.sections.tenants',
-    fallback: 'Mieter & Verträge',
-    items: [
-      { to: '/tenants', labelKey: 'tenantsContracts.tenants.title', fallback: 'Mieter', icon: TenantIcon },
-      { to: '/contracts', labelKey: 'tenantsContracts.contracts.title', fallback: 'Verträge', icon: ContractIcon },
-      { to: '/contract-wizard', labelKey: 'navigation.main.contractWizard', fallback: 'Mietvertrag-Wizard', icon: ContractIcon },
-      { to: '/contacts', labelKey: 'navigation.main.contacts', fallback: 'Kontakte', icon: ContactIcon },
-      { to: '/deposits', labelKey: 'navigation.main.deposits', fallback: 'Kautionen', icon: DepositIcon },
-      { to: '/rent-adjustments', labelKey: 'navigation.main.rentAdjustments', fallback: 'Mietanpassungen', icon: RentIcon },
-      { to: '/handover-protocols', labelKey: 'navigation.main.handoverProtocols', fallback: 'Übergabeprotokolle', icon: DocumentIcon },
-    ],
-  },
-  {
-    labelKey: 'navigation.sections.vacancy',
-    fallback: 'Leerstand',
-    items: [
-      { to: '/leads', labelKey: 'navigation.main.leads', fallback: 'Interessenten', icon: TenantIcon },
-      { to: '/listings', labelKey: 'navigation.main.listings', fallback: 'Inserate', icon: SearchIcon },
-      { to: '/viewings', labelKey: 'navigation.main.viewings', fallback: 'Besichtigungen', icon: CalendarIcon },
-    ],
-  },
-  {
-    labelKey: 'navigation.sections.finance',
-    fallback: 'Finanzen',
-    items: [
-      { to: '/accounts', labelKey: 'finance.accounts.title', fallback: 'Konten', icon: AccountIcon },
-      { to: '/bookings', labelKey: 'finance.bookings.title', fallback: 'Buchungen', icon: BookingIcon },
-      { to: '/invoices', labelKey: 'finance.invoices.title', fallback: 'Rechnungen', icon: InvoiceIcon },
-      { to: '/rent-overview', labelKey: 'navigation.main.rentOverview', fallback: 'Mietübersicht', icon: RentIcon },
-      { to: '/statements', labelKey: 'navigation.main.statements', fallback: 'Abrechnungen', icon: StatementIcon },
-      { to: '/receivables', labelKey: 'navigation.main.receivables', fallback: 'Forderungen', icon: InvoiceIcon },
-      { to: '/rent-charges', labelKey: 'navigation.main.rentCharges', fallback: 'Sollstellungen', icon: RentIcon },
-    ],
-  },
-  {
-    labelKey: 'navigation.sections.operations',
-    fallback: 'Betrieb',
-    items: [
-      { to: '/calendar', labelKey: 'navigation.main.calendar', fallback: 'Kalender', icon: CalendarIcon },
-      { to: '/maintenance', labelKey: 'navigation.main.maintenance', fallback: 'Wartung', icon: MaintenanceIcon },
-      { to: '/tasks', labelKey: 'navigation.main.tasks', fallback: 'Aufgaben', icon: TaskIcon },
-      { to: '/documents', labelKey: 'navigation.main.documents', fallback: 'Dokumente', icon: DocumentIcon },
-      { to: '/meters', labelKey: 'navigation.main.meters', fallback: 'Zähler', icon: MeterIcon },
-      { to: '/messages', labelKey: 'navigation.main.messages', fallback: 'Nachrichten', icon: MessageIcon },
-    ],
-  },
-  {
-    labelKey: 'navigation.sections.configuration',
-    fallback: 'Konfiguration',
-    items: [
-      { to: '/categories', labelKey: 'navigation.main.categories', fallback: 'Kategorien', icon: CategoryIcon },
-      { to: '/budgets', labelKey: 'navigation.main.budgets', fallback: 'Budgets', icon: ChartIcon },
-      { to: '/tax-rates', labelKey: 'navigation.main.taxRates', fallback: 'Steuersätze', icon: AccountIcon },
-      { to: '/allocation-keys', labelKey: 'navigation.main.allocationKeys', fallback: 'Verteilerschlüssel', icon: StatementIcon },
-      { to: '/integrations', labelKey: 'navigation.main.integrations', fallback: 'Schnittstellen', icon: IntegrationIcon },
-      { to: '/escalation-rules', labelKey: 'navigation.main.escalationRules', fallback: 'Eskalationsregeln', icon: MaintenanceIcon },
-      { to: '/notification-templates', labelKey: 'navigation.main.notificationTemplates', fallback: 'Benachrichtigungsvorlagen', icon: MessageIcon },
-      { to: '/history', labelKey: 'navigation.main.history', fallback: 'Änderungsprotokoll', icon: DocumentIcon },
-      { to: '/settings', labelKey: 'navigation.main.settings', fallback: 'Einstellungen', icon: SettingsIcon },
-    ],
-  },
+  { labelKey: 'navigation.sections.overview', items: [
+    ['/', 'navigation.main.dashboard', DashboardIcon],
+  ] },
+  { labelKey: 'navigation.sections.portfolio', items: [
+    ['/portfolios', 'navigation.main.portfolio', PortfolioIcon],
+    ['/properties', 'navigation.main.properties', PropertyIcon],
+    ['/units', 'units.list.title', UnitIcon],
+    ['/insurances', 'navigation.main.insurances', InsuranceIcon],
+  ] },
+  { labelKey: 'navigation.sections.tenants', items: [
+    ['/tenants', 'tenantsContracts.tenants.title', TenantIcon],
+    ['/contracts', 'tenantsContracts.contracts.title', ContractIcon],
+    ['/contract-wizard', 'navigation.main.contractWizard', ContractIcon],
+    ['/contacts', 'navigation.main.contacts', ContactIcon],
+    ['/deposits', 'navigation.main.deposits', DepositIcon],
+    ['/rent-adjustments', 'navigation.main.rentAdjustments', RentIcon],
+    ['/handover-protocols', 'navigation.main.handoverProtocols', DocumentIcon],
+  ] },
+  { labelKey: 'navigation.sections.vacancy', items: [
+    ['/leads', 'navigation.main.leads', TenantIcon],
+    ['/listings', 'navigation.main.listings', SearchIcon],
+    ['/viewings', 'navigation.main.viewings', CalendarIcon],
+  ] },
+  { labelKey: 'navigation.sections.finance', items: [
+    ['/accounts', 'finance.accounts.title', AccountIcon],
+    ['/bookings', 'finance.bookings.title', BookingIcon],
+    ['/invoices', 'finance.invoices.title', InvoiceIcon],
+    ['/rent-overview', 'navigation.main.rentOverview', RentIcon],
+    ['/statements', 'navigation.main.statements', StatementIcon],
+    ['/receivables', 'navigation.main.receivables', InvoiceIcon],
+    ['/rent-charges', 'navigation.main.rentCharges', RentIcon],
+  ] },
+  { labelKey: 'navigation.sections.operations', items: [
+    ['/calendar', 'navigation.main.calendar', CalendarIcon],
+    ['/maintenance', 'navigation.main.maintenance', MaintenanceIcon],
+    ['/tasks', 'navigation.main.tasks', TaskIcon],
+    ['/documents', 'navigation.main.documents', DocumentIcon],
+    ['/meters', 'navigation.main.meters', MeterIcon],
+    ['/messages', 'navigation.main.messages', MessageIcon],
+  ] },
+  { labelKey: 'navigation.sections.configuration', items: [
+    ['/categories', 'navigation.main.categories', CategoryIcon],
+    ['/budgets', 'navigation.main.budgets', ChartIcon],
+    ['/tax-rates', 'navigation.main.taxRates', AccountIcon],
+    ['/allocation-keys', 'navigation.main.allocationKeys', StatementIcon],
+    ['/integrations', 'navigation.main.integrations', IntegrationIcon],
+    ['/escalation-rules', 'navigation.main.escalationRules', MaintenanceIcon],
+    ['/notification-templates', 'navigation.main.notificationTemplates', MessageIcon],
+    ['/history', 'navigation.main.history', DocumentIcon],
+    ['/settings', 'navigation.main.settings', SettingsIcon],
+  ] },
 ];
-
 const LOCALES = [
-  { code: 'de-DE', label: 'DE' },
-  { code: 'en-US', label: 'EN' },
-  { code: 'es-ES', label: 'ES' },
+  { code: 'de-DE', label: 'DE', name: 'Deutsch' },
+  { code: 'en-US', label: 'EN', name: 'English' },
+  { code: 'es-ES', label: 'ES', name: 'Español' },
 ];
-
-function findActiveNavItem(pathname) {
-  const navItems = NAV_SECTIONS.flatMap(section => section.items)
-    .sort((a, b) => b.to.length - a.to.length);
-
-  return navItems.find(item => item.to === '/'
-    ? pathname === '/'
-    : pathname === item.to || pathname.startsWith(`${item.to}/`));
+const MOBILE_QUERY = '(max-width: 768px)';
+const mobileMatches = () => typeof window.matchMedia === 'function' && window.matchMedia(MOBILE_QUERY).matches;
+const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]):not([type="hidden"]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+function focusableIn(element) {
+  return [...element.querySelectorAll(FOCUSABLE)].filter(node => {
+    const style = window.getComputedStyle(node);
+    return !node.closest('[hidden], [inert], [aria-hidden="true"]')
+      && style.display !== 'none' && style.visibility !== 'hidden' && node.getClientRects().length > 0;
+  });
 }
 
 export default function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { t, locale, setLocale } = useTranslation();
-  const { prefs, toggleTheme, toggleSidebar } = usePreferences();
+  const { t, locale } = useTranslation();
+  const { prefs, toggleTheme, toggleSidebar, updatePrefs } = usePreferences();
+  const auth = useAuth();
+  const [isMobile, setIsMobile] = useState(mobileMatches);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const collapsed = prefs.sidebar_collapsed;
-
-  const tr = (key, fallback) => {
-    const result = t(key);
-    return result === key ? fallback : result;
-  };
-
-  const activeItem = findActiveNavItem(location.pathname);
-  const currentPageTitle = activeItem
-    ? tr(activeItem.labelKey, activeItem.fallback)
-    : tr('navigation.main.dashboard', 'Dashboard');
+  const sidebarRef = useRef(null);
+  const toggleRef = useRef(null);
+  const contentRef = useRef(null);
+  const closeReason = useRef('dismiss');
+  const lastLocation = useRef(location.key);
+  const drawerOpen = isMobile && mobileNavOpen;
+  const collapsed = !isMobile && prefs.sidebar_collapsed;
+  const text = key => t(`appShell.${key}`);
+  const active = NAV_SECTIONS.flatMap(section => section.items.map(([to, labelKey]) => ({
+    to, labelKey, sectionKey: section.labelKey,
+  }))).sort((a, b) => b.to.length - a.to.length).find(item => item.to === '/'
+    ? location.pathname === '/' : location.pathname === item.to || location.pathname.startsWith(`${item.to}/`));
+  const isDetail = active && location.pathname !== active.to;
+  const currentTitle = isDetail ? text('detail') : t(active?.labelKey || 'appShell.page');
+  const displayName = auth?.user?.full_name || auth?.user?.username || 'ImmoManager';
+  const initials = displayName.split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase();
+  const closeNavigation = useCallback((reason = 'dismiss') => {
+    closeReason.current = reason;
+    setMobileNavOpen(false);
+  }, []);
 
   useEffect(() => {
-    if (!mobileNavOpen) {
-      return undefined;
+    const query = window.matchMedia?.(MOBILE_QUERY);
+    if (!query) return undefined;
+    const update = () => {
+      setIsMobile(query.matches);
+      if (!query.matches) closeNavigation('resize');
+    };
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, [closeNavigation]);
+
+  useEffect(() => {
+    if (lastLocation.current !== location.key) {
+      lastLocation.current = location.key;
+      closeNavigation('route');
     }
+  }, [location.key, closeNavigation]);
 
-    const { body } = document;
-    const originalOverflow = body.style.overflow;
-    body.style.overflow = 'hidden';
+  useEffect(() => {
+    document.title = `${currentTitle} · ImmoManager Pro`;
+  }, [currentTitle]);
 
-    const onKeyDown = (event) => {
+  useEffect(() => {
+    document.documentElement.lang = locale;
+  }, [locale]);
+
+  useEffect(() => {
+    if (!drawerOpen) return undefined;
+    const sidebar = sidebarRef.current;
+    const content = contentRef.current;
+    const opener = toggleRef.current;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const first = () => focusableIn(sidebar)[0] || sidebar;
+    const focusDrawer = () => {
+      if (sidebar.contains(document.activeElement)) return;
+      const current = sidebar.querySelector('a[aria-current="page"]') || first();
+      current.focus({ preventScroll: true });
+      current.scrollIntoView?.({ block: 'nearest' });
+    };
+    // Native inert removal becomes focusable after a paint on the first opening.
+    let focusFrame = requestAnimationFrame(() => {
+      focusFrame = requestAnimationFrame(focusDrawer);
+    });
+    const finishOpening = event => { if (event.target === sidebar) focusDrawer(); };
+    sidebar.addEventListener('transitionend', finishOpening);
+    const onKeyDown = event => {
+      if (event.defaultPrevented) return;
       if (event.key === 'Escape') {
-        setMobileNavOpen(false);
+        event.preventDefault();
+        event.stopPropagation();
+        closeNavigation();
+      }
+      if (event.key !== 'Tab') return;
+      const elements = focusableIn(sidebar);
+      const start = elements[0] || sidebar;
+      const end = elements.at(-1) || sidebar;
+      if (!sidebar.contains(document.activeElement) || (event.shiftKey && document.activeElement === start)) {
+        event.preventDefault();
+        (event.shiftKey ? end : start).focus();
+      } else if (!event.shiftKey && document.activeElement === end) {
+        event.preventDefault();
+        start.focus();
       }
     };
-
-    window.addEventListener('keydown', onKeyDown);
-    return () => {
-      body.style.overflow = originalOverflow;
-      window.removeEventListener('keydown', onKeyDown);
+    const onFocus = event => {
+      if (!sidebar.contains(event.target)) first().focus();
     };
-  }, [mobileNavOpen]);
+    document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('focusin', onFocus);
+    return () => {
+      cancelAnimationFrame(focusFrame);
+      sidebar.removeEventListener('transitionend', finishOpening);
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('focusin', onFocus);
+      // Rerender removes inert before focus returns. Route changes focus the content,
+      // dismissals return to the opener, and a desktop resize never targets a hidden button.
+      const reason = closeReason.current;
+      requestAnimationFrame(() => {
+        const target = reason === 'route' || !mobileMatches() ? content : opener;
+        if (target?.isConnected) target.focus({ preventScroll: true });
+      });
+    };
+  }, [drawerOpen, closeNavigation]);
 
   return (
-    <div className={`app-layout ${collapsed ? 'sidebar-collapsed' : ''} ${mobileNavOpen ? 'mobile-nav-open' : ''}`}>
-      <aside className="sidebar" aria-label={tr('navigation.main.dashboard', 'Navigation')}>
+    <div className={`app-layout app-shell ${collapsed ? 'sidebar-collapsed' : ''} ${drawerOpen ? 'mobile-nav-open' : ''}`}>
+      <a href="#workspace-content" className="shell-skip-link" inert={drawerOpen}>{text('skipContent')}</a>
+      <aside ref={sidebarRef} id="primary-navigation" className="sidebar" tabIndex={-1}
+        role={drawerOpen ? 'dialog' : undefined} aria-modal={drawerOpen ? true : undefined}
+        aria-label={text('navigation')} aria-hidden={isMobile && !drawerOpen ? true : undefined}
+        inert={isMobile && !drawerOpen}>
         <div className="sidebar-header">
-          <div className="sidebar-logo">IM</div>
-          {!collapsed && (
-            <div className="sidebar-brand">
-              <span className="sidebar-brand-name">ImmoManager</span>
-              <span className="sidebar-brand-sub">Pro</span>
-            </div>
-          )}
-          <button
-            className="sidebar-mobile-close"
-            onClick={() => setMobileNavOpen(false)}
-            aria-label={tr('ui.form.cancel', 'Close navigation')}
-          >
-            <CloseIcon size={16} />
-          </button>
+          <div className="sidebar-logo" aria-hidden="true">IM</div>
+          {!collapsed && <div className="sidebar-brand">
+            <span className="sidebar-brand-name">ImmoManager <span>Pro</span></span>
+            <span className="sidebar-brand-sub">{text('workspace')}</span>
+          </div>}
+          <button type="button" className="sidebar-mobile-close" hidden={!isMobile} onClick={() => closeNavigation()}
+            aria-label={text('closeNavigation')}><CloseIcon size={20} /></button>
         </div>
-        <nav className="sidebar-nav" id="primary-navigation">
-          {NAV_SECTIONS.map((section, si) => (
-            <div key={si}>
-              {!collapsed && (
-                <div className="sidebar-section-label">
-                  {tr(section.labelKey, section.fallback)}
-                </div>
-              )}
-              {section.items.map((item) => {
-                if (item.externalApp) {
-                  return (
-                    <a key={item.href} href={item.href} className="nav-link">
-                      <span className="icon-wrapper">
-                        <item.icon size={18} />
-                      </span>
-                      {!collapsed && <span>{tr(item.labelKey, item.fallback)}</span>}
-                    </a>
-                  );
-                }
-
-                return (
-                  <NavLink
-                    key={item.to}
-                    to={item.to}
-                    end={item.to === '/'}
-                    className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-                    title={collapsed ? tr(item.labelKey, item.fallback) : undefined}
-                    onClick={() => setMobileNavOpen(false)}
-                  >
-                    <span className="icon-wrapper">
-                      <item.icon size={18} />
-                    </span>
-                    {!collapsed && <span>{tr(item.labelKey, item.fallback)}</span>}
-                  </NavLink>
-                );
-              })}
-            </div>
-          ))}
+        <nav className="sidebar-nav" aria-label={text('navigation')}>
+          {NAV_SECTIONS.map(section => <section className="shell-nav-group" key={section.labelKey}>
+            {!collapsed && <h2 className="sidebar-section-label">{t(section.labelKey)}</h2>}
+            {section.items.map(item => {
+              const [to, labelKey, Icon] = item;
+              return <NavLink key={to} to={to} end={to === '/'}
+              className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
+              aria-label={t(labelKey)} title={collapsed ? t(labelKey) : undefined}
+              onClick={event => {
+                if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && event.button === 0) closeNavigation('route');
+              }}>
+              <span className="icon-wrapper" aria-hidden="true"><Icon size={19} /></span>
+              {!collapsed && <span>{t(labelKey)}</span>}
+            </NavLink>;
+            })}
+          </section>)}
         </nav>
         <div className="sidebar-footer">
           <div className="sidebar-controls">
-            <button onClick={toggleSidebar} className="sidebar-control-btn" title={collapsed ? t('sidebar.expand') : t('sidebar.collapse')}>
-              {collapsed ? <ChevronRightIcon size={16} /> : <ChevronLeftIcon size={16} />}
+            <button type="button" hidden={isMobile} onClick={toggleSidebar} className="sidebar-control-btn"
+              aria-label={t(collapsed ? 'sidebar.expand' : 'sidebar.collapse')}
+              title={t(collapsed ? 'sidebar.expand' : 'sidebar.collapse')}>
+              {collapsed ? <ChevronRightIcon size={18} /> : <ChevronLeftIcon size={18} />}
             </button>
-            <button onClick={toggleTheme} className="sidebar-control-btn" title={t('sidebar.toggleTheme')}>
-              {prefs.theme === 'dark' ? <SunIcon size={16} /> : <MoonIcon size={16} />}
+            <button type="button" onClick={toggleTheme} className="sidebar-control-btn" aria-pressed={prefs.theme === 'dark'} aria-label={t('sidebar.toggleTheme')}
+              title={t('sidebar.toggleTheme')}>
+              {prefs.theme === 'dark' ? <SunIcon size={18} /> : <MoonIcon size={18} />}
             </button>
-            <div className="locale-switcher">
-              {LOCALES.map(loc => (
-                <button
-                  key={loc.code}
-                  className={`locale-btn ${locale === loc.code ? 'active' : ''}`}
-                  onClick={() => setLocale(loc.code)}
-                >
-                  {loc.label}
-                </button>
-              ))}
+            <div className="locale-switcher" role="group" aria-label={text('language')}>
+              {LOCALES.map(loc => <button type="button" key={loc.code} className={`locale-btn${locale === loc.code ? ' active' : ''}`}
+                aria-label={loc.name} aria-pressed={locale === loc.code} onClick={() => updatePrefs({ locale: loc.code })}>{loc.label}</button>)}
             </div>
           </div>
-          <button
-            onClick={() => { logout(); navigate('/login'); }}
-            className="btn-logout"
-          >
-            <LogoutIcon size={16} />
-            {!collapsed && <span>{t('accountMenu.logout')}</span>}
+          <button type="button" onClick={() => { logout(); auth?.clearUser(); navigate('/login'); }} className="btn-logout" aria-label={t('accountMenu.logout')}>
+            <LogoutIcon size={17} />{!collapsed && <span>{t('accountMenu.logout')}</span>}
           </button>
         </div>
       </aside>
-      {mobileNavOpen && <button className="mobile-nav-backdrop" onClick={() => setMobileNavOpen(false)} aria-label={tr('ui.form.cancel', 'Close navigation')} />}
-      <main className="main-content">
-        <div className="top-bar">
+      {drawerOpen && <div className="mobile-nav-backdrop" aria-hidden="true" onClick={() => closeNavigation()} />}
+      <div className="main-content" inert={drawerOpen}>
+        <header className="top-bar">
           <div className="top-bar-left">
-            <button
-              className="top-bar-mobile-toggle"
-              onClick={() => setMobileNavOpen(prev => !prev)}
-              aria-controls="primary-navigation"
-              aria-expanded={mobileNavOpen}
-              aria-label={mobileNavOpen ? tr('ui.form.cancel', 'Close navigation') : tr('sidebar.expand', 'Open navigation')}
-            >
-              {mobileNavOpen ? <CloseIcon size={18} /> : <MenuIcon size={18} />}
+            <button type="button" ref={toggleRef} className="top-bar-mobile-toggle" hidden={!isMobile}
+              onClick={() => { closeReason.current = 'dismiss'; setMobileNavOpen(true); }}
+              aria-controls="primary-navigation" aria-expanded={drawerOpen} aria-label={text('openNavigation')}>
+              <MenuIcon size={21} />
             </button>
-            <div className="top-bar-page-title">{currentPageTitle}</div>
+            <nav className="shell-breadcrumbs" aria-label={text('breadcrumb')}>
+              <ol>
+                {active?.to !== '/' && <li><Link to="/">{t('navigation.main.dashboard')}</Link></li>}
+                {active?.to !== '/' && active && <li className="shell-breadcrumb-section"><span>{t(active.sectionKey)}</span></li>}
+                {isDetail && <li><Link to={active.to}>{t(active.labelKey)}</Link></li>}
+                <li><span aria-current="page" className="top-bar-page-title">{currentTitle}</span></li>
+              </ol>
+            </nav>
           </div>
           <SearchBar />
-          <NotificationBell />
-        </div>
-        <div className="main-content-body">
+          <div className="shell-header-tools">
+            <NotificationBell />
+            <div className="shell-identity" title={displayName}>
+              <span className="shell-avatar" aria-hidden="true">{initials}</span>
+              <span className="shell-identity-label"><strong>{displayName}</strong>
+                <small>{auth?.isReadonly ? text('readonly') : text('workspace')}</small></span>
+            </div>
+          </div>
+        </header>
+        <main ref={contentRef} tabIndex={-1} id="workspace-content" className="main-content-body">
           <Outlet />
-        </div>
-      </main>
+        </main>
+      </div>
     </div>
   );
 }

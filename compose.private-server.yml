@@ -1,0 +1,59 @@
+# Independent private-server deployment; do not combine with development Compose.
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    ports:
+      - "127.0.0.1:${APP_HTTP_PORT:-8080}:8000"
+    environment:
+      ENVIRONMENT: production
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-immo}:${POSTGRES_PASSWORD:?Run configure_private_server.py first}@db:5432/${POSTGRES_DB:-immomanager}"
+      JWT_SECRET_KEY: "${JWT_SECRET_KEY:?Run configure_private_server.py first}"
+      CORS_ORIGINS: "${APP_ORIGIN:?Set the private HTTPS origin},http://127.0.0.1:${APP_HTTP_PORT:-8080},http://localhost:${APP_HTTP_PORT:-8080}"
+      TRUSTED_HOSTS: "${APP_HOST:?Set the private HTTPS host},localhost,127.0.0.1"
+      DATA_DIR: /data
+      UPLOADS_DIR: /data/uploads
+      BACKUP_DIR: /data/backups
+      LOG_FILE: /data/logs/application.log
+      INTEGRATION_STATE_FILE: /data/integrations.json
+      SQLITE_PERSISTENT_STORE: "true"
+      ALLOW_INMEMORY_FALLBACK: "false"
+      AUTO_SEED_DEMO_DATA: "false"
+      AUTO_MIGRATE: "false"
+      AI_ENABLED: "false"
+      PLUGIN_DIRS: "[]"
+      UPDATE_ALLOW_IN_PRODUCTION: "false"
+      DIAGNOSTICS_ALLOW_IN_PRODUCTION: "false"
+    volumes:
+      - appdata:/data
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=128m
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:-immo}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Run configure_private_server.py first}"
+      POSTGRES_DB: "${POSTGRES_DB:-immomanager}"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+volumes:
+  pgdata:
+  appdata:

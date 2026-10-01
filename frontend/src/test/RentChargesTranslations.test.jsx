@@ -46,8 +46,8 @@ describe.each(Object.entries(catalogs))('RentCharges labels in %s', (locale, mes
     for (const key of ['coldRent', 'serviceCharge', 'heatingCharge', 'otherCharges']) {
       expect(within(dialog).getByLabelText(t(`pages.rentCharges.form.${key}`), { exact: false })).toBeInTheDocument();
     }
-    expect(dialog.querySelector('#form-field-status')).toBeNull();
-    expect(dialog.querySelector('#form-field-amount_paid')).toBeNull();
+    expect(dialog.querySelector('[name="status"]')).toBeNull();
+    expect(dialog.querySelector('[name="amount_paid"]')).toBeNull();
     fireEvent.submit(dialog.querySelector('form'));
     await waitFor(() => expect(mocks.put).toHaveBeenCalledWith('/rent-charges/charge', {
       contract_id: 'contract', month: '2026-01', cold_rent: 500, service_charge: 50,

@@ -2,6 +2,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 
 const I18nContext = createContext(null);
+const FALLBACK_CONTEXT = { t: key => key, locale: 'de-DE', setLocale: () => {} };
 
 // Cache loaded translations
 const translationCache = {};
@@ -399,7 +400,7 @@ function getNestedValue(obj, path) {
 
 export function useTranslation() {
   const ctx = useContext(I18nContext);
-  if (!ctx) return { t: (key) => key, locale: 'de-DE', setLocale: () => {} };
+  if (!ctx) return FALLBACK_CONTEXT;
   return ctx;
 }
 
@@ -423,14 +424,17 @@ export function I18nProvider({ children }) {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
     // Load current locale and German fallback
     Promise.all([
       loadTranslations(locale),
       locale !== 'de-DE' ? loadTranslations('de-DE') : Promise.resolve({}),
     ]).then(([current, fb]) => {
+      if (cancelled) return;
       setTranslations(current);
       setFallback(fb);
     });
+    return () => { cancelled = true; };
   }, [locale, loadTranslations]);
 
   const setLocale = useCallback((loc) => {
@@ -446,7 +450,7 @@ export function I18nProvider({ children }) {
       || key;
     if (params && typeof value === 'string') {
       Object.entries(params).forEach(([k, v]) => {
-        value = value.replace(`{{${k}}}`, v);
+        value = value.replaceAll(`{{${k}}}`, String(v));
       });
     }
     return value;

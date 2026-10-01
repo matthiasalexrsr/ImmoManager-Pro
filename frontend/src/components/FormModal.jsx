@@ -1,83 +1,114 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useId } from 'react';
+import { CircleAlert, LoaderCircle } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { CloseIcon } from './Icons';
+import './SharedComponents.css';
+
+const initialValues = (fields, initial) => Object.fromEntries(fields.map(field =>
+  [field.key, initial?.[field.key] ?? field.default ?? '']));
+
+function reachableControls(modal) {
+  return [...modal.querySelectorAll('button, a[href], input:not([type="hidden"]), select, textarea, [tabindex]:not([tabindex="-1"])')]
+    .filter(element => {
+      if (element.tabIndex < 0 || element.matches(':disabled') || element.closest('[hidden], [inert], [aria-hidden="true"]')) return false;
+      for (let node = element; node && node !== modal.parentElement; node = node.parentElement) {
+        const style = getComputedStyle(node);
+        if (style.display === 'none' || style.visibility === 'hidden') return false;
+      }
+      return true;
+    });
+}
 
 export default function FormModal({ title, fields, initial, onSave, onClose, children, saveDisabled = false, closeOnSave = true, saveLabel }) {
   const { t } = useTranslation();
-  const [values, setValues] = useState({});
+  const [values, setValues] = useState(() => initialValues(fields, initial));
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
   const modalRef = useRef(null);
+  const errorRef = useRef(null);
+  const primaryAction = useRef(null);
+  const submitting = useRef(false);
+  const wasSaving = useRef(false);
+  const instanceId = useId();
+  const initialSignature = JSON.stringify(initial ?? null);
+  const previousInitial = useRef(initialSignature);
 
   useEffect(() => {
-    const init = {};
-    fields.forEach(f => {
-      init[f.key] = initial?.[f.key] ?? f.default ?? '';
+    const replace = previousInitial.current !== initialSignature;
+    previousInitial.current = initialSignature;
+    setValues(current => {
+      const next = replace ? initialValues(fields, initial) : { ...current };
+      if (!replace) fields.forEach(field => {
+        if (!(field.key in next) || field.type === 'hidden') next[field.key] = initial?.[field.key] ?? field.default ?? '';
+      });
+      return Object.keys(next).length === Object.keys(current).length
+        && Object.keys(next).every(key => Object.is(next[key], current[key])) ? current : next;
     });
-    setValues(init);
-  }, [initial, fields]);
+  }, [initial, initialSignature, fields]);
 
-  // Escape key to close
   useEffect(() => {
-    const handler = (e) => {
-      if (e.key === 'Escape') {
-        onClose();
-      }
+    const opener = document.activeElement;
+    const modal = modalRef.current;
+    if (!modal) return;
+    const controls = reachableControls(modal);
+    (controls.find(element => element.matches('input, select, textarea')) || controls[0] || modal).focus();
+    return () => { if (opener?.isConnected && typeof opener.focus === 'function') opener.focus(); };
+  }, []);
+
+  useEffect(() => {
+    if (saving) modalRef.current?.focus();
+    else if (error) errorRef.current?.focus();
+    else if (wasSaving.current) {
+      (primaryAction.current && !primaryAction.current.disabled ? primaryAction.current : modalRef.current)?.focus();
+    }
+    wasSaving.current = saving;
+  }, [saving, error]);
+
+  useEffect(() => {
+    const handler = event => {
+      if (event.key === 'Escape' && !event.defaultPrevented && !submitting.current) onClose();
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, [onClose]);
 
-  // Focus trap
-  useEffect(() => {
+  const requestClose = () => { if (!submitting.current) onClose(); };
+  const trapFocus = event => {
+    if (event.key !== 'Tab') return;
     const modal = modalRef.current;
-    if (!modal) return;
-    const focusable = modal.querySelectorAll(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-    );
-    if (focusable.length > 0) focusable[0].focus();
+    const controls = reachableControls(modal);
+    const first = controls[0], last = controls.at(-1);
+    if (!first) { event.preventDefault(); modal.focus(); return; }
+    if (!controls.includes(document.activeElement)) { event.preventDefault(); (event.shiftKey ? last : first).focus(); }
+    else if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+  };
 
-    const trapFocus = (e) => {
-      if (e.key !== 'Tab' || focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault();
-        first.focus();
-      }
-    };
-    modal.addEventListener('keydown', trapFocus);
-    return () => modal.removeEventListener('keydown', trapFocus);
-  }, [fields]);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (saving || saveDisabled) return;
+  const handleSubmit = async event => {
+    event.preventDefault();
+    if (submitting.current || saveDisabled) return;
+    if (!event.currentTarget.checkValidity()) {
+      setError({ message: t('ui.form.invalidFields') });
+      event.currentTarget.reportValidity();
+      return;
+    }
+    submitting.current = true;
     setSaving(true);
     setError(null);
     try {
       const cleaned = {};
-      fields.forEach(f => {
-        let v = values[f.key];
-        if (f.type === 'number') {
-          if (v === '' || v === null || v === undefined) {
-            v = f.required ? '' : null;
-          } else {
-            v = Number(v);
-          }
-        } else if (v === '') {
-          v = f.required ? v : null;
-        }
-        cleaned[f.key] = v;
+      fields.forEach(field => {
+        let value = values[field.key];
+        if (field.type === 'number') value = value === '' || value == null ? (field.required ? '' : null) : Number(value);
+        else if (value === '') value = field.required ? value : null;
+        cleaned[field.key] = value;
       });
       await onSave(cleaned);
       if (closeOnSave) onClose();
     } catch (err) {
-      setError(err.message);
+      setError({ message: err.message || t('ui.form.saveFailed'), details: err.details });
     } finally {
+      submitting.current = false;
       setSaving(false);
     }
   };
@@ -86,104 +117,70 @@ export default function FormModal({ title, fields, initial, onSave, onClose, chi
     ...current, [field.key]: value, ...field.onChange?.(value, current),
   }));
 
-  return (
-    <div className="modal-overlay" onClick={onClose} role="presentation">
-      <div
-        className="modal"
-        ref={modalRef}
-        onClick={e => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-      >
-        <div className="modal-header">
-          <h3>{title}</h3>
-          <button onClick={onClose} className="btn-close" aria-label={t('ui.buttons.close')}>
-            <CloseIcon size={18} />
-          </button>
-        </div>
-        <form onSubmit={handleSubmit}>
-          <div className="modal-body">
-            {error && <div className="alert-error" role="alert">{error}</div>}
-            {children}
-            {(() => {
-              const renderField = (f) => {
-                if (f.type === 'hidden') {
-                  return <input type="hidden" key={f.key} name={f.key} value={values[f.key] || ''} />;
-                }
-                const inputId = `form-field-${f.key}`;
-                return (
-                  <div key={f.key} className="form-group">
-                    <label htmlFor={inputId}>{f.label}{f.required && ' *'}</label>
-                    {['select', 'multiselect'].includes(f.type) ? (
-                      <select
-                        id={inputId}
-                        value={f.type === 'multiselect' ? values[f.key] || [] : values[f.key] || ''}
-                        multiple={f.type === 'multiselect'}
-                        onChange={e => changeField(f, f.type === 'multiselect'
-                          ? [...e.target.selectedOptions].map(option => option.value) : e.target.value)}
-                        required={f.required}
-                      >
-                        {f.type !== 'multiselect' && <option value="">{t('ui.form.pleaseSelect')}</option>}
-                        {f.options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                      </select>
-                    ) : f.type === 'textarea' ? (
-                      <textarea
-                        id={inputId}
-                        value={values[f.key] || ''}
-                        onChange={e => changeField(f, e.target.value)}
-                        required={f.required}
-                        rows={3}
-                      />
-                    ) : (
-                      <input
-                        id={inputId}
-                        type={f.type || 'text'}
-                        value={values[f.key] ?? ''}
-                        onChange={e => changeField(f, e.target.value)}
-                        required={f.required}
-                        step={f.type === 'number' ? '0.01' : undefined}
-                        min={f.min}
-                        max={typeof f.max === 'function' ? f.max(values) : f.max}
-                        placeholder={f.placeholder}
-                      />
-                    )}
-                  </div>
-                );
-              };
+  const renderField = field => {
+    if (field.type === 'hidden') return <input type="hidden" key={field.key} name={field.key} value={values[field.key] ?? ''} />;
+    const inputId = `form-field-${field.key}-${instanceId}`;
+    const hint = field.hint ?? field.helpText;
+    const detail = Array.isArray(error?.details) && error.details.find(item => Array.isArray(item?.loc) && item.loc.at(-1) === field.key);
+    const fieldError = typeof detail?.msg === 'string' ? detail.msg : null;
+    const common = {
+      id: inputId, name: field.key, required: field.required, disabled: field.disabled || saving,
+      'aria-invalid': fieldError ? true : undefined,
+      'aria-describedby': [hint && `${inputId}-hint`, fieldError && `${inputId}-error`].filter(Boolean).join(' ') || undefined,
+    };
+    return <div key={field.key} className={`form-group shared-form-field ${['textarea', 'multiselect'].includes(field.type) ? 'shared-form-field-wide' : ''}`}>
+      <label htmlFor={inputId}>{field.label}{field.required && ' *'}</label>
+      {['select', 'multiselect'].includes(field.type) ? <select {...common}
+        value={field.type === 'multiselect' ? values[field.key] || [] : values[field.key] ?? ''}
+        multiple={field.type === 'multiselect'}
+        onChange={event => changeField(field, field.type === 'multiselect' ? [...event.target.selectedOptions].map(option => option.value) : event.target.value)}>
+        {field.type !== 'multiselect' && <option value="">{t('ui.form.pleaseSelect')}</option>}
+        {field.options?.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+      </select> : field.type === 'textarea' ? <textarea {...common} value={values[field.key] ?? ''}
+        onChange={event => changeField(field, event.target.value)} rows={field.rows || 3} placeholder={field.placeholder} readOnly={field.readOnly} />
+        : <input {...common} type={field.type || 'text'} value={values[field.key] ?? ''}
+          onChange={event => changeField(field, event.target.value)} step={field.step ?? (field.type === 'number' ? '0.01' : undefined)}
+          min={field.min} max={typeof field.max === 'function' ? field.max(values) : field.max}
+          minLength={field.minLength} maxLength={field.maxLength} pattern={field.pattern}
+          placeholder={field.placeholder} autoComplete={field.autoComplete} readOnly={field.readOnly} />}
+      {hint && <small id={`${inputId}-hint`} className="shared-form-hint">{hint}</small>}
+      {fieldError && <small id={`${inputId}-error`} className="shared-form-field-error">{fieldError}</small>}
+    </div>;
+  };
 
-              // Group fields by section (preserve order, backward compatible)
-              const sections = [];
-              let currentSection = null;
-              fields.forEach(f => {
-                const section = f.section || null;
-                if (section !== currentSection || sections.length === 0) {
-                  sections.push({ label: section, fields: [] });
-                  currentSection = section;
-                }
-                sections[sections.length - 1].fields.push(f);
-              });
+  const sections = [];
+  fields.forEach(field => {
+    const section = field.section || null;
+    if (!sections.length || sections.at(-1).label !== section) sections.push({ label: section, fields: [] });
+    sections.at(-1).fields.push(field);
+  });
 
-              return sections.map((section, i) => (
-                section.label ? (
-                  <fieldset key={i} className="form-section">
-                    <legend className="form-section-label">{section.label}</legend>
-                    {section.fields.map(renderField)}
-                  </fieldset>
-                ) : (
-                  <div key={i}>{section.fields.map(renderField)}</div>
-                )
-              ));
-            })()}
-          </div>
-          <div className="modal-footer">
-            <button type="button" onClick={onClose} className="btn btn-secondary">{t('ui.buttons.cancel')}</button>
-            <button type="submit" className="btn btn-primary" disabled={saving || saveDisabled}>
-              {saving ? `${saveLabel || t('ui.buttons.save')}...` : saveLabel || t('ui.buttons.save')}
-            </button>
-          </div>
-        </form>
+  return <div className="modal-overlay shared-form-overlay" role="presentation" onClick={event => { if (event.target === event.currentTarget) requestClose(); }}>
+    <div className="modal shared-form-modal" ref={modalRef} tabIndex={-1} onKeyDown={trapFocus}
+      role="dialog" aria-modal="true" aria-labelledby={`${instanceId}-title`} aria-busy={saving}>
+      <div className="modal-header"><h3 id={`${instanceId}-title`}>{title}</h3>
+        <button type="button" onClick={requestClose} className="btn-close" aria-label={t('ui.buttons.close')} disabled={saving}><CloseIcon size={18} /></button>
       </div>
+      <form onSubmit={handleSubmit} aria-busy={saving}>
+        <div className="modal-body">
+          {error && <div className="alert-error shared-form-error" role="alert" ref={errorRef} tabIndex={-1}><CircleAlert size={18} aria-hidden="true" /><span>{error.message}</span></div>}
+          <fieldset className="shared-modal-body-fields" disabled={saving}>
+            {children}
+            {sections.map((section, index) => {
+              const content = <div className={`shared-form-fields ${section.fields.filter(field => field.type !== 'hidden').length === 1 ? 'shared-form-fields-single' : ''}`}>{section.fields.map(renderField)}</div>;
+              return section.label ? <fieldset key={index} className="form-section"><legend className="form-section-label">{section.label}</legend>{content}</fieldset> : <div key={index}>{content}</div>;
+            })}
+          </fieldset>
+        </div>
+        <div className="modal-footer">
+          <span className="shared-form-required">{fields.some(field => field.required && field.type !== 'hidden') && `* ${t('ui.form.required')}`}</span>
+          <div className="shared-form-actions"><button type="button" onClick={requestClose} className="btn btn-secondary" disabled={saving}>{t('ui.buttons.cancel')}</button>
+            <button type="submit" ref={primaryAction} className="btn btn-primary" disabled={saving || saveDisabled}>
+              {saving && <LoaderCircle size={16} className="shared-component-spinner" aria-hidden="true" />}
+              <span aria-live="polite">{saving ? `${saveLabel || t('ui.buttons.save')}...` : saveLabel || t('ui.buttons.save')}</span>
+            </button></div>
+        </div>
+      </form>
     </div>
-  );
+  </div>;
 }

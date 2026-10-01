@@ -14,6 +14,7 @@ from threading import Barrier
 import pytest
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -77,8 +78,10 @@ def test_local_setup_creates_owner_once_and_registration_is_closed(local_client,
     assert local_client.get("/api/v1/auth/setup-status").json()["setup_required"] is False
     assert local_client.post("/api/v1/auth/setup", json=owner_payload(1)).status_code == 409
     assert local_client.post("/api/v1/auth/register", json=owner_payload(2)).status_code == 403
-    # Deleting accounts must not reopen the first-owner endpoint.
-    user_store.delete(created.json()["id"])
+    # The final active owner must survive; setup still stays permanently closed.
+    with pytest.raises(HTTPException) as protected:
+        user_store.delete(created.json()["id"])
+    assert protected.value.status_code == 409
     assert not user_store.setup_required()
     assert local_client.post("/api/v1/auth/setup", json=owner_payload(3)).status_code == 409
 

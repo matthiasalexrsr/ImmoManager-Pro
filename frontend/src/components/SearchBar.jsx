@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useId } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
@@ -40,49 +40,89 @@ const ENTITY_ROUTES = {
 };
 
 const ENTITY_LABELS = {
-  property: 'Immobilien',
-  unit: 'Einheiten',
-  tenant: 'Mieter',
-  contract: 'Verträge',
-  account: 'Konten',
-  booking: 'Buchungen',
-  invoice: 'Rechnungen',
-  maintenance: 'Wartung',
-  task: 'Aufgaben',
-  document: 'Dokumente',
-  meter: 'Zähler',
-  statement: 'Abrechnungen',
-  contact: 'Kontakte',
-  portfolio: 'Portfolios',
-  deposit: 'Kautionen',
-  category: 'Kategorien',
-  insurance: 'Versicherungen',
-  lead: 'Interessenten',
-  listing: 'Inserate',
-  integration: 'Schnittstellen',
-  message: 'Nachrichten',
-  receivable: 'Forderungen',
-  rent_charge: 'Sollstellungen',
-  allocation_key: 'Verteilerschlüssel',
-  handover_protocol: 'Übergabeprotokolle',
-  escalation_rule: 'Eskalationsregeln',
-  budget: 'Budgets',
-  tax_rate: 'Steuersätze',
-  calendar_event: 'Kalender',
-  viewing: 'Besichtigungen',
-  rent_adjustment: 'Mietanpassungen',
+  property: 'navigation.main.properties',
+  unit: 'units.list.title',
+  tenant: 'tenantsContracts.tenants.title',
+  contract: 'tenantsContracts.contracts.title',
+  account: 'finance.accounts.title',
+  booking: 'finance.bookings.title',
+  invoice: 'finance.invoices.title',
+  maintenance: 'navigation.main.maintenance',
+  task: 'navigation.main.tasks',
+  document: 'navigation.main.documents',
+  meter: 'navigation.main.meters',
+  statement: 'navigation.main.statements',
+  contact: 'navigation.main.contacts',
+  portfolio: 'navigation.main.portfolio',
+  deposit: 'navigation.main.deposits',
+  category: 'navigation.main.categories',
+  insurance: 'navigation.main.insurances',
+  lead: 'navigation.main.leads',
+  listing: 'navigation.main.listings',
+  integration: 'navigation.main.integrations',
+  message: 'navigation.main.messages',
+  receivable: 'navigation.main.receivables',
+  rent_charge: 'navigation.main.rentCharges',
+  allocation_key: 'navigation.main.allocationKeys',
+  handover_protocol: 'navigation.main.handoverProtocols',
+  escalation_rule: 'navigation.main.escalationRules',
+  notification_template: 'navigation.main.notificationTemplates',
+  budget: 'navigation.main.budgets',
+  tax_rate: 'navigation.main.taxRates',
+  calendar_event: 'navigation.main.calendar',
+  viewing: 'navigation.main.viewings',
+  rent_adjustment: 'navigation.main.rentAdjustments',
 };
+
+function searchResults(data) {
+  if (!Array.isArray(data?.results)) return [];
+  const unsafe = value => value.includes('\\') || [...value].some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127);
+  return data.results.flatMap(result => {
+    const base = ENTITY_ROUTES[result?.entity_type];
+    const route = result?.url || base;
+    if (!base || typeof result?.display !== 'string' || !result.display.trim()
+      || typeof route !== 'string' || !route.startsWith('/') || route.startsWith('//') || unsafe(route)) return [];
+    try {
+      const url = new URL(route, window.location.origin);
+      const decodedPath = decodeURIComponent(url.pathname);
+      if (url.origin !== window.location.origin || unsafe(decodedPath)
+        || decodedPath.split('/').some(part => part === '.' || part === '..')
+        || !(url.pathname === base || url.pathname.startsWith(`${base}/`))) return [];
+      return [{
+        entity_type: result.entity_type,
+        display: result.display,
+        detail: typeof result.detail === 'string' ? result.detail : '',
+        url: `${url.pathname}${url.search}${url.hash}`,
+      }];
+    } catch {
+      return [];
+    }
+  });
+}
 
 export default function SearchBar() {
   const { t } = useTranslation();
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState([]);
+  const [search, setSearch] = useState({ term: '', results: [], loading: false, error: null });
+  const [revision, setRevision] = useState(0);
   const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
+  const rootRef = useRef(null);
   const inputRef = useRef(null);
   const listRef = useRef(null);
+  const listId = `${useId()}-search-results`;
   const navigate = useNavigate();
+  const term = query.trim();
+  const expanded = open && term.length >= 2;
+  const currentSearch = search.term === term ? search : { results: [], loading: true, error: null };
+  const grouped = new Map();
+  if (expanded) currentSearch.results.forEach(result => {
+    if (!grouped.has(result.entity_type)) grouped.set(result.entity_type, []);
+    grouped.get(result.entity_type).push(result);
+  });
+  // The same order drives rendering, highlight and Enter selection.
+  const options = [...grouped.values()].flat();
+  const activeOptionId = expanded && activeIndex >= 0 && activeIndex < options.length ? `${listId}-${activeIndex}` : undefined;
 
   // Keyboard shortcut: Ctrl+K
   useEffect(() => {
@@ -97,45 +137,60 @@ export default function SearchBar() {
     return () => document.removeEventListener('keydown', handler);
   }, []);
 
-  // Debounced search
+  // Abort old requests and ignore their late completions even if a transport
+  // ignores cancellation. Results from a previous term never enter the list.
   useEffect(() => {
-    if (query.length < 2) {
-      return;
-    }
+    if (!open || term.length < 2) return;
+    const controller = new AbortController();
+    setSearch({ term, results: [], loading: true, error: null });
     const timer = setTimeout(() => {
-      setLoading(true);
-      api.get(`/search?q=${encodeURIComponent(query)}`)
-        .then(data => { setResults(data.results || []); setActiveIndex(-1); })
-        .catch(() => setResults([]))
-        .finally(() => setLoading(false));
+      api.get(`/search?q=${encodeURIComponent(term)}`, { signal: controller.signal })
+        .then(data => {
+          if (controller.signal.aborted) return;
+          setSearch({ term, results: searchResults(data), loading: false, error: null });
+          setActiveIndex(-1);
+        })
+        .catch(error => {
+          if (!controller.signal.aborted) setSearch({ term, results: [], loading: false, error: error?.message || true });
+        });
     }, 300);
-    return () => clearTimeout(timer);
-  }, [query]);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [term, open, revision]);
 
-  // Clear results when query is too short
-  const currentResults = query.length < 2 ? [] : results;
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = event => {
+      if (!rootRef.current?.contains(event.target)) {
+        setOpen(false);
+        setActiveIndex(-1);
+      }
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [open]);
 
-  const handleSelect = useCallback((result) => {
+  const handleSelect = result => {
     setOpen(false);
     setQuery('');
     setActiveIndex(-1);
-    const route = result.url || ENTITY_ROUTES[result.entity_type] || '/';
-    navigate(route);
-  }, [navigate]);
+    navigate(result.url);
+  };
 
   const handleKeyDown = (e) => {
-    if (!open || currentResults.length === 0) {
-      if (e.key === 'Escape') {
-        setOpen(false);
-        inputRef.current?.blur();
-      }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      setOpen(false);
+      setActiveIndex(-1);
+      return;
+    }
+    if (!expanded || options.length === 0) {
       return;
     }
 
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault();
-        setActiveIndex(prev => Math.min(prev + 1, currentResults.length - 1));
+        setActiveIndex(prev => Math.min(prev + 1, options.length - 1));
         break;
       case 'ArrowUp':
         e.preventDefault();
@@ -143,15 +198,9 @@ export default function SearchBar() {
         break;
       case 'Enter':
         e.preventDefault();
-        if (activeIndex >= 0 && activeIndex < currentResults.length) {
-          handleSelect(currentResults[activeIndex]);
+        if (activeIndex >= 0 && activeIndex < options.length) {
+          handleSelect(options[activeIndex]);
         }
-        break;
-      case 'Escape':
-        e.preventDefault();
-        setOpen(false);
-        inputRef.current?.blur();
-        setActiveIndex(-1);
         break;
     }
   };
@@ -160,33 +209,40 @@ export default function SearchBar() {
   useEffect(() => {
     if (activeIndex >= 0 && listRef.current) {
       const items = listRef.current.querySelectorAll('[role="option"]');
-      items[activeIndex]?.scrollIntoView({ block: 'nearest' });
+      items[activeIndex]?.scrollIntoView?.({ block: 'nearest' });
     }
   }, [activeIndex]);
 
   return (
-    <div className="search-bar-global">
-      <div className="search-bar-input-wrapper" role="combobox" aria-expanded={open && query.length >= 2} aria-haspopup="listbox" aria-owns="search-results-listbox">
+    <div className="search-bar-global" role="search" aria-label={t('ui.form.search')} ref={rootRef}
+      onBlur={event => {
+        if (!event.currentTarget.contains(event.relatedTarget)) { setOpen(false); setActiveIndex(-1); }
+      }}>
+      <div className="search-bar-input-wrapper">
         <span className="search-bar-icon" aria-hidden="true"><SearchIcon size={16} /></span>
         <input
           ref={inputRef}
           type="text"
           placeholder={`${t('ui.form.search')}...`}
           value={query}
-          onChange={e => { setQuery(e.target.value); setOpen(true); }}
+          onChange={e => { setQuery(e.target.value); setOpen(true); setActiveIndex(-1); }}
           onFocus={() => setOpen(true)}
           onKeyDown={handleKeyDown}
           className="search-bar-input"
-          role="searchbox"
+          role="combobox"
           aria-label={t('ui.form.search')}
           aria-autocomplete="list"
-          aria-activedescendant={activeIndex >= 0 ? `search-result-${activeIndex}` : undefined}
+          aria-haspopup="listbox"
+          aria-expanded={expanded}
+          aria-controls={expanded ? listId : undefined}
+          aria-activedescendant={activeOptionId}
         />
         {query ? (
           <button
             className="search-bar-clear"
-            onClick={() => { setQuery(''); setResults([]); setActiveIndex(-1); }}
-            aria-label={t('ui.buttons.clear') || 'Clear search'}
+            type="button"
+            onClick={() => { setQuery(''); setActiveIndex(-1); inputRef.current?.focus(); }}
+            aria-label={`${t('ui.form.search')}: ${t('ui.buttons.reset')}`}
           >
             <CloseIcon size={14} />
           </button>
@@ -194,32 +250,33 @@ export default function SearchBar() {
           <span className="search-bar-shortcut" aria-hidden="true">Ctrl+K</span>
         )}
       </div>
-      {open && query.length >= 2 && (
-        <div className="search-bar-dropdown" id="search-results-listbox" role="listbox" ref={listRef} aria-label={t('ui.form.search')}>
-          {loading && <div className="search-bar-loading" role="status">{t('ui.table.loading')}</div>}
-          {!loading && currentResults.length === 0 && <div className="search-bar-empty" role="status">{t('search.global.noResults')}</div>}
-          {!loading && (() => {
-            const grouped = {};
-            currentResults.forEach(r => {
-              const type = r.entity_type;
-              if (!grouped[type]) grouped[type] = [];
-              grouped[type].push(r);
-            });
+      {expanded && (
+        <div className="search-bar-dropdown">
+          {currentSearch.loading && <div className="search-bar-loading" role="status">{t('ui.table.loading')}</div>}
+          {currentSearch.error && <div className="search-bar-empty" role="alert">
+            <p>{typeof currentSearch.error === 'string' ? currentSearch.error : t('toasts.error.generic')}</p>
+            <button type="button" className="btn btn-sm btn-secondary" onClick={() => setRevision(value => value + 1)}>{t('ui.buttons.retry')}</button>
+          </div>}
+          {!currentSearch.loading && !currentSearch.error && options.length === 0 && <div className="search-bar-empty" role="status">{t('search.global.noResults')}</div>}
+          <div id={listId} role="listbox" ref={listRef} aria-label={t('ui.form.search')} aria-busy={currentSearch.loading}>
+          {!currentSearch.loading && (() => {
             let globalIndex = 0;
-            return Object.entries(grouped).map(([type, items]) => (
-              <div key={type}>
-                <div className="search-bar-group-header">{ENTITY_LABELS[type] || type}</div>
+            return [...grouped].map(([type, items]) => (
+              <div key={type} role="group" aria-label={t(ENTITY_LABELS[type])}>
+                <div className="search-bar-group-header" aria-hidden="true">{t(ENTITY_LABELS[type])}</div>
                 {items.map(r => {
                   const idx = globalIndex++;
                   const EntityIcon = ENTITY_ICON_MAP[r.entity_type];
                   return (
                     <div
                       key={idx}
-                      id={`search-result-${idx}`}
+                      id={`${listId}-${idx}`}
                       className={`search-bar-result${idx === activeIndex ? ' search-bar-result-active' : ''}`}
                       onClick={() => handleSelect(r)}
+                      onMouseDown={event => event.preventDefault()}
                       onMouseEnter={() => setActiveIndex(idx)}
                       role="option"
+                      aria-label={`${r.display}${r.detail ? ` ${r.detail}` : ''}`}
                       aria-selected={idx === activeIndex}
                       tabIndex={-1}
                     >
@@ -236,9 +293,9 @@ export default function SearchBar() {
               </div>
             ));
           })()}
+          </div>
         </div>
       )}
-      {open && <div className="search-bar-backdrop" onClick={() => { setOpen(false); setActiveIndex(-1); }} aria-hidden="true" />}
     </div>
   );
 }

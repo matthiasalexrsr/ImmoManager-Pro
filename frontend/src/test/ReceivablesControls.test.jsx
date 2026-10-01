@@ -61,8 +61,8 @@ describe('Receivables receipt-managed controls', () => {
     render(<Receivables />);
     const dialog = await edit();
     expect(within(dialog).queryByRole('option', { name: 'status.payment.paid' })).not.toBeInTheDocument();
-    expect(dialog.querySelector('#form-field-status')).toBeNull();
-    expect(dialog.querySelector('#form-field-amount_paid')).toBeNull();
+    expect(dialog.querySelector('[name="status"]')).toBeNull();
+    expect(dialog.querySelector('[name="amount_paid"]')).toBeNull();
     fireEvent.change(within(dialog).getByLabelText('ui.form.description'), { target: { value: 'Updated' } });
     submit(dialog);
     await waitFor(() => expect(mocks.put).toHaveBeenCalledWith('/receivables/receivable', {
@@ -78,10 +78,10 @@ describe('Receivables receipt-managed controls', () => {
     render(<Receivables />);
     fireEvent.click(await screen.findByRole('button', { name: 'Create receivable' }));
     const dialog = screen.getByRole('dialog');
-    fireEvent.change(dialog.querySelector('#form-field-contract_id'), { target: { value: 'contract' } });
-    fireEvent.change(dialog.querySelector('#form-field-amount_due'), { target: { value: '125.50' } });
-    fireEvent.change(dialog.querySelector('#form-field-due_date'), { target: { value: '2026-03-01' } });
-    expect(dialog.querySelector('#form-field-status')).toBeNull();
+    fireEvent.change(dialog.querySelector('[name="contract_id"]'), { target: { value: 'contract' } });
+    fireEvent.change(dialog.querySelector('[name="amount_due"]'), { target: { value: '125.50' } });
+    fireEvent.change(dialog.querySelector('[name="due_date"]'), { target: { value: '2026-03-01' } });
+    expect(dialog.querySelector('[name="status"]')).toBeNull();
     submit(dialog);
     await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/receivables', {
       contract_id: 'contract', amount_due: 125.50, due_date: '2026-03-01', description: null, status: 'open',

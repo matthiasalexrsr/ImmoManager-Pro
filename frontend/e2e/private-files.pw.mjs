@@ -67,11 +67,22 @@ test('private attachments: image/PDF upload, protected viewer and unit photo sur
   const frame = viewer.getByTitle('PDF Viewer');
   await expect(frame).toHaveAttribute('src', /^blob:/);
   await expect(frame).not.toHaveAttribute('sandbox');
-  // Chromium's native PDF viewer embeds the PDF plug-in in its protected frame.
+  // Edge exposes application/pdf in the blob frame. Chromium uses its native
+  // extension child frame and application/x-google-chrome-pdf. Both must render
+  // a real plug-in inside this particular protected PDF iframe.
   await expect.poll(async () => {
-    const content = await frame.contentFrame();
-    return content.locator('embed[type="application/pdf"]').count();
-  }).toBe(1);
+    const element = await frame.elementHandle();
+    const root = await element?.contentFrame();
+    if (!root) return false;
+    for (const candidate of page.frames()) {
+      let ancestor = candidate;
+      while (ancestor && ancestor !== root) ancestor = ancestor.parentFrame();
+      if (ancestor === root && await candidate.locator(
+        'embed[type="application/pdf"], embed[type="application/x-google-chrome-pdf"]',
+      ).count() > 0) return true;
+    }
+    return false;
+  }).toBe(true);
   // Native plug-ins do not expose a DOM paint-ready event. Wait for their
   // document/network load and allow rendering before capturing visual evidence.
   await page.waitForLoadState('networkidle');

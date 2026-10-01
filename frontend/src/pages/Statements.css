@@ -1,0 +1,149 @@
+.statements-page {
+  min-width: 0;
+  color: var(--color-text, #172b3a);
+}
+
+.statements-page .detail-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  padding-bottom: 1.25rem;
+  gap: 1rem 1.25rem;
+}
+
+.statements-page .detail-header > .btn {
+  margin-top: .25rem;
+}
+
+.statements-page .detail-title,
+.statements-page .detail-title h1 {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.statements-page .detail-title h1 {
+  font-size: clamp(1.25rem, 2vw, 1.75rem);
+  font-weight: 650;
+  letter-spacing: -.025em;
+}
+
+.statements-page .detail-title .text-muted {
+  display: block;
+  margin-top: .45rem;
+  line-height: 1.6;
+}
+
+.statement-workflow-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  min-width: 0;
+  gap: .5rem;
+}
+
+.statements-page .step-indicator {
+  padding: .75rem;
+  margin-bottom: 1.5rem;
+  border: 1px solid var(--color-border, #dde5e5);
+  border-radius: var(--radius, 10px);
+  background: var(--color-surface, #fff);
+  gap: .45rem;
+}
+
+.statements-page .step-indicator > span {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.statements-page .step-indicator-item {
+  display: inline-block;
+  padding: .4rem .65rem;
+  border-radius: 7px;
+  font-size: .78rem;
+  line-height: 1.4;
+}
+
+.statements-page .step-indicator-sep {
+  margin-right: .45rem;
+}
+
+.statements-page .stats-grid .stat-card {
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: .45rem;
+}
+
+.statements-page .stat-value {
+  font-variant-numeric: tabular-nums;
+}
+
+.statements-page .billing-owner-share,
+.statements-page .billing-settlement-summary,
+.statements-page .card-body,
+.statements-page .card-header {
+  min-width: 0;
+}
+
+.statements-page .card-header h2 {
+  font-size: 1.05rem;
+  font-weight: 650;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.statements-page .billing-owner-share p,
+.statements-page .billing-settlement-summary p {
+  overflow-wrap: anywhere;
+  max-width: 100%;
+  line-height: 1.65;
+}
+
+.statement-revision-table {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.statement-revision-table table {
+  min-width: 520px;
+}
+
+.statement-revision-table th,
+.statement-revision-table td {
+  line-height: 1.6;
+  vertical-align: middle;
+}
+
+.statements-page .btn:focus-visible,
+.statement-revision-table:focus-visible {
+  outline: 2px solid var(--color-primary, #277c74);
+  outline-offset: 3px;
+}
+
+@media (max-width: 640px) {
+  .statements-page .detail-header {
+    grid-template-columns: minmax(0, 1fr);
+    gap: .8rem;
+  }
+
+  .statements-page .detail-header > .btn {
+    justify-self: start;
+  }
+
+  .statements-page .step-indicator {
+    padding: .55rem;
+    gap: .4rem;
+  }
+
+  .statements-page .step-indicator-sep {
+    display: none;
+  }
+
+  .statement-workflow-actions > .btn {
+    min-height: 38px;
+    white-space: normal;
+    text-align: left;
+  }
+}

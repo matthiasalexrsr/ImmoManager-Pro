@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render as renderComponent, screen, waitFor, within } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import RentOverview from '../pages/RentOverview';
+
+const render = component => renderComponent(<MemoryRouter>{component}</MemoryRouter>);
 
 const mocks = vi.hoisted(() => ({ getAll: vi.fn(), get: vi.fn(), post: vi.fn(), readonly: false }));
 vi.mock('../api', () => ({ api: mocks }));
@@ -177,5 +180,93 @@ describe('RentOverview payment workflow', () => {
     resolveOld([{ id: 'old', amount: '20', payment_date: '2026-09-01', note: 'Alter Stand' }]);
     await waitFor(() => expect(screen.queryByText('Alter Stand')).not.toBeInTheDocument());
     expect(screen.getByText('Aktueller Stand')).toBeInTheDocument();
+  });
+
+  it('provides the rent-charge route and keyboard navigation between labelled ledger panels', async () => {
+    render(<RentOverview />);
+    await screen.findByText('Max Mustermann');
+    expect(screen.getByRole('link', { name: 'manageCharges' })).toHaveAttribute('href', '/rent-charges');
+    const charges = screen.getByRole('tab', { name: /charges/ });
+    const receivables = screen.getByRole('tab', { name: /receivables/ });
+    charges.focus();
+    expect(charges).toHaveAttribute('tabindex', '0');
+    expect(receivables).toHaveAttribute('tabindex', '-1');
+    fireEvent.keyDown(charges, { key: 'ArrowRight' });
+    expect(receivables).toHaveFocus();
+    expect(receivables).toHaveAttribute('aria-selected', 'true');
+    let panel = screen.getByRole('tabpanel', { name: /receivables/ });
+    expect(panel.id).toBe(receivables.getAttribute('aria-controls'));
+    expect(panel).toHaveAttribute('aria-labelledby', receivables.id);
+    fireEvent.keyDown(receivables, { key: 'ArrowRight' });
+    expect(charges).toHaveFocus();
+    fireEvent.keyDown(charges, { key: 'End' });
+    expect(receivables).toHaveFocus();
+    fireEvent.keyDown(receivables, { key: 'Home' });
+    expect(charges).toHaveFocus();
+    fireEvent.keyDown(charges, { key: 'ArrowLeft' });
+    expect(receivables).toHaveFocus();
+    panel = screen.getByRole('tabpanel', { name: /receivables/ });
+    expect(panel).toHaveAttribute('tabindex', '0');
+  });
+
+  it('focuses and scrolls history as it opens, keeps focus during loading, and returns it on close', async () => {
+    let resolveHistory;
+    mocks.get.mockImplementation(() => new Promise(resolve => { resolveHistory = resolve; }));
+    const originalScroll = HTMLElement.prototype.scrollIntoView;
+    const scroll = vi.fn();
+    HTMLElement.prototype.scrollIntoView = scroll;
+    try {
+      render(<RentOverview />);
+      await screen.findByText('Max Mustermann');
+      const origin = screen.getByRole('button', { name: 'history' });
+      fireEvent.click(origin);
+      const history = screen.getByRole('region', { name: 'history' });
+      expect(history).toHaveFocus();
+      expect(history).toHaveAttribute('aria-busy', 'true');
+      expect(within(history).getByRole('status')).toHaveTextContent('loading');
+      expect(scroll).toHaveBeenCalledTimes(1);
+      resolveHistory([{ id: 'receipt', amount: '40', payment_date: '2026-09-05', note: 'Loaded receipt' }]);
+      await within(history).findByText('Loaded receipt');
+      expect(history).toHaveFocus();
+      expect(scroll).toHaveBeenCalledTimes(1);
+      fireEvent.click(within(history).getByRole('button', { name: 'close' }));
+      expect(screen.queryByRole('region', { name: 'history' })).not.toBeInTheDocument();
+      expect(origin).toHaveFocus();
+    } finally {
+      if (originalScroll) HTMLElement.prototype.scrollIntoView = originalScroll;
+      else delete HTMLElement.prototype.scrollIntoView;
+    }
+  });
+
+  it('sorts string-valued receipt amounts numerically', async () => {
+    mocks.get.mockResolvedValue([
+      { id: 'large', amount: '100', payment_date: '2026-09-05', note: 'Large receipt' },
+      { id: 'small', amount: '9', payment_date: '2026-09-06', note: 'Small receipt' },
+    ]);
+    render(<RentOverview />);
+    await screen.findByText('Max Mustermann');
+    fireEvent.click(screen.getByRole('button', { name: 'history' }));
+    const history = screen.getByRole('region', { name: 'history' });
+    await within(history).findByText('Large receipt');
+    fireEvent.click(within(history).getByRole('columnheader', { name: 'paymentAmount' }));
+    expect(within(history).getAllByRole('row')[1]).toHaveTextContent('Small receipt');
+    expect(within(history).getAllByRole('row')[2]).toHaveTextContent('Large receipt');
+  });
+
+  it('retries a history failure in place and keeps its close action accessible', async () => {
+    mocks.get.mockRejectedValueOnce(new Error('History unavailable')).mockResolvedValueOnce([
+      { id: 'receipt', amount: '40', payment_date: '2026-09-05', note: 'Recovered history' },
+    ]);
+    render(<RentOverview />);
+    await screen.findByText('Max Mustermann');
+    fireEvent.click(screen.getByRole('button', { name: 'history' }));
+    const history = screen.getByRole('region', { name: 'history' });
+    await within(history).findByRole('alert');
+    expect(within(history).getByRole('alert')).toHaveTextContent('History unavailable');
+    fireEvent.click(within(history).getByRole('button', { name: 'retry' }));
+    await within(history).findByText('Recovered history');
+    expect(within(history).queryByRole('alert')).not.toBeInTheDocument();
+    expect(mocks.get).toHaveBeenCalledTimes(2);
+    expect(within(history).getByRole('button', { name: 'close' })).toBeEnabled();
   });
 });

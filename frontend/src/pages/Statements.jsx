@@ -8,6 +8,7 @@ import BillingSettlementSummary from '../components/BillingSettlementSummary';
 import BillingOwnerShare from '../components/BillingOwnerShare';
 import { parseSettlementPosting } from '../utils/billingSettlements';
 import { useAuth } from '../contexts/AuthContext';
+import './Statements.css';
 
 /** Inline toast-style notification hook. */
 function useToast() {
@@ -109,13 +110,7 @@ function getStmtColumns(t, onError) {
 
 /** Trigger browser download of a single statement PDF. */
 function downloadStatementPdf(statementId, onError) {
-  const token = localStorage.getItem('access_token');
-  fetch(`/api/v1/billing/statements/${statementId}/pdf`, {
-    headers: { Authorization: `Bearer ${token}` },
-  }).then(res => {
-    if (!res.ok) throw new Error('PDF-Download fehlgeschlagen');
-    return res.blob();
-  }).then(blob => {
+  api.getBlob(`/billing/statements/${encodeURIComponent(statementId)}/pdf`).then(blob => {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -162,15 +157,15 @@ function StepIndicator({ currentStep, t: tr }) {
     deliver: tr('pages.statements.stepDeliver') || 'Zustellen',
   };
   return (
-    <div className="step-indicator">
+    <div className="step-indicator" role="list" aria-label={tr('pages.statements.title')}>
       {WORKFLOW_STEPS.map((step, i) => {
         let cls = 'step-indicator-item';
         if (step.num < currentStep) cls += ' step-completed';
         else if (step.num === currentStep) cls += ' step-active';
         return (
-          <span key={step.num}>
+          <span key={step.num} role="listitem">
             {i > 0 && <span className="step-indicator-sep"> → </span>}
-            <span className={cls}>{step.num}. {labels[step.key]}</span>
+            <span className={cls} aria-current={step.num === currentStep ? 'step' : undefined}>{step.num}. {labels[step.key]}</span>
           </span>
         );
       })}
@@ -528,14 +523,7 @@ export default function Statements() {
       // Step 1: Upload file
       const formData = new FormData();
       formData.append('file', file);
-      const token = localStorage.getItem('access_token');
-      const uploadRes = await fetch('/api/v1/files/upload?folder=billing-ocr', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-      });
-      if (!uploadRes.ok) throw new Error('Datei-Upload fehlgeschlagen');
-      const uploadData = await uploadRes.json();
+      const uploadData = await api.postForm('/files/upload?folder=billing-ocr', formData);
 
       // Step 2: Call OCR import endpoint
       const ocrRes = await api.post(
@@ -580,19 +568,7 @@ export default function Statements() {
     if (!selectedPeriod) return;
     setExporting(true);
     try {
-      const token = localStorage.getItem('access_token');
-      const res = await fetch(`/api/v1/billing/periods/${selectedPeriod.id}/export?format=csv`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) {
-        let message = 'Export fehlgeschlagen';
-        try {
-          const body = await res.json();
-          message = body?.detail || message;
-        } catch { /* ignore */ }
-        throw new Error(message);
-      }
-      const blob = await res.blob();
+      const blob = await api.getBlob(`/billing/periods/${selectedPeriod.id}/export?format=csv`);
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -612,19 +588,7 @@ export default function Statements() {
     if (!selectedPeriod) return;
     setExporting(true);
     try {
-      const token = localStorage.getItem('access_token');
-      const res = await fetch(`/api/v1/billing/periods/${selectedPeriod.id}/export-zip`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) {
-        let message = 'ZIP-Export fehlgeschlagen';
-        try {
-          const body = await res.json();
-          message = body?.detail || message;
-        } catch { /* ignore */ }
-        throw new Error(message);
-      }
-      const blob = await res.blob();
+      const blob = await api.getBlob(`/billing/periods/${selectedPeriod.id}/export-zip`);
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -698,7 +662,7 @@ export default function Statements() {
     const workflowStep = getWorkflowStep(selectedPeriod, periodCosts.length, periodStmts.length);
 
     return (
-      <div className="page">
+      <div className="page statements-page">
         {feedback}
         {/* Workflow step indicator */}
         <StepIndicator currentStep={workflowStep} t={t} />
@@ -713,7 +677,7 @@ export default function Statements() {
               {propMap[selectedPeriod.property_id]?.name || '—'} · {selectedPeriod.start_date} – {selectedPeriod.end_date}
             </span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <div className="statement-workflow-actions">
             <StatusBadge status={selectedPeriod.status} />
 
             {/* Primary workflow action based on current step */}
@@ -892,9 +856,9 @@ export default function Statements() {
 
         {/* Revision History */}
         {revisionHistory.length > 1 && (
-          <div className="card" style={{ marginBottom: '1rem' }}>
+          <div className="card statement-revisions" style={{ marginBottom: '1rem' }}>
             <div className="card-header"><strong>{t('pages.statements.revisionHistory')}</strong></div>
-            <div className="card-body">
+            <div className="card-body statement-revision-table" role="region" aria-label={t('pages.statements.revisionHistory')} tabIndex={0}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid var(--border-color, #ddd)' }}>
@@ -1044,7 +1008,7 @@ export default function Statements() {
   }
 
   return (
-    <div className="page">
+    <div className="page statements-page">
       {feedback}
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
         {selectedPeriod && (

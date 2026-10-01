@@ -35,21 +35,12 @@ from ..models import (
     UserPatch,
     UserRead,
 )
+from ..services.preferences import DEFAULTS, PreferencesInput, read_preferences, write_preferences
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
-_DEFAULT_PREFERENCES = {
-    "theme": "light",
-    "locale": "de-DE",
-    "sidebar_collapsed": False,
-    "items_per_page": 25,
-    "date_format": "DD.MM.YYYY",
-    "currency": "EUR",
-    "default_due_day": 1,
-    "email_notifications": "important",
-    "reminder_days": "7",
-}
+_DEFAULT_PREFERENCES = DEFAULTS
 
 
 @router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
@@ -173,91 +164,27 @@ def get_me(user: UserRead = Depends(require_auth)) -> UserRead:
 
 
 def _get_preferences_session():
-    """Return a DB session for preferences, or None if SQL is unavailable."""
+    from ..dependencies import _use_sql_store
+    if not _use_sql_store:
+        return None
     try:
-        from ..dependencies import _use_sql_store
-        if not _use_sql_store:
-            return None
         from ..db.session import SessionLocal
         return SessionLocal()
     except Exception:
-        logging.getLogger(__name__).debug("Could not create preferences DB session", exc_info=True)
-        return None
-
-
-def _prefs_to_dict(prefs) -> dict:
-    return {
-        "theme": prefs.theme,
-        "locale": prefs.locale,
-        "sidebar_collapsed": prefs.sidebar_collapsed,
-        "items_per_page": prefs.items_per_page,
-        "date_format": prefs.date_format,
-        "currency": prefs.currency,
-        "default_due_day": prefs.default_due_day,
-        "email_notifications": prefs.email_notifications,
-        "reminder_days": prefs.reminder_days,
-    }
+        logging.getLogger(__name__).warning("Could not open display preferences database")
+        raise HTTPException(503, "Anzeigeeinstellungen sind derzeit nicht verfügbar.") from None
 
 
 @router.get("/users/me/preferences", response_model=None)
 def get_my_preferences(user: UserRead = Depends(require_auth)) -> dict:
-    """Get current user's preferences."""
-    import logging
-
-    session = _get_preferences_session()
-    if session is None:
-        return _DEFAULT_PREFERENCES.copy()
-    try:
-        from ..db.orm_models import UserPreferencesORM
-        prefs = session.query(UserPreferencesORM).filter(
-            UserPreferencesORM.user_id == user.id
-        ).first()
-        if prefs:
-            return _prefs_to_dict(prefs)
-    except (ImportError, OSError, RuntimeError):
-        logging.getLogger(__name__).warning("Failed to load user preferences, using defaults")
-    except Exception as exc:
-        logging.getLogger(__name__).warning("Failed to load user preferences: %s", exc)
-    finally:
-        session.close()
-    return _DEFAULT_PREFERENCES.copy()
+    return read_preferences(user.id, _get_preferences_session())
 
 
 @router.put("/users/me/preferences", response_model=None)
-def update_my_preferences(payload: dict, user: UserRead = Depends(require_auth)) -> dict:
-    """Update current user's preferences."""
-    import logging
-
-    allowed_keys = {"theme", "locale", "sidebar_collapsed", "items_per_page", "date_format", "currency", "default_due_day", "email_notifications", "reminder_days"}
-    clean = {k: v for k, v in payload.items() if k in allowed_keys}
-
-    session = _get_preferences_session()
-    if session is None:
-        return {**_DEFAULT_PREFERENCES, **clean}
-
-    try:
-        from ..db.orm_models import UserPreferencesORM
-        prefs = session.query(UserPreferencesORM).filter(
-            UserPreferencesORM.user_id == user.id
-        ).first()
-        if prefs:
-            for k, v in clean.items():
-                setattr(prefs, k, v)
-        else:
-            prefs = UserPreferencesORM(user_id=user.id, **clean)
-            session.add(prefs)
-        session.commit()
-        return _prefs_to_dict(prefs)
-    except (ImportError, OSError, RuntimeError):
-        session.rollback()
-        logging.getLogger(__name__).warning("Failed to persist user preferences update")
-        return {**_DEFAULT_PREFERENCES, **clean}
-    except Exception as exc:
-        session.rollback()
-        logging.getLogger(__name__).warning("Failed to persist user preferences update: %s", exc)
-        return {**_DEFAULT_PREFERENCES, **clean}
-    finally:
-        session.close()
+def update_my_preferences(payload: PreferencesInput, user: UserRead = Depends(require_auth)) -> dict:
+    if isinstance(payload, dict):
+        payload = PreferencesInput.model_validate(payload)
+    return write_preferences(user.id, payload, _get_preferences_session())
 
 
 @router.get("/users", response_model=list[UserRead])
@@ -293,7 +220,7 @@ def patch_user(
             detail="Nur Eigentümer dürfen Rollen ändern",
         )
 
-    return update_user(user_id, changes)
+    return update_user(user_id, changes, actor_id=user.id)
 
 
 @router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -307,7 +234,7 @@ def remove_user(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Eigenes Konto kann nicht gelöscht werden",
         )
-    delete_user(user_id)
+    delete_user(user_id, actor_id=user.id)
 
 
 # ---------------------------------------------------------------------------

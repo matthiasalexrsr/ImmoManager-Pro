@@ -919,7 +919,7 @@ class UserCreate(BaseModel):
     @field_validator("email")
     @classmethod
     def validate_user_email(cls, v: str) -> str:
-        if "@" not in v:
+        if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", v):
             raise ValueError("Ungültige E-Mail-Adresse")
         return v
 
@@ -947,6 +947,23 @@ class UserPatch(BaseModel):
     full_name: Optional[str] = None
     role: Optional[str] = None
     is_active: Optional[bool] = None
+
+    @field_validator("email", "full_name", "role", "is_active", mode="before")
+    @classmethod
+    def reject_null_fields(cls, value):
+        if value is None:
+            raise ValueError("Explizit leere Benutzerfelder sind nicht erlaubt")
+        return value
+
+    @field_validator("email")
+    @classmethod
+    def validate_patch_email(cls, value: str) -> str:
+        return UserCreate.validate_user_email(value)
+
+    @field_validator("role")
+    @classmethod
+    def validate_patch_role(cls, value: str) -> str:
+        return UserCreate.validate_role(value)
 
 
 class TokenResponse(BaseModel):

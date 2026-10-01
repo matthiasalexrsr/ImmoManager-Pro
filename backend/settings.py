@@ -105,6 +105,8 @@ class Settings(BaseSettings):
         "Accept-Language",
         "X-Request-ID",
     ]
+    # Private server deployments provide their exact VPN/LAN hostname.
+    trusted_hosts: Annotated[list[str], NoDecode] = ["*"]
 
     # --- Logging ---
     log_level: str = "INFO"
@@ -167,7 +169,7 @@ class Settings(BaseSettings):
     # --- Contract wizard runtime behavior ---
     contract_wizard_required: bool = False
 
-    @field_validator("cors_origins", "cors_methods", "cors_headers", "plugin_dirs", mode="before")
+    @field_validator("cors_origins", "cors_methods", "cors_headers", "trusted_hosts", "plugin_dirs", mode="before")
     @classmethod
     def parse_string_list_settings(cls, value: object) -> list[str]:
         return _parse_string_list(value)

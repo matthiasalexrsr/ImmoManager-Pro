@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
+import { ArrowUpRight, CircleCheck, History, ReceiptText, Wallet, X } from 'lucide-react';
 import { api } from '../api';
 import DataTable from '../components/DataTable';
 import StatusBadge from '../components/StatusBadge';
@@ -7,6 +9,9 @@ import { useAuth } from '../contexts/AuthContext';
 import { useDataStore } from '../contexts/DataStoreContext';
 import FormModal from '../components/FormModal';
 import BankPaymentModal from '../components/BankPaymentModal';
+import './FinanceWorkspace.css';
+
+const LEDGERS = ['rent_charge', 'receivable'];
 
 function enrich(items, type, contracts, tenants, units) {
   const contractMap = Object.fromEntries(contracts.map(row => [row.id, row]));
@@ -43,8 +48,19 @@ export default function RentOverview() {
   const [history, setHistory] = useState(null);
   const [reversalModal, setReversalModal] = useState(null);
   const historyRequest = useRef(0);
+  const historyPanel = useRef(null);
+  const historyOrigin = useRef(null);
+  const tabButtons = useRef({});
   const [success, setSuccess] = useState(false);
   const [onlyOpen, setOnlyOpen] = useState(true);
+
+  const historyOpenRequest = history?.openRequest;
+  useEffect(() => {
+    if (!historyOpenRequest) return;
+    historyPanel.current?.focus({ preventScroll: true });
+    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    historyPanel.current?.scrollIntoView?.({ block: 'start', behavior: reducedMotion ? 'auto' : 'smooth' });
+  }, [historyOpenRequest]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -79,17 +95,36 @@ export default function RentOverview() {
     cache?.invalidateRelated('rent_charges', 'receivables', 'bookings');
     setRevision(value => value + 1);
   };
-  const showHistory = async row => {
+  const showHistory = async (row, event) => {
+    if (event?.currentTarget) historyOrigin.current = event.currentTarget;
     const request = ++historyRequest.current;
-    setHistory({ row, loading: true, payments: [] });
+    setHistory({ row, loading: true, payments: [], openRequest: request });
     try {
       const payments = await api.get(endpoint(row));
       setHistory(current => request === historyRequest.current && current?.row.id === row.id
-        && current.row.entityType === row.entityType ? { row, payments, loading: false } : current);
+        && current.row.entityType === row.entityType ? { ...current, payments, loading: false } : current);
     } catch (err) {
       setHistory(current => request === historyRequest.current && current?.row.id === row.id
-        && current.row.entityType === row.entityType ? { row, error: err.message, payments: [], loading: false } : current);
+        && current.row.entityType === row.entityType ? { ...current, error: err.message, payments: [], loading: false } : current);
     }
+  };
+  const closeHistory = () => {
+    historyRequest.current += 1;
+    setHistory(null);
+    const origin = historyOrigin.current;
+    (origin?.isConnected ? origin : tabButtons.current[tab])?.focus();
+    historyOrigin.current = null;
+  };
+  const handleTabKeyDown = (event, type) => {
+    const index = LEDGERS.indexOf(type);
+    const nextIndex = { ArrowRight: (index + 1) % LEDGERS.length,
+      ArrowLeft: (index + LEDGERS.length - 1) % LEDGERS.length,
+      Home: 0, End: LEDGERS.length - 1 }[event.key];
+    if (nextIndex === undefined) return;
+    event.preventDefault();
+    const next = LEDGERS[nextIndex];
+    setTab(next);
+    tabButtons.current[next]?.focus();
   };
   const startReversal = payment => {
     setReversalModal({ row: history.row, payment, key: crypto.randomUUID(),
@@ -109,7 +144,7 @@ export default function RentOverview() {
     try {
       const payments = await api.get(endpoint(row));
       setHistory(current => request === historyRequest.current && current?.row.id === row.id
-        && current.row.entityType === row.entityType ? { row, payments, loading: false } : current);
+        && current.row.entityType === row.entityType ? { ...current, payments, error: null, loading: false } : current);
     } catch (err) {
       setHistory(current => request === historyRequest.current && current?.row.id === row.id
         && current.row.entityType === row.entityType ? { ...current, error: err.message, loading: false } : current);
@@ -132,7 +167,7 @@ export default function RentOverview() {
         {!auth?.isReadonly && <button className="btn btn-sm btn-secondary"
           disabled={row.remaining <= 0 || ['paid', 'cancelled', 'void'].includes(row.status)}
           onClick={() => startPayment(row, 'bank')}>{text('allocateBooking')}</button>}
-        <button className="btn btn-sm btn-secondary" onClick={() => showHistory(row)}>{text('history')}</button>
+        <button className="btn btn-sm btn-secondary" onClick={event => showHistory(row, event)}>{text('history')}</button>
       </div>
     ) },
   ];
@@ -142,29 +177,43 @@ export default function RentOverview() {
   const sum = key => active.reduce((total, row) => total + row[key], 0);
 
   return (
-    <div className="page">
-      <div className="page-header"><div><h1>{text('title')}</h1><p>{text('description')}</p></div></div>
-      <div className="tab-bar" role="tablist" aria-label={text('title')}>
-        {['rent_charge', 'receivable'].map(type => <button key={type} role="tab" aria-selected={tab === type}
-          className={`detail-tab ${tab === type ? 'active' : ''}`} onClick={() => setTab(type)}>
-          {text(type === 'rent_charge' ? 'charges' : 'receivables')} ({records[type].length})
-        </button>)}
+    <div className="page finance-workspace">
+      <div className="page-header finance-workspace-header"><div><h1>{text('title')}</h1><p>{text('description')}</p></div>
+        <Link className="btn btn-primary finance-workspace-action" to="/rent-charges"><ReceiptText size={17} aria-hidden="true" />{text('manageCharges')}<ArrowUpRight size={16} aria-hidden="true" /></Link>
       </div>
-      <label className="rent-open-filter"><input type="checkbox" checked={onlyOpen}
-        onChange={event => setOnlyOpen(event.target.checked)} /> {text('onlyOpen')}</label>
       {success && <div role="status" className="alert alert-success">{text(success)}</div>}
       {error && <div role="alert" className="alert alert-error">{error} <button className="btn btn-secondary"
         onClick={() => setRevision(value => value + 1)}>{text('retry')}</button></div>}
-      {loading ? <div className="page-loading">{t('pages.loading')}</div> : !error && <>
-        <div className="stats-grid rent-summary">
-          {[['totalReceivables', 'total_due'], ['paid', 'amount_paid'], ['open', 'remaining']].map(([label, key]) => (
-            <div className="stat-card" key={key}><div className="stat-label">{text(label)}</div>
-              <div className="stat-value">{fmt(sum(key))}</div></div>
-          ))}
+      <div className="finance-workspace-controls">
+        <div className="finance-workspace-tabs" role="tablist" aria-label={text('title')} aria-orientation="horizontal">
+          {LEDGERS.map(type => <button key={type} type="button" role="tab" id={`rent-overview-tab-${type}`}
+            ref={element => { tabButtons.current[type] = element; }} aria-selected={tab === type}
+            aria-controls={`rent-overview-panel-${type}`} tabIndex={tab === type ? 0 : -1}
+            className={`finance-workspace-tab ${tab === type ? 'active' : ''}`} onClick={() => setTab(type)}
+            onKeyDown={event => handleTabKeyDown(event, type)}>
+            {text(type === 'rent_charge' ? 'charges' : 'receivables')} <span>({records[type].length})</span>
+          </button>)}
         </div>
-        <DataTable title={text(tab === 'rent_charge' ? 'charges' : 'receivables')} columns={columns}
-          data={onlyOpen ? data.filter(row => row.remaining > 0 && !['paid', 'cancelled', 'void'].includes(row.status)) : data} />
-      </>}
+        <label className="rent-open-filter finance-workspace-filter"><input type="checkbox" checked={onlyOpen}
+          onChange={event => setOnlyOpen(event.target.checked)} /><span>{text('onlyOpen')}</span></label>
+      </div>
+      {LEDGERS.map(type => <div key={type} className="finance-workspace-panel" role="tabpanel"
+        id={`rent-overview-panel-${type}`} aria-labelledby={`rent-overview-tab-${type}`} hidden={tab !== type}
+        tabIndex={0} aria-busy={loading}>
+        {tab === type && (loading ? <div className="page-loading finance-workspace-loading" role="status">{t('pages.loading')}</div> : !error && <>
+          <div className="stats-grid rent-summary finance-workspace-summary">
+            {[['totalReceivables', 'total_due', ReceiptText], ['paid', 'amount_paid', CircleCheck], ['open', 'remaining', Wallet]].map(([label, key, icon]) => {
+              const Icon = icon;
+              return <div className={`stat-card finance-workspace-stat ${key === 'remaining' ? 'finance-workspace-stat-open' : ''}`} key={key}>
+                <div className="stat-label"><span>{text(label)}</span><Icon size={19} strokeWidth={1.6} aria-hidden="true" /></div>
+                <div className="stat-value">{fmt(sum(key))}</div>
+              </div>;
+            })}
+          </div>
+          <DataTable title={text(type === 'rent_charge' ? 'charges' : 'receivables')} columns={columns}
+            data={onlyOpen ? data.filter(row => row.remaining > 0 && !['paid', 'cancelled', 'void'].includes(row.status)) : data} />
+        </>)}
+      </div>)}
       {paymentModal?.kind === 'bank' && <BankPaymentModal row={paymentModal.row}
         onSave={handleRecordPayment} onClose={() => setPaymentModal(null)} />}
       {paymentModal?.kind === 'manual' && <FormModal title={`${text('recordPayment')} — ${paymentModal.row.tenant_name}`}
@@ -181,13 +230,15 @@ export default function RentOverview() {
         ]} initial={reversalModal.initial} onSave={handleReversal} onClose={() => setReversalModal(null)}>
         <p>{text(reversalModal.payment.booking_id ? 'reverseAllocationHelp' : 'reversalHelp')}</p>
       </FormModal>}
-      {history && <div className="rent-payment-history" role="region" aria-label={text('history')}>
-        <div className="page-header"><h2>{text('history')} — {history.row.tenant_name} ({history.row.month})</h2>
-          <button className="btn btn-secondary" onClick={() => { historyRequest.current += 1; setHistory(null); }}>{t('ui.buttons.close')}</button></div>
-        {history.loading ? <p>{t('pages.loading')}</p> : history.error ? <p role="alert">{history.error}</p>
+      {history && <div className="rent-payment-history finance-workspace-history" role="region" aria-label={text('history')}
+        ref={historyPanel} tabIndex={-1} aria-busy={history.loading}>
+        <div className="page-header finance-workspace-history-header"><div><h2><History size={19} aria-hidden="true" />{text('history')} — {history.row.tenant_name} ({history.row.month})</h2>
+          <p>{history.row.contract_number} · {history.row.unit_label}</p></div>
+          <button className="btn btn-secondary" onClick={closeHistory}><X size={16} aria-hidden="true" />{t('ui.buttons.close')}</button></div>
+        {history.loading ? <p className="finance-workspace-history-loading" role="status">{t('pages.loading')}</p> : history.error ? <div className="finance-workspace-history-error" role="alert"><p>{history.error}</p><button className="btn btn-secondary" onClick={() => showHistory(history.row)}>{text('retry')}</button></div>
           : <DataTable title={text('history')} data={history.payments} columns={[
             { key: 'payment_date', label: text('paymentDate'), type: 'date' },
-            { key: 'amount', label: text('paymentAmount'), render: value => fmt(Number(value)) },
+            { key: 'amount', label: text('paymentAmount'), type: 'number', render: value => fmt(Number(value)) },
             { key: 'note', label: text('note') },
             { key: 'source', label: text('paymentSource'), render: (_, receipt) => text(receipt.booking_id ? 'bankLinked' : 'manualPayment') },
             { key: 'reversal', label: text('status'), render: value => value ? `${text('reversed')} · ${value.reversal_date} · ${value.reason}` : text('posted') },
