@@ -218,32 +218,51 @@ def import_bookings(
         from fastapi import HTTPException
         raise HTTPException(status_code=422, detail="account_id and csv_content are required")
 
-    reader = csv.DictReader(io.StringIO(_csv_content), delimiter=";")
-    imported = []
-    errors = []
+    from tempfile import TemporaryFile
 
-    from ..models import BookingCreate
+    from ..services.bank_import import (
+        BankConfirm,
+        BankImportError,
+        capacity,
+        commit_import,
+        import_receipts,
+        preview_import,
+        stage_import,
+    )
+    from ..services.bank_import_parser import BankMapping
+    from ..services.portfolio_scope import current_scope
 
-    for i, row in enumerate(reader, start=1):
+    selected_scope = current_scope()
+    def legacy_call(operation, *args, **kwargs):
         try:
-            booking_date = date.fromisoformat(row["date"].strip())
-            amount = float(row["amount"].strip().replace(",", "."))
-            text = row.get("text", "").strip()
+            return operation(*args, **kwargs)
+        except BankImportError as error:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=error.status, detail=error.detail) from None
 
-            booking = store.create_booking(BookingCreate(
-                account_id=_account_id,
-                booking_date=booking_date,
-                amount=amount,
-                payment_text=text,
-            ))
-            imported.append({"row": i, "bookingId": booking.id})
-        except Exception as e:
-            errors.append({"row": i, "error": str(e)})
+    # The legacy JSON contract necessarily already supplies a complete string.
+    # Do not create another full encoded copy or materialise parsed row lists.
+    with TemporaryFile(mode="w+b") as source:
+        for offset in range(0, len(_csv_content), 65_536):
+            source.write(_csv_content[offset:offset + 65_536].encode("utf-8"))
+        job = legacy_call(stage_import, store, source, _account_id, BankMapping(),
+            filename="legacy-bank.csv", actor_id=selected_scope.user_id if selected_scope else "internal", scope=selected_scope)
+    page_size = min(100, capacity()[0])
+    error_page = legacy_call(preview_import, store, job["id"], page_size=page_size, errors_only=True, scope=selected_scope)
+    errors = [{"row": row["ordinal"], "error": row["error_message"]} for row in error_page["items"]]
+    receipts = {"items": [], "has_more": False, "next_after": None}
+    if not job["error_count"] and job["state"] in {"ready", "committed"}:
+        job = legacy_call(commit_import, store, job["id"], BankConfirm(revision=job["revision"], preview_hash=job["preview_hash"]), scope=selected_scope)
+        receipts = legacy_call(import_receipts, store, job["id"], page_size=page_size, scope=selected_scope)
+    imported = [{"row": row["ordinal"], "bookingId": row["booking_id"]} for row in receipts["items"]]
 
     return {
-        "imported": len(imported),
-        "errors": len(errors),
-        "details": {"imported": imported, "errors": errors},
+        "imported": job["published_count"],
+        "errors": job["error_count"],
+        "details": {"imported": imported, "errors": errors,
+            "has_more_imported": receipts["has_more"], "next_after": receipts["next_after"],
+            "has_more_errors": error_page["has_more"], "next_error_cursor": error_page["next_cursor"]},
+        "import_id": job["id"], "state": job["state"], "source_sha256": job["source_sha256"], "replay": job["replay"],
     }
 
 

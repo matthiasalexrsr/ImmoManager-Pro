@@ -19,22 +19,31 @@ async function get(page, path) {
 }
 async function fixtureAccount(page, role) {
   await login(page, owner);
+  const properties = await get(page, '/properties');
+  const property = properties[0];
+  expect(property?.portfolio_id).toBeTruthy();
+  const hiddenProperty = properties.find(row => row.portfolio_id !== property.portfolio_id);
+  expect(hiddenProperty, 'The isolated demo has a second portfolio to test the access boundary').toBeDefined();
   const username = unique(role);
   const response = await page.request.post('/api/v1/auth/users', { headers: await headers(page), data: {
     username, email: `${username}@example.com`, full_name: username, role, password: passphrase,
+    portfolio_access: 'selected', portfolio_ids: [property.portfolio_id],
   } });
   expect(response.status(), await response.text()).toBe(201);
   const result = await response.json();
+  expect(result).toMatchObject({ portfolio_access: 'selected', portfolio_ids: [property.portfolio_id] });
   if (role === 'techniker') {
-    const properties = await get(page, '/properties');
     const period = await page.request.post('/api/v1/billing/periods', { headers: await headers(page), data: {
-      property_id: properties[0].id, label: unique('Role-readable period'), start_date: '2047-05-01', end_date: '2047-05-31', status: 'draft',
+      property_id: property.id, label: unique('Role-readable period'), start_date: '2047-05-01', end_date: '2047-05-31', status: 'draft',
     } });
     expect(period.status(), await period.text()).toBe(201);
     result.testPeriodLabel = (await period.json()).label;
   }
   await login(page, { username, password: passphrase });
-  expect(await get(page, '/auth/me')).toMatchObject({ id: result.id, role });
+  expect(await get(page, '/auth/me')).toMatchObject({ id: result.id, role, portfolio_access: 'selected', portfolio_ids: [property.portfolio_id] });
+  expect((await get(page, '/portfolios')).map(row => row.id)).toEqual([property.portfolio_id]);
+  const denied = await page.request.get(`/api/v1/properties/${hiddenProperty.id}`, { headers: await headers(page) });
+  expect(denied.status(), 'An explicit fixture grant must not expose another portfolio').toBe(404);
   return result;
 }
 async function loaded(page) { await expect(page.locator('.shared-data-table')).toBeVisible(); }

@@ -47,13 +47,13 @@ def test_postgres_old_jwt_scope_refresh_rejects_independent_grant_update(postgre
         monkeypatch.setattr(dependencies, "store", store)
         portfolio = store.create_portfolio(PortfolioCreate(name="Synthetic"))
         owner = auth.register_user(
-            "scopeowner", "scopeowner@example.test", "Owner", "a synthetic secure passphrase", "eigentuemer"
+            "scopeowner", "scopeowner@example.test", "Owner", "Synthetic-Scope-Passphrase-123!", "eigentuemer"
         )
         user = auth.register_user(
             "scopeuser",
             "scopeuser@example.test",
             "Scoped",
-            "a synthetic secure passphrase",
+            "Synthetic-Scope-Passphrase-123!",
             "verwalter",
             portfolio_access="selected",
             portfolio_ids=[portfolio.id],

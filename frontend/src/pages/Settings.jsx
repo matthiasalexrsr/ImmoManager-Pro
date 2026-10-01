@@ -8,6 +8,7 @@ import UpdateSection from './settings/UpdateSection';
 import AutotestSection from './settings/AutotestSection';
 import BackupSection from './settings/BackupSection';
 import TwoFactorSection from './settings/TwoFactorSection';
+import SessionsSection from './settings/SessionsSection';
 import UserManagementSection from './settings/UserManagementSection';
 
 export default function Settings() {
@@ -45,6 +46,7 @@ export default function Settings() {
 
   const tabs = [
     { key: 'personal', label: t('userManagement.settingsTabs.personal') },
+    { key: 'security', label: t('auth.sessions.tab') },
     { key: 'workflow', label: t('userManagement.settingsTabs.workflow') },
     { key: 'system', label: t('userManagement.settingsTabs.system') },
     ...(isAdmin ? [{ key: 'users', label: t('userManagement.tab') }] : []),
@@ -76,6 +78,7 @@ export default function Settings() {
       </nav>
 
       <div className="settings-grid">
+        {settingsTab === 'security' && <SessionsSection />}
         {/* Personal tab: Appearance + Language */}
         {settingsTab === 'personal' && (
           <>

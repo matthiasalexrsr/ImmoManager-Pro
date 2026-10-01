@@ -146,8 +146,10 @@ class TestBankImport:
         pf, prop, unit, tenant, contract, account, category = _setup_data
         csv_data = "date;amount;text\ninvalid;abc;Bad row\n2024-01-20;800.00;Good row"
         result = import_bookings(account_id=account.id, csv_content=csv_data)
-        assert result["imported"] == 1
+        assert result["imported"] == 0
         assert result["errors"] == 1
+        assert store.list_bookings() == []
+        assert result["state"] == "invalid"
 
     def test_import_german_decimals(self, _setup_data):
         pf, prop, unit, tenant, contract, account, category = _setup_data

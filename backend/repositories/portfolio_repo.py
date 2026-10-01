@@ -62,6 +62,9 @@ class PortfolioRepository:
         return result
 
     def delete_portfolio(self, portfolio_id: str) -> None:
+        self._portfolios.get(portfolio_id)
+        from ..services.bank_import_guards import guard_bank_import_portfolio_delete
+        guard_bank_import_portfolio_delete(self, portfolio_id)
         self._portfolios.delete(portfolio_id)
         self._commit()
 
@@ -87,6 +90,9 @@ class PortfolioRepository:
         return result
 
     def delete_account(self, account_id: str) -> None:
+        self._accounts.get(account_id)
+        from ..services.bank_import_guards import guard_bank_import_account_delete
+        guard_bank_import_account_delete(self, account_id)
         self._accounts.delete(account_id)
         self._commit()
 

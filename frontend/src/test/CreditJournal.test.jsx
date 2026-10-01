@@ -95,13 +95,19 @@ describe('credit receipt workflow', () => {
     await within(dialog).findByRole('option', { name: /Synthetic claim/ });
     fireEvent.change(within(dialog).getByLabelText(labels.target, { exact: false, selector: 'select' }), { target: { value: 'receivable:claim' } });
     await waitFor(() => expect(within(dialog).getByRole('button', { name: labels.record })).toBeEnabled());
-    mocks.confirm.mockResolvedValueOnce(false);
+    const approval = pending();
+    mocks.confirm.mockReturnValueOnce(approval.promise);
     fireEvent.click(within(dialog).getByRole('button', { name: labels.record }));
     await waitFor(() => expect(mocks.confirm).toHaveBeenCalled());
+    await act(async () => approval.resolve(false));
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: labels.record })).toBeEnabled());
     expect(mocks.post).not.toHaveBeenCalled();
     expect(within(dialog).getByLabelText(labels.amount, { exact: false })).toHaveValue('40');
     fireEvent.click(within(dialog).getByRole('button', { name: labels.record }));
     await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/billing/credit-offsets', expect.objectContaining({ amount: '40', target_type: 'receivable', target_id: 'claim' })));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.getByRole('status')).toHaveTextContent('receipt');
+    expect(mocks.post).toHaveBeenCalledTimes(1);
   });
 
   it('preserves a draft when translated field labels change', async () => {

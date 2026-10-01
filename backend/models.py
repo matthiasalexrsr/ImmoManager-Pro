@@ -1026,6 +1026,8 @@ class TokenPayload(BaseModel):
     exp: datetime
     type: str  # access or refresh
     jti: Optional[str] = None  # unique token identifier for rotation
+    sid: Optional[str] = None  # persistent refresh family, absent for legacy JWTs
+    session_version: Optional[int] = None
 
 
 class LoginRequest(BaseModel):

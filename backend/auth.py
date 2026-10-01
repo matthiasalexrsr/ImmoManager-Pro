@@ -20,6 +20,7 @@ import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt.exceptions import InvalidTokenError as JWTError
+from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -118,7 +119,7 @@ security = HTTPBearer(auto_error=False)
 
 # Token blacklist for logout/revocation
 _token_blacklist: set[str] = set()
-_blacklist_expiry: dict[str, datetime] = {}  # token -> expiry time for cleanup
+_blacklist_expiry: dict[str, datetime] = {}  # fingerprint -> expiry time for cleanup
 _MAX_BLACKLIST_SIZE = 10_000
 _MAX_LOGIN_ATTEMPT_KEYS = 10_000
 
@@ -340,20 +341,28 @@ def revoke_token(token: str) -> None:
     _cleanup_blacklist()
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("sid") is not None:
+            from .services.auth_sessions import revoke_from_token
+            revoke_from_token(token)
+            return
         exp = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
-        _token_blacklist.add(token)
-        _blacklist_expiry[token] = exp
         # Also persist to DB for cross-restart durability
         if _auth_session_factory is not None:
             _revoke_token_db(token, exp)
-    except JWTError:
+        token_hash = _token_jti(token)
+        _token_blacklist.add(token_hash)
+        _blacklist_expiry[token_hash] = exp
+    except (JWTError, TypeError, ValueError, KeyError):
         pass
 
 
 def _revoke_token_db(token: str, expires_at: datetime) -> None:
     """Persist token revocation to the database."""
     from .db.orm_models import RevokedTokenORM
-    session = _auth_session()
+    try:
+        session = _auth_session()
+    except Exception:
+        raise HTTPException(503, "Tokenwiderruf ist derzeit nicht verfügbar.") from None
     try:
         jti = _token_jti(token)
         exists = session.query(RevokedTokenORM).filter(
@@ -364,15 +373,22 @@ def _revoke_token_db(token: str, expires_at: datetime) -> None:
             session.commit()
     except SQLAlchemyError:
         session.rollback()
-        logger.warning("Failed to persist token revocation to DB", exc_info=True)
+        raise HTTPException(503, "Tokenwiderruf ist derzeit nicht verfügbar.") from None
     finally:
         session.close()
 
 
 def is_token_revoked(token: str) -> bool:
     """Check if a token has been revoked."""
-    if token in _token_blacklist:
+    if _token_jti(token) in _token_blacklist:
         return True
+    try:
+        claims = decode_signed_token(token)
+    except HTTPException:
+        claims = None
+    if claims is not None and claims.sid is not None:
+        from .services.auth_sessions import token_revoked
+        return token_revoked(claims, token)
     # Check DB if available
     if _auth_session_factory is not None:
         return _is_token_revoked_db(token)
@@ -382,7 +398,10 @@ def is_token_revoked(token: str) -> bool:
 def _is_token_revoked_db(token: str) -> bool:
     """Check DB for revoked token."""
     from .db.orm_models import RevokedTokenORM
-    session = _auth_session()
+    try:
+        session = _auth_session()
+    except Exception:
+        raise HTTPException(503, "Tokenprüfung ist derzeit nicht verfügbar.") from None
     try:
         jti = _token_jti(token)
         found = session.query(RevokedTokenORM).filter(
@@ -390,12 +409,12 @@ def _is_token_revoked_db(token: str) -> bool:
         ).first()
         if found:
             # Cache in memory so subsequent checks are fast
-            _token_blacklist.add(token)
+            _token_blacklist.add(jti)
+            _blacklist_expiry[jti] = found.expires_at.replace(tzinfo=timezone.utc)
             return True
         return False
     except SQLAlchemyError:
-        logger.warning("DB token revocation check failed", exc_info=True)
-        return False
+        raise HTTPException(503, "Tokenprüfung ist derzeit nicht verfügbar.") from None
     finally:
         session.close()
 
@@ -435,23 +454,34 @@ def _cleanup_blacklist_db() -> None:
         session.close()
 
 
+def decode_signed_token(token: str) -> TokenPayload:
+    """Signature/claim validation, also used before consumed-refresh detection."""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM], options={"require": ["exp", "sub", "type"]})
+        if payload.get("type") not in {"access", "refresh"}:
+            raise ValueError("Invalid token type")
+        if "sid" in payload or "session_version" in payload:
+            if (not isinstance(payload.get("sid"), str) or not payload["sid"]
+                    or type(payload.get("session_version")) is not int or payload["session_version"] != 1):
+                raise ValueError("Invalid session claims")
+        return TokenPayload(**payload)
+    except (JWTError, PydanticValidationError, ValueError, TypeError):
+        raise HTTPException(status_code=401, detail="Ungültiger Token", headers={"WWW-Authenticate": "Bearer"}) from None
+
+
 def decode_token(token: str) -> TokenPayload:
-    """Decode and validate a JWT token. Rejects revoked tokens."""
+    """Validate signed tokens, persistent family status and legacy revocations."""
+    claims = decode_signed_token(token)
     if is_token_revoked(token):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token wurde widerrufen",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return TokenPayload(**payload)
-    except JWTError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Ungültiger Token",
-            headers={"WWW-Authenticate": "Bearer"},
-        ) from exc
+    if claims.sid is not None:
+        from .services.auth_sessions import touch
+        touch(claims)
+    return claims
 
 
 # ---------------------------------------------------------------------------
@@ -1041,6 +1071,8 @@ def delete_user(user_id: str, *, actor_id: str | None = None) -> None:
 def clear_users() -> None:
     """Clear all users (for testing)."""
     _user_store.clear()
+    for key in ("_auth_sessions", "_auth_refresh_tokens"):
+        _user_store.__dict__.pop(key, None)
     _login_attempts.clear()
     _token_blacklist.clear()
     _blacklist_expiry.clear()

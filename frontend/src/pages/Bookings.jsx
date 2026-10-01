@@ -7,6 +7,7 @@ import useWriteAccess from '../hooks/useWriteAccess';
 import useBookingPage, { bookingFilterParams } from '../hooks/useBookingPage';
 import useBookingChoices from '../hooks/useBookingChoices';
 import BookingEditor from '../components/BookingEditor';
+import BankImportPanel from '../components/BankImportPanel';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 import { saveBlob, streamBookingCsv } from '../utils/bookingCsv';
@@ -35,6 +36,7 @@ export default function Bookings() {
   const [pageIndex, setPageIndex] = useState(0);
   const [revision, setRevision] = useState(0);
   const [modal, setModal] = useState(null);
+  const [showImport, setShowImport] = useState(false);
   const { canWrite, isAllowed, requireWrite } = useWriteAccess('/bookings', () => setModal(null));
   const [actionError, setActionError] = useState(null);
   const [exporting, setExporting] = useState(false);
@@ -109,6 +111,8 @@ export default function Bookings() {
       {canWrite && <button className="btn btn-primary" disabled={result.loading || Boolean(result.error)}
         onClick={() => { if (isAllowed()) setModal('create'); }}>{t('ui.buttons.new')}</button>}</div>
     {actionError && <div className="alert alert-error" role="alert">{actionError}</div>}
+    <div className="booking-import-action"><button type="button" className="btn btn-secondary" onClick={() => setShowImport(value => !value)}>{t('bankImport.title')}</button></div>
+    {showImport && <BankImportPanel initialAccount={filters.account_id} onClose={() => setShowImport(false)} onImported={restart} />}
     <form className="panel booking-filters" onSubmit={applyFilters} onKeyDownCapture={event => {
       if (event.key === 'Enter' && event.target.name?.startsWith('lookup_')) event.preventDefault();
     }}>

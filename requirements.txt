@@ -22,6 +22,9 @@ reportlab==4.4.10
 # HTTP client (updater + autotest)
 httpx==0.28.1
 
+# Streaming MT940 tag conversion (no runtime dependencies)
+mt-940==5.1.1
+
 # AI / Hugging Face — optional, see requirements-ai.txt
 # Install with: pip install -r requirements-ai.txt
 

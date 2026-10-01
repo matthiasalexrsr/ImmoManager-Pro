@@ -18,6 +18,7 @@ const Contracts = lazy(() => import('./pages/Contracts'));
 const Accounts = lazy(() => import('./pages/Accounts'));
 const Bookings = lazy(() => import('./pages/Bookings'));
 const DatevExport = lazy(() => import('./pages/DatevExport'));
+const AnnualTaxPage = lazy(() => import('./pages/AnnualTaxPage'));
 const Outbox = lazy(() => import('./pages/Outbox'));
 const Invoices = lazy(() => import('./pages/Invoices'));
 const Maintenance = lazy(() => import('./pages/Maintenance'));
@@ -118,6 +119,7 @@ export default function App() {
           <Route path="accounts" element={<Accounts />} />
           <Route path="bookings" element={<Bookings />} />
           <Route path="datev" element={<DatevExport />} />
+          <Route path="annual-tax" element={<AnnualTaxPage />} />
           <Route path="invoices" element={<Invoices />} />
           <Route path="maintenance" element={<Maintenance />} />
           <Route path="tasks" element={<Tasks />} />

@@ -62,6 +62,9 @@ def patch_account(account_id: str, payload: AccountPatch) -> Account:
 @router.delete("/{account_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_account(account_id: str) -> None:
     try:
+        store.get_account(account_id)
+        from ..services.bank_import_guards import guard_bank_import_account_delete
+        guard_bank_import_account_delete(store, account_id)
         store.delete_account(account_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

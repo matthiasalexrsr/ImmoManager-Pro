@@ -238,6 +238,7 @@ class RBACWriteGuardMiddleware(BaseHTTPMiddleware):
             request.method in _RBAC_WRITE_METHODS
             and request.url.path.startswith("/api/v1/")
             and request.url.path not in _RBAC_SKIP_PATHS
+            and not (request.method == "POST" and re.fullmatch(r"/api/v1/auth/sessions/[^/]+/revoke", request.url.path))
         ):
             role = self._get_user_role(request)
             from .permissions import may_write_resource

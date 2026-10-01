@@ -283,6 +283,8 @@ def test_history_keeps_authorized_extended_entity_types_and_hides_other_portfoli
 
 
 def test_postgres_csv_predicate_compiles_as_correlated_indexed_parent_lookup():
+    import re
+
     from sqlalchemy.dialects import postgresql
 
     from backend.db.orm_models import MessageThreadORM
@@ -291,5 +293,6 @@ def test_postgres_csv_predicate_compiles_as_correlated_indexed_parent_lookup():
     statement = select(MessageThreadORM.id).where(scoped_clause(MessageThreadORM, scope=scope))
     compiled = str(statement.compile(dialect=postgresql.dialect()))
     assert "unnest(string_to_array(coalesce(message_threads.participant_ids" in compiled
-    assert "contacts_1.id AS VARCHAR) = trim(scope_ref.value)" in compiled
-    assert "resource_portfolio_grants.resource_id = CAST(contacts_1.id AS VARCHAR)" in compiled
+    assert re.search(r"CAST\(anon_\d+\.id AS VARCHAR\) = trim\(scope_ref\.value\)", compiled)
+    assert "SELECT contacts.id AS id" in compiled
+    assert "resource_portfolio_grants.resource_id = CAST(contacts.id AS VARCHAR)" in compiled

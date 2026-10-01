@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from ..config import settings
 from ..dependencies import store
 from ..plugins import get_plugins
+from ..services.bank_import import BankImportError
 from ..services.data_transfer import (
     TransferError,
     _atomic_store,
@@ -56,7 +57,7 @@ def _safe_list(method_name: str, active_store=None) -> list[dict]:
 def _export_store_data(active_store=None) -> dict:
     try:
         return export_store_data(store if active_store is None else active_store, settings.app_version)
-    except TransferError:
+    except (TransferError, BankImportError):
         raise
     except Exception as exc:
         raise TransferError("Export fehlgeschlagen; es wurde keine Teilsicherung erzeugt.") from exc
@@ -191,6 +192,8 @@ def list_plugins():
 def _create_json_backup(directory: Path):
     try:
         content = json.dumps(_export_store_data(), ensure_ascii=False, indent=2, allow_nan=False)
+    except BankImportError:
+        raise
     except Exception as exc:
         logger.exception("Business-data export failed")
         raise HTTPException(500, "Sicherung fehlgeschlagen; keine Teilsicherung erstellt.") from exc
@@ -314,6 +317,8 @@ def export_data():
     try:
         data = _export_store_data()
         content = json.dumps(data, ensure_ascii=False, indent=2, allow_nan=False)
+    except BankImportError:
+        raise
     except Exception as exc:
         raise HTTPException(500, "Export fehlgeschlagen; keine Teildatei erstellt.") from exc
 

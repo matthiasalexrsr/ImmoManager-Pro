@@ -53,13 +53,25 @@ async function fetchWithRetry(url, options, retriesLeft = MAX_RETRIES) {
 
 let refreshInFlight;
 
-function tryRefreshToken() {
-  if (!refreshInFlight) refreshInFlight = refreshTokenOnce().finally(() => { refreshInFlight = null; });
+function tryRefreshToken(previousAccessToken) {
+  if (!refreshInFlight) {
+    const rotate = () => {
+      // Another tab may already have rotated while this tab waited for the
+      // same-origin lock. Never replay its consumed refresh token.
+      if (getToken() && getToken() !== previousAccessToken) return true;
+      return refreshTokenOnce();
+    };
+    const operation = Promise.resolve().then(() => typeof globalThis.navigator?.locks?.request === 'function'
+      ? navigator.locks.request('immomanager-token-refresh', rotate)
+      : rotate());
+    refreshInFlight = operation.catch(() => false).finally(() => { refreshInFlight = null; });
+  }
   return refreshInFlight;
 }
 
 async function refreshTokenOnce() {
   const refreshToken = localStorage.getItem('refresh_token');
+  const previousAccessToken = getToken();
   if (!refreshToken) return false;
   try {
     const res = await fetch(`${BASE}/auth/refresh`, {
@@ -69,12 +81,16 @@ async function refreshTokenOnce() {
     });
     if (res.ok) {
       const data = await res.json();
+      if (typeof data?.access_token !== 'string' || !data.access_token
+          || (data.refresh_token !== undefined && (typeof data.refresh_token !== 'string' || !data.refresh_token))) return false;
+      // Logout or a new login while the network request was pending wins.
+      if (getToken() !== previousAccessToken || localStorage.getItem('refresh_token') !== refreshToken) return Boolean(getToken() && getToken() !== previousAccessToken);
       localStorage.setItem('access_token', data.access_token);
       if (data.refresh_token) localStorage.setItem('refresh_token', data.refresh_token);
       return true;
     }
-  } catch (err) {
-    console.warn('[API] Token refresh failed:', err.message);
+  } catch {
+    console.warn('[API] Token refresh failed.');
   }
   return false;
 }
@@ -142,7 +158,7 @@ async function request(path, options = {}) {
   // On 401, try refreshing the token once
   if (res.status === 401) {
     signal?.throwIfAborted();
-    const refreshed = Boolean(getToken() && getToken() !== token) || await tryRefreshToken();
+    const refreshed = Boolean(getToken() && getToken() !== token) || await tryRefreshToken(token);
     signal?.throwIfAborted();
     if (refreshed) {
       headers['Authorization'] = `Bearer ${getToken()}`;
@@ -154,9 +170,13 @@ async function request(path, options = {}) {
       }
     }
     if (res.status === 401) {
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('refresh_token');
-      window.location.href = '/login';
+      // An older response must never clear a newer login from another tab.
+      const attemptedToken = headers.Authorization?.slice('Bearer '.length) || null;
+      if (getToken() === attemptedToken) {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        window.location.href = '/login';
+      }
       throw new Error('Nicht authentifiziert');
     }
   }

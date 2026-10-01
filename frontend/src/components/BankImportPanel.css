@@ -1,0 +1,23 @@
+.bank-import-panel { margin-bottom: 1.5rem; min-width: 0; max-width: 100%; }
+.bank-import-panel .card-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+.bank-import-panel :is(form, .bank-import-preview, .bank-import-history) { min-width: 0; max-width: 100%; }
+.bank-import-panel .card-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: .75rem; }
+.bank-import-panel label { display: grid; gap: .4rem; }
+.bank-import-panel label:has(input[type="checkbox"]) { display: flex; align-items: center; }
+.bank-import-panel input[type="checkbox"] { width: auto; flex: none; }
+.bank-import-panel fieldset { border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 1rem; min-width: 0; }
+.bank-import-panel legend { padding: 0 .5rem; font-weight: 600; }
+.bank-import-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 1rem; }
+.bank-import-panel :is(input, select) { max-width: 100%; min-width: 0; }
+.bank-import-panel input[type="file"] { white-space: normal; }
+.bank-import-history-item { display: block; margin: .5rem 0; max-width: 100%; white-space: normal; text-align: left; }
+.bank-import-paging { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; margin-top: .75rem; }
+.bank-import-provenance { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .4rem 1rem; font-size: .85rem; }
+.bank-import-provenance dd { margin: 0; overflow-wrap: anywhere; }
+.bank-import-panel .table-scroll { width: 100%; min-width: 0; max-width: 100%; overflow-x: auto; }
+.bank-import-panel .data-table td { white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 480px) {
+  .bank-import-provenance { grid-template-columns: minmax(0, 1fr); }
+  .bank-import-panel .card-header { align-items: flex-start; gap: .75rem; }
+  .bank-import-panel h2 { font-size: 1.1rem; }
+}

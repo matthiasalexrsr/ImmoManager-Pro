@@ -148,9 +148,14 @@ class SQLAlchemyStore:
         return reverse_payment(self.db, entity_type, entity_id, payment_id, payload)
 
     def clear_all(self) -> None:
-        """Reset a test store only while no durable reviewed SMTP history exists."""
+        """Reset a test store only while no durable reviewed history exists."""
         from ..services.portfolio_scope import require_installation_scope
         require_installation_scope()
+        from ..services.annual_tax_storage import guard_destructive_reset
+        guard_destructive_reset(self)
+        from ..services.bank_import_guards import guard_bank_import_reset
+        guard_bank_import_reset(self)
+        from ..db.bank_import_models import BANK_IMPORT_TABLES
         from ..db.orm_models import Base
         from ..db.rent_batch_models import RENT_BATCH_TABLES, RentSourceRevisionORM
         # Durable reviewed content and factual transport history cannot be
@@ -165,11 +170,14 @@ class SQLAlchemyStore:
         # SQLAlchemy annotates Declarative __table__ as FromClause, although
         # these mapped values are the concrete Tables required for DML.
         snapshot_tables = tuple(cast(Table, table) for table in RENT_BATCH_TABLES)
-        rental_tables = {table.name for table in snapshot_tables}
+        bank_tables = tuple(cast(Table, table) for table in BANK_IMPORT_TABLES)
+        sidecar_tables = {table.name for table in (*snapshot_tables, *bank_tables)}
+        for table in reversed(bank_tables):
+            self.db.execute(table.delete())
         for table in reversed(snapshot_tables[1:]):
             self.db.execute(table.delete())
         for table in reversed(Base.metadata.sorted_tables):
-            if table.name in rental_tables:
+            if table.name in sidecar_tables:
                 continue
             # Clearing an entire test/import store must remove correction leaves
             # before roots because SQLite RESTRICT is checked row by row.

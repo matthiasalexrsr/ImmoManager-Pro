@@ -79,6 +79,18 @@ Wiederherstellungsversuch behält seine neuen Ressourcen zur Untersuchung,
 statt die frühere Installation zu löschen. Danach Anmeldung mit TOTP,
 Kontodaten, Belege/Gegenbelege und private Anhänge prüfen.
 
+Die neue geschützte Zielkonfiguration verwendet bereits vor Dockeraktionen
+einen neuen zufälligen JWT-Signierschlüssel. Nach Datenbank-/Dateirestore und
+vor Appstart bestätigt ein enger Offline-Containerbefehl den Widerruf aller
+restaurierten aktiven Sitzungsfamilien; Verbrauchsbelege und frühere Widerrufe
+bleiben erhalten. Danach neu anmelden. Normale Neustarts behalten Sitzungen.
+PostgreSQL-Zugangsdaten sowie Feld-/Indexverschlüsselungsschlüssel bleiben
+unverändert. Nur tatsächlich vorhandene Legacy-IBANs erhalten den früheren
+JWT-Schlüssel im expliziten Entschlüsselungsring, niemals als gültigen Signer.
+Ein fehlgeschlagener oder unprüfbarer Sicherheitsabschluss startet die App
+nicht; das neue Ziel bleibt zur Prüfung erhalten und ist kein bestätigter
+Restore. Keine bestehende Installation wird verändert.
+
 Die automatisierte Linux-Prüfung erzeugt eine eigene Installation mit echten
 PostgreSQL-Prozessen, mehreren Benutzern, TOTP, Zahlungen und Anhängen, erstellt
 die verschlüsselte Vollsicherung, entfernt die Quelle und stellt sie in einem

@@ -897,10 +897,19 @@ def restore(*, project: str, source: Path, compose_file: Path, env_output: Path,
             raise BackupError("Compose-Profil wurde während des Lesens verändert.")
         docker.require_new_project()
         docker.require_private_volumes()
+        from backend.services.recovery_sessions import SessionRestoreError, rotated_configuration
+        original_values = _parse_env(_read_file(workspace / "server.env", limits.small_bytes, deadline))
+        try:
+            restored_values = rotated_configuration(original_values)
+        except SessionRestoreError as exc:
+            raise BackupError(str(exc)) from None
+        restored_env = "".join(key + "=" + value + "\n" for key, value in restored_values.items()).encode("utf-8")
+        _parse_env(restored_env)
         # A new exclusive configuration file is retained for subsequent local
         # administration, including when a later Docker operation fails.
         with protected_new_file(env_output) as output:
-            output.write(_read_file(workspace / "server.env", limits.small_bytes, deadline))
+            # A failed target can never retain the original valid JWT signer.
+            output.write(restored_env)
         docker.base[-1] = str(env_output)
         docker.run(["build", "app"], stage="Serverimage bauen")
         # Check again after the potentially lengthy build before any volume is
@@ -922,11 +931,39 @@ def restore(*, project: str, source: Path, compose_file: Path, env_output: Path,
         docker.run(["run", "--rm", "--no-deps", "-T", "--entrypoint", "tar", "app", "-C", "/data",
                     "-xzf", "-", "--no-same-owner", "--no-same-permissions"], input_file=workspace / "appdata.tar.gz",
                    stage="Appdaten-Wiederherstellung")
+        with _new_file(workspace / "restore-key-configuration.json") as output:
+            output.write(json.dumps(original_values, separators=(",", ":")).encode("utf-8"))
+        report_data = docker.run(["run", "--rm", "--no-deps", "-T", "--entrypoint", "python", "app", "-m",
+            "scripts.restore_session_security", "--configuration-stdin", "--timeout-seconds", str(deadline.remaining())],
+            input_file=workspace / "restore-key-configuration.json", stage="Restaurierte Sitzungen widerrufen")
+        report = _json(report_data)
+        if (set(report) != {"revoked_session_count", "legacy_iban_present"}
+                or type(report["revoked_session_count"]) is not int or report["revoked_session_count"] < 0
+                or type(report["legacy_iban_present"]) is not bool):
+            raise BackupError("Sicherheitsabschluss der Wiederherstellung ist nicht bestätigt; Appstart verweigert.")
+        if report["legacy_iban_present"]:
+            final_values = rotated_configuration(original_values, legacy_iban_present=True)
+            final_values["JWT_SECRET_KEY"] = restored_values["JWT_SECRET_KEY"]
+            final_env = "".join(key + "=" + value + "\n" for key, value in final_values.items()).encode("utf-8")
+            _parse_env(final_env)
+            temporary_env = env_output.with_name("." + env_output.name + "." + uuid4().hex + ".tmp")
+            try:
+                with protected_new_file(temporary_env) as output:
+                    output.write(final_env)
+                if _read_file(env_output, limits.small_bytes, deadline) != restored_env:
+                    raise BackupError("Zielkonfiguration wurde verändert; Appstart verweigert.")
+                os.replace(temporary_env, env_output)
+                restored_env = final_env
+            finally:
+                temporary_env.unlink(missing_ok=True)
+        if _read_file(env_output, limits.small_bytes, deadline) != restored_env:
+            raise BackupError("Zielkonfiguration wurde verändert; Appstart verweigert.")
         docker.run(["up", "-d", "--no-deps", "--wait", "--wait-timeout", "90", "app"], stage="Wiederhergestellte App starten")
         if not docker.running("app"):
             raise BackupError("Wiederhergestellte App läuft nicht; Zielprojekt zur Prüfung erhalten.")
         docker.run(["rm", guard_id], compose=False, stage="Eigene leere Projektreservierung freigeben")
-        return {"scope": "postgresql-and-appdata-and-server-configuration", "encrypted": True, "project": project}
+        return {"scope": "postgresql-and-appdata-and-server-configuration", "encrypted": True, "project": project,
+                "sessions_revoked": report["revoked_session_count"], "signing_key_rotated": True}
 
 
 class _ArgumentParser(argparse.ArgumentParser):

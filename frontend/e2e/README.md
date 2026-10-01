@@ -156,3 +156,16 @@ with screenshots, overflow checks and the shared JavaScript-error guard.
 ```sh
 npm run test:e2e -- rent-batch.pw.mjs
 ```
+
+`bank-import.pw.mjs` exercises genuine multipart CSV and MT940 against a freshly
+migrated SQL server. Invalid cents persist as row errors without any bookings.
+Explicit locale mapping, two legitimate identical transactions, cancellation,
+one atomic confirmation, provenance receipts, reload and exact-file replay are
+checked through the real UI/API. MT940 opening/closing balances and all physical
+transactions remain distinct. No requests are intercepted. The CSV preview is
+visually reviewed at 1440, 390 and 320 pixels with focused panel screenshots,
+page-overflow checks and the shared uncaught-error guard.
+
+```sh
+npm run test:e2e -- bank-import.pw.mjs
+```

@@ -2,16 +2,17 @@
 
 import logging
 from ipaddress import ip_address
+from typing import cast
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.security import HTTPAuthorizationCredentials
+from pydantic import BaseModel, ConfigDict, StrictBool
 
 from ..auth import (
     authenticate_user,
     clear_login_attempts,
-    create_access_token,
     create_initial_owner,
-    create_refresh_token,
     decode_token,
     delete_user,
     get_totp_uri,
@@ -23,6 +24,7 @@ from ..auth import (
     require_auth,
     require_role,
     revoke_token,
+    security,
     setup_required,
     update_user,
     verify_totp,
@@ -35,6 +37,7 @@ from ..models import (
     UserPatch,
     UserRead,
 )
+from ..services import auth_sessions
 from ..services.preferences import DEFAULTS, PreferencesInput, read_preferences, write_preferences
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -88,7 +91,7 @@ def setup_owner(payload: UserCreate, request: Request) -> UserRead:
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(payload: LoginRequest) -> TokenResponse:
+def login(payload: LoginRequest, request: Request = cast(Request, None)) -> TokenResponse:
     """Authenticate and receive JWT tokens. Enforces TOTP when enabled."""
     user = authenticate_user(payload.username, payload.password, complete=False)
     if user is None:
@@ -111,38 +114,13 @@ def login(payload: LoginRequest) -> TokenResponse:
                 detail="Ungültiger Zwei-Faktor-Code",
             )
     clear_login_attempts(payload.username)
-    return TokenResponse(
-        access_token=create_access_token(user["id"]),
-        refresh_token=create_refresh_token(user["id"]),
-    )
+    return auth_sessions.login_pair(user["id"], request.headers.get("user-agent") if request else None)
 
 
 @router.post("/refresh", response_model=TokenResponse)
-def refresh(payload: RefreshRequest) -> TokenResponse:
-    """Refresh access token using a refresh token.
-
-    Implements token rotation: the old refresh token is revoked on use,
-    and a new refresh token is issued alongside the new access token.
-    This prevents replay attacks with stolen refresh tokens.
-    """
-    token_data = decode_token(payload.refresh_token)
-    if token_data.type != "refresh":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Ungültiger Refresh-Token",
-        )
-    user = get_user_by_id(token_data.sub)
-    if user is None or not user["is_active"]:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Benutzer nicht gefunden oder deaktiviert",
-        )
-    # Rotate: revoke the old refresh token so it cannot be reused
-    revoke_token(payload.refresh_token)
-    return TokenResponse(
-        access_token=create_access_token(user["id"]),
-        refresh_token=create_refresh_token(user["id"]),
-    )
+def refresh(payload: RefreshRequest, request: Request = cast(Request, None)) -> TokenResponse:
+    """Rotate once; consumed refresh reuse durably revokes its whole family."""
+    return auth_sessions.rotate(payload.refresh_token, request.headers.get("user-agent") if request else None)
 
 
 @router.post("/logout")
@@ -155,6 +133,28 @@ def logout(payload: dict) -> dict:
     if refresh_token:
         revoke_token(refresh_token)
     return {"detail": "Erfolgreich abgemeldet"}
+
+
+class SessionRevocation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    confirmed: StrictBool
+
+
+@router.get("/sessions", response_model=None)
+def get_sessions(user: UserRead = Depends(require_auth),
+                 credentials: HTTPAuthorizationCredentials = Depends(security),
+                 offset: int = Query(0, ge=0), limit: int = Query(25, ge=1, le=1000)):
+    claims = decode_token(credentials.credentials)
+    return auth_sessions.list_sessions(user.id, claims.sid, offset, limit)
+
+
+@router.post("/sessions/{session_id}/revoke", response_model=None)
+def revoke_session(session_id: str, payload: SessionRevocation, user: UserRead = Depends(require_auth),
+                   credentials: HTTPAuthorizationCredentials = Depends(security)):
+    if not payload.confirmed:
+        raise HTTPException(422, "Bitte den Sitzungswiderruf ausdrücklich bestätigen.")
+    claims = decode_token(credentials.credentials)
+    return auth_sessions.revoke_own(user.id, session_id, claims.sid)
 
 
 @router.get("/me", response_model=UserRead)

@@ -14,6 +14,7 @@ from typing import Any
 from fastapi import HTTPException
 from sqlalchemy import String, and_, event, exists, false, func, literal, or_, select, true
 from sqlalchemy import cast as sql_cast
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session, with_loader_criteria
 from sqlalchemy.sql.elements import BindParameter
 from sqlalchemy.sql.selectable import Alias, Join
@@ -75,6 +76,8 @@ INTERNAL = frozenset(
     {
         "users",
         "auth_setup",
+        "auth_sessions",
+        "auth_refresh_tokens",
         "user_preferences",
         "login_attempts",
         "revoked_tokens",
@@ -201,7 +204,50 @@ def _binding(table, scope):
     ).correlate(table)
 
 
-def _criterion(table, scope, seen=()):
+def _reachable_scope_tables(table, relations):
+    key = ("reachable", table.name)
+    if key not in relations:
+        pending, reachable = [table.name], set()
+        while pending:
+            name = pending.pop()
+            if name in reachable:
+                continue
+            reachable.add(name)
+            current = Base.metadata.tables[name]
+            if name in INTERNAL or name in GLOBAL_READ or name == "portfolios" or "portfolio_id" in current.c:
+                continue
+            if name == "tenants":
+                pending.append("contracts")
+                continue
+            pending.extend(_parents(current).values())
+            pending.extend(csv_parents(current).values())
+            if "entity_type" in current.c and "entity_id" in current.c:
+                pending.extend(parent for parent in RESOURCE_ALIASES.values()
+                               if parent != name and parent in Base.metadata.tables)
+        relations[key] = frozenset(reachable)
+    return relations[key]
+
+
+def _visible_ids(table, scope, seen, relations):
+    """Factor parent predicates into statement-local, reusable SQL relations.
+
+    Expanding every polymorphic parent inside every descendant creates deeply
+    nested SQL that exceeds the parser stack of supported SQLite versions.
+    Ordinary CTEs preserve the same snapshot and exact parent identity without
+    collecting resource IDs in application memory or changing cycle denial.
+    """
+    # Ancestors this parent cannot reach do not affect its cycle predicate.
+    # Canonicalising only those names shares leaf relations across all branches.
+    relevant_seen = frozenset(seen) & _reachable_scope_tables(table, relations)
+    key = (table.name, relevant_seen)
+    if key not in relations:
+        criterion = _criterion(table, scope, tuple(sorted(relevant_seen)), relations)
+        relations[key] = select(table.c.id).where(criterion).correlate(None).cte()
+    return relations[key]
+
+
+def _criterion(table, scope, seen=(), relations=None):
+    relations = {} if relations is None else relations
     name = table.name
     if name in INTERNAL:
         return None
@@ -215,21 +261,24 @@ def _criterion(table, scope, seen=()):
         return table.c.portfolio_id.in_(scope.portfolio_ids)
     if name == "tenants":
         contracts = Base.metadata.tables["contracts"]
+        visible_contracts = _visible_ids(contracts, scope, (*seen, name), relations)
         linked = exists(
-            select(1).where(contracts.c.tenant_id == table.c.id, _criterion(contracts, scope, (*seen, name)))
+            select(1).where(contracts.c.tenant_id == table.c.id, contracts.c.id.in_(select(visible_contracts.c.id)))
         ).correlate(table)
         return or_(linked, _binding(table, scope))
     clauses, anchors = [], []
     for field, parent_name in _parents(table).items():
         parent = Base.metadata.tables[parent_name]
+        allowed_parent = _visible_ids(parent, scope, (*seen, name), relations)
         visible = exists(
-            select(1).where(parent.c.id == table.c[field], _criterion(parent, scope, (*seen, name)))
+            select(1).where(allowed_parent.c.id == table.c[field])
         ).correlate(table)
         clauses.append(or_(table.c[field].is_(None), visible))
         anchors.append(table.c[field].is_not(None))
     for field, parent_name in csv_parents(table).items():
         parent = Base.metadata.tables[parent_name]
-        clauses.append(CSVReferencesVisible(table.c[field], parent, _criterion(parent, scope, (*seen, name))))
+        allowed_parent = _visible_ids(parent, scope, (*seen, name), relations)
+        clauses.append(CSVReferencesVisible(table.c[field], allowed_parent, true()))
         anchors.append(and_(table.c[field].is_not(None), table.c[field] != ""))
     if "entity_type" in table.c and "entity_id" in table.c:
         options = []
@@ -238,12 +287,13 @@ def _criterion(table, scope, seen=()):
                 continue
             entity_parent = Base.metadata.tables.get(parent_name or "")
             if entity_parent is not None:
+                allowed_parent = _visible_ids(entity_parent, scope, (*seen, name), relations)
                 options.append(
                     and_(
                         table.c.entity_type == entity_type,
                         exists(
                             select(1).where(
-                                entity_parent.c.id == table.c.entity_id, _criterion(entity_parent, scope, (*seen, name))
+                                allowed_parent.c.id == table.c.entity_id
                             )
                         ).correlate(table),
                     )
@@ -350,6 +400,24 @@ def _scope_queries(state):
                 updates[field] = getattr(value, "value", None)
             guard_sql_write(state.session, table, updates)
     state.statement = statement
+    if state.is_update or state.is_delete:
+        connection = state.session.connection(bind_arguments=state.bind_arguments)
+        if connection.dialect.name == "sqlite":
+            # sqlite3's legacy transaction detection does not recognise leading
+            # WITH as DML. A SQLAlchemy logical transaction alone would allow
+            # scoped CTE writes to autocommit and survive a later rollback.
+            if not connection.connection.driver_connection.in_transaction:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+            result = state.invoke_statement()
+            # The same sqlite3 detection reports -1 for WITH ... UPDATE/DELETE.
+            # Read the connection-local count before any subsequent statement;
+            # keep the original result and every existing CAS/lock contract.
+            # RETURNING remains untouched, and changes() is not an aggregate
+            # count for executemany.
+            if (isinstance(result, CursorResult) and not state.is_executemany
+                    and not result.returns_rows and result.rowcount == -1):
+                result.rowcount = connection.exec_driver_sql("SELECT changes()").scalar_one()
+            return result
 
 
 def _sql_visible(db, table, entity_id):

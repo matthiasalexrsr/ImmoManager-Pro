@@ -156,7 +156,14 @@ def _database_info(path: Path, *, timeout_seconds: float = 300) -> dict:
             raise RecoveryError("Unbekanntes oder unvollstaendiges ImmoManager-Datenbankschema.")
         from ..db.auth_models import AuthSetupORM  # noqa: F401 — register installation metadata
         from ..db.orm_models import Base
+        # Pre-G03 archives have no managed families. Rotating their signer is
+        # still mandatory; do not silently accept a partially missing journal.
+        session_tables = {"auth_sessions", "auth_refresh_tokens"}
+        if tables & session_tables and not session_tables.issubset(tables):
+            raise RecoveryError("Das Sitzungsschema ist unvollständig; kompatible vollständige Sicherung erforderlich.")
         for table in Base.metadata.sorted_tables:
+            if table.name in session_tables and not tables & session_tables:
+                continue
             actual = {column[1] for column in db.execute('PRAGMA table_info("' + table.name.replace('"', '""') + '")')}
             if not set(table.columns.keys()).issubset(actual):
                 raise RecoveryError("Das Datenbankschema passt nicht zu dieser Programmversion.")
@@ -459,6 +466,11 @@ def restore_full_backup(source: Path, destination: Path, password: str, *,
                                                    expected_upload_files=upload_files, deadline=deadline)
         rebase_file_references(staged / "database.sqlite3", manifest["original_upload_root"], destination / "uploads",
                               expected_upload_files=upload_files, deadline=deadline)
+        from .recovery_sessions import SessionRestoreError, secure_sqlite_restore
+        try:
+            values, session_report = secure_sqlite_restore(staged / "database.sqlite3", values, deadline=deadline)
+        except SessionRestoreError as exc:
+            raise RecoveryError(str(exc)) from None
         (staged / "original-configuration.json").write_bytes((staged / "configuration.json").read_bytes())
         (staged / "configuration.json").write_bytes(_json_bytes(values))
         # The recovery launcher reads JSON exactly; .env is a convenience for simple settings.
@@ -469,7 +481,8 @@ def restore_full_backup(source: Path, destination: Path, password: str, *,
         _publish_directory(staged, destination)
     return {"restored_to": str(destination), "scope": "sqlite-uploads-users-configuration",
             "requires_restart": True, "existing_installation_changed": False,
-            "external_reference_count": reference_report.external_reference_count}
+            "external_reference_count": reference_report.external_reference_count,
+            "sessions_revoked": session_report["revoked_session_count"], "signing_key_rotated": True}
 
 
 def load_recovered_environment(directory: Path):

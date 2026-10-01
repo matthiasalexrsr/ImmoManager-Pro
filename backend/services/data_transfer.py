@@ -124,6 +124,8 @@ def _export_snapshot(active_store):
 
 
 def export_store_data(active_store, version: str) -> dict:
+    from .bank_import_guards import guard_bank_import_business_transfer
+    guard_bank_import_business_transfer(active_store, operation="export")
     with _export_snapshot(active_store) as snapshot:
         result: dict[str, Any] = {"version": version, "exported_at": datetime.now(timezone.utc).isoformat()}
         for spec in _specifications():
@@ -275,8 +277,13 @@ def _memory_lock():
 @contextmanager
 def _staged_memory(active_store):
     with _memory_lock():
-        original = deepcopy(active_store.__dict__)
-        staged = deepcopy(active_store)
+        bank_engine = active_store.__dict__.get("_bank_import_engine")
+        # The business subset never mutates the bank journal. Both copies retain
+        # that independent engine under this exclusive lock; use fresh memos so
+        # the original comparison and staged dictionaries remain independent.
+        retained = {} if bank_engine is None else {id(bank_engine): bank_engine}
+        original = deepcopy(active_store.__dict__, dict(retained))
+        staged = deepcopy(active_store, dict(retained))
         yield staged
         if active_store.__dict__ != original:
             raise TransferError("Daten wurden waehrend des Imports geaendert. Bitte erneut versuchen.")
@@ -326,7 +333,7 @@ def _check_unexported_sql_rows(db, exported_tables):
     # prevents an import from resetting a source revision. Actual saved rental
     # jobs/contracts/prices/results remain unsupported business data below and
     # therefore still require a full recovery backup before replacement.
-    independent = {"users", "user_preferences", "audit_logs", "change_history", "revoked_tokens", "login_attempts", "auth_setup", "operational_lock", "rent_source_revisions"}
+    independent = {"users", "user_preferences", "audit_logs", "change_history", "revoked_tokens", "login_attempts", "auth_setup", "auth_sessions", "auth_refresh_tokens", "operational_lock", "rent_source_revisions"}
     for table in metadata.tables.values():
         if table not in exported_tables and table.name not in independent:
             if db.scalar(select(func.count()).select_from(table)):
@@ -397,16 +404,30 @@ def _apply(active_store, prepared: dict, specs: tuple[EntitySpec, ...]) -> dict:
 
 
 def import_store_data(active_store, data: dict, *, replace_existing: bool) -> dict:
+    from .bank_import_guards import guard_bank_import_business_transfer
+    guard_bank_import_business_transfer(active_store, operation="replace" if replace_existing else "merge",
+                                       memory_journal_preserved=not replace_existing)
+    from .annual_tax_storage import guard_destructive_reset
     from .credit_ledger import guard_partial_restore
     from .payments import FinancialConsistencyError
     try:
         guard_partial_restore(active_store, data)
     except FinancialConsistencyError as exc:
         raise TransferError(str(exc)) from exc
+    if replace_existing:
+        try:
+            guard_destructive_reset(active_store)
+        except ValueError as exc:
+            raise TransferError(str(exc)) from exc
     specs = _specifications()
     try:
         prepared = _prepare(data, specs, replace_existing=replace_existing)
         with _atomic_store(active_store) as staged:
+            if replace_existing:
+                try:
+                    guard_destructive_reset(staged)
+                except ValueError as exc:
+                    raise TransferError(str(exc)) from exc
             if hasattr(staged, "db"):
                 from .credit_ledger import lock_contract
                 for contract_id in sorted(c.id for c in staged.list_contracts()):

@@ -10,9 +10,11 @@ from .routers import (
     accounts,
     admin,
     admin_runtime,
+    annual_tax,
     audit,
     auth,
     autotest,
+    bank_imports,
     billing,
     bookings,
     budgets,
@@ -82,6 +84,7 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(tenants.router, dependencies=_auth_dep)
     api_v1.include_router(contracts.router, dependencies=_auth_dep)
     api_v1.include_router(accounts.router, dependencies=_auth_dep)
+    api_v1.include_router(bank_imports.router, dependencies=_auth_dep)
     api_v1.include_router(bookings.router, dependencies=_auth_dep)
     api_v1.include_router(receivables.router, dependencies=_auth_dep)
     api_v1.include_router(invoices.router, dependencies=_auth_dep)
@@ -98,6 +101,7 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(notifications.router, dependencies=_auth_dep)
     api_v1.include_router(reports.router, dependencies=_auth_dep)
     api_v1.include_router(datev.router, dependencies=_auth_dep)
+    api_v1.include_router(annual_tax.router, dependencies=_auth_dep)
     api_v1.include_router(tax_rates.router, dependencies=_auth_dep)
     api_v1.include_router(rent_adjustments.router, dependencies=_auth_dep)
     api_v1.include_router(handover_protocols.router, dependencies=_auth_dep)

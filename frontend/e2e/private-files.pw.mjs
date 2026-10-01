@@ -39,6 +39,14 @@ test('private attachments: image/PDF upload, protected viewer and unit photo sur
   await page.addInitScript(() => { if (window === window.top) localStorage.setItem('locale', 'de-DE'); });
   const headers = await login(page);
   const unique = randomUUID();
+  const unitsResponse = await page.request.get('/api/v1/units', { headers });
+  expect(unitsResponse.status()).toBe(200);
+  const unit = (await unitsResponse.json())[0];
+  expect(unit?.property_id).toBeTruthy();
+  const propertyResponse = await page.request.get(`/api/v1/properties/${unit.property_id}`, { headers });
+  expect(propertyResponse.status()).toBe(200);
+  const property = await propertyResponse.json();
+  expect(property.portfolio_id).toBeTruthy();
   const documents = [];
   for (const file of [{ name: 'private-image.png', mimeType: 'image/png', buffer: image }, { name: 'private-pdf.pdf', mimeType: 'application/pdf', buffer: pdf() }, { name: 'spoofed-pdf.pdf', mimeType: 'application/pdf', buffer: Buffer.from('<html><script>window.top.privateFileXss = true</script></html>') }]) {
     await page.goto('/documents');
@@ -47,7 +55,9 @@ test('private attachments: image/PDF upload, protected viewer and unit photo sur
     const response = await uploaded;
     expect(response.status()).toBe(200);
     const data = await response.json();
-    const created = await page.request.post('/api/v1/documents', { headers, data: { title: `${unique} ${file.name}`, file_url: data.file_url } });
+    const created = await page.request.post('/api/v1/documents', { headers, data: {
+      title: `${unique} ${file.name}`, file_url: data.file_url, property_id: property.id, unit_id: unit.id,
+    } });
     expect(created.status()).toBe(201);
     documents.push(await created.json());
     expect((await page.request.get(data.file_url)).status()).toBe(401);
@@ -100,8 +110,6 @@ test('private attachments: image/PDF upload, protected viewer and unit photo sur
   expect(await page.evaluate(() => window.privateFileXss)).toBeUndefined();
   await viewer.getByRole('button', { name: 'Schließen' }).click();
 
-  const unitsResponse = await page.request.get('/api/v1/units', { headers });
-  const unit = (await unitsResponse.json())[0];
   await page.goto(`/units/${unit.id}`);
   const uploadedPhoto = page.waitForResponse(response => response.url().includes('/photos/upload?') && response.request().method() === 'POST');
   await page.getByLabel('Fotos hochladen').setInputFiles({ name: 'private-photo.png', mimeType: 'image/png', buffer: image });
@@ -113,9 +121,18 @@ test('private attachments: image/PDF upload, protected viewer and unit photo sur
   await expect(photo).toHaveAttribute('src', /^blob:/);
 
   const reader = `reader-${unique}`;
-  expect((await page.request.post('/api/v1/auth/users', { headers, data: { username: reader, email: `${reader}@example.com`, full_name: 'Private File Reader', password: 'Strong123', role: 'readonly' } })).status()).toBe(201);
+  const passphrase = 'Private File Reader Passphrase 2026';
+  const readerResponse = await page.request.post('/api/v1/auth/users', { headers, data: {
+    username: reader, email: `${reader}@example.com`, full_name: 'Private File Reader', password: passphrase,
+    role: 'readonly', portfolio_access: 'selected', portfolio_ids: [property.portfolio_id],
+  } });
+  expect(readerResponse.status(), await readerResponse.text()).toBe(201);
+  expect(await readerResponse.json()).toMatchObject({ portfolio_access: 'selected', portfolio_ids: [property.portfolio_id] });
   await page.evaluate(() => localStorage.clear());
-  await login(page, reader, 'Strong123');
+  const readerHeaders = await login(page, reader, passphrase);
+  const visiblePortfolios = await page.request.get('/api/v1/portfolios', { headers: readerHeaders });
+  expect(visiblePortfolios.status()).toBe(200);
+  expect((await visiblePortfolios.json()).map(row => row.id)).toEqual([property.portfolio_id]);
   await page.goto(`/units/${unit.id}`);
   await expect(photo).toHaveAttribute('src', /^blob:/);
   await expect.poll(() => photo.evaluate(element => element.naturalWidth)).toBe(1);

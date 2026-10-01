@@ -225,13 +225,21 @@ class InMemoryStore:
         from .services.payments import reverse_memory_payment
         return reverse_memory_payment(self, entity_type, entity_id, payment_id, payload)
 
+    @_payment_mutation
     def clear_all(self) -> None:
         """Clear all entity collections. Used by tests to reset state."""
         from .services.portfolio_scope import require_installation_scope
         require_installation_scope()
+        from .services.annual_tax_storage import guard_destructive_reset
+        guard_destructive_reset(self)
+        from .services.bank_import_guards import guard_bank_import_reset
+        guard_bank_import_reset(self)
         rental_engine = self.__dict__.pop("_rent_batch_engine", None)
         if rental_engine is not None:
             rental_engine.dispose()
+        bank_engine = self.__dict__.pop("_bank_import_engine", None)
+        if bank_engine is not None:
+            bank_engine.dispose()
         for name, val in self.__dataclass_fields__.items():
             attr = getattr(self, name)
             if isinstance(attr, dict):
@@ -290,6 +298,9 @@ class InMemoryStore:
     @_payment_mutation
     @_version_mutation
     def delete_portfolio(self, portfolio_id: str) -> None:
+        self.get_portfolio(portfolio_id)
+        from .services.bank_import_guards import guard_bank_import_portfolio_delete
+        guard_bank_import_portfolio_delete(self, portfolio_id)
         from .services.payment_integrity import guard_memory_delete
         guard_memory_delete(self, "portfolio", portfolio_id)
         if portfolio_id not in self.portfolios:
@@ -372,6 +383,9 @@ class InMemoryStore:
     @_payment_mutation
     @_version_mutation
     def delete_account(self, account_id: str) -> None:
+        self.get_account(account_id)
+        from .services.bank_import_guards import guard_bank_import_account_delete
+        guard_bank_import_account_delete(self, account_id)
         from .services.payment_integrity import guard_memory_delete
         guard_memory_delete(self, "account", account_id)
         if account_id not in self.accounts:

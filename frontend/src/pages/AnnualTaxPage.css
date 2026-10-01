@@ -1,0 +1,63 @@
+.annual-tax-page { --tax-ink: var(--color-text, #19323d); --tax-teal: var(--color-primary, #0b807c); max-width: 1240px; margin: 0 auto; color: var(--tax-ink); display: grid; gap: 1.4rem; min-width: 0; }
+.annual-tax-page .tax-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 1.5rem; }
+.annual-tax-page h1 { margin: .3rem 0 .65rem; font-size: clamp(1.9rem, 4vw, 2.8rem); letter-spacing: -.035em; }
+.annual-tax-page h2 { margin: .25rem 0 1rem; font-size: 1.3rem; }
+.annual-tax-page h3 { margin: 0 0 .5rem; font-size: 1.05rem; }
+.annual-tax-page p { line-height: 1.6; margin: .4rem 0; }
+.annual-tax-page .tax-eyebrow { color: var(--tax-teal); font-size: .73rem; font-weight: 750; letter-spacing: .13em; text-transform: uppercase; }
+.annual-tax-page .tax-heading > div { max-width: 780px; }
+.annual-tax-page .tax-heading > div > p:last-child, .annual-tax-page .tax-profile-proof, .annual-tax-page .tax-proof-id { color: var(--color-text-secondary, #597078); }
+.annual-tax-page .tax-guidance { border-left: 3px solid var(--tax-teal); background: var(--color-primary-light, #e5f2ef); padding: 1rem 1.35rem; border-radius: var(--radius-md, 12px); font-size: .88rem; }
+.annual-tax-page .tax-panel { min-width: 0; background: var(--color-surface, #fffdfa); border: 1px solid var(--color-border, #dce5e4); border-radius: var(--radius-lg, 18px); padding: clamp(1rem, 3vw, 1.75rem); box-shadow: var(--shadow-sm, 0 2px 10px #19323d08); }
+.annual-tax-page .tax-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: .8rem; }
+.annual-tax-page .tax-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin: 1rem 0; }
+.annual-tax-page label { display: flex; flex-direction: column; gap: .45rem; font-size: .88rem; font-weight: 600; min-width: 0; }
+.annual-tax-page input:not([type="checkbox"]), .annual-tax-page select { min-width: 0; width: 100%; padding: .7rem .8rem; border: 1px solid var(--color-border, #ccd8d8); color: var(--tax-ink); background: var(--color-surface, #fff); border-radius: var(--radius-md, 10px); font: inherit; box-sizing: border-box; }
+.annual-tax-page input:focus-visible, .annual-tax-page select:focus-visible, .annual-tax-page button:focus-visible, .annual-tax-page summary:focus-visible, .annual-tax-page a:focus-visible { outline: 3px solid var(--tax-teal); outline-offset: 3px; }
+.annual-tax-page input:disabled, .annual-tax-page select:disabled { opacity: .7; }
+.annual-tax-page .tax-wide { grid-column: 1 / -1; }
+.annual-tax-page fieldset { min-width: 0; margin: 0; }
+.annual-tax-page .tax-review, .annual-tax-page .tax-draft { border: 0; padding: 0; }
+.annual-tax-page .tax-draft > legend { font-size: 1.08rem; font-weight: 700; padding-top: 1.2rem; }
+.annual-tax-page .tax-rule { border: 1px solid var(--color-border, #dce5e4); border-radius: var(--radius-md, 12px); padding: 1rem; margin: 1rem 0; background: var(--color-bg, #f7f8f5); }
+.annual-tax-page .tax-rule > legend, .annual-tax-page .tax-part > legend { padding: 0 .4rem; font-weight: 650; font-size: .83rem; }
+.annual-tax-page .tax-part { margin: 1rem 0; padding: 1rem; border: 1px solid var(--color-border, #dce5e4); border-radius: var(--radius-md, 12px); background: var(--color-surface, #fffdfa); }
+.annual-tax-page .tax-check { flex-direction: row; align-items: flex-start; font-weight: 500; line-height: 1.55; margin: 1.2rem 0; }
+.annual-tax-page .tax-check input { margin-top: .3rem; flex-shrink: 0; }
+.annual-tax-page .tax-actions { display: flex; flex-wrap: wrap; gap: .65rem; align-items: center; margin-top: .8rem; }
+.annual-tax-page .btn { min-height: 40px; white-space: normal; }
+.annual-tax-page details { margin: 1rem 0; }
+.annual-tax-page summary { cursor: pointer; font-weight: 650; padding: .65rem 0; }
+.annual-tax-page .tax-error, .annual-tax-page .tax-warning { color: var(--color-danger, #a14431); background: var(--color-danger-light, #fff0e9); border-radius: var(--radius-md, 10px); padding: .8rem 1rem; overflow-wrap: anywhere; }
+.annual-tax-page .tax-notice { color: var(--tax-teal); background: var(--color-primary-light, #e4f2ed); border-radius: var(--radius-md, 10px); padding: .8rem 1rem; }
+.annual-tax-page .tax-totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: .8rem; margin: 1.2rem 0; }
+.annual-tax-page .tax-totals > div { padding: 1rem; border: 1px solid var(--color-border, #dce5e4); border-radius: var(--radius-md, 12px); }
+.annual-tax-page .tax-totals dt { color: var(--color-text-secondary, #597078); font-size: .78rem; }
+.annual-tax-page .tax-totals dd { margin: .6rem 0 0; font-size: 1.35rem; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.annual-tax-page .tax-table-wrap { max-width: 100%; overflow-x: auto; border-radius: var(--radius-md, 10px); }
+.annual-tax-page table { border-collapse: collapse; width: 100%; min-width: 560px; text-align: left; }
+.annual-tax-page caption { text-align: left; padding: .6rem 0; font-weight: 650; }
+.annual-tax-page th, .annual-tax-page td { padding: .8rem; border-bottom: 1px solid var(--color-border, #dce5e4); overflow-wrap: anywhere; }
+.annual-tax-page th { font-size: .78rem; color: var(--color-text-secondary, #597078); }
+.annual-tax-page td:last-child { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.annual-tax-page .tax-source { padding: 1rem 0; border-top: 1px solid var(--color-border, #dce5e4); }
+.annual-tax-page .tax-proof-id { font-family: ui-monospace, monospace; font-size: .74rem; overflow-wrap: anywhere; }
+.annual-tax-page .tax-confirm { display: grid; gap: 1rem; padding-top: 1rem; margin-top: 1rem; border-top: 1px solid var(--color-border, #dce5e4); }
+.annual-tax-page .tax-confirm > button { justify-self: start; }
+.annual-tax-page .tax-snapshot { display: flex; justify-content: space-between; gap: 1.2rem; padding: 1.2rem 0; border-top: 1px solid var(--color-border, #dce5e4); }
+.annual-tax-page .tax-snapshot > div { min-width: 0; }
+.annual-tax-page .tax-snapshot .tax-actions { justify-content: flex-end; flex-shrink: 0; align-content: start; max-width: 45%; }
+.annual-tax-page .tax-pagination { display: flex; justify-content: space-between; gap: 1rem; align-items: center; margin-top: 1rem; font-variant-numeric: tabular-nums; }
+@media (max-width: 640px) {
+  .annual-tax-page .tax-heading, .annual-tax-page .tax-section-heading, .annual-tax-page .tax-snapshot { flex-direction: column; align-items: stretch; }
+  .annual-tax-page .tax-fields { grid-template-columns: minmax(0, 1fr); }
+  .annual-tax-page .tax-snapshot .tax-actions { max-width: 100%; justify-content: flex-start; }
+  .annual-tax-page .tax-totals { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .annual-tax-page .tax-totals > div { padding: .75rem; }
+  .annual-tax-page .tax-totals dd { font-size: 1.1rem; }
+  .annual-tax-page .tax-panel { padding: 1rem; }
+  .annual-tax-page .tax-rule, .annual-tax-page .tax-part { padding: .75rem; }
+  .annual-tax-page .tax-pagination { gap: .4rem; }
+  .annual-tax-page .tax-pagination .btn { padding-inline: .55rem; }
+}
+@media (prefers-reduced-motion: reduce) { .annual-tax-page * { scroll-behavior: auto; } }

@@ -71,6 +71,7 @@ assert user['totp_enabled'] is True
 secret = user['totp_secret']
 assert hashlib.sha256(secret.encode()).hexdigest() == os.environ['EXPECTED_TOTP_HASH']
 assert hashlib.sha256(settings.jwt_secret_key.encode()).hexdigest() == os.environ['EXPECTED_JWT_HASH']
+assert hashlib.sha256(settings.jwt_secret_key.encode()).hexdigest() != os.environ['ORIGINAL_JWT_HASH']
 assert hashlib.sha256(settings.encryption_keyring.encode()).hexdigest() == os.environ['EXPECTED_RING_HASH']
 assert hashlib.sha256(settings.encryption_index_key.encode()).hexdigest() == os.environ['EXPECTED_INDEX_HASH']
 digest = hmac.new(base64.b32decode(secret), struct.pack('>Q', int(time.time())//30), 'sha1').digest()
@@ -153,6 +154,7 @@ def test_full_encrypted_recovery_keeps_keys_totp_receipts_and_login_after_source
     assert not source.exists()
     restored = tmp_path / "restored-owned-by-this-test"
     restore_full_backup(archive, restored, PASSPHRASE)
+    restored_values = json.loads((restored / "configuration.json").read_text(encoding="utf-8"))
     assert (restored / "original-runtime.env").read_bytes() == original_env
     environment = {
         **os.environ,
@@ -164,7 +166,8 @@ def test_full_encrypted_recovery_keeps_keys_totp_receipts_and_login_after_source
         "ENCRYPTION_ACTIVE_KEY_ID": "foreign",
         "DATABASE_URL": "sqlite:///" + (tmp_path / "foreign-never-created.db").as_posix(),
         "EXPECTED_TOTP_HASH": metadata["totp_hash"],
-        "EXPECTED_JWT_HASH": metadata["jwt_hash"],
+        "EXPECTED_JWT_HASH": hashlib.sha256(restored_values["JWT_SECRET_KEY"].encode()).hexdigest(),
+        "ORIGINAL_JWT_HASH": metadata["jwt_hash"],
         "EXPECTED_RING_HASH": hashlib.sha256(values["ENCRYPTION_KEYRING"].encode()).hexdigest(),
         "EXPECTED_INDEX_HASH": hashlib.sha256(values["ENCRYPTION_INDEX_KEY"].encode()).hexdigest(),
         "EXPECTED_ACCOUNT_ID": metadata["account_id"],

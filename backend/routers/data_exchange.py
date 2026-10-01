@@ -13,6 +13,8 @@ from io import BytesIO
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
 
+from ..services.bank_import import BankImportError
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/data", tags=["Daten-Export/Import"])
@@ -62,6 +64,8 @@ async def import_data(file: UploadFile = File(...)) -> dict:
     from .admin import _import_store_data
     try:
         result = _import_store_data(data, replace_existing=False)
+    except BankImportError:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Import error: {exc}") from exc
 

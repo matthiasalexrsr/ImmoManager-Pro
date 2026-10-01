@@ -83,6 +83,11 @@ class FakeDocker:
             self.fixture.restored_dump = kwargs["input_file"].read_bytes()
         if "-xzf" in args:
             self.fixture.restored_tar = kwargs["input_file"].read_bytes()
+        if stage == "Restaurierte Sitzungen widerrufen":
+            assert json.loads(kwargs["input_file"].read_text())["JWT_SECRET_KEY"] == tool._parse_env(self.env_bytes)["JWT_SECRET_KEY"]
+            if self.fixture.security_report is not None:
+                return self.fixture.security_report
+            return json.dumps({"revoked_session_count": 3, "legacy_iban_present": self.fixture.legacy_ibans}).encode()
         if args[0] == "up" and args[-1] == "app":
             self.fixture.app_running[self.project] = True
         if args[0] == "create":
@@ -100,6 +105,8 @@ class DockerFixture:
         self.tar = tar_bytes()
         self.writers = []
         self.restored_dump = self.restored_tar = None
+        self.legacy_ibans = False
+        self.security_report = None
 
     def __call__(self, *args):
         return FakeDocker(self, *args)
@@ -151,10 +158,15 @@ def test_encrypted_roundtrip_stops_writers_resumes_original_and_starts_after_bot
     restored, _ = load(installation, source, docker)
     assert restored["project"] == "restored"
     assert docker.restored_dump == DUMP and docker.restored_tar == docker.tar
-    assert (installation[0] / "restored.env").read_bytes() == ENV
+    restored_env = tool._parse_env((installation[0] / "restored.env").read_bytes())
+    original_env = tool._parse_env(ENV)
+    assert restored_env["JWT_SECRET_KEY"] != original_env["JWT_SECRET_KEY"]
+    assert {k: v for k, v in restored_env.items() if k != "JWT_SECRET_KEY"} == {k: v for k, v in original_env.items() if k != "JWT_SECRET_KEY"}
+    assert restored["sessions_revoked"] == 3 and restored["signing_key_rotated"] is True
     stages = docker.stages("restored")
     assert stages.index("new-project") < stages.index("Serverimage bauen") < stages.index("Neues Projekt reservieren")
     assert stages.index("PostgreSQL-Wiederherstellung") < stages.index("Appdaten-Wiederherstellung") < stages.index("Wiederhergestellte App starten")
+    assert stages.index("Appdaten-Wiederherstellung") < stages.index("Restaurierte Sitzungen widerrufen") < stages.index("Wiederhergestellte App starten")
     assert stages[-2:] == ["status", "Eigene leere Projektreservierung freigeben"]
     restore_args = next(args for target, stage, args in docker.events if stage == "PostgreSQL-Wiederherstellung")
     assert "--exit-on-error" in restore_args[-1] and "--no-owner" in restore_args[-1] and "--no-privileges" in restore_args[-1]
@@ -238,14 +250,14 @@ def test_authentication_failures_do_not_call_docker_or_create_config(installatio
 
 
 @pytest.mark.parametrize("stage", ["Serverimage bauen", "Neues Projekt reservieren", "Neue PostgreSQL-Instanz starten",
-                                  "PostgreSQL-Wiederherstellung", "Appdaten-Wiederherstellung"])
+                                  "PostgreSQL-Wiederherstellung", "Appdaten-Wiederherstellung", "Restaurierte Sitzungen widerrufen"])
 def test_failed_restore_keeps_new_config_for_inspection_and_never_starts_app(installation, stage):
     source, _, _ = save(installation)
     docker = DockerFixture()
     docker.fail_stage = stage
     with pytest.raises(tool.BackupError, match="fehlgeschlagen"):
         load(installation, source, docker)
-    assert (installation[0] / "restored.env").read_bytes() == ENV
+    assert tool._parse_env((installation[0] / "restored.env").read_bytes())["JWT_SECRET_KEY"] != tool._parse_env(ENV)["JWT_SECRET_KEY"]
     assert "Wiederhergestellte App starten" not in docker.stages("restored")
     assert "Eigene leere Projektreservierung freigeben" not in docker.stages("restored")
     assert not any(args and args[0] in {"down", "rm"} for _, _, args in docker.events)
@@ -268,6 +280,34 @@ def test_existing_project_original_name_or_changed_compose_refused_before_mutati
     with pytest.raises(tool.BackupError, match="Compose-Profil"):
         load(installation, source, docker)
     assert not docker.events
+
+
+@pytest.mark.parametrize("report", [b"{}", b"[]", b"not-json", b'{"revoked_session_count":true,"legacy_iban_present":false}',
+    b'{"revoked_session_count":-1,"legacy_iban_present":false}', b'{"revoked_session_count":1,"legacy_iban_present":"true"}'])
+def test_unconfirmed_offline_security_result_never_starts_restored_app(installation, report):
+    source, _, _ = save(installation)
+    docker = DockerFixture()
+    docker.security_report = report
+    with pytest.raises(tool.BackupError):
+        load(installation, source, docker)
+    assert "Wiederhergestellte App starten" not in docker.stages("restored")
+    assert not docker.app_running.get("restored", False)
+    assert tool._parse_env((installation[0] / "restored.env").read_bytes())["JWT_SECRET_KEY"] != tool._parse_env(ENV)["JWT_SECRET_KEY"]
+
+
+def test_actual_legacy_flag_keeps_original_signer_only_in_protected_decryption_ring(installation):
+    source, _, _ = save(installation)
+    docker = DockerFixture()
+    docker.legacy_ibans = True
+    load(installation, source, docker)
+    target = installation[0] / "restored.env"
+    values = tool._parse_env(target.read_bytes())
+    original_signer = tool._parse_env(ENV)["JWT_SECRET_KEY"]
+    assert values["JWT_SECRET_KEY"] != original_signer
+    assert json.loads(values["ENCRYPTION_LEGACY_JWT_KEYS"]) == [original_signer]
+    with tool.private_workspace() as (audit, sid):
+        tool._verify_private(target, audit, sid)
+    assert not list(installation[0].glob(".restored.env.*.tmp"))
 
 
 def encrypted_candidate(installation, *, mutations=None, extra=False):

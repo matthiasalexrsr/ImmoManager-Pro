@@ -1,0 +1,138 @@
+[
+  {
+    "name": "de_plain",
+    "raw_amount": "1234,56",
+    "decimal_separator": ",",
+    "thousands_separator": ".",
+    "expected_cents": "123456",
+    "expected_error": null
+  },
+  {
+    "name": "de_grouped",
+    "raw_amount": "1.234.567,89",
+    "decimal_separator": ",",
+    "thousands_separator": ".",
+    "expected_cents": "123456789",
+    "expected_error": null
+  },
+  {
+    "name": "en_grouped",
+    "raw_amount": "1,234,567.89",
+    "decimal_separator": ".",
+    "thousands_separator": ",",
+    "expected_cents": "123456789",
+    "expected_error": null
+  },
+  {
+    "name": "negative_money",
+    "raw_amount": "-12.345,67",
+    "decimal_separator": ",",
+    "thousands_separator": ".",
+    "expected_cents": "-1234567",
+    "expected_error": null
+  },
+  {
+    "name": "zero",
+    "raw_amount": "0,00",
+    "decimal_separator": ",",
+    "thousands_separator": ".",
+    "expected_cents": "0",
+    "expected_error": null
+  },
+  {
+    "name": "single_cent",
+    "raw_amount": "0.01",
+    "decimal_separator": ".",
+    "thousands_separator": ",",
+    "expected_cents": "1",
+    "expected_error": null
+  },
+  {
+    "name": "large_exact_integer",
+    "raw_amount": "90,071,992,547,409,931.23",
+    "decimal_separator": ".",
+    "thousands_separator": ",",
+    "expected_cents": "9007199254740993123",
+    "expected_error": null
+  },
+  {
+    "name": "no_grouping_still_allowed",
+    "raw_amount": "987654321,09",
+    "decimal_separator": ",",
+    "thousands_separator": ".",
+    "expected_cents": "98765432109",
+    "expected_error": null
+  },
+  {
+    "name": "bad_grouping_de",
+    "raw_amount": "12.34,56",
+    "decimal_separator": ",",
+    "thousands_separator": ".",
+    "expected_cents": null,
+    "expected_error": "invalid_grouping"
+  },
+  {
+    "name": "bad_grouping_en",
+    "raw_amount": "1,23,456.78",
+    "decimal_separator": ".",
+    "thousands_separator": ",",
+    "expected_cents": null,
+    "expected_error": "invalid_grouping"
+  },
+  {
+    "name": "opposite_separator_layout",
+    "raw_amount": "1,234.56",
+    "decimal_separator": ",",
+    "thousands_separator": ".",
+    "expected_cents": null,
+    "expected_error": "invalid_separator_usage"
+  },
+  {
+    "name": "configured_separators_conflict",
+    "raw_amount": "123,45",
+    "decimal_separator": ",",
+    "thousands_separator": ",",
+    "expected_cents": null,
+    "expected_error": "separator_conflict"
+  },
+  {
+    "name": "third_decimal_digit",
+    "raw_amount": "12,345",
+    "decimal_separator": ",",
+    "thousands_separator": ".",
+    "expected_cents": null,
+    "expected_error": "too_many_fraction_digits"
+  },
+  {
+    "name": "nbsp_explicit_grouping",
+    "raw_amount": "1 234 567,89",
+    "decimal_separator": ",",
+    "thousands_separator": " ",
+    "expected_cents": "123456789",
+    "expected_error": null
+  },
+  {
+    "name": "narrow_nbsp_explicit_grouping",
+    "raw_amount": "1 234 567,89",
+    "decimal_separator": ",",
+    "thousands_separator": " ",
+    "expected_cents": "123456789",
+    "expected_error": null
+  },
+  {
+    "name": "undeclared_nbsp_not_stripped",
+    "raw_amount": "1 234,56",
+    "decimal_separator": ",",
+    "thousands_separator": ".",
+    "expected_cents": null,
+    "expected_error": "unexpected_character"
+  },
+  {
+    "name": "mixed_grouping_characters",
+    "raw_amount": "1.234 567,89",
+    "decimal_separator": ",",
+    "thousands_separator": ".",
+    "expected_cents": null,
+    "expected_error": "unexpected_character"
+  }
+]

@@ -55,7 +55,7 @@ class Installation:
         if result.returncode != expected:
             output = (result.stdout + result.stderr).decode('utf-8', errors='replace')
             values = dict(line.split('=', 1) for line in self.environment.read_text().splitlines() if '=' in line)
-            for secret in (values.get('POSTGRES_PASSWORD'), values.get('JWT_SECRET_KEY'), values.get('ENCRYPTION_KEY'), values.get('ENCRYPTION_INDEX_KEY'), values.get('ENCRYPTION_KEYRING'), PASSWORD):
+            for secret in (values.get('POSTGRES_PASSWORD'), values.get('JWT_SECRET_KEY'), values.get('ENCRYPTION_KEY'), values.get('ENCRYPTION_INDEX_KEY'), values.get('ENCRYPTION_KEYRING'), values.get('ENCRYPTION_LEGACY_JWT_KEYS'), PASSWORD):
                 if secret:
                     output = output.replace(secret, '[redacted]')
             raise RuntimeError(f"Disposable Compose operation {arguments[0]} failed (exit {result.returncode}):\n{output[-8000:]}")
@@ -80,10 +80,65 @@ class Installation:
         except (ValueError, UnicodeError):
             return body
 
-    def login(self, username="ci_owner", secret=None):
-        result = self.request("/api/v1/auth/login", method="POST", data={
+    def login_pair(self, username="ci_owner", secret=None):
+        return self.request("/api/v1/auth/login", method="POST", data={
             "username": username, "password": PASSWORD, **({"totp_code": totp(secret)} if secret else {})})
-        return result["access_token"]
+
+    def login(self, username="ci_owner", secret=None):
+        return self.login_pair(username, secret)["access_token"]
+
+
+LEGACY_PAIR = """
+import json, sys
+from backend import auth
+values = json.load(sys.stdin)
+user = auth.authenticate_user('viewer0', values['password'])
+assert user is not None
+print(json.dumps({'access_token': auth.create_access_token(user['id']), 'refresh_token': auth.create_refresh_token(user['id'])}))
+"""
+
+
+def session_history(installation: Installation):
+    query = "SELECT COALESCE(json_agg(r ORDER BY r.token_hash)::text, '[]') FROM (SELECT token_hash, session_id, generation, expires_at, consumed_at FROM auth_refresh_tokens) r"
+    receipt_rows = installation.compose("exec", "-T", "db", "sh", "-c",
+        'exec psql --no-password -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "' + query + '"').stdout
+    rows = json.loads(receipt_rows)
+    assert any(row["consumed_at"] is not None for row in rows)
+    signature = hashlib.sha256(json.dumps(rows, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    count = installation.compose("exec", "-T", "db", "sh", "-c",
+        'exec psql --no-password -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT count(*) FROM auth_sessions WHERE revoked_at IS NULL"').stdout
+    return signature, int(count)
+
+
+def capture_old_sessions(installation: Installation):
+    original = installation.login_pair("viewer0")
+    rotated = installation.request("/api/v1/auth/refresh", method="POST", data={"refresh_token": original["refresh_token"]})
+    independent = installation.login_pair("viewer0")
+    legacy = json.loads(installation.compose("exec", "-T", "app", "python", "-c", LEGACY_PAIR,
+        input=json.dumps({"password": PASSWORD}).encode()).stdout)
+    for pair in (original, rotated, independent, legacy):
+        assert installation.request("/api/v1/auth/me", token=pair["access_token"])["username"] == "viewer0"
+    # Ordinary recreation must preserve the existing family and signer.
+    installation.compose("up", "-d", "--force-recreate", "--no-deps", "--wait", "app")
+    installation.request("/api/v1/auth/me", token=rotated["access_token"])
+    sid = installation.request("/api/v1/auth/sessions", token=independent["access_token"])["current_session_id"]
+    return {"access": [pair["access_token"] for pair in (original, rotated, independent, legacy)],
+        "refresh": [pair["refresh_token"] for pair in (original, rotated, independent, legacy)],
+        "later_revoke_id": sid, "later_revoke_access": independent["access_token"]}
+
+
+def verify_restore_session_boundary(installation: Installation, old: dict, receipt_signature: str):
+    assert session_history(installation)[0] == receipt_signature
+    for token in old["access"]:
+        installation.request("/api/v1/auth/me", token=token, expected=401)
+    for token in old["refresh"]:
+        installation.request("/api/v1/auth/refresh", method="POST", data={"refresh_token": token}, expected=401)
+    assert session_history(installation)[0] == receipt_signature
+    current = installation.login_pair("viewer0")
+    installation.compose("up", "-d", "--force-recreate", "--no-deps", "--wait", "app")
+    installation.request("/api/v1/auth/me", token=current["access_token"])
+    renewed = installation.request("/api/v1/auth/refresh", method="POST", data={"refresh_token": current["refresh_token"]})
+    installation.request("/api/v1/auth/me", token=renewed["access_token"])
 
 
 def seed(installation: Installation, owner: str) -> dict:
@@ -187,11 +242,16 @@ def main() -> int:
             references = seed(source, source.login())
             source.compose("up", "-d", "--force-recreate", "--no-deps", "--wait", "app")
             verify(source, references)
+            old_sessions = capture_old_sessions(source)
+            receipt_signature, active_count = session_history(source)
             package = work / "private-recovery.immo"
             backup(project=source.project, destination=package, compose_file=ROOT / "compose.private-server.yml",
                    env_file=environment, password=PASSWORD)
             # Backup must resume the source app; validate that independently.
             verify(source, references)
+            source.request("/api/v1/auth/sessions/" + old_sessions["later_revoke_id"] + "/revoke", method="POST",
+                token=old_sessions["later_revoke_access"], data={"confirmed": True})
+            source.request("/api/v1/auth/me", token=old_sessions["later_revoke_access"], expected=401)
             try:
                 restore(project=restored.project, source=package, compose_file=ROOT / "compose.private-server.yml",
                         env_output=restored.environment, password="wrong synthetic recovery passphrase")
@@ -203,11 +263,18 @@ def main() -> int:
             # Remove only this script's disposable source, including both volumes.
             # Restoration cannot read source state after this point.
             source.compose("down", "--volumes", "--remove-orphans", timeout=120)
-            restore(project=restored.project, source=package, compose_file=ROOT / "compose.private-server.yml",
+            result = restore(project=restored.project, source=package, compose_file=ROOT / "compose.private-server.yml",
                     env_output=restored.environment, password=PASSWORD)
+            assert result["sessions_revoked"] == active_count and result["signing_key_rotated"] is True
+            from scripts.private_server_backup import _parse_env
+            original_values, restored_values = _parse_env(environment.read_bytes()), _parse_env(restored.environment.read_bytes())
+            assert restored_values["JWT_SECRET_KEY"] != original_values["JWT_SECRET_KEY"]
+            assert {key: value for key, value in restored_values.items() if key != "JWT_SECRET_KEY"} == {
+                key: value for key, value in original_values.items() if key != "JWT_SECRET_KEY"}
             assert restored.request("/health")["database_connected"] is True
+            verify_restore_session_boundary(restored, old_sessions, receipt_signature)
             verify(restored, references)
-            print("Private PostgreSQL server passed: concurrent users, receipts/reversal, TOTP, preferences, uploads, recreation and encrypted recovery after source deletion.")
+            print("Private PostgreSQL server passed: users, receipts/reversal, TOTP, preferences, uploads, encrypted source-gone recovery, revoked restored families/legacy tokens and preserved normal-restart sessions.")
         finally:
             if restored.environment.exists():
                 restored.compose("down", "--volumes", "--remove-orphans", timeout=120)

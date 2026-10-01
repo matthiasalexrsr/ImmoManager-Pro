@@ -67,6 +67,21 @@ wird der neue Ordner freigegeben. Falsche Passphrase, beschädigtes Archiv,
 fehlende Anhänge, unlesbare Verzeichnisse oder Fehler bei der Veröffentlichung
 erzeugen keine teilweise wiederhergestellte Installation.
 
+Vor der Freigabe widerruft die vorbereitete Kopie sämtliche aktiven
+Sitzungsfamilien mit `database_restore`; verbrauchte Refresh-Fingerprints und
+frühere Widerrufe bleiben erhalten. Ein neuer zufälliger JWT-Signierschlüssel
+sperrt auch ältere Access-/Refresh-Tokens ohne Familienstand. Nach einem
+Restore neu anmelden. Normale Neustarts behalten ihre Sitzungen und verändern
+den Signierschlüssel nicht.
+
+Eigenständige IBAN-/Indexschlüssel bleiben unverändert. Benötigen tatsächlich
+vorhandene alte IBAN-Ciphertexte den früheren JWT-Schlüssel, steht dieser danach
+ausschließlich im expliziten `ENCRYPTION_LEGACY_JWT_KEYS`-Entschlüsselungsring.
+Er ist kein gültiger Signierschlüssel mehr. Die ursprüngliche gesicherte
+Konfiguration bleibt zur Nachvollziehbarkeit erhalten; die effektive
+`configuration.json` und neue `.env` enthalten den neuen Signierschlüssel.
+Ein Fehler im Offline-Sicherheitsabschluss verhindert die Veröffentlichung.
+
 Der Recovery-Starter liest die exakte JSON-Konfiguration in einem frischen
 Prozess. Prüfe anschließend Anmeldung, gegebenenfalls Zwei-Faktor-Anmeldung,
 Kontodaten, Zahlungshistorie, Abrechnungen und Dokument-/Fotodownloads. Externe

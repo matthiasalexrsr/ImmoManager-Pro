@@ -66,8 +66,15 @@ jobs:
           mypy backend/app.py backend/domain backend/repositories backend/plugins
           backend/auth.py backend/dependencies.py backend/middleware.py backend/static_access.py
           backend/settings.py backend/recovery.py backend/services/full_recovery.py
+          backend/services/recovery_sessions.py scripts/restore_session_security.py
           backend/services/recovery_archive.py backend/services/recovery_validation.py
           backend/services/data_transfer.py backend/services/payments.py backend/services/payment_integrity.py
+          backend/services/auth_sessions.py backend/db/session_models.py
+          backend/tax_models.py backend/db/tax_models.py backend/routers/annual_tax.py
+          backend/services/annual_tax_export.py backend/services/annual_tax_source.py
+          backend/services/annual_tax_projection.py backend/services/annual_tax_storage.py
+          backend/db/bank_import_models.py backend/db/bank_import_schema.py
+          backend/services/bank_import_parser.py backend/services/bank_import.py backend/routers/bank_imports.py
           backend/services/rent_ledger.py backend/services/billing_settlement.py backend/services/report_service.py
           backend/routers/billing.py backend/frontend_build.py backend/updater.py backend/maintenance.py
           scripts/backup_scheduler.py --ignore-missing-imports
@@ -130,6 +137,11 @@ jobs:
         env:
           TEST_SERVER_DATABASE_URL: postgresql://immo_ci:isolated_test_database@127.0.0.1:5432/immo_ci
         run: pytest backend/tests/test_outbox_postgres.py -q --tb=short
+
+      - name: Verify retained annual evidence, account sessions and bank imports on PostgreSQL
+        env:
+          TEST_SERVER_DATABASE_URL: postgresql://immo_ci:isolated_test_database@127.0.0.1:5432/immo_ci
+        run: pytest backend/tests/test_annual_tax_postgres.py backend/tests/test_auth_sessions_postgres.py backend/tests/test_bank_imports_postgres.py backend/tests/test_restore_session_security.py::test_pg_offline_restore_streams_ciphertexts_rolls_back_then_revokes_without_dropping_receipts -q --tb=short
 
   browser-e2e:
     name: Browser workflows (Chromium + SQLite)

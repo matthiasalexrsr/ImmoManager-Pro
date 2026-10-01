@@ -45,6 +45,7 @@ const NAV_SECTIONS = [
     ['/accounts', 'finance.accounts.title', AccountIcon],
     ['/bookings', 'finance.bookings.title', BookingIcon],
     ['/datev', 'pages.datev.title', DocumentIcon],
+    ['/annual-tax', 'finance.tax', DocumentIcon],
     ['/invoices', 'finance.invoices.title', InvoiceIcon],
     ['/rent-overview', 'navigation.main.rentOverview', RentIcon],
     ['/statements', 'navigation.main.statements', StatementIcon],

@@ -91,7 +91,16 @@ def _error_response(
 def register_exception_handlers(app: FastAPI) -> None:
     """Register global exception handlers on the FastAPI application."""
 
+    from .services.bank_import import BankImportError
     from .services.integrations.config_store import ConfigStoreError
+
+    @app.exception_handler(BankImportError)
+    async def bank_import_failure(request: Request, exc: BankImportError):
+        logger.warning("Bank operation refused: code=%s status=%s request_id=%s", exc.code, exc.status, request_id_var.get())
+        return JSONResponse(status_code=exc.status, content={"error": {
+            "code": exc.code, "message": str(exc), "details": [exc.detail],
+            "recovery": exc.recovery, "request_id": request_id_var.get() or "-",
+        }})
 
     @app.exception_handler(ConfigStoreError)
     async def integration_config_failure(request: Request, exc: ConfigStoreError):

@@ -102,7 +102,11 @@ def test_full_roundtrip_preserves_every_table_uploads_and_configuration(plan, bu
     assert (target / "integrations.json").read_bytes() == plan.integration_state.read_bytes()
     assert (target / "original-runtime.env").read_bytes() == plan.runtime_env.read_bytes()
     config = json.loads((target / "configuration.json").read_text(encoding="utf-8"))
-    assert config["JWT_SECRET_KEY"] == plan.configuration["JWT_SECRET_KEY"]
+    assert config["JWT_SECRET_KEY"] != plan.configuration["JWT_SECRET_KEY"]
+    assert len(config["JWT_SECRET_KEY"]) == 96
+    assert config["ENCRYPTION_KEY"] == plan.configuration["ENCRYPTION_KEY"]
+    assert config["ENCRYPTION_INDEX_KEY"] == plan.configuration["ENCRYPTION_INDEX_KEY"]
+    assert result["signing_key_rotated"] is True
     assert config["UPLOADS_DIR"] == str(target / "uploads")
     assert before["rows"]["users"] == 1
     assert before["rows"]["payment_reversals"] == 1
@@ -566,5 +570,7 @@ def test_recovered_configuration_json_is_authoritative_for_next_backup(plan, tmp
     (target / ".env").write_text("JWT_SECRET_KEY=wrong-copy\nDATABASE_URL=sqlite:///:memory:\n", encoding="utf-8")
     next_plan = _plan(Namespace(data_dir=target, database=None, uploads=None, integrations=None))
     assert next_plan.database == target / "database.sqlite3"
-    assert next_plan.configuration["JWT_SECRET_KEY"] == plan.configuration["JWT_SECRET_KEY"]
+    restored_config = json.loads((target / "configuration.json").read_text(encoding="utf-8"))
+    assert next_plan.configuration["JWT_SECRET_KEY"] == restored_config["JWT_SECRET_KEY"]
+    assert next_plan.configuration["JWT_SECRET_KEY"] != plan.configuration["JWT_SECRET_KEY"]
     recovery.create_full_backup(next_plan, tmp_path / "second-generation.immobak", PASSPHRASE, offline=True)
