@@ -3,7 +3,8 @@
 Die vollständige Sicherung umfasst eine lokale SQLite-Installation: sämtliche
 Tabellen einschließlich Benutzer, Passwort-Hashes, Zwei-Faktor-Zustand,
 Installationsmarker, Belegen, Gegenbelegen und Abrechnungen, den gewählten
-Upload-Baum, Einstellungen einschließlich JWT-Schlüssel und Integrationszustand.
+Upload-Baum, Einstellungen einschließlich JWT- und eigenständiger
+IBAN-Verschlüsselungsschlüssel sowie Integrationszustand.
 Programmcode und externe HTTP-/S3-Dateien sind separat zu erhalten. Der Befehl
 meldet die Anzahl externer Dateiverweise, ohne deren URLs auszugeben.
 
@@ -25,7 +26,9 @@ Der ausdrücklich gewählte Datenordner und dessen `.env` bestimmen die Quelle.
 Bei wiederhergestellten Installationen hat `configuration.json` Vorrang. Fremde
 Terminalvariablen werden dabei ignoriert. Ohne gespeicherten JWT-Schlüssel wird
 die Sicherung abgelehnt; dieser Schlüssel muss mit der ursprünglichen Laufzeit
-übereinstimmen. Schlüsselabhängige IBANs werden vor Veröffentlichung geprüft.
+übereinstimmen. IBAN-Verschlüsselung hat eigene dauerhaft gespeicherte Schlüssel;
+ein Wechsel des Sitzungsschlüssels verändert diese nicht. Schlüsselabhängige
+IBANs werden vor Veröffentlichung geprüft.
 
 ## Alte Upload-Speicherorte
 
@@ -81,9 +84,11 @@ Der Windows-Scheduler erstellt konsistente, unverschlüsselte Datenbank-Snapshot
 mit allen Tabellen; externe Konfiguration und Anhänge fehlen darin. Für eine
 vollständige lokale Wiederherstellung das verschlüsselte Archiv verwenden.
 
-Standardgrenzen: 8 GiB Gesamtumfang, 4 GiB je Datei, 100.000 Einträge, 16 MiB je
+Einstellbare Standardbudgets: 8 GiB Gesamtumfang, 4 GiB je Datei, 100.000 Einträge, 16 MiB je
 Runtime-Metadatei, 64 MiB Manifest, 32 MiB ZIP-Verzeichnis, 48 Pfad-/JSON-Ebenen
-und 300 Sekunden für den Vorgang. ZIP-Verzeichnis und tatsächliche Eintragszahl
+und 300 Sekunden für den Vorgang. Ein größeres Kapazitätsprofil mit
+`--capacity-file` und optional `--timeout-seconds` ist in [CAPACITY.md](CAPACITY.md)
+beschrieben. ZIP-Verzeichnis und tatsächliche Eintragszahl
 werden vor dem regulären ZIP-Parser begrenzt. SQLite-Sicherung umfasst bestätigte
 WAL-Änderungen. Änderungen durch andere Schreiber während der Sicherung führen
 zum Abbruch; der Offline-Betrieb ist Voraussetzung.

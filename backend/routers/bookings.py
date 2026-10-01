@@ -1,12 +1,45 @@
 from datetime import date
+from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, status
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from ..dependencies import store
 from ..models import Booking, BookingCreate, BookingPatch
+from ..services.booking_export import booking_csv_chunks, closing_chunks
+from ..services.booking_legacy import legacy_booking_list
+from ..services.booking_lookup import BookingChoices, BookingLookupQuery, LookupKind, booking_choices
+from ..services.booking_query import BookingFilters, BookingPage, BookingPageQuery, BookingQueryError, get_booking_page
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/bookings", tags=["Buchungen"])
+
+
+@router.get("/lookup/{kind}", response_model=BookingChoices)
+def lookup_bookings(kind: LookupKind, query: Annotated[BookingLookupQuery, Query()]):
+    try:
+        return booking_choices(store, kind, query)
+    except BookingQueryError as exc:
+        return JSONResponse(status_code=400, content={"error": {
+            "code": exc.clear_code, "message": str(exc), "details": [exc.detail]}})
+
+
+@router.get("/page", response_model=BookingPage)
+def booking_page(query: Annotated[BookingPageQuery, Query()]):
+    try:
+        return get_booking_page(store, query)
+    except BookingQueryError as exc:
+        # The global legacy HTTPException adapter stringifies structured detail.
+        # Keep a machine-readable recovery code through the regular API client.
+        return JSONResponse(status_code=400, content={"error": {
+            "code": exc.clear_code, "message": str(exc), "details": [exc.detail]}})
+
+
+@router.get("/export.csv")
+def export_bookings(filters: Annotated[BookingFilters, Query()]):
+    return StreamingResponse(closing_chunks(booking_csv_chunks(store, filters)),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="bookings.csv"', "Cache-Control": "no-store"})
 
 
 @router.get("", response_model=list[Booking])
@@ -22,30 +55,10 @@ def list_bookings(
     date_to: date | None = Query(None),
 ) -> list[Booking]:
     filters = {"account_id": account_id, "tenant_id": tenant_id, "status": status_filter}
-    has_date_filter = isinstance(date_from, date) or isinstance(date_to, date)
-    results = store._list_paginated(
-        entity_type="booking",
-        skip=0 if has_date_filter else skip,
-        limit=10000 if has_date_filter else limit,
-        filters=filters,
-        order_by=sort_by,
-        order_desc=(sort_order == "desc"),
-    )
-    if isinstance(date_from, date):
-        results = [
-            r for r in results
-            if getattr(r, 'booking_date', None)
-            and r.booking_date >= date_from
-        ]
-    if isinstance(date_to, date):
-        results = [
-            r for r in results
-            if getattr(r, 'booking_date', None)
-            and r.booking_date <= date_to
-        ]
-    if has_date_filter:
-        results = results[skip : skip + limit]
-    return results
+    return legacy_booking_list(store, skip=skip, limit=limit, filters=filters,
+        sort_by=sort_by, descending=sort_order == "desc",
+        date_from=date_from if isinstance(date_from, date) else None,
+        date_to=date_to if isinstance(date_to, date) else None)
 
 
 @router.post("", response_model=Booking, status_code=status.HTTP_201_CREATED)

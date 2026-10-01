@@ -261,11 +261,11 @@ async function postSettlements(page, fixture, periodId, expected) {
   expect(stable(persisted.settlements)).toEqual(stable(result.settlements));
   const region = page.getByRole('region', { name: 'Verbuchte Abrechnungsergebnisse', exact: true });
   const money = value => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(value);
-  for (const [label, key] of [['Verbuchte Forderungen', 'debts_total'], ['Verfügbare Guthaben', 'credits_total'], ['Netto (Forderungen − Guthaben)', 'net_amount']]) {
+  for (const [label, key] of [['Verbuchte Forderungen', 'debts_total'], ['Gebuchte Abrechnungsguthaben', 'credits_total'], ['Netto (Forderungen − Guthaben)', 'net_amount']]) {
     const card = region.locator('.stat-card').filter({ has: page.getByText(label, { exact: true }) });
     await expect(card.locator('.stat-value')).toHaveText(money(expected[key]));
   }
-  await expect(region).toContainText('Guthaben sind verfügbar. Eine Auszahlung wird hier weder erfasst noch bestätigt.');
+  await expect(region).toContainText('Aktuell verfügbare Guthaben und tatsächliche Auszahlungs- oder Verrechnungsbelege stehen im Guthabenjournal.');
   for (const record of result.settlements) {
     expect(record.billing_period_id).toBe(periodId);
     if (record.kind === 'credit') {
@@ -325,7 +325,49 @@ test('available credits persist without creating negative receivables or claimin
   const persisted = await json(page, fixture.headers, `/billing/periods/${fixture.period.id}/settlements`);
   expect(stable(persisted.settlements)).toEqual(stable(posted.settlements));
   const region = page.getByRole('region', { name: 'Verbuchte Abrechnungsergebnisse', exact: true });
-  await expect(region.getByText('Guthaben verfügbar (keine Auszahlung bestätigt)', { exact: true })).toHaveCount(2);
+  await expect(region.getByText('Guthaben aus Abrechnung gebucht', { exact: true })).toHaveCount(2);
+  const contract = fixture.contracts[0];
+  const source = posted.settlements.find(row => row.contract_id === contract.id);
+  const originalAmount = -Number(source.signed_amount);
+  const openJournal = async () => {
+    await region.getByRole('row').filter({ hasText: contract.contract_number })
+      .getByRole('button', { name: 'Guthabenjournal', exact: true }).click();
+    const journal = page.getByRole('region', { name: 'Guthabenjournal', exact: true });
+    await expect(journal.getByRole('button', { name: 'Auszahlung belegen', exact: true })).toBeEnabled();
+    return journal;
+  };
+  let journal = await openJournal();
+  expect((await json(page, fixture.headers, `/billing/contracts/${contract.id}/credit-receipts`)).receipts).toEqual([]);
+  await expect(journal).toContainText('Es wird keine Banküberweisung ausgelöst.');
+  await journal.getByRole('button', { name: 'Auszahlung belegen', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Auszahlung belegen', exact: true });
+  await dialog.getByLabel('Betrag (€)', { exact: false }).fill('10.00');
+  await dialog.getByLabel('Bereits erfolgte Auszahlung', { exact: false }).selectOption('confirmed');
+  await dialog.getByRole('button', { name: 'Beleg verbindlich erfassen', exact: true }).click();
+  const [recorded] = await Promise.all([
+    page.waitForResponse(res => new URL(res.url()).pathname === '/api/v1/billing/credit-payouts' && res.request().method() === 'POST'),
+    page.locator('.confirm-dialog').getByRole('button', { name: 'Bestätigen', exact: true }).click(),
+  ]);
+  expect(recorded.status()).toBe(201);
+  const receipt = await recorded.json();
+  expect(receipt).toMatchObject({ contract_id: contract.id, source_settlement_id: source.id, amount: '10.00', method: 'cash' });
+  await expect(journal.getByText(receipt.id, { exact: true })).toBeVisible();
+  expect((await json(page, fixture.headers, `/billing/contracts/${contract.id}/credits`)).available_amount).toBe((originalAmount - 10).toFixed(2));
+  await openPeriod(page, fixture, 50);
+  journal = await openJournal();
+  await expect(journal.getByText(receipt.id, { exact: true })).toBeVisible();
+  await journal.getByRole('row').filter({ hasText: receipt.id })
+    .getByRole('button', { name: 'Beleg stornieren', exact: true }).click();
+  const reversalDialog = page.getByRole('dialog', { name: 'Beleg stornieren', exact: true });
+  await reversalDialog.getByLabel('Stornogrund', { exact: false }).fill('Geprüfte synthetische Rücknahme');
+  await reversalDialog.getByRole('button', { name: 'Beleg verbindlich erfassen', exact: true }).click();
+  const [reversed] = await Promise.all([
+    page.waitForResponse(res => new URL(res.url()).pathname === `/api/v1/billing/credit-receipts/${receipt.id}/reversal` && res.request().method() === 'POST'),
+    page.locator('.confirm-dialog').getByRole('button', { name: 'Bestätigen', exact: true }).click(),
+  ]);
+  expect(reversed.status()).toBe(201);
+  await expect(journal.getByRole('row').filter({ hasText: receipt.id })).toContainText('Storniert');
+  expect((await json(page, fixture.headers, `/billing/contracts/${contract.id}/credits`)).available_amount).toBe(originalAmount.toFixed(2));
   await mobileEvidence(page, testInfo, 'available-credit-mobile');
 });
 

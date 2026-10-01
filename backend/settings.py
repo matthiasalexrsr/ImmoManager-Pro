@@ -91,6 +91,13 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 7
 
+    # Independent field-encryption keys; never generated from JWT secrets.
+    encryption_key: str = ""
+    encryption_keyring: str = ""
+    encryption_active_key_id: str = "default"
+    encryption_index_key: str = ""
+    encryption_legacy_jwt_keys: str = "[]"
+
     # --- CORS ---
     # In production, explicit origins are required (no wildcards).
     cors_origins: Annotated[list[str], NoDecode] = [

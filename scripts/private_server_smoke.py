@@ -45,7 +45,7 @@ class Installation:
         self.base = f"http://127.0.0.1:{port}"
         self.env = dict(os.environ)
         # Dotenv values, not unrelated process values, define this installation.
-        for key in ("APP_HOST", "APP_ORIGIN", "APP_HTTP_PORT", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB", "JWT_SECRET_KEY", "COMPOSE_FILE", "COMPOSE_PROJECT_NAME", "COMPOSE_ENV_FILES", "COMPOSE_PROFILES"):
+        for key in ("APP_HOST", "APP_ORIGIN", "APP_HTTP_PORT", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB", "JWT_SECRET_KEY", "ENCRYPTION_KEY", "ENCRYPTION_KEYRING", "ENCRYPTION_INDEX_KEY", "ENCRYPTION_ACTIVE_KEY_ID", "ENCRYPTION_LEGACY_JWT_KEYS", "COMPOSE_FILE", "COMPOSE_PROJECT_NAME", "COMPOSE_ENV_FILES", "COMPOSE_PROFILES"):
             self.env.pop(key, None)
 
     def compose(self, *arguments: str, input: bytes | None = None, expected: int = 0, timeout: int = 900):
@@ -55,7 +55,7 @@ class Installation:
         if result.returncode != expected:
             output = (result.stdout + result.stderr).decode('utf-8', errors='replace')
             values = dict(line.split('=', 1) for line in self.environment.read_text().splitlines() if '=' in line)
-            for secret in (values.get('POSTGRES_PASSWORD'), values.get('JWT_SECRET_KEY'), PASSWORD):
+            for secret in (values.get('POSTGRES_PASSWORD'), values.get('JWT_SECRET_KEY'), values.get('ENCRYPTION_KEY'), values.get('ENCRYPTION_INDEX_KEY'), values.get('ENCRYPTION_KEYRING'), PASSWORD):
                 if secret:
                     output = output.replace(secret, '[redacted]')
             raise RuntimeError(f"Disposable Compose operation {arguments[0]} failed (exit {result.returncode}):\n{output[-8000:]}")
@@ -115,7 +115,11 @@ def seed(installation: Installation, owner: str) -> dict:
     generated = installation.request("/api/v1/rent-charges/generate", method="POST", token=owner, data={**request, "preview_hash": preview["preview_hash"]})
     assert generated["created_count"] == 1
     charge = generated["created"][0]
-    account = create("/accounts", {"portfolio_id": portfolio["id"], "name": "Synthetic Bank", "account_type": "bank"})
+    account = create("/accounts", {"portfolio_id": portfolio["id"], "name": "Synthetic Bank", "account_type": "bank", "iban": "DE89370400440532013000"})
+    assert account["iban"] == "DE89370400440532013000"
+    encrypted = installation.compose("exec", "-T", "db", "sh", "-c",
+        'exec psql --no-password -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT count(*) FROM accounts WHERE iban LIKE \'enc:v1:%\' AND length(iban_fingerprint)=64"')
+    assert encrypted.stdout.strip() == b"1"
     booking = create("/bookings", {"account_id": account["id"], "booking_date": "2026-09-03", "amount": 1000})
     payment = create(f"/rent-charges/{charge['id']}/payments", {"amount": "1000.00", "payment_date": "2026-09-03", "booking_id": booking["id"], "idempotency_key": str(uuid4())})
     assert installation.request(f"/api/v1/rent-charges/{charge['id']}", token=owner)["amount_paid"] == 1000
@@ -137,7 +141,7 @@ def seed(installation: Installation, owner: str) -> dict:
     setup = installation.request("/api/v1/auth/2fa/setup", method="POST", token=owner, data={})
     installation.request("/api/v1/auth/2fa/verify", method="POST", token=owner, data={"code": totp(setup["secret"])})
     return {"charge": charge["id"], "payment": payment["id"], "reversal": reversal["id"], "file": file_url,
-            "totp": setup["secret"], "viewer": viewers[0]["id"]}
+            "totp": setup["secret"], "viewer": viewers[0]["id"], "account": account["id"]}
 
 
 def verify(installation: Installation, references: dict):
@@ -145,6 +149,10 @@ def verify(installation: Installation, references: dict):
     assert len(installation.request("/api/v1/auth/users", token=token)) == 3
     assert installation.request("/api/v1/auth/setup-status")["setup_required"] is False
     assert installation.request(references["file"], token=token) == FILE_BYTES
+    assert installation.request("/api/v1/accounts/" + references["account"], token=token)["iban"] == "DE89370400440532013000"
+    encrypted = installation.compose("exec", "-T", "db", "sh", "-c",
+        'exec psql --no-password -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT count(*) FROM accounts WHERE iban LIKE \'enc:v1:%\' AND length(iban_fingerprint)=64"')
+    assert encrypted.stdout.strip() == b"1"
     charge = installation.request("/api/v1/rent-charges/" + references["charge"], token=token)
     assert charge["amount_paid"] == 40.1
     receipts = installation.request(f"/api/v1/rent-charges/{references['charge']}/payments", token=token)

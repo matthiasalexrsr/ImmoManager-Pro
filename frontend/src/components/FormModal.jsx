@@ -21,9 +21,12 @@ function reachableControls(modal) {
     });
 }
 
-export default function FormModal({ title, fields, initial, onSave, onClose, children, saveDisabled = false, closeOnSave = true, saveLabel }) {
+export default function FormModal({ title, fields, initial, onSave, onClose, children, saveDisabled = false, closeOnSave = true, saveLabel, onValuesChange }) {
   const { t } = useTranslation();
   const [values, setValues] = useState(() => initialValues(fields, initial));
+  const valuesListener = useRef(onValuesChange);
+  useLayoutEffect(() => { valuesListener.current = onValuesChange; }, [onValuesChange]);
+  useEffect(() => { valuesListener.current?.(values); }, [values]);
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
   const original = useRef(initial);

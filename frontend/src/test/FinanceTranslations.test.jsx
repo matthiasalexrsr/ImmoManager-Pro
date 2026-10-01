@@ -10,13 +10,14 @@ import en from '../../../i18n/en-US.json';
 import es from '../../../i18n/es-ES.json';
 
 vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ role: 'eigentuemer' }) }));
-vi.mock('../api', () => ({ api: { getAll: vi.fn(async () => []) } }));
+vi.mock('../api', () => ({ api: { getAll: vi.fn(async () => []), get: vi.fn(async path => path.startsWith('/bookings/page?')
+  ? { items: [], next_cursor: null, has_more: false } : { items: [], selected: null, next_cursor: null, has_more: false }) } }));
 const catalogs = { 'de-DE': de, 'en-US': en, 'es-ES': es };
 const lookup = (messages, key) => key.split('.').reduce((value, part) => value?.[part], messages);
 const pages = ['Accounts', 'Bookings', 'Invoices', 'Receivables', 'RentCharges',
   'RentAdjustments', 'Budgets', 'Deposits', 'AllocationKeys', 'Categories',
   'TaxRates', 'Insurances', 'Meters', 'Statements'];
-const components = ['FinanceCrudPage', 'FinanceLoadState', 'FormModal', 'DataTable'];
+const components = ['FinanceCrudPage', 'FinanceLoadState', 'FormModal', 'DataTable', 'BookingEditor'];
 const sources = [
   ...pages.map(name => `../pages/${name}.jsx`),
   ...components.map(name => `../components/${name}.jsx`),

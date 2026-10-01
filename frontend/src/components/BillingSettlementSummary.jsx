@@ -3,11 +3,14 @@ import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { parseSettlementSummary } from '../utils/billingSettlements';
 import DataTable from './DataTable';
+import CreditJournal from './CreditJournal';
 
 /** Read-only settlement ledger: credits are available, not evidence of a payout. */
 export default function BillingSettlementSummary({ period, contracts = {}, refreshKey = 0 }) {
   const { t, locale } = useTranslation();
   const [retry, setRetry] = useState(0);
+  const [credit, setCredit] = useState(null);
+  const [creditBusy, setCreditBusy] = useState(false);
   const [state, setState] = useState({ key: null, data: null, error: null });
   const periodId = period.id;
   const requestKey = `${periodId}:${refreshKey}:${retry}`;
@@ -42,6 +45,8 @@ export default function BillingSettlementSummary({ period, contracts = {}, refre
     { key: 'status', label: t('ui.form.status'), render: value => text(`status.${value}`) },
     { key: 'receivable_id', label: text('reference'), render: (value, row) => value
       ? `${text(row.kind === 'credit' ? 'historicalReference' : 'receivable')}: ${value}` : '—' },
+    { key: 'credit_action', label: t('pages.statements.credits.title'), render: (_, row) =>
+      <button type="button" className="btn btn-secondary" disabled={creditBusy} onClick={() => setCredit({ periodId, contractId: row.contract_id, sourceId: row.kind === 'credit' ? row.id : null })}>{t('pages.statements.credits.title')}</button> },
   ];
 
   return <section className="card billing-settlement-summary" aria-label={text('title')} style={{ marginBottom: '1rem', minWidth: 0 }}>
@@ -68,6 +73,7 @@ export default function BillingSettlementSummary({ period, contracts = {}, refre
         </div>
         <p>{text('notPaidOut')}</p>
         {rows.length ? <DataTable title={text('entries')} data={rows} columns={columns} /> : <p>{text('empty')}</p>}
+        {credit?.periodId === periodId && <CreditJournal key={`${periodId}:${credit.contractId}`} {...credit} onBusyChange={setCreditBusy} onClose={() => setCredit(null)} />}
       </>}
     </div>
   </section>;

@@ -72,14 +72,18 @@ class BaseRepository:
     def _booking_condition(self, orm_obj, updates):
         if self.orm_class.__tablename__ != "bookings":
             return None
+        from ..db.credit_models import CreditReceiptORM
         from ..db.orm_models import PaymentORM
         from ..services.payment_integrity import BOOKING_FIELDS, guard_booking_edit
         has_receipts = self.db.scalar(select(PaymentORM.id).where(PaymentORM.booking_id == orm_obj.id).limit(1)) is not None
+        has_receipts = has_receipts or self.db.scalar(select(CreditReceiptORM.id)
+            .where(CreditReceiptORM.booking_id == orm_obj.id).limit(1)) is not None
         guard_booking_edit(orm_obj, updates, has_receipts)
         if not any(key in updates and updates[key] != getattr(orm_obj, key) for key in BOOKING_FIELDS):
             return None
         # Allocation may race a booking edit. Both writes arbitrate on the booking row.
-        return ~exists(select(PaymentORM.id).where(PaymentORM.booking_id == orm_obj.id))
+        return (~exists(select(PaymentORM.id).where(PaymentORM.booking_id == orm_obj.id)) &
+            ~exists(select(CreditReceiptORM.id).where(CreditReceiptORM.booking_id == orm_obj.id)))
 
     def _revision_condition(self, entity_id):
         try:

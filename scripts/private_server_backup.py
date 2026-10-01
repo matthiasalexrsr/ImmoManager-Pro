@@ -63,8 +63,11 @@ from backend.services.recovery_archive import (  # noqa: E402
 
 CHUNK = 1024 * 1024
 MEMBERS = ("database.dump", "appdata.tar.gz", "server.env", "manifest.json")
-ENV_KEYS = frozenset({"APP_ORIGIN", "APP_HOST", "APP_HTTP_PORT", "POSTGRES_USER",
+REQUIRED_ENV_KEYS = frozenset({"APP_ORIGIN", "APP_HOST", "APP_HTTP_PORT", "POSTGRES_USER",
                       "POSTGRES_DB", "POSTGRES_PASSWORD", "JWT_SECRET_KEY"})
+ENCRYPTION_ENV_KEYS = frozenset({"ENCRYPTION_KEY", "ENCRYPTION_KEYRING", "ENCRYPTION_ACTIVE_KEY_ID",
+                                 "ENCRYPTION_INDEX_KEY", "ENCRYPTION_LEGACY_JWT_KEYS"})
+ENV_KEYS = REQUIRED_ENV_KEYS | ENCRYPTION_ENV_KEYS
 PG_DUMP = 'exec pg_dump -Fc --no-owner --no-acl --no-password -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
 PG_LIST = 'exec pg_restore --list'
 PG_RESTORE = ('exec pg_restore --exit-on-error --no-owner --no-privileges --no-password '
@@ -313,10 +316,11 @@ def _parse_env(data: bytes) -> dict[str, str]:
         if not line or line.startswith("#"):
             continue
         key, equal, value = line.partition("=")
-        if not equal or key not in ENV_KEYS or key in values or not value or any(c in value for c in "\x00$\"'\\"):
+        if (not equal or key not in ENV_KEYS or key in values or not value or any(c in value for c in "\x00$\\")
+                or key not in ENCRYPTION_ENV_KEYS and any(c in value for c in "\"'")):
             raise BackupError("Serverkonfiguration enthält unbekannte, doppelte oder unsichere Werte.")
         values[key] = value
-    if set(values) != ENV_KEYS:
+    if not REQUIRED_ENV_KEYS <= set(values):
         raise BackupError("Serverkonfiguration ist unvollständig.")
     try:
         origin = urlsplit(values["APP_ORIGIN"])
@@ -331,6 +335,12 @@ def _parse_env(data: bytes) -> dict[str, str]:
         raise BackupError("Nicht unterstützter PostgreSQL-Datenbank-/Benutzername.")
     if any(not re.fullmatch(r"[0-9a-fA-F]{64,256}", values[key]) for key in ("POSTGRES_PASSWORD", "JWT_SECRET_KEY")):
         raise BackupError("Serverkonfiguration benötigt die generierten hexadezimalen Schlüssel.")
+    if values.keys() & ENCRYPTION_ENV_KEYS:
+        from backend.services.iban_encryption import IBANEncryptionError, keyring_from_configuration
+        try:
+            keyring_from_configuration(values)
+        except IBANEncryptionError:
+            raise BackupError("Serverkonfiguration enthält ungültige IBAN-Schlüssel. Schlüsselkonfiguration prüfen.") from None
     return values
 
 
@@ -944,7 +954,8 @@ def _read_password(from_stdin: bool, *, confirm: bool) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = _ArgumentParser(description="Verschlüsseltes privates Serverbackup (PostgreSQL + Appdaten + Serverkonfiguration)")
     parser.add_argument("--compose-file", type=Path, default=ROOT / "compose.private-server.yml")
-    parser.add_argument("--timeout-seconds", type=float, default=900)
+    parser.add_argument("--timeout-seconds", type=float)
+    parser.add_argument("--capacity-file", type=Path, help="JSON-Kapazitätsprofil für große Installationen")
     commands = parser.add_subparsers(dest="command", required=True)
     save = commands.add_parser("backup", help="App kurz anhalten und ein neues verschlüsseltes Paket erstellen")
     save.add_argument("--project", required=True)
@@ -957,10 +968,16 @@ def main(argv: list[str] | None = None) -> int:
     for command in (save, load):
         command.add_argument("--compose-file", type=Path, default=argparse.SUPPRESS)
         command.add_argument("--timeout-seconds", type=float, default=argparse.SUPPRESS)
+        command.add_argument("--capacity-file", type=Path, default=argparse.SUPPRESS)
         command.add_argument("--password-stdin", action="store_true", help="Passphrase aus einer geschützten stdin-Pipe lesen")
     args = parser.parse_args(argv)
     try:
-        limits = Limits(timeout_seconds=args.timeout_seconds)
+        from backend.services.capacity_settings import CapacityProfileError, load_capacity
+        try:
+            limits = load_capacity(args.capacity_file, "private_server_backup", Limits,
+                                   overrides={"timeout_seconds": args.timeout_seconds} if args.timeout_seconds is not None else None)
+        except CapacityProfileError as exc:
+            raise BackupError(str(exc)) from None
         password = _read_password(args.password_stdin, confirm=args.command == "backup")
         if args.command == "backup":
             backup(project=args.project, destination=args.destination, compose_file=args.compose_file,

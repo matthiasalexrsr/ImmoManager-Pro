@@ -130,3 +130,17 @@ Before backend startup the runner applies `alembic upgrade head` to its own
 new temporary database. Automatic operational and backup workers are explicitly
 disabled for these deterministic manual workflows. The runner neither migrates
 nor changes any configured user database or uploads directory.
+
+`bookings-scale.pw.mjs` creates 64 synthetic ledger rows through the genuine
+authenticated API and traverses three server pages using their returned cursors.
+It checks complete filtered CSV downloads, spreadsheet formula escaping,
+bounded editor lookups, lookup Enter without implicit writes, an actual
+`If-Match` edit and persistence after reload. The direct CSV case writes into
+an actual browser OPFS `FileSystemWritableFileStream`: only the interactive file
+chooser is substituted, while HTTP, database reads and streaming stay real.
+Desktop, 390/320-pixel layouts and the mobile editor are inspected with attached
+screenshots and the shared uncaught-error guard.
+
+```sh
+npm run test:e2e -- bookings-scale.pw.mjs
+```

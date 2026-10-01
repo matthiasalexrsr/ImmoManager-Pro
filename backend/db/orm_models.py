@@ -21,8 +21,11 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+from .encrypted_types import EncryptedIBAN, register_account_encryption
 
 
 def _utcnow():
@@ -168,7 +171,8 @@ class AccountORM(Base):
     portfolio_id: Mapped[str] = mapped_column(ForeignKey("portfolios.id", ondelete="CASCADE"), nullable=False)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     bank_name: Mapped[str | None] = mapped_column(Text)
-    iban: Mapped[str | None] = mapped_column(Text)
+    iban: Mapped[str | None] = mapped_column(EncryptedIBAN())
+    iban_fingerprint: Mapped[str | None] = mapped_column(String(64))
     bic: Mapped[str | None] = mapped_column(Text)
     account_type: Mapped[str] = mapped_column(Text, nullable=False)
     opening_balance: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), default=0.0)
@@ -182,7 +186,18 @@ class AccountORM(Base):
     __table_args__ = (
         Index("idx_accounts_portfolio", "portfolio_id"),
         UniqueConstraint("iban", name="uq_accounts_iban"),
+        Index("uq_accounts_iban_fingerprint", "iban_fingerprint", unique=True),
+        Index(
+            "ix_accounts_iban_unindexed",
+            "iban_fingerprint",
+            "iban",
+            sqlite_where=text("iban IS NOT NULL AND iban != '' AND iban_fingerprint IS NULL"),
+            postgresql_where=text("iban IS NOT NULL AND iban != '' AND iban_fingerprint IS NULL"),
+        ),
     )
+
+
+register_account_encryption(AccountORM)
 
 
 class CategoryORM(Base):
@@ -220,7 +235,7 @@ class BookingORM(Base):
         Index("idx_bookings_account", "account_id"),
         Index("idx_bookings_account_date", "account_id", "booking_date"),
         CheckConstraint("amount != 0", name="ck_bookings_amount_nonzero"),
-        CheckConstraint("allocated_amount >= 0 AND (allocated_amount = 0 OR allocated_amount <= amount)", name="ck_bookings_allocation"),
+        CheckConstraint("allocated_amount >= 0 AND allocated_amount <= abs(amount)", name="ck_bookings_allocation"),
     )
 
 

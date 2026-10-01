@@ -12,6 +12,16 @@ SQL liest jede Sammlung mit Mieter-/Vertrags-Subqueries und lädt Stornos gemein
 
 Die reine Beziehungsgrafik und ihre zusätzlichen Tests stammen aus dem bestehenden Assistenz-Chat „Software verbessern“. Die produktive SQL-Eingrenzung, Snapshot-Transaktion, Rechte, Download-, Bestätigungs- und Rollbackpfade wurden im Repository ergänzt und geprüft.
 
+Version 2 ergänzt die tatsächlich gespeicherten Guthabenbelege einschließlich
+Verrechnungszahlung und zugehöriger Stornos. Eine Verrechnung ohne passende eigene
+Zahlung, Forderung oder Guthabenquelle bricht den Export ab. Die Guthabenstände
+zeigen den aktuellen kohärenten Snapshot: verbrauchtes Guthaben wird abgezogen,
+Korrekturforderungen derselben Abrechnungskette reservieren die verbleibenden
+Mittel. Das ist ein eigener Stand und wird nicht einem historischen Mietsaldo
+zugeschlagen. Guthabenänderungen machen eine bereits geprüfte
+Anonymisierungsvorschau ungültig. Referenzierte Bankauszahlungen übernehmen keine
+Texte oder Dateipfade unzugeordneter Bankbuchungen in den Export.
+
 ## Anonymisierung
 
 Die Vorschau zeigt unverändert gespeicherte Unterlagen und Finanzbelege sowie die exakt betroffenen Profilfelder. Aktive Verträge verhindern diese Aktion. Die Bedienung verlangt den vollständigen Namen; das API zusätzlich Mieter-ID und SHA256 des geprüften Datenstands.
@@ -30,4 +40,3 @@ Ein anderer Datenstand ergibt409 mit Aufforderung, die Vorschau neu zu laden. Di
 - Realer Edge-Browser: privater Download, parallele Änderung,409, erneute Prüfung und explizite Profil-Anonymisierung.
 
 Eine Portfolio-Isolation folgt erst mit dem eigenen Berechtigungspaket. Die aktuelle Verwaltungsauthentisierung gilt installationsweit.
-

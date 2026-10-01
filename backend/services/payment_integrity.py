@@ -14,6 +14,15 @@ def guard_booking_edit(old, updates, has_receipts: bool) -> None:
 def guard_memory_delete(store, entity_type: str, entity_id: str) -> None:
     from .billing_settlement import guard_billing_cascade
     guard_billing_cascade(store, entity_type, entity_id)
+    for receipt in store.credit_receipts.values():
+        contract = store.get_contract(receipt.contract_id)
+        booking = store.get_booking(receipt.booking_id) if receipt.booking_id else None
+        credit_ancestors = {"contract": contract.id, "tenant": contract.tenant_id,
+            "property": contract.property_id, "unit": contract.unit_id,
+            "portfolio": store.get_property(contract.property_id).portfolio_id,
+            "booking": receipt.booking_id, "account": booking.account_id if booking else None}
+        if credit_ancestors.get(entity_type) == entity_id:
+            raise ValidationError(HISTORY_MESSAGE)
     for receipt in store.payments.values():
         target = getattr(store, f"get_{receipt.entity_type}")(receipt.entity_id)
         contract = store.get_contract(target.contract_id)
@@ -38,6 +47,7 @@ def guard_memory_delete(store, entity_type: str, entity_id: str) -> None:
 def guard_sql_delete(db, table_name: str, entity_id: str) -> None:
     from .billing_settlement import guard_sql_billing_cascade
     guard_sql_billing_cascade(db, table_name, entity_id)
+    guard_credit_sql_delete(db, table_name, entity_id)
     from sqlalchemy import func, or_, select
 
     from ..db.orm_models import (
@@ -72,5 +82,27 @@ def guard_sql_delete(db, table_name: str, entity_id: str) -> None:
              .outerjoin(PropertyORM, PropertyORM.id == ContractORM.property_id)
              .outerjoin(AccountORM, AccountORM.id == BookingORM.account_id)
              .where(condition).limit(1))
+    if db.scalar(query):
+        raise ValidationError(HISTORY_MESSAGE)
+
+
+def guard_credit_sql_delete(db, table_name, entity_id):
+    from sqlalchemy import select
+
+    from ..db.credit_models import CreditReceiptORM
+    from ..db.orm_models import BookingORM, ContractORM, PropertyORM
+    conditions = {"bookings": CreditReceiptORM.booking_id == entity_id,
+        "contracts": CreditReceiptORM.contract_id == entity_id,
+        "accounts": BookingORM.account_id == entity_id,
+        "tenants": ContractORM.tenant_id == entity_id,
+        "properties": ContractORM.property_id == entity_id,
+        "units": ContractORM.unit_id == entity_id,
+        "portfolios": PropertyORM.portfolio_id == entity_id}
+    if table_name not in conditions:
+        return
+    query = (select(CreditReceiptORM.id).join(ContractORM, ContractORM.id == CreditReceiptORM.contract_id)
+        .join(PropertyORM, PropertyORM.id == ContractORM.property_id)
+        .outerjoin(BookingORM, BookingORM.id == CreditReceiptORM.booking_id)
+        .where(conditions[table_name]).limit(1))
     if db.scalar(query):
         raise ValidationError(HISTORY_MESSAGE)

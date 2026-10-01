@@ -1,8 +1,12 @@
+import base64
 import os
 import shutil
 import sys
 import tempfile
 from pathlib import Path
+
+os.environ.setdefault("ENCRYPTION_KEY", base64.urlsafe_b64encode(b"synthetic-account-key".ljust(32, b"0")).decode("ascii"))
+os.environ.setdefault("ENCRYPTION_INDEX_KEY", base64.urlsafe_b64encode(b"synthetic-index-key".ljust(32, b"0")).decode("ascii"))
 
 # Select the backend before application imports initialize its database.
 _backend = os.environ.get("TEST_STORE_BACKEND", "memory")

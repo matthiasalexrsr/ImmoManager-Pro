@@ -57,10 +57,13 @@ def metadata_download(graph: dict):
 
 
 def _scoped_graph(store, tenant_id):
+    snapshot = store
     if getattr(store, "db", None) is not None:
         from .tenant_graph_source import TenantGraphSource
         store = TenantGraphSource(store, tenant_id)
-    return tenant_data_graph(store, tenant_id)
+    graph = tenant_data_graph(store, tenant_id)
+    from .tenant_credit_graph import append_credit_graph
+    return append_credit_graph(snapshot, graph)
 
 
 @contextmanager

@@ -1,6 +1,5 @@
 """Validate secret-dependent fields and local document paths in recovery images."""
 
-import base64
 import hashlib
 import json
 import sqlite3
@@ -10,8 +9,6 @@ from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from urllib.parse import parse_qs, unquote, urlsplit
-
-from cryptography.fernet import Fernet, InvalidToken
 
 from .recovery_archive import RecoveryError
 
@@ -26,22 +23,13 @@ def _tables(db):
         yield name, columns
 
 
-def verify_iban_key(database: Path, secret: str, *, deadline: float | None = None):
-    key = hashlib.pbkdf2_hmac("sha256", secret.encode(), b"immomanager-iban-encryption-salt", 100_000)
-    cipher = Fernet(base64.urlsafe_b64encode(key[:32]))
-    with closing(sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True)) as db:
-        db.execute("PRAGMA trusted_schema=OFF")
-        _deadline(db, deadline)
-        for table, columns in _tables(db):
-            for column in sorted(columns & {"iban"}):
-                for (value,) in db.execute("SELECT " + _quote(column) + " FROM " + _quote(table)):
-                    if deadline is not None and time.monotonic() >= deadline:
-                        raise RecoveryError("Schlüsselprüfung hat das Zeitlimit überschritten.")
-                    if isinstance(value, str) and value.startswith("enc:"):
-                        try:
-                            cipher.decrypt(value[4:].encode())
-                        except (InvalidToken, ValueError) as exc:
-                            raise RecoveryError("Das Runtime-Geheimnis kann vorhandene IBAN-Daten nicht entschluesseln.") from exc
+def verify_iban_key(database: Path, configuration: dict[str, str], *, deadline: float | None = None):
+    from .iban_encryption import IBANEncryptionError, verify_iban_database
+    try:
+        verify_iban_database(database, configuration, deadline=deadline)
+    except IBANEncryptionError as exc:
+        raise RecoveryError("IBAN-Schlüsselprüfung fehlgeschlagen (" + exc.code +
+                            "). Gesicherte Schlüsselkonfiguration prüfen und erneut versuchen.") from None
 
 
 _REFERENCE_COLUMNS = {"file_url", "receipt_url", "file_path", "document_url", "document_path", "receipt_path", "storage_key", "ocr_url", "photo_url"}

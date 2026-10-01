@@ -158,6 +158,10 @@ def atomic_billing(store, period_id: str):
             root = _root_period(store, period_id)
             db.execute(select(BillingPeriodORM).where(BillingPeriodORM.id == root.id).with_for_update()
                 .execution_options(populate_existing=True)).scalar_one()
+            from .credit_ledger import lock_contract
+            contracts = {c.id for c in store.list_contracts() if c.property_id == root.property_id}
+            for contract_id in sorted(contracts):
+                lock_contract(db, contract_id)
             db.expire_all()
             yield
             db.commit()

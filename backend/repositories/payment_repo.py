@@ -38,7 +38,15 @@ def _read(db: Session, row: PaymentORM) -> Payment:
         entity_type="receivable" if row.receivable_id else "rent_charge",
         entity_id=row.receivable_id or row.rent_charge_id or "",
         reversal=_read_reversal(reversal) if reversal else None,
+        credit_receipt_id=_credit_receipt_id(db, row),
     )
+
+
+def _credit_receipt_id(db, row):
+    if not row.idempotency_key.startswith("credit-offset:"):
+        return None
+    from ..db.credit_models import CreditReceiptORM
+    return db.scalar(select(CreditReceiptORM.id).where(CreditReceiptORM.payment_id == row.id))
 
 
 def list_payments(db: Session, entity_type=None, entity_id=None) -> list[Payment]:
@@ -91,12 +99,20 @@ def _update_booking(db, booking, allocated):
         raise ValidationError("Die Bankbuchung wurde zwischenzeitlich geändert. Bitte neu laden.")
 
 
-def record_payment(db: Session, entity_type: EntityType, entity_id: str, payload: PaymentCreate) -> Payment:
+def record_payment(db: Session, entity_type: EntityType, entity_id: str, payload: PaymentCreate, *, commit=True,
+                   expected_contract_id=None) -> Payment:
     cls, target = _target(db, entity_type, entity_id)
+    if expected_contract_id is not None and target.contract_id != expected_contract_id:
+        raise ValidationError("Die Forderung gehört nicht mehr zum Vertrag der Guthabenquelle.")
     existing = db.scalar(select(PaymentORM).where(PaymentORM.idempotency_key == payload.idempotency_key))
     if existing:
         return validate_replay(_read(db, existing), entity_type, entity_id, payload)
     try:
+        from ..services.credit_ledger import lock_contract
+        lock_contract(db, target.contract_id)
+        cls, target = _target(db, entity_type, entity_id)
+        if expected_contract_id is not None and target.contract_id != expected_contract_id:
+            raise ValidationError("Die Forderung gehört nicht mehr zum Vertrag der Guthabenquelle.")
         paid, status = next_balance(entity_type, target, payload)
         if payload.booking_id:
             booking = _booking(db, payload.booking_id)
@@ -110,26 +126,35 @@ def record_payment(db: Session, entity_type: EntityType, entity_id: str, payload
         db.add(row)
         db.flush()
         payment = _read(db, row)
-        db.commit()
-        db.expire_all()
+        if commit:
+            db.commit()
+            db.expire_all()
         return payment
     except (IntegrityError, ValidationError):
+        if not commit:
+            raise
         db.rollback()
         existing = db.scalar(select(PaymentORM).where(PaymentORM.idempotency_key == payload.idempotency_key))
         if existing:
             return validate_replay(_read(db, existing), entity_type, entity_id, payload)
         raise
     except Exception:
-        db.rollback()
+        if commit:
+            db.rollback()
         raise
 
 
 def reverse_payment(db: Session, entity_type: EntityType, entity_id: str, payment_id: str,
-                    payload: PaymentReversalCreate) -> PaymentReversal:
+                    payload: PaymentReversalCreate, *, commit=True, credit_internal=False) -> PaymentReversal:
     cls, target = _target(db, entity_type, entity_id)
     row = db.get(PaymentORM, payment_id)
     if row is None or getattr(row, f"{entity_type}_id") != entity_id:
         raise NotFoundError("Zahlungsbeleg nicht gefunden")
+    payment = _read(db, row)
+    if payment.credit_receipt_id and not credit_internal:
+        from ..repositories.sql_store import SQLAlchemyStore
+        from ..services.credit_ledger import reverse_linked_payment
+        return reverse_linked_payment(SQLAlchemyStore(db), payment, payload)
     existing = db.scalar(select(PaymentReversalORM).where(PaymentReversalORM.idempotency_key == payload.idempotency_key))
     if existing:
         return validate_reversal_replay(_read_reversal(existing), payment_id, payload)
@@ -137,6 +162,17 @@ def reverse_payment(db: Session, entity_type: EntityType, entity_id: str, paymen
     if payment.reversal:
         raise ValidationError("Dieser Zahlungsbeleg wurde bereits storniert.")
     try:
+        from ..services.credit_ledger import lock_contract
+        if not credit_internal:
+            lock_contract(db, target.contract_id)
+        cls, target = _target(db, entity_type, entity_id)
+        # Re-read the receipt after the serialization lock, including its reversal.
+        current_row = db.get(PaymentORM, payment_id, populate_existing=True)
+        if current_row is None:
+            raise NotFoundError("Zahlungsbeleg nicht gefunden")
+        payment = _read(db, current_row)
+        if payment.reversal:
+            raise ValidationError("Dieser Zahlungsbeleg wurde bereits storniert.")
         paid, status = reversed_balance(entity_type, target, payment)
         if payment.booking_id:
             booking = _booking(db, payment.booking_id)
@@ -149,10 +185,13 @@ def reverse_payment(db: Session, entity_type: EntityType, entity_id: str, paymen
         db.add(reversal)
         db.flush()
         result = _read_reversal(reversal)
-        db.commit()
-        db.expire_all()
+        if commit:
+            db.commit()
+            db.expire_all()
         return result
     except (IntegrityError, ValidationError):
+        if not commit:
+            raise
         db.rollback()
         existing = db.scalar(select(PaymentReversalORM).where(PaymentReversalORM.idempotency_key == payload.idempotency_key))
         if existing:
@@ -161,11 +200,15 @@ def reverse_payment(db: Session, entity_type: EntityType, entity_id: str, paymen
             raise ValidationError("Dieser Zahlungsbeleg wurde bereits storniert.") from None
         raise
     except Exception:
-        db.rollback()
+        if commit:
+            db.rollback()
         raise
 
 
 def import_payment(db: Session, payment: Payment) -> Payment:
+    if payment.credit_receipt_id:
+        from ..services.payments import FinancialConsistencyError
+        raise FinancialConsistencyError("Guthabenverrechnungen benötigen das vollständige Serverbackup.")
     _, target = _target(db, payment.entity_type, payment.entity_id)
     existing = db.scalar(select(PaymentORM).where(PaymentORM.idempotency_key == payment.idempotency_key))
     if existing:
@@ -187,7 +230,7 @@ def import_payment(db: Session, payment: Payment) -> Payment:
             allocated = validate_booking(booking, contract, Decimal("0") if payment.reversal else payment.amount,
                                          allocated=active)
             _update_booking(db, booking, allocated)
-        db.add(PaymentORM(**payment.model_dump(exclude={"entity_type", "entity_id", "reversal"}),
+        db.add(PaymentORM(**payment.model_dump(exclude={"entity_type", "entity_id", "reversal", "credit_receipt_id"}),
                           **{f"{payment.entity_type}_id": payment.entity_id}))
         db.flush()
         if payment.reversal:

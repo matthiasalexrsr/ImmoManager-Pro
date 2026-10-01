@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "sqlite_recovery": {
+    "total_bytes": 1099511627776,
+    "file_bytes": 274877906944,
+    "files": 1000000,
+    "manifest_bytes": 536870912,
+    "central_directory_bytes": 268435456,
+    "timeout_seconds": 14400
+  },
+  "private_server_backup": {
+    "package_bytes": 2199023255552,
+    "dump_bytes": 549755813888,
+    "tar_bytes": 1099511627776,
+    "expanded_data_bytes": 1099511627776,
+    "entries": 1000000,
+    "metadata_bytes": 134217728,
+    "timeout_seconds": 14400
+  }
+}

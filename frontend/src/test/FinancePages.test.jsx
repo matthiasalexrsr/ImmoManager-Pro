@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import Accounts from '../pages/Accounts';
-import Bookings from '../pages/Bookings';
 import Invoices from '../pages/Invoices';
 import Receivables from '../pages/Receivables';
 import RentCharges from '../pages/RentCharges';
@@ -39,7 +38,6 @@ vi.mock('../components/DataTable', () => ({
 
 const cases = [
   ['Accounts', Accounts, '/accounts', ['/portfolios']],
-  ['Bookings', Bookings, '/bookings', ['/accounts', '/categories', '/properties', '/units', '/tenants']],
   ['Invoices', Invoices, '/invoices', ['/properties', '/tax-rates']],
   ['Receivables', Receivables, '/receivables', ['/contracts']],
   ['RentCharges', RentCharges, '/rent-charges', ['/contracts']],
@@ -130,7 +128,7 @@ describe.each(cases)('%s finance loading', (_name, Page, path, refs) => {
 });
 
 describe('finance mutations and totals', () => {
-  it.each([['Accounts', Accounts], ['Bookings', Bookings], ['Invoices', Invoices]])('%s shows deletion failures', async (...scenario) => {
+  it.each([['Accounts', Accounts], ['Invoices', Invoices]])('%s shows deletion failures', async (...scenario) => {
     const Page = scenario[1];
     mutationStatus = 409;
     render(<Page />);
@@ -171,7 +169,7 @@ describe('finance mutations and totals', () => {
 });
 
 describe('complete snapshots and form refreshes', () => {
-  it.each(['/bookings', '/accounts'])('does not publish a partial result when page two of %s fails', async source => {
+  it.each(['/accounts', '/portfolios'])('does not publish a partial result when page two of %s fails', async source => {
     mocks.lists[source] = Array.from({ length: 1001 }, (_, index) => row(index));
     const originalFetch = globalThis.fetch;
     vi.stubGlobal('fetch', vi.fn((url, options) => {
@@ -181,7 +179,7 @@ describe('complete snapshots and form refreshes', () => {
       }
       return originalFetch(url, options);
     }));
-    render(<Bookings />);
+    render(<Accounts />);
     expect(await screen.findByRole('alert')).toHaveTextContent('Second page failed');
     expect(screen.queryByTestId('row-count')).not.toBeInTheDocument();
     vi.stubGlobal('fetch', originalFetch);
@@ -191,10 +189,12 @@ describe('complete snapshots and form refreshes', () => {
   });
 
   it('includes references beyond page one in editable selectors', async () => {
-    mocks.lists['/accounts'] = Array.from({ length: 1001 }, (_, index) => row(index));
-    render(<Bookings />);
+    mocks.lists['/portfolios'] = Array.from({ length: 1001 }, (_, index) => row(index));
+    render(<Accounts />);
     fireEvent.click(await screen.findByRole('button', { name: 'Add' }));
-    expect(screen.getByRole('option', { name: 'Name 1000' })).toHaveValue('row-1000');
+    const option = screen.getByRole('dialog').querySelector('option[value="row-1000"]');
+    expect(option).toHaveTextContent('Name 1000');
+    expect(option).toHaveValue('row-1000');
   });
   it('does not reopen a saved form or repeat a write when reloading fails', async () => {
     render(<TaxRates />);

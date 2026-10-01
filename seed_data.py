@@ -698,7 +698,7 @@ def seed():
         for contract_id, adj_type, eff_date, prev, new, pct, notes in adj_data:
             store.create_rent_adjustment(RentAdjustmentCreate(
                 contract_id=contract_id, adjustment_type=adj_type, effective_date=eff_date,
-                previous_rent=prev, new_rent=new, increase_percent=pct, notes=notes, status="approved",
+                previous_rent=prev, new_rent=new, increase_percent=pct, notes=notes, status="pending",
             ))
         print(f"  {len(adj_data)} Mietanpassungen erstellt")
 

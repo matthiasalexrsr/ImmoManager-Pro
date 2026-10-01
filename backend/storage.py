@@ -195,6 +195,8 @@ class InMemoryStore:
     messages: Dict[str, Message] = field(default_factory=dict)
     rent_charges: Dict[str, RentCharge] = field(default_factory=dict)
     payments: Dict[str, Any] = field(default_factory=dict)
+    credit_receipts: Dict[str, Any] = field(default_factory=dict)
+    credit_reversals: Dict[str, Any] = field(default_factory=dict)
     insurances: Dict[str, Insurance] = field(default_factory=dict)
     entity_photos: Dict[str, EntityPhoto] = field(default_factory=dict)
 
@@ -623,7 +625,8 @@ class InMemoryStore:
             raise ValidationError("Mieter existiert nicht")
         old = self.bookings[booking_id]
         from .services.payment_integrity import guard_booking_edit
-        guard_booking_edit(old, data.model_dump(), any(p.booking_id == booking_id for p in self.payments.values()))
+        guard_booking_edit(old, data.model_dump(), any(p.booking_id == booking_id
+            for p in (*self.payments.values(), *self.credit_receipts.values())))
         booking = Booking(id=booking_id, allocated_amount=old.allocated_amount, created_at=old.created_at, updated_at=datetime.now(timezone.utc), **data.model_dump())
         self.bookings[booking_id] = booking
         return booking
@@ -1417,7 +1420,8 @@ class InMemoryStore:
             return getattr(self, f"update_{entity_type}")(entity_id, billing_data)
         if entity_type == "booking":
             from .services.payment_integrity import guard_booking_edit
-            guard_booking_edit(old, updates, any(p.booking_id == entity_id for p in self.payments.values()))
+            guard_booking_edit(old, updates, any(p.booking_id == entity_id
+                for p in (*self.payments.values(), *self.credit_receipts.values())))
         if entity_type == "contract" and any(field in updates and updates[field] != getattr(old, field)
                                              for field in ("tenant_id", "property_id", "unit_id")):
             from .services.payment_integrity import guard_memory_delete

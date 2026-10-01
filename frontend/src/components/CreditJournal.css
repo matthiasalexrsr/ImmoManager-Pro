@@ -1,0 +1,11 @@
+.credit-journal { min-width: 0; border-top: 3px solid var(--accent, #177d80); }
+.credit-journal .card-header { align-items: center; gap: 1rem; }
+.credit-journal .card-header h3 { margin: 0; }
+.credit-journal .card-body > p { max-width: 75ch; color: var(--text-secondary, #526575); line-height: 1.55; }
+.credit-journal .btn-group { display: flex; flex-wrap: wrap; align-items: center; gap: .7rem; }
+.credit-journal .shared-data-table td { overflow-wrap: anywhere; }
+.credit-journal .shared-data-table th { white-space: nowrap; }
+@media (max-width: 600px) {
+  .credit-journal .stats-grid { grid-template-columns: 1fr; }
+  .credit-journal .btn-group > button { flex: 1 1 auto; }
+}

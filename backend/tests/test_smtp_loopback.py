@@ -68,7 +68,16 @@ def main():
     print("RESULT=" + json.dumps(dict(results=results, elapsed=elapsed,
         workers=list(seen.values()), leaked=leaked, frozen=frozen)), flush=True)
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as exc:
+        # Whitelist diagnostics instead of echoing SMTP errors, addresses or
+        # credentials. A failing child must still explain where it failed.
+        import traceback
+        code = "smtp_worker_cleanup_failed" if str(exc) == "smtp_worker_cleanup_failed" else "probe_failed"
+        print("PROBE_ERROR=" + json.dumps(dict(error_type=type(exc).__name__, code=code,
+            frames=[frame.name for frame in traceback.extract_tb(exc.__traceback__)])), flush=True)
+        sys.exit(1)
 """
 
 @pytest.fixture(scope="module")
@@ -255,11 +264,12 @@ def run_probe(runner, servers, *, empty=False, seconds=12):
             proc.kill()
             proc.communicate(timeout=5)
         pytest.fail("Safety deadline exceeded")
-    assert proc.returncode == 0, "Probe failed; stderr withheld"
     forbidden = [PRIVATE, BODY, SUBJECT] + [
         v for s in servers for v in (s.config["smtp_user"], s.config["smtp_password"],
                             s.config["sender_email"], s.payload["recipient"])]
     assert not any(v in out + err for v in forbidden), "SMTP data leaked"
+    diagnostics = [line[12:] for line in out.splitlines() if line.startswith("PROBE_ERROR=")]
+    assert proc.returncode == 0, f"Probe failed: {diagnostics or ['no safe diagnostic']}; stderr withheld"
     lines = [line[7:] for line in out.splitlines() if line.startswith("RESULT=")]
     assert len(lines) == 1
     report = json.loads(lines[0])

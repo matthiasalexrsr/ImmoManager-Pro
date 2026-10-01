@@ -6,6 +6,7 @@ Referenced unassigned bank rows are read for integrity, never exported wholesale
 from sqlalchemy import or_, select
 
 from .. import models as m
+from ..db.credit_models import CreditReceiptORM
 from ..db.orm_models import (
     BookingORM,
     ContractORM,
@@ -68,6 +69,9 @@ class TenantGraphSource:
 
     def list_payments(self):
         payment_ids = select(PaymentORM.id).where(self.payment_filter)
+        credit_receipts = dict(self.db.execute(select(CreditReceiptORM.payment_id, CreditReceiptORM.id)
+            .where(CreditReceiptORM.payment_id.in_(payment_ids),
+                   CreditReceiptORM.contract_id.in_(self.contract_ids))).all())
         reversals = {
             row.payment_id: PaymentReversal.model_validate(row, from_attributes=True)
             for row in self.db.scalars(select(PaymentReversalORM)
@@ -80,6 +84,7 @@ class TenantGraphSource:
             fields = {name: getattr(row, name) for name in Payment.model_fields
                       if hasattr(row, name) and name != "reversal"}
             result.append(Payment(**fields,
+                credit_receipt_id=credit_receipts.get(row.id),
                 entity_type="receivable" if row.receivable_id else "rent_charge",
                 entity_id=row.receivable_id or row.rent_charge_id or "",
                 reversal=reversals.get(row.id)))
@@ -97,4 +102,3 @@ class TenantGraphSource:
         entity = entities[name]
         repo = self.store._resolve_repo(entity)
         return lambda: self._collection(entity, repo.orm_class.contract_id.in_(self.contract_ids))
-

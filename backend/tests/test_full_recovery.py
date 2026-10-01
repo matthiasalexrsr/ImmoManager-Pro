@@ -287,10 +287,38 @@ def test_upload_tree_mutation_aborts_backup(plan, tmp_path, monkeypatch):
 
 
 def test_wrong_encryption_secret_is_rejected_before_publication(plan, tmp_path):
-    wrong = replace(plan, configuration={**plan.configuration, "JWT_SECRET_KEY": "wrong-but-present-key"})
+    from backend.services.iban_encryption import generate_key
+
+    wrong = replace(plan, configuration={**plan.configuration, "ENCRYPTION_KEY": generate_key(), "ENCRYPTION_KEYRING": ""})
     with pytest.raises(RecoveryError, match="IBAN"):
         recovery.create_full_backup(wrong, tmp_path / "wrong-key.immobak", PASSPHRASE, offline=True)
     assert not (tmp_path / "wrong-key.immobak").exists()
+
+
+def test_session_key_change_does_not_invalidate_account_encryption(plan, tmp_path):
+    changed = replace(plan, configuration={**plan.configuration, "JWT_SECRET_KEY": "changed-session-signing-key"})
+    result = recovery.create_full_backup(changed, tmp_path / "new-session-key.immobak", PASSPHRASE, offline=True)
+    assert result["encrypted"] is True
+
+
+def test_capacity_profile_can_resume_rejected_backup_and_restore(plan, tmp_path):
+    from backend.services.capacity_settings import load_capacity
+
+    profile = tmp_path / "capacity.json"
+    archive = tmp_path / "capacity.immobak"
+    profile.write_text(json.dumps({"version": 1, "sqlite_recovery": {"file_bytes": 1}}), encoding="utf-8")
+    with pytest.raises(RecoveryError):
+        recovery.create_full_backup(plan, archive, PASSPHRASE, offline=True,
+                                    limits=load_capacity(profile, "sqlite_recovery", recovery.RecoveryLimits))
+    assert not archive.exists()
+    profile.write_text(json.dumps({"version": 1, "sqlite_recovery": {"total_bytes": 64 * 1024**2,
+        "file_bytes": 32 * 1024**2, "files": 1000, "timeout_seconds": 120}}), encoding="utf-8")
+    limits = load_capacity(profile, "sqlite_recovery", recovery.RecoveryLimits)
+    recovery.create_full_backup(plan, archive, PASSPHRASE, offline=True, limits=limits)
+    target = tmp_path / "capacity-restored"
+    recovery.restore_full_backup(archive, target, PASSPHRASE, limits=limits)
+    assert recovery._database_info(target / "database.sqlite3") == recovery._database_info(plan.database)
+    assert (target / "uploads" / "proof.bin").read_bytes() == (plan.uploads / "proof.bin").read_bytes()
 
 
 def test_absolute_upload_references_are_rebased_only_in_restored_database(plan, tmp_path):

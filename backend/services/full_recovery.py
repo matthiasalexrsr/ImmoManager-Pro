@@ -258,7 +258,7 @@ def create_full_backup(plan: RecoveryPlan, destination: Path, password: str, *,
                 source.backup(target, pages=256, progress=progress, sleep=0.02)
                 target.execute("PRAGMA journal_mode=DELETE")
             database_info = _database_info(image, timeout_seconds=_remaining(deadline))
-            verify_iban_key(image, configuration["JWT_SECRET_KEY"], deadline=deadline)
+            verify_iban_key(image, configuration, deadline=deadline)
             reference_report = validate_file_references(image, str(uploads), expected_upload_files=set(files), deadline=deadline)
             manifest = {"format": "immomanager-full", "version": 1,
                         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -453,7 +453,7 @@ def restore_full_backup(source: Path, destination: Path, password: str, *,
         if not isinstance(_json((staged / "integrations.json").read_bytes()), dict):
             raise RecoveryError("Integrationszustand ist kein JSON-Objekt.")
         values = _rebased_configuration(_json((staged / "configuration.json").read_bytes()), destination)
-        verify_iban_key(staged / "database.sqlite3", values["JWT_SECRET_KEY"], deadline=deadline)
+        verify_iban_key(staged / "database.sqlite3", values, deadline=deadline)
         upload_files = {name.removeprefix("uploads/") for name in manifest["files"] if name.startswith("uploads/")}
         reference_report = validate_file_references(staged / "database.sqlite3", manifest["original_upload_root"],
                                                    expected_upload_files=upload_files, deadline=deadline)

@@ -115,8 +115,8 @@ it('labels legacy credit references as historical evidence with no payment actio
   render(view());
   const reference = await screen.findByText('Historische Belegreferenz: legacy-credit-evidence');
   const row = reference.closest('tr');
-  expect(row).toHaveTextContent('Guthaben verfügbar (keine Auszahlung bestätigt)');
-  expect(within(row).queryByRole('button')).not.toBeInTheDocument();
+  expect(row).toHaveTextContent(de.pages.statements.settlements.status.credit_available);
+  expect(within(row).getByRole('button', { name: de.pages.statements.credits.title })).toBeInTheDocument();
   expect(within(row).queryByRole('link')).not.toBeInTheDocument();
   expect(screen.getByText(de.pages.statements.settlements.credits).parentElement).toHaveTextContent('75,00');
   expect(mocks.post).not.toHaveBeenCalled();

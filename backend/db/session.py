@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from ..config import settings
 from .auth_models import AuthSetupORM  # noqa: F401 — register auth metadata before create_all
+from .booking_indexes import BOOKING_INDEXES  # noqa: F401 — register scaled booking indexes
+from .credit_models import CreditReceiptORM  # noqa: F401 — register immutable credit metadata
 from .operational_models import OperationalTickORM  # noqa: F401 — register scheduler metadata
 from .orm_models import Base
 
@@ -71,6 +73,10 @@ def create_tables() -> None:
             ensure_operational_schema(connection)
             from ..services.rent_adjustments import ensure_rent_adjustment_schema
             ensure_rent_adjustment_schema(connection)
+            from ..services.iban_schema import ensure_account_encryption_schema
+            ensure_account_encryption_schema(connection)
+            from .booking_indexes import ensure_booking_indexes
+            ensure_booking_indexes(connection)
 
 
 def get_db() -> Generator[Session, None, None]:

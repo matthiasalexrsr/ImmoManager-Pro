@@ -26,6 +26,13 @@ class PaymentReversalCreate(BaseModel):
     reversal_date: date
     reason: str = Field(min_length=1, max_length=2000)
 
+    @field_validator("idempotency_key")
+    @classmethod
+    def nonblank_key(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Eine Stornoreferenz ist erforderlich")
+        return value
+
     @field_validator("reason")
     @classmethod
     def nonblank_reason(cls, value: str) -> str:
@@ -48,6 +55,7 @@ class Payment(PaymentCreate):
     entity_id: str
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     reversal: PaymentReversal | None = None
+    credit_receipt_id: str | None = None
 
 
 class ReceivableBalance(BaseModel):
@@ -150,7 +158,7 @@ def record_memory_payment(store, entity_type: EntityType, entity_id: str, payloa
 
 
 def reverse_memory_payment(store, entity_type: EntityType, entity_id: str, payment_id: str,
-                           payload: PaymentReversalCreate) -> PaymentReversal:
+                           payload: PaymentReversalCreate, *, credit_internal=False) -> PaymentReversal:
     from uuid import uuid4
 
     from ..storage import NotFoundError
@@ -161,6 +169,9 @@ def reverse_memory_payment(store, entity_type: EntityType, entity_id: str, payme
                         and p.entity_type == entity_type and p.entity_id == entity_id), None)
         if payment is None:
             raise NotFoundError("Zahlungsbeleg nicht gefunden")
+        if payment.credit_receipt_id and not credit_internal:
+            from .credit_ledger import reverse_linked_payment
+            return reverse_linked_payment(store, payment, payload)
         existing = next((p.reversal for p in store.payments.values() if p.reversal
                          and p.reversal.idempotency_key == payload.idempotency_key), None)
         if existing:
@@ -182,6 +193,8 @@ def reverse_memory_payment(store, entity_type: EntityType, entity_id: str, payme
 
 
 def import_memory_payment(store, payment: Payment) -> Payment:
+    if payment.credit_receipt_id:
+        raise FinancialConsistencyError("Guthabenverrechnungen benötigen das vollständige Serverbackup.")
     with _memory_lock:
         target = getattr(store, f"get_{payment.entity_type}")(payment.entity_id)
         existing = store.payments.get(payment.idempotency_key)

@@ -124,7 +124,7 @@ jobs:
       - name: Exercise actual PostgreSQL locks, budgets and process uniqueness
         env:
           TEST_SERVER_DATABASE_URL: postgresql://immo_ci:isolated_test_database@127.0.0.1:5432/immo_ci
-        run: pytest backend/tests/test_private_server_concurrency.py backend/tests/test_server_admin.py backend/tests/test_edit_concurrency.py backend/tests/test_operational_postgres.py backend/tests/test_effective_rent_adjustments.py -q --tb=short
+        run: pytest backend/tests/test_private_server_concurrency.py backend/tests/test_server_admin.py backend/tests/test_edit_concurrency.py backend/tests/test_operational_postgres.py backend/tests/test_effective_rent_adjustments.py backend/tests/test_booking_pages_postgres.py backend/tests/test_iban_encryption_postgres.py backend/tests/test_credit_concurrency.py -q --tb=short
 
   browser-e2e:
     name: Browser workflows (Chromium + SQLite)

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import ipaddress
 import os
 import re
@@ -44,7 +45,9 @@ def configure(path: Path, origin: str, port: int = 8080) -> Path:
     # Hex values are safe in Compose interpolation and PostgreSQL connection URLs.
     content = (f"APP_ORIGIN={origin}\nAPP_HOST={host}\nAPP_HTTP_PORT={port}\n"
                "POSTGRES_USER=immo\nPOSTGRES_DB=immomanager\n"
-               f"POSTGRES_PASSWORD={secrets.token_hex(32)}\nJWT_SECRET_KEY={secrets.token_hex(48)}\n")
+               f"POSTGRES_PASSWORD={secrets.token_hex(32)}\nJWT_SECRET_KEY={secrets.token_hex(48)}\n"
+               f"ENCRYPTION_KEY={base64.urlsafe_b64encode(secrets.token_bytes(32)).decode('ascii')}\n"
+               f"ENCRYPTION_INDEX_KEY={base64.urlsafe_b64encode(secrets.token_bytes(32)).decode('ascii')}\n")
     path = path.absolute()
     path.parent.mkdir(parents=True, exist_ok=True)
     if os.path.lexists(path):

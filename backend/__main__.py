@@ -73,24 +73,8 @@ def _load_env_file(path):
 
 
 def _persist_env_default(config_file, key, value):
-    """Set an env default and persist it for future frozen/source launches."""
-    current = os.environ.get(key)
-    if current and current != "dev-secret-key-change-in-production":
-        return current
-
-    os.environ[key] = value
-    try:
-        existing = ""
-        if os.path.isfile(config_file):
-            with open(config_file, "r", encoding="utf-8") as fh:
-                existing = fh.read()
-        lines = [line for line in existing.splitlines() if not line.startswith(f"{key}=")]
-        lines.append(f"{key}={value}")
-        with open(config_file, "w", encoding="utf-8") as fh:
-            fh.write("\n".join(lines) + "\n")
-    except OSError:
-        print(f"WARNUNG: Runtime-Konfiguration konnte nicht geschrieben werden: {config_file}")
-    return value
+    from .runtime_environment import persist_default
+    return persist_default(config_file, key, value)
 
 
 def _configure_runtime_environment(data_dir_arg=None):
@@ -130,6 +114,12 @@ def _configure_runtime_environment(data_dir_arg=None):
 
     if os.environ.get("JWT_SECRET_KEY") in (None, "", "dev-secret-key-change-in-production"):
         _persist_env_default(runtime_env, "JWT_SECRET_KEY", secrets.token_urlsafe(48))
+
+    # Preserve an explicit keyring; new standalone installations get stable keys.
+    from .services.iban_encryption import generate_key
+    if not os.environ.get("ENCRYPTION_KEYRING"):
+        _persist_env_default(runtime_env, "ENCRYPTION_KEY", generate_key())
+    _persist_env_default(runtime_env, "ENCRYPTION_INDEX_KEY", generate_key())
 
     return data_dir
 

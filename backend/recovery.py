@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .services.full_recovery import (
+    RecoveryLimits,
     RecoveryPlan,
     _configuration,
     _json,
@@ -72,6 +73,9 @@ def main():
     restore = commands.add_parser("restore")
     restore.add_argument("--archive", required=True, type=Path)
     restore.add_argument("--destination", required=True, type=Path)
+    for command in (backup, restore):
+        command.add_argument("--capacity-file", type=Path, help="JSON-Kapazitätsprofil für große Installationen")
+        command.add_argument("--timeout-seconds", type=float)
     run = commands.add_parser("run")
     run.add_argument("--data-dir", required=True, type=Path)
     run.add_argument("--port", type=int, default=8000)
@@ -84,13 +88,19 @@ def main():
             from .app import app
             uvicorn.run(app, host="127.0.0.1", port=args.port)
             return
+        from .services.capacity_settings import CapacityProfileError, load_capacity
+        try:
+            limits = load_capacity(args.capacity_file, "sqlite_recovery", RecoveryLimits,
+                                   overrides={"timeout_seconds": args.timeout_seconds} if args.timeout_seconds is not None else None)
+        except CapacityProfileError as exc:
+            raise RecoveryError(str(exc)) from None
         password = getpass.getpass("Passphrase der Vollsicherung: ")
         if args.operation == "backup":
             if getpass.getpass("Passphrase wiederholen: ") != password:
                 raise RecoveryError("Die Passphrasen stimmen nicht ueberein.")
-            result = create_full_backup(_plan(args), args.output, password, offline=args.offline)
+            result = create_full_backup(_plan(args), args.output, password, offline=args.offline, limits=limits)
         else:
-            result = restore_full_backup(args.archive, args.destination, password)
+            result = restore_full_backup(args.archive, args.destination, password, limits=limits)
         print(json.dumps(result, ensure_ascii=False))
     except RecoveryError as exc:
         parser.exit(2, f"Fehler: {exc}\n")

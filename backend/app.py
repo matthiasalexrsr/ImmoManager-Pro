@@ -33,6 +33,7 @@ from .plugins import get_plugins, load_plugins, start_plugins, stop_plugins
 from .plugins.runtime import AuthenticatedPlugin
 from .routing import build_api_v1, get_i18n_router
 from .services.concurrency import ConcurrencyMiddleware
+from .services.iban_http import register_iban_exception_handler
 from .static_access import PrivateStaticFiles, frontend_response
 
 # Initialize logging first
@@ -178,6 +179,8 @@ app = FastAPI(
 
 # Register global exception handlers
 register_exception_handlers(app)
+
+register_iban_exception_handler(app)
 
 # CORS middleware
 app.add_middleware(

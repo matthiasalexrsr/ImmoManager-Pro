@@ -99,6 +99,28 @@ def test_business_replacement_preserves_closed_owner_setup(tmp_path):
     engine.dispose()
 
 
+def test_replacement_preserves_technical_lock_but_refuses_schedule_history(tmp_path):
+    from backend.db.operational_models import OperationalLockORM, OperationalTickORM
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'schedule-preservation.db'}")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        db.add(OperationalLockORM(id=1, generation=17))
+        db.commit()
+        active = SQLAlchemyStore(db)
+        snapshot, _ = build_snapshot()
+        admin._import_store_data(snapshot, replace_existing=True, active_store=active)
+        assert db.get(OperationalLockORM, 1).generation == 17
+        db.add(OperationalTickORM(id="historic-tick", as_of=date(2026, 1, 1), result={"created": 2}))
+        db.commit()
+        before = canonical_snapshot(active)
+        with pytest.raises(admin.TransferError, match="operational_ticks"):
+            admin._import_store_data(snapshot, replace_existing=True, active_store=active)
+        assert canonical_snapshot(active) == before
+        assert db.get(OperationalTickORM, "historic-tick").result == {"created": 2}
+    engine.dispose()
+
+
 def test_restore_roundtrip_preserves_supported_relationships_and_identifiers(active_store):
     snapshot, original_receivable_id = build_snapshot()
     result = admin._restore_store_data(snapshot, active_store)

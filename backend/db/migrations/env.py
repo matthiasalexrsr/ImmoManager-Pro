@@ -10,6 +10,8 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from backend.db.auth_models import AuthSetupORM  # noqa: F401 — register auth metadata
+from backend.db.booking_indexes import BOOKING_INDEXES  # noqa: F401 — register scaled booking indexes
+from backend.db.credit_models import CreditReceiptORM  # noqa: F401 — register immutable credit metadata
 from backend.db.operational_models import OperationalTickORM  # noqa: F401 — register scheduler metadata
 from backend.db.orm_models import Base
 
@@ -49,12 +51,20 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
+        sqlite = connection.dialect.name == "sqlite"
+        if sqlite:
+            # sqlite3 legacy mode does not begin transactions for DDL. Start
+            # before table rebuilding so failures also undo CREATE/DROP.
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
         context.configure(
-            connection=connection, target_metadata=target_metadata
+            connection=connection, target_metadata=target_metadata,
+            transactional_ddl=True if sqlite else None,
         )
 
         with context.begin_transaction():
             context.run_migrations()
+        if sqlite:
+            connection.commit()
 
 
 if context.is_offline_mode():

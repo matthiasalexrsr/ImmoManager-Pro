@@ -24,6 +24,7 @@ from ..models import (
     UnitCreate,
 )
 from ..storage import ValidationError
+from .account_repo import AccountRepository
 from .base import BaseRepository
 
 logger = logging.getLogger(__name__)
@@ -37,7 +38,7 @@ class PortfolioRepository:
         self._portfolios = BaseRepository(db, PortfolioORM, Portfolio, "Portfolio nicht gefunden")
         self._properties = BaseRepository(db, PropertyORM, Property, "Immobilie nicht gefunden")
         self._units = BaseRepository(db, UnitORM, Unit, "Einheit nicht gefunden")
-        self._accounts = BaseRepository(db, AccountORM, Account, "Konto nicht gefunden")
+        self._accounts = AccountRepository(db, AccountORM, Account, "Konto nicht gefunden")
         self._categories = BaseRepository(db, CategoryORM, Category, "Kategorie nicht gefunden")
 
     def _commit(self):

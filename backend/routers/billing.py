@@ -12,8 +12,9 @@ import logging
 from decimal import Decimal
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+from ..auth import get_current_user
 from ..dependencies import store
 from ..domain.billing_engine import (
     AdvancePayment,
@@ -37,6 +38,14 @@ from ..models import (
     UtilityStatementPatch,
 )
 from ..services import billing_settlement as settlement
+from ..services import credit_ledger
+from ..services.credit_types import (
+    CreditOffsetCreate,
+    CreditPayoutCreate,
+    CreditReceipt,
+    CreditReversal,
+    CreditReversalCreate,
+)
 from ..services.payments import FinancialConsistencyError
 from ..storage import NotFoundError, ValidationError
 
@@ -67,6 +76,31 @@ def _compute_snapshot_hash(period_id: str) -> str:
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/billing", tags=["Abrechnung"])
+
+
+@router.get("/contracts/{contract_id}/credits")
+def credit_summary(contract_id: str):
+    return _billing_call(credit_ledger.summary, contract_id)
+
+
+@router.get("/contracts/{contract_id}/credit-receipts")
+def credit_receipts(contract_id: str, offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=1000)):
+    return _billing_call(lambda active, cid: credit_ledger.journal(active, cid, offset=offset, limit=limit), contract_id)
+
+
+@router.post("/credit-payouts", response_model=CreditReceipt, status_code=201)
+def create_credit_payout(payload: CreditPayoutCreate, user=Depends(get_current_user)):
+    return _billing_call(lambda active, command: credit_ledger.create_receipt(active, command, getattr(user, "id", None)), payload)
+
+
+@router.post("/credit-offsets", response_model=CreditReceipt, status_code=201)
+def create_credit_offset(payload: CreditOffsetCreate, user=Depends(get_current_user)):
+    return _billing_call(lambda active, command: credit_ledger.create_receipt(active, command, getattr(user, "id", None)), payload)
+
+
+@router.post("/credit-receipts/{receipt_id}/reversal", response_model=CreditReversal, status_code=201)
+def reverse_credit_receipt(receipt_id: str, payload: CreditReversalCreate, user=Depends(get_current_user)):
+    return _billing_call(lambda active, rid, command: credit_ledger.reverse_receipt(active, rid, command, getattr(user, "id", None)), receipt_id, payload)
 
 
 def _build_consumption_by_unit(period, contract_unit_ids: set[str]) -> dict[str, Decimal]:

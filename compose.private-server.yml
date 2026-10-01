@@ -10,6 +10,11 @@ services:
       ENVIRONMENT: production
       DATABASE_URL: "postgresql://${POSTGRES_USER:-immo}:${POSTGRES_PASSWORD:?Run configure_private_server.py first}@db:5432/${POSTGRES_DB:-immomanager}"
       JWT_SECRET_KEY: "${JWT_SECRET_KEY:?Run configure_private_server.py first}"
+      ENCRYPTION_KEY: "${ENCRYPTION_KEY:-}"
+      ENCRYPTION_KEYRING: "${ENCRYPTION_KEYRING:-}"
+      ENCRYPTION_ACTIVE_KEY_ID: "${ENCRYPTION_ACTIVE_KEY_ID:-default}"
+      ENCRYPTION_INDEX_KEY: "${ENCRYPTION_INDEX_KEY:-}"
+      ENCRYPTION_LEGACY_JWT_KEYS: "${ENCRYPTION_LEGACY_JWT_KEYS:-[]}"
       CORS_ORIGINS: "${APP_ORIGIN:?Set the private HTTPS origin},http://127.0.0.1:${APP_HTTP_PORT:-8080},http://localhost:${APP_HTTP_PORT:-8080}"
       TRUSTED_HOSTS: "${APP_HOST:?Set the private HTTPS host},localhost,127.0.0.1"
       DATA_DIR: /data

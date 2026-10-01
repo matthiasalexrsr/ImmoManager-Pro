@@ -106,6 +106,9 @@ try {
     LOG_FILE: join(dataDir, 'application.log'),
     INTEGRATION_STATE_FILE: join(dataDir, 'integrations.json'),
     JWT_SECRET_KEY: randomBytes(48).toString('hex'),
+    // The server accepts canonical, padded base64url for 32-byte keys.
+    ENCRYPTION_KEY: `${randomBytes(32).toString('base64url')}=`,
+    ENCRYPTION_INDEX_KEY: `${randomBytes(32).toString('base64url')}=`,
     SQLITE_PERSISTENT_STORE: 'true',
     ALLOW_INMEMORY_FALLBACK: 'false',
     AUTO_SEED_DEMO_DATA: 'false',

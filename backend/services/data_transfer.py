@@ -321,7 +321,9 @@ def _check_unexported_sql_rows(db, exported_tables):
     from sqlalchemy import func, select
 
     metadata = next(iter(exported_tables)).metadata
-    independent = {"users", "user_preferences", "audit_logs", "change_history", "revoked_tokens", "login_attempts", "auth_setup"}
+    # This singleton coordinates workers; it has no business rows or foreign
+    # keys to the imported entities and must survive a partial import.
+    independent = {"users", "user_preferences", "audit_logs", "change_history", "revoked_tokens", "login_attempts", "auth_setup", "operational_lock"}
     for table in metadata.tables.values():
         if table not in exported_tables and table.name not in independent:
             if db.scalar(select(func.count()).select_from(table)):
@@ -392,10 +394,24 @@ def _apply(active_store, prepared: dict, specs: tuple[EntitySpec, ...]) -> dict:
 
 
 def import_store_data(active_store, data: dict, *, replace_existing: bool) -> dict:
+    from .credit_ledger import guard_partial_restore
+    from .payments import FinancialConsistencyError
+    try:
+        guard_partial_restore(active_store, data)
+    except FinancialConsistencyError as exc:
+        raise TransferError(str(exc)) from exc
     specs = _specifications()
     try:
         prepared = _prepare(data, specs, replace_existing=replace_existing)
         with _atomic_store(active_store) as staged:
+            if hasattr(staged, "db"):
+                from .credit_ledger import lock_contract
+                for contract_id in sorted(c.id for c in staged.list_contracts()):
+                    lock_contract(staged.db, contract_id)
+            try:
+                guard_partial_restore(staged, data)
+            except FinancialConsistencyError as exc:
+                raise TransferError(str(exc)) from exc
             _check_references(staged, prepared, specs, replace_existing=replace_existing)
             if replace_existing:
                 _clear_supported(staged, specs)

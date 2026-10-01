@@ -9,6 +9,7 @@ const RETAINED_LABELS = {
   rent_charges: 'Mietsollstellungen', rent_adjustments: 'Mietanpassungen', handover_protocols: 'Übergabeprotokolle',
   utility_statements: 'Einzelabrechnungen', message_threads: 'Gespräche', billing_settlements: 'Abrechnungsergebnisse',
   bookings: 'Buchungen', messages: 'Nachrichten', meter_readings: 'Zählerstände', payments: 'Zahlungsbelege',
+  credit_receipts: 'Guthabenbelege mit Stornos', credit_balances: 'Aktuelle Guthabenstände',
 };
 
 export default function TenantPrivacySection({ tenants, onUpdated }) {

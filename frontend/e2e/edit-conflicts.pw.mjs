@@ -31,8 +31,13 @@ for (const kind of ['properties', 'tenants', 'accounts']) {
       const open = async activePage => {
         await activePage.goto(`/${kind}`);
         if (kind === 'properties') await activePage.getByRole('button', { name: `${name} bearbeiten`, exact: true }).click();
-        else await activePage.getByRole('row').filter({ hasText: name }).filter({ hasNotText: 'independently' })
-          .getByRole('button', { name: 'Bearbeiten', exact: true }).click();
+        else {
+          // Other suites add records to the shared server. Locate this record
+          // through the real search instead of assuming it is on page one.
+          await activePage.getByRole('textbox', { name: /^Suchen / }).fill(name);
+          await activePage.getByRole('row').filter({ hasText: name }).filter({ hasNotText: 'independently' })
+            .getByRole('button', { name: 'Bearbeiten', exact: true }).click();
+        }
       };
       await open(page);
       await open(pageB);
@@ -76,6 +81,7 @@ for (const kind of ['properties', 'tenants', 'accounts']) {
       expect((await savedB).status()).toBe(200);
       await expect(dialogB).not.toBeVisible();
       await pageB.reload();
+      if (kind !== 'properties') await pageB.getByRole('textbox', { name: /^Suchen / }).fill(`${name} B`);
       await expect(pageB.getByText(`${name} B`, { exact: true }).first()).toBeVisible();
       const verified = await (await page.request.get(path, { headers })).json();
       expect(verified[kind === 'tenants' ? 'full_name' : 'name']).toBe(`${name} B`);

@@ -51,7 +51,9 @@ test('seeded property and contract: partial rent payment survives reload', async
   expect(property?.city).toBe('Berlin');
   const contracts = await api(page, '/contracts', headers);
   const charges = await api(page, '/rent-charges', headers);
-  const charge = charges.find(item => item.status === 'partial' && Number(item.amount_paid) > 0);
+  const charge = charges.find(item => item.status === 'partial' && Number(item.amount_paid) > 0
+    && contracts.some(contract => contract.id === item.contract_id && contract.property_id === property.id
+      && /^MV-\d{4}-\d{3}$/.test(contract.contract_number)));
   expect(charge).toBeTruthy();
   const contract = contracts.find(item => item.id === charge.contract_id);
   expect(contract.property_id).toBe(property.id);
@@ -171,10 +173,16 @@ test('billing draft: blocked preflight becomes ready and generates persisted sta
 test('bank allocation and reversal retain receipts and release the bank budget', async ({ page }, testInfo) => {
   const headers = await login(page);
   const charges = await api(page, '/rent-charges', headers);
-  const charge = charges.find(item => item.status === 'partial');
-  const contract = await api(page, `/contracts/${charge.contract_id}`, headers);
-  const property = await api(page, `/properties/${contract.property_id}`, headers);
+  const contracts = await api(page, '/contracts', headers);
+  const properties = await api(page, '/properties', headers);
   const accounts = await api(page, '/accounts', headers);
+  const charge = charges.find(item => item.status === 'partial' && contracts.some(contract =>
+    contract.id === item.contract_id && /^MV-\d{4}-\d{3}$/.test(contract.contract_number)
+    && properties.some(property => property.id === contract.property_id
+      && accounts.some(account => account.portfolio_id === property.portfolio_id))));
+  expect(charge).toBeTruthy();
+  const contract = contracts.find(item => item.id === charge.contract_id);
+  const property = properties.find(item => item.id === contract.property_id);
   const account = accounts.find(item => item.portfolio_id === property.portfolio_id);
   expect(account).toBeTruthy();
   const note = `Bank browser ${randomUUID()}`;
