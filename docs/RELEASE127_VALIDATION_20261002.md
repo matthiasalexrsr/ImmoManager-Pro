@@ -79,3 +79,27 @@ Aktuelle Belege: `work/workflow-concurrency-composed-92c30c9.log`,
 `work/workflow-browser-second.log`,
 `work/release127-composed-current-mypy.log` und
 `work/release127-new-recovery-mypy.log`.
+
+## Vollständige Adapterausgaben nach `af583dc`
+
+Bank-Discovery `80b548f` wurde als `63dc110` zusammengeführt und unabhängig mit
+den bestehenden Import-/Zahlungs-/Sicherungsgruppen geprüft: **123 PASS,
+4 erwartete Memory-/SQL-Varianten-Skips**, 291,77 s, einschließlich realer PG-
+Gegenproben. Das private CSV-/MT940-JSONL enthält vollständige Originalpositionen,
+unbekannte Felder und ein EOF-Prüfergebnis; frische Berechtigung wird unmittelbar
+vor jedem gesendeten Datenblock erneut geprüft. Beleg:
+`work/bank-discovery-composed-final.log`.
+
+Die beiden tatsächlichen Backend-Assistentencommits `61c0a28` und `0749dc80`
+wurden als `a91db3b` und `885267b` integriert. Root ergänzt die vollständige
+HTTP-Projektion der Datei-, Dokument- und Threadanalyse samt explizitem Teilstatus.
+**86 PASS**, striktes SQL, 33,00 s, in `work/ai-http-projection-composed.log`;
+Ruff sowie Mypy der drei Routen bestehen. Diese Prüfung ist kein Nachweis eines
+externen Modells: ausschließlich synthetische Pipelines und Dokumente.
+Der zusätzliche Retokenisierungsbefund ist noch beim Backend-Assistenten aktiv.
+
+Die UI-Überarbeitung `52912583` ist als `af583dc` enthalten. Der erweiterte echte
+Browserlauf fand beim Speichern einer neuen Entwurfsfassung eine 422 wegen
+`steps[0].id`; dieser konkrete Alltagsfehler und die sofortige Bindung aufgelöster
+Namen an Principal/Loader/ID werden beim Frontend-Assistenten korrigiert.
+Der endgültige UI-Browsergate steht folglich noch aus.

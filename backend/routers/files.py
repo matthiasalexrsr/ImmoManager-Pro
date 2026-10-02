@@ -6,6 +6,7 @@ import logging
 import mimetypes
 import posixpath
 import uuid
+from dataclasses import asdict
 from io import BytesIO
 from urllib.parse import unquote, urlparse
 
@@ -354,6 +355,8 @@ def analyze_file(
     if not ocr_text:
         return {
             "analyzed": False,
+            "analysis_complete": False,
+            "partial": False,
             "message": "Kein Text extrahierbar",
             "result": None,
         }
@@ -361,18 +364,13 @@ def analyze_file(
     result = analyze_document(ocr_text, use_ai=use_ai)
 
     return {
-        "analyzed": True,
-        "message": "Analyse abgeschlossen",
-        "result": {
-            "document_type": result.document_type,
-            "document_type_confidence": result.document_type_confidence,
-            "summary": result.summary,
-            "entities": result.entities,
-            "invoice_number": result.invoice_number,
-            "invoice_date": result.invoice_date,
-            "total_amount": result.total_amount,
-            "supplier": result.supplier,
-            "cost_category": result.cost_category,
-            "ai_model": result.ai_model,
-        },
+        "analyzed": result.analysis_complete,
+        "analysis_complete": result.analysis_complete,
+        "partial": not result.analysis_complete,
+        "message": (
+            "Analyse abgeschlossen" if result.analysis_complete else
+            "Teilergebnis verfügbar. Die angeforderte Analyse ist noch nicht vollständig; "
+            "fehlende Abschnitte und Funktionen sind im Ergebnis ausgewiesen."
+        ),
+        "result": asdict(result),
     }
