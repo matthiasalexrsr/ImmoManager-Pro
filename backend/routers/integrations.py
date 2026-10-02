@@ -1,9 +1,47 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi.routing import APIRoute
 from pydantic import BaseModel, Field
 
+from ..auth import decode_token, require_role, security
 from ..services.integrations.manager import integration_manager
+from ..services.portfolio_scope import current_scope, refresh_scope, require_installation_scope
 
-router = APIRouter(prefix="/integrations", tags=["Integrationen"])
+
+class _PrivateIntegrationRoute(APIRoute):
+    def get_route_handler(self):
+        handler = super().get_route_handler()
+
+        async def guarded(request: Request) -> Response:
+            captured = current_scope()
+            response = await handler(request)
+            # Check before Starlette starts sending the response. Raising from
+            # a send wrapper would be too late to return a clean denial.
+            if captured is None:
+                raise HTTPException(403, "Installationsverwaltung erforderlich")
+            refresh_scope(captured)
+            credentials = await security(request)
+            if credentials is None or decode_token(credentials.credentials).type != "access":
+                raise HTTPException(401, "Authentifizierung erforderlich")
+            return response
+
+        return guarded
+
+
+def _require_integration_administration(
+    response: Response, _actor=Depends(require_role("eigentuemer", "verwalter")),
+):
+    # The legacy manager stores global configuration/history. A read is not a
+    # scoped property lookup and must not inherit general business read access.
+    if _actor.role != "eigentuemer" and _actor.portfolio_access != "all":
+        raise HTTPException(403, "Installationsverwaltung erforderlich")
+    require_installation_scope()
+    response.headers["Cache-Control"] = "private, no-store"
+    response.headers["Vary"] = "Authorization"
+
+
+router = APIRouter(prefix="/integrations", tags=["Integrationen"],
+                   route_class=_PrivateIntegrationRoute,
+                   dependencies=[Depends(_require_integration_administration)])
 
 
 class IntegrationTogglePayload(BaseModel):

@@ -1,7 +1,8 @@
 import useWriteAccess from '../hooks/useWriteAccess';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from '../i18n';
 import { api } from '../api';
+import { useAuth } from '../contexts/AuthContext';
 import { AlertIcon, MessageIcon, ContractIcon, DocumentIcon, BuildingIcon } from '../components/Icons';
 
 const ICONS = {
@@ -29,41 +30,86 @@ const runPayloadFor = (integrationId) => {
 
 export default function Integrations() {
   const { t } = useTranslation();
+  const auth = useAuth();
   const [integrations, setIntegrations] = useState([]);
   const [messages, setMessages] = useState({});
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const { canWrite, isAllowed } = useWriteAccess('/integrations');
+  const role = auth?.user?.role || auth?.role;
+  const canAdminister = canWrite && (role === 'eigentuemer'
+    || (role === 'verwalter' && auth?.user?.portfolio_access === 'all'));
+  const principal = `${auth?.user?.id || ''}:${role || ''}:${auth?.user?.portfolio_access || ''}`;
+  const pendingLoad = useRef(null);
+  const grant = useMemo(() => ({ principal, canAdminister }), [principal, canAdminister]);
+  const currentGrant = useRef(grant);
+  const pendingActions = useRef(new Set());
 
-  const loadIntegrations = () => {
+  useLayoutEffect(() => {
+    currentGrant.current = grant;
+    const actions = pendingActions.current;
+    return () => {
+      currentGrant.current = null;
+      for (const controller of actions) controller.abort();
+      actions.clear();
+    };
+  }, [grant]);
+
+  const beginAction = () => {
+    if (!canAdminister || !isAllowed() || currentGrant.current !== grant) return null;
+    const controller = new AbortController();
+    pendingActions.current.add(controller);
+    return {
+      controller,
+      allowed: () => !controller.signal.aborted && currentGrant.current === grant && isAllowed(),
+      finish: () => pendingActions.current.delete(controller),
+    };
+  };
+
+  const loadIntegrations = useCallback(() => {
+    pendingLoad.current?.abort();
+    setIntegrations([]);
+    setMessages({});
+    if (!canAdminister) { setLoading(false); setLoadError(null); return; }
+    const controller = new AbortController();
+    pendingLoad.current = controller;
     setLoading(true);
     setLoadError(null);
-    api.get('/integrations')
-      .then((res) => setIntegrations(res.integrations || []))
-      .catch((err) => setLoadError(err.message))
-      .finally(() => setLoading(false));
-  };
+    api.get('/integrations', { signal: controller.signal })
+      .then((res) => { if (!controller.signal.aborted) setIntegrations(res.integrations || []); })
+      .catch((err) => { if (!controller.signal.aborted) setLoadError(err.message); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+  }, [canAdminister]);
 
   useEffect(() => {
     loadIntegrations();
-  }, []);
+    return () => pendingLoad.current?.abort();
+  }, [loadIntegrations, principal]);
 
   const toggleIntegration = async (id, enabled) => {
-    if (!isAllowed()) return;
+    const action = beginAction();
+    if (!action) return;
     try {
-      await api.patch(`/integrations/${id}`, { enabled });
+      await api.patch(`/integrations/${id}`, { enabled }, { signal: action.controller.signal });
+      if (!action.allowed()) return;
       setIntegrations((prev) => prev.map((it) => (it.id === id ? { ...it, enabled } : it)));
     } catch (err) {
+      if (!action.allowed()) return;
       setMessages((prev) => ({ ...prev, [id]: `${t('pages.integrations.error') || 'Fehler'}: ${err.message}` }));
+    } finally {
+      action.finish();
     }
   };
 
   const runIntegration = async (id) => {
-    if (!isAllowed()) return;
+    const action = beginAction();
+    if (!action) return;
     try {
-      const res = await api.post(`/integrations/${id}/run`, { payload: runPayloadFor(id) });
+      const res = await api.post(`/integrations/${id}/run`, { payload: runPayloadFor(id) }, { signal: action.controller.signal });
+      if (!action.allowed()) return;
       setMessages((prev) => ({ ...prev, [id]: res.message || t('pages.integrations.actionExecuted') || 'Aktion ausgeführt' }));
-      const history = await api.get(`/integrations/${id}/history?limit=1`);
+      const history = await api.get(`/integrations/${id}/history?limit=1`, { signal: action.controller.signal });
+      if (!action.allowed()) return;
       const latest = history?.items?.[0];
       if (latest) {
         setMessages((prev) => ({
@@ -72,7 +118,10 @@ export default function Integrations() {
         }));
       }
     } catch (err) {
+      if (!action.allowed()) return;
       setMessages((prev) => ({ ...prev, [id]: `${t('pages.integrations.error') || 'Fehler'}: ${err.message}` }));
+    } finally {
+      action.finish();
     }
   };
 
@@ -82,6 +131,10 @@ export default function Integrations() {
       <p className="text-muted" style={{ marginBottom: '1.5rem' }}>
         {t('pages.integrations.subtitle') || 'Integrationsmodule verwalten, Konfiguration validieren und Testläufe ausführen.'}
       </p>
+
+      {!canAdminister ? <div role="status" className="panel"><div className="panel-body">
+        {t('pages.integrations.administrationRequired')}
+      </div></div> : <>
 
       {loading && <p className="text-muted">{t('pages.integrations.loading') || 'Lade Integrationen...'}</p>}
       {loadError && <div role="alert">{loadError} <button className="btn btn-secondary" onClick={loadIntegrations}>{t('ui.buttons.retry')}</button></div>}
@@ -132,6 +185,7 @@ export default function Integrations() {
           );
         })}
       </div>
+      </>}
     </div>
   );
 }

@@ -1875,6 +1875,7 @@
     "integrations": {
       "title": "Integrationen",
       "subtitle": "Zukünftige Integrationen für erweiterte Kommunikation und Automatisierung.",
+      "administrationRequired": "Schnittstellen verwalten Eigentümer und Verwalter mit Zugriff auf den gesamten Bestand. Bitte wenden Sie sich bei Bedarf an den Eigentümer.",
       "planned": "Geplant",
       "plannedFeatures": "Geplante Funktionen:",
       "loading": "Lade Integrationen...",

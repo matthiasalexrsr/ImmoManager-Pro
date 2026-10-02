@@ -1875,6 +1875,7 @@
     "integrations": {
       "title": "Integrations",
       "subtitle": "Future integrations for enhanced communication and automation.",
+      "administrationRequired": "Integrations are managed by owners and administrators with access to the entire portfolio. Please contact the owner if you need access.",
       "planned": "Planned",
       "plannedFeatures": "Planned Features:",
       "loading": "Loading integrations...",
