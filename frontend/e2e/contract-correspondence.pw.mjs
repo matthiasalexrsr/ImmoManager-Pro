@@ -90,8 +90,19 @@ async function observed(page, area, box, headers, kind, dispatchId) {
 
 test('explicit letter approval survives a lost reply and preserves exact original, manual facts and calendar date', async ({ page }, testInfo) => {
   test.setTimeout(180_000);
-  const headers = await login(page);
-  const box = await fixture(page, headers);
+  const ownerHeaders = await login(page);
+  const box = await fixture(page, ownerHeaders);
+  const writer = `correspondence-writer-${box.unique}`;
+  const password = 'Synthetic Correspondence Writer 2026';
+  await create(page, '/auth/users', ownerHeaders, {
+    username: writer, password, email: `${writer}@example.com`,
+    full_name: 'Synthetic scoped writer', role: 'verwalter',
+    portfolio_access: 'selected', portfolio_ids: [box.portfolio.id],
+  });
+  // The full suite deliberately leaves overdue claims in other portfolios.
+  // Exercise this letter with its actual actor scope, including the local tick.
+  await page.evaluate(() => localStorage.clear());
+  const headers = await login(page, writer, password);
   const { dialog, area, opener } = await open(page, box.contract);
   await area.getByRole('button', { name: 'Meine Schreibenentwürfe', exact: true }).click();
   await expect(area.getByLabel('Schreibendatum', { exact: true })).toBeEnabled();
