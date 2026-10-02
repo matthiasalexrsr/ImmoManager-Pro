@@ -1,4 +1,4 @@
-"""AI-powered message thread analysis with explicit full-source coverage."""
+﻿"""AI-powered message thread analysis with explicit full-source coverage."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import hashlib
 import logging
 from typing import Any, Optional
 
-from .hf_runtime import SectionPlan, TextSection, plan_text_sections, runtime
+from .hf_runtime import SectionPlan, TextSection, plan_text_sections, runtime, section_fits_plan
 from .schemas import AnalysisCoverage, MissingRange, SourceRange, ThreadSummaryResult
 
 logger = logging.getLogger(__name__)
@@ -111,6 +111,22 @@ def _ai_summarize(text: str) -> Optional[ThreadSummaryResult]:
     summaries: list[str] = []
 
     for section in plan.sections:
+        fits = section_fits_plan(section, pipe, plan)
+        if plan.budget_kind.startswith("tokens") and fits is not True:
+            missing.append(
+                MissingRange(
+                    section.index,
+                    section.start_offset,
+                    section.end_offset,
+                    (
+                        "section_token_budget_exceeded"
+                        if fits is False
+                        else "section_token_budget_unverified"
+                    ),
+                    "TokenBudgetVerificationFailed",
+                )
+            )
+            continue
         try:
             word_count = len(section.text.split())
             raw = pipe(
@@ -188,11 +204,11 @@ def _extract_action_items(text: str) -> list[str]:
         "dringend",
         "termin",
         "vereinbaren",
-        "überweisen",
+        "Ã¼berweisen",
         "reparieren",
         "beauftragen",
-        "prüfen",
-        "klären",
+        "prÃ¼fen",
+        "klÃ¤ren",
     ]
     sentences = [
         sentence.strip()

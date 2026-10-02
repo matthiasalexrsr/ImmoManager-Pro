@@ -20,6 +20,8 @@ from .hf_runtime import (
     plan_text_sections,
     plan_zero_shot_sections,
     runtime,
+    section_fits_plan,
+    zero_shot_section_fits,
 )
 from .schemas import (
     AnalysisCoverage,
@@ -249,6 +251,29 @@ def _classify_document(
     top_candidates: list[tuple[float, int, str]] = []
 
     for section in plan.sections:
+        if not pair_budget_verified:
+            continue
+        fits = zero_shot_section_fits(
+            section,
+            pipe,
+            _DOCUMENT_LABELS,
+            hypothesis_template=_ZERO_SHOT_HYPOTHESIS_TEMPLATE,
+        )
+        if fits is not True:
+            missing.append(
+                MissingRange(
+                    section.index,
+                    section.start_offset,
+                    section.end_offset,
+                    (
+                        "section_token_budget_exceeded"
+                        if fits is False
+                        else "section_token_budget_unverified"
+                    ),
+                    "TokenBudgetVerificationFailed",
+                )
+            )
+            continue
         try:
             raw = pipe(
                 section.text,
@@ -317,6 +342,22 @@ def _summarize_document(
     summaries: list[str] = []
 
     for section in plan.sections:
+        fits = section_fits_plan(section, pipe, plan)
+        if plan.budget_kind.startswith("tokens") and fits is not True:
+            missing.append(
+                MissingRange(
+                    section.index,
+                    section.start_offset,
+                    section.end_offset,
+                    (
+                        "section_token_budget_exceeded"
+                        if fits is False
+                        else "section_token_budget_unverified"
+                    ),
+                    "TokenBudgetVerificationFailed",
+                )
+            )
+            continue
         try:
             word_count = len(section.text.split())
             raw = pipe(
@@ -396,6 +437,22 @@ def _extract_entities(
     mentions: list[EntityMention] = []
 
     for section in plan.sections:
+        fits = section_fits_plan(section, pipe, plan)
+        if plan.budget_kind.startswith("tokens") and fits is not True:
+            missing.append(
+                MissingRange(
+                    section.index,
+                    section.start_offset,
+                    section.end_offset,
+                    (
+                        "section_token_budget_exceeded"
+                        if fits is False
+                        else "section_token_budget_unverified"
+                    ),
+                    "TokenBudgetVerificationFailed",
+                )
+            )
+            continue
         try:
             raw_entities = pipe(section.text)
             if not isinstance(raw_entities, (list, tuple)):

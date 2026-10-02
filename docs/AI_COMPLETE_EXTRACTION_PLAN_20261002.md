@@ -164,3 +164,69 @@ Output-`min_length`. Erst wenn dieser reale Modellaufruf scheitert, wird der
 Abschnitt als `pipeline_error` fehlend ausgewiesen. Damit gibt es keine
 Coverage ohne Modellaufruf und zugleich keine künstliche Lücke nur wegen eines
 kurzen letzten Abschnitts.
+
+
+## Retokenisierungs-Folgeplan nach Budgetreview
+
+Zusätzlicher Befund auf Parent `0749dc80edc5129ac938ecbeff9f355e99260a42`:
+Fast-Tokenizer-Offsets stammen aus der Tokenisierung der vollständigen Quelle.
+Ein daraus geschnittener String kann an seiner neuen linken/rechten Kontextgrenze
+durch BPE/WordPiece anders tokenisiert werden. Deshalb ist
+`N Whole-Source-Tokens` kein hinreichender Beweis, dass der tatsächlich an die
+Pipeline übergebene Substring ebenfalls höchstens N Tokens besitzt.
+
+### Korrektur
+
+1. Jeder aus Whole-Source-Offsets gebildete Tokenabschnitt wird unmittelbar als
+   **exakter Substring** mit demselben Tokenizer und `add_special_tokens=False`
+   erneut gezählt.
+2. Passt ein Offsetabschnitt nicht, wird nicht gekürzt veröffentlicht, sondern
+   der komplette Text über den Slow-Plan anhand echter Substring-Tokenzahlen neu
+   portioniert.
+3. Auch der Slow-Plan verifiziert den endgültigen Abschnitt nach binärer Suche
+   und nach einer optionalen Whitespace-Grenzverschiebung nochmals. Eine
+   Whitespace-Grenze wird nur übernommen, wenn der tatsächliche Substring weiter
+   ins Budget passt.
+4. Ein NER-Overlap wird nur übernommen, wenn dessen tatsächlich retokenisierter
+   Suffix ins gewünschte Overlap-Tokenbudget passt; der daraus entstehende
+   nächste Abschnitt wird anschließend erneut vollständig verifiziert.
+5. Vor jedem echten Summary-/NER-Pipelinecall wird ein Tokenplan-Abschnitt erneut
+   retokenisiert. Ist er jetzt zu groß oder nicht mehr messbar, erfolgt **kein**
+   Modellaufruf und der Bereich wird als
+   `section_token_budget_exceeded` beziehungsweise
+   `section_token_budget_unverified` ausgewiesen.
+6. Zero-Shot verifiziert unmittelbar vor jedem Aufruf erneut:
+   `premise_tokens + max(hypothesis_tokens) + pair_special_tokens <= model_max_length`.
+   Bei nicht beweisbarem Pairbudget wird die Pipeline nicht aufgerufen und keine
+   Classification-Coverage als erfolgreich gemeldet.
+7. Kann trotz deklarierter `model_max_length` kein sicherer normaler Tokenplan
+   erzeugt werden, wird nicht auf einen scheinbar erfolgreichen Zeichenplan
+   zurückgefallen. Der Plan trägt `tokens_unverified`; Summary/NER lassen den
+   Quellbereich explizit offen.
+8. Pair-Special-Token-Metadaten sind für Zero-Shot nur gültig, wenn ihr Typ
+   exakt `int` und der Wert nicht negativ ist. `bool`, negative Werte und
+   andere Typen gelten bei `require_special_tokens=True` ausdrücklich nicht
+   als bewiesene Null.
+
+### Offizielle Semantik
+
+Aktuelle Hugging-Face-Transformers-Quellen bestätigen, dass
+`truncation='only_first'` ausschließlich die erste Sequenz eines Paars kürzt
+und die Zero-Shot-Pipeline Premise/Hypothese-Paare mit
+`TruncationStrategy.ONLY_FIRST` tokenisiert:
+
+- https://huggingface.co/docs/transformers/main/pad_truncation
+- https://github.com/huggingface/transformers/blob/main/src/transformers/pipelines/zero_shot_classification.py
+
+### Gegenproben
+
+- kontextabhängiger Faketokenizer: Whole-Source-Offets modellieren grobe
+  Tokenmerges, abgetrennte Substrings brauchen absichtlich mehr Tokens;
+- Fake-Summary-Pipeline prüft pro tatsächlichem Call
+  `consumed_tokens + special_tokens <= model_max_length`;
+- Fake-Zero-Shot-Pipeline prüft pro tatsächlichem Call zusätzlich längste
+  Hypothese und Pair-Special-Tokens;
+- NER-Probe enthält Whitespace und großen Overlap und kontrolliert sowohl späte
+  Entity-Offsets als auch das reale Modellbudget jedes Calls;
+- `True`, `-1` und `"3"` als Pair-Special-Metadaten müssen fail-closed
+  bleiben und dürfen keinen Zero-Shot-Modellaufruf auslösen.

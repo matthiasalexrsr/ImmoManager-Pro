@@ -150,6 +150,20 @@ class TestDocumentAIWithMockedModels:
         mock_zs = MagicMock()
         mock_zs.return_value = {"labels": ["Rechnung"], "scores": [0.95]}
         mock_zs.model.name_or_path = "test-model"
+        tokenizer = MagicMock()
+        tokenizer.model_max_length = 512
+        tokenizer.num_special_tokens_to_add.side_effect = (
+            lambda pair=False: 3 if pair else 2
+        )
+        tokenizer.encode.side_effect = (
+            lambda value, add_special_tokens=False: list(range(len(value)))
+        )
+        tokenizer.side_effect = lambda value, **kwargs: {
+            "offset_mapping": [
+                (index, index + 1) for index in range(len(value))
+            ]
+        }
+        mock_zs.tokenizer = tokenizer
 
         # Mock summarization pipeline
         mock_summ = MagicMock()

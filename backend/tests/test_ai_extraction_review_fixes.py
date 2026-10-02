@@ -6,8 +6,14 @@ import logging
 import sys
 from types import ModuleType, SimpleNamespace
 
+import pytest
+
 from backend.services.ai import document_ai, message_ai
-from backend.services.ai.hf_runtime import HuggingFaceRuntime, RuntimeConfig
+from backend.services.ai.hf_runtime import (
+    HuggingFaceRuntime,
+    RuntimeConfig,
+    plan_zero_shot_sections,
+)
 
 
 class CharTokenizer:
@@ -214,3 +220,232 @@ def test_pipeline_exception_messages_never_reach_logs(monkeypatch, caplog):
     assert runtime.get_pipeline("summarization") is None
     assert secret not in caplog.text
     assert "RuntimeError" in caplog.text
+
+
+class ContextSensitiveTokenizer:
+    """Full-source tokens are coarse; detached substrings retokenize finer."""
+
+    def __init__(self, full_text: str, model_max_length: int, pair_special=3):
+        self.full_text = full_text
+        self.model_max_length = model_max_length
+        self.pair_special = pair_special
+
+    def num_special_tokens_to_add(self, pair=False):
+        return self.pair_special if pair else 2
+
+    def encode(self, text, add_special_tokens=False):
+        assert add_special_tokens is False
+        if text == self.full_text:
+            # Whole-source context merges four characters per token.
+            return list(range((len(text) + 3) // 4))
+        # Detached sections require twice as many tokens.
+        return list(range((len(text) + 1) // 2))
+
+    def __call__(
+        self,
+        text,
+        *,
+        add_special_tokens=False,
+        return_offsets_mapping=False,
+        truncation=False,
+    ):
+        assert add_special_tokens is False
+        assert truncation is False
+        if return_offsets_mapping:
+            if text == self.full_text:
+                return {
+                    "offset_mapping": [
+                        (start, min(start + 4, len(text)))
+                        for start in range(0, len(text), 4)
+                    ]
+                }
+            return {
+                "offset_mapping": [
+                    (start, min(start + 2, len(text)))
+                    for start in range(0, len(text), 2)
+                ]
+            }
+        return {"input_ids": self.encode(text, add_special_tokens=False)}
+
+
+class ContextBudgetSummaryPipeline:
+    def __init__(self, full_text: str, maximum: int = 18):
+        self.tokenizer = ContextSensitiveTokenizer(full_text, maximum)
+        self.model = SimpleNamespace(name_or_path="context-summary")
+        self.calls: list[tuple[str, int]] = []
+
+    def __call__(self, text, **kwargs):
+        consumed = (
+            len(self.tokenizer.encode(text, add_special_tokens=False))
+            + self.tokenizer.num_special_tokens_to_add(pair=False)
+        )
+        assert consumed <= self.tokenizer.model_max_length
+        self.calls.append((text, consumed))
+        return [{"summary_text": f"summary-{len(self.calls)}"}]
+
+
+class ContextBudgetZeroShotPipeline:
+    def __init__(self, full_text: str, maximum: int = 64, pair_special=3):
+        self.tokenizer = ContextSensitiveTokenizer(
+            full_text, maximum, pair_special=pair_special
+        )
+        self.model = SimpleNamespace(name_or_path="context-zero-shot")
+        self.calls: list[tuple[str, int]] = []
+
+    def __call__(
+        self,
+        text,
+        *,
+        candidate_labels,
+        hypothesis_template,
+        multi_label,
+    ):
+        assert multi_label is False
+        hypothesis_tokens = max(
+            len(
+                self.tokenizer.encode(
+                    hypothesis_template.format(label),
+                    add_special_tokens=False,
+                )
+            )
+            for label in candidate_labels
+        )
+        consumed = (
+            len(self.tokenizer.encode(text, add_special_tokens=False))
+            + hypothesis_tokens
+            + self.tokenizer.num_special_tokens_to_add(pair=True)
+        )
+        assert consumed <= self.tokenizer.model_max_length
+        self.calls.append((text, consumed))
+        return {"labels": ["Rechnung"], "scores": [0.93]}
+
+
+def test_context_sensitive_summary_retokenizes_each_detached_section(monkeypatch):
+    text = "0123456789abcdef" * 8
+    pipe = ContextBudgetSummaryPipeline(text, maximum=18)
+    monkeypatch.setattr(
+        message_ai,
+        "runtime",
+        runtime_for(summarization=pipe),
+    )
+
+    result = message_ai._ai_summarize(text)
+
+    assert result is not None
+    assert result.analysis_complete is True
+    coverage = result.coverage["summarization"]
+    assert coverage.budget_kind == "tokens"
+    assert coverage.covered_ranges[0].start_offset == 0
+    assert coverage.covered_ranges[-1].end_offset == len(text)
+    assert len(pipe.calls) > 1
+    assert all(consumed <= pipe.tokenizer.model_max_length for _, consumed in pipe.calls)
+    # The initial full-source offsets would yield much larger detached chunks.
+    assert max(len(call) for call, _ in pipe.calls) <= 32
+
+
+def test_context_sensitive_zero_shot_resections_before_only_first(monkeypatch):
+    text = "ABCDEFGHIJKLMNOPQRSTUVWXYZ" * 10
+    pipe = ContextBudgetZeroShotPipeline(text, maximum=64)
+    monkeypatch.setattr(
+        document_ai,
+        "runtime",
+        runtime_for(**{"zero-shot-classification": pipe}),
+    )
+
+    label, score, _, coverage, sections = document_ai._classify_document(text)
+
+    assert label == "Rechnung"
+    assert score == 0.93
+    assert coverage.complete is True
+    assert coverage.covered_ranges[0].start_offset == 0
+    assert coverage.covered_ranges[-1].end_offset == len(text)
+    assert len(pipe.calls) > 1
+    assert all(consumed <= 64 for _, consumed in pipe.calls)
+    assert all(section["pair_budget_verified"] is True for section in sections)
+
+
+@pytest.mark.parametrize("invalid_special", [True, -1, "3"])
+def test_invalid_pair_special_metadata_is_not_treated_as_zero(
+    monkeypatch,
+    invalid_special,
+):
+    text = "synthetic zero shot source " * 8
+    pipe = ContextBudgetZeroShotPipeline(
+        text,
+        maximum=64,
+        pair_special=invalid_special,
+    )
+    assert (
+        plan_zero_shot_sections(
+            text,
+            pipe,
+            document_ai._DOCUMENT_LABELS,
+            hypothesis_template=document_ai._ZERO_SHOT_HYPOTHESIS_TEMPLATE,
+        )
+        is None
+    )
+    monkeypatch.setattr(
+        document_ai,
+        "runtime",
+        runtime_for(**{"zero-shot-classification": pipe}),
+    )
+
+    _, _, _, coverage, sections = document_ai._classify_document(text)
+
+    assert coverage.complete is False
+    assert coverage.covered_ranges == []
+    assert coverage.missing_ranges[0].error_code == "zero_shot_pair_budget_unverified"
+    assert sections == []
+    assert pipe.calls == []
+
+
+class ContextBudgetNERPipeline:
+    def __init__(self, full_text: str, maximum: int = 50):
+        self.tokenizer = ContextSensitiveTokenizer(full_text, maximum)
+        self.model = SimpleNamespace(name_or_path="context-ner")
+        self.calls: list[tuple[str, int]] = []
+
+    def __call__(self, text, **kwargs):
+        consumed = (
+            len(self.tokenizer.encode(text, add_special_tokens=False))
+            + self.tokenizer.num_special_tokens_to_add(pair=False)
+        )
+        assert consumed <= self.tokenizer.model_max_length
+        self.calls.append((text, consumed))
+        marker = "Late Entity AG"
+        start = text.find(marker)
+        if start < 0:
+            return []
+        return [
+            {
+                "entity_group": "ORG",
+                "entity": "B-ORG",
+                "word": marker,
+                "score": 0.99,
+                "start": start,
+                "end": start + len(marker),
+            }
+        ]
+
+
+def test_context_sensitive_ner_revalidates_slow_whitespace_and_overlap(monkeypatch):
+    text = ("alpha beta gamma delta " * 20) + "Late Entity AG"
+    pipe = ContextBudgetNERPipeline(text, maximum=50)
+    monkeypatch.setattr(document_ai, "runtime", runtime_for(ner=pipe))
+
+    entities, mentions, _, coverage = document_ai._extract_entities(text)
+
+    assert coverage.complete is True
+    assert coverage.budget_kind == "tokens"
+    assert coverage.section_overlap == 32
+    assert coverage.covered_ranges[0].start_offset == 0
+    assert coverage.covered_ranges[-1].end_offset == len(text)
+    assert len(pipe.calls) > 1
+    assert all(consumed <= 50 for _, consumed in pipe.calls)
+    assert "Late Entity AG" in entities["organizations"]
+    late_offset = text.index("Late Entity AG")
+    assert any(
+        mention.word == "Late Entity AG"
+        and mention.source_start_offset == late_offset
+        for mention in mentions
+    )
