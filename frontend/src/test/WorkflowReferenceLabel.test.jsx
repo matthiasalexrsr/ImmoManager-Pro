@@ -1,7 +1,7 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { WorkflowLocationLabel } from '../features/tenancyWorkflows/WorkflowReferenceLabel';
-import { resolvePinnedReference } from '../features/tenancyWorkflows/workflowReferenceResolution';
+import { resolvePinnedReference, usePinnedReference } from '../features/tenancyWorkflows/workflowReferenceResolution';
 
 function page(selected) {
   return {
@@ -60,6 +60,47 @@ describe('workflow reference labels', () => {
       selectedId: 'unit-b',
       limit: 1,
     }));
+  });
+
+  it('returns neutral on the first render of a different id/loader/principal binding before effects flush', async () => {
+    const renderValues = [];
+    let resolveSecond;
+    const firstLoader = vi.fn(async ({ selectedId }) => (
+      page({ id: selectedId, name: 'Haus Alt' })
+    ));
+    const secondLoader = vi.fn(() => new Promise(resolve => {
+      resolveSecond = resolve;
+    }));
+
+    function Probe({ loader, id, principal }) {
+      const value = usePinnedReference(loader, id, principal);
+      renderValues.push(value);
+      return <span>{value?.name || 'neutral'}</span>;
+    }
+
+    const view = render(
+      <Probe loader={firstLoader} id="property-old" principal="actor-a" />,
+    );
+    expect(await screen.findByText('Haus Alt')).toBeInTheDocument();
+
+    const before = renderValues.length;
+    view.rerender(
+      <Probe loader={secondLoader} id="property-new" principal="actor-b" />,
+    );
+
+    expect(renderValues[before]).toBeUndefined();
+    expect(screen.queryByText('Haus Alt')).not.toBeInTheDocument();
+    expect(screen.getByText('neutral')).toBeInTheDocument();
+    await waitFor(() => expect(secondLoader).toHaveBeenCalledWith(expect.objectContaining({
+      selectedId: 'property-new',
+      limit: 1,
+      cursor: null,
+    })));
+
+    await act(async () => {
+      resolveSecond(page({ id: 'property-new', name: 'Haus Neu' }));
+    });
+    expect(await screen.findByText('Haus Neu')).toBeInTheDocument();
   });
 
   it('drops a previously visible authorized name while the new principal is rechecked', async () => {

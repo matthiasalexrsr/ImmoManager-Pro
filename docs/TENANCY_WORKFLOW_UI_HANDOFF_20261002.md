@@ -349,3 +349,43 @@ ESLint über das gesamte `features/tenancyWorkflows`, `pages/TenancyWorkflows.js
 Produktionsbuild `npm.cmd run build`: **bestanden**, Vite 8.1.0, **673 Module transformiert**.
 
 Roots echter Edge-/SQLite-/Browsernachweis und dessen Recovery/E2E-Dateien bleiben ausdrücklich Root-Verantwortung; in diesem UI-Worktree wird kein neuer Browser-E2E-Nachweis behauptet.
+
+## Additive Fixes nach Root-Edge-Abnahme: Referenzbindung + TemplateStepInput-Projektion
+
+### 1. Referenznamen ohne stale Renderfenster
+
+`usePinnedReference` speichert den aufgelösten Wert jetzt zusammen mit seiner exakten Renderbindung aus `id`, **Loaderidentität** und `principalKey`. Bereits während des ersten Renders mit einer abweichenden Bindung wird `undefined` zurückgegeben; der zuvor berechtigte Name kann daher nicht bis zum nachfolgenden `useEffect` sichtbar bleiben.
+
+Unverändert bleiben:
+
+- Auflösung ausschließlich über `selected_id`,
+- `page_size=1`,
+- Abbruch alter Requests per `AbortController`,
+- neutrale Anzeige bis zur aktuellen autorisierten Antwort.
+
+Der Regressionstest protokolliert den Hook-Wert direkt während des Renders und belegt, dass der **erste Render** nach Wechsel von ID, Loader und Principal bereits neutral ist, bevor der Effect den neuen Requestzustand setzt.
+
+### 2. Strikte Requestprojektion für Template-Schritte
+
+Roots tatsächliches `UpdateTemplateVersion.steps: list[TemplateStepInput]` erlaubt exakt:
+
+`stable_key, position, title, description, default_requirement, anchor, offset_days, assignee_user_id, assignee_role, depends_on_step_keys, evidence_requirement`.
+
+Serverantwortfelder wie `id` dürfen nicht zurück in den PUT gelangen. Die zentrale Command-Schicht projiziert deshalb Create-/Update-Steps ausdrücklich auf genau diese erlaubten Inputfelder. Damit werden auch zukünftige Response-Metadaten nicht versehentlich in Write-Requests gespiegelt.
+
+- vorhandene und neue `stable_key` bleiben unverändert,
+- Abhängigkeiten bleiben unverändert als Stable Keys erhalten,
+- Server-`step.id`, ETags und sonstige Responsefelder werden verworfen,
+- DTO/CAS/Idempotenz bleiben unverändert.
+
+Der UI-Regressionstest startet mit einer Server-Draft-Version, deren Step bereits `id: server-step-77` besitzt, ändert den Titel, speichert den Draft und prüft den PUT-Step feldgenau ohne `id`. Anschließend wird die vom Save gelieferte `revision-2` erfolgreich mit dem bestehenden Publish-Command veröffentlicht.
+
+### Prüfungen dieses Fixcommits
+
+- Gezielte Regressionen (`WorkflowReferenceLabel`, `WorkflowTemplateDesigner`, `TenancyWorkflowModel`): **3 Testdateien / 20 Tests bestanden**.
+- Vollständige Workflow-Suite: **9 Testdateien / 48 Tests bestanden**.
+- Der zuvor einmal unter Parallelbelastung knapp über 5 s gelaufene Startformular-Test wurde unverändert isoliert geprüft: **1/1 bestanden, 1,15 s Testzeit**; kein Timeout und keine Assertion wurde abgeschwächt.
+- ESLint über gesamtes `features/tenancyWorkflows`, `pages/TenancyWorkflows.jsx` und alle neun Workflowtests mit `--max-warnings=0`: **bestanden, keine Ausgabe/Warnung**.
+- Produktionsbuild `npm.cmd run build`: **bestanden**, Vite 8.1.0, **673 Module transformiert**.
+
+Root-/Main-/Preview-/Backend-/E2E-Dateien wurden nicht verändert.

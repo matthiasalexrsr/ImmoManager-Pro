@@ -232,9 +232,38 @@ export function displayEvidenceReference(link) {
   return link.handover_protocol_id || link.meter_reading_id || link.reference_id || link.id;
 }
 
+export function projectTemplateStepInput(step, position = step?.position) {
+  return {
+    stable_key: step.stable_key,
+    position: Number(position),
+    title: step.title,
+    description: step.description ?? null,
+    default_requirement: step.default_requirement,
+    anchor: step.anchor,
+    offset_days: Number(step.offset_days),
+    assignee_user_id: step.assignee_user_id || null,
+    assignee_role: step.assignee_role || null,
+    depends_on_step_keys: [...(step.depends_on_step_keys || [])],
+    evidence_requirement: step.evidence_requirement,
+  };
+}
+
+export function projectTemplateSteps(steps) {
+  if (!Array.isArray(steps)) throw new Error('invalid_template_steps');
+  return steps.map((step, position) => projectTemplateStepInput(step, position));
+}
+
 export function createTemplateCommand({ property_id, unit_id = null, direction, steps }, key = newIdempotencyKey('workflow-template-create')) {
-  validateTemplateDraftSteps(steps);
-  return { idempotency_key: key, expected_revision: 'new', property_id, unit_id, direction, steps };
+  const projectedSteps = projectTemplateSteps(steps);
+  validateTemplateDraftSteps(projectedSteps);
+  return {
+    idempotency_key: key,
+    expected_revision: 'new',
+    property_id,
+    unit_id,
+    direction,
+    steps: projectedSteps,
+  };
 }
 
 export function createTemplateVersionCommand(version, key = newIdempotencyKey('workflow-template-version')) {
@@ -244,8 +273,9 @@ export function createTemplateVersionCommand(version, key = newIdempotencyKey('w
 
 export function updateTemplateVersionCommand(version, steps, key = newIdempotencyKey('workflow-template-update')) {
   validateTemplateVersion(version);
-  validateTemplateDraftSteps(steps);
-  return { idempotency_key: key, expected_revision: version.revision, steps };
+  const projectedSteps = projectTemplateSteps(steps);
+  validateTemplateDraftSteps(projectedSteps);
+  return { idempotency_key: key, expected_revision: version.revision, steps: projectedSteps };
 }
 
 export function publishTemplateVersionCommand(version, key = newIdempotencyKey('workflow-template-publish')) {

@@ -1,6 +1,11 @@
+import { useState } from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import WorkflowTemplateDesigner from '../features/tenancyWorkflows/WorkflowTemplateDesigner';
+import {
+  publishTemplateVersionCommand,
+  updateTemplateVersionCommand,
+} from '../features/tenancyWorkflows/tenancyWorkflowModel';
 
 function templateStep(overrides = {}) {
   return {
@@ -42,19 +47,21 @@ function version(overrides = {}) {
 }
 
 function preparedSaveFactory() {
-  return vi.fn(({ version: source, steps }) => ({
-    payload: {
-      idempotency_key: 'save-key',
-      expected_revision: source.revision,
-      steps,
-    },
-    send: vi.fn(async () => ({
-      ...source,
-      revision: 'revision-2',
-      etag: '"template-etag-2"',
-      steps: steps.map((step, index) => ({ ...step, id: step.id || `server-${index}` })),
-    })),
-  }));
+  return vi.fn(({ version: source, steps }) => {
+    const payload = updateTemplateVersionCommand(source, steps, 'save-key');
+    return {
+      payload,
+      send: vi.fn(async () => ({
+        ...source,
+        revision: 'revision-2',
+        etag: '"template-etag-2"',
+        steps: payload.steps.map((step, index) => ({
+          ...step,
+          id: source.steps[index]?.id || `server-${index}`,
+        })),
+      })),
+    };
+  });
 }
 
 describe('WorkflowTemplateDesigner', () => {
@@ -137,6 +144,72 @@ describe('WorkflowTemplateDesigner', () => {
       stable_key: 'published-handover-key',
       title: 'Neuer sichtbarer Titel',
     });
+  });
+
+  it('projects server step ids out of update requests and then publishes the saved draft revision', async () => {
+    const prepareSave = preparedSaveFactory();
+    const publishSend = vi.fn(async source => ({
+      ...source,
+      state: 'published',
+      revision: 'revision-3',
+      etag: '"template-etag-3"',
+      published_at: '2026-10-02T09:00:00Z',
+      actions: { edit_template: false, publish_template: false },
+    }));
+    const preparePublish = vi.fn(({ version: source }) => ({
+      payload: publishTemplateVersionCommand(source, 'publish-key'),
+      send: () => publishSend(source),
+    }));
+
+    function Harness() {
+      const [current, setCurrent] = useState(() => version({
+        id: 'draft-version-2',
+        steps: [templateStep({
+          id: 'server-step-77',
+          stable_key: 'stable-published-key',
+          title: 'Vom Server geladener Schritt',
+        })],
+      }));
+      return <WorkflowTemplateDesigner
+        version={current}
+        userLoader={async () => ({ items: [], next_cursor: null, has_more: false, selected: null })}
+        prepareSave={prepareSave}
+        preparePublish={preparePublish}
+        onChanged={setCurrent}
+      />;
+    }
+
+    render(<Harness />);
+
+    fireEvent.change(screen.getByLabelText('Titel'), { target: { value: 'Geändert' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Entwurf speichern' }));
+    await waitFor(() => expect(prepareSave).toHaveBeenCalledTimes(1));
+
+    const request = prepareSave.mock.results[0].value.payload;
+    expect(request.steps).toEqual([{
+      stable_key: 'stable-published-key',
+      position: 0,
+      title: 'Geändert',
+      description: null,
+      default_requirement: 'required',
+      anchor: 'move_out_handover',
+      offset_days: 0,
+      assignee_user_id: null,
+      assignee_role: 'techniker',
+      depends_on_step_keys: [],
+      evidence_requirement: 'document_original',
+    }]);
+    expect(request.steps[0]).not.toHaveProperty('id');
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Version veröffentlichen' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Version veröffentlichen' }));
+    await waitFor(() => expect(preparePublish).toHaveBeenCalledTimes(1));
+    expect(preparePublish.mock.results[0].value.payload).toEqual({
+      idempotency_key: 'publish-key',
+      expected_revision: 'revision-2',
+    });
+    await waitFor(() => expect(publishSend).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText('Veröffentlicht')).toBeInTheDocument();
   });
 
   it('uses server actions instead of inferring edit rights from a role', () => {

@@ -14,20 +14,38 @@ export async function resolvePinnedReference(loadPage, id, { signal } = {}) {
   return page.items.find(item => item?.id === id) || null;
 }
 
+function sameBinding(state, loadPage, id, principalKey) {
+  return state.id === id
+    && state.loadPage === loadPage
+    && state.principalKey === principalKey;
+}
+
 export function usePinnedReference(loadPage, id, principalKey = '') {
-  const [value, setValue] = useState(undefined);
+  const [resolved, setResolved] = useState(() => ({
+    id: null,
+    loadPage: null,
+    principalKey: null,
+    value: undefined,
+  }));
+
+  const value = sameBinding(resolved, loadPage, id, principalKey)
+    ? resolved.value
+    : undefined;
 
   useEffect(() => {
     const controller = new AbortController();
-    setValue(undefined);
+    const binding = { id, loadPage, principalKey };
+    setResolved({ ...binding, value: undefined });
     if (!id || typeof loadPage !== 'function') return () => controller.abort();
 
     resolvePinnedReference(loadPage, id, { signal: controller.signal })
       .then(result => {
-        if (!controller.signal.aborted) setValue(result);
+        if (!controller.signal.aborted) setResolved({ ...binding, value: result });
       })
       .catch(error => {
-        if (!controller.signal.aborted && error?.name !== 'AbortError') setValue(null);
+        if (!controller.signal.aborted && error?.name !== 'AbortError') {
+          setResolved({ ...binding, value: null });
+        }
       });
 
     return () => controller.abort();

@@ -215,7 +215,13 @@ describe('tenancy workflow source contract', () => {
       expected_revision: 'version-rev-3',
       based_on_version_id: 'version-1',
     });
-    expect(updateTemplateVersionCommand(version(), [stepInput()], 'update-key')).toMatchObject({
+    const serverStep = {
+      id: 'server-step-1',
+      etag: '"step-etag"',
+      created_at: timestamp,
+      ...stepInput(),
+    };
+    expect(updateTemplateVersionCommand(version(), [serverStep], 'update-key')).toEqual({
       idempotency_key: 'update-key',
       expected_revision: 'version-rev-3',
       steps: [stepInput()],
