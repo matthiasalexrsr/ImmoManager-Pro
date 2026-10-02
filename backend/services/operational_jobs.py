@@ -5,6 +5,7 @@ No email, cash posting, global scheduler hook, or implicit caller-session commit
 """
 
 from contextlib import contextmanager
+from contextvars import ContextVar
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
@@ -38,6 +39,7 @@ from .payments import payment_total
 from .portfolio_scope import current_scope, refresh_scope, scope_context, scope_from_user
 
 POLICY = PacketPolicy()
+_request_token: ContextVar[str | None] = ContextVar("operational_job_request_token", default=None)
 SOURCE_MODELS: dict[str, Any] = {"overdue_rent_charge": RentChargeORM, "overdue_receivable": ReceivableORM,
                  "correspondence": CorrespondenceDraftORM}
 COLLECTIONS = {"overdue_rent_charge": "rent_charges", "overdue_receivable": "receivables",
@@ -46,6 +48,37 @@ COLLECTIONS = {"overdue_rent_charge": "rent_charges", "overdue_receivable": "rec
 
 class ClaimLost(RuntimeError):
     pass
+
+
+class AuthorizationUnavailable(RuntimeError):
+    pass
+
+
+@contextmanager
+def request_token(token: str | None):
+    """Ephemeral request context only: never stored in a job, receipt or claim."""
+    marker = _request_token.set(token)
+    try:
+        yield
+    finally:
+        _request_token.reset(marker)
+
+
+def _fresh(captured):
+    refresh_scope(captured)
+    token = _request_token.get()
+    if captured is None or token is None:
+        return
+    try:
+        # Revalidate expiry and persistent/session revocation without decode_token's
+        # last-used writer, which would contend with our SQLite transaction.
+        claims = auth.decode_signed_token(token)
+        if claims.type != "access" or claims.sub != captured.user_id or auth.is_token_revoked(token):
+            raise HTTPException(401, "Sitzung abgelaufen oder widerrufen. Bitte erneut anmelden.")
+    except HTTPException as error:
+        if error.status_code == 503:
+            raise AuthorizationUnavailable("authorization_unavailable") from None
+        raise
 
 
 @dataclass(frozen=True)
@@ -82,8 +115,7 @@ def _operator(actor_id=None):
     captured = scope_from_user(user)
     if captured.role not in {"eigentuemer", "verwalter"} or not captured.unrestricted:
         raise HTTPException(403, "Operative Arbeitslisten benötigen installationsweite Verwaltungsrechte.")
-    if current is not None:
-        refresh_scope(current)
+    _fresh(current if current is not None else captured)
     return captured
 
 
@@ -162,21 +194,23 @@ def atomic(store, captured):
                     db.execute(text("SET LOCAL statement_timeout = '10s'"))
                 if captured is not None and isinstance(auth._user_store, auth.SQLUserStore):
                     auth._user_store._lock_management(db)
-                refresh_scope(captured)
+                _fresh(captured)
                 _seed_lock(db.connection())
+                # The existing generation is only the native lock carrier here;
+                # repeated job packets/polls must not exhaust a legacy counter.
                 db.execute(update(OperationalLockORM).where(OperationalLockORM.id == 1)
-                           .values(generation=OperationalLockORM.generation + 1))
+                           .values(generation=OperationalLockORM.generation))
                 unit = Unit(SQLAlchemyStore(db), db, captured)
                 yield unit
-                refresh_scope(captured)
+                _fresh(captured)
         store.db.expire_all()
     else:
         with scope_context(captured), account_lock(), _state_lock, _memory_lock:
             unit = Unit(store, None, captured)
             try:
-                refresh_scope(captured)
+                _fresh(captured)
                 yield unit
-                refresh_scope(captured)
+                _fresh(captured)
             except Exception:
                 unit.rollback()
                 raise
@@ -516,7 +550,7 @@ def _status(unit, job):
 
 
 def _finish_claim(unit, claim, lane, *, release=True):
-    refresh_scope(unit.captured)
+    _fresh(unit.captured)
     if unit.db is not None:
         # Stored timestamps are UTC without a zone. A PostgreSQL session may use
         # a different zone, and transaction-start now() cannot fence a late packet.
@@ -585,8 +619,10 @@ def run_claim(store, claim: Claim, payload: JobContinue, *, policy=POLICY):
 
 def _failure(store, claim, item_id, error):
     """After packet rollback, only metadata under the still-current fence changes."""
-    transient = isinstance(error, OperationalError) or isinstance(error, DBAPIError) and error.connection_invalidated
-    code = "actor_changed" if isinstance(error, HTTPException) and error.status_code in {401, 403} else "transient_database" if transient else "source_invalid"
+    transient = isinstance(error, (AuthorizationUnavailable, OperationalError)) or isinstance(error, DBAPIError) and error.connection_invalidated
+    code = ("actor_changed" if isinstance(error, HTTPException) and error.status_code in {401, 403}
+            else "transient_authorization" if isinstance(error, AuthorizationUnavailable)
+            else "transient_database" if transient else "source_invalid")
     with atomic(store, None) as unit:
         try:
             job, lane = _checked_claim(unit, claim)
@@ -604,10 +640,10 @@ def _failure(store, claim, item_id, error):
             item.error_code = code
             if code == "source_invalid":
                 item.state = "attention"
-            if code == "transient_database":
+            if transient:
                 item.next_attempt_at = _clock(unit.db) + timedelta(seconds=min(300, 2 ** min(item.attempts, 8)))
                 lane.next_attempt_at = item.next_attempt_at
-        elif code == "transient_database":
+        elif transient:
             lane.next_attempt_at = _clock(unit.db) + timedelta(seconds=2)
         _finish_claim(unit, claim, lane)
         _status(unit, job)

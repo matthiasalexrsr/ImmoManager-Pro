@@ -12,12 +12,15 @@ from sqlalchemy.exc import DBAPIError
 from backend import auth
 from backend.db.operational_job_models import (
     OperationalJobLaneORM,
+    OperationalJobORM,
     OperationalWorkItemORM,
     ensure_operational_job_schema,
 )
+from backend.db.operational_models import OperationalLockORM
 from backend.models import RentChargeCreate
 from backend.repositories.sql_store import SQLAlchemyStore
 from backend.services import operational_jobs as service
+from backend.services.auth_sessions import login_pair
 from backend.services.operational_job_types import JobCommand, JobContinue, JobCreate, PacketPolicy
 from backend.services.operational_job_validation import reset_restored_job_claims, validate_job_journal
 from backend.services.operational_schedule import ensure_operational_schema
@@ -46,17 +49,25 @@ def installation(postgres_database, monkeypatch):
 
 def test_pg_independent_sessions_publish_once_and_stale_fence_is_rejected(installation):
     engine, factory, actor, job = installation
+    large = 2 ** 31 + 1
+    with engine.begin() as connection:
+        connection.execute(update(OperationalJobORM).where(OperationalJobORM.id == job["id"]).values(revision=large, turn=large))
+        connection.execute(update(OperationalJobLaneORM).where(OperationalJobLaneORM.job_id == job["id"])
+                           .values(fence=large, served=large, scanned=3 * large, created=large, updated=large, skipped=large))
+        connection.execute(update(OperationalLockORM).values(generation=2 ** 31 - 1))
     with factory() as db:
         store = SQLAlchemyStore(db)
         old = service.claim_lane(store, job["id"], "old", actor_id=actor.id)
         service.prepare_claim(store, old, JobContinue(max_items=3))
+    with engine.begin() as connection:
+        connection.execute(update(OperationalWorkItemORM).where(OperationalWorkItemORM.lane_id == old.lane_id).values(revision=large, attempts=large))
     with engine.begin() as connection:
         connection.execute(update(OperationalJobLaneORM).where(OperationalJobLaneORM.id == old.lane_id)
                            .values(lease_expires_at=service._clock() - timedelta(seconds=1)))
     with factory() as db:
         store = SQLAlchemyStore(db)
         replacement = service.claim_lane(store, job["id"], "new", actor_id=actor.id)
-        assert replacement.fence > old.fence
+        assert replacement.fence > old.fence > large
         with pytest.raises(service.ClaimLost):
             service.run_claim(store, old, JobContinue(max_items=3))
         service.run_claim(store, replacement, JobContinue(max_items=3))
@@ -72,8 +83,15 @@ def test_pg_independent_sessions_publish_once_and_stale_fence_is_rejected(instal
     with ThreadPoolExecutor(max_workers=2) as pool:
         list(pool.map(worker, range(2)))
     with factory() as db:
-        assert len(SQLAlchemyStore(db).list_notifications()) == 20
-        assert service.read_job(SQLAlchemyStore(db), job["id"], actor.id)["state"] == "completed"
+        store = SQLAlchemyStore(db)
+        assert len(store.list_notifications()) == 20
+        done = service.read_job(store, job["id"], actor.id)
+        assert done["state"] == "completed" and done["revision"] > large
+        assert done["lanes"][0]["created"] == large + 20
+        assert max(item["attempts"] for item in service.item_page(store, job["id"], actor_id=actor.id)["items"]) == large + 1
+        assert db.get(OperationalLockORM, 1).generation == 2 ** 31 - 1
+    with engine.connect() as connection:
+        assert validate_job_journal(connection)
     assert engine.pool.checkedout() == 0
 
 
@@ -130,3 +148,32 @@ def test_pg_finishing_fence_uses_advancing_database_time_inside_long_transaction
         assert len(store.list_notifications()) == 20
     assert engine.pool.checkedout() == 0
     event.remove(engine, "begin", non_utc_transaction)
+
+
+def test_pg_session_revoked_from_independent_transaction_rejects_current_packet(installation, monkeypatch):
+    engine, factory, actor, job = installation
+    old = login_pair(actor.id).access_token
+    original = service.Unit.create
+    def revoke_after_effect(unit, kind, values):
+        value = original(unit, kind, values)
+        auth.revoke_token(old)
+        return value
+    with factory() as db:
+        store = SQLAlchemyStore(db)
+        with service.request_token(old), monkeypatch.context() as patch:
+            patch.setattr(service.Unit, "create", revoke_after_effect)
+            with pytest.raises(service.HTTPException) as rejected:
+                service.continue_job(store, job["id"], JobContinue(max_items=3), actor.id)
+            assert rejected.value.status_code == 401
+        assert store.list_notifications() == []
+        fresh = login_pair(actor.id).access_token
+        with service.request_token(fresh):
+            current = service.read_job(store, job["id"], actor.id)
+            assert current["state"] == "attention" and current["lanes"][0]["last_error"] == "actor_changed"
+            service.retry_lane(store, job["id"], current["lanes"][0]["id"], JobCommand(idempotency_key="fresh-login",
+                expected_revision=current["revision"]), actor.id)
+            for _ in range(30):
+                if service.continue_job(store, job["id"], JobContinue(max_items=3), actor.id)["state"] == "completed":
+                    break
+        assert len(store.list_notifications()) == 20
+    assert engine.pool.checkedout() == 0

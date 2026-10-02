@@ -7,7 +7,9 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy import event, insert, select, update
 from sqlalchemy.exc import IntegrityError, OperationalError
+from sqlalchemy.orm import sessionmaker
 
+from backend import auth
 from backend.db.operational_job_models import (
     OperationalJobLaneORM,
     OperationalJobORM,
@@ -15,8 +17,10 @@ from backend.db.operational_job_models import (
     ensure_operational_job_schema,
 )
 from backend.db.orm_models import RentChargeORM
+from backend.db.session_models import AuthSessionORM, ensure_session_schema
 from backend.models import ContractPatch, ReceivableCreate, RentChargeCreate
 from backend.services import operational_jobs as service
+from backend.services.auth_sessions import login_pair
 from backend.services.operational_job_types import JobCommand, JobContinue, JobCreate
 from backend.services.operational_job_validation import (
     JobIntegrityError,
@@ -397,3 +401,34 @@ def test_long_idempotency_references_use_bounded_index_keys_and_exact_receipts(j
             assert validate_job_journal(connection)
     else:
         assert len(next(iter(jobs.store.__dict__[OperationalJobORM.__tablename__].values())).create_key) == 64
+
+
+def test_persistent_auth_family_revalidation_does_not_start_another_session_writer(jobs, monkeypatch):
+    factory = sessionmaker(bind=jobs.engine) if jobs.engine else None
+    if jobs.engine:
+        with jobs.engine.begin() as connection:
+            ensure_session_schema(connection)
+    selected = auth.SQLUserStore(factory) if factory else auth.InMemoryUserStore()
+    monkeypatch.setattr(auth, "_user_store", selected)
+    monkeypatch.setattr(auth, "_auth_session_factory", factory)
+    user = auth.register_user("job-native-owner", "owner@example.invalid", "Synthetic owner", "Synthetic Native Passphrase 2026", "eigentuemer")
+    jobs.users[user.id] = selected.get_by_id(user.id)
+    token = login_pair(user.id).access_token
+    sid = auth.decode_signed_token(token).sid
+    old = service._clock() - timedelta(minutes=2)
+    if jobs.db:
+        jobs.db.execute(update(AuthSessionORM).where(AuthSessionORM.id == sid).values(last_used_at=old))
+        jobs.db.commit()
+    else:
+        selected.__dict__["_auth_sessions"][sid].last_used_at = old
+    charges(jobs, 2)
+    with service.request_token(token):
+        job = service.create_job(jobs.store, payload(families=("overdue_rent_charge",)), user.id)
+        done = service.continue_job(jobs.store, job["id"], JobContinue(max_items=7), user.id)
+        assert done["state"] == "completed"
+    assert len(jobs.store.list_notifications()) == 2
+    if jobs.engine:
+        with jobs.engine.connect() as connection:
+            assert connection.scalar(select(AuthSessionORM.last_used_at).where(AuthSessionORM.id == sid)) == old
+    else:
+        assert selected.__dict__["_auth_sessions"][sid].last_used_at == old

@@ -33,6 +33,12 @@ Befehlsreferenzen sind SHA-256-Digests; beliebig lange legitime externe Referenz
 laufen daher nicht in die PostgreSQL-Btreegrenze. Der Befehlsbeleg behält die
 ursprüngliche Anfrage und exakt die ursprüngliche Antwort.
 
+Revisionen, Fences, Bedienungsstände, Versuche und Mengenzähler verwenden
+64-Bit-Ganzzahlen auch in PostgreSQL. Der neue Kern sperrt die bestehende globale
+operative Sperrzeile mittels wertneutralem Update. Deren älterer 32-Bit-Zähler
+wird durch Jobpakete oder Fortschrittsabfragen nicht weitergezählt; die bestehende
+Legacytick-Implementierung wird dabei nicht geändert.
+
 Ein Paket hat getrennte dauerhafte Planungs- und Veröffentlichungstransaktionen:
 
 1. Lane übernehmen, neue Token/Fence/Lease und fairen Bedienungsstand speichern.
@@ -78,8 +84,16 @@ eine stabile Quell-ID-Grenze, kein Stocklimit.
 Ein ausdrücklich benannter aktiver Eigentümer bzw. Verwalter mit Zugriff auf
 alle Portfolios ist erforderlich. Ein Job ist an Benutzer und dessen gesamten
 Berechtigungsstand gebunden. Rechte werden frisch am Anfang und kurz vor dem
-Commit geprüft. Eine installierte globale Scheduleridentität muss dieselben
-Prüfungen erfüllen; ein anonymer oder impliziter Systemaktor existiert nicht.
+Commit geprüft. Im additiven HTTP-Router bindet ein auf den Request begrenzter
+Context das tatsächliche Bearer-Token zusätzlich an die Verarbeitung. Ablauf,
+Signatur, Benutzerbindung sowie Legacy- und persistenter Sessionwiderruf werden
+frisch vor dem Commit geprüft. Diese Prüfung liest nur: Sie ruft weder
+`auth.decode_token` noch einen Session-Touch mit eigener Schreibtransaktion auf,
+während die operative SQL-Schreibtransaktion offen ist. Tokens werden weder in
+Jobs, Claims noch Befehlsbelegen gespeichert. Eine installierte globale
+Scheduleridentität muss dieselben Rechteprüfungen erfüllen; ein anonymer oder
+impliziter Systemaktor existiert nicht. Hintergrundaufrufe benötigen weiterhin
+einen ausdrücklich bereitgestellten autoritativen aktiven Benutzer.
 
 Nach Leaseablauf erhöht eine Übernahme den Fence. Alte Worker dürfen ihre
 geplanten oder veröffentlichten Pakete nicht committen. PostgreSQL verwendet
@@ -92,6 +106,10 @@ Quellfehler einschließlich Integritätsverletzungen betreffen nur das aktuelle
 Paket; andere gültige Einträge und Lanes können weiterlaufen. Ein bekannter
 fehlerhafter Eintrag bleibt gezielt wiederholbar. Temporäre operative
 Datenbankfehler erhalten `transient_database` und eine gespeicherte Verzögerung.
+Ein vorübergehend nicht verfügbarer Berechtigungsdienst erhält entsprechend
+`transient_authorization`; der Router antwortet sicher mit 503 und
+`authorization_unavailable`. Nach Tokenwiderruf verlangt die bewusste
+Wiederaufnahme eine neue gültige Anmeldung.
 Wenn die Datenbank auch die Fehleraufzeichnung verhindert, bleibt die Lease zur
 späteren Übernahme erhalten. Der additive Router gibt in diesem Fall eine sichere
 503-Antwort mit `database_unavailable` und `Retry-After` zurück, keine Treiberdaten.
@@ -161,13 +179,13 @@ dem finalen Produktionscode ausgeführt, jeweils mit Exit 0:
 
 | Konfiguration | Ergebnis | Laufzeit | Log im übergeordneten Arbeitsverzeichnis |
 |---|---|---|---|
-| Normale lokale Testkonfiguration | 93 bestanden / 7 übersprungen | 174,22 s | `work/operational-jobs-final-memory.log` |
-| `TEST_STORE_BACKEND=sql`, `SQLITE_PERSISTENT_STORE=true`, `ALLOW_INMEMORY_FALLBACK=false`, ohne `DATABASE_URL` | 93 bestanden / 7 übersprungen | 178,37 s | `work/operational-jobs-final-sql.log` |
-| Reales PostgreSQL 16.15, separater dedizierter lokaler Testserver | 3 bestanden, kein Skip | 26,33 s | `work/operational-jobs-postgres-real.log` |
+| Normale lokale Testkonfiguration | 97 bestanden / 8 übersprungen | 107,37 s | `work/operational-jobs-core-final-memory.log` |
+| `TEST_STORE_BACKEND=sql`, `SQLITE_PERSISTENT_STORE=true`, `ALLOW_INMEMORY_FALLBACK=false`, ohne `DATABASE_URL` | 97 bestanden / 8 übersprungen | 108,08 s | `work/operational-jobs-core-final-sql.log` |
+| Reales PostgreSQL 16.15, separater dedizierter lokaler Testserver | 4 bestanden, kein Skip | 36,31 s | `work/operational-jobs-core-final-postgres.log` |
 
-Die sieben lokalen Skips sind vier ausschließlich für SQL sinnvolle Varianten
-im parametrisierten Memorylauf sowie die drei gesonderten PostgreSQLfälle.
-Der echte PostgreSQLlauf hat diese drei Fälle anschließend geprüft. Jeder PG-
+Die acht lokalen Skips sind vier ausschließlich für SQL sinnvolle Varianten
+im parametrisierten Memorylauf sowie die vier gesonderten PostgreSQLfälle.
+Der echte PostgreSQLlauf hat diese vier Fälle anschließend geprüft. Jeder PG-
 Test verwendet ein eigenes zufälliges Schema und keine bestehenden Anwendungs-
 oder Publicdaten. `SELECT version()` bestätigt `PostgreSQL 16.15, compiled by
 Visual C++ build 1944, 64-bit`. Die endgültige PG-Prüfung erzwingt eine reale
@@ -175,6 +193,13 @@ Sitzungszeitzone `Pacific/Honolulu`, überschreitet mit `pg_sleep(2.1)` die
 2-Sekunden-Lease innerhalb der Veröffentlichungstransaktion und weist deren
 Rollback mit erhaltenem Plan nach. Der PG-Receipttrigger wurde ebenfalls durch
 eine tatsächliche verbotene DML-Änderung geprüft.
+
+Ein unabhängiger PostgreSQL-Sessionwiderruf nach Geschäfts-DML verhindert den
+Commit des aktuellen Pakets, erhält die vorbereitete Arbeitsliste und erlaubt
+eine vollständige Fortsetzung nach frischer Anmeldung. Ein weiterer tatsächlicher
+PG-Lauf startet neue Jobzähler oberhalb von 2^31 und den älteren globalen
+Sperrzähler bei seinem 32-Bit-Maximum. Mehrere unabhängige Worker führen alle
+Quellen genau einmal aus, ohne diesen älteren Zähler zu erhöhen.
 
 Die vollständige lokale Gruppe lautet:
 
@@ -209,7 +234,9 @@ Nachgewiesene Fälle umfassen 124 offene Mietforderungen plus drei sonstige
 Forderungen und ein echtes freigegebenes Originalschreiben mit Paketbudget 7,
 Fortsetzung nach Claimverlust, tatsächliche zwischenzeitliche Zahlung als No-op,
 Kalendertombstone/veraltetes Originaldatum, verspäteten Rechteentzug, verspätete
-finale Leaseprüfung, permanenten/transienten Paketfehler mit gezielter Fortsetzung,
+finale Leaseprüfung, Legacy- und persistente Tokenwiderrufe während eines Pakets,
+frische JWT-Prüfung ohne zusätzliche Session-Schreibtransaktion,
+permanenten/transienten Paketfehler mit gezielter Fortsetzung,
 unveränderte Folgeläufe ohne weitere Quelleinträge, offene Quelle hinter 10.003
 bezahlten SQL-Zeilen, Source-/Receiptintegrität, staged Restore vor Claim-DML,
 eigenständige SQL-Sessions, reale JWT/RBAC-Routergrenzen und sichere

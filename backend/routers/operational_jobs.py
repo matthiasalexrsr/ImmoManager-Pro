@@ -19,7 +19,13 @@ class SafeDatabaseRoute(APIRoute):
         handler = super().get_route_handler()
         async def guarded(request: Request):
             try:
-                return await handler(request)
+                header = request.headers.get("authorization", "")
+                with service.request_token(header[7:] if header.lower().startswith("bearer ") else None):
+                    return await handler(request)
+            except service.AuthorizationUnavailable:
+                return JSONResponse(status_code=503, content={"code": "authorization_unavailable",
+                    "detail": "Die Sitzungsprüfung ist vorübergehend nicht verfügbar. Arbeitslauf später erneut laden."},
+                    headers={"Retry-After": "2"})
             except DBAPIError:
                 # A complete outage can also prevent recording failure metadata.
                 # Persisted work remains protected by expiry/fencing on restart.

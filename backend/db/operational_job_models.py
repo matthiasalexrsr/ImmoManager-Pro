@@ -5,11 +5,11 @@ from typing import cast
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
-    Integer,
     String,
     Table,
     Text,
@@ -28,9 +28,9 @@ class OperationalJobORM(Base):
     request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     scope_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     parameters: Mapped[dict] = mapped_column(JSON, nullable=False)
-    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    revision: Mapped[int] = mapped_column(BigInteger, nullable=False)
     state: Mapped[str] = mapped_column(String, nullable=False)
-    turn: Mapped[int] = mapped_column(Integer, nullable=False)
+    turn: Mapped[int] = mapped_column(BigInteger, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     __table_args__ = (
@@ -50,17 +50,17 @@ class OperationalJobLaneORM(Base):
     cursor: Mapped[str | None] = mapped_column(String)
     upper: Mapped[str | None] = mapped_column(String)
     exhausted: Mapped[bool] = mapped_column(nullable=False)
-    served: Mapped[int] = mapped_column(Integer, nullable=False)
-    fence: Mapped[int] = mapped_column(Integer, nullable=False)
+    served: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    fence: Mapped[int] = mapped_column(BigInteger, nullable=False)
     lease_token: Mapped[str | None] = mapped_column(String)
     lease_owner: Mapped[str | None] = mapped_column(String)
     lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime)
     next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime)
     last_error: Mapped[str | None] = mapped_column(String)
-    scanned: Mapped[int] = mapped_column(Integer, nullable=False)
-    created: Mapped[int] = mapped_column(Integer, nullable=False)
-    updated: Mapped[int] = mapped_column(Integer, nullable=False)
-    skipped: Mapped[int] = mapped_column(Integer, nullable=False)
+    scanned: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    created: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    updated: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    skipped: Mapped[int] = mapped_column(BigInteger, nullable=False)
     __table_args__ = (
         UniqueConstraint("job_id", "family", name="uq_operational_job_lane"),
         CheckConstraint("state IN ('ready','completed','attention','cancelled')", name="ck_operational_lane_state"),
@@ -79,8 +79,8 @@ class OperationalWorkItemORM(Base):
     source_id: Mapped[str | None] = mapped_column(String)
     planned_revision: Mapped[str | None] = mapped_column(String)
     state: Mapped[str] = mapped_column(String, nullable=False)
-    revision: Mapped[int] = mapped_column(Integer, nullable=False)
-    attempts: Mapped[int] = mapped_column(Integer, nullable=False)
+    revision: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    attempts: Mapped[int] = mapped_column(BigInteger, nullable=False)
     next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime)
     error_code: Mapped[str | None] = mapped_column(String)
     result: Mapped[dict] = mapped_column(JSON, nullable=False)

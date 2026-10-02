@@ -9,8 +9,10 @@ from backend import auth
 from backend.dependencies import get_store
 from backend.routers.operational_jobs import router
 from backend.services import operational_jobs as service
+from backend.services.auth_sessions import login_pair
 from backend.services.portfolio_http import PortfolioScopeMiddleware
 from backend.storage import InMemoryStore
+from backend.tests.test_payments import seed
 
 
 @pytest.fixture
@@ -74,3 +76,35 @@ def test_database_outage_returns_safe_retryable_response_without_driver_details(
     assert response.json()["code"] == "database_unavailable"
     assert "Private" not in response.text and "Internal private SQL" not in response.text
     assert not store.__dict__.get("operational_jobs")
+
+
+@pytest.mark.parametrize("persistent_family", [False, True])
+def test_real_midpacket_token_revocation_rolls_back_and_fresh_login_can_resume(installation, monkeypatch, persistent_family):
+    client, store = installation
+    user, headers = actor("eigentuemer")
+    if persistent_family:
+        headers = {"Authorization": "Bearer " + login_pair(user.id).access_token}
+    token = headers["Authorization"][7:]
+    seed(store, "rent_charge")
+    job = client.post("/api/v1/tasks/operational-jobs", headers=headers, json={"idempotency_key": "late-session",
+        "as_of": "2026-11-05", "families": ["overdue_rent_charge"]}).json()
+    original = service.Unit.create
+    def revoke_after_publication(unit, kind, values):
+        value = original(unit, kind, values)
+        auth.revoke_token(token)
+        return value
+    with monkeypatch.context() as patch:
+        patch.setattr(service.Unit, "create", revoke_after_publication)
+        response = client.post(f"/api/v1/tasks/operational-jobs/{job['id']}/continue", headers=headers, json={"max_items": 7})
+    assert response.status_code == 401 and store.list_notifications() == []
+    assert client.get(f"/api/v1/tasks/operational-jobs/{job['id']}", headers=headers).status_code == 401
+    fresh = {"Authorization": "Bearer " + login_pair(user.id).access_token}
+    current = client.get(f"/api/v1/tasks/operational-jobs/{job['id']}", headers=fresh).json()
+    assert current["state"] == "attention" and current["lanes"][0]["last_error"] == "actor_changed"
+    assert token not in str(store.__dict__.get("operational_jobs")) + str(current)
+    resumed = client.post(f"/api/v1/tasks/operational-jobs/{job['id']}/lanes/{current['lanes'][0]['id']}/retry", headers=fresh,
+        json={"idempotency_key": "fresh-session", "expected_revision": current["revision"]})
+    assert resumed.status_code == 200
+    done = client.post(f"/api/v1/tasks/operational-jobs/{job['id']}/continue", headers=fresh, json={"max_items": 7})
+    assert done.status_code == 200 and done.json()["state"] == "completed"
+    assert len(store.list_notifications()) == 1
