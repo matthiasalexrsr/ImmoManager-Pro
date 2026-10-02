@@ -389,3 +389,40 @@ Der UI-Regressionstest startet mit einer Server-Draft-Version, deren Step bereit
 - Produktionsbuild `npm.cmd run build`: **bestanden**, Vite 8.1.0, **673 Module transformiert**.
 
 Root-/Main-/Preview-/Backend-/E2E-Dateien wurden nicht verändert.
+
+## Geplantes Addendum: Arbeitsfokus nach Start einer Wechselakte
+
+Für den nächsten additiven UI-Fix bleibt die bestehende Vorbereitung **dauerhaft gemountet**, wird aber nach einem bestätigten erfolgreichen Start kompakt eingeklappt. Der gerade gestartete bzw. ausgewählte Wechsel erhält auf schmalen Workflow-Layouts Vorrang vor Rail/Listen, damit die eigentliche Arbeit auf 320/360 px unmittelbar sichtbar ist. Eine klare Aktion „Weiteren Wechsel vorbereiten“ öffnet dieselbe vorhandene Vorbereitung mit Objekt-/Einheitsauswahl und Vorlagen wieder; es wird keine zweite Formularinstanz angelegt.
+
+Unknown/Netzwerk/5xx ist ausdrücklich davon ausgenommen: solange kein tatsächliches `onCreated` erfolgt ist, bleibt die Vorbereitung offen und Formular, Vorschau sowie eingefrorener Exact-Retry-Command bleiben unangetastet. Die Änderung bleibt auf Workflow-Seitenfluss/Copy/CSS und kleine UI-Tests beschränkt; globales Layout, Root-E2E, Backend, Auth und History werden nicht verändert.
+
+### Umgesetzt und geprüft: kompakte Vorbereitung nach erfolgreichem Start
+
+Der geplante Seitenfluss ist umgesetzt:
+
+- Die bestehende Vorbereitung bleibt **immer gemountet**. Eingeklappter Zustand verwendet nur `hidden`; es wird keine zweite Formularinstanz erzeugt und kein lokaler Commandzustand durch Unmount verworfen.
+- Initial bleibt die Vorbereitung offen, also entsteht für einen neuen Wechsel kein zusätzlicher Klick.
+- Erst im tatsächlichen erfolgreichen `onCreated`-Pfad setzt die Seite die gerade gestartete Wechselakte als Auswahl und klappt die Vorbereitung kompakt ein.
+- Der kompakte Toggle heißt bei vorhandener/gestarteter Akte „Weiteren Wechsel vorbereiten“ und zeigt den bereits gewählten Objekt-/Einheitskontext. Öffnen stellt dieselbe Vorbereitung wieder bereit; Objekt-/Einheitswahl und Vorlagen bleiben direkt erreichbar.
+- Bei Unknown/Netzwerk/5xx wird `onCreated` nicht aufgerufen. Die Vorbereitung bleibt daher automatisch offen; Formular, Preview und eingefrorener Exact-Retry-Command bleiben unverändert verfügbar. Manuelles Einklappen würde den Zustand ebenfalls nicht unmounten.
+- Auf einspaltigen Workflow-Layouts bis 960 px erhält eine ausgewählte Wechselakte visuelle Priorität vor Rail und Wechselaktenliste. Damit liegt die gerade gestartete bzw. ausgewählte Arbeit auf 320/360 px nicht mehr unter einer langen neuen Vorbereitung.
+- Desktop behält das bestehende Zwei-Spaltenprinzip. Es wurden ausschließlich lokale Workflow-Seiten-/Copy-/CSS-Dateien geändert; kein globales Layout oder `index.css`.
+- Der Vorbereitungstoggle besitzt einen kurzen expliziten Accessible Name; Objekt-/Einheitskontext bleibt sichtbar, wird aber nicht Teil des Aktionsnamens.
+
+Neue kleine UI-Prüfungen:
+
+- bestätigter Erfolg -> Vorbereitung kompakt,
+- „Weiteren Wechsel vorbereiten“ -> dieselbe gemountete Vorbereitung wieder offen,
+- Formularzustand des Panel-Children bleibt beim Ein-/Ausklappen erhalten,
+- ohne bestätigten Erfolg bleibt der Unknown-Retry sichtbar und die Vorbereitung offen,
+- kompakter Toggle zeigt den aktuellen Objekt-/Einheitskontext.
+
+Direkter Flow-Test plus bestehender Startformular-Lost-Reply-Test: **2 Testdateien / 6 Tests bestanden**.
+
+Vollständiger Workflow-Gate mit unveränderten Assertions seriell (`--maxWorkers=1`): **10 Testdateien / 51 Tests bestanden**. Ein vorheriger paralleler Lauf hatte ausschließlich den bereits bekannten festen 5-s-Timeout des DOM-intensiven Startformular-Tests (50/51); derselbe Test war isoliert und im seriellen Gesamtgate klar grün. Kein Testtimeout und keine Assertion wurden abgeschwächt.
+
+ESLint über gesamtes Workflow-Feature, `pages/TenancyWorkflows.jsx` und alle zehn Workflowtests mit `--max-warnings=0`: **bestanden, keine Warnung**.
+
+Produktionsbuild `npm.cmd run build`: **bestanden**, Vite 8.1.0, **673 Module transformiert**.
+
+Roots Edge-/SQLite-/Browser-E2E, Backend, Auth, History und globale Layoutdateien wurden nicht verändert.

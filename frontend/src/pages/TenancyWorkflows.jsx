@@ -73,6 +73,40 @@ function evidenceInput(selection) {
   throw new Error('invalid_evidence_input');
 }
 
+export function TenancyWorkflowPreparationPanel({
+  open,
+  onToggle,
+  hasActiveChange = false,
+  contextLabel = '',
+  locale = 'de-DE',
+  children,
+}) {
+  const tr = (key, params) => workflowText(locale, key, params);
+  const label = open
+    ? tr('hidePreparation')
+    : hasActiveChange
+      ? tr('prepareAnotherChange')
+      : tr('openPreparation');
+
+  return (
+    <section className={`tenancy-workflow-page__preparation ${open ? 'is-open' : 'is-compact'}`}>
+      <button
+        type="button"
+        className="tenancy-workflow-page__preparation-toggle"
+        aria-expanded={open}
+        aria-label={label}
+        onClick={onToggle}
+      >
+        <span>{label}</span>
+        {contextLabel && <small>{contextLabel}</small>}
+      </button>
+      <div className="tenancy-workflow-page__preparation-body" hidden={!open}>
+        {children}
+      </div>
+    </section>
+  );
+}
+
 export default function TenancyWorkflows() {
   const { locale } = useTranslation();
   const auth = useAuth();
@@ -100,6 +134,7 @@ export default function TenancyWorkflows() {
 
   const [contextProperty, setContextProperty] = useState(null);
   const [contextUnit, setContextUnit] = useState(null);
+  const [preparationOpen, setPreparationOpen] = useState(true);
   const [assigneeNames, setAssigneeNames] = useState({});
   const pageCommand = useWorkflowCommand(principalKey);
 
@@ -334,6 +369,10 @@ export default function TenancyWorkflows() {
   }, []);
 
   const canSelectEvidence = useCallback((_kind, item) => Boolean(item?.id), []);
+  const preparationContextLabel = [
+    contextProperty?.name || contextProperty?.label,
+    contextUnit?.label || contextUnit?.name,
+  ].filter(Boolean).join(' · ');
 
   const renderTemplateWorkspace = () => (
     <div className="tenancy-workflow-page__columns">
@@ -448,46 +487,55 @@ export default function TenancyWorkflows() {
   );
 
   const renderChangeWorkspace = () => (
-    <div className="tenancy-workflow-page__columns">
+    <div className={`tenancy-workflow-page__columns ${selectedChange ? 'tenancy-workflow-page__columns--active-change' : ''}`}>
       <aside className="tenancy-workflow-page__rail">
         {manager && (
-          <section className="workflow-shell tenancy-workflow-page__context">
-            <header className="workflow-shell__header">
-              <div><span className="workflow-eyebrow">{tr('eyebrow')}</span><h2>{tr('startTitle')}</h2></div>
-            </header>
-            <BoundedReferencePicker label={tr('propertyScope')} locale={locale}
-              value={contextProperty?.id || null} selectedItem={contextProperty}
-              loadPage={propertyLoader} sourceKey="change-properties"
-              getLabel={item => item.name || item.label || tr('propertyUnavailable')}
-              onChange={item => { setContextProperty(item); setContextUnit(null); }} required />
-            <BoundedReferencePicker label={tr('unitScope')} locale={locale}
-              value={contextUnit?.id || null} selectedItem={contextUnit}
-              loadPage={contextUnitLoader} sourceKey={contextProperty?.id || 'no-property'}
-              getLabel={item => item.label || item.name || tr('unitUnavailable')}
-              disabled={!contextProperty} onChange={setContextUnit} required />
-          </section>
-        )}
-
-        {manager && contextProperty && contextUnit && (
-          <TenancyChangeStartForm
-            propertyId={contextProperty.id}
-            unitId={contextUnit.id}
-            propertyLabel={contextProperty.name || contextProperty.label || tr('propertyUnavailable')}
-            unitLabel={contextUnit.label || contextUnit.name || tr('unitUnavailable')}
+          <TenancyWorkflowPreparationPanel
+            open={preparationOpen}
+            onToggle={() => setPreparationOpen(current => !current)}
+            hasActiveChange={Boolean(selectedChange)}
+            contextLabel={preparationContextLabel}
             locale={locale}
-            principalKey={principalKey}
-            loadContracts={contractLoader}
-            loadTemplates={publishedTemplateLoader}
-            onPreview={(payload, options) => workflowApi.previewChange(payload, options)}
-            prepareCreate={({ form, preview }) => ({
-              payload: startTenancyChangeCommand(form, preview),
-              send: (payload, options) => workflowApi.createChange(payload, options),
-            })}
-            onCreated={async result => {
-              setSelectedChange(result);
-              await loadChanges();
-            }}
-          />
+          >
+            <section className="workflow-shell tenancy-workflow-page__context">
+              <header className="workflow-shell__header">
+                <div><span className="workflow-eyebrow">{tr('eyebrow')}</span><h2>{tr('startTitle')}</h2></div>
+              </header>
+              <BoundedReferencePicker label={tr('propertyScope')} locale={locale}
+                value={contextProperty?.id || null} selectedItem={contextProperty}
+                loadPage={propertyLoader} sourceKey="change-properties"
+                getLabel={item => item.name || item.label || tr('propertyUnavailable')}
+                onChange={item => { setContextProperty(item); setContextUnit(null); }} required />
+              <BoundedReferencePicker label={tr('unitScope')} locale={locale}
+                value={contextUnit?.id || null} selectedItem={contextUnit}
+                loadPage={contextUnitLoader} sourceKey={contextProperty?.id || 'no-property'}
+                getLabel={item => item.label || item.name || tr('unitUnavailable')}
+                disabled={!contextProperty} onChange={setContextUnit} required />
+            </section>
+
+            {contextProperty && contextUnit && (
+              <TenancyChangeStartForm
+                propertyId={contextProperty.id}
+                unitId={contextUnit.id}
+                propertyLabel={contextProperty.name || contextProperty.label || tr('propertyUnavailable')}
+                unitLabel={contextUnit.label || contextUnit.name || tr('unitUnavailable')}
+                locale={locale}
+                principalKey={principalKey}
+                loadContracts={contractLoader}
+                loadTemplates={publishedTemplateLoader}
+                onPreview={(payload, options) => workflowApi.previewChange(payload, options)}
+                prepareCreate={({ form, preview }) => ({
+                  payload: startTenancyChangeCommand(form, preview),
+                  send: (payload, options) => workflowApi.createChange(payload, options),
+                })}
+                onCreated={async result => {
+                  setSelectedChange(result);
+                  setPreparationOpen(false);
+                  await loadChanges();
+                }}
+              />
+            )}
+          </TenancyWorkflowPreparationPanel>
         )}
 
         <section className="tenancy-workflow-page__list">

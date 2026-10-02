@@ -235,3 +235,67 @@
     width: 100%;
   }
 }
+
+.tenancy-workflow-page__preparation {
+  display: grid;
+  gap: .75rem;
+  min-width: 0;
+}
+
+.tenancy-workflow-page__preparation-toggle {
+  display: grid;
+  gap: .18rem;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: .75rem .85rem;
+  border: 1px solid var(--workflow-page-border);
+  border-radius: .9rem;
+  background: var(--surface, #fff);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tenancy-workflow-page__preparation-toggle span {
+  font-weight: 800;
+}
+
+.tenancy-workflow-page__preparation-toggle small {
+  min-width: 0;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.tenancy-workflow-page__preparation.is-compact .tenancy-workflow-page__preparation-toggle {
+  border-style: dashed;
+}
+
+.tenancy-workflow-page__preparation-body {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.tenancy-workflow-page__preparation-body[hidden] {
+  display: none;
+}
+
+@media (max-width: 960px) {
+  .tenancy-workflow-page__columns--active-change > .tenancy-workflow-page__detail {
+    order: -1;
+  }
+
+  .tenancy-workflow-page__columns--active-change > .tenancy-workflow-page__rail {
+    order: 0;
+  }
+}
+
+@media (max-width: 360px) {
+  .tenancy-workflow-page__preparation-toggle {
+    border-left: 0;
+    border-right: 0;
+    border-radius: 0;
+    padding-inline: .65rem;
+  }
+}
