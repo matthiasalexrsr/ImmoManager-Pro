@@ -26,9 +26,9 @@ def actual_history(monkeypatch, tmp_path):
         yield
 
 
-def _auth_headers():
+def _auth_headers(role="eigentuemer"):
     clear_users()
-    user = register_user("intg", "intg@example.com", "Int G", "Secret123", "eigentuemer")
+    user = register_user("intg", "intg@example.com", "Int G", "Secret123", role)
     return {"Authorization": f"Bearer {create_access_token(user.id)}"}
 
 
@@ -87,7 +87,7 @@ def test_schema_validate_and_config_masking_endpoint():
     update = client.put(
         "/api/v1/integrations/whatsapp/config",
         headers=headers,
-        json={"config": {"phone_number_id": "123", "api_token": "abc"}},
+        json={"config": {"phone_number_id": "123", "api_token": "abc", "graph_version": "v23.0"}},
     )
     assert update.status_code == 200
     assert update.json()["config"]["api_token"] == "***"
@@ -97,7 +97,9 @@ def test_schema_validate_and_config_masking_endpoint():
     assert detail.json()["configured"] is True
     assert detail.json()["config"]["api_token"] == "***"
 
-    integration_manager.update_config("whatsapp", {"phone_number_id": None, "api_token": None})
+    integration_manager.update_config("whatsapp", {
+        "phone_number_id": None, "api_token": None, "graph_version": None,
+    })
 
 
 def test_metrics_and_history_clear_endpoint():
@@ -123,3 +125,30 @@ def test_metrics_and_history_clear_endpoint():
     history = client.get("/api/v1/integrations/contract-wizard/history", headers=headers)
     assert history.status_code == 200
     assert history.json()["items"] == []
+
+
+def test_readonly_can_inspect_but_cannot_mutate_or_run_integrations():
+    client = TestClient(app)
+    headers = _auth_headers("readonly")
+    assert client.get("/api/v1/integrations", headers=headers).status_code == 200
+    assert client.get("/api/v1/integrations/whatsapp/schema", headers=headers).status_code == 200
+    assert client.patch("/api/v1/integrations/contract-wizard", headers=headers,
+                        json={"enabled": True}).status_code == 403
+    assert client.put("/api/v1/integrations/whatsapp/config", headers=headers,
+                      json={"config": {"phone_number_id": "123"}}).status_code == 403
+    assert client.post("/api/v1/integrations/contract-wizard/run", headers=headers,
+                       json={"payload": {}}).status_code == 403
+    assert client.delete("/api/v1/integrations/contract-wizard/history",
+                         headers=headers).status_code == 403
+
+
+def test_generic_run_cannot_bypass_reviewed_communication_workflows():
+    client = TestClient(app)
+    headers = _auth_headers()
+    for integration_id in ("email", "whatsapp", "deutsche-post"):
+        response = client.post(
+            f"/api/v1/integrations/{integration_id}/run",
+            headers=headers, json={"payload": {}},
+        )
+        assert response.status_code == 409
+        assert "Kommunikationsversand" in response.json()["error"]["message"]

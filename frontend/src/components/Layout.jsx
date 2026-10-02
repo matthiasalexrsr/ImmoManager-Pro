@@ -59,6 +59,7 @@ const NAV_SECTIONS = [
     ['/tasks', 'navigation.main.tasks', TaskIcon],
     ['/documents', 'navigation.main.documents', DocumentIcon],
     ['/meters', 'navigation.main.meters', MeterIcon],
+    ['/communication-center', 'navigation.main.communicationCenter', MessageIcon],
     ['/messages', 'navigation.main.messages', MessageIcon],
     ['/outbox', 'pages.outbox.title', MessageIcon],
   ] },

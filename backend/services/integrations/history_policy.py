@@ -25,22 +25,39 @@ def observe(value, known):
         raise HistoryError("HISTORY_INPUT_INVALID", 422) from None
 
 
+COMMUNICATION_IDS = {"email", "whatsapp", "deutsche-post"}
+COMMUNICATION_RESULT_FIELDS = {
+    "status", "code", "status_code", "external_reference", "accepted",
+    "delivery_confirmed", "test_mode", "retry_automatically", "type",
+}
+
+
 def request_observation(integration_id, payload, config, manifest):
     known = secret_values(config, manifest)
-    safe_payload, _ = observe({} if integration_id == "email" else payload, known)
+    observed_payload = payload
+    if integration_id in COMMUNICATION_IDS:
+        observed_payload = {"action": payload.get("action")}
+        if "test_mode" in payload:
+            observed_payload["test_mode"] = bool(payload.get("test_mode"))
+    safe_payload, _ = observe(observed_payload, known)
     safe_config, _ = observe(config, known)
     safe = {"payload": safe_payload if isinstance(safe_payload, dict) else {}, "config": safe_config,
-        "privacy_policy": {"version": EXCHANGE_SECRET_POLICY_VERSION, "mail_payload_omitted": integration_id == "email",
+        "privacy_policy": {"version": EXCHANGE_SECRET_POLICY_VERSION,
+            "mail_payload_omitted": integration_id == "email",
+            "communication_payload_reduced": integration_id in COMMUNICATION_IDS,
             "source": "manager_semantic_json", "unknown_secrets_without_names_or_known_literals_detectable": False}}
     schema = JsonSchemaObserver().observe(safe).report()
     return safe, schema, known
 
 
-def response_observation(result, known):
+def response_observation(result, known, *, integration_id=None):
     if not isinstance(result, dict) or type(result.get("success")) is not bool:
         raise HistoryError("HISTORY_INPUT_INVALID", 422)
     message, _ = observe(result.get("message", ""), known)
-    details, _ = observe(result.get("details"), known)
+    raw_details = result.get("details")
+    if integration_id in COMMUNICATION_IDS and isinstance(raw_details, dict):
+        raw_details = {key: value for key, value in raw_details.items() if key in COMMUNICATION_RESULT_FIELDS}
+    details, _ = observe(raw_details, known)
     safe = {"success": result["success"], "message": message if isinstance(message, str) else "[redacted]"}
     if "details" in result:
         safe["details"] = details

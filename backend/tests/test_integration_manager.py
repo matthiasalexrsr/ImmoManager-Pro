@@ -58,22 +58,38 @@ def test_listing_portal_provider_reports_unimplemented_adapter(manager_factory):
     assert "nicht implementiert" in result["message"]
 
 
-def test_saved_credentials_do_not_make_planned_providers_operational(manager_factory):
+def test_implemented_communication_providers_and_planned_portal_are_distinguished(manager_factory):
     manager = manager_factory()
     manager.seed_defaults()
-    for integration_id, config in (
-        ("whatsapp", {"phone_number_id": "synthetic", "api_token": "synthetic"}),
-        ("deutsche-post", {"api_key": "synthetic"}),
-        ("listing-portals", {"default_portal": "Immowelt"}),
-    ):
-        manager.set_enabled(integration_id, True)
-        manager.update_config(integration_id, config)
-        detail = manager.get_integration(integration_id)
-        assert detail["configured"] is True
-        assert detail["planned"] is True
-        assert detail["operational"] is False
-        assert detail["health"]["status"] == "planned"
-        assert manager.run(integration_id, {"action": "status", "portal_listing_id": "synthetic"})["success"] is False
+
+    manager.set_enabled("whatsapp", True)
+    manager.update_config("whatsapp", {
+        "phone_number_id": "synthetic", "api_token": "synthetic",
+    })
+    whatsapp = manager.get_integration("whatsapp")
+    assert whatsapp["configured"] is True
+    assert whatsapp["planned"] is False
+    assert whatsapp["operational"] is True
+    assert whatsapp["health"]["graph_version"] == "v26.0"
+
+    manager.set_enabled("deutsche-post", True)
+    manager.update_config("deutsche-post", {
+        "vendor_id": "synthetic", "ekp": "1234567890", "secret": "synthetic",
+        "password": "synthetic", "sender_name": "Synthetic GmbH",
+        "sender_street": "Testweg 1", "sender_zip_code": "53113", "sender_city": "Bonn",
+    })
+    post = manager.get_integration("deutsche-post")
+    assert post["configured"] is True
+    assert post["planned"] is False
+    assert post["operational"] is True
+
+    manager.set_enabled("listing-portals", True)
+    manager.update_config("listing-portals", {"default_portal": "Immowelt"})
+    portal = manager.get_integration("listing-portals")
+    assert portal["configured"] is True
+    assert portal["planned"] is True
+    assert portal["operational"] is False
+    assert portal["health"]["status"] == "planned"
 
 
 def test_metrics_counts_runs(manager_factory):

@@ -128,6 +128,8 @@ def _scoped_graph(store, tenant_id):
     graph = append_lifecycle_graph(snapshot, graph)
     from .tenant_correspondence_graph import append_correspondence_graph
     graph = append_correspondence_graph(snapshot, graph)
+    from .tenant_communication_graph import append_communication_graph
+    graph = append_communication_graph(snapshot, graph)
     graph["scope"]["private_form_drafts"] = private_draft_retention(snapshot, tenant_id)
     return graph
 
@@ -179,6 +181,7 @@ def prepare_tenant_export(active_store, tenant_id: str, *, parent=None):
 
     from .datev_export import CompiledExport
     from .portfolio_scope import current_scope, refresh_scope
+    from .tenant_communication_graph import verified_blocks as communication_blocks
     from .tenant_document_versions import verified_blocks as document_blocks
     from .tenant_wizard_graph import verified_blocks
     cleanup = ExitStack()
@@ -190,7 +193,10 @@ def prepare_tenant_export(active_store, tenant_id: str, *, parent=None):
         with _read_snapshot(active_store) as snapshot, protected_new_file(path) as output:
             graph = _scoped_graph(snapshot, tenant_id)
             graph["exported_at"] = datetime.now(timezone.utc).isoformat()
-            graph["scope"]["file_content"] = "stored wizard and document version originals included; other files metadata only"
+            graph["scope"]["file_content"] = (
+                "stored wizard, document-version and reviewed communication PDF originals included; "
+                "other files metadata only"
+            )
             def write(block):
                 nonlocal size
                 output.write(block)
@@ -230,6 +236,18 @@ def prepare_tenant_export(active_store, tenant_id: str, *, parent=None):
                         write(b",")
                     value({"position": position, "data_base64": base64.b64encode(block).decode("ascii")})
                 write(b"]}")
+            write(b'],"communication_pdf_contents":[')
+            for index, manifest in enumerate(graph["communication_pdf_files"]):
+                if index:
+                    write(b",")
+                write(b'{"id":')
+                value(manifest["id"])
+                write(b',"blocks":[')
+                for position, block in enumerate(communication_blocks(snapshot, manifest)):
+                    if position:
+                        write(b",")
+                    value({"position": position, "data_base64": base64.b64encode(block).decode("ascii")})
+                write(b"]}")
             write(b"]}")
             refresh_scope(captured)
         return CompiledExport(path, {"size": size, "sha256": checksum.hexdigest()}, cleanup), captured
@@ -241,13 +259,18 @@ def prepare_tenant_export(active_store, tenant_id: str, *, parent=None):
 def _plan(graph: dict) -> dict:
     active_contracts = sum(contract["status"] == "active" for contract in graph["contracts"])
     retained = {name: len(rows) for name, rows in graph.items() if isinstance(rows, list)}
+    from .tenant_communication_graph import PERSONAL_FIELDS as COMMUNICATION_FIELDS
     from .tenant_correspondence_graph import PERSONAL_FIELDS as CORRESPONDENCE_FIELDS
     from .tenant_document_versions import PERSONAL_FIELDS as DOCUMENT_FIELDS
     from .tenant_lifecycle_graph import PERSONAL_FIELDS as LIFECYCLE_FIELDS
     from .tenant_retained_graph import PERSONAL_FIELDS as RETAINED_FIELDS
     from .tenant_wizard_graph import PERSONAL_FIELDS
+    evidence_fields = (
+        PERSONAL_FIELDS | DOCUMENT_FIELDS | LIFECYCLE_FIELDS |
+        CORRESPONDENCE_FIELDS | COMMUNICATION_FIELDS | RETAINED_FIELDS
+    )
     wizard_retained = {name: {"count": len(graph.get(name, [])), "personal_fields": fields}
-                       for name, fields in (PERSONAL_FIELDS | DOCUMENT_FIELDS | LIFECYCLE_FIELDS | CORRESPONDENCE_FIELDS | RETAINED_FIELDS).items() if graph.get(name)}
+                       for name, fields in evidence_fields.items() if graph.get(name)}
     private = graph["scope"]["private_form_drafts"]
     if private["count"]:
         wizard_retained["private_form_drafts"] = {"count": private["count"],

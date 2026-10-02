@@ -111,6 +111,11 @@ def update_integration_config(integration_id: str, body: IntegrationConfigPayloa
 
 @router.post("/{integration_id}/run")
 def run_integration_action(integration_id: str, body: IntegrationActionPayload) -> dict:
+    if integration_id in {"email", "whatsapp", "deutsche-post"}:
+        raise HTTPException(
+            status_code=409,
+            detail="Kommunikationsversand nur über geprüfte Kommunikations-/Outbox-Workflows ausführen",
+        )
     try:
         return integration_manager.run(integration_id, body.payload)
     except KeyError as exc:

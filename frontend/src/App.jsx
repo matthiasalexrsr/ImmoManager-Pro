@@ -30,6 +30,7 @@ const Meters = lazy(() => import('./pages/Meters'));
 const Contacts = lazy(() => import('./pages/Contacts'));
 const Statements = lazy(() => import('./pages/Statements'));
 const Messages = lazy(() => import('./pages/Messages'));
+const CommunicationCenter = lazy(() => import('./pages/CommunicationCenter'));
 const Settings = lazy(() => import('./pages/Settings'));
 const PropertyDetail = lazy(() => import('./pages/PropertyDetail'));
 const Categories = lazy(() => import('./pages/Categories'));
@@ -162,6 +163,7 @@ export default function App() {
           <Route path="contacts" element={<Contacts />} />
           <Route path="statements" element={<Statements />} />
           <Route path="messages" element={<Messages />} />
+          <Route path="communication-center" element={<CommunicationCenter />} />
           <Route path="outbox" element={<Outbox />} />
           <Route path="categories" element={<Categories />} />
           <Route path="deposits" element={<Deposits />} />
