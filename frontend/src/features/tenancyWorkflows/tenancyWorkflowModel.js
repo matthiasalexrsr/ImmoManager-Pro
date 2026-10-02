@@ -207,6 +207,11 @@ export function validateCursorPage(value, validateItem) {
   return value;
 }
 
+export function newWorkflowStepKey() {
+  if (typeof globalThis.crypto?.randomUUID !== 'function') throw new Error('crypto.randomUUID unavailable');
+  return `step-${globalThis.crypto.randomUUID()}`;
+}
+
 export function newIdempotencyKey(prefix = 'tenancy-workflow') {
   if (typeof globalThis.crypto?.randomUUID !== 'function') throw new Error('crypto.randomUUID unavailable');
   return `${prefix}:${globalThis.crypto.randomUUID()}`;

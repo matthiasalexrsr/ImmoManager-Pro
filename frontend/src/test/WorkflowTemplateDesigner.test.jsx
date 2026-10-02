@@ -117,6 +117,28 @@ describe('WorkflowTemplateDesigner', () => {
     expect(prepareSave).not.toHaveBeenCalled();
   });
 
+  it('keeps an existing server stable key unchanged while the visible step title changes', async () => {
+    const prepareSave = preparedSaveFactory();
+    render(<WorkflowTemplateDesigner
+      version={version({
+        steps: [templateStep({ stable_key: 'published-handover-key', title: 'Alter Titel' })],
+      })}
+      userLoader={async () => ({ items: [], next_cursor: null, has_more: false, selected: null })}
+      prepareSave={prepareSave}
+      preparePublish={vi.fn()}
+    />);
+
+    expect(screen.queryByLabelText('Stabiler Schlüssel')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Titel'), { target: { value: 'Neuer sichtbarer Titel' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Entwurf speichern' }));
+
+    await waitFor(() => expect(prepareSave).toHaveBeenCalledTimes(1));
+    expect(prepareSave.mock.calls[0][0].steps[0]).toMatchObject({
+      stable_key: 'published-handover-key',
+      title: 'Neuer sichtbarer Titel',
+    });
+  });
+
   it('uses server actions instead of inferring edit rights from a role', () => {
     render(<WorkflowTemplateDesigner
       version={version({ actions: { edit_template: false, publish_template: false } })}

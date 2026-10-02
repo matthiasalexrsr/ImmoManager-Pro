@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, CheckCircle2 } from 'lucide-react';
 import BoundedReferencePicker from './BoundedReferencePicker';
 import WorkflowCommandNotice from './WorkflowCommandNotice';
+import WorkflowTechnicalDetails from './WorkflowTechnicalDetails';
 import useWorkflowCommand from './useWorkflowCommand';
 import { validateTenancyChange } from './tenancyWorkflowModel';
 import { workflowText } from './workflowCopy';
@@ -17,12 +18,21 @@ const initialForm = {
   move_in_template_version_id: null,
 };
 
-function contractLabel(contract) {
-  return contract.label || contract.contract_number || contract.id;
+function formatDate(value, locale) {
+  if (!value) return '';
+  const parsed = /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? new Date(`${value}T00:00:00Z`)
+    : new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return String(value);
+  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeZone: 'UTC' }).format(parsed);
 }
 
-function contractDescription(contract) {
-  const dates = [contract.start_date, contract.end_date].filter(Boolean);
+function contractLabel(contract, fallback) {
+  return contract.label || contract.contract_number || fallback;
+}
+
+function contractDescription(contract, locale) {
+  const dates = [contract.start_date, contract.end_date].filter(Boolean).map(value => formatDate(value, locale));
   return dates.join(' → ');
 }
 
@@ -40,6 +50,8 @@ function previewFacts(value) {
 export default function TenancyChangeStartForm({
   propertyId,
   unitId,
+  propertyLabel = null,
+  unitLabel = null,
   locale = 'de-DE',
   principalKey = '',
   loadContracts,
@@ -150,6 +162,14 @@ export default function TenancyChangeStartForm({
       onSuccess: result => {
         const change = validateTenancyChange(result);
         onCreated?.(change);
+        setForm(initialForm);
+        setSelectedPrevious(null);
+        setSelectedNext(null);
+        setSelectedOutTemplate(null);
+        setSelectedInTemplate(null);
+        setPreview(null);
+        setPreviewView(null);
+        setPreviewError(null);
       },
     });
   };
@@ -163,7 +183,9 @@ export default function TenancyChangeStartForm({
         <div>
           <span className="workflow-eyebrow">{tr('eyebrow')}</span>
           <h2>{tr('startTitle')}</h2>
-          <p className="workflow-muted">{tr('propertyScope')}: {propertyId} · {tr('unitScope')}: {unitId}</p>
+          <p className="workflow-muted">
+            {propertyLabel || tr('propertyUnavailable')} · {unitLabel || tr('unitUnavailable')}
+          </p>
         </div>
       </header>
 
@@ -186,7 +208,8 @@ export default function TenancyChangeStartForm({
             <BoundedReferencePicker label={tr('previousContract')} locale={locale}
               value={form.previous_contract_id} selectedItem={selectedPrevious}
               loadPage={contractLoader} sourceKey={`${propertyId}:${unitId}:previous`}
-              getLabel={contractLabel} getDescription={contractDescription}
+              getLabel={item => contractLabel(item, tr('contractUnavailable'))}
+              getDescription={item => contractDescription(item, locale)}
               disabled={previewLoading || command.busy}
               onChange={item => { setSelectedPrevious(item); changeForm({ previous_contract_id: item?.id || null }); }} required />
             <label className="workflow-field">
@@ -198,7 +221,7 @@ export default function TenancyChangeStartForm({
             <BoundedReferencePicker label={tr('moveOutTemplate')} locale={locale}
               value={form.move_out_template_version_id} selectedItem={selectedOutTemplate}
               loadPage={templateLoader('move_out')} sourceKey={`${propertyId}:${unitId}:move_out`} searchEnabled={false}
-              getLabel={item => `${tr('version', { version: item.version })} · ${item.unit_id ? tr('unitOverride') : tr('objectDefault')}`} getDescription={item => item.id}
+              getLabel={item => `${tr('version', { version: item.version })} · ${item.unit_id ? tr('unitOverride') : tr('objectDefault')}`} getDescription={item => tr(item.state)}
               isSelectable={item => scopedTemplate(item, 'move_out')} disabled={previewLoading || command.busy}
               onChange={item => { setSelectedOutTemplate(item); changeForm({ move_out_template_version_id: item?.id || null }); }} required />
           </section>
@@ -212,7 +235,8 @@ export default function TenancyChangeStartForm({
             <BoundedReferencePicker label={tr('nextContract')} locale={locale}
               value={form.next_contract_id} selectedItem={selectedNext}
               loadPage={contractLoader} sourceKey={`${propertyId}:${unitId}:next`}
-              getLabel={contractLabel} getDescription={contractDescription}
+              getLabel={item => contractLabel(item, tr('contractUnavailable'))}
+              getDescription={item => contractDescription(item, locale)}
               disabled={previewLoading || command.busy}
               onChange={item => { setSelectedNext(item); changeForm({ next_contract_id: item?.id || null }); }} required />
             <label className="workflow-field">
@@ -224,7 +248,7 @@ export default function TenancyChangeStartForm({
             <BoundedReferencePicker label={tr('moveInTemplate')} locale={locale}
               value={form.move_in_template_version_id} selectedItem={selectedInTemplate}
               loadPage={templateLoader('move_in')} sourceKey={`${propertyId}:${unitId}:move_in`} searchEnabled={false}
-              getLabel={item => `${tr('version', { version: item.version })} · ${item.unit_id ? tr('unitOverride') : tr('objectDefault')}`} getDescription={item => item.id}
+              getLabel={item => `${tr('version', { version: item.version })} · ${item.unit_id ? tr('unitOverride') : tr('objectDefault')}`} getDescription={item => tr(item.state)}
               isSelectable={item => scopedTemplate(item, 'move_in')} disabled={previewLoading || command.busy}
               onChange={item => { setSelectedInTemplate(item); changeForm({ move_in_template_version_id: item?.id || null }); }} required />
           </section>
@@ -243,16 +267,17 @@ export default function TenancyChangeStartForm({
         <section className="workflow-preview" aria-label={tr('preview')}>
           <div className="workflow-preview__heading">
             <CheckCircle2 size={19} aria-hidden="true" />
-            <strong>{tr('previewHash')}</strong>
-            <code>{preview.preview_hash}</code>
+            <strong>{tr('previewReady')}</strong>
           </div>
-          {previewView?.anchors && <FactGroup title={tr('anchors')} value={previewView.anchors} />}
-          {previewView?.source_etags && <FactGroup title={tr('sourceEtags')} value={previewView.source_etags} />}
+          {previewView?.anchors && (
+            <FactGroup title={tr('anchors')} value={previewView.anchors}
+              labelFor={key => tr(key)} formatValue={value => formatDate(value, locale)} />
+          )}
           {previewView?.affected_steps && (
             <div>
               <h4>{tr('affectedSteps')}</h4>
               <ul>{previewView.affected_steps.map((step, index) => (
-                <li key={step.id || step.template_step_key || index}>{step.title || step.title_snapshot || step.id || String(index + 1)}</li>
+                <li key={step.id || step.template_step_key || index}>{step.title || step.title_snapshot || tr('stepNumber', { number: index + 1 })}</li>
               ))}</ul>
             </div>
           )}
@@ -262,6 +287,12 @@ export default function TenancyChangeStartForm({
               ? <ul>{previewView.conflicts.map((item, index) => <li key={index}>{item.message || String(item)}</li>)}</ul>
               : <p>{tr('noConflicts')}</p>}
           </div>
+          <WorkflowTechnicalDetails locale={locale} rows={[
+            { label: tr('checksum'), value: preview.preview_hash },
+            { label: tr('sourceEtags'), value: previewView?.source_etags },
+            { label: tr('propertyScope'), value: propertyId },
+            { label: tr('unitScope'), value: unitId },
+          ]} />
           <button type="button" className="btn btn-primary"
             disabled={command.busy || command.state.phase === 'unknown'} onClick={start}>
             {command.busy ? tr('working') : tr('confirmStart')}
@@ -272,13 +303,16 @@ export default function TenancyChangeStartForm({
   );
 }
 
-function FactGroup({ title, value }) {
+function FactGroup({ title, value, labelFor = key => key, formatValue = item => String(item) }) {
   return (
     <div>
       <h4>{title}</h4>
       <dl className="workflow-facts">
         {Object.entries(value).map(([key, item]) => (
-          <div key={key}><dt>{key}</dt><dd>{item == null ? '—' : String(item)}</dd></div>
+          <div key={key}>
+            <dt>{labelFor(key)}</dt>
+            <dd>{item == null ? '—' : formatValue(item)}</dd>
+          </div>
         ))}
       </dl>
     </div>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import WorkflowTechnicalDetails from './WorkflowTechnicalDetails';
 import { workflowText } from './workflowCopy';
 import { PAGE_SIZE } from './tenancyWorkflowModel';
 import './TenancyWorkflows.css';
@@ -59,6 +60,8 @@ export default function DocumentVersionPicker({
     return () => request.current?.abort();
   }, [disabled, documentId, load]);
 
+  const selectedVersion = items.find(item => String(item.id) === String(value)) || null;
+
   return (
     <section className="workflow-version-picker" aria-labelledby={`${id}-title`}>
       <h4 id={`${id}-title`}>{tr('selectVersion')}</h4>
@@ -71,13 +74,18 @@ export default function DocumentVersionPicker({
               onChange={() => onChange?.(item)} />
             <span>
               <strong>v{item.number} · {item.filename}</strong>
-              <small>{item.created_at ? new Date(item.created_at).toLocaleString(locale) : item.id}</small>
-              {item.sha256 && <code>SHA256 {item.sha256}</code>}
+              <small>{item.created_at ? new Date(item.created_at).toLocaleString(locale) : '—'}</small>
             </span>
           </label>
         ))}
         {!loading && items.length === 0 && <p className="workflow-muted">{tr('noOptions')}</p>}
       </div>
+      {selectedVersion && (
+        <WorkflowTechnicalDetails locale={locale} rows={[
+          { label: tr('technicalIdentifier'), value: selectedVersion.id },
+          { label: 'SHA-256', value: selectedVersion.sha256 },
+        ]} />
+      )}
       <div className="workflow-reference__footer">
         {loading && <span role="status">{tr('loading')}</span>}
         <button type="button" className="btn btn-secondary btn-sm"

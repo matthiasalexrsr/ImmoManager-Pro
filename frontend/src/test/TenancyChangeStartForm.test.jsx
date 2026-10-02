@@ -127,7 +127,9 @@ describe('TenancyChangeStartForm', () => {
     fireEvent.change(screen.getByLabelText('Einzugsübergabe'), { target: { value: '2026-11-03' } });
     fireEvent.click(screen.getByRole('button', { name: 'Vorschau erstellen' }));
 
-    expect(await screen.findByText('a'.repeat(64))).toBeInTheDocument();
+    expect(await screen.findByText('Vorschau ist bereit')).toBeInTheDocument();
+    const technical = screen.getByText('Technische Details').closest('details');
+    expect(technical).not.toHaveAttribute('open');
     expect(onPreview).toHaveBeenCalledWith(expect.objectContaining({
       previous_contract_id: 'old-contract',
       next_contract_id: 'new-contract',
@@ -136,8 +138,8 @@ describe('TenancyChangeStartForm', () => {
       move_out_template_version_id: 'out-version',
       move_in_template_version_id: 'in-version',
     }), expect.objectContaining({ signal: expect.any(AbortSignal) }));
-    expect(screen.getAllByText('2026-10-31').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('2026-11-01').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('31.10.2026').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('01.11.2026').length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole('button', { name: 'Wechselakte starten' }));
     await waitFor(() => expect(prepareCreate).toHaveBeenCalledTimes(1));
@@ -149,16 +151,49 @@ describe('TenancyChangeStartForm', () => {
       source_etags: { previous_contract: '"old"', next_contract: '"new"' },
     });
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith(expect.objectContaining({ id: 'change-1' })));
+    expect(screen.queryByText('Vorschau ist bereit')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Wechselakte starten' })).not.toBeInTheDocument();
+  });
+
+  it('keeps the prepared preview through an unknown reply and clears it only after exact retry succeeds', async () => {
+    const networkError = Object.assign(new Error('response lost'), {
+      isNetwork: true,
+      code: 'NETWORK_ERROR',
+    });
+    const send = vi.fn()
+      .mockRejectedValueOnce(networkError)
+      .mockResolvedValueOnce(createdChange());
+    const prepareCreate = vi.fn(({ form, preview }) => ({
+      payload: startTenancyChangeCommand(form, preview, 'lost-reply-key'),
+      send,
+    }));
+    const { onCreated } = mount({ prepareCreate });
+    await chooseReferences();
+    fireEvent.click(screen.getByRole('button', { name: 'Vorschau erstellen' }));
+    expect(await screen.findByText('Vorschau ist bereit')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Wechselakte starten' }));
+    expect(await screen.findByText('Verbindung unterbrochen')).toBeInTheDocument();
+    expect(screen.getByText(/dieselbe vorbereitete Aktion unverändert/)).toBeInTheDocument();
+    expect(screen.getByText('Vorschau ist bereit')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Wechselakte starten' })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Unverändert erneut senden' }));
+    await waitFor(() => expect(onCreated).toHaveBeenCalledTimes(1));
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(send.mock.calls[1][0]).toBe(send.mock.calls[0][0]);
+    expect(screen.queryByText('Vorschau ist bereit')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Wechselakte starten' })).not.toBeInTheDocument();
   });
 
   it('invalidates a preview immediately when an anchor input changes', async () => {
     const { prepareCreate } = mount();
     await chooseReferences();
     fireEvent.click(screen.getByRole('button', { name: 'Vorschau erstellen' }));
-    expect(await screen.findByText('a'.repeat(64))).toBeInTheDocument();
+    expect(await screen.findByText('Vorschau ist bereit')).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('Auszugsübergabe'), { target: { value: '2026-10-29' } });
-    expect(screen.queryByText('preview-123')).not.toBeInTheDocument();
+    expect(screen.queryByText('Vorschau ist bereit')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Wechselakte starten' })).not.toBeInTheDocument();
     expect(prepareCreate).not.toHaveBeenCalled();
   });

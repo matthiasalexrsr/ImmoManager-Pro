@@ -7,6 +7,7 @@ import {
   TenancyChangeFile,
   TenancyChangeStartForm,
   WorkflowCommandNotice,
+  WorkflowLocationLabel,
   WorkflowTemplateCreateForm,
   WorkflowTemplateDesigner,
   activeUserReferenceLoader,
@@ -26,10 +27,12 @@ import {
   reanchorPreviewPayload,
   reanchorTenancyChangeCommand,
   removeEvidenceCommand,
+  resolvePinnedReference,
   startTenancyChangeCommand,
   unitReferenceLoader,
   updateStepCommand,
   updateTemplateVersionCommand,
+  usePinnedReference,
   useWorkflowCommand,
   workflowApi,
   workflowText,
@@ -97,6 +100,7 @@ export default function TenancyWorkflows() {
 
   const [contextProperty, setContextProperty] = useState(null);
   const [contextUnit, setContextUnit] = useState(null);
+  const [assigneeNames, setAssigneeNames] = useState({});
   const pageCommand = useWorkflowCommand(principalKey);
 
   const propertyLoader = useMemo(() => propertyReferenceLoader(), []);
@@ -116,6 +120,85 @@ export default function TenancyWorkflows() {
     () => selectedVersion ? activeUserReferenceLoader({ propertyId: selectedVersion.property_id }) : null,
     [selectedVersion],
   );
+  const selectedChangePropertyId = selectedChange?.property_id || null;
+  const selectedChangeUnitId = selectedChange?.unit_id || null;
+  const selectedPreviousContractId = selectedChange?.previous_contract_id || null;
+  const selectedNextContractId = selectedChange?.next_contract_id || null;
+  const selectedChangeProperty = usePinnedReference(
+    propertyLoader,
+    selectedChangePropertyId,
+    principalKey,
+  );
+  const selectedChangeUnitLoader = useMemo(
+    () => selectedChangePropertyId
+      ? unitReferenceLoader({ propertyId: selectedChangePropertyId })
+      : null,
+    [selectedChangePropertyId],
+  );
+  const selectedChangeUnit = usePinnedReference(
+    selectedChangeUnitLoader,
+    selectedChangeUnitId,
+    principalKey,
+  );
+  const selectedChangeContractLoader = useMemo(
+    () => selectedChangePropertyId && selectedChangeUnitId
+      ? contractReferenceLoader({
+        propertyId: selectedChangePropertyId,
+        unitId: selectedChangeUnitId,
+      })
+      : null,
+    [selectedChangePropertyId, selectedChangeUnitId],
+  );
+  const selectedPreviousContract = usePinnedReference(
+    selectedChangeContractLoader,
+    selectedPreviousContractId,
+    principalKey,
+  );
+  const selectedNextContract = usePinnedReference(
+    selectedChangeContractLoader,
+    selectedNextContractId,
+    principalKey,
+  );
+  const selectedChangeUserLoader = useMemo(
+    () => selectedChangePropertyId
+      ? activeUserReferenceLoader({ propertyId: selectedChangePropertyId })
+      : null,
+    [selectedChangePropertyId],
+  );
+  const selectedAssigneeIds = useMemo(
+    () => [...new Set(
+      (selectedChange?.steps || [])
+        .map(step => step.assignee_user_id)
+        .filter(Boolean),
+    )].sort(),
+    [selectedChange],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setAssigneeNames({});
+    if (!selectedChangeUserLoader || selectedAssigneeIds.length === 0) {
+      return () => controller.abort();
+    }
+
+    Promise.all(selectedAssigneeIds.map(async id => {
+      const person = await resolvePinnedReference(
+        selectedChangeUserLoader,
+        id,
+        { signal: controller.signal },
+      );
+      return [id, person?.full_name || null];
+    }))
+      .then(entries => {
+        if (controller.signal.aborted) return;
+        setAssigneeNames(Object.fromEntries(entries.filter(([, name]) => name)));
+      })
+      .catch(error => {
+        if (!controller.signal.aborted && error?.name !== 'AbortError') setAssigneeNames({});
+      });
+
+    return () => controller.abort();
+  }, [principalKey, selectedAssigneeIds, selectedChangeUserLoader]);
 
   const loadTemplates = useCallback(async (after = null, append = false, options = {}) => {
     if (!manager) return;
@@ -285,7 +368,14 @@ export default function TenancyWorkflows() {
               onClick={() => selectTemplateVersion(item)}>
               <strong>{tr(item.direction)} · {tr('version', { version: item.version })}</strong>
               <span>{item.unit_id ? tr('unitOverride') : tr('objectDefault')} · {tr(item.state)}</span>
-              <code>{item.property_id}</code>
+              <WorkflowLocationLabel
+                propertyId={item.property_id}
+                unitId={item.unit_id}
+                principalKey={principalKey}
+                locale={locale}
+                propertyLoader={propertyLoader}
+                unitLoaderForProperty={unitLoaderForProperty}
+              />
             </button>
           ))}
           {templateMore && <button type="button" className="btn btn-secondary"
@@ -303,7 +393,14 @@ export default function TenancyWorkflows() {
             <section className="tenancy-workflow-page__versionbar">
               <div>
                 <strong>{tr('version', { version: selectedVersion.version })}</strong>
-                <span>{selectedVersion.id}</span>
+                <WorkflowLocationLabel
+                  propertyId={selectedVersion.property_id}
+                  unitId={selectedVersion.unit_id}
+                  principalKey={principalKey}
+                  locale={locale}
+                  propertyLoader={propertyLoader}
+                  unitLoaderForProperty={unitLoaderForProperty}
+                />
               </div>
               {['published', 'retired'].includes(selectedVersion.state) && (
                 <button type="button" className="btn btn-secondary btn-sm"
@@ -361,12 +458,12 @@ export default function TenancyWorkflows() {
             <BoundedReferencePicker label={tr('propertyScope')} locale={locale}
               value={contextProperty?.id || null} selectedItem={contextProperty}
               loadPage={propertyLoader} sourceKey="change-properties"
-              getLabel={item => item.name || item.label || item.id}
+              getLabel={item => item.name || item.label || tr('propertyUnavailable')}
               onChange={item => { setContextProperty(item); setContextUnit(null); }} required />
             <BoundedReferencePicker label={tr('unitScope')} locale={locale}
               value={contextUnit?.id || null} selectedItem={contextUnit}
               loadPage={contextUnitLoader} sourceKey={contextProperty?.id || 'no-property'}
-              getLabel={item => item.label || item.name || item.id}
+              getLabel={item => item.label || item.name || tr('unitUnavailable')}
               disabled={!contextProperty} onChange={setContextUnit} required />
           </section>
         )}
@@ -375,6 +472,8 @@ export default function TenancyWorkflows() {
           <TenancyChangeStartForm
             propertyId={contextProperty.id}
             unitId={contextUnit.id}
+            propertyLabel={contextProperty.name || contextProperty.label || tr('propertyUnavailable')}
+            unitLabel={contextUnit.label || contextUnit.name || tr('unitUnavailable')}
             locale={locale}
             principalKey={principalKey}
             loadContracts={contractLoader}
@@ -404,7 +503,14 @@ export default function TenancyWorkflows() {
               className={selectedChange?.id === item.id ? 'is-selected' : ''}
               onClick={() => openChange(item)}>
               <strong>{tr(item.mode)}</strong>
-              <span>{item.property_id} · {item.unit_id}</span>
+              <WorkflowLocationLabel
+                propertyId={item.property_id}
+                unitId={item.unit_id}
+                principalKey={principalKey}
+                locale={locale}
+                propertyLoader={propertyLoader}
+                unitLoaderForProperty={unitLoaderForProperty}
+              />
               <small>{tr(item.state)}</small>
             </button>
           ))}
@@ -420,6 +526,11 @@ export default function TenancyWorkflows() {
           <TenancyChangeFile
             key={selectedChange.id}
             change={selectedChange}
+            propertyLabel={selectedChangeProperty?.name || selectedChangeProperty?.label || tr('propertyUnavailable')}
+            unitLabel={selectedChangeUnit?.label || selectedChangeUnit?.name || tr('unitUnavailable')}
+            previousContractLabel={selectedPreviousContract?.contract_number || selectedPreviousContract?.label || null}
+            nextContractLabel={selectedNextContract?.contract_number || selectedNextContract?.label || null}
+            assigneeNames={assigneeNames}
             locale={locale}
             principalKey={principalKey}
             prepareStepMutation={({ change, step, patch }) => ({
@@ -496,7 +607,7 @@ export default function TenancyWorkflows() {
     <div className="page tenancy-workflow-page">
       <header className="tenancy-workflow-page__hero">
         <div>
-          <span className="workflow-eyebrow">P1 / P2</span>
+          <span className="workflow-eyebrow">{tr('workflowArea')}</span>
           <h1>{tr('eyebrow')}</h1>
           <p>{tr('pageDescription')}</p>
         </div>

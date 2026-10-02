@@ -1,8 +1,9 @@
 import { useCallback, useMemo, useState } from 'react';
 import BoundedReferencePicker from './BoundedReferencePicker';
 import WorkflowCommandNotice from './WorkflowCommandNotice';
+import WorkflowTechnicalDetails from './WorkflowTechnicalDetails';
 import useWorkflowCommand from './useWorkflowCommand';
-import { ANCHORS, EVIDENCE_REQUIREMENTS, REQUIREMENTS } from './tenancyWorkflowModel';
+import { ANCHORS, EVIDENCE_REQUIREMENTS, REQUIREMENTS, newWorkflowStepKey } from './tenancyWorkflowModel';
 import { workflowText } from './workflowCopy';
 import './TenancyWorkflows.css';
 
@@ -10,7 +11,7 @@ const ROLES = ['eigentuemer', 'verwalter', 'techniker'];
 
 function initialStep() {
   return {
-    stable_key: '',
+    stable_key: newWorkflowStepKey(),
     position: 0,
     title: '',
     description: null,
@@ -119,7 +120,7 @@ export default function WorkflowTemplateCreateForm({
       <div className="workflow-form-grid">
         <BoundedReferencePicker label={tr('propertyScope')} locale={locale}
           value={property?.id || null} selectedItem={property} loadPage={propertyLoader}
-          sourceKey="workflow-properties" getLabel={item => item.name || item.label || item.id}
+          sourceKey="workflow-properties" getLabel={item => item.name || item.label || tr('propertyUnavailable')}
           onChange={item => {
             setProperty(item);
             setUnit(null);
@@ -127,7 +128,7 @@ export default function WorkflowTemplateCreateForm({
           }} required />
         <BoundedReferencePicker label={tr('unitScope')} locale={locale}
           value={unit?.id || null} selectedItem={unit} loadPage={unitLoader}
-          sourceKey={property?.id || 'no-property'} getLabel={item => item.label || item.name || item.id}
+          sourceKey={property?.id || 'no-property'} getLabel={item => item.label || item.name || tr('unitUnavailable')}
           disabled={!property} onChange={setUnit} />
         <label className="workflow-field">
           <span>{tr('mode')}</span>
@@ -141,12 +142,7 @@ export default function WorkflowTemplateCreateForm({
 
       <div className="workflow-step-editor">
         <div className="workflow-form-grid">
-          <label className="workflow-field">
-            <span>{tr('stableKey')}</span>
-            <input value={step.stable_key} onChange={event => patch({ stable_key: event.target.value })}
-              placeholder="handover.schedule" disabled={command.busy || command.state.phase === 'unknown'} />
-          </label>
-          <label className="workflow-field">
+          <label className="workflow-field workflow-field--wide">
             <span>{tr('title')}</span>
             <input value={step.title} onChange={event => patch({ title: event.target.value })}
               disabled={command.busy || command.state.phase === 'unknown'} />
@@ -190,17 +186,21 @@ export default function WorkflowTemplateCreateForm({
           </div>
           {assignment === 'user' && <BoundedReferencePicker label={tr('selectUser')} locale={locale}
             value={step.assignee_user_id} loadPage={userLoader} sourceKey={`workflow-active-users:${property?.id || "none"}`}
-            getLabel={item => item.full_name || item.id}
+            getLabel={item => item.full_name || tr('referenceUnavailable')}
+            getDescription={item => tr(`role_${item.role}`)}
             isSelectable={item => ROLES.includes(item.role)}
             onChange={item => patch({ assignee_user_id: item?.id || null, assignee_role: null })} required />}
           {assignment === 'role' && <label className="workflow-field workflow-field--compact">
             <span>{tr('selectRole')}</span>
             <select value={step.assignee_role || 'techniker'}
               onChange={event => patch({ assignee_role: event.target.value, assignee_user_id: null })}>
-              {ROLES.map(role => <option key={role} value={role}>{role}</option>)}
+              {ROLES.map(role => <option key={role} value={role}>{tr(`role_${role}`)}</option>)}
             </select>
           </label>}
         </fieldset>
+        <WorkflowTechnicalDetails locale={locale} rows={[
+          { label: tr('templateKey'), value: step.stable_key },
+        ]} />
       </div>
 
       <footer className="workflow-actions">

@@ -278,3 +278,74 @@ Gezielt geprüft:
 ## Additiver UI-Semantikfix: kanonische Suche benennen
 
 Beim Read-only-Abgleich des integrierten Root-Referenzdienstes wurde bestätigt, dass der Picker serverseitig über den referenzfähigen Bestand sucht. Die alten Copy-Texte „geladene Treffer filtern“ waren daher sachlich veraltet. DE/EN/ES wurden auf neutrale globale Referenzsuche und „keine Treffer“ umgestellt; Request-/Cursorlogik bleibt unverändert.
+
+## Additives Bedienpaket: praktische Mieterwechsel-UI
+
+Ausgangspunkt für den Read-only-Integrationsabgleich war Roots integrierter Stand ab `645e3d9`. Root-/Main-/Preview-/E2E-Dateien wurden nicht verändert.
+
+### Bedieninformationen statt Technikwerte
+
+- Prüfsummen, ETags, Revisionen, Workflow-/Step-/Task-/Evidence-IDs und interne Step-Keys sind keine normale Hauptinformation mehr.
+- Notwendige Diagnosewerte bleiben in standardmäßig geschlossenen nativen `<details>` unter „Technische Details“ verfügbar.
+- Start- und Reanchor-Vorschauen zeigen als Hauptinhalt Terminanker, betroffene Schritte, Konflikte und verständliche Bestätigung; Preview-Hash/Quell-ETags stehen nur in den technischen Details.
+- Dokumentversionen zeigen Versionsnummer, Dateiname und Datum; SHA-256 und Versions-ID nur aufgeklappt.
+- Bereits verknüpfte Belege zeigen verständliche Belegart, Ein-/Auszugsrichtung und Verknüpfungsdatum. Technische Link-/Referenz-/Snapshotwerte sind eingeklappt.
+- Aufgabenaktionen zeigen „Aufgabe öffnen“ statt der Task-ID.
+- Blockierungen werden über Schritttitel statt Step-IDs erklärt.
+- Rollen werden DE/EN/ES verständlich bezeichnet.
+
+### Berechtigte Referenznamen
+
+Objekt-/Einheitsnamen in Workflowlisten und Detailköpfen werden ausschließlich über den bestehenden kanonischen Referenzdienst aufgelöst:
+
+- genau die bekannte ID als `selected_id`,
+- `page_size=1`,
+- kein unbeschränktes Laden von Gesamtbeständen,
+- Principal-/Grantwechsel löst eine neue Prüfung aus und entfernt den zuvor sichtbaren Namen sofort bis zur neuen autorisierten Antwort.
+- Verträge der geöffneten Wechselakte und aktive konkrete Verantwortliche werden auf dieselbe Weise lesbar aufgelöst; nicht mehr berechtigte Referenzen fallen neutral zurück.
+
+### Stabile Schrittkennungen
+
+- Neue Vorlagenschritte erhalten ihren `stable_key` intern einmalig über `crypto.randomUUID()`.
+- Der Key wird nicht aus dem Titel erzeugt und ist kein normales Eingabefeld.
+- Bestehende serverseitige Keys werden beim Editieren nicht geändert.
+- Abhängigkeiten bleiben über sichtbare Schritttitel auswählbar; intern werden weiterhin ausschließlich die unveränderten Stable Keys übertragen.
+
+### Unknown Reply / bestätigter Start
+
+- Unknown-Success wird in normaler Sprache als unterbrochene Verbindung erklärt.
+- „Unverändert erneut senden“ verwendet weiterhin exakt dasselbe tief eingefrorene Commandobjekt mit demselben Idempotenzschlüssel/CAS-Stand.
+- Eine Startvorschau und ihre Auswahl bleiben während eines Unknown Outcomes erhalten.
+- Erst nachdem der Start tatsächlich erfolgreich beantwortet wurde und `onCreated` ausgelöst wurde, werden Formularauswahl und Vorschau zurückgesetzt. Die bereits bestätigte Vorschau bietet danach nicht erneut „Wechselakte starten“ an.
+
+### Rail, 320/360 px und Hauptaktion
+
+- `.workflow-start` ist ein CSS-Inline-Size-Container.
+- Eine einzelne Einzugs- oder Auszugs-Lane spannt unabhängig von der Fensterbreite die gesamte verfügbare Railbreite.
+- Unter 42rem Containerbreite werden Start-Lanes einspaltig gestapelt; unter 24rem auch die Moduswahl.
+- Auf sehr schmalen Ansichten werden Aktionsleisten einspaltig, Buttons mindestens 44px hoch und die primäre Aktion steht in der Bedienreihenfolge zuerst.
+- Technische Werte, Belegkarten, Referenzen und Modale verwenden `min-width:0`/Umbruchregeln, damit lange interne Werte die 320/360px-Ansicht nicht verbreitern.
+
+### Tatsächlich ausgeführte Prüfungen
+
+Workflow-Suite:
+
+`npm.cmd test -- BoundedReferencePicker.test.jsx TenancyChangeFile.test.jsx TenancyChangeStartForm.test.jsx TenancyWorkflowApiContract.test.js TenancyWorkflowModel.test.js WorkflowCommand.test.jsx WorkflowTemplateCreateForm.test.jsx WorkflowTemplateDesigner.test.jsx WorkflowReferenceLabel.test.jsx`
+
+Ergebnis: **9 Testdateien / 46 Tests bestanden**.
+
+Explizit abgedeckt sind u. a.:
+
+- bounded `selected_id`-Namensauflösung für Objekt und Einheit,
+- Principalwechsel verwirft den alten berechtigten Namen vor der neuen Antwort,
+- bestehender Stable Key bleibt bei sichtbarer Titeländerung unverändert,
+- neuer Stable Key wird intern erzeugt und nicht als Eingabefeld angeboten,
+- Rollenanzeige und praktische Wechselakteninformationen,
+- Lost Reply bewahrt Preview/Command; erfolgreicher Exact-Retry räumt die Startvorbereitung erst anschließend auf,
+- bestehende DTO-/CAS-/Evidence-/Reanchor-Verträge bleiben unverändert.
+
+ESLint über das gesamte `features/tenancyWorkflows`, `pages/TenancyWorkflows.jsx` und alle neun Workflowtests mit `--max-warnings=0`: **bestanden, keine Warnung**.
+
+Produktionsbuild `npm.cmd run build`: **bestanden**, Vite 8.1.0, **673 Module transformiert**.
+
+Roots echter Edge-/SQLite-/Browsernachweis und dessen Recovery/E2E-Dateien bleiben ausdrücklich Root-Verantwortung; in diesem UI-Worktree wird kein neuer Browser-E2E-Nachweis behauptet.

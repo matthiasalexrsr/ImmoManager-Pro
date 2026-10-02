@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import BoundedReferencePicker from './BoundedReferencePicker';
 import DocumentVersionPicker from './DocumentVersionPicker';
 import WorkflowCommandNotice from './WorkflowCommandNotice';
+import WorkflowTechnicalDetails from './WorkflowTechnicalDetails';
 import useWorkflowCommand from './useWorkflowCommand';
 import { workflowText } from './workflowCopy';
 import './TenancyWorkflows.css';
@@ -10,6 +11,15 @@ function preferredKind(step) {
   if (step.evidence_requirement === 'handover_protocol') return 'handover_protocol';
   if (step.evidence_requirement === 'meter_reading') return 'meter_reading';
   return 'document_version';
+}
+
+function formatDate(value, locale) {
+  if (!value) return '';
+  const parsed = /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? new Date(`${value}T00:00:00Z`)
+    : new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return String(value);
+  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeZone: 'UTC' }).format(parsed);
 }
 
 export default function EvidenceLinkDialog({
@@ -115,7 +125,7 @@ export default function EvidenceLinkDialog({
           <div>
             <span className="workflow-eyebrow">{tr('evidence')}</span>
             <h3 id="workflow-evidence-title">{tr('addEvidence')}</h3>
-            <p>{step.title_snapshot}</p>
+            <p>{step.title_snapshot} · {tr(step.direction)}</p>
           </div>
           <button type="button" className="btn btn-secondary btn-sm"
             disabled={command.busy || command.state.phase === 'unknown'} onClick={onClose}>{tr('close')}</button>
@@ -126,7 +136,7 @@ export default function EvidenceLinkDialog({
         {localError && <div className="workflow-inline-error" role="alert">{localError}</div>}
 
         <label className="workflow-field">
-          <span>{tr('evidenceRequirement')}</span>
+          <span>{tr('evidenceType')}</span>
           <select value={kind} disabled={command.busy || command.state.phase === 'unknown'}
             onChange={event => changeKind(event.target.value)}>
             {kinds.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
@@ -138,8 +148,11 @@ export default function EvidenceLinkDialog({
             <BoundedReferencePicker label={tr('selectDocument')} locale={locale}
               value={selectedDocument?.id || null} selectedItem={selectedDocument} loadPage={documentLoader}
               sourceKey={`${propertyId}:${unitId}:${contractId}:documents`}
-              getLabel={item => item.title || item.id}
-              getDescription={item => [item.document_type, item.document_date].filter(Boolean).join(' · ')}
+              getLabel={item => item.title || tr('documentFallback')}
+              getDescription={item => [
+                item.document_date ? formatDate(item.document_date, locale) : null,
+                item.document_type,
+              ].filter(Boolean).join(' · ')}
               isSelectable={item => selectable('document_version', item)}
               disabled={command.busy || command.state.phase === 'unknown'}
               onChange={item => { setSelectedDocument(item); setDocumentVersion(null); }} required />
@@ -156,8 +169,11 @@ export default function EvidenceLinkDialog({
           <BoundedReferencePicker label={tr('evidence_handover_protocol')} locale={locale}
             value={reference?.id || null} selectedItem={reference} loadPage={handoverLoader}
             sourceKey={`${propertyId}:${unitId}:${contractId}:${step.direction}:handovers`}
-            getLabel={item => [item.protocol_type, item.protocol_date].filter(Boolean).join(' · ') || item.id}
-            getDescription={item => item.status || ''}
+            getLabel={item => [
+              tr(step.direction),
+              item.protocol_date ? formatDate(item.protocol_date, locale) : tr('handoverFallback'),
+            ].filter(Boolean).join(' · ')}
+            getDescription={() => tr('finalized')}
             isSelectable={item => selectable('handover_protocol', item)}
             disabled={command.busy || command.state.phase === 'unknown'}
             onChange={setReference} required />
@@ -167,11 +183,22 @@ export default function EvidenceLinkDialog({
           <BoundedReferencePicker label={tr('evidence_meter_reading')} locale={locale}
             value={reference?.id || null} selectedItem={reference} loadPage={meterLoader}
             sourceKey={`${propertyId}:${unitId}:${contractId}:${step.direction}:meter-readings`}
-            getLabel={item => [item.meter_number, item.reading_value, item.unit].filter(value => value != null).join(' · ') || item.id}
-            getDescription={item => item.reading_date || item.created_at || ''}
+            getLabel={item => [
+              tr(step.direction),
+              [item.meter_number, item.reading_value, item.unit].filter(value => value != null).join(' · ') || tr('meterReadingFallback'),
+            ].join(' · ')}
+            getDescription={item => formatDate(item.reading_date || item.created_at, locale)}
             isSelectable={item => selectable('meter_reading', item)}
             disabled={command.busy || command.state.phase === 'unknown'}
             onChange={setReference} required />
+        )}
+
+        {kind !== 'document_version' && reference && (
+          <WorkflowTechnicalDetails locale={locale} rows={[
+            { label: tr('technicalIdentifier'), value: reference.id },
+            { label: tr(step.direction === 'move_out' ? 'previousContract' : 'nextContract'), value: reference.contract_id },
+            { label: tr('unitScope'), value: reference.unit_id },
+          ]} />
         )}
 
         <footer className="workflow-actions">

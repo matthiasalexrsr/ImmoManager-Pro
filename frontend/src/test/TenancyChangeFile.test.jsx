@@ -92,7 +92,16 @@ function nextChange(source, steps, revision = 'change-rev-2') {
 }
 
 describe('TenancyChangeFile against the core DTOs', () => {
-  it('shows original/current due dates, blocking facts, real task ids and immutable document versions', () => {
+  it('shows practical dates, blocker titles, translated responsibility, evidence context and task action without raw ids', () => {
+    const blocker = step({
+      id: 'step-before',
+      template_step_key: 'before-key',
+      title_snapshot: 'Voraussetzung erledigen',
+      state: 'completed',
+      revision: 'before-rev',
+      etag: '"immo-workflow-v1:step:step-before:before-rev"',
+      actions: { complete_step: false, link_task: false, link_document: false },
+    });
     const blocked = step({
       state: 'blocked',
       blocked_by_step_ids: ['step-before'],
@@ -100,13 +109,16 @@ describe('TenancyChangeFile against the core DTOs', () => {
       evidence_links: [evidence()],
       actions: { complete_step: false, link_task: false, link_document: false },
     });
-    render(<TenancyChangeFile change={change({ steps: [blocked] })} onOpenTask={vi.fn()} />);
+    render(<TenancyChangeFile change={change({ steps: [blocker, blocked] })} onOpenTask={vi.fn()} />);
 
-    expect(screen.getByText('2026-10-12')).toBeInTheDocument();
-    expect(screen.getByText('2026-10-09')).toBeInTheDocument();
-    expect(screen.getByText(/step-before/)).toBeInTheDocument();
-    expect(screen.getByText('document-version-7')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Aufgabe öffnen · task-real-42/ })).toBeInTheDocument();
+    expect(screen.getAllByText('12.10.2026').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('09.10.2026').length).toBeGreaterThan(0);
+    expect(screen.getByText(/Blockiert durch: Voraussetzung erledigen/)).toBeInTheDocument();
+    expect(screen.getAllByText('Technik').length).toBeGreaterThan(0);
+    expect(screen.getByText('Originaldokument')).toBeInTheDocument();
+    expect(screen.getByText(/Auszug · Verknüpft am/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Aufgabe öffnen' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /task-real-42/ })).not.toBeInTheDocument();
   });
 
   it('prepares not-applicable with the step revision and parent change revision', async () => {
@@ -192,8 +204,8 @@ describe('TenancyChangeFile against the core DTOs', () => {
     fireEvent.change(screen.getByLabelText('Auszugsübergabe'), { target: { value: '2026-10-15' } });
     fireEvent.click(screen.getByRole('button', { name: 'Verschiebung prüfen' }));
 
-    expect(await screen.findByText(hash('f'))).toBeInTheDocument();
-    expect(screen.getByText(/2026-10-12 → 2026-10-17/)).toBeInTheDocument();
+    expect(await screen.findByText('Vorschau ist bereit')).toBeInTheDocument();
+    expect(screen.getByText(/12\.10\.2026 → 17\.10\.2026/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Bestätigte Verschiebung anwenden' }));
 
     await waitFor(() => expect(prepareReanchor).toHaveBeenCalledTimes(1));
@@ -401,8 +413,8 @@ describe('TenancyChangeFile against the core DTOs', () => {
     render(<TenancyChangeFile change={linkedChange}
       prepareUnlinkEvidence={prepareUnlinkEvidence} />);
 
-    expect(screen.getByText('document-version-7')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '×' }));
+    expect(screen.getByText('Originaldokument')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Belegverknüpfung entfernen' }));
     await waitFor(() => expect(prepareUnlinkEvidence).toHaveBeenCalledTimes(1));
     expect(prepareUnlinkEvidence.mock.results[0].value.payload).toEqual({
       idempotency_key: 'remove-evidence-key',

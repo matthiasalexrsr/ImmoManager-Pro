@@ -7,6 +7,9 @@ export { default as WorkflowTemplateDesigner } from './WorkflowTemplateDesigner'
 export { default as WorkflowTemplateCreateForm } from './WorkflowTemplateCreateForm';
 export { default as useWorkflowCommand } from './useWorkflowCommand';
 export { default as WorkflowCommandNotice } from './WorkflowCommandNotice';
+export { default as WorkflowTechnicalDetails } from './WorkflowTechnicalDetails';
+export { WorkflowLocationLabel } from './WorkflowReferenceLabel';
+export { resolvePinnedReference, usePinnedReference } from './workflowReferenceResolution';
 export * from './tenancyWorkflowApi';
 export * from './tenancyWorkflowModel';
 export * from './referenceLoaders';

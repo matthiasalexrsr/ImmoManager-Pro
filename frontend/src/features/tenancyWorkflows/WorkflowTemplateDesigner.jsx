@@ -2,12 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
 import BoundedReferencePicker from './BoundedReferencePicker';
 import WorkflowCommandNotice from './WorkflowCommandNotice';
+import WorkflowTechnicalDetails from './WorkflowTechnicalDetails';
 import useWorkflowCommand from './useWorkflowCommand';
 import {
   ANCHORS,
   EVIDENCE_REQUIREMENTS,
   REQUIREMENTS,
   actionAllowed,
+  newWorkflowStepKey,
   validateTemplateDraftSteps,
   validateTemplateVersion,
 } from './tenancyWorkflowModel';
@@ -25,15 +27,10 @@ function localKey(step) {
   return step.id || step.stable_key;
 }
 
-function newStableKey() {
-  if (typeof crypto?.randomUUID !== 'function') throw new Error('crypto.randomUUID unavailable');
-  return `step-${crypto.randomUUID()}`;
-}
-
 function blankStep(position) {
   return {
     id: null,
-    stable_key: newStableKey(),
+    stable_key: newWorkflowStepKey(),
     position,
     title: '',
     description: null,
@@ -233,7 +230,7 @@ export default function WorkflowTemplateDesigner({
               <div className="workflow-step-editor__top">
                 <div>
                   <span className="workflow-step-editor__index">{String(index + 1).padStart(2, '0')}</span>
-                  <code>{step.stable_key}</code>
+                  <strong>{tr('stepNumber', { number: index + 1 })}</strong>
                 </div>
                 {editable && (
                   <div className="workflow-icon-actions">
@@ -308,8 +305,8 @@ export default function WorkflowTemplateDesigner({
                     value={step.assignee_user_id}
                     onChange={item => patchStep(index, { assignee_user_id: item?.id || null, assignee_role: null })}
                     loadPage={userLoader}
-                    getLabel={item => item.full_name || item.id}
-                    getDescription={item => item.role || ''}
+                    getLabel={item => item.full_name || tr('referenceUnavailable')}
+                    getDescription={item => tr(`role_${item.role}`)}
                     isSelectable={item => ROLES.includes(item.role)}
                     sourceKey={`active-users:${base.property_id}`}
                     disabled={!editable || command.busy}
@@ -320,7 +317,7 @@ export default function WorkflowTemplateDesigner({
                     <span>{tr('selectRole')}</span>
                     <select value={step.assignee_role || 'techniker'} disabled={!editable || command.busy}
                       onChange={event => patchStep(index, { assignee_role: event.target.value, assignee_user_id: null })}>
-                      {ROLES.map(role => <option key={role} value={role}>{role}</option>)}
+                      {ROLES.map(role => <option key={role} value={role}>{tr(`role_${role}`)}</option>)}
                     </select>
                   </label>
                 )}
@@ -333,15 +330,26 @@ export default function WorkflowTemplateDesigner({
                     <label key={candidate.stable_key}>
                       <input type="checkbox" checked={step.depends_on_step_keys.includes(candidate.stable_key)}
                         onChange={event => toggleDependency(index, candidate.stable_key, event.target.checked)} />
-                      <span>{candidate.title || candidate.stable_key}</span>
+                      <span>{candidate.title || `${tr('unnamedStep')} ${candidate.position + 1}`}</span>
                     </label>
                   ))}
                 </div>
               </fieldset>
+
+              <WorkflowTechnicalDetails locale={locale} rows={[
+                { label: tr('templateKey'), value: step.stable_key },
+                { label: tr('technicalIdentifier'), value: step.id },
+              ]} />
             </li>
           );
         })}
       </ol>
+
+      <WorkflowTechnicalDetails locale={locale} rows={[
+        { label: tr('technicalIdentifier'), value: base.id },
+        { label: tr('revision'), value: base.revision },
+        { label: 'ETag', value: base.etag },
+      ]} />
 
       {editable && (
         <button type="button" className="workflow-add-step" disabled={command.busy}

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CheckCircle2, Circle, FileCheck2, Link2, LockKeyhole, RefreshCw } from 'lucide-react';
 import EvidenceLinkDialog from './EvidenceLinkDialog';
 import WorkflowCommandNotice from './WorkflowCommandNotice';
+import WorkflowTechnicalDetails from './WorkflowTechnicalDetails';
 import useWorkflowCommand from './useWorkflowCommand';
 import {
   actionAllowed,
@@ -23,6 +24,28 @@ function evidenceAction(step, canLinkEvidence) {
   return true;
 }
 
+function formatDate(value, locale) {
+  if (!value) return '—';
+  const parsed = /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? new Date(`${value}T00:00:00Z`)
+    : new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return String(value);
+  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeZone: 'UTC' }).format(parsed);
+}
+
+function formatDateTime(value, locale) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+}
+
+function evidenceTypeKey(link) {
+  if (link.kind === 'document_version') return 'evidence_document_original';
+  if (link.kind === 'handover_protocol') return 'evidence_handover_protocol';
+  return 'evidence_meter_reading';
+}
+
 function normalizedReanchor(value) {
   if (!value || typeof value !== 'object') return null;
   return {
@@ -33,6 +56,11 @@ function normalizedReanchor(value) {
 
 export default function TenancyChangeFile({
   change,
+  propertyLabel = null,
+  unitLabel = null,
+  previousContractLabel = null,
+  nextContractLabel = null,
+  assigneeNames = {},
   locale = 'de-DE',
   principalKey = '',
   prepareStepMutation,
@@ -177,6 +205,10 @@ export default function TenancyChangeFile({
   const requiredSteps = base.steps.filter(step => step.requirement === 'required');
   const satisfiedRequired = requiredSteps.filter(step => ['completed', 'not_applicable'].includes(step.state)).length;
   const directions = base.mode === 'turnover' ? ['move_out', 'move_in'] : [base.mode];
+  const stepTitleById = useMemo(
+    () => new Map(base.steps.map(step => [step.id, step.title_snapshot])),
+    [base.steps],
+  );
 
   return (
     <section className="workflow-shell workflow-change" aria-busy={command.busy || reanchorLoading}>
@@ -185,7 +217,7 @@ export default function TenancyChangeFile({
           <span className="workflow-eyebrow">{tr('eyebrow')}</span>
           <h2>{tr('changeTitle')}</h2>
           <p className="workflow-muted">
-            {tr(base.mode)} · {tr('propertyScope')}: {base.property_id} · {tr('unitScope')}: {base.unit_id}
+            {tr(base.mode)} · {propertyLabel || tr('propertyUnavailable')} · {unitLabel || tr('unitUnavailable')}
           </p>
         </div>
         <div className="workflow-badges">
@@ -202,12 +234,22 @@ export default function TenancyChangeFile({
 
       <div className="workflow-change__summary">
         <dl className="workflow-facts">
-          <div><dt>{tr('previousContract')}</dt><dd>{base.previous_contract_id || '—'}</dd></div>
-          <div><dt>{tr('nextContract')}</dt><dd>{base.next_contract_id || '—'}</dd></div>
-          <div><dt>{tr('moveOutHandoverDate')}</dt><dd>{base.move_out_handover_date || '—'}</dd></div>
-          <div><dt>{tr('moveInHandoverDate')}</dt><dd>{base.move_in_handover_date || '—'}</dd></div>
+          <div><dt>{tr('previousContract')}</dt><dd>{base.previous_contract_id ? (previousContractLabel || tr('contractUnavailable')) : '—'}</dd></div>
+          <div><dt>{tr('nextContract')}</dt><dd>{base.next_contract_id ? (nextContractLabel || tr('contractUnavailable')) : '—'}</dd></div>
+          <div><dt>{tr('moveOutHandoverDate')}</dt><dd>{formatDate(base.move_out_handover_date, locale)}</dd></div>
+          <div><dt>{tr('moveInHandoverDate')}</dt><dd>{formatDate(base.move_in_handover_date, locale)}</dd></div>
         </dl>
         <p className="workflow-note">{tr('originalsStay')}</p>
+        <WorkflowTechnicalDetails locale={locale} rows={[
+          { label: tr('technicalIdentifier'), value: base.id },
+          { label: tr('revision'), value: base.revision },
+          { label: 'ETag', value: base.etag },
+          { label: tr('checksum'), value: base.snapshot_sha256 },
+          { label: tr('propertyScope'), value: base.property_id },
+          { label: tr('unitScope'), value: base.unit_id },
+          { label: tr('previousContract'), value: base.previous_contract_id },
+          { label: tr('nextContract'), value: base.next_contract_id },
+        ]} />
       </div>
 
       {directions.map(direction => (
@@ -232,18 +274,22 @@ export default function TenancyChangeFile({
 
                 {step.description_snapshot && <p>{step.description_snapshot}</p>}
                 <dl className="workflow-step-card__dates">
-                  <div><dt>{tr('dueDate')}</dt><dd>{step.due_date || '—'}</dd></div>
-                  <div><dt>{tr('originalDueDate')}</dt><dd>{step.original_due_date || '—'}</dd></div>
+                  <div><dt>{tr('dueDate')}</dt><dd>{formatDate(step.due_date, locale)}</dd></div>
+                  <div><dt>{tr('originalDueDate')}</dt><dd>{formatDate(step.original_due_date, locale)}</dd></div>
                 </dl>
 
                 {step.blocked_by_step_ids.length > 0 && (
                   <p className="workflow-blocked"><LockKeyhole size={15} aria-hidden="true" />
-                    {tr('blockedBy')}: {step.blocked_by_step_ids.join(', ')}</p>
+                    {tr('blockedBy')}: {step.blocked_by_step_ids
+                      .map(id => stepTitleById.get(id) || tr('unnamedStep'))
+                      .join(', ')}</p>
                 )}
 
                 <div className="workflow-step-card__responsibility">
                   <strong>{tr('responsibility')}:</strong>{' '}
-                  {step.assignee_user_id || step.assignee_role || tr('none')}
+                  {step.assignee_user_id
+                    ? (assigneeNames[step.assignee_user_id] || tr('user'))
+                    : tr(`role_${step.assignee_role}`)}
                 </div>
 
                 <section className="workflow-step-card__evidence">
@@ -253,10 +299,20 @@ export default function TenancyChangeFile({
                     ? <p>{tr('noEvidence')}</p>
                     : <ul>{step.evidence_links.map(link => (
                       <li key={link.id}>
-                        <span>{link.kind}</span>
-                        <code>{displayEvidenceReference(link)}</code>
+                        <div className="workflow-evidence-main">
+                          <strong>{tr(evidenceTypeKey(link))}</strong>
+                          <small>
+                            {tr(step.direction)} · {tr('evidenceLinkedAt')} {formatDateTime(link.created_at, locale)}
+                          </small>
+                          <WorkflowTechnicalDetails locale={locale} rows={[
+                            { label: tr('technicalIdentifier'), value: link.id },
+                            { label: tr('evidenceReference'), value: displayEvidenceReference(link) },
+                            { label: tr('checksum'), value: link.snapshot_sha256 },
+                          ]} />
+                        </div>
                         {typeof prepareUnlinkEvidence === 'function' && actionAllowed(step, 'link_document') && (
                           <button type="button" className="workflow-link-button"
+                            aria-label={tr('removeEvidence')}
                             disabled={command.busy || command.state.phase === 'unknown'}
                             onClick={() => runPrepared(
                               prepareUnlinkEvidence({ change: base, step, link }),
@@ -280,14 +336,23 @@ export default function TenancyChangeFile({
                   <p className="workflow-exception"><strong>{tr('exceptionReason')}:</strong> {step.not_applicable_reason}</p>
                 )}
                 {step.completed_at && (
-                  <p className="workflow-muted">{tr('completedAt')}: {new Date(step.completed_at).toLocaleString(locale)}
-                    {step.completed_by ? ` · ${tr('completedBy')}: ${step.completed_by}` : ''}</p>
+                  <p className="workflow-muted">{tr('completedAt')}: {formatDateTime(step.completed_at, locale)}</p>
                 )}
+
+                <WorkflowTechnicalDetails locale={locale} rows={[
+                  { label: tr('technicalIdentifier'), value: step.id },
+                  { label: tr('templateKey'), value: step.template_step_key },
+                  { label: tr('revision'), value: step.revision },
+                  { label: 'ETag', value: step.etag },
+                  { label: tr('task'), value: step.task_id },
+                  { label: tr('user'), value: step.assignee_user_id },
+                  { label: tr('completedBy'), value: step.completed_by },
+                ]} />
 
                 <footer className="workflow-step-card__actions">
                   {step.task_id
                     ? <button type="button" className="btn btn-secondary btn-sm" onClick={() => onOpenTask?.(step.task_id)}>
-                      {tr('openTask')} · {step.task_id}
+                      {tr('openTask')}
                     </button>
                     : actionAllowed(step, 'link_task') && (
                       <button type="button" className="btn btn-secondary btn-sm"
@@ -369,16 +434,25 @@ export default function TenancyChangeFile({
                 onClick={previewReanchor}>{reanchorLoading ? tr('loading') : tr('previewReanchor')}</button>
               {reanchorPreview && (
                 <div className="workflow-preview">
-                  <strong>{tr('previewHash')}</strong> <code>{reanchorPreview.preview_hash}</code>
+                  <div className="workflow-preview__heading">
+                    <CheckCircle2 size={19} aria-hidden="true" />
+                    <strong>{tr('previewReady')}</strong>
+                  </div>
                   <h4>{tr('changedSteps')}</h4>
                   {reanchorView?.affected_steps?.length
                     ? <ul>{reanchorView.affected_steps.map((item, index) => (
                       <li key={item.step_id || item.id || index}>
-                        <code>{item.step_id || item.id || index + 1}</code>
-                        {item.current_due_date && item.new_due_date ? ` · ${item.current_due_date} → ${item.new_due_date}` : ''}
+                        <strong>{stepTitleById.get(item.step_id) || tr('unnamedStep')}</strong>
+                        {item.current_due_date && item.new_due_date ? ` · ${formatDate(item.current_due_date, locale)} → ${formatDate(item.new_due_date, locale)}` : ''}
                       </li>
                     ))}</ul>
                     : <p>{tr('noChanges')}</p>}
+                  <WorkflowTechnicalDetails locale={locale} rows={[
+                    { label: tr('checksum'), value: reanchorPreview.preview_hash },
+                    { label: tr('revision'), value: reanchorPreview.change_revision },
+                    { label: tr('sourceEtags'), value: reanchorPreview.source_etags },
+                    { label: tr('changedSteps'), value: reanchorPreview.affected_steps?.map(item => item.step_id) },
+                  ]} />
                   <button type="button" className="btn btn-primary"
                     disabled={command.busy || command.state.phase === 'unknown'} onClick={applyReanchor}>
                     {tr('applyReanchor')}

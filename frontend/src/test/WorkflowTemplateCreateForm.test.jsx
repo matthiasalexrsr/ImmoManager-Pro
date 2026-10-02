@@ -47,9 +47,16 @@ describe('WorkflowTemplateCreateForm', () => {
 
     const properties = await screen.findByRole('listbox', { name: /Objekt/ });
     fireEvent.click(within(properties).getByRole('option', { name: 'Haus A' }));
-    fireEvent.change(screen.getByLabelText('Stabiler Schlüssel'), { target: { value: 'movein.keys' } });
+    expect(screen.queryByLabelText('Stabiler Schlüssel')).not.toBeInTheDocument();
+    const technical = screen.getByText('Technische Details').closest('details');
+    expect(technical).not.toHaveAttribute('open');
+    fireEvent.click(within(technical).getByText('Technische Details'));
+    const generatedKey = within(technical).getByText(/^step-/).textContent;
+
+    fireEvent.change(screen.getByLabelText('Titel'), { target: { value: 'Vorbereitung' } });
     fireEvent.change(screen.getByLabelText('Titel'), { target: { value: 'Schlüssel übernehmen' } });
-    fireEvent.click(screen.getByRole('radio', { name: 'Rolle' }));
+    const role = screen.getByLabelText('Rolle auswählen');
+    expect(within(role).getByRole('option', { name: 'Technik' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Vorlage anlegen' }));
     await waitFor(() => expect(prepareCreate).toHaveBeenCalledTimes(1));
@@ -62,7 +69,7 @@ describe('WorkflowTemplateCreateForm', () => {
       unit_id: null,
       direction: 'move_in',
       steps: [{
-        stable_key: 'movein.keys',
+        stable_key: generatedKey,
         position: 0,
         title: 'Schlüssel übernehmen',
         default_requirement: 'required',
