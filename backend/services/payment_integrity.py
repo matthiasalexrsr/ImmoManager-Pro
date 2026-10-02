@@ -19,10 +19,16 @@ def lock_lifecycle_parents(store, *, contract_ids=(), property_ids=(), unit_ids=
     from ..db.orm_models import ContractORM, PropertyORM, UnitORM
     from .contract_occupancy import begin_writer
     begin_writer(store.db)
+    requested_properties = set(property_ids)
+    # Preserve the ordinary scoped NotFound result for a subject that was
+    # already absent. A disappearance while obtaining the shared parent locks
+    # still follows the conflict path below. Read after BEGIN IMMEDIATE on SQLite.
+    for identifier in sorted(requested_properties):
+        store.get_property(identifier)
     parents = {identifier: store.get_contract(identifier) for identifier in sorted(set(contract_ids))}
     unit_set = set(unit_ids) | {row.unit_id for row in parents.values()}
     units = {identifier: store.get_unit(identifier) for identifier in sorted(unit_set)}
-    properties = set(property_ids) | {row.property_id for row in units.values()} | {row.property_id for row in parents.values()}
+    properties = requested_properties | {row.property_id for row in units.values()} | {row.property_id for row in parents.values()}
     for model, identifiers in ((PropertyORM, properties), (UnitORM, unit_set), (ContractORM, parents)):
         for identifier in sorted(identifiers):
             if store.db.scalar(select(model.id).where(model.id == identifier).with_for_update()) is None:

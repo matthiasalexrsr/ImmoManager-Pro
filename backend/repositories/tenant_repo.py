@@ -32,7 +32,7 @@ from ..models import (
     ViewingAppointment,
     ViewingAppointmentCreate,
 )
-from ..storage import NotFoundError, ValidationError
+from ..storage import ValidationError
 from .base import BaseRepository
 
 logger = logging.getLogger(__name__)
@@ -109,7 +109,7 @@ class TenantRepository:
 
     def update_contract(self, contract_id: str, data: ContractCreate) -> Contract:
         if not self._contracts.exists(contract_id):
-            raise NotFoundError("Vertrag nicht gefunden")
+            self._contracts._missing(contract_id)
         pr = self._portfolio_repo
         if pr and not pr._properties.exists(data.property_id):
             raise ValidationError("Immobilie existiert nicht")

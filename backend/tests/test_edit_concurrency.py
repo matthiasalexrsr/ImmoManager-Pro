@@ -14,7 +14,17 @@ from backend.app import app
 from backend.auth import clear_users, create_access_token, register_user
 from backend.db.orm_models import Base, PortfolioORM
 from backend.dependencies import store
-from backend.models import PortfolioCreate, PortfolioPatch, PropertyCreate, TenantCreate
+from backend.models import (
+    ContractCreate,
+    ContractPatch,
+    PortfolioCreate,
+    PortfolioPatch,
+    PropertyCreate,
+    PropertyPatch,
+    TenantCreate,
+    UnitCreate,
+    UnitPatch,
+)
 from backend.repositories.sql_store import SQLAlchemyStore
 from backend.services.concurrency import (
     EditRevision,
@@ -25,7 +35,7 @@ from backend.services.concurrency import (
     revision_scope,
     utc_datetime,
 )
-from backend.storage import InMemoryStore, ValidationError
+from backend.storage import InMemoryStore, NotFoundError, ValidationError
 from backend.tests import test_private_server_concurrency as postgres_support
 from backend.tests.test_payments import payload, seed
 
@@ -85,6 +95,40 @@ def test_conditional_delete_keeps_cascades_and_deleted_stale_token_conflicts(edi
     assert failure.value.status_code == 412
 
 
+@pytest.mark.parametrize("kind", ["property", "unit", "contract"])
+@pytest.mark.parametrize("operation", ["put", "patch"])
+def test_deleted_lifecycle_subject_preserves_conditional_conflict_and_legacy_not_found(edit_store, kind, operation):
+    portfolio = edit_store.create_portfolio(PortfolioCreate(name="Synthetic deleted form subject"))
+    prop_data = PropertyCreate(portfolio_id=portfolio.id, name="Property", property_type="residential")
+    prop = edit_store.create_property(prop_data)
+    unit_data = UnitCreate(property_id=prop.id, label="A", unit_type="apartment")
+    unit = edit_store.create_unit(unit_data)
+    tenant = edit_store.create_tenant(TenantCreate(full_name="Synthetic form tenant"))
+    contract_data = ContractCreate(property_id=prop.id, unit_id=unit.id, tenant_id=tenant.id,
+        contract_number="Synthetic draft form", start_date="2026-01-01", status="draft")
+    contract = edit_store.create_contract(contract_data)
+    record, original, patch, collection = {
+        "property": (prop, prop_data, PropertyPatch(portfolio_id=portfolio.id), "properties"),
+        "unit": (unit, unit_data, UnitPatch(property_id=prop.id), "units"),
+        "contract": (contract, contract_data, ContractPatch(status="draft"), "contracts"),
+    }[kind]
+    getattr(edit_store, "delete_" + kind)(record.id)
+
+    def save_form():
+        if operation == "put":
+            return getattr(edit_store, "update_" + kind)(record.id, original)
+        return edit_store._patch_entity(kind, record.id, patch)
+
+    with revision_scope(revision(record, collection)), pytest.raises(HTTPException) as failure:
+        save_form()
+    assert failure.value.status_code == 412
+    with pytest.raises(NotFoundError):
+        save_form()
+    # The failed request leaves the connection usable and never recreates a row.
+    assert edit_store.get_portfolio(portfolio.id).id == portfolio.id
+    assert all(row.id != record.id for row in getattr(edit_store, "list_" + collection)())
+
+
 def test_revisions_are_bound_to_collection_and_id(edit_store):
     first = edit_store.create_portfolio(PortfolioCreate(name="First"))
     second = edit_store.create_portfolio(PortfolioCreate(name="Second"))
@@ -94,6 +138,20 @@ def test_revisions_are_bound_to_collection_and_id(edit_store):
     with revision_scope(wrong_collection), pytest.raises(HTTPException):
         edit_store.delete_portfolio(first.id)
     assert [item.name for item in edit_store.list_portfolios()] == ["First", "Second"]
+
+
+def test_missing_proposed_parent_on_existing_subject_keeps_its_reference_error(edit_store):
+    if not hasattr(edit_store, "db"):
+        pytest.skip("SQL parent lookup regression")
+    portfolio = edit_store.create_portfolio(PortfolioCreate(name="Synthetic existing form subject"))
+    prop = edit_store.create_property(PropertyCreate(portfolio_id=portfolio.id, name="Property", property_type="residential"))
+    unit = edit_store.create_unit(UnitCreate(property_id=prop.id, label="Original", unit_type="apartment"))
+    with revision_scope(revision(unit, "units")), pytest.raises(NotFoundError):
+        edit_store._patch_entity("unit", unit.id, UnitPatch(property_id="absent-proposed-parent"))
+    assert edit_store.get_unit(unit.id).property_id == prop.id
+    with revision_scope(revision(unit, "units")):
+        saved = edit_store._patch_entity("unit", unit.id, UnitPatch(label="Corrected draft"))
+    assert saved.label == "Corrected draft" and saved.property_id == prop.id
 
 
 def test_legacy_writes_remain_compatible_and_snapshots_are_monotonic(edit_store):
