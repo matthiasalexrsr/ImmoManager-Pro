@@ -136,23 +136,25 @@ describe('finance mutations and totals', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Mutation failed');
     expect(screen.getByTestId('row-count')).toHaveTextContent(/^1$/);
   });
-  it('shows invoice status-update failures without an unhandled rejection', async () => {
+  it('shows invoice metadata-save failures without an unhandled rejection', async () => {
     mutationStatus = 409;
     render(<Invoices />);
-    fireEvent.click(await screen.findByRole('button', { name: '✓ Bezahlt' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+    fireEvent.submit(screen.getByRole('dialog').querySelector('form'));
     expect(await screen.findByRole('alert')).toHaveTextContent('Mutation failed');
   });
 
   it('retries a failed post-mutation refresh without repeating the mutation', async () => {
     render(<Invoices />);
-    const button = await screen.findByRole('button', { name: '✓ Bezahlt' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
     failedPaths.add('/invoices');
-    fireEvent.click(button);
+    fireEvent.submit(screen.getByRole('dialog').querySelector('form'));
     expect(await screen.findByRole('alert')).toHaveTextContent('Load failed: /invoices');
     failedPaths.clear();
     fireEvent.click(screen.getByRole('button', { name: 'retry' }));
     await screen.findByTestId('row-count');
-    expect(requests.filter(r => r.method === 'PATCH')).toHaveLength(1);
+    expect(requests.filter(r => r.method === 'PUT')).toHaveLength(1);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('adds decimal-string budgets as cents rather than concatenating strings', async () => {

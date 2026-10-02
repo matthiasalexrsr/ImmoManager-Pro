@@ -16,6 +16,7 @@ from backend.db.booking_indexes import BOOKING_INDEXES  # noqa: F401 — registe
 from backend.db.contract_wizard_models import ContractDraftORM  # noqa: F401 — register reviewed contract metadata
 from backend.db.credit_models import CreditReceiptORM  # noqa: F401 — register immutable credit metadata
 from backend.db.datev_models import DatevProfileORM  # noqa: F401 — register DATEV metadata
+from backend.db.form_draft_models import FormDraftORM  # noqa: F401 — register private draft metadata
 from backend.db.operational_models import OperationalTickORM  # noqa: F401 — register scheduler metadata
 from backend.db.orm_models import Base
 from backend.db.outbox_models import OutboxMessageORM  # noqa: F401 — register durable SMTP metadata
@@ -28,7 +29,9 @@ config = context.config
 # Override sqlalchemy.url from environment if set
 database_url = os.getenv("DATABASE_URL")
 if database_url:
-    config.set_main_option("sqlalchemy.url", database_url)
+    # ConfigParser interprets percent signs. Preserve encoded credentials and
+    # connection options such as PostgreSQL's isolated search_path verbatim.
+    config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name, disable_existing_loggers=False)

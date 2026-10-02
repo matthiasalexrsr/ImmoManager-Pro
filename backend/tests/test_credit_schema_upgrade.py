@@ -15,7 +15,7 @@ from backend.repositories.sql_store import SQLAlchemyStore
 from backend.services import credit_ledger as credit
 from backend.tests.test_bank_payments import bank_booking
 from backend.tests.test_credit_ledger import credit_scenario, payout
-from backend.tests.test_credit_migration import migrate
+from backend.tests.test_credit_migration import current_orm_read_compatibility, migrate
 
 
 def legacy(tmp_path, monkeypatch):
@@ -33,6 +33,7 @@ def state(engine):
 
 def test_stopped_upgrade_preserves_rows_trigger_links_and_private_previous_database(tmp_path, monkeypatch):
     path, engine = legacy(tmp_path, monkeypatch)
+    current_orm_read_compatibility(engine)
     with Session(engine) as db:
         active = SQLAlchemyStore(db)
         source, contract, _, charge = credit_scenario(active, monkeypatch)
@@ -40,9 +41,10 @@ def test_stopped_upgrade_preserves_rows_trigger_links_and_private_previous_datab
     before = state(engine)
     backup = tmp_path / "before-credit.sqlite"
     assert tool.upgrade_legacy_sqlite(path, backup, offline=True)["backup_created"]
-    with sqlite3.connect(backup) as db:
+    with sqlite3.connect(backup.as_uri() + "?mode=ro", uri=True) as db:
         assert db.execute("SELECT name, sql FROM sqlite_master ORDER BY name").fetchall() == before
         assert db.execute("PRAGMA integrity_check").fetchone() == ("ok",)
+        assert db.execute("SELECT rent_charge_id, amount, invoice_id FROM payments").fetchall() == [(charge.id, 700, None)]
     with Session(engine) as db:
         active = SQLAlchemyStore(db)
         receipt = credit.create_receipt(active, payout(source, "60", method="bank", booking_id=bank.id))

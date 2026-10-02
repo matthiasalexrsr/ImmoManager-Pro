@@ -158,6 +158,9 @@ export default function Tasks() {
     } else {
       await api.put(`/tasks/${modal.id}`, data);
     }
+  };
+
+  const afterSave = () => {
     refreshData();
     if (store) store.invalidateRelated('tasks', 'properties', 'units');
   };
@@ -231,7 +234,7 @@ export default function Tasks() {
       />
 
       {modal && (
-        <FormModal
+        <FormModal onSaved={afterSave} draftConfig={{ collection: 'tasks' }}
           title={modal === 'create' ? 'Aufgabe erstellen' : 'Aufgabe bearbeiten'}
           fields={fields}
           initial={modal === 'create' ? null : modal}

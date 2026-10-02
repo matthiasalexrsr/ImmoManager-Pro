@@ -71,7 +71,9 @@ export default function RentAdjustments() {
     if (deleting) throw new Error(text('deleting'));
     if (modal === 'create') await api.post('/rent-adjustments', data);
     else await api.put(`/rent-adjustments/${modal.id}`, data);
-    setModal(null);
+  };
+
+  const afterSave = () => {
     refresh();
   };
   const handleDelete = async row => {
@@ -104,7 +106,7 @@ export default function RentAdjustments() {
       <DataTable title={text('title')} columns={columns} data={enriched}
         onAdd={writable ? () => setModal('create') : undefined}
         onEdit={writable ? row => setModal(row) : undefined} onDelete={writable ? handleDelete : undefined} />
-      {modal && canWrite && <FormModal title={text(modal === 'create' ? 'create' : 'edit')} fields={fields}
+      {modal && canWrite && <FormModal onSaved={afterSave} draftConfig={{ collection: 'rent-adjustments' }} title={text(modal === 'create' ? 'create' : 'edit')} fields={fields}
         initial={modal === 'create' ? null : modal} onSave={handleSave} saveDisabled={!writable} onClose={() => setModal(null)} />}
     </div>
   );

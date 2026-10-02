@@ -66,7 +66,9 @@ export default function Deposits() {
     } else {
       await api.put(`/deposits/${modal.id}`, data);
     }
-    setModal(null);
+  };
+
+  const afterSave = () => {
     refreshData();
     if (store) store.invalidateRelated('deposits', 'contracts');
   };
@@ -105,7 +107,7 @@ export default function Deposits() {
         onDelete={canWrite ? handleDelete : undefined}
       />
       {modal && canWrite && (
-        <FormModal
+        <FormModal onSaved={afterSave} draftConfig={{ collection: 'deposits' }}
           title={modal === 'create' ? 'Kaution erstellen' : 'Kaution bearbeiten'}
           fields={fields}
           initial={modal === 'create' ? null : modal}

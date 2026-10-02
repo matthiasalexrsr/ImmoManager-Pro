@@ -1,12 +1,16 @@
 """Genuine PostgreSQL gates use a dedicated UUID schema, never a SQLite fallback."""
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 from threading import Barrier
+from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from backend.db.orm_models import PaymentORM
 from backend.repositories.sql_store import SQLAlchemyStore
 from backend.services.bank_matching import MatchConfirm, SuggestionQuery, confirm_match, suggestions
+from backend.services.payment_history import PaymentHistoryQuery, payment_history
+from backend.services.payments import PaymentCreate
 from backend.tests.test_bank_matching import command, setup
 from backend.tests.test_private_server_concurrency import postgres_database  # noqa: F401
 
@@ -43,3 +47,20 @@ def test_pg_rental_date_keyset_is_deterministic(postgres_database):  # noqa: F81
         assert [first["items"][0]["id"], second["items"][0]["id"]] == [target.id, other.id]
         assert not second["has_more"]
         assert isinstance(MatchConfirm.model_validate(command(first).model_dump()), MatchConfirm)
+
+
+def test_pg_receipt_history_keeps_all_identical_timestamp_ties(postgres_database):  # noqa: F811
+    _, factory, _, _ = postgres_database
+    with factory() as session:
+        store = SQLAlchemyStore(session)
+        target, booking = setup(store)
+        receipts = [store.record_payment("rent_charge", target.id, PaymentCreate(idempotency_key=str(uuid4()),
+            booking_id=booking.id, payment_date=booking.booking_date, amount="1.01")) for _ in range(5)]
+        session.execute(update(PaymentORM).values(created_at=datetime(2026, 9, 5, 12)))
+        session.commit()
+        page = payment_history(store, "booking", booking.id, PaymentHistoryQuery(page_size=2))
+        seen = list(page["items"])
+        while page["has_more"]:
+            page = payment_history(store, "booking", booking.id, PaymentHistoryQuery(page_size=2, cursor=page["next_cursor"]))
+            seen.extend(page["items"])
+        assert [item.id for item in seen] == sorted(item.id for item in receipts)

@@ -222,6 +222,7 @@ _RBAC_SKIP_PATHS = {
     "/api/v1/auth/2fa/verify",
     "/api/v1/auth/2fa/disable",
     "/api/v1/auth/users/me/preferences",  # Display settings belong to one's own account.
+    "/api/v1/auth/users/me/form-drafts",  # The private draft service checks the actual target domain.
     "/api/v1/dev-notes",  # dev notes are informational, not business data
 }
 

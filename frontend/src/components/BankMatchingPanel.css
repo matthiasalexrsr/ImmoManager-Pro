@@ -1,0 +1,26 @@
+.bank-matching-panel, .bank-payment-history { min-width: 0; padding: 1rem; margin-block: 1rem; overflow-wrap: anywhere; }
+.bank-matching-heading { display: flex; gap: 1rem; align-items: start; justify-content: space-between; flex-wrap: wrap; }
+.bank-matching-heading h2, .bank-matching-heading h3 { margin: 0; }
+.bank-payment-history .bank-matching-heading h3 { padding: 0; border: 0; }
+.bank-matching-heading h2 { scroll-margin-top: calc(var(--header-height, 76px) + 3rem); }
+.bank-matching-source { margin-block: 1rem; }
+.bank-matching-filters { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto; gap: .75rem; align-items: end; margin-block: 1rem; }
+.bank-matching-filters label, .bank-matching-payment label { display: grid; gap: .35rem; min-width: 0; }
+.bank-matching-filters input, .bank-matching-filters select, .bank-matching-payment input, .bank-matching-payment textarea { width: 100%; min-width: 0; }
+.bank-matching-candidates { display: grid; gap: .75rem; }
+.bank-matching-candidate { padding: .85rem; border: 1px solid var(--color-border); border-radius: var(--radius); min-width: 0; }
+.bank-matching-panel .bank-matching-candidate label { display: flex; flex-direction: row; align-items: start; gap: .65rem; cursor: pointer; }
+.bank-matching-panel .bank-matching-candidate input[type=radio] { flex: 0 0 auto; width: auto; margin-top: .25rem; }
+.bank-matching-candidate p { margin: .3rem 0 0; }
+.bank-matching-reasons { margin: .5rem 0 0; padding-left: 1.1rem; color: var(--color-text-secondary); }
+.bank-matching-payment { margin-block: 1rem; display: grid; gap: .75rem; max-width: 42rem; }
+.bank-matching-panel .btn, .bank-payment-history .btn { max-width: 100%; white-space: normal; }
+.bank-matching-paging { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; margin-top: 1rem; }
+.bank-payment-list { list-style: none; padding: 0; display: grid; gap: .75rem; }
+.bank-payment-list li { padding: .75rem 0; border-bottom: 1px solid var(--color-border); display: flex; gap: 1rem; justify-content: space-between; align-items: start; flex-wrap: wrap; min-width: 0; }
+.bank-payment-list p { margin: .25rem 0 0; }
+@media (max-width: 640px) {
+  .bank-matching-panel, .bank-payment-history { padding: .85rem; }
+  .bank-matching-filters { grid-template-columns: minmax(0, 1fr); }
+  .bank-matching-heading h2 { font-size: 1.2rem; }
+}

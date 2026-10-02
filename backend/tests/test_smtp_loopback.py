@@ -43,7 +43,30 @@ def main():
     mp.set_start_method("spawn", force=True)
     from backend.services.integrations.providers import EmailIntegrationProvider
     stop, seen = threading.Event(), {}
+    reaper_paused = threading.Event()
+    if spec.get("force_reap_race"):
+        # A real child is reaped by active_children() before CPython publishes
+        # Popen.returncode. This pauses only that observer, not SMTP or the OS.
+        from multiprocessing.process import BaseProcess
+        original_join = BaseProcess.join
+        def join_after_observer(process, timeout=None):
+            if not reaper_paused.wait(1):
+                raise RuntimeError("reaper_race_not_observed")
+            return original_join(process, timeout)
+        BaseProcess.join = join_after_observer
+    def trace_reaper(frame, event, arg):
+        popen = frame.f_locals.get("self")
+        if (event == "line" and not reaper_paused.is_set()
+                and frame.f_code.co_name == "poll"
+                and frame.f_code.co_filename.replace("\\", "/").endswith("/popen_fork.py")
+                and frame.f_locals.get("pid") == getattr(popen, "pid", None)
+                and getattr(popen, "returncode", 1) is None):
+            reaper_paused.set()
+            time.sleep(.02)
+        return trace_reaper
     def observe():
+        if spec.get("force_reap_race"):
+            sys.settrace(trace_reaper)
         while not stop.wait(.002):
             for p in mp.active_children():
                 try:
@@ -66,7 +89,8 @@ def main():
         for p in children:
             p.kill(); p.join(2)
     print("RESULT=" + json.dumps(dict(results=results, elapsed=elapsed,
-        workers=list(seen.values()), leaked=leaked, frozen=frozen)), flush=True)
+        workers=list(seen.values()), leaked=leaked, frozen=frozen,
+        reap_race_observed=reaper_paused.is_set())), flush=True)
 if __name__ == "__main__":
     try:
         main()
@@ -243,9 +267,9 @@ def runner(tmp_path_factory, tls):
         command = [str(executable)]
     return command, root, env, frozen
 
-def run_probe(runner, servers, *, empty=False, seconds=12):
+def run_probe(runner, servers, *, empty=False, seconds=12, force_reap_race=False):
     command, root, env, frozen = runner
-    spec = dict(root=str(ROOT),
+    spec = dict(root=str(ROOT), force_reap_race=force_reap_race,
         configs=[{} if empty else {**s.config, "smtp_timeout_seconds": seconds} for s in servers],
         payloads=[s.payload for s in servers])
     proc = subprocess.Popen(command, cwd=root, env=env, stdin=subprocess.PIPE,
@@ -318,6 +342,28 @@ def test_rejections(runner, servers, fault):
     assert row["auth"] == (s.config["smtp_user"], s.config["smtp_password"])
     if fault == "auth":
         assert row["sender"] is None
+
+
+def test_parallel_auth_denials_do_not_hide_independent_relay_acceptance(runner, servers):
+    gate = threading.Barrier(4)
+    group = [servers(tag=f"rejected-{index}", fault="auth", barrier=gate) for index in range(3)]
+    group.append(servers(tag="accepted", barrier=gate))
+    report = run_probe(runner, group)
+    assert [result["details"]["status"] for result in report["results"]] == ["not_sent"] * 3 + ["accepted"]
+    for server in group[:3]:
+        assert len(server.rows) == 1 and server.rows[0]["sender"] is None and server.rows[0]["wire"] == b""
+    assert len(group[-1].rows) == 1 and group[-1].rows[0]["accepted"]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Real POSIX waitpid/cache-publication race; Windows has a different child handle API")
+def test_actual_posix_auth_denial_survives_concurrent_reaper_publication(runner, servers):
+    if runner[-1]:
+        pytest.skip("This source probe instruments CPython poll line events, not a prebuilt frozen driver")
+    server = servers(fault="auth")
+    report = run_probe(runner, [server], force_reap_race=True)
+    assert report["reap_race_observed"] is True
+    assert report["results"][0]["details"]["status"] == "not_sent"
+    assert server.rows[0]["sender"] is None and server.rows[0]["wire"] == b""
 
 @pytest.mark.parametrize("fault", ["hang", "drip"])
 def test_global_deadline_and_cleanup(runner, servers, fault):

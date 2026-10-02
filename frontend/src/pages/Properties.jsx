@@ -163,6 +163,9 @@ export default function Properties() {
     requireWrite();
     if (modal === 'create') await api.post('/properties', data);
     else await api.put(`/properties/${modal.id}`, data);
+  };
+
+  const afterSave = () => {
     void refreshData();
     invalidate();
   };
@@ -226,7 +229,7 @@ export default function Properties() {
         {!loading && !error && filtered.length > 0 && view === 'table' && <DataTable title={t('properties.inventory')} columns={columns} data={filtered} onEdit={!canWrite ? undefined : row => setModal(row)} onDelete={!canWrite || busyId ? undefined : handleDelete} onRowClick={row => navigate(`/properties/${row.id}`)} />}
         {!loading && !error && filtered.length > 0 && <p className="property-data-caption">{t('properties.rentBasis')}</p>}
       </section>
-      {modal && canWrite && <FormModal title={t(modal === 'create' ? 'properties.create' : 'properties.edit')} fields={fields} initial={modal === 'create' ? null : modal} onSave={handleSave} onClose={() => setModal(null)} />}
+      {modal && canWrite && <FormModal onSaved={afterSave} draftConfig={{ collection: 'properties' }} title={t(modal === 'create' ? 'properties.create' : 'properties.edit')} fields={fields} initial={modal === 'create' ? null : modal} onSave={handleSave} onClose={() => setModal(null)} />}
     </div>
   );
 }

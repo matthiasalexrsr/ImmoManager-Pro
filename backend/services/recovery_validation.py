@@ -33,6 +33,15 @@ def verify_iban_key(database: Path, configuration: dict[str, str], *, deadline: 
                             "). Gesicherte Schlüsselkonfiguration prüfen und erneut versuchen.") from None
 
 
+def verify_private_drafts(database: Path, configuration: dict[str, str], *, deadline: float | None = None):
+    from .form_draft_crypto import DraftCryptoError, verify_database
+    from .iban_encryption import IBANEncryptionError
+    try:
+        verify_database(database, configuration, deadline=deadline)
+    except (DraftCryptoError, IBANEncryptionError, sqlite3.DatabaseError):
+        raise RecoveryError("Formularentwürfe konnten mit den gesicherten Schlüsseln nicht vollständig geprüft werden. Schlüsselkonfiguration und unveränderte vollständige Sicherung prüfen; das Ziel wurde nicht freigegeben.") from None
+
+
 _REFERENCE_COLUMNS = {"file_url", "receipt_url", "file_path", "document_url", "document_path", "receipt_path", "storage_key", "ocr_url", "photo_url"}
 _REFERENCE_LIST_COLUMNS = {"photos"}
 

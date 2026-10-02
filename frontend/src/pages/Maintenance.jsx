@@ -155,6 +155,9 @@ export default function Maintenance() {
     } else {
       await api.put(`/maintenance/${modal.id}`, data);
     }
+  };
+
+  const afterSave = () => {
     refreshData();
     if (store) store.invalidateRelated('maintenance', 'properties', 'units');
   };
@@ -225,7 +228,7 @@ export default function Maintenance() {
       />
 
       {modal && canWrite && (
-        <FormModal
+        <FormModal onSaved={afterSave} draftConfig={{ collection: 'maintenance' }}
           title={modal === 'create' ? 'Wartungsauftrag erstellen' : 'Wartungsauftrag bearbeiten'}
           fields={fields}
           initial={modal === 'create' ? null : modal}

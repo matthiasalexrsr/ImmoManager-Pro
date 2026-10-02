@@ -81,7 +81,9 @@ export default function Budgets() {
     } else {
       await api.put(`/budgets/${modal.id}`, data);
     }
-    setModal(null);
+  };
+
+  const afterSave = () => {
     refreshData();
     if (store) store.invalidateRelated('budgets');
   };
@@ -136,7 +138,7 @@ export default function Budgets() {
         onDelete={canWrite ? handleDelete : undefined}
       />
       {modal && canWrite && (
-        <FormModal
+        <FormModal onSaved={afterSave} draftConfig={{ collection: 'budgets' }}
           title={modal === 'create' ? 'Budget erstellen' : 'Budget bearbeiten'}
           fields={fields}
           initial={modal === 'create' ? null : modal}

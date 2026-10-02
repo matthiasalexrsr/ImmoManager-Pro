@@ -16,6 +16,7 @@ from .booking_indexes import BOOKING_INDEXES  # noqa: F401 — register scaled b
 from .contract_wizard_models import ContractDraftORM  # noqa: F401 — register reviewed contract metadata
 from .credit_models import CreditReceiptORM  # noqa: F401 — register immutable credit metadata
 from .datev_models import DatevProfileORM  # noqa: F401 — register DATEV metadata
+from .form_draft_models import FormDraftORM  # noqa: F401 — register private draft metadata
 from .operational_models import OperationalTickORM  # noqa: F401 — register scheduler metadata
 from .orm_models import Base
 from .outbox_models import OutboxMessageORM  # noqa: F401 — register durable SMTP metadata
@@ -58,6 +59,7 @@ def create_tables() -> None:
     from ..services.portfolio_scope import ensure_portfolio_access_schema
     from .bank_import_schema import ensure_bank_import_schema
     from .contract_wizard_models import ensure_contract_wizard_schema
+    from .form_draft_models import ensure_form_draft_schema
     from .outbox_models import ensure_outbox_schema
     from .rent_batch_schema import ensure_rent_batch_schema
     from .session_models import ensure_session_schema
@@ -70,6 +72,7 @@ def create_tables() -> None:
         ensure_contract_wizard_schema(connection)
         ensure_invoice_payment_columns(connection)
         ensure_invoice_payment_immutability(connection)
+        ensure_form_draft_schema(connection)
     # Local installations historically used create_all without Alembic stamping.
     # Apply this additive column upgrade there as well, preserving existing data.
     if engine.dialect.name == "sqlite":

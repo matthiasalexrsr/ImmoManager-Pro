@@ -7,7 +7,12 @@ import spanish from '../../../i18n/es-ES.json';
 
 const mocks = vi.hoisted(() => ({ getAll: vi.fn(), post: vi.fn(), put: vi.fn(), del: vi.fn(), confirm: vi.fn(),
   invalidateRelated: vi.fn(), readonly: false, locale: 'de-DE', translations: null }));
-vi.mock('../api', () => ({ api: mocks }));
+vi.mock('../api', () => ({ api: { ...mocks,
+  get: vi.fn(async () => ({ draft: null })),
+  put: (path, data) => path === '/auth/users/me/form-drafts'
+    ? Promise.resolve({ revision: '00000000-0000-4000-8000-000000000001', updated_at: '2026-01-01T00:00:00Z', expires_at: '2026-01-08T00:00:00Z' }) : mocks.put(path, data),
+  del: path => path.startsWith('/auth/users/me/form-drafts') ? Promise.resolve({ discarded: true }) : mocks.del(path),
+} }));
 vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ isReadonly: mocks.readonly, user: { id: 'synthetic-owner', role: mocks.readonly ? 'readonly' : 'eigentuemer' } }) }));
 vi.mock('../contexts/DataStoreContext', () => ({ useDataStore: () => mocks }));
 vi.mock('../components/ConfirmDialog', () => ({ useConfirm: () => mocks.confirm }));
@@ -15,7 +20,7 @@ vi.mock('../i18n', () => ({ useTranslation: () => ({ locale: mocks.locale,
   t: key => key.split('.').reduce((value, part) => value?.[part], mocks.translations) || key }) }));
 
 const record = { id: 'adjustment', contract_id: 'contract', adjustment_type: 'stepped', effective_date: '2025-02-01',
-  previous_rent: 500, new_rent: 600.30, status: 'applied', notes: 'Synthetic fixture' };
+  previous_rent: 500, new_rent: 600.30, status: 'applied', notes: 'Synthetic fixture', updated_at: '2026-01-01T00:00:00.123456Z' };
 beforeEach(() => {
   mocks.readonly = false; mocks.locale = 'de-DE'; mocks.translations = german;
   mocks.getAll.mockReset().mockImplementation(async path => path === '/contracts'
@@ -30,6 +35,7 @@ const openEdit = async () => {
   render(<RentAdjustments />);
   await screen.findByText('V-Synthetic');
   fireEvent.click(screen.getByRole('button', { name: german.ui.buttons.edit }));
+  await screen.findByText(german.formDraft.status.ready);
   return screen.getByRole('dialog');
 };
 
@@ -44,12 +50,12 @@ it('submits contract-specific applied prices with cents and refreshes monthly ch
   await waitFor(() => expect(mocks.put).toHaveBeenCalledWith('/rent-adjustments/adjustment', expect.objectContaining({
     contract_id: 'contract', status: 'applied', effective_date: '2025-02-01', previous_rent: 500, new_rent: 650.45,
   })));
-  expect(mocks.invalidateRelated).toHaveBeenCalledWith('rent_adjustments', 'contracts', 'rent_charges');
+  await waitFor(() => expect(mocks.invalidateRelated).toHaveBeenCalledWith('rent_adjustments', 'contracts', 'rent_charges'));
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
 });
 
 it('keeps the submitted draft and displays a conflicting effective-date response', async () => {
-  mocks.put.mockRejectedValueOnce(new Error('Angewendete Anpassung für dieses Datum existiert bereits.'));
+  mocks.put.mockRejectedValueOnce(Object.assign(new Error('Angewendete Anpassung für dieses Datum existiert bereits.'), { statusCode: 409 }));
   const dialog = await openEdit();
   fireEvent.change(within(dialog).getByLabelText(/Neue Kaltmiete/), { target: { value: '650.45' } });
   fireEvent.click(within(dialog).getByRole('button', { name: german.ui.buttons.save }));

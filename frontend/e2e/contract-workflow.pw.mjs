@@ -97,8 +97,18 @@ test('reviewed contract resumes a real lost-response draft and publishes immutab
   await page.reload();
   await expect(page.getByText(`Synthetic paper original ${unique}`, { exact: false })).toBeVisible();
   expect((await (await page.request.get(`/api/v1/contracts/${published.contract_id}`, { headers })).json()).status).toBe('draft');
-  await page.setViewportSize({ width: 360, height: 800 });
-  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  for (const width of [360, 320]) {
+    await page.setViewportSize({ width, height: 800 });
+    await expect.poll(() => page.evaluate(() => ({
+      width: innerWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+      overflowingActions: [...document.querySelectorAll('.contract-workspace button, .contract-workspace .btn')]
+        .filter(element => element.getBoundingClientRect().right > innerWidth + 1 || element.scrollWidth > element.clientWidth + 1)
+        .map(element => element.textContent.trim()),
+    }))).toEqual({ width, scrollWidth: width, overflowingActions: [] });
+    await expect(page.getByRole('button', { name: 'Vollständigen Klausel-/Staffel-Assistenten öffnen', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Archiviertes Original herunterladen', exact: true })).toBeVisible();
+  }
   const screenshot = testInfo.outputPath('reviewed-contract-mobile.png');
   await page.screenshot({ path: screenshot, fullPage: true });
   await testInfo.attach('reviewed-contract-mobile', { path: screenshot, contentType: 'image/png' });

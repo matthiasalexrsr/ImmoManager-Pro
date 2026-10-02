@@ -87,6 +87,9 @@ export default function EscalationRules() {
     } else {
       await api.put(`/escalation/rules/${modal.id}`, payload);
     }
+  };
+
+  const afterSave = () => {
     loadData();
   };
 
@@ -138,7 +141,7 @@ export default function EscalationRules() {
         onDelete={canWrite ? handleDelete : undefined}
       />
       {modal && (
-        <FormModal
+        <FormModal onSaved={afterSave} draftConfig={{ collection: 'escalation/rules' }}
           title={modal === 'create' ? 'Regel erstellen' : 'Regel bearbeiten'}
           fields={fields}
           initial={modal === 'create' ? null : modal}

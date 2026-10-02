@@ -8,6 +8,7 @@ import useBookingPage, { bookingFilterParams } from '../hooks/useBookingPage';
 import useBookingChoices from '../hooks/useBookingChoices';
 import BookingEditor from '../components/BookingEditor';
 import BankImportPanel from '../components/BankImportPanel';
+import BankMatchingPanel from '../components/BankMatchingPanel';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 import { saveBlob, streamBookingCsv } from '../utils/bookingCsv';
@@ -18,7 +19,11 @@ const emptyFilters = { search: '', date_from: '', date_to: '', status: '', view:
 const advancedKinds = ['accounts', 'properties', 'tenants'];
 function initialFilters() {
   const identifier = new URLSearchParams(window.location.search).get('account_id');
-  return { ...emptyFilters, account_id: identifier && /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,99}$/.test(identifier) ? identifier : '' };
+  return { ...emptyFilters, view: initialInvoice() ? 'expense' : 'all', account_id: identifier && /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,99}$/.test(identifier) ? identifier : '' };
+}
+function initialInvoice() {
+  const value = new URLSearchParams(window.location.search).get('invoice_id');
+  return value && /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,99}$/.test(value) ? value : '';
 }
 
 function ReferenceFilter({ kind, value, label, onChange }) {
@@ -41,6 +46,8 @@ export default function Bookings() {
   const [revision, setRevision] = useState(0);
   const [modal, setModal] = useState(null);
   const [showImport, setShowImport] = useState(false);
+  const [matching, setMatching] = useState(null);
+  const [matchingBusy, setMatchingBusy] = useState(false);
   const { canWrite, isAllowed, requireWrite } = useWriteAccess('/bookings', () => setModal(null));
   const [actionError, setActionError] = useState(null);
   const [exporting, setExporting] = useState(false);
@@ -118,6 +125,8 @@ export default function Bookings() {
     {actionError && <div className="alert alert-error" role="alert">{actionError}</div>}
     <div className="booking-import-action"><button type="button" className="btn btn-secondary" onClick={() => setShowImport(value => !value)}>{t('bankImport.title')}</button></div>
     {showImport && <BankImportPanel initialAccount={filters.account_id} onClose={() => setShowImport(false)} onImported={restart} />}
+    {matching && <BankMatchingPanel key={matching.id} booking={matching} initialInvoiceId={initialInvoice()} onClose={() => { setMatching(null); setMatchingBusy(false); }} onMatched={restart} onBusyChange={setMatchingBusy} />}
+    {initialInvoice() && <p className="text-muted">{t('bankMatching.invoiceNavigationHelp')} <code>{initialInvoice()}</code></p>}
     <form className="panel booking-filters" onSubmit={applyFilters} onKeyDownCapture={event => {
       if (event.key === 'Enter' && event.target.name?.startsWith('lookup_')) event.preventDefault();
     }}>
@@ -160,18 +169,21 @@ export default function Bookings() {
       <div className="data-table-wrapper shared-data-table"><div className="table-scroll" tabIndex={0} role="region" aria-label={t('finance.bookings.title')}>
         <table className="data-table"><caption className="booking-table-caption">{t('bookingPages.order')}</caption><thead><tr>
           {columns.map(([key, label]) => <th key={key} scope="col" aria-sort={key === 'booking_date' ? 'descending' : undefined}>{label}</th>)}
-          {canWrite && <th scope="col">{t('bookingPages.actions')}</th>}</tr></thead><tbody>
+          <th scope="col">{t('bookingPages.actions')}</th></tr></thead><tbody>
           {result.items.map(row => <tr key={row.id}>
             {columns.map(([key]) => <td key={key}>{key === 'amount' ? <span className={Number(row.amount) < 0 ? 'text-red' : 'text-green'}>{money.format(Number(row.amount))}</span>
               : key === 'status' ? row.status === 'confirmed'
                 ? <span className="badge badge-green">{t('finance.bookings.statusOptions.confirmed')}</span>
                 : <StatusBadge status={row.status} /> : row[key] || '—'}</td>)}
-            {canWrite && <td><div className="booking-row-actions"><button className="btn btn-sm btn-secondary" onClick={() => { if (isAllowed()) setModal(row); }}
+            <td><div className="booking-row-actions"><button type="button" className="btn btn-sm btn-secondary" disabled={matchingBusy} onClick={() => setMatching(row)}
+              aria-label={`${t('bankMatching.review')} ${row.payment_text || row.id}`}>{t('bankMatching.review')}</button>
+              {canWrite && <><button className="btn btn-sm btn-secondary" onClick={() => { if (isAllowed()) setModal(row); }}
               aria-label={`${t('bookingPages.edit')} ${row.payment_text || row.id}`}>{t('bookingPages.edit')}</button>
               <button className="btn btn-sm btn-danger" onClick={() => handleDelete(row)}
-                aria-label={`${t('bookingPages.delete')} ${row.payment_text || row.id}`}>{t('bookingPages.delete')}</button></div></td>}
+                aria-label={`${t('bookingPages.delete')} ${row.payment_text || row.id}`}>{t('bookingPages.delete')}</button></>}
+              </div></td>
           </tr>)}
-          {!result.items.length && <tr><td colSpan={columns.length + (canWrite ? 1 : 0)}>{t('bookingPages.empty')}</td></tr>}
+          {!result.items.length && <tr><td colSpan={columns.length + 1}>{t('bookingPages.empty')}</td></tr>}
         </tbody></table></div></div>
       <nav className="booking-pagination" aria-label={t('bookingPages.pagination')}>
         <button className="btn btn-secondary" disabled={!pageIndex} onClick={() => setPageIndex(value => value - 1)}>{t('bookingPages.previous')}</button>

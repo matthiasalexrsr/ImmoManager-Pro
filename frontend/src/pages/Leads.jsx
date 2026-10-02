@@ -153,6 +153,9 @@ export default function Leads() {
     } else {
       await api.put(`/leads/${modal.id}`, payload);
     }
+  };
+
+  const afterSave = () => {
     refreshData();
   };
 
@@ -236,7 +239,7 @@ export default function Leads() {
       ))}
 
       {modal && canWrite && (
-        <FormModal
+        <FormModal onSaved={afterSave} draftConfig={{ collection: 'leads' }}
           title={modal === 'create' ? 'Interessent erstellen' : 'Interessent bearbeiten'}
           fields={fields}
           initial={modal === 'create' ? null : modal}

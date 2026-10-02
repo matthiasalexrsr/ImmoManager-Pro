@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from backend.repositories.sql_store import SQLAlchemyStore
 from backend.services import credit_ledger as service
+from backend.services.invoice_payment_schema import ensure_invoice_payment_columns
 from backend.tests.test_bank_payments import bank_booking
 from backend.tests.test_credit_ledger import credit_scenario, payout
 
@@ -25,6 +26,19 @@ def migrate(tmp_path, monkeypatch):
     config.set_main_option("sqlalchemy.url", f"sqlite:///{path}")
     command.upgrade(config, "m1a2b3c4d5e6")
     return config, create_engine(f"sqlite:///{path}")
+
+
+def current_orm_read_compatibility(engine):
+    """Run the additive startup helper before current ORM reads of m1 data.
+
+    The historical two-target constraint remains unchanged; this deliberately
+    does not stamp or upgrade the financial schema to w1.
+    """
+    with engine.begin() as connection:
+        before = inspect(connection).get_check_constraints("payments")
+        ensure_invoice_payment_columns(connection)
+        assert inspect(connection).get_check_constraints("payments") == before
+        assert all("invoice_id" not in check["sqltext"] for check in before)
 
 
 def test_fresh_chain_and_empty_down_up_support_negative_allocations(tmp_path, monkeypatch):
@@ -82,6 +96,7 @@ def test_upgrade_preserves_existing_linked_bank_receipts_and_posted_billing(tmp_
     from backend.models import ReceivableCreate
     from backend.services.payments import PaymentCreate
     config, engine = migrate(tmp_path, monkeypatch)
+    current_orm_read_compatibility(engine)
     with Session(engine) as db:
         active = SQLAlchemyStore(db)
         source, contract, _, charge = credit_scenario(active, monkeypatch)

@@ -79,6 +79,7 @@ INTERNAL = frozenset(
         "auth_sessions",
         "auth_refresh_tokens",
         "user_preferences",
+        "form_drafts",  # Each operation explicitly binds the freshly checked actor.
         "login_attempts",
         "revoked_tokens",
         "audit_logs",

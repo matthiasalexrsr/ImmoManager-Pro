@@ -410,6 +410,7 @@ def import_store_data(active_store, data: dict, *, replace_existing: bool) -> di
     from .annual_tax_storage import guard_destructive_reset
     from .contract_wizard import guard_destructive_reset as guard_contract_history
     from .credit_ledger import guard_partial_restore
+    from .form_drafts import guard_destructive_reset as guard_form_drafts
     from .payments import FinancialConsistencyError
     try:
         guard_contract_history(active_store)
@@ -419,6 +420,7 @@ def import_store_data(active_store, data: dict, *, replace_existing: bool) -> di
     if replace_existing:
         try:
             guard_destructive_reset(active_store)
+            guard_form_drafts(active_store)
         except ValueError as exc:
             raise TransferError(str(exc)) from exc
     specs = _specifications()
@@ -429,6 +431,7 @@ def import_store_data(active_store, data: dict, *, replace_existing: bool) -> di
             if replace_existing:
                 try:
                     guard_destructive_reset(staged)
+                    guard_form_drafts(staged)
                 except ValueError as exc:
                     raise TransferError(str(exc)) from exc
             if hasattr(staged, "db"):

@@ -132,12 +132,20 @@ def test_invoice_ui_fields_are_persisted(client, auth_headers):
 
     patched = client.patch(
         f"/api/v1/invoices/{invoice['id']}",
-        json={"notes": "Nachbearbeitet", "status": "paid"},
+        json={"notes": "Nachbearbeitet", "payment_terms": "14 Tage netto"},
         headers=auth_headers,
     )
     assert patched.status_code == 200, patched.text
     assert patched.json()["notes"] == "Nachbearbeitet"
-    assert patched.json()["status"] == "paid"
+    assert patched.json()["payment_terms"] == "14 Tage netto"
+    assert patched.json()["status"] == "open"
+    assert patched.json()["amount_paid"] == 0
+
+    rejected = client.patch(f"/api/v1/invoices/{invoice['id']}",
+        json={"notes": "Darf nicht gespeichert werden", "status": "paid"}, headers=auth_headers)
+    assert rejected.status_code == 409, rejected.text
+    retained = client.get(f"/api/v1/invoices/{invoice['id']}", headers=auth_headers).json()
+    assert retained["notes"] == "Nachbearbeitet" and retained["status"] == "open" and retained["amount_paid"] == 0
 
 
 def test_receivable_description_from_ui_is_persisted(client, auth_headers):

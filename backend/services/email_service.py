@@ -13,6 +13,7 @@ from email import policy
 from email.message import EmailMessage
 from email.utils import formataddr, formatdate
 from html import escape
+from multiprocessing.connection import wait as wait_for_process
 from threading import BoundedSemaphore
 from uuid import uuid4
 
@@ -261,6 +262,31 @@ def _smtp_worker(connection, config, recipient, wire, guarded=False):
         connection.close()
 
 
+def _cleanup_worker(process):
+    """Prove OS exit and finish reaping within the existing 0.55s budget.
+
+    A simultaneous multiprocessing.active_children() observer may consume the
+    POSIX waitpid result before publishing Popen.returncode. During that short
+    interval join/is_alive can report a live worker despite its ready sentinel.
+    Never kill such an already-exited PID or mistake the cache for an orphan.
+    """
+    deadline = time.monotonic() + 0.55
+    if not wait_for_process([process.sentinel], timeout=0.05):
+        process.kill()
+    if not wait_for_process([process.sentinel], timeout=max(0.0, deadline - time.monotonic())):
+        raise RuntimeError("smtp_worker_cleanup_failed") from None
+    while True:
+        process.join(0)
+        if not process.is_alive():
+            process.close()
+            return
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            # Even a pending competing reaper must finish inside our budget.
+            raise RuntimeError("smtp_worker_cleanup_failed") from None
+        time.sleep(min(0.001, remaining))
+
+
 def _bounded_exchange(config, recipient, wire, *, context=None):
     """Wall-clock watchdog includes DNS/TLS/SMTP; no timed-out sender thread remains."""
     context = context or mp.get_context("spawn")
@@ -283,14 +309,7 @@ def _bounded_exchange(config, recipient, wire, *, context=None):
         reader.close()
         writer.close()
         if started:
-            process.join(0.05)
-            if process.is_alive():
-                process.kill()
-                process.join(0.5)
-            if process.is_alive():
-                # Fail loudly with a fixed message; do not claim cancellation.
-                raise RuntimeError("smtp_worker_cleanup_failed") from None
-            process.close()
+            _cleanup_worker(process)
 
 
 def submit_email(to, subject, body_html, body_text=None, *, config=None):
@@ -370,13 +389,7 @@ def submit_prepared_email(recipient, wire, *, config, before_data, context=None)
             writer.close()
         try:
             if started and process is not None:
-                process.join(0.05)
-                if process.is_alive():
-                    process.kill()
-                    process.join(0.5)
-                if process.is_alive():
-                    raise RuntimeError("smtp_worker_cleanup_failed") from None
-                process.close()
+                _cleanup_worker(process)
         finally:
             _SLOTS.release()
 

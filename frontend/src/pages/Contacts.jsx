@@ -72,6 +72,9 @@ export default function Contacts() {
     } else {
       await api.put(`/contacts/${modal.id}`, data);
     }
+  };
+
+  const afterSave = () => {
     loadData();
   };
 
@@ -123,7 +126,7 @@ export default function Contacts() {
         onDelete={canWrite ? handleDelete : undefined}
       />
       {modal && canWrite && (
-        <FormModal
+        <FormModal onSaved={afterSave} draftConfig={{ collection: 'contacts' }}
           title={modal === 'create' ? 'Kontakt erstellen' : 'Kontakt bearbeiten'}
           fields={FIELDS}
           initial={modal === 'create' ? null : modal}

@@ -50,6 +50,15 @@ Metadata edits remain possible; manual paid-status edits contradicting the
 receipt ledger return a conflict. Explicit historical paid invoices retain their
 old balance during upgrade without inventing bank receipts.
 
+Ordinary `POST /invoices` accepts the unpaid initial states `open`, `overdue`,
+and `cancelled`. Requesting `paid` or `partial` returns a recoverable
+`409 INVOICE_PAYMENT_REQUIRED` before creating any row; unknown initial states
+return `422 INVOICE_STATUS_INVALID`. This restriction concerns new HTTP records;
+explicit historical transfer and existing legacy balances remain unchanged.
+The invoice page distinguishes stored paid totals, which may include carried-over
+balances, from the receipts actually shown in its history. An empty history never
+fabricates evidence for an existing legacy paid status.
+
 The legacy `/invoices/{id}/match` endpoint returns 410 with a concrete new review
 endpoint and `/bookings` navigation. Its old global FIFO preview ignored cash
 already consumed and current account ownership. The pure domain FIFO helper
@@ -59,6 +68,37 @@ Supplier invoices are outside the current tenant metadata-export graph. Unrelate
 invoice receipts are excluded rather than leaked into tenant exports. A bank
 source explicitly assigned to the tenant with invoice evidence fails closed with
 an explicit unsupported-scope reason until a broader tenant export is reviewed.
+
+## Operator workflow
+
+On **Bookings**, choose **Review allocation** for a persisted bank movement.
+Positive movements offer rent charges or receivables; negative movements offer
+invoices. Suggestions explain their evidence and show remaining target and bank
+amounts. No radio option is selected automatically. Search and later suggestion
+pages remain read-only until an authorized operator chooses a target, enters
+an exact cent amount and explicitly confirms.
+
+On **Invoices**, **Choose outgoing bank booking** opens the actual booking view
+with that invoice's identifier as the candidate search. It does not mark the
+invoice paid. Invoice rows and totals display central receipt balances and
+remaining amounts, including partial payments. The receipted status is read-only
+in the metadata editor. Existing historical paid balances remain visible.
+
+**Payment receipts and reversals** reads `GET /bookings/{id}/allocations` or
+`GET /invoices/{id}/payments?page_size=25` in bounded signed pages. The older
+invoice endpoint without `page_size` retains its list shape. A moved, hidden
+bank parent makes a visible invoice history fail explicitly instead of looking
+empty or complete. Receipt timestamp ties use bytewise IDs; SQLite's whole-second
+and fractional timestamp spellings are normalized before keyset comparisons.
+Credit payouts are documented separately in the credit journal and consume
+the same displayed bank budget.
+
+An authorized operator can reverse a selected receipt with a reason and date,
+then confirm. Cancellation creates nothing. Mutation controls are locked during
+confirmation; permission changes invalidate pending commands. Network retries
+retain the exact idempotency key and form. Malformed responses do not count as
+successful writes or discard the command. Stale reviews require explicit reload
+and renewed selection. Readonly accounts can inspect both evidence and history.
 
 ## Schema and application integration
 
@@ -78,6 +118,12 @@ read compatibility, and `ensure_invoice_payment_immutability(connection)` after
 tables exist. Compatibility does not rebuild live tables; invoice recording on
 an old two-target constraint returns actionable upgrade guidance. Complete
 offline recovery archives retain the schema, receipt IDs, reversals and balances.
+
+The full SQLite recovery reader also accepts the supported pre-w1 absence of
+`invoices.amount_paid` and `payments.invoice_id`, so the verified full archive
+can be created before upgrading. Other missing columns, incomplete tables and
+invalid foreign keys still abort. A real downgrade to v1 followed by encrypted
+backup/restore preserves rent receipts, reversals and original upload bytes.
 
 ## Verification
 

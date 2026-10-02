@@ -529,7 +529,10 @@ def seed():
         store.create_document(DocumentCreate(
             property_id=prop_id, unit_id=unit_id, contract_id=contract_id,
             title=title, document_type=doc_type, document_date=doc_date,
-            file_url=f"/uploads/demo/{doc_type}_{doc_date.isoformat()}.pdf",
+            # Metadata examples have no uploaded original. Invented local URLs
+            # caused broken previews and prevented verified full recovery.
+            file_url="",
+            description="Demonstrationsdatensatz ohne Originaldatei. Eine Datei erst nach tatsächlichem Upload zuordnen.",
         ))
     print(f"  {len(doc_data)} Dokumente erstellt")
 

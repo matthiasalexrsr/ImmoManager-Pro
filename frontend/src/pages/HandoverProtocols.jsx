@@ -106,6 +106,9 @@ export default function HandoverProtocols() {
     } else {
       await api.put(`/handover-protocols/${modal.id}`, data);
     }
+  };
+
+  const afterSave = () => {
     refreshData();
     if (store) store.invalidateRelated('handover_protocols', 'contracts', 'units');
   };
@@ -145,7 +148,7 @@ export default function HandoverProtocols() {
         onDelete={canWrite ? handleDelete : undefined}
       />
       {modal && canWrite && (
-        <FormModal
+        <FormModal onSaved={afterSave} draftConfig={{ collection: 'handover-protocols' }}
           title={modal === 'create' ? 'Übergabeprotokoll erstellen' : 'Übergabeprotokoll bearbeiten'}
           fields={fields}
           initial={modal === 'create' ? null : modal}

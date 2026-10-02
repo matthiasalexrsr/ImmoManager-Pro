@@ -77,6 +77,9 @@ export default function NotificationTemplates() {
     } else {
       await api.put(`/notifications/templates/${modal.id}`, data);
     }
+  };
+
+  const afterSave = () => {
     refreshData();
   };
 
@@ -113,7 +116,7 @@ export default function NotificationTemplates() {
         onDelete={canWrite ? handleDelete : undefined}
       />
       {modal && canWrite && (
-        <FormModal
+        <FormModal onSaved={afterSave} draftConfig={{ collection: 'notifications/templates' }}
           title={modal === 'create' ? t('ui.buttons.create') : t('ui.buttons.edit')}
           fields={fields}
           initial={modal === 'create' ? null : modal}

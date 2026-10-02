@@ -57,7 +57,6 @@ export default function CrudPage({ title, endpoint, columns, formFields, onRowCl
     } else {
       await api.put(`${endpoint}/${modal.id}`, data);
     }
-    invalidateAfterMutation();
   };
 
   const handleDelete = async (row) => {
@@ -102,10 +101,12 @@ export default function CrudPage({ title, endpoint, columns, formFields, onRowCl
       />}
       {modal && canWrite && (
         <FormModal
+          draftConfig={{ collection: endpoint.replace(/^\//, '') }}
           title={modal === 'create' ? `${title} ${t('ui.buttons.create').toLowerCase()}` : `${title} ${t('ui.buttons.edit').toLowerCase()}`}
           fields={formFields}
           initial={modal === 'create' ? null : modal}
           onSave={handleSave}
+          onSaved={invalidateAfterMutation}
           onClose={() => setModal(null)}
         />
       )}

@@ -146,6 +146,9 @@ export default function Listings() {
     } else {
       await api.put(`/listings/${modal.id}`, data);
     }
+  };
+
+  const afterSave = () => {
     refreshData();
     if (store) store.invalidateRelated('listings', 'units');
   };
@@ -251,7 +254,7 @@ export default function Listings() {
       )}
 
       {modal && canWrite && (
-        <FormModal
+        <FormModal onSaved={afterSave} draftConfig={{ collection: 'listings' }}
           title={modal === 'create' ? 'Inserat erstellen' : 'Inserat bearbeiten'}
           fields={fields}
           initial={modal === 'create' ? null : modal}

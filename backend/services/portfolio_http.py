@@ -74,7 +74,8 @@ class PortfolioScopeMiddleware:
                         )
                     ) or (path.startswith("/api/v1/calendar/") and path.endswith("/schedule"))
                     own_preferences = path in {"/api/v1/auth/users/me/preferences", "/api/v1/auth/users/me/preferences/"} and scope.get("method") in {"GET", "PUT"}
-                    if (path.startswith(installation_prefixes) and not own_preferences) or operational:
+                    own_drafts = path in {"/api/v1/auth/users/me/form-drafts", "/api/v1/auth/users/me/form-drafts/"} and scope.get("method") in {"GET", "PUT", "DELETE"}
+                    if (path.startswith(installation_prefixes) and not (own_preferences or own_drafts)) or operational:
                         raise HTTPException(403, "Installationsverwaltung benötigt Zugriff auf alle Portfolios.")
                 await self.app(scope, receive, tracked_send)
         except HTTPException as error:

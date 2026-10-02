@@ -220,6 +220,13 @@ def _references(store, data, *, checked=False):
         # accessible elsewhere in a multi-portfolio account.
         if document.property_id != data.property_id or (document.unit_id and document.unit_id != data.unit_id):
             raise ValidationError("Eine Anlage gehört nicht zum ausgewählten Objekt oder zur Einheit.")
+        if document.contract_id:
+            source_contract = (store.db.scalar(select(ContractORM).where(ContractORM.id == document.contract_id)
+                .with_for_update()) if hasattr(store, "db") else store.get_contract(document.contract_id))
+            if (source_contract is None or data.tenant_id is None
+                    or source_contract.tenant_id != data.tenant_id):
+                raise ValidationError("Die vertragsgebundene Anlage gehört zu einem anderen Mieter. "
+                    "Bitte eine eigene oder allgemeine Objektanlage auswählen.")
         evidence = document.model_dump(mode="json")
         if identifier in data.metadata_only_attachment_ids:
             evidence.update(mode="metadata_only", sha256=None, size_bytes=None)
@@ -645,6 +652,13 @@ def guard_delete_link(store, entity_type, identifier):
     if entity_type not in {"contracts", "documents", "portfolios", "properties", "units", "tenants"}:
         return
     if hasattr(store, "db"):
+        if entity_type == "tenants":
+            # Private CRUD drafts hold FOR SHARE on this same row while saving.
+            # Lock before the retention check to prevent an orphaning race.
+            begin_writer(store.db)
+            store.db.scalar(select(TenantORM.id).where(TenantORM.id == identifier).with_for_update())
+            from .tenant_private_draft_guard import guard_private_tenant_delete
+            guard_private_tenant_delete(store, identifier)
         field = {"contracts": ContractDraftORM.contract_id, "documents": ContractDraftORM.document_id,
             "portfolios": ContractDraftORM.portfolio_id, "properties": ContractDraftORM.data["property_id"].as_string(),
             "units": ContractDraftORM.data["unit_id"].as_string(), "tenants": ContractDraftORM.data["tenant_id"].as_string()}[entity_type]
@@ -657,6 +671,9 @@ def guard_delete_link(store, entity_type, identifier):
         if entity_type == "portfolios" and not present:
             present = store.db.scalar(select(ContractTemplateORM.id).where(ContractTemplateORM.portfolio_id == identifier).limit(1))
     else:
+        if entity_type == "tenants":
+            from .tenant_private_draft_guard import guard_private_tenant_delete
+            guard_private_tenant_delete(store, identifier)
         def linked(r):
             return {"contracts": r.contract_id, "documents": r.document_id, "portfolios": r.portfolio_id,
                 "properties": r.data["property_id"], "units": r.data["unit_id"],
@@ -666,6 +683,9 @@ def guard_delete_link(store, entity_type, identifier):
             present = any(r.signed_document_id == identifier for r in store.__dict__.get(ContractSignatureORM.__tablename__, {}).values())
         if entity_type == "portfolios" and not present:
             present = any(r.portfolio_id == identifier for r in store.__dict__.get(ContractTemplateORM.__tablename__, {}).values())
+    if not present and entity_type == "tenants":
+        from .tenant_wizard_graph import has_historical_tenant_reference
+        present = has_historical_tenant_reference(store, identifier)
     if present:
         raise ValidationError("Dieser Vertrag oder dieses Dokument besitzt einen unveränderlichen geprüften Vertragsbeleg und kann nicht gelöscht werden.")
 

@@ -87,6 +87,9 @@ export default function Calendar() {
     } else {
       await api.put(`/calendar/${modal.id}`, data);
     }
+  };
+
+  const afterSave = () => {
     refreshData();
   };
 
@@ -127,7 +130,7 @@ export default function Calendar() {
         initial={{ recurrence_rule: scheduleEditor.schedule?.recurrence_rule || 'FREQ=MONTHLY', active: scheduleEditor.schedule?.active === false ? 'false' : 'true' }}
         onSave={saveSchedule} onClose={() => setScheduleEditor(null)} />}
       {modal && (
-        <FormModal
+        <FormModal onSaved={afterSave} draftConfig={{ collection: 'calendar' }}
           title={modal === 'create' ? 'Termin erstellen' : 'Termin bearbeiten'}
           fields={fields}
           initial={modal === 'create' ? null : modal}

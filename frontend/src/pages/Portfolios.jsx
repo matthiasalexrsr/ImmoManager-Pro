@@ -134,6 +134,9 @@ export default function Portfolios() {
     } else {
       await api.put(`/portfolios/${modal.id}`, data);
     }
+  };
+
+  const afterSave = () => {
     refreshData();
   };
 
@@ -178,7 +181,7 @@ export default function Portfolios() {
       />
 
       {modal && canWrite && (
-        <FormModal
+        <FormModal onSaved={afterSave} draftConfig={{ collection: 'portfolios' }}
           title={modal === 'create' ? 'Portfolio erstellen' : 'Portfolio bearbeiten'}
           fields={FIELDS}
           initial={modal === 'create' ? null : modal}

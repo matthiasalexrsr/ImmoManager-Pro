@@ -146,6 +146,9 @@ export default function Units() {
     } else {
       await api.put(`/units/${modal.id}`, data);
     }
+  };
+
+  const afterSave = () => {
     refreshData();
     if (store) store.invalidateRelated('units', 'properties', 'contracts');
   };
@@ -217,7 +220,7 @@ export default function Units() {
       />
 
       {modal && canWrite && (
-        <FormModal
+        <FormModal onSaved={afterSave} draftConfig={{ collection: 'units' }}
           title={modal === 'create' ? 'Einheit erstellen' : 'Einheit bearbeiten'}
           fields={fields}
           initial={modal === 'create' ? null : modal}

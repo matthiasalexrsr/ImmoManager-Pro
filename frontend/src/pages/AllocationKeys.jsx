@@ -57,7 +57,9 @@ export default function AllocationKeys() {
     } else {
       await api.put(`/billing/allocation-keys/${modal.id}`, data);
     }
-    setModal(null);
+  };
+
+  const afterSave = () => {
     refreshData();
     if (store) store.invalidateRelated('allocation_keys');
   };
@@ -96,7 +98,7 @@ export default function AllocationKeys() {
         onDelete={canWrite ? handleDelete : undefined}
       />
       {modal && canWrite && (
-        <FormModal
+        <FormModal onSaved={afterSave} draftConfig={{ collection: 'billing/allocation-keys' }}
           title={modal === 'create' ? 'Verteilerschlüssel erstellen' : 'Verteilerschlüssel bearbeiten'}
           fields={fields}
           initial={modal === 'create' ? null : modal}

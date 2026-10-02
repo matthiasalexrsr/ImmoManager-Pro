@@ -29,8 +29,6 @@ export default function FinanceCrudPage({ title, endpoint, columns, formFields, 
     requireWrite();
     if (modal === 'create') await api.post(endpoint, data);
     else await api.put(`${endpoint}/${modal.id}`, data);
-    setModal(null);
-    refresh();
   };
   const remove = async row => {
     if (!isAllowed()) return;
@@ -53,9 +51,10 @@ export default function FinanceCrudPage({ title, endpoint, columns, formFields, 
       data={items} onAdd={canWrite ? () => setModal('create') : undefined} onEdit={canWrite ? setModal : undefined} onDelete={canWrite ? remove : undefined}
     />
     {modal && canWrite && <FormModal
+      draftConfig={{ collection: endpoint.replace(/^\//, '') }}
       title={`${title} ${t(modal === 'create' ? 'ui.buttons.create' : 'ui.buttons.edit').toLowerCase()}`}
       fields={formFields} initial={modal === 'create' ? null : modal}
-      onSave={save} onClose={() => setModal(null)}
+      onSave={save} onSaved={refresh} onClose={() => setModal(null)}
     />}
   </div>;
 }

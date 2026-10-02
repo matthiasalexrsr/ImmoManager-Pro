@@ -20,7 +20,12 @@ from typing import Any
 from zipfile import ZipFile
 
 from .recovery_archive import CHUNK, RecoveryError, check_zip_budget, decrypt_zip, encrypted_zip
-from .recovery_validation import rebase_file_references, validate_file_references, verify_iban_key
+from .recovery_validation import (
+    rebase_file_references,
+    validate_file_references,
+    verify_iban_key,
+    verify_private_drafts,
+)
 
 
 @dataclass(frozen=True)
@@ -164,8 +169,18 @@ def _database_info(path: Path, *, timeout_seconds: float = 300) -> dict:
         for table in Base.metadata.sorted_tables:
             if table.name in session_tables and not tables & session_tables:
                 continue
+            # x1 adds a private journal. An older complete image has no table;
+            # an existing but incomplete table must still fail column validation.
+            if table.name == "form_drafts" and table.name not in tables:
+                continue
             actual = {column[1] for column in db.execute('PRAGMA table_info("' + table.name.replace('"', '""') + '")')}
-            if not set(table.columns.keys()).issubset(actual):
+            # A verified backup must precede the offline w1 migration. These
+            # two additive columns were absent in the supported two-target
+            # receipt schema; preserve that schema verbatim, including triggers.
+            # All other missing columns and incomplete journals remain errors.
+            compatible_missing = {"invoices": {"amount_paid"}, "payments": {"invoice_id"}}
+            missing = set(table.columns.keys()) - actual
+            if missing - compatible_missing.get(table.name, set()):
                 raise RecoveryError("Das Datenbankschema passt nicht zu dieser Programmversion.")
         counts = {}
         for table in sorted(tables - {"sqlite_sequence"}):
@@ -266,6 +281,7 @@ def create_full_backup(plan: RecoveryPlan, destination: Path, password: str, *,
                 target.execute("PRAGMA journal_mode=DELETE")
             database_info = _database_info(image, timeout_seconds=_remaining(deadline))
             verify_iban_key(image, configuration, deadline=deadline)
+            verify_private_drafts(image, configuration, deadline=deadline)
             reference_report = validate_file_references(image, str(uploads), expected_upload_files=set(files), deadline=deadline)
             manifest = {"format": "immomanager-full", "version": 1,
                         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -461,6 +477,7 @@ def restore_full_backup(source: Path, destination: Path, password: str, *,
             raise RecoveryError("Integrationszustand ist kein JSON-Objekt.")
         values = _rebased_configuration(_json((staged / "configuration.json").read_bytes()), destination)
         verify_iban_key(staged / "database.sqlite3", values, deadline=deadline)
+        verify_private_drafts(staged / "database.sqlite3", values, deadline=deadline)
         upload_files = {name.removeprefix("uploads/") for name in manifest["files"] if name.startswith("uploads/")}
         reference_report = validate_file_references(staged / "database.sqlite3", manifest["original_upload_root"],
                                                    expected_upload_files=upload_files, deadline=deadline)

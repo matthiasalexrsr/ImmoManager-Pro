@@ -4,6 +4,8 @@ import { useTranslation } from '../i18n';
 import { CloseIcon } from './Icons';
 import { bindEditRevision, snapshotRevision } from '../editRevision';
 import EditConflictPanel from './EditConflictPanel';
+import FormDraftPanel from './FormDraftPanel';
+import useFormDraft from '../hooks/useFormDraft';
 import './SharedComponents.css';
 
 const initialValues = (fields, initial) => Object.fromEntries(fields.map(field =>
@@ -21,7 +23,7 @@ function reachableControls(modal) {
     });
 }
 
-export default function FormModal({ title, fields, initial, onSave, onClose, children, saveDisabled = false, closeOnSave = true, saveLabel, onValuesChange }) {
+export default function FormModal({ title, fields, initial, onSave, onClose, onSaved, children, saveDisabled = false, closeOnSave = true, saveLabel, onValuesChange, draftConfig }) {
   const { t } = useTranslation();
   const [values, setValues] = useState(() => initialValues(fields, initial));
   const valuesListener = useRef(onValuesChange);
@@ -29,16 +31,42 @@ export default function FormModal({ title, fields, initial, onSave, onClose, chi
   useEffect(() => { valuesListener.current?.(values); }, [values]);
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const [businessSaved, setBusinessSaved] = useState(false);
   const original = useRef(initial);
   const editRevision = useRef(snapshotRevision(initial));
   const modalRef = useRef(null);
   const errorRef = useRef(null);
   const primaryAction = useRef(null);
   const submitting = useRef(false);
+  const closePending = useRef(false);
+  const savedNotified = useRef(false);
   const wasSaving = useRef(false);
   const instanceId = useId();
   const initialSignature = JSON.stringify(initial ?? null);
   const previousInitial = useRef(initialSignature);
+  const draft = useFormDraft({ config: draftConfig, fields, values, original, editRevision,
+    onRestore: saved => {
+      setValues(current => ({ ...current, ...saved.values }));
+      const revision = saved.edit_revision;
+      original.current = revision ? { ...saved.original_values, id: revision.id, updated_at: revision.updatedAt } : saved.original_values;
+      editRevision.current = revision ? Object.freeze({ ...revision, source: Object.freeze({ ...original.current }) }) : null;
+      setError(null);
+      primaryAction.current?.focus();
+    } });
+  const draftReady = !draft.enabled || ['ready', 'saved', 'restored'].includes(draft.status);
+  const notifySaved = () => { if (!savedNotified.current) { savedNotified.current = true; onSaved?.(); } };
+  const completeSave = async () => { if (await draft.complete()) { notifySaved(); onClose(); } };
+  const requestClose = async () => {
+    if (submitting.current || closePending.current) return;
+    if (!draft.enabled || businessSaved) { if (businessSaved) notifySaved(); onClose(); return; }
+    closePending.current = true;
+    setClosing(true);
+    try { if (await draft.flush()) onClose(); }
+    finally { closePending.current = false; setClosing(false); }
+  };
+  const closeListener = useRef(requestClose);
+  useLayoutEffect(() => { closeListener.current = requestClose; });
 
   useEffect(() => {
     const changed = previousInitial.current !== initialSignature;
@@ -81,13 +109,12 @@ export default function FormModal({ title, fields, initial, onSave, onClose, chi
 
   useEffect(() => {
     const handler = event => {
-      if (event.key === 'Escape' && !event.defaultPrevented && !submitting.current) onClose();
+      if (event.key === 'Escape' && !event.defaultPrevented && !submitting.current) void closeListener.current();
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [onClose]);
+  }, []);
 
-  const requestClose = () => { if (!submitting.current) onClose(); };
   const trapFocus = event => {
     if (event.key !== 'Tab') return;
     const modal = modalRef.current;
@@ -101,7 +128,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose, chi
 
   const handleSubmit = async event => {
     event.preventDefault();
-    if (submitting.current || saveDisabled) return;
+    if (submitting.current || saveDisabled || businessSaved || closing || !draftReady) return;
     if (!event.currentTarget.checkValidity()) {
       setError({ message: t('ui.form.invalidFields') });
       event.currentTarget.reportValidity();
@@ -111,6 +138,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose, chi
     setSaving(true);
     setError(null);
     try {
+      if (draft.enabled && !await draft.prepareSubmit()) return;
       const cleaned = {};
       fields.forEach(field => {
         let value = values[field.key];
@@ -119,10 +147,14 @@ export default function FormModal({ title, fields, initial, onSave, onClose, chi
         cleaned[field.key] = value;
       });
       await onSave(bindEditRevision(cleaned, editRevision.current));
-      if (closeOnSave) onClose();
+      if (draft.enabled) {
+        setBusinessSaved(true);
+        if (await draft.complete()) { notifySaved(); if (closeOnSave) onClose(); }
+      } else { notifySaved(); if (closeOnSave) onClose(); }
     } catch (err) {
       setError({ message: err.message || t('ui.form.saveFailed'), details: err.details,
         isEditConflict: err.isEditConflict, resourcePath: err.resourcePath });
+      if (draft.enabled) await draft.failedSubmit(err);
     } finally {
       submitting.current = false;
       setSaving(false);
@@ -140,7 +172,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose, chi
     const detail = Array.isArray(error?.details) && error.details.find(item => Array.isArray(item?.loc) && item.loc.at(-1) === field.key);
     const fieldError = typeof detail?.msg === 'string' ? detail.msg : null;
     const common = {
-      id: inputId, name: field.key, required: field.required, disabled: field.disabled || saving,
+      id: inputId, name: field.key, required: field.required, disabled: field.disabled || saving || closing || businessSaved,
       'aria-invalid': fieldError ? true : undefined,
       'aria-describedby': [hint && `${inputId}-hint`, fieldError && `${inputId}-error`].filter(Boolean).join(' ') || undefined,
     };
@@ -175,10 +207,11 @@ export default function FormModal({ title, fields, initial, onSave, onClose, chi
     <div className="modal shared-form-modal" ref={modalRef} tabIndex={-1} onKeyDown={trapFocus}
       role="dialog" aria-modal="true" aria-labelledby={`${instanceId}-title`} aria-busy={saving}>
       <div className="modal-header"><h3 id={`${instanceId}-title`}>{title}</h3>
-        <button type="button" onClick={requestClose} className="btn-close" aria-label={t('ui.buttons.close')} disabled={saving}><CloseIcon size={18} /></button>
+        <button type="button" onClick={requestClose} className="btn-close" aria-label={t('ui.buttons.close')} disabled={saving || closing}><CloseIcon size={18} /></button>
       </div>
       <form onSubmit={handleSubmit} aria-busy={saving}>
         <div className="modal-body">
+          <FormDraftPanel draft={draft} businessSaved={businessSaved} onComplete={completeSave} />
           {error && <div className="alert-error shared-form-error" role="alert" ref={errorRef} tabIndex={-1}><CircleAlert size={18} aria-hidden="true" /><span>{error.message}</span></div>}
           {error?.isEditConflict && <EditConflictPanel error={error} fields={fields} original={original.current} draft={values}
             onReconcile={(nextValues, current) => {
@@ -188,7 +221,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose, chi
               setError(null);
               primaryAction.current?.focus();
             }} />}
-          <fieldset className="shared-modal-body-fields" disabled={saving}>
+          <fieldset className="shared-modal-body-fields" disabled={saving || closing || businessSaved}>
             {children}
             {sections.map((section, index) => {
               const content = <div className={`shared-form-fields ${section.fields.filter(field => field.type !== 'hidden').length === 1 ? 'shared-form-fields-single' : ''}`}>{section.fields.map(renderField)}</div>;
@@ -198,8 +231,8 @@ export default function FormModal({ title, fields, initial, onSave, onClose, chi
         </div>
         <div className="modal-footer">
           <span className="shared-form-required">{fields.some(field => field.required && field.type !== 'hidden') && `* ${t('ui.form.required')}`}</span>
-          <div className="shared-form-actions"><button type="button" onClick={requestClose} className="btn btn-secondary" disabled={saving}>{t('ui.buttons.cancel')}</button>
-            <button type="submit" ref={primaryAction} className="btn btn-primary" disabled={saving || saveDisabled}>
+          <div className="shared-form-actions">{draft.enabled && !businessSaved && ['error', 'conflict', 'available', 'uncertain'].includes(draft.status) && <button type="button" className="btn btn-secondary" disabled={saving || closing} onClick={onClose}>{t('formDraft.closeUnsaved')}</button>}<button type="button" onClick={requestClose} className="btn btn-secondary" disabled={saving || closing}>{t(businessSaved ? 'ui.buttons.close' : 'ui.buttons.cancel')}</button>
+            <button type="submit" ref={primaryAction} className="btn btn-primary" disabled={saving || closing || saveDisabled || businessSaved || !draftReady}>
               {saving && <LoaderCircle size={16} className="shared-component-spinner" aria-hidden="true" />}
               <span aria-live="polite">{saving ? `${saveLabel || t('ui.buttons.save')}...` : saveLabel || t('ui.buttons.save')}</span>
             </button></div>

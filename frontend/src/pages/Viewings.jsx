@@ -223,6 +223,9 @@ export default function Viewings() {
     } else {
       await api.put(`/viewings/${modal.id}`, data);
     }
+  };
+
+  const afterSave = () => {
     refreshData();
     if (store) store.invalidateRelated('viewings', 'leads', 'units');
   };
@@ -386,7 +389,7 @@ export default function Viewings() {
       )}
 
       {modal && canWrite && (
-        <FormModal
+        <FormModal onSaved={afterSave} draftConfig={{ collection: 'viewings' }}
           title={modal === 'create' ? 'Besichtigung erstellen' : 'Besichtigung bearbeiten'}
           fields={fields}
           initial={modal === 'create' ? null : modal}

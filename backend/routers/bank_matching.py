@@ -13,6 +13,7 @@ from ..services.bank_matching import (
     confirm_match,
     suggestions,
 )
+from ..services.payment_history import PaymentHistoryPage, PaymentHistoryQuery, payment_history
 from ..services.payments import Payment
 from ..storage import NotFoundError, ValidationError
 from .bank_imports import actor, writer
@@ -38,3 +39,8 @@ def list_suggestions(booking_id: str, query: Annotated[SuggestionQuery, Query()]
 @router.post("/{booking_id}/matching", status_code=201, response_model=Payment)
 def match(booking_id: str, command: MatchConfirm, store=Depends(get_store), scope=Depends(writer)):
     return call(confirm_match, store, booking_id, command, scope=scope)
+
+
+@router.get("/{booking_id}/allocations", response_model=PaymentHistoryPage)
+def allocations(booking_id: str, query: Annotated[PaymentHistoryQuery, Query()], store=Depends(get_store), scope=Depends(actor)):
+    return call(payment_history, store, "booking", booking_id, query, scope=scope)

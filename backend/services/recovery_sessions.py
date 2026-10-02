@@ -65,6 +65,26 @@ def invalidate_and_inspect(connection, original_configuration, *, deadline):
             rows.close()
         # PostgreSQL named cursors must not apply to the following UPDATE.
         connection.execution_options(stream_results=False)
+    if "form_drafts" in tables:
+        # Verify with the archive's actual key map before changing any family.
+        # One corrupt or oversized envelope rolls back the entire offline step.
+        from .form_draft_crypto import ciphertext_budget, decrypt
+        ring = keyring_from_configuration(original_configuration)
+        budget = ciphertext_budget(original_configuration)
+        rows = connection.execution_options(stream_results=True).exec_driver_sql(
+            "SELECT id, CASE WHEN length(payload) <= " + str(budget) + " THEN payload ELSE NULL END FROM form_drafts")
+        try:
+            while batch := rows.fetchmany(1):
+                for identifier, payload in batch:
+                    _remaining(deadline)
+                    if not isinstance(payload, str):
+                        raise SessionRestoreError("restore_draft_payload_invalid: vollständige Sicherung und Budgets prüfen")
+                    value = json.loads(decrypt(payload, identifier.encode("ascii"), ring))
+                    if not isinstance(value, dict) or not isinstance(value.get("values"), dict):
+                        raise SessionRestoreError("restore_draft_payload_invalid: vollständige Sicherung prüfen")
+        finally:
+            rows.close()
+            connection.execution_options(stream_results=False)
     count = invalidate_restored_sessions(connection) if security_tables else 0
     if type(count) is not int or count < 0:
         raise SessionRestoreError("restore_session_count_invalid: Sicherheitsabschluss nicht bestätigt")

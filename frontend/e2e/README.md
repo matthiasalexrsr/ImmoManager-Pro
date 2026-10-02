@@ -173,3 +173,17 @@ page-overflow checks and the shared uncaught-error guard.
 ```sh
 npm run test:e2e -- bank-import.pw.mjs
 ```
+
+`bank-matching.pw.mjs` exercises the actual migrated SQL server and central
+payment ledger without intercepted APIs. Three workflows cover invoice-to-bank
+navigation, deliberate partial allocation and cancellation, exact-command replay,
+persistence after reload, immutable original receipts and explicit reversals;
+ambiguous monthly rent charges plus a changed source requiring renewed review;
+and readonly candidate/receipt access without mutation controls. It verifies one
+original cash booking and unchanged derived account balance throughout receipt
+and reversal, and checks 1440/390/320-pixel overflow with attached screenshots.
+The shared fixture rejects all uncaught browser errors.
+
+```sh
+npm run test:e2e -- bank-matching.pw.mjs
+```

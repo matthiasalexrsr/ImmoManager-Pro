@@ -33,6 +33,7 @@ from .routers import (
     documents,
     escalation,
     files,
+    form_drafts,
     handover_protocols,
     history,
     i18n,
@@ -71,6 +72,7 @@ def build_api_v1() -> APIRouter:
 
     # Auth routes (public - no auth dependency)
     api_v1.include_router(auth.router)
+    api_v1.include_router(form_drafts.router)
 
     # Protected routes
     _auth_dep = [Depends(require_auth)]

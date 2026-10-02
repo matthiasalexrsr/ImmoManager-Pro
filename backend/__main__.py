@@ -120,6 +120,8 @@ def _configure_runtime_environment(data_dir_arg=None):
     if not os.environ.get("ENCRYPTION_KEYRING"):
         _persist_env_default(runtime_env, "ENCRYPTION_KEY", generate_key())
     _persist_env_default(runtime_env, "ENCRYPTION_INDEX_KEY", generate_key())
+    _persist_env_default(runtime_env, "FORM_DRAFT_TTL_DAYS", "7")
+    _persist_env_default(runtime_env, "FORM_DRAFT_MAX_BYTES", "262144")
 
     return data_dir
 

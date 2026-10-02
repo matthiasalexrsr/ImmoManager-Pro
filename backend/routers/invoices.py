@@ -1,10 +1,13 @@
 from datetime import date
 
 from fastapi import APIRouter, HTTPException, Query, status
+from fastapi.responses import JSONResponse
 
 from ..dependencies import store
 from ..models import Invoice, InvoiceCreate, InvoicePatch
+from ..services.bank_matching import MatchError
 from ..services.invoice_list import filtered_invoices
+from ..services.payment_history import PaymentHistoryPage, PaymentHistoryQuery, payment_history
 from ..services.payments import (
     FinancialConsistencyError,
     Payment,
@@ -36,7 +39,19 @@ def list_invoices(
 
 
 @router.post("", response_model=Invoice, status_code=status.HTTP_201_CREATED)
-def create_invoice(payload: InvoiceCreate) -> Invoice:
+def create_invoice(payload: InvoiceCreate) -> Invoice | JSONResponse:
+    # Ordinary HTTP creation is not a payment command. Historical imports use
+    # their explicit transfer path and retain their existing recorded balances.
+    if payload.status.strip().lower() in {"paid", "partial"}:
+        return JSONResponse(status_code=409, content={"error": {
+            "code": "INVOICE_PAYMENT_REQUIRED",
+            "message": "Eine neue Rechnung wird ohne Zahlung angelegt. Bezahlt-/Teilbezahlt-Status entsteht erst durch einen ausdrücklich erfassten Zahlungsbeleg.",
+        }})
+    if payload.status not in {"open", "overdue", "cancelled"}:
+        return JSONResponse(status_code=422, content={"error": {
+            "code": "INVOICE_STATUS_INVALID",
+            "message": "Für eine neue Rechnung Offen, Überfällig oder Storniert auswählen. Zahlungen anschließend in der Belegliste erfassen.",
+        }})
     try:
         return store.create_invoice(payload)
     except ValidationError as exc:
@@ -82,13 +97,18 @@ def delete_invoice(invoice_id: str) -> None:
         raise HTTPException(409, str(exc)) from exc
 
 
-@router.get("/{invoice_id}/payments", response_model=list[Payment])
-def list_invoice_payments(invoice_id: str):
+@router.get("/{invoice_id}/payments", response_model=list[Payment] | PaymentHistoryPage)
+def list_invoice_payments(invoice_id: str, page_size: int | None = Query(None, ge=1, le=5000), cursor: str | None = Query(None, max_length=4096)):
     try:
         store.get_invoice(invoice_id)
+        if isinstance(page_size, int):
+            return payment_history(store, "invoice", invoice_id, PaymentHistoryQuery(page_size=page_size, cursor=cursor if isinstance(cursor, str) else None))
         return store.list_payments("invoice", invoice_id)
     except NotFoundError as exc:
         raise HTTPException(404, str(exc)) from exc
+    except MatchError as exc:
+        return JSONResponse(status_code=exc.status, content={"error": {"code": exc.code, "message": str(exc),
+            "details": [{"recovery": "review_again"}]}})
 
 
 @router.post("/{invoice_id}/payments", response_model=Payment, status_code=201)

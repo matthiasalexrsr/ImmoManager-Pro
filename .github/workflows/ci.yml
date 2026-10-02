@@ -80,6 +80,9 @@ jobs:
           backend/services/contract_occupancy.py backend/services/contract_attachment.py backend/routers/contract_wizard.py
           backend/services/account_balances.py backend/routers/accounts.py
           backend/services/bank_matching.py backend/routers/bank_matching.py
+          backend/services/payment_history.py backend/form_draft_models.py backend/db/form_draft_models.py
+          backend/services/form_draft_crypto.py backend/services/form_drafts.py backend/routers/form_drafts.py
+          backend/services/tenant_wizard_graph.py backend/services/tenant_private_draft_guard.py backend/services/tenant_privacy.py
           backend/services/invoice_list.py backend/services/invoice_payment_schema.py
           backend/services/rent_ledger.py backend/services/billing_settlement.py backend/services/report_service.py
           backend/routers/billing.py backend/frontend_build.py backend/updater.py backend/maintenance.py
@@ -152,12 +155,17 @@ jobs:
       - name: Verify reviewed contracts, shared occupancy and account snapshots on PostgreSQL
         env:
           TEST_SERVER_DATABASE_URL: postgresql://immo_ci:isolated_test_database@127.0.0.1:5432/immo_ci
-        run: pytest backend/tests/test_contract_wizard_postgres.py backend/tests/test_account_balances.py::test_pg_real_repeatable_read_and_current_parent_checks -q --tb=short
+        run: pytest backend/tests/test_contract_wizard_postgres.py backend/tests/test_tenant_wizard_privacy_postgres.py backend/tests/test_account_balances.py::test_pg_real_repeatable_read_and_current_parent_checks -q --tb=short
 
       - name: Verify reviewed bank matches and receipt schema preservation on PostgreSQL
         env:
           TEST_SERVER_DATABASE_URL: postgresql://immo_ci:isolated_test_database@127.0.0.1:5432/immo_ci
         run: pytest backend/tests/test_bank_matching_postgres.py backend/tests/test_bank_matching_schema_recovery.py -q --tb=short
+
+      - name: Verify private encrypted draft conflicts on PostgreSQL
+        env:
+          TEST_SERVER_DATABASE_URL: postgresql://immo_ci:isolated_test_database@127.0.0.1:5432/immo_ci
+        run: pytest backend/tests/test_form_drafts.py::test_actual_postgresql_independent_draft_cas_and_raw_ciphertext backend/tests/test_form_drafts_postgres.py -q --tb=short
 
   browser-e2e:
     name: Browser workflows (Chromium + SQLite)

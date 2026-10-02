@@ -398,30 +398,23 @@ def _privacy_read(action, tenant_id: str):
 
 @router.get("/dsgvo/tenant/{tenant_id}/export", response_model=None)
 def dsgvo_export_tenant_data(tenant_id: str):
-    """Export explicitly related metadata; excluded files/records are listed."""
+    """Export explicit tenant relationships and verified stored wizard files."""
     import hashlib
 
-    from starlette.background import BackgroundTask
-
-    from ..services.tenant_privacy import export_tenant_metadata, metadata_download
-    graph = _privacy_read(export_tenant_metadata, tenant_id)
-    graph["exported_at"] = datetime.now(timezone.utc).isoformat()
+    from ..services.tenant_privacy import prepare_tenant_export
+    from .datev import PrivateDownloadResponse
+    compiled, captured = _privacy_read(prepare_tenant_export, tenant_id)
     filename_id = hashlib.sha256(tenant_id.encode("utf-8")).hexdigest()[:16]
     try:
-        output = metadata_download(graph)
+        return PrivateDownloadResponse(compiled, captured, media_type="application/json", headers={
+            "Content-Length": str(compiled.manifest["size"]),
+            "Content-Disposition": f'attachment; filename="tenant_metadata_{filename_id}.json"',
+            "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff",
+            "X-Content-SHA256": compiled.manifest["sha256"],
+        })
     except Exception as exc:
+        compiled.close()
         raise HTTPException(503, "Export konnte nicht gespeichert werden. Freien Speicher prüfen und erneut versuchen.") from exc
-    output.seek(0, 2)
-    size = output.tell()
-    output.seek(0)
-    return StreamingResponse(iter(lambda: output.read(64 * 1024), b""),
-                             background=BackgroundTask(output.close),
-                             media_type="application/json", headers={
-        "Content-Length": str(size),
-        "Content-Disposition": f'attachment; filename="tenant_metadata_{filename_id}.json"',
-        "Cache-Control": "private, no-store",
-        "X-Content-Type-Options": "nosniff",
-    })
 
 
 @router.get("/dsgvo/tenant/{tenant_id}/anonymization-preview", response_model=None)

@@ -46,9 +46,10 @@ Sie prüft sichtbare Oberflächenaktionen und die gespeicherten API-Ergebnisse:
 
 ## Prüfergebnisse
 
-Aktueller Integrationsstand vom 2. Oktober 2026: 693 Frontendtests in 56 Dateien,
-ESLint und 45 vollständige reale Edge-/SQLite-Browserabläufe bestanden. Der
-CI-Typcheck umfasst nach der Bankzuordnung 73 kritische Quellen und ist lokal
+Aktueller Integrationsstand vom 2. Oktober 2026: 727 Frontendtests in 59 Dateien
+bestanden. Die integrierte Bankzuordnung, private Formularentwürfe und die
+mobile Vertragsansicht bestanden gemeinsam acht tatsächliche Edge-/SQLite-
+Browserabläufe. Der CI-Typcheck umfasst 82 kritische Quellen und ist lokal
 grün; Ruff ist grün. Nach Integration der Rechnungszahlungsbelege bestanden
 129 gemeinsame SQLite-Prüfungen (10 explizite Skips), darunter Migration,
 Stornos, gemeinsames Guthabenbudget, Quellverlust-Wiederherstellung und die
@@ -56,16 +57,60 @@ korrigierten Billing-/Mietanpassungs-Testdaten. Zwei zusätzliche tatsächliche
 API-Routerabläufe prüfen autorisierten Zugriff, genau einen Rechnungsbeleg und
 keine zweite Cashbuchung mit Memory und SQLite.
 
-Der vollständige gepinnte SQLite-Stand `51f69ef` ergab 2.649 bestandene,
-82 übersprungene und 25 fehlgeschlagene Fälle. Diese Fehler lagen beim Aufbau
-historischer Testdaten mit inzwischen unzulässiger Doppelbelegung; die
-betroffenen Fixtures werden separat korrigiert, ohne die Produktprüfung oder
-fachlichen Assertions abzuschwächen. Dieser Lauf ist **keine grüne
-Gesamtfreigabe**. Die gemeinsame neue Gesamtsuite und der tatsächliche
-PostgreSQL-CI-Lauf bleiben für den aktuellen Integrationsstand erforderlich.
-Die neue Bankvorschlags-/Rechnungs-API ist integriert; ihre zusätzliche
-Oberfläche wird noch umgesetzt. Ausführliche Beleg- und Upgradebeschreibung:
+Die vollständigen gepinnten Memory- und SQLite-Läufe auf `2b0e149` ergaben
+jeweils 2.753 bestandene, 87 übersprungene und drei fehlgeschlagene Fälle.
+Die inzwischen korrigierten historischen Credit-Schema-/Rechnungs-Fixtures
+bestanden anschließend gemeinsam 16 Prüfungen. Die vorherigen 25 Fehler beim
+Aufbau unzulässig doppelt belegter Vertragsfixtures sind in diesen beiden
+Gesamtläufen beseitigt. Die neuen Codeänderungen benötigen ihre gemeinsame
+CI-Abnahme; die gepinnten Läufe sind **keine grüne Gesamtfreigabe**.
+Die neue Bankvorschlags-/Rechnungsoberfläche ist integriert: bewusste Auswahl,
+erneute Prüfung nach Quelländerung, echte Teilzahlungsbelege und Stornos.
+Eine neue Rechnung kann über die API nicht ohne Zahlungsbeleg als bezahlt oder
+teilbezahlt angelegt werden; fünf gemeinsame tatsächliche API-/Bestandsfälle
+bestanden mit Memory und SQLite. Übernommene historische Zahlbeträge bleiben
+erhalten, und die Oberfläche unterscheidet sie von tatsächlich erfassten Belegen.
+Ausführliche Beleg- und Upgradebeschreibung:
 [Bankzuordnung](BANK_MATCHING.md).
+
+Die Folgeprüfung CI #119 bestand Frontend und den tatsächlichen privaten
+PostgreSQL-Serverlebenszyklus, meldete jedoch neue Integrationsbefunde: drei
+Migration-/Rechnungs-Contractfälle, den Prozentzeichen-Import von PostgreSQL-
+Verbindungsoptionen, einen Vertragsassistenten-Überlauf bei 360 Pixeln sowie
+einen SMTP-Prozessbereinigungsfall unter Python 3.11. Diese Befunde werden
+gezielt korrigiert; der neue Linux-Nachweis der SMTP-Prozessbereinigung steht
+noch aus. CI #119 ist keine Gesamtfreigabe. Der Prozentzeichen-Fix
+bestand eine tatsächliche vollständige Migration mit Prozentzeichen im
+SQLite-Dateipfad. Die Rückwärtsprüfung der Vollsicherung für das v1-
+Zahlungsschema bestand mit Belegen und Originalbytes; zusammen mit bestehenden
+Rechnungsschema-Prüfungen bestanden sieben Fälle.
+
+Persönliche Formularentwürfe sind unter einem eigenen Feldkontext verschlüsselt,
+bewusst wiederherstellbar und durch ursprüngliche Fachrevision und eigenen
+Entwurfs-CAS geschützt. Vollbackup/Restore und privater Server-Restore prüfen
+die gespeicherten Hüllen mit den tatsächlichen Archivschlüsseln vor Freigabe;
+Teilimport und Zurücksetzen verweigern Verlust bestehender Entwürfe. 96
+gemeinsame Recovery-/Sicherheitsfälle bestanden (ein PostgreSQL-Skip), inklusive
+tatsächlich entfernter Quelle und neuem authentifizierten Prozess. Zwei frische
+Migrationsfälle bestätigten vollständige x1-Kette, Datenbewahrung und Übernahme
+einer bereits additiv angelegten Entwurfstabelle. Details: [Formularentwürfe](FORM_DRAFTS.md).
+
+Die Mieterauskunft enthält zugeordnete Vertragsentwürfe, historische
+Prüf-/Veröffentlichungsnachweise, ausgewählte Vorlagenversionen, PDFs und
+Originalanlagen aus einem kohärenten Snapshot. Andere Personen und private
+Formularinhalte werden nicht offengelegt. Die Profil-Anonymisierung benennt
+weiterhin gespeicherte Belege ausdrücklich; sie behauptet keine vollständige
+Löschung. 73 gemeinsame Datenschutz-/Entwurfsfälle bestanden, fünf tatsächliche
+PostgreSQL-Varianten benötigen den CI-Service. Der tatsächliche Quellverlust-
+Restore samt neuer authentifizierter Auskunft ist darin enthalten. Details:
+[Vertragsnachweise in der Auskunft](G43_WIZARD_PRIVACY_HANDOFF.md).
+
+Neu angelegte Demodokumente verweisen auf keine erfundenen Originaldateien.
+Ihre Beschreibung erklärt den fehlenden Originalbeleg. Ein tatsächlich neu
+erzeugter Demobestand bestand die verschlüsselte Vollsicherung/Wiederherstellung
+unter Erhalt aller zehn Dokumentmetadaten. Alte Demo-Verweise werden durch
+diese Seedkorrektur nicht automatisch verändert. Fehlende echte Dateiquellen
+müssen vor einer als vollständig bestätigten Sicherung korrigiert werden.
 
 Zusätzlicher integrierter Stand nach den unten dokumentierten früheren Gates:
 578 Frontendtests in 46 Dateien, ESLint und Produktionsbuild bestanden.

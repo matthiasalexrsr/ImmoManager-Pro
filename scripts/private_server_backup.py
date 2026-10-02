@@ -67,7 +67,8 @@ REQUIRED_ENV_KEYS = frozenset({"APP_ORIGIN", "APP_HOST", "APP_HTTP_PORT", "POSTG
                       "POSTGRES_DB", "POSTGRES_PASSWORD", "JWT_SECRET_KEY"})
 ENCRYPTION_ENV_KEYS = frozenset({"ENCRYPTION_KEY", "ENCRYPTION_KEYRING", "ENCRYPTION_ACTIVE_KEY_ID",
                                  "ENCRYPTION_INDEX_KEY", "ENCRYPTION_LEGACY_JWT_KEYS"})
-ENV_KEYS = REQUIRED_ENV_KEYS | ENCRYPTION_ENV_KEYS
+DRAFT_ENV_KEYS = frozenset({"FORM_DRAFT_TTL_DAYS", "FORM_DRAFT_MAX_BYTES"})
+ENV_KEYS = REQUIRED_ENV_KEYS | ENCRYPTION_ENV_KEYS | DRAFT_ENV_KEYS
 PG_DUMP = 'exec pg_dump -Fc --no-owner --no-acl --no-password -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
 PG_LIST = 'exec pg_restore --list'
 PG_RESTORE = ('exec pg_restore --exit-on-error --no-owner --no-privileges --no-password '
@@ -341,6 +342,14 @@ def _parse_env(data: bytes) -> dict[str, str]:
             keyring_from_configuration(values)
         except IBANEncryptionError:
             raise BackupError("Serverkonfiguration enthält ungültige IBAN-Schlüssel. Schlüsselkonfiguration prüfen.") from None
+    for name, minimum, maximum in (("FORM_DRAFT_TTL_DAYS", 1, 365), ("FORM_DRAFT_MAX_BYTES", 1024, 16777216)):
+        if name in values:
+            try:
+                valid = re.fullmatch(r"[0-9]+", values[name]) and minimum <= int(values[name]) <= maximum
+            except ValueError:
+                valid = False
+            if not valid:
+                raise BackupError("Serverkonfiguration enthält ungültige Formularentwurfsbudgets. Konfiguration korrigieren.")
     return values
 
 

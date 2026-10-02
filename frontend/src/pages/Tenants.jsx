@@ -134,6 +134,9 @@ export default function Tenants() {
     } else {
       await api.put(`/tenants/${modal.id}`, data);
     }
+  };
+
+  const afterSave = () => {
     afterMutation();
   };
 
@@ -251,7 +254,7 @@ export default function Tenants() {
       <TenantPrivacySection tenants={tenants} onUpdated={afterMutation} />
 
       {modal && canWrite && (
-        <FormModal
+        <FormModal onSaved={afterSave} draftConfig={{ collection: 'tenants' }}
           title={modal === 'create' ? 'Mieter erstellen' : 'Mieter bearbeiten'}
           fields={fields}
           initial={modal === 'create' ? null : modal}

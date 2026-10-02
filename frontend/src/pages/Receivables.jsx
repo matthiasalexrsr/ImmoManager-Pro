@@ -62,7 +62,9 @@ export default function Receivables() {
       await api.put(`/receivables/${modal.id}`, { ...payload, status: source.status,
         statement_id: source.statement_id ?? null });
     }
-    setModal(null);
+  };
+
+  const afterSave = () => {
     refreshData();
     if (store) store.invalidateRelated('receivables', 'contracts', 'bookings');
   };
@@ -102,7 +104,7 @@ export default function Receivables() {
         onDelete={canWrite ? handleDelete : undefined}
       />
       {modal && canWrite && (
-        <FormModal
+        <FormModal onSaved={afterSave} draftConfig={{ collection: 'receivables', snapshotFields: ['status', 'statement_id'] }}
           title={modal === 'create' ? t('ui.buttons.create') : t('ui.buttons.edit')}
           fields={fields}
           initial={modal === 'create' ? null : modal}

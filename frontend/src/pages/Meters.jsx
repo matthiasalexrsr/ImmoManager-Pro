@@ -128,7 +128,9 @@ export default function Meters() {
     } else if (modal && modal.id) {
       await api.put(`/meters/${modal.id}`, data);
     }
-    setModal(null);
+  };
+
+  const afterSave = () => {
     refreshData();
     if (store) store.invalidateRelated('meters', 'units');
   };
@@ -301,7 +303,7 @@ export default function Meters() {
       )}
 
       {canWrite && modal === 'create-meter' && (
-        <FormModal
+        <FormModal onSaved={afterSave} draftConfig={{ collection: 'meters' }}
           title="Zähler anlegen"
           fields={meterFields}
           initial={null}
@@ -310,7 +312,7 @@ export default function Meters() {
         />
       )}
       {canWrite && modal && modal !== 'create-meter' && modal !== 'create-reading' && modal.id && (
-        <FormModal
+        <FormModal onSaved={afterSave} draftConfig={{ collection: 'meters' }}
           title="Zähler bearbeiten"
           fields={meterFields}
           initial={modal}

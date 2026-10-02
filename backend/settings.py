@@ -152,6 +152,8 @@ class Settings(BaseSettings):
     rent_batch_max_size: int = Field(default=500, ge=25, le=5000)
     bank_import_page_max_size: int = Field(default=500, ge=25, le=5000)
     bank_import_field_max_chars: int = Field(default=100000, ge=1024, le=100000000)
+    form_draft_ttl_days: int = Field(default=7, ge=1, le=365)
+    form_draft_max_bytes: int = Field(default=262144, ge=1024, le=16777216)
 
     # --- File upload limits ---
     max_upload_size_bytes: int = 50 * 1024 * 1024  # 50 MB
