@@ -1,5 +1,7 @@
 # Historisches Funktionsinventar und umsetzbarer Backlog
 
+Die verbindlichen Ergänzungen des Eigentümers vom 2. Oktober 2026 stehen in `docs/USER_REQUIREMENTS_20261002.md`: objektindividuelle Mieterwechselaufgaben, Müll-/Ablesepläne, Gesamt-/Objekt-/Einheitsauswertungen, TEHA, Strom-/Dienstleistungsverträge und Schaden-/Projektorganisation. Sie ergänzen die nachfolgende historische Bestandsaufnahme; ihr Eintrag behauptet noch keine vollständige Umsetzung.
+
 Stand: 1. Oktober 2026. Lesende Bestandsaufnahme durch `browser_ci`; Hauptcheckout beim Quellenindex `111ea63644632adebf5732fcbd5faf1b7224a440`. Parallel aktive Arbeiten sind ausdrücklich gekennzeichnet. Diese Datei erklärt keinen Gesamtabschluss.
 
 ## Umfang und Beweismaßstab
