@@ -274,3 +274,7 @@ Gezielt geprüft:
 - `TenancyWorkflowApiContract.test.js` + `TenancyChangeFile.test.jsx`: **14/14 Tests bestanden**.
 - Der API-Vertragstest prüft Documents mit Property/Unit/Contract **ohne** `direction`, Handover mit `direction=move_out` und Meter Readings mit `direction=move_in`.
 - Gezielter ESLint über die geänderten Loader-/Dialog-/Container-/Testdateien mit `--max-warnings=0`: **bestanden, keine Ausgabe/Warnung**.
+
+## Additiver UI-Semantikfix: kanonische Suche benennen
+
+Beim Read-only-Abgleich des integrierten Root-Referenzdienstes wurde bestätigt, dass der Picker serverseitig über den referenzfähigen Bestand sucht. Die alten Copy-Texte „geladene Treffer filtern“ waren daher sachlich veraltet. DE/EN/ES wurden auf neutrale globale Referenzsuche und „keine Treffer“ umgestellt; Request-/Cursorlogik bleibt unverändert.

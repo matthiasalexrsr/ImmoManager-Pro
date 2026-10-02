@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import BoundedReferencePicker from '../features/tenancyWorkflows/BoundedReferencePicker';
+import { workflowText } from '../features/tenancyWorkflows/workflowCopy';
 
 const page = (start, count) => Array.from({ length: count }, (_, index) => ({
   id: `item-${start + index}`,
@@ -8,6 +9,15 @@ const page = (start, count) => Array.from({ length: count }, (_, index) => ({
 }));
 
 describe('BoundedReferencePicker', () => {
+  it('describes canonical server search honestly in all supported languages', () => {
+    expect(workflowText('de-DE', 'search')).toBe('Referenzen durchsuchen');
+    expect(workflowText('de-DE', 'noOptions')).toBe('Keine Treffer');
+    expect(workflowText('en-US', 'search')).toBe('Search references');
+    expect(workflowText('en-US', 'noOptions')).toBe('No results');
+    expect(workflowText('es-ES', 'search')).toBe('Buscar referencias');
+    expect(workflowText('es-ES', 'noOptions')).toBe('Sin resultados');
+  });
+
   it('preserves opaque cursors and selects a later server page', async () => {
     const loadPage = vi.fn(async ({ cursor, limit }) => (
       cursor == null
