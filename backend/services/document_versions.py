@@ -272,6 +272,69 @@ def _add(store, db, row):
         store.__dict__[row.__tablename__][key] = row
 
 
+def persist_version_bytes(store, db, row, blocks, *, before_insert=None):
+    """Write one manifest and its chunks inside the CALLER's transaction.
+
+    No authorization, source discovery, commit or rollback happens here. A
+    compound publisher must supply its already authorized manifest and an undo
+    callback for Memory inserts. Ordinary publication keeps its existing work
+    boundary. This primitive never copies another document's history.
+    """
+    def insert(value):
+        key = value.id if isinstance(value, DocumentVersionORM) else (value.version_id, value.position)
+        if db is None:
+            store.__dict__.setdefault(value.__tablename__, {})
+            if before_insert is not None:
+                before_insert(value.__tablename__, key)
+        _add(store, db, value)
+
+    insert(row)
+    checksum, size = hashlib.sha256(), 0
+    for position, block in enumerate(blocks):
+        if not isinstance(block, bytes) or not 0 < len(block) <= CHUNK_BYTES:
+            raise ValidationError("Ungültiger Dokumentblock.")
+        checksum.update(block)
+        size += len(block)
+        insert(DocumentVersionChunkORM(version_id=row.id, position=position,
+            portfolio_id=row.portfolio_id, data=block))
+    if (checksum.hexdigest(), size) != (row.sha256, row.size_bytes):
+        fail("Die Quelldatei wurde während der Archivierung geändert. Es wurde keine Fassung gespeichert.")
+    return row
+
+
+def publish_generated_original(store, db, document, binding, actor_id, content, request_hash, *, before_insert=None):
+    """Archive a freshly created, caller-locked generated PDF atomically.
+
+    Restricted to a first original. The caller checks parent/actor rights and
+    owns Document creation, the command receipt and the transaction rollback.
+    This is not a new public upload route or a replacement of an existing URL.
+    """
+    identity(actor_id, True)
+    if db is None:
+        for model in DOCUMENT_VERSION_MODELS:
+            store.__dict__.setdefault(model.__tablename__, {})
+    if _head(store, db, document.id) is not None:
+        fail("Für das erzeugte Dokument besteht bereits eine Fassung.")
+    actual, actual_binding = _document(store, db, document.id)
+    if actual_binding != binding or actual.file_url != document.file_url:
+        fail("Die Dokumentzuordnung wurde geändert. Erneut prüfen.")
+    if not content.startswith(b"%PDF-"):
+        raise ValidationError("Das erzeugte Schreiben ist kein PDF.")
+    if len(content) > settings.max_upload_size_bytes:
+        raise ValidationError("Das Schreiben überschreitet das technische Dokumentbudget. Budget anpassen.")
+    row = DocumentVersionORM(id=str(uuid4()), document_id=document.id, **binding,
+        number=1, predecessor_id=None, restored_from_id=None, actor_id=actor_id,
+        idempotency_key="generated-" + document.id, request_sha256=request_hash,
+        operation="archive_original", comment="Bewusst lokal freigegebenes Original",
+        filename=filename(document.file_url), media_type="application/pdf",
+        sha256=hashlib.sha256(content).hexdigest(), size_bytes=len(content),
+        metadata_snapshot=document.model_dump(mode="json"), created_at=datetime.now(timezone.utc).replace(tzinfo=None))
+    validate_manifest(row)
+    return persist_version_bytes(store, db, row,
+        (content[offset:offset + CHUNK_BYTES] for offset in range(0, len(content), CHUNK_BYTES)),
+        before_insert=before_insert)
+
+
 def _claim(store, db, document, command, actor_id, request_hash):
     existing = db.scalar(select(DocumentVersionORM).where(DocumentVersionORM.actor_id == actor_id,
         DocumentVersionORM.idempotency_key == command.idempotency_key)) if db is not None else next(
@@ -334,15 +397,7 @@ def publish(store, document_id, command, actor_id, *, source=None, upload_name=N
                 request_sha256=request_hash, operation=operation, comment=command.comment,
                 filename=name, media_type=mime, sha256=expected[0], size_bytes=expected[1],
                 metadata_snapshot=document.model_dump(mode="json"), created_at=datetime.now(timezone.utc).replace(tzinfo=None))
-            _add(active, db, row)
-            checksum, size = hashlib.sha256(), 0
-            for position, block in enumerate(blocks):
-                checksum.update(block)
-                size += len(block)
-                _add(active, db, DocumentVersionChunkORM(version_id=row.id, position=position,
-                    portfolio_id=row.portfolio_id, data=block))
-            if (checksum.hexdigest(), size) != expected:
-                fail("Die Quelldatei wurde während der Archivierung geändert. Es wurde keine Fassung gespeichert.")
+            persist_version_bytes(active, db, row, blocks)
         return public(row)
 
 
