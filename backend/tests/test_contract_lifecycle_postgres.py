@@ -16,6 +16,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
 from backend import auth
+from backend.db.contract_correspondence_models import CORRESPONDENCE_MODELS
 from backend.db.contract_lifecycle_models import LIFECYCLE_MODELS, ContractLifecycleCommandORM
 from backend.models import ContractCreate, PortfolioCreate, PropertyCreate, TenantCreate, UnitCreate
 from backend.repositories.sql_store import SQLAlchemyStore
@@ -61,8 +62,10 @@ def postgres(monkeypatch):
         config = Config("alembic.ini")
         monkeypatch.setenv("DATABASE_URL", scoped.render_as_string(hide_password=False))
         config.set_main_option("sqlalchemy.url", scoped.render_as_string(hide_password=False).replace("%", "%%"))
-        command.upgrade(config, "z1a2b3c4d5e6")
-        for model in LIFECYCLE_MODELS:
+        # Reset/privacy integrations inspect every retained journal, including
+        # correspondence. Exercise the complete migrated application schema.
+        command.upgrade(config, "a2a2b3c4d5e6")
+        for model in (*LIFECYCLE_MODELS, *CORRESPONDENCE_MODELS):
             assert set(model.__table__.c.keys()) == {col["name"] for col in inspect(engine).get_columns(model.__tablename__)}
         db = Session(engine)
         store = SQLAlchemyStore(db)

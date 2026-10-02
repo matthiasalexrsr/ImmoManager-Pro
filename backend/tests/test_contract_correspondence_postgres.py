@@ -22,8 +22,8 @@ from backend.tests.test_contract_lifecycle_postgres import postgres as postgres
 
 @pytest.fixture
 def letter_pg(postgres, monkeypatch):
-    # The reused fixture owns a UUID-only schema and migrates to z1. Upgrade
-    # the actual frozen continuation, never create_all over an absent migration.
+    # The reused fixture owns a UUID-only schema. Require the actual frozen
+    # correspondence migration, never create_all over an absent migration.
     config = Config("alembic.ini")
     config.set_main_option("sqlalchemy.url", postgres.engine.url.render_as_string(hide_password=False).replace("%", "%%"))
     migration.upgrade(config, "a2a2b3c4d5e6")
