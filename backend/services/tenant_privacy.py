@@ -239,9 +239,10 @@ def _plan(graph: dict) -> dict:
     from .tenant_correspondence_graph import PERSONAL_FIELDS as CORRESPONDENCE_FIELDS
     from .tenant_document_versions import PERSONAL_FIELDS as DOCUMENT_FIELDS
     from .tenant_lifecycle_graph import PERSONAL_FIELDS as LIFECYCLE_FIELDS
+    from .tenant_retained_graph import PERSONAL_FIELDS as RETAINED_FIELDS
     from .tenant_wizard_graph import PERSONAL_FIELDS
     wizard_retained = {name: {"count": len(graph.get(name, [])), "personal_fields": fields}
-                       for name, fields in (PERSONAL_FIELDS | DOCUMENT_FIELDS | LIFECYCLE_FIELDS | CORRESPONDENCE_FIELDS).items() if graph.get(name)}
+                       for name, fields in (PERSONAL_FIELDS | DOCUMENT_FIELDS | LIFECYCLE_FIELDS | CORRESPONDENCE_FIELDS | RETAINED_FIELDS).items() if graph.get(name)}
     private = graph["scope"]["private_form_drafts"]
     if private["count"]:
         wizard_retained["private_form_drafts"] = {"count": private["count"],
@@ -284,6 +285,9 @@ def _plan(graph: dict) -> dict:
         "correspondence_note": "Freigegebene Schreiben, ursprüngliche Empfänger-/Quellnamen, archivierte Originale und "
                                "manuelle Beobachtungsbelege bleiben unverändert erhalten. Private offene Schreiben "
                                "anderer Benutzer werden nur gezählt; frühere private Bearbeitungsantworten werden nicht ausgegeben.",
+        "retained_workflow_note": "Historische Mieterwechsel, ihre zugeordneten Schritte, Vorlagen und Nachweise sowie "
+                                  "zugehörige Arbeitslisteneinträge bleiben erhalten. Die Auskunft umfasst nur belegte "
+                                  "Mieterzuordnungen; fremde Vertragsparteien und allgemeine Arbeitslaufdaten werden nicht ausgegeben.",
     }
 
 
