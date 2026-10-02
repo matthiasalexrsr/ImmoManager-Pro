@@ -100,36 +100,42 @@ class Work:
 
 @contextmanager
 def work(store, actor_id: str, *, write: bool = False):
-    captured = identity(actor_id, write=write)
     sql = hasattr(store, "db")
-    with scope_context(captured), nullcontext() if sql else _memory_lock:
-        if sql:
-            from ..repositories.sql_store import SQLAlchemyStore
-            bind = store.db.get_bind()
-            # A Connection-bound caller also gets a separate owned transaction.
-            db = Session(getattr(bind, "engine", bind), autoflush=False, expire_on_commit=False)
-            active = SQLAlchemyStore(db)
-        else:
-            db, active = None, store
-            for model in LIFECYCLE_MODELS:
-                store.__dict__.setdefault(model.__tablename__, {})
-        unit = Work(active, db, captured)
-        try:
-            if db is not None and write:
-                begin_writer(db)
-            yield unit
-            refresh_scope(captured)
-            if db is not None and write:
-                db.commit()
-        except BaseException:
-            if db is not None:
-                db.rollback()
+    if not sql:
+        from .tenant_privacy import _memory_privacy_lock
+    # Fresh auth reads take the account lock. Privacy/draft commands already
+    # acquire account before domain; keep the same order through scope refresh
+    # and rollback rather than asking for account while holding domain alone.
+    with nullcontext() if sql else _memory_privacy_lock():
+        captured = identity(actor_id, write=write)
+        with scope_context(captured):
+            if sql:
+                from ..repositories.sql_store import SQLAlchemyStore
+                bind = store.db.get_bind()
+                # A Connection-bound caller also gets a separate owned transaction.
+                db = Session(getattr(bind, "engine", bind), autoflush=False, expire_on_commit=False)
+                active = SQLAlchemyStore(db)
             else:
-                unit.rollback()
-            raise
-        finally:
-            if db is not None:
-                db.close()
+                db, active = None, store
+                for model in LIFECYCLE_MODELS:
+                    store.__dict__.setdefault(model.__tablename__, {})
+            unit = Work(active, db, captured)
+            try:
+                if db is not None and write:
+                    begin_writer(db)
+                yield unit
+                refresh_scope(captured)
+                if db is not None and write:
+                    db.commit()
+            except BaseException:
+                if db is not None:
+                    db.rollback()
+                else:
+                    unit.rollback()
+                raise
+            finally:
+                if db is not None:
+                    db.close()
 
 
 def parent(unit: Work, contract_id: str, *, lock: bool = False):
