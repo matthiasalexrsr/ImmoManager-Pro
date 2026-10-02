@@ -13,7 +13,7 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from backend import auth
 from backend.db.access_models import ResourcePortfolioORM
@@ -114,7 +114,16 @@ def postgres_housing(monkeypatch):
             "portfolio_ids": [portfolio.id],
         }
     }
-    monkeypatch.setattr(auth, "get_user_by_id", lambda identifier: users.get(identifier))
+    # A server uses SQL accounts, including their actual transaction carrier.
+    # A mocked account reader would miss SQL-account/parent lock interactions.
+    accounts = auth.SQLUserStore(sessionmaker(engine))
+    for identifier, user in users.items():
+        accounts.create({**user, "username": "housing-pg-" + identifier,
+                         "full_name": "Housing PG Synthetic Actor",
+                         "email": identifier + "@example.invalid",
+                         "hashed_password": "unused-synthetic-hash"})
+    monkeypatch.setattr(auth, "_user_store", accounts)
+    monkeypatch.setattr(auth, "get_user_by_id", accounts.get_by_id)
     box = SimpleNamespace(
         store=store,
         engine=engine,

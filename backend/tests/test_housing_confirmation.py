@@ -5,16 +5,20 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from datetime import date, datetime, timezone
 from io import BytesIO
+from threading import Event, current_thread
 from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import event, select
+from sqlalchemy.orm import Session
 
+from backend import auth
 from backend.auth import require_auth
 from backend.db.contract_wizard_models import ContractDraftORM
 from backend.db.document_version_models import (
@@ -622,6 +626,65 @@ def test_foreign_scope_and_revoked_write_rights_publish_nothing(housing):
     finally:
         housing.users["actor"]["role"] = previous_role
     assert version_rows(housing) == []
+
+
+def test_sqlite_memory_account_fence_covers_actual_housing_commit(housing, monkeypatch):
+    if housing.engine is None:
+        pytest.skip("Actual SQLite/Memory-auth outer commit required")
+    accounts = auth.InMemoryUserStore()
+    for identifier, user in housing.users.items():
+        accounts.create({**user, "username": "housing-fence-" + identifier,
+                         "email": identifier + "@example.invalid",
+                         "hashed_password": "unused-synthetic-hash"})
+    monkeypatch.setattr(auth, "_user_store", accounts)
+    monkeypatch.setattr(auth, "get_user_by_id", accounts.get_by_id)
+    payload, review = reviewed(housing)
+    command = save_payload(payload, review, key="native-account-fence")
+    held, release, contended = Event(), Event(), Event()
+
+    def before_commit(_connection):
+        if current_thread().name.startswith("housing-outer-commit"):
+            held.set()
+            assert release.wait(10)
+
+    def revoke():
+        available = accounts._lock.acquire(blocking=False)
+        if available:
+            accounts._lock.release()
+        try:
+            assert not available, "Account change entered the housing SQL commit window"
+        finally:
+            contended.set()
+        result = accounts.update("actor", {"is_active": False, "portfolio_access": "all", "portfolio_ids": []})
+        # The management change must become visible after the original's
+        # actual independent database transaction has committed.
+        with Session(housing.engine) as session:
+            assert session.scalar(select(DocumentVersionORM.id)) is not None
+        return result
+
+    event.listen(housing.engine, "commit", before_commit)
+    try:
+        with ThreadPoolExecutor(max_workers=1, thread_name_prefix="housing-outer-commit") as writers:
+            publication = writers.submit(service.publish, housing.store, housing.contract.id, command, "actor")
+            try:
+                assert held.wait(10)
+                with ThreadPoolExecutor(max_workers=1) as managers:
+                    revocation = managers.submit(revoke)
+                    try:
+                        assert contended.wait(10)
+                    finally:
+                        release.set()
+                    assert revocation.result(timeout=10)["is_active"] is False
+            finally:
+                release.set()
+            assert publication.result(timeout=10)["document_id"]
+    finally:
+        release.set()
+        event.remove(housing.engine, "commit", before_commit)
+    assert len(version_rows(housing)) == 1
+    with pytest.raises(HTTPException) as denied:
+        service.publish(housing.store, housing.contract.id, command, "actor")
+    assert denied.value.status_code == 401
 
 
 def test_profile_anonymization_keeps_housing_original_and_discloses_retained_names(

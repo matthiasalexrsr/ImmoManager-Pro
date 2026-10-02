@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+from datetime import date
 from io import BytesIO
 from pathlib import Path
 from threading import Lock
 from xml.sax.saxutils import escape
 
-import reportlab
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.lib.pagesizes import A4
@@ -25,8 +25,8 @@ from reportlab.platypus import (
 )
 
 _FONT_LOCK = Lock()
-_REGULAR = "ImmoHousingVera"
-_BOLD = "ImmoHousingVeraBold"
+_REGULAR = "ImmoHousingNoto"
+_BOLD = "ImmoHousingNotoBold"
 _INK = colors.HexColor("#202124")
 _MUTED = colors.HexColor("#666A70")
 _RULE = colors.HexColor("#C8CBD0")
@@ -36,9 +36,11 @@ _FILL = colors.HexColor("#F2F3F4")
 def _fonts() -> tuple[str, str]:
     with _FONT_LOCK:
         if _REGULAR not in pdfmetrics.getRegisteredFontNames():
-            font_dir = Path(reportlab.__file__).with_name("fonts")
-            pdfmetrics.registerFont(TTFont(_REGULAR, str(font_dir / "Vera.ttf")))
-            pdfmetrics.registerFont(TTFont(_BOLD, str(font_dir / "VeraBd.ttf")))
+            # Ship the same licensed Unicode face on Windows and Linux;
+            # ReportLab's bundled Vera omits Greek and Cyrillic glyphs.
+            font_dir = Path(__file__).resolve().parent.parent / "assets" / "fonts"
+            pdfmetrics.registerFont(TTFont(_REGULAR, str(font_dir / "NotoSans-Regular.ttf")))
+            pdfmetrics.registerFont(TTFont(_BOLD, str(font_dir / "NotoSans-Bold.ttf")))
     return _REGULAR, _BOLD
 
 
@@ -139,7 +141,7 @@ def _facts(rows, styles, width: float) -> Table:
             [_p(label, styles["table_bold"]), _p(value, styles["table"])]
             for label, value in rows
         ],
-        colWidths=[43 * mm, width - 43 * mm],
+        colWidths=[52 * mm, width - 52 * mm],
     )
     table.setStyle(
         TableStyle(
@@ -165,6 +167,9 @@ def render_pdf(review: dict) -> bytes:
     output = BytesIO()
     styles = _styles()
     width = A4[0] - 36 * mm
+
+    def display_date(value: str) -> str:
+        return date.fromisoformat(value).strftime("%d.%m.%Y")
 
     def decorate(canvas, doc):
         canvas.saveState()
@@ -223,7 +228,7 @@ def render_pdf(review: dict) -> bytes:
             [
                 ("Wohnungsanschrift", data["apartment_address"]),
                 ("Wohnungsbezeichnung", data["apartment_label"] or "—"),
-                ("Tatsächlicher Einzug", data["move_in_date"]),
+                ("Tatsächlicher Einzug", display_date(data["move_in_date"])),
             ],
             styles,
             width,
@@ -237,7 +242,7 @@ def render_pdf(review: dict) -> bytes:
         [_p("Nr.", styles["table_bold"]), _p("Vollständiger Name", styles["table_bold"])]
     ]
     residents.extend(
-        [[_p(str(index), styles["table"]), _p(name, styles["table"])]]
+        [_p(str(index), styles["table"]), _p(name, styles["table"])]
         for index, name in enumerate(data["residents"], 1)
     )
     residents_table = Table(
@@ -263,33 +268,33 @@ def render_pdf(review: dict) -> bytes:
         [
             residents_table,
             Spacer(1, 10),
-            _section("Ausstellung", styles, width),
-            Spacer(1, 4),
-            _facts(
-                [
-                    ("Ausstellungsdatum", data["issue_date"]),
-                    ("Ausstellende Person", data["issuer_name"]),
-                    (
-                        "Rolle",
-                        "Wohnungsgeber"
-                        if data["issuer_role"] == "housing_provider"
-                        else "beauftragte Person",
-                    ),
-                ],
-                styles,
-                width,
-            ),
-            Spacer(1, 13),
             KeepTogether(
                 [
+                    _section("Ausstellung", styles, width),
+                    Spacer(1, 4),
+                    _facts(
+                        [
+                            ("Ausstellungsdatum", display_date(data["issue_date"])),
+                            ("Ausstellende Person", data["issuer_name"]),
+                            (
+                                "Rolle",
+                                "Wohnungsgeber"
+                                if data["issuer_role"] == "housing_provider"
+                                else "beauftragte Person",
+                            ),
+                        ],
+                        styles,
+                        width,
+                    ),
+                    Spacer(1, 13),
                     _p(
                         "Ort: ________________________________    "
-                        f"Datum: {escape(data['issue_date'])}",
+                        f"Datum: {display_date(data['issue_date'])}",
                         styles["body"],
                     ),
                     Spacer(1, 16),
                     Table(
-                        [[_p("________________________________________<br/>Tatsächliche Unterschrift", styles["signature"])]],
+                        [[Paragraph("________________________________________<br/>Tatsächliche Unterschrift", styles["signature"])]],
                         colWidths=[85 * mm],
                         hAlign="LEFT",
                     ),

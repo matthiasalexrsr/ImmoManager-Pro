@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-from contextlib import contextmanager, nullcontext
+from contextlib import ExitStack, contextmanager
 from copy import deepcopy
 from datetime import datetime, timezone
 from heapq import nlargest
@@ -48,8 +48,8 @@ from .portfolio_scope import (
     scope_from_user,
 )
 from .tenancy_workflow import decode_cursor, encode_cursor
-from .tenant_privacy import PrivacyConflict, _memory_privacy_lock
-from .tenant_privacy_fence import lock_subject_write_fence
+from .tenant_privacy import PrivacyConflict
+from .tenant_privacy_fence import lock_subject_write_fence, memory_account_fence
 
 DOC_TYPE = "housing_confirmation"
 VIRTUAL_PREFIX = "housing-confirmations/"
@@ -105,9 +105,22 @@ class Work:
 
 
 @contextmanager
+def _account_fence(store, *, sqlite_staged=False):
+    try:
+        with memory_account_fence(store, sqlite_staged=sqlite_staged):
+            yield
+    except PrivacyConflict as error:
+        raise HTTPException(409, str(error)) from None
+
+
+@contextmanager
 def work(store, actor_id: str, *, write: bool = False):
     sql = hasattr(store, "db")
-    with nullcontext() if sql else _memory_privacy_lock():
+    # SQLite must acquire its writer before Memory account management. Keep
+    # the account fence outside the real commit, including its rollback path.
+    # PostgreSQL SQL accounts are fenced by the parent lock in _parents.
+    with ExitStack() as fences:
+        fences.enter_context(_account_fence(store))
         user, captured = _identity(actor_id, write=write)
         with scope_context(captured):
             if sql:
@@ -128,6 +141,8 @@ def work(store, actor_id: str, *, write: bool = False):
             try:
                 if db is not None and write:
                     begin_writer(db)
+                    fences.enter_context(_account_fence(active, sqlite_staged=True))
+                    refresh_scope(captured)
                 yield unit
                 refresh_scope(captured)
                 if db is not None and write:
