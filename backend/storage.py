@@ -415,6 +415,7 @@ class InMemoryStore:
     def list_properties(self) -> List[Property]:
         return list(self.properties.values())
 
+    @_payment_mutation
     def create_property(self, data: PropertyCreate) -> Property:
         if data.portfolio_id not in self.portfolios:
             raise ValidationError("Portfolio existiert nicht")
@@ -484,6 +485,7 @@ class InMemoryStore:
     def list_units(self) -> List[Unit]:
         return list(self.units.values())
 
+    @_payment_mutation
     def create_unit(self, data: UnitCreate) -> Unit:
         if data.property_id not in self.properties:
             raise ValidationError("Immobilie existiert nicht")
@@ -844,6 +846,7 @@ class InMemoryStore:
     def list_documents(self) -> List[Document]:
         return list(self.documents.values())
 
+    @_payment_mutation
     def create_document(self, data: DocumentCreate) -> Document:
         if data.property_id and data.property_id not in self.properties:
             raise ValidationError("Immobilie existiert nicht")
@@ -1672,6 +1675,7 @@ class InMemoryStore:
     def list_handover_protocols(self) -> List[HandoverProtocol]:
         return list(self.handover_protocols.values())
 
+    @_payment_mutation
     def create_handover_protocol(self, data: HandoverProtocolCreate) -> HandoverProtocol:
         if data.contract_id not in self.contracts:
             raise ValidationError("Vertrag nicht gefunden")
@@ -1868,6 +1872,7 @@ class InMemoryStore:
     def list_meters(self) -> List[Meter]:
         return list(self.meters.values())
 
+    @_payment_mutation
     def create_meter(self, data: MeterCreate) -> Meter:
         meter = Meter(id=_generate_id(), **data.model_dump())
         self.meters[meter.id] = meter

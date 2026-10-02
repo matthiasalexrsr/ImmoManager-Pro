@@ -68,6 +68,7 @@ from .routers import (
     units,
     updates,
     viewings,
+    workflow_references,
 )
 
 
@@ -107,6 +108,7 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(documents.router, dependencies=_auth_dep)
     api_v1.include_router(document_versions.router, dependencies=_auth_dep)
     api_v1.include_router(tasks.router, dependencies=_auth_dep)
+    api_v1.include_router(workflow_references.router, dependencies=_auth_dep)
     api_v1.include_router(calendar.router, dependencies=_auth_dep)
     api_v1.include_router(listings.router, dependencies=_auth_dep)
     api_v1.include_router(categories.router, dependencies=_auth_dep)

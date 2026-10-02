@@ -1,30 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from fastapi.routing import APIRoute
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 
-from ..auth import decode_token, require_role, security
+from ..auth import require_role
+from ..services.checked_publication import CheckedPublicationRoute
 from ..services.integrations.manager import integration_manager
-from ..services.portfolio_scope import current_scope, refresh_scope, require_installation_scope
-
-
-class _PrivateIntegrationRoute(APIRoute):
-    def get_route_handler(self):
-        handler = super().get_route_handler()
-
-        async def guarded(request: Request) -> Response:
-            captured = current_scope()
-            response = await handler(request)
-            # Check before Starlette starts sending the response. Raising from
-            # a send wrapper would be too late to return a clean denial.
-            if captured is None:
-                raise HTTPException(403, "Installationsverwaltung erforderlich")
-            refresh_scope(captured)
-            credentials = await security(request)
-            if credentials is None or decode_token(credentials.credentials).type != "access":
-                raise HTTPException(401, "Authentifizierung erforderlich")
-            return response
-
-        return guarded
+from ..services.portfolio_scope import require_installation_scope
 
 
 def _require_integration_administration(
@@ -40,7 +20,7 @@ def _require_integration_administration(
 
 
 router = APIRouter(prefix="/integrations", tags=["Integrationen"],
-                   route_class=_PrivateIntegrationRoute,
+                   route_class=CheckedPublicationRoute,
                    dependencies=[Depends(_require_integration_administration)])
 
 
