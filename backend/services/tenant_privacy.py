@@ -39,9 +39,10 @@ def _memory_copy(store):
 
 
 def _memory_state(value):
+    from ..db.contract_correspondence_models import CORRESPONDENCE_MODELS
     from ..db.contract_wizard_models import WIZARD_MODELS
     from ..db.document_version_models import DOCUMENT_VERSION_MODELS
-    if isinstance(value, (*WIZARD_MODELS, *DOCUMENT_VERSION_MODELS, *LIFECYCLE_MODELS)):
+    if isinstance(value, (*WIZARD_MODELS, *DOCUMENT_VERSION_MODELS, *LIFECYCLE_MODELS, *CORRESPONDENCE_MODELS)):
         return {column.name: _memory_state(getattr(value, column.name)) for column in value.__table__.columns}
     if isinstance(value, dict):
         return {key: _memory_state(item) for key, item in value.items()}
@@ -118,6 +119,8 @@ def _scoped_graph(store, tenant_id):
     graph = append_document_versions(snapshot, graph)
     from .tenant_lifecycle_graph import append_lifecycle_graph
     graph = append_lifecycle_graph(snapshot, graph)
+    from .tenant_correspondence_graph import append_correspondence_graph
+    graph = append_correspondence_graph(snapshot, graph)
     graph["scope"]["private_form_drafts"] = private_draft_retention(snapshot, tenant_id)
     return graph
 
@@ -231,11 +234,12 @@ def prepare_tenant_export(active_store, tenant_id: str, *, parent=None):
 def _plan(graph: dict) -> dict:
     active_contracts = sum(contract["status"] == "active" for contract in graph["contracts"])
     retained = {name: len(rows) for name, rows in graph.items() if isinstance(rows, list)}
+    from .tenant_correspondence_graph import PERSONAL_FIELDS as CORRESPONDENCE_FIELDS
     from .tenant_document_versions import PERSONAL_FIELDS as DOCUMENT_FIELDS
     from .tenant_lifecycle_graph import PERSONAL_FIELDS as LIFECYCLE_FIELDS
     from .tenant_wizard_graph import PERSONAL_FIELDS
     wizard_retained = {name: {"count": len(graph.get(name, [])), "personal_fields": fields}
-                       for name, fields in (PERSONAL_FIELDS | DOCUMENT_FIELDS | LIFECYCLE_FIELDS).items() if graph.get(name)}
+                       for name, fields in (PERSONAL_FIELDS | DOCUMENT_FIELDS | LIFECYCLE_FIELDS | CORRESPONDENCE_FIELDS).items() if graph.get(name)}
     private = graph["scope"]["private_form_drafts"]
     if private["count"]:
         wizard_retained["private_form_drafts"] = {"count": private["count"],
@@ -244,6 +248,10 @@ def _plan(graph: dict) -> dict:
     if lifecycle_private["count"]:
         wizard_retained["private_lifecycle_drafts"] = {"count": lifecycle_private["count"],
             "personal_fields": ["private pre-confirmation contract work"], "contents_exported": False}
+    correspondence_private = graph["scope"]["private_correspondence_drafts"]
+    if correspondence_private["count"]:
+        wizard_retained["private_correspondence_drafts"] = {"count": correspondence_private["count"],
+            "personal_fields": ["private recipients, letter text and reviewed source snapshots"], "contents_exported": False}
     return {
         "tenant_id": graph["tenant"]["id"],
         "plan_hash": _graph_hash(graph),
@@ -260,13 +268,20 @@ def _plan(graph: dict) -> dict:
                 + (" Auch gespeicherte Vertragsentwürfe, frühere Prüfsnapshots/Vorgangsergebnisse, "
                    "Vorlagentexte, Unterzeichner und archivierte PDF-/Anlageninhalte enthalten weiterhin "
                    "Personenangaben. Sie werden durch diese Stammdaten-Aktion nicht anonymisiert."
-                   if any(name not in {"private_form_drafts", "private_lifecycle_drafts"} for name in wizard_retained) else "")
+                   if any(name not in {"private_form_drafts", "private_lifecycle_drafts", "private_correspondence_drafts"} for name in wizard_retained) else "")
                 + (" Private Stammdaten-Formularentwürfe anderer Benutzer bleiben verschlüsselt erhalten. "
                    "Sie sind nicht Teil dieses Beziehungsexports und müssen vom jeweiligen Benutzer geprüft/verworfen werden."
-                   if private["count"] else ""),
+                   if private["count"] else "")
+                + (" Freigegebene Korrespondenz und manuelle Versand-/Empfangsnotizen behalten ihre ursprünglichen "
+                   "Empfänger, Namen und Originalinhalte. Auch private offene Schreiben bleiben erhalten; ihre Inhalte "
+                   "werden in dieser Auskunft nicht ausgegeben. Eine automatische Zustellung wird nicht behauptet."
+                   if correspondence_private["count"] or graph["contract_correspondence_drafts"] else ""),
         "lifecycle_note": "Bestätigte Vertragsvorgänge mit Gründen, früheren Prüfsnapshots und Freigabeergebnissen "
                           "bleiben unverändert erhalten. Private offene Vertragsentwürfe werden nur gezählt; "
                           "ihre Inhalte und frühere private Bearbeitungsergebnisse werden nicht ausgegeben.",
+        "correspondence_note": "Freigegebene Schreiben, ursprüngliche Empfänger-/Quellnamen, archivierte Originale und "
+                               "manuelle Beobachtungsbelege bleiben unverändert erhalten. Private offene Schreiben "
+                               "anderer Benutzer werden nur gezählt; frühere private Bearbeitungsantworten werden nicht ausgegeben.",
     }
 
 
@@ -279,6 +294,8 @@ def preview_tenant_anonymization(active_store, tenant_id: str) -> dict:
         require_document_scope(snapshot, tenant_id)
         from .tenant_lifecycle_graph import require_complete_subject_scope as require_lifecycle_scope
         require_lifecycle_scope(snapshot, tenant_id)
+        from .tenant_correspondence_graph import require_complete_subject_scope as require_correspondence_scope
+        require_correspondence_scope(snapshot, tenant_id)
         return _plan(graph)
 
 
@@ -318,6 +335,8 @@ def anonymize_tenant_profile(active_store, tenant_id: str, *, plan_hash: str,
         require_document_scope(staged, tenant_id)
         from .tenant_lifecycle_graph import require_complete_subject_scope as require_lifecycle_scope
         require_lifecycle_scope(staged, tenant_id)
+        from .tenant_correspondence_graph import require_complete_subject_scope as require_correspondence_scope
+        require_correspondence_scope(staged, tenant_id)
         lock_subject_journals(staged, tenant_id)
         graph = _scoped_graph(staged, tenant_id)
         plan = _plan(graph)
@@ -340,4 +359,5 @@ def anonymize_tenant_profile(active_store, tenant_id: str, *, plan_hash: str,
                 "anonymized_fields": list(PROFILE_FIELDS),
                 "retained_collections": plan["retained_collections"],
                 "retained_personal_evidence": plan["retained_personal_evidence"],
-                "scope": plan["scope"], "note": plan["note"], "lifecycle_note": plan["lifecycle_note"]}
+                "scope": plan["scope"], "note": plan["note"], "lifecycle_note": plan["lifecycle_note"],
+                "correspondence_note": plan["correspondence_note"]}

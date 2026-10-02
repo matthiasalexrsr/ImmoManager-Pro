@@ -85,6 +85,7 @@ jobs:
           backend/db/contract_correspondence_models.py backend/services/contract_correspondence.py
           backend/services/contract_correspondence_types.py backend/services/contract_correspondence_render.py
           backend/services/contract_correspondence_validation.py backend/routers/contract_correspondence.py
+          backend/services/tenant_correspondence_graph.py backend/services/correspondence_calendar.py
           backend/invoice_schema_upgrade.py backend/credit_schema_upgrade.py
           backend/db/sqlite_table_preservation.py
           backend/services/recovery_sessions.py scripts/restore_session_security.py

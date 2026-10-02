@@ -1,6 +1,7 @@
 """Actual encrypted full archive, source gone and before-security hook proof."""
 
 import hashlib
+import json
 import shutil
 import sqlite3
 import time
@@ -18,6 +19,8 @@ from backend.services import recovery_sessions
 from backend.services.contract_correspondence_types import ApproveLetter, CreateLetter, ManualEvent, RevisionCommand
 from backend.services.contract_correspondence_validation import validate_correspondence_journal
 from backend.services.full_recovery import create_full_backup, restore_full_backup
+from backend.services.portfolio_scope import scope_context, scope_from_user
+from backend.services.tenant_privacy import prepare_tenant_export
 from backend.tests.test_contract_correspondence import data
 from backend.tests.test_full_recovery import PASSPHRASE
 from backend.tests.test_full_recovery import plan as plan
@@ -58,9 +61,25 @@ def journal(path):
             "contract_correspondence_drafts", "contract_correspondence_commands", "contract_correspondence_events"))
 
 
+def tenant_evidence(image, tenant_id, actor_id, parent):
+    engine = create_engine("sqlite:///" + image.as_posix())
+    try:
+        with Session(engine) as db, scope_context(scope_from_user(auth.get_user_by_id(actor_id))):
+            compiled, _ = prepare_tenant_export(SQLAlchemyStore(db), tenant_id, parent=parent)
+            try:
+                raw = compiled.path.read_bytes()
+                assert hashlib.sha256(raw).hexdigest() == compiled.manifest["sha256"]
+                return json.loads(raw)
+            finally:
+                compiled.close()
+    finally:
+        engine.dispose()
+
+
 def test_actual_encrypted_archive_source_gone_keeps_exact_local_letter_and_manual_observation(plan, tmp_path, monkeypatch):
     row, sent, actor_id, pdf = seed(plan, monkeypatch)
     before = journal(plan.database)
+    privacy_before = tenant_evidence(plan.database, row["tenant_id"], actor_id, tmp_path)
     archive = tmp_path / "complete-correspondence.immobak"
     create_full_backup(plan, archive, PASSPHRASE, offline=True)
     assert b"Synthetic manual observation" not in archive.read_bytes()
@@ -73,6 +92,12 @@ def test_actual_encrypted_archive_source_gone_keeps_exact_local_letter_and_manua
     restore_full_backup(archive, target, PASSPHRASE)
     image = target / "database.sqlite3"
     assert journal(image) == before
+    privacy_after = tenant_evidence(image, row["tenant_id"], actor_id, tmp_path)
+    # The new export intentionally records its own creation time.
+    assert {key: value for key, value in privacy_after.items() if key != "exported_at"} == {
+        key: value for key, value in privacy_before.items() if key != "exported_at"}
+    assert privacy_after["schema_version"] == "tenant-data-graph/6"
+    assert privacy_after["contract_correspondence_events"][0]["id"] == sent["event"]["id"]
     engine = create_engine("sqlite:///" + image.as_posix())
     try:
         with Session(engine) as db:

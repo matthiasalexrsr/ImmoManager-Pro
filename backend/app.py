@@ -153,6 +153,7 @@ async def lifespan(app: FastAPI):
         interval_seconds=settings.operational_scheduler_interval_seconds,
         max_items=settings.operational_scheduler_max_items,
         lookback_days=settings.operational_scheduler_lookback_days,
+        actor_id=settings.operational_scheduler_actor_id,
     )
     scheduler.start()
     cleanup_task = asyncio.create_task(_periodic_auth_cleanup())
