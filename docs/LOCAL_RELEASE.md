@@ -46,6 +46,52 @@ Sie prüft sichtbare Oberflächenaktionen und die gespeicherten API-Ergebnisse:
 
 ## Prüfergebnisse
 
+CI #123 (`4e36b07`) ist abgeschlossen. Jeder der vier Memory-/SQLite-Läufe
+unter Python 3.11/3.12 bestand 3.300 Fälle und übersprang 149 ausdrücklich;
+vier Tests scheiterten je Lauf: zwei ältere Migrationsprüfungen erwarteten
+weiter den bisherigen x1-Head, und die neue Capture-Handler-Prüfung setzte
+ungewollt einen von vorherigen Tests abhängigen INFO-Loglevel voraus. Der
+Nachtrag prüft den tatsächlichen eindeutigen Alembic-Head und aktiviert den
+getesteten Ereignislogger ausdrücklich, auch bei WARNING am Rootlogger.
+32 gemeinsame tatsächliche Migrations-/Betriebsmetrikenfälle bestanden.
+
+Das gesamte Frontend, beide verpflichtenden nativen Linux-OCR-Gruppen und der
+private PostgreSQL-Serverlebenszyklus bestanden. PostgreSQL-Dokumentversionen,
+unabhängige Writer und deren Recovery bestanden ebenfalls; zwei Kalenderfälle
+scheiterten vor Ausführung ihrer eigentlichen Prüfung, weil die ausgewählten
+Portfolios gegen den globalen Entwicklungsbestand geprüft wurden. Beide
+Testaufbauten binden nun den tatsächlichen eigenen SQLStore. Dies wird weiterhin
+durch die nächste echte PostgreSQL-CI nachgewiesen, nicht durch einen lokalen Skip.
+
+Linux Chromium bestand 59 Abläufe, einschließlich aller drei neuen
+Mehrfachsitzungsfälle. Ein Datenschutzfall erwartete noch den alten Exporttext
+ohne Dokumentversionen. Die ausdrückliche neue Umfangsprüfung plus leere
+Version-/Originalbestände bestand danach in einem echten frischen SQLite-/Edge-Lauf.
+Der allgemeine Compose-Smoke wurde wegen der Backendfehler übersprungen;
+Gesamtfreigabe bleibt ausstehend.
+
+Der Vertrags-Datumsfilter besitzt keine frühere 10.000-Zeilen-Gesamtgrenze mehr.
+SQL filtert Scope, Stammdaten und Daten vor OFFSET/LIMIT; Memory wählt nur die
+angeforderte Seite unter dem vorhandenen reentranten Fachlock aus. Der
+Baseline-Bestand mit 10.002 synthetischen Verträgen reproduzierte die fehlenden
+Treffer; parallele Memory-Löschung beziehungsweise Portfolioänderung
+reproduzierte den fehlenden Leselock. Beide Nachträge sind integriert. Root
+bestand 21 gemeinsame Datumsfilter-/Kalenderfälle mit drei ausdrücklichen
+Adapter-/PostgreSQL-Skips sowie Ruff und die CI-Typprüfung mit 113 Quellen für
+Linux/Python 3.11 und Windows/Python 3.12. Details:
+[Vertrags-Datumsfilter](CONTRACT_DATE_FILTER.md).
+
+Die lokale Vorschau wurde nach einer neuen ownergeschützten bytegenauen Kopie
+aller acht vorhandenen Dateien aktualisiert. 79 bestehende Geschäftstabellen
+behalten ihre bisherigen Spaltenwerte vollständig; SQLite-Integrität und FKs
+sowie unveränderte Installationsschlüssel sind geprüft. Fehlende frühere
+Demo-Originale bleiben ausdrücklich ungelöst und wurden nicht erfunden.
+Die neue dauerhafte private Windows-OCR-Installation in
+`Documents\ImmoManagerPro\tools\ocr-2026-10-release123` bestand eine erneute
+echte PNG-/Raster-PDF-/Sprach-/Versionsprüfung. Alle sechs Werkzeugwerte sind
+dauerhaft in der privaten Datenkonfiguration gespeichert. Tatsächliche Demo-
+Anmeldung, Kalender, Dokumenthistorie und Betriebsmetriken antworteten HTTP 200.
+
 Der aktuelle gemeinsame Dokument-/Kalender-/Sitzungsstand bestand lokal 829
 Frontendfälle in 67 Dateien mit zwei Testworkern, ESLint und Ruff. Die vollständige
 CI-Typprüfung mit Mypy 2.4.0 bestand mit 112 Quelldateien sowohl für

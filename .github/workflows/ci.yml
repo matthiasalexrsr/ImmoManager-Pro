@@ -91,7 +91,7 @@ jobs:
           backend/services/bank_import_download.py backend/db/contract_wizard_models.py
           backend/services/contract_wizard.py backend/services/contract_wizard_types.py
           backend/services/contract_occupancy.py backend/services/contract_attachment.py backend/routers/contract_wizard.py
-          backend/services/account_balances.py backend/routers/accounts.py
+          backend/services/account_balances.py backend/routers/accounts.py backend/services/contract_list.py
           backend/services/bank_matching.py backend/routers/bank_matching.py
           backend/services/payment_history.py backend/form_draft_models.py backend/db/form_draft_models.py
           backend/services/form_draft_crypto.py backend/services/form_drafts.py backend/routers/form_drafts.py

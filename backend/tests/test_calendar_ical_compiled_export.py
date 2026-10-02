@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import io
+from contextlib import nullcontext
 from datetime import date, datetime
 from pathlib import Path
 from threading import Event, Thread
@@ -9,7 +11,7 @@ import pytest
 from sqlalchemy import insert, select, update
 from starlette.requests import ClientDisconnect
 
-from backend import auth
+from backend import auth, dependencies
 from backend.db.orm_models import CalendarEventORM, PropertyORM, UnitORM
 from backend.models import (
     CalendarEvent,
@@ -359,6 +361,9 @@ def test_postgresql_repeatable_read_calendar_snapshot(postgres_database, monkeyp
 
     with factory() as db:
         store = SQLAlchemyStore(db)
+        # Selected grants must resolve against this actual test database, not
+        # the process-global development store used by unrelated tests.
+        monkeypatch.setattr(dependencies, "store", store)
         with scope_context(None):
             portfolio = store.create_portfolio(
                 PortfolioCreate(name="Synthetic PG calendar", timezone="UTC")
@@ -650,6 +655,7 @@ def test_postgresql_scope_move_between_body_blocks_is_blocked(
 
     with factory() as db:
         store = SQLAlchemyStore(db)
+        monkeypatch.setattr(dependencies, "store", store)
         with scope_context(None):
             own = store.create_portfolio(
                 PortfolioCreate(name="PG own", timezone="UTC")
@@ -755,3 +761,77 @@ def test_postgresql_scope_move_between_body_blocks_is_blocked(
         assert body_messages[0][2] is True
 
     assert list(tmp_path.iterdir()) == []
+
+
+def test_before_chunk_failure_prevents_next_private_file_read(monkeypatch):
+    block = 1024 * 1024
+
+    class TrackingPath:
+        def __init__(self):
+            self.read_sizes = []
+
+        def open(self, mode):
+            assert mode == "rb"
+            owner = self
+
+            class Source:
+                def __enter__(self):
+                    self.handle = io.BytesIO(b"A" * (block * 2))
+                    return self
+
+                def __exit__(self, *_args):
+                    self.handle.close()
+
+                def read(self, size):
+                    owner.read_sizes.append(size)
+                    return self.handle.read(size)
+
+            return Source()
+
+    class Compiled:
+        def __init__(self):
+            self.path = TrackingPath()
+            self.manifest = {"size": block * 2}
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    class Helpers:
+        @staticmethod
+        def scope_context(_captured):
+            return nullcontext()
+
+        @staticmethod
+        def refresh_scope(_captured):
+            return None
+
+    compiled = Compiled()
+    monkeypatch.setattr(datev.service, "scope_helpers", lambda: Helpers)
+
+    guard_calls = []
+
+    def before_chunk(start, end):
+        guard_calls.append((start, end))
+        if start:
+            from fastapi import HTTPException
+
+            raise HTTPException(403, "Synthetic relationship move")
+
+    async def consume():
+        chunks = []
+        with pytest.raises(Exception) as error:
+            async for chunk in datev.download_chunks(
+                compiled,
+                object(),
+                before_chunk=before_chunk,
+            ):
+                chunks.append(chunk)
+        assert getattr(error.value, "status_code", None) == 403
+        return chunks
+
+    chunks = anyio.run(consume)
+    assert [len(chunk) for chunk in chunks] == [block]
+    assert guard_calls == [(0, block), (block, block * 2)]
+    assert compiled.path.read_sizes == [block]
+    assert compiled.closed is True

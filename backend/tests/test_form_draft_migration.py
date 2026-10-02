@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
 
 
@@ -15,6 +16,7 @@ def test_full_chain_empty_down_up_and_saved_draft_guard(tmp_path, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", url)
     config = Config(str(root / "alembic.ini"))
     config.set_main_option("script_location", str(root / "backend/db/migrations"))
+    expected_head = ScriptDirectory.from_config(config).get_current_head()
     command.upgrade(config, "head")
     engine = create_engine(url, hide_parameters=True)
     assert "form_drafts" in inspect(engine).get_table_names()
@@ -29,7 +31,7 @@ def test_full_chain_empty_down_up_and_saved_draft_guard(tmp_path, monkeypatch):
     assert inspect(engine).get_table_names() == before
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT payload FROM form_drafts")) == "retained original evidence"
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "x1a2b3c4d5e6"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == expected_head
     engine.dispose()
 
 
@@ -40,6 +42,7 @@ def test_head_adopts_additive_runtime_draft_table_without_recreating_or_losing_r
     monkeypatch.setenv("DATABASE_URL", url)
     config = Config(str(root / "alembic.ini"))
     config.set_main_option("script_location", str(root / "backend/db/migrations"))
+    expected_head = ScriptDirectory.from_config(config).get_current_head()
     command.upgrade(config, "w1a2b3c4d5e6")
     engine = create_engine(url, hide_parameters=True)
     try:
@@ -50,6 +53,6 @@ def test_head_adopts_additive_runtime_draft_table_without_recreating_or_losing_r
         command.upgrade(config, "head")
         with engine.connect() as connection:
             assert connection.scalar(text("SELECT payload FROM form_drafts")) == "retained opaque cipher"
-            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "x1a2b3c4d5e6"
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == expected_head
     finally:
         engine.dispose()

@@ -347,6 +347,10 @@ def test_manual_tick_keeps_request_context_without_root_handler_filters(installa
     # Alembic or an embedding application can replace root handlers. The
     # operational event still needs its real request context at creation.
     monkeypatch.setattr(logging.getLogger(), "handlers", [Capture()])
+    # Alembic can leave root at WARNING. Explicitly enable the event under test
+    # without depending on the levels left by earlier migration tests.
+    monkeypatch.setattr(logging.getLogger(), "level", logging.WARNING)
+    monkeypatch.setattr(logging.getLogger("backend.services.operational_metrics"), "level", logging.INFO)
     response = installation.client.post("/api/v1/tasks/operational-tick",
                                        headers=installation.headers["eigentuemer"], json={})
     assert response.status_code == 200, response.text

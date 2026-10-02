@@ -47,13 +47,15 @@ existing DATEV/tenant users leave both optional callbacks unset.
 
 For body transfer, calendar keeps one sequential cursor open on the protected range
 index. Before each private 1 MiB block it checks only event IDs whose serialized byte
-ranges overlap that block. An event spanning a block boundary remains as one active
-record and is rechecked before the following block. Index records are never rescanned
-from the beginning, so transfer validation is O(number of exported events), not O(events
-× body blocks). A source/grant change after headers therefore terminates the response
-before affected subsequent bytes; the declared `Content-Length` is not completed and no
-final successful body frame is emitted. Disconnects and all guard failures close/remove
-only the owned private workspace.
+ranges overlap that block. The guard runs before the corresponding private-file
+`read()`; a failed second-block guard therefore does not load that block into the send
+buffer. An event spanning a block boundary remains as one active record and is rechecked
+before the following block. Index records are never rescanned from the beginning, so
+transfer validation is O(number of exported events), not O(events × body blocks). A
+source/grant change after headers therefore terminates the response before affected
+subsequent bytes; the declared `Content-Length` is not completed and no final successful
+body frame is emitted. Disconnects and all guard failures close/remove only the owned
+private workspace.
 
 Late validation errors (for example an invalid time on the last event) delete the private
 workspace and occur before successful response headers. The response includes

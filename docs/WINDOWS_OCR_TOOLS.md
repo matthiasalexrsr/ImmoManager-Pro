@@ -43,6 +43,18 @@ still useful for long paths. No existing target is ever repaired, deleted or
 overwritten. A failed attempt retains its own incomplete directory without a
 success manifest; choose a new target for the next attempt.
 
+The packaged Windows desktop host can redirect a literal LocalAppData path to
+its longer package-local cache directory. In the observed deployment, an
+installation there failed during native fontconfig extraction with a missing
+cache file, before any success manifest was written. The supplied path alone
+therefore does not prove that the effective native extraction path is short.
+Use an explicit short ASCII `--staging-parent` outside that redirected location;
+if necessary, choose a new final target under an owner-controlled Documents
+directory. Keep the failed attempt for diagnosis and require `verify` at the
+actual final target before activation. This is an observed host/path issue,
+not a restriction on all LocalAppData or Unicode destinations. The command does
+not alter redirection, the system locale or existing installations.
+
 Read-only `preflight` checks every archive's size and SHA-256 before any target is
 created. Installation repeats these checks after copying to its own protected
 cache. It uses `--offline --no-rc --no-env --always-copy --no-shortcuts
