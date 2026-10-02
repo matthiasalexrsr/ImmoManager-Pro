@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "commit_sha": "f3203d5871d5ef86dd4f325923653326b6025acf",
+  "tree_sha": "e74ddb81ff2fc670c13a33112b7f9873e2d72bb5",
+  "workflow_run_id": 36975181980,
+  "workflow_run_number": 125,
+  "workflow_url": "https://github.com/matthiasalexrsr/ImmoManager-Pro/actions/runs/36975181980",
+  "overall_conclusion": "failure",
+  "evidence": "terminal job statuses and decoded actual job logs",
+  "jobs": [
+    {
+      "job_id": 110737348180,
+      "name": "Browser workflows (Chromium + SQLite)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "job_id": 110737348357,
+      "name": "Required native OCR (Linux Poppler + Tesseract deu/eng)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "job_id": 110737348361,
+      "name": "Backend memory (py3.12)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "job_id": 110737348365,
+      "name": "Backend sql (py3.12)",
+      "status": "completed",
+      "conclusion": "failure"
+    },
+    {
+      "job_id": 110737348384,
+      "name": "PostgreSQL independent sessions and processes",
+      "status": "completed",
+      "conclusion": "failure"
+    },
+    {
+      "job_id": 110737348411,
+      "name": "Private PostgreSQL server lifecycle",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "job_id": 110737348434,
+      "name": "Frontend lint + build",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "job_id": 110737348450,
+      "name": "Backend memory (py3.11)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "job_id": 110737348530,
+      "name": "Backend sql (py3.11)",
+      "status": "completed",
+      "conclusion": "failure"
+    },
+    {
+      "job_id": 110742914316,
+      "name": "Deployment readiness",
+      "status": "completed",
+      "conclusion": "failure"
+    },
+    {
+      "job_id": 110742915505,
+      "name": "E2E smoke (docker-compose)",
+      "status": "completed",
+      "conclusion": "skipped"
+    }
+  ],
+  "executed_results": {
+    "frontend": {
+      "passed": 865,
+      "files": 69,
+      "lint": "success",
+      "build": "success",
+      "dependency_audit": "success"
+    },
+    "browser": {
+      "management_passed": 64,
+      "fresh_owner_totp_passed": 2
+    },
+    "backend_memory_each_python": {
+      "versions": [
+        "3.11",
+        "3.12"
+      ],
+      "passed": 3492,
+      "skipped": 173,
+      "coverage_percent": 90
+    },
+    "backend_sql_each_python": {
+      "versions": [
+        "3.11",
+        "3.12"
+      ],
+      "passed": 3491,
+      "skipped": 173,
+      "failed": 1,
+      "coverage_percent": 90,
+      "failure": "backend/tests/test_crud_routers.py::TestProperties::test_update_property_not_found (400 instead of 404)"
+    },
+    "postgresql": {
+      "passed": 198,
+      "skipped": 1,
+      "failed": 1,
+      "new_contract_lifecycle_passed": 17,
+      "failure": "backend/tests/test_document_versions_postgres.py::test_pg_metadata_source_and_ancestor_retention (fixture migrates to y1; today's live Store expects lifecycle journal tables)"
+    },
+    "ocr_native_each_store": {
+      "stores": [
+        "memory",
+        "sql"
+      ],
+      "passed": 124,
+      "skipped": 0,
+      "deselected": 2
+    },
+    "private_postgresql_lifecycle": "success",
+    "general_compose_smoke": "skipped",
+    "deployment_readiness": "failure"
+  },
+  "scope": "This receipt proves only this exact published commit. Subsequent fixes and workspace/correspondence additions need their own complete CI."
+}

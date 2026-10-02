@@ -129,6 +129,34 @@ def test_deleted_lifecycle_subject_preserves_conditional_conflict_and_legacy_not
     assert all(row.id != record.id for row in getattr(edit_store, "list_" + collection)())
 
 
+@pytest.mark.parametrize("kind", ["property", "unit"])
+@pytest.mark.parametrize("operation", ["put", "patch"])
+def test_deleted_ancestor_preserves_form_conflict_and_recoverable_connection(edit_store, kind, operation):
+    portfolio = edit_store.create_portfolio(PortfolioCreate(name="Synthetic deleted ancestor"))
+    prop_data = PropertyCreate(portfolio_id=portfolio.id, name="Property", property_type="residential")
+    prop = edit_store.create_property(prop_data)
+    unit_data = UnitCreate(property_id=prop.id, label="A", unit_type="apartment")
+    unit = edit_store.create_unit(unit_data)
+    record, original, patch, collection = {
+        "property": (prop, prop_data, PropertyPatch(name="Local draft"), "properties"),
+        "unit": (unit, unit_data, UnitPatch(label="Local draft"), "units"),
+    }[kind]
+    edit_store.delete_portfolio(portfolio.id)
+
+    def save_form():
+        if operation == "put":
+            return getattr(edit_store, "update_" + kind)(record.id, original)
+        return edit_store._patch_entity(kind, record.id, patch)
+
+    with revision_scope(revision(record, collection)), pytest.raises(HTTPException) as failure:
+        save_form()
+    assert failure.value.status_code == 412
+    with pytest.raises(NotFoundError):
+        save_form()
+    assert not edit_store.list_properties() and not edit_store.list_units()
+    assert edit_store.create_portfolio(PortfolioCreate(name="Next valid operation")).name == "Next valid operation"
+
+
 def test_revisions_are_bound_to_collection_and_id(edit_store):
     first = edit_store.create_portfolio(PortfolioCreate(name="First"))
     second = edit_store.create_portfolio(PortfolioCreate(name="Second"))

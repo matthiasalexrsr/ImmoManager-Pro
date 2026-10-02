@@ -62,12 +62,39 @@ Wizard-Abläufe bestanden ebenfalls. Das komplette Frontend bestand 865 Tests
 in 69 Dateien. Datenbank-, Reset-, Import- und Wiederherstellungsnachweise sowie
 der tatsächlich reproduzierte und behobene Dialogverlust beim Listenrefresh
 sind in [G06_RELEASE_VERIFICATION.md](G06_RELEASE_VERIFICATION.md) getrennt
-belegt. Die neue vollständige CI und unabhängige PostgreSQL-Prüfung müssen
-noch auf dem nächsten veröffentlichten Commit ausgeführt werden.
+belegt. CI #125 bestand die neuen 17 tatsächlichen PostgreSQL-G06-Fälle,
+64 Verwaltungs- und zwei Owner-/TOTP-Browserabläufe, OCR, Frontend und beide
+Memory-Gesamtprüfungen. Zwei SQL-/Testschemafehler verhinderten die Gesamtfreigabe;
+ihre Ursachen und terminalen Ergebnisse stehen in `release125-verification.json`.
+Die folgenden Korrekturen benötigen die neue vollständige CI.
 
 G06.2-Fristenautomation, Vorlagendokumente und Versandverfolgung sind weiterhin
-offen. Die Skalierung der Vertragsübersicht benötigt zusätzlich die laufende
-Workspace-Integration; diese Abnahme erklärt keinen Gesamtabschluss.
+offen. Die neue Vertragsübersicht verarbeitet den autorisierten Bestand jetzt
+serverseitig mit expliziten Folgeseiten, Unicode-Suche und begrenzten Referenz-
+Lookups. Im echten SQLite-/Edge-Ablauf wurden 106 über die normalen APIs
+angelegte Verträge über fünf Seiten vollständig gefunden, einschließlich
+Bearbeitung des letzten Vertrags und bewussten Abgleichs einer konkurrierenden
+Änderung. Das vereinte Frontend bestand 899 Tests in 70 Dateien; alle sieben
+ausgewählten Workspace-/Lifecycle-/Sitzungsbrowserfälle bestanden, auch bei
+320/360 Pixeln. Details: `CONTRACT_WORKSPACE_VERIFICATION.md`.
+
+Positive Seiten- und Suchbudgets sind ohne zusätzliche Produktobergrenze im
+lokalen und privaten Serverprofil einstellbar und werden in verschlüsselten
+Serversicherungen erhalten. Die echte Memory-Sperrenblockade zwischen einem
+Lifecycle-Schreibvorgang und Datenschutz-Snapshot ist behoben; die gemeinsame
+Lifecycle-/Datenschutz-/Reset-/Recovery-Auswahl bestand in beiden Speichern
+jeweils 163 Tests mit acht ausdrücklichen Skips.
+
+Die laufende lokale Vorschau besitzt einen historischen unversionierten
+SQLite-Bestand. Dessen vorhandene create-all-Tabellen erlauben keinen blinden
+Alembic-Erstlauf: Er trifft bereits auf vorhandene Tabellen. Release125 wurde
+deshalb über den unterstützten additiven normalen Start übernommen, nach
+vollständiger privater physischer Kopie und strenger Bewahrungsprüfung von
+81 vorhandenen Geschäftstabellen, Installationsschlüsseln und OCR-Einstellungen.
+Das leere z1-Journalpaar und alle vier Aufbewahrungswächter sind vorhanden.
+Die Alembic-Version wurde nicht geraten oder künstlich gestempelt. Frische
+Testinstallationen verwenden weiterhin die vollständige Alembic-Kette.
+Diese Abnahme erklärt keinen Gesamtabschluss.
 
 ### Vollständig bestandener veröffentlichter Stand
 

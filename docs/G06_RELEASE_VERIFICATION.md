@@ -1,9 +1,13 @@
 # Geprüfte Vertragsverlängerung und Kündigung
 
 Lokale gemeinsame Abnahme am 2. Oktober 2026. Grundlage ist der veröffentlichte
-und vollständig grüne Stand `82930ad`; die neue vollständige CI und die echten
-PostgreSQL-G06-Gates sind zusätzlich erforderlich und hier noch nicht als
-bestanden aufgeführt.
+und vollständig grüne Stand `82930ad`. CI #125 auf `f3203d5` bestand die 17
+neuen echten PostgreSQL-G06-Fälle sowie 64 Verwaltungs- und zwei Owner-/TOTP-
+Browserfälle. Dieser Lauf ist insgesamt fehlgeschlagen: SQL meldete bei einer
+fehlenden Immobilie 400 statt 404; eine ältere Dokument-PG-Testfixture war nur
+bis y1 migriert, obwohl der aktuelle Schreibpfad bereits das z1-Journal liest.
+Beide Ursachen sind im folgenden Workspace korrigiert. Die vollständige neue
+CI bleibt erforderlich. Terminale Belege: `release125-verification.json`.
 
 ## Nutzbarer Ablauf
 
@@ -84,13 +88,15 @@ fehlender Originale durch erfundene Dateien.
 
 ## Weiter offen
 
-Die neuen PostgreSQL-Dateien sind im CI-Service registriert; lokale Skips sind
-kein PostgreSQL-Nachweis. Der nächste veröffentlichte Commit benötigt seine
-vollständige gemeinsame CI.
+Die 17 neuen PostgreSQL-G06-Fälle bestanden tatsächlich in CI #125. Dessen
+vollständige Gesamtfreigabe fehlt; lokale Skips sind weiterhin kein Nachweis
+für zusätzliche PostgreSQL-Fälle. Der nächste veröffentlichte Commit benötigt
+seine vollständige gemeinsame CI.
 
 G06.2-Fristenautomation, Vorlagendokumente und Versandverfolgung bleiben offen.
-Die aktuelle Vertragsübersicht benötigt noch die parallele Workspace-/Lookup-
-Integration für große Bestände. Dieser Stand behauptet weder vollständige
+Die Vertragsübersicht und begrenzte Formular-Lookups sind inzwischen gemeinsam
+integriert; die Abnahme steht in `CONTRACT_WORKSPACE_VERIFICATION.md`.
+Dieser Stand behauptet weder vollständige
 Rechtswirksamkeit/automatischen Versand noch den Abschluss des historischen
 Funktionsinventars. WISO Steuer für Windows ist hier nicht installiert; ein
 echter Verbraucherimport bleibt extern zu prüfen.

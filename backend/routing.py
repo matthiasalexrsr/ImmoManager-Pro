@@ -24,6 +24,7 @@ from .routers import (
     contacts,
     contract_lifecycle,
     contract_wizard,
+    contract_workspace,
     contracts,
     dashboard,
     data_exchange,
@@ -91,6 +92,7 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(units.router, dependencies=_auth_dep)
     api_v1.include_router(tenants.router, dependencies=_auth_dep)
     api_v1.include_router(contract_lifecycle.router, dependencies=_auth_dep)
+    api_v1.include_router(contract_workspace.router, dependencies=_auth_dep)
     api_v1.include_router(contracts.router, dependencies=_auth_dep)
     api_v1.include_router(contract_wizard.router, dependencies=_auth_dep)
     api_v1.include_router(accounts.router, dependencies=_auth_dep)

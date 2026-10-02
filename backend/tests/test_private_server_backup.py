@@ -172,6 +172,28 @@ def test_encrypted_roundtrip_stops_writers_resumes_original_and_starts_after_bot
     assert "--exit-on-error" in restore_args[-1] and "--no-owner" in restore_args[-1] and "--no-privileges" in restore_args[-1]
 
 
+def test_large_contract_workspace_budgets_survive_encrypted_server_restore(installation):
+    configured = ENV + b"CONTRACT_WORKSPACE_PAGE_MAX_SIZE=6000\nCONTRACT_WORKSPACE_SEARCH_MAX_CHARS=12000\n"
+    installation[1].write_bytes(configured)
+    source, _, docker = save(installation)
+    assert configured not in source.read_bytes()
+    load(installation, source, docker)
+    restored = tool._parse_env((installation[0] / "restored.env").read_bytes())
+    assert restored["CONTRACT_WORKSPACE_PAGE_MAX_SIZE"] == "6000"
+    assert restored["CONTRACT_WORKSPACE_SEARCH_MAX_CHARS"] == "12000"
+
+
+@pytest.mark.parametrize("name", sorted(tool.CONTRACT_WORKSPACE_ENV_KEYS))
+@pytest.mark.parametrize("value", ["0", "-1", "1.5", "true", ""])
+def test_invalid_contract_workspace_budget_blocks_backup_before_docker(installation, name, value):
+    installation[1].write_bytes(ENV + f"{name}={value}\n".encode())
+    docker = DockerFixture()
+    with pytest.raises(tool.BackupError):
+        save(installation, docker)
+    assert not docker.instances
+    assert not (installation[0] / "complete.immoenc").exists()
+
+
 @pytest.mark.parametrize("stage", ["App anhalten", "Datenbank-Ruhezustand", "PostgreSQL-Sicherung", "PostgreSQL-Dumpprüfung", "Appdaten-Sicherung"])
 def test_every_offline_failure_resumes_previously_running_app_and_publishes_nothing(installation, stage):
     docker = DockerFixture()

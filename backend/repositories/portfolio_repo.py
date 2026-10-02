@@ -143,6 +143,10 @@ class PortfolioRepository:
 
     def update_property(self, property_id: str, data: PropertyCreate) -> Property:
         if not self._portfolios.exists(data.portfolio_id):
+            # A deleted ancestor also removes the edited subject. Preserve its
+            # conditional form conflict before reporting a proposed bad parent.
+            if not self._properties.exists(property_id):
+                self._properties._missing(property_id)
             raise ValidationError("Portfolio existiert nicht")
         result = self._properties.update(property_id, data)
         self._commit()
@@ -168,6 +172,8 @@ class PortfolioRepository:
 
     def update_unit(self, unit_id: str, data: UnitCreate) -> Unit:
         if not self._properties.exists(data.property_id):
+            if not self._units.exists(unit_id):
+                self._units._missing(unit_id)
             raise ValidationError("Immobilie existiert nicht")
         result = self._units.update(unit_id, data)
         self._commit()

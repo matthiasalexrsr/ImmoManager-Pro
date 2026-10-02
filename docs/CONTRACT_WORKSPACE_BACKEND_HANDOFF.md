@@ -91,13 +91,13 @@ und es gibt keine zusätzliche willkürliche 5000-Obergrenze. Bei zu langem
 Suchtext meldet HTTP 422 das konfigurierte Budget und die Möglichkeit eines
 kürzeren Teilstrings; gespeicherte Werte werden niemals abgeschnitten.
 
-## Notwendige Root-Hooks
+## Integrierte Root-Hooks
 
 1. In `backend/routing.py` neues `contract_workspace` importieren und
    `api_v1.include_router(contract_workspace.router, dependencies=_auth_dep)`
    **vor** `contracts.router` registrieren. Existierende Lifecycle-Routen
    bewahren. Der neue Router setzt bewusst keine zweite parallele Authschicht.
-2. In `backend/config.py` Settings ergänzen: `contract_workspace_page_max_size`
+2. In `backend/settings.py` Settings ergänzen: `contract_workspace_page_max_size`
    Standard 500 und `contract_workspace_search_max_chars` Standard 200,
    jeweils Integer mit `gt=0`, **ohne** künstliche `le`-Obergrenze.
    Env: `CONTRACT_WORKSPACE_PAGE_MAX_SIZE`, `CONTRACT_WORKSPACE_SEARCH_MAX_CHARS`.
@@ -110,9 +110,12 @@ kürzeren Teilstrings; gespeicherte Werte werden niemals abgeschnitten.
    Keine Migration, Model-/Session-/Schema-Registrierung oder UDF-Startup-
    Änderung erforderlich.
 
-Die HTTP-Regression bindet den neuen Router vorübergehend in das echte
-`build_api_v1` ein, einschließlich Auth-, Scope-, Session- und CAS-Middleware.
-Das ist ein Integrationstest und ersetzt den Root-Produktionshook nicht.
+Alle vier Hooks sind im gemeinsamen Workspace integriert. Die HTTP-Regression
+benutzt den unveränderten Produktionsrouter mit Auth-, Scope-, Session- und
+CAS-Middleware; der Test ergänzt keinen temporären Router. Die positiven
+Budgets werden auch im lokalen und privaten Serverprofil sowie dessen
+verschlüsselter vollständiger Sicherung erhalten. Einzelne Anfragen bleiben
+begrenzt, alle Seiten des autorisierten Bestands bleiben erreichbar.
 
 ## Tatsächliche Abnahme
 

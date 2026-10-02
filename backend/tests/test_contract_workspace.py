@@ -5,7 +5,6 @@ from datetime import date
 from threading import Event, current_thread
 
 import pytest
-from fastapi import APIRouter, Depends
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session
 
@@ -516,16 +515,8 @@ def test_full_http_route_auth_scope_and_page_etag_preserve_business_cas(adapter,
     from backend.services.portfolio_scope import scope_context
     from backend.tests import form_draft_api_support as support
 
-    real_builder = support.build_api_v1
-
-    def builder():
-        graph = real_builder()
-        prefix = APIRouter(prefix="/api/v1")
-        prefix.include_router(router.router, dependencies=[Depends(auth.require_auth)])
-        graph.routes = [*prefix.routes, *graph.routes]
-        return graph
-
-    monkeypatch.setattr(support, "build_api_v1", builder)
+    # Exercise the production router registration, including the common auth
+    # dependency and its order before /contracts/{identifier}.
     engine = None
     if adapter == "sqlite":
         engine = create_engine(
