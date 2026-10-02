@@ -77,6 +77,9 @@ jobs:
           backend/services/document_version_validation.py
           backend/services/tenant_document_versions.py backend/routers/document_versions.py
           backend/services/calendar_ical.py backend/routers/calendar.py backend/routers/datev.py
+          backend/db/contract_lifecycle_models.py backend/services/contract_lifecycle.py
+          backend/services/contract_lifecycle_types.py backend/services/contract_lifecycle_validation.py
+          backend/routers/contract_lifecycle.py
           backend/invoice_schema_upgrade.py backend/credit_schema_upgrade.py
           backend/db/sqlite_table_preservation.py
           backend/services/recovery_sessions.py scripts/restore_session_security.py
@@ -96,6 +99,7 @@ jobs:
           backend/services/payment_history.py backend/form_draft_models.py backend/db/form_draft_models.py
           backend/services/form_draft_crypto.py backend/services/form_drafts.py backend/routers/form_drafts.py
           backend/services/tenant_wizard_graph.py backend/services/tenant_private_draft_guard.py backend/services/tenant_privacy.py
+          backend/services/tenant_lifecycle_graph.py
           backend/services/invoice_list.py backend/services/invoice_payment_schema.py
           backend/services/rent_ledger.py backend/services/billing_settlement.py backend/services/report_service.py
           backend/routers/billing.py backend/frontend_build.py backend/updater.py backend/maintenance.py
@@ -229,6 +233,15 @@ jobs:
         run: >-
           pytest backend/tests/test_calendar_ical_compiled_export.py::test_postgresql_repeatable_read_calendar_snapshot
           backend/tests/test_calendar_ical_compiled_export.py::test_postgresql_scope_move_between_body_blocks_is_blocked -q --tb=short
+
+      - name: Verify reviewed contract lifecycle and ordinary writer integration on PostgreSQL
+        if: ${{ !cancelled() && steps.pg_dependencies.outcome == 'success' }}
+        env:
+          TEST_SERVER_DATABASE_URL: postgresql://immo_ci:isolated_test_database@127.0.0.1:5432/immo_ci
+        run: >-
+          pytest backend/tests/test_contract_lifecycle_postgres.py
+          backend/tests/test_contract_lifecycle_integration_postgres.py
+          backend/tests/test_tenant_lifecycle_privacy_postgres.py -q --tb=short
 
   browser-e2e:
     name: Browser workflows (Chromium + SQLite)

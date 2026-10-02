@@ -10,7 +10,11 @@ WIZARD_ROOT = (
 if str(WIZARD_ROOT) not in sys.path:
     sys.path.insert(0, str(WIZARD_ROOT))
 
-from mietvertrag_wizard.pdf_reportlab import _fmt_eur, build_contract_pdf  # noqa: E402
+from mietvertrag_wizard.pdf_reportlab import (  # noqa: E402
+    CLAUSE_TEXTS,
+    _fmt_eur,
+    build_contract_pdf,
+)
 from mietvertrag_wizard.validation import (  # noqa: E402
     ContractValidationError,
     validate_contract_payload,
@@ -94,3 +98,19 @@ def test_reportlab_escapes_user_markup_and_builds_pdf():
 
     assert pdf.startswith(b"%PDF")
     assert len(pdf) > 1000
+
+
+def test_browser_outputs_reuse_authoritative_server_clause_texts():
+    script = (
+        WIZARD_ROOT
+        / "mietvertrag_wizard"
+        / "static"
+        / "mietvertrag_wizard"
+        / "js"
+        / "script.js"
+    ).read_text(encoding="utf-8")
+
+    for text in CLAUSE_TEXTS.values():
+        assert text in script
+    assert script.count("selectedClauseTexts(v.clauses)") >= 3
+    assert "bedürfen zu ihrer Wirksamkeit der Schriftform" not in script

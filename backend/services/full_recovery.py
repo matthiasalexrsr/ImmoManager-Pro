@@ -169,6 +169,9 @@ def _database_info(path: Path, *, timeout_seconds: float = 300) -> dict:
         document_version_tables = {"document_versions", "document_version_chunks"}
         if tables & document_version_tables and not document_version_tables.issubset(tables):
             raise RecoveryError("Die Dokumenthistorie ist unvollständig. Vollständige Sicherung mit Originalen verwenden.")
+        lifecycle_tables = {"contract_lifecycle_drafts", "contract_lifecycle_commands"}
+        if tables & lifecycle_tables and not lifecycle_tables.issubset(tables):
+            raise RecoveryError("Die Vertragsablaufhistorie ist unvollständig. Vollständige Sicherung verwenden.")
         for table in Base.metadata.sorted_tables:
             if table.name in session_tables and not tables & session_tables:
                 continue
@@ -179,6 +182,8 @@ def _database_info(path: Path, *, timeout_seconds: float = 300) -> dict:
             # y1 is an atomic pair. A complete older image has neither table;
             # an existing pair must still meet the current column contract.
             if table.name in document_version_tables and not tables & document_version_tables:
+                continue
+            if table.name in lifecycle_tables and not tables & lifecycle_tables:
                 continue
             actual = {column[1] for column in db.execute('PRAGMA table_info("' + table.name.replace('"', '""') + '")')}
             # A verified backup must precede the offline w1 migration. These

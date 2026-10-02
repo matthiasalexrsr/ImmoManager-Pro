@@ -158,10 +158,12 @@ class SQLAlchemyStore:
         from ..services.bank_import_guards import guard_bank_import_reset
         from ..services.contract_wizard import guard_destructive_reset as guard_contract_history
         from ..services.form_drafts import guard_destructive_reset as guard_form_drafts
+        from ..services.payment_integrity import guard_contract_lifecycle_reset
         # Durable reviewed content and factual transport history cannot be
         # discarded by an ordinary business/test reset. Full offline recovery
         # replaces the complete database through its separate explicit workflow.
         def check_retained_history():
+            guard_contract_lifecycle_reset(self)
             guard_contract_history(self)
             guard_annual_history(self)
             guard_bank_import_reset(self)
@@ -172,6 +174,13 @@ class SQLAlchemyStore:
 
         # Known retained evidence refuses before even the draft writer's no-op
         # auth-row lock. Recheck after serialization, before business deletions.
+        check_retained_history()
+        if self.db.get_bind().dialect.name == "postgresql":
+            # Draft writers take auth management before locking their resource.
+            # A read-only table barrier keeps that order even if the permanent
+            # auth marker is absent, without writing it before history recheck.
+            self.db.connection().exec_driver_sql('LOCK TABLE "auth_setup" IN SHARE ROW EXCLUSIVE MODE')
+        guard_contract_lifecycle_reset(self, serialized=True)
         check_retained_history()
         guard_form_drafts(self)
         check_retained_history()

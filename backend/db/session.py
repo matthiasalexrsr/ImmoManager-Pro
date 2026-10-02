@@ -13,6 +13,7 @@ from .access_models import UserAccessORM  # noqa: F401 — register access metad
 from .auth_models import AuthSetupORM  # noqa: F401 — register auth metadata before create_all
 from .bank_import_models import BankImportORM  # noqa: F401 — register retained bank import provenance
 from .booking_indexes import BOOKING_INDEXES  # noqa: F401 — register scaled booking indexes
+from .contract_lifecycle_models import ContractLifecycleDraftORM  # noqa: F401 — register retained lifecycle evidence
 from .contract_wizard_models import ContractDraftORM  # noqa: F401 — register reviewed contract metadata
 from .credit_models import CreditReceiptORM  # noqa: F401 — register immutable credit metadata
 from .datev_models import DatevProfileORM  # noqa: F401 — register DATEV metadata
@@ -54,11 +55,17 @@ SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
 def create_tables() -> None:
     """Create all tables (dev/test convenience). Use Alembic for production."""
+    # Do not let create_all silently repair one half of a damaged retained pair.
+    present = set(inspect(engine).get_table_names())
+    lifecycle_tables = {"contract_lifecycle_drafts", "contract_lifecycle_commands"}
+    if present & lifecycle_tables and not lifecycle_tables <= present:
+        raise RuntimeError("Incomplete contract lifecycle journal schema; explicit schema recovery is required")
     bootstrap_legacy_access = not inspect(engine).has_table("user_portfolio_access")
     Base.metadata.create_all(bind=engine)
     from ..services.invoice_payment_schema import ensure_invoice_payment_columns, ensure_invoice_payment_immutability
     from ..services.portfolio_scope import ensure_portfolio_access_schema
     from .bank_import_schema import ensure_bank_import_schema
+    from .contract_lifecycle_models import ensure_contract_lifecycle_schema
     from .contract_wizard_models import ensure_contract_wizard_schema
     from .document_version_models import ensure_document_version_schema
     from .form_draft_models import ensure_form_draft_schema
@@ -72,6 +79,7 @@ def create_tables() -> None:
         ensure_session_schema(connection)
         ensure_bank_import_schema(connection)
         ensure_contract_wizard_schema(connection)
+        ensure_contract_lifecycle_schema(connection)
         ensure_document_version_schema(connection)
         ensure_invoice_payment_columns(connection)
         ensure_invoice_payment_immutability(connection)

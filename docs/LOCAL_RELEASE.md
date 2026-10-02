@@ -46,6 +46,57 @@ Sie prüft sichtbare Oberflächenaktionen und die gespeicherten API-Ergebnisse:
 
 ## Prüfergebnisse
 
+### Neuer lokal abgenommener Vertragsablauf
+
+G06.1 ergänzt geprüfte Verlängerungen und Kündigungen mit privaten Entwürfen,
+aktuellen Konfliktprüfungen und unveränderlichen Bestätigungsbelegen. Ein
+Folgevertrag bekommt eine neue Identität; bestehende Forderungen, Zahlungen
+und Kautionsangaben werden nicht kopiert. Kündigungen beachten das bestätigte
+inklusive Mietende und lassen sich danach ausdrücklich manuell abschließen.
+Ein früheres bestätigtes Mietende kann durch einen neuen geprüften Vorgang
+abgelöst werden, ohne dessen ursprüngliche Bestätigung umzuschreiben.
+
+Die gemeinsamen tatsächlichen SQLite-/Edge-Prüfungen bestanden alle sieben
+ausgewählten Vertrags-/Sitzungs-/Kalender-/Dokumentabläufe; drei ergänzende
+Wizard-Abläufe bestanden ebenfalls. Das komplette Frontend bestand 865 Tests
+in 69 Dateien. Datenbank-, Reset-, Import- und Wiederherstellungsnachweise sowie
+der tatsächlich reproduzierte und behobene Dialogverlust beim Listenrefresh
+sind in [G06_RELEASE_VERIFICATION.md](G06_RELEASE_VERIFICATION.md) getrennt
+belegt. Die neue vollständige CI und unabhängige PostgreSQL-Prüfung müssen
+noch auf dem nächsten veröffentlichten Commit ausgeführt werden.
+
+G06.2-Fristenautomation, Vorlagendokumente und Versandverfolgung sind weiterhin
+offen. Die Skalierung der Vertragsübersicht benötigt zusätzlich die laufende
+Workspace-Integration; diese Abnahme erklärt keinen Gesamtabschluss.
+
+### Vollständig bestandener veröffentlichter Stand
+
+[CI #124](https://github.com/matthiasalexrsr/ImmoManager-Pro/actions/runs/36966629656)
+auf `82930ad7760486264536f150e08ddaf97e1ac361` ist vollständig erfolgreich
+abgeschlossen. Jeder der vier Memory-/SQLite-Läufe unter Python 3.11/3.12
+bestand 3.323 Tests mit 149 ausdrücklichen Skips und 90 % Coverage. Die
+Frontendprüfung bestand 829 Tests in 67 Dateien, Lint und Produktionsbuild.
+113 Mypy-Quellen und die ausgeführten Sicherheitsprüfungen bestanden.
+
+Linux Chromium bestand alle 60 Verwaltungsabläufe sowie beide gesonderten
+Owner-/TOTP-Abläufe auf einer leeren Installation. Die unabhängigen tatsächlichen
+PostgreSQL-Gruppen bestanden zusammen 182 Tests mit einem ausdrücklichen Skip,
+einschließlich der beiden korrigierten Kalender-Snapshot-/Body-Prüfungen und
+Dokumentversionen samt Wiederherstellung. Beide verpflichtenden nativen
+Linux-OCR-Gruppen bestanden jeweils 124 Tests ohne Skip. Der private
+PostgreSQL-Serverlebenszyklus, der allgemeine Docker-Compose-Smoke und das
+abschließende Betriebsbereitschaftsgate bestanden ebenfalls.
+
+Diese Abnahme gilt genau für den oben genannten veröffentlichten Commit.
+Die oben beschriebenen neuen Vertragsabläufe und die übrigen offenen Punkte
+des [historischen Inventars](HISTORICAL_FEATURE_MATRIX.md) benötigen ihre eigenen
+vollständigen CI-Nachweise. WISO Steuer für Windows ist hier weiterhin nicht
+installiert; ein echter Import in dieses Verbraucherprogramm ist deshalb
+keine ausgeführte Prüfung. Die folgenden älteren CI-Befunde dokumentieren
+die behobenen Ursachen und ihre Korrektur, nicht den aktuellen Gesamtstatus.
+
+### Frühere Befunde und lokale Nachweise
+
 CI #123 (`4e36b07`) ist abgeschlossen. Jeder der vier Memory-/SQLite-Läufe
 unter Python 3.11/3.12 bestand 3.300 Fälle und übersprang 149 ausdrücklich;
 vier Tests scheiterten je Lauf: zwei ältere Migrationsprüfungen erwarteten
@@ -82,8 +133,9 @@ Linux/Python 3.11 und Windows/Python 3.12. Details:
 [Vertrags-Datumsfilter](CONTRACT_DATE_FILTER.md).
 
 Die lokale Vorschau wurde nach einer neuen ownergeschützten bytegenauen Kopie
-aller acht vorhandenen Dateien aktualisiert. 79 bestehende Geschäftstabellen
-behalten ihre bisherigen Spaltenwerte vollständig; SQLite-Integrität und FKs
+aller acht vorhandenen Dateien aktualisiert. Beim Release-124-Nachtrag behalten
+81 bestehende Geschäftstabellen (einschließlich der beiden Dokumentversionstabellen)
+ihre bisherigen Spaltenwerte vollständig; SQLite-Integrität und FKs
 sowie unveränderte Installationsschlüssel sind geprüft. Fehlende frühere
 Demo-Originale bleiben ausdrücklich ungelöst und wurden nicht erfunden.
 Die neue dauerhafte private Windows-OCR-Installation in

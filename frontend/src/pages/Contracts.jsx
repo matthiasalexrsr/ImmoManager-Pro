@@ -8,6 +8,7 @@ import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
+import ContractLifecycle from '../components/ContractLifecycle';
 
 const RENT_MODEL_LABELS = { index: 'Indexmiete', stepped: 'Staffelmiete', fixed: 'Festmiete' };
 
@@ -28,6 +29,7 @@ export default function Contracts() {
   const [contracts, setContracts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
+  const [lifecycle, setLifecycle] = useState(null);
   const { canWrite, isAllowed, requireWrite } = useWriteAccess('/contracts', () => setModal(null));
   const [filter, setFilter] = useState('all');
 
@@ -101,6 +103,12 @@ export default function Contracts() {
     { key: 'notice_period', label: 'Kündigungsfrist' },
     { key: 'deposit_amount', label: t('tenantsContracts.contracts.form.deposit') || 'Kaution (€)', type: 'number', align: 'right',
       render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
+    { key: 'lifecycle', label: t('contractLifecycle.column'), sortable: false,
+      render: (_value, row) => <button type="button" className="btn btn-sm btn-secondary contract-lifecycle-row-action"
+        data-lifecycle-contract={row.id}
+        onClick={event => setLifecycle({ contract: row, opener: event.currentTarget })}>
+        {t('contractLifecycle.open')}
+      </button> },
     { key: 'status', label: t('ui.form.status') || 'Status', type: 'status', filterType: 'select',
       render: v => <StatusBadge status={v} /> },
   ];
@@ -154,7 +162,9 @@ export default function Contracts() {
     if (store) store.invalidateRelated('contracts', 'properties', 'units', 'tenants', 'deposits', 'receivables', 'rent_adjustments');
   };
 
-  if (loading) return <div className="page-loading">Lade Verträge...</div>;
+  // Refreshing rows after a lifecycle command must keep its private workflow
+  // mounted, including the selected draft and any exact command retry.
+  if (loading && !lifecycle) return <div className="page-loading">Lade Verträge...</div>;
 
   return (
     <div className="page">
@@ -216,6 +226,15 @@ export default function Contracts() {
           initial={modal === 'create' ? null : modal}
           onSave={handleSave}
           onClose={() => setModal(null)}
+        />
+      )}
+
+      {lifecycle && (
+        <ContractLifecycle
+          contract={lifecycle.contract}
+          opener={lifecycle.opener}
+          onClose={() => setLifecycle(null)}
+          onChanged={refreshData}
         />
       )}
     </div>

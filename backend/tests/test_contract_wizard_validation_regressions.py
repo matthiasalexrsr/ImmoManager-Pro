@@ -161,14 +161,90 @@ def test_mixed_staffel_list_and_subcent_staffel_are_rejected():
     data = payload()
     data["miete"].update(
         erhoehung="staffel",
-        staffeln=[{"ab": "01.2027", "betrag": "850.00"}, "kein Objekt"],
+        staffeln=[{"ab": "12", "betrag": "850.00"}, "kein Objekt"],
     )
     with pytest.raises(ContractValidationError, match="Staffel 2 muss ein Objekt"):
         build_contract_pdf(data)
 
-    data["miete"]["staffeln"] = [{"ab": "01.2027", "betrag": "850.001"}]
+    data["miete"]["staffeln"] = [{"ab": "12", "betrag": "850.001"}]
     with pytest.raises(ContractValidationError, match="centgenau"):
         build_contract_pdf(data)
+
+
+def test_fixed_term_requires_a_reason_before_pdf_generation():
+    data = payload()
+    data["mietzeit"].update(art="befristet", ende="31.10.2027", grund="")
+    with pytest.raises(ContractValidationError, match="Befristungsgrund"):
+        build_contract_pdf(data)
+
+
+def test_cancellation_exclusion_requires_a_valid_date_after_start():
+    data = payload()
+    data["mietzeit"].update(kuendigungAusschluss=True, kuendigungBis="")
+    with pytest.raises(ContractValidationError, match="Ende des Kündigungsausschlusses fehlt"):
+        validate_contract_payload(data)
+
+    data["mietzeit"]["kuendigungBis"] = "01.11.2026"
+    with pytest.raises(ContractValidationError, match="nach dem Mietbeginn"):
+        validate_contract_payload(data)
+
+
+def test_staffel_requires_complete_strictly_increasing_months_and_amounts():
+    data = payload()
+    data["miete"].update(erhoehung="staffel", staffeln=[{"ab": "12", "betrag": ""}])
+    with pytest.raises(ContractValidationError, match="Grundmiete der Staffel 1 fehlt"):
+        validate_contract_payload(data)
+
+    data["miete"]["staffeln"] = [
+        {"ab": "12", "betrag": "850.00"},
+        {"ab": "12", "betrag": "900.00"},
+    ]
+    with pytest.raises(ContractValidationError, match="streng aufsteigend"):
+        validate_contract_payload(data)
+
+    data["miete"]["staffeln"] = [{"ab": "1.5", "betrag": "850.00"}]
+    with pytest.raises(ContractValidationError, match="positive ganze Zahl"):
+        validate_contract_payload(data)
+
+
+@pytest.fixture
+def native_integer_conversion_budget():
+    original = sys.get_int_max_str_digits()
+    try:
+        sys.set_int_max_str_digits(4300)
+        yield
+    finally:
+        sys.set_int_max_str_digits(original)
+
+
+def test_staffel_conversion_budget_returns_typed_validation(native_integer_conversion_budget):
+    data = payload()
+    data["miete"].update(erhoehung="staffel", staffeln=[{"ab": "9" * 5000, "betrag": "850.00"}])
+    for validate in (validate_contract_payload, build_contract_pdf):
+        with pytest.raises(ContractValidationError, match="Konvertierungsbudget"):
+            validate(data)
+
+
+def test_large_staffel_month_has_no_arbitrary_business_ceiling():
+    data = payload()
+    data["miete"].update(erhoehung="staffel", staffeln=[{"ab": "9" * 100, "betrag": "850.00"}])
+    assert validate_contract_payload(data) is data
+
+
+@pytest.mark.parametrize("value", ["nicht numerisch", "NaN", "sNaN", "Infinity", "-Infinity", "0", "-0.1"])
+def test_index_requires_a_finite_positive_decimal(value):
+    data = payload()
+    data["miete"].update(erhoehung="index", indexAusgang=value)
+    for validate in (validate_contract_payload, build_contract_pdf):
+        with pytest.raises(ContractValidationError, match="Ausgangsindex.*endliche positive Zahl"):
+            validate(data)
+
+
+@pytest.mark.parametrize("value", ["110.5", "110,5", "0.0001", "1e2", "9" * 100])
+def test_valid_index_precision_is_not_a_currency_cent_or_size_limit(value):
+    data = payload()
+    data["miete"].update(erhoehung="index", indexAusgang=value)
+    assert validate_contract_payload(data) is data
 
 
 @pytest.mark.parametrize(
@@ -190,7 +266,7 @@ def test_optional_sections_reject_nonobjects_before_render(mutate, message):
         build_contract_pdf(data)
 
 
-def _real_http_client(monkeypatch):
+def _real_http_client(monkeypatch, *, raise_server_exceptions=True):
     loaded = app_module._load_contract_wizard_mount()
     assert loaded is not None
     monkeypatch.setattr(app_module, "_load_contract_wizard_mount", lambda: loaded)
@@ -205,7 +281,7 @@ def _real_http_client(monkeypatch):
     )
     app = FastAPI()
     assert app_module._mount_contract_wizard_if_available(app)
-    client = TestClient(app)
+    client = TestClient(app, raise_server_exceptions=raise_server_exceptions)
     headers = {"Authorization": "Bearer " + auth.create_access_token(user.id)}
     return client, headers
 
@@ -236,3 +312,24 @@ def test_http_pdf_returns_422_for_validator_consistency_errors(monkeypatch, muta
     assert response.headers["content-type"].startswith("application/json")
     assert isinstance(response.json()["detail"], str)
     assert response.json()["detail"]
+
+
+def test_http_staffel_conversion_budget_returns_actionable_422(monkeypatch, native_integer_conversion_budget):
+    client, headers = _real_http_client(monkeypatch, raise_server_exceptions=False)
+    data = payload()
+    data["miete"].update(erhoehung="staffel", staffeln=[{"ab": "9" * 5000, "betrag": "850.00"}])
+    with client:
+        response = client.post("/api/v1/contract-wizard/pdf", headers=headers, json=data)
+    assert response.status_code == 422
+    assert "Konvertierungsbudget" in response.json()["detail"]
+
+
+@pytest.mark.parametrize("value", ["nicht numerisch", "NaN", "Infinity", "0", "-1"])
+def test_http_invalid_index_returns_actionable_422(monkeypatch, value):
+    client, headers = _real_http_client(monkeypatch)
+    data = payload()
+    data["miete"].update(erhoehung="index", indexAusgang=value)
+    with client:
+        response = client.post("/api/v1/contract-wizard/pdf", headers=headers, json=data)
+    assert response.status_code == 422
+    assert "endliche positive Zahl" in response.json()["detail"]

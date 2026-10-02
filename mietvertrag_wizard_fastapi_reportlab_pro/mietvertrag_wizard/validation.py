@@ -124,6 +124,24 @@ def _money(
     return amount
 
 
+def _positive_integer(value: Any, label: str, errors: list[str]) -> int | None:
+    raw = _text(value)
+    if not raw:
+        errors.append(f"{label} fehlt.")
+        return None
+    if not re.fullmatch(r"[1-9]\d*", raw):
+        errors.append(f"{label} muss eine positive ganze Zahl sein.")
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        errors.append(
+            f"{label} überschreitet das Konvertierungsbudget dieser Python-Laufzeit. "
+            "Eingabe oder Laufzeitkonfiguration prüfen."
+        )
+        return None
+
+
 def _require_mapping(value: Any, label: str, errors: list[str]) -> Mapping[str, Any]:
     if not isinstance(value, Mapping):
         errors.append(f"{label} muss ein Objekt sein.")
@@ -180,6 +198,16 @@ def validate_contract_payload(data: Any) -> dict[str, Any]:
         end = _date(tenancy.get("ende"), "Mietende", errors)
         if start and end and end <= start:
             errors.append("Mietende muss nach dem Mietbeginn liegen.")
+        if not _text(tenancy.get("grund")):
+            errors.append("Für einen Zeitmietvertrag fehlt der Befristungsgrund.")
+    elif tenancy.get("kuendigungAusschluss"):
+        exclusion_end = _date(
+            tenancy.get("kuendigungBis"),
+            "Ende des Kündigungsausschlusses",
+            errors,
+        )
+        if start and exclusion_end and exclusion_end <= start:
+            errors.append("Der Kündigungsausschluss muss nach dem Mietbeginn enden.")
     rent = _require_mapping(data.get("miete"), "Mietangaben", errors)
     _money(rent.get("grund"), "Grundmiete", errors, required=True, positive=True)
     for field, label in (
@@ -200,6 +228,7 @@ def validate_contract_payload(data: Any) -> dict[str, Any]:
     if escalation == "staffel" and not tiers:
         errors.append("Für eine Staffelmiete ist mindestens eine Staffel erforderlich.")
     if isinstance(tiers, list):
+        previous_month: int | None = None
         for index, tier in enumerate(tiers, start=1):
             if not isinstance(tier, Mapping):
                 errors.append(f"Staffel {index} muss ein Objekt sein.")
@@ -208,11 +237,32 @@ def validate_contract_payload(data: Any) -> dict[str, Any]:
                 tier.get("betrag"),
                 f"Grundmiete der Staffel {index}",
                 errors,
+                required=escalation == "staffel",
                 positive=True,
             )
+            if escalation == "staffel":
+                month = _positive_integer(
+                    tier.get("ab"),
+                    f"Startmonat der Staffel {index}",
+                    errors,
+                )
+                if month is not None and previous_month is not None and month <= previous_month:
+                    errors.append("Staffelmonate müssen streng aufsteigend sein.")
+                if month is not None:
+                    previous_month = month
 
-    if escalation == "index" and not _text(rent.get("indexAusgang")):
-        errors.append("Für eine Indexmiete fehlt der Ausgangsindex.")
+    if escalation == "index":
+        raw_index = _text(rent.get("indexAusgang"))
+        if not raw_index:
+            errors.append("Für eine Indexmiete fehlt der Ausgangsindex.")
+        else:
+            try:
+                numeric_index = Decimal(raw_index.replace(",", "."))
+            except InvalidOperation:
+                errors.append("Der Ausgangsindex muss eine endliche positive Zahl sein.")
+            else:
+                if not numeric_index.is_finite() or numeric_index <= 0:
+                    errors.append("Der Ausgangsindex muss eine endliche positive Zahl sein.")
 
     _optional_mapping(data, "zahlung", "Zahlungsangaben", errors)
     _optional_mapping(data, "mandat", "SEPA-Mandat", errors)

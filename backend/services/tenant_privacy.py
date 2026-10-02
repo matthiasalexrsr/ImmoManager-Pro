@@ -11,8 +11,10 @@ from tempfile import SpooledTemporaryFile
 
 from sqlalchemy import select
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
+from ..db.contract_lifecycle_models import LIFECYCLE_MODELS
 from ..db.orm_models import ContractORM, TenantORM
 from ..models import TenantPatch
 from .concurrency import EditRevision, revision_scope, utc_datetime
@@ -39,7 +41,7 @@ def _memory_copy(store):
 def _memory_state(value):
     from ..db.contract_wizard_models import WIZARD_MODELS
     from ..db.document_version_models import DOCUMENT_VERSION_MODELS
-    if isinstance(value, (*WIZARD_MODELS, *DOCUMENT_VERSION_MODELS)):
+    if isinstance(value, (*WIZARD_MODELS, *DOCUMENT_VERSION_MODELS, *LIFECYCLE_MODELS)):
         return {column.name: _memory_state(getattr(value, column.name)) for column in value.__table__.columns}
     if isinstance(value, dict):
         return {key: _memory_state(item) for key, item in value.items()}
@@ -114,6 +116,8 @@ def _scoped_graph(store, tenant_id):
     graph = append_wizard_graph(snapshot, append_credit_graph(snapshot, graph))
     from .tenant_document_versions import append_document_versions
     graph = append_document_versions(snapshot, graph)
+    from .tenant_lifecycle_graph import append_lifecycle_graph
+    graph = append_lifecycle_graph(snapshot, graph)
     graph["scope"]["private_form_drafts"] = private_draft_retention(snapshot, tenant_id)
     return graph
 
@@ -228,13 +232,18 @@ def _plan(graph: dict) -> dict:
     active_contracts = sum(contract["status"] == "active" for contract in graph["contracts"])
     retained = {name: len(rows) for name, rows in graph.items() if isinstance(rows, list)}
     from .tenant_document_versions import PERSONAL_FIELDS as DOCUMENT_FIELDS
+    from .tenant_lifecycle_graph import PERSONAL_FIELDS as LIFECYCLE_FIELDS
     from .tenant_wizard_graph import PERSONAL_FIELDS
     wizard_retained = {name: {"count": len(graph.get(name, [])), "personal_fields": fields}
-                       for name, fields in (PERSONAL_FIELDS | DOCUMENT_FIELDS).items() if graph.get(name)}
+                       for name, fields in (PERSONAL_FIELDS | DOCUMENT_FIELDS | LIFECYCLE_FIELDS).items() if graph.get(name)}
     private = graph["scope"]["private_form_drafts"]
     if private["count"]:
         wizard_retained["private_form_drafts"] = {"count": private["count"],
             "personal_fields": ["private encrypted current/original editor values"], "contents_exported": False}
+    lifecycle_private = graph["scope"]["private_lifecycle_drafts"]
+    if lifecycle_private["count"]:
+        wizard_retained["private_lifecycle_drafts"] = {"count": lifecycle_private["count"],
+            "personal_fields": ["private pre-confirmation contract work"], "contents_exported": False}
     return {
         "tenant_id": graph["tenant"]["id"],
         "plan_hash": _graph_hash(graph),
@@ -251,10 +260,13 @@ def _plan(graph: dict) -> dict:
                 + (" Auch gespeicherte Vertragsentwürfe, frühere Prüfsnapshots/Vorgangsergebnisse, "
                    "Vorlagentexte, Unterzeichner und archivierte PDF-/Anlageninhalte enthalten weiterhin "
                    "Personenangaben. Sie werden durch diese Stammdaten-Aktion nicht anonymisiert."
-                   if any(name != "private_form_drafts" for name in wizard_retained) else "")
+                   if any(name not in {"private_form_drafts", "private_lifecycle_drafts"} for name in wizard_retained) else "")
                 + (" Private Stammdaten-Formularentwürfe anderer Benutzer bleiben verschlüsselt erhalten. "
                    "Sie sind nicht Teil dieses Beziehungsexports und müssen vom jeweiligen Benutzer geprüft/verworfen werden."
                    if private["count"] else ""),
+        "lifecycle_note": "Bestätigte Vertragsvorgänge mit Gründen, früheren Prüfsnapshots und Freigabeergebnissen "
+                          "bleiben unverändert erhalten. Private offene Vertragsentwürfe werden nur gezählt; "
+                          "ihre Inhalte und frühere private Bearbeitungsergebnisse werden nicht ausgegeben.",
     }
 
 
@@ -265,6 +277,8 @@ def preview_tenant_anonymization(active_store, tenant_id: str) -> dict:
         require_complete_subject_scope(snapshot, tenant_id)
         from .tenant_document_versions import require_complete_subject_scope as require_document_scope
         require_document_scope(snapshot, tenant_id)
+        from .tenant_lifecycle_graph import require_complete_subject_scope as require_lifecycle_scope
+        require_lifecycle_scope(snapshot, tenant_id)
         return _plan(graph)
 
 
@@ -282,11 +296,28 @@ def anonymize_tenant_profile(active_store, tenant_id: str, *, plan_hash: str,
             tenant_row = db.scalar(select(TenantORM).where(TenantORM.id == tenant_id).with_for_update())
             if tenant_row is None:
                 raise TenantNotFoundError("Tenant not found")
-            db.scalars(select(ContractORM).where(ContractORM.tenant_id == tenant_id).with_for_update()).all()
+            # Lifecycle creation locks the contract before FK-checking its
+            # tenant. NOWAIT avoids a tenant -> contract / contract -> tenant
+            # deadlock and leaves the reviewed profile unchanged on contention.
+            try:
+                result = db.scalars(select(ContractORM.id).where(ContractORM.tenant_id == tenant_id)
+                    .order_by(ContractORM.id).with_for_update(nowait=db.get_bind().dialect.name == "postgresql")
+                    .execution_options(yield_per=100))
+                try:
+                    for _ in result:
+                        pass
+                finally:
+                    result.close()
+            except OperationalError as error:
+                if getattr(error.orig, "sqlstate", getattr(error.orig, "pgcode", None)) != "55P03":
+                    raise
+                raise PrivacyConflict("Vertragsvorgänge werden gerade bearbeitet. Vorschau neu laden und erneut versuchen.") from error
         from .tenant_wizard_graph import lock_subject_journals, require_complete_subject_scope
         require_complete_subject_scope(staged, tenant_id)
         from .tenant_document_versions import require_complete_subject_scope as require_document_scope
         require_document_scope(staged, tenant_id)
+        from .tenant_lifecycle_graph import require_complete_subject_scope as require_lifecycle_scope
+        require_lifecycle_scope(staged, tenant_id)
         lock_subject_journals(staged, tenant_id)
         graph = _scoped_graph(staged, tenant_id)
         plan = _plan(graph)
@@ -309,4 +340,4 @@ def anonymize_tenant_profile(active_store, tenant_id: str, *, plan_hash: str,
                 "anonymized_fields": list(PROFILE_FIELDS),
                 "retained_collections": plan["retained_collections"],
                 "retained_personal_evidence": plan["retained_personal_evidence"],
-                "scope": plan["scope"], "note": plan["note"]}
+                "scope": plan["scope"], "note": plan["note"], "lifecycle_note": plan["lifecycle_note"]}

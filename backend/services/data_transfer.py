@@ -411,8 +411,10 @@ def import_store_data(active_store, data: dict, *, replace_existing: bool) -> di
     from .contract_wizard import guard_destructive_reset as guard_contract_history
     from .credit_ledger import guard_partial_restore
     from .form_drafts import guard_destructive_reset as guard_form_drafts
+    from .payment_integrity import guard_contract_lifecycle_reset
     from .payments import FinancialConsistencyError
     try:
+        guard_contract_lifecycle_reset(active_store)
         guard_contract_history(active_store)
         guard_partial_restore(active_store, data)
     except (FinancialConsistencyError, ValueError) as exc:
@@ -427,6 +429,7 @@ def import_store_data(active_store, data: dict, *, replace_existing: bool) -> di
     try:
         prepared = _prepare(data, specs, replace_existing=replace_existing)
         with _atomic_store(active_store) as staged:
+            guard_contract_lifecycle_reset(staged, serialized=True)
             guard_contract_history(staged)
             if replace_existing:
                 try:

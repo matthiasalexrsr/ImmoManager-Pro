@@ -283,6 +283,19 @@ class FinanceRepository:
         return self._rent_charges.list_all()
 
     def create_rent_charge(self, data: RentChargeCreate) -> RentCharge:
+        from ..services.contract_lifecycle import guard_known_rent_period
+        from ..services.payment_integrity import lock_lifecycle_parents
+        from .sql_store import SQLAlchemyStore
+        active = SQLAlchemyStore(self.db)
+        try:
+            lock_lifecycle_parents(active, contract_ids=(data.contract_id,))
+            guard_known_rent_period(active, data.contract_id, data.month)
+            return self._create_rent_charge_guarded(data)
+        except Exception:
+            self.db.rollback()
+            raise
+
+    def _create_rent_charge_guarded(self, data: RentChargeCreate) -> RentCharge:
         if self._tenant_repo and not self._tenant_repo._contracts.exists(data.contract_id):
             raise ValidationError("Vertrag existiert nicht")
         if self.db.scalar(select(RentChargeORM.id).where(
@@ -304,6 +317,24 @@ class FinanceRepository:
         return self._rent_charges.get(charge_id)
 
     def update_rent_charge(self, charge_id: str, data: RentChargeCreate) -> RentCharge:
+        from ..services.contract_lifecycle import guard_known_rent_period
+        from ..services.payment_integrity import lock_lifecycle_parents
+        from .sql_store import SQLAlchemyStore
+        active = SQLAlchemyStore(self.db)
+        try:
+            previous = self._rent_charges.get(charge_id)
+            lock_lifecycle_parents(active, contract_ids=(previous.contract_id, data.contract_id))
+            current = self._rent_charges.get(charge_id)
+            if (current.contract_id, current.month) != (previous.contract_id, previous.month):
+                raise ValidationError("Monatsforderung wurde geändert. Bestand erneut laden.")
+            if (data.contract_id, data.month) != (current.contract_id, current.month):
+                guard_known_rent_period(active, data.contract_id, data.month)
+            return self._update_rent_charge_guarded(charge_id, data)
+        except Exception:
+            self.db.rollback()
+            raise
+
+    def _update_rent_charge_guarded(self, charge_id: str, data: RentChargeCreate) -> RentCharge:
         from ..services.payments import reconcile_financial_edit
 
         current = self._rent_charges.get(charge_id)

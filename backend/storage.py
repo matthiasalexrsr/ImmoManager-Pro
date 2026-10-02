@@ -155,6 +155,10 @@ def _version_mutation(method):
 
 @dataclass
 class InMemoryStore:
+    # Part of the same cloned state as ordinary subjects. Reviewed command
+    # results must survive staging/rollback even though they are not business JSON.
+    contract_lifecycle_drafts: Dict[str, Any] = field(default_factory=dict)
+    contract_lifecycle_commands: Dict[str, Any] = field(default_factory=dict)
     def __getattribute__(self, name):
         value = object.__getattribute__(self, name)
         if isinstance(value, dict) and name in object.__getattribute__(self, "__dataclass_fields__"):
@@ -232,6 +236,8 @@ class InMemoryStore:
         """Clear all entity collections. Used by tests to reset state."""
         from .services.portfolio_scope import require_installation_scope
         require_installation_scope()
+        from .services.contract_lifecycle import guard_destructive_reset as guard_lifecycle
+        guard_lifecycle(self)
         from .services.form_drafts import guard_destructive_reset as guard_form_drafts
         guard_form_drafts(self)
         from .services.contract_wizard import guard_destructive_reset
@@ -424,6 +430,9 @@ class InMemoryStore:
         if data.portfolio_id not in self.portfolios:
             raise ValidationError("Portfolio existiert nicht")
         old = self.properties[property_id]
+        if old.portfolio_id != data.portfolio_id:
+            from .services.contract_lifecycle import guard_delete_link
+            guard_delete_link(self, "property", property_id)
         from .services.document_version_guards import guard_edit
         guard_edit(self, "properties", old, data.model_dump())
         property_item = Property(
@@ -488,6 +497,9 @@ class InMemoryStore:
         if data.property_id not in self.properties:
             raise ValidationError("Immobilie existiert nicht")
         old = self.units[unit_id]
+        if old.property_id != data.property_id:
+            from .services.contract_lifecycle import guard_delete_link
+            guard_delete_link(self, "unit", unit_id)
         from .services.document_version_guards import guard_edit
         guard_edit(self, "units", old, data.model_dump())
         unit = Unit(id=unit_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc), **data.model_dump())
@@ -594,6 +606,8 @@ class InMemoryStore:
     @_payment_mutation
     @_version_mutation
     def update_contract(self, contract_id: str, data: ContractCreate) -> Contract:
+        from .services.contract_lifecycle import guard_contract_mutation
+        guard_contract_mutation(self, contract_id, data.model_dump())
         if contract_id not in self.contracts:
             raise NotFoundError("Vertrag nicht gefunden")
         if data.property_id not in self.properties:
@@ -1467,6 +1481,15 @@ class InMemoryStore:
         updates = patch.model_dump(exclude_unset=True)
         from .services.document_version_guards import guard_edit
         guard_edit(self, attr_name, old, updates)
+        if entity_type == "contract":
+            contract_data = ContractCreate(**{**old.model_dump(include=set(ContractCreate.model_fields)), **updates})
+            return self.update_contract(entity_id, contract_data)
+        if entity_type == "property":
+            property_data = PropertyCreate(**{**old.model_dump(include=set(PropertyCreate.model_fields)), **updates})
+            return self.update_property(entity_id, property_data)
+        if entity_type == "unit":
+            unit_data = UnitCreate(**{**old.model_dump(include=set(UnitCreate.model_fields)), **updates})
+            return self.update_unit(entity_id, unit_data)
         if entity_type == "receivable" and type(patch).__name__ == "ReceivablePatch":
             data = ReceivableCreate(**{**old.model_dump(include=set(ReceivableCreate.model_fields)), **updates})
             return self.update_receivable(entity_id, data)
@@ -1938,6 +1961,8 @@ class InMemoryStore:
         from .services.rent_ledger import _generation_lock, validate_unique_month
         with _generation_lock:
             validate_unique_month(self, data)
+            from .services.contract_lifecycle import guard_known_rent_period
+            guard_known_rent_period(self, data.contract_id, data.month)
             charge = RentCharge(id=_generate_id(), **data.model_dump())
             self.rent_charges[charge.id] = charge
             return charge
@@ -1957,8 +1982,11 @@ class InMemoryStore:
             if charge_id not in self.rent_charges:
                 raise NotFoundError("Sollstellung nicht gefunden")
             old = self.rent_charges[charge_id]
-            validate_charge_identity(old, data, bool(self.list_payments("rent_charge", charge_id)))
             validate_unique_month(self, data, exclude_id=charge_id)
+            if (old.contract_id, old.month) != (data.contract_id, data.month):
+                from .services.contract_lifecycle import guard_known_rent_period
+                guard_known_rent_period(self, data.contract_id, data.month)
+            validate_charge_identity(old, data, bool(self.list_payments("rent_charge", charge_id)))
             paid, status = reconcile_financial_edit("rent_charge", old, data)
             safe_data = data.model_copy(update={"amount_paid": float(paid), "status": status})
             charge = RentCharge(

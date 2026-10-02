@@ -90,6 +90,8 @@ def create_rent_charge(payload: RentChargeCreate) -> RentCharge:
         return store.create_rent_charge(payload)
     except ValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.get("/{charge_id}", response_model=RentCharge)

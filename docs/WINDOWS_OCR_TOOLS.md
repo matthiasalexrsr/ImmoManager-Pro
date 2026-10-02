@@ -118,6 +118,22 @@ lock; do not silently substitute packages. Fetch and install default to finite
 time is necessary. Verification defaults to 90 seconds. These are operation
 budgets and impose no application stock/annual limit.
 
+## Permanent offline inputs on this installation
+
+The already verified 52 package archives and bootstrap have additionally been
+copied into a new private permanent cache at
+`C:\Users\matth\Documents\ImmoManagerPro\tools\packages-2026-10-release123`.
+All 53 copied files passed their locked sizes and SHA256 again; no network or
+source-cache mutation was used. The cache contains the same lock and a verified
+inventory. It can be supplied directly as `--package-cache` when provisioning a
+new tool target, even if the original remote artifacts later disappear.
+
+Keep this directory together with the separate verified runtime at
+`Documents\ImmoManagerPro\tools\ocr-2026-10-release123` when archiving installation
+tools. The application's complete data recovery archive does not automatically
+include these external native tool directories. The runtime keeps working
+without the old development staging directory.
+
 ## Positive verification and activation
 
 The install success manifest is written **last**, after all four native version

@@ -1,0 +1,122 @@
+.contract-lifecycle__overlay {
+  position: fixed; inset: 0; z-index: 190; display: grid; place-items: center;
+  padding: 1rem; background: rgb(15 23 42 / .58);
+}
+.contract-lifecycle {
+  width: min(52rem, 100%); max-height: calc(100dvh - 2rem); overflow: auto;
+  border: 1px solid var(--border-color); border-radius: var(--radius-lg);
+  background: var(--color-surface); color: var(--text-primary); box-shadow: 0 24px 70px rgb(0 0 0 / .25);
+}
+.contract-lifecycle:focus { outline: none; }
+.contract-lifecycle__focus-sentinel {
+  position: fixed; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none;
+}
+.contract-lifecycle__header, .contract-lifecycle__footer {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem;
+  padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color);
+}
+.contract-lifecycle__footer { align-items: center; border-top: 1px solid var(--border-color); border-bottom: 0; }
+.contract-lifecycle__footer p { margin: 0; color: var(--text-secondary); font-size: .82rem; line-height: 1.45; }
+.contract-lifecycle__header h2 { margin: 0; font-size: 1.25rem; }
+.contract-lifecycle__header > div { min-width: 0; }
+.contract-lifecycle__header p { margin: .25rem 0 0; color: var(--text-secondary); overflow-wrap: anywhere; }
+.contract-lifecycle__eyebrow { font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+.contract-lifecycle__icon-button {
+  width: 44px; min-width: 44px; height: 44px; border: 0; border-radius: var(--radius-sm);
+  background: transparent; color: inherit; display: grid; place-items: center; cursor: pointer;
+}
+.contract-lifecycle__tabs {
+  display: flex; gap: .5rem; padding: .75rem 1.25rem 0; border-bottom: 1px solid var(--border-color);
+}
+.contract-lifecycle__tabs button {
+  min-height: 44px; padding: .55rem .8rem; border: 0; border-bottom: 3px solid transparent;
+  background: transparent; color: var(--text-secondary); font: inherit; font-weight: 650; cursor: pointer;
+}
+.contract-lifecycle__tabs button.is-active { color: var(--primary); border-bottom-color: var(--primary); }
+.contract-lifecycle__body { padding: 1rem 1.25rem 1.25rem; display: grid; gap: 1rem; }
+.contract-lifecycle__section-title { display: flex; justify-content: space-between; align-items: center; gap: .75rem; }
+.contract-lifecycle__section-title h3, .contract-lifecycle__list > h3,
+.contract-lifecycle__review h3, .contract-lifecycle__obligations h4 { margin: 0; }
+.contract-lifecycle__cards { display: grid; gap: .5rem; margin: .65rem 0; }
+.contract-lifecycle__cards > button {
+  min-height: 52px; width: 100%; text-align: left; display: grid; gap: .2rem; padding: .65rem .75rem;
+  border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--color-surface);
+  color: inherit; cursor: pointer;
+}
+.contract-lifecycle__cards > button.is-selected { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
+.contract-lifecycle__cards span, .contract-lifecycle__cards small { overflow-wrap: anywhere; }
+.contract-lifecycle__cards small { color: var(--text-secondary); }
+.contract-lifecycle__form {
+  border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem;
+}
+.contract-lifecycle__form fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: .8rem; min-width: 0; }
+.contract-lifecycle__form legend { font-weight: 700; margin-bottom: .75rem; }
+.contract-lifecycle__form label { display: grid; gap: .35rem; font-size: .88rem; font-weight: 600; min-width: 0; }
+.contract-lifecycle__form input:not([type="checkbox"]), .contract-lifecycle__form select,
+.contract-lifecycle__form textarea {
+  width: 100%; min-width: 0; min-height: 44px; box-sizing: border-box; padding: .6rem .7rem;
+  border: 1px solid var(--border-color); border-radius: var(--radius-sm);
+  background: var(--color-surface); color: var(--text-primary); font: inherit;
+}
+.contract-lifecycle__form textarea { min-height: 82px; resize: vertical; }
+.contract-lifecycle__dates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
+.contract-lifecycle__checkbox {
+  display: flex !important; grid-template-columns: none !important; align-items: flex-start; gap: .65rem !important;
+  min-height: 44px; padding: .55rem 0; cursor: pointer;
+}
+.contract-lifecycle__checkbox input { width: 20px; height: 20px; flex: 0 0 auto; margin-top: .1rem; }
+.contract-lifecycle__actions, .contract-lifecycle__confirm {
+  display: flex; flex-wrap: wrap; gap: .65rem; margin-top: .9rem; align-items: center;
+}
+.contract-lifecycle .btn, .contract-lifecycle button { min-height: 44px; }
+.contract-lifecycle__review { display: grid; gap: .9rem; border-top: 1px solid var(--border-color); padding-top: 1rem; }
+.contract-lifecycle__facts {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem; margin: 0;
+}
+.contract-lifecycle__facts > div { min-width: 0; padding: .6rem; border-radius: var(--radius-sm); background: var(--color-surface-muted, rgb(127 127 127 / .07)); }
+.contract-lifecycle__facts dt { color: var(--text-secondary); font-size: .76rem; }
+.contract-lifecycle__facts dd { margin: .2rem 0 0; font-weight: 600; overflow-wrap: anywhere; }
+.contract-lifecycle__metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .45rem; margin-top: .55rem; }
+.contract-lifecycle__metrics span { padding: .55rem; border: 1px solid var(--border-color); border-radius: var(--radius-sm); overflow-wrap: anywhere; }
+.contract-lifecycle__notice, .contract-lifecycle__success, .contract-lifecycle__error {
+  display: flex; align-items: flex-start; gap: .6rem; padding: .75rem;
+  border: 1px solid var(--border-color); border-radius: var(--radius-sm); overflow-wrap: anywhere;
+}
+.contract-lifecycle__notice--warning { border-color: var(--warning); }
+.contract-lifecycle__notice > span, .contract-lifecycle__success > span { min-width: 0; }
+.contract-lifecycle__notice > svg, .contract-lifecycle__success > svg { flex-shrink: 0; }
+.contract-lifecycle__notice:has(> strong) { flex-wrap: wrap; }
+.contract-lifecycle__notice > strong { flex: 1 1 10rem; }
+.contract-lifecycle__notice > strong + span { flex: 1 1 16rem; }
+.contract-lifecycle__success { color: var(--success); }
+.contract-lifecycle__error { color: var(--danger); flex-wrap: wrap; }
+.contract-lifecycle__error > span { flex: 1 1 14rem; }
+.contract-lifecycle__sample { overflow-x: auto; }
+.contract-lifecycle__sample h5 { margin: .75rem 0 .35rem; }
+.contract-lifecycle__sample-row {
+  display: grid; grid-template-columns: minmax(6rem, .7fr) minmax(10rem, 1.7fr) minmax(8rem, 1fr);
+  gap: .5rem; padding: .45rem 0; border-bottom: 1px solid var(--border-color); font-size: .82rem;
+}
+.contract-lifecycle__policy { color: var(--text-secondary); font-size: .84rem; line-height: 1.5; }
+.contract-lifecycle button:focus-visible, .contract-lifecycle input:focus-visible,
+.contract-lifecycle select:focus-visible, .contract-lifecycle textarea:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--primary) 45%, transparent); outline-offset: 2px;
+}
+.contract-lifecycle-row-action { min-height: 44px !important; white-space: nowrap; }
+@media (max-width: 480px) {
+  .contract-lifecycle__overlay { padding: .4rem; align-items: stretch; }
+  .contract-lifecycle { width: 100%; max-height: calc(100dvh - .8rem); border-radius: var(--radius-md); }
+  .contract-lifecycle__header, .contract-lifecycle__footer, .contract-lifecycle__body { padding-left: .8rem; padding-right: .8rem; }
+  .contract-lifecycle__tabs { padding-left: .8rem; padding-right: .8rem; }
+  .contract-lifecycle__dates, .contract-lifecycle__facts, .contract-lifecycle__metrics { grid-template-columns: 1fr; }
+  .contract-lifecycle__footer { flex-direction: column; align-items: stretch; }
+  .contract-lifecycle__section-title { flex-wrap: wrap; }
+  .contract-lifecycle__footer .btn, .contract-lifecycle__actions .btn, .contract-lifecycle__confirm .btn { width: 100%; }
+}
+@media (max-width: 360px) {
+  .contract-lifecycle__overlay { padding: 0; }
+  .contract-lifecycle { max-height: 100dvh; min-height: 100dvh; border-radius: 0; border-left: 0; border-right: 0; }
+  .contract-lifecycle__header, .contract-lifecycle__footer, .contract-lifecycle__body { padding-left: .65rem; padding-right: .65rem; }
+  .contract-lifecycle__tabs { padding-left: .65rem; padding-right: .65rem; overflow-x: auto; }
+  .contract-lifecycle__sample-row { grid-template-columns: 1fr; }
+}

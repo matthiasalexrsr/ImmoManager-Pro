@@ -221,6 +221,11 @@ def _original_uri_matches(historical, key, old_root):
 
 
 def _scan(db, old_root, destination, catalog, deadline=None):
+    from .contract_lifecycle_validation import JournalValidationError, validate_lifecycle_journal
+    try:
+        validate_lifecycle_journal(db)
+    except (JournalValidationError, sqlite3.Error):
+        raise RecoveryError("Die Vertragsablaufhistorie ist ungültig. Vollständige unveränderte Sicherung verwenden.") from None
     from .document_version_validation import archived_original, verify_document_versions
     has_versions = verify_document_versions(db, deadline=deadline) > 0
     root = PureWindowsPath(old_root) if PureWindowsPath(old_root).drive else PurePosixPath(old_root)

@@ -118,6 +118,8 @@ class BaseRepository:
         raise NotFoundError(self.not_found_msg)
 
     def _write(self, entity_id, updates):
+        from ..services.payment_integrity import guard_sql_lifecycle_edit
+        guard_sql_lifecycle_edit(self.db, self.orm_class.__tablename__, entity_id, updates)
         orm_obj = self.db.get(self.orm_class, entity_id, populate_existing=True)
         if orm_obj is None:
             self._missing(entity_id)
@@ -197,6 +199,14 @@ class BaseRepository:
 
     @safe_db_operation("create")
     def create(self, data: PydanticBaseModel) -> Any:
+        if self.orm_class.__tablename__ == "rent_charges":
+            from ..services.contract_lifecycle import guard_known_rent_period
+            from ..services.payment_integrity import lock_lifecycle_parents
+            from .sql_store import SQLAlchemyStore
+            active = SQLAlchemyStore(self.db)
+            values = data.model_dump()
+            lock_lifecycle_parents(active, contract_ids=(values["contract_id"],))
+            guard_known_rent_period(active, values["contract_id"], values["month"])
         if self.orm_class.__tablename__ == "contracts":
             from ..services.contract_occupancy import creation_guard
             from .sql_store import SQLAlchemyStore

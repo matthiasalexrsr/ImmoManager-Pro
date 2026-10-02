@@ -10,6 +10,8 @@ const RETAINED_LABELS = {
   utility_statements: 'Einzelabrechnungen', message_threads: 'Gespräche', billing_settlements: 'Abrechnungsergebnisse',
   bookings: 'Buchungen', messages: 'Nachrichten', meter_readings: 'Zählerstände', payments: 'Zahlungsbelege',
   credit_receipts: 'Guthabenbelege mit Stornos', credit_balances: 'Aktuelle Guthabenstände',
+  contract_lifecycle_drafts: 'Vertragsabläufe und erhaltene Entwürfe',
+  contract_lifecycle_commands: 'Unveränderliche Freigabebelege des Vertragsablaufs',
 };
 
 export default function TenantPrivacySection({ tenants, onUpdated }) {
@@ -108,6 +110,7 @@ export default function TenantPrivacySection({ tenants, onUpdated }) {
       {preview && <form className="tenant-privacy-preview" onSubmit={anonymize}>
         <strong>Geprüfter Umfang: Mieterstammdaten</strong>
         <p>{preview.note}</p>
+        {preview.lifecycle_note && <p>{preview.lifecycle_note}</p>}
         <p>Name, Kontakt- und Adressdaten, Zahlungsart, SEPA-Mandatsreferenz und Profilnotizen werden entfernt;
           der Mieter erhält einen anonymisierten Namen und wird archiviert.</p>
         <dl>{Object.entries(preview.retained_collections || {}).filter(([, count]) => count > 0).map(([key, count]) =>

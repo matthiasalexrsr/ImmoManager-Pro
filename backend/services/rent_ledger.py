@@ -6,7 +6,6 @@ from calendar import monthrange
 from collections import defaultdict
 from datetime import date
 from decimal import Decimal
-from threading import RLock
 from typing import Annotated
 from uuid import uuid4
 
@@ -23,7 +22,9 @@ from .rent_adjustments import adjustment_write, applied_timeline, effective_cold
 Month = Annotated[str, StringConstraints(pattern=r"^[0-9]{4}-(0[1-9]|1[0-2])$")]
 CENT = Decimal("0.01")
 GENERATION_POLICY = "full_month"
-_generation_lock = RLock()
+# One shared reentrant lock avoids generation → payment vs ordinary
+# payment-backed edit → generation inversion in Memory mode.
+_generation_lock = _memory_lock
 
 
 class RentGenerationRequest(BaseModel):
