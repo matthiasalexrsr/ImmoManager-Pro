@@ -422,6 +422,7 @@ export default function TenancyChangeFile({
           principalKey={principalKey}
           propertyId={base.property_id}
           unitId={base.unit_id}
+          contractId={evidenceStep.direction === 'move_out' ? base.previous_contract_id : base.next_contract_id}
           loadDocuments={loadDocuments}
           loadDocumentVersions={loadDocumentVersions}
           loadHandoverProtocols={loadHandoverProtocols}

@@ -164,14 +164,43 @@ export const workflowApi = {
   },
 };
 
-export function legacyPageLoader(path, filters = {}, mapItem = item => item) {
-  return async ({ offset = 0, limit = PAGE_SIZE, signal }) => {
-    const page = await api.get(
-      `${path}${queryString({ ...filters, skip: offset, limit })}`,
+const WORKFLOW_REFERENCE_KINDS = new Set([
+  'properties',
+  'units',
+  'contracts',
+  'users',
+  'documents',
+  'handover-protocols',
+  'meter-readings',
+  'meters',
+]);
+
+export function workflowReferenceLoader(kind, filters = {}) {
+  if (!WORKFLOW_REFERENCE_KINDS.has(kind)) throw new Error('invalid_reference_kind');
+  return async ({ cursor = null, search = '', selectedId = null, limit = PAGE_SIZE, signal } = {}) => {
+    const result = await api.get(
+      `/workflow-references/${encodeId(kind)}${queryString({
+        search,
+        ...filters,
+        selected_id: selectedId,
+        cursor,
+        page_size: limit,
+      })}`,
       { signal },
     );
-    if (!Array.isArray(page)) throw new Error('invalid_reference_page');
-    return page.map(mapItem);
+    if (!result || typeof result !== 'object' || Array.isArray(result)
+        || !Array.isArray(result.items)
+        || !result.items.every(item => item && typeof item === 'object' && typeof item.id === 'string' && item.id)
+        || typeof result.has_more !== 'boolean'
+        || !(result.next_cursor == null || typeof result.next_cursor === 'string')
+        || (result.has_more && !result.next_cursor)
+        || (!result.has_more && result.next_cursor != null)
+        || !(result.selected == null
+          || (typeof result.selected === 'object' && !Array.isArray(result.selected)
+            && typeof result.selected.id === 'string' && result.selected.id))) {
+      throw new Error('invalid_reference_page');
+    }
+    return result;
   };
 }
 

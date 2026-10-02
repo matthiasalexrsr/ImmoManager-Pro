@@ -5,52 +5,89 @@ import BoundedReferencePicker from '../features/tenancyWorkflows/BoundedReferenc
 const page = (start, count) => Array.from({ length: count }, (_, index) => ({
   id: `item-${start + index}`,
   name: `Item ${start + index}`,
-  is_active: true,
 }));
 
 describe('BoundedReferencePicker', () => {
-  it('keeps legacy offset pages bounded and can select a late item', async () => {
-    const loadPage = vi.fn(async ({ offset, limit }) => (
-      offset === 0 ? page(0, limit) : [{ id: 'item-25', name: 'Late item', is_active: true }]
+  it('preserves opaque cursors and selects a later server page', async () => {
+    const loadPage = vi.fn(async ({ cursor, limit }) => (
+      cursor == null
+        ? { items: page(0, limit), next_cursor: 'opaque-cursor', has_more: true, selected: null }
+        : { items: [{ id: 'published-late', name: 'Published late' }], next_cursor: null, has_more: false, selected: null }
     ));
     const onChange = vi.fn();
-    render(<BoundedReferencePicker label="Contract" loadPage={loadPage} onChange={onChange} />);
+    render(<BoundedReferencePicker label="Template" loadPage={loadPage} onChange={onChange} />);
 
     expect(await screen.findByRole('option', { name: 'Item 0' })).toBeInTheDocument();
-    expect(screen.queryByRole('option', { name: 'Late item' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Weitere laden' }));
-    const late = await screen.findByRole('option', { name: 'Late item' });
+    const late = await screen.findByRole('option', { name: 'Published late' });
     fireEvent.click(late);
 
-    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ id: 'item-25' }));
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ id: 'published-late' }));
     expect(loadPage).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      offset: 25,
-      cursor: null,
+      cursor: 'opaque-cursor',
+      search: '',
+      selectedId: null,
       limit: 25,
       signal: expect.any(AbortSignal),
     }));
   });
 
-  it('preserves opaque workflow cursors instead of translating them to offsets', async () => {
-    const loadPage = vi.fn(async ({ cursor, limit }) => (
-      cursor == null
-        ? { items: page(0, limit), next_cursor: 'opaque-cursor', has_more: true }
-        : { items: [{ id: 'published-late', name: 'Published late' }], next_cursor: null, has_more: false }
-    ));
-    render(<BoundedReferencePicker label="Template" loadPage={loadPage} />);
+  it('sends search to the loader and restarts from an empty cursor when search changes', async () => {
+    const loadPage = vi.fn(async ({ cursor, search }) => {
+      if (search === 'spät') {
+        return {
+          items: [{ id: 'late-match', name: 'Server-normalized result' }],
+          next_cursor: null,
+          has_more: false,
+          selected: null,
+        };
+      }
+      return cursor == null
+        ? { items: [{ id: 'first', name: 'First' }], next_cursor: 'opaque-next', has_more: true, selected: null }
+        : { items: [{ id: 'second', name: 'Second' }], next_cursor: null, has_more: false, selected: null };
+    });
+    render(<BoundedReferencePicker label="Contract" loadPage={loadPage} />);
 
-    await screen.findByRole('option', { name: 'Item 0' });
+    await screen.findByRole('option', { name: 'First' });
     fireEvent.click(screen.getByRole('button', { name: 'Weitere laden' }));
-    expect(await screen.findByRole('option', { name: 'Published late' })).toBeInTheDocument();
-    expect(loadPage).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      offset: 25,
-      cursor: 'opaque-cursor',
+    await screen.findByRole('option', { name: 'Second' });
+
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Contract' }), {
+      target: { value: 'spät' },
+    });
+
+    expect(await screen.findByRole('option', { name: 'Server-normalized result' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Second' })).not.toBeInTheDocument();
+    expect(loadPage).toHaveBeenLastCalledWith(expect.objectContaining({
+      cursor: null,
+      search: 'spät',
+      selectedId: null,
       limit: 25,
     }));
   });
 
+  it('keeps a selected reference hydrated separately from the current result page', async () => {
+    const selected = { id: 'chosen-42', name: 'Chosen record' };
+    const loadPage = vi.fn(async ({ selectedId }) => ({
+      items: [{ id: 'other', name: 'Other record' }],
+      next_cursor: null,
+      has_more: false,
+      selected: selectedId === selected.id ? selected : null,
+    }));
+    render(<BoundedReferencePicker label="User" value={selected.id} loadPage={loadPage} />);
+
+    expect(await screen.findByText('Chosen record')).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Other record' })).toBeInTheDocument();
+    expect(loadPage).toHaveBeenCalledWith(expect.objectContaining({ selectedId: 'chosen-42' }));
+  });
+
   it('does not restart page one when an inline loader callback changes identity', async () => {
-    const backend = vi.fn(async () => [{ id: 'user-1', name: 'Active user', is_active: true }]);
+    const backend = vi.fn(async () => ({
+      items: [{ id: 'user-1', name: 'Active user' }],
+      next_cursor: null,
+      has_more: false,
+      selected: null,
+    }));
     function Harness({ tick }) {
       const inlineLoader = args => backend(tick, args);
       return <BoundedReferencePicker label="User" sourceKey="same-scope" loadPage={inlineLoader} />;
@@ -62,20 +99,5 @@ describe('BoundedReferencePicker', () => {
 
     view.rerender(<Harness tick={2} />);
     await waitFor(() => expect(backend).toHaveBeenCalledTimes(1));
-  });
-
-  it('shows inactive references but makes them non-selectable', async () => {
-    const onChange = vi.fn();
-    render(<BoundedReferencePicker
-      label="User"
-      loadPage={async () => [{ id: 'inactive', name: 'Inactive', is_active: false }]}
-      isSelectable={item => item.is_active}
-      onChange={onChange}
-    />);
-
-    const item = await screen.findByRole('option', { name: 'Inactive' });
-    expect(item).toBeDisabled();
-    fireEvent.click(item);
-    expect(onChange).not.toHaveBeenCalled();
   });
 });

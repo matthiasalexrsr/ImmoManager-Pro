@@ -19,15 +19,6 @@ const newContract = {
   start_date: '2026-11-01',
   end_date: null,
 };
-const foreignContract = {
-  id: 'foreign-contract',
-  contract_number: 'FOREIGN',
-  property_id: 'property-2',
-  unit_id: 'unit-9',
-  start_date: '2026-01-01',
-  end_date: null,
-};
-
 const outTemplate = {
   id: 'out-version',
   version: 4,
@@ -72,7 +63,12 @@ function createdChange() {
 
 describe('TenancyChangeStartForm', () => {
   function mount(overrides = {}) {
-    const loadContracts = vi.fn(async () => [oldContract, newContract, foreignContract]);
+    const loadContracts = vi.fn(async () => ({
+      items: [oldContract, newContract],
+      next_cursor: null,
+      has_more: false,
+      selected: null,
+    }));
     const loadTemplates = vi.fn(async ({ direction }) => ({
       items: [direction === 'move_out' ? outTemplate : inTemplate],
       next_cursor: null,
@@ -111,8 +107,7 @@ describe('TenancyChangeStartForm', () => {
   async function chooseReferences() {
     const previous = await screen.findByRole('listbox', { name: /Vorheriger Vertrag/ });
     const old = within(previous).getByRole('option', { name: /OLD-1/ });
-    const foreign = within(previous).getByRole('option', { name: /FOREIGN/ });
-    expect(foreign).toBeDisabled();
+    expect(within(previous).queryByRole('option', { name: /FOREIGN/ })).not.toBeInTheDocument();
     fireEvent.click(old);
 
     const next = screen.getByRole('listbox', { name: /Neuer Vertrag/ });
@@ -141,8 +136,8 @@ describe('TenancyChangeStartForm', () => {
       move_out_template_version_id: 'out-version',
       move_in_template_version_id: 'in-version',
     }), expect.objectContaining({ signal: expect.any(AbortSignal) }));
-    expect(screen.getByText('2026-10-31')).toBeInTheDocument();
-    expect(screen.getByText('2026-11-01')).toBeInTheDocument();
+    expect(screen.getAllByText('2026-10-31').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('2026-11-01').length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole('button', { name: 'Wechselakte starten' }));
     await waitFor(() => expect(prepareCreate).toHaveBeenCalledTimes(1));

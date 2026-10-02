@@ -255,15 +255,21 @@ describe('TenancyChangeFile against the core DTOs', () => {
       }, 'add-evidence-key'),
       send: vi.fn(async () => linkedChange),
     }));
-    render(<TenancyChangeFile change={source}
-      prepareEvidenceLink={prepareEvidenceLink}
-      loadDocuments={async () => [{
+    const loadDocuments = vi.fn(async () => ({
+      items: [{
         id: 'document-1',
         title: 'Übergabe Original',
         property_id: 'property-1',
         unit_id: 'unit-1',
         contract_id: 'old-contract',
-      }]}
+      }],
+      next_cursor: null,
+      has_more: false,
+      selected: null,
+    }));
+    render(<TenancyChangeFile change={source}
+      prepareEvidenceLink={prepareEvidenceLink}
+      loadDocuments={loadDocuments}
       loadDocumentVersions={async documentId => ({
         document_id: documentId,
         items: [{
@@ -284,6 +290,17 @@ describe('TenancyChangeFile against the core DTOs', () => {
     fireEvent.click(await within(dialog).findByRole('radio', { name: /v7 · original.pdf/ }));
     fireEvent.click(within(dialog).getByRole('button', { name: 'Beleg verknüpfen' }));
 
+    expect(loadDocuments).toHaveBeenCalledWith(expect.objectContaining({
+      propertyId: 'property-1',
+      unitId: 'unit-1',
+      contractId: 'old-contract',
+      direction: 'move_out',
+      cursor: null,
+      search: '',
+      selectedId: null,
+      limit: 25,
+      signal: expect.any(AbortSignal),
+    }));
     await waitFor(() => expect(prepareEvidenceLink).toHaveBeenCalledTimes(1));
     expect(prepareEvidenceLink.mock.results[0].value.payload).toEqual({
       idempotency_key: 'add-evidence-key',
@@ -293,6 +310,70 @@ describe('TenancyChangeFile against the core DTOs', () => {
         kind: 'document_version',
         document_id: 'document-1',
         document_version_id: 'document-version-7',
+      },
+    });
+  });
+
+  it('loads a finalized meter reading through the canonical scoped reference flow', async () => {
+    const meterStep = step({
+      evidence_requirement: 'meter_reading',
+      direction: 'move_out',
+    });
+    const source = change({ steps: [meterStep] });
+    const loadMeterReadings = vi.fn(async () => ({
+      items: [{
+        id: 'reading-1',
+        meter_number: 'W-17',
+        reading_value: '321.5',
+        unit: 'm³',
+      }],
+      next_cursor: null,
+      has_more: false,
+      selected: null,
+    }));
+    const prepareEvidenceLink = vi.fn(({ change: current, step: currentStep, selection }) => ({
+      payload: addEvidenceCommand(current, currentStep, {
+        kind: 'meter_reading',
+        meter_reading_id: selection.item.id,
+      }, 'meter-evidence-key'),
+      send: vi.fn(async () => nextChange(current, [{
+        ...currentStep,
+        revision: 'step-rev-2',
+        etag: '"immo-workflow-v1:step:step-1:step-rev-2"',
+      }])),
+    }));
+
+    render(<TenancyChangeFile
+      change={source}
+      prepareEvidenceLink={prepareEvidenceLink}
+      loadMeterReadings={loadMeterReadings}
+      canSelectEvidence={() => true}
+    />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Beleg verknüpfen' }));
+    const dialog = await screen.findByRole('dialog');
+    const reading = await within(dialog).findByRole('option', { name: /W-17/ });
+    fireEvent.click(reading);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Beleg verknüpfen' }));
+
+    expect(loadMeterReadings).toHaveBeenCalledWith(expect.objectContaining({
+      propertyId: 'property-1',
+      unitId: 'unit-1',
+      contractId: 'old-contract',
+      direction: 'move_out',
+      cursor: null,
+      search: '',
+      selectedId: null,
+      limit: 25,
+    }));
+    await waitFor(() => expect(prepareEvidenceLink).toHaveBeenCalledTimes(1));
+    expect(prepareEvidenceLink.mock.results[0].value.payload).toEqual({
+      idempotency_key: 'meter-evidence-key',
+      expected_revision: 'step-rev-1',
+      expected_change_revision: 'change-rev-1',
+      evidence: {
+        kind: 'meter_reading',
+        meter_reading_id: 'reading-1',
       },
     });
   });

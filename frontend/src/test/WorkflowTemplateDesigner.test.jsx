@@ -60,10 +60,15 @@ function preparedSaveFactory() {
 describe('WorkflowTemplateDesigner', () => {
   it('exposes all four date anchors and changes responsibility from role to a concrete active user', async () => {
     const prepareSave = preparedSaveFactory();
-    const userLoader = vi.fn(async () => [
-      { id: 'user-tech', full_name: 'Technik Aktiv', username: 'tech', role: 'techniker', is_active: true },
-      { id: 'user-old', full_name: 'Technik Inaktiv', username: 'old', role: 'techniker', is_active: false },
-    ]);
+    const userLoader = vi.fn(async () => ({
+      items: [
+        { id: 'user-tech', full_name: 'Technik Aktiv', role: 'techniker' },
+        { id: 'user-owner', full_name: 'Verwaltung Aktiv', role: 'verwalter' },
+      ],
+      next_cursor: null,
+      has_more: false,
+      selected: null,
+    }));
 
     render(<WorkflowTemplateDesigner
       version={version()}
@@ -81,8 +86,6 @@ describe('WorkflowTemplateDesigner', () => {
 
     fireEvent.click(screen.getByRole('radio', { name: 'Konkreter Benutzer' }));
     const active = await screen.findByRole('option', { name: /Technik Aktiv/ });
-    const inactive = screen.getByRole('option', { name: /Technik Inaktiv/ });
-    expect(inactive).toBeDisabled();
     fireEvent.click(active);
     fireEvent.click(screen.getByRole('button', { name: 'Entwurf speichern' }));
 
@@ -100,7 +103,7 @@ describe('WorkflowTemplateDesigner', () => {
     ];
     render(<WorkflowTemplateDesigner
       version={version({ steps: twoSteps })}
-      userLoader={async () => []}
+      userLoader={async () => ({ items: [], next_cursor: null, has_more: false, selected: null })}
       prepareSave={prepareSave}
       preparePublish={vi.fn()}
     />);
@@ -117,7 +120,7 @@ describe('WorkflowTemplateDesigner', () => {
   it('uses server actions instead of inferring edit rights from a role', () => {
     render(<WorkflowTemplateDesigner
       version={version({ actions: { edit_template: false, publish_template: false } })}
-      userLoader={async () => []}
+      userLoader={async () => ({ items: [], next_cursor: null, has_more: false, selected: null })}
     />);
 
     expect(screen.getByText('Diese Version ist nicht bearbeitbar.')).toBeInTheDocument();

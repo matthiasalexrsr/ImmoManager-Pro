@@ -1,36 +1,73 @@
-import { legacyPageLoader, loadDocumentVersionPage } from './tenancyWorkflowApi';
+import { loadDocumentVersionPage, workflowReferenceLoader } from './tenancyWorkflowApi';
 
 export function propertyReferenceLoader() {
-  return legacyPageLoader('/properties');
+  return workflowReferenceLoader('properties');
 }
 
 export function unitReferenceLoader({ propertyId }) {
-  return legacyPageLoader('/units', { property_id: propertyId });
+  return workflowReferenceLoader('units', { property_id: propertyId });
 }
 
-export function contractReferenceLoader({ propertyId }) {
-  return legacyPageLoader('/contracts', { property_id: propertyId });
+export function contractReferenceLoader({ propertyId, unitId = null }) {
+  return workflowReferenceLoader('contracts', {
+    property_id: propertyId,
+    unit_id: unitId,
+  });
 }
 
-export function activeUserReferenceLoader() {
-  return legacyPageLoader('/auth/users');
+export function activeUserReferenceLoader({ propertyId }) {
+  return workflowReferenceLoader('users', { property_id: propertyId });
 }
 
-export function documentReferenceLoader({ propertyId }) {
-  return legacyPageLoader('/documents', { property_id: propertyId });
+export function documentReferenceLoader({
+  propertyId,
+  unitId = null,
+  contractId = null,
+  direction = null,
+}) {
+  return workflowReferenceLoader('documents', {
+    property_id: propertyId,
+    unit_id: unitId,
+    contract_id: contractId,
+    direction,
+  });
 }
 
-export function handoverReferenceLoader({ unitId }) {
-  return legacyPageLoader('/handover-protocols', { unit_id: unitId });
+export function handoverReferenceLoader({
+  propertyId = null,
+  unitId,
+  contractId = null,
+  direction = null,
+}) {
+  return workflowReferenceLoader('handover-protocols', {
+    property_id: propertyId,
+    unit_id: unitId,
+    contract_id: contractId,
+    direction,
+  });
+}
+
+export function meterReadingReferenceLoader({
+  propertyId = null,
+  unitId,
+  contractId = null,
+  direction = null,
+}) {
+  return workflowReferenceLoader('meter-readings', {
+    property_id: propertyId,
+    unit_id: unitId,
+    contract_id: contractId,
+    direction,
+  });
+}
+
+export function meterReferenceLoader({ propertyId = null, unitId = null }) {
+  return workflowReferenceLoader('meters', {
+    property_id: propertyId,
+    unit_id: unitId,
+  });
 }
 
 export function documentVersionReferenceLoader(documentId, options) {
   return loadDocumentVersionPage(documentId, options);
 }
-
-/*
- * Deliberately absent: a canonical global reference-search endpoint and a
- * dedicated immutable meter-reading picker. The current UI keeps every request
- * bounded and can load later legacy pages, but does not call that a finished
- * cross-resource search service. Root owns that remaining P1 integration.
- */

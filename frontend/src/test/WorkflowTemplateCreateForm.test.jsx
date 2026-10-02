@@ -23,9 +23,24 @@ describe('WorkflowTemplateCreateForm', () => {
     }));
 
     render(<WorkflowTemplateCreateForm
-      propertyLoader={async () => [{ id: 'property-1', name: 'Haus A' }]}
-      unitLoaderForProperty={() => async () => []}
-      userLoader={async () => []}
+      propertyLoader={async () => ({
+        items: [{ id: 'property-1', name: 'Haus A' }],
+        next_cursor: null,
+        has_more: false,
+        selected: null,
+      })}
+      unitLoaderForProperty={() => async () => ({
+        items: [],
+        next_cursor: null,
+        has_more: false,
+        selected: null,
+      })}
+      userLoaderForProperty={() => async () => ({
+        items: [],
+        next_cursor: null,
+        has_more: false,
+        selected: null,
+      })}
       prepareCreate={prepareCreate}
       onCreated={onCreated}
     />);

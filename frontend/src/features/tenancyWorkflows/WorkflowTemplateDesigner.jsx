@@ -41,7 +41,7 @@ function blankStep(position) {
     anchor: 'move_in_handover',
     offset_days: 0,
     assignee_user_id: null,
-    assignee_role: null,
+    assignee_role: 'techniker',
     depends_on_step_keys: [],
     evidence_requirement: 'none',
   };
@@ -61,9 +61,7 @@ function normalizedSteps(steps) {
 }
 
 function responsibilityMode(step) {
-  if (step.assignee_user_id) return 'user';
-  if (step.assignee_role) return 'role';
-  return 'none';
+  return step.assignee_user_id ? 'user' : 'role';
 }
 
 export default function WorkflowTemplateDesigner({
@@ -149,8 +147,7 @@ export default function WorkflowTemplateDesigner({
     const key = localKey(steps[index]);
     setResponsibilityModes(current => ({ ...current, [key]: mode }));
     if (mode === 'user') patchStep(index, { assignee_user_id: null, assignee_role: null });
-    else if (mode === 'role') patchStep(index, { assignee_user_id: null, assignee_role: 'techniker' });
-    else patchStep(index, { assignee_user_id: null, assignee_role: null });
+    else patchStep(index, { assignee_user_id: null, assignee_role: 'techniker' });
   };
 
   const toggleDependency = (index, key, enabled) => patchStep(index, {
@@ -296,7 +293,7 @@ export default function WorkflowTemplateDesigner({
               <fieldset className="workflow-fieldset" disabled={!editable || command.busy}>
                 <legend>{tr('responsibility')}</legend>
                 <div className="workflow-segmented">
-                  {['none', 'user', 'role'].map(value => (
+                  {['user', 'role'].map(value => (
                     <label key={value}>
                       <input type="radio" name={`responsibility-${localKey(step)}`} value={value}
                         checked={mode === value} onChange={() => setResponsibility(index, value)} />
@@ -311,10 +308,10 @@ export default function WorkflowTemplateDesigner({
                     value={step.assignee_user_id}
                     onChange={item => patchStep(index, { assignee_user_id: item?.id || null, assignee_role: null })}
                     loadPage={userLoader}
-                    getLabel={item => item.full_name || item.username || item.id}
-                    getDescription={item => [item.role, item.email].filter(Boolean).join(' · ')}
-                    isSelectable={item => item.is_active !== false && ROLES.includes(item.role)}
-                    sourceKey="active-users"
+                    getLabel={item => item.full_name || item.id}
+                    getDescription={item => item.role || ''}
+                    isSelectable={item => ROLES.includes(item.role)}
+                    sourceKey={`active-users:${base.property_id}`}
                     disabled={!editable || command.busy}
                   />
                 )}

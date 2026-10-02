@@ -20,6 +20,7 @@ import {
   documentReferenceLoader,
   documentVersionReferenceLoader,
   handoverReferenceLoader,
+  meterReadingReferenceLoader,
   propertyReferenceLoader,
   publishTemplateVersionCommand,
   reanchorPreviewPayload,
@@ -99,7 +100,10 @@ export default function TenancyWorkflows() {
   const pageCommand = useWorkflowCommand(principalKey);
 
   const propertyLoader = useMemo(() => propertyReferenceLoader(), []);
-  const userLoader = useMemo(() => activeUserReferenceLoader(), []);
+  const userLoaderForProperty = useCallback(
+    propertyId => activeUserReferenceLoader({ propertyId }),
+    [],
+  );
   const contextUnitLoader = useMemo(
     () => contextProperty ? unitReferenceLoader({ propertyId: contextProperty.id }) : null,
     [contextProperty],
@@ -107,6 +111,10 @@ export default function TenancyWorkflows() {
   const unitLoaderForProperty = useCallback(
     propertyId => unitReferenceLoader({ propertyId }),
     [],
+  );
+  const selectedVersionUserLoader = useMemo(
+    () => selectedVersion ? activeUserReferenceLoader({ propertyId: selectedVersion.property_id }) : null,
+    [selectedVersion],
   );
 
   const loadTemplates = useCallback(async (after = null, append = false, options = {}) => {
@@ -191,8 +199,10 @@ export default function TenancyWorkflows() {
   };
 
   const contractLoader = useMemo(
-    () => contextProperty ? contractReferenceLoader({ propertyId: contextProperty.id }) : null,
-    [contextProperty],
+    () => contextProperty && contextUnit
+      ? contractReferenceLoader({ propertyId: contextProperty.id, unitId: contextUnit.id })
+      : null,
+    [contextProperty, contextUnit],
   );
 
   const publishedTemplateLoader = useCallback(
@@ -227,35 +237,20 @@ export default function TenancyWorkflows() {
     [],
   );
 
-  const expectedContractFor = useCallback((change, step) => (
-    step.direction === 'move_out' ? change.previous_contract_id : change.next_contract_id
-  ), []);
+  const documentLoader = useCallback(args => {
+    const { propertyId, unitId, contractId, direction, ...pageArgs } = args;
+    return documentReferenceLoader({ propertyId, unitId, contractId, direction })(pageArgs);
+  }, []);
+  const handoverLoader = useCallback(args => {
+    const { propertyId, unitId, contractId, direction, ...pageArgs } = args;
+    return handoverReferenceLoader({ propertyId, unitId, contractId, direction })(pageArgs);
+  }, []);
+  const meterReadingLoader = useCallback(args => {
+    const { propertyId, unitId, contractId, direction, ...pageArgs } = args;
+    return meterReadingReferenceLoader({ propertyId, unitId, contractId, direction })(pageArgs);
+  }, []);
 
-  const documentLoader = useMemo(
-    () => selectedChange ? documentReferenceLoader({ propertyId: selectedChange.property_id }) : null,
-    [selectedChange],
-  );
-  const handoverLoader = useMemo(
-    () => selectedChange ? handoverReferenceLoader({ unitId: selectedChange.unit_id }) : null,
-    [selectedChange],
-  );
-
-  const canSelectEvidence = useCallback((kind, item, step) => {
-    if (!selectedChange || !item || !step) return false;
-    const contractId = expectedContractFor(selectedChange, step);
-    if (kind === 'document_version') {
-      return item.property_id === selectedChange.property_id
-        && item.unit_id === selectedChange.unit_id
-        && item.contract_id === contractId;
-    }
-    if (kind === 'handover_protocol') {
-      return item.status === 'finalized'
-        && item.unit_id === selectedChange.unit_id
-        && item.contract_id === contractId
-        && item.protocol_type === step.direction;
-    }
-    return false;
-  }, [expectedContractFor, selectedChange]);
+  const canSelectEvidence = useCallback((_kind, item) => Boolean(item?.id), []);
 
   const renderTemplateWorkspace = () => (
     <div className="tenancy-workflow-page__columns">
@@ -265,7 +260,7 @@ export default function TenancyWorkflows() {
           principalKey={principalKey}
           propertyLoader={propertyLoader}
           unitLoaderForProperty={unitLoaderForProperty}
-          userLoader={userLoader}
+          userLoaderForProperty={userLoaderForProperty}
           prepareCreate={input => ({
             payload: createTemplateCommand(input),
             send: (payload, options) => workflowApi.createTemplate(payload, options),
@@ -334,7 +329,7 @@ export default function TenancyWorkflows() {
               version={selectedVersion}
               locale={locale}
               principalKey={principalKey}
-              userLoader={userLoader}
+              userLoader={selectedVersionUserLoader}
               prepareSave={({ version, steps }) => ({
                 payload: updateTemplateVersionCommand(version, steps),
                 send: (payload, options) => workflowApi.updateTemplateVersion(version.id, payload, options),
@@ -366,13 +361,12 @@ export default function TenancyWorkflows() {
             <BoundedReferencePicker label={tr('propertyScope')} locale={locale}
               value={contextProperty?.id || null} selectedItem={contextProperty}
               loadPage={propertyLoader} sourceKey="change-properties"
-              getLabel={item => item.name || item.id}
+              getLabel={item => item.name || item.label || item.id}
               onChange={item => { setContextProperty(item); setContextUnit(null); }} required />
             <BoundedReferencePicker label={tr('unitScope')} locale={locale}
               value={contextUnit?.id || null} selectedItem={contextUnit}
               loadPage={contextUnitLoader} sourceKey={contextProperty?.id || 'no-property'}
-              getLabel={item => item.label || item.id}
-              isSelectable={item => item.property_id === contextProperty?.id}
+              getLabel={item => item.label || item.name || item.id}
               disabled={!contextProperty} onChange={setContextUnit} required />
           </section>
         )}
@@ -485,6 +479,7 @@ export default function TenancyWorkflows() {
             loadDocuments={documentLoader}
             loadDocumentVersions={documentVersionReferenceLoader}
             loadHandoverProtocols={handoverLoader}
+            loadMeterReadings={meterReadingLoader}
             onChanged={result => {
               setSelectedChange(result);
               setChanges(items => items.map(item => item.id === result.id ? result : item));

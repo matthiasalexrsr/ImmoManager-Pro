@@ -18,11 +18,12 @@ const initialForm = {
 };
 
 function contractLabel(contract) {
-  return contract.contract_number || contract.id;
+  return contract.label || contract.contract_number || contract.id;
 }
 
 function contractDescription(contract) {
-  return [contract.start_date, contract.end_date || '∞'].filter(Boolean).join(' → ');
+  const dates = [contract.start_date, contract.end_date].filter(Boolean);
+  return dates.join(' → ');
 }
 
 function previewFacts(value) {
@@ -87,10 +88,6 @@ export default function TenancyChangeStartForm({
 
   const validForPreview = (!needsOut || (form.previous_contract_id && form.move_out_template_version_id))
     && (!needsIn || (form.next_contract_id && form.move_in_template_version_id));
-
-  const scopedContract = useCallback(contract => (
-    contract?.property_id === propertyId && contract?.unit_id === unitId
-  ), [propertyId, unitId]);
 
   const scopedTemplate = useCallback((template, direction) => (
     template?.property_id === propertyId
@@ -190,7 +187,7 @@ export default function TenancyChangeStartForm({
               value={form.previous_contract_id} selectedItem={selectedPrevious}
               loadPage={contractLoader} sourceKey={`${propertyId}:${unitId}:previous`}
               getLabel={contractLabel} getDescription={contractDescription}
-              isSelectable={scopedContract} disabled={previewLoading || command.busy}
+              disabled={previewLoading || command.busy}
               onChange={item => { setSelectedPrevious(item); changeForm({ previous_contract_id: item?.id || null }); }} required />
             <label className="workflow-field">
               <span>{tr('moveOutHandoverDate')}</span>
@@ -200,7 +197,7 @@ export default function TenancyChangeStartForm({
             </label>
             <BoundedReferencePicker label={tr('moveOutTemplate')} locale={locale}
               value={form.move_out_template_version_id} selectedItem={selectedOutTemplate}
-              loadPage={templateLoader('move_out')} sourceKey={`${propertyId}:${unitId}:move_out`}
+              loadPage={templateLoader('move_out')} sourceKey={`${propertyId}:${unitId}:move_out`} searchEnabled={false}
               getLabel={item => `${tr('version', { version: item.version })} · ${item.unit_id ? tr('unitOverride') : tr('objectDefault')}`} getDescription={item => item.id}
               isSelectable={item => scopedTemplate(item, 'move_out')} disabled={previewLoading || command.busy}
               onChange={item => { setSelectedOutTemplate(item); changeForm({ move_out_template_version_id: item?.id || null }); }} required />
@@ -216,7 +213,7 @@ export default function TenancyChangeStartForm({
               value={form.next_contract_id} selectedItem={selectedNext}
               loadPage={contractLoader} sourceKey={`${propertyId}:${unitId}:next`}
               getLabel={contractLabel} getDescription={contractDescription}
-              isSelectable={scopedContract} disabled={previewLoading || command.busy}
+              disabled={previewLoading || command.busy}
               onChange={item => { setSelectedNext(item); changeForm({ next_contract_id: item?.id || null }); }} required />
             <label className="workflow-field">
               <span>{tr('moveInHandoverDate')}</span>
@@ -226,7 +223,7 @@ export default function TenancyChangeStartForm({
             </label>
             <BoundedReferencePicker label={tr('moveInTemplate')} locale={locale}
               value={form.move_in_template_version_id} selectedItem={selectedInTemplate}
-              loadPage={templateLoader('move_in')} sourceKey={`${propertyId}:${unitId}:move_in`}
+              loadPage={templateLoader('move_in')} sourceKey={`${propertyId}:${unitId}:move_in`} searchEnabled={false}
               getLabel={item => `${tr('version', { version: item.version })} · ${item.unit_id ? tr('unitOverride') : tr('objectDefault')}`} getDescription={item => item.id}
               isSelectable={item => scopedTemplate(item, 'move_in')} disabled={previewLoading || command.busy}
               onChange={item => { setSelectedInTemplate(item); changeForm({ move_in_template_version_id: item?.id || null }); }} required />

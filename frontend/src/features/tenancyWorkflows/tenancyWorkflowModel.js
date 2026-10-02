@@ -79,7 +79,7 @@ export function validateTemplateStep(step) {
       || !REQUIREMENTS.includes(step.default_requirement)
       || !ANCHORS.includes(step.anchor) || !Number.isInteger(step.offset_days)
       || !optionalString(step.assignee_user_id) || !optionalString(step.assignee_role)
-      || (step.assignee_user_id && step.assignee_role)
+      || Boolean(step.assignee_user_id) === Boolean(step.assignee_role)
       || !Array.isArray(step.depends_on_step_keys)
       || !step.depends_on_step_keys.every(isString)
       || !EVIDENCE_REQUIREMENTS.includes(step.evidence_requirement)) {
@@ -100,7 +100,7 @@ export function validateTemplateDraftSteps(steps) {
         || !REQUIREMENTS.includes(step.default_requirement)
         || !ANCHORS.includes(step.anchor) || !Number.isInteger(Number(step.offset_days))
         || !Number.isInteger(Number(step.position)) || Number(step.position) < 0
-        || (step.assignee_user_id && step.assignee_role)
+        || Boolean(step.assignee_user_id) === Boolean(step.assignee_role)
         || !Array.isArray(step.depends_on_step_keys)
         || step.depends_on_step_keys.length !== new Set(step.depends_on_step_keys).size
         || !EVIDENCE_REQUIREMENTS.includes(step.evidence_requirement)) {
@@ -160,7 +160,7 @@ export function validateStepInstance(step, changeId) {
       || !STEP_STATES.includes(step.state) || !Array.isArray(step.blocked_by_step_ids)
       || !step.blocked_by_step_ids.every(isString)
       || !optionalString(step.assignee_user_id) || !optionalString(step.assignee_role)
-      || (step.assignee_user_id && step.assignee_role)
+      || Boolean(step.assignee_user_id) === Boolean(step.assignee_role)
       || !optionalString(step.task_id)
       || !(step.completed_at == null || isTimestamp(step.completed_at))
       || !optionalString(step.completed_by)

@@ -10,7 +10,7 @@ const apiMock = vi.hoisted(() => ({
 
 vi.mock('../api', () => ({ api: apiMock }));
 
-import { workflowApi } from '../features/tenancyWorkflows/tenancyWorkflowApi';
+import { workflowApi, workflowReferenceLoader } from '../features/tenancyWorkflows/tenancyWorkflowApi';
 
 const hash = char => char.repeat(64);
 const timestamp = '2026-10-02T10:00:00+00:00';
@@ -99,6 +99,28 @@ const change = {
 
 describe('tenancy workflow API contract', () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it('sends canonical reference search filters, selected_id and opaque cursor without a total cap', async () => {
+    const response = {
+      items: [{ id: 'user-2', full_name: 'Technik Zwei', role: 'techniker' }],
+      next_cursor: 'opaque-ref-next',
+      has_more: true,
+      selected: { id: 'user-1', full_name: 'Technik Eins', role: 'techniker' },
+    };
+    apiMock.get.mockResolvedValue(response);
+    const loadUsers = workflowReferenceLoader('users', { property_id: 'property-1' });
+
+    expect(await loadUsers({
+      search: 'technik',
+      selectedId: 'user-1',
+      cursor: 'opaque-ref-current',
+      limit: 25,
+    })).toBe(response);
+    expect(apiMock.get).toHaveBeenCalledWith(
+      '/workflow-references/users?search=technik&property_id=property-1&selected_id=user-1&cursor=opaque-ref-current&page_size=25',
+      { signal: undefined },
+    );
+  });
 
   it('uses the opaque template cursor and treats list/create responses as WorkflowTemplateVersion', async () => {
     apiMock.get.mockResolvedValue({

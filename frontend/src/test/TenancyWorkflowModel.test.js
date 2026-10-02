@@ -150,6 +150,25 @@ describe('tenancy workflow source contract', () => {
     ])).toThrow('dependency_cycle');
   });
 
+  it('requires exactly one template-step responsibility: concrete user or role', () => {
+    expect(() => validateTemplateDraftSteps([{
+      ...stepInput(),
+      assignee_user_id: null,
+      assignee_role: null,
+    }])).toThrow('invalid_template_step');
+
+    expect(() => validateTemplateDraftSteps([
+      stepInput({ assignee_user_id: 'user-1', assignee_role: 'techniker' }),
+    ])).toThrow('invalid_template_step');
+
+    expect(validateTemplateDraftSteps([{
+      ...stepInput(),
+      assignee_user_id: 'user-1',
+      assignee_role: null,
+    }])).toHaveLength(1);
+    expect(validateTemplateDraftSteps([stepInput()])).toHaveLength(1);
+  });
+
   it('requires exact immutable evidence identity from the step response DTO', () => {
     const valid = change({ steps: [instance({ evidence_links: [evidence()] })] });
     expect(validateTenancyChange(valid)).toBe(valid);

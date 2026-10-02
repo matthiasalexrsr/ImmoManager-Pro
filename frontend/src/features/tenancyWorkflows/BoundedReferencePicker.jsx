@@ -12,17 +12,18 @@ export default function BoundedReferencePicker({
   onChange,
   loadPage,
   getKey = item => item.id,
-  getLabel = item => item.name || item.title || item.label || item.id,
+  getLabel = item => item.name || item.title || item.label || item.full_name || item.id,
   getDescription = () => '',
   isSelectable = () => true,
   pageSize = PAGE_SIZE,
   sourceKey = '',
+  searchEnabled = true,
   disabled = false,
   required = false,
 }) {
   const id = useId();
   const [items, setItems] = useState([]);
-  const [offset, setOffset] = useState(0);
+  const [serverSelected, setServerSelected] = useState(null);
   const [cursor, setCursor] = useState(null);
   const [hasMore, setHasMore] = useState(true);
   const [query, setQuery] = useState('');
@@ -32,13 +33,17 @@ export default function BoundedReferencePicker({
   const generation = useRef(0);
   const loadPageRef = useRef(loadPage);
   const keyRef = useRef(getKey);
-  const selectedRef = useRef(selectedItem);
+  const valueRef = useRef(value);
   loadPageRef.current = loadPage;
   keyRef.current = getKey;
-  selectedRef.current = selectedItem;
+  valueRef.current = value;
   const tr = useCallback((key, params) => workflowText(locale, key, params), [locale]);
 
-  const load = useCallback(async ({ nextOffset = 0, nextCursor = null, replace = false } = {}) => {
+  const load = useCallback(async ({
+    nextCursor = null,
+    replace = false,
+    search = '',
+  } = {}) => {
     if (disabled || typeof loadPageRef.current !== 'function') return;
     request.current?.abort();
     const controller = new AbortController();
@@ -48,32 +53,34 @@ export default function BoundedReferencePicker({
     setError(null);
     try {
       const response = await loadPageRef.current({
-        offset: nextOffset,
         cursor: nextCursor,
+        search,
+        selectedId: valueRef.current || null,
         limit: pageSize,
         signal: controller.signal,
       });
       if (controller.signal.aborted || run !== generation.current) return;
-      const page = Array.isArray(response) ? response : response?.items;
-      if (!Array.isArray(page)) throw new Error('invalid_reference_page');
-      const returnedCursor = Array.isArray(response)
-        ? null
-        : response.next_cursor ?? response.nextCursor ?? null;
-      const returnedHasMore = Array.isArray(response)
-        ? page.length === pageSize
-        : response.has_more ?? response.hasMore ?? Boolean(returnedCursor);
+      if (!response || typeof response !== 'object' || Array.isArray(response)
+          || !Array.isArray(response.items)) {
+        throw new Error('invalid_reference_page');
+      }
+      const returnedCursor = response.next_cursor ?? null;
+      const returnedHasMore = response.has_more === true;
+      if ((returnedHasMore && typeof returnedCursor !== 'string')
+          || (!returnedHasMore && returnedCursor != null)) {
+        throw new Error('invalid_reference_page');
+      }
       setItems(current => {
-        const merged = replace ? page : [...current, ...page];
+        const merged = replace ? response.items : [...current, ...response.items];
         const unique = new Map();
         for (const item of merged) unique.set(String(keyRef.current(item)), item);
-        if (selectedRef.current) {
-          unique.set(String(keyRef.current(selectedRef.current)), selectedRef.current);
-        }
         return [...unique.values()];
       });
-      setOffset(nextOffset + page.length);
+      setServerSelected(response.selected && typeof response.selected === 'object'
+        ? response.selected
+        : null);
       setCursor(returnedCursor);
-      setHasMore(Boolean(returnedHasMore));
+      setHasMore(returnedHasMore);
     } catch (failure) {
       if (!controller.signal.aborted && run === generation.current) setError(failure.message);
     } finally {
@@ -84,37 +91,35 @@ export default function BoundedReferencePicker({
   useEffect(() => {
     generation.current += 1;
     request.current?.abort();
-    setItems(selectedRef.current ? [selectedRef.current] : []);
-    setOffset(0);
+    setItems([]);
+    setServerSelected(null);
     setCursor(null);
     setHasMore(true);
     setQuery('');
     setError(null);
-    if (!disabled) load({ nextOffset: 0, nextCursor: null, replace: true });
+    if (!disabled) load({ nextCursor: null, replace: true, search: '' });
     return () => request.current?.abort();
   }, [disabled, load, sourceKey]);
 
   useEffect(() => {
-    if (!selectedItem) return;
-    setItems(current => {
-      const key = String(keyRef.current(selectedItem));
-      return current.some(item => String(keyRef.current(item)) === key)
-        ? current
-        : [selectedItem, ...current];
-    });
+    if (selectedItem) setServerSelected(selectedItem);
   }, [selectedItem]);
 
-  const selected = useMemo(
-    () => items.find(item => String(getKey(item)) === String(value))
-      || (selectedItem && String(getKey(selectedItem)) === String(value) ? selectedItem : null),
-    [getKey, items, selectedItem, value],
-  );
+  const selected = useMemo(() => {
+    const fromItems = items.find(item => String(getKey(item)) === String(value));
+    if (fromItems) return fromItems;
+    if (selectedItem && String(getKey(selectedItem)) === String(value)) return selectedItem;
+    if (serverSelected && String(getKey(serverSelected)) === String(value)) return serverSelected;
+    return null;
+  }, [getKey, items, selectedItem, serverSelected, value]);
 
-  const filtered = useMemo(() => {
-    const needle = query.trim().toLocaleLowerCase(locale);
-    if (!needle) return items;
-    return items.filter(item => `${getLabel(item)} ${getDescription(item)}`.toLocaleLowerCase(locale).includes(needle));
-  }, [getDescription, getLabel, items, locale, query]);
+  const changeSearch = event => {
+    const next = event.target.value;
+    setQuery(next);
+    setCursor(null);
+    setHasMore(true);
+    load({ nextCursor: null, replace: true, search: next });
+  };
 
   return (
     <section className="workflow-reference" aria-labelledby={`${id}-label`}>
@@ -135,21 +140,23 @@ export default function BoundedReferencePicker({
         </div>
       )}
 
-      <div className="workflow-reference__search">
-        <Search size={16} aria-hidden="true" />
-        <input
-          id={`${id}-search`}
-          type="search"
-          value={query}
-          disabled={disabled}
-          placeholder={tr('search')}
-          onChange={event => setQuery(event.target.value)}
-        />
-      </div>
+      {searchEnabled && (
+        <div className="workflow-reference__search">
+          <Search size={16} aria-hidden="true" />
+          <input
+            id={`${id}-search`}
+            type="search"
+            value={query}
+            disabled={disabled}
+            placeholder={tr('search')}
+            onChange={changeSearch}
+          />
+        </div>
+      )}
 
       {error && <div className="workflow-inline-error" role="alert">{error}</div>}
       <div className="workflow-reference__results" role="listbox" aria-labelledby={`${id}-label`}>
-        {filtered.map(item => {
+        {items.map(item => {
           const key = String(getKey(item));
           const active = String(value) === key;
           const selectable = isSelectable(item);
@@ -169,14 +176,14 @@ export default function BoundedReferencePicker({
             </button>
           );
         })}
-        {!loading && filtered.length === 0 && <p className="workflow-muted">{tr('noOptions')}</p>}
+        {!loading && items.length === 0 && <p className="workflow-muted">{tr('noOptions')}</p>}
       </div>
 
       <div className="workflow-reference__footer">
         {loading && <span role="status">{tr('loading')}</span>}
         <button type="button" className="btn btn-secondary btn-sm"
           disabled={disabled || loading || !hasMore}
-          onClick={() => load({ nextOffset: offset, nextCursor: cursor })}>
+          onClick={() => load({ nextCursor: cursor, search: query })}>
           {tr('loadMore')}
         </button>
       </div>

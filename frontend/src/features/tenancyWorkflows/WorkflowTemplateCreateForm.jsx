@@ -18,7 +18,7 @@ function initialStep() {
     anchor: 'move_in_handover',
     offset_days: 0,
     assignee_user_id: null,
-    assignee_role: null,
+    assignee_role: 'techniker',
     depends_on_step_keys: [],
     evidence_requirement: 'none',
   };
@@ -29,7 +29,7 @@ export default function WorkflowTemplateCreateForm({
   principalKey = '',
   propertyLoader,
   unitLoaderForProperty,
-  userLoader,
+  userLoaderForProperty,
   prepareCreate,
   onCreated,
 }) {
@@ -38,12 +38,16 @@ export default function WorkflowTemplateCreateForm({
   const [unit, setUnit] = useState(null);
   const [direction, setDirection] = useState('move_in');
   const [step, setStep] = useState(initialStep);
-  const [assignment, setAssignment] = useState('none');
+  const [assignment, setAssignment] = useState('role');
   const [error, setError] = useState(null);
   const command = useWorkflowCommand(principalKey);
   const unitLoader = useMemo(
     () => property ? unitLoaderForProperty?.(property.id) : null,
     [property, unitLoaderForProperty],
+  );
+  const userLoader = useMemo(
+    () => property ? userLoaderForProperty?.(property.id) : null,
+    [property, userLoaderForProperty],
   );
 
   const patch = changes => {
@@ -55,8 +59,7 @@ export default function WorkflowTemplateCreateForm({
   const chooseAssignment = mode => {
     setAssignment(mode);
     if (mode === 'user') patch({ assignee_user_id: null, assignee_role: null });
-    else if (mode === 'role') patch({ assignee_user_id: null, assignee_role: 'techniker' });
-    else patch({ assignee_user_id: null, assignee_role: null });
+    else patch({ assignee_user_id: null, assignee_role: 'techniker' });
   };
 
   const submit = event => {
@@ -95,7 +98,7 @@ export default function WorkflowTemplateCreateForm({
         setUnit(null);
         setDirection('move_in');
         setStep(initialStep());
-        setAssignment('none');
+        setAssignment('role');
       },
     });
   };
@@ -116,12 +119,15 @@ export default function WorkflowTemplateCreateForm({
       <div className="workflow-form-grid">
         <BoundedReferencePicker label={tr('propertyScope')} locale={locale}
           value={property?.id || null} selectedItem={property} loadPage={propertyLoader}
-          sourceKey="workflow-properties" getLabel={item => item.name || item.id}
-          onChange={item => { setProperty(item); setUnit(null); }} required />
+          sourceKey="workflow-properties" getLabel={item => item.name || item.label || item.id}
+          onChange={item => {
+            setProperty(item);
+            setUnit(null);
+            if (assignment === 'user') patch({ assignee_user_id: null });
+          }} required />
         <BoundedReferencePicker label={tr('unitScope')} locale={locale}
           value={unit?.id || null} selectedItem={unit} loadPage={unitLoader}
-          sourceKey={property?.id || 'no-property'} getLabel={item => item.label || item.id}
-          isSelectable={item => !property || item.property_id === property.id}
+          sourceKey={property?.id || 'no-property'} getLabel={item => item.label || item.name || item.id}
           disabled={!property} onChange={setUnit} />
         <label className="workflow-field">
           <span>{tr('mode')}</span>
@@ -176,16 +182,16 @@ export default function WorkflowTemplateCreateForm({
         <fieldset className="workflow-fieldset">
           <legend>{tr('responsibility')}</legend>
           <div className="workflow-segmented">
-            {['none', 'user', 'role'].map(mode => <label key={mode}>
+            {['user', 'role'].map(mode => <label key={mode}>
               <input type="radio" name="new-template-assignment" checked={assignment === mode}
                 onChange={() => chooseAssignment(mode)} />
               <span>{tr(mode)}</span>
             </label>)}
           </div>
           {assignment === 'user' && <BoundedReferencePicker label={tr('selectUser')} locale={locale}
-            value={step.assignee_user_id} loadPage={userLoader} sourceKey="workflow-active-users"
-            getLabel={item => item.full_name || item.username || item.id}
-            isSelectable={item => item.is_active !== false && ROLES.includes(item.role)}
+            value={step.assignee_user_id} loadPage={userLoader} sourceKey={`workflow-active-users:${property?.id || "none"}`}
+            getLabel={item => item.full_name || item.id}
+            isSelectable={item => ROLES.includes(item.role)}
             onChange={item => patch({ assignee_user_id: item?.id || null, assignee_role: null })} required />}
           {assignment === 'role' && <label className="workflow-field workflow-field--compact">
             <span>{tr('selectRole')}</span>

@@ -6,7 +6,9 @@ import useWorkflowCommand from './useWorkflowCommand';
 import { workflowText } from './workflowCopy';
 import './TenancyWorkflows.css';
 
-function preferredKind() {
+function preferredKind(step) {
+  if (step.evidence_requirement === 'handover_protocol') return 'handover_protocol';
+  if (step.evidence_requirement === 'meter_reading') return 'meter_reading';
   return 'document_version';
 }
 
@@ -16,6 +18,7 @@ export default function EvidenceLinkDialog({
   principalKey = '',
   propertyId,
   unitId,
+  contractId,
   loadDocuments,
   loadDocumentVersions,
   loadHandoverProtocols,
@@ -52,14 +55,19 @@ export default function EvidenceLinkDialog({
       ? ['meter_reading', tr('evidence_meter_reading')] : null,
   ].filter(Boolean), [loadDocumentVersions, loadDocuments, loadHandoverProtocols, loadMeterReadings, tr]);
 
-  const documentLoader = args => loadDocuments?.({ ...args, propertyId, unitId });
-  const handoverLoader = args => loadHandoverProtocols?.({ ...args, propertyId, unitId });
-  const meterLoader = args => loadMeterReadings?.({ ...args, propertyId, unitId });
+  const documentLoader = args => loadDocuments?.({
+    ...args, propertyId, unitId, contractId, direction: step.direction,
+  });
+  const handoverLoader = args => loadHandoverProtocols?.({
+    ...args, propertyId, unitId, contractId, direction: step.direction,
+  });
+  const meterLoader = args => loadMeterReadings?.({
+    ...args, propertyId, unitId, contractId, direction: step.direction,
+  });
 
   const selectable = useCallback((candidateKind, item) => {
     if (typeof canSelectEvidence === 'function') return canSelectEvidence(candidateKind, item, step);
-    if (candidateKind === 'handover_protocol') return item?.status === 'finalized';
-    return candidateKind === 'document_version';
+    return Boolean(item?.id) && ['document_version', 'handover_protocol', 'meter_reading'].includes(candidateKind);
   }, [canSelectEvidence, step]);
 
   const selection = useMemo(() => {
@@ -129,12 +137,10 @@ export default function EvidenceLinkDialog({
           <>
             <BoundedReferencePicker label={tr('selectDocument')} locale={locale}
               value={selectedDocument?.id || null} selectedItem={selectedDocument} loadPage={documentLoader}
-              sourceKey={`${propertyId}:${unitId}:documents`}
+              sourceKey={`${propertyId}:${unitId}:${contractId}:${step.direction}:documents`}
               getLabel={item => item.title || item.id}
               getDescription={item => [item.document_type, item.document_date].filter(Boolean).join(' · ')}
-              isSelectable={item => item.property_id === propertyId
-                && (item.unit_id == null || item.unit_id === unitId)
-                && selectable('document_version', item)}
+              isSelectable={item => selectable('document_version', item)}
               disabled={command.busy || command.state.phase === 'unknown'}
               onChange={item => { setSelectedDocument(item); setDocumentVersion(null); }} required />
             {selectedDocument && (
@@ -149,7 +155,7 @@ export default function EvidenceLinkDialog({
         {kind === 'handover_protocol' && (
           <BoundedReferencePicker label={tr('evidence_handover_protocol')} locale={locale}
             value={reference?.id || null} selectedItem={reference} loadPage={handoverLoader}
-            sourceKey={`${propertyId}:${unitId}:handovers`}
+            sourceKey={`${propertyId}:${unitId}:${contractId}:${step.direction}:handovers`}
             getLabel={item => [item.protocol_type, item.protocol_date].filter(Boolean).join(' · ') || item.id}
             getDescription={item => item.status || ''}
             isSelectable={item => selectable('handover_protocol', item)}
@@ -160,7 +166,7 @@ export default function EvidenceLinkDialog({
         {kind === 'meter_reading' && (
           <BoundedReferencePicker label={tr('evidence_meter_reading')} locale={locale}
             value={reference?.id || null} selectedItem={reference} loadPage={meterLoader}
-            sourceKey={`${propertyId}:${unitId}:meter-readings`}
+            sourceKey={`${propertyId}:${unitId}:${contractId}:${step.direction}:meter-readings`}
             getLabel={item => [item.meter_number, item.reading_value, item.unit].filter(value => value != null).join(' · ') || item.id}
             getDescription={item => item.reading_date || item.created_at || ''}
             isSelectable={item => selectable('meter_reading', item)}
