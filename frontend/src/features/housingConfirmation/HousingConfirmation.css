@@ -1,0 +1,369 @@
+.housing-confirmation__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgb(15 23 42 / .58);
+}
+
+.housing-confirmation {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: min(70rem, 100%);
+  max-height: min(92vh, 58rem);
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-color, #d7dce5);
+  border-radius: 1rem;
+  background: var(--surface, #fff);
+  box-shadow: 0 1.2rem 4rem rgb(15 23 42 / .24);
+  color: var(--text-primary, inherit);
+}
+
+.housing-confirmation__header,
+.housing-confirmation__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: .9rem 1rem;
+  border-color: var(--border-color, #d7dce5);
+}
+
+.housing-confirmation__header {
+  border-bottom: 1px solid var(--border-color, #d7dce5);
+}
+
+.housing-confirmation__footer {
+  border-top: 1px solid var(--border-color, #d7dce5);
+}
+
+.housing-confirmation__header h2,
+.housing-confirmation__header p,
+.housing-confirmation__history h3,
+.housing-confirmation__preview h4 {
+  margin: 0;
+}
+
+.housing-confirmation__header > div {
+  min-width: 0;
+}
+
+.housing-confirmation__header > div > p:last-child,
+.housing-confirmation__footer span {
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.housing-confirmation__eyebrow {
+  color: var(--primary);
+  font-size: .76rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.housing-confirmation__icon-button {
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.housing-confirmation__body {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+  overflow: auto;
+  padding: 1rem;
+}
+
+.housing-confirmation__source {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(12rem, 100%), 1fr));
+  gap: .55rem;
+}
+
+.housing-confirmation__source > div {
+  display: grid;
+  gap: .15rem;
+  min-width: 0;
+  padding: .7rem;
+  border: 1px solid var(--border-color, #d7dce5);
+  border-radius: .75rem;
+  background: color-mix(in srgb, var(--surface, #fff) 92%, var(--primary) 8%);
+}
+
+.housing-confirmation__source span,
+.housing-confirmation__suggestion span,
+.housing-confirmation__history small {
+  color: var(--text-muted);
+  font-size: .76rem;
+}
+
+.housing-confirmation__source strong,
+.housing-confirmation__suggestion strong,
+.housing-confirmation__history strong {
+  overflow-wrap: anywhere;
+}
+
+.housing-confirmation__section {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .8rem 1rem;
+  min-width: 0;
+  margin: 0;
+  padding: .9rem;
+  border: 1px solid var(--border-color, #d7dce5);
+  border-radius: .85rem;
+}
+
+.housing-confirmation__section legend {
+  padding: 0 .35rem;
+  font-weight: 850;
+}
+
+.housing-confirmation__section > label {
+  display: grid;
+  gap: .3rem;
+  min-width: 0;
+  font-weight: 650;
+}
+
+.housing-confirmation__section > label:has(textarea),
+.housing-confirmation__persons,
+.housing-confirmation__suggestion,
+.housing-confirmation__section > .btn {
+  grid-column: 1 / -1;
+}
+
+.housing-confirmation__section input,
+.housing-confirmation__section select,
+.housing-confirmation__section textarea {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.housing-confirmation__section textarea {
+  resize: vertical;
+}
+
+.housing-confirmation__section small {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.housing-confirmation__suggestion {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  min-width: 0;
+  padding: .65rem .7rem;
+  border-radius: .7rem;
+  background: color-mix(in srgb, var(--primary) 7%, transparent);
+}
+
+.housing-confirmation__suggestion > div {
+  display: grid;
+  gap: .1rem;
+  min-width: 0;
+}
+
+.housing-confirmation__persons {
+  display: grid;
+  gap: .55rem;
+}
+
+.housing-confirmation__person {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: .55rem;
+  min-width: 0;
+}
+
+.housing-confirmation__person label {
+  display: grid;
+  gap: .3rem;
+  min-width: 0;
+}
+
+.housing-confirmation__review-actions,
+.housing-confirmation__history-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .55rem;
+  align-items: center;
+}
+
+.housing-confirmation__preview {
+  display: grid;
+  gap: .75rem;
+  min-width: 0;
+  padding: .9rem;
+  border: 1px solid color-mix(in srgb, var(--primary) 35%, var(--border-color, #d7dce5));
+  border-radius: .85rem;
+  background: color-mix(in srgb, var(--primary) 6%, transparent);
+}
+
+.housing-confirmation__preview-title,
+.housing-confirmation__notice {
+  display: flex;
+  align-items: flex-start;
+  gap: .55rem;
+}
+
+.housing-confirmation__check {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: .55rem;
+  align-items: start;
+  font-weight: 650;
+}
+
+.housing-confirmation__check input {
+  margin-top: .2rem;
+}
+
+.housing-confirmation__policy,
+.housing-confirmation__dirty {
+  color: var(--text-muted);
+  font-size: .82rem;
+}
+
+.housing-confirmation__notice {
+  min-width: 0;
+  padding: .75rem;
+  border-radius: .75rem;
+}
+
+.housing-confirmation__notice > div {
+  min-width: 0;
+}
+
+.housing-confirmation__notice p {
+  margin: .15rem 0 0;
+}
+
+.housing-confirmation__notice--warning {
+  background: color-mix(in srgb, #d97706 12%, transparent);
+}
+
+.housing-confirmation__notice--error {
+  background: color-mix(in srgb, #dc2626 10%, transparent);
+}
+
+.housing-confirmation__notice--success {
+  background: color-mix(in srgb, #16a34a 10%, transparent);
+}
+
+.housing-confirmation__history {
+  display: grid;
+  gap: .65rem;
+  min-width: 0;
+}
+
+.housing-confirmation__history-list {
+  display: grid;
+  gap: .55rem;
+}
+
+.housing-confirmation__history-list article {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  min-width: 0;
+  padding: .7rem;
+  border: 1px solid var(--border-color, #d7dce5);
+  border-radius: .75rem;
+}
+
+.housing-confirmation__history-list article > div:first-child {
+  display: flex;
+  align-items: flex-start;
+  gap: .5rem;
+  min-width: 0;
+}
+
+.housing-confirmation__history-list article > div:first-child > div {
+  display: grid;
+  min-width: 0;
+}
+
+@media (max-width: 700px) {
+  .housing-confirmation__overlay {
+    padding: .5rem;
+  }
+
+  .housing-confirmation {
+    width: 100%;
+    max-height: 96vh;
+    border-radius: .75rem;
+  }
+
+  .housing-confirmation__section {
+    grid-template-columns: minmax(0, 1fr);
+    padding: .75rem;
+  }
+
+  .housing-confirmation__section > label,
+  .housing-confirmation__persons,
+  .housing-confirmation__suggestion,
+  .housing-confirmation__section > .btn {
+    grid-column: 1;
+  }
+
+  .housing-confirmation__suggestion,
+  .housing-confirmation__history-list article,
+  .housing-confirmation__footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .housing-confirmation__suggestion .btn,
+  .housing-confirmation__history-actions .btn,
+  .housing-confirmation__footer .btn {
+    width: 100%;
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 360px) {
+  .housing-confirmation__overlay {
+    padding: 0;
+  }
+
+  .housing-confirmation {
+    max-height: 100vh;
+    min-height: 100vh;
+    border-width: 0;
+    border-radius: 0;
+  }
+
+  .housing-confirmation__header,
+  .housing-confirmation__footer,
+  .housing-confirmation__body {
+    padding-inline: .65rem;
+  }
+
+  .housing-confirmation__review-actions {
+    display: grid;
+  }
+
+  .housing-confirmation__review-actions .btn,
+  .housing-confirmation__preview > .btn {
+    width: 100%;
+    min-height: 44px;
+  }
+}

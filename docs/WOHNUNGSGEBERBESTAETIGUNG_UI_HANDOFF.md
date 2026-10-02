@@ -258,3 +258,50 @@ Nach Backend-Handoff kommen feldgenaue API-Vertragstests hinzu.
 
 Vor finalem API-/Integrationcode: echten Backend-Handoff lesen und eventuelle
 Frontendabhängigkeiten/Lücken hier dokumentieren.
+
+## Endpointfreie UI-Basis implementiert
+
+Nach dem Plan-Commit wurde bewusst noch **ohne Backend-URLs/DTO-Annahmen** eine
+adapterbasierte Fachbasis umgesetzt:
+
+- `HousingConfirmationDialog.jsx`
+- `HousingConfirmation.css`
+- `housingConfirmationModel.js`
+- `housingConfirmationText.js`
+- `useHousingConfirmationCommand.js`
+
+Der Dialog erwartet ein internes Service-Interface. Dieses Interface ist keine
+Behauptung über Backend-Routen; die spätere `housingConfirmationApi.js`-Schicht
+muss nach dem Backend-Handoff die echten DTOs auf dieses View-Modell abbilden.
+
+Bereits implementiert und geprüft:
+
+- natürliche Vertrags-/Objekt-/Einheitsanzeige aus autorisierter Source,
+- tatsächlicher Einzug bleibt leer und unabhängig von Vertragsbeginn/Übergabe,
+- Hauptmieter erscheint nur als Vorschlag und wird erst per Klick ergänzt,
+- Personenliste ohne UI-Hardcap; gleichnamige tatsächliche Personen bleiben erlaubt,
+- Wohnungsgeber/Eigentümer/Ausstellung als getrennte kompakte Abschnitte,
+- explizite Bestätigung tatsächlicher Belegung und Ausstellungsbefugnis,
+- Preview-Entwertung bei jeder Formularänderung,
+- Historie/Korrektur als adapterbasierter UI-Pfad,
+- kein Behördenversand-/Signaturversprechen,
+- Dirty-Close-Warnung ohne lokale Persistenz,
+- eigener Focus-Trap/Escape/Opener-Focus,
+- Actor-/Portfolio-/Contract-Binding,
+- 401/403/404-Forget und Request-Abort,
+- Unknown-Success mit tief eingefrorenem exaktem Retry.
+
+Gezielte Zwischenprüfung:
+
+- `HousingConfirmationModel.test.js`
+- `HousingConfirmationCommand.test.jsx`
+- `HousingConfirmationDialog.test.jsx`
+
+Ergebnis: **3 Testdateien / 9 Tests bestanden**.
+
+Gezielter ESLint über Feature und diese Tests mit `--max-warnings=0`:
+**bestanden, keine Warnung**.
+
+Der konkrete Backend-Handoff war zu diesem Zeitpunkt weiterhin nicht verfügbar;
+deshalb existiert noch kein endgültiger API-Client und noch keine Vertrags-/Workflow-
+Integration gegen erfundene Endpoints.
