@@ -69,8 +69,9 @@ REQUIRED_ENV_KEYS = frozenset({"APP_ORIGIN", "APP_HOST", "APP_HTTP_PORT", "POSTG
 ENCRYPTION_ENV_KEYS = frozenset({"ENCRYPTION_KEY", "ENCRYPTION_KEYRING", "ENCRYPTION_ACTIVE_KEY_ID",
                                  "ENCRYPTION_INDEX_KEY", "ENCRYPTION_LEGACY_JWT_KEYS"})
 DRAFT_ENV_KEYS = frozenset({"FORM_DRAFT_TTL_DAYS", "FORM_DRAFT_MAX_BYTES"})
+CONTRACT_WORKSPACE_ENV_KEYS = frozenset({"CONTRACT_WORKSPACE_PAGE_MAX_SIZE", "CONTRACT_WORKSPACE_SEARCH_MAX_CHARS"})
 OCR_ENV_KEYS = frozenset(OCR_DEFAULTS)
-ENV_KEYS = REQUIRED_ENV_KEYS | ENCRYPTION_ENV_KEYS | DRAFT_ENV_KEYS | OCR_ENV_KEYS
+ENV_KEYS = REQUIRED_ENV_KEYS | ENCRYPTION_ENV_KEYS | DRAFT_ENV_KEYS | CONTRACT_WORKSPACE_ENV_KEYS | OCR_ENV_KEYS
 PG_DUMP = 'exec pg_dump -Fc --no-owner --no-acl --no-password -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
 PG_LIST = 'exec pg_restore --list'
 PG_RESTORE = ('exec pg_restore --exit-on-error --no-owner --no-privileges --no-password '
@@ -352,6 +353,13 @@ def _parse_env(data: bytes) -> dict[str, str]:
                 valid = False
             if not valid:
                 raise BackupError("Serverkonfiguration enthält ungültige Formularentwurfsbudgets. Konfiguration korrigieren.")
+    for name in CONTRACT_WORKSPACE_ENV_KEYS & values.keys():
+        try:
+            valid = re.fullmatch(r"[0-9]+", values[name]) and int(values[name]) > 0
+        except ValueError:
+            valid = False
+        if not valid:
+            raise BackupError("Serverkonfiguration enthält ungültige Vertragsarbeitsplatzbudgets. Positive Werte einstellen.")
     try:
         validate_ocr_environment(values)
     except ValueError:

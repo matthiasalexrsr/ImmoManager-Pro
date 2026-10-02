@@ -9,6 +9,27 @@ from backend.services.full_recovery import RecoveryLimits
 from scripts import private_server_backup
 
 
+def test_contract_workspace_budgets_accept_large_installation_environment(monkeypatch):
+    from backend.settings import Settings
+
+    monkeypatch.setenv("CONTRACT_WORKSPACE_PAGE_MAX_SIZE", "6000")
+    monkeypatch.setenv("CONTRACT_WORKSPACE_SEARCH_MAX_CHARS", "12000")
+    configured = Settings(_env_file=None)
+    assert configured.contract_workspace_page_max_size == 6000
+    assert configured.contract_workspace_search_max_chars == 12000
+
+
+@pytest.mark.parametrize("name", ["contract_workspace_page_max_size", "contract_workspace_search_max_chars"])
+@pytest.mark.parametrize("value", [0, -1])
+def test_contract_workspace_budgets_require_positive_capacity(name, value):
+    from pydantic import ValidationError
+
+    from backend.settings import ExplicitSettings
+
+    with pytest.raises(ValidationError):
+        ExplicitSettings(**{name: value})
+
+
 def test_large_installation_profile_has_no_fixed_size_or_record_ceiling(tmp_path):
     profile = tmp_path / "capacity.json"
     profile.write_text(json.dumps({"version": 1,

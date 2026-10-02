@@ -1,242 +1,248 @@
-import useWriteAccess from '../hooks/useWriteAccess';
-import { revisionOptions } from '../editRevision';
-import { useState, useEffect, useMemo } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { ArrowDown, ArrowUp, ArrowUpDown, Pencil, Trash2 } from 'lucide-react';
 import { api } from '../api';
-import { useTranslation } from '../i18n';
-import { useEntities, useDataStore } from '../contexts/DataStoreContext';
-import DataTable from '../components/DataTable';
-import FormModal from '../components/FormModal';
+import { revisionOptions } from '../editRevision';
+import { useAuth } from '../contexts/AuthContext';
+import { useDataStore } from '../contexts/DataStoreContext';
+import useWriteAccess from '../hooks/useWriteAccess';
+import useContractWorkspacePage from '../hooks/useContractWorkspacePage';
+import useContractChoices from '../hooks/useContractChoices';
+import ContractEditor from '../components/ContractEditor';
+import ContractLifecycle from '../components/ContractLifecycle';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
-import ContractLifecycle from '../components/ContractLifecycle';
+import { useTranslation } from '../i18n';
+import '../components/SharedComponents.css';
+import './Contracts.css';
 
-const RENT_MODEL_LABELS = { index: 'Indexmiete', stepped: 'Staffelmiete', fixed: 'Festmiete' };
+const EMPTY_FILTERS = { search: '', property_id: '', unit_id: '', tenant_id: '', status: '',
+  date_from: '', date_to: '', view: 'all' };
+const SORT_KEYS = new Set(['contract_number', 'property_name', 'unit_label', 'tenant_name', 'start_date', 'end_date', 'deposit_amount', 'status']);
+const DAY = 86400000;
+const daysRemaining = (end, reference) => end && reference ? Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${reference}T00:00:00Z`)) / DAY) : null;
+const csvCell = value => {
+  // Imported names are plain text, never spreadsheet formulas. Numeric DTO
+  // cells remain numeric; the receipt/source records are left untouched.
+  const original = String(value ?? '');
+  const text = typeof value === 'string' && /^\s*[=+\-@]/.test(original) ? `'${original}` : original;
+  return /[;"\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+};
 
-function remainingDays(endDate) {
-  if (!endDate) return null;
-  const end = new Date(endDate);
-  const today = new Date();
-  return Math.ceil((end - today) / (1000 * 60 * 60 * 24));
+function ReferenceFilter({ kind, value, propertyId, label, onChange }) {
+  const { t } = useTranslation();
+  const choices = useContractChoices(kind, value, label, propertyId);
+  return <div className="contract-reference-filter"><label>{label}<select value={value} disabled={choices.disabled}
+    onChange={event => onChange(event.target.value)}><option value="">{t('contractWorkspace.all')}</option>
+    {choices.options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>{choices.hint}</div>;
+}
+
+function ContractWorkspace() {
+  const { t, locale } = useTranslation();
+  const label = key => t(`contractWorkspace.${key}`);
+  const confirm = useConfirm();
+  const store = useDataStore();
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const [draftFilters, setDraftFilters] = useState(EMPTY_FILTERS);
+  const [sort, setSort] = useState({ sort_by: 'contract_number', sort_order: 'asc' });
+  const [pageSize, setPageSize] = useState(25);
+  const [cursors, setCursors] = useState([null]);
+  const [pageIndex, setPageIndex] = useState(0);
+  const [generation, setGeneration] = useState(0);
+  const [showReferences, setShowReferences] = useState(false);
+  const [modal, setModal] = useState(null);
+  const [lifecycle, setLifecycle] = useState(null);
+  const [actionError, setActionError] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const deletePending = useRef(false);
+  const alive = useRef(true);
+  const requests = useRef(new Set());
+  const { canWrite, isAllowed, requireWrite } = useWriteAccess('/contracts', () => setModal(null));
+  const result = useContractWorkspacePage({ ...filters, ...sort }, cursors[pageIndex], pageSize, generation);
+  const money = new Intl.NumberFormat(locale || 'de-DE', { style: 'currency', currency: 'EUR' });
+  const tableLabel = t('tenantsContracts.contracts.title');
+  const headingRef = useRef(null);
+  const workspaceRef = useRef(null);
+  const returnFocus = useRef(null);
+  useEffect(() => {
+    const ownedRequests = requests.current;
+    alive.current = true;
+    return () => { alive.current = false; for (const request of ownedRequests) request.abort(); ownedRequests.clear(); };
+  }, []);
+  useEffect(() => {
+    if (result.error?.statusCode === 401 || result.error?.statusCode === 403) {
+      setModal(null); setLifecycle(null);
+    }
+    if (result.loading || !returnFocus.current) return;
+    const target = [...(workspaceRef.current?.querySelectorAll('[data-workspace-focus]') || [])]
+      .find(element => element.dataset.workspaceFocus === returnFocus.current && !element.disabled);
+    (target || headingRef.current)?.focus(); returnFocus.current = null;
+  }, [result.loading, result.error]);
+  const firstPage = () => { setCursors([null]); setPageIndex(0); setGeneration(value => value + 1); };
+  const refreshData = () => setGeneration(value => value + 1);
+  const applyFilters = event => { event.preventDefault(); setFilters({ ...draftFilters }); setActionError(null); firstPage(); };
+  const changeView = (status, view = 'all') => {
+    setFilters(current => ({ ...current, status, view }));
+    setDraftFilters(current => ({ ...current, status, view })); firstPage();
+  };
+  const changeSort = key => {
+    if (!SORT_KEYS.has(key)) return;
+    returnFocus.current = `sort-${key}`;
+    setSort(current => ({ sort_by: key, sort_order: current.sort_by === key && current.sort_order === 'asc' ? 'desc' : 'asc' }));
+    firstPage();
+  };
+  const mutate = async operation => {
+    requireWrite();
+    if (!alive.current) return;
+    const request = new AbortController(); requests.current.add(request);
+    try { await operation(request.signal); if (!alive.current || request.signal.aborted || !isAllowed()) return;
+      refreshData(); store?.invalidateRelated('contracts', 'properties', 'units', 'tenants', 'deposits', 'receivables', 'rent_adjustments');
+    } catch (error) {
+      if (alive.current && !request.signal.aborted && [401, 403].includes(error.statusCode)) {
+        setModal(null); setLifecycle(null); setActionError(error.message);
+      }
+      throw error;
+    } finally { requests.current.delete(request); }
+  };
+  const handleSave = data => mutate(signal => modal === 'create' ? api.post('/contracts', data, { signal })
+    // FormModal keeps the original payload revision until the user explicitly
+    // reconciles a conflict. Do not override that reviewed token with the row.
+    : api.put(`/contracts/${encodeURIComponent(modal.id)}`, data, { signal }));
+  const handleDelete = async row => {
+    if (deletePending.current || !isAllowed()) return;
+    deletePending.current = true; setDeleting(true); setActionError(null);
+    try {
+      if (!await confirm(`"${row.contract_number}" ${t('modals.confirmDelete.body')}`) || !alive.current || !isAllowed()) return;
+      await mutate(signal => api.del(`/contracts/${encodeURIComponent(row.id)}`, { ...revisionOptions(row), signal }));
+    } catch (error) { if (alive.current && error.name !== 'AbortError') setActionError(error.message); }
+    finally { deletePending.current = false; if (alive.current) setDeleting(false); }
+  };
+  const columns = [
+    ['contract_number', t('tenantsContracts.contracts.number')], ['property_name', t('tenantsContracts.contracts.property')],
+    ['unit_label', t('tenantsContracts.contracts.unit')], ['tenant_name', t('tenantsContracts.contracts.tenant')],
+    ['unit_cold_rent', label('unitColdRent')], ['start_date', t('tenantsContracts.contracts.start')],
+    ['end_date', label('endDate')], ['remaining_days', label('remaining')], ['index_rent', t('tenantsContracts.contracts.indexRent')],
+    ['notice_period', t('tenantsContracts.contracts.noticePeriod')], ['deposit_amount', t('tenantsContracts.contracts.deposit')],
+    ['status', t('tenantsContracts.contracts.status')],
+  ];
+  const renderCell = (row, key) => {
+    if (key === 'status') return <StatusBadge status={row.status} />;
+    if (key === 'unit_cold_rent' || key === 'deposit_amount') return row[key] == null ? '—' : money.format(row[key]);
+    if (key === 'end_date') return row.end_date ?? label('unlimited');
+    if (key === 'remaining_days') {
+      const days = daysRemaining(row.end_date, result.referenceDate);
+      return days == null ? label('unlimited') : days < 0 ? label('ended') : t(`contractWorkspace.${days === 1 ? 'day' : 'days'}`, { count: days });
+    }
+    if (key === 'index_rent' && ['index', 'stepped', 'fixed'].includes(row[key])) return label(`rent_${row[key]}`);
+    return row[key] ?? '—';
+  };
+  const restartError = ['cursor_expired', 'cursor_invalid', 'cursor_filter_mismatch'].includes(result.error?.code);
+  const sizeError = result.error?.code === 'page_size_exceeded';
+  const active = result.items.filter(row => row.status === 'active').length;
+  const ending = result.items.filter(row => row.status === 'active' && daysRemaining(row.end_date, result.referenceDate) > 0
+    && daysRemaining(row.end_date, result.referenceDate) <= 90).length;
+  const exportPage = () => {
+    const rows = [columns.map(([, name]) => csvCell(name)).join(';'), ...result.items.map(row =>
+      columns.map(([key]) => csvCell(key === 'remaining_days' ? daysRemaining(row.end_date, result.referenceDate) : row[key])).join(';'))];
+    const url = URL.createObjectURL(new Blob(['\uFEFF', rows.join('\r\n')], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a'); link.href = url; link.download = `contracts-page-${result.referenceDate}.csv`;
+    link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  return <div className="page contract-workspace" ref={workspaceRef}>
+    <header className="contract-workspace-heading"><div><h1 className="page-title" tabIndex={-1} ref={headingRef}>{tableLabel}</h1>
+      <p className="text-muted">{label('description')}</p></div>
+      {canWrite && <button type="button" className="btn btn-primary" disabled={deleting || result.error?.statusCode === 403}
+        onClick={() => { if (isAllowed()) setModal('create'); }}>{t('ui.buttons.new')}</button>}</header>
+    {actionError && <p className="alert alert-error" role="alert">{actionError}</p>}
+    <form className="panel contract-workspace-filters" onSubmit={applyFilters} onKeyDownCapture={event => {
+      if (event.key === 'Enter' && event.target.name?.startsWith('lookup_contract_')) event.preventDefault();
+    }}><div className="contract-workspace-filter-grid">
+      <label>{label('search')}<input type="search" value={draftFilters.search}
+        onChange={event => setDraftFilters(current => ({ ...current, search: event.target.value }))} /></label>
+      <label>{t('tenantsContracts.contracts.status')}<select value={draftFilters.status}
+        onChange={event => setDraftFilters(current => ({ ...current, status: event.target.value }))}>
+        <option value="">{label('all')}</option>{['active', 'terminated', 'expired', 'draft'].map(value =>
+          <option key={value} value={value}>{label(`status_${value}`)}</option>)}</select></label>
+      <label>{label('dateFrom')}<input type="date" value={draftFilters.date_from} max={draftFilters.date_to || undefined}
+        onChange={event => setDraftFilters(current => ({ ...current, date_from: event.target.value }))} /></label>
+      <label>{label('dateTo')}<input type="date" value={draftFilters.date_to} min={draftFilters.date_from || undefined}
+        onChange={event => setDraftFilters(current => ({ ...current, date_to: event.target.value }))} /></label>
+    </div>
+      <button type="button" className="btn btn-secondary" aria-expanded={showReferences}
+        onClick={() => setShowReferences(value => !value)}>{label('references')}</button>
+      {showReferences && <div className="contract-workspace-reference-grid">
+        {['properties', 'units', 'tenants'].map((kind, index) => <ReferenceFilter key={kind} kind={kind}
+          value={draftFilters[['property_id', 'unit_id', 'tenant_id'][index]]} propertyId={kind === 'units' ? draftFilters.property_id : ''}
+          label={t(`tenantsContracts.contracts.${['property', 'unit', 'tenant'][index]}`)}
+          onChange={value => setDraftFilters(current => ({ ...current, [['property_id', 'unit_id', 'tenant_id'][index]]: value,
+            ...(kind === 'properties' ? { unit_id: '' } : {}) }))} />)}
+      </div>}
+      <div className="contract-workspace-filter-actions"><button type="submit" className="btn btn-primary">{label('apply')}</button>
+        <button type="button" className="btn btn-secondary" onClick={() => { setFilters(EMPTY_FILTERS); setDraftFilters(EMPTY_FILTERS); firstPage(); }}>{label('reset')}</button></div>
+    </form>
+    <nav className="contract-workspace-views" aria-label={label('views')}>
+      {[['', 'all', 'all'], ['active', 'all', 'status_active'], ['', 'ending_soon', 'endingSoon'],
+        ['terminated', 'all', 'status_terminated'], ['draft', 'all', 'status_draft'], ['', 'no_deposit', 'noDeposit']].map(([status, view, key]) =>
+        <button type="button" key={key} className={`btn btn-sm ${filters.status === status && filters.view === view ? 'btn-primary' : 'btn-secondary'}`}
+          aria-pressed={filters.status === status && filters.view === view} onClick={() => changeView(status, view)}>{label(key)}</button>)}
+    </nav>
+    {result.loading && <p role="status">{t('ui.table.loading')}</p>}
+    {result.error && <div role="alert" className="alert alert-error">
+      {result.error.message === 'contractWorkspace.invalidResult' ? label('invalidResult') : result.error.message}
+      <button type="button" className="btn btn-secondary" onClick={sizeError ? () => { setPageSize(1); firstPage(); } : restartError ? firstPage : refreshData}>
+        {label(sizeError ? 'smallPage' : restartError ? 'restart' : 'retry')}</button></div>}
+    {!result.loading && !result.error && <>
+      <div className="contract-workspace-page-actions">
+        <p role="status" className="contract-workspace-summary">{t('contractWorkspace.pageSummary', { count: result.items.length, active, ending })}</p>
+        <button type="button" className="btn btn-secondary" disabled={!result.items.length} onClick={exportPage}>{label('exportPage')}</button>
+      </div>
+      <div className="data-table-wrapper shared-data-table"><div className="table-scroll" tabIndex={0} role="region" aria-label={tableLabel}>
+        <table className="data-table" aria-label={tableLabel}><caption className="contract-workspace-caption">{label('unitRentHint')}</caption>
+          <thead><tr>{columns.map(([key, name]) => <th key={key} scope="col"
+            aria-sort={SORT_KEYS.has(key) ? sort.sort_by === key ? sort.sort_order === 'asc' ? 'ascending' : 'descending' : 'none' : undefined}>
+            {SORT_KEYS.has(key) ? <button type="button" data-workspace-focus={`sort-${key}`} className="contract-workspace-sort" onClick={() => changeSort(key)} aria-label={t('contractWorkspace.sort', { column: name })}>
+              {name}{sort.sort_by === key ? sort.sort_order === 'asc' ? <ArrowUp size={14} aria-hidden="true" /> : <ArrowDown size={14} aria-hidden="true" /> : <ArrowUpDown size={14} aria-hidden="true" />}</button> : name}
+          </th>)}<th scope="col">{label('actions')}</th></tr></thead>
+          <tbody>{result.items.map(row => <tr key={row.id}>{columns.map(([key]) => <td key={key}>{renderCell(row, key)}</td>)}
+            <td><div className="contract-workspace-row-actions"><button type="button" className="btn btn-sm btn-secondary contract-lifecycle-row-action"
+              data-lifecycle-contract={row.id} disabled={deleting}
+              onClick={event => setLifecycle({ contract: row, opener: event.currentTarget })}>{t('contractLifecycle.open')}</button>
+              {canWrite && <><button type="button" className="btn btn-sm btn-secondary" disabled={deleting} aria-label={`${label('edit')} ${row.contract_number}`}
+                onClick={() => { if (isAllowed()) setModal(row); }}><Pencil size={14} aria-hidden="true" />{label('edit')}</button>
+                <button type="button" className="btn btn-sm btn-danger" disabled={deleting} aria-label={`${label('delete')} ${row.contract_number}`}
+                  onClick={() => handleDelete(row)}><Trash2 size={14} aria-hidden="true" />{label('delete')}</button></>}
+            </div></td></tr>)}
+            {!result.items.length && <tr><td colSpan={columns.length + 1}>{label('empty')}</td></tr>}</tbody>
+        </table></div></div>
+      <nav className="contract-workspace-pagination" aria-label={label('pagination')}>
+        <button type="button" data-workspace-focus="previous" className="btn btn-secondary" disabled={!pageIndex} onClick={() => {
+          returnFocus.current = 'previous'; setPageIndex(value => value - 1);
+        }}>{label('previous')}</button>
+        <span>{t('contractWorkspace.pageNumber', { page: pageIndex + 1 })}</span>
+        <button type="button" data-workspace-focus="next" className="btn btn-secondary" disabled={!result.hasMore} onClick={() => {
+          returnFocus.current = 'next';
+          setCursors(current => [...current.slice(0, pageIndex + 1), result.nextCursor]); setPageIndex(value => value + 1);
+        }}>{label('next')}</button>
+        <label>{label('pageSize')}<select data-workspace-focus="page-size" value={pageSize} onChange={event => {
+          returnFocus.current = 'page-size'; setPageSize(Number(event.target.value)); firstPage();
+        }}>
+          {[1, 10, 25, 100, 250, 500].map(size => <option key={size} value={size}>{size}</option>)}</select></label>
+        {pageIndex > 0 && <button type="button" className="btn btn-secondary" onClick={() => { returnFocus.current = 'first'; firstPage(); }}>{label('firstPage')}</button>}
+      </nav>
+    </>}
+    {/* Keep these mounted across parent reads/errors; accepted commands and
+        unknown outcomes must retain their private draft/review/retry state. */}
+    {modal && canWrite && <ContractEditor key={modal === 'create' ? 'create' : modal.id} initial={modal === 'create' ? null : modal}
+      onSave={handleSave} onClose={() => { setModal(null); headingRef.current?.focus(); }} />}
+    {lifecycle && <ContractLifecycle contract={lifecycle.contract} opener={lifecycle.opener} onClose={() => {
+      setLifecycle(null); if (!lifecycle.opener?.isConnected) headingRef.current?.focus();
+    }} onChanged={refreshData} />}
+  </div>;
 }
 
 export default function Contracts() {
-  const { t } = useTranslation();
-  const confirm = useConfirm();
-  const store = useDataStore();
-  const { items: properties } = useEntities('properties', '/properties');
-  const { items: units } = useEntities('units', '/units');
-  const { items: tenants } = useEntities('tenants', '/tenants');
-  const [contracts, setContracts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [modal, setModal] = useState(null);
-  const [lifecycle, setLifecycle] = useState(null);
-  const { canWrite, isAllowed, requireWrite } = useWriteAccess('/contracts', () => setModal(null));
-  const [filter, setFilter] = useState('all');
-
-  const refreshData = () => {
-    setLoading(true);
-    api.get('/contracts').catch(() => [])
-      .then(data => setContracts(Array.isArray(data) ? data : []))
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(() => {
-    let cancelled = false;
-    api.get('/contracts').catch(() => [])
-      .then(data => { if (!cancelled) setContracts(Array.isArray(data) ? data : []); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
-
-  const propMap = Object.fromEntries(properties.map(p => [p.id, p.name]));
-  const unitMap = Object.fromEntries(units.map(u => [u.id, u]));
-  const tenantMap = Object.fromEntries(tenants.map(tn => [tn.id, tn.full_name]));
-
-  const enriched = contracts.map(c => {
-    const unit = unitMap[c.unit_id];
-    const remaining = remainingDays(c.end_date);
-    return {
-      ...c,
-      property_name: propMap[c.property_id] || '—',
-      unit_label: unit?.label || '—',
-      tenant_name: tenantMap[c.tenant_id] || '—',
-      cold_rent: unit?.cold_rent,
-      rent_model: c.index_rent,
-      remaining_days: remaining,
-    };
-  });
-
-  const filtered = useMemo(() => {
-    if (filter === 'all') return enriched;
-    if (filter === 'active') return enriched.filter(c => c.status === 'active');
-    if (filter === 'ending_soon') return enriched.filter(c => c.remaining_days != null && c.remaining_days > 0 && c.remaining_days <= 90 && c.status === 'active');
-    if (filter === 'terminated') return enriched.filter(c => c.status === 'terminated');
-    if (filter === 'draft') return enriched.filter(c => c.status === 'draft');
-    if (filter === 'no_deposit') return enriched.filter(c => !c.deposit_amount || Number(c.deposit_amount) === 0);
-    return enriched;
-  }, [enriched, filter]);
-
-  // Summary stats
-  const totalActive = enriched.filter(c => c.status === 'active').length;
-  const endingSoon = enriched.filter(c => c.remaining_days != null && c.remaining_days > 0 && c.remaining_days <= 90 && c.status === 'active').length;
-  const terminated = enriched.filter(c => c.status === 'terminated').length;
-  const noDeposit = enriched.filter(c => !c.deposit_amount || Number(c.deposit_amount) === 0).length;
-
-  const columns = [
-    { key: 'contract_number', label: t('tenantsContracts.contracts.form.contractNumber') || 'Vertragsnr.', filterType: 'text' },
-    { key: 'property_name', label: 'Immobilie', filterType: 'text' },
-    { key: 'unit_label', label: 'Einheit', filterType: 'text' },
-    { key: 'tenant_name', label: 'Mieter', filterType: 'text' },
-    { key: 'cold_rent', label: 'Kaltmiete (€)', type: 'number', align: 'right',
-      render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
-    { key: 'start_date', label: t('tenantsContracts.contracts.form.startDate') || 'Beginn', type: 'date', filterType: 'dateRange' },
-    { key: 'end_date', label: t('tenantsContracts.contracts.form.endDate') || 'Ende', type: 'date', filterType: 'dateRange' },
-    { key: 'remaining_days', label: 'Restlaufzeit', type: 'number', align: 'right',
-      render: (v) => {
-        if (v == null) return <span className="text-muted">unbefristet</span>;
-        if (v < 0) return <span style={{ color: 'var(--danger)', fontWeight: 600 }}>abgelaufen</span>;
-        const color = v <= 30 ? 'var(--danger)' : v <= 90 ? 'var(--warning)' : 'inherit';
-        return <span style={{ color, fontWeight: v <= 90 ? 600 : 400 }}>{v} Tage</span>;
-      }},
-    { key: 'rent_model', label: 'Mietmodell', filterType: 'select',
-      render: v => RENT_MODEL_LABELS[v] || v || '—' },
-    { key: 'notice_period', label: 'Kündigungsfrist' },
-    { key: 'deposit_amount', label: t('tenantsContracts.contracts.form.deposit') || 'Kaution (€)', type: 'number', align: 'right',
-      render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
-    { key: 'lifecycle', label: t('contractLifecycle.column'), sortable: false,
-      render: (_value, row) => <button type="button" className="btn btn-sm btn-secondary contract-lifecycle-row-action"
-        data-lifecycle-contract={row.id}
-        onClick={event => setLifecycle({ contract: row, opener: event.currentTarget })}>
-        {t('contractLifecycle.open')}
-      </button> },
-    { key: 'status', label: t('ui.form.status') || 'Status', type: 'status', filterType: 'select',
-      render: v => <StatusBadge status={v} /> },
-  ];
-
-  const fields = [
-    { key: 'contract_number', label: t('tenantsContracts.contracts.form.contractNumber') || 'Vertragsnr.', required: true, placeholder: 'z.B. MV-2024-001' },
-    { key: 'property_id', label: t('portfolio.properties.form.name') || 'Immobilie', required: true, type: 'select',
-      options: properties.map(p => ({ value: p.id, label: p.name })) },
-    { key: 'unit_id', label: t('units.list.columns.label') || 'Einheit', required: true, type: 'select',
-      options: units.map(u => ({ value: u.id, label: u.label })) },
-    { key: 'tenant_id', label: t('tenantsContracts.tenants.title') || 'Mieter', required: true, type: 'select',
-      options: tenants.map(tn => ({ value: tn.id, label: tn.full_name })) },
-    { key: 'start_date', label: t('tenantsContracts.contracts.form.startDate') || 'Vertragsbeginn', type: 'date', required: true },
-    { key: 'end_date', label: t('tenantsContracts.contracts.form.endDate') || 'Vertragsende', type: 'date' },
-    { key: 'deposit_amount', label: t('tenantsContracts.contracts.form.deposit') || 'Kaution (€)', type: 'number' },
-    { key: 'index_rent', label: t('tenantsContracts.contracts.form.indexRent') || 'Mietanpassung', type: 'select', options: [
-      { value: 'index', label: t('tenantsContracts.contracts.indexRent.index') || 'Indexmiete' },
-      { value: 'stepped', label: t('tenantsContracts.contracts.indexRent.stepped') || 'Staffelmiete' },
-      { value: 'fixed', label: t('tenantsContracts.contracts.indexRent.fixed') || 'Festmiete' },
-    ]},
-    { key: 'service_charge_settlement', label: t('tenantsContracts.contracts.form.serviceChargeSettlement') || 'NK-Abrechnung', type: 'select', options: [
-      { value: 'annual', label: t('tenantsContracts.contracts.settlement.annual') || 'Jährlich' },
-      { value: 'monthly', label: t('tenantsContracts.contracts.settlement.monthly') || 'Monatlich' },
-    ]},
-    { key: 'notice_period', label: t('tenantsContracts.contracts.form.noticePeriod') || 'Kündigungsfrist', placeholder: 'z.B. 3 Monate' },
-    { key: 'status', label: t('ui.form.status') || 'Status', type: 'select', default: 'active', options: [
-      { value: 'active', label: t('tenantsContracts.contracts.status.active') || 'Aktiv' },
-      { value: 'terminated', label: t('tenantsContracts.contracts.status.terminated') || 'Gekündigt' },
-      { value: 'expired', label: t('tenantsContracts.contracts.status.expired') || 'Ausgelaufen' },
-      { value: 'draft', label: t('ui.filterChips.draft') || 'Entwurf' },
-    ]},
-  ];
-
-  const handleSave = async (data) => {
-    requireWrite();
-    if (modal === 'create') {
-      await api.post('/contracts', data);
-    } else {
-      await api.put(`/contracts/${modal.id}`, data);
-    }
-    refreshData();
-    if (store) store.invalidateRelated('contracts', 'properties', 'units', 'tenants', 'deposits', 'receivables', 'rent_adjustments');
-  };
-
-  const handleDelete = async (row) => {
-    if (!isAllowed()) return;
-    if (!await confirm(`"${row.contract_number}" ${t('modals.confirmDelete.body')}`)) return;
-    if (!isAllowed()) return;
-    await api.del(`/contracts/${row.id}`, revisionOptions(row));
-    refreshData();
-    if (store) store.invalidateRelated('contracts', 'properties', 'units', 'tenants', 'deposits', 'receivables', 'rent_adjustments');
-  };
-
-  // Refreshing rows after a lifecycle command must keep its private workflow
-  // mounted, including the selected draft and any exact command retry.
-  if (loading && !lifecycle) return <div className="page-loading">Lade Verträge...</div>;
-
-  return (
-    <div className="page">
-      <h1 className="page-title">{t('tenantsContracts.contracts.title') || 'Verträge'}</h1>
-
-      {/* Summary cards */}
-      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{enriched.length}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Gesamt</div>
-        </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--success)' }}>{totalActive}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Aktiv</div>
-        </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--warning)' }}>{endingSoon}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Endet &lt; 90 Tage</div>
-        </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--danger)' }}>{terminated}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Gekündigt</div>
-        </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: noDeposit > 0 ? 'var(--danger)' : 'inherit' }}>{noDeposit}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Ohne Kaution</div>
-        </div>
-      </div>
-
-      {/* Filter tabs */}
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
-        {[
-          { key: 'all', label: 'Alle' },
-          { key: 'active', label: 'Aktiv' },
-          { key: 'ending_soon', label: 'Endet bald' },
-          { key: 'terminated', label: 'Gekündigt' },
-          { key: 'draft', label: 'Entwurf' },
-          { key: 'no_deposit', label: 'Ohne Kaution' },
-        ].map(f => (
-          <button key={f.key} className={`btn btn-sm ${filter === f.key ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setFilter(f.key)}>
-            {f.label}
-          </button>
-        ))}
-      </div>
-
-      <DataTable
-        title={t('tenantsContracts.contracts.title') || 'Verträge'}
-        columns={columns}
-        data={filtered}
-        onAdd={canWrite ? () => setModal('create') : undefined}
-        onEdit={canWrite ? row => setModal(row) : undefined}
-        onDelete={canWrite ? handleDelete : undefined}
-      />
-
-      {modal && canWrite && (
-        <FormModal
-          title={modal === 'create' ? 'Vertrag erstellen' : 'Vertrag bearbeiten'}
-          fields={fields}
-          initial={modal === 'create' ? null : modal}
-          onSave={handleSave}
-          onClose={() => setModal(null)}
-        />
-      )}
-
-      {lifecycle && (
-        <ContractLifecycle
-          contract={lifecycle.contract}
-          opener={lifecycle.opener}
-          onClose={() => setLifecycle(null)}
-          onChanged={refreshData}
-        />
-      )}
-    </div>
-  );
+  const user = useAuth()?.user;
+  if (!user?.id || user.is_active === false) return null;
+  const actor = JSON.stringify([user.id, user.role, user.portfolio_access,
+    [...(user.portfolio_ids || [])].sort(), [...(user.write_permissions || [])].sort()]);
+  return <ContractWorkspace key={actor} />;
 }

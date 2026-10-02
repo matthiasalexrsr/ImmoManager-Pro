@@ -1,0 +1,36 @@
+.contract-workspace-heading { display: flex; align-items: start; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
+.contract-workspace-heading > div { min-width: 0; }
+.contract-workspace-heading p { margin: .35rem 0 0; }
+.contract-workspace-heading .page-title { margin: 0; }
+.contract-workspace-filters { display: grid; gap: 1rem; padding: 1rem; }
+.contract-workspace-filter-grid { display: grid; grid-template-columns: minmax(12rem, 2fr) repeat(3, minmax(0, 1fr)); gap: .85rem; }
+.contract-workspace-reference-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+.contract-workspace-filters label, .contract-workspace-pagination label { display: grid; gap: .4rem; min-width: 0; font-size: .86rem; }
+.contract-workspace input, .contract-workspace select, .contract-workspace-editor input, .contract-workspace-editor select { min-width: 0; max-width: 100%; }
+.contract-workspace-filters input, .contract-workspace-filters select { width: 100%; min-height: 44px; box-sizing: border-box; }
+.contract-workspace-filter-actions, .contract-workspace-views, .contract-workspace-pagination { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; }
+.contract-workspace-views { margin: 1rem 0; }
+.contract-workspace-summary { color: var(--text-secondary); font-size: .9rem; }
+.contract-workspace-page-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: space-between; gap: .6rem; margin-bottom: .6rem; }
+.contract-workspace-caption { text-align: left; padding: .75rem 1rem; color: var(--text-secondary); font-size: .82rem; }
+.contract-workspace-sort { display: inline-flex; align-items: center; gap: .4rem; border: 0; background: transparent; padding: .35rem 0; color: inherit; font: inherit; font-weight: 650; text-align: left; min-height: 44px; cursor: pointer; }
+.contract-workspace-row-actions { display: flex; gap: .45rem; flex-wrap: wrap; }
+.contract-workspace .table-scroll { max-width: 100%; }
+.contract-workspace .data-table td { overflow-wrap: anywhere; }
+.contract-workspace .btn, .contract-workspace-pagination select { min-height: 44px; }
+.contract-workspace-pagination { margin-top: 1rem; }
+.contract-workspace-pagination label { margin-left: auto; }
+.contract-choice-hint { display: grid; gap: .5rem; margin-top: .45rem; font-weight: 400; }
+.contract-choice-hint label { display: grid; gap: .35rem; }
+.contract-choice-hint input { width: 100%; min-height: 44px; box-sizing: border-box; }
+.contract-choice-pages { display: flex; flex-wrap: wrap; gap: .4rem; }
+.contract-workspace [role="alert"] { overflow-wrap: anywhere; }
+.contract-workspace [role="alert"] .btn { margin: .4rem; }
+.contract-workspace button:focus-visible, .contract-workspace input:focus-visible, .contract-workspace select:focus-visible, .contract-workspace .table-scroll:focus-visible { outline: 3px solid color-mix(in srgb, var(--primary) 45%, transparent); outline-offset: 2px; }
+@media (max-width: 900px) { .contract-workspace-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) {
+  .contract-workspace-heading { flex-wrap: wrap; }
+  .contract-workspace-filter-grid, .contract-workspace-reference-grid { grid-template-columns: 1fr; }
+  .contract-workspace-pagination label { margin-left: 0; }
+  .contract-workspace-filter-actions > .btn { flex: 1 1 8rem; }
+}

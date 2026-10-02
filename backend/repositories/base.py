@@ -119,7 +119,15 @@ class BaseRepository:
 
     def _write(self, entity_id, updates):
         from ..services.payment_integrity import guard_sql_lifecycle_edit
-        guard_sql_lifecycle_edit(self.db, self.orm_class.__tablename__, entity_id, updates)
+        try:
+            guard_sql_lifecycle_edit(self.db, self.orm_class.__tablename__, entity_id, updates)
+        except NotFoundError:
+            # Parent checks run after the writer begins, before the usual subject
+            # read. Preserve a deleted conditional form's 412 and legacy 404;
+            # a missing proposed reference on an existing subject still propagates.
+            if self.db.get(self.orm_class, entity_id, populate_existing=True) is None:
+                self._missing(entity_id)
+            raise
         orm_obj = self.db.get(self.orm_class, entity_id, populate_existing=True)
         if orm_obj is None:
             self._missing(entity_id)

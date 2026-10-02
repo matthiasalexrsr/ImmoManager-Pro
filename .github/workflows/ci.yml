@@ -80,6 +80,8 @@ jobs:
           backend/db/contract_lifecycle_models.py backend/services/contract_lifecycle.py
           backend/services/contract_lifecycle_types.py backend/services/contract_lifecycle_validation.py
           backend/routers/contract_lifecycle.py
+          backend/services/contract_workspace.py backend/services/contract_workspace_search.py
+          backend/services/contract_workspace_types.py backend/routers/contract_workspace.py
           backend/invoice_schema_upgrade.py backend/credit_schema_upgrade.py
           backend/db/sqlite_table_preservation.py
           backend/services/recovery_sessions.py scripts/restore_session_security.py
@@ -242,6 +244,12 @@ jobs:
           pytest backend/tests/test_contract_lifecycle_postgres.py
           backend/tests/test_contract_lifecycle_integration_postgres.py
           backend/tests/test_tenant_lifecycle_privacy_postgres.py -q --tb=short
+
+      - name: Verify bounded Unicode contract workspace pages on PostgreSQL
+        if: ${{ !cancelled() && steps.pg_dependencies.outcome == 'success' }}
+        env:
+          TEST_SERVER_DATABASE_URL: postgresql://immo_ci:isolated_test_database@127.0.0.1:5432/immo_ci
+        run: pytest backend/tests/test_contract_workspace_postgres.py -q --tb=short
 
   browser-e2e:
     name: Browser workflows (Chromium + SQLite)

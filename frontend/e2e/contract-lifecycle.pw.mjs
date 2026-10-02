@@ -56,7 +56,8 @@ async function fixture(page, headers) {
 async function open(page, contract) {
   await page.goto('/contracts');
   await germanWorkspaceReady(page);
-  await page.getByRole('textbox', { name: 'Suchen Verträge', exact: true }).fill(contract.contract_number);
+  await page.getByRole('searchbox', { name: 'Vertrag, Immobilie, Einheit oder Mieter suchen', exact: true }).fill(contract.contract_number);
+  await page.getByRole('button', { name: 'Filter anwenden', exact: true }).click();
   const opener = page.getByRole('row').filter({ hasText: contract.contract_number })
     .getByRole('button', { name: 'Ablauf prüfen', exact: true });
   await expect(opener).toBeVisible();
