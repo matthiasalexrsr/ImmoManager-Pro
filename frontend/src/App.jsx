@@ -51,6 +51,7 @@ const NotificationTemplates = lazy(() => import('./pages/NotificationTemplates')
 const History = lazy(() => import('./pages/History'));
 const AllocationKeys = lazy(() => import('./pages/AllocationKeys'));
 const HandoverProtocols = lazy(() => import('./pages/HandoverProtocols'));
+const TenancyWorkflows = lazy(() => import('./pages/TenancyWorkflows'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 
 export function ProtectedRoute({ children }) {
@@ -181,6 +182,7 @@ export default function App() {
           <Route path="history" element={<History />} />
           <Route path="allocation-keys" element={<AllocationKeys />} />
           <Route path="handover-protocols" element={<HandoverProtocols />} />
+          <Route path="tenancy-workflows" element={<TenancyWorkflows />} />
           <Route path="settings" element={<Settings />} />
           <Route path="*" element={<NotFound />} />
         </Route>

@@ -35,6 +35,7 @@ const NAV_SECTIONS = [
     ['/deposits', 'navigation.main.deposits', DepositIcon],
     ['/rent-adjustments', 'navigation.main.rentAdjustments', RentIcon],
     ['/handover-protocols', 'navigation.main.handoverProtocols', DocumentIcon],
+    ['/tenancy-workflows', 'navigation.main.tenancyWorkflows', TaskIcon],
   ] },
   { labelKey: 'navigation.sections.vacancy', items: [
     ['/leads', 'navigation.main.leads', TenantIcon],
