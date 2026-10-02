@@ -454,6 +454,7 @@ def test_sqlite_memory_auth_allows_existing_writer_to_finish_before_confirmation
     if box.engine is None or box.engine.dialect.name != "sqlite":
         pytest.skip("Actual SQLite/Memory-auth transaction ordering required")
     change, plan = setup_subject(box, monkeypatch, historical=True)
+    original_tenant = box.store.get_tenant(box.previous.tenant_id).model_dump()
     writer_held, release_writer, profile_begin, account_available = Event(), Event(), Event(), Event()
     original_touch = workflow._touch_step
     def pause_writer(unit, item):
@@ -486,12 +487,23 @@ def test_sqlite_memory_auth_allows_existing_writer_to_finish_before_confirmation
                 assert profile_begin.wait(10)
                 assert writer.result(timeout=10)["state"] == "in_progress"
                 assert account_available.is_set()
-                assert profile.result(timeout=10)["status"] == "profile_anonymized"
+                # The writer changed retained evidence after the reviewed
+                # graph was captured. Account/DB lock ordering permits it to
+                # finish; the stale confirmation must then refuse publication.
+                with pytest.raises(privacy.PrivacyConflict, match="Datenstand"):
+                    profile.result(timeout=10)
+                assert box.store.get_tenant(box.previous.tenant_id).model_dump() == original_tenant
+                current = workflow.get_change(box.store, change["id"], "tech")
+                assert current["steps"][0]["state"] == "in_progress"
             finally:
                 release_writer.set()
     finally:
         release_writer.set()
         event.remove(box.engine, "before_cursor_execute", observe_begin)
+
+    fresh = privacy.preview_tenant_anonymization(box.store, box.previous.tenant_id)
+    assert fresh["plan_hash"] != plan["plan_hash"]
+    assert confirm(box, fresh)["status"] == "profile_anonymized"
 
 
 def test_sqlite_memory_account_fence_is_held_until_actual_outer_publication(box, monkeypatch):
