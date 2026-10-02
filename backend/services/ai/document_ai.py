@@ -1,49 +1,144 @@
-"""AI-powered document analysis: classification, summarization, entity extraction.
+"""AI-powered document analysis with explicit full-source coverage.
 
-Enhances the existing regex-based OCR pipeline with HF model capabilities.
-Falls back gracefully to the regex pipeline when HF models are unavailable.
+Model input limits bound individual calls only. Long sources are split into
+ordered sections with source character offsets; failed sections stay explicit
+instead of being silently discarded.
 """
 
 from __future__ import annotations
 
+import hashlib
 import logging
-from typing import Optional
+import math
+from numbers import Integral, Real
+from typing import Any, Optional
 
 from ..ocr_service import _extract_invoice_fields
-from .hf_runtime import runtime
-from .schemas import DocumentAIResult
+from .hf_runtime import SectionPlan, TextSection, plan_text_sections, runtime
+from .schemas import (
+    AnalysisCoverage,
+    DocumentAIResult,
+    EntityMention,
+    MissingRange,
+    SourceRange,
+)
 
 logger = logging.getLogger(__name__)
 
-# Document type labels for zero-shot classification (German property management)
 _DOCUMENT_LABELS = [
-    "Rechnung",            # Invoice
-    "Mietvertrag",         # Lease agreement
-    "Nebenkostenabrechnung",  # Utility bill
-    "Mahnung",             # Dunning notice
-    "Kündigung",           # Termination notice
-    "Übergabeprotokoll",   # Handover protocol
-    "Versicherungspolice", # Insurance policy
-    "Grundbuchauszug",     # Land registry extract
-    "Bescheid",            # Official notice
-    "Korrespondenz",       # General correspondence
+    "Rechnung",
+    "Mietvertrag",
+    "Nebenkostenabrechnung",
+    "Mahnung",
+    "Kündigung",
+    "Übergabeprotokoll",
+    "Versicherungspolice",
+    "Grundbuchauszug",
+    "Bescheid",
+    "Korrespondenz",
 ]
 
 
+def _model_id(pipe: Any, fallback: str) -> str:
+    model = getattr(pipe, "model", None)
+    value = getattr(model, "name_or_path", None)
+    return value if isinstance(value, str) and value else fallback
+
+
+def _coverage(
+    capability: str,
+    text: str,
+    plan: SectionPlan,
+    model: str | None,
+    covered: list[SourceRange],
+    missing: list[MissingRange],
+) -> AnalysisCoverage:
+    return AnalysisCoverage(
+        capability=capability,
+        source_length=len(text),
+        source_sha256=hashlib.sha256(text.encode('utf-8')).hexdigest(),
+        complete=not missing and len(covered) == len(plan.sections),
+        budget_kind=plan.budget_kind,
+        section_budget=plan.section_budget,
+        section_overlap=plan.section_overlap,
+        model=model,
+        covered_ranges=covered,
+        missing_ranges=missing,
+    )
+
+
+def _unavailable_coverage(capability: str, text: str, model: str | None = None) -> AnalysisCoverage:
+    missing = (
+        [MissingRange(0, 0, len(text), "pipeline_unavailable", "PipelineUnavailable")]
+        if text
+        else []
+    )
+    return AnalysisCoverage(
+        capability=capability,
+        source_length=len(text),
+        source_sha256=hashlib.sha256(text.encode('utf-8')).hexdigest(),
+        complete=not text,
+        budget_kind="unavailable",
+        section_budget=0,
+        model=model,
+        covered_ranges=[],
+        missing_ranges=missing,
+    )
+
+
+def _range(section: TextSection) -> SourceRange:
+    return SourceRange(section.index, section.start_offset, section.end_offset)
+
+
+def _failure(section: TextSection, exc: BaseException) -> MissingRange:
+    return MissingRange(
+        section.index,
+        section.start_offset,
+        section.end_offset,
+        "pipeline_error",
+        type(exc).__name__,
+    )
+
+
+def _plain_model_fields(value: dict[str, Any]) -> dict[str, Any]:
+    """Keep JSON-like model output fields; never stringify arbitrary objects."""
+
+    def plain(item: Any) -> Any:
+        if item is None or isinstance(item, (str, bool)):
+            return item
+        if isinstance(item, Integral):
+            return int(item)
+        if isinstance(item, Real):
+            value = float(item)
+            return value if math.isfinite(value) else _UNSUPPORTED
+        if isinstance(item, (list, tuple)):
+            converted = [plain(child) for child in item]
+            return converted if all(child is not _UNSUPPORTED for child in converted) else _UNSUPPORTED
+        if isinstance(item, dict) and all(isinstance(key, str) for key in item):
+            result = {}
+            for key, child in item.items():
+                converted = plain(child)
+                if converted is not _UNSUPPORTED:
+                    result[key] = converted
+            return result
+        return _UNSUPPORTED
+
+    result: dict[str, Any] = {}
+    for key, item in value.items():
+        converted = plain(item)
+        if converted is not _UNSUPPORTED:
+            result[key] = converted
+    return result
+
+
+_UNSUPPORTED = object()
+
+
 def analyze_document(text: str, use_ai: bool = True) -> DocumentAIResult:
-    """Analyze document text with AI models, falling back to regex.
-
-    Args:
-        text: Extracted text content of the document.
-        use_ai: If False, skip AI models and use only regex extraction.
-
-    Returns:
-        DocumentAIResult with classification, summary, and extracted entities.
-    """
+    """Analyze the entire source; partial model failures are explicitly reported."""
     if not text or not text.strip():
         return DocumentAIResult()
 
-    # Always run regex extraction as baseline
     regex_fields = _extract_invoice_fields(text)
     result = DocumentAIResult(
         invoice_number=regex_fields.get("invoice_number"),
@@ -52,106 +147,299 @@ def analyze_document(text: str, use_ai: bool = True) -> DocumentAIResult:
         supplier=regex_fields.get("supplier"),
         cost_category=regex_fields.get("cost_category"),
     )
+    result.coverage["regex"] = AnalysisCoverage(
+        capability="regex",
+        source_length=len(text),
+        source_sha256=hashlib.sha256(text.encode('utf-8')).hexdigest(),
+        complete=True,
+        budget_kind="full_source",
+        section_budget=len(text),
+        covered_ranges=[SourceRange(0, 0, len(text))],
+    )
 
-    if not use_ai or not runtime.is_available:
-        # Regex-only mode — infer document type from cost category
+    if not use_ai:
         result.document_type = _infer_document_type_regex(text, regex_fields)
         return result
 
-    # --- AI-enhanced analysis ---
-    truncated = text[: runtime.config.max_input_length]
+    if not runtime.is_available:
+        result.document_type = _infer_document_type_regex(text, regex_fields)
+        for capability in ("classification", "summarization", "ner"):
+            result.coverage[capability] = _unavailable_coverage(capability, text)
+        result.analysis_complete = False
+        return result
 
-    # 1. Zero-shot document classification
-    result.document_type, result.document_type_confidence, result.ai_model = (
-        _classify_document(truncated)
+    (
+        result.document_type,
+        result.document_type_confidence,
+        classification_model,
+        result.coverage["classification"],
+        result.classification_sections,
+    ) = _classify_document(text)
+
+    (
+        result.summary,
+        summary_model,
+        result.coverage["summarization"],
+        result.summary_sections,
+    ) = _summarize_document(text)
+
+    (
+        result.entities,
+        result.entity_mentions,
+        ner_model,
+        result.coverage["ner"],
+    ) = _extract_entities(text)
+
+    result.ai_model = classification_model or summary_model or ner_model
+    if not result.supplier and result.entities.get("organizations"):
+        result.supplier = result.entities["organizations"][0]
+
+    result.analysis_complete = all(
+        result.coverage[name].complete
+        for name in ("classification", "summarization", "ner")
     )
-
-    # 2. Summarization
-    result.summary = _summarize_document(truncated)
-
-    # 3. Named entity extraction (supplement regex results)
-    ai_entities = _extract_entities(truncated)
-    result.entities = ai_entities
-
-    # Prefer AI-extracted fields over regex if regex missed them
-    if not result.supplier and ai_entities.get("organizations"):
-        result.supplier = ai_entities["organizations"][0]
-
     return result
 
 
-def _classify_document(text: str) -> tuple[Optional[str], float, Optional[str]]:
-    """Zero-shot classification into property management document types."""
+def _classify_document(
+    text: str,
+) -> tuple[
+    Optional[str],
+    float,
+    Optional[str],
+    AnalysisCoverage,
+    list[dict[str, Any]],
+]:
     pipe = runtime.get_pipeline("zero-shot-classification")
     if pipe is None:
-        return None, 0.0, None
+        return None, 0.0, None, _unavailable_coverage("classification", text), []
 
-    try:
-        result = pipe(text[:512], candidate_labels=_DOCUMENT_LABELS, multi_label=False)
-        top_label = result["labels"][0]
-        top_score = result["scores"][0]
-        model_id = getattr(pipe.model, "name_or_path", None) or runtime.config.zero_shot_model
-        return top_label, round(top_score, 4), model_id
-    except Exception:
-        logger.warning("Document classification failed", exc_info=True)
-        return None, 0.0, None
+    model_id = _model_id(pipe, runtime.config.zero_shot_model)
+    plan = plan_text_sections(text, pipe, runtime.config.max_input_length)
+    covered: list[SourceRange] = []
+    missing: list[MissingRange] = []
+    outputs: list[dict[str, Any]] = []
+    top_candidates: list[tuple[float, int, str]] = []
+
+    for section in plan.sections:
+        try:
+            raw = pipe(
+                section.text,
+                candidate_labels=_DOCUMENT_LABELS,
+                multi_label=False,
+            )
+            labels = raw.get("labels") if isinstance(raw, dict) else None
+            scores = raw.get("scores") if isinstance(raw, dict) else None
+            if not isinstance(labels, (list, tuple)) or not isinstance(scores, (list, tuple)):
+                raise ValueError("classification output shape")
+            pairs = []
+            for label, score in zip(labels, scores):
+                try:
+                    numeric_score = float(score) if not isinstance(score, (str, bytes, bool)) else None
+                except (TypeError, ValueError, OverflowError):
+                    numeric_score = None
+                if (
+                    isinstance(label, str)
+                    and numeric_score is not None
+                    and math.isfinite(numeric_score)
+                ):
+                    pairs.append((label, numeric_score))
+            if not pairs:
+                raise ValueError("classification output empty")
+            covered.append(_range(section))
+            outputs.append(
+                {
+                    "section_index": section.index,
+                    "start_offset": section.start_offset,
+                    "end_offset": section.end_offset,
+                    "labels": [label for label, _ in pairs],
+                    "scores": [round(score, 6) for _, score in pairs],
+                    "model": model_id,
+                }
+            )
+            top_candidates.append((pairs[0][1], -section.index, pairs[0][0]))
+        except Exception as exc:
+            logger.warning("Document classification section failed", exc_info=True)
+            missing.append(_failure(section, exc))
+
+    coverage = _coverage("classification", text, plan, model_id, covered, missing)
+    if not top_candidates:
+        return None, 0.0, model_id, coverage, outputs
+    score, _, label = max(top_candidates)
+    return label, round(score, 4), model_id, coverage, outputs
 
 
-def _summarize_document(text: str) -> Optional[str]:
-    """Generate a short summary of the document text."""
+def _summarize_document(
+    text: str,
+) -> tuple[Optional[str], Optional[str], AnalysisCoverage, list[dict[str, Any]]]:
     pipe = runtime.get_pipeline("summarization")
     if pipe is None:
-        return None
+        return None, None, _unavailable_coverage("summarization", text), []
 
-    try:
-        # Summarization models need enough text to work with
-        if len(text.split()) < 30:
-            return None
-        result = pipe(text, max_length=150, min_length=30, do_sample=False)
-        return result[0]["summary_text"]
-    except Exception:
-        logger.warning("Document summarization failed", exc_info=True)
-        return None
+    model_id = _model_id(pipe, runtime.config.summarization_model)
+    plan = plan_text_sections(text, pipe, runtime.config.max_input_length)
+    covered: list[SourceRange] = []
+    missing: list[MissingRange] = []
+    outputs: list[dict[str, Any]] = []
+    summaries: list[str] = []
+
+    for section in plan.sections:
+        if len(section.text.split()) < 30:
+            covered.append(_range(section))
+            outputs.append(
+                {
+                    "section_index": section.index,
+                    "start_offset": section.start_offset,
+                    "end_offset": section.end_offset,
+                    "summary_text": None,
+                    "method": "short_section_no_summary",
+                    "model": model_id,
+                }
+            )
+            continue
+        try:
+            raw = pipe(
+                section.text,
+                max_length=150,
+                min_length=30,
+                do_sample=False,
+            )
+            if (
+                not isinstance(raw, (list, tuple))
+                or not raw
+                or not isinstance(raw[0], dict)
+                or not isinstance(raw[0].get("summary_text"), str)
+            ):
+                raise ValueError("summarization output shape")
+            summary = raw[0]["summary_text"]
+            covered.append(_range(section))
+            outputs.append(
+                {
+                    "section_index": section.index,
+                    "start_offset": section.start_offset,
+                    "end_offset": section.end_offset,
+                    "summary_text": summary,
+                    "method": "model",
+                    "model": model_id,
+                }
+            )
+            summaries.append(summary)
+        except Exception as exc:
+            logger.warning("Document summarization section failed", exc_info=True)
+            missing.append(_failure(section, exc))
+
+    coverage = _coverage("summarization", text, plan, model_id, covered, missing)
+    return ("\n\n".join(summaries) or None), model_id, coverage, outputs
 
 
-def _extract_entities(text: str) -> dict:
-    """Extract named entities (persons, organizations, locations, dates)."""
+def _entity_offsets(section: TextSection, raw: dict[str, Any]) -> tuple[int | None, int | None, int | None, int | None]:
+    start = raw.get("start")
+    end = raw.get("end")
+    if (
+        isinstance(start, Integral)
+        and not isinstance(start, bool)
+        and isinstance(end, Integral)
+        and not isinstance(end, bool)
+    ):
+        local_start, local_end = int(start), int(end)
+        if 0 <= local_start <= local_end <= len(section.text):
+            return (
+                local_start,
+                local_end,
+                section.start_offset + local_start,
+                section.start_offset + local_end,
+            )
+    return None, None, None, None
+
+
+def _extract_entities(
+    text: str,
+) -> tuple[dict, list[EntityMention], Optional[str], AnalysisCoverage]:
     pipe = runtime.get_pipeline("ner")
     if pipe is None:
-        return {}
+        return {}, [], None, _unavailable_coverage("ner", text)
 
-    try:
-        raw_entities = pipe(text[:2048])
-        grouped: dict[str, list[str]] = {
-            "persons": [],
-            "organizations": [],
-            "locations": [],
-            "dates": [],
-        }
-        for ent in raw_entities:
-            label = ent.get("entity_group") or ent.get("entity", "")
-            word = ent.get("word", "").strip()
-            if not word or word.startswith("##"):
-                continue
-            if "PER" in label:
-                _append_unique(grouped["persons"], word)
-            elif "ORG" in label:
-                _append_unique(grouped["organizations"], word)
-            elif "LOC" in label:
-                _append_unique(grouped["locations"], word)
+    model_id = _model_id(pipe, runtime.config.ner_model)
+    plan = plan_text_sections(text, pipe, runtime.config.max_input_length, overlap=32)
+    covered: list[SourceRange] = []
+    missing: list[MissingRange] = []
+    grouped: dict[str, list[str]] = {
+        "persons": [],
+        "organizations": [],
+        "locations": [],
+        "dates": [],
+    }
+    mentions: list[EntityMention] = []
 
-        # Remove empty groups
-        return {k: v for k, v in grouped.items() if v}
-    except Exception:
-        logger.warning("NER extraction failed", exc_info=True)
-        return {}
+    for section in plan.sections:
+        try:
+            raw_entities = pipe(section.text)
+            if not isinstance(raw_entities, (list, tuple)):
+                raise ValueError("NER output shape")
+            for raw in raw_entities:
+                if not isinstance(raw, dict):
+                    continue
+                word_value = raw.get("word")
+                word = word_value if isinstance(word_value, str) else ""
+                entity = raw.get("entity") if isinstance(raw.get("entity"), str) else None
+                entity_group = (
+                    raw.get("entity_group")
+                    if isinstance(raw.get("entity_group"), str)
+                    else None
+                )
+                score_raw = raw.get("score")
+                try:
+                    score = (
+                        float(score_raw)
+                        if not isinstance(score_raw, (str, bytes, bool)) and score_raw is not None
+                        else None
+                    )
+                except (TypeError, ValueError, OverflowError):
+                    score = None
+                if score is not None and not math.isfinite(score):
+                    score = None
+                start, end, absolute_start, absolute_end = _entity_offsets(section, raw)
+                mentions.append(
+                    EntityMention(
+                        section_index=section.index,
+                        section_start_offset=section.start_offset,
+                        section_end_offset=section.end_offset,
+                        word=word,
+                        entity=entity,
+                        entity_group=entity_group,
+                        score=score,
+                        start=start,
+                        end=end,
+                        source_start_offset=absolute_start,
+                        source_end_offset=absolute_end,
+                        model_fields=_plain_model_fields(raw),
+                    )
+                )
+                normalized = word.strip()
+                label = (entity_group or entity or "").upper()
+                if not normalized or normalized.startswith("##"):
+                    continue
+                if "PER" in label:
+                    _append_unique(grouped["persons"], normalized)
+                elif "ORG" in label:
+                    _append_unique(grouped["organizations"], normalized)
+                elif "LOC" in label:
+                    _append_unique(grouped["locations"], normalized)
+                elif "DATE" in label or "TIME" in label:
+                    _append_unique(grouped["dates"], normalized)
+            covered.append(_range(section))
+        except Exception as exc:
+            logger.warning("NER extraction section failed", exc_info=True)
+            missing.append(_failure(section, exc))
+
+    coverage = _coverage("ner", text, plan, model_id, covered, missing)
+    return {key: values for key, values in grouped.items() if values}, mentions, model_id, coverage
 
 
-def _append_unique(lst: list[str], value: str) -> None:
-    """Append value to list if not already present (case-insensitive)."""
-    lower_existing = {v.lower() for v in lst}
+def _append_unique(values: list[str], value: str) -> None:
+    lower_existing = {existing.lower() for existing in values}
     if value.lower() not in lower_existing:
-        lst.append(value)
+        values.append(value)
 
 
 def _infer_document_type_regex(text: str, fields: dict) -> Optional[str]:
@@ -161,7 +449,6 @@ def _infer_document_type_regex(text: str, fields: dict) -> Optional[str]:
     if fields.get("invoice_number") or fields.get("total_amount"):
         return "Rechnung"
 
-    # Order matters: more specific types before generic ones
     keyword_map = [
         ("Kündigung", ["kündigung", "kündigungsfrist"]),
         ("Nebenkostenabrechnung", ["nebenkosten", "betriebskosten", "abrechnung"]),
@@ -171,6 +458,6 @@ def _infer_document_type_regex(text: str, fields: dict) -> Optional[str]:
         ("Mietvertrag", ["mietvertrag", "mietverhältnis", "vermieter", "mieter"]),
     ]
     for doc_type, keywords in keyword_map:
-        if any(kw in text_lower for kw in keywords):
+        if any(keyword in text_lower for keyword in keywords):
             return doc_type
     return None
