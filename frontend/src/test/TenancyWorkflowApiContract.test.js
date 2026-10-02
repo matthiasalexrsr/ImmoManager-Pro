@@ -11,6 +11,11 @@ const apiMock = vi.hoisted(() => ({
 vi.mock('../api', () => ({ api: apiMock }));
 
 import { workflowApi, workflowReferenceLoader } from '../features/tenancyWorkflows/tenancyWorkflowApi';
+import {
+  documentReferenceLoader,
+  handoverReferenceLoader,
+  meterReadingReferenceLoader,
+} from '../features/tenancyWorkflows/referenceLoaders';
 
 const hash = char => char.repeat(64);
 const timestamp = '2026-10-02T10:00:00+00:00';
@@ -118,6 +123,52 @@ describe('tenancy workflow API contract', () => {
     })).toBe(response);
     expect(apiMock.get).toHaveBeenCalledWith(
       '/workflow-references/users?search=technik&property_id=property-1&selected_id=user-1&cursor=opaque-ref-current&page_size=25',
+      { signal: undefined },
+    );
+  });
+
+  it('applies kind-specific reference filters: documents omit direction while handovers/readings preserve it', async () => {
+    const response = { items: [], next_cursor: null, has_more: false, selected: null };
+    apiMock.get.mockResolvedValue(response);
+
+    const commonPage = {
+      search: 'evidence',
+      selectedId: 'selected-1',
+      cursor: 'opaque-ref',
+      limit: 25,
+    };
+    await documentReferenceLoader({
+      propertyId: 'property-1',
+      unitId: 'unit-1',
+      contractId: 'contract-old',
+    })(commonPage);
+    expect(apiMock.get).toHaveBeenNthCalledWith(
+      1,
+      '/workflow-references/documents?search=evidence&property_id=property-1&unit_id=unit-1&contract_id=contract-old&selected_id=selected-1&cursor=opaque-ref&page_size=25',
+      { signal: undefined },
+    );
+
+    await handoverReferenceLoader({
+      propertyId: 'property-1',
+      unitId: 'unit-1',
+      contractId: 'contract-old',
+      direction: 'move_out',
+    })(commonPage);
+    expect(apiMock.get).toHaveBeenNthCalledWith(
+      2,
+      '/workflow-references/handover-protocols?search=evidence&property_id=property-1&unit_id=unit-1&contract_id=contract-old&direction=move_out&selected_id=selected-1&cursor=opaque-ref&page_size=25',
+      { signal: undefined },
+    );
+
+    await meterReadingReferenceLoader({
+      propertyId: 'property-1',
+      unitId: 'unit-1',
+      contractId: 'contract-new',
+      direction: 'move_in',
+    })(commonPage);
+    expect(apiMock.get).toHaveBeenNthCalledWith(
+      3,
+      '/workflow-references/meter-readings?search=evidence&property_id=property-1&unit_id=unit-1&contract_id=contract-new&direction=move_in&selected_id=selected-1&cursor=opaque-ref&page_size=25',
       { signal: undefined },
     );
   });

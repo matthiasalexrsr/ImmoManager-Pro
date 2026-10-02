@@ -256,3 +256,21 @@ Bestehende fachfremde React-Testwarnungen zu `act(...)` bzw. doppelten Keys wurd
 - keine Live-Abnahme von Roots separatem `workflow-references`-Backend in diesem UI-Worktree;
 - keine Änderung an Main, Root-Preview, Root-Integrationsworktree, Core-Worktree oder `work/workflow-references`;
 - keine Verarbeitung von Zugangsdaten oder TEHA-Daten.
+
+## Additive Integrationskorrektur: Dokumentreferenzen ohne Richtung
+
+Nach Root-Integration wurde der kanonische Referenzvertrag präzisiert: `direction` ist nur für `handover-protocols` und `meter-readings` zulässig, nicht für `documents`.
+
+Der UI-Stand wurde entsprechend korrigiert:
+
+- `documentReferenceLoader` sendet für `documents` nur `property_id`, `unit_id`, `contract_id` sowie die allgemeinen Such-/Cursorparameter.
+- `EvidenceLinkDialog` reicht `step.direction` nicht mehr an den Dokumentloader weiter.
+- Der Dokument-`sourceKey` enthält deshalb ebenfalls keine Richtung mehr.
+- Handover-Protokolle und Zählerstände behalten `direction` unverändert und exakt bei.
+- Die Auswahl einer konkreten immutable `document_version_id` über `/documents/{id}/versions` bleibt unverändert.
+
+Gezielt geprüft:
+
+- `TenancyWorkflowApiContract.test.js` + `TenancyChangeFile.test.jsx`: **14/14 Tests bestanden**.
+- Der API-Vertragstest prüft Documents mit Property/Unit/Contract **ohne** `direction`, Handover mit `direction=move_out` und Meter Readings mit `direction=move_in`.
+- Gezielter ESLint über die geänderten Loader-/Dialog-/Container-/Testdateien mit `--max-warnings=0`: **bestanden, keine Ausgabe/Warnung**.

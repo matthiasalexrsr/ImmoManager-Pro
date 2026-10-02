@@ -56,7 +56,7 @@ export default function EvidenceLinkDialog({
   ].filter(Boolean), [loadDocumentVersions, loadDocuments, loadHandoverProtocols, loadMeterReadings, tr]);
 
   const documentLoader = args => loadDocuments?.({
-    ...args, propertyId, unitId, contractId, direction: step.direction,
+    ...args, propertyId, unitId, contractId,
   });
   const handoverLoader = args => loadHandoverProtocols?.({
     ...args, propertyId, unitId, contractId, direction: step.direction,
@@ -137,7 +137,7 @@ export default function EvidenceLinkDialog({
           <>
             <BoundedReferencePicker label={tr('selectDocument')} locale={locale}
               value={selectedDocument?.id || null} selectedItem={selectedDocument} loadPage={documentLoader}
-              sourceKey={`${propertyId}:${unitId}:${contractId}:${step.direction}:documents`}
+              sourceKey={`${propertyId}:${unitId}:${contractId}:documents`}
               getLabel={item => item.title || item.id}
               getDescription={item => [item.document_type, item.document_date].filter(Boolean).join(' · ')}
               isSelectable={item => selectable('document_version', item)}

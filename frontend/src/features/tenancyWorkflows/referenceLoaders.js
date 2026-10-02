@@ -23,13 +23,11 @@ export function documentReferenceLoader({
   propertyId,
   unitId = null,
   contractId = null,
-  direction = null,
 }) {
   return workflowReferenceLoader('documents', {
     property_id: propertyId,
     unit_id: unitId,
     contract_id: contractId,
-    direction,
   });
 }
 

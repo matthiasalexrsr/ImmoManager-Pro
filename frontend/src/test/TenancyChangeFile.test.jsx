@@ -294,7 +294,6 @@ describe('TenancyChangeFile against the core DTOs', () => {
       propertyId: 'property-1',
       unitId: 'unit-1',
       contractId: 'old-contract',
-      direction: 'move_out',
       cursor: null,
       search: '',
       selectedId: null,

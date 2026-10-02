@@ -238,8 +238,8 @@ export default function TenancyWorkflows() {
   );
 
   const documentLoader = useCallback(args => {
-    const { propertyId, unitId, contractId, direction, ...pageArgs } = args;
-    return documentReferenceLoader({ propertyId, unitId, contractId, direction })(pageArgs);
+    const { propertyId, unitId, contractId, ...pageArgs } = args;
+    return documentReferenceLoader({ propertyId, unitId, contractId })(pageArgs);
   }, []);
   const handoverLoader = useCallback(args => {
     const { propertyId, unitId, contractId, direction, ...pageArgs } = args;
