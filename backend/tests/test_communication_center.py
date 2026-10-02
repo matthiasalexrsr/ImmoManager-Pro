@@ -469,3 +469,45 @@ def test_template_audience_and_channel_are_enforced(communication_store):
                 channel=channel, template_id=template_id,
             ))
         assert exc.value.status_code == 422
+
+
+def test_global_template_library_remains_visible_inside_selected_portfolio_scope(communication_store):
+    portfolio, _, _ = seed_recipient(communication_store)
+    template = service.create_template(communication_store, CommunicationTemplateCreate(
+        name="Scope-visible library template", audience="any", channel="universal",
+        body_template="Global library content",
+    ))
+    scope = AccessScope("actor", "verwalter", False, (portfolio.id,))
+    with scope_context(scope):
+        assert template["id"] in {row["id"] for row in service.list_templates(communication_store)}
+
+
+def test_draft_save_rejects_unknown_recipient_and_mismatched_contract(communication_store):
+    portfolio, tenant, contract = seed_recipient(communication_store)
+    with pytest.raises(HTTPException) as exc:
+        service.create_draft(communication_store, CommunicationDraftCreate(
+            portfolio_id=portfolio.id, title="Missing", channel="email",
+            recipient_type="tenant", recipient_id="does-not-exist", body_template="Hallo",
+        ), "actor")
+    assert exc.value.status_code == 404
+    other = communication_store.create_tenant(TenantCreate(full_name="Andere Mietpartei"))
+    with pytest.raises(HTTPException) as exc:
+        service.create_draft(communication_store, CommunicationDraftCreate(
+            portfolio_id=portfolio.id, title="Mismatch", channel="email",
+            recipient_type="tenant", recipient_id=other.id, contract_id=contract.id,
+            body_template="Hallo {{recipient.name}}",
+        ), "actor")
+    assert exc.value.status_code == 409
+
+
+def test_whatsapp_review_requires_approved_meta_template(communication_store):
+    portfolio, tenant, contract = seed_recipient(communication_store)
+    draft = service.create_draft(communication_store, CommunicationDraftCreate(
+        portfolio_id=portfolio.id, title="WhatsApp", channel="whatsapp",
+        recipient_type="tenant", recipient_id=tenant.id, contract_id=contract.id,
+        body_template="Hallo {{recipient.name}}",
+    ), "actor")
+    with pytest.raises(HTTPException) as exc:
+        service.review_draft(communication_store, draft.id, draft.revision, "actor")
+    assert exc.value.status_code == 409
+    assert "Meta-Template" in str(exc.value.detail)

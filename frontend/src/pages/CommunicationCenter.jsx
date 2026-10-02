@@ -525,9 +525,10 @@ export default function CommunicationCenter() {
           </label>
           {editor.channel === 'whatsapp' && <div className="communication-grid-two">
             <label>Meta Template-Name
-              <input value={editor.whatsapp_template_name}
+              <input required value={editor.whatsapp_template_name}
                 onChange={e => changeEditor('whatsapp_template_name', e.target.value)}
-                placeholder="z. B. rent_notice" />
+                placeholder="z. B. rent_notice" pattern="[a-z0-9_]+" />
+              <small>Für proaktive Nachrichten wird ausschließlich ein freigegebenes Meta-Template versendet.</small>
             </label>
             <label>Sprache
               <input value={editor.whatsapp_language_code}

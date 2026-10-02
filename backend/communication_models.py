@@ -93,8 +93,8 @@ class CommunicationDraftCreate(RenderRequest):
     portfolio_id: str = Field(min_length=1)
     channel: Literal["email", "post", "whatsapp"] = "email"
     title: str = Field(min_length=1, max_length=200)
-    whatsapp_template_name: str | None = Field(default=None, max_length=200)
-    whatsapp_language_code: str = Field(default="de", max_length=20)
+    whatsapp_template_name: str | None = Field(default=None, max_length=200, pattern=r"^[a-z0-9_]+$")
+    whatsapp_language_code: str = Field(default="de", max_length=20, pattern=r"^[a-z]{2,3}(?:_[A-Z]{2})?$")
 
 
 class CommunicationDraftUpdate(BaseModel):
@@ -108,8 +108,8 @@ class CommunicationDraftUpdate(BaseModel):
     template_id: str | None = None
     subject_template: str | None = Field(default=None, max_length=500)
     body_template: str | None = Field(default=None, max_length=100_000)
-    whatsapp_template_name: str | None = Field(default=None, max_length=200)
-    whatsapp_language_code: str | None = Field(default=None, max_length=20)
+    whatsapp_template_name: str | None = Field(default=None, max_length=200, pattern=r"^[a-z0-9_]+$")
+    whatsapp_language_code: str | None = Field(default=None, max_length=20, pattern=r"^[a-z]{2,3}(?:_[A-Z]{2})?$")
 
 
 class CommunicationDraft(BaseModel):

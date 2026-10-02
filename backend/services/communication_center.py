@@ -387,6 +387,18 @@ def _contract_context(db, recipient_type: str, recipient_id: str, contract_id: s
     return contract, unit, property_row
 
 
+def _validate_draft_references(db, portfolio_id, recipient_type, recipient_id, contract_id):
+    portfolio = _portfolio(db, portfolio_id)
+    _recipient(db, recipient_type, recipient_id)
+    if recipient_type != "tenant" and contract_id:
+        raise HTTPException(422, "Ein Vertragsbezug ist nur für Mietparteien zulässig")
+    if not contract_id:
+        return
+    _, _, property_row = _contract_context(db, recipient_type, recipient_id, contract_id)
+    if property_row is None or property_row.portfolio_id != portfolio.id:
+        raise HTTPException(409, "Vertrag und ausgewähltes Portfolio stimmen nicht überein")
+
+
 def resolve_context(store, portfolio_id: str, request: RenderRequest) -> tuple[dict, dict]:
     db = database(store)
     portfolio = _portfolio(db, portfolio_id)
@@ -611,7 +623,9 @@ def get_draft(store, identifier: str):
 
 def create_draft(store, data: CommunicationDraftCreate, actor_id: str):
     db = database(store)
-    _portfolio(db, data.portfolio_id)
+    _validate_draft_references(
+        db, data.portfolio_id, data.recipient_type, data.recipient_id, data.contract_id
+    )
     source = RenderRequest(**data.model_dump(include={
         "recipient_type", "recipient_id", "channel", "contract_id", "template_id",
         "subject_template", "body_template",
@@ -660,6 +674,17 @@ def update_draft(store, identifier: str, data: CommunicationDraftUpdate):
             changes.setdefault("body_template", template_body)
         else:
             changes["template_revision"] = None
+    recipient_type = changes.get("recipient_type", row.recipient_type)
+    recipient_id = changes.get("recipient_id", row.recipient_id)
+    contract_id = changes.get("contract_id", row.contract_id)
+    channel = changes.get("channel", row.channel)
+    _validate_draft_references(db, row.portfolio_id, recipient_type, recipient_id, contract_id)
+    _source(db, RenderRequest(
+        recipient_type=recipient_type, recipient_id=recipient_id, channel=channel,
+        contract_id=contract_id, template_id=changes.get("template_id", row.template_id),
+        subject_template=changes.get("subject_template", row.subject_template),
+        body_template=changes.get("body_template", row.body_template),
+    ))
     for key, value in changes.items():
         setattr(row, key, value)
     row.revision += 1
@@ -697,8 +722,11 @@ def review_draft(store, identifier: str, expected_revision: int, actor_id: str):
             raise HTTPException(409, "Für E-Mail fehlt eine Empfängeradresse")
         if not sender.get("email"):
             raise HTTPException(409, "Für E-Mail fehlt eine konfigurierte Absenderadresse")
-    if row.channel == "whatsapp" and not recipient.get("phone"):
-        raise HTTPException(409, "Für WhatsApp fehlt eine Mobil-/Telefonnummer")
+    if row.channel == "whatsapp":
+        if not recipient.get("phone"):
+            raise HTTPException(409, "Für WhatsApp fehlt eine Mobil-/Telefonnummer")
+        if not row.whatsapp_template_name:
+            raise HTTPException(409, "WhatsApp-Korrespondenz erfordert ein freigegebenes Meta-Template")
     if row.channel == "post":
         if not all(recipient.get(key) for key in ("name", "street", "postal_code", "city")):
             raise HTTPException(409, "Für Briefversand ist die Empfängeranschrift unvollständig")
@@ -708,6 +736,8 @@ def review_draft(store, identifier: str, expected_revision: int, actor_id: str):
         "subject": rendered.subject, "body": rendered.body, "context": rendered.context,
         "recipient": rendered.recipient, "channel": row.channel,
         "template_id": row.template_id, "template_revision": row.template_revision,
+        "whatsapp_template_name": row.whatsapp_template_name,
+        "whatsapp_language_code": row.whatsapp_language_code,
     }
     pdf = _pdf(rendered, row.title)
     now = utcnow().replace(tzinfo=None)
@@ -774,8 +804,10 @@ def dispatch_external(store, row: CommunicationDraftORM, action: str, test_mode:
     context = json.loads(row.context_json or "{}")
     recipient = context.get("recipient", {})
     if action == "whatsapp":
+        if not row.whatsapp_template_name:
+            raise HTTPException(409, "WhatsApp-Korrespondenz besitzt kein freigegebenes Meta-Template")
         payload = {
-            "action": "template" if row.whatsapp_template_name else "text",
+            "action": "template",
             "to": recipient.get("phone"),
             "text": row.rendered_body,
             "template_name": row.whatsapp_template_name,
