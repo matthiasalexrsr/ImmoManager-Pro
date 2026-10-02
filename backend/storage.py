@@ -239,6 +239,8 @@ class InMemoryStore:
         """Clear all entity collections. Used by tests to reset state."""
         from .services.portfolio_scope import require_installation_scope
         require_installation_scope()
+        from .services.recovery_retained import guard_operational_history
+        guard_operational_history(self)
         from .services.contract_lifecycle import guard_destructive_reset as guard_lifecycle
         guard_lifecycle(self)
         from .services.contract_correspondence import guard_destructive_reset as guard_correspondence

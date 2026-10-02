@@ -128,7 +128,9 @@ def export_store_data(active_store, version: str) -> dict:
     guard_bank_import_business_transfer(active_store, operation="export")
     with _export_snapshot(active_store) as snapshot:
         from .contract_correspondence import guard_destructive_reset
+        from .recovery_retained import guard_operational_history
         try:
+            guard_operational_history(snapshot)
             guard_destructive_reset(snapshot)
         except ValueError as exc:
             raise TransferError(str(exc)) from exc
@@ -418,7 +420,9 @@ def import_store_data(active_store, data: dict, *, replace_existing: bool) -> di
     from .form_drafts import guard_destructive_reset as guard_form_drafts
     from .payment_integrity import guard_contract_lifecycle_reset
     from .payments import FinancialConsistencyError
+    from .recovery_retained import guard_operational_history
     try:
+        guard_operational_history(active_store)
         guard_contract_lifecycle_reset(active_store)
         guard_contract_history(active_store)
         guard_partial_restore(active_store, data)
@@ -434,6 +438,7 @@ def import_store_data(active_store, data: dict, *, replace_existing: bool) -> di
     try:
         prepared = _prepare(data, specs, replace_existing=replace_existing)
         with _atomic_store(active_store) as staged:
+            guard_operational_history(staged, serialized=True)
             guard_contract_lifecycle_reset(staged, serialized=True)
             guard_contract_history(staged)
             if replace_existing:

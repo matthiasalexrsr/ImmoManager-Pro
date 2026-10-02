@@ -171,6 +171,15 @@ def _database_info(path: Path, *, timeout_seconds: float = 300) -> dict:
             raise RecoveryError("Die Dokumenthistorie ist unvollständig. Vollständige Sicherung mit Originalen verwenden.")
         lifecycle_tables = {"contract_lifecycle_drafts", "contract_lifecycle_commands"}
         correspondence_tables = {"contract_correspondence_drafts", "contract_correspondence_commands", "contract_correspondence_events"}
+        from .operational_job_validation import TABLES as job_tables
+        from .operational_job_validation import JobIntegrityError, validate_job_journal
+        from .tenancy_workflow_validation import TABLES as workflow_tables
+        from .tenancy_workflow_validation import WorkflowIntegrityError, validate_workflow_journal
+        try:
+            validate_workflow_journal(db, deadline=deadline)
+            validate_job_journal(db, deadline=deadline)
+        except (WorkflowIntegrityError, JobIntegrityError, sqlite3.Error):
+            raise RecoveryError("Mieterwechsel-/Arbeitslistenhistorie ist unvollständig oder ungültig. Vollständige unveränderte Sicherung verwenden.") from None
         if tables & correspondence_tables and not correspondence_tables.issubset(tables):
             raise RecoveryError("Die Vertragskorrespondenz ist unvollständig. Vollständige Sicherung mit Originalen verwenden.")
         from .contract_correspondence_validation import EvidenceError, validate_correspondence_journal
@@ -194,6 +203,10 @@ def _database_info(path: Path, *, timeout_seconds: float = 300) -> dict:
             if table.name in lifecycle_tables and not tables & lifecycle_tables:
                 continue
             if table.name in correspondence_tables and not tables & correspondence_tables:
+                continue
+            if table.name in workflow_tables and not tables & workflow_tables:
+                continue
+            if table.name in job_tables and not tables.intersection(job_tables):
                 continue
             actual = {column[1] for column in db.execute('PRAGMA table_info("' + table.name.replace('"', '""') + '")')}
             # A verified backup must precede the offline w1 migration. These

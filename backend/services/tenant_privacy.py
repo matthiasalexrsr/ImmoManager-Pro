@@ -42,7 +42,9 @@ def _memory_state(value):
     from ..db.contract_correspondence_models import CORRESPONDENCE_MODELS
     from ..db.contract_wizard_models import WIZARD_MODELS
     from ..db.document_version_models import DOCUMENT_VERSION_MODELS
-    if isinstance(value, (*WIZARD_MODELS, *DOCUMENT_VERSION_MODELS, *LIFECYCLE_MODELS, *CORRESPONDENCE_MODELS)):
+    from ..db.operational_job_models import JOB_MODELS
+    from ..db.tenancy_workflow_models import TENANCY_WORKFLOW_MODELS
+    if isinstance(value, (*WIZARD_MODELS, *DOCUMENT_VERSION_MODELS, *LIFECYCLE_MODELS, *CORRESPONDENCE_MODELS, *JOB_MODELS, *TENANCY_WORKFLOW_MODELS)):
         return {column.name: _memory_state(getattr(value, column.name)) for column in value.__table__.columns}
     if isinstance(value, dict):
         return {key: _memory_state(item) for key, item in value.items()}

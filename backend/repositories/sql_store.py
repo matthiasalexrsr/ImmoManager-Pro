@@ -159,10 +159,12 @@ class SQLAlchemyStore:
         from ..services.contract_wizard import guard_destructive_reset as guard_contract_history
         from ..services.form_drafts import guard_destructive_reset as guard_form_drafts
         from ..services.payment_integrity import guard_contract_lifecycle_reset
+        from ..services.recovery_retained import guard_operational_history
         # Durable reviewed content and factual transport history cannot be
         # discarded by an ordinary business/test reset. Full offline recovery
         # replaces the complete database through its separate explicit workflow.
         def check_retained_history():
+            guard_operational_history(self)
             guard_contract_lifecycle_reset(self)
             guard_contract_history(self)
             guard_annual_history(self)
@@ -180,6 +182,7 @@ class SQLAlchemyStore:
             # A read-only table barrier keeps that order even if the permanent
             # auth marker is absent, without writing it before history recheck.
             self.db.connection().exec_driver_sql('LOCK TABLE "auth_setup" IN SHARE ROW EXCLUSIVE MODE')
+        guard_operational_history(self, serialized=True)
         guard_contract_lifecycle_reset(self, serialized=True)
         check_retained_history()
         guard_form_drafts(self)

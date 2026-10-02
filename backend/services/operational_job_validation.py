@@ -11,6 +11,11 @@ from .contract_lifecycle_validation import _hash, _object, _one, _rows
 from .operational_job_types import FAMILIES, JobCreate
 
 TABLES = ("operational_jobs", "operational_job_lanes", "operational_work_items")
+FIELDS = {
+    TABLES[0]: "id actor_id create_key request_hash scope_hash parameters revision state turn created_at updated_at",
+    TABLES[1]: "id job_id family state cursor upper exhausted served fence lease_token lease_owner lease_expires_at next_attempt_at last_error scanned created updated skipped",
+    TABLES[2]: "id job_id kind lane_id action_key source_id planned_revision state revision attempts next_attempt_at error_code result created_at",
+}
 
 
 class JobIntegrityError(ValueError):
@@ -39,6 +44,12 @@ def validate_job_journal(connection, *, deadline=None):
     if not set(TABLES).issubset(names):
         raise JobIntegrityError("operational_job_schema_incomplete")
     try:
+        for table, expected in FIELDS.items():
+            columns = ({row["name"] for row in _rows(connection, 'PRAGMA table_info("' + table + '")')}
+                       if isinstance(connection, sqlite3.Connection)
+                       else {column["name"] for column in inspect(connection).get_columns(table)})
+            if not set(expected.split()) <= columns:
+                raise JobIntegrityError("operational_job_columns_incomplete")
         for values in _rows(connection, "SELECT * FROM operational_jobs ORDER BY id"):
             _check(deadline)
             job = _object(values, ("parameters",))
