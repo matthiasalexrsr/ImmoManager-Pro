@@ -9,8 +9,9 @@ Route ordering: static paths (/templates, /generate/*) before path params (/{not
 import logging
 from datetime import date
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+from ..auth import require_auth
 from ..dependencies import store
 from ..models import (
     Notification,
@@ -19,7 +20,10 @@ from ..models import (
     NotificationTemplate,
     NotificationTemplateCreate,
     NotificationTemplatePatch,
+    UserRead,
 )
+from ..services.operational_schedule import generate_notifications, notification_visible
+from ..services.recurrence import CatchUpLimit
 from ..storage import NotFoundError, ValidationError
 
 logger = logging.getLogger(__name__)
@@ -89,112 +93,26 @@ def delete_notification_template(template_id: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-@router.post("/generate/overdue-payments", response_model=list[Notification], status_code=status.HTTP_201_CREATED)
-def generate_overdue_payment_notifications(
-    as_of: date | None = Query(None),
-) -> list[Notification]:
-    """Generate notifications for overdue receivables."""
-    check_date = as_of or date.today()
-    created: list[Notification] = []
-
-    for receivable in store.list_receivables():
-        if receivable.status == "open" and receivable.due_date < check_date:
-            tenant_name = "Unbekannt"
-            try:
-                contract = store.get_contract(receivable.contract_id)
-                try:
-                    tenant = store.get_tenant(contract.tenant_id)
-                    tenant_name = tenant.full_name
-                except Exception:
-                    logger.debug("Could not resolve tenant for contract %s", receivable.contract_id, exc_info=True)
-            except Exception:
-                logger.debug("Could not resolve contract %s for receivable %s", receivable.contract_id, receivable.id, exc_info=True)
-
-            notification = store.create_notification(
-                NotificationCreate(
-                    notification_type="overdue_payment",
-                    title=f"Überfällige Zahlung: {tenant_name}",
-                    content=(
-                        f"Forderung über {receivable.amount_due:.2f} EUR fällig am"
-                        f" {receivable.due_date} ist überfällig."
-                    ),
-                    severity="warning",
-                    entity_type="receivable",
-                    entity_id=receivable.id,
-                )
-            )
-            created.append(notification)
-
-    return created
+def _generated(kind, as_of, days_ahead=90):
+    try:
+        return generate_notifications(store, kind, as_of if isinstance(as_of, date) else date.today(), days_ahead=days_ahead)
+    except (ValidationError, CatchUpLimit) as exc:
+        raise HTTPException(409, str(exc)) from exc
 
 
-@router.post("/generate/expiring-contracts", response_model=list[Notification], status_code=status.HTTP_201_CREATED)
-def generate_expiring_contract_notifications(
-    days_ahead: int = Query(90, ge=1, le=365),
-    as_of: date | None = Query(None),
-) -> list[Notification]:
-    """Generate notifications for contracts expiring within the given window."""
-    from datetime import timedelta
-
-    check_date = as_of or date.today()
-    horizon = check_date + timedelta(days=days_ahead)
-    created: list[Notification] = []
-
-    for contract in store.list_contracts():
-        if (
-            contract.status == "active"
-            and contract.end_date is not None
-            and check_date <= contract.end_date <= horizon
-        ):
-            tenant_name = "Unbekannt"
-            try:
-                tenant = store.get_tenant(contract.tenant_id)
-                tenant_name = tenant.full_name
-            except Exception:
-                logger.debug("Could not resolve tenant for contract %s", contract.id, exc_info=True)
-
-            notification = store.create_notification(
-                NotificationCreate(
-                    notification_type="contract_expiry",
-                    title=f"Vertragsende: {contract.contract_number}",
-                    content=f"Vertrag {contract.contract_number} (Mieter: {tenant_name}) endet am {contract.end_date}.",
-                    severity="info",
-                    entity_type="contract",
-                    entity_id=contract.id,
-                )
-            )
-            created.append(notification)
-
-    return created
+@router.post("/generate/overdue-payments", response_model=list[Notification], status_code=201)
+def generate_overdue_payment_notifications(as_of: date | None = Query(None)) -> list[Notification]:
+    return _generated("overdue", as_of)
 
 
-@router.post("/generate/due-tasks", response_model=list[Notification], status_code=status.HTTP_201_CREATED)
-def generate_due_task_notifications(
-    as_of: date | None = Query(None),
-) -> list[Notification]:
-    """Generate notifications for overdue or due-today tasks."""
-    check_date = as_of or date.today()
-    created: list[Notification] = []
+@router.post("/generate/expiring-contracts", response_model=list[Notification], status_code=201)
+def generate_expiring_contract_notifications(days_ahead: int = Query(90, ge=1, le=365), as_of: date | None = Query(None)) -> list[Notification]:
+    return _generated("contracts", as_of, days_ahead if isinstance(days_ahead, int) else 90)
 
-    for task in store.list_tasks():
-        if (
-            task.status == "open"
-            and task.due_date is not None
-            and task.due_date <= check_date
-        ):
-            notification = store.create_notification(
-                NotificationCreate(
-                    notification_type="task_due",
-                    title=f"Aufgabe fällig: {task.title}",
-                    content=f"Aufgabe '{task.title}' ist fällig seit {task.due_date}.",
-                    severity="warning" if task.due_date < check_date else "info",
-                    entity_type="task",
-                    entity_id=task.id,
-                )
-            )
-            created.append(notification)
 
-    return created
+@router.post("/generate/due-tasks", response_model=list[Notification], status_code=201)
+def generate_due_task_notifications(as_of: date | None = Query(None)) -> list[Notification]:
+    return _generated("due_tasks", as_of)
 
 
 # ---------------------------------------------------------------------------
@@ -209,8 +127,11 @@ def list_notifications(
     status_filter: str | None = Query(None, alias="status"),
     notification_type: str | None = Query(None),
     severity: str | None = Query(None),
+    user: UserRead = Depends(require_auth),
 ) -> list[Notification]:
     results = store.list_notifications()
+    if isinstance(user, UserRead):
+        results = [item for item in results if notification_visible(store, item.id, user.role)]
     if status_filter:
         results = [r for r in results if r.status == status_filter]
     if notification_type:
@@ -229,40 +150,50 @@ def create_notification(payload: NotificationCreate) -> Notification:
 
 
 @router.get("/{notification_id}", response_model=Notification)
-def get_notification(notification_id: str) -> Notification:
+def get_notification(notification_id: str, user: UserRead = Depends(require_auth)) -> Notification:
     try:
+        if isinstance(user, UserRead) and not notification_visible(store, notification_id, user.role):
+            raise HTTPException(404, "Benachrichtigung nicht gefunden")
         return store.get_notification(notification_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.put("/{notification_id}", response_model=Notification)
-def update_notification(notification_id: str, payload: NotificationCreate) -> Notification:
+def update_notification(notification_id: str, payload: NotificationCreate, user: UserRead = Depends(require_auth)) -> Notification:
     try:
+        if isinstance(user, UserRead) and not notification_visible(store, notification_id, user.role):
+            raise HTTPException(404, "Benachrichtigung nicht gefunden")
         return store.update_notification(notification_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.post("/{notification_id}/read", response_model=Notification)
-def mark_notification_read(notification_id: str) -> Notification:
+def mark_notification_read(notification_id: str, user: UserRead = Depends(require_auth)) -> Notification:
     try:
+        if isinstance(user, UserRead) and not notification_visible(store, notification_id, user.role):
+            raise HTTPException(404, "Benachrichtigung nicht gefunden")
         return store.mark_notification_read(notification_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.patch("/{notification_id}", response_model=Notification)
-def patch_notification(notification_id: str, payload: NotificationPatch) -> Notification:
+def patch_notification(notification_id: str, payload: NotificationPatch, user: UserRead = Depends(require_auth)) -> Notification:
     try:
+        if isinstance(user, UserRead) and not notification_visible(store, notification_id, user.role):
+            raise HTTPException(404, "Benachrichtigung nicht gefunden")
         return store._patch_entity("notification", notification_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.delete("/{notification_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_notification(notification_id: str) -> None:
+def delete_notification(notification_id: str, user: UserRead = Depends(require_auth)) -> None:
     try:
+        if isinstance(user, UserRead) and not notification_visible(store, notification_id, user.role):
+            raise HTTPException(404, "Benachrichtigung nicht gefunden")
         store.delete_notification(notification_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

@@ -1,36 +1,50 @@
-import { useState, useEffect, useMemo } from 'react';
+import useWriteAccess from '../hooks/useWriteAccess';
+import { revisionOptions } from '../editRevision';
+import { useState, useMemo, useRef } from 'react';
 import { api } from '../api';
+import { useFinanceData } from '../hooks/useFinanceData';
+import FinanceLoadState from '../components/FinanceLoadState';
 import { useTranslation } from '../i18n';
-import { useEntities, useDataStore } from '../contexts/DataStoreContext';
+import { useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
-import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
+import AccountBalancePanel from '../components/AccountBalancePanel';
+import { centsInput, euroCents, storedCents } from '../utils/accountMoney';
 
 export default function Accounts() {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const confirm = useConfirm();
   const store = useDataStore();
-  const { items: portfolios } = useEntities('portfolios', '/portfolios');
+  const { data: { accounts, portfolios }, loading, error, reload: refreshData } = useFinanceData({
+    accounts: '/accounts',
+    portfolios: '/portfolios',
+  });
 
-  const [accounts, setAccounts] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
-
-  const refreshData = () => {
-    setLoading(true);
-    api.get('/accounts').catch(() => [])
-      .then(data => setAccounts(Array.isArray(data) ? data : []))
-      .finally(() => setLoading(false));
+  const { canWrite, isAllowed, requireWrite } = useWriteAccess('/accounts', () => setModal(null));
+  const [actionError, setActionError] = useState(null);
+  const [auditAccount, setAuditAccount] = useState(null);
+  const auditTrigger = useRef(null);
+  const openAudit = (identifier, event) => {
+    auditTrigger.current = event.currentTarget;
+    setAuditAccount(identifier);
+  };
+  const closeAudit = () => { setAuditAccount(null); auditTrigger.current?.focus(); };
+  const editAuditedAccount = async identifier => {
+    requireWrite();
+    setActionError(null);
+    try {
+      const current = await api.get(`/accounts/${encodeURIComponent(identifier)}`);
+      if (isAllowed()) setModal(current);
+    } catch (err) { setActionError(err.message); }
+  };
+  const repairValues = source => {
+    requireWrite();
+    setModal({ id: source.account_id, updated_at: source.account_updated_at, repair: true,
+      opening_balance: centsInput(source.opening_balance_cents), balance: centsInput(source.comparison_balance_cents) });
   };
 
-  useEffect(() => {
-    let cancelled = false;
-    api.get('/accounts').catch(err => { console.warn('[Accounts] load:', err.message); return []; })
-      .then(data => { if (!cancelled) setAccounts(Array.isArray(data) ? data : []); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
 
   // Lookup maps
   const portfolioMap = Object.fromEntries(portfolios.map(p => [p.id, p.name]));
@@ -43,7 +57,9 @@ export default function Accounts() {
 
   // Summary stats
   const totalCount = enriched.length;
-  const totalBalance = enriched.reduce((s, a) => s + Number(a.balance || 0), 0);
+  const comparisons = enriched.map(a => storedCents(a.balance));
+  const totalBalance = comparisons.some(value => value === null) ? null
+    : comparisons.reduce((sum, value) => sum + BigInt(value), 0n).toString();
 
   const columns = [
     { key: 'name', label: t('finance.accounts.form.name') || 'Kontoname', filterType: 'text' },
@@ -51,13 +67,13 @@ export default function Accounts() {
     { key: 'bank_name', label: t('finance.accounts.form.bank') || 'Bank', filterType: 'text' },
     { key: 'iban', label: 'IBAN' },
     { key: 'account_type', label: t('finance.accounts.form.type') || 'Typ', filterType: 'select' },
-    { key: 'balance', label: t('finance.accounts.form.balance') || 'Saldo (€)', type: 'number', align: 'right', filterType: 'numberRange',
+    { key: 'balance', label: t('accountBalance.comparison'), type: 'number', align: 'right', filterType: 'numberRange',
       render: v => {
-        const n = Number(v);
-        if (v == null || isNaN(n)) return '—';
-        const cls = n < 0 ? 'text-red' : n > 0 ? 'text-green' : '';
-        return <span className={cls}>{n.toFixed(2)} €</span>;
+        const value = storedCents(v);
+        return <span>{euroCents(value, locale)}</span>;
       }},
+    { key: 'source', label: t('accountBalance.proof'), render: (_value, row) => <button type="button" className="btn btn-sm btn-secondary"
+      aria-label={`${t('accountBalance.openAudit')} ${row.name}`} onClick={event => openAudit(row.id, event)}>{t('accountBalance.openAudit')}</button> },
   ];
 
   const fields = [
@@ -73,58 +89,80 @@ export default function Accounts() {
       { value: 'Sparkonto', label: t('finance.accounts.types.savings') || 'Sparkonto' },
       { value: 'Kautionskonto', label: t('finance.accounts.types.deposit') || 'Kautionskonto' },
     ]},
-    { key: 'opening_balance', label: t('finance.accounts.form.openingBalance') || 'Anfangssaldo (€)', type: 'number', default: 0 },
-    { key: 'balance', label: t('finance.accounts.form.currentBalance') || 'Aktueller Saldo (€)', type: 'number', default: 0 },
+    { key: 'opening_balance', label: t('accountBalance.opening'), type: 'number', default: 0, step: '0.01' },
+    { key: 'balance', label: t('accountBalance.comparison'), type: 'number', default: 0, step: '0.01' },
   ];
 
   const handleSave = async (data) => {
-    if (modal === 'create') {
+    requireWrite();
+    if (modal.repair) {
+      if (!['opening_balance', 'balance'].every(key => {
+        const value = storedCents(data[key]);
+        return value !== null && BigInt(value) >= -999999999999n && BigInt(value) <= 999999999999n;
+      })) throw new Error(t('accountBalance.validAccountAmounts'));
+      await api.patch(`/accounts/${modal.id}`, data);
+      setAuditAccount(null);
+    } else if (modal === 'create') {
       await api.post('/accounts', data);
     } else {
       await api.put(`/accounts/${modal.id}`, data);
     }
+    setModal(null);
     refreshData();
     if (store) store.invalidateRelated('accounts', 'portfolios', 'bookings');
   };
 
   const handleDelete = async (row) => {
+    if (!isAllowed()) return;
     if (!await confirm(`"${row.name || row.id}" ${t('modals.confirmDelete.body')}`)) return;
-    await api.del(`/accounts/${row.id}`);
-    refreshData();
-    if (store) store.invalidateRelated('accounts', 'portfolios', 'bookings');
+    setActionError(null);
+    try {
+      if (!isAllowed()) return;
+      await api.del(`/accounts/${row.id}`, revisionOptions(row));
+      setModal(null);
+      refreshData();
+      if (store) store.invalidateRelated('accounts', 'portfolios', 'bookings');
+    } catch (err) {
+      setActionError(err.message);
+    }
   };
-
-  if (loading) return <div className="page-loading">Lade Konten...</div>;
 
   return (
     <div className="page">
+      {actionError && <div className="alert alert-error" role="alert">{actionError}</div>}
       <h1 className="page-title">{t('finance.accounts.title') || 'Konten'}</h1>
+      <button type="button" className="btn btn-secondary" onClick={event => openAudit('', event)}>{t('accountBalance.title')}</button>
+      {auditAccount !== null && <AccountBalancePanel key={auditAccount} initialAccount={auditAccount} onClose={closeAudit}
+        onEditAccount={canWrite ? editAuditedAccount : undefined} onRepairValues={canWrite ? repairValues : undefined} />}
+      {loading || error ? <FinanceLoadState loading={loading} error={error} onRetry={refreshData} /> : <>
 
       {/* Summary cards */}
       <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
         <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
           <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{totalCount}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Anzahl Konten</div>
+          <div className="text-muted" style={{ fontSize: '0.8rem' }}>{t('accountBalance.accountCount')}</div>
         </div>
         <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: totalBalance < 0 ? 'var(--danger)' : totalBalance > 0 ? 'var(--success)' : undefined }}>{totalBalance.toFixed(2)} €</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Gesamtsaldo</div>
+          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{euroCents(totalBalance, locale)}</div>
+          <div className="text-muted" style={{ fontSize: '0.8rem' }}>{t('accountBalance.comparisonTotal')}</div>
         </div>
       </div>
+      <p className="text-muted">{t('accountBalance.comparisonTotalHint')}</p>
 
       <DataTable
         title={t('finance.accounts.title') || 'Konten'}
         columns={columns}
         data={enriched}
-        onAdd={() => setModal('create')}
-        onEdit={row => setModal(row)}
-        onDelete={handleDelete}
+        onAdd={canWrite ? () => setModal('create') : undefined}
+        onEdit={canWrite ? row => setModal(row) : undefined}
+        onDelete={canWrite ? handleDelete : undefined}
       />
+      </>}
 
-      {modal && (
+      {modal && canWrite && (
         <FormModal
-          title={modal === 'create' ? 'Konto erstellen' : 'Konto bearbeiten'}
-          fields={fields}
+          title={modal.repair ? t('accountBalance.repairValues') : modal === 'create' ? 'Konto erstellen' : 'Konto bearbeiten'}
+          fields={modal.repair ? fields.filter(field => ['opening_balance', 'balance'].includes(field.key)).map(field => ({ ...field, required: true })) : fields}
           initial={modal === 'create' ? null : modal}
           onSave={handleSave}
           onClose={() => setModal(null)}

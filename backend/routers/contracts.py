@@ -1,14 +1,16 @@
 from dataclasses import asdict
 from datetime import date
 from decimal import Decimal
-from typing import Optional
+from typing import Optional, cast
 
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel
 
 from ..dependencies import store
-from ..domain.lease_engine import ChargeConfig, LeaseEngine, PaymentLine
+from ..domain.lease_engine import ChargeConfig, LeaseEngine
 from ..models import Contract, ContractCreate, ContractPatch
+from ..services.contract_list import filtered_contracts
+from ..services.rent_ledger import contract_ledger_inputs, ungenerated_contract_preview
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/contracts", tags=["Verträge"])
@@ -37,29 +39,21 @@ def list_contracts(
 ) -> list[Contract]:
     filters = {"property_id": property_id, "tenant_id": tenant_id, "status": status_filter}
     has_date_filter = isinstance(date_from, date) or isinstance(date_to, date)
-    results = store._list_paginated(
+    if has_date_filter:
+        return filtered_contracts(
+            store, skip=skip, limit=limit, filters=filters,
+            sort_by=sort_by, descending=(sort_order == "desc"),
+            date_from=date_from if isinstance(date_from, date) else None,
+            date_to=date_to if isinstance(date_to, date) else None,
+        )
+    return store._list_paginated(
         entity_type="contract",
-        skip=0 if has_date_filter else skip,
-        limit=10000 if has_date_filter else limit,
+        skip=skip,
+        limit=limit,
         filters=filters,
         order_by=sort_by,
         order_desc=(sort_order == "desc"),
     )
-    if isinstance(date_from, date):
-        results = [
-            r for r in results
-            if getattr(r, 'start_date', None)
-            and r.start_date >= date_from
-        ]
-    if isinstance(date_to, date):
-        results = [
-            r for r in results
-            if getattr(r, 'end_date', None)
-            and r.end_date <= date_to
-        ]
-    if has_date_filter:
-        results = results[skip : skip + limit]
-    return results
 
 
 @router.post("", response_model=Contract, status_code=status.HTTP_201_CREATED)
@@ -103,8 +97,8 @@ def delete_contract(contract_id: str) -> None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
-def _build_charge_and_payments(contract: Contract) -> tuple[ChargeConfig, list[PaymentLine]]:
-    """Derive ChargeConfig from the unit and collect tenant payment bookings."""
+def _contract_charge(contract: Contract) -> ChargeConfig:
+    """Obligations/payments come from the persisted contract ledger below."""
     try:
         unit = store.get_unit(contract.unit_id)
     except (NotFoundError, KeyError):
@@ -117,18 +111,7 @@ def _build_charge_and_payments(contract: Contract) -> tuple[ChargeConfig, list[P
         service_charge_advance=Decimal(str(unit.service_charge_advance or 0)),
         heating_advance=Decimal(str(unit.heating_advance or 0)),
     )
-    # Filter bookings by tenant, scoped to this contract's property when possible
-    payments = [
-        PaymentLine(
-            booking_date=booking.booking_date,
-            amount=Decimal(str(booking.amount)),
-        )
-        for booking in store.list_bookings()
-        if booking.tenant_id == contract.tenant_id
-        and (not booking.property_id or booking.property_id == contract.property_id)
-        and booking.amount > 0
-    ]
-    return charge, payments
+    return charge
 
 
 @router.get("/{contract_id}/settlement")
@@ -143,7 +126,8 @@ def get_contract_settlement(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
     today = as_of or date.today()
-    charge, payments = _build_charge_and_payments(contract)
+    charge = _contract_charge(contract)
+    charge_lines, payments = contract_ledger_inputs(store, contract, today)
 
     dashboard = LeaseEngine.build_dashboard(
         contract_start=contract.start_date,
@@ -151,11 +135,20 @@ def get_contract_settlement(
         charge=charge,
         payments=payments,
         today=today,
+        charge_lines=charge_lines,
     )
 
     result = asdict(dashboard)
+    result["source"] = "booked_rent_charges"
+    result["ungenerated_preview"] = ungenerated_contract_preview(store, contract, today)
+    # Current credit is separate from the historical as_of rental balance.
+    from ..services.credit_ledger import summary
+    from ..services.tenant_privacy import _read_snapshot
+    with _read_snapshot(store) as snapshot:
+        result["credit_snapshot"] = {"reference": "current_snapshot",
+                                    **summary(snapshot, contract_id, locked=True)}
     # Convert Decimal/date values for JSON serialisation
-    return _serialise(result)
+    return cast(dict, _serialise(result))
 
 
 @router.post("/{contract_id}/dunning-campaign")
@@ -173,7 +166,8 @@ def create_dunning_campaign(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
     today = as_of or date.today()
-    charge, payments = _build_charge_and_payments(contract)
+    charge = _contract_charge(contract)
+    charge_lines, payments = contract_ledger_inputs(store, contract, today)
 
     dunning_policy = None
     if policy:
@@ -193,9 +187,10 @@ def create_dunning_campaign(
         payments=payments,
         today=today,
         policy=dunning_policy,
+        charge_lines=charge_lines,
     )
 
-    return _serialise(asdict(campaign))
+    return cast(dict, _serialise(asdict(campaign)))
 
 
 def _serialise(obj: object) -> object:

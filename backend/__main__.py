@@ -17,6 +17,8 @@ import secrets
 import socket
 import sys
 
+from backend.console_encoding import prepare_standard_streams, safe_console_stream
+
 # ---------------------------------------------------------------------------
 # Frozen-bundle detection (used throughout)
 # ---------------------------------------------------------------------------
@@ -73,24 +75,8 @@ def _load_env_file(path):
 
 
 def _persist_env_default(config_file, key, value):
-    """Set an env default and persist it for future frozen/source launches."""
-    current = os.environ.get(key)
-    if current and current != "dev-secret-key-change-in-production":
-        return current
-
-    os.environ[key] = value
-    try:
-        existing = ""
-        if os.path.isfile(config_file):
-            with open(config_file, "r", encoding="utf-8") as fh:
-                existing = fh.read()
-        lines = [line for line in existing.splitlines() if not line.startswith(f"{key}=")]
-        lines.append(f"{key}={value}")
-        with open(config_file, "w", encoding="utf-8") as fh:
-            fh.write("\n".join(lines) + "\n")
-    except OSError:
-        print(f"WARNUNG: Runtime-Konfiguration konnte nicht geschrieben werden: {config_file}")
-    return value
+    from .runtime_environment import persist_default
+    return persist_default(config_file, key, value)
 
 
 def _configure_runtime_environment(data_dir_arg=None):
@@ -131,6 +117,22 @@ def _configure_runtime_environment(data_dir_arg=None):
     if os.environ.get("JWT_SECRET_KEY") in (None, "", "dev-secret-key-change-in-production"):
         _persist_env_default(runtime_env, "JWT_SECRET_KEY", secrets.token_urlsafe(48))
 
+    # Preserve an explicit keyring; new standalone installations get stable keys.
+    from .services.iban_encryption import generate_key
+    if not os.environ.get("ENCRYPTION_KEYRING"):
+        _persist_env_default(runtime_env, "ENCRYPTION_KEY", generate_key())
+    _persist_env_default(runtime_env, "ENCRYPTION_INDEX_KEY", generate_key())
+    _persist_env_default(runtime_env, "FORM_DRAFT_TTL_DAYS", "7")
+    _persist_env_default(runtime_env, "FORM_DRAFT_MAX_BYTES", "262144")
+
+    # Stable local OCR configuration belongs to the private data directory too.
+    # These modules import no app/config singleton before environment loading.
+    from .ocr_configuration import OCR_DEFAULTS, validate_ocr_environment
+    from .runtime_environment import persist_default
+    validate_ocr_environment({key: os.environ.get(key, value) for key, value in OCR_DEFAULTS.items()})
+    for key, value in OCR_DEFAULTS.items():
+        persist_default(runtime_env, key, value, persist_existing=True)
+
     return data_dir
 
 
@@ -170,20 +172,23 @@ class _TeeWriter:
     """Write to both the console and a log file simultaneously."""
 
     def __init__(self, original, log_file):
-        self.original = original
+        self.original = safe_console_stream(original)
         self.log_file = log_file
 
     def write(self, text):
-        self.original.write(text)
         if self.log_file:
             try:
                 self.log_file.write(text)
                 self.log_file.flush()
             except OSError:
                 pass
+        if self.original is not None:
+            self.original.write(text)
+        return len(text)
 
     def flush(self):
-        self.original.flush()
+        if self.original is not None:
+            self.original.flush()
         if self.log_file:
             try:
                 self.log_file.flush()
@@ -200,6 +205,7 @@ class _TeeWriter:
 
 
 def main():
+    prepare_standard_streams()
     import argparse
 
     parser = argparse.ArgumentParser(
@@ -300,6 +306,14 @@ if __name__ == "__main__":
     # On Windows frozen bundles, child processes re-execute the script and
     # freeze_support() ensures they exit cleanly instead of re-spawning.
     multiprocessing.freeze_support()
+
+    prepare_standard_streams()
+    # A frozen image worker must not load private configuration, bind a port,
+    # create startup logs or launch the GUI. Its parent owns limits and cleanup.
+    if len(sys.argv) > 1 and sys.argv[1] == "--ocr-image-worker":
+        from backend.services.ocr_image_worker import main as image_worker_main
+
+        raise SystemExit(image_worker_main(sys.argv[2:]))
 
     # Set up a log file next to the .exe so errors survive a closed console
     _log_fh = _setup_logging_to_file()

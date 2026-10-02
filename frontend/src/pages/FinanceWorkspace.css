@@ -1,0 +1,221 @@
+.finance-workspace {
+  --finance-border: var(--color-border, #e0e6e2);
+  --finance-muted: var(--color-text-secondary, #63727b);
+  --finance-surface: var(--color-surface, #fff);
+}
+
+.finance-workspace .finance-workspace-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  margin-bottom: 30px;
+}
+
+.finance-workspace-header > div { max-width: 720px; }
+
+.finance-workspace .finance-workspace-header h1 {
+  font-size: clamp(25px, 2.4vw, 32px);
+  letter-spacing: -.035em;
+}
+
+.finance-workspace .finance-workspace-header p {
+  margin-top: 8px;
+  max-width: 650px;
+  color: var(--finance-muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.finance-workspace-action {
+  flex-shrink: 0;
+  min-height: 44px;
+  margin-top: 2px;
+}
+
+.finance-workspace-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--finance-border);
+}
+
+.finance-workspace-tabs {
+  display: inline-flex;
+  min-width: 0;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--finance-border);
+  border-radius: 11px;
+  background: var(--finance-surface);
+}
+
+.finance-workspace-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px 16px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: var(--finance-muted);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 550;
+  cursor: pointer;
+}
+
+.finance-workspace-tab span {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.finance-workspace-tab:hover { color: var(--color-text, #162c3a); }
+
+.finance-workspace-tab.active {
+  border-color: var(--color-primary-light, #dcebe5);
+  color: var(--color-primary-dark, #176d66);
+  background: var(--color-primary-50, #eff6f2);
+}
+
+.finance-workspace .finance-workspace-filter {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 9px;
+  margin: 0;
+  color: var(--finance-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.finance-workspace-filter input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-primary, #177c75);
+}
+
+.finance-workspace-panel { min-width: 0; }
+.finance-workspace-panel[hidden] { display: none; }
+
+.finance-workspace .finance-workspace-summary {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 26px;
+}
+
+.finance-workspace .finance-workspace-stat {
+  display: block;
+  min-width: 0;
+  padding: 21px 23px;
+  border: 1px solid var(--finance-border);
+  border-radius: 12px;
+  background: var(--finance-surface);
+  box-shadow: 0 2px 5px #152c3c03;
+}
+
+.finance-workspace-stat .stat-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+  color: var(--finance-muted);
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.finance-workspace-stat .stat-label svg { flex-shrink: 0; opacity: .7; }
+
+.finance-workspace-stat .stat-value {
+  margin-top: 10px;
+  color: var(--color-text, #162c3a);
+  font-size: clamp(24px, 2.1vw, 30px);
+  font-weight: 600;
+  letter-spacing: -.035em;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.finance-workspace .finance-workspace-stat-open {
+  border-color: var(--color-primary-light, #dcebe5);
+  background: var(--color-primary-50, #eff6f2);
+}
+
+.finance-workspace-stat-open .stat-value { color: var(--color-primary-dark, #176d66); }
+
+.finance-workspace .data-table-wrapper {
+  border: 1px solid var(--finance-border);
+  border-radius: 12px;
+  box-shadow: 0 2px 5px #152c3c03;
+}
+
+.finance-workspace .table-header { padding: 18px 20px; }
+.finance-workspace .table-header h2 { font-size: 15px; font-weight: 600; }
+.finance-workspace .data-table td { padding-top: 15px; padding-bottom: 15px; }
+.finance-workspace .rent-payment-actions { gap: 7px; }
+.finance-workspace .rent-payment-actions .btn { white-space: nowrap; }
+
+.finance-workspace .finance-workspace-history {
+  margin-top: 28px;
+  padding: 22px;
+  border: 1px solid var(--finance-border);
+  border-radius: 14px;
+  background: var(--finance-surface);
+  scroll-margin-top: 86px;
+}
+
+.finance-workspace .finance-workspace-history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 18px;
+  margin-bottom: 21px;
+}
+
+.finance-workspace-history-header h2 {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.finance-workspace-history-header h2 svg { flex-shrink: 0; margin-top: 3px; }
+.finance-workspace-history-header p { margin-top: 5px; padding-left: 29px; font-size: 12px; }
+.finance-workspace-history-header > button { flex-shrink: 0; }
+.finance-workspace-history .data-table-wrapper { box-shadow: none; }
+.finance-workspace-history-loading { min-height: 90px; padding: 20px 0; color: var(--finance-muted); }
+.finance-workspace-history-error { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; color: var(--color-danger, #a34332); }
+.finance-workspace-loading { min-height: 280px; }
+
+.finance-workspace-tab:focus-visible,
+.finance-workspace-panel:focus-visible,
+.finance-workspace-history:focus-visible {
+  outline: 3px solid var(--color-primary-light, #cde3da);
+  outline-offset: 4px;
+}
+
+@media (max-width: 760px) {
+  .finance-workspace .finance-workspace-header { flex-direction: column; gap: 16px; margin-bottom: 24px; }
+  .finance-workspace-action { width: 100%; justify-content: center; }
+  .finance-workspace-controls { align-items: flex-start; flex-direction: column; gap: 15px; }
+  .finance-workspace-tabs { display: flex; width: 100%; }
+  .finance-workspace-tab { flex: 1; padding: 8px 10px; }
+  .finance-workspace .finance-workspace-summary { grid-template-columns: minmax(0, 1fr); gap: 10px; margin-bottom: 20px; }
+  .finance-workspace .finance-workspace-stat { padding: 17px 19px; }
+  .finance-workspace-stat .stat-value { font-size: 25px; margin-top: 5px; }
+  .finance-workspace .table-header { padding: 16px; }
+  .finance-workspace .finance-workspace-history { padding: 17px; scroll-margin-top: 75px; }
+  .finance-workspace .finance-workspace-history-header { flex-direction: column; gap: 14px; }
+  .finance-workspace-history-header h2 { font-size: 15px; }
+  .finance-workspace .rent-payment-actions { align-items: stretch; }
+}

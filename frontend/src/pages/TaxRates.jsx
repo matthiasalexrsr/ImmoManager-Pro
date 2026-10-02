@@ -1,8 +1,10 @@
 import { useTranslation } from '../i18n';
-import CrudPage from './CrudPage';
+import FinanceCrudPage from '../components/FinanceCrudPage';
+import { useFinanceData } from '../hooks/useFinanceData';
 
 export default function TaxRates() {
   const { t } = useTranslation();
+  const listState = useFinanceData({"items": "/tax-rates"});
 
   const COLUMNS = [
     { key: 'name', label: t('pages.taxRates.columns.name') || 'Bezeichnung', filterType: 'text' },
@@ -27,5 +29,5 @@ export default function TaxRates() {
     { key: 'valid_until', label: t('pages.taxRates.form.validUntil') || 'Gültig bis', type: 'date' },
   ];
 
-  return <CrudPage title={t('pages.taxRates.title') || 'Steuersätze'} endpoint="/tax-rates" columns={COLUMNS} formFields={FIELDS} />;
+  return <FinanceCrudPage listState={listState} title={t('pages.taxRates.title') || 'Steuersätze'} endpoint="/tax-rates" columns={COLUMNS} formFields={FIELDS} />;
 }

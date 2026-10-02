@@ -39,6 +39,12 @@ class BillingRepository:
         self._portfolio_repo = portfolio_repo
         self._tenant_repo = tenant_repo
 
+    def list_receivables(self):
+        from sqlalchemy import select
+
+        from ..db.orm_models import ReceivableORM
+        return self.db.scalars(select(ReceivableORM)).all()
+
     def _commit(self):
         self.db.commit()
 
@@ -60,6 +66,8 @@ class BillingRepository:
         return self._billing_periods.get(period_id)
 
     def update_billing_period(self, period_id: str, data: BillingPeriodCreate) -> BillingPeriod:
+        from ..services.billing_settlement import guard_entity
+        guard_entity(self, "billing_period", self.get_billing_period(period_id), data)
         pr = self._portfolio_repo
         if pr and not pr._properties.exists(data.property_id):
             raise ValidationError("Immobilie existiert nicht")
@@ -70,6 +78,8 @@ class BillingRepository:
         return result
 
     def delete_billing_period(self, period_id: str) -> None:
+        from ..services.billing_settlement import guard_entity
+        guard_entity(self, "billing_period", self.get_billing_period(period_id))
         self._billing_periods.delete(period_id)
         self._commit()
 
@@ -89,6 +99,8 @@ class BillingRepository:
         return self._allocation_keys.get(key_id)
 
     def update_allocation_key(self, key_id: str, data: AllocationKeyCreate) -> AllocationKey:
+        from ..services.billing_settlement import guard_entity
+        guard_entity(self, "allocation_key", self.get_allocation_key(key_id), data)
         pr = self._portfolio_repo
         if pr and not pr._properties.exists(data.property_id):
             raise ValidationError("Immobilie existiert nicht")
@@ -97,6 +109,8 @@ class BillingRepository:
         return result
 
     def delete_allocation_key(self, key_id: str) -> None:
+        from ..services.billing_settlement import guard_entity
+        guard_entity(self, "allocation_key", self.get_allocation_key(key_id))
         self._allocation_keys.delete(key_id)
         self._commit()
 
@@ -109,6 +123,8 @@ class BillingRepository:
             raise ValidationError("Abrechnungsperiode existiert nicht")
         if not self._allocation_keys.exists(data.allocation_key_id):
             raise ValidationError("Verteilerschlüssel existiert nicht")
+        from ..services.billing_settlement import assert_mutable
+        assert_mutable(self.get_billing_period(data.billing_period_id))
         result = self._cost_items.create(data)
         self._commit()
         return result
@@ -117,6 +133,8 @@ class BillingRepository:
         return self._cost_items.get(item_id)
 
     def update_cost_item(self, item_id: str, data: CostItemCreate) -> CostItem:
+        from ..services.billing_settlement import guard_entity
+        guard_entity(self, "cost_item", self.get_cost_item(item_id), data)
         if not self._billing_periods.exists(data.billing_period_id):
             raise ValidationError("Abrechnungsperiode existiert nicht")
         if not self._allocation_keys.exists(data.allocation_key_id):
@@ -126,6 +144,8 @@ class BillingRepository:
         return result
 
     def delete_cost_item(self, item_id: str) -> None:
+        from ..services.billing_settlement import guard_entity
+        guard_entity(self, "cost_item", self.get_cost_item(item_id))
         self._cost_items.delete(item_id)
         self._commit()
 
@@ -142,6 +162,8 @@ class BillingRepository:
         pr = self._portfolio_repo
         if pr and not pr._units.exists(data.unit_id):
             raise ValidationError("Einheit existiert nicht")
+        from ..services.billing_settlement import assert_mutable
+        assert_mutable(self.get_billing_period(data.billing_period_id))
         result = self._utility_statements.create(data)
         self._commit()
         return result
@@ -150,6 +172,8 @@ class BillingRepository:
         return self._utility_statements.get(statement_id)
 
     def update_utility_statement(self, statement_id: str, data: UtilityStatementCreate) -> UtilityStatement:
+        from ..services.billing_settlement import guard_entity
+        guard_entity(self, "utility_statement", self.get_utility_statement(statement_id), data)
         if not self._billing_periods.exists(data.billing_period_id):
             raise ValidationError("Abrechnungsperiode existiert nicht")
         tr = self._tenant_repo
@@ -163,5 +187,7 @@ class BillingRepository:
         return result
 
     def delete_utility_statement(self, statement_id: str) -> None:
+        from ..services.billing_settlement import guard_entity
+        guard_entity(self, "utility_statement", self.get_utility_statement(statement_id))
         self._utility_statements.delete(statement_id)
         self._commit()

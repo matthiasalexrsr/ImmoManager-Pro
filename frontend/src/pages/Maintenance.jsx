@@ -1,3 +1,5 @@
+import useWriteAccess from '../hooks/useWriteAccess';
+import { revisionOptions } from '../editRevision';
 import { useState, useEffect, useMemo } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
@@ -31,6 +33,7 @@ export default function Maintenance() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
+  const { canWrite, isAllowed, requireWrite } = useWriteAccess('/maintenance', () => setModal(null));
   const [filter, setFilter] = useState('all');
 
   const refreshData = () => {
@@ -146,18 +149,24 @@ export default function Maintenance() {
   ];
 
   const handleSave = async (data) => {
+    requireWrite();
     if (modal === 'create') {
       await api.post('/maintenance', data);
     } else {
       await api.put(`/maintenance/${modal.id}`, data);
     }
+  };
+
+  const afterSave = () => {
     refreshData();
     if (store) store.invalidateRelated('maintenance', 'properties', 'units');
   };
 
   const handleDelete = async (row) => {
+    if (!isAllowed()) return;
     if (!await confirm(`"${row.title}" ${t('modals.confirmDelete.body')}`)) return;
-    await api.del(`/maintenance/${row.id}`);
+    if (!isAllowed()) return;
+    await api.del(`/maintenance/${row.id}`, revisionOptions(row));
     refreshData();
     if (store) store.invalidateRelated('maintenance', 'properties', 'units');
   };
@@ -213,13 +222,13 @@ export default function Maintenance() {
         title={t('pages.maintenance.title') || 'Wartung & Instandhaltung'}
         columns={columns}
         data={filtered}
-        onAdd={() => setModal('create')}
-        onEdit={row => setModal(row)}
-        onDelete={handleDelete}
+        onAdd={canWrite ? () => setModal('create') : undefined}
+        onEdit={canWrite ? row => setModal(row) : undefined}
+        onDelete={canWrite ? handleDelete : undefined}
       />
 
-      {modal && (
-        <FormModal
+      {modal && canWrite && (
+        <FormModal onSaved={afterSave} draftConfig={{ collection: 'maintenance' }}
           title={modal === 'create' ? 'Wartungsauftrag erstellen' : 'Wartungsauftrag bearbeiten'}
           fields={fields}
           initial={modal === 'create' ? null : modal}

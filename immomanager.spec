@@ -73,7 +73,7 @@ _THIRD_PARTY_PACKAGES = [
     'anyio',
     'sniffio',
     'h11',
-    'jose',
+    'jwt',
     'cffi',
     'cryptography',
     'multipart',
@@ -86,6 +86,7 @@ _THIRD_PARTY_PACKAGES = [
     'reportlab',
     'httpx',
     'httpcore',
+    'PIL',  # Optional bounded image OCR, including lazy image-format plugins.
 ]
 
 collected_hiddenimports = []
@@ -187,10 +188,10 @@ _EXPLICIT_THIRD_PARTY = [
     'anyio._backends._asyncio',
     'sniffio',
     'h11',
-    'jose',
-    'jose.jwt',
-    'jose.jws',
-    'jose.backends',
+    'jwt',
+    'jwt.api_jwt',
+    'jwt.api_jws',
+    'jwt.algorithms',
     'cffi',
     'cryptography',
     'cryptography.fernet',

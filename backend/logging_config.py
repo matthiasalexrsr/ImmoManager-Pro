@@ -4,6 +4,7 @@ Provides JSON logging (production) and colored text logging (development).
 Includes request context injection via RequestContextFilter.
 """
 
+import codecs
 import json
 import logging
 import logging.handlers
@@ -13,6 +14,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .config import settings
+from .console_encoding import prepare_standard_streams, safe_console_stream
+from .safe_diagnostics import DiagnosticFormatter
 
 # Context variables for request-scoped data
 request_id_var: ContextVar[str | None] = ContextVar("request_id", default=None)
@@ -28,7 +31,7 @@ class RequestContextFilter(logging.Filter):
         return True
 
 
-class JSONFormatter(logging.Formatter):
+class JSONFormatter(DiagnosticFormatter):
     """Outputs log records as single-line JSON objects.
 
     Captures all structured extra fields (method, path, status_code, etc.)
@@ -38,15 +41,19 @@ class JSONFormatter(logging.Formatter):
     # Extra fields to capture from log records (set via extra={} or attributes)
     _EXTRA_FIELDS = (
         "method", "path", "status_code", "duration_ms",
-        "query", "client_ip",
+        "query_count",
     )
+
+    def __init__(self, *args, ensure_ascii=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.ensure_ascii = ensure_ascii
 
     def format(self, record):
         log_entry = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "level": record.levelname,
             "logger": record.name,
-            "message": record.getMessage(),
+            "message": self.safe_message(record),
             "request_id": getattr(record, "request_id", "-"),
             "user_id": getattr(record, "user_id", "-"),
         }
@@ -61,12 +68,12 @@ class JSONFormatter(logging.Formatter):
             log_entry["exception"] = self.formatException(record.exc_info)
         # Include source location for ERROR and above
         if record.levelno >= logging.ERROR:
-            log_entry["source"] = f"{record.pathname}:{record.lineno}"
+            log_entry["source"] = f"{Path(record.pathname).name}:{record.lineno}"
             log_entry["func"] = record.funcName
-        return json.dumps(log_entry, ensure_ascii=False)
+        return json.dumps(log_entry, ensure_ascii=self.ensure_ascii)
 
 
-class TextFormatter(logging.Formatter):
+class TextFormatter(DiagnosticFormatter):
     """Human-readable colored text formatter for development.
 
     Includes source location and traceback for errors.
@@ -86,11 +93,11 @@ class TextFormatter(logging.Formatter):
         rid = getattr(record, "request_id", "-")
         prefix = f"{color}{record.levelname:8s}{self.RESET}"
         ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
-        msg = record.getMessage()
+        msg = self.safe_message(record)
         base = f"{ts} {prefix} [{rid}] {record.name}: {msg}"
         # Add source location for ERROR and above
         if record.levelno >= logging.ERROR:
-            base += f" [{record.pathname}:{record.lineno} in {record.funcName}]"
+            base += f" [{Path(record.pathname).name}:{record.lineno} in {record.funcName}]"
         if record.exc_info and record.exc_info[1]:
             base += "\n" + self.formatException(record.exc_info)
         return base
@@ -98,6 +105,7 @@ class TextFormatter(logging.Formatter):
 
 def setup_logging() -> None:
     """Configure root logger based on settings."""
+    prepare_standard_streams()
     root = logging.getLogger()
     root.setLevel(getattr(logging, settings.log_level.upper(), logging.INFO))
 
@@ -108,10 +116,18 @@ def setup_logging() -> None:
     ctx_filter = RequestContextFilter()
 
     # Console handler
-    console = logging.StreamHandler(sys.stdout)
+    console = logging.StreamHandler(safe_console_stream(sys.stdout))
     console.addFilter(ctx_filter)
     if settings.log_format == "json":
-        console.setFormatter(JSONFormatter())
+        encoding = getattr(console.stream, "encoding", None)
+        try:
+            utf8_console = bool(encoding and codecs.lookup(encoding).name == "utf-8")
+        except LookupError:
+            utf8_console = False
+        # Python's backslashreplace uses \Uxxxxxxxx for supplementary Unicode;
+        # JSON requires surrogate-pair \uxxxx escapes. Serialize valid ASCII
+        # JSON for legacy consoles; UTF-8 file handlers retain original Unicode.
+        console.setFormatter(JSONFormatter(ensure_ascii=not utf8_console))
     else:
         console.setFormatter(TextFormatter())
     root.addHandler(console)

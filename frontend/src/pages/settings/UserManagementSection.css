@@ -1,0 +1,52 @@
+.settings-page .settings-tab-bar { flex-wrap: wrap; gap: 3px; }
+.settings-page .settings-tab-bar .detail-tab { padding-inline: 15px; }
+.user-management { grid-column: 1 / -1; padding: 26px; min-width: 0; color: var(--color-text, #1b2e3b); }
+.user-management .user-management-heading { display: flex; justify-content: space-between; align-items: start; gap: 24px; margin-bottom: 24px; }
+.user-management .user-management-heading > div:first-child { min-width: 0; max-width: 620px; }
+.user-management .user-management-eyebrow { display: flex; align-items: center; gap: 7px; color: var(--color-primary, #28776f); text-transform: uppercase; letter-spacing: .1em; font-size: .68rem; font-weight: 650; }
+.user-management h2 { font-size: 1.45rem; line-height: 1.35; font-weight: 650; letter-spacing: -.025em; margin: 8px 0; }
+.user-management .user-management-heading p { color: var(--color-text-secondary, #53646a); font-size: .84rem; line-height: 1.7; }
+.user-management .user-management-header-actions { display: flex; gap: 9px; flex-wrap: wrap; justify-content: end; flex-shrink: 0; }
+.user-management .btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 39px; }
+.user-management :is(button, input, select, [tabindex]):focus-visible { outline: 3px solid var(--color-primary, #28776f); outline-offset: 3px; }
+.user-management .user-management-state { padding: 26px 0; color: var(--color-text-secondary, #53646a); }
+.user-management .user-management-error { display: flex; justify-content: space-between; gap: 20px; align-items: center; padding: 18px; border: 1px solid var(--color-danger, #b34746); border-radius: var(--radius, 12px); }
+.user-management .user-management-error p { margin-top: 5px; overflow-wrap: anywhere; color: var(--color-text-secondary, #53646a); font-size: .82rem; }
+.user-management .user-management-success { padding: 13px 16px; margin-bottom: 20px; border: 1px solid var(--color-border, #dce2df); border-radius: var(--radius-sm, 7px); background: color-mix(in srgb, var(--color-primary, #28776f) 8%, var(--color-surface, #fff)); font-size: .84rem; }
+.user-management .user-management-summary { display: flex; gap: 34px; padding: 17px 0; border-block: 1px solid var(--color-border, #dce2df); margin-bottom: 23px; flex-wrap: wrap; }
+.user-management .user-management-summary span { display: flex; align-items: baseline; gap: 8px; color: var(--color-text-secondary, #53646a); font-size: .8rem; }
+.user-management .user-management-summary b { font-size: 1.25rem; font-weight: 650; color: var(--color-text, #1b2e3b); font-variant-numeric: tabular-nums; }
+.user-management .user-management-filters { display: flex; align-items: end; gap: 13px; margin-bottom: 20px; flex-wrap: wrap; }
+.user-management .user-management-filters > div { min-width: 140px; }
+.user-management .user-management-filters > div:first-child { flex: 1; min-width: 220px; }
+.user-management .user-management-filters label { display: block; font-size: .73rem; font-weight: 600; margin-bottom: 7px; }
+.user-management .user-management-search { display: flex; align-items: center; gap: 8px; border: 1px solid var(--color-border, #dce2df); border-radius: var(--radius-sm, 7px); padding: 0 12px; min-height: 40px; background: var(--color-surface, #fff); }
+.user-management .user-management-search svg { flex-shrink: 0; color: var(--color-text-secondary, #53646a); }
+.user-management .user-management-search input { width: 100%; min-width: 0; border: 0; padding: 9px 0; background: transparent; color: inherit; font: inherit; font-size: .82rem; }
+.user-management .user-management-filters select { display: block; width: 100%; min-height: 40px; border: 1px solid var(--color-border, #dce2df); border-radius: var(--radius-sm, 7px); background: var(--color-surface, #fff); color: inherit; padding: 8px 11px; font: inherit; font-size: .82rem; }
+.user-management .user-management-result-count { color: var(--color-text-secondary, #53646a); font-size: .73rem; margin-bottom: 10px; }
+.user-management .user-management-table-scroll { max-width: 100%; overflow-x: auto; border: 1px solid var(--color-border, #dce2df); border-radius: var(--radius, 12px); }
+.user-management table { width: 100%; min-width: 680px; border-collapse: collapse; font-size: .81rem; }
+.user-management caption { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.user-management th, .user-management td { text-align: left; padding: 16px; border-bottom: 1px solid var(--color-border, #dce2df); vertical-align: middle; }
+.user-management thead th { color: var(--color-text-secondary, #53646a); font-weight: 550; font-size: .71rem; background: color-mix(in srgb, var(--color-bg, #f5f4f0) 65%, var(--color-surface, #fff)); }
+.user-management tbody tr:last-child :is(th, td) { border-bottom: 0; }
+.user-management tbody th { max-width: 250px; font-weight: 600; overflow-wrap: anywhere; }
+.user-management td:nth-child(2) { max-width: 300px; overflow-wrap: anywhere; }
+.user-management .user-management-name, .user-management .user-management-username { display: block; }
+.user-management .user-management-username { color: var(--color-text-secondary, #53646a); font-size: .72rem; font-weight: 400; margin-top: 5px; }
+.user-management .user-management-username small { margin-left: 8px; color: var(--color-primary, #28776f); font-size: inherit; font-weight: 600; }
+.user-management .user-management-role, .user-management .user-management-status { display: inline-block; font-size: .73rem; border-radius: 99px; padding: 4px 9px; white-space: nowrap; background: color-mix(in srgb, var(--color-border, #dce2df) 40%, var(--color-surface, #fff)); }
+.user-management .user-management-role.owner, .user-management .user-management-status.active { color: var(--color-primary, #28776f); background: color-mix(in srgb, var(--color-primary, #28776f) 8%, var(--color-surface, #fff)); }
+.user-management .user-management-status.inactive { color: var(--color-text-secondary, #53646a); }
+.user-management .user-management-protected { display: inline-flex; gap: 5px; align-items: center; font-size: .71rem; color: var(--color-text-secondary, #53646a); }
+.user-management .user-management-empty { text-align: center; padding: 45px 10px; color: var(--color-text-secondary, #53646a); }
+.user-management .user-management-empty > svg { color: var(--color-primary, #28776f); margin-bottom: 10px; }
+.user-management .user-management-empty h3 { color: var(--color-text, #1b2e3b); font-size: 1.1rem; margin-bottom: 8px; }
+.user-management .user-management-empty p { font-size: .83rem; margin-bottom: 18px; }
+.user-management .user-management-caption { color: var(--color-text-secondary, #53646a); font-size: .73rem; line-height: 1.7; margin-top: 18px; }
+.user-management .user-management-form-note { color: var(--color-text-secondary, #53646a); font-size: .82rem; line-height: 1.7; margin-bottom: 20px; }
+@media (max-width: 1000px) { .user-management .user-management-heading { flex-direction: column; } .user-management .user-management-header-actions { justify-content: start; } }
+@media (max-width: 480px) { .user-management { padding: 18px; } .user-management .user-management-filters > div { flex: 1; min-width: 100px; } .user-management .user-management-filters > div:first-child { flex-basis: 100%; min-width: 0; } .user-management .user-management-error { flex-direction: column; align-items: start; } .user-management .user-management-summary { gap: 16px; } .user-management .user-management-header-actions { width: 100%; } .user-management .user-management-header-actions .btn { flex: 1; } }
+ .user-management-scope { max-width: 20rem; overflow-wrap: anywhere; }
+ .user-management-scope small { display: block; color: var(--color-text-muted, #657986); font-size: .75rem; margin-top: .3rem; }

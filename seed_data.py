@@ -529,7 +529,10 @@ def seed():
         store.create_document(DocumentCreate(
             property_id=prop_id, unit_id=unit_id, contract_id=contract_id,
             title=title, document_type=doc_type, document_date=doc_date,
-            file_url=f"/uploads/demo/{doc_type}_{doc_date.isoformat()}.pdf",
+            # Metadata examples have no uploaded original. Invented local URLs
+            # caused broken previews and prevented verified full recovery.
+            file_url="",
+            description="Demonstrationsdatensatz ohne Originaldatei. Eine Datei erst nach tatsächlichem Upload zuordnen.",
         ))
     print(f"  {len(doc_data)} Dokumente erstellt")
 
@@ -698,7 +701,7 @@ def seed():
         for contract_id, adj_type, eff_date, prev, new, pct, notes in adj_data:
             store.create_rent_adjustment(RentAdjustmentCreate(
                 contract_id=contract_id, adjustment_type=adj_type, effective_date=eff_date,
-                previous_rent=prev, new_rent=new, increase_percent=pct, notes=notes, status="approved",
+                previous_rent=prev, new_rent=new, increase_percent=pct, notes=notes, status="pending",
             ))
         print(f"  {len(adj_data)} Mietanpassungen erstellt")
 

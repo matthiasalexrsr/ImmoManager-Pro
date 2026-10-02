@@ -10,8 +10,61 @@ document.addEventListener('DOMContentLoaded', () => {
     const steps = Array.from(document.querySelectorAll('.step'));
     const progressItems = Array.from(document.querySelectorAll('.progressbar li'));
 
-    // LocalStorage Key
-    const STORAGE_KEY = 'mietvertragWizardFormState_v2';
+    // Persisted browser state deliberately excludes banking data.
+    const STORAGE_KEY = 'mietvertragWizardFormState_v3';
+    const LEGACY_STORAGE_KEYS = ['mietvertragWizardFormState_v2'];
+    const SENSITIVE_PERSISTED_FIELDS = new Set([
+        'zahlung-iban', 'zahlung-bic', 'mandat-inhaber', 'mandat-iban', 'mandat-bic'
+    ]);
+    // Keep every browser representation aligned with the authoritative ReportLab PDF.
+    const CONTRACT_CLAUSE_TEXTS = [
+        ['schoenheits', 'Der Mieter übernimmt die laufenden Schönheitsreparaturen in den Mieträumen im üblichen Umfang, soweit gesetzlich zulässig. Art und Umfang richten sich nach dem Zustand der Räume und dem Grad der Abnutzung.'],
+        ['klein', 'Kleinreparaturen an Teilen der Mietsache, die dem häufigen Zugriff des Mieters ausgesetzt sind, trägt der Mieter bis zu den vereinbarten Höchstgrenzen, soweit gesetzlich zulässig.'],
+        ['tierhaltung', 'Die Haltung von Kleintieren ist in der Regel gestattet. Die Haltung von Hunden oder Katzen sowie sonstigen Tieren, die typischerweise zu Beeinträchtigungen führen können, bedarf der vorherigen Zustimmung des Vermieters.'],
+        ['untervermietung', 'Eine Untervermietung oder sonstige Gebrauchsüberlassung an Dritte bedarf der vorherigen Zustimmung des Vermieters. Gesetzliche Ansprüche des Mieters auf Erteilung der Erlaubnis bleiben unberührt.'],
+        ['besichtigung', 'Der Vermieter ist nach rechtzeitiger Ankündigung berechtigt, die Mieträume aus sachlichem Anlass zu besichtigen. Dabei sind berechtigte Interessen des Mieters zu berücksichtigen.'],
+        ['modernisierung', 'Der Mieter hat Erhaltungs- und Modernisierungsmaßnahmen nach Maßgabe der gesetzlichen Vorschriften zu dulden. Der Vermieter kündigt Maßnahmen rechtzeitig an und bemüht sich um eine zumutbare Durchführung.'],
+        ['garten', 'Soweit eine Garten- oder Außenflächennutzung vereinbart ist, hat der Mieter diese pfleglich zu behandeln. Veränderungen (z. B. bauliche Anlagen, größere Bepflanzungen) bedürfen der Zustimmung des Vermieters.'],
+        ['mehrere', 'Sind mehrere Personen Mieter, haften sie für Verpflichtungen aus diesem Vertrag als Gesamtschuldner.'],
+        ['hausordnung', 'Der Mieter verpflichtet sich, die Hausordnung einzuhalten, soweit sie wirksam Bestandteil dieses Vertrags ist.'],
+        ['umbauten', 'Bauliche Veränderungen und Einbauten bedürfen der vorherigen Zustimmung des Vermieters. Bei Mietende kann der Vermieter die Wiederherstellung des ursprünglichen Zustands verlangen.'],
+        ['haftung', 'Schäden an der Mietsache hat der Mieter unverzüglich anzuzeigen. Unterbleibt die Anzeige, haftet der Mieter für daraus entstehende Folgeschäden nach den gesetzlichen Vorschriften.'],
+        ['rauchmelder', 'Soweit Rauchwarnmelder in der Mietsache vorhanden sind, ist der Mieter verpflichtet, Störungen unverzüglich mitzuteilen und im Rahmen der gesetzlichen/vertraglichen Regelungen mitzuwirken.'],
+        ['schriftform', 'Änderungen und Ergänzungen dieses Vertrags sollen in Textform erfolgen; zwingende gesetzliche Formerfordernisse bleiben unberührt.'],
+        ['ruhezeiten', 'Der Mieter hat die üblichen Ruhezeiten einzuhalten und Rücksicht auf Hausbewohner und Nachbarn zu nehmen.'],
+        ['instandhaltung', 'Der Mieter verpflichtet sich zu pfleglichem Umgang mit der Mietsache; kleinere, zumutbare Maßnahmen im täglichen Gebrauch (z. B. Leuchtmittel) führt der Mieter selbst aus.'],
+    ];
+
+    function selectedClauseTexts(clauses) {
+        return CONTRACT_CLAUSE_TEXTS
+            .filter(([key]) => clauses && clauses[key])
+            .map(([, text]) => text);
+    }
+
+    function sanitizePersistentState(state) {
+        const clean = JSON.parse(JSON.stringify(state || { fields: {} }));
+        clean.fields = clean.fields || {};
+        SENSITIVE_PERSISTED_FIELDS.forEach(key => delete clean.fields[key]);
+        return clean;
+    }
+
+    function readPersistentState() {
+        const keys = [STORAGE_KEY, ...LEGACY_STORAGE_KEYS];
+        for (const key of keys) {
+            const raw = localStorage.getItem(key);
+            if (!raw) continue;
+            const clean = sanitizePersistentState(JSON.parse(raw));
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(clean));
+            LEGACY_STORAGE_KEYS.forEach(legacy => localStorage.removeItem(legacy));
+            return clean;
+        }
+        return null;
+    }
+
+    function clearPersistentState() {
+        localStorage.removeItem(STORAGE_KEY);
+        LEGACY_STORAGE_KEYS.forEach(key => localStorage.removeItem(key));
+    }
 
     // ---------- Eingabe-Hilfen (de-DE) ----------
     const DATE_RE = /^\d{2}\.\d{2}\.\d{4}$/;
@@ -20,22 +73,48 @@ document.addEventListener('DOMContentLoaded', () => {
         const s = (str || '').toString().trim();
         if (!s) return '';
         const cleaned = s.replace(/\s/g, '').replace(/€/g, '');
-        const raw = cleaned.replace(/\./g, '').replace(/,/g, '.');
-        if (!/^[-+]?\d*(\.\d+)?$/.test(raw)) return '';
+        let raw;
+        if (cleaned.includes(',')) {
+            raw = cleaned.replace(/\./g, '').replace(/,/g, '.');
+        } else if (/^[-+]?\d{1,3}(\.\d{3})+$/.test(cleaned)) {
+            raw = cleaned.replace(/\./g, '');
+        } else {
+            raw = cleaned;
+        }
+        if (!/^[-+]?\d+(\.\d+)?$/.test(raw)) return '';
         return raw;
     }
 
     function formatDeMoney(numStr) {
         if (numStr === '' || numStr == null) return '';
-        const n = Number(numStr);
-        if (!isFinite(n)) return '';
-        return new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+        if (!/^[-+]?\d+(\.\d+)?$/.test(numStr) || !isCentExact(numStr)) return '';
+        const [whole, fraction = ''] = numStr.split('.');
+        const sign = whole.startsWith('-') ? '-' : '';
+        const digits = whole.replace(/^[-+]/, '').replace(/^0+(?=\d)/, '');
+        const grouped = digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+        return `${sign}${grouped},${fraction.padEnd(2, '0').slice(0, 2)}`;
+    }
+
+    function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, char => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        })[char]);
+    }
+
+    function escapeContractHtmlData(value) {
+        if (Array.isArray(value)) return value.map(escapeContractHtmlData);
+        if (value && typeof value === 'object') {
+            return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, escapeContractHtmlData(item)]));
+        }
+        return typeof value === 'string' ? escapeHtml(value) : value;
     }
 
     function attachMoneyBehavior(el) {
         el.addEventListener('blur', () => {
             const parsed = parseDeMoney(el.value);
-            if (!parsed) return;
+            // Keep the raw invalid value for the visible cent validation. Never
+            // round it (or a large valid decimal) while the user leaves a field.
+            if (!parsed || !isCentExact(parsed)) return;
             el.value = formatDeMoney(parsed);
         });
     }
@@ -67,12 +146,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Nach dem Laden: Versuche, gespeicherte Eingaben zu laden und Expertenmodus zu setzen
     try {
-        const savedRaw = localStorage.getItem(STORAGE_KEY);
-        if (savedRaw) {
-            const savedState = JSON.parse(savedRaw);
-            applyFormState(savedState);
-        }
+        const savedState = readPersistentState();
+        if (savedState) applyFormState(savedState);
     } catch (err) {
+        clearPersistentState();
         console.warn('Konnte gespeicherte Eingaben nicht laden:', err);
     }
 
@@ -93,10 +170,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (btnSaveLocal) {
         btnSaveLocal.addEventListener('click', () => {
-            const state = serializeFormState();
+            const state = sanitizePersistentState(serializeFormState());
             try {
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-                alert('Eingaben wurden lokal im Browser gespeichert.');
+                LEGACY_STORAGE_KEYS.forEach(key => localStorage.removeItem(key));
+                alert('Eingaben wurden lokal gespeichert. Bankdaten werden dabei nicht dauerhaft abgelegt.');
             } catch (e) {
                 alert('Speichern nicht möglich: ' + e.message);
             }
@@ -104,13 +182,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (btnLoadLocal) {
         btnLoadLocal.addEventListener('click', () => {
-            const raw = localStorage.getItem(STORAGE_KEY);
-            if (!raw) {
-                alert('Es sind keine gespeicherten Daten vorhanden.');
-                return;
-            }
             try {
-                const state = JSON.parse(raw);
+                const state = readPersistentState();
+                if (!state) {
+                    alert('Es sind keine gespeicherten Daten vorhanden.');
+                    return;
+                }
                 applyFormState(state);
                 alert('Gespeicherte Eingaben wurden geladen.');
             } catch (e) {
@@ -120,7 +197,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (btnClearLocal) {
         btnClearLocal.addEventListener('click', () => {
-            localStorage.removeItem(STORAGE_KEY);
+            clearPersistentState();
             alert('Gespeicherte Formulardaten wurden gelöscht.');
         });
     }
@@ -178,7 +255,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Speichere das Flag im State, ohne andere Felder zu überschreiben
             try {
                 const raw = localStorage.getItem(STORAGE_KEY);
-                let state = raw ? JSON.parse(raw) : { fields: {} };
+                let state = raw ? sanitizePersistentState(JSON.parse(raw)) : { fields: {} };
                 state.expertMode = !!enabled;
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
             } catch (e) {
@@ -316,10 +393,122 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    function parseGermanDateStrict(value) {
+        const match = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec((value || '').trim());
+        if (!match) return null;
+        const day = Number(match[1]);
+        const month = Number(match[2]);
+        const year = Number(match[3]);
+        const date = new Date(Date.UTC(year, month - 1, day));
+        return date.getUTCFullYear() === year
+            && date.getUTCMonth() === month - 1
+            && date.getUTCDate() === day ? date : null;
+    }
+
+    function reportFieldError(element, message) {
+        if (!element) return false;
+        element.setCustomValidity(message);
+        element.focus();
+        element.reportValidity();
+        const clear = () => element.setCustomValidity('');
+        element.addEventListener('input', clear, { once: true });
+        element.addEventListener('change', clear, { once: true });
+        return false;
+    }
+
+    function validatePartyStep(selector, label) {
+        const fields = Array.from(document.querySelectorAll(selector));
+        if (fields.some(field => field.value.trim())) return true;
+        return reportFieldError(fields[0], `Mindestens ein ${label} mit Name ist erforderlich.`);
+    }
+
+    function isCentExact(numberText) {
+        const fractional = (numberText.split('.')[1] || '');
+        return fractional.length <= 2 || !/[1-9]/.test(fractional.slice(2));
+    }
+
+    function validateMoneyField(field, label, { required = false, positive = false } = {}) {
+        const raw = field.value.trim();
+        if (!raw) return required ? reportFieldError(field, `${label} fehlt.`) : true;
+        const parsed = parseDeMoney(raw);
+        if (!parsed || !isCentExact(parsed)) return reportFieldError(field, `${label} muss ein gültiger centgenauer Betrag sein.`);
+        const amount = Number(parsed);
+        if (!Number.isFinite(amount)) return reportFieldError(field, `${label} muss ein endlicher Betrag sein.`);
+        if (positive ? amount <= 0 : amount < 0) {
+            return reportFieldError(field, positive ? `${label} muss größer als 0 sein.` : `${label} darf nicht negativ sein.`);
+        }
+        return true;
+    }
+
+    function validateStep(index) {
+        if (index === 0) return validatePartyStep('#vermieter-list input[name="vermieter-name"]', 'Vermieter');
+        if (index === 1) return validatePartyStep('#mieter-list input[name="mieter-name"]', 'Mieter');
+        if (index === 2) {
+            for (const [id, message] of [
+                ['objekt-strasse', 'Bitte Straße und Hausnummer des Mietobjekts angeben.'],
+                ['objekt-plz', 'Bitte die PLZ des Mietobjekts angeben.'],
+                ['objekt-ort', 'Bitte den Ort des Mietobjekts angeben.'],
+            ]) {
+                const field = document.getElementById(id);
+                if (!field.value.trim()) return reportFieldError(field, message);
+            }
+        }
+        if (index === 3) {
+            const startField = document.getElementById('mietbeginn');
+            const start = parseGermanDateStrict(startField.value);
+            if (!start) return reportFieldError(startField, 'Bitte einen gültigen Mietbeginn im Format TT.MM.JJJJ angeben.');
+            if (mietzeitArtSelect.value === 'befristet') {
+                const endField = document.getElementById('mietende');
+                const end = parseGermanDateStrict(endField.value);
+                if (!end) return reportFieldError(endField, 'Bitte ein gültiges Mietende im Format TT.MM.JJJJ angeben.');
+                if (end <= start) return reportFieldError(endField, 'Das Mietende muss nach dem Mietbeginn liegen.');
+                if (!grundSelect.value) return reportFieldError(grundSelect, 'Bitte einen Befristungsgrund auswählen.');
+                if (grundSelect.value === 'Sonstiges' && !grundText.value.trim()) {
+                    return reportFieldError(grundText, 'Bitte den sonstigen Befristungsgrund angeben.');
+                }
+            } else if (kuendigungCheck.checked) {
+                const exclusionField = document.getElementById('kuendigungsausschluss-bis');
+                const exclusionEnd = parseGermanDateStrict(exclusionField.value);
+                if (!exclusionEnd) return reportFieldError(exclusionField, 'Bitte das Ende des Kündigungsausschlusses angeben.');
+                if (exclusionEnd <= start) return reportFieldError(exclusionField, 'Der Kündigungsausschluss muss nach dem Mietbeginn enden.');
+            }
+        }
+        if (index === 4) {
+            if (!validateMoneyField(document.getElementById('miete-grund'), 'Grundmiete', { required: true, positive: true })) return false;
+            for (const [id, label] of [
+                ['miete-betrieb', 'Betriebskostenvorauszahlung'],
+                ['miete-heizung', 'Heizkostenvorauszahlung'],
+                ['kaution', 'Mietkaution'],
+            ]) {
+                if (!validateMoneyField(document.getElementById(id), label)) return false;
+            }
+            if (mieterhoehungSelect.value === 'staffel') {
+                let previousMonth = 0;
+                for (const row of document.querySelectorAll('#staffel-list .staffel-row')) {
+                    const amountField = row.querySelector('.staffel-betrag');
+                    const monthField = row.querySelector('.staffel-ab');
+                    if (!validateMoneyField(amountField, 'Staffelmiete', { required: true, positive: true })) return false;
+                    const month = Number(monthField.value);
+                    if (!Number.isInteger(month) || month <= 0) return reportFieldError(monthField, 'Bitte für jede Staffel einen positiven ganzen Startmonat angeben.');
+                    if (month <= previousMonth) return reportFieldError(monthField, 'Die Staffelmonate müssen streng aufsteigend sein.');
+                    previousMonth = month;
+                }
+            } else if (mieterhoehungSelect.value === 'index') {
+                const indexField = document.getElementById('index-ausgang');
+                const index = Number(indexField.value);
+                if (!indexField.value || !Number.isFinite(index) || index <= 0) return reportFieldError(indexField, 'Bitte einen endlichen positiven Ausgangsindex angeben.');
+            }
+        }
+        return true;
+    }
+
     // Verarbeitung der Buttons
     document.querySelectorAll('button.next').forEach(btn => {
         btn.addEventListener('click', (e) => {
-            const nextStep = parseInt(e.target.getAttribute('data-next'), 10) - 1;
+            const currentStep = e.currentTarget.closest('.step');
+            const currentIndex = steps.indexOf(currentStep);
+            if (!validateStep(currentIndex)) return;
+            const nextStep = parseInt(e.currentTarget.getAttribute('data-next'), 10) - 1;
             // Bei Wechsel zur Zusammenfassung (letzter Schritt) Daten sammeln und Vertrag generieren.
             // In der neuen Struktur ist die Zusammenfassung die 8. Etappe (Index 7).
             if (nextStep === 7) {
@@ -387,6 +576,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const currentCount = staffelList.querySelectorAll('.staffel-row').length;
             clone.setAttribute('data-index', currentCount + 1);
             staffelList.appendChild(clone);
+            initInputBehaviors(clone);
         });
     }
     // Event-Delegation zum Entfernen einer Staffelmiete
@@ -408,7 +598,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Hilfsfunktion: HTML‑Vertrag mit einfacher Formatierung erstellen
         function generateContractHTML() {
-            const v = formData;
+            const v = escapeContractHtmlData(formData);
             // Hilfsfunktionen zum Formatieren
             const parseDate = (dateStr) => {
                 if (!dateStr) return null;
@@ -581,28 +771,8 @@ document.addEventListener('DOMContentLoaded', () => {
             html += '</div>';
             // §6 Weitere Vereinbarungen
             html += '<div class="section"><h2>§ 6 Weitere Vereinbarungen</h2>';
-            // Zusammenstellung der ausgewählten Klauseln
-            const clauseParagraphs = [];
-            if (v.clauses) {
-                if (v.clauses.schoenheits) clauseParagraphs.push('Der Mieter übernimmt die regelmäßigen Schönheitsreparaturen (z. B. das Streichen und Tapezieren von Wänden und Decken, Lackieren von Türen und Fenstern) auf eigene Kosten.');
-                if (v.clauses.klein) clauseParagraphs.push('Der Mieter trägt die Kosten für Kleinreparaturen bis zu einem Betrag von 100 Euro pro Einzelfall, maximal 300 Euro pro Jahr.');
-                if (v.clauses.tierhaltung) clauseParagraphs.push('Die Haltung von Kleintieren (z. B. Zierfische, Hamster, Vögel) ist zulässig. Die Haltung von Hunden und Katzen bedarf der vorherigen Zustimmung des Vermieters. Blindenführhunde sind hiervon ausgenommen.');
-                if (v.clauses.untervermietung) clauseParagraphs.push('Eine Untervermietung des Mietobjekts oder von Teilen davon bedarf der schriftlichen Zustimmung des Vermieters.');
-                if (v.clauses.besichtigung) clauseParagraphs.push('Der Vermieter ist berechtigt, die Mieträume nach vorheriger Ankündigung während der üblichen Tageszeiten zu besichtigen, um deren Zustand zu überprüfen oder sie Interessenten vorzuführen.');
-                if (v.clauses.modernisierung) clauseParagraphs.push('Der Mieter hat Modernisierungsmaßnahmen und bauliche Veränderungen, die der Vermieter zur Erhaltung oder Verbesserung der Mietsache vornimmt, zu dulden. Eine Mieterhöhung nach gesetzlichen Vorschriften bleibt vorbehalten.');
-                if (v.clauses.garten) clauseParagraphs.push('Der Mieter darf vorhandene Gartenflächen mitbenutzen und verpflichtet sich zu deren ordnungsgemäßer Pflege und Instandhaltung.');
-                if (v.clauses.mehrere) clauseParagraphs.push('Mehrere Mieter haften für die Verpflichtungen aus diesem Mietvertrag als Gesamtschuldner. Erklärungen, die einem Mieter gegenüber abgegeben werden, wirken für und gegen alle Mieter.');
-                if (v.clauses.hausordnung) clauseParagraphs.push('Der Mieter verpflichtet sich, die Hausordnung des Hauses einzuhalten.');
-                if (v.clauses.umbauten) clauseParagraphs.push('Bauliche Veränderungen und Einbauten dürfen nur mit vorheriger schriftlicher Zustimmung des Vermieters durchgeführt werden. Der Vermieter kann bei Auszug den Rückbau verlangen.');
-                // Weitere optionale Klauseln
-                if (v.clauses.haftung) clauseParagraphs.push('Der Mieter haftet für alle von ihm, seinen Familienangehörigen, Mitmietern oder Besuchern schuldhaft verursachten Schäden an der Mietsache und hat diese Schäden unverzüglich dem Vermieter anzuzeigen.');
-                if (v.clauses.rauchmelder) clauseParagraphs.push('Der Mieter ist verpflichtet, die gesetzlichen Rauchmelder in der Mietsache in funktionsfähigem Zustand zu halten und regelmäßig zu prüfen; Batterien sind rechtzeitig auszutauschen.');
-                if (v.clauses.schriftform) clauseParagraphs.push('Änderungen und Ergänzungen dieses Vertrages bedürfen zu ihrer Wirksamkeit der Schriftform. Mündliche Nebenabreden bestehen nicht.');
-                if (v.clauses.ruhezeiten) clauseParagraphs.push('Der Mieter verpflichtet sich, die üblichen Ruhezeiten (werktags zwischen 22:00 und 6:00 Uhr sowie an Sonn- und Feiertagen ganztägig) einzuhalten.');
-                if (v.clauses.instandhaltung) clauseParagraphs.push('Der Mieter verpflichtet sich, die Mietsache pfleglich zu behandeln und kleinere Instandhaltungsmaßnahmen, insbesondere das Austauschen von Leuchtmitteln, Sicherungen und das Ölen von Scharnieren, selbst durchzuführen.');
-            }
-            // Füge die Klauseln als Paragraphen ein
-            clauseParagraphs.forEach(text => {
+            // Autoritative Klauseltexte wie im serverseitigen ReportLab-PDF.
+            selectedClauseTexts(v.clauses).forEach(text => {
                 html += '<p>' + text + '</p>';
             });
             // Sonstige freie Vereinbarungen hinzufügen
@@ -647,7 +817,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         // PDF-Export (serverseitig, FastAPI): sendet Wizard-Daten als JSON und lädt PDF.
-        // Fallback: falls Endpoint nicht erreichbar ist, nutzt clientseitiges pdfMake.
+        // pdfMake bleibt nur für Standalone-Einbettungen ohne konfigurierte Server-API verfügbar.
         const apiBase = (document.querySelector('meta[name="mw-api-base"]') || {}).content || '';
 
         async function downloadPdfServerSide() {
@@ -656,10 +826,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 collectFormData();
                 const res = await fetch(apiBase.replace(/\/$/, '') + '/pdf', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('access_token') || '') },
                     body: JSON.stringify(formData)
                 });
-                if (!res.ok) return false;
+                if (res.status === 401 || res.status === 403) {
+                    alert('Anmeldung oder Vertragsberechtigung fehlt. Bitte melden Sie sich erneut an.');
+                    return true; // An authorization denial must not invoke a local PDF fallback.
+                }
+                if (res.status >= 400 && res.status < 500) {
+                    const body = await res.json().catch(() => ({}));
+                    const detail = typeof body.detail === 'string'
+                        ? body.detail
+                        : 'Der Vertragsentwurf ist unvollständig oder widersprüchlich.';
+                    alert('PDF kann noch nicht erstellt werden: ' + detail);
+                    return true; // Validation/client errors are authoritative and must not fall back locally.
+                }
+                if (!res.ok) {
+                    alert('Serverseitige PDF-Erstellung ist derzeit nicht verfügbar. Bitte versuchen Sie es erneut.');
+                    return true;
+                }
                 const blob = await res.blob();
                 const url = URL.createObjectURL(blob);
                 const link = document.createElement('a');
@@ -672,9 +857,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 return true;
             } catch (e) {
                 console.warn('Server-PDF nicht verfügbar:', e);
-                return false;
+                alert('Serverseitige PDF-Erstellung ist derzeit nicht erreichbar. Bitte versuchen Sie es erneut.');
+                return true;
             }
         }
+
+        const printButton = document.getElementById('print-contract');
+        if (printButton) printButton.addEventListener('click', () => window.print());
 
         document.getElementById('download-pdf').addEventListener('click', async () => {
             const ok = await downloadPdfServerSide();
@@ -1079,25 +1268,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 { canvas: [ { type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5, color: '#666666' } ], margin: [0, 0, 0, 5] },
                 (function() {
                     const para = [];
-                    // Texte für gewählte Klauseln
-                    if (v.clauses) {
-                        if (v.clauses.schoenheits) para.push({ text: 'Der Mieter übernimmt die regelmäßigen Schönheitsreparaturen (z. B. das Streichen und Tapezieren von Wänden und Decken, Lackieren von Türen und Fenstern) auf eigene Kosten.', margin: [0, 0, 0, 2] });
-                        if (v.clauses.klein) para.push({ text: 'Der Mieter trägt die Kosten für Kleinreparaturen bis zu einem Betrag von 100 Euro pro Einzelfall, maximal 300 Euro pro Jahr.', margin: [0, 0, 0, 2] });
-                        if (v.clauses.tierhaltung) para.push({ text: 'Die Haltung von Kleintieren (z. B. Zierfische, Hamster, Vögel) ist zulässig. Die Haltung von Hunden und Katzen bedarf der vorherigen Zustimmung des Vermieters. Blindenführhunde sind hiervon ausgenommen.', margin: [0, 0, 0, 2] });
-                        if (v.clauses.untervermietung) para.push({ text: 'Eine Untervermietung des Mietobjekts oder von Teilen davon bedarf der schriftlichen Zustimmung des Vermieters.', margin: [0, 0, 0, 2] });
-                        if (v.clauses.besichtigung) para.push({ text: 'Der Vermieter ist berechtigt, die Mieträume nach vorheriger Ankündigung während der üblichen Tageszeiten zu besichtigen, um deren Zustand zu überprüfen oder sie Interessenten vorzuführen.', margin: [0, 0, 0, 2] });
-                        if (v.clauses.modernisierung) para.push({ text: 'Der Mieter hat Modernisierungsmaßnahmen und bauliche Veränderungen, die der Vermieter zur Erhaltung oder Verbesserung der Mietsache vornimmt, zu dulden. Eine Mieterhöhung nach gesetzlichen Vorschriften bleibt vorbehalten.', margin: [0, 0, 0, 2] });
-                        if (v.clauses.garten) para.push({ text: 'Der Mieter darf vorhandene Gartenflächen mitbenutzen und verpflichtet sich zu deren ordnungsgemäßer Pflege und Instandhaltung.', margin: [0, 0, 0, 2] });
-                        if (v.clauses.mehrere) para.push({ text: 'Mehrere Mieter haften für die Verpflichtungen aus diesem Mietvertrag als Gesamtschuldner. Erklärungen, die einem Mieter gegenüber abgegeben werden, wirken für und gegen alle Mieter.', margin: [0, 0, 0, 2] });
-                        if (v.clauses.hausordnung) para.push({ text: 'Der Mieter verpflichtet sich, die Hausordnung des Hauses einzuhalten.', margin: [0, 0, 0, 2] });
-                        if (v.clauses.umbauten) para.push({ text: 'Bauliche Veränderungen und Einbauten dürfen nur mit vorheriger schriftlicher Zustimmung des Vermieters durchgeführt werden. Der Vermieter kann bei Auszug den Rückbau verlangen.', margin: [0, 0, 0, 2] });
-                    // Neue optionale Klauseln
-                    if (v.clauses.haftung) para.push({ text: 'Der Mieter haftet für alle von ihm, seinen Familienangehörigen, Mitmietern oder Besuchern schuldhaft verursachten Schäden an der Mietsache und hat diese Schäden unverzüglich dem Vermieter anzuzeigen.', margin: [0, 0, 0, 2] });
-                    if (v.clauses.rauchmelder) para.push({ text: 'Der Mieter ist verpflichtet, die gesetzlichen Rauchmelder in der Mietsache in funktionsfähigem Zustand zu halten und regelmäßig zu prüfen; Batterien sind rechtzeitig auszutauschen.', margin: [0, 0, 0, 2] });
-                    if (v.clauses.schriftform) para.push({ text: 'Änderungen und Ergänzungen dieses Vertrages bedürfen zu ihrer Wirksamkeit der Schriftform. Mündliche Nebenabreden bestehen nicht.', margin: [0, 0, 0, 2] });
-                    if (v.clauses.ruhezeiten) para.push({ text: 'Der Mieter verpflichtet sich, die üblichen Ruhezeiten (werktags zwischen 22:00 und 6:00 Uhr sowie an Sonn- und Feiertagen ganztägig) einzuhalten.', margin: [0, 0, 0, 2] });
-                    if (v.clauses.instandhaltung) para.push({ text: 'Der Mieter verpflichtet sich, die Mietsache pfleglich zu behandeln und kleinere Instandhaltungsmaßnahmen, insbesondere das Austauschen von Leuchtmitteln, Sicherungen und das Ölen von Scharnieren, selbst durchzuführen.', margin: [0, 0, 0, 2] });
-                    }
+                    // Texte für gewählte Klauseln: identisch zum serverseitigen PDF.
+                    selectedClauseTexts(v.clauses).forEach(text => {
+                        para.push({ text, margin: [0, 0, 0, 2] });
+                    });
                     // Sonstige Vereinbarungen des Nutzers
                     if (v.sonstigeVereinbarungen && v.sonstigeVereinbarungen.length > 0) {
                         const lines = v.sonstigeVereinbarungen.split(/\n+/).map(l => l.trim()).filter(Boolean);
@@ -1280,24 +1454,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // §6 Weitere Vereinbarungen
         contract += '\n§ 6 Weitere Vereinbarungen\n';
-        if (v.clauses) {
-            if (v.clauses.schoenheits) contract += 'Der Mieter übernimmt die regelmäßigen Schönheitsreparaturen (z. B. das Streichen und Tapezieren von Wänden und Decken, Lackieren von Türen und Fenstern) auf eigene Kosten.\n';
-            if (v.clauses.klein) contract += 'Der Mieter trägt die Kosten für Kleinreparaturen bis zu einem Betrag von 100 Euro pro Einzelfall, maximal 300 Euro pro Jahr.\n';
-            if (v.clauses.tierhaltung) contract += 'Die Haltung von Kleintieren (z. B. Zierfische, Hamster, Vögel) ist zulässig. Die Haltung von Hunden und Katzen bedarf der vorherigen Zustimmung des Vermieters. Blindenführhunde sind hiervon ausgenommen.\n';
-            if (v.clauses.untervermietung) contract += 'Eine Untervermietung des Mietobjekts oder von Teilen davon bedarf der schriftlichen Zustimmung des Vermieters.\n';
-            if (v.clauses.besichtigung) contract += 'Der Vermieter ist berechtigt, die Mieträume nach vorheriger Ankündigung während der üblichen Tageszeiten zu besichtigen, um deren Zustand zu überprüfen oder sie Interessenten vorzuführen.\n';
-            if (v.clauses.modernisierung) contract += 'Der Mieter hat Modernisierungsmaßnahmen und bauliche Veränderungen, die der Vermieter zur Erhaltung oder Verbesserung der Mietsache vornimmt, zu dulden. Eine Mieterhöhung nach gesetzlichen Vorschriften bleibt vorbehalten.\n';
-            if (v.clauses.garten) contract += 'Der Mieter darf vorhandene Gartenflächen mitbenutzen und verpflichtet sich zu deren ordnungsgemäßer Pflege und Instandhaltung.\n';
-            if (v.clauses.mehrere) contract += 'Mehrere Mieter haften für die Verpflichtungen aus diesem Mietvertrag als Gesamtschuldner. Erklärungen, die einem Mieter gegenüber abgegeben werden, wirken für und gegen alle Mieter.\n';
-            if (v.clauses.hausordnung) contract += 'Der Mieter verpflichtet sich, die Hausordnung des Hauses einzuhalten.\n';
-            if (v.clauses.umbauten) contract += 'Bauliche Veränderungen und Einbauten dürfen nur mit vorheriger schriftlicher Zustimmung des Vermieters durchgeführt werden. Der Vermieter kann bei Auszug den Rückbau verlangen.\n';
-        // Weitere optionale Klauseln
-        if (v.clauses.haftung) contract += 'Der Mieter haftet für alle von ihm, seinen Familienangehörigen, Mitmietern oder Besuchern schuldhaft verursachten Schäden an der Mietsache und hat diese Schäden unverzüglich dem Vermieter anzuzeigen.\n';
-        if (v.clauses.rauchmelder) contract += 'Der Mieter ist verpflichtet, die gesetzlichen Rauchmelder in der Mietsache in funktionsfähigem Zustand zu halten und regelmäßig zu prüfen; Batterien sind rechtzeitig auszutauschen.\n';
-        if (v.clauses.schriftform) contract += 'Änderungen und Ergänzungen dieses Vertrages bedürfen zu ihrer Wirksamkeit der Schriftform. Mündliche Nebenabreden bestehen nicht.\n';
-        if (v.clauses.ruhezeiten) contract += 'Der Mieter verpflichtet sich, die üblichen Ruhezeiten (werktags zwischen 22:00 und 6:00 Uhr sowie an Sonn- und Feiertagen ganztägig) einzuhalten.\n';
-        if (v.clauses.instandhaltung) contract += 'Der Mieter verpflichtet sich, die Mietsache pfleglich zu behandeln und kleinere Instandhaltungsmaßnahmen, insbesondere das Austauschen von Leuchtmitteln, Sicherungen und das Ölen von Scharnieren, selbst durchzuführen.\n';
-        }
+        selectedClauseTexts(v.clauses).forEach(text => {
+            contract += text + '\n';
+        });
         if (v.sonstigeVereinbarungen && v.sonstigeVereinbarungen.length > 0) {
             const lines = v.sonstigeVereinbarungen.split(/\n+/).map(l => l.trim()).filter(Boolean);
             lines.forEach(line => {
@@ -1327,4 +1486,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initialisierung
     showStep(0);
+    // Reveal controls only after handlers and legacy-storage sanitization exist.
+    // Deferred local PDF assets can still be loading when the HTML first paints.
+    document.getElementById('wizard-content')?.removeAttribute('hidden');
+    document.getElementById('wizard-loading')?.remove();
+    document.body.setAttribute('aria-busy', 'false');
 });

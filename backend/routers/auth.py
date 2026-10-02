@@ -1,25 +1,31 @@
 """Authentication router: login, register, refresh, user management."""
 
 import logging
+from ipaddress import ip_address
+from typing import cast
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.security import HTTPAuthorizationCredentials
+from pydantic import BaseModel, ConfigDict, StrictBool
 
 from ..auth import (
     authenticate_user,
-    check_register_rate_limit,
-    create_access_token,
-    create_refresh_token,
+    clear_login_attempts,
+    create_initial_owner,
     decode_token,
     delete_user,
-    generate_totp_secret,
     get_totp_uri,
     get_user_by_id,
     list_users,
-    record_registration_attempt,
+    prepare_totp,
+    record_failed_login,
     register_user,
     require_auth,
     require_role,
     revoke_token,
+    security,
+    setup_required,
     update_user,
     verify_totp,
 )
@@ -31,50 +37,63 @@ from ..models import (
     UserPatch,
     UserRead,
 )
+from ..services import auth_sessions
+from ..services.preferences import DEFAULTS, PreferencesInput, read_preferences, write_preferences
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
-_ALLOWED_SELF_REGISTER_ROLES = {"readonly", "techniker"}
-
-
-_DEFAULT_PREFERENCES = {
-    "theme": "light",
-    "locale": "de-DE",
-    "sidebar_collapsed": False,
-    "items_per_page": 25,
-    "date_format": "DD.MM.YYYY",
-    "currency": "EUR",
-    "default_due_day": 1,
-    "email_notifications": "important",
-    "reminder_days": "7",
-}
+_DEFAULT_PREFERENCES = DEFAULTS
 
 
 @router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
 def register(payload: UserCreate, request: Request) -> UserRead:
-    """Register a new user. Self-registration is restricted to readonly/techniker roles."""
-    client_ip = request.client.host if request.client else "unknown"
-    if check_register_rate_limit(client_ip):
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Zu viele Registrierungsversuche. Bitte versuchen Sie es später erneut.",
-        )
-    role = payload.role if payload.role in _ALLOWED_SELF_REGISTER_ROLES else "readonly"
-    record_registration_attempt(client_ip)
-    return register_user(
-        username=payload.username,
-        email=payload.email,
-        full_name=payload.full_name,
-        password=payload.password,
-        role=role,
-    )
+    """Private installations accept only accounts approved by an owner."""
+    raise HTTPException(status_code=403, detail="Öffentliche Registrierung ist deaktiviert. Bitte wenden Sie sich an den Eigentümer.")
+
+
+def _is_local_setup_request(request: Request) -> bool:
+    def loopback(host: str | None) -> bool:
+        if host == "localhost":
+            return True
+        try:
+            return bool(host and ip_address(host).is_loopback)
+        except ValueError:
+            return False
+
+    # Validate the peer and Host, not forwarded headers. The Host/Origin checks
+    # prevent a third-party website from bootstrapping through DNS rebinding.
+    if not request.client or not loopback(request.client.host) or not loopback(request.url.hostname):
+        return False
+    origin = request.headers.get("origin")
+    if origin:
+        parsed = urlsplit(origin)
+        if parsed.scheme not in {"http", "https"} or parsed.netloc != request.url.netloc or not loopback(parsed.hostname):
+            return False
+    return True
+
+
+@router.get("/setup-status")
+def get_setup_status(request: Request) -> dict:
+    return {
+        "setup_required": setup_required(),
+        "setup_allowed": _is_local_setup_request(request),
+        "registration_open": False,
+        "access_model": "private_installation",
+    }
+
+
+@router.post("/setup", response_model=UserRead, status_code=201)
+def setup_owner(payload: UserCreate, request: Request) -> UserRead:
+    if not _is_local_setup_request(request):
+        raise HTTPException(status_code=403, detail="Ersteinrichtung ist nur lokal über localhost oder 127.0.0.1 erlaubt")
+    return create_initial_owner(payload.username, payload.email, payload.full_name, payload.password)
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(payload: LoginRequest) -> TokenResponse:
+def login(payload: LoginRequest, request: Request = cast(Request, None)) -> TokenResponse:
     """Authenticate and receive JWT tokens. Enforces TOTP when enabled."""
-    user = authenticate_user(payload.username, payload.password)
+    user = authenticate_user(payload.username, payload.password, complete=False)
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -89,42 +108,19 @@ def login(payload: LoginRequest) -> TokenResponse:
                 headers={"X-2FA-Required": "true"},
             )
         if not verify_totp(user["totp_secret"], payload.totp_code):
+            record_failed_login(payload.username)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Ungültiger Zwei-Faktor-Code",
             )
-    return TokenResponse(
-        access_token=create_access_token(user["id"]),
-        refresh_token=create_refresh_token(user["id"]),
-    )
+    clear_login_attempts(payload.username)
+    return auth_sessions.login_pair(user["id"], request.headers.get("user-agent") if request else None)
 
 
 @router.post("/refresh", response_model=TokenResponse)
-def refresh(payload: RefreshRequest) -> TokenResponse:
-    """Refresh access token using a refresh token.
-
-    Implements token rotation: the old refresh token is revoked on use,
-    and a new refresh token is issued alongside the new access token.
-    This prevents replay attacks with stolen refresh tokens.
-    """
-    token_data = decode_token(payload.refresh_token)
-    if token_data.type != "refresh":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Ungültiger Refresh-Token",
-        )
-    user = get_user_by_id(token_data.sub)
-    if user is None or not user["is_active"]:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Benutzer nicht gefunden oder deaktiviert",
-        )
-    # Rotate: revoke the old refresh token so it cannot be reused
-    revoke_token(payload.refresh_token)
-    return TokenResponse(
-        access_token=create_access_token(user["id"]),
-        refresh_token=create_refresh_token(user["id"]),
-    )
+def refresh(payload: RefreshRequest, request: Request = cast(Request, None)) -> TokenResponse:
+    """Rotate once; consumed refresh reuse durably revokes its whole family."""
+    return auth_sessions.rotate(payload.refresh_token, request.headers.get("user-agent") if request else None)
 
 
 @router.post("/logout")
@@ -139,6 +135,28 @@ def logout(payload: dict) -> dict:
     return {"detail": "Erfolgreich abgemeldet"}
 
 
+class SessionRevocation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    confirmed: StrictBool
+
+
+@router.get("/sessions", response_model=None)
+def get_sessions(user: UserRead = Depends(require_auth),
+                 credentials: HTTPAuthorizationCredentials = Depends(security),
+                 offset: int = Query(0, ge=0), limit: int = Query(25, ge=1, le=1000)):
+    claims = decode_token(credentials.credentials)
+    return auth_sessions.list_sessions(user.id, claims.sid, offset, limit)
+
+
+@router.post("/sessions/{session_id}/revoke", response_model=None)
+def revoke_session(session_id: str, payload: SessionRevocation, user: UserRead = Depends(require_auth),
+                   credentials: HTTPAuthorizationCredentials = Depends(security)):
+    if not payload.confirmed:
+        raise HTTPException(422, "Bitte den Sitzungswiderruf ausdrücklich bestätigen.")
+    claims = decode_token(credentials.credentials)
+    return auth_sessions.revoke_own(user.id, session_id, claims.sid)
+
+
 @router.get("/me", response_model=UserRead)
 def get_me(user: UserRead = Depends(require_auth)) -> UserRead:
     """Get current authenticated user's profile."""
@@ -146,91 +164,28 @@ def get_me(user: UserRead = Depends(require_auth)) -> UserRead:
 
 
 def _get_preferences_session():
-    """Return a DB session for preferences, or None if SQL is unavailable."""
-    try:
-        from ..dependencies import _use_sql_store
-        if not _use_sql_store:
-            return None
-        from ..db.session import SessionLocal
-        return SessionLocal()
-    except Exception:
-        logging.getLogger(__name__).debug("Could not create preferences DB session", exc_info=True)
+    from ..auth import _auth_session_factory
+    if _auth_session_factory is None:
         return None
-
-
-def _prefs_to_dict(prefs) -> dict:
-    return {
-        "theme": prefs.theme,
-        "locale": prefs.locale,
-        "sidebar_collapsed": prefs.sidebar_collapsed,
-        "items_per_page": prefs.items_per_page,
-        "date_format": prefs.date_format,
-        "currency": prefs.currency,
-        "default_due_day": prefs.default_due_day,
-        "email_notifications": prefs.email_notifications,
-        "reminder_days": prefs.reminder_days,
-    }
+    try:
+        # Preferences belong to the same account database that authenticated
+        # this user, including isolated installations and runtime store swaps.
+        return _auth_session_factory()
+    except Exception:
+        logging.getLogger(__name__).warning("Could not open display preferences database")
+        raise HTTPException(503, "Anzeigeeinstellungen sind derzeit nicht verfügbar.") from None
 
 
 @router.get("/users/me/preferences", response_model=None)
 def get_my_preferences(user: UserRead = Depends(require_auth)) -> dict:
-    """Get current user's preferences."""
-    import logging
-
-    session = _get_preferences_session()
-    if session is None:
-        return _DEFAULT_PREFERENCES.copy()
-    try:
-        from ..db.orm_models import UserPreferencesORM
-        prefs = session.query(UserPreferencesORM).filter(
-            UserPreferencesORM.user_id == user.id
-        ).first()
-        if prefs:
-            return _prefs_to_dict(prefs)
-    except (ImportError, OSError, RuntimeError):
-        logging.getLogger(__name__).warning("Failed to load user preferences, using defaults")
-    except Exception as exc:
-        logging.getLogger(__name__).warning("Failed to load user preferences: %s", exc)
-    finally:
-        session.close()
-    return _DEFAULT_PREFERENCES.copy()
+    return read_preferences(user.id, _get_preferences_session())
 
 
 @router.put("/users/me/preferences", response_model=None)
-def update_my_preferences(payload: dict, user: UserRead = Depends(require_auth)) -> dict:
-    """Update current user's preferences."""
-    import logging
-
-    allowed_keys = {"theme", "locale", "sidebar_collapsed", "items_per_page", "date_format", "currency", "default_due_day", "email_notifications", "reminder_days"}
-    clean = {k: v for k, v in payload.items() if k in allowed_keys}
-
-    session = _get_preferences_session()
-    if session is None:
-        return {**_DEFAULT_PREFERENCES, **clean}
-
-    try:
-        from ..db.orm_models import UserPreferencesORM
-        prefs = session.query(UserPreferencesORM).filter(
-            UserPreferencesORM.user_id == user.id
-        ).first()
-        if prefs:
-            for k, v in clean.items():
-                setattr(prefs, k, v)
-        else:
-            prefs = UserPreferencesORM(user_id=user.id, **clean)
-            session.add(prefs)
-        session.commit()
-        return _prefs_to_dict(prefs)
-    except (ImportError, OSError, RuntimeError):
-        session.rollback()
-        logging.getLogger(__name__).warning("Failed to persist user preferences update")
-        return {**_DEFAULT_PREFERENCES, **clean}
-    except Exception as exc:
-        session.rollback()
-        logging.getLogger(__name__).warning("Failed to persist user preferences update: %s", exc)
-        return {**_DEFAULT_PREFERENCES, **clean}
-    finally:
-        session.close()
+def update_my_preferences(payload: PreferencesInput, user: UserRead = Depends(require_auth)) -> dict:
+    if isinstance(payload, dict):
+        payload = PreferencesInput.model_validate(payload)
+    return write_preferences(user.id, payload, _get_preferences_session())
 
 
 @router.get("/users", response_model=list[UserRead])
@@ -242,6 +197,13 @@ def get_users(
     """List all users (admin only)."""
     users = list_users()
     return users[skip : skip + limit]
+
+
+@router.post("/users", response_model=UserRead, status_code=201)
+def create_approved_user(payload: UserCreate, user: UserRead = Depends(require_role("eigentuemer"))) -> UserRead:
+    """Only installation owners may approve a new account and assign its role."""
+    return register_user(payload.username, payload.email, payload.full_name, payload.password, payload.role,
+                         portfolio_access=payload.portfolio_access, portfolio_ids=payload.portfolio_ids, actor_id=user.id)
 
 
 @router.patch("/users/{user_id}", response_model=UserRead)
@@ -260,7 +222,7 @@ def patch_user(
             detail="Nur Eigentümer dürfen Rollen ändern",
         )
 
-    return update_user(user_id, changes)
+    return update_user(user_id, changes, actor_id=user.id)
 
 
 @router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -274,7 +236,7 @@ def remove_user(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Eigenes Konto kann nicht gelöscht werden",
         )
-    delete_user(user_id)
+    delete_user(user_id, actor_id=user.id)
 
 
 # ---------------------------------------------------------------------------
@@ -285,11 +247,10 @@ def remove_user(
 @router.post("/2fa/setup", response_model=None)
 def setup_2fa(user: UserRead = Depends(require_auth)) -> dict:
     """Generate a TOTP secret and return the setup URI for QR code generation."""
-    secret = generate_totp_secret()
+    data = prepare_totp(user.id)
+    secret = data["totp_secret"]
     uri = get_totp_uri(secret, user.username)
-    # Store secret temporarily (not yet enabled)
-    update_user(user.id, {"totp_secret": secret})
-    return {"secret": secret, "uri": uri, "message": "Scannen Sie den QR-Code mit einer Authenticator-App."}
+    return {"secret": secret, "uri": uri, "message": "Hinterlegen Sie den Schlüssel in Ihrer Authenticator-App und bestätigen Sie einen Code."}
 
 
 @router.post("/2fa/verify", response_model=None)

@@ -1,12 +1,17 @@
+import useWriteAccess from '../hooks/useWriteAccess';
+import { revisionOptions } from '../editRevision';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { api } from '../api';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import FileViewer from '../components/FileViewer';
+import DocumentVersionHistory from '../components/DocumentVersionHistory';
 import { PlusIcon } from '../components/Icons';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useTranslation } from '../i18n';
+import { ocrFailure } from '../utils/ocrFailure';
+import './Documents.css';
 
 const BASE = (import.meta.env.VITE_API_URL || '/api/v1');
 
@@ -36,12 +41,17 @@ export default function Documents() {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
+  const { canWrite, isAllowed, requireWrite } = useWriteAccess('/documents', () => { setModal(null); setUploadedUrl(''); setOcrResult(null); setUploadQueue([]); setDragActive(false); if (fileRef.current) fileRef.current.value = ''; });
   const [viewerFile, setViewerFile] = useState(null);
+  const [historyDocument, setHistoryDocument] = useState(null);
   const [uploadedUrl, setUploadedUrl] = useState('');
   const [dragActive, setDragActive] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadQueue, setUploadQueue] = useState([]);
   const [ocrResult, setOcrResult] = useState(null);
+  const [ocrBusy, setOcrBusy] = useState(false);
+  const ocrInFlight = useRef(false);
+  const uploadInFlight = useRef(false);
   const [filter, setFilter] = useState('all');
   const fileRef = useRef(null);
 
@@ -118,10 +128,37 @@ export default function Documents() {
       if (v === 'failed') return t('pages.documents.ocr.failed') || '✗ Fehler';
       return '—';
     }},
+    { key: 'version_history', label: t('pages.documents.versions.openHistory'),
+      render: (_value, row) => <button type="button" className="btn btn-secondary btn-sm"
+        onClick={event => { event.stopPropagation(); setHistoryDocument(row); }}>
+        {t('pages.documents.versions.openHistory')}
+      </button> },
   ];
 
+  const analyzeUploaded = useCallback(async (fileUrl, filename) => {
+    if (!isAllowed() || ocrInFlight.current) return;
+    ocrInFlight.current = true;
+    setOcrBusy(true);
+    try {
+      const result = await api.post('/documents/ocr-analyze', { file_url: fileUrl });
+      if (!isAllowed()) return;
+      setOcrResult({ ...result, success: Boolean(result.success ?? result.analyzed),
+        guessedType: result.guessedType || result.document_type || guessDocType(filename),
+        extracted_text: result.extracted_text || result.summary || null,
+        originalSaved: true, sourceUrl: fileUrl, sourceName: filename });
+    } catch (error) {
+      if (!isAllowed()) return;
+      setOcrResult({ ...ocrFailure(error, t), guessedType: guessDocType(filename),
+        originalSaved: true, sourceUrl: fileUrl, sourceName: filename });
+    } finally {
+      ocrInFlight.current = false;
+      setOcrBusy(false);
+    }
+  }, [isAllowed, t]);
+
   const uploadFile = useCallback(async (file) => {
-    if (!file) return;
+    if (!file || !isAllowed() || uploadInFlight.current || ocrInFlight.current) return;
+    uploadInFlight.current = true;
     setUploading(true);
     setOcrResult(null);
     try {
@@ -135,41 +172,39 @@ export default function Documents() {
       });
       if (!res.ok) throw new Error(t('pages.documents.upload.failed') || 'Upload fehlgeschlagen');
       const data = await res.json();
+      if (!isAllowed()) return;
       if (data.file_url) setUploadedUrl(data.file_url);
 
       const ext = file.name.split('.').pop().toLowerCase();
-      if (['pdf', 'png', 'jpg', 'jpeg', 'tiff', 'tif'].includes(ext) && data.file_url) {
-        try {
-          const ocrRes = await api.post('/documents/ocr-analyze', { file_url: data.file_url });
-          setOcrResult({
-            success: Boolean(ocrRes.success ?? ocrRes.analyzed),
-            ...ocrRes,
-            guessedType: ocrRes.guessedType || ocrRes.document_type || guessDocType(file.name),
-            extracted_text: ocrRes.extracted_text || ocrRes.summary || null,
-          });
-        } catch {
-          setOcrResult({ success: false, guessedType: guessDocType(file.name), message: t('pages.documents.upload.ocrUnavailable') || 'OCR nicht verfügbar' });
-        }
+      if (data.ocr_error && data.file_url) {
+        setOcrResult({ ...ocrFailure(data.ocr_error, t), guessedType: guessDocType(file.name),
+          originalSaved: true, sourceUrl: data.file_url, sourceName: file.name });
+      } else if (['pdf', 'png', 'jpg', 'jpeg', 'tiff', 'tif', 'bmp', 'webp'].includes(ext) && data.file_url) {
+        await analyzeUploaded(data.file_url, file.name);
       } else {
         setOcrResult({ success: false, guessedType: guessDocType(file.name), message: t('pages.documents.upload.ocrUnsupported') || 'Dateityp nicht OCR-fähig' });
       }
     } catch (err) {
+      if (!isAllowed()) return;
       setOcrResult({ success: false, guessedType: 'Sonstiges', message: `${t('pages.documents.upload.failed') || 'Upload fehlgeschlagen'}: ${err.message}` });
     } finally {
+      uploadInFlight.current = false;
       setUploading(false);
     }
-  }, [t]);
+  }, [t, isAllowed, analyzeUploaded]);
 
   const handleMultiUpload = useCallback(async (files) => {
+    if (!isAllowed()) return;
     const fileList = Array.from(files);
     setUploadQueue(fileList.map(f => ({ name: f.name, status: 'pending' })));
     for (let i = 0; i < fileList.length; i++) {
+      if (!isAllowed()) break;
       setUploadQueue(prev => prev.map((q, j) => j === i ? { ...q, status: 'uploading' } : q));
       await uploadFile(fileList[i]);
       setUploadQueue(prev => prev.map((q, j) => j === i ? { ...q, status: 'done' } : q));
     }
     setTimeout(() => setUploadQueue([]), 3000);
-  }, [uploadFile]);
+  }, [uploadFile, isAllowed]);
 
   const handleDrop = useCallback((e) => {
     e.preventDefault();
@@ -198,6 +233,7 @@ export default function Documents() {
   ];
 
   const handleSave = async (data) => {
+    requireWrite();
     if (modal === 'create') {
       await api.post('/documents', data);
     } else {
@@ -208,8 +244,10 @@ export default function Documents() {
   };
 
   const handleDelete = async (row) => {
+    if (!isAllowed()) return;
     if (!await confirm(`"${row.title}" ${t('modals.confirmDelete.body')}`)) return;
-    await api.del(`/documents/${row.id}`);
+    if (!isAllowed()) return;
+    await api.del(`/documents/${row.id}`, revisionOptions(row));
     refreshData();
     if (store) store.invalidateRelated('documents');
   };
@@ -217,7 +255,7 @@ export default function Documents() {
   if (loading) return <div className="page-loading">Lade Dokumente...</div>;
 
   return (
-    <div className="page">
+    <div className="page documents-page">
       <h1 className="page-title">{t('pages.documents.title') || 'Dokumente'}</h1>
 
       {/* Summary cards */}
@@ -256,7 +294,7 @@ export default function Documents() {
       </div>
 
       {/* Upload zone */}
-      <div style={{ marginBottom: '1rem' }}>
+      {canWrite && <div style={{ marginBottom: '1rem' }}>
         <div
           className={`photo-drop-zone ${dragActive ? 'drag-active' : ''}`}
           onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
@@ -268,8 +306,9 @@ export default function Documents() {
             ref={fileRef}
             type="file"
             multiple
+            disabled={uploading || ocrBusy}
             style={{ display: 'none' }}
-            accept=".pdf,.png,.jpg,.jpeg,.tiff,.tif,.doc,.docx,.xls,.xlsx"
+            accept=".pdf,.png,.jpg,.jpeg,.tiff,.tif,.bmp,.webp,.doc,.docx,.xls,.xlsx"
             onChange={e => {
               const files = e.target.files;
               if (files?.length > 1) handleMultiUpload(files);
@@ -283,10 +322,10 @@ export default function Documents() {
           </span>
           {uploadedUrl && <span className="text-muted">{t('pages.documents.upload.uploaded') || 'Hochgeladen:'} {uploadedUrl}</span>}
         </div>
-      </div>
+      </div>}
 
       {/* Upload queue */}
-      {uploadQueue.length > 0 && (
+      {canWrite && uploadQueue.length > 0 && (
         <div style={{ marginBottom: '0.5rem' }}>
           {uploadQueue.map((q, i) => (
             <div key={i} className="text-muted" style={{ fontSize: '0.85rem' }}>
@@ -297,7 +336,7 @@ export default function Documents() {
       )}
 
       {/* OCR result banner */}
-      {ocrResult && (
+      {canWrite && ocrResult && (
         <div style={{ marginBottom: '1rem' }}>
           <div className="panel" style={{ padding: '0.75rem 1rem', background: ocrResult.success ? 'var(--success-bg, #f0fdf4)' : 'var(--bg-secondary)' }}>
             <strong>{t('pages.documents.aiAnalysis') || 'KI-Analyse:'}</strong>{' '}
@@ -312,9 +351,16 @@ export default function Documents() {
               <>
                 {t('pages.documents.recognizedType') || 'Erkannter Typ:'} <strong>{ocrResult.guessedType}</strong>
                 <span className="text-muted"> — {ocrResult.message}</span>
+                {ocrResult.code && <div style={{ overflowWrap: 'anywhere' }}><small>{ocrResult.httpStatus && `HTTP ${ocrResult.httpStatus} · `}{ocrResult.code}</small></div>}
+                {ocrResult.correction && <p>{ocrResult.correction}</p>}
               </>
             )}
           </div>
+          {ocrResult.originalSaved && <p role="status">{t('documentsOCR.originalSaved')}</p>}
+          {!ocrResult.success && ocrResult.sourceUrl && <button type="button" className="btn btn-secondary"
+            disabled={ocrBusy || uploading} onClick={() => analyzeUploaded(ocrResult.sourceUrl, ocrResult.sourceName)}>
+            {ocrBusy ? t('documentsOCR.analyzing') : t('documentsOCR.retry')}
+          </button>}
         </div>
       )}
 
@@ -322,13 +368,13 @@ export default function Documents() {
         title={t('pages.documents.title') || 'Dokumente'}
         columns={columns}
         data={filtered}
-        onAdd={() => setModal('create')}
-        onEdit={row => setModal(row)}
-        onDelete={handleDelete}
+        onAdd={canWrite ? () => setModal('create') : undefined}
+        onEdit={canWrite ? row => setModal(row) : undefined}
+        onDelete={canWrite ? handleDelete : undefined}
         onRowClick={row => row.file_url && setViewerFile(row.file_url)}
       />
 
-      {modal && (
+      {modal && canWrite && (
         <FormModal
           title={modal === 'create' ? 'Dokument erstellen' : 'Dokument bearbeiten'}
           fields={fields}
@@ -338,6 +384,8 @@ export default function Documents() {
         />
       )}
       {viewerFile && <FileViewer key={viewerFile} fileUrl={viewerFile} onClose={() => setViewerFile(null)} />}
+      {historyDocument && <DocumentVersionHistory key={historyDocument.id} document={historyDocument}
+        onClose={() => setHistoryDocument(null)} />}
     </div>
   );
 }

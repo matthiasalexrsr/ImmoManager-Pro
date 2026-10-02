@@ -1,9 +1,14 @@
-import { useState, useEffect } from 'react';
+import { revisionOptions, revisionSource } from '../editRevision';
+import { useState } from 'react';
 import { api } from '../api';
+import { useFinanceData } from '../hooks/useFinanceData';
+import FinanceLoadState from '../components/FinanceLoadState';
 import { useTranslation } from '../i18n';
-import { useEntities, useDataStore } from '../contexts/DataStoreContext';
+import { useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
+import RentGenerationModal from '../components/RentGenerationModal';
+import useWriteAccess from '../hooks/useWriteAccess';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 
@@ -13,29 +18,16 @@ export default function RentCharges() {
   const { t } = useTranslation();
   const confirm = useConfirm();
   const store = useDataStore();
-  const { items: contracts } = useEntities('contracts', '/contracts');
-  const [charges, setCharges] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const { data: { charges, contracts }, loading, error, reload: refreshData } = useFinanceData({
+    charges: '/rent-charges',
+    contracts: '/contracts',
+  });
   const [modal, setModal] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
+  const [generationOpen, setGenerationOpen] = useState(false);
+  const [generationResult, setGenerationResult] = useState(null);
+  const { canWrite, isAllowed, requireWrite } = useWriteAccess('/rent-charges', () => { setModal(null); setGenerationOpen(false); });
 
-  const refreshData = () => {
-    setLoading(true);
-    api.get('/rent-charges').catch(() => [])
-      .then(ch => setCharges(ch || []))
-      .catch(e => setError(e.message))
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(() => {
-    let cancelled = false;
-    api.get('/rent-charges').catch(err => { console.warn('[RentCharges] charges:', err.message); return []; })
-      .then(data => { if (!cancelled) setCharges(data || []); })
-      .catch(e => { if (!cancelled) setError(e.message); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
 
   const contractMap = Object.fromEntries(contracts.map(c => [c.id, c]));
 
@@ -57,15 +49,15 @@ export default function RentCharges() {
 
   const COLUMNS = [
     { key: 'contract_label', label: t('tenantsContracts.contracts.title'), filterType: 'text' },
-    { key: 'month', label: 'Monat', filterType: 'text' },
-    { key: 'cold_rent', label: 'Kaltmiete', type: 'number', align: 'right', render: money },
-    { key: 'service_charge', label: 'Betriebskosten', type: 'number', align: 'right', render: money },
-    { key: 'heating_charge', label: 'Heizkosten', type: 'number', align: 'right', render: money },
-    { key: 'other_charges', label: 'Sonstige', type: 'number', align: 'right', render: money },
-    { key: 'total_due', label: 'Soll gesamt', type: 'number', align: 'right', render: v => <strong>{money(v)}</strong> },
-    { key: 'amount_paid', label: 'Bezahlt', type: 'number', align: 'right', render: money },
-    { key: 'remaining', label: 'Offen', type: 'number', align: 'right', render: money },
-    { key: 'status', label: 'Status', type: 'status', filterType: 'select',
+    { key: 'month', label: t('pages.rentCharges.columns.month'), filterType: 'text' },
+    { key: 'cold_rent', label: t('pages.rentCharges.columns.coldRent'), type: 'number', align: 'right', render: money },
+    { key: 'service_charge', label: t('pages.rentCharges.columns.serviceCharge'), type: 'number', align: 'right', render: money },
+    { key: 'heating_charge', label: t('pages.rentCharges.columns.heatingCharge'), type: 'number', align: 'right', render: money },
+    { key: 'other_charges', label: t('pages.rentCharges.columns.otherCharges'), type: 'number', align: 'right', render: money },
+    { key: 'total_due', label: t('pages.rentCharges.columns.totalDue'), type: 'number', align: 'right', render: v => <strong>{money(v)}</strong> },
+    { key: 'amount_paid', label: t('pages.rentCharges.columns.paid'), type: 'number', align: 'right', render: money },
+    { key: 'remaining', label: t('pages.rentCharges.columns.remaining'), type: 'number', align: 'right', render: money },
+    { key: 'status', label: t('ui.form.status'), type: 'status', filterType: 'select',
       render: v => <StatusBadge status={v} /> },
   ];
 
@@ -73,35 +65,33 @@ export default function RentCharges() {
   const fields = [
     { key: 'contract_id', label: t('tenantsContracts.contracts.title'), required: true, type: 'select',
       options: contracts.map(c => ({ value: c.id, label: c.contract_number })) },
-    { key: 'month', label: 'Monat (YYYY-MM)', required: true, placeholder: '2026-06' },
-    { key: 'cold_rent', label: 'Kaltmiete (EUR)', ...numberDefaults },
-    { key: 'service_charge', label: 'Betriebskosten (EUR)', ...numberDefaults },
-    { key: 'heating_charge', label: 'Heizkosten (EUR)', ...numberDefaults },
-    { key: 'other_charges', label: 'Sonstige Kosten (EUR)', ...numberDefaults },
-    { key: 'amount_paid', label: 'Bereits bezahlt (EUR)', ...numberDefaults },
-    { key: 'status', label: 'Status', type: 'select', default: 'open', options: [
-      { value: 'open', label: t('status.payment.open') },
-      { value: 'partial', label: t('status.payment.partial') || 'Teilweise bezahlt' },
-      { value: 'paid', label: t('status.payment.paid') },
-      { value: 'overdue', label: t('status.payment.overdue') },
-    ]},
+    { key: 'month', label: t('pages.rentCharges.form.month'), required: true, placeholder: '2026-06' },
+    { key: 'cold_rent', label: t('pages.rentCharges.form.coldRent'), ...numberDefaults },
+    { key: 'service_charge', label: t('pages.rentCharges.form.serviceCharge'), ...numberDefaults },
+    { key: 'heating_charge', label: t('pages.rentCharges.form.heatingCharge'), ...numberDefaults },
+    { key: 'other_charges', label: t('pages.rentCharges.form.otherCharges'), ...numberDefaults },
   ];
 
   const handleSave = async (data) => {
+    requireWrite();
     if (modal === 'create') {
       await api.post('/rent-charges', data);
     } else {
-      await api.put(`/rent-charges/${modal.id}`, data);
+      const source = revisionSource(data, modal);
+      await api.put(`/rent-charges/${modal.id}`, { ...data, amount_paid: source.amount_paid, status: source.status });
     }
+    setModal(null);
     refreshData();
     if (store) store.invalidateRelated('rent_charges', 'contracts');
   };
 
   const handleDelete = async (row) => {
+    if (!isAllowed()) return;
     if (!await confirm(`${t('modals.confirmDelete.body')}`)) return;
     setDeleteError(null);
     try {
-      await api.del(`/rent-charges/${row.id}`);
+      if (!isAllowed()) return;
+      await api.del(`/rent-charges/${row.id}`, revisionOptions(row));
       refreshData();
       if (store) store.invalidateRelated('rent_charges', 'contracts');
     } catch (err) {
@@ -109,28 +99,41 @@ export default function RentCharges() {
     }
   };
 
-  if (loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
-  if (error) return <div className="page"><div className="alert alert-error">{error}</div></div>;
+  if (loading || error) return <FinanceLoadState loading={loading} error={error} onRetry={refreshData} />;
 
   return (
     <div className="page">
+      {canWrite && <button className="btn btn-primary" onClick={() => setGenerationOpen(true)}>
+        {t('pages.rentGeneration.title')}
+      </button>}
+      <p>{t('pages.rentGeneration.paymentManaged')}</p>
+      {generationResult && <p role="status" className="alert alert-success">
+        {t('pages.rentGeneration.created')}: {generationResult.created_count} · {t('pages.rentGeneration.existing')}: {generationResult.skipped_count}
+      </p>}
       {deleteError && (
-        <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
+        <div className="alert alert-error" role="alert" style={{ marginBottom: '1rem' }}>
           {deleteError}
           <button onClick={() => setDeleteError(null)} style={{ marginLeft: '1rem', cursor: 'pointer' }}>x</button>
         </div>
       )}
       <DataTable
-        title="Sollstellung"
+        title={t('pages.rentCharges.title')}
         columns={COLUMNS}
         data={enriched}
-        onAdd={() => setModal('create')}
-        onEdit={row => setModal(row)}
-        onDelete={handleDelete}
+        onAdd={canWrite ? () => setModal('create') : undefined}
+        onEdit={canWrite ? row => setModal(row) : undefined}
+        onDelete={canWrite ? handleDelete : undefined}
       />
-      {modal && (
+      {generationOpen && canWrite && <RentGenerationModal contracts={contracts} onClose={() => setGenerationOpen(false)}
+        onGenerated={result => {
+          setGenerationResult(result);
+          setGenerationOpen(false);
+          refreshData();
+          store?.invalidateRelated('rent_charges', 'contracts');
+        }} />}
+      {modal && canWrite && (
         <FormModal
-          title={modal === 'create' ? 'Sollstellung erstellen' : 'Sollstellung bearbeiten'}
+          title={modal === 'create' ? t('pages.rentCharges.create') : t('pages.rentCharges.edit')}
           fields={fields}
           initial={modal === 'create' ? null : modal}
           onSave={handleSave}

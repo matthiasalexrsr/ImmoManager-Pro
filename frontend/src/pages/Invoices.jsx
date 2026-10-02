@@ -1,11 +1,17 @@
-import { useState, useEffect, useMemo } from 'react';
+import useWriteAccess from '../hooks/useWriteAccess';
+import { revisionOptions } from '../editRevision';
+import { useState, useMemo } from 'react';
 import { api } from '../api';
+import { useFinanceData } from '../hooks/useFinanceData';
+import FinanceLoadState from '../components/FinanceLoadState';
 import { useTranslation } from '../i18n';
-import { useEntities, useDataStore } from '../contexts/DataStoreContext';
+import { useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
+import PaymentHistoryPanel from '../components/PaymentHistoryPanel';
+import { euroCents, storedCents } from '../utils/accountMoney';
 
 const STATUS_OPTIONS = [
   { value: 'open', label: 'Offen' },
@@ -47,30 +53,21 @@ const COLUMNS = [
 ];
 
 export default function Invoices() {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const confirm = useConfirm();
   const store = useDataStore();
-  const { items: properties } = useEntities('properties', '/properties');
-  const { items: taxRates } = useEntities('taxRates', '/tax-rates');
-  const [invoices, setInvoices] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { data: { invoices, properties, taxRates }, loading, error, reload: refreshData } = useFinanceData({
+    invoices: '/invoices',
+    properties: '/properties',
+    taxRates: '/tax-rates',
+  });
   const [modal, setModal] = useState(null);
+  const { canWrite, isAllowed, requireWrite } = useWriteAccess('/invoices', () => setModal(null));
+  const [actionError, setActionError] = useState(null);
   const [filter, setFilter] = useState('all');
+  const [historyInvoice, setHistoryInvoice] = useState(null);
+  const [historyBusy, setHistoryBusy] = useState(false);
 
-  const refreshData = () => {
-    setLoading(true);
-    api.get('/invoices').catch(() => [])
-      .then(inv => setInvoices(Array.isArray(inv) ? inv : []))
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(() => {
-    let cancelled = false;
-    api.get('/invoices').catch(err => { console.warn('[Invoices] invoices:', err.message); return []; })
-      .then(data => { if (!cancelled) setInvoices(Array.isArray(data) ? data : []); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
 
   const propMap = Object.fromEntries(properties.map(p => [p.id, p.name]));
   const enriched = invoices.map(inv => ({
@@ -86,10 +83,15 @@ export default function Invoices() {
   }, [enriched, filter]);
 
   // Summary stats
-  const totalOpen = enriched.filter(i => i.status === 'open').reduce((s, i) => s + (Number(i.gross_amount) || 0), 0);
-  const totalOverdue = enriched.filter(i => i.status === 'overdue').reduce((s, i) => s + (Number(i.gross_amount) || 0), 0);
-  const totalPaid = enriched.filter(i => i.status === 'paid').reduce((s, i) => s + (Number(i.gross_amount) || 0), 0);
-  const totalVat = enriched.reduce((s, i) => s + (Number(i.vat_amount) || 0), 0);
+  const paid = invoice => BigInt(storedCents(invoice.amount_paid ?? 0) ?? '0');
+  const remaining = invoice => {
+    const value = BigInt(storedCents(invoice.gross_amount) ?? '0') - paid(invoice);
+    return value > 0n ? value : 0n;
+  };
+  const totalOpen = enriched.filter(i => i.status === 'open' || i.status === 'partial').reduce((s, i) => s + remaining(i), 0n);
+  const totalOverdue = enriched.filter(i => i.status === 'overdue').reduce((s, i) => s + remaining(i), 0n);
+  const totalPaid = enriched.reduce((s, i) => s + paid(i), 0n);
+  const totalVat = enriched.reduce((s, i) => s + BigInt(storedCents(i.vat_amount ?? 0) ?? '0'), 0n);
 
   const defaultVatRate = taxRates.find(t => t.is_default)?.rate || 19;
 
@@ -125,10 +127,12 @@ export default function Invoices() {
       { value: 'sonstiges', label: 'Sonstiges' },
     ]},
     { key: 'notes', label: 'Notizen', type: 'textarea' },
-    { key: 'status', label: 'Status', type: 'select', default: 'open', options: STATUS_OPTIONS },
+    { key: 'status', label: 'Status', type: 'select', default: 'open', disabled: modal !== 'create' && modal && paid(modal) > 0n,
+      options: STATUS_OPTIONS.filter(option => !['paid', 'partial'].includes(option.value) || option.value === modal?.status) },
   ];
 
   const handleSave = async (data) => {
+    requireWrite();
     // Auto-calculate VAT and gross if net and rate are provided
     const net = Number(data.net_amount) || 0;
     const rate = Number(data.vat_rate) || 0;
@@ -144,27 +148,31 @@ export default function Invoices() {
     } else {
       await api.put(`/invoices/${modal.id}`, data);
     }
+    setModal(null);
     refreshData();
     if (store) store.invalidateRelated('invoices', 'contracts', 'receivables');
   };
 
   const handleDelete = async (row) => {
+    if (!isAllowed()) return;
     if (!await confirm(`"${row.supplier}" ${t('modals.confirmDelete.body')}`)) return;
-    await api.del(`/invoices/${row.id}`);
-    refreshData();
-    if (store) store.invalidateRelated('invoices', 'contracts', 'receivables');
+    setActionError(null);
+    try {
+      if (!isAllowed()) return;
+      await api.del(`/invoices/${row.id}`, revisionOptions(row));
+      setModal(null);
+      refreshData();
+      if (store) store.invalidateRelated('invoices', 'contracts', 'receivables');
+    } catch (err) {
+      setActionError(err.message);
+    }
   };
 
-  const markPaid = async (row) => {
-    await api.patch(`/invoices/${row.id}`, { status: 'paid' });
-    refreshData();
-    if (store) store.invalidateRelated('invoices', 'contracts', 'receivables');
-  };
-
-  if (loading) return <div className="page-loading">Lade Rechnungen...</div>;
+  if (loading || error) return <FinanceLoadState loading={loading} error={error} onRetry={refreshData} />;
 
   return (
     <div className="page">
+      {actionError && <div className="alert alert-error" role="alert">{actionError}</div>}
       <h1 className="page-title">Rechnungen</h1>
 
       {/* Summary cards */}
@@ -174,22 +182,24 @@ export default function Invoices() {
           <div className="text-muted" style={{ fontSize: '0.8rem' }}>Gesamt</div>
         </div>
         <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--warning)' }}>{totalOpen.toFixed(2)} €</div>
+          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--warning)' }}>{euroCents(String(totalOpen), locale)}</div>
           <div className="text-muted" style={{ fontSize: '0.8rem' }}>Offen</div>
         </div>
         <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--danger)' }}>{totalOverdue.toFixed(2)} €</div>
+          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--danger)' }}>{euroCents(String(totalOverdue), locale)}</div>
           <div className="text-muted" style={{ fontSize: '0.8rem' }}>Überfällig</div>
         </div>
         <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--success)' }}>{totalPaid.toFixed(2)} €</div>
+          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--success)' }}>{euroCents(String(totalPaid), locale)}</div>
           <div className="text-muted" style={{ fontSize: '0.8rem' }}>Bezahlt</div>
         </div>
         <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{totalVat.toFixed(2)} €</div>
+          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{euroCents(String(totalVat), locale)}</div>
           <div className="text-muted" style={{ fontSize: '0.8rem' }}>MwSt gesamt</div>
         </div>
       </div>
+
+      {enriched.some(invoice => paid(invoice) > 0n) && <p className="text-muted">{t('bankMatching.invoiceBalanceHelp')}</p>}
 
       {/* Filter tabs */}
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
@@ -211,27 +221,23 @@ export default function Invoices() {
 
       <DataTable
         title="Rechnungen"
-        columns={[...COLUMNS, {
+        columns={[...COLUMNS, { key: 'amount_paid', type: 'number', label: t('bankMatching.paidAmount'), align: 'right', render: (_, row) => euroCents(String(paid(row)), locale) },
+          { key: '_remaining', label: t('bankMatching.open'), align: 'right', sortable: false, render: (_, row) => euroCents(String(remaining(row)), locale) }, {
           key: '_actions', label: '', sortable: false,
-          render: (_, row) => (row.status === 'open' || row.status === 'overdue') ? (
-            <button
-              className="btn btn-sm btn-secondary"
-              onClick={async (e) => {
-                e.stopPropagation();
-                if (await confirm(`"${row.supplier}" ${t('pages.invoices.markPaidConfirm') || 'als bezahlt markieren?'}`)) markPaid(row);
-              }}
-            >
-              ✓ Bezahlt
-            </button>
-          ) : null,
+          render: (_, row) => <div className="booking-row-actions">
+            {row.status !== 'cancelled' && remaining(row) > 0n && <a className="btn btn-sm btn-secondary" href={`/bookings?invoice_id=${encodeURIComponent(row.id)}`}>{t('bankMatching.invoiceNavigation')}</a>}
+            <button type="button" className="btn btn-sm btn-secondary" disabled={historyBusy} onClick={() => setHistoryInvoice(row.id)}>{t('bankMatching.history')}</button>
+          </div>,
         }]}
         data={filtered}
-        onAdd={() => setModal('create')}
-        onEdit={row => setModal(row)}
-        onDelete={handleDelete}
+        onAdd={canWrite ? () => setModal('create') : undefined}
+        onEdit={canWrite ? row => setModal(row) : undefined}
+        onDelete={canWrite ? handleDelete : undefined}
       />
 
-      {modal && (
+      {historyInvoice && <PaymentHistoryPanel key={historyInvoice} path={`/invoices/${encodeURIComponent(historyInvoice)}/payments`} onChanged={refreshData} onClose={() => { setHistoryInvoice(null); setHistoryBusy(false); }} onBusyChange={setHistoryBusy} />}
+
+      {modal && canWrite && (
         <FormModal
           title={modal === 'create' ? 'Rechnung erstellen' : 'Rechnung bearbeiten'}
           fields={fields}

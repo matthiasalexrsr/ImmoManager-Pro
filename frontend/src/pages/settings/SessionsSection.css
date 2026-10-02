@@ -1,0 +1,20 @@
+.sessions-section { padding: clamp(1rem, 3vw, 1.75rem); min-width: 0; }
+.sessions-header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: .9rem; }
+.sessions-header h2 { margin: .2rem 0 0; font-size: 1.35rem; }
+.sessions-kicker { display: flex; align-items: center; gap: .4rem; margin: 0; color: var(--color-primary, #087f83); font-size: .85rem; font-weight: 600; }
+.sessions-header button { display: inline-flex; gap: .4rem; align-items: center; }
+.sessions-list { list-style: none; padding: 0; display: grid; gap: 1rem; margin: 1.25rem 0; }
+.sessions-card { padding: 1rem; border: 1px solid var(--color-border, #dae3e7); border-radius: 12px; background: var(--color-bg, #f7fafb); }
+.sessions-device { display: flex; gap: .7rem; align-items: center; }
+.sessions-device h3 { font-size: 1rem; margin: 0 0 .4rem; }
+.sessions-state, .sessions-current { display: inline-block; font-size: .8rem; border-radius: 999px; padding: .16rem .5rem; margin: 0 .4rem .25rem 0; background: var(--color-border-light, #e4eaef); }
+.sessions-state-active, .sessions-current { color: var(--color-primary, #087f83); background: var(--color-primary-light, #e4f3f0); }
+.sessions-dates { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: .75rem; margin: 1rem 0; font-size: .86rem; }
+.sessions-dates dt { color: var(--color-text-secondary, #5b6977); margin-bottom: .2rem; }
+.sessions-dates dd { margin: 0; }
+.sessions-note { border-left: 3px solid var(--color-primary, #087f83); padding: .6rem .8rem; font-size: .9rem; line-height: 1.5; }
+.sessions-empty { padding: 2rem 1rem; text-align: center; color: var(--color-text-secondary, #5b6977); }
+.sessions-empty h3 { margin: .75rem 0; font-size: 1rem; }
+.sessions-pagination { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: .75rem; font-size: .86rem; }
+.sessions-section button:focus-visible { outline: 3px solid var(--color-primary, #087f83); outline-offset: 3px; }
+@media (max-width: 540px) { .sessions-header { align-items: flex-start; flex-direction: column; } .sessions-card > button { width: 100%; } .sessions-dates { grid-template-columns: 1fr 1fr; } }

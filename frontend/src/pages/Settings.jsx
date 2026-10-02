@@ -3,25 +3,43 @@ import { useAuth } from '../contexts/AuthContext';
 import { usePreferences } from '../contexts/PreferencesContext';
 import { useDevMode } from '../contexts/DevModeContext';
 import { useTranslation } from '../i18n';
-import { useToast } from '../components/Toast';
 import { api } from '../api';
 import UpdateSection from './settings/UpdateSection';
 import AutotestSection from './settings/AutotestSection';
 import BackupSection from './settings/BackupSection';
+import TwoFactorSection from './settings/TwoFactorSection';
+import SessionsSection from './settings/SessionsSection';
+import UserManagementSection from './settings/UserManagementSection';
+import OperationalMetricsSection from './settings/OperationalMetricsSection';
+import './Settings.css';
 
 export default function Settings() {
-  const { prefs, toggleTheme, toggleSidebar, updatePrefs } = usePreferences();
+  const { prefs, toggleTheme, toggleSidebar, updatePrefs, saveError, retrySave } = usePreferences();
   const auth = useAuth();
   const devMode = useDevMode();
   const { t, locale, setLocale } = useTranslation();
-  const toast = useToast();
-  const isAdmin = auth?.isAdmin;
+  const isAdmin = auth?.isAdmin && (auth?.role === 'eigentuemer' || auth?.user?.portfolio_access !== 'selected');
   const [versionInfo, setVersionInfo] = useState(null);
+  const [versionError, setVersionError] = useState(null);
+  const [versionRevision, setVersionRevision] = useState(0);
+  const [retryingPreferences, setRetryingPreferences] = useState(false);
   const [settingsTab, setSettingsTab] = useState('personal');
 
   useEffect(() => {
-    api.get('/admin/version').then(setVersionInfo).catch(() => { toast.error(t('pages.settings.versionError') || 'Versionsinformationen konnten nicht geladen werden'); });
-  }, [toast, t]);
+    if (!isAdmin) return;
+    const controller = new AbortController();
+    api.get('/admin/version', { signal: controller.signal })
+      .then(value => { if (!controller.signal.aborted) { setVersionInfo(value); setVersionError(null); } })
+      .catch(error => { if (!controller.signal.aborted) setVersionError(error.message || t('pages.settings.versionError')); });
+    return () => controller.abort();
+  }, [isAdmin, t, versionRevision]);
+
+  const retryPreferences = async () => {
+    if (!retrySave || retryingPreferences) return;
+    setRetryingPreferences(true);
+    try { await retrySave(); }
+    finally { setRetryingPreferences(false); }
+  };
 
   const tr = (key, fallback) => {
     const result = t(key);
@@ -29,32 +47,44 @@ export default function Settings() {
   };
 
   const tabs = [
-    { key: 'personal', label: t('pages.settings.tabPersonal') || 'Persönlich' },
-    { key: 'workflow', label: t('pages.settings.tabWorkflow') || 'Arbeitsweise' },
-    { key: 'system', label: t('pages.settings.tabSystem') || 'System' },
-    ...(isAdmin ? [{ key: 'dev', label: t('pages.settings.tabDev') || 'Entwicklung' }] : []),
+    { key: 'personal', label: t('userManagement.settingsTabs.personal') },
+    { key: 'security', label: t('auth.sessions.tab') },
+    { key: 'workflow', label: t('userManagement.settingsTabs.workflow') },
+    { key: 'system', label: t('userManagement.settingsTabs.system') },
+    ...(isAdmin ? [{ key: 'users', label: t('userManagement.tab') }] : []),
+    ...(isAdmin ? [{ key: 'dev', label: t('userManagement.settingsTabs.dev') }] : []),
   ];
 
   return (
-    <div className="page">
+    <div className="page settings-page">
       <h1 className="page-title">{t('pages.settings.title')}</h1>
 
-      <div className="tab-bar" style={{ marginBottom: '1.25rem' }}>
+      {saveError && <div role="alert" className="alert-error" style={{ marginBottom: '1.25rem', overflowWrap: 'anywhere' }}>
+        <strong>{t('prefsFailure.title')}</strong><p>{t('prefsFailure.hint')}</p><p>{saveError}</p>
+        {retrySave && <button type="button" className="btn btn-secondary" onClick={retryPreferences} disabled={retryingPreferences}>
+          {t(retryingPreferences ? 'prefsFailure.retrying' : 'prefsFailure.retry')}
+        </button>}
+      </div>}
+
+      <nav className="tab-bar settings-tab-bar" aria-label={t('userManagement.settingsNavigation')} style={{ marginBottom: '1.25rem' }}>
         {tabs.map(tab => (
           <button
             key={tab.key}
             className={`detail-tab ${settingsTab === tab.key ? 'active' : ''}`}
+            aria-current={settingsTab === tab.key ? 'true' : undefined}
             onClick={() => setSettingsTab(tab.key)}
           >
             {tab.label}
           </button>
         ))}
-      </div>
+      </nav>
 
       <div className="settings-grid">
+        {settingsTab === 'security' && <SessionsSection />}
         {/* Personal tab: Appearance + Language */}
         {settingsTab === 'personal' && (
           <>
+            <TwoFactorSection />
             <div className="panel">
               <div className="panel-header">{t('pages.settings.appearance')}</div>
               <div className="panel-body settings-section">
@@ -86,7 +116,7 @@ export default function Settings() {
                       <button
                         key={loc}
                         className={`btn btn-sm ${locale === loc ? 'btn-primary' : 'btn-secondary'}`}
-                        onClick={() => setLocale(loc)}
+                        onClick={() => { setLocale(loc); void updatePrefs({ locale: loc }); }}
                       >{loc.slice(0, 2).toUpperCase()}</button>
                     ))}
                   </div>
@@ -224,8 +254,11 @@ export default function Settings() {
         )}
 
         {/* System tab: Backup, Updates, About */}
+        {settingsTab === 'users' && isAdmin && <UserManagementSection />}
+
         {settingsTab === 'system' && (
           <>
+            {isAdmin && <OperationalMetricsSection />}
             {isAdmin && <BackupSection />}
             {isAdmin && <UpdateSection versionInfo={versionInfo} />}
 
@@ -235,9 +268,12 @@ export default function Settings() {
                 <div className="settings-row">
                   <label>Version</label>
                   <div className="settings-control">
-                    <span className="text-muted">{versionInfo?.version || '...'}</span>
+                    <span className="text-muted">{isAdmin ? versionInfo?.version || (versionError ? '—' : '…') : '—'}</span>
                   </div>
                 </div>
+                {isAdmin && versionError && <div role="alert"><p>{t('prefsFailure.versionError')}</p><p>{versionError}</p>
+                  <button type="button" className="btn btn-secondary" onClick={() => setVersionRevision(value => value + 1)}>{t('prefsFailure.retryVersion')}</button>
+                </div>}
                 <div className="settings-row">
                   <label>{tr('settings.about.type', 'Typ')}</label>
                   <div className="settings-control">

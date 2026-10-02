@@ -1,5 +1,8 @@
 import datetime
 
+import pytest
+from fastapi import HTTPException
+
 from backend.dependencies import store
 from backend.models import (
     AccountCreate,
@@ -8,6 +11,7 @@ from backend.models import (
     InvoiceCreate,
     PortfolioCreate,
     PropertyCreate,
+    RentChargeCreate,
     TenantCreate,
     UnitCreate,
 )
@@ -73,6 +77,11 @@ def _seed_contract_with_payments() -> tuple:
             amount=1000.0,
         )
     )
+    # The account is based on booked historical snapshots, not current unit prices.
+    for month in range(1, 7):
+        store.create_rent_charge(RentChargeCreate(contract_id=contract.id, month=f"2025-{month:02}",
+            cold_rent=800, service_charge=150, heating_charge=50,
+            amount_paid=1000 if month <= 2 else 0, status="paid" if month <= 2 else "open"))
     return portfolio, prop, unit, tenant, contract, account
 
 
@@ -154,6 +163,8 @@ def test_settlement_no_payments() -> None:
             start_date=datetime.date(2025, 1, 1),
         )
     )
+    for month in ("2025-01", "2025-02"):
+        store.create_rent_charge(RentChargeCreate(contract_id=contract.id, month=month, cold_rent=500))
 
     result = contracts.get_contract_settlement(
         contract_id=contract.id,
@@ -279,14 +290,13 @@ def test_invoice_match_allocates_to_open_bookings() -> None:
         )
     )
 
-    result = invoices.match_invoice_to_bookings(invoice_id=invoice.id)
-
-    assert result["allocated_total"] == 297.50
-    assert result["unmatched_amount"] == 0.0
-    assert len(result["allocations"]) == 2
-    # First booking (200) fully used, second partially (97.50)
-    assert result["allocations"][0]["allocated_amount"] == 200.0
-    assert result["allocations"][1]["allocated_amount"] == 97.50
+    with pytest.raises(HTTPException) as rejected:
+        invoices.match_invoice_to_bookings(invoice_id=invoice.id)
+    assert rejected.value.status_code == 410
+    assert rejected.value.detail["code"] == "INVOICE_MATCH_REVIEW_REQUIRED"
+    assert rejected.value.detail["review_endpoint"].endswith("suggestions?kind=invoice")
+    assert store.list_payments() == []
+    assert all(item.allocated_amount == 0 for item in store.list_bookings())
 
 
 def test_invoice_match_partial_allocation() -> None:
@@ -317,11 +327,11 @@ def test_invoice_match_partial_allocation() -> None:
         )
     )
 
-    result = invoices.match_invoice_to_bookings(invoice_id=invoice.id)
-
-    assert result["allocated_total"] == 100.0
-    assert result["unmatched_amount"] == 100.0
-    assert len(result["allocations"]) == 1
+    with pytest.raises(HTTPException) as rejected:
+        invoices.match_invoice_to_bookings(invoice_id=invoice.id)
+    assert rejected.value.status_code == 410
+    assert rejected.value.detail["confirmation_endpoint"].endswith("/matching")
+    assert store.list_payments() == []
 
 
 def test_invoice_match_no_candidates() -> None:
@@ -335,11 +345,11 @@ def test_invoice_match_no_candidates() -> None:
         )
     )
 
-    result = invoices.match_invoice_to_bookings(invoice_id=invoice.id)
-
-    assert result["allocated_total"] == 0.0
-    assert result["unmatched_amount"] == 500.0
-    assert len(result["allocations"]) == 0
+    with pytest.raises(HTTPException) as rejected:
+        invoices.match_invoice_to_bookings(invoice_id=invoice.id)
+    assert rejected.value.status_code == 410
+    assert rejected.value.detail["navigation"] == "/bookings"
+    assert store.list_payments() == []
 
 
 def test_invoice_match_not_found() -> None:

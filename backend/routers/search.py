@@ -7,6 +7,7 @@ from fastapi import APIRouter, Query
 from ..dependencies import store
 from ..services.ai.schemas import SearchHit
 from ..services.ai.semantic_search import IndexEntry, search_index
+from ..services.portfolio_scope import require_installation_scope, resource_visible
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,7 @@ def _rebuild_search_index() -> None:
 @router.post("/reindex")
 def reindex_search() -> dict:
     """Rebuild the semantic search index."""
+    require_installation_scope()
     _rebuild_search_index()
     return {"reindexed": True, "entries": search_index.entry_count, "semantic_available": search_index.is_available}
 
@@ -200,7 +202,8 @@ def global_search(
             )
             for r in results
         ]
-        reranked = search_index.search(q, keyword_hits, top_k=50)
+        reranked = [hit for hit in search_index.search(q, keyword_hits, top_k=50)
+                    if resource_visible(hit.entity_type, hit.entity_id)]
         reranked_results = [
             {
                 "entity_type": h.entity_type,

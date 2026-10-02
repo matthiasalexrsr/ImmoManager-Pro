@@ -32,7 +32,7 @@ from ..models import (
     ViewingAppointment,
     ViewingAppointmentCreate,
 )
-from ..storage import NotFoundError, ValidationError
+from ..storage import ValidationError
 from .base import BaseRepository
 
 logger = logging.getLogger(__name__)
@@ -109,7 +109,7 @@ class TenantRepository:
 
     def update_contract(self, contract_id: str, data: ContractCreate) -> Contract:
         if not self._contracts.exists(contract_id):
-            raise NotFoundError("Vertrag nicht gefunden")
+            self._contracts._missing(contract_id)
         pr = self._portfolio_repo
         if pr and not pr._properties.exists(data.property_id):
             raise ValidationError("Immobilie existiert nicht")
@@ -248,23 +248,33 @@ class TenantRepository:
         return self._rent_adjustments.list_all()
 
     def create_rent_adjustment(self, data: RentAdjustmentCreate) -> RentAdjustment:
-        if not self._contracts.exists(data.contract_id):
-            raise ValidationError("Vertrag existiert nicht")
-        result = self._rent_adjustments.create(data)
-        self._commit()
-        return result
+        from ..services.rent_adjustments import adjustment_write, validate_adjustment
+        with adjustment_write(self, [data.contract_id]):
+            validate_adjustment(self, data)
+            result = self._rent_adjustments.create(data)
+            self._commit()
+            return result
 
     def get_rent_adjustment(self, adj_id: str) -> RentAdjustment:
         return self._rent_adjustments.get(adj_id)
 
     def update_rent_adjustment(self, adj_id: str, data: RentAdjustmentCreate) -> RentAdjustment:
-        result = self._rent_adjustments.update(adj_id, data)
-        self._commit()
-        return result
+        from ..services.rent_adjustments import adjustment_write, validate_adjustment, validate_locked_parent
+        old = self.get_rent_adjustment(adj_id)
+        with adjustment_write(self, [old.contract_id, data.contract_id]):
+            validate_locked_parent(self, adj_id, old.contract_id)
+            validate_adjustment(self, data, exclude_id=adj_id)
+            result = self._rent_adjustments.update(adj_id, data)
+            self._commit()
+            return result
 
     def delete_rent_adjustment(self, adj_id: str) -> None:
-        self._rent_adjustments.delete(adj_id)
-        self._commit()
+        from ..services.rent_adjustments import adjustment_write, validate_locked_parent
+        old = self.get_rent_adjustment(adj_id)
+        with adjustment_write(self, [old.contract_id]):
+            validate_locked_parent(self, adj_id, old.contract_id)
+            self._rent_adjustments.delete(adj_id)
+            self._commit()
 
     # --- Leads ---
     def list_leads(self) -> list[Lead]:

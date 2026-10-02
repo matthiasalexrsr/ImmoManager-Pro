@@ -1,0 +1,60 @@
+.settings-page .settings-grid > .panel {
+  min-width: 0;
+}
+
+.settings-page .settings-row,
+.settings-page .settings-control {
+  min-width: 0;
+}
+
+.settings-page .settings-row label {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.settings-page .settings-control {
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
+.settings-page .settings-control > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.settings-page .settings-control > span {
+  overflow-wrap: anywhere;
+}
+
+.settings-page input[type="file"] {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.settings-page .settings-section > p {
+  padding-inline: 1.1rem;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 768px) {
+  .settings-page .settings-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .settings-page .settings-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: .5rem;
+  }
+
+  .settings-page .settings-control {
+    width: 100%;
+  }
+
+  .settings-page .settings-control .btn {
+    white-space: normal;
+  }
+}

@@ -1,0 +1,33 @@
+FROM node:24-bookworm-slim AS frontend-build
+WORKDIR /frontend
+COPY frontend/package*.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+
+FROM python:3.12-slim
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends libpq5 \
+    poppler-utils tesseract-ocr tesseract-ocr-deu tesseract-ocr-eng \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 10001 immo && useradd --uid 10001 --gid immo --no-create-home immo
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt 'Pillow>=10.4.0'
+COPY backend/ backend/
+COPY db/ db/
+COPY alembic.ini pyproject.toml ./
+COPY i18n/ i18n/
+COPY scripts/ scripts/
+COPY mietvertrag_wizard_fastapi_reportlab_pro/ mietvertrag_wizard_fastapi_reportlab_pro/
+COPY --from=frontend-build /frontend/dist/ frontend/dist/
+COPY docker-entrypoint.sh ./
+RUN sed -i 's/\r$//' docker-entrypoint.sh && chmod 755 docker-entrypoint.sh \
+    && mkdir -p /data/uploads /data/backups /data/logs /data/tmp \
+    && chown -R immo:immo /data
+USER immo
+EXPOSE 8000
+HEALTHCHECK --interval=20s --timeout=5s --start-period=30s --retries=3 \
+  CMD python -c "import json,urllib.request; h=json.load(urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3)); assert h['status']=='ok' and h['database_connected']"
+ENTRYPOINT ["./docker-entrypoint.sh"]
+CMD ["uvicorn", "backend.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--no-proxy-headers"]

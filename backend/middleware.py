@@ -16,8 +16,9 @@ from starlette.responses import JSONResponse
 
 from .audit import log_action
 from .config import settings
-from .dependencies import cleanup_session
+from .dependencies import _request_session_scope, cleanup_session
 from .logging_config import request_id_var
+from .safe_diagnostics import query_count, request_route
 
 logger = logging.getLogger(__name__)
 
@@ -44,35 +45,30 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         if request.url.path.startswith("/api/"):
             extra = {
                 "method": request.method,
-                "path": request.url.path,
+                "path": request_route(request),
                 "status_code": response.status_code,
                 "duration_ms": duration_ms,
             }
-            query = str(request.url.query) if request.url.query else None
-            if query:
-                extra["query"] = query
-            client = request.client
-            if client:
-                extra["client_ip"] = client.host
+            extra["query_count"] = query_count(request)
 
             if response.status_code >= 500:
                 logger.error(
                     "%s %s → %d (%.1fms) [SERVER ERROR]",
-                    request.method, request.url.path,
+                    request.method, request_route(request),
                     response.status_code, duration_ms,
                     extra=extra,
                 )
             elif response.status_code >= 400:
                 logger.warning(
                     "%s %s → %d (%.1fms) [CLIENT ERROR]",
-                    request.method, request.url.path,
+                    request.method, request_route(request),
                     response.status_code, duration_ms,
                     extra=extra,
                 )
             else:
                 logger.info(
                     "%s %s → %d (%.1fms)",
-                    request.method, request.url.path,
+                    request.method, request_route(request),
                     response.status_code, duration_ms,
                     extra=extra,
                 )
@@ -116,7 +112,7 @@ class AcceptLanguageMiddleware(BaseHTTPMiddleware):
 
 # ─── DB Session Cleanup Middleware ────────────────────────────────────────────
 
-class DBSessionMiddleware(BaseHTTPMiddleware):
+class DBSessionMiddleware:
     """Cleans up scoped DB session after each request.
 
     Ensures each request gets a fresh session, preventing stale state
@@ -126,23 +122,21 @@ class DBSessionMiddleware(BaseHTTPMiddleware):
     any failed transaction state is cleared, preventing cascading failures.
     """
 
-    async def dispatch(self, request: Request, call_next):
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] not in {"http", "websocket"}:
+            await self.app(scope, receive, send)
+            return
+        token = _request_session_scope.set(object())
         try:
-            response = await call_next(request)
-            if response.status_code >= 500:
-                logger.warning(
-                    "Request ended with %d — ensuring session rollback for %s %s",
-                    response.status_code, request.method, request.url.path,
-                )
-            return response
-        except Exception:
-            logger.error(
-                "Unhandled exception in middleware for %s %s — rolling back session",
-                request.method, request.url.path, exc_info=True,
-            )
-            raise
+            await self.app(scope, receive, send)
         finally:
-            cleanup_session()
+            try:
+                cleanup_session()
+            finally:
+                _request_session_scope.reset(token)
 
 
 # ─── Audit Middleware ────────────────────────────────────────────────────────
@@ -224,35 +218,40 @@ _RBAC_SKIP_PATHS = {
     "/api/v1/auth/register",
     "/api/v1/auth/refresh",
     "/api/v1/auth/logout",
+    "/api/v1/auth/2fa/setup",  # Own account security is allowed for every role.
+    "/api/v1/auth/2fa/verify",
+    "/api/v1/auth/2fa/disable",
+    "/api/v1/auth/users/me/preferences",  # Display settings belong to one's own account.
+    "/api/v1/auth/users/me/form-drafts",  # The private draft service checks the actual target domain.
     "/api/v1/dev-notes",  # dev notes are informational, not business data
 }
 
 
 class RBACWriteGuardMiddleware(BaseHTTPMiddleware):
-    """Blocks write operations from users with the 'readonly' role.
+    """Apply each approved account's domain write capabilities.
 
-    Readonly users can access GET/HEAD/OPTIONS endpoints, but any
-    POST/PUT/PATCH/DELETE on protected API routes is rejected with 403.
-
-    This acts as a defence-in-depth layer — individual endpoints can
-    apply finer-grained role checks via require_role().
+    Own security and display settings remain available to every role.
+    Endpoint dependencies enforce authentication and finer action permissions.
     """
 
     async def dispatch(self, request: Request, call_next):
         if (
             request.method in _RBAC_WRITE_METHODS
             and request.url.path.startswith("/api/v1/")
-            and not any(request.url.path.startswith(p) for p in _RBAC_SKIP_PATHS)
+            and request.url.path not in _RBAC_SKIP_PATHS
+            and not (request.method == "POST" and re.fullmatch(r"/api/v1/auth/sessions/[^/]+/revoke", request.url.path))
         ):
             role = self._get_user_role(request)
-            if role == "readonly":
+            from .permissions import may_write_resource
+            resource = request.url.path[len("/api/v1/"):].split("/", 1)[0]
+            if role is not None and not may_write_resource(role, resource):
                 logger.warning(
-                    "RBAC blocked: readonly user attempted %s %s",
+                    "RBAC blocked: role cannot write %s %s",
                     request.method, request.url.path,
                 )
                 return JSONResponse(
                     status_code=403,
-                    content={"detail": "Lesezugriff-Rolle hat keine Schreibberechtigung"},
+                    content={"detail": "Ihre Rolle hat für diesen Verwaltungsbereich keine Schreibberechtigung."},
                 )
 
         return await call_next(request)

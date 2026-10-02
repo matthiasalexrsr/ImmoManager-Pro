@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from copy import deepcopy
 from dataclasses import asdict
 
 from ...config import settings
@@ -21,16 +22,12 @@ from .providers import (
 class IntegrationManager:
     def __init__(self, store=None) -> None:
         self._providers: dict[str, IntegrationProvider] = {}
-        self._enabled: dict[str, bool] = {}
-        self._config: dict[str, dict] = {}
         self._history: dict[str, list[IntegrationRunRecord]] = defaultdict(list)
         self._store = store or InMemoryIntegrationConfigStore()
 
     def register(self, provider: IntegrationProvider) -> None:
         integration_id = provider.manifest.integration_id
         self._providers[integration_id] = provider
-        self._enabled.setdefault(integration_id, provider.manifest.enabled_by_default)
-        self._config.setdefault(integration_id, {})
 
     def seed_defaults(self) -> None:
         for provider in (
@@ -57,9 +54,8 @@ class IntegrationManager:
             raise KeyError(integration_id)
 
         manifest = provider.manifest
-        config = self._config.get(integration_id, {})
+        enabled, config = self._snapshot(integration_id)
         health = provider.health(config)
-        enabled = self._enabled.get(integration_id, False)
         configured = provider.is_configured(config)
         return {
             "id": manifest.integration_id,
@@ -69,12 +65,13 @@ class IntegrationManager:
             "planned": manifest.planned,
             "enabled": enabled,
             "configured": configured,
+            "operational": not manifest.planned and enabled and configured and health.get("status") == "ok",
             "capabilities": manifest.capabilities,
             "health": health,
             "config": self._safe_config(manifest, config),
             "required_config_keys": manifest.required_config_keys,
             "secret_config_keys": manifest.secret_config_keys,
-            "message": self._to_message(configured=configured, enabled=enabled, health=health),
+            "message": "Geplant — Adapter noch nicht implementiert" if manifest.planned else self._to_message(configured=configured, enabled=enabled, health=health),
         }
 
     def get_schema(self, integration_id: str) -> dict:
@@ -100,13 +97,14 @@ class IntegrationManager:
         missing = [k for k in manifest.required_config_keys if not config.get(k)]
         if missing:
             return {"valid": False, "missing_keys": missing, "message": "Pflichtfelder fehlen"}
+        if integration_id == "email" and not provider.is_configured(config):
+            return {"valid": False, "missing_keys": [], "message": "SMTP-Konfiguration ist unvollständig oder ungültig"}
         return {"valid": True, "missing_keys": [], "message": "Konfiguration ist gültig"}
 
     def set_enabled(self, integration_id: str, enabled: bool) -> dict:
         if integration_id not in self._providers:
             raise KeyError(integration_id)
-        self._enabled[integration_id] = enabled
-        self._persist_state()
+        self._store.update(lambda state: {**state, "enabled": {**state.get("enabled", {}), integration_id: enabled}})
         return {"id": integration_id, "enabled": enabled}
 
     def update_config(self, integration_id: str, config_updates: dict) -> dict:
@@ -114,10 +112,14 @@ class IntegrationManager:
             raise KeyError(integration_id)
         if not isinstance(config_updates, dict):
             raise ValueError("Config updates must be a dictionary")
-        current = self._config.setdefault(integration_id, {})
-        current.update(config_updates)
-        self._persist_state()
         manifest = self._providers[integration_id].manifest
+        updates = deepcopy(config_updates)
+        def merge(state):
+            current = state.setdefault("config", {}).setdefault(integration_id, {})
+            current.update({key: value for key, value in updates.items()
+                            if not (key in manifest.secret_config_keys and value == "***")})
+            return state
+        current = self._store.update(merge)["config"][integration_id]
         return {"id": integration_id, "config": self._safe_config(manifest, current)}
 
     def run(self, integration_id: str, payload: dict) -> dict:
@@ -125,14 +127,18 @@ class IntegrationManager:
         if provider is None:
             raise KeyError(integration_id)
 
-        if not self._enabled.get(integration_id, False):
+        enabled, config = self._snapshot(integration_id)
+        if not enabled:
             result = {"success": False, "message": "Integration ist deaktiviert"}
             self._append_history(integration_id, payload, result)
             return result
 
-        config = self._config.get(integration_id, {})
+        if provider.manifest.planned:
+            result = {"success": False, "message": "Adapter noch nicht implementiert; keine externe Aktion ausgeführt", "details": {"planned": True, "implemented": False}}
+            self._append_history(integration_id, payload, result)
+            return result
         validation = self.validate_config(integration_id, config)
-        if not validation.get("valid"):
+        if integration_id != "email" and not validation.get("valid"):
             result = {
                 "success": False,
                 "message": validation.get("message", "Ungültige Konfiguration"),
@@ -160,11 +166,10 @@ class IntegrationManager:
         return {"id": integration_id, "cleared": count}
 
     def get_metrics(self) -> dict:
-        total = len(self._providers)
-        enabled = sum(1 for k in self._providers if self._enabled.get(k, False))
-        configured = sum(
-            1 for k, provider in self._providers.items() if provider.is_configured(self._config.get(k, {}))
-        )
+        rows = self.list_integrations()
+        total = len(rows)
+        enabled = sum(row["enabled"] for row in rows)
+        configured = sum(row["configured"] for row in rows)
         runs_total = sum(len(v) for v in self._history.values())
         successful = sum(1 for runs in self._history.values() for r in runs if r.success)
         failed = runs_total - successful
@@ -183,32 +188,29 @@ class IntegrationManager:
             integration_id=integration_id,
             success=bool(result.get("success")),
             message=result.get("message", ""),
-            payload=payload,
-            details=result.get("details"),
+            payload={} if integration_id == "email" else self._safe_config(self._providers[integration_id].manifest, payload),
+            details=deepcopy(result.get("details")),
         )
         self._history[integration_id].append(record)
         if len(self._history[integration_id]) > 200:
             self._history[integration_id] = self._history[integration_id][-200:]
 
-    def _persist_state(self) -> None:
-        self._store.save({"enabled": self._enabled, "config": self._config})
+    def _snapshot(self, key: str) -> tuple[bool, dict]:
+        state = self._store.load()
+        return (state.get("enabled", {}).get(key, self._providers[key].manifest.enabled_by_default),
+                deepcopy(state.get("config", {}).get(key, {})))
+
+    @property
+    def _config(self) -> dict:
+        """Compatibility read view; persisted state remains authoritative."""
+        return deepcopy(self._store.load().get("config", {}))
 
     def _load_state(self) -> None:
-        state = self._store.load()
-        enabled = state.get("enabled", {}) if isinstance(state, dict) else {}
-        config = state.get("config", {}) if isinstance(state, dict) else {}
-        if isinstance(enabled, dict):
-            for integration_id, value in enabled.items():
-                if integration_id in self._providers and isinstance(value, bool):
-                    self._enabled[integration_id] = value
-        if isinstance(config, dict):
-            for integration_id, value in config.items():
-                if integration_id in self._providers and isinstance(value, dict):
-                    self._config[integration_id] = value
+        self._store.load()
 
     @staticmethod
     def _safe_config(manifest, config: dict) -> dict:
-        masked = dict(config)
+        masked = deepcopy(config)
         for key in manifest.secret_config_keys:
             if key in masked and masked[key]:
                 masked[key] = "***"
@@ -221,6 +223,8 @@ class IntegrationManager:
             return "Deaktiviert"
         if not configured:
             return "Konfiguration erforderlich"
+        if health.get("transport_checked") is False:
+            return "Konfiguriert; SMTP-Transport noch ungeprüft"
         if health_state in {"ok", "configured"}:
             return "Aktiv"
         return "Aktiv (eingeschränkt)"
@@ -232,4 +236,7 @@ _config_store = (
     else InMemoryIntegrationConfigStore()
 )
 integration_manager = IntegrationManager(store=_config_store)
+if isinstance(_config_store, JsonFileIntegrationConfigStore):
+    # Explicit startup bootstrap. Subsequent reads fail on a missing/damaged file.
+    _config_store.initialize()
 integration_manager.seed_defaults()

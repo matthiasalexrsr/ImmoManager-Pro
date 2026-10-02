@@ -1,10 +1,15 @@
 """Tests for Phase 6 advanced features: CSV export, DATEV, bank import, recurring tasks."""
 
+import sys
 from datetime import date
 
 import pytest
 from fastapi.responses import StreamingResponse
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
 
+from backend.db.bank_import_schema import ensure_bank_import_schema
+from backend.db.orm_models import Base
 from backend.dependencies import store
 from backend.models import (
     AccountCreate,
@@ -18,6 +23,7 @@ from backend.models import (
     TenantCreate,
     UnitCreate,
 )
+from backend.repositories.sql_store import SQLAlchemyStore
 from backend.routers.reports import (
     _csv_response,
     datev_export,
@@ -34,6 +40,37 @@ from backend.routers.tasks import (
     _parse_rrule,
     generate_recurring_tasks,
 )
+from backend.storage import InMemoryStore
+
+
+@pytest.fixture
+def isolated_bank_store(request, monkeypatch, tmp_path):
+    """Each legacy import owns its journal; production reset guards stay active."""
+    if request.cls is None or request.cls.__name__ != "TestBankImport":
+        yield None
+        return
+    from backend.routers import reports
+    engine = db = None
+    if hasattr(store, "db"):
+        engine = create_engine("sqlite:///" + (tmp_path / "legacy-bank.sqlite").as_posix())
+        Base.metadata.create_all(engine)
+        with engine.begin() as connection:
+            ensure_bank_import_schema(connection)
+        db = Session(engine)
+        owned = SQLAlchemyStore(db)
+    else:
+        owned = InMemoryStore()
+    monkeypatch.setattr(sys.modules[__name__], "store", owned)
+    monkeypatch.setattr(reports, "store", owned)
+    try:
+        yield owned
+    finally:
+        if db is not None:
+            db.close()
+            engine.dispose()
+        journal_engine = owned.__dict__.pop("_bank_import_engine", None)
+        if journal_engine is not None:
+            journal_engine.dispose()
 
 
 def _clear_store():
@@ -41,7 +78,10 @@ def _clear_store():
 
 
 @pytest.fixture(autouse=True)
-def _clear():
+def _clear(isolated_bank_store):
+    if isolated_bank_store is not None:
+        yield
+        return
     _clear_store()
     yield
     _clear_store()
@@ -123,38 +163,12 @@ class TestCSVExport:
 # === DATEV Export Tests ===
 
 class TestDATEVExport:
-    def test_datev_export_basic(self, _setup_data):
-        pf, prop, unit, tenant, contract, account, category = _setup_data
-        store.create_booking(BookingCreate(
-            account_id=account.id, booking_date=date(2024, 3, 15),
-            amount=800.0, payment_text="Miete März",
-            category_id=category.id
-        ))
-        store.create_booking(BookingCreate(
-            account_id=account.id, booking_date=date(2024, 3, 20),
-            amount=-150.0, payment_text="Reparatur"
-        ))
-        result = datev_export(start_date=None, end_date=None)
-        assert isinstance(result, StreamingResponse)
-        assert "EXTF_Buchungsstapel.csv" in result.headers["content-disposition"]
-
-    def test_datev_export_date_filter(self, _setup_data):
-        pf, prop, unit, tenant, contract, account, category = _setup_data
-        store.create_booking(BookingCreate(
-            account_id=account.id, booking_date=date(2024, 1, 15), amount=100.0
-        ))
-        store.create_booking(BookingCreate(
-            account_id=account.id, booking_date=date(2024, 6, 15), amount=200.0
-        ))
-        result = datev_export(
-            start_date=date(2024, 6, 1),
-            end_date=date(2024, 6, 30),
-        )
-        assert isinstance(result, StreamingResponse)
-
-    def test_datev_export_empty(self):
-        result = datev_export(start_date=None, end_date=None)
-        assert isinstance(result, StreamingResponse)
+    def test_legacy_unreviewed_export_has_explicit_migration_and_csv_alternative(self):
+        from fastapi import HTTPException
+        with pytest.raises(HTTPException) as error:
+            datev_export(start_date=None, end_date=None)
+        assert error.value.status_code == 410
+        assert "/datev" in error.value.detail and "/bookings/export.csv" in error.value.detail
 
 
 # === Bank Import Tests ===
@@ -172,8 +186,10 @@ class TestBankImport:
         pf, prop, unit, tenant, contract, account, category = _setup_data
         csv_data = "date;amount;text\ninvalid;abc;Bad row\n2024-01-20;800.00;Good row"
         result = import_bookings(account_id=account.id, csv_content=csv_data)
-        assert result["imported"] == 1
+        assert result["imported"] == 0
         assert result["errors"] == 1
+        assert store.list_bookings() == []
+        assert result["state"] == "invalid"
 
     def test_import_german_decimals(self, _setup_data):
         pf, prop, unit, tenant, contract, account, category = _setup_data

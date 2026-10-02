@@ -5,10 +5,14 @@ maintaining the same public API for backward compatibility with routers and test
 """
 
 import logging
+from typing import cast
 
+from fastapi import HTTPException
 from pydantic import BaseModel as PydanticBaseModel
+from sqlalchemy import Table, select
 from sqlalchemy.orm import Session
 
+from ..db.outbox_models import OutboxCommandORM, OutboxEventORM, OutboxMessageORM
 from ..models import (
     Account,
     AccountCreate,
@@ -127,11 +131,81 @@ class SQLAlchemyStore:
     def _commit(self):
         self.db.commit()
 
+    def record_payment(self, entity_type, entity_id, payload):
+        from .payment_repo import record_payment
+        return record_payment(self.db, entity_type, entity_id, payload)
+
+    def list_payments(self, entity_type=None, entity_id=None):
+        from .payment_repo import list_payments
+        return list_payments(self.db, entity_type, entity_id)
+
+    def import_payment(self, payment):
+        from .payment_repo import import_payment
+        return import_payment(self.db, payment)
+
+    def reverse_payment(self, entity_type, entity_id, payment_id, payload):
+        from .payment_repo import reverse_payment
+        return reverse_payment(self.db, entity_type, entity_id, payment_id, payload)
+
     def clear_all(self) -> None:
-        """Delete all rows from every mapped table. Used by tests to reset state."""
+        """Reset a test store only while no durable reviewed history exists."""
+        from ..services.portfolio_scope import require_installation_scope
+        require_installation_scope()
+        from ..db.bank_import_models import BANK_IMPORT_TABLES
         from ..db.orm_models import Base
-        for table in reversed(Base.metadata.sorted_tables):
+        from ..db.rent_batch_models import RENT_BATCH_TABLES, RentSourceRevisionORM
+        from ..services.annual_tax_storage import guard_destructive_reset as guard_annual_history
+        from ..services.bank_import_guards import guard_bank_import_reset
+        from ..services.contract_wizard import guard_destructive_reset as guard_contract_history
+        from ..services.form_drafts import guard_destructive_reset as guard_form_drafts
+        from ..services.payment_integrity import guard_contract_lifecycle_reset
+        # Durable reviewed content and factual transport history cannot be
+        # discarded by an ordinary business/test reset. Full offline recovery
+        # replaces the complete database through its separate explicit workflow.
+        def check_retained_history():
+            guard_contract_lifecycle_reset(self)
+            guard_contract_history(self)
+            guard_annual_history(self)
+            guard_bank_import_reset(self)
+            if any(self.db.scalar(select(model.id).limit(1)) is not None
+                    for model in (OutboxMessageORM, OutboxEventORM, OutboxCommandORM)):
+                self.db.rollback()
+                raise HTTPException(409, "outbox_history_exists: full offline recovery is required")
+
+        # Known retained evidence refuses before even the draft writer's no-op
+        # auth-row lock. Recheck after serialization, before business deletions.
+        check_retained_history()
+        if self.db.get_bind().dialect.name == "postgresql":
+            # Draft writers take auth management before locking their resource.
+            # A read-only table barrier keeps that order even if the permanent
+            # auth marker is absent, without writing it before history recheck.
+            self.db.connection().exec_driver_sql('LOCK TABLE "auth_setup" IN SHARE ROW EXCLUSIVE MODE')
+        guard_contract_lifecycle_reset(self, serialized=True)
+        check_retained_history()
+        guard_form_drafts(self)
+        check_retained_history()
+        # Snapshot IDs intentionally preserve historical references without
+        # foreign keys to live contracts. Remove them before their live sources.
+        # SQLAlchemy annotates Declarative __table__ as FromClause, although
+        # these mapped values are the concrete Tables required for DML.
+        snapshot_tables = tuple(cast(Table, table) for table in RENT_BATCH_TABLES)
+        bank_tables = tuple(cast(Table, table) for table in BANK_IMPORT_TABLES)
+        sidecar_tables = {table.name for table in (*snapshot_tables, *bank_tables)}
+        for table in reversed(bank_tables):
             self.db.execute(table.delete())
+        for table in reversed(snapshot_tables[1:]):
+            self.db.execute(table.delete())
+        for table in reversed(Base.metadata.sorted_tables):
+            if table.name in sidecar_tables:
+                continue
+            # Clearing an entire test/import store must remove correction leaves
+            # before roots because SQLite RESTRICT is checked row by row.
+            if table.name in {"billing_periods", "utility_statements"}:
+                source = "source_period_id" if table.name == "billing_periods" else "source_statement_id"
+                self.db.execute(table.update().values(**{source: None}))
+            self.db.execute(table.delete())
+        # Live-source DELETE triggers increment revisions during the reset.
+        self.db.execute(cast(Table, RentSourceRevisionORM.__table__).delete())
         self._commit()
 
     # ── Generic helpers (used by search, admin, etc.) ──
@@ -189,6 +263,29 @@ class SQLAlchemyStore:
 
     def _patch_entity(self, entity_type: str, entity_id: str, patch: PydanticBaseModel):
         """Apply a partial update using the entity type string to resolve the repository."""
+        if entity_type == "receivable" and type(patch).__name__ == "ReceivablePatch":
+            current = self.get_receivable(entity_id)
+            updates = patch.model_dump(exclude_unset=True)
+            data = ReceivableCreate(**{**current.model_dump(include=set(ReceivableCreate.model_fields)), **updates})
+            return self.update_receivable(entity_id, data)
+        if entity_type == "rent_charge" and type(patch).__name__ == "RentChargePatch":
+            current_charge = self.get_rent_charge(entity_id)
+            updates = patch.model_dump(exclude_unset=True)
+            charge_data = RentChargeCreate(**{**current_charge.model_dump(include=set(RentChargeCreate.model_fields)), **updates})
+            return self.update_rent_charge(entity_id, charge_data)
+        if entity_type == "rent_adjustment":
+            current_adjustment = self.get_rent_adjustment(entity_id)
+            adjustment_data = RentAdjustmentCreate(**{**current_adjustment.model_dump(include=set(RentAdjustmentCreate.model_fields)),
+                                                       **patch.model_dump(exclude_unset=True)})
+            return self.update_rent_adjustment(entity_id, adjustment_data)
+        billing_creates: dict[str, type[PydanticBaseModel]] = {"billing_period": BillingPeriodCreate, "cost_item": CostItemCreate,
+            "utility_statement": UtilityStatementCreate, "allocation_key": AllocationKeyCreate}
+        if entity_type in billing_creates:
+            current = getattr(self, f"get_{entity_type}")(entity_id)
+            create_type = billing_creates[entity_type]
+            updates = patch.model_dump(exclude_unset=True)
+            billing_data = create_type(**{**current.model_dump(include=set(create_type.model_fields)), **updates})
+            return getattr(self, f"update_{entity_type}")(entity_id, billing_data)
         repo = self._resolve_repo(entity_type)
         result = repo.patch(entity_id, patch)
         self._commit()

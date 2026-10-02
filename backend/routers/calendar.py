@@ -1,7 +1,15 @@
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+from ..auth import require_auth
 from ..dependencies import store
 from ..models import CalendarEvent, CalendarEventCreate, CalendarEventPatch
+from ..services.calendar_ical import (
+    CalendarExportError,
+    calendar_chunk_scope_guard,
+    prepare_calendar_download,
+    revalidate_calendar_download,
+)
+from ..services.operational_schedule import CalendarScheduleInput, configure_calendar, list_schedules
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/calendar", tags=["Kalender"])
@@ -22,12 +30,69 @@ def list_calendar_events(
     return results[skip : skip + limit]
 
 
+@router.get("/export.ics", response_model=None)
+def export_calendar(
+    portfolio_id: str = Query(..., min_length=1),
+    _user=Depends(require_auth),
+):
+    try:
+        compiled, captured = prepare_calendar_download(store, portfolio_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Portfolio nicht gefunden") from exc
+    except CalendarExportError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": exc.code, "message": exc.message},
+        ) from exc
+
+    try:
+        from ..services.portfolio_scope import refresh_scope
+        from .datev import PrivateDownloadResponse
+
+        revalidate_calendar_download(store, compiled, captured)
+        refresh_scope(captured)
+        body_guard = calendar_chunk_scope_guard(store, compiled, captured)
+        return PrivateDownloadResponse(
+            compiled,
+            captured,
+            before_start=lambda: revalidate_calendar_download(
+                store, compiled, captured
+            ),
+            before_chunk=body_guard,
+            media_type="text/calendar",
+            headers={
+                "Content-Type": "text/calendar; charset=utf-8",
+                "Content-Disposition": 'attachment; filename="immomanager-calendar.ics"',
+                "Content-Length": str(compiled.manifest["size"]),
+                "X-Content-SHA256": compiled.manifest["sha256"],
+                "Cache-Control": "private, no-store",
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
+    except BaseException:
+        compiled.close()
+        raise
+
+
 @router.post("", response_model=CalendarEvent, status_code=status.HTTP_201_CREATED)
 def create_calendar_event(payload: CalendarEventCreate) -> CalendarEvent:
     try:
         return store.create_calendar_event(payload)
     except ValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.get("/schedules", response_model=None)
+def calendar_schedules():
+    return list_schedules(store, "calendar")
+
+
+@router.put("/{event_id}/schedule", response_model=None)
+def set_calendar_schedule(event_id: str, payload: CalendarScheduleInput):
+    try:
+        return configure_calendar(store, event_id, payload)
+    except (NotFoundError, ValidationError) as exc:
+        raise HTTPException(404 if isinstance(exc, NotFoundError) else 400, str(exc)) from exc
 
 
 @router.get("/{event_id}", response_model=CalendarEvent)

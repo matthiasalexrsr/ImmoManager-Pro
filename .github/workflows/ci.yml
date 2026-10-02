@@ -24,7 +24,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20.19.0'
+          node-version: '24.21.0'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Install frontend dependencies
@@ -59,10 +59,53 @@ jobs:
           pip install ruff pytest-cov mypy pip-audit
       - name: Lint (ruff)
         if: matrix.store-backend == 'memory'
-        run: ruff check backend
+        run: ruff check backend scripts/backup_scheduler.py scripts/windows_ocr_tools.py
       - name: Type check (mypy)
         if: matrix.store-backend == 'memory'
-        run: mypy backend/app.py backend/domain backend/repositories --ignore-missing-imports
+        run: >-
+          mypy backend/app.py backend/domain backend/repositories backend/plugins
+          backend/auth.py backend/dependencies.py backend/middleware.py backend/static_access.py
+          backend/console_encoding.py backend/logging_config.py
+          backend/ocr_configuration.py backend/runtime_environment.py backend/__main__.py
+          backend/services/ocr_service.py backend/services/ocr_process_tree.py backend/services/ocr_image_worker.py
+          backend/routers/documents.py backend/routers/files.py scripts/ocr_native_gate.py
+          scripts/private_server_backup.py scripts/configure_private_server.py scripts/private_server_smoke.py
+          backend/settings.py backend/recovery.py backend/services/full_recovery.py
+          backend/services/operational_metrics.py backend/routers/operational_metrics.py
+          backend/db/document_version_models.py backend/services/document_versions.py
+          backend/services/document_version_types.py backend/services/document_version_guards.py
+          backend/services/document_version_validation.py
+          backend/services/tenant_document_versions.py backend/routers/document_versions.py
+          backend/services/calendar_ical.py backend/routers/calendar.py backend/routers/datev.py
+          backend/db/contract_lifecycle_models.py backend/services/contract_lifecycle.py
+          backend/services/contract_lifecycle_types.py backend/services/contract_lifecycle_validation.py
+          backend/routers/contract_lifecycle.py
+          backend/services/contract_workspace.py backend/services/contract_workspace_search.py
+          backend/services/contract_workspace_types.py backend/routers/contract_workspace.py
+          backend/invoice_schema_upgrade.py backend/credit_schema_upgrade.py
+          backend/db/sqlite_table_preservation.py
+          backend/services/recovery_sessions.py scripts/restore_session_security.py
+          backend/services/recovery_archive.py backend/services/recovery_validation.py
+          backend/services/data_transfer.py backend/services/payments.py backend/services/payment_integrity.py
+          backend/services/auth_sessions.py backend/db/session_models.py
+          backend/tax_models.py backend/db/tax_models.py backend/routers/annual_tax.py
+          backend/services/annual_tax_export.py backend/services/annual_tax_source.py
+          backend/services/annual_tax_projection.py backend/services/annual_tax_storage.py
+          backend/db/bank_import_models.py backend/db/bank_import_schema.py
+          backend/services/bank_import_parser.py backend/services/bank_import.py backend/routers/bank_imports.py
+          backend/services/bank_import_download.py backend/db/contract_wizard_models.py
+          backend/services/contract_wizard.py backend/services/contract_wizard_types.py
+          backend/services/contract_occupancy.py backend/services/contract_attachment.py backend/routers/contract_wizard.py
+          backend/services/account_balances.py backend/routers/accounts.py backend/services/contract_list.py
+          backend/services/bank_matching.py backend/routers/bank_matching.py
+          backend/services/payment_history.py backend/form_draft_models.py backend/db/form_draft_models.py
+          backend/services/form_draft_crypto.py backend/services/form_drafts.py backend/routers/form_drafts.py
+          backend/services/tenant_wizard_graph.py backend/services/tenant_private_draft_guard.py backend/services/tenant_privacy.py
+          backend/services/tenant_lifecycle_graph.py
+          backend/services/invoice_list.py backend/services/invoice_payment_schema.py
+          backend/services/rent_ledger.py backend/services/billing_settlement.py backend/services/report_service.py
+          backend/routers/billing.py backend/frontend_build.py backend/updater.py backend/maintenance.py
+          scripts/backup_scheduler.py scripts/windows_ocr_tools.py --ignore-missing-imports
       - name: Security audit (pip-audit)
         if: matrix.store-backend == 'memory'
         run: pip-audit -r requirements.txt --strict --desc
@@ -74,6 +117,34 @@ jobs:
         if: matrix.store-backend == 'memory'
         run: python -c "from backend.app import app; print('App imports OK')"
 
+  ocr-native:
+    name: Required native OCR (Linux Poppler + Tesseract deu/eng)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install actual native OCR tools and languages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends poppler-utils tesseract-ocr tesseract-ocr-deu tesseract-ocr-eng
+          python -m pip install -r requirements.txt 'Pillow>=10.4.0'
+      - name: Exercise native OCR and process cleanup with Memory
+        run: python scripts/ocr_native_gate.py --store memory --output work/ocr-native
+      - name: Exercise native OCR and process cleanup with SQLite
+        run: python scripts/ocr_native_gate.py --store sql --output work/ocr-native
+      - name: Preserve native toolchain and actual executed test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: required-native-ocr
+          path: work/ocr-native/
+          if-no-files-found: error
+          retention-days: 7
+
   e2e-smoke:
     name: E2E smoke (docker-compose)
     runs-on: ubuntu-latest
@@ -83,23 +154,174 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20.19.0'
+          node-version: '24.21.0'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Run E2E smoke checks
         run: bash scripts/e2e_smoke.sh
 
+  postgres-concurrency:
+    name: PostgreSQL independent sessions and processes
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: immo_ci
+          POSTGRES_PASSWORD: isolated_test_database
+          POSTGRES_DB: immo_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U immo_ci -d immo_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install application dependencies
+        id: pg_dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Exercise actual PostgreSQL locks, budgets and process uniqueness
+        env:
+          TEST_SERVER_DATABASE_URL: postgresql://immo_ci:isolated_test_database@127.0.0.1:5432/immo_ci
+        run: pytest backend/tests/test_private_server_concurrency.py backend/tests/test_server_admin.py backend/tests/test_edit_concurrency.py backend/tests/test_operational_postgres.py backend/tests/test_effective_rent_adjustments.py backend/tests/test_booking_pages_postgres.py backend/tests/test_iban_encryption_postgres.py backend/tests/test_credit_concurrency.py backend/tests/test_portfolio_access_postgres.py backend/tests/test_datev_postgres.py backend/tests/test_rent_batches_postgres.py backend/tests/test_booking_scope.py -q --tb=short
+
+      - name: Verify durable manual SMTP claims on PostgreSQL
+        if: ${{ !cancelled() && steps.pg_dependencies.outcome == 'success' }}
+        env:
+          TEST_SERVER_DATABASE_URL: postgresql://immo_ci:isolated_test_database@127.0.0.1:5432/immo_ci
+        run: pytest backend/tests/test_outbox_postgres.py -q --tb=short
+
+      - name: Verify retained annual evidence, account sessions and bank imports on PostgreSQL
+        if: ${{ !cancelled() && steps.pg_dependencies.outcome == 'success' }}
+        env:
+          TEST_SERVER_DATABASE_URL: postgresql://immo_ci:isolated_test_database@127.0.0.1:5432/immo_ci
+        run: pytest backend/tests/test_annual_tax_postgres.py backend/tests/test_auth_sessions_postgres.py backend/tests/test_bank_imports_postgres.py backend/tests/test_restore_session_security.py::test_pg_offline_restore_streams_ciphertexts_rolls_back_then_revokes_without_dropping_receipts -q --tb=short
+
+      - name: Verify reviewed contracts, shared occupancy and account snapshots on PostgreSQL
+        if: ${{ !cancelled() && steps.pg_dependencies.outcome == 'success' }}
+        env:
+          TEST_SERVER_DATABASE_URL: postgresql://immo_ci:isolated_test_database@127.0.0.1:5432/immo_ci
+        run: pytest backend/tests/test_contract_wizard_postgres.py backend/tests/test_tenant_wizard_privacy_postgres.py backend/tests/test_account_balances.py::test_pg_real_repeatable_read_and_current_parent_checks -q --tb=short
+
+      - name: Verify reviewed bank matches and receipt schema preservation on PostgreSQL
+        if: ${{ !cancelled() && steps.pg_dependencies.outcome == 'success' }}
+        env:
+          TEST_SERVER_DATABASE_URL: postgresql://immo_ci:isolated_test_database@127.0.0.1:5432/immo_ci
+        run: pytest backend/tests/test_bank_matching_postgres.py backend/tests/test_bank_matching_schema_recovery.py -q --tb=short
+
+      - name: Verify private encrypted draft conflicts on PostgreSQL
+        if: ${{ !cancelled() && steps.pg_dependencies.outcome == 'success' }}
+        env:
+          TEST_SERVER_DATABASE_URL: postgresql://immo_ci:isolated_test_database@127.0.0.1:5432/immo_ci
+        run: pytest backend/tests/test_form_drafts.py::test_actual_postgresql_independent_draft_cas_and_raw_ciphertext backend/tests/test_form_drafts_postgres.py -q --tb=short
+
+      - name: Verify immutable document versions and independent writer conflicts on PostgreSQL
+        if: ${{ !cancelled() && steps.pg_dependencies.outcome == 'success' }}
+        env:
+          TEST_SERVER_DATABASE_URL: postgresql://immo_ci:isolated_test_database@127.0.0.1:5432/immo_ci
+        run: >-
+          pytest backend/tests/test_document_versions_postgres.py
+          backend/tests/test_document_version_recovery_postgres.py -q --tb=short
+
+      - name: Verify coherent calendar export snapshots on PostgreSQL
+        if: ${{ !cancelled() && steps.pg_dependencies.outcome == 'success' }}
+        env:
+          TEST_SERVER_DATABASE_URL: postgresql://immo_ci:isolated_test_database@127.0.0.1:5432/immo_ci
+        run: >-
+          pytest backend/tests/test_calendar_ical_compiled_export.py::test_postgresql_repeatable_read_calendar_snapshot
+          backend/tests/test_calendar_ical_compiled_export.py::test_postgresql_scope_move_between_body_blocks_is_blocked -q --tb=short
+
+      - name: Verify reviewed contract lifecycle and ordinary writer integration on PostgreSQL
+        if: ${{ !cancelled() && steps.pg_dependencies.outcome == 'success' }}
+        env:
+          TEST_SERVER_DATABASE_URL: postgresql://immo_ci:isolated_test_database@127.0.0.1:5432/immo_ci
+        run: >-
+          pytest backend/tests/test_contract_lifecycle_postgres.py
+          backend/tests/test_contract_lifecycle_integration_postgres.py
+          backend/tests/test_tenant_lifecycle_privacy_postgres.py -q --tb=short
+
+      - name: Verify bounded Unicode contract workspace pages on PostgreSQL
+        if: ${{ !cancelled() && steps.pg_dependencies.outcome == 'success' }}
+        env:
+          TEST_SERVER_DATABASE_URL: postgresql://immo_ci:isolated_test_database@127.0.0.1:5432/immo_ci
+        run: pytest backend/tests/test_contract_workspace_postgres.py -q --tb=short
+
+  browser-e2e:
+    name: Browser workflows (Chromium + SQLite)
+    runs-on: ubuntu-latest
+    # Dependency/browser installation and both real workflow suites share this
+    # job budget. Assertion and individual workflow timeouts remain unchanged.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.21.0'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install application and browser dependencies
+        run: |
+          python -m pip install -r requirements.txt
+          npm ci --prefix frontend
+          cd frontend
+          npx playwright install --with-deps chromium
+      - name: Test real browser workflows
+        working-directory: frontend
+        run: npm run test:e2e
+      - name: Test owner setup and two-factor login on an empty installation
+        working-directory: frontend
+        run: npm run test:e2e -- --fresh-install
+      - name: Upload browser report, screenshots, traces and server log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-e2e-report
+          path: |
+            frontend/playwright-report/
+            frontend/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  private-server:
+    name: Private PostgreSQL server lifecycle
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify the production container with synthetic data
+        run: |
+          python -m pip install 'cryptography>=44.0.0'
+          python scripts/private_server_smoke.py
+
   deploy-readiness:
     name: Deployment readiness
     runs-on: ubuntu-latest
-    needs: [frontend, backend, e2e-smoke]
+    needs: [frontend, backend, ocr-native, e2e-smoke, browser-e2e, postgres-concurrency, private-server]
     if: ${{ always() }}
     steps:
       - name: Gate on pipeline status
         run: |
           if [ "${{ needs.frontend.result }}" != "success" ] || \
              [ "${{ needs.backend.result }}" != "success" ] || \
-             [ "${{ needs.e2e-smoke.result }}" != "success" ]; then
+             [ "${{ needs.ocr-native.result }}" != "success" ] || \
+             [ "${{ needs.e2e-smoke.result }}" != "success" ] || \
+             [ "${{ needs.browser-e2e.result }}" != "success" ] || \
+             [ "${{ needs.postgres-concurrency.result }}" != "success" ] || \
+             [ "${{ needs.private-server.result }}" != "success" ]; then
             echo "Pipeline not deployment-ready"
             exit 1
           fi

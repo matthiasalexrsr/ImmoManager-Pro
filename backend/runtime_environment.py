@@ -1,0 +1,118 @@
+"""Persist runtime defaults atomically before they can encrypt business data.
+
+This module deliberately imports no application settings during launcher setup.
+"""
+import errno
+import importlib
+import os
+import re
+import stat
+import threading
+import time
+from contextlib import contextmanager
+from pathlib import Path
+from typing import Any
+from uuid import uuid4
+
+_guard = threading.Lock()
+_locks: dict[str, Any] = {}
+
+
+class RuntimeConfigurationError(RuntimeError):
+    pass
+
+
+def _regular(path, missing_ok=False):
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        if missing_ok:
+            return None
+        raise
+    if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+            or getattr(info, "st_file_attributes", 0) & 0x400):
+        raise RuntimeConfigurationError("Unsichere Runtime-Datei. Pfad und Dateityp lokal prüfen.")
+    return info
+
+
+@contextmanager
+def _locked(path):
+    lock_path = path.with_name(path.name + ".lock")
+    with _guard:
+        lock = _locks.setdefault(os.path.normcase(str(path)), threading.RLock())
+    with lock:
+        _regular(lock_path, missing_ok=True)
+        fd = os.open(lock_path, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        try:
+            named, opened = _regular(lock_path), os.fstat(fd)
+            if (opened.st_dev, opened.st_ino) != (named.st_dev, named.st_ino):
+                raise RuntimeConfigurationError("Runtime-Sperrdatei wurde verändert. Erneut starten.")
+            if opened.st_size == 0:
+                os.write(fd, b"\0")
+            deadline = time.monotonic() + 10
+            while True:
+                try:
+                    os.lseek(fd, 0, os.SEEK_SET)
+                    if os.name == "nt":
+                        msvcrt = importlib.import_module("msvcrt")
+                        msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+                    else:
+                        fcntl = importlib.import_module("fcntl")
+                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except OSError as exc:
+                    if exc.errno not in {errno.EACCES, errno.EAGAIN, errno.EINTR}:
+                        raise
+                    if time.monotonic() >= deadline:
+                        raise RuntimeConfigurationError("Runtime-Konfiguration ist belegt. Anderen Start abschließen und erneut starten.") from None
+                    time.sleep(0.02)
+            yield
+        finally:
+            os.close(fd)
+
+
+def persist_default(config_file, key, proposed, *, persist_existing=False):
+    if not re.fullmatch(r"[A-Z][A-Z0-9_]*", key) or any(c in proposed for c in "\0\r\n"):
+        raise RuntimeConfigurationError("Ungültiger Runtime-Konfigurationswert.")
+    current = os.environ.get(key)
+    if current and current != "dev-secret-key-change-in-production":
+        if not persist_existing:
+            return current
+        proposed = current
+    path = Path(config_file).absolute()
+    temporary = path.with_name(path.name + "." + uuid4().hex + ".tmp")
+    try:
+        with _locked(path):
+            info = _regular(path, missing_ok=True)
+            existing = path.read_text(encoding="utf-8") if info else ""
+            matches = [line.partition("=")[2].strip().strip('"').strip("'")
+                       for line in existing.splitlines() if line.startswith(key + "=")]
+            if len(matches) > 1:
+                raise RuntimeConfigurationError("Doppelte Runtime-Schlüssel. Konfigurationsdatei lokal bereinigen.")
+            if matches and matches[0] == proposed:
+                os.environ[key] = proposed
+                return proposed
+            if matches and matches[0] and matches[0] != "dev-secret-key-change-in-production" and (not persist_existing or not current):
+                os.environ[key] = matches[0]
+                return matches[0]
+            lines = [line for line in existing.splitlines() if not line.startswith(key + "=")]
+            lines.append(key + "=" + proposed)
+            # The exclusive file has a verified private ACL before secret bytes.
+            from scripts.private_server_backup import protected_new_file
+            with protected_new_file(temporary) as output:
+                output.write(("\n".join(lines) + "\n").encode("utf-8"))
+            if info:
+                current_info = _regular(path)
+                if (current_info.st_dev, current_info.st_ino, current_info.st_mtime_ns, current_info.st_size) != (
+                        info.st_dev, info.st_ino, info.st_mtime_ns, info.st_size):
+                    raise RuntimeConfigurationError("Runtime-Konfiguration wurde verändert. Erneut starten.")
+            elif os.path.lexists(path):
+                raise RuntimeConfigurationError("Runtime-Konfiguration wurde parallel angelegt. Erneut starten.")
+            os.replace(temporary, path)
+            os.environ[key] = proposed
+            return proposed
+    except (OSError, ValueError) as exc:
+        raise RuntimeConfigurationError("Runtime-Konfiguration konnte nicht dauerhaft gespeichert werden. Freien Speicher und Dateirechte prüfen, dann erneut starten.") from exc
+    finally:
+        temporary.unlink(missing_ok=True)
+

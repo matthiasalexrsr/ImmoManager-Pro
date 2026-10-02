@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
+import './components/AppShell.css'
 import App from './App.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 import { ToastProvider } from './components/Toast.jsx'
@@ -15,8 +16,8 @@ createRoot(document.getElementById('root')).render(
   <StrictMode>
     <ErrorBoundary>
       <I18nProvider>
-        <PreferencesProvider>
-          <AuthProvider>
+        <AuthProvider>
+          <PreferencesProvider>
             <DataStoreProvider>
               <DevModeProvider>
                 <ToastProvider>
@@ -26,8 +27,8 @@ createRoot(document.getElementById('root')).render(
                 </ToastProvider>
               </DevModeProvider>
             </DataStoreProvider>
-          </AuthProvider>
-        </PreferencesProvider>
+          </PreferencesProvider>
+        </AuthProvider>
       </I18nProvider>
     </ErrorBoundary>
   </StrictMode>,

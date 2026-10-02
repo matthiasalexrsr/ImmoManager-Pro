@@ -1,13 +1,13 @@
+import useWriteAccess from '../../hooks/useWriteAccess';
 import { useState } from 'react';
 import { useTranslation } from '../../i18n';
-import { useToast } from '../../components/Toast';
 import { useConfirm } from '../../components/ConfirmDialog';
 import { api } from '../../api';
 
 export default function UpdateSection({ versionInfo }) {
   const { t } = useTranslation();
-  const toast = useToast();
   const confirm = useConfirm();
+  const { canWrite, isAllowed } = useWriteAccess('/updates');
 
   const [updateInfo, setUpdateInfo] = useState(null);
   const [updateChecking, setUpdateChecking] = useState(false);
@@ -21,6 +21,7 @@ export default function UpdateSection({ versionInfo }) {
   };
 
   const checkForUpdates = async () => {
+    if (!isAllowed()) return;
     setUpdateChecking(true);
     setUpdateInfo(null);
     setUpdateResult(null);
@@ -35,17 +36,24 @@ export default function UpdateSection({ versionInfo }) {
   };
 
   const applyUpdate = async () => {
+    if (!isAllowed()) return;
     if (!await confirm(tr('settings.update.confirmApply', 'Update jetzt anwenden? Es wird automatisch ein Backup erstellt.'))) return;
+    if (!isAllowed()) return;
     setUpdateApplying(true);
     setUpdateResult(null);
     try {
       const data = await api.post('/updates/apply', {
         target_version: updateInfo?.latest_version || null,
       });
-      setUpdateResult(data);
-      if (data.restart_required) {
-        api.post('/updates/restart').catch(() => { toast.error('Neustart konnte nicht ausgelöst werden'); });
+      let restart;
+      if (isAllowed() && data.success && data.restart_required) {
+        try {
+          restart = await api.post('/updates/restart');
+        } catch (error) {
+          restart = { restart_signaled: false, message: error.message || tr('settings.update.restartRequired', 'Bitte starten Sie die Anwendung neu.') };
+        }
       }
+      setUpdateResult({ ...data, restart });
     } catch (err) {
       setUpdateResult({ success: false, message: err.message || 'Update fehlgeschlagen' });
     } finally {
@@ -54,6 +62,7 @@ export default function UpdateSection({ versionInfo }) {
   };
 
   const loadUpdateHistory = async () => {
+    if (!isAllowed()) return;
     try {
       const data = await api.get('/updates/history');
       setUpdateHistory(data.history || []);
@@ -62,6 +71,7 @@ export default function UpdateSection({ versionInfo }) {
     }
   };
 
+  if (!canWrite) return null;
   return (
     <div className="panel">
       <div className="panel-header">{tr('settings.update.title', 'Updates')}</div>
@@ -148,7 +158,7 @@ export default function UpdateSection({ versionInfo }) {
                   <button
                     className="btn btn-sm btn-primary"
                     onClick={applyUpdate}
-                    disabled={updateApplying || updateInfo.is_frozen}
+                    disabled={updateApplying || updateInfo.is_frozen || updateInfo.live_apply_supported === false}
                     title={updateInfo.is_frozen ? 'Im Bundle-Modus nicht verfügbar' : ''}
                   >
                     {updateApplying
@@ -165,6 +175,9 @@ export default function UpdateSection({ versionInfo }) {
             )}
           </>
         )}
+        {updateInfo?.live_apply_supported === false && <p role="status">
+          {updateInfo.maintenance_hint || tr('settings.update.maintenanceOnly', 'Updates erfordern die gestoppte Anwendung und den Wartungsbefehl. Die Updateprüfung bleibt hier verfügbar.')}
+        </p>}
 
         {updateInfo?.error && (
           <div className="settings-row">
@@ -207,7 +220,7 @@ export default function UpdateSection({ versionInfo }) {
                   borderRadius: '4px',
                   fontSize: '0.85rem',
                 }}>
-                  {tr('settings.update.restartRequired', 'Bitte starten Sie die Anwendung neu, um das Update zu aktivieren.')}
+                  {updateResult.restart?.message || tr('settings.update.restartRequired', 'Bitte starten Sie die Anwendung neu, um das Update zu aktivieren.')}
                 </span>
               )}
               {updateResult.rollback_performed && (
@@ -219,9 +232,12 @@ export default function UpdateSection({ versionInfo }) {
                   borderRadius: '4px',
                   fontSize: '0.85rem',
                 }}>
-                  {tr('settings.update.rolledBack', 'Automatischer Rollback wurde durchgeführt. Ihre Daten sind unverändert.')}
+                  {tr('settings.update.rolledBack', 'Der vorherige Code wurde wiederhergestellt. Prüfen Sie die Wiederherstellungsschritte.')}
                 </span>
               )}
+              {updateResult.manual_recovery_required && <p role="alert">
+                {tr('settings.update.manualRecovery', 'Die Wiederherstellung ist unvollständig. Stoppen Sie die Anwendung und folgen Sie den Wiederherstellungsschritten.')}
+              </p>}
             </div>
           </div>
         )}

@@ -10,16 +10,25 @@ import hmac
 import logging
 import secrets
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from threading import RLock
+from typing import Optional, cast
 from uuid import uuid4
 
+import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError, jwt
-from sqlalchemy.exc import SQLAlchemyError
+from jwt.exceptions import InvalidTokenError as JWTError
+from pydantic import ValidationError as PydanticValidationError
+from sqlalchemy import update
+from sqlalchemy.engine import CursorResult
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from .config import settings
+from .db.access_models import UserAccessORM, UserPortfolioORM
+from .db.auth_models import AuthSetupORM
 from .models import TokenPayload, UserRead
 
 logger = logging.getLogger(__name__)
@@ -110,12 +119,18 @@ security = HTTPBearer(auto_error=False)
 
 # Token blacklist for logout/revocation
 _token_blacklist: set[str] = set()
-_blacklist_expiry: dict[str, datetime] = {}  # token -> expiry time for cleanup
+_blacklist_expiry: dict[str, datetime] = {}  # fingerprint -> expiry time for cleanup
 _MAX_BLACKLIST_SIZE = 10_000
 _MAX_LOGIN_ATTEMPT_KEYS = 10_000
 
 # DB-backed session factory for auth security state (set by enable_sql_auth_state)
-_auth_session_factory = None
+_auth_session_factory: Callable[[], Session] | None = None
+
+
+def _auth_session() -> Session:
+    if _auth_session_factory is None:
+        raise RuntimeError("SQL authentication has not been configured")
+    return _auth_session_factory()
 
 # Number of PBKDF2 iterations (OWASP recommended minimum for SHA-256)
 _PBKDF2_ITERATIONS = 600_000
@@ -152,7 +167,7 @@ def check_login_rate_limit(username: str) -> bool:
 def _check_login_rate_limit_db(username: str) -> bool:
     """DB-backed rate limit check."""
     from .db.orm_models import LoginAttemptORM
-    session = _auth_session_factory()
+    session = _auth_session()
     try:
         cutoff = datetime.now(timezone.utc) - timedelta(minutes=LOCKOUT_DURATION_MINUTES)
         count = session.query(LoginAttemptORM).filter(
@@ -199,7 +214,7 @@ def _evict_oldest_login_attempts() -> None:
 def _record_login_attempt_db(username: str, *, success: bool) -> None:
     """Persist a login attempt to the database."""
     from .db.orm_models import LoginAttemptORM
-    session = _auth_session_factory()
+    session = _auth_session()
     try:
         session.add(LoginAttemptORM(username=username, success=success))
         session.commit()
@@ -215,7 +230,7 @@ def clear_login_attempts(username: str) -> None:
     _login_attempts.pop(username, None)
     if _auth_session_factory is not None:
         from .db.orm_models import LoginAttemptORM
-        session = _auth_session_factory()
+        session = _auth_session()
         try:
             session.query(LoginAttemptORM).filter(
                 LoginAttemptORM.username == username,
@@ -263,7 +278,7 @@ def verify_totp(secret: str, code: str) -> bool:
     import struct
     import time
 
-    if not code or len(code) != 6 or not code.isdigit():
+    if not isinstance(code, str) or len(code) != 6 or not code.isdigit():
         return False
 
     import base64
@@ -326,20 +341,28 @@ def revoke_token(token: str) -> None:
     _cleanup_blacklist()
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("sid") is not None:
+            from .services.auth_sessions import revoke_from_token
+            revoke_from_token(token)
+            return
         exp = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
-        _token_blacklist.add(token)
-        _blacklist_expiry[token] = exp
         # Also persist to DB for cross-restart durability
         if _auth_session_factory is not None:
             _revoke_token_db(token, exp)
-    except JWTError:
+        token_hash = _token_jti(token)
+        _token_blacklist.add(token_hash)
+        _blacklist_expiry[token_hash] = exp
+    except (JWTError, TypeError, ValueError, KeyError):
         pass
 
 
 def _revoke_token_db(token: str, expires_at: datetime) -> None:
     """Persist token revocation to the database."""
     from .db.orm_models import RevokedTokenORM
-    session = _auth_session_factory()
+    try:
+        session = _auth_session()
+    except Exception:
+        raise HTTPException(503, "Tokenwiderruf ist derzeit nicht verfügbar.") from None
     try:
         jti = _token_jti(token)
         exists = session.query(RevokedTokenORM).filter(
@@ -350,15 +373,22 @@ def _revoke_token_db(token: str, expires_at: datetime) -> None:
             session.commit()
     except SQLAlchemyError:
         session.rollback()
-        logger.warning("Failed to persist token revocation to DB", exc_info=True)
+        raise HTTPException(503, "Tokenwiderruf ist derzeit nicht verfügbar.") from None
     finally:
         session.close()
 
 
 def is_token_revoked(token: str) -> bool:
     """Check if a token has been revoked."""
-    if token in _token_blacklist:
+    if _token_jti(token) in _token_blacklist:
         return True
+    try:
+        claims = decode_signed_token(token)
+    except HTTPException:
+        claims = None
+    if claims is not None and claims.sid is not None:
+        from .services.auth_sessions import token_revoked
+        return token_revoked(claims, token)
     # Check DB if available
     if _auth_session_factory is not None:
         return _is_token_revoked_db(token)
@@ -368,7 +398,10 @@ def is_token_revoked(token: str) -> bool:
 def _is_token_revoked_db(token: str) -> bool:
     """Check DB for revoked token."""
     from .db.orm_models import RevokedTokenORM
-    session = _auth_session_factory()
+    try:
+        session = _auth_session()
+    except Exception:
+        raise HTTPException(503, "Tokenprüfung ist derzeit nicht verfügbar.") from None
     try:
         jti = _token_jti(token)
         found = session.query(RevokedTokenORM).filter(
@@ -376,12 +409,12 @@ def _is_token_revoked_db(token: str) -> bool:
         ).first()
         if found:
             # Cache in memory so subsequent checks are fast
-            _token_blacklist.add(token)
+            _token_blacklist.add(jti)
+            _blacklist_expiry[jti] = found.expires_at.replace(tzinfo=timezone.utc)
             return True
         return False
     except SQLAlchemyError:
-        logger.warning("DB token revocation check failed", exc_info=True)
-        return False
+        raise HTTPException(503, "Tokenprüfung ist derzeit nicht verfügbar.") from None
     finally:
         session.close()
 
@@ -408,7 +441,7 @@ def _cleanup_blacklist() -> None:
 def _cleanup_blacklist_db() -> None:
     """Remove expired revoked tokens from the database."""
     from .db.orm_models import RevokedTokenORM
-    session = _auth_session_factory()
+    session = _auth_session()
     try:
         session.query(RevokedTokenORM).filter(
             RevokedTokenORM.expires_at < datetime.now(timezone.utc)
@@ -421,28 +454,58 @@ def _cleanup_blacklist_db() -> None:
         session.close()
 
 
+def decode_signed_token(token: str) -> TokenPayload:
+    """Signature/claim validation, also used before consumed-refresh detection."""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM], options={"require": ["exp", "sub", "type"]})
+        if payload.get("type") not in {"access", "refresh"}:
+            raise ValueError("Invalid token type")
+        if "sid" in payload or "session_version" in payload:
+            if (not isinstance(payload.get("sid"), str) or not payload["sid"]
+                    or type(payload.get("session_version")) is not int or payload["session_version"] != 1):
+                raise ValueError("Invalid session claims")
+        return TokenPayload(**payload)
+    except (JWTError, PydanticValidationError, ValueError, TypeError):
+        raise HTTPException(status_code=401, detail="Ungültiger Token", headers={"WWW-Authenticate": "Bearer"}) from None
+
+
 def decode_token(token: str) -> TokenPayload:
-    """Decode and validate a JWT token. Rejects revoked tokens."""
+    """Validate signed tokens, persistent family status and legacy revocations."""
+    claims = decode_signed_token(token)
     if is_token_revoked(token):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token wurde widerrufen",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return TokenPayload(**payload)
-    except JWTError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Ungültiger Token",
-            headers={"WWW-Authenticate": "Bearer"},
-        ) from exc
+    if claims.sid is not None:
+        from .services.auth_sessions import touch
+        touch(claims)
+    return claims
 
 
 # ---------------------------------------------------------------------------
 # User Store abstraction
 # ---------------------------------------------------------------------------
+
+
+def _check_user_change(target: dict, updates: dict, users: list[dict], *, actor_id: str | None, deleting: bool = False) -> None:
+    """Check permissions and the owner invariant inside the same storage lock."""
+    if actor_id is not None:
+        actor = next((item for item in users if item["id"] == actor_id), None)
+        if actor is None or not actor["is_active"] or actor["role"] not in {"eigentuemer", "verwalter"}:
+            raise HTTPException(status_code=403, detail="Benutzerverwaltung ist nicht erlaubt")
+        if actor["role"] != "eigentuemer" and (deleting or target["role"] == "eigentuemer" or "role" in updates):
+            raise HTTPException(status_code=403, detail="Nur Eigentümer dürfen Eigentümerkonten oder Rollen ändern")
+        if {"portfolio_access", "portfolio_ids"} & updates.keys() and actor["role"] != "eigentuemer":
+            raise HTTPException(403, "Nur Eigentümer dürfen Portfoliozugriff ändern")
+        if actor_id == target["id"] and (deleting or updates.get("is_active") is False
+                                         or ("role" in updates and updates["role"] != target["role"])):
+            raise HTTPException(status_code=409, detail="Das eigene Konto darf nicht deaktiviert oder in seiner Rolle herabgestuft werden")
+    losing_owner = deleting or updates.get("is_active") is False or ("role" in updates and updates["role"] != "eigentuemer")
+    if target["role"] == "eigentuemer" and target["is_active"] and losing_owner:
+        if sum(item["role"] == "eigentuemer" and item["is_active"] for item in users) <= 1:
+            raise HTTPException(status_code=409, detail="Der letzte aktive Eigentümer muss erhalten bleiben")
 
 
 class UserStore(ABC):
@@ -457,15 +520,15 @@ class UserStore(ABC):
         ...
 
     @abstractmethod
-    def create(self, user_data: dict) -> None:
+    def create(self, user_data: dict, *, actor_id: str | None = None) -> None:
         ...
 
     @abstractmethod
-    def update(self, user_id: str, updates: dict) -> Optional[dict]:
+    def update(self, user_id: str, updates: dict, *, actor_id: str | None = None) -> Optional[dict]:
         ...
 
     @abstractmethod
-    def delete(self, user_id: str) -> Optional[dict]:
+    def delete(self, user_id: str, *, actor_id: str | None = None) -> Optional[dict]:
         ...
 
     @abstractmethod
@@ -474,6 +537,18 @@ class UserStore(ABC):
 
     @abstractmethod
     def clear(self) -> None:
+        ...
+
+    @abstractmethod
+    def setup_required(self) -> bool:
+        ...
+
+    @abstractmethod
+    def create_initial_owner(self, user_data: dict) -> None:
+        ...
+
+    @abstractmethod
+    def prepare_totp(self, user_id: str, secret: str) -> dict:
         ...
 
 
@@ -483,39 +558,87 @@ class InMemoryUserStore(UserStore):
     def __init__(self):
         self._by_id: dict[str, dict] = {}
         self._by_username: dict[str, dict] = {}
+        self._lock = RLock()
+        self._setup_complete = False
 
     def get_by_id(self, user_id: str) -> Optional[dict]:
-        return self._by_id.get(user_id)
+        with self._lock:
+            user = self._by_id.get(user_id)
+            return user.copy() if user else None
 
     def get_by_username(self, username: str) -> Optional[dict]:
-        return self._by_username.get(username)
+        with self._lock:
+            user = self._by_username.get(username)
+            return user.copy() if user else None
 
-    def create(self, user_data: dict) -> None:
-        self._by_id[user_data["id"]] = user_data
-        self._by_username[user_data["username"]] = user_data
+    def create(self, user_data: dict, *, actor_id: str | None = None) -> None:
+        with self._lock:
+            _require_owner_actor(self._by_id.get(actor_id) if actor_id else None, actor_id)
+            if user_data["username"] in self._by_username or any(u["email"] == user_data["email"] for u in self._by_id.values()):
+                raise HTTPException(status_code=409, detail="Benutzername oder E-Mail-Adresse existiert bereits")
+            self._by_id[user_data["id"]] = user_data
+            self._by_username[user_data["username"]] = user_data
+            self._setup_complete = True
 
-    def update(self, user_id: str, updates: dict) -> Optional[dict]:
-        user = self._by_id.get(user_id)
-        if user is None:
-            return None
-        for key, value in updates.items():
-            if value is not None and key not in ("id", "hashed_password", "created_at"):
-                user[key] = value
-        user["updated_at"] = datetime.now(timezone.utc)
-        return user
+    def setup_required(self) -> bool:
+        with self._lock:
+            return not self._setup_complete and not self._by_id
 
-    def delete(self, user_id: str) -> Optional[dict]:
-        user = self._by_id.pop(user_id, None)
-        if user:
+    def create_initial_owner(self, user_data: dict) -> None:
+        with self._lock:
+            if not self.setup_required():
+                raise HTTPException(status_code=409, detail="Ersteinrichtung wurde bereits abgeschlossen")
+            self.create(user_data)
+
+    def prepare_totp(self, user_id: str, secret: str) -> dict:
+        with self._lock:
+            user = self._by_id.get(user_id)
+            if user is None:
+                raise HTTPException(status_code=404, detail="Benutzer nicht gefunden")
+            if user.get("totp_enabled"):
+                raise HTTPException(status_code=409, detail="2FA ist bereits aktiviert")
+            if not user.get("totp_secret"):
+                user["totp_secret"] = secret
+            return user.copy()
+
+    def update(self, user_id: str, updates: dict, *, actor_id: str | None = None) -> Optional[dict]:
+        with self._lock:
+            user = self._by_id.get(user_id)
+            if user is None:
+                return None
+            _check_user_change(user, updates, list(self._by_id.values()), actor_id=actor_id)
+            if updates.get("role") == "eigentuemer" and not ({"portfolio_access", "portfolio_ids"} & updates.keys()):
+                updates = {**updates, "portfolio_access": "all", "portfolio_ids": []}
+            _validate_user_scope({**user, **updates})
+            if "email" in updates and any(item["id"] != user_id and item["email"] == updates["email"] for item in self._by_id.values()):
+                raise HTTPException(status_code=409, detail="E-Mail-Adresse existiert bereits")
+            for key, value in updates.items():
+                if (value is not None or key == "totp_secret") and key not in ("id", "hashed_password", "created_at"):
+                    user[key] = value
+            user["updated_at"] = datetime.now(timezone.utc)
+            if {"portfolio_access", "portfolio_ids"} & updates.keys():
+                user["portfolio_access_origin"] = "owner_assignment"
+            return user.copy()
+
+    def delete(self, user_id: str, *, actor_id: str | None = None) -> Optional[dict]:
+        with self._lock:
+            user = self._by_id.get(user_id)
+            if user is None:
+                return None
+            _check_user_change(user, {}, list(self._by_id.values()), actor_id=actor_id, deleting=True)
+            self._by_id.pop(user_id)
             self._by_username.pop(user["username"], None)
-        return user
+            return user.copy()
 
     def list_all(self) -> list[dict]:
-        return list(self._by_id.values())
+        with self._lock:
+            return [user.copy() for user in self._by_id.values()]
 
     def clear(self) -> None:
-        self._by_id.clear()
-        self._by_username.clear()
+        with self._lock:
+            self._by_id.clear()
+            self._by_username.clear()
+            self._setup_complete = False
 
 
 class SQLUserStore(UserStore):
@@ -523,6 +646,19 @@ class SQLUserStore(UserStore):
 
     def __init__(self, session_factory):
         self._session_factory = session_factory
+
+    def close_existing_setup(self) -> None:
+        """Keep legacy installations closed after their final account is deleted."""
+        from .db.orm_models import UserORM
+        session = self._session_factory()
+        try:
+            if session.query(UserORM.id).first() is not None and session.get(AuthSetupORM, 1) is None:
+                session.add(AuthSetupORM(id=1))
+                session.commit()
+        except IntegrityError:
+            session.rollback()  # Another process has already closed setup.
+        finally:
+            self._finalize_session(session)
 
     def _finalize_session(self, session) -> None:
         """Return DB resources and clear scoped-session state when configured.
@@ -541,7 +677,13 @@ class SQLUserStore(UserStore):
 
         session.close()
 
-    def _to_dict(self, orm_obj) -> dict:
+    def _to_dict(self, orm_obj, access_cache=None, grants_cache=None) -> dict:
+        from sqlalchemy.orm import object_session
+        session = object_session(orm_obj)
+        if session is None:
+            raise RuntimeError("Benutzerscope benötigt eine aktive Datenbanksitzung")
+        access = access_cache.get(orm_obj.id) if access_cache is not None else session.get(UserAccessORM, orm_obj.id)
+        grants = grants_cache.get(orm_obj.id, []) if grants_cache is not None else [row[0] for row in session.query(UserPortfolioORM.portfolio_id).filter(UserPortfolioORM.user_id == orm_obj.id).all()]
         return {
             "id": orm_obj.id,
             "username": orm_obj.username,
@@ -554,7 +696,20 @@ class SQLUserStore(UserStore):
             "totp_enabled": orm_obj.totp_enabled,
             "created_at": orm_obj.created_at,
             "updated_at": orm_obj.updated_at,
+            "portfolio_access": "all" if orm_obj.role == "eigentuemer" else access.mode if access else "selected",
+            "portfolio_ids": sorted(grants) if orm_obj.role != "eigentuemer" else [],
+            "portfolio_access_origin": access.origin if access else "unassigned",
         }
+
+    def _users_data(self, session) -> list[dict]:
+        from .db.orm_models import UserORM
+        # Three bounded queries, rather than two additional queries per account.
+        users = session.query(UserORM).all()
+        accesses = {row.user_id: row for row in session.query(UserAccessORM).all()}
+        grants: dict[str, list[str]] = {}
+        for row in session.query(UserPortfolioORM).all():
+            grants.setdefault(row.user_id, []).append(row.portfolio_id)
+        return [self._to_dict(user, accesses, grants) for user in users]
 
     def get_by_id(self, user_id: str) -> Optional[dict]:
         from .db.orm_models import UserORM
@@ -574,47 +729,143 @@ class SQLUserStore(UserStore):
         finally:
             self._finalize_session(session)
 
-    def create(self, user_data: dict) -> None:
+    def create(self, user_data: dict, *, actor_id: str | None = None) -> None:
         from .db.orm_models import UserORM
         session = self._session_factory()
         try:
-            obj = UserORM(**user_data)
+            if actor_id is not None:
+                self._lock_management(session)
+                actor = session.get(UserORM, actor_id, populate_existing=True)
+                _require_owner_actor(self._to_dict(actor) if actor else None, actor_id)
+            obj = UserORM(**{key: value for key, value in user_data.items() if key not in _SCOPE_FIELDS})
             session.add(obj)
+            session.flush()
+            _write_sql_user_scope(session, user_data["id"], user_data)
+            # Seeded/admin-created installations also remain closed if accounts are deleted.
+            try:
+                with session.begin_nested():
+                    session.add(AuthSetupORM(id=1))
+                    session.flush()
+            except IntegrityError:
+                pass
             session.commit()
+        except IntegrityError as exc:
+            session.rollback()
+            raise HTTPException(status_code=409, detail="Benutzername oder E-Mail-Adresse existiert bereits") from exc
         except Exception:
             session.rollback()
             raise
         finally:
             self._finalize_session(session)
 
-    def update(self, user_id: str, updates: dict) -> Optional[dict]:
+    def setup_required(self) -> bool:
         from .db.orm_models import UserORM
         session = self._session_factory()
         try:
+            return session.get(AuthSetupORM, 1) is None and session.query(UserORM.id).first() is None
+        finally:
+            self._finalize_session(session)
+
+    def create_initial_owner(self, user_data: dict) -> None:
+        from .db.orm_models import UserORM
+        session = self._session_factory()
+        try:
+            # The unique marker is acquired before checking users. Other processes
+            # contend on this database constraint, without locking normal logins.
+            session.add(AuthSetupORM(id=1))
+            session.flush()
+            if session.query(UserORM.id).first() is not None:
+                session.commit()
+                raise HTTPException(status_code=409, detail="Ersteinrichtung wurde bereits abgeschlossen")
+            session.add(UserORM(**{key: value for key, value in user_data.items() if key not in _SCOPE_FIELDS}))
+            session.flush()
+            _write_sql_user_scope(session, user_data["id"], user_data)
+            session.commit()
+        except IntegrityError as exc:
+            session.rollback()
+            raise HTTPException(status_code=409, detail="Ersteinrichtung wurde bereits abgeschlossen") from exc
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            self._finalize_session(session)
+
+    def prepare_totp(self, user_id: str, secret: str) -> dict:
+        from .db.orm_models import UserORM
+        session = self._session_factory()
+        try:
+            session.query(UserORM).filter(
+                UserORM.id == user_id, UserORM.totp_enabled == False, UserORM.totp_secret.is_(None),  # noqa: E712
+            ).update({"totp_secret": secret}, synchronize_session=False)
+            session.commit()
+            user = session.get(UserORM, user_id)
+            if user is None:
+                raise HTTPException(status_code=404, detail="Benutzer nicht gefunden")
+            if user.totp_enabled:
+                raise HTTPException(status_code=409, detail="2FA ist bereits aktiviert")
+            return self._to_dict(user)
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            self._finalize_session(session)
+
+    def _lock_management(self, session: Session) -> None:
+        # A real DML row lock serializes management across sessions/processes on
+        # PostgreSQL and acquires SQLite's write lock BEFORE any user snapshot.
+        # The permanent setup marker exists after bootstrap or legacy startup.
+        statement = update(AuthSetupORM).where(AuthSetupORM.id == 1).values(completed_at=AuthSetupORM.completed_at)
+        result = session.execute(statement)
+        if cast(CursorResult, result).rowcount == 0:
+            try:
+                with session.begin_nested():
+                    session.add(AuthSetupORM(id=1))
+                    session.flush()
+            except IntegrityError:
+                pass  # Another transaction initialized the same marker.
+            session.execute(statement)
+
+    def update(self, user_id: str, updates: dict, *, actor_id: str | None = None) -> Optional[dict]:
+        from .db.orm_models import UserORM
+        session = self._session_factory()
+        try:
+            self._lock_management(session)
             obj = session.get(UserORM, user_id)
             if obj is None:
                 return None
+            users = self._users_data(session)
+            _check_user_change(self._to_dict(obj), updates, users, actor_id=actor_id)
+            if updates.get("role") == "eigentuemer" and not ({"portfolio_access", "portfolio_ids"} & updates.keys()):
+                updates = {**updates, "portfolio_access": "all", "portfolio_ids": []}
+            if {"portfolio_access", "portfolio_ids"} & updates.keys():
+                _write_sql_user_scope(session, user_id, {**self._to_dict(obj), **updates})
             for key, value in updates.items():
-                if value is not None and key not in ("id", "hashed_password", "created_at"):
+                if (value is not None or key == "totp_secret") and key not in ("id", "hashed_password", "created_at", *_SCOPE_FIELDS):
                     setattr(obj, key, value)
             obj.updated_at = datetime.now(timezone.utc)
             session.commit()
             session.refresh(obj)
             return self._to_dict(obj)
+        except IntegrityError as exc:
+            session.rollback()
+            raise HTTPException(status_code=409, detail="Benutzername oder E-Mail-Adresse existiert bereits") from exc
         except Exception:
             session.rollback()
             raise
         finally:
             self._finalize_session(session)
 
-    def delete(self, user_id: str) -> Optional[dict]:
+    def delete(self, user_id: str, *, actor_id: str | None = None) -> Optional[dict]:
         from .db.orm_models import UserORM
         session = self._session_factory()
         try:
+            self._lock_management(session)
             obj = session.get(UserORM, user_id)
             if obj is None:
                 return None
             data = self._to_dict(obj)
+            users = self._users_data(session)
+            _check_user_change(data, {}, users, actor_id=actor_id, deleting=True)
             session.delete(obj)
             session.commit()
             return data
@@ -625,10 +876,9 @@ class SQLUserStore(UserStore):
             self._finalize_session(session)
 
     def list_all(self) -> list[dict]:
-        from .db.orm_models import UserORM
         session = self._session_factory()
         try:
-            return [self._to_dict(obj) for obj in session.query(UserORM).all()]
+            return self._users_data(session)
         finally:
             self._finalize_session(session)
 
@@ -636,7 +886,10 @@ class SQLUserStore(UserStore):
         from .db.orm_models import UserORM
         session = self._session_factory()
         try:
+            session.query(UserPortfolioORM).delete()
+            session.query(UserAccessORM).delete()
             session.query(UserORM).delete()
+            session.query(AuthSetupORM).delete()
             session.commit()
         except Exception:
             session.rollback()
@@ -648,6 +901,43 @@ class SQLUserStore(UserStore):
 # Default: in-memory store
 _user_store: UserStore = InMemoryUserStore()
 
+_SCOPE_FIELDS = {"portfolio_access", "portfolio_ids", "portfolio_access_origin"}
+
+
+def _require_owner_actor(actor, actor_id):
+    if actor_id is not None and (not actor or not actor["is_active"] or actor["role"] != "eigentuemer"):
+        raise HTTPException(403, "Nur aktive Eigentümer dürfen Konten und Portfoliozugriff anlegen")
+
+
+def _validate_user_scope(data):
+    from .dependencies import store
+    mode, ids = data.get("portfolio_access", "all"), data.get("portfolio_ids", [])
+    if data.get("role") == "eigentuemer" and (mode != "all" or ids):
+        raise HTTPException(409, "Eigentümer benötigen zur Verwaltung und Wiederherstellung Zugriff auf alle Portfolios")
+    if mode not in {"all", "selected"} or (mode == "all" and ids) or len(ids) != len(set(ids)):
+        raise HTTPException(422, "Ungültige Portfolioauswahl")
+    for pid in ids:
+        try:
+            store.get_portfolio(pid)
+        except KeyError:
+            raise HTTPException(422, "Ein ausgewähltes Portfolio existiert nicht") from None
+
+
+def _write_sql_user_scope(session, user_id, data):
+    from .db.orm_models import PortfolioORM
+    mode, ids = data.get("portfolio_access", "all"), data.get("portfolio_ids", [])
+    if data.get("role") == "eigentuemer" and (mode != "all" or ids):
+        raise HTTPException(409, "Eigentümer benötigen Zugriff auf alle Portfolios")
+    if ids and session.query(PortfolioORM.id).filter(PortfolioORM.id.in_(ids)).count() != len(ids):
+        raise HTTPException(422, "Ein ausgewähltes Portfolio existiert nicht")
+    access = session.get(UserAccessORM, user_id)
+    if access is None:
+        access = UserAccessORM(user_id=user_id, mode=mode, origin="owner_assignment")
+        session.add(access)
+    access.mode, access.origin, access.updated_at = mode, "owner_assignment", datetime.now(timezone.utc)
+    session.query(UserPortfolioORM).filter(UserPortfolioORM.user_id == user_id).delete(synchronize_session=False)
+    session.add_all(UserPortfolioORM(user_id=user_id, portfolio_id=pid) for pid in ids)
+
 
 def enable_sql_users(session_factory) -> None:
     """Switch user storage to SQLAlchemy-backed persistence.
@@ -657,6 +947,7 @@ def enable_sql_users(session_factory) -> None:
     """
     global _user_store, _auth_session_factory
     _user_store = SQLUserStore(session_factory)
+    _user_store.close_existing_setup()
     _auth_session_factory = session_factory
 
 
@@ -669,21 +960,23 @@ def _to_user_read(user_data: dict) -> UserRead:
 # ---------------------------------------------------------------------------
 
 
-def register_user(username: str, email: str, full_name: str, password: str, role: str = "readonly") -> UserRead:
-    """Register a new user with password policy enforcement (T21)."""
+def _new_user_data(username: str, email: str, full_name: str, password: str, role: str, *, server_password: bool = False) -> dict:
     if _user_store.get_by_username(username) is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Benutzername existiert bereits")
     # T21: Validate password strength
-    pw_errors = validate_password_strength(password)
+    # Private-server bootstrap and production creation accept long passphrases.
+    # Authentication of existing accounts never applies creation policy again.
+    pw_errors = (["Mindestens 12 Zeichen erforderlich"] if len(password) < 12 else []) if (
+        server_password or settings.environment == "production"
+    ) else validate_password_strength(password)
     if pw_errors:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Passwort zu schwach: {'; '.join(pw_errors)}",
         )
-    user_id = str(uuid4())
     now = datetime.now(timezone.utc)
-    user_data = {
-        "id": user_id,
+    return {
+        "id": str(uuid4()),
         "username": username,
         "email": email,
         "full_name": full_name,
@@ -694,12 +987,39 @@ def register_user(username: str, email: str, full_name: str, password: str, role
         "totp_enabled": False,
         "created_at": now,
         "updated_at": now,
+        "portfolio_access": "all",
+        "portfolio_ids": [],
+        "portfolio_access_origin": "owner_assignment",
     }
-    _user_store.create(user_data)
+
+
+def register_user(username: str, email: str, full_name: str, password: str, role: str = "readonly", *, portfolio_access="all", portfolio_ids=None, actor_id=None) -> UserRead:
+    """Create an approved/seeded user; public registration is disabled by the router."""
+    user_data = _new_user_data(username, email, full_name, password, role)
+    user_data.update(portfolio_access="all" if role == "eigentuemer" else portfolio_access,
+                     portfolio_ids=[] if role == "eigentuemer" else list(portfolio_ids or []))
+    _validate_user_scope(user_data)
+    _user_store.create(user_data, actor_id=actor_id)
     return _to_user_read(user_data)
 
 
-def authenticate_user(username: str, password: str) -> Optional[dict]:
+def setup_required() -> bool:
+    return _user_store.setup_required()
+
+
+def create_initial_owner(username: str, email: str, full_name: str, password: str, *, server_password: bool = False) -> UserRead:
+    if not setup_required():
+        raise HTTPException(status_code=409, detail="Ersteinrichtung wurde bereits abgeschlossen")
+    data = _new_user_data(username, email, full_name, password, "eigentuemer", server_password=server_password)
+    _user_store.create_initial_owner(data)
+    return _to_user_read(data)
+
+
+def prepare_totp(user_id: str) -> dict:
+    return _user_store.prepare_totp(user_id, generate_totp_secret())
+
+
+def authenticate_user(username: str, password: str, *, complete: bool = True) -> Optional[dict]:
     """Authenticate a user by username and password with rate limiting (T21)."""
     # T21: Check rate limit
     if check_login_rate_limit(username):
@@ -718,7 +1038,8 @@ def authenticate_user(username: str, password: str) -> Optional[dict]:
         record_failed_login(username)
         return None
     # Success: clear attempts
-    clear_login_attempts(username)
+    if complete:
+        clear_login_attempts(username)
     return user
 
 
@@ -732,17 +1053,17 @@ def list_users() -> list[UserRead]:
     return [_to_user_read(u) for u in _user_store.list_all()]
 
 
-def update_user(user_id: str, updates: dict) -> UserRead:
+def update_user(user_id: str, updates: dict, *, actor_id: str | None = None) -> UserRead:
     """Update user fields."""
-    user = _user_store.update(user_id, updates)
+    user = _user_store.update(user_id, updates, actor_id=actor_id)
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Benutzer nicht gefunden")
     return _to_user_read(user)
 
 
-def delete_user(user_id: str) -> None:
+def delete_user(user_id: str, *, actor_id: str | None = None) -> None:
     """Delete a user."""
-    user = _user_store.delete(user_id)
+    user = _user_store.delete(user_id, actor_id=actor_id)
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Benutzer nicht gefunden")
 
@@ -750,6 +1071,8 @@ def delete_user(user_id: str) -> None:
 def clear_users() -> None:
     """Clear all users (for testing)."""
     _user_store.clear()
+    for key in ("_auth_sessions", "_auth_refresh_tokens"):
+        _user_store.__dict__.pop(key, None)
     _login_attempts.clear()
     _token_blacklist.clear()
     _blacklist_expiry.clear()

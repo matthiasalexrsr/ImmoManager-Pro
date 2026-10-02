@@ -1,0 +1,13 @@
+.tenant-privacy { margin-top: 1.5rem; padding: 1rem 1.25rem; }
+.tenant-privacy summary { display: flex; gap: .65rem; align-items: center; font-weight: 650; cursor: pointer; }
+.tenant-privacy-body { display: grid; gap: .75rem; margin-top: 1rem; max-width: 58rem; }
+.tenant-privacy-body p { margin: 0; line-height: 1.6; color: var(--text-secondary); }
+.tenant-privacy-body select, .tenant-privacy-body input { width: min(100%, 32rem); }
+.tenant-privacy-actions { display: flex; flex-wrap: wrap; gap: .65rem; }
+.tenant-privacy-preview { display: grid; gap: .75rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+.tenant-privacy-preview dl { display: grid; gap: .4rem; margin: .25rem 0; }
+.tenant-privacy-preview dl div { display: flex; justify-content: space-between; gap: 1rem; }
+.tenant-privacy-preview dt { font-weight: 600; }
+.tenant-privacy-preview dd { margin: 0; text-align: end; }
+.tenant-privacy-preview .btn { justify-self: start; }
+@media (max-width: 600px) { .tenant-privacy-preview dl div { display: grid; gap: .2rem; } .tenant-privacy-preview dd { text-align: start; } }

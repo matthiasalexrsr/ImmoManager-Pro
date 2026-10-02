@@ -12,7 +12,7 @@ aiosqlite==0.22.1
 psycopg2-binary>=2.9.0
 
 # Authentication
-python-jose[cryptography]==3.5.0
+PyJWT[crypto]==2.15.0
 cffi==2.0.0
 
 # Mietvertrag-Wizard
@@ -21,6 +21,9 @@ reportlab==4.4.10
 
 # HTTP client (updater + autotest)
 httpx==0.28.1
+
+# Streaming MT940 tag conversion (no runtime dependencies)
+mt-940==5.1.1
 
 # Testing
 pytest==9.0.3

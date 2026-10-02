@@ -10,11 +10,18 @@ __pycache__/
 
 # Environment / secrets
 .env
+.env.server
+.env.server.*
+!.env.server.example
+server-backups/
+.venv/
 
 # Frontend
 node_modules/
 frontend/node_modules/
 frontend/dist/
+frontend/test-results/
+frontend/playwright-report/
 
 # Build artifacts
 *.egg-info/
@@ -33,3 +40,4 @@ dev_notes.log
 dev_notes.json
 diagnostics.log
 .coverage
+.coverage.*

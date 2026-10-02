@@ -7,12 +7,45 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+if (-not $env:PYTHONUTF8) { $env:PYTHONUTF8 = "1" }
 $Root = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $Root
 
 function Write-Step($Message) {
     Write-Host ""
     Write-Host "==> $Message" -ForegroundColor Cyan
+}
+
+function Invoke-CheckedCommand([string]$Command, [string[]]$Arguments, [string]$FailureMessage) {
+    & $Command @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "$FailureMessage (Exit $LASTEXITCODE)."
+    }
+}
+
+function Get-DependencyFingerprint([string]$ProjectRoot, [string]$Interpreter) {
+    $version = & $Interpreter -c "import sys; print(sys.version)"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Die virtuelle Python-Umgebung konnte nicht geprueft werden."
+    }
+    $inputs = @("immomanager-backend-v1", "$version")
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try {
+        foreach ($name in @("pyproject.toml", "requirements.txt", "backend/requirements.txt")) {
+            $path = Join-Path $ProjectRoot $name
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+                throw "Abhaengigkeitsdatei fehlt: $name"
+            }
+            $stream = [IO.File]::OpenRead($path)
+            try { $fileHash = ([BitConverter]::ToString($sha.ComputeHash($stream))).Replace("-", "") }
+            finally { $stream.Dispose() }
+            $inputs += "$name=$fileHash"
+        }
+        $hash = $sha.ComputeHash([Text.Encoding]::UTF8.GetBytes(($inputs -join "`n")))
+        return ([BitConverter]::ToString($hash)).Replace("-", "").ToLowerInvariant()
+    } finally {
+        $sha.Dispose()
+    }
 }
 
 function Resolve-Python {
@@ -65,59 +98,38 @@ Write-Step "Python pruefen"
 $py = Resolve-Python
 $PythonCommand = $py.Command
 $PythonArgs = @($py.Args)
-& $PythonCommand @PythonArgs -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)"
-if ($LASTEXITCODE -ne 0) {
-    throw "Python 3.11+ ist erforderlich."
-}
+Invoke-CheckedCommand $PythonCommand (@($PythonArgs) + @("-c", "import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)")) "Python 3.11+ ist erforderlich"
 
 $VenvPython = Join-Path $Root ".venv\Scripts\python.exe"
 if (-not (Test-Path $VenvPython)) {
     Write-Step "Virtuelle Umgebung erstellen"
-    & $PythonCommand @PythonArgs -m venv ".venv"
+    Invoke-CheckedCommand $PythonCommand (@($PythonArgs) + @("-m", "venv", ".venv")) "Erstellen der virtuellen Umgebung fehlgeschlagen"
+    if (-not (Test-Path -LiteralPath $VenvPython -PathType Leaf)) {
+        throw "Die virtuelle Umgebung enthaelt keinen Python-Interpreter."
+    }
 }
 
 Write-Step "Backend-Abhaengigkeiten pruefen"
 $stamp = Join-Path $Root ".venv\.immomanager-install-ok"
-$needsInstall = -not (Test-Path $stamp)
+$dependencyFingerprint = Get-DependencyFingerprint "$Root" $VenvPython
+$needsInstall = -not (Test-Path -LiteralPath $stamp -PathType Leaf)
 if (-not $needsInstall) {
-    $stampTime = (Get-Item $stamp).LastWriteTimeUtc
-    foreach ($file in @("pyproject.toml", "requirements.txt")) {
-        if ((Get-Item (Join-Path $Root $file)).LastWriteTimeUtc -gt $stampTime) {
-            $needsInstall = $true
-        }
-    }
+    $needsInstall = (Get-Content -LiteralPath $stamp -Raw).Trim() -ne $dependencyFingerprint
 }
 
 if ($needsInstall) {
-    & $VenvPython -m pip install --upgrade pip setuptools wheel
-    & $VenvPython -m pip install -e ".[dev]"
-    if ($LASTEXITCODE -ne 0) {
-        throw "Backend-Installation fehlgeschlagen."
-    }
-    Set-Content -Path $stamp -Value (Get-Date).ToString("o") -Encoding UTF8
+    Invoke-CheckedCommand $VenvPython @("-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel") "pip-Vorbereitung fehlgeschlagen"
+    Invoke-CheckedCommand $VenvPython @("-m", "pip", "install", "-r", "requirements.txt") "Backend-Abhaengigkeiten konnten nicht installiert werden"
+    Invoke-CheckedCommand $VenvPython @("-m", "pip", "install", "-e", ".[dev]") "Backend-Installation fehlgeschlagen"
+    Invoke-CheckedCommand $VenvPython @("-m", "pip", "check") "Backend-Abhaengigkeiten sind inkonsistent"
+    # Only a fully successful install may authorize an offline restart.
+    Set-Content -LiteralPath $stamp -Value $dependencyFingerprint -Encoding UTF8
 }
 
-if (-not $SkipFrontendBuild) {
-    $frontendDist = Join-Path $Root "frontend\dist\index.html"
-    if (-not (Test-Path $frontendDist)) {
-        Write-Step "Frontend bauen"
-        $npm = Get-Command npm.cmd -ErrorAction SilentlyContinue
-        if (-not $npm) {
-            throw "frontend\dist fehlt und Node.js/npm wurde nicht gefunden. Installieren Sie Node.js oder fuehren Sie den Build auf einem anderen Rechner aus."
-        }
-        Push-Location (Join-Path $Root "frontend")
-        try {
-            if (Test-Path "package-lock.json") {
-                & $npm.Source ci
-            } else {
-                & $npm.Source install
-            }
-            & $npm.Source run build
-        } finally {
-            Pop-Location
-        }
-    }
-}
+Write-Step "Frontend pruefen"
+$frontendArgs = @("-m", "backend.frontend_build", "--root", "$Root")
+if ($SkipFrontendBuild) { $frontendArgs += "--skip-build" }
+Invoke-CheckedCommand $VenvPython $frontendArgs "Frontend-Vorbereitung fehlgeschlagen; vorhandene Assets wurden erhalten"
 
 $env:DATA_DIR = $DataDir
 $env:UPLOADS_DIR = $UploadsDir

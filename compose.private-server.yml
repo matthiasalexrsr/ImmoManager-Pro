@@ -1,0 +1,84 @@
+# Independent private-server deployment; do not combine with development Compose.
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    ports:
+      - "127.0.0.1:${APP_HTTP_PORT:-8080}:8000"
+    environment:
+      ENVIRONMENT: production
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-immo}:${POSTGRES_PASSWORD:?Run configure_private_server.py first}@db:5432/${POSTGRES_DB:-immomanager}"
+      JWT_SECRET_KEY: "${JWT_SECRET_KEY:?Run configure_private_server.py first}"
+      ENCRYPTION_KEY: "${ENCRYPTION_KEY:-}"
+      ENCRYPTION_KEYRING: "${ENCRYPTION_KEYRING:-}"
+      ENCRYPTION_ACTIVE_KEY_ID: "${ENCRYPTION_ACTIVE_KEY_ID:-default}"
+      ENCRYPTION_INDEX_KEY: "${ENCRYPTION_INDEX_KEY:-}"
+      ENCRYPTION_LEGACY_JWT_KEYS: "${ENCRYPTION_LEGACY_JWT_KEYS:-[]}"
+      FORM_DRAFT_TTL_DAYS: "${FORM_DRAFT_TTL_DAYS:-7}"
+      FORM_DRAFT_MAX_BYTES: "${FORM_DRAFT_MAX_BYTES:-262144}"
+      CONTRACT_WORKSPACE_PAGE_MAX_SIZE: "${CONTRACT_WORKSPACE_PAGE_MAX_SIZE:-500}"
+      CONTRACT_WORKSPACE_SEARCH_MAX_CHARS: "${CONTRACT_WORKSPACE_SEARCH_MAX_CHARS:-200}"
+      OCR_LANGUAGES: "${OCR_LANGUAGES:-deu+eng}"
+      OCR_PDFINFO_PATH: "${OCR_PDFINFO_PATH:-}"
+      OCR_PDFTOTEXT_PATH: "${OCR_PDFTOTEXT_PATH:-}"
+      OCR_PDFTOPPM_PATH: "${OCR_PDFTOPPM_PATH:-}"
+      OCR_TESSERACT_PATH: "${OCR_TESSERACT_PATH:-}"
+      OCR_TESSDATA_PATH: "${OCR_TESSDATA_PATH:-}"
+      OCR_RENDER_DPI: "${OCR_RENDER_DPI:-200}"
+      OCR_MAX_PDF_PAGES: "${OCR_MAX_PDF_PAGES:-80}"
+      OCR_MAX_PAGE_PIXELS: "${OCR_MAX_PAGE_PIXELS:-20000000}"
+      OCR_MAX_TOTAL_PIXELS: "${OCR_MAX_TOTAL_PIXELS:-120000000}"
+      OCR_MAX_RAM_BYTES: "${OCR_MAX_RAM_BYTES:-268435456}"
+      OCR_MAX_TEMP_BYTES: "${OCR_MAX_TEMP_BYTES:-536870912}"
+      OCR_MAX_TEXT_BYTES: "${OCR_MAX_TEXT_BYTES:-4194304}"
+      OCR_TIMEOUT_SECONDS: "${OCR_TIMEOUT_SECONDS:-90}"
+      CORS_ORIGINS: "${APP_ORIGIN:?Set the private HTTPS origin},http://127.0.0.1:${APP_HTTP_PORT:-8080},http://localhost:${APP_HTTP_PORT:-8080}"
+      TRUSTED_HOSTS: "${APP_HOST:?Set the private HTTPS host},localhost,127.0.0.1"
+      DATA_DIR: /data
+      TMPDIR: /data/tmp
+      OPERATIONAL_SCHEDULER_ENABLED: "${OPERATIONAL_SCHEDULER_ENABLED:-false}"
+      UPLOADS_DIR: /data/uploads
+      BACKUP_DIR: /data/backups
+      LOG_FILE: /data/logs/application.log
+      INTEGRATION_STATE_FILE: /data/integrations.json
+      SQLITE_PERSISTENT_STORE: "true"
+      ALLOW_INMEMORY_FALLBACK: "false"
+      AUTO_SEED_DEMO_DATA: "false"
+      AUTO_MIGRATE: "false"
+      AI_ENABLED: "false"
+      PLUGIN_DIRS: "[]"
+      UPDATE_ALLOW_IN_PRODUCTION: "false"
+      DIAGNOSTICS_ALLOW_IN_PRODUCTION: "false"
+    volumes:
+      - appdata:/data
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=128m
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    stop_grace_period: 45s
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:-immo}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Run configure_private_server.py first}"
+      POSTGRES_DB: "${POSTGRES_DB:-immomanager}"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+volumes:
+  pgdata:
+  appdata:

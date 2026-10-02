@@ -1,3 +1,5 @@
+import useWriteAccess from '../hooks/useWriteAccess';
+import { revisionOptions } from '../editRevision';
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
@@ -19,6 +21,7 @@ export default function Units() {
   const [units, setUnits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
+  const { canWrite, isAllowed, requireWrite } = useWriteAccess('/units', () => setModal(null));
   const [filter, setFilter] = useState('all');
 
   const refreshData = () => {
@@ -137,18 +140,24 @@ export default function Units() {
   ];
 
   const handleSave = async (data) => {
+    requireWrite();
     if (modal === 'create') {
       await api.post('/units', data);
     } else {
       await api.put(`/units/${modal.id}`, data);
     }
+  };
+
+  const afterSave = () => {
     refreshData();
     if (store) store.invalidateRelated('units', 'properties', 'contracts');
   };
 
   const handleDelete = async (row) => {
+    if (!isAllowed()) return;
     if (!await confirm(`"${row.label}" ${t('modals.confirmDelete.body')}`)) return;
-    await api.del(`/units/${row.id}`);
+    if (!isAllowed()) return;
+    await api.del(`/units/${row.id}`, revisionOptions(row));
     refreshData();
     if (store) store.invalidateRelated('units', 'properties', 'contracts');
   };
@@ -204,14 +213,14 @@ export default function Units() {
         title={t('units.list.title') || 'Einheiten'}
         columns={columns}
         data={filtered}
-        onAdd={() => setModal('create')}
-        onEdit={row => setModal(row)}
-        onDelete={handleDelete}
+        onAdd={canWrite ? () => setModal('create') : undefined}
+        onEdit={canWrite ? row => setModal(row) : undefined}
+        onDelete={canWrite ? handleDelete : undefined}
         onRowClick={row => navigate(`/units/${row.id}`)}
       />
 
-      {modal && (
-        <FormModal
+      {modal && canWrite && (
+        <FormModal onSaved={afterSave} draftConfig={{ collection: 'units' }}
           title={modal === 'create' ? 'Einheit erstellen' : 'Einheit bearbeiten'}
           fields={fields}
           initial={modal === 'create' ? null : modal}

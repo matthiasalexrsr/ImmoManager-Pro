@@ -7,7 +7,7 @@ Compares allocated costs with advance payments to produce per-unit statements.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_FLOOR, ROUND_HALF_UP, Decimal
 from typing import Dict, List
 
 CENTS = Decimal("0.01")
@@ -25,8 +25,10 @@ class UnitShare:
     share_value: Decimal
 
     def __post_init__(self) -> None:
-        normalized = _money(self.share_value)
-        if normalized < Decimal("0.00"):
+        # Shares are ratios, not money. Rounding occupied-day weights to cents
+        # would misallocate tenant turnover costs before the actual cent split.
+        normalized = Decimal(str(self.share_value))
+        if not normalized.is_finite() or normalized < Decimal("0.00"):
             raise ValueError("share_value must be >= 0")
         object.__setattr__(self, "share_value", normalized)
 
@@ -121,18 +123,20 @@ class BillingEngine:
             if total_share == Decimal("0.00"):
                 continue
 
-            allocated_sum = Decimal("0.00")
             allocations: List[tuple[tuple[str, str], Decimal]] = []
-
-            for i, share in enumerate(shares):
-                key = (share.unit_id, share.contract_id)
-                if i == len(shares) - 1:
-                    # Last unit gets the remainder to avoid rounding drift
-                    portion = _money(cost.amount - allocated_sum)
-                else:
-                    portion = _money(cost.amount * share.share_value / total_share)
-                    allocated_sum += portion
-                allocations.append((key, portion))
+            # Distribute integer cents with largest remainders. Giving the final
+            # unit every rounding difference can create a negative vacancy cost
+            # on small invoices even when all underlying amounts are positive.
+            cents = int(abs(cost.amount) / CENTS)
+            exact = [Decimal(cents) * s.share_value / total_share for s in shares]
+            allocated = [int(value.to_integral_value(rounding=ROUND_FLOOR)) for value in exact]
+            order = sorted(range(len(shares)), key=lambda i: (-(exact[i] - allocated[i]),
+                shares[i].unit_id, shares[i].contract_id))
+            for i in order[:cents - sum(allocated)]:
+                allocated[i] += 1
+            sign = -1 if cost.amount < 0 else 1
+            for share, amount in zip(shares, allocated, strict=True):
+                allocations.append(((share.unit_id, share.contract_id), sign * Decimal(amount) * CENTS))
 
             for unit_key, portion in allocations:
                 if unit_key not in all_units:

@@ -23,6 +23,9 @@ def test_configure_runtime_environment_creates_persistent_defaults(tmp_path, mon
         "ALLOW_INMEMORY_FALLBACK",
         "SQLITE_PERSISTENT_STORE",
         "JWT_SECRET_KEY",
+        "ENCRYPTION_KEY",
+        "ENCRYPTION_KEYRING",
+        "ENCRYPTION_INDEX_KEY",
     ]:
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setattr(launcher, "IS_FROZEN", False)
@@ -36,3 +39,7 @@ def test_configure_runtime_environment_creates_persistent_defaults(tmp_path, mon
     assert os.environ["DATABASE_URL"].startswith("sqlite:///")
     assert os.environ["JWT_SECRET_KEY"] != "dev-secret-key-change-in-production"
     assert (tmp_path / ".env").is_file()
+    saved = (tmp_path / ".env").read_text(encoding="utf-8")
+    for key in ("ENCRYPTION_KEY", "ENCRYPTION_INDEX_KEY"):
+        assert os.environ[key] and f"{key}={os.environ[key]}\n" in saved
+    assert os.environ["ENCRYPTION_KEY"] != os.environ["ENCRYPTION_INDEX_KEY"]

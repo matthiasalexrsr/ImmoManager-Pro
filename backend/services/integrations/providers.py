@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..email_service import send_email
+from ..email_service import EmailConfig, EmailConfigError, submit_email
 from ..portal_adapter import get_adapter, list_adapters
 from .base import IntegrationActionResult, IntegrationManifest
 
@@ -14,35 +14,54 @@ class EmailIntegrationProvider:
     @property
     def manifest(self) -> IntegrationManifest:
         return IntegrationManifest(
-            integration_id="email",
-            name="E-Mail API",
-            category="communication",
-            description="Versand von E-Mails an Mieter, Dienstleister und Eigentümer.",
+            integration_id="email", name="E-Mail API", category="communication",
+            description="SMTP-Übermittlung; Annahme ist keine Zustellbestätigung.",
             enabled_by_default=True,
             capabilities=["E-Mail-Vorlagen", "Transaktions-E-Mails", "Testversand"],
-            required_config_keys=["sender_email"],
+            required_config_keys=["sender_email", "smtp_host"],
+            secret_config_keys=["smtp_password"],
         )
 
     def is_configured(self, config: dict) -> bool:
-        return bool(config.get("sender_email"))
+        try:
+            EmailConfig.from_mapping(config)
+            return True
+        except EmailConfigError:
+            return False
 
     def health(self, config: dict) -> dict:
-        return {"status": "ok" if self.is_configured(config) else "not_configured", "provider": "smtp"}
+        # No connection probe or message is sent by a health/configuration read.
+        return {
+            "status": "configured" if self.is_configured(config) else "not_configured",
+            "provider": "smtp", "transport_checked": False,
+            "delivery_confirmed": False,
+        }
 
     def run(self, payload: dict, config: dict) -> IntegrationActionResult:
-        recipient = payload.get("recipient")
-        if not recipient:
-            return IntegrationActionResult(success=False, message="Empfänger fehlt")
-
-        sent = send_email(
-            to_email=recipient,
-            subject=payload.get("subject", "ImmoManager Pro Test"),
-            html_body=payload.get("body", "Dies ist eine Testnachricht."),
+        try:
+            selected = EmailConfig.from_mapping(config)
+        except EmailConfigError:
+            return IntegrationActionResult(
+                success=False, message="SMTP-Konfiguration fehlt oder ist ungültig.",
+                details={"status": "not_sent", "code": "not_configured",
+                         "delivery_confirmed": False, "retry_automatically": False},
+            )
+        result = submit_email(
+            to=payload.get("recipient", ""),
+            subject=payload.get("subject", "ImmoManager Pro"),
+            body_html=payload.get("body", ""),
+            body_text=payload.get("body_text"),
+            config=selected,  # Immutable, per invocation; never set_email_config().
         )
+        messages = {
+            "accepted": "Vom SMTP-Server angenommen; Zustellung nicht bestätigt.",
+            "not_sent": "Nicht übermittelt. Konfiguration oder Fehlerstatus prüfen.",
+            "unknown": "SMTP-Ergebnis unklar. Vor einer Wiederholung prüfen.",
+        }
         return IntegrationActionResult(
-            success=bool(sent),
-            message="E-Mail versendet" if sent else "E-Mail Versand fehlgeschlagen",
-            details={"recipient": recipient, "sender": config.get("sender_email")},
+            success=result.accepted, message=messages[result.status],
+            details={"status": result.status, "code": result.code,
+                     "delivery_confirmed": False, "retry_automatically": False},
         )
 
 
@@ -65,12 +84,10 @@ class WhatsAppIntegrationProvider:
         return bool(config.get("phone_number_id") and config.get("api_token"))
 
     def health(self, config: dict) -> dict:
-        if self.is_configured(config):
-            return {"status": "configured", "provider": "meta"}
-        return {"status": "not_configured", "provider": "meta"}
+        return {"status": "planned", "provider": "meta", "implemented": False}
 
     def run(self, payload: dict, config: dict) -> IntegrationActionResult:
-        return IntegrationActionResult(success=False, message="Integration geplant, aber noch nicht konfiguriert")
+        return IntegrationActionResult(success=False, message="WhatsApp-Adapter noch nicht implementiert; gespeicherte Zugangsdaten ermöglichen keinen Versand")
 
 
 @dataclass
@@ -118,12 +135,10 @@ class DeutschePostProvider:
         return bool(config.get("api_key"))
 
     def health(self, config: dict) -> dict:
-        if self.is_configured(config):
-            return {"status": "configured", "provider": "deutsche_post"}
-        return {"status": "not_configured", "provider": "deutsche_post"}
+        return {"status": "planned", "provider": "deutsche_post", "implemented": False}
 
     def run(self, payload: dict, config: dict) -> IntegrationActionResult:
-        return IntegrationActionResult(success=False, message="Integration geplant, aber noch nicht konfiguriert")
+        return IntegrationActionResult(success=False, message="Post-Adapter noch nicht implementiert; gespeicherte Zugangsdaten ermöglichen keinen Versand")
 
 
 @dataclass
@@ -136,6 +151,7 @@ class ListingPortalProvider:
             name="Immobilienportale",
             category="listing",
             description=f"Zentrale Anbindung für Portal-Publishing ({adapters}).",
+            planned=True,
             capabilities=["Portal-Status", "Listing-Publishing", "Unpublish/Sync", "Statusprüfung"],
             required_config_keys=["default_portal"],
         )
@@ -144,7 +160,7 @@ class ListingPortalProvider:
         return bool(config.get("default_portal"))
 
     def health(self, config: dict) -> dict:
-        return {"status": "ok", "adapters": list_adapters()}
+        return {"status": "planned", "adapters": list_adapters(), "implemented": False}
 
     def run(self, payload: dict, config: dict) -> IntegrationActionResult:
         action = (payload.get("action") or "publish").lower()
@@ -173,7 +189,7 @@ class ListingPortalProvider:
             if not portal_listing_id:
                 return IntegrationActionResult(success=False, message="portal_listing_id fehlt für status")
             status_info = adapter.check_status(portal_listing_id)
-            return IntegrationActionResult(success=True, message="Status abgerufen", details=status_info)
+            return IntegrationActionResult(success=status_info.get("status") not in {"planned", "not_configured", "error"}, message="Status abgerufen", details=status_info)
         else:
             return IntegrationActionResult(success=False, message=f"Unbekannte Aktion: {action}")
 

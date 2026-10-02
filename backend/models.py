@@ -1,7 +1,9 @@
+import re
 from datetime import date, datetime, timezone
-from typing import Optional
+from decimal import Decimal, InvalidOperation
+from typing import Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
 
 
 class PortfolioCreate(BaseModel):
@@ -174,6 +176,7 @@ class BookingCreate(BaseModel):
 
 
 class Booking(BookingCreate):
+    allocated_amount: float = Field(default=0.0, ge=0)
     id: str = Field(..., min_length=1)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -181,6 +184,7 @@ class Booking(BookingCreate):
 
 class ReceivableCreate(BaseModel):
     contract_id: str
+    description: Optional[str] = None
     due_date: date
     amount_due: float
     dunning_level: Optional[str] = None
@@ -189,6 +193,7 @@ class ReceivableCreate(BaseModel):
 
 
 class Receivable(ReceivableCreate):
+    amount_paid: float = 0.0
     id: str = Field(..., min_length=1)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -197,6 +202,10 @@ class Receivable(ReceivableCreate):
 class InvoiceCreate(BaseModel):
     property_id: Optional[str] = None
     supplier: str
+    invoice_number: Optional[str] = None
+    payment_reference: Optional[str] = None
+    category: Optional[str] = None
+    notes: Optional[str] = None
     invoice_date: date
     due_date: Optional[date] = None
     net_amount: float
@@ -208,6 +217,7 @@ class InvoiceCreate(BaseModel):
 
 
 class Invoice(InvoiceCreate):
+    amount_paid: float = Field(default=0.0, ge=0)
     id: str = Field(..., min_length=1)
     source_document_id: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -447,6 +457,7 @@ class BookingPatch(BaseModel):
 
 class ReceivablePatch(BaseModel):
     contract_id: Optional[str] = None
+    description: Optional[str] = None
     due_date: Optional[date] = None
     amount_due: Optional[float] = None
     dunning_level: Optional[str] = None
@@ -457,6 +468,10 @@ class ReceivablePatch(BaseModel):
 class InvoicePatch(BaseModel):
     property_id: Optional[str] = None
     supplier: Optional[str] = None
+    invoice_number: Optional[str] = None
+    payment_reference: Optional[str] = None
+    category: Optional[str] = None
+    notes: Optional[str] = None
     invoice_date: Optional[date] = None
     due_date: Optional[date] = None
     net_amount: Optional[float] = None
@@ -624,6 +639,10 @@ class BillingPeriodCreate(BaseModel):
 
 class BillingPeriod(BillingPeriodCreate):
     id: str = Field(..., min_length=1)
+    source_period_id: Optional[str] = None
+    revision_number: int = 1
+    revision_notes: Optional[str] = None
+    owner_cost_share: Optional[dict] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -668,6 +687,17 @@ class CostItemCreate(BaseModel):
     net_amount: Optional[float] = None
     gross_amount: Optional[float] = None
 
+    @field_validator("amount", "net_amount", "gross_amount")
+    @classmethod
+    def validate_billing_money(cls, value):
+        if value is None:
+            return value
+        amount = Decimal(str(value))
+        # Supplier credit notes can legitimately reduce recoverable costs.
+        if not amount.is_finite() or abs(amount) > Decimal("9999999999.99") or amount != amount.quantize(Decimal("0.01")):
+            raise ValueError("Beträge müssen endlich und centgenau sein.")
+        return value
+
 
 class CostItem(CostItemCreate):
     id: str = Field(..., min_length=1)
@@ -687,6 +717,11 @@ class CostItemPatch(BaseModel):
     net_amount: Optional[float] = None
     gross_amount: Optional[float] = None
 
+    @field_validator("amount", "net_amount", "gross_amount")
+    @classmethod
+    def validate_patch_billing_money(cls, value):
+        return CostItemCreate.validate_billing_money(value)
+
 
 class UtilityStatementCreate(BaseModel):
     billing_period_id: str
@@ -705,11 +740,48 @@ class UtilityStatementCreate(BaseModel):
     delivery_channel: Optional[str] = None  # email | post | portal
     snapshot_hash: Optional[str] = None  # immutable content hash after finalization
 
+    @field_validator("total_cost", "advance_paid", "balance")
+    @classmethod
+    def validate_statement_money(cls, value, info):
+        amount = Decimal(str(value))
+        if not amount.is_finite() or abs(amount) > Decimal("9999999999.99") or amount != amount.quantize(Decimal("0.01")):
+            raise ValueError("Abrechnungsbeträge müssen endlich und centgenau sein.")
+        if info.field_name == "advance_paid" and amount < 0:
+            raise ValueError("Bezahlte Vorauszahlungen dürfen nicht negativ sein.")
+        return value
+
 
 class UtilityStatement(UtilityStatementCreate):
     id: str = Field(..., min_length=1)
+    source_statement_id: Optional[str] = None
+    advance_details: Optional[list[dict]] = None
+    calculation_hash: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class BillingSettlement(BaseModel):
+    id: str
+    billing_period_id: str
+    statement_id: str
+    source_statement_id: Optional[str] = None
+    root_statement_id: str
+    contract_id: str
+    signed_amount: float
+    kind: Literal["debt", "credit", "none"]
+    status: Literal["receivable_created", "credit_available", "no_adjustment"]
+    receivable_id: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    @model_validator(mode="after")
+    def validate_obligation(self):
+        value = Decimal(str(self.signed_amount))
+        if not value.is_finite() or abs(value) > Decimal("9999999999.99") or value != value.quantize(Decimal("0.01")):
+            raise ValueError("Abrechnungsbuchungen müssen endlich und centgenau sein.")
+        expected = ("debt", "receivable_created") if value > 0 else ("credit", "credit_available") if value < 0 else ("none", "no_adjustment")
+        if (self.kind, self.status) != expected or (value > 0 and not self.receivable_id):
+            raise ValueError("Art, Status und Quellforderung passen nicht zum Abrechnungsbetrag.")
+        return self
 
 
 class UtilityStatementPatch(BaseModel):
@@ -728,6 +800,13 @@ class UtilityStatementPatch(BaseModel):
     delivered_at: Optional[datetime] = None
     delivery_channel: Optional[str] = None
     snapshot_hash: Optional[str] = None
+
+    @field_validator("total_cost", "advance_paid", "balance")
+    @classmethod
+    def validate_patch_statement_money(cls, value, info):
+        if value is None:
+            return value
+        return UtilityStatementCreate.validate_statement_money(value, info)
 
 
 class BillingPreflightIssue(BaseModel):
@@ -847,11 +926,26 @@ class UserCreate(BaseModel):
     full_name: str
     password: str = Field(..., min_length=6)
     role: str = "readonly"  # eigentuemer, verwalter, buchhaltung, techniker, readonly
+    portfolio_access: Literal["all", "selected"] = "selected"
+    portfolio_ids: list[str] = Field(default_factory=list)
+
+    @field_validator("portfolio_ids")
+    @classmethod
+    def validate_portfolios(cls, value):
+        if len(value) != len(set(value)) or any(not item.strip() for item in value):
+            raise ValueError("Portfolios müssen eindeutig und nicht leer sein")
+        return value
+
+    @model_validator(mode="after")
+    def validate_portfolio_scope(self):
+        if self.portfolio_access == "all" and self.portfolio_ids:
+            raise ValueError("Zugriff auf alle Portfolios benötigt keine Einzelauswahl")
+        return self
 
     @field_validator("email")
     @classmethod
     def validate_user_email(cls, v: str) -> str:
-        if "@" not in v:
+        if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", v):
             raise ValueError("Ungültige E-Mail-Adresse")
         return v
 
@@ -870,8 +964,17 @@ class UserRead(BaseModel):
     full_name: str
     role: str
     is_active: bool = True
+    portfolio_access: Literal["all", "selected"] = "all"
+    portfolio_ids: list[str] = Field(default_factory=list)
+    portfolio_access_origin: str = "legacy_all"
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    @computed_field  # type: ignore[prop-decorator]  # Pydantic wraps the property.
+    @property
+    def write_permissions(self) -> list[str]:
+        from .permissions import write_capabilities
+        return write_capabilities(self.role)
 
 
 class UserPatch(BaseModel):
@@ -879,6 +982,38 @@ class UserPatch(BaseModel):
     full_name: Optional[str] = None
     role: Optional[str] = None
     is_active: Optional[bool] = None
+    portfolio_access: Optional[Literal["all", "selected"]] = None
+    portfolio_ids: Optional[list[str]] = None
+
+    @model_validator(mode="after")
+    def validate_scope_pair(self):
+        scope_fields = {"portfolio_access", "portfolio_ids"} & self.model_fields_set
+        if scope_fields and scope_fields != {"portfolio_access", "portfolio_ids"}:
+            raise ValueError("Zugriff und Portfolioauswahl müssen zusammen angegeben werden")
+        if scope_fields:
+            if self.portfolio_access is None or self.portfolio_ids is None:
+                raise ValueError("Explizit leere Zugriffsfelder sind nicht erlaubt")
+            UserCreate.validate_portfolios(self.portfolio_ids)
+            if self.portfolio_access == "all" and self.portfolio_ids:
+                raise ValueError("Zugriff auf alle Portfolios benötigt keine Einzelauswahl")
+        return self
+
+    @field_validator("email", "full_name", "role", "is_active", mode="before")
+    @classmethod
+    def reject_null_fields(cls, value):
+        if value is None:
+            raise ValueError("Explizit leere Benutzerfelder sind nicht erlaubt")
+        return value
+
+    @field_validator("email")
+    @classmethod
+    def validate_patch_email(cls, value: str) -> str:
+        return UserCreate.validate_user_email(value)
+
+    @field_validator("role")
+    @classmethod
+    def validate_patch_role(cls, value: str) -> str:
+        return UserCreate.validate_role(value)
 
 
 class TokenResponse(BaseModel):
@@ -892,6 +1027,8 @@ class TokenPayload(BaseModel):
     exp: datetime
     type: str  # access or refresh
     jti: Optional[str] = None  # unique token identifier for rotation
+    sid: Optional[str] = None  # persistent refresh family, absent for legacy JWTs
+    session_version: Optional[int] = None
 
 
 class LoginRequest(BaseModel):
@@ -958,8 +1095,8 @@ class TaxRatePatch(BaseModel):
 
 
 class RentAdjustmentCreate(BaseModel):
-    contract_id: str
-    adjustment_type: str  # "index" or "stepped"
+    contract_id: str = Field(min_length=1)
+    adjustment_type: Literal["index", "stepped"]
     effective_date: date
     previous_rent: float
     new_rent: float
@@ -967,7 +1104,26 @@ class RentAdjustmentCreate(BaseModel):
     index_base_year: Optional[int] = None  # CPI base year for index rent
     index_value: Optional[float] = None  # CPI value at adjustment
     notes: Optional[str] = None
-    status: str = "pending"  # pending, applied, rejected
+    status: Literal["pending", "applied", "rejected"] = "pending"
+
+    @field_validator("previous_rent", "new_rent", mode="before")
+    @classmethod
+    def validate_rent_cents(cls, value):
+        try:
+            amount = Decimal(str(value))
+        except (InvalidOperation, ValueError) as exc:
+            raise ValueError("Ungültiger Mietbetrag") from exc
+        if (isinstance(value, bool) or not amount.is_finite() or amount < 0 or amount > Decimal("9999999999.99")
+                or amount != amount.quantize(Decimal("0.01"))):
+            raise ValueError("Mietbeträge müssen nichtnegativ sein und dürfen höchstens zwei Nachkommastellen enthalten")
+        return value
+
+    @field_validator("increase_percent", "index_value")
+    @classmethod
+    def validate_optional_rent_numbers(cls, value):
+        if value is not None and (not Decimal(str(value)).is_finite() or abs(value) > 9999999999.99):
+            raise ValueError("Kennzahl muss ein endlicher Wert im erlaubten Bereich sein")
+        return value
 
 
 class RentAdjustment(RentAdjustmentCreate):
@@ -977,8 +1133,8 @@ class RentAdjustment(RentAdjustmentCreate):
 
 
 class RentAdjustmentPatch(BaseModel):
-    contract_id: Optional[str] = None
-    adjustment_type: Optional[str] = None
+    contract_id: Optional[str] = Field(default=None, min_length=1)
+    adjustment_type: Optional[Literal["index", "stepped"]] = None
     effective_date: Optional[date] = None
     previous_rent: Optional[float] = None
     new_rent: Optional[float] = None
@@ -986,7 +1142,24 @@ class RentAdjustmentPatch(BaseModel):
     index_base_year: Optional[int] = None
     index_value: Optional[float] = None
     notes: Optional[str] = None
-    status: Optional[str] = None
+    status: Optional[Literal["pending", "applied", "rejected"]] = None
+
+    @field_validator("contract_id", "adjustment_type", "effective_date", "previous_rent", "new_rent", "status", mode="before")
+    @classmethod
+    def reject_null_required_rent_fields(cls, value):
+        if value is None:
+            raise ValueError("Pflichtfelder der Mietanpassung dürfen nicht geleert werden")
+        return value
+
+    @field_validator("previous_rent", "new_rent", mode="before")
+    @classmethod
+    def validate_patch_rent_cents(cls, value):
+        return RentAdjustmentCreate.validate_rent_cents(value)
+
+    @field_validator("increase_percent", "index_value")
+    @classmethod
+    def validate_patch_optional_rent_numbers(cls, value):
+        return RentAdjustmentCreate.validate_optional_rent_numbers(value)
 
 
 # ---------------------------------------------------------------------------
@@ -1214,6 +1387,8 @@ class ContactPatch(BaseModel):
 
 class MeterCreate(BaseModel):
     unit_id: str
+    contract_number: Optional[str] = None
+    contract_end_date: Optional[date] = None
     meter_type: str  # cold_water, hot_water, heating, electricity, gas
     serial_number: Optional[str] = None
     location: Optional[str] = None
@@ -1231,6 +1406,8 @@ class Meter(MeterCreate):
 
 class MeterPatch(BaseModel):
     unit_id: Optional[str] = None
+    contract_number: Optional[str] = None
+    contract_end_date: Optional[date] = None
     meter_type: Optional[str] = None
     serial_number: Optional[str] = None
     location: Optional[str] = None
@@ -1350,6 +1527,31 @@ class MessagePatch(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+def _rent_money(value):
+    try:
+        amount = Decimal(str(value))
+    except InvalidOperation as exc:
+        raise ValueError("Betrag muss eine gültige Zahl sein.") from exc
+    if not amount.is_finite() or amount < 0 or amount > Decimal("9999999999.99"):
+        raise ValueError("Betrag muss endlich, nicht negativ und kleiner als 10 Milliarden sein.")
+    if amount != amount.quantize(Decimal("0.01")):
+        raise ValueError("Betrag darf höchstens zwei Nachkommastellen haben.")
+    return float(amount)
+
+
+def _rent_month(value):
+    if not isinstance(value, str) or not re.fullmatch(r"[0-9]{4}-(0[1-9]|1[0-2])", value):
+        raise ValueError("Monat muss im Format YYYY-MM angegeben werden.")
+    date.fromisoformat(value + "-01")
+    return value
+
+
+def _rent_status(value):
+    if value not in {"open", "partial", "paid", "overdue"}:
+        raise ValueError("Ungültiger Zahlungsstatus.")
+    return value
+
+
 class RentChargeCreate(BaseModel):
     contract_id: str
     month: str  # YYYY-MM
@@ -1359,6 +1561,10 @@ class RentChargeCreate(BaseModel):
     other_charges: float = 0.0
     amount_paid: float = 0.0
     status: str = "open"  # open, partial, paid, overdue
+
+    _money = field_validator("cold_rent", "service_charge", "heating_charge", "other_charges", "amount_paid", mode="before")(_rent_money)
+    _month = field_validator("month", mode="before")(_rent_month)
+    _status = field_validator("status")(_rent_status)
 
 
 class RentCharge(RentChargeCreate):
@@ -1376,6 +1582,21 @@ class RentChargePatch(BaseModel):
     other_charges: Optional[float] = None
     amount_paid: Optional[float] = None
     status: Optional[str] = None
+
+    @field_validator("cold_rent", "service_charge", "heating_charge", "other_charges", "amount_paid", mode="before")
+    @classmethod
+    def validate_money(cls, value):
+        return None if value is None else _rent_money(value)
+
+    @field_validator("month", mode="before")
+    @classmethod
+    def validate_month(cls, value):
+        return None if value is None else _rent_month(value)
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, value):
+        return None if value is None else _rent_status(value)
 
 
 class InsurancePatch(BaseModel):

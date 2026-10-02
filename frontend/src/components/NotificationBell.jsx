@@ -1,3 +1,4 @@
+import useWriteAccess from '../hooks/useWriteAccess';
 import { useState, useEffect, useRef } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
@@ -9,6 +10,7 @@ export default function NotificationBell() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
+  const { canWrite, isAllowed } = useWriteAccess('/notifications');
 
   const fetchNotifications = () => {
     api.get('/notifications?status=unread&limit=10')
@@ -52,6 +54,7 @@ export default function NotificationBell() {
   }, [open]);
 
   const markRead = async (id) => {
+    if (!isAllowed()) return;
     try {
       await api.patch(`/notifications/${id}`, { status: 'read' });
       fetchNotifications();
@@ -62,6 +65,7 @@ export default function NotificationBell() {
 
   const markAllRead = async () => {
     for (const n of notifications) {
+      if (!isAllowed()) break;
       try {
         await api.patch(`/notifications/${n.id}`, { status: 'read' });
       } catch (err) {
@@ -94,7 +98,7 @@ export default function NotificationBell() {
         <div className="notification-dropdown" role="menu" aria-label={t('topBar.notifications')}>
           <div className="notification-dropdown-header">
             <span>{t('topBar.notifications')}</span>
-            {notifications.length > 0 && (
+            {canWrite && notifications.length > 0 && (
               <button className="notification-mark-all" onClick={markAllRead}>
                 {t('notifications.actions.markAllRead')}
               </button>

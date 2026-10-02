@@ -1,5 +1,10 @@
 """Tests for authentication: registration, login, JWT tokens, RBAC."""
 
+import base64
+import hashlib
+import hmac
+import json
+import time
 from unittest.mock import MagicMock
 
 import pytest
@@ -75,6 +80,25 @@ class TestPasswordHashing:
 # === JWT Tokens ===
 
 class TestTokens:
+    @pytest.mark.parametrize("expires_in,status", [(3600, 200), (-3600, 401)])
+    def test_existing_hs256_tokens_remain_compatible(self, expires_in, status):
+        from backend.auth import SECRET_KEY
+
+        def encoded(value):
+            return base64.urlsafe_b64encode(json.dumps(value, separators=(",", ":")).encode()).rstrip(b"=")
+
+        header = encoded({"alg": "HS256", "typ": "JWT"})
+        body = encoded({"sub": "legacy-user", "exp": int(time.time()) + expires_in, "type": "access", "jti": "legacy-session"})
+        signing_input = header + b"." + body
+        signature = base64.urlsafe_b64encode(hmac.new(SECRET_KEY.encode(), signing_input, hashlib.sha256).digest()).rstrip(b"=")
+        token = (signing_input + b"." + signature).decode()
+        if status == 200:
+            assert decode_token(token).sub == "legacy-user"
+        else:
+            with pytest.raises(HTTPException) as exc:
+                decode_token(token)
+            assert exc.value.status_code == 401
+
     def test_create_access_token(self):
         token = create_access_token("user-123")
         payload = decode_token(token)
@@ -126,6 +150,7 @@ class TestUserManagement:
 
     def test_authenticate_inactive_user(self):
         u = _register_admin()
+        register_user("retained-owner", "retained@example.com", "Retained Owner", "Secret123", "eigentuemer")
         update_user(u.id, {"is_active": False})
         user = authenticate_user("admin", "Secret123")
         assert user is None
@@ -148,8 +173,9 @@ class TestUserManagement:
 
     def test_delete_user(self):
         u = _register_admin()
+        retained = register_user("retained-owner", "retained@example.com", "Retained Owner", "Secret123", "eigentuemer")
         delete_user(u.id)
-        assert len(list_users()) == 0
+        assert [user.id for user in list_users()] == [retained.id]
 
     def test_delete_nonexistent(self):
         with pytest.raises(HTTPException) as exc_info:
@@ -163,11 +189,12 @@ class TestAuthRouter:
     def test_register_endpoint(self):
         mock_request = MagicMock()
         mock_request.client.host = "127.0.0.1"
-        result = register(UserCreate(
-            username="test", email="test@example.com",
-            full_name="Test User", password="Pass1234"
-        ), request=mock_request)
-        assert result.username == "test"
+        with pytest.raises(HTTPException) as exc:
+            register(UserCreate(
+                username="test", email="test@example.com",
+                full_name="Test User", password="Pass1234"
+            ), request=mock_request)
+        assert exc.value.status_code == 403
 
     def test_login_endpoint(self):
         _register_admin()
@@ -217,27 +244,31 @@ class TestAuthRouter:
         assert updated["locale"] == "de-DE"
         assert updated["currency"] == "EUR"
 
-    def test_update_my_preferences_returns_fallback_when_session_init_fails(self, monkeypatch):
+    def test_update_my_preferences_reports_failure_when_session_init_fails(self, monkeypatch):
         user = _register_admin()
-
-        monkeypatch.setattr("backend.db.session.DATABASE_URL", "postgresql://db/test")
+        before = get_my_preferences(user)
 
         def _raise_session_error():
             raise RuntimeError("db down")
 
-        monkeypatch.setattr("backend.db.session.SessionLocal", _raise_session_error)
+        with monkeypatch.context() as patch:
+            patch.setattr("backend.auth._auth_session_factory", _raise_session_error)
+            with pytest.raises(HTTPException) as error:
+                update_my_preferences({"theme": "dark", "locale": "en-US", "ignored": "x"}, user)
+        assert error.value.status_code == 503
+        assert get_my_preferences(user) == before
 
-        updated = update_my_preferences({"theme": "dark", "locale": "en-US", "ignored": "x"}, user)
-        assert updated["theme"] == "dark"
-        assert updated["locale"] == "en-US"
-        assert "ignored" not in updated
+    def test_update_my_preferences_reports_failure_when_commit_fails(self, monkeypatch):
+        from backend.auth import _auth_session_factory
 
-    def test_update_my_preferences_returns_fallback_when_commit_fails(self, monkeypatch):
         user = _register_admin()
-
-        monkeypatch.setattr("backend.db.session.DATABASE_URL", "postgresql://db/test")
+        before = update_my_preferences({"theme": "system", "locale": "es-ES"}, user)
 
         class _BrokenSession:
+            def execute(self, _statement):
+                from types import SimpleNamespace
+                return SimpleNamespace(rowcount=1)
+
             def query(self, _model):
                 return self
 
@@ -259,11 +290,28 @@ class TestAuthRouter:
             def close(self):
                 return None
 
-        monkeypatch.setattr("backend.db.session.SessionLocal", lambda: _BrokenSession())
+        if _auth_session_factory is None:
+            session = MagicMock(wraps=_BrokenSession())
+        else:
+            # Exercise real pending SQL changes and rollback, not a fake store.
+            actual_session = _auth_session_factory()
+            session = MagicMock(wraps=actual_session)
 
-        updated = update_my_preferences({"theme": "dark", "currency": "USD"}, user)
-        assert updated["theme"] == "dark"
-        assert updated["currency"] == "USD"
+            def _fail_commit():
+                actual_session.flush()
+                raise RuntimeError("commit failed")
+
+            session.commit.side_effect = _fail_commit
+
+        with monkeypatch.context() as patch:
+            patch.setattr("backend.auth._auth_session_factory", lambda: session)
+            with pytest.raises(HTTPException) as error:
+                update_my_preferences({"theme": "dark", "currency": "USD"}, user)
+        assert error.value.status_code == 503
+        session.commit.assert_called_once()
+        session.rollback.assert_called_once()
+        session.close.assert_called_once()
+        assert get_my_preferences(user) == before
 
 
 

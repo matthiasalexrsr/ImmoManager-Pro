@@ -176,6 +176,7 @@ def test_create_receivables_rejects_draft_period():
 def test_create_revision_creates_new_period():
     period, *_ = _setup_full_scenario()
     billing.generate_utility_statements(period.id)
+    billing.finalize_billing_period(period.id)
 
     result = billing.create_period_revision(period.id)
     assert result["source_period_id"] == period.id

@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "commit": "82930ad7760486264536f150e08ddaf97e1ac361",
+  "tree": "d4138bcfea285c535b764a42330e48604d3407f8",
+  "workflow_run_id": 36966629656,
+  "workflow_run_number": 124,
+  "conclusion": "success",
+  "url": "https://github.com/matthiasalexrsr/ImmoManager-Pro/actions/runs/36966629656",
+  "backend_matrix": {
+    "adapters": [
+      "memory",
+      "sql"
+    ],
+    "python": [
+      "3.11",
+      "3.12"
+    ],
+    "each": {
+      "passed": 3323,
+      "skipped": 149,
+      "coverage_percent": 90
+    }
+  },
+  "frontend": {
+    "test_files": 67,
+    "passed": 829,
+    "lint": "success",
+    "build": "success"
+  },
+  "browser": {
+    "management_passed": 60,
+    "fresh_owner_totp_passed": 2
+  },
+  "postgres_independent": {
+    "passed": 182,
+    "skipped": 1
+  },
+  "native_linux_ocr": {
+    "memory": {
+      "passed": 124,
+      "skipped": 0
+    },
+    "sql": {
+      "passed": 124,
+      "skipped": 0
+    }
+  },
+  "private_postgres_server": "success",
+  "docker_compose_smoke": "success",
+  "deployment_readiness": "success",
+  "limits": [
+    "Evidence applies to this exact commit; subsequent lifecycle packages require their own acceptance.",
+    "WISO Steuer for Windows is not installed here; actual consumer import was not executed.",
+    "Remaining historical roadmap items are not declared complete."
+  ],
+  "jobs": [
+    {
+      "id": 110711690767,
+      "name": "Frontend lint + build",
+      "conclusion": "success"
+    },
+    {
+      "id": 110711690979,
+      "name": "Private PostgreSQL server lifecycle",
+      "conclusion": "success"
+    },
+    {
+      "id": 110711690998,
+      "name": "Browser workflows (Chromium + SQLite)",
+      "conclusion": "success"
+    },
+    {
+      "id": 110711691027,
+      "name": "Backend sql (py3.11)",
+      "conclusion": "success"
+    },
+    {
+      "id": 110711691040,
+      "name": "Backend memory (py3.11)",
+      "conclusion": "success"
+    },
+    {
+      "id": 110711691079,
+      "name": "Backend sql (py3.12)",
+      "conclusion": "success"
+    },
+    {
+      "id": 110711691111,
+      "name": "Required native OCR (Linux Poppler + Tesseract deu/eng)",
+      "conclusion": "success"
+    },
+    {
+      "id": 110711691157,
+      "name": "Backend memory (py3.12)",
+      "conclusion": "success"
+    },
+    {
+      "id": 110711691251,
+      "name": "PostgreSQL independent sessions and processes",
+      "conclusion": "success"
+    },
+    {
+      "id": 110715694602,
+      "name": "E2E smoke (docker-compose)",
+      "conclusion": "success"
+    },
+    {
+      "id": 110715975389,
+      "name": "Deployment readiness",
+      "conclusion": "success"
+    }
+  ]
+}

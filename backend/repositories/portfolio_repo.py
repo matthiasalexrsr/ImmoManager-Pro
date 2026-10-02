@@ -23,7 +23,8 @@ from ..models import (
     Unit,
     UnitCreate,
 )
-from ..storage import ValidationError
+from ..storage import NotFoundError, ValidationError
+from .account_repo import AccountRepository
 from .base import BaseRepository
 
 logger = logging.getLogger(__name__)
@@ -37,7 +38,7 @@ class PortfolioRepository:
         self._portfolios = BaseRepository(db, PortfolioORM, Portfolio, "Portfolio nicht gefunden")
         self._properties = BaseRepository(db, PropertyORM, Property, "Immobilie nicht gefunden")
         self._units = BaseRepository(db, UnitORM, Unit, "Einheit nicht gefunden")
-        self._accounts = BaseRepository(db, AccountORM, Account, "Konto nicht gefunden")
+        self._accounts = AccountRepository(db, AccountORM, Account, "Konto nicht gefunden")
         self._categories = BaseRepository(db, CategoryORM, Category, "Kategorie nicht gefunden")
 
     def _commit(self):
@@ -61,6 +62,12 @@ class PortfolioRepository:
         return result
 
     def delete_portfolio(self, portfolio_id: str) -> None:
+        try:
+            self._portfolios.get(portfolio_id)
+        except NotFoundError:
+            self._portfolios._missing(portfolio_id)
+        from ..services.bank_import_guards import guard_bank_import_portfolio_delete
+        guard_bank_import_portfolio_delete(self, portfolio_id)
         self._portfolios.delete(portfolio_id)
         self._commit()
 
@@ -86,6 +93,12 @@ class PortfolioRepository:
         return result
 
     def delete_account(self, account_id: str) -> None:
+        try:
+            self._accounts.get(account_id)
+        except NotFoundError:
+            self._accounts._missing(account_id)
+        from ..services.bank_import_guards import guard_bank_import_account_delete
+        guard_bank_import_account_delete(self, account_id)
         self._accounts.delete(account_id)
         self._commit()
 
@@ -130,6 +143,10 @@ class PortfolioRepository:
 
     def update_property(self, property_id: str, data: PropertyCreate) -> Property:
         if not self._portfolios.exists(data.portfolio_id):
+            # A deleted ancestor also removes the edited subject. Preserve its
+            # conditional form conflict before reporting a proposed bad parent.
+            if not self._properties.exists(property_id):
+                self._properties._missing(property_id)
             raise ValidationError("Portfolio existiert nicht")
         result = self._properties.update(property_id, data)
         self._commit()
@@ -155,6 +172,8 @@ class PortfolioRepository:
 
     def update_unit(self, unit_id: str, data: UnitCreate) -> Unit:
         if not self._properties.exists(data.property_id):
+            if not self._units.exists(unit_id):
+                self._units._missing(unit_id)
             raise ValidationError("Immobilie existiert nicht")
         result = self._units.update(unit_id, data)
         self._commit()

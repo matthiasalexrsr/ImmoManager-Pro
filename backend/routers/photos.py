@@ -8,6 +8,7 @@ from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
 from ..dependencies import store
 from ..models import EntityPhoto, EntityPhotoCreate, EntityPhotoPatch
 from ..services.file_storage import get_file_storage
+from ..services.portfolio_scope import register_upload
 from ..storage import NotFoundError
 
 logger = logging.getLogger(__name__)
@@ -33,9 +34,16 @@ async def upload_photo(
 ) -> EntityPhoto:
     """Upload a photo file and create an EntityPhoto record."""
     storage = get_file_storage()
+    if entity_type not in {"property", "unit"}:
+        raise HTTPException(422, "Fotos benötigen eine Immobilie oder Einheit")
+    try:
+        (store.get_property if entity_type == "property" else store.get_unit)(entity_id)
+    except NotFoundError as error:
+        raise HTTPException(404, "Datensatz nicht gefunden") from error
     ext = (file.filename or "photo.jpg").rsplit(".", 1)[-1].lower()
     key = f"photos/{entity_type}/{entity_id}/{uuid.uuid4().hex}.{ext}"
     storage.save(key, file.file, content_type=file.content_type or "image/jpeg")
+    register_upload(key)
     file_url = storage.get_url(key)
 
     data = EntityPhotoCreate(

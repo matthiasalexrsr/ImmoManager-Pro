@@ -2,17 +2,31 @@
 
 import json
 import logging
+import os
 import platform
-import shutil
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
+from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, ConfigDict, Field
 
 from ..config import settings
 from ..dependencies import store
 from ..plugins import get_plugins
+from ..services.bank_import import BankImportError
+from ..services.data_transfer import (
+    TransferError,
+    _atomic_store,
+    _clear_supported,
+    _specifications,
+    decode_snapshot,
+    export_store_data,
+    import_store_data,
+    list_records,
+)
 
 # Re-export the CONTRACT_WIZARD_STATUS lazily to avoid circular imports.
 _CONTRACT_WIZARD_STATUS = None
@@ -36,192 +50,32 @@ router = APIRouter(prefix="/admin", tags=["Admin"])
 _BACKUP_DIR = Path("backups")
 
 
-def _safe_list(method_name: str) -> list[dict]:
-    """Safely call a store list method and return model_dump results."""
-    method = getattr(store, method_name, None)
-    if not method:
-        return []
+def _safe_list(method_name: str, active_store=None) -> list[dict]:
+    return list_records(store if active_store is None else active_store, method_name)
+
+
+def _export_store_data(active_store=None) -> dict:
     try:
-        return [item.model_dump(mode="json") for item in method()]
-    except Exception:
-        logger.warning("Export failed for %s", method_name, exc_info=True)
-        return []
+        return export_store_data(store if active_store is None else active_store, settings.app_version)
+    except (TransferError, BankImportError):
+        raise
+    except Exception as exc:
+        raise TransferError("Export fehlgeschlagen; es wurde keine Teilsicherung erzeugt.") from exc
 
 
-def _export_store_data() -> dict:
-    """Build a JSON-serializable snapshot of the active store backend."""
-    return {
-        "version": settings.app_version,
-        "exported_at": datetime.now(timezone.utc).isoformat(),
-        "portfolios": _safe_list("list_portfolios"),
-        "properties": _safe_list("list_properties"),
-        "units": _safe_list("list_units"),
-        "tenants": _safe_list("list_tenants"),
-        "contracts": _safe_list("list_contracts"),
-        "accounts": _safe_list("list_accounts"),
-        "categories": _safe_list("list_categories"),
-        "bookings": _safe_list("list_bookings"),
-        "receivables": _safe_list("list_receivables"),
-        "invoices": _safe_list("list_invoices"),
-        "maintenance_cases": _safe_list("list_maintenance_cases"),
-        "documents": _safe_list("list_documents"),
-        "tasks": _safe_list("list_tasks"),
-        "deposits": _safe_list("list_deposits"),
-        "insurances": _safe_list("list_insurances"),
-        "notifications": _safe_list("list_notifications"),
-        "notification_templates": _safe_list("list_notification_templates"),
-        "budgets": _safe_list("list_budgets"),
-        "leads": _safe_list("list_leads"),
-        "listings": _safe_list("list_listings"),
-        "viewings": _safe_list("list_viewings"),
-        "tax_rates": _safe_list("list_tax_rates"),
-        "rent_charges": _safe_list("list_rent_charges"),
-        "escalation_rules": _safe_list("list_escalation_rules"),
-        "contacts": _safe_list("list_contacts"),
-        "handover_protocols": _safe_list("list_handover_protocols"),
-        "meter_readings": _safe_list("list_meter_readings"),
-    }
+def _clear_store_data(active_store=None, *, strict: bool = False) -> None:
+    # Internal test compatibility. Production restore uses import_store_data.
+    with _atomic_store(store if active_store is None else active_store) as staged:
+        _clear_supported(staged, _specifications())
 
 
-def _clear_store_data() -> None:
-    """Delete exported entities in reverse dependency order."""
-    # Children / leaves first, then parents.
-    delete_order = [
-        ("list_meter_readings", "delete_meter_reading"),
-        ("list_handover_protocols", "delete_handover_protocol"),
-        ("list_contacts", "delete_contact"),
-        ("list_escalation_rules", "delete_escalation_rule"),
-        ("list_rent_charges", "delete_rent_charge"),
-        ("list_rent_adjustments", "delete_rent_adjustment"),
-        ("list_tax_rates", "delete_tax_rate"),
-        ("list_viewings", "delete_viewing_appointment"),
-        ("list_listings", "delete_listing"),
-        ("list_leads", "delete_lead"),
-        ("list_budgets", "delete_budget"),
-        ("list_notification_templates", "delete_notification_template"),
-        ("list_notifications", "delete_notification"),
-        ("list_deposits", "delete_deposit"),
-        ("list_insurances", "delete_insurance"),
-        ("list_tasks", "delete_task"),
-        ("list_documents", "delete_document"),
-        ("list_maintenance_cases", "delete_maintenance_case"),
-        ("list_receivables", "delete_receivable"),
-        ("list_invoices", "delete_invoice"),
-        ("list_bookings", "delete_booking"),
-        ("list_categories", "delete_category"),
-        ("list_accounts", "delete_account"),
-        ("list_contracts", "delete_contract"),
-        ("list_tenants", "delete_tenant"),
-        ("list_units", "delete_unit"),
-        ("list_properties", "delete_property"),
-        ("list_portfolios", "delete_portfolio"),
-    ]
-
-    for list_fn_name, delete_fn_name in delete_order:
-        list_fn = getattr(store, list_fn_name, None)
-        delete_fn = getattr(store, delete_fn_name, None)
-        if not list_fn or not delete_fn:
-            continue
-        for item in list_fn():
-            try:
-                delete_fn(item.id)
-            except Exception:
-                logger.warning("Clear failed for %s/%s", delete_fn_name, item.id)
+def _import_store_data(data: dict, *, replace_existing: bool, active_store=None, strict: bool = False) -> dict:
+    return import_store_data(store if active_store is None else active_store, data,
+                             replace_existing=replace_existing)
 
 
-def _import_store_data(data: dict, *, replace_existing: bool) -> dict:
-    """Import store data from export/backup JSON.
-
-    Covers all entity types that _export_store_data() can produce so that
-    export → import round-trips are lossless.
-    """
-    from ..models import (
-        AccountCreate,
-        BookingCreate,
-        BudgetCreate,
-        CategoryCreate,
-        ContactCreate,
-        ContractCreate,
-        DepositCreate,
-        DocumentCreate,
-        EscalationRuleCreate,
-        HandoverProtocolCreate,
-        InsuranceCreate,
-        InvoiceCreate,
-        LeadCreate,
-        ListingCreate,
-        MaintenanceCaseCreate,
-        MeterReadingCreate,
-        NotificationCreate,
-        NotificationTemplateCreate,
-        PortfolioCreate,
-        PropertyCreate,
-        ReceivableCreate,
-        RentAdjustmentCreate,
-        RentChargeCreate,
-        TaskCreate,
-        TaxRateCreate,
-        TenantCreate,
-        UnitCreate,
-        ViewingAppointmentCreate,
-    )
-
-    # Import order follows dependency chain (parents before children).
-    entity_configs = [
-        ("portfolios", PortfolioCreate, store.create_portfolio),
-        ("properties", PropertyCreate, store.create_property),
-        ("units", UnitCreate, store.create_unit),
-        ("tenants", TenantCreate, store.create_tenant),
-        ("contracts", ContractCreate, store.create_contract),
-        ("accounts", AccountCreate, store.create_account),
-        ("categories", CategoryCreate, store.create_category),
-        ("bookings", BookingCreate, store.create_booking),
-        ("invoices", InvoiceCreate, store.create_invoice),
-        ("receivables", ReceivableCreate, store.create_receivable),
-        ("maintenance_cases", MaintenanceCaseCreate, store.create_maintenance_case),
-        ("documents", DocumentCreate, store.create_document),
-        ("tasks", TaskCreate, store.create_task),
-        ("deposits", DepositCreate, store.create_deposit),
-        ("insurances", InsuranceCreate, store.create_insurance),
-        ("notifications", NotificationCreate, store.create_notification),
-        ("notification_templates", NotificationTemplateCreate, store.create_notification_template),
-        ("budgets", BudgetCreate, store.create_budget),
-        ("leads", LeadCreate, store.create_lead),
-        ("listings", ListingCreate, store.create_listing),
-        ("viewings", ViewingAppointmentCreate, store.create_viewing_appointment),
-        ("tax_rates", TaxRateCreate, store.create_tax_rate),
-        ("rent_charges", RentChargeCreate, store.create_rent_charge),
-        ("rent_adjustments", RentAdjustmentCreate, store.create_rent_adjustment),
-        ("escalation_rules", EscalationRuleCreate, store.create_escalation_rule),
-        ("contacts", ContactCreate, store.create_contact),
-        ("handover_protocols", HandoverProtocolCreate, store.create_handover_protocol),
-        ("meter_readings", MeterReadingCreate, store.create_meter_reading),
-    ]
-
-    if replace_existing:
-        _clear_store_data()
-
-    counts = {}
-    for key, model_cls, create_fn in entity_configs:
-        if model_cls is None or create_fn is None:
-            continue
-        items = data.get(key, [])
-        if not items:
-            continue
-        imported = 0
-        for item in items:
-            try:
-                cleaned_item = dict(item)
-                for skip in ("id", "created_at", "updated_at"):
-                    cleaned_item.pop(skip, None)
-                obj = model_cls(**cleaned_item)
-                create_fn(obj)
-                imported += 1
-            except Exception:
-                logger.warning("Import failed for %s item: %s", key, item.get("id", "?"), exc_info=True)
-        counts[key] = imported
-
-    return {"imported": counts, "replace_existing": replace_existing}
+def _restore_store_data(data: dict, active_store=None) -> dict:
+    return _import_store_data(data, replace_existing=True, active_store=active_store)
 
 
 # ─── Version ────────────────────────────────────────────────────────────────
@@ -335,19 +189,33 @@ def list_plugins():
 
 # ─── Backup / Restore ───────────────────────────────────────────────────────
 
+def _create_json_backup(directory: Path):
+    try:
+        content = json.dumps(_export_store_data(), ensure_ascii=False, indent=2, allow_nan=False)
+    except BankImportError:
+        raise
+    except Exception as exc:
+        logger.exception("Business-data export failed")
+        raise HTTPException(500, "Sicherung fehlgeschlagen; keine Teilsicherung erstellt.") from exc
+    directory.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
+    backup_name = f"backup_{timestamp}_{uuid4().hex[:8]}.json"
+    handle, temporary = tempfile.mkstemp(prefix=".backup-", suffix=".tmp", dir=directory)
+    try:
+        with os.fdopen(handle, "w", encoding="utf-8") as output:
+            output.write(content)
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(temporary, directory / backup_name)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+    return {"backup": backup_name, "size_bytes": (directory / backup_name).stat().st_size,
+            "scope": "business-data-only"}
+
+
 @router.post("/backup", response_model=None)
 def create_backup():
-    """Create a backup of the currently active store backend."""
-    _BACKUP_DIR.mkdir(exist_ok=True)
-
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    backup_name = f"backup_{timestamp}.json"
-    backup_path = _BACKUP_DIR / backup_name
-    payload = _export_store_data()
-    backup_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-
-    logger.info("Backup created: %s", backup_name)
-    return {"backup": backup_name, "size_bytes": backup_path.stat().st_size}
+    return _create_json_backup(_BACKUP_DIR)
 
 
 @router.get("/backups")
@@ -364,34 +232,35 @@ def list_backups():
     return backups
 
 
+def _restore_backup_file(directory: Path, backup_name: str):
+    if (not backup_name or backup_name in {".", ".."} or "/" in backup_name
+            or chr(92) in backup_name or ":" in backup_name):
+        raise HTTPException(400, "Ungueltiger Sicherungsname.")
+    path = directory / backup_name
+    if path.is_symlink() or path.resolve().parent != directory.resolve():
+        raise HTTPException(400, "Ungueltiger Sicherungspfad.")
+    if not path.is_file():
+        raise HTTPException(404, "Sicherung nicht gefunden.")
+    if path.suffix != ".json":
+        raise HTTPException(409, "Datenbankdateien nur offline wiederherstellen; der Server muss beendet sein.")
+    with path.open("rb") as source:
+        raw = source.read(settings.max_upload_size_bytes + 1)
+    if len(raw) > settings.max_upload_size_bytes:
+        raise HTTPException(413, "Sicherung zu gross fuer den JSON-Restore.")
+    try:
+        data = decode_snapshot(raw)
+    except TransferError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    try:
+        result = _restore_store_data(data)
+    except TransferError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    return {"restored_from": backup_name, **result}
+
+
 @router.post("/restore/{backup_name}", response_model=None)
 def restore_backup(backup_name: str):
-    """Restore data from a backup file."""
-    backup_path = _BACKUP_DIR / backup_name
-    if not backup_path.exists():
-        raise HTTPException(404, f"Backup not found: {backup_name}")
-
-    if backup_path.suffix == ".json":
-        try:
-            data = json.loads(backup_path.read_text(encoding="utf-8"))
-            return {
-                "restored_from": backup_name,
-                **_import_store_data(data, replace_existing=True),
-            }
-        except Exception as exc:
-            raise HTTPException(400, f"Invalid JSON backup: {exc}") from exc
-
-    if "sqlite" not in settings.database_url:
-        raise HTTPException(400, "Binary DB restore is only supported for SQLite databases")
-
-    db_path = settings.database_url.replace("sqlite:///", "")
-    # Create a safety backup before restoring
-    safety = _BACKUP_DIR / f"pre_restore_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.db"
-    if Path(db_path).exists():
-        shutil.copy2(db_path, safety)
-    shutil.copy2(backup_path, db_path)
-    logger.info("Database restored from %s", backup_name)
-    return {"restored_from": backup_name, "safety_backup": safety.name}
+    return _restore_backup_file(_BACKUP_DIR, backup_name)
 
 
 # ─── Integrity Check ────────────────────────────────────────────────────────
@@ -445,8 +314,13 @@ def integrity_check():
 @router.get("/export", response_model=None)
 def export_data():
     """Export all data as JSON."""
-    data = _export_store_data()
-    content = json.dumps(data, ensure_ascii=False, indent=2)
+    try:
+        data = _export_store_data()
+        content = json.dumps(data, ensure_ascii=False, indent=2, allow_nan=False)
+    except BankImportError:
+        raise
+    except Exception as exc:
+        raise HTTPException(500, "Export fehlgeschlagen; keine Teildatei erstellt.") from exc
 
     return StreamingResponse(
         iter([content]),
@@ -457,19 +331,13 @@ def export_data():
 
 @router.post("/import", response_model=None)
 def import_data(file: UploadFile):
-    """Import data from a JSON export file."""
+    raw = file.file.read(settings.max_upload_size_bytes + 1)
+    if len(raw) > settings.max_upload_size_bytes:
+        raise HTTPException(413, "Importdatei zu gross.")
     try:
-        raw = file.file.read()
-        data = json.loads(raw)
-    except (json.JSONDecodeError, Exception) as e:
-        raise HTTPException(400, f"Ungültige JSON-Datei: {e}")
-
-    try:
-        result = _import_store_data(data, replace_existing=False)
-    except Exception as exc:
-        raise HTTPException(400, f"Import error: {exc}") from exc
-
-    logger.info("Data imported: %s", result["imported"])
+        result = _import_store_data(decode_snapshot(raw), replace_existing=False)
+    except TransferError as exc:
+        raise HTTPException(400, str(exc)) from exc
     return result
 
 
@@ -515,154 +383,67 @@ def bulk_delete(entity_type: str, payload: dict):
     return {"deleted": deleted, "errors": errors}
 
 
-# ─── DSGVO / GDPR Compliance ────────────────────────────────────────────────
+# ─── Tenant privacy: explicit relationship metadata and profile scope ──────
+
+
+def _privacy_read(action, tenant_id: str):
+    from ..services.tenant_data_graph import TenantExportError, TenantNotFoundError
+    try:
+        return action(store, tenant_id)
+    except TenantNotFoundError as exc:
+        raise HTTPException(404, "Mieter nicht gefunden.") from exc
+    except TenantExportError as exc:
+        raise HTTPException(503, "Die Datenauskunft konnte nicht vollständig erstellt werden.") from exc
 
 
 @router.get("/dsgvo/tenant/{tenant_id}/export", response_model=None)
 def dsgvo_export_tenant_data(tenant_id: str):
-    """T11: DSGVO Art. 15 — Export all personal data for a tenant.
+    """Export explicit tenant relationships and verified stored wizard files."""
+    import hashlib
 
-    Returns a JSON file containing all data associated with the given tenant,
-    including contracts, bookings, deposits, documents, maintenance cases,
-    messages, and handover protocols.
-    """
-    from io import BytesIO
-
-    from fastapi.responses import StreamingResponse
-
-    # Get the tenant
+    from ..services.tenant_privacy import prepare_tenant_export
+    from .datev import PrivateDownloadResponse
+    compiled, captured = _privacy_read(prepare_tenant_export, tenant_id)
+    filename_id = hashlib.sha256(tenant_id.encode("utf-8")).hexdigest()[:16]
     try:
-        tenant = store.get_tenant(tenant_id)
-    except Exception:
-        raise HTTPException(404, f"Mieter mit ID {tenant_id} nicht gefunden")
+        return PrivateDownloadResponse(compiled, captured, media_type="application/json", headers={
+            "Content-Length": str(compiled.manifest["size"]),
+            "Content-Disposition": f'attachment; filename="tenant_metadata_{filename_id}.json"',
+            "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff",
+            "X-Content-SHA256": compiled.manifest["sha256"],
+        })
+    except Exception as exc:
+        compiled.close()
+        raise HTTPException(503, "Export konnte nicht gespeichert werden. Freien Speicher prüfen und erneut versuchen.") from exc
 
-    tenant_data = tenant.model_dump(mode="json")
 
-    # Collect all related data
-    contracts = [c.model_dump(mode="json") for c in store.list_contracts()
-                 if c.tenant_id == tenant_id]
-    contract_ids = {c["id"] for c in contracts}
+@router.get("/dsgvo/tenant/{tenant_id}/anonymization-preview", response_model=None)
+def dsgvo_anonymization_preview(tenant_id: str):
+    from ..services.tenant_privacy import preview_tenant_anonymization
+    return _privacy_read(preview_tenant_anonymization, tenant_id)
 
-    bookings = [b.model_dump(mode="json") for b in store.list_bookings()
-                if getattr(b, "contract_id", None) in contract_ids]
 
-    deposits = [d.model_dump(mode="json") for d in store.list_deposits()
-                if getattr(d, "contract_id", None) in contract_ids]
-
-    documents = [d.model_dump(mode="json") for d in store.list_documents()
-                 if getattr(d, "tenant_id", None) == tenant_id]
-
-    maintenance = [m.model_dump(mode="json") for m in store.list_maintenance_cases()
-                   if getattr(m, "tenant_id", None) == tenant_id]
-
-    receivables = [r.model_dump(mode="json") for r in store.list_receivables()
-                   if getattr(r, "contract_id", None) in contract_ids]
-
-    handover_protocols = [h.model_dump(mode="json") for h in store.list_handover_protocols()
-                          if getattr(h, "contract_id", None) in contract_ids]
-
-    messages = []
-    try:
-        for msg in store.list_messages():
-            if getattr(msg, "tenant_id", None) == tenant_id:
-                messages.append(msg.model_dump(mode="json"))
-    except Exception:
-        logger.debug("Could not collect messages for DSGVO export of tenant %s", tenant_id, exc_info=True)
-
-    export = {
-        "export_type": "DSGVO_Datenauskunft",
-        "exported_at": datetime.now(timezone.utc).isoformat(),
-        "tenant": tenant_data,
-        "contracts": contracts,
-        "bookings": bookings,
-        "deposits": deposits,
-        "receivables": receivables,
-        "documents": documents,
-        "maintenance_cases": maintenance,
-        "handover_protocols": handover_protocols,
-        "messages": messages,
-    }
-
-    content = json.dumps(export, ensure_ascii=False, indent=2, default=str)
-    return StreamingResponse(
-        BytesIO(content.encode("utf-8")),
-        media_type="application/json",
-        headers={
-            "Content-Disposition": f'attachment; filename="dsgvo_export_tenant_{tenant_id}.json"',
-        },
-    )
+class TenantAnonymizationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    plan_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+    confirm_tenant_id: str = Field(min_length=1, max_length=128)
 
 
 @router.post("/dsgvo/tenant/{tenant_id}/anonymize", response_model=None)
-def dsgvo_anonymize_tenant(tenant_id: str):
-    """T11: DSGVO Art. 17 — Right to erasure / anonymization.
-
-    Anonymizes all personal data for a tenant while preserving financial
-    records required for tax retention periods (§ 147 AO: 10 years for
-    bookings/invoices). Replaces personal identifiers with anonymized
-    placeholders.
-    """
+def dsgvo_anonymize_tenant(tenant_id: str, body: TenantAnonymizationRequest):
+    """Atomically anonymize the reviewed, inactive tenant profile only."""
+    from ..services.tenant_data_graph import TenantExportError, TenantNotFoundError
+    from ..services.tenant_privacy import PrivacyConflict, anonymize_tenant_profile
     try:
-        tenant = store.get_tenant(tenant_id)
-    except Exception:
-        raise HTTPException(404, f"Mieter mit ID {tenant_id} nicht gefunden")
-
-    # Anonymize tenant personal data
-    from ..models import TenantPatch
-
-    anonymized_name = f"Anonymisiert-{tenant_id[:8]}"
-    patch_fields = {}
-
-    # Anonymize all personal fields that exist on the model
-    for field in ["first_name", "last_name", "name"]:
-        if hasattr(tenant, field):
-            patch_fields[field] = anonymized_name
-
-    for field in ["email", "phone", "mobile", "address", "iban", "tax_id",
-                   "notes", "emergency_contact", "employer"]:
-        if hasattr(tenant, field) and getattr(tenant, field) is not None:
-            patch_fields[field] = "[DSGVO gelöscht]"
-
-    if patch_fields:
-        try:
-            patch = TenantPatch(**patch_fields)
-            store._patch_entity("tenant", tenant_id, patch)
-        except Exception as exc:
-            logger.warning("Tenant patch failed during anonymization: %s", exc)
-
-    # Anonymize related documents (remove references, keep financial records)
-    anonymized_docs = 0
-    for doc in store.list_documents():
-        if getattr(doc, "tenant_id", None) == tenant_id:
-            try:
-                store.delete_document(doc.id)
-                anonymized_docs += 1
-            except Exception:
-                logger.warning("Failed to delete document %s during DSGVO anonymization", doc.id, exc_info=True)
-
-    # Delete messages
-    deleted_messages = 0
-    try:
-        for msg in store.list_messages():
-            if getattr(msg, "tenant_id", None) == tenant_id:
-                try:
-                    store.delete_message(msg.id)
-                    deleted_messages += 1
-                except Exception:
-                    logger.warning("Failed to delete message %s during DSGVO anonymization", msg.id, exc_info=True)
-    except Exception:
-        logger.debug("Could not list messages for DSGVO anonymization of tenant %s", tenant_id, exc_info=True)
-
-    logger.info(
-        "DSGVO anonymization for tenant %s: fields=%d, docs=%d, messages=%d",
-        tenant_id, len(patch_fields), anonymized_docs, deleted_messages,
-    )
-
-    return {
-        "status": "anonymized",
-        "tenant_id": tenant_id,
-        "anonymized_fields": list(patch_fields.keys()),
-        "deleted_documents": anonymized_docs,
-        "deleted_messages": deleted_messages,
-        "note": "Finanzdaten (Buchungen, Rechnungen) bleiben gemäß § 147 AO erhalten.",
-    }
+        return anonymize_tenant_profile(store, tenant_id, plan_hash=body.plan_hash,
+                                         confirm_tenant_id=body.confirm_tenant_id)
+    except TenantNotFoundError as exc:
+        raise HTTPException(404, "Mieter nicht gefunden.") from exc
+    except PrivacyConflict as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except HTTPException:
+        raise
+    except (TenantExportError, TransferError) as exc:
+        raise HTTPException(503, "Anonymisierung abgebrochen; keine Teiländerung gespeichert.") from exc
+    except Exception as exc:
+        raise HTTPException(503, "Anonymisierung abgebrochen; keine Teiländerung gespeichert.") from exc

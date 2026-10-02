@@ -64,3 +64,24 @@ describe('AuthContext', () => {
     expect(screen.getByTestId('role').textContent).toBe('none');
   });
 });
+
+function CapabilityProbe() {
+  const auth = useAuth();
+  return <><output data-testid="permissions">{[auth.canWrite('/api/v1/accounts/record'), auth.canWrite('/meters/record'), auth.isAdmin].join(':')}</output>
+    <button onClick={() => auth.updateUser({ role: 'buchhaltung', write_permissions: ['finance', 'billing', 'documents', 'communication'] })}>Accountant grant</button>
+    <button onClick={() => auth.updateUser({ role: 'techniker', write_permissions: ['operations', 'documents', 'communication'] })}>Technician grant</button>
+    <button onClick={() => auth.updateUser({ role: 'eigentuemer', write_permissions: [] })}>Revoke all</button>
+    <button onClick={auth.clearUser}>Logout</button></>;
+}
+it('updates endpoint capabilities from the authoritative session grants and clears them on logout', () => {
+  render(<AuthProvider><CapabilityProbe /></AuthProvider>);
+  expect(screen.getByTestId('permissions')).toHaveTextContent('false:false:false');
+  act(() => screen.getByText('Accountant grant').click());
+  expect(screen.getByTestId('permissions')).toHaveTextContent('true:false:false');
+  act(() => screen.getByText('Technician grant').click());
+  expect(screen.getByTestId('permissions')).toHaveTextContent('false:true:false');
+  act(() => screen.getByText('Revoke all').click());
+  expect(screen.getByTestId('permissions')).toHaveTextContent('false:false:false');
+  act(() => screen.getByText('Logout').click());
+  expect(screen.getByTestId('permissions')).toHaveTextContent('false:false:false');
+});

@@ -21,8 +21,11 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+from .encrypted_types import EncryptedIBAN, register_account_encryption
 
 
 def _utcnow():
@@ -168,7 +171,8 @@ class AccountORM(Base):
     portfolio_id: Mapped[str] = mapped_column(ForeignKey("portfolios.id", ondelete="CASCADE"), nullable=False)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     bank_name: Mapped[str | None] = mapped_column(Text)
-    iban: Mapped[str | None] = mapped_column(Text)
+    iban: Mapped[str | None] = mapped_column(EncryptedIBAN())
+    iban_fingerprint: Mapped[str | None] = mapped_column(String(64))
     bic: Mapped[str | None] = mapped_column(Text)
     account_type: Mapped[str] = mapped_column(Text, nullable=False)
     opening_balance: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), default=0.0)
@@ -182,7 +186,18 @@ class AccountORM(Base):
     __table_args__ = (
         Index("idx_accounts_portfolio", "portfolio_id"),
         UniqueConstraint("iban", name="uq_accounts_iban"),
+        Index("uq_accounts_iban_fingerprint", "iban_fingerprint", unique=True),
+        Index(
+            "ix_accounts_iban_unindexed",
+            "iban_fingerprint",
+            "iban",
+            sqlite_where=text("iban IS NOT NULL AND iban != '' AND iban_fingerprint IS NULL"),
+            postgresql_where=text("iban IS NOT NULL AND iban != '' AND iban_fingerprint IS NULL"),
+        ),
     )
+
+
+register_account_encryption(AccountORM)
 
 
 class CategoryORM(Base):
@@ -209,6 +224,7 @@ class BookingORM(Base):
     tenant_id: Mapped[str | None] = mapped_column(ForeignKey("tenants.id", ondelete="SET NULL"))
     booking_date: Mapped[date] = mapped_column(Date, nullable=False)
     amount: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), nullable=False)
+    allocated_amount: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), nullable=False, default=0.0, server_default="0")
     status: Mapped[str] = mapped_column(Text, nullable=False, default="open")
     payment_text: Mapped[str | None] = mapped_column(Text)
     receipt_url: Mapped[str | None] = mapped_column(Text)
@@ -219,14 +235,54 @@ class BookingORM(Base):
         Index("idx_bookings_account", "account_id"),
         Index("idx_bookings_account_date", "account_id", "booking_date"),
         CheckConstraint("amount != 0", name="ck_bookings_amount_nonzero"),
+        CheckConstraint("allocated_amount >= 0 AND allocated_amount <= abs(amount)", name="ck_bookings_allocation"),
     )
 
 
+class PaymentORM(Base):
+    __tablename__ = "payments"
+    __table_args__ = (
+        CheckConstraint("amount > 0", name="ck_payments_positive"),
+        CheckConstraint("(CASE WHEN receivable_id IS NULL THEN 0 ELSE 1 END) + "
+                        "(CASE WHEN rent_charge_id IS NULL THEN 0 ELSE 1 END) + "
+                        "(CASE WHEN invoice_id IS NULL THEN 0 ELSE 1 END) = 1", name="ck_payments_one_target"),
+        Index("idx_payments_receivable", "receivable_id"),
+        Index("idx_payments_rent_charge", "rent_charge_id"),
+        Index("idx_payments_booking", "booking_id"),
+        Index("idx_payments_invoice", "invoice_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    idempotency_key: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    receivable_id: Mapped[str | None] = mapped_column(ForeignKey("receivables.id", ondelete="RESTRICT"))
+    rent_charge_id: Mapped[str | None] = mapped_column(ForeignKey("rent_charges.id", ondelete="RESTRICT"))
+    invoice_id: Mapped[str | None] = mapped_column(ForeignKey("invoices.id", ondelete="RESTRICT"))
+    booking_id: Mapped[str | None] = mapped_column(ForeignKey("bookings.id", ondelete="RESTRICT"))
+    amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    payment_date: Mapped[date] = mapped_column(Date, nullable=False)
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
+
+
+class PaymentReversalORM(Base):
+    __tablename__ = "payment_reversals"
+    __table_args__ = (CheckConstraint("amount > 0", name="ck_reversals_positive"),)
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    payment_id: Mapped[str] = mapped_column(ForeignKey("payments.id", ondelete="RESTRICT"), nullable=False, unique=True)
+    idempotency_key: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    reversal_date: Mapped[date] = mapped_column(Date, nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
+
+
 class ReceivableORM(Base):
+    amount_paid: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), nullable=False, default=0.0, server_default="0")
     __tablename__ = "receivables"
     __table_args__ = (
         Index("idx_receivables_contract", "contract_id"),
         Index("idx_receivables_status", "status"),
+        Index("uq_receivables_statement", "statement_id", unique=True),
     )
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
@@ -234,6 +290,7 @@ class ReceivableORM(Base):
     due_date: Mapped[date] = mapped_column(Date, nullable=False)
     amount_due: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), nullable=False)
     dunning_level: Mapped[str | None] = mapped_column(Text)
+    description: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="open")
     statement_id: Mapped[str | None] = mapped_column(String)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
@@ -251,11 +308,16 @@ class InvoiceORM(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     property_id: Mapped[str | None] = mapped_column(ForeignKey("properties.id", ondelete="SET NULL"))
     supplier: Mapped[str] = mapped_column(Text, nullable=False)
+    invoice_number: Mapped[str | None] = mapped_column(Text)
+    payment_reference: Mapped[str | None] = mapped_column(Text)
+    category: Mapped[str | None] = mapped_column(Text)
+    notes: Mapped[str | None] = mapped_column(Text)
     invoice_date: Mapped[date] = mapped_column(Date, nullable=False)
     due_date: Mapped[date | None] = mapped_column(Date)
     net_amount: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), nullable=False)
     vat_amount: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), default=0.0)
     gross_amount: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), nullable=False)
+    amount_paid: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), nullable=False, default=0.0, server_default="0")
     vat_rate: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), default=19.0)
     payment_terms: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="open")
@@ -447,10 +509,15 @@ class BillingPeriodORM(Base):
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     end_date: Mapped[date] = mapped_column(Date, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="draft")
+    source_period_id: Mapped[str | None] = mapped_column(ForeignKey("billing_periods.id", ondelete="RESTRICT"), nullable=True)
+    revision_number: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    revision_notes: Mapped[str | None] = mapped_column(Text)
+    owner_cost_share: Mapped[dict | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
-    __table_args__ = (Index("idx_billing_periods_property", "property_id"),)
+    __table_args__ = (Index("idx_billing_periods_property", "property_id"),
+                     Index("uq_billing_period_revision_source", "source_period_id", unique=True))
 
 
 class AllocationKeyORM(Base):
@@ -509,13 +576,33 @@ class UtilityStatementORM(Base):
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime)
     delivery_channel: Mapped[str | None] = mapped_column(Text)
     snapshot_hash: Mapped[str | None] = mapped_column(String)
+    source_statement_id: Mapped[str | None] = mapped_column(ForeignKey("utility_statements.id", ondelete="RESTRICT"), nullable=True)
+    advance_details: Mapped[list | None] = mapped_column(JSON)
+    calculation_hash: Mapped[str | None] = mapped_column(String)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
     __table_args__ = (
         Index("idx_utility_statements_period", "billing_period_id"),
         Index("idx_utility_statements_contract", "contract_id"),
+        Index("uq_utility_statements_period_contract", "billing_period_id", "contract_id", unique=True),
     )
+
+
+class BillingSettlementORM(Base):
+    __tablename__ = "billing_settlements"
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    billing_period_id: Mapped[str] = mapped_column(ForeignKey("billing_periods.id", ondelete="RESTRICT"), nullable=False)
+    statement_id: Mapped[str] = mapped_column(ForeignKey("utility_statements.id", ondelete="RESTRICT"), nullable=False, unique=True)
+    source_statement_id: Mapped[str | None] = mapped_column(ForeignKey("utility_statements.id", ondelete="RESTRICT"), nullable=True)
+    root_statement_id: Mapped[str] = mapped_column(ForeignKey("utility_statements.id", ondelete="RESTRICT"), nullable=False)
+    contract_id: Mapped[str] = mapped_column(ForeignKey("contracts.id", ondelete="RESTRICT"), nullable=False)
+    signed_amount: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), nullable=False)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    receivable_id: Mapped[str | None] = mapped_column(ForeignKey("receivables.id", ondelete="RESTRICT"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
+    __table_args__ = (Index("idx_billing_settlement_root", "root_statement_id"),)
 
 
 class DepositORM(Base):
@@ -598,6 +685,8 @@ class RentAdjustmentORM(Base):
     status: Mapped[str] = mapped_column(String(20), default="pending")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    __table_args__ = (Index("uq_applied_rent_adjustment_contract_date", "contract_id", "effective_date", unique=True,
+                           sqlite_where=status == "applied", postgresql_where=status == "applied"),)
 
 
 class HandoverProtocolORM(Base):
@@ -790,6 +879,8 @@ class MeterORM(Base):
     installation_date: Mapped[date | None] = mapped_column(Date)
     next_inspection: Mapped[date | None] = mapped_column(Date)
     supplier: Mapped[str | None] = mapped_column(String(200))
+    contract_number: Mapped[str | None] = mapped_column(String(100))
+    contract_end_date: Mapped[date | None] = mapped_column(Date)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
@@ -849,7 +940,8 @@ class RentChargeORM(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
-    __table_args__ = (Index("idx_rent_charges_contract_month", "contract_id", "month"),)
+    __table_args__ = (Index("idx_rent_charges_contract_month", "contract_id", "month"),
+                      Index("uq_rent_charges_contract_month", "contract_id", "month", unique=True))
 
 
 class AuditLogORM(Base):
