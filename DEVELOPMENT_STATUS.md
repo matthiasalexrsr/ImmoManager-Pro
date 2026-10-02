@@ -1,6 +1,6 @@
 # ImmoManager Pro – aktueller Entwicklungsstand
 
-Stand: 1. Oktober 2026. Ausgangspunkt: `c64b2f1` auf
+Stand: 2. Oktober 2026. Ausgangspunkt: `c64b2f1` auf
 `claude/redesign-frontend-ui-RUPYS`, einschließlich PR #32.
 Die Fortsetzung wird in PR #33 auf `codex/continue-rental-workflows` gesichert.
 
@@ -29,19 +29,22 @@ Import/Recovery sowie Finanz-/Abrechnungsoberfläche und Browserprüfungen einge
 | Nebenkosten | Tatsächlich bezahlte Vorschüsse mit Receipt-IDs, gespeicherte Finalisierung, korrekte PDF-Revisionen und Korrekturdifferenzen |
 | Guthaben/Leerstand | Verfügbare Guthaben getrennt von Forderungen; gespeicherter Eigentümeranteil, erhaltene Gesamtkosten, blockierende Vorprüfung bei fehlender Datenbasis |
 | Finanzoberfläche | Vollständige Pagination, sichtbare Fehler/Retry, abgesicherte Formularwerte, Readonly-Aktionen und neue Texte in Deutsch/Englisch/Spanisch |
-| Zugang | Einmalige lokale Eigentümeranlage, dauerhaft geschlossene öffentliche Registrierung, genehmigte Benutzer und vollständiger TOTP-Ablauf |
+| Zugang | Einmalige lokale Eigentümeranlage, dauerhaft geschlossene öffentliche Registrierung, genehmigte Benutzer und vollständiger TOTP-Ablauf; atomare Refresh-Abstimmung zwischen Tabs, aktuelle Sitzungsprüfung und entfernte private Ansichten bei Benutzerwechsel |
 | Portfoliozugriff | Ausdrückliche All-/Auswahlzuordnung durch Eigentümer, aktuelle serverseitige Prüfung auch bei alten Tokens, geschützte Referenzen und Dateien |
 | DATEV | Geprüfte unveränderliche Kontenzuordnungen, vollständige Vorschau, reproduzierbare Dateien mit Quellenreferenzen; keine Übermittlung oder Importzertifizierung |
 | Dokumente/Fotos | Authentifizierte Downloads und Blob-Vorschauen, sichere Dateitypen und SPA-Pfade, korrektes konfiguriertes Upload-Verzeichnis |
+| Dokumenthistorie | Ausdrücklich geprüftes Original, unveränderliche Upload-/Restore-Versionen mit SHA256 und Originalbytes; historische Mieterzuordnung, vollständige Wiederherstellung und geschützte Downloads |
+| Kalenderexport | Expliziter Portfolio-ICS-Download aus konsistentem, gebatchtem Snapshot; stabile IDs, Zeitzonen und reine Leserechte; aktuelle Quell-/Berechtigungsprüfung auch während der Ausgabe |
 | JSON-Transfer | Vollständige Vorbereitung und eine atomare Veröffentlichung des unterstützten Geschäftsdaten-Teilsatzes; Benutzer/Installationsmarker bleiben erhalten |
 | Vollständige Recovery | Passwortverschlüsseltes Offline-Archiv aller SQLite-Tabellen, lokalen Uploads, Konten/2FA, Schlüsseln und Konfiguration; geprüfter Neustart in neuem Ordner |
 | Windows-Betrieb | Quellen-/Konfigurationsfingerprint, geprüfter Build, Offline-Neustart bei unverändertem Build, Erhalt vorheriger Oberfläche bei Fehlern |
+| Windows-OCR | Ausdrückliches privates Setup aus festgelegten SHA256-geprüften Paketen, vollständige Lizenz-/Herkunftsnachweise, echte PNG-/Raster-PDF-Prüfung und Unicode-Werkzeugziele; keine Installation aus Dokumentanfragen |
 | Updates/Scheduler | Wartung bei gestoppter Anwendung; konsistente Datenbank-Snapshots, begrenzte Laufzeit, exklusive Veröffentlichung, echte Fehlerstatus |
 | Lokale Plugins | Geprüfte Initialisierung/Beendigung, geschützte HTTP-/WebSocket-Routen, sichtbarer Betriebsstatus |
 | Stabilität/Sicherheit | Anfragenbezogene Datenbank-Sessions einschließlich Streams, erweitertes Typechecking, PyJWT statt python-jose/ecdsa |
 
 SQLite erhält additive Schema-Ergänzungen; Alembic enthält eine eindeutige Kette
-bis `q1a2b3c4d5e6`. Mehrdeutige alte Finanzdaten und Downgrades mit bestehenden
+bis `y1a2b3c4d5e6`. Mehrdeutige alte Finanzdaten und Downgrades mit bestehenden
 Abrechnungsnachweisen werden vor zerstörenden Änderungen abgewiesen.
 
 ## Fachliche Regeln und Umfang

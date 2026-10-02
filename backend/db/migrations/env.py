@@ -16,6 +16,7 @@ from backend.db.booking_indexes import BOOKING_INDEXES  # noqa: F401 — registe
 from backend.db.contract_wizard_models import ContractDraftORM  # noqa: F401 — register reviewed contract metadata
 from backend.db.credit_models import CreditReceiptORM  # noqa: F401 — register immutable credit metadata
 from backend.db.datev_models import DatevProfileORM  # noqa: F401 — register DATEV metadata
+from backend.db.document_version_models import DocumentVersionORM  # noqa: F401 — register immutable document originals
 from backend.db.form_draft_models import FormDraftORM  # noqa: F401 — register private draft metadata
 from backend.db.operational_models import OperationalTickORM  # noqa: F401 — register scheduler metadata
 from backend.db.orm_models import Base

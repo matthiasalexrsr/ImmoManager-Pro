@@ -639,6 +639,8 @@ def prepare_attachment_download(store, identifier, attachment_id, actor_id, *, p
 
 
 def guard_destructive_reset(store):
+    from .document_version_guards import guard_partial_transfer
+    guard_partial_transfer(store)
     if hasattr(store, "db"):
         present = any(store.db.scalar(select(model.id).limit(1)) is not None
             for model in (ContractDraftORM, ContractTemplateORM))
@@ -649,6 +651,8 @@ def guard_destructive_reset(store):
 
 
 def guard_delete_link(store, entity_type, identifier):
+    from .document_version_guards import guard_delete_link as guard_document_history
+    guard_document_history(store, entity_type, identifier)
     if entity_type not in {"contracts", "documents", "portfolios", "properties", "units", "tenants"}:
         return
     if hasattr(store, "db"):

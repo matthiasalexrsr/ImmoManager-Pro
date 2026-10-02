@@ -21,6 +21,7 @@ reportlab==4.4.10
 
 # HTTP client (updater + autotest)
 httpx==0.28.1
+tzdata==2026.4
 
 # Streaming MT940 tag conversion (no runtime dependencies)
 mt-940==5.1.1

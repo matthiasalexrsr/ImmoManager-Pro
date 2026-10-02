@@ -54,7 +54,7 @@ def _locked(path):
                 try:
                     os.lseek(fd, 0, os.SEEK_SET)
                     if os.name == "nt":
-                        import msvcrt
+                        msvcrt = importlib.import_module("msvcrt")
                         msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
                     else:
                         fcntl = importlib.import_module("fcntl")

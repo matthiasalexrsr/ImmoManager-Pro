@@ -30,6 +30,7 @@ from .routers import (
     deposits,
     dev_notes,
     diagnostics,
+    document_versions,
     documents,
     escalation,
     files,
@@ -98,6 +99,7 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(invoices.router, dependencies=_auth_dep)
     api_v1.include_router(maintenance.router, dependencies=_auth_dep)
     api_v1.include_router(documents.router, dependencies=_auth_dep)
+    api_v1.include_router(document_versions.router, dependencies=_auth_dep)
     api_v1.include_router(tasks.router, dependencies=_auth_dep)
     api_v1.include_router(calendar.router, dependencies=_auth_dep)
     api_v1.include_router(listings.router, dependencies=_auth_dep)

@@ -8,6 +8,8 @@ import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 import OperationalTickPanel from '../components/OperationalTickPanel';
 import useWriteAccess from '../hooks/useWriteAccess';
+import CalendarExportPanel from '../components/CalendarExportPanel';
+import { useAuth } from '../contexts/AuthContext';
 
 const EVENT_TYPES = [
   { value: 'viewing', label: 'Besichtigung' },
@@ -30,6 +32,9 @@ const COLUMNS = [
 
 export default function Calendar() {
   const { t } = useTranslation();
+  const auth = useAuth();
+  const actor = JSON.stringify([auth?.user?.id, auth?.user?.role || auth?.role, auth?.user?.portfolio_access,
+    [...(auth?.user?.portfolio_ids || [])].sort(), [...(auth?.user?.write_permissions || [])].sort()]);
   const { canWrite, isAllowed, requireWrite } = useWriteAccess('/calendar', () => { setModal(null); setScheduleEditor(null); });
   const confirm = useConfirm();
   const [events, setEvents] = useState([]);
@@ -40,24 +45,28 @@ export default function Calendar() {
   const [error, setError] = useState(null);
   const [revision, setRevision] = useState(0);
   const [scheduleEditor, setScheduleEditor] = useState(null);
+  const [dataActor, setDataActor] = useState(null);
+
+  useEffect(() => { setModal(null); setScheduleEditor(null); }, [actor]);
 
   const refreshData = () => setRevision(value => value + 1);
   useEffect(() => {
     const controller = new AbortController();
-    setLoading(true); setError(null);
+    setLoading(true); setError(null); setDeleteError(null);
+    setEvents([]); setProperties([]);
     Promise.all([api.getAll('/calendar', { signal: controller.signal }), api.getAll('/properties', { signal: controller.signal }),
-      api.get('/calendar/schedules', { signal: controller.signal })]).then(([rows, props, schedules]) => {
+      canWrite ? api.get('/calendar/schedules', { signal: controller.signal }) : Promise.resolve([])]).then(([rows, props, schedules]) => {
       if (controller.signal.aborted) return;
       setEvents(rows.map(row => ({ ...row, schedule: schedules.find(plan => plan.source_id === row.id) })));
       setProperties(props);
     }).catch(err => { if (!controller.signal.aborted) setError(err.message); })
-      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+      .finally(() => { if (!controller.signal.aborted) { setDataActor(actor); setLoading(false); } });
     return () => controller.abort();
-  }, [revision]);
-  const columns = [...COLUMNS, { key: 'schedule', label: t('operational.recurrence'), render: (value, row) => <>
+  }, [revision, canWrite, actor]);
+  const columns = canWrite ? [...COLUMNS, { key: 'schedule', label: t('operational.recurrence'), render: (value, row) => <>
     {value?.active ? value.recurrence_rule : '—'} {canWrite && <button type="button" className="btn btn-sm btn-secondary"
       aria-label={`${t('operational.configure')} ${row.title}`} onClick={() => setScheduleEditor(row)}>{t('operational.configure')}</button>}
-  </> }];
+  </> }] : COLUMNS;
   const scheduleFields = [
     { key: 'recurrence_rule', label: t('operational.recurrence'), required: true, placeholder: 'FREQ=MONTHLY;COUNT=12', hint: t('operational.calendarRuleHint') },
     { key: 'active', label: t('operational.active'), type: 'select', required: true, options: [{ value: 'true', label: t('operational.yes') }, { value: 'false', label: t('operational.no') }] },
@@ -106,30 +115,31 @@ export default function Calendar() {
     }
   };
 
-  if (loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  const loadingData = loading || dataActor !== actor;
 
   return (
     <div className="page">
-      <OperationalTickPanel onCompleted={refreshData} />
-      {error && <div role="alert">{error} <button type="button" className="btn btn-secondary" onClick={refreshData}>{t('operational.retry')}</button></div>}
-      {deleteError && (
+      <CalendarExportPanel />
+      {canWrite && <OperationalTickPanel key={actor} onCompleted={refreshData} />}
+      {!loadingData && error && <div role="alert">{error} <button type="button" className="btn btn-secondary" onClick={refreshData}>{t('operational.retry')}</button></div>}
+      {!loadingData && deleteError && (
         <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
           {deleteError}
           <button onClick={() => setDeleteError(null)} style={{ marginLeft: '1rem', cursor: 'pointer' }}>✕</button>
         </div>
       )}
-      <DataTable
+      {loadingData ? <div className="page-loading" role="status">{t('ui.table.loading')}</div> : <DataTable
         title={t('navigation.main.calendar') || 'Kalender'}
         columns={columns}
         data={events}
         onAdd={canWrite ? () => setModal('create') : undefined}
         onEdit={canWrite ? row => setModal(row) : undefined}
         onDelete={canWrite ? handleDelete : undefined}
-      />
-      {scheduleEditor && <FormModal title={t('operational.configure')} fields={scheduleFields}
+      />}
+      {dataActor === actor && canWrite && scheduleEditor && <FormModal title={t('operational.configure')} fields={scheduleFields}
         initial={{ recurrence_rule: scheduleEditor.schedule?.recurrence_rule || 'FREQ=MONTHLY', active: scheduleEditor.schedule?.active === false ? 'false' : 'true' }}
         onSave={saveSchedule} onClose={() => setScheduleEditor(null)} />}
-      {modal && (
+      {dataActor === actor && canWrite && modal && (
         <FormModal onSaved={afterSave} draftConfig={{ collection: 'calendar' }}
           title={modal === 'create' ? 'Termin erstellen' : 'Termin bearbeiten'}
           fields={fields}

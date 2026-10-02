@@ -37,6 +37,10 @@ an explicit root/prefix under a work directory, `--no-rc`, and conda-forge. Do n
 initialize a shell, change global PATH, or invoke a machine-wide installer.
 For the conda-forge Windows layout, explicitly select `<prefix>/share/tessdata`;
 otherwise the executable can search the working directory instead.
+For a reproducible private Windows installation using the reviewed exact package
+lock and a real PNG/raster-PDF acceptance probe, use the explicit administration
+workflow in [WINDOWS_OCR_TOOLS.md](WINDOWS_OCR_TOOLS.md). It does not activate tools
+or change an existing installation.
 
 ## Budgets and cancellation
 

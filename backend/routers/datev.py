@@ -18,14 +18,39 @@ FinanceActor = Annotated[UserRead, Depends(require_role("eigentuemer", "verwalte
 
 
 class PrivateDownloadResponse(StreamingResponse):
-    def __init__(self, compiled, captured, **kwargs):
+    def __init__(
+        self,
+        compiled,
+        captured,
+        *,
+        before_start=None,
+        before_chunk=None,
+        **kwargs,
+    ):
         self.compiled = compiled
-        self.file_iterator = download_chunks(compiled, captured)
+        self.before_start = before_start
+        self.file_iterator = download_chunks(
+            compiled,
+            captured,
+            before_chunk=before_chunk,
+        )
         super().__init__(self.file_iterator, **kwargs)
 
     async def __call__(self, scope, receive, send):
+        checked = False
+
+        async def guarded_send(message):
+            nonlocal checked
+            if message["type"] == "http.response.start" and not checked:
+                checked = True
+                if self.before_start is not None:
+                    # Run the final synchronous source/scope guard immediately
+                    # before the first response bytes become observable.
+                    await anyio.to_thread.run_sync(self.before_start)
+            await send(message)
+
         try:
-            await super().__call__(scope, receive, send)
+            await super().__call__(scope, receive, guarded_send)
         finally:
             # Also handles failure to send the response headers, before the
             # iterator's first yield. ExitStack.close is idempotent.
@@ -59,10 +84,35 @@ def preview(command: DatevPreviewCreate, actor: FinanceActor):
     return service.create_preview(store, command, actor.id)
 
 
-async def download_chunks(compiled, captured) -> AsyncGenerator[bytes, None]:
+async def download_chunks(
+    compiled,
+    captured,
+    *,
+    before_chunk=None,
+) -> AsyncGenerator[bytes, None]:
     def chunks():
+        offset = 0
+        block_size = 1024 * 1024
         with compiled.path.open("rb") as source:
-            while chunk := source.read(1024 * 1024):
+            if before_chunk is not None:
+                total_size = compiled.manifest.get("size")
+                if type(total_size) is not int or total_size < 0:
+                    raise RuntimeError("Compiled export size is unavailable")
+                while offset < total_size:
+                    end = min(offset + block_size, total_size)
+                    # Guard the planned private byte range before even reading
+                    # it into the response worker's send buffer.
+                    with service.scope_helpers().scope_context(captured):
+                        service.scope_helpers().refresh_scope(captured)
+                    before_chunk(offset, end)
+                    chunk = source.read(end - offset)
+                    if len(chunk) != end - offset:
+                        raise RuntimeError("Compiled export size changed")
+                    yield chunk
+                    offset = end
+                return
+
+            while chunk := source.read(block_size):
                 # Each iterator step can run in a fresh worker Context; finish
                 # the context before yielding so its token resets in that step.
                 with service.scope_helpers().scope_context(captured):

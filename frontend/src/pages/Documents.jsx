@@ -6,10 +6,12 @@ import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import FileViewer from '../components/FileViewer';
+import DocumentVersionHistory from '../components/DocumentVersionHistory';
 import { PlusIcon } from '../components/Icons';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useTranslation } from '../i18n';
 import { ocrFailure } from '../utils/ocrFailure';
+import './Documents.css';
 
 const BASE = (import.meta.env.VITE_API_URL || '/api/v1');
 
@@ -41,6 +43,7 @@ export default function Documents() {
   const [modal, setModal] = useState(null);
   const { canWrite, isAllowed, requireWrite } = useWriteAccess('/documents', () => { setModal(null); setUploadedUrl(''); setOcrResult(null); setUploadQueue([]); setDragActive(false); if (fileRef.current) fileRef.current.value = ''; });
   const [viewerFile, setViewerFile] = useState(null);
+  const [historyDocument, setHistoryDocument] = useState(null);
   const [uploadedUrl, setUploadedUrl] = useState('');
   const [dragActive, setDragActive] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -125,6 +128,11 @@ export default function Documents() {
       if (v === 'failed') return t('pages.documents.ocr.failed') || '✗ Fehler';
       return '—';
     }},
+    { key: 'version_history', label: t('pages.documents.versions.openHistory'),
+      render: (_value, row) => <button type="button" className="btn btn-secondary btn-sm"
+        onClick={event => { event.stopPropagation(); setHistoryDocument(row); }}>
+        {t('pages.documents.versions.openHistory')}
+      </button> },
   ];
 
   const analyzeUploaded = useCallback(async (fileUrl, filename) => {
@@ -247,7 +255,7 @@ export default function Documents() {
   if (loading) return <div className="page-loading">Lade Dokumente...</div>;
 
   return (
-    <div className="page">
+    <div className="page documents-page">
       <h1 className="page-title">{t('pages.documents.title') || 'Dokumente'}</h1>
 
       {/* Summary cards */}
@@ -376,6 +384,8 @@ export default function Documents() {
         />
       )}
       {viewerFile && <FileViewer key={viewerFile} fileUrl={viewerFile} onClose={() => setViewerFile(null)} />}
+      {historyDocument && <DocumentVersionHistory key={historyDocument.id} document={historyDocument}
+        onClose={() => setHistoryDocument(null)} />}
     </div>
   );
 }

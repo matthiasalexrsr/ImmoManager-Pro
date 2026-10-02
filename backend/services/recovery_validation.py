@@ -192,7 +192,37 @@ def _embedded_contract_pdf(db, key, reference, deadline=None):
     return True
 
 
+def _original_uri_matches(historical, key, old_root):
+    """Exact upload key, allowing only a historical absolute root to change."""
+    try:
+        original, _ = _reference(historical, old_root)
+        return original == key
+    except RecoveryError:
+        # First-publication snapshots deliberately retain their old URI. An
+        # offline restore rebases only the live absolute Document.file_url.
+        parsed = urlsplit(historical)
+        value = historical
+        if parsed.scheme.lower() == "file":
+            value = unquote(parsed.path, errors="strict")
+            if parsed.netloc and parsed.netloc != "localhost":
+                value = "//" + parsed.netloc + value
+            elif value.startswith("/") and PureWindowsPath(value[1:]).drive:
+                value = value[1:]
+        elif parsed.scheme and not PureWindowsPath(value).drive:
+            return False
+        path = PureWindowsPath(value) if PureWindowsPath(value).drive else PurePosixPath(value)
+        if not path.is_absolute():
+            return False
+        expected = PurePosixPath(key).parts
+        suffix = path.parts[-len(expected):]
+        if isinstance(path, PureWindowsPath):
+            return tuple(item.casefold() for item in suffix) == tuple(item.casefold() for item in expected)
+        return suffix == expected
+
+
 def _scan(db, old_root, destination, catalog, deadline=None):
+    from .document_version_validation import archived_original, verify_document_versions
+    has_versions = verify_document_versions(db, deadline=deadline) > 0
     root = PureWindowsPath(old_root) if PureWindowsPath(old_root).drive else PurePosixPath(old_root)
     if not root.is_absolute():
         raise RecoveryError("Der gesicherte Upload-Wurzelpfad muss absolut sein.")
@@ -200,7 +230,9 @@ def _scan(db, old_root, destination, catalog, deadline=None):
     local_count = external_count = 0
     for table, columns in _tables(db):
         for column in sorted(columns & (_REFERENCE_COLUMNS | _REFERENCE_LIST_COLUMNS)):
-            for (value,) in db.execute("SELECT " + _quote(column) + " FROM " + _quote(table)):
+            document_original = table == "documents" and column == "file_url" and "id" in columns
+            identifier = _quote("id") if document_original else "NULL"
+            for value, document_id in db.execute("SELECT " + _quote(column) + "," + identifier + " FROM " + _quote(table)):
                 if value is None or value == "":
                     continue
                 if not isinstance(value, str):
@@ -211,6 +243,9 @@ def _scan(db, old_root, destination, catalog, deadline=None):
                 rebased_references = []
                 for reference in references:
                     key, absolute = _reference(reference, old_root)
+                    proof = archived_original(db, document_id, verified_schema=True) if document_original and has_versions else None
+                    if proof is not None and (key is None or not _original_uri_matches(proof.historical_uri, key, old_root)):
+                        raise RecoveryError("Archiviertes Dokumentoriginal stimmt nicht mit dem verwalteten Quellenverweis überein.")
                     rebased = reference
                     if key is None:
                         external_count += 1
@@ -219,8 +254,15 @@ def _scan(db, old_root, destination, catalog, deadline=None):
                         # physical uploads manifest. Keep the virtual URL exact.
                         local_count += 1
                     else:
-                        covered = _covered_key(key, old_root, catalog)
-                        files.add(covered)
+                        try:
+                            covered = _covered_key(key, old_root, catalog)
+                            files.add(covered)
+                        except RecoveryError as error:
+                            if proof is None or catalog is None and not isinstance(error.__cause__, FileNotFoundError):
+                                raise
+                            # This exact document's verified version-1 bytes are
+                            # in database.sqlite3. No other cell/key is covered.
+                            covered = key
                         local_count += 1
                         if destination is not None:
                             rebased = str(destination.joinpath(*PurePosixPath(covered).parts)) if absolute else reference

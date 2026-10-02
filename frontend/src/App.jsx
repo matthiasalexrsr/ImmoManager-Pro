@@ -1,12 +1,13 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { isLoggedIn, api } from './api';
+import { isLoggedIn, api, watchSessionChange } from './api';
 import Layout from './components/Layout';
 import DevModeOverlay from './components/DevModeOverlay';
 import LoadingSpinner from './components/LoadingSpinner';
 import { useAuth } from './contexts/AuthContext';
 import { useDevMode } from './contexts/DevModeContext';
 import Login from './pages/Login';
+import { useTranslation } from './i18n';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Portfolios = lazy(() => import('./pages/Portfolios'));
@@ -52,30 +53,54 @@ const AllocationKeys = lazy(() => import('./pages/AllocationKeys'));
 const HandoverProtocols = lazy(() => import('./pages/HandoverProtocols'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 
-function ProtectedRoute({ children }) {
+export function ProtectedRoute({ children }) {
   const [status, setStatus] = useState(isLoggedIn() ? 'validating' : 'unauthenticated');
+  const [error, setError] = useState('');
+  const [attempt, setAttempt] = useState(0);
+  const { t } = useTranslation();
   const auth = useAuth();
+  const updateUser = auth?.updateUser;
+  const clearUser = auth?.clearUser;
+
+  useEffect(() => watchSessionChange((failed) => {
+    clearUser?.();
+    // A full navigation drops all preceding-actor caches and private dialog
+    // state. Ordinary rotation within the same family does not trigger this.
+    if (failed || !isLoggedIn()) window.location.replace('/login');
+    else window.location.reload();
+  }), [clearUser]);
 
   useEffect(() => {
     if (!isLoggedIn()) {
       setStatus('unauthenticated');
-      auth?.clearUser();
+      clearUser?.();
       return;
     }
+    const controller = new AbortController();
+    let active = true;
+    setStatus('validating');
+    setError('');
     // Validate the session against the backend before rendering
-    api.get('/auth/me')
+    api.get('/auth/me', { signal: controller.signal })
       .then((userData) => {
-        auth?.updateUser(userData);
+        if (!active || controller.signal.aborted) return;
+        if (!isLoggedIn()) { clearUser?.(); setStatus('unauthenticated'); return; }
+        updateUser?.(userData);
         setStatus('authenticated');
       })
-      .catch(() => {
-        // Token is invalid/expired and refresh failed — clear tokens
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
-        auth?.clearUser();
-        setStatus('unauthenticated');
+      .catch((failure) => {
+        if (!active || controller.signal.aborted || failure.name === 'AbortError') return;
+        if (failure.code === 'AUTH_SESSION_CHANGED') { setAttempt(value => value + 1); return; }
+        // The API invalidates only the attempted current pair. Transient errors
+        // and late failures from an older session must not delete a new login.
+        if (!isLoggedIn()) {
+          clearUser?.(); setStatus('unauthenticated');
+        } else {
+          setError(failure.message); setStatus('error');
+        }
       });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    return () => { active = false; controller.abort(); };
+  }, [attempt, updateUser, clearUser]);
 
   if (status === 'validating') {
     return (
@@ -86,6 +111,13 @@ function ProtectedRoute({ children }) {
   }
   if (status === 'unauthenticated') {
     return <Navigate to="/login" />;
+  }
+  if (status === 'error') {
+    return <div className="empty-state" role="alert">
+      <p>{error}</p>
+      <button type="button" className="btn btn-primary" onClick={() => setAttempt(value => value + 1)}>{t('ui.buttons.retry')}</button>
+      <a className="btn btn-secondary" href="/login">{t('auth.login.submit')}</a>
+    </div>;
   }
   return children;
 }

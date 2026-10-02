@@ -1,0 +1,22 @@
+/* Upload receipts may contain a long managed source key. Keep the complete
+   visible reference readable within the centered upload panel on small screens. */
+.documents-page .photo-drop-zone > span {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 560px) {
+  /* Keep the dialog heading and complete source title in full-width rows;
+     reserving half of every text row for Close needlessly breaks long titles. */
+  .documents-page .document-version-history .modal-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px 12px;
+  }
+  .documents-page .document-version-history .modal-header > div { display: contents; }
+  .documents-page .document-version-eyebrow { grid-column: 1; grid-row: 1; }
+  .documents-page .document-version-history .modal-header > button { grid-column: 2; grid-row: 1; }
+  .documents-page .document-version-history .modal-header h2,
+  .documents-page .document-version-history .modal-header p { grid-column: 1 / -1; margin: 0; }
+}

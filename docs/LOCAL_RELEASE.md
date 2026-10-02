@@ -1,4 +1,4 @@
-# Lokaler Release – 1. Oktober 2026
+# Lokaler Release – 2. Oktober 2026
 
 Der vereinte Stand führt die bestehende Immobilienverwaltung als lokale
 SQLite-Anwendung fort. [DEVELOPMENT_STATUS.md](../DEVELOPMENT_STATUS.md) beschreibt
@@ -45,6 +45,80 @@ Sie prüft sichtbare Oberflächenaktionen und die gespeicherten API-Ergebnisse:
 8. Geschützte PDF-/Bilddateien und Einheitenfoto nach erneuter Anmeldung.
 
 ## Prüfergebnisse
+
+Der aktuelle gemeinsame Dokument-/Kalender-/Sitzungsstand bestand lokal 829
+Frontendfälle in 67 Dateien mit zwei Testworkern, ESLint und Ruff. Die vollständige
+CI-Typprüfung mit Mypy 2.4.0 bestand mit 112 Quelldateien sowohl für
+Linux/Python 3.11 als auch Windows/Python 3.12. 243
+Dokument-/Auskunfts-/Wiederherstellungsfälle bestanden
+(fünf ausdrückliche Adapter-Skips), einschließlich verschwundener Quelle,
+neuem Wiederherstellungsziel und frischer Anmeldung. Der gemeinsame
+Kalender-/DATEV-/Berechtigungs-HTTP-Lauf bestand nach dem letzten Body-Guard
+72 Fälle (zehn ausdrückliche Skips). Zehn Dokument-/Mieterdownloadfälle bestanden
+erneut mit dem gemeinsamen privaten Download-Response.
+Fünf echte Edge-/SQLite-Abläufe bestanden nach frischer vollständiger
+y1-Migration: Originalarchivierung, Versionsupload, verlorene Erfolgsantwort,
+Wiederholungsbefehl, Restore und alle Originaldownloads; außerdem stabiler
+Portfolio-ICS-Download, tatsächliche Readonly-Termine und 320/360-Pixel-Layouts;
+außerdem drei Mehrfachsitzungsfälle mit echtem Backend: konkurrierender Refresh,
+absichtlich veralteter Renderer-Speicher sowie Benutzerwechsel mit entfernten
+privaten Ansichten und anschließender tabübergreifender Abmeldung.
+Die unabhängigen PostgreSQL-Dokument-/Recovery-/Kalenderfälle sind in der CI
+registriert; ihr neuer gemeinsamer Lauf steht noch aus. Der Kalender prüft
+aktuelle Quellzuordnungen vor dem Header und vor weiteren betroffenen
+Bodyblöcken. Tatsächliche ASGI-Tests verschieben eine Quelle beziehungsweise
+entziehen eine Berechtigung nach dem ersten Block: weitere private Bytes werden
+nicht gelesen oder ausgeliefert, und temporäre Dateien werden entfernt.
+
+Dokumentfassungen ersetzen keine alten Originaldateien oder deren `file_url`.
+Ein fehlendes Original wird vor erster Archivierung ausdrücklich angezeigt.
+Eine vollständig geprüfte bereits archivierte Originalfassung bleibt dagegen
+auch nach Verlust ihrer früheren Uploadquelle wiederherstellbar. Hinweise und
+Grenzen stehen in [Dokumentversionen](G37_DOCUMENT_VERSIONING_HANDOFF.md) und
+[Kalenderexport](CALENDAR_ICAL_EXPORT.md).
+
+CI #122 (`d25ca2d`) bestand die verpflichtende echte Linux-OCR-Prüfung mit
+jeweils 124 ausgeführten Memory-/SQLite-Fällen ohne Skip, das Frontend sowie
+die PostgreSQL-Parallelitäts- und private Server-Lebenszyklusprüfung.
+Die beiden Memory-Matrixjobs stoppten zunächst an vier plattformabhängigen
+Typmeldungen in Runtime-Locking und dem OCR-Werkzeugmanifest. Der enge
+Nachtrag verwendet denselben dynamischen Plattformimport wie der POSIX-Pfad
+und ein ausdrücklich typisiertes Werkzeugmanifest. Root bestand danach die
+vollständigen 101 Quellen mit Linux/Python-3.11- und Windows/Python-3.12-Ziel
+sowie die vier tatsächlichen Runtime-Konfigurationsfälle. Die neue gemeinsame
+CI-Abnahme dieses Nachtrags bleibt gesondert nachzuweisen.
+
+CI #122 ist inzwischen abgeschlossen. Beide SQLite-Gesamtläufe bestanden
+3.062 Fälle und übersprangen 118 ausdrücklich, meldeten aber jeweils drei
+Fehler: Zwei Logfälle verloren die Request-ID nach Austausch der Root-Handler;
+ein HTTP-Vertragstest setzte bei einem synthetischen unvollständigen PDF
+verfügbare native Werkzeuge voraus. Der Nachtrag bindet den vorhandenen
+RequestContextFilter an den Ereignislogger und hält die PDF-Extraktion im
+HTTP-Vertragstest kontrolliert; die verpflichtende echte OCR-Prüfung bleibt
+unverändert. 54 gemeinsame Log-/HTTP-/Diagnostik-/Konsolenfälle bestanden
+auf diesem korrigierten lokalen Stand. Die Browserprüfung bestand 55 Fälle
+und meldete einen echten konkurrierenden Refreshfehler zwischen zwei Tabs.
+Die integrierte Korrektur speichert Zugangsdaten atomar in IndexedDB und markiert
+eine Rotation vor dem einmaligen HTTP-Aufruf. Ein unklarer Ausgang führt zur
+ausdrücklichen Wiederholung im ursprünglichen Tab oder einer neuen Anmeldung,
+ohne einen bereits verbrauchten Refresh nochmals zu senden. Verspätete Antworten
+überschreiben keine neuere Sitzung; ein Benutzerwechsel lädt die Ansicht vollständig
+neu. Die drei neuen tatsächlichen Edge-Fälle sind oben aufgeführt; Linux Chromium
+bleibt durch die neue gemeinsame CI nachzuweisen. Details:
+[Mehrfachanmeldung](AUTH_MULTITAB_COORDINATION.md).
+Der allgemeine Compose-Smoke wurde wegen der
+fehlgeschlagenen Backendgates übersprungen. Eine Gesamtfreigabe ist damit
+weiterhin nicht belegt.
+
+Das ausdrückliche Windows-OCR-Werkzeugsetup ist ebenfalls integriert. Es prüft
+52 fest versionierte Pakete und den Bootstrap per SHA256, installiert ausschließlich
+in ein neues privates Ziel und prüft tatsächlich PNG und Raster-PDF mit
+unverändertem Original-SHA. 38 Setuptests bestanden auf dem gemeinsamen Root-Stand.
+Der getrennte Implementierungslauf bestand Memory und SQLite mit jeweils
+58 Fällen und fünf bestehenden optionalen Discovery-Skips; echte native
+Unicode-Installation und Prüfung sind dokumentiert in
+[Windows-OCR-Werkzeuge](WINDOWS_OCR_TOOLS.md). Die Installation aktiviert selbst
+keine Anwendungskonfiguration. Ein neu gebautes EXE wird damit nicht behauptet.
 
 Der nächste vereinte Prüfstand enthält G51-Betriebsübersicht, G38-PDF-/Bild-OCR,
 die mobile Settings-Korrektur und die bewahrende Offline-Rechnungswartung.

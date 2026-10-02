@@ -9,16 +9,28 @@ import subprocess
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import TypedDict
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def toolchain() -> dict:
+class NativeToolInfo(TypedDict):
+    path: str
+    version: str
+
+
+class NativeToolchain(TypedDict):
+    pillow: str
+    tools: dict[str, NativeToolInfo]
+    languages: list[str]
+
+
+def toolchain() -> NativeToolchain:
     if not sys.platform.startswith("linux") or not Path("/proc/self/task").is_dir():
         raise RuntimeError("Required gate needs Linux /proc process-tree validation")
     import PIL
 
-    info = {"pillow": PIL.__version__, "tools": {}}
+    info: NativeToolchain = {"pillow": PIL.__version__, "tools": {}, "languages": []}
     for name in ("pdfinfo", "pdftotext", "pdftoppm", "tesseract"):
         executable = shutil.which(name)
         if not executable:

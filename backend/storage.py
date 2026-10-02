@@ -172,6 +172,8 @@ class InMemoryStore:
     properties: Dict[str, Property] = field(default_factory=dict)
     units: Dict[str, Unit] = field(default_factory=dict)
     documents: Dict[str, Document] = field(default_factory=dict)
+    document_versions: Dict[str, Any] = field(default_factory=dict)
+    document_version_chunks: Dict[tuple[str, int], Any] = field(default_factory=dict)
     invoices: Dict[str, Invoice] = field(default_factory=dict)
     maintenance_cases: Dict[str, MaintenanceCase] = field(default_factory=dict)
     receivables: Dict[str, Receivable] = field(default_factory=dict)
@@ -422,6 +424,8 @@ class InMemoryStore:
         if data.portfolio_id not in self.portfolios:
             raise ValidationError("Portfolio existiert nicht")
         old = self.properties[property_id]
+        from .services.document_version_guards import guard_edit
+        guard_edit(self, "properties", old, data.model_dump())
         property_item = Property(
             id=property_id, created_at=old.created_at,
             updated_at=datetime.now(timezone.utc), **data.model_dump(),
@@ -484,6 +488,8 @@ class InMemoryStore:
         if data.property_id not in self.properties:
             raise ValidationError("Immobilie existiert nicht")
         old = self.units[unit_id]
+        from .services.document_version_guards import guard_edit
+        guard_edit(self, "units", old, data.model_dump())
         unit = Unit(id=unit_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc), **data.model_dump())
         self.units[unit_id] = unit
         return unit
@@ -843,6 +849,8 @@ class InMemoryStore:
         if data.contract_id and data.contract_id not in self.contracts:
             raise ValidationError("Vertrag existiert nicht")
         old = self.documents[document_id]
+        from .services.document_version_guards import guard_edit
+        guard_edit(self, "documents", old, data.model_dump())
         document = Document(
             id=document_id, created_at=old.created_at,
             updated_at=datetime.now(timezone.utc), **data.model_dump(),
@@ -898,6 +906,7 @@ class InMemoryStore:
     def list_calendar_events(self) -> List[CalendarEvent]:
         return list(self.calendar_events.values())
 
+    @_payment_mutation
     def create_calendar_event(self, data: CalendarEventCreate) -> CalendarEvent:
         if data.property_id and data.property_id not in self.properties:
             raise ValidationError("Immobilie existiert nicht")
@@ -1456,6 +1465,8 @@ class InMemoryStore:
             raise NotFoundError(not_found_msg)
         old = collection[entity_id]
         updates = patch.model_dump(exclude_unset=True)
+        from .services.document_version_guards import guard_edit
+        guard_edit(self, attr_name, old, updates)
         if entity_type == "receivable" and type(patch).__name__ == "ReceivablePatch":
             data = ReceivableCreate(**{**old.model_dump(include=set(ReceivableCreate.model_fields)), **updates})
             return self.update_receivable(entity_id, data)

@@ -47,6 +47,14 @@ def invalidate_and_inspect(connection, original_configuration, *, deadline):
     security_tables = tables & {"auth_sessions", "auth_refresh_tokens"}
     if security_tables and len(security_tables) != 2:
         raise SessionRestoreError("restore_session_schema_incomplete: kompatible vollständige Sicherung erforderlich")
+    # Validate every immutable original before revoking one family or creating
+    # a new signing configuration. Both missing legacy tables remain compatible.
+    from .document_version_validation import verify_document_versions
+    from .recovery_archive import RecoveryError
+    try:
+        verify_document_versions(connection, deadline=deadline)
+    except RecoveryError:
+        raise SessionRestoreError("restore_document_versions_invalid: unveränderte vollständige Sicherung verwenden; Sicherheitsabschluss nicht ausgeführt") from None
     legacy = False
     if "accounts" in tables:
         keyring = None

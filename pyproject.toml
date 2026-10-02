@@ -24,6 +24,7 @@ dependencies = [
     "reportlab>=4.0.0",
     "jinja2>=3.1.0",
     "httpx>=0.24.0",
+    "tzdata>=2026.4,<2027",
     "mt-940>=5.1.1,<6",
 ]
 
@@ -45,9 +46,13 @@ build = ["pyinstaller>=6.0.0"]
 
 [project.scripts]
 immomanager = "backend.__main__:main"
+immomanager-ocr-tools = "scripts.windows_ocr_tools:main"
 
 [tool.setuptools.packages.find]
 include = ["backend*", "scripts*"]
+
+[tool.setuptools.package-data]
+scripts = ["windows_ocr_tools.lock.json"]
 
 [tool.ruff]
 line-length = 120

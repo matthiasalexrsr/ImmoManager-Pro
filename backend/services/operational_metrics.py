@@ -18,7 +18,10 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.orm import scoped_session
 
+from ..logging_config import RequestContextFilter
+
 logger = logging.getLogger(__name__)
+logger.addFilter(RequestContextFilter())
 
 METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "OTHER")
 GROUPS = ("auth", "administration", "finance", "property", "people", "files", "operations", "other", "unmatched")

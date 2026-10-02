@@ -336,6 +336,28 @@ def test_manual_tick_log_correlates_with_actual_request_without_journal_ids(inst
     assert active.collector.snapshot()["jobs"]["operational_tick"]["success"]["count"] == 1
 
 
+def test_manual_tick_keeps_request_context_without_root_handler_filters(installation, monkeypatch):
+    records = []
+
+    class Capture(logging.Handler):
+        def emit(self, record):
+            if record.name == "backend.services.operational_metrics":
+                records.append(record)
+
+    # Alembic or an embedding application can replace root handlers. The
+    # operational event still needs its real request context at creation.
+    monkeypatch.setattr(logging.getLogger(), "handlers", [Capture()])
+    response = installation.client.post("/api/v1/tasks/operational-tick",
+                                       headers=installation.headers["eigentuemer"], json={})
+    assert response.status_code == 200, response.text
+    assert len(records) == 1
+    output = json.loads(JSONFormatter().format(records[0]))
+    assert output["request_id"] == response.headers["x-request-id"]
+    assert output["request_id"] != "-"
+    assert output["message"] == "Local operational tick success"
+    assert PRIVATE not in json.dumps(output)
+
+
 def test_worker_restart_has_independent_empty_counters():
     collector = OperationalMetrics()
     started = collector.begin_request()

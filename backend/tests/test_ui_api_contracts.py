@@ -210,10 +210,22 @@ def test_notification_template_page_payload_matches_backend_model(client, auth_h
     assert template["content_template"].startswith("Bitte zahlen")
 
 
-def test_document_ocr_analyze_route_exists_for_documents_page(client, auth_headers):
+def test_document_ocr_analyze_route_exists_for_documents_page(client, auth_headers, monkeypatch):
+    from backend.routers import files
+
+    original = b"%PDF-1.4\n%%EOF"
+
+    def extracted(storage, key, extension):
+        # This is an HTTP/UI contract test; actual native PDF extraction has
+        # its own required Poppler/Tesseract gate. Original bytes still matter.
+        assert storage.get(key) == original
+        assert extension == "pdf"
+        return "Synthetic Rechnung Nr. R-123\nGesamtbetrag: 250,00 EUR"
+
+    monkeypatch.setattr(files, "_perform_ocr", extracted)
     uploaded = client.post(
         "/api/v1/files/upload?folder=documents",
-        files={"file": ("scan.pdf", b"%PDF-1.4\n%%EOF", "application/pdf")},
+        files={"file": ("scan.pdf", original, "application/pdf")},
         headers=auth_headers,
     )
     assert uploaded.status_code == 200, uploaded.text
@@ -228,6 +240,10 @@ def test_document_ocr_analyze_route_exists_for_documents_page(client, auth_heade
     assert "success" in body
     assert "analyzed" in body
     assert "guessedType" in body
+    assert body["has_ocr"] is True
+    assert body["ocr_url"]
+    key = files._file_url_to_key(uploaded.json()["file_url"])
+    assert files.get_file_storage().get(key) == original
 
 
 def test_meter_contract_fields_from_ui_are_persisted(client, auth_headers):

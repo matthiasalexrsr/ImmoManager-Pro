@@ -123,6 +123,9 @@ class BaseRepository:
             self._missing(entity_id)
         from ..services.portfolio_scope import guard_sql_write
         guard_sql_write(self.db, self.orm_class.__table__, {**_orm_to_dict(orm_obj), **updates}, entity_id=entity_id)
+        from ..services.document_version_guards import guard_edit
+        from .sql_store import SQLAlchemyStore
+        guard_edit(SQLAlchemyStore(self.db), self.orm_class.__tablename__, orm_obj, updates)
         self._guard_contract_update(orm_obj, updates)
         if self.orm_class.__tablename__ == "invoices" and not _invoice_transfer_balance.get():
             from ..db.orm_models import PaymentORM
