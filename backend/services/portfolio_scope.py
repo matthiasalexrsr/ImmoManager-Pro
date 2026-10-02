@@ -92,6 +92,9 @@ INTERNAL = frozenset(
         "operational_occurrences",
         "operational_schedules",
         "operational_dispatches",
+        "operational_jobs",  # Bound installation actor is checked in the job service.
+        "operational_job_lanes",
+        "operational_work_items",
     }
 )
 RESOURCE_ALIASES = {

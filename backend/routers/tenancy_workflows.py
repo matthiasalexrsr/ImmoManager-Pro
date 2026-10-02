@@ -25,9 +25,10 @@ from ..services.tenancy_workflow_types import (
     UpdateStep,
     UpdateTemplateVersion,
 )
+from ..services.workflow_authority_route import WorkflowAuthorityRoute
 from ..storage import NotFoundError, ValidationError
 
-router = APIRouter(tags=["Mieterwechsel"])
+router = APIRouter(tags=["Mieterwechsel"], route_class=WorkflowAuthorityRoute)
 Actor = Annotated[UserRead, Depends(require_auth)]
 Match = Annotated[str | None, Header(alias="If-Match")]
 

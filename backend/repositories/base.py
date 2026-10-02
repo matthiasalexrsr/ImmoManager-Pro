@@ -235,7 +235,7 @@ class BaseRepository:
         if self.orm_class.__tablename__ == "meter_readings":
             from ..services.tenancy_workflow import guard_meter_create
             from .sql_store import SQLAlchemyStore
-            guard_meter_create(SQLAlchemyStore(self.db), data.handover_id)
+            guard_meter_create(SQLAlchemyStore(self.db), data.model_dump()["handover_id"])
         orm_obj = self.orm_class(id=_generate_id(), **data.model_dump())
         self.db.add(orm_obj)
         self.db.flush()

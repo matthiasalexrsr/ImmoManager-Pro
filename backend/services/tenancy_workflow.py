@@ -44,6 +44,7 @@ from .concurrency import etag
 from .contract_occupancy import begin_writer, lock_location
 from .payments import _memory_lock
 from .portfolio_scope import current_scope, memory_visible, refresh_scope, scope_context, scope_from_user
+from .request_authority import require_fresh_request_authority
 from .tenancy_workflow_types import (
     AddEvidence,
     ChangeSelection,
@@ -213,6 +214,7 @@ def work(store: Any, actor_id: str, *, write: bool = False):
         from .tenant_privacy import _memory_privacy_lock
     with nullcontext() if sql else _memory_privacy_lock():
         user, captured = _identity(actor_id)
+        require_fresh_request_authority(actor_id)
         with scope_context(captured), (nullcontext() if sql else _memory_lock):
             if sql:
                 from ..repositories.sql_store import SQLAlchemyStore
@@ -236,6 +238,7 @@ def work(store: Any, actor_id: str, *, write: bool = False):
                 latest = auth.get_user_by_id(actor_id)
                 if not latest or not latest["is_active"] or latest["role"] != user["role"]:
                     raise HTTPException(403, "Berechtigung wurde während des Vorgangs geändert.")
+                require_fresh_request_authority(actor_id)
                 if db is not None and write:
                     db.commit()
             except BaseException:
@@ -424,9 +427,9 @@ def _version_public(unit: Work, row: Any) -> dict[str, Any]:
     }
 
 
-def _request_hash(operation: str, payload: Any) -> str:
+def _request_hash(operation: str, payload: Any, *path: str) -> str:
     value = payload.model_dump(mode="json") if hasattr(payload, "model_dump") else payload
-    return digest({"operation": operation, "payload": value})
+    return digest({"operation": operation, "path": path, "payload": value})
 
 
 def _command(unit: Work, actor_id: str, key: str, operation: str, request_hash: str):
@@ -449,6 +452,8 @@ def _command(unit: Work, actor_id: str, key: str, operation: str, request_hash: 
         return None
     if saved.operation != operation or saved.request_sha256 != request_hash:
         raise conflict("Die Wiederholungsreferenz wurde bereits mit anderen Eingaben verwendet.")
+    if not memory_visible(unit.store, WorkflowCommandORM.__tablename__, saved, scope=unit.scope):
+        raise HTTPException(404, "Vorgangsbeleg nicht gefunden oder nicht zugänglich.")
     return deepcopy(saved.response)
 
 
@@ -877,7 +882,7 @@ def create_template_version(
         based = _load_version(unit, payload.based_on_version_id, lock=True)
         if based.template_id != template.id:
             raise HTTPException(404, "Ausgangsfassung gehört nicht zu dieser Vorlage.")
-        request_hash = _request_hash("create_template_version", payload)
+        request_hash = _request_hash("create_template_version", payload, template_id)
         replay = _command(unit, actor_id, payload.idempotency_key, "create_template_version", request_hash)
         if replay is not None:
             return replay
@@ -939,7 +944,7 @@ def update_template_version(
     with work(store, actor_id, write=True) as unit:
         _require_manager(unit.user)
         row = _load_version(unit, version_id, lock=True)
-        request_hash = _request_hash("update_template_version", payload)
+        request_hash = _request_hash("update_template_version", payload, version_id)
         replay = _command(unit, actor_id, payload.idempotency_key, "update_template_version", request_hash)
         if replay is not None:
             return replay
@@ -974,7 +979,7 @@ def publish_template_version(
     with work(store, actor_id, write=True) as unit:
         _require_manager(unit.user)
         row = _load_version(unit, version_id, lock=True)
-        request_hash = _request_hash("publish_template_version", payload)
+        request_hash = _request_hash("publish_template_version", payload, version_id)
         replay = _command(unit, actor_id, payload.idempotency_key, "publish_template_version", request_hash)
         if replay is not None:
             return replay
@@ -1756,7 +1761,7 @@ def patch_change(
     with work(store, actor_id, write=True) as unit:
         _require_manager(unit.user)
         change, steps = _load_change(unit, change_id, lock=True)
-        request_hash = _request_hash("patch_tenancy_change", payload)
+        request_hash = _request_hash("patch_tenancy_change", payload, change_id)
         replay = _command(unit, actor_id, payload.idempotency_key, "patch_tenancy_change", request_hash)
         if replay is not None:
             return replay
@@ -1872,7 +1877,7 @@ def reanchor_change(
     with work(store, actor_id, write=True) as unit:
         _require_manager(unit.user)
         change, steps = _load_change(unit, change_id, lock=True)
-        request_hash = _request_hash("reanchor_tenancy_change", payload)
+        request_hash = _request_hash("reanchor_tenancy_change", payload, change_id)
         replay = _command(unit, actor_id, payload.idempotency_key, "reanchor_tenancy_change", request_hash)
         if replay is not None:
             return replay
@@ -1972,7 +1977,7 @@ def update_step(
         step = _load_step(unit, change, step_id, lock=True)
         if not _responsible(unit, step):
             raise HTTPException(403, "Dieser Schritt ist Ihnen nicht zur Ausführung zugewiesen.")
-        request_hash = _request_hash("update_workflow_step", payload)
+        request_hash = _request_hash("update_workflow_step", payload, change_id, step_id)
         replay = _command(unit, actor_id, payload.idempotency_key, "update_workflow_step", request_hash)
         if replay is not None:
             return replay
@@ -2045,7 +2050,7 @@ def create_step_task(
         step = _load_step(unit, change, step_id, lock=True)
         if not _responsible(unit, step):
             raise HTTPException(403, "Dieser Schritt ist Ihnen nicht zur Ausführung zugewiesen.")
-        request_hash = _request_hash("create_workflow_task", payload)
+        request_hash = _request_hash("create_workflow_task", payload, change_id, step_id)
         replay = _command(unit, actor_id, payload.idempotency_key, "create_workflow_task", request_hash)
         if replay is not None:
             return replay
@@ -2262,7 +2267,7 @@ def add_evidence(
         step = _load_step(unit, change, step_id, lock=True)
         if not _responsible(unit, step):
             raise HTTPException(403, "Dieser Schritt ist Ihnen nicht zur Ausführung zugewiesen.")
-        request_hash = _request_hash("add_workflow_evidence", payload)
+        request_hash = _request_hash("add_workflow_evidence", payload, change_id, step_id)
         replay = _command(unit, actor_id, payload.idempotency_key, "add_workflow_evidence", request_hash)
         if replay is not None:
             return replay
@@ -2319,7 +2324,7 @@ def remove_evidence(
         step = _load_step(unit, change, step_id, lock=True)
         if not _responsible(unit, step):
             raise HTTPException(403, "Dieser Schritt ist Ihnen nicht zur Ausführung zugewiesen.")
-        request_hash = _request_hash("remove_workflow_evidence", {"link_id": link_id, **payload.model_dump(mode="json")})
+        request_hash = _request_hash("remove_workflow_evidence", payload, change_id, step_id, link_id)
         replay = _command(unit, actor_id, payload.idempotency_key, "remove_workflow_evidence", request_hash)
         if replay is not None:
             return replay
@@ -2358,7 +2363,7 @@ def complete_change(
     with work(store, actor_id, write=True) as unit:
         _require_manager(unit.user)
         change, steps = _load_change(unit, change_id, lock=True)
-        request_hash = _request_hash("complete_tenancy_change", payload)
+        request_hash = _request_hash("complete_tenancy_change", payload, change_id)
         replay = _command(unit, actor_id, payload.idempotency_key, "complete_tenancy_change", request_hash)
         if replay is not None:
             return replay

@@ -50,6 +50,7 @@ from .routers import (
     messages,
     meters_standalone,
     notifications,
+    operational_jobs,
     operational_metrics,
     outbox,
     photos,
@@ -64,6 +65,7 @@ from .routers import (
     tasks,
     tasks_status,
     tax_rates,
+    tenancy_workflows,
     tenants,
     units,
     updates,
@@ -107,6 +109,8 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(maintenance.router, dependencies=_auth_dep)
     api_v1.include_router(documents.router, dependencies=_auth_dep)
     api_v1.include_router(document_versions.router, dependencies=_auth_dep)
+    api_v1.include_router(tenancy_workflows.router, dependencies=_auth_dep)
+    api_v1.include_router(operational_jobs.router, dependencies=_auth_dep)
     api_v1.include_router(tasks.router, dependencies=_auth_dep)
     api_v1.include_router(workflow_references.router, dependencies=_auth_dep)
     api_v1.include_router(calendar.router, dependencies=_auth_dep)

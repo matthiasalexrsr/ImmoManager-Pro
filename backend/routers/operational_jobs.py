@@ -4,17 +4,17 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
-from fastapi.routing import APIRoute
 from sqlalchemy.exc import DBAPIError
 
 from ..auth import require_auth
 from ..dependencies import get_store
 from ..models import UserRead
 from ..services import operational_jobs as service
+from ..services.checked_publication import CheckedPublicationRoute
 from ..services.operational_job_types import JobCommand, JobContinue, JobCreate
 
 
-class SafeDatabaseRoute(APIRoute):
+class SafeDatabaseRoute(CheckedPublicationRoute):
     def get_route_handler(self):
         handler = super().get_route_handler()
         async def guarded(request: Request):

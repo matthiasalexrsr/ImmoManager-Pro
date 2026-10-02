@@ -20,12 +20,14 @@ from .credit_models import CreditReceiptORM  # noqa: F401 — register immutable
 from .datev_models import DatevProfileORM  # noqa: F401 — register DATEV metadata
 from .document_version_models import DocumentVersionORM  # noqa: F401 — register immutable document originals
 from .form_draft_models import FormDraftORM  # noqa: F401 — register private draft metadata
+from .operational_job_models import JOB_MODELS
 from .operational_models import OperationalTickORM  # noqa: F401 — register scheduler metadata
 from .orm_models import Base
 from .outbox_models import OutboxMessageORM  # noqa: F401 — register durable SMTP metadata
 from .rent_batch_models import RentBatchORM  # noqa: F401 — register durable rental metadata
 from .session_models import AuthSessionORM  # noqa: F401 — register account security metadata
 from .tax_models import AnnualTaxProfileORM  # noqa: F401 — register retained annual evidence before create_all
+from .tenancy_workflow_models import TENANCY_WORKFLOW_MODELS
 
 DATABASE_URL = settings.database_url
 
@@ -58,6 +60,10 @@ def create_tables() -> None:
     """Create all tables (dev/test convenience). Use Alembic for production."""
     # Do not let create_all silently repair one half of a damaged retained pair.
     present = set(inspect(engine).get_table_names())
+    from .retained_family_schema import require_complete_family
+
+    require_complete_family(engine, TENANCY_WORKFLOW_MODELS, "tenancy workflow")
+    require_complete_family(engine, JOB_MODELS, "operational job")
     correspondence_tables = {"contract_correspondence_drafts", "contract_correspondence_commands", "contract_correspondence_events"}
     if present & correspondence_tables and not correspondence_tables <= present:
         raise RuntimeError("Incomplete contract correspondence journal schema; explicit schema recovery is required")
@@ -78,9 +84,11 @@ def create_tables() -> None:
     from .contract_wizard_models import ensure_contract_wizard_schema
     from .document_version_models import ensure_document_version_schema
     from .form_draft_models import ensure_form_draft_schema
+    from .operational_job_models import ensure_operational_job_schema
     from .outbox_models import ensure_outbox_schema
     from .rent_batch_schema import ensure_rent_batch_schema
     from .session_models import ensure_session_schema
+    from .tenancy_workflow_schema import ensure_tenancy_workflow_schema
     with engine.begin() as connection:
         ensure_portfolio_access_schema(connection, bootstrap_legacy=bootstrap_legacy_access)
         ensure_rent_batch_schema(connection)
@@ -94,6 +102,8 @@ def create_tables() -> None:
         ensure_invoice_payment_columns(connection)
         ensure_invoice_payment_immutability(connection)
         ensure_form_draft_schema(connection)
+        ensure_tenancy_workflow_schema(connection)
+        ensure_operational_job_schema(connection)
     # Local installations historically used create_all without Alembic stamping.
     # Apply this additive column upgrade there as well, preserving existing data.
     if engine.dialect.name == "sqlite":

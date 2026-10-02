@@ -131,10 +131,13 @@ def test_only_finalized_matching_protocols_and_readings_are_offered(access_http)
         records = []
         for direction, status in (("move_out", "finalized"), ("move_in", "finalized"), ("move_out", "draft")):
             protocol = store.create_handover_protocol(HandoverProtocolCreate(contract_id=contracts[0].id,
-                unit_id=contracts[0].unit_id, protocol_type=direction, status=status, protocol_date=date(2026, 10, 2),
+                unit_id=contracts[0].unit_id, protocol_type=direction, status="draft", protocol_date=date(2026, 10, 2),
                 notes="SYNTHETIC_PRIVATE_PROTOCOL_NOTE"))
             reading = store.create_meter_reading(MeterReadingCreate(handover_id=protocol.id, meter_type="electricity",
                 reading_value=12.5, meter_number="READING_%", notes="SYNTHETIC_PRIVATE_READING_NOTE"))
+            if status == "finalized":
+                protocol = store.update_handover_protocol(protocol.id, HandoverProtocolCreate(
+                    **{**protocol.model_dump(exclude={"id", "created_at", "updated_at"}), "status": status}))
             records.append((protocol, reading))
         document = store.create_document(DocumentCreate(title="Linked original", contract_id=contracts[0].id,
             file_url="uploads/synthetic.txt", description="SYNTHETIC_PRIVATE_DOCUMENT_NOTE"))

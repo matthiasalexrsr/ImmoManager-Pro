@@ -1,7 +1,7 @@
 """Durable fair packets, deliberately separate from atomic legacy ticks.
 
 Revision ID: c2a2b3c4d5e6
-Revises: a2a2b3c4d5e6 (integration owner will rechain after P1 b2)
+Revises: b2a2b3c4d5e6
 """
 
 from typing import cast
@@ -12,7 +12,7 @@ from sqlalchemy import Table, inspect, select
 from backend.db.operational_job_models import JOB_MODELS, install_job_guards
 
 revision = "c2a2b3c4d5e6"
-down_revision = "a2a2b3c4d5e6"
+down_revision = "b2a2b3c4d5e6"
 branch_labels = depends_on = None
 
 
