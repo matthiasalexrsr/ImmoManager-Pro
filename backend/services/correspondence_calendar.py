@@ -39,7 +39,7 @@ def account_lock():
         yield
 
 
-def actor_scope(actor_id=None):
+def actor_scope(actor_id=None, *, require_calendar=True):
     captured = current_scope()
     identifier = actor_id.strip() if isinstance(actor_id, str) else None
     identifier = identifier or (captured.user_id if captured is not None else None)
@@ -48,7 +48,7 @@ def actor_scope(actor_id=None):
     user = auth.get_user_by_id(identifier)
     if not user or not user["is_active"]:
         raise HTTPException(401, "Der konfigurierte Kalenderbenutzer ist nicht mehr aktiv.")
-    if not may_write_resource(user["role"], "calendar"):
+    if require_calendar and not may_write_resource(user["role"], "calendar"):
         raise HTTPException(403, "Keine Berechtigung zur lokalen Kalenderprojektion.")
     if captured is not None and captured.user_id != identifier:
         raise HTTPException(403, "Der Kalenderbenutzer gehört nicht zu dieser Anfrage.")

@@ -502,7 +502,7 @@ def operational_tick(store, request=None, *, kinds=None, actor_id=None):
     request = request or TickRequest()
     kinds = set(kinds or {"tasks", "calendar", "overdue", "contracts", "due_tasks", "escalation"})
     budget = _Budget(request.max_items)
-    captured = actor_scope(actor_id)
+    captured = actor_scope(actor_id, require_calendar="calendar" in kinds)
     with metrics.operational_tick(), scope_context(captured), _transaction(store, captured=captured) as tx:
         tx.resolve_alerts(budget)
         tasks, events, warnings = _recurring(tx, request, budget, kinds)
