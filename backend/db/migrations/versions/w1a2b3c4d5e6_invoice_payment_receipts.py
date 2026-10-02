@@ -8,6 +8,8 @@ from contextlib import contextmanager
 import sqlalchemy as sa
 from alembic import op
 
+from backend.db.sqlite_table_preservation import retained_sqlite_batch
+
 revision = "w1a2b3c4d5e6"
 down_revision = "v1a2b3c4d5e6"
 branch_labels = None
@@ -42,10 +44,32 @@ def upgrade():
             # Preserve explicit historical paid states without inventing bank receipts
             # or activating independent legacy business triggers during backfill.
             op.execute("UPDATE invoices SET amount_paid=gross_amount WHERE status='paid' AND gross_amount>0")
-        with op.batch_alter_table("payments", naming_convention={"fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s"}) as batch:
+        with (
+            retained_sqlite_batch(connection, "payments", naming_convention={
+                "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s"
+            }) as original_table,
+            op.batch_alter_table("payments", copy_from=original_table, naming_convention={
+                "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s"
+            }) as batch,
+        ):
             if "invoice_id" not in payment_fields:
                 batch.add_column(sa.Column("invoice_id", sa.String(), nullable=True))
                 batch.create_foreign_key("fk_payments_invoice_id_invoices", "invoices", ["invoice_id"], ["id"], ondelete="RESTRICT")
+            else:
+                # Additive SQLite read compatibility used an inline REFERENCES
+                # clause. Reflection can omit its ON DELETE RESTRICT option;
+                # retain the receipt link explicitly during table rebuilding.
+                invoice_fk = next((fk for fk in sa.inspect(connection).get_foreign_keys("payments")
+                                   if fk["constrained_columns"] == ["invoice_id"]), None)
+                name = "fk_payments_invoice_id_invoices"
+                options = {}
+                if invoice_fk:
+                    if invoice_fk["referred_table"] != "invoices" or invoice_fk["referred_columns"] != ["id"]:
+                        raise RuntimeError("Unknown invoice receipt relationship; offline schema review required.")
+                    name = invoice_fk["name"] or name
+                    options = {key: value for key, value in invoice_fk.get("options", {}).items() if key != "ondelete"}
+                    batch.drop_constraint(name, type_="foreignkey")
+                batch.create_foreign_key(name, "invoices", ["invoice_id"], ["id"], ondelete="RESTRICT", **options)
             batch.drop_constraint("ck_payments_one_target", type_="check")
             batch.create_check_constraint("ck_payments_one_target", ONE_TARGET)
             if "idx_payments_invoice" not in {index["name"] for index in sa.inspect(connection).get_indexes("payments")}:

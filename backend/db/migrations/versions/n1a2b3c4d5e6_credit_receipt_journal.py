@@ -9,6 +9,8 @@ existing trigger definitions are discarded; populated journals cannot downgrade.
 import sqlalchemy as sa
 from alembic import op
 
+from backend.db.sqlite_table_preservation import retained_sqlite_batch
+
 revision = "n1a2b3c4d5e6"
 down_revision = "m1a2b3c4d5e6"
 branch_labels = None
@@ -23,10 +25,11 @@ def _allocation_check(expression):
             raise RuntimeError("Credit schema upgrade requires the stopped application and an offline SQLite migration connection.")
         triggers = list(connection.execute(sa.text("SELECT sql FROM sqlite_master WHERE type='trigger' AND tbl_name='bookings' AND sql IS NOT NULL")).scalars())
     checks = {row["name"] for row in sa.inspect(connection).get_check_constraints("bookings")}
-    with op.batch_alter_table("bookings") as batch:
-        if "ck_bookings_allocation" in checks:
-            batch.drop_constraint("ck_bookings_allocation", type_="check")
-        batch.create_check_constraint("ck_bookings_allocation", expression)
+    with retained_sqlite_batch(connection, "bookings") as original_table:
+        with op.batch_alter_table("bookings", copy_from=original_table) as batch:
+            if "ck_bookings_allocation" in checks:
+                batch.drop_constraint("ck_bookings_allocation", type_="check")
+            batch.create_check_constraint("ck_bookings_allocation", expression)
     for trigger_sql in triggers:
         connection.exec_driver_sql(trigger_sql)
     if connection.dialect.name == "sqlite" and connection.execute(sa.text("PRAGMA foreign_key_check")).first():

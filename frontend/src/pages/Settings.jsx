@@ -10,6 +10,8 @@ import BackupSection from './settings/BackupSection';
 import TwoFactorSection from './settings/TwoFactorSection';
 import SessionsSection from './settings/SessionsSection';
 import UserManagementSection from './settings/UserManagementSection';
+import OperationalMetricsSection from './settings/OperationalMetricsSection';
+import './Settings.css';
 
 export default function Settings() {
   const { prefs, toggleTheme, toggleSidebar, updatePrefs, saveError, retrySave } = usePreferences();
@@ -256,6 +258,7 @@ export default function Settings() {
 
         {settingsTab === 'system' && (
           <>
+            {isAdmin && <OperationalMetricsSection />}
             {isAdmin && <BackupSection />}
             {isAdmin && <UpdateSection versionInfo={versionInfo} />}
 

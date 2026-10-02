@@ -9,6 +9,7 @@ import FileViewer from '../components/FileViewer';
 import { PlusIcon } from '../components/Icons';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useTranslation } from '../i18n';
+import { ocrFailure } from '../utils/ocrFailure';
 
 const BASE = (import.meta.env.VITE_API_URL || '/api/v1');
 
@@ -45,6 +46,9 @@ export default function Documents() {
   const [uploading, setUploading] = useState(false);
   const [uploadQueue, setUploadQueue] = useState([]);
   const [ocrResult, setOcrResult] = useState(null);
+  const [ocrBusy, setOcrBusy] = useState(false);
+  const ocrInFlight = useRef(false);
+  const uploadInFlight = useRef(false);
   const [filter, setFilter] = useState('all');
   const fileRef = useRef(null);
 
@@ -123,8 +127,30 @@ export default function Documents() {
     }},
   ];
 
+  const analyzeUploaded = useCallback(async (fileUrl, filename) => {
+    if (!isAllowed() || ocrInFlight.current) return;
+    ocrInFlight.current = true;
+    setOcrBusy(true);
+    try {
+      const result = await api.post('/documents/ocr-analyze', { file_url: fileUrl });
+      if (!isAllowed()) return;
+      setOcrResult({ ...result, success: Boolean(result.success ?? result.analyzed),
+        guessedType: result.guessedType || result.document_type || guessDocType(filename),
+        extracted_text: result.extracted_text || result.summary || null,
+        originalSaved: true, sourceUrl: fileUrl, sourceName: filename });
+    } catch (error) {
+      if (!isAllowed()) return;
+      setOcrResult({ ...ocrFailure(error, t), guessedType: guessDocType(filename),
+        originalSaved: true, sourceUrl: fileUrl, sourceName: filename });
+    } finally {
+      ocrInFlight.current = false;
+      setOcrBusy(false);
+    }
+  }, [isAllowed, t]);
+
   const uploadFile = useCallback(async (file) => {
-    if (!file || !isAllowed()) return;
+    if (!file || !isAllowed() || uploadInFlight.current || ocrInFlight.current) return;
+    uploadInFlight.current = true;
     setUploading(true);
     setOcrResult(null);
     try {
@@ -142,20 +168,11 @@ export default function Documents() {
       if (data.file_url) setUploadedUrl(data.file_url);
 
       const ext = file.name.split('.').pop().toLowerCase();
-      if (['pdf', 'png', 'jpg', 'jpeg', 'tiff', 'tif'].includes(ext) && data.file_url) {
-        try {
-          const ocrRes = await api.post('/documents/ocr-analyze', { file_url: data.file_url });
-          if (!isAllowed()) return;
-          setOcrResult({
-            success: Boolean(ocrRes.success ?? ocrRes.analyzed),
-            ...ocrRes,
-            guessedType: ocrRes.guessedType || ocrRes.document_type || guessDocType(file.name),
-            extracted_text: ocrRes.extracted_text || ocrRes.summary || null,
-          });
-        } catch {
-          if (!isAllowed()) return;
-          setOcrResult({ success: false, guessedType: guessDocType(file.name), message: t('pages.documents.upload.ocrUnavailable') || 'OCR nicht verfügbar' });
-        }
+      if (data.ocr_error && data.file_url) {
+        setOcrResult({ ...ocrFailure(data.ocr_error, t), guessedType: guessDocType(file.name),
+          originalSaved: true, sourceUrl: data.file_url, sourceName: file.name });
+      } else if (['pdf', 'png', 'jpg', 'jpeg', 'tiff', 'tif', 'bmp', 'webp'].includes(ext) && data.file_url) {
+        await analyzeUploaded(data.file_url, file.name);
       } else {
         setOcrResult({ success: false, guessedType: guessDocType(file.name), message: t('pages.documents.upload.ocrUnsupported') || 'Dateityp nicht OCR-fähig' });
       }
@@ -163,9 +180,10 @@ export default function Documents() {
       if (!isAllowed()) return;
       setOcrResult({ success: false, guessedType: 'Sonstiges', message: `${t('pages.documents.upload.failed') || 'Upload fehlgeschlagen'}: ${err.message}` });
     } finally {
+      uploadInFlight.current = false;
       setUploading(false);
     }
-  }, [t, isAllowed]);
+  }, [t, isAllowed, analyzeUploaded]);
 
   const handleMultiUpload = useCallback(async (files) => {
     if (!isAllowed()) return;
@@ -280,8 +298,9 @@ export default function Documents() {
             ref={fileRef}
             type="file"
             multiple
+            disabled={uploading || ocrBusy}
             style={{ display: 'none' }}
-            accept=".pdf,.png,.jpg,.jpeg,.tiff,.tif,.doc,.docx,.xls,.xlsx"
+            accept=".pdf,.png,.jpg,.jpeg,.tiff,.tif,.bmp,.webp,.doc,.docx,.xls,.xlsx"
             onChange={e => {
               const files = e.target.files;
               if (files?.length > 1) handleMultiUpload(files);
@@ -324,9 +343,16 @@ export default function Documents() {
               <>
                 {t('pages.documents.recognizedType') || 'Erkannter Typ:'} <strong>{ocrResult.guessedType}</strong>
                 <span className="text-muted"> — {ocrResult.message}</span>
+                {ocrResult.code && <div style={{ overflowWrap: 'anywhere' }}><small>{ocrResult.httpStatus && `HTTP ${ocrResult.httpStatus} · `}{ocrResult.code}</small></div>}
+                {ocrResult.correction && <p>{ocrResult.correction}</p>}
               </>
             )}
           </div>
+          {ocrResult.originalSaved && <p role="status">{t('documentsOCR.originalSaved')}</p>}
+          {!ocrResult.success && ocrResult.sourceUrl && <button type="button" className="btn btn-secondary"
+            disabled={ocrBusy || uploading} onClick={() => analyzeUploaded(ocrResult.sourceUrl, ocrResult.sourceName)}>
+            {ocrBusy ? t('documentsOCR.analyzing') : t('documentsOCR.retry')}
+          </button>}
         </div>
       )}
 

@@ -503,7 +503,7 @@ def restore_full_backup(source: Path, destination: Path, password: str, *,
 
 
 def load_recovered_environment(directory: Path):
-    """Load only application settings, never executable paths or shell configuration."""
+    """Load declared application settings, never unrelated shell configuration."""
     import sys
     if "backend.app" in sys.modules or "backend.dependencies" in sys.modules:
         raise RecoveryError("Die wiederhergestellte Anwendung muss in einem neuen Prozess gestartet werden.")

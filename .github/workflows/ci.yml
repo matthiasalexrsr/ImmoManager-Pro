@@ -24,7 +24,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20.19.0'
+          node-version: '24.21.0'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Install frontend dependencies
@@ -66,7 +66,14 @@ jobs:
           mypy backend/app.py backend/domain backend/repositories backend/plugins
           backend/auth.py backend/dependencies.py backend/middleware.py backend/static_access.py
           backend/console_encoding.py backend/logging_config.py
+          backend/ocr_configuration.py backend/runtime_environment.py backend/__main__.py
+          backend/services/ocr_service.py backend/services/ocr_process_tree.py backend/services/ocr_image_worker.py
+          backend/routers/documents.py backend/routers/files.py scripts/ocr_native_gate.py
+          scripts/private_server_backup.py scripts/configure_private_server.py scripts/private_server_smoke.py
           backend/settings.py backend/recovery.py backend/services/full_recovery.py
+          backend/services/operational_metrics.py backend/routers/operational_metrics.py
+          backend/invoice_schema_upgrade.py backend/credit_schema_upgrade.py
+          backend/db/sqlite_table_preservation.py
           backend/services/recovery_sessions.py scripts/restore_session_security.py
           backend/services/recovery_archive.py backend/services/recovery_validation.py
           backend/services/data_transfer.py backend/services/payments.py backend/services/payment_integrity.py
@@ -99,6 +106,34 @@ jobs:
         if: matrix.store-backend == 'memory'
         run: python -c "from backend.app import app; print('App imports OK')"
 
+  ocr-native:
+    name: Required native OCR (Linux Poppler + Tesseract deu/eng)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install actual native OCR tools and languages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends poppler-utils tesseract-ocr tesseract-ocr-deu tesseract-ocr-eng
+          python -m pip install -r requirements.txt 'Pillow>=10.4.0'
+      - name: Exercise native OCR and process cleanup with Memory
+        run: python scripts/ocr_native_gate.py --store memory --output work/ocr-native
+      - name: Exercise native OCR and process cleanup with SQLite
+        run: python scripts/ocr_native_gate.py --store sql --output work/ocr-native
+      - name: Preserve native toolchain and actual executed test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: required-native-ocr
+          path: work/ocr-native/
+          if-no-files-found: error
+          retention-days: 7
+
   e2e-smoke:
     name: E2E smoke (docker-compose)
     runs-on: ubuntu-latest
@@ -108,7 +143,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20.19.0'
+          node-version: '24.21.0'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Run E2E smoke checks
@@ -190,7 +225,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20.19.0'
+          node-version: '24.21.0'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Install application and browser dependencies
@@ -233,13 +268,14 @@ jobs:
   deploy-readiness:
     name: Deployment readiness
     runs-on: ubuntu-latest
-    needs: [frontend, backend, e2e-smoke, browser-e2e, postgres-concurrency, private-server]
+    needs: [frontend, backend, ocr-native, e2e-smoke, browser-e2e, postgres-concurrency, private-server]
     if: ${{ always() }}
     steps:
       - name: Gate on pipeline status
         run: |
           if [ "${{ needs.frontend.result }}" != "success" ] || \
              [ "${{ needs.backend.result }}" != "success" ] || \
+             [ "${{ needs.ocr-native.result }}" != "success" ] || \
              [ "${{ needs.e2e-smoke.result }}" != "success" ] || \
              [ "${{ needs.browser-e2e.result }}" != "success" ] || \
              [ "${{ needs.postgres-concurrency.result }}" != "success" ] || \

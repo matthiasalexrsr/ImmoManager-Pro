@@ -40,7 +40,8 @@ def _has_new_check(connection):
                for row in inspect(connection).get_check_constraints("bookings"))
 
 
-def upgrade_legacy_sqlite(database: Path, backup_output: Path, *, offline=False, timeout_seconds=300):
+def upgrade_legacy_sqlite(database: Path, backup_output: Path, *, offline=False, timeout_seconds=300,
+                          _upgrade=None):
     """No live DDL, no overwrite, no secret configuration imports."""
     if not offline:
         raise CreditUpgradeError("offline_required")
@@ -89,7 +90,8 @@ def upgrade_legacy_sqlite(database: Path, backup_output: Path, *, offline=False,
                     def backup_progress(*_):
                         _check(deadline)
                     driver.backup(destination, pages=512, progress=backup_progress, sleep=0.01)
-                    if destination.execute("PRAGMA integrity_check").fetchone() != ("ok",):
+                    if (destination.execute("PRAGMA integrity_check").fetchone() != ("ok",)
+                            or destination.execute("PRAGMA foreign_key_check").fetchone() is not None):
                         raise CreditUpgradeError("database_inconsistent")
             _check(deadline)
             verify_identity()
@@ -97,13 +99,18 @@ def upgrade_legacy_sqlite(database: Path, backup_output: Path, *, offline=False,
             if connection.exec_driver_sql("PRAGMA data_version").scalar() != version:
                 raise CreditUpgradeError("database_changed")
             _consistent(connection)
-            if not _has_new_check(connection):
-                migration = import_module("backend.db.migrations.versions.n1a2b3c4d5e6_credit_receipt_journal")
-                with Operations.context(MigrationContext.configure(connection)):
-                    migration._allocation_check("allocated_amount >= 0 AND allocated_amount <= abs(amount)")
-            from .db.credit_models import CreditReceiptORM, CreditReversalORM
-            cast(Table, CreditReceiptORM.__table__).create(connection, checkfirst=True)
-            cast(Table, CreditReversalORM.__table__).create(connection, checkfirst=True)
+            if _upgrade is not None:
+                # Private reuse of the same snapshot/lock/rollback boundary. No
+                # caller-controlled SQL or live application route exposes this.
+                _upgrade(connection, deadline)
+            else:
+                if not _has_new_check(connection):
+                    migration = import_module("backend.db.migrations.versions.n1a2b3c4d5e6_credit_receipt_journal")
+                    with Operations.context(MigrationContext.configure(connection)):
+                        migration._allocation_check("allocated_amount >= 0 AND allocated_amount <= abs(amount)")
+                from .db.credit_models import CreditReceiptORM, CreditReversalORM
+                cast(Table, CreditReceiptORM.__table__).create(connection, checkfirst=True)
+                cast(Table, CreditReversalORM.__table__).create(connection, checkfirst=True)
             _consistent(connection)
             if not _has_new_check(connection):
                 raise CreditUpgradeError("upgrade_failed")

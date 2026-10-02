@@ -54,6 +54,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from backend.ocr_configuration import OCR_DEFAULTS, OCR_PATH_KEYS, validate_ocr_environment  # noqa: E402
 from backend.services.recovery_archive import (  # noqa: E402
     HEADER_SIZE,
     MAGIC,
@@ -68,7 +69,8 @@ REQUIRED_ENV_KEYS = frozenset({"APP_ORIGIN", "APP_HOST", "APP_HTTP_PORT", "POSTG
 ENCRYPTION_ENV_KEYS = frozenset({"ENCRYPTION_KEY", "ENCRYPTION_KEYRING", "ENCRYPTION_ACTIVE_KEY_ID",
                                  "ENCRYPTION_INDEX_KEY", "ENCRYPTION_LEGACY_JWT_KEYS"})
 DRAFT_ENV_KEYS = frozenset({"FORM_DRAFT_TTL_DAYS", "FORM_DRAFT_MAX_BYTES"})
-ENV_KEYS = REQUIRED_ENV_KEYS | ENCRYPTION_ENV_KEYS | DRAFT_ENV_KEYS
+OCR_ENV_KEYS = frozenset(OCR_DEFAULTS)
+ENV_KEYS = REQUIRED_ENV_KEYS | ENCRYPTION_ENV_KEYS | DRAFT_ENV_KEYS | OCR_ENV_KEYS
 PG_DUMP = 'exec pg_dump -Fc --no-owner --no-acl --no-password -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
 PG_LIST = 'exec pg_restore --list'
 PG_RESTORE = ('exec pg_restore --exit-on-error --no-owner --no-privileges --no-password '
@@ -317,7 +319,7 @@ def _parse_env(data: bytes) -> dict[str, str]:
         if not line or line.startswith("#"):
             continue
         key, equal, value = line.partition("=")
-        if (not equal or key not in ENV_KEYS or key in values or not value or any(c in value for c in "\x00$\\")
+        if (not equal or key not in ENV_KEYS or key in values or (not value and key not in OCR_PATH_KEYS) or any(c in value for c in "\x00$\\")
                 or key not in ENCRYPTION_ENV_KEYS and any(c in value for c in "\"'")):
             raise BackupError("Serverkonfiguration enthält unbekannte, doppelte oder unsichere Werte.")
         values[key] = value
@@ -350,6 +352,10 @@ def _parse_env(data: bytes) -> dict[str, str]:
                 valid = False
             if not valid:
                 raise BackupError("Serverkonfiguration enthält ungültige Formularentwurfsbudgets. Konfiguration korrigieren.")
+    try:
+        validate_ocr_environment(values)
+    except ValueError:
+        raise BackupError("Serverkonfiguration enthält ungültige OCR-Einstellungen. Sprache und Budgets korrigieren.") from None
     return values
 
 

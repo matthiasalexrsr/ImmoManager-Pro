@@ -17,6 +17,7 @@ vi.mock('../pages/settings/TwoFactorSection', () => ({ default: () => <p>Authent
 vi.mock('../pages/settings/BackupSection', () => ({ default: () => null }));
 vi.mock('../pages/settings/UpdateSection', () => ({ default: () => null }));
 vi.mock('../pages/settings/AutotestSection', () => ({ default: () => null }));
+vi.mock('../pages/settings/OperationalMetricsSection', () => ({ default: () => null }));
 
 const dictionaries = { 'de-DE': de, 'en-US': en, 'es-ES': es };
 function translate(key, params = {}) {

@@ -71,12 +71,14 @@ def _locked(path):
             os.close(fd)
 
 
-def persist_default(config_file, key, proposed):
+def persist_default(config_file, key, proposed, *, persist_existing=False):
     if not re.fullmatch(r"[A-Z][A-Z0-9_]*", key) or any(c in proposed for c in "\0\r\n"):
         raise RuntimeConfigurationError("Ungültiger Runtime-Konfigurationswert.")
     current = os.environ.get(key)
     if current and current != "dev-secret-key-change-in-production":
-        return current
+        if not persist_existing:
+            return current
+        proposed = current
     path = Path(config_file).absolute()
     temporary = path.with_name(path.name + "." + uuid4().hex + ".tmp")
     try:
@@ -87,7 +89,10 @@ def persist_default(config_file, key, proposed):
                        for line in existing.splitlines() if line.startswith(key + "=")]
             if len(matches) > 1:
                 raise RuntimeConfigurationError("Doppelte Runtime-Schlüssel. Konfigurationsdatei lokal bereinigen.")
-            if matches and matches[0] and matches[0] != "dev-secret-key-change-in-production":
+            if matches and matches[0] == proposed:
+                os.environ[key] = proposed
+                return proposed
+            if matches and matches[0] and matches[0] != "dev-secret-key-change-in-production" and (not persist_existing or not current):
                 os.environ[key] = matches[0]
                 return matches[0]
             lines = [line for line in existing.splitlines() if not line.startswith(key + "=")]

@@ -216,6 +216,32 @@ All endpoints are under `/api/v1`. Full interactive docs at `/docs`.
   they require a provider implementation and credentials before operational use.
 - Production mode (`ENVIRONMENT=production`) fails startup for unsafe defaults such as wildcard CORS, demo seeding, in-memory fallback, or default JWT secrets.
 
+The independent private-server image (`Dockerfile.server` and
+`compose.private-server.yml`) installs free local `poppler-utils`, Tesseract,
+German/English language data and Pillow. It recognizes scanned PDFs and
+PNG/JPEG/TIFF/BMP/WebP locally, without external OCR credentials. The development
+`Dockerfile` uses a prebuilt frontend and does not install native OCR tools.
+
+For a desktop installation, install optional Pillow in the application's own
+virtual environment (`python -m pip install '.[ocr]'`) and provide local native
+Poppler/Tesseract binaries plus `deu`/`eng` language files. The starter persists
+OCR settings in `%LOCALAPPDATA%\ImmoManagerPro\.env` (or the selected data
+directory). Configure `OCR_PDFINFO_PATH`, `OCR_PDFTOTEXT_PATH`,
+`OCR_PDFTOPPM_PATH`, `OCR_TESSERACT_PATH` and `OCR_TESSDATA_PATH` there; blank
+tool paths use PATH, and a blank tessdata path uses Tesseract's installed default.
+Use native executables rather than Windows batch wrappers, then restart.
+`OCR_LANGUAGES` and the time/pixel/page/RAM/temp/text budgets are also preserved
+by full local and private-server backups. OCR binaries and language data are
+external dependencies: after moving a backup to another host, reinstall them
+and adjust paths if necessary. Uploads remain intact when OCR is unavailable.
+
+See [the bounded scanned-PDF contract](docs/SCANNED_PDF_OCR.md) and
+[image OCR and recoverable uploads](docs/IMAGE_OCR.md). The independent Linux
+CI OCR job requires actual Poppler/Tesseract with `deu+eng`, original hash
+checks and process cleanup; missing tools, test failure or skips block that job
+and deployment readiness. A passing Windows test does not certify the Linux
+job or a newly built desktop executable.
+
 ## License
 
 MIT.

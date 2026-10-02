@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 from typing import Annotated
 
-from pydantic import Field, field_validator
+from pydantic import Field, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -155,8 +155,22 @@ class Settings(BaseSettings):
     form_draft_ttl_days: int = Field(default=7, ge=1, le=365)
     form_draft_max_bytes: int = Field(default=262144, ge=1024, le=16777216)
 
-    # --- File upload limits ---
+    # --- File upload / bounded local OCR ---
     max_upload_size_bytes: int = 50 * 1024 * 1024  # 50 MB
+    ocr_languages: str = "deu+eng"
+    ocr_pdfinfo_path: str = ""
+    ocr_pdftotext_path: str = ""
+    ocr_pdftoppm_path: str = ""
+    ocr_tesseract_path: str = ""
+    ocr_tessdata_path: str = ""
+    ocr_render_dpi: int = Field(default=200, ge=1)
+    ocr_max_pdf_pages: int = Field(default=80, ge=1)
+    ocr_max_page_pixels: int = Field(default=20_000_000, ge=1)
+    ocr_max_total_pixels: int = Field(default=120_000_000, ge=1)
+    ocr_max_ram_bytes: int = Field(default=256 * 1024 * 1024, ge=1)
+    ocr_max_temp_bytes: int = Field(default=512 * 1024 * 1024, ge=1)
+    ocr_max_text_bytes: int = Field(default=4 * 1024 * 1024, ge=1)
+    ocr_timeout_seconds: float = Field(default=90, gt=0, allow_inf_nan=False)
 
     # --- Updates ---
     # GitHub repository URL for checking updates (e.g. "https://github.com/owner/repo")
@@ -187,6 +201,29 @@ class Settings(BaseSettings):
 
     # --- Contract wizard runtime behavior ---
     contract_wizard_required: bool = False
+
+    @field_validator("ocr_languages")
+    @classmethod
+    def validate_ocr_languages(cls, value: str) -> str:
+        from .ocr_configuration import validate_ocr_environment
+
+        validate_ocr_environment({"OCR_LANGUAGES": value})
+        return value
+
+    @field_validator("ocr_render_dpi", "ocr_max_pdf_pages", "ocr_max_page_pixels", "ocr_max_total_pixels",
+                     "ocr_max_ram_bytes", "ocr_max_temp_bytes", "ocr_max_text_bytes",
+                     "ocr_timeout_seconds", mode="before")
+    @classmethod
+    def validate_ocr_numeric_type(cls, value: object, info: ValidationInfo) -> object:
+        if isinstance(value, bool):
+            raise ValueError("OCR budget must be numeric, not boolean")
+        if info.field_name != "ocr_timeout_seconds":
+            if isinstance(value, str):
+                from .ocr_configuration import validate_ocr_environment
+                validate_ocr_environment({str(info.field_name).upper(): value})
+            elif type(value) is not int:
+                raise ValueError("OCR resource budget must be an integer")
+        return value
 
     @field_validator("cors_origins", "cors_methods", "cors_headers", "trusted_hosts", "plugin_dirs", mode="before")
     @classmethod

@@ -103,9 +103,24 @@ describe('credit receipt workflow', () => {
     await waitFor(() => expect(within(dialog).getByRole('button', { name: labels.record })).toBeEnabled());
     expect(mocks.post).not.toHaveBeenCalled();
     expect(within(dialog).getByLabelText(labels.amount, { exact: false })).toHaveValue('40');
+    const reloadSummary = pending();
+    const reloadJournal = pending();
+    const regularGet = mocks.get.getMockImplementation();
+    mocks.get.mockImplementation((path, options) => path.includes('credit-choices/')
+      ? regularGet(path, options)
+      : path.includes('credit-receipts?') ? reloadJournal.promise : reloadSummary.promise);
     fireEvent.click(within(dialog).getByRole('button', { name: labels.record }));
     await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/billing/credit-offsets', expect.objectContaining({ amount: '40', target_type: 'receivable', target_id: 'claim' })));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    // The durable receipt is acknowledged before its read-only refresh ends.
+    // Both announcements may coexist; neither permits a second financial write.
+    expect(screen.getByText(`${labels.saved}: receipt`)).toHaveAttribute('role', 'status');
+    expect(screen.getByText(de.ui.table.loading)).toHaveAttribute('role', 'status');
+    await act(async () => {
+      reloadSummary.resolve(summary());
+      reloadJournal.resolve(journal());
+    });
+    await waitFor(() => expect(screen.queryByText(de.ui.table.loading)).not.toBeInTheDocument());
     expect(screen.getByRole('status')).toHaveTextContent('receipt');
     expect(mocks.post).toHaveBeenCalledTimes(1);
   });

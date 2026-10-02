@@ -933,6 +933,40 @@
     }
   },
   "settings": {
+    "operations": {
+      "title": "Betriebszustand",
+      "refresh": "Status aktualisieren",
+      "loading": "Betriebszustand wird geprüft …",
+      "loadError": "Betriebszustand konnte nicht geladen werden.",
+      "invalidResponse": "Die Statusantwort ist unvollständig oder ungültig. Bitte erneut prüfen.",
+      "scopeHint": "Diese Zähler gelten für den antwortenden Serverprozess seit seinem Start. Ein Neustart setzt sie zurück; mehrere Worker werden nicht zusammengezählt. Aktualisierung erfolgt manuell.",
+      "database": { "connected": "Datenbank erreichbar", "unavailable": "Datenbank nicht erreichbar", "not_configured": "Nur flüchtiger Arbeitsspeicher" },
+      "backend": { "sqlite": "SQLite", "postgresql": "PostgreSQL", "sql": "SQL-Datenbank", "memory": "Memory-Speicher" },
+      "connectivityHint": "Ein echter Verbindungstest war Teil dieser Prüfung. Er bestätigt weder den Migrationsstand noch eine erfolgreiche Datensicherung.",
+      "memoryHint": "Geschäftsdaten dieses Speichers gehen beim Neustart verloren. Für dauerhaften Betrieb eine Datenbank einrichten.",
+      "completed": "Beendete Anfragen",
+      "errors": "Serverfehler / 5xx",
+      "aborted": "Abgebrochene Antworten",
+      "inflight": "Aktuell / Höchststand",
+      "inflightHint": "Die aktuelle Statusabfrage zählt selbst zu den laufenden Anfragen. Laufzeiten umfassen die vollständige Antwort einschließlich Downloads.",
+      "requestTable": "Anfragen nach Verwaltungsbereich",
+      "tableHint": "Auf schmalen Bildschirmen die Tabelle seitlich verschieben. Per Tastatur: Tabelle fokussieren und Pfeiltasten verwenden.",
+      "group": "Bereich",
+      "mean": "Ø Laufzeit",
+      "empty": "In diesem Prozess wurden noch keine Anfragen beendet.",
+      "started": "Prozess gestartet",
+      "uptime": "Betriebsdauer",
+      "cpu": "Verbrauchte CPU-Zeit",
+      "exceptions": "Unbehandelte Fehler",
+      "jobs": "Lokale Läufe: erfolgreich / fehlgeschlagen",
+      "scheduler": "Automatischer Fristenlauf",
+      "schedulerRunning": "Aktiv und laufend",
+      "schedulerStopped": "Aktiviert, derzeit gestoppt",
+      "schedulerDisabled": "Deaktiviert",
+      "jobHint": "Die Laufzähler erfassen manuelle und automatische lokale Aufgaben-/Fristenläufe. Sie sind keine Übersicht aller Hintergrundjobs oder E-Mail-Versandaufträge.",
+      "privacyHint": "Die Statistik speichert feste Kategorien, Zähler und Laufzeiten. Sie enthält keine Namen, Benutzerkennungen, IPs, Suchwerte, Dateipfade oder Zugangsdaten.",
+      "groups": { "auth": "Anmeldung & Konto", "administration": "Systemverwaltung", "finance": "Finanzen", "property": "Immobilien & Verträge", "people": "Mieter & Kontakte", "files": "Dateien", "operations": "Aufgaben & Nachrichten", "other": "Weitere Anfragen", "unmatched": "Fallback / ohne passende Route" }
+    },
     "areas": {
       "general": "Allgemein",
       "usersRoles": "Benutzer & Rollen",
@@ -3187,6 +3221,19 @@
       "discarding": "Gespeicherten Entwurf verwerfen …",
       "pending": "Speichervorgang begonnen",
       "uncertain": "Bestand vor erneutem Speichern prüfen"
+    }
+  },
+  "documentsOCR": {
+    "unavailable": "Die Texterkennung ist derzeit nicht verfügbar.",
+    "originalSaved": "Das Original wurde erfolgreich hochgeladen und bleibt erhalten. Sie können die Dokumentdaten trotzdem speichern.",
+    "retry": "Texterkennung erneut versuchen",
+    "analyzing": "Texterkennung läuft…",
+    "corrections": {
+      "budget": "Reduzieren Sie die Auflösung oder teilen Sie das Dokument. Die Verwaltung kann das im Fehler genannte OCR-Budget prüfen.",
+      "timeout": "Teilen Sie das Dokument oder lassen Sie das OCR-Zeitbudget prüfen. Ein erneuter Versuch verwendet das bereits gespeicherte Original.",
+      "setup": "Die Verwaltung muss den Werkzeugpfad und die installierten Sprachdaten prüfen; für Bilddateien wird außerdem Pillow benötigt.",
+      "original": "Prüfen Sie die Originaldatei. Speichern Sie Bilder gegebenenfalls erneut als PNG/JPEG oder teilen Sie das PDF.",
+      "worker": "Die Verwaltung sollte die lokalen OCR-Werkzeuge und verfügbaren Betriebssystemressourcen prüfen."
     }
   }
 }

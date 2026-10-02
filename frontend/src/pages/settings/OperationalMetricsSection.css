@@ -1,0 +1,22 @@
+.operational-metrics { min-width: 0; }
+.operational-metrics-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem; }
+.operational-metrics-heading h2 { display: flex; align-items: center; gap: .5rem; margin: 0; font-size: 1rem; }
+.operational-metrics-heading button { display: inline-flex; align-items: center; gap: .4rem; }
+.operational-metrics-note { margin: .6rem 0; line-height: 1.6; overflow-wrap: anywhere; font-size: .85rem; }
+.operational-metrics-health { display: grid; gap: .3rem; border: 1px solid var(--color-border); border-left: 4px solid var(--color-warning, #b77912); border-radius: .6rem; padding: .9rem; margin: 1rem 0; }
+.operational-metrics-health.is-connected { border-left-color: var(--color-success, #18806b); }
+.operational-metrics-health p { margin: .2rem 0 0; font-size: .85rem; line-height: 1.5; }
+.operational-metrics-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem; margin: 1rem 0 .4rem; }
+.operational-metrics-summary > div { border: 1px solid var(--color-border); border-radius: .6rem; padding: .8rem; }
+.operational-metrics-summary dt { font-size: .78rem; line-height: 1.4; }
+.operational-metrics-summary dd { margin: .4rem 0 0; font-size: 1.3rem; font-variant-numeric: tabular-nums; font-weight: 600; }
+.operational-metrics-table { max-width: 100%; overflow-x: auto; border: 1px solid var(--color-border); border-radius: .6rem; margin: 1rem 0; }
+.operational-metrics-table table { width: 100%; min-width: 28rem; border-collapse: collapse; font-size: .82rem; }
+.operational-metrics-table caption { text-align: left; padding: .8rem; font-weight: 600; }
+.operational-metrics-table th, .operational-metrics-table td { padding: .65rem; border-top: 1px solid var(--color-border); text-align: right; font-variant-numeric: tabular-nums; }
+.operational-metrics-table th:first-child { min-width: 8.5rem; text-align: left; overflow-wrap: anywhere; }
+.operational-metrics-table p { padding: .75rem; }
+.operational-metrics-details { display: grid; gap: .5rem; font-size: .85rem; }
+.operational-metrics-details > div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .3rem .8rem; }
+.operational-metrics-details dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+@media (min-width: 1100px) { .operational-metrics-summary { grid-template-columns: repeat(4, minmax(0, 1fr)); } }

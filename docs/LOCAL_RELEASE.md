@@ -46,6 +46,76 @@ Sie prüft sichtbare Oberflächenaktionen und die gespeicherten API-Ergebnisse:
 
 ## Prüfergebnisse
 
+Der nächste vereinte Prüfstand enthält G51-Betriebsübersicht, G38-PDF-/Bild-OCR,
+die mobile Settings-Korrektur und die bewahrende Offline-Rechnungswartung.
+Root bestand tatsächlich 763 Frontendfälle in 62 Dateien, ESLint sowie drei
+Edge-/SQLite-Browserabläufe bei 320/360 Pixeln einschließlich Dateifeld-Fokus,
+Tab-Reihenfolge, Skiplink und manuell aktualisierter Betriebsübersicht.
+Der gemeinsame SQL-Lauf mit echten lokalen OCR-Werkzeugen bestand 150 Fälle;
+nur zwei ausdrücklich Linux-spezifische Prozessfälle wurden auf Windows
+übersprungen. Er enthält Raster-PDF, PNG/JPEG/TIFF/BMP/WebP, OCR-Konfiguration,
+bekannte Altzahlungsstrukturen, strikte Index-/FK-/Originalbewahrung und
+Wiederherstellung. Ruff und der vollständige CI-Mypy-Aufruf mit 101 Quellen
+bestanden. Ein vorheriger unter paralleler Last ausgeführter SQL-Lauf hatte
+einen 30-Sekunden-Testtimeout beim simulierten Frozen-Start; der gezielte
+Wiederholungslauf und der abschließende gemeinsame Lauf bestanden.
+Ein tatsächlich gebautes EXE ist damit weiterhin nicht geprüft.
+
+Die echte lokale Vorschau wurde nach erneuter vollständiger privater,
+bytegenauer Kopie aller acht vorhandenen Dateien offline erfolgreich
+aktualisiert. Sämtliche ursprünglichen Tabellenwerte, Spaltendefinitionen,
+Beziehungen, Indizes, fremden CHECKs, Views und Trigger bestanden die
+unveränderte Bewahrungsprüfung vor Commit; keine Alembic-Version wurde geraten.
+Login und das echte JSON-Metrik-Endpoint antworteten nach Neustart mit HTTP 200;
+SQLite wurde als erreichbar und tatsächlich persistent ausgewiesen.
+Die vorherige Datenbank bleibt separat privat erhalten. Die zehn früheren
+Demo-Dateiverweise ohne vorhandene Originaldatei bleiben ungeklärt; die
+physische Bestandskopie ist deshalb keine behauptete vollständige
+Originaldatei-Wiederherstellung dieses Demo-Bestands.
+
+OCR-Ressourcenbudgets einschließlich Auflösung sind explizit anpassbar, ohne
+willkürliche Produktobergrenze. Originale bleiben bei Budget-/Werkzeugfehlern
+erhalten; korrigierbare Hinweise und erneute Verarbeitung sind möglich.
+Der neue erforderliche Linux-OCR-Job prüft tatsächliche Werkzeuge, deutsche
+und englische Sprachdaten und Prozessbereinigung ohne Skips. Die vollständige
+neue Linux-/PostgreSQL-/Browser-/Container-CI muss den vereinten Source-Stand
+noch bestätigen; der allgemeine Compose-Importfix ist darin enthalten.
+
+CI #121 auf `c6d9f63` ist abgeschlossen. Die vier vollständigen Linux-
+Backendläufe (Memory/SQLite, Python 3.11/3.12) bestanden jeweils mit 2.891
+Tests, 109 expliziten Skips und 90 % Coverage. Die Browserprüfung bestand
+53 Verwaltungsabläufe und zwei frische Owner-/TOTP-Abläufe.
+CI #121 bestätigte die gesamte PostgreSQL-Gruppe mit 169
+bestandenen Fällen und einem expliziten Skip. Alle sechs Teilgruppen bestanden,
+einschließlich der zuvor fehlgeschlagenen Vertrags-PDF-Treiberfälle sowie
+Bankzuordnung und konkurrierender privater Entwürfe. Auch der private
+PostgreSQL-Containerlebenszyklus bestand. Der zusätzliche allgemeine Compose-
+Smoketest scheiterte nach erfolgreichen Migrationen beim App-Import, weil
+das Image das erforderliche scripts-Paket nicht enthielt. Der Dockerfile
+kopiert nun Runtime-Scripts und pyproject.toml; dessen tatsächlicher neuer
+Container-Nachweis steht noch aus. Das Frontend
+meldete 728 bestandene Fälle und einen zeitabhängigen Testfehler: Bestätigung
+eines Guthabenbelegs und anschließendes Laden können gleichzeitig jeweils
+eine Statusmeldung haben. Der korrigierte Test hält die tatsächliche
+Read-only-Neuladung bewusst an und prüft Erfolg, Laden und genau einen
+Finanzschreibbefehl getrennt; alle elf Guthabenjournaltests bestanden.
+
+Die integrierte Betriebsübersicht samt unabhängiger Probe-Korrektur bestand
+lokal 46 gemeinsame SQL-/Konsole-/Diagnostikfälle und zehn tatsächliche
+SQLite-/Connection-/Transaktionsprüfungen. Das vollständige vereinte
+Frontend einschließlich OCR bestand 763 Tests in 62 Dateien; Lint ist grün. Der Probe meldet
+flüchtige SQLite-Binds ehrlich, erhält fremde Transaktionen und testet
+ausschließlich Erreichbarkeit. Details: [Betriebsübersicht](G51_OPERATIONAL_METRICS_HANDOFF.md).
+
+Der sichere Offline-Upgradeweg für bekannte unversionierte lokale
+Rechnungsbelegschemata ist integriert; 19 gemeinsame SQL-/Upgrade-/Recovery-
+Fälle bestanden. Details: [Rechnungsschema-Upgrade](INVOICE_SCHEMA_UPGRADE.md).
+Der reale ältere Vorschau-Bestand mit additivem allocated_amount ohne
+Allocation-CHECK wurde zunächst vor Veröffentlichung zurückgerollt. Der
+geprüfte Anschluss erhält auch tatsächliche DESC-/Collation-/Expression-
+Indizes und die ON-DELETE-Regeln historischer inline-FKs. Er wurde inzwischen
+nach erneuter privater Bestandskopie erfolgreich offline angewandt.
+
 CI #120 auf `ca3c923` ist abgeschlossen. Beide vollständigen Linux-Memory-
 Läufe (Python 3.11/3.12) bestanden mit jeweils 2.881 Tests, 109 expliziten
 Skips und 90 % Coverage. Auch der tatsächliche SMTP-Prozessfall bestand.

@@ -933,6 +933,40 @@
     }
   },
   "settings": {
+    "operations": {
+      "title": "Estado operativo",
+      "refresh": "Actualizar estado",
+      "loading": "Comprobando el estado operativo …",
+      "loadError": "No se pudo cargar el estado operativo.",
+      "invalidResponse": "La respuesta de estado está incompleta o no es válida. Vuelva a comprobarla.",
+      "scopeHint": "Estos contadores corresponden al proceso del servidor que responde desde su inicio. Se reinician al reiniciar; no se suman varios procesos. La actualización es manual.",
+      "database": { "connected": "Base de datos accesible", "unavailable": "Base de datos no disponible", "not_configured": "Solo memoria temporal" },
+      "backend": { "sqlite": "SQLite", "postgresql": "PostgreSQL", "sql": "Base de datos SQL", "memory": "Almacenamiento en memoria" },
+      "connectivityHint": "Esta comprobación incluye una prueba real de conexión. No verifica las migraciones ni una copia de seguridad correcta.",
+      "memoryHint": "Los datos de este almacenamiento se pierden al reiniciar. Configure una base de datos para conservarlos.",
+      "completed": "Solicitudes finalizadas",
+      "errors": "Errores del servidor / 5xx",
+      "aborted": "Respuestas interrumpidas",
+      "inflight": "Actual / máximo",
+      "inflightHint": "Esta consulta de estado cuenta como una solicitud en curso. Los tiempos incluyen la respuesta completa y las descargas.",
+      "requestTable": "Solicitudes por área de gestión",
+      "tableHint": "En pantallas estrechas, desplace la tabla lateralmente. Con teclado: enfoque el área de la tabla y utilice las flechas.",
+      "group": "Área",
+      "mean": "Duración media",
+      "empty": "Aún no se han completado solicitudes en este proceso.",
+      "started": "Inicio del proceso",
+      "uptime": "Tiempo de actividad",
+      "cpu": "Tiempo de CPU utilizado",
+      "exceptions": "Errores no controlados",
+      "jobs": "Ejecuciones locales: correctas / fallidas",
+      "scheduler": "Ejecución automática de plazos",
+      "schedulerRunning": "Activada y en ejecución",
+      "schedulerStopped": "Activada, actualmente detenida",
+      "schedulerDisabled": "Desactivada",
+      "jobHint": "Los contadores incluyen ejecuciones locales manuales y automáticas de tareas y plazos. No abarcan todos los trabajos de fondo ni las solicitudes de envío de correo.",
+      "privacyHint": "La estadística conserva categorías fijas, contadores y tiempos. No contiene nombres, identificadores de usuarios, IP, búsquedas, rutas de archivos ni credenciales.",
+      "groups": { "auth": "Acceso y cuenta", "administration": "Administración del sistema", "finance": "Finanzas", "property": "Inmuebles y contratos", "people": "Inquilinos y contactos", "files": "Archivos", "operations": "Tareas y mensajes", "other": "Otras solicitudes", "unmatched": "Ruta alternativa / sin coincidencia" }
+    },
     "areas": {
       "general": "General",
       "usersRoles": "Usuarios y roles",
@@ -3187,6 +3221,19 @@
       "discarding": "Descartando borrador guardado …",
       "pending": "Guardado iniciado",
       "uncertain": "Compruebe los registros antes de guardar de nuevo"
+    }
+  },
+  "documentsOCR": {
+    "unavailable": "El reconocimiento de texto no está disponible.",
+    "originalSaved": "El original se ha subido correctamente y se conserva. Puede guardar los datos del documento.",
+    "retry": "Reintentar reconocimiento de texto",
+    "analyzing": "Reconociendo texto…",
+    "corrections": {
+      "budget": "Reduzca la resolución o divida el documento. La administración puede revisar el límite de OCR indicado en el error.",
+      "timeout": "Divida el documento o solicite revisar el tiempo límite de OCR. El reintento utiliza el original guardado.",
+      "setup": "La administración debe comprobar las rutas de las herramientas y los idiomas instalados; las imágenes también requieren Pillow.",
+      "original": "Compruebe el archivo original. Si es necesario, guarde las imágenes como PNG/JPEG o divida el PDF.",
+      "worker": "La administración debe comprobar las herramientas locales de OCR y los recursos del sistema disponibles."
     }
   }
 }

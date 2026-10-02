@@ -13,8 +13,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY backend/ backend/
+COPY scripts/ scripts/
 COPY db/ db/
 COPY alembic.ini .
+COPY pyproject.toml .
 COPY i18n/ i18n/
 COPY mietvertrag_wizard_fastapi_reportlab_pro/ mietvertrag_wizard_fastapi_reportlab_pro/
 

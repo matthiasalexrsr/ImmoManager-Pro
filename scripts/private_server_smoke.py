@@ -24,6 +24,7 @@ from uuid import uuid4
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from backend.ocr_configuration import OCR_DEFAULTS  # noqa: E402
 from scripts.configure_private_server import configure  # noqa: E402
 from scripts.private_server_backup import BackupError, backup, restore  # noqa: E402
 
@@ -44,6 +45,8 @@ class Installation:
         self.project, self.environment = project, environment
         self.base = f"http://127.0.0.1:{port}"
         self.env = dict(os.environ)
+        for key in OCR_DEFAULTS:
+            self.env.pop(key, None)
         # Dotenv values, not unrelated process values, define this installation.
         for key in ("APP_HOST", "APP_ORIGIN", "APP_HTTP_PORT", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB", "JWT_SECRET_KEY", "ENCRYPTION_KEY", "ENCRYPTION_KEYRING", "ENCRYPTION_INDEX_KEY", "ENCRYPTION_ACTIVE_KEY_ID", "ENCRYPTION_LEGACY_JWT_KEYS", "COMPOSE_FILE", "COMPOSE_PROJECT_NAME", "COMPOSE_ENV_FILES", "COMPOSE_PROFILES"):
             self.env.pop(key, None)

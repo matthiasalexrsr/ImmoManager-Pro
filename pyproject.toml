@@ -29,6 +29,7 @@ dependencies = [
 
 [project.optional-dependencies]
 postgres = ["psycopg2-binary>=2.9.0"]
+ocr = ["Pillow>=10.4.0"]
 dev = [
     "pytest>=9.0.3",
     "ruff>=0.1.0",

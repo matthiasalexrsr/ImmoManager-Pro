@@ -25,7 +25,7 @@ def require_invoice_payment_schema(connection):
         require_negative_allocation_schema(connection)
         return
     from .payments import FinancialConsistencyError
-    raise FinancialConsistencyError("Die Rechnungszahlungsstruktur benötigt das Offline-Upgrade. Anwendung stoppen, geprüfte Vollsicherung erstellen und die dokumentierte Schema-Migration ausführen. Die gespeicherte Bankbuchung bleibt erhalten.")
+    raise FinancialConsistencyError("Die Rechnungszahlungsstruktur benötigt das Offline-Upgrade. Anwendung und andere Schreiber stoppen und Dateien/Konfiguration separat sichern. Für unversionierte lokale SQLite-Bestände: python -m backend.invoice_schema_upgrade --database <Datenbank> --backup-output <neue-PREVIOUS-Datei> --offline. Versionierte Datenbanken über den regulären Alembic-Migrationsweg aktualisieren; keine Version raten. Die gespeicherte Bankbuchung bleibt erhalten.")
 
 
 def ensure_invoice_payment_immutability(connection):

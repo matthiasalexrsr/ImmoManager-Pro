@@ -1,12 +1,25 @@
 import uuid
+from datetime import date
+from io import BytesIO
+from typing import Literal
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from ..config import settings
 from ..dependencies import store
 from ..models import Document, DocumentCreate, DocumentPatch
-from ..routers.files import _perform_ocr, analyze_file, process_ocr
+from ..routers.files import (
+    SUPPORTED_OCR_EXTENSIONS,
+    _perform_ocr,
+    _safe_extension,
+    _validate_upload,
+    analyze_file,
+    process_ocr,
+)
 from ..services.file_storage import get_file_storage
+from ..services.ocr_service import OCRProcessingError
 from ..services.portfolio_scope import register_upload, require_assigned_scope
 from ..storage import NotFoundError, ValidationError
 
@@ -16,6 +29,14 @@ router = APIRouter(prefix="/documents", tags=["Dokumente"])
 class DocumentOcrAnalyzeRequest(BaseModel):
     file_url: str
     use_ai: bool = True
+
+
+class DocumentImportResponse(Document):
+    """Upload-only OCR result; the original Document schema stays unchanged."""
+
+    ocr_status: Literal["completed", "empty", "failed", "unsupported"]
+    ocr_error: dict[str, str] | None = None
+    ocr_url: str | None = None
 
 
 @router.get("", response_model=list[Document])
@@ -47,34 +68,46 @@ def create_document(payload: DocumentCreate) -> Document:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
-@router.post("/import", response_model=Document, status_code=status.HTTP_201_CREATED)
+@router.post("/import", response_model=DocumentImportResponse, status_code=status.HTTP_201_CREATED)
 async def import_document(
     file: UploadFile = File(...),
     title: str = Form(...),
     document_type: str | None = Form(None),
-    document_date: str | None = Form(None),
+    document_date: date | None = Form(None),
     tags: str | None = Form(None),
     description: str | None = Form(None),
     property_id: str | None = Form(None),
     unit_id: str | None = Form(None),
     contract_id: str | None = Form(None),
-) -> Document:
+) -> DocumentImportResponse:
     """Import a document in one step: upload + OCR + metadata persistence."""
     require_assigned_scope()
+    contents = await file.read(settings.max_upload_size_bytes + 1)
+    if len(contents) > settings.max_upload_size_bytes:
+        raise HTTPException(status_code=413, detail="Datei überschreitet das Upload-Größenlimit.")
+    _validate_upload(file)
     storage = get_file_storage()
-    ext = (file.filename or "file").rsplit(".", 1)[-1].lower()
-    key = f"documents/{uuid.uuid4().hex}_{(file.filename or 'file').replace(' ', '_')}"
-    storage.save(key, file.file, content_type=file.content_type or "application/octet-stream")
+    ext = _safe_extension(file.filename)
+    key = f"documents/{uuid.uuid4().hex}.{ext}"
+    storage.save(key, BytesIO(contents), content_type=file.content_type or "application/octet-stream")
     register_upload(key)
     file_url = storage.get_url(key)
 
-    if ext in {"pdf", "png", "jpg", "jpeg", "tiff", "tif", "bmp"}:
-        ocr_text = _perform_ocr(storage, key, ext)
+    ocr_status: Literal["completed", "empty", "failed", "unsupported"] = "unsupported"
+    ocr_error = None
+    ocr_url = None
+    if ext in SUPPORTED_OCR_EXTENSIONS:
+        try:
+            ocr_text = _perform_ocr(storage, key, ext)
+            ocr_status = "completed" if ocr_text else "empty"
+        except OCRProcessingError as exc:
+            ocr_text = None
+            ocr_status = "failed"
+            ocr_error = {"code": exc.code, "message": exc.message}
         if ocr_text:
-            from io import BytesIO
-
             ocr_key = f"{key.rsplit('.', 1)[0]}_ocr.txt"
             storage.save(ocr_key, BytesIO(ocr_text.encode("utf-8")), content_type="text/plain")
+            ocr_url = storage.get_url(ocr_key)
 
     payload = DocumentCreate(
         title=title,
@@ -88,16 +121,24 @@ async def import_document(
         file_url=file_url,
     )
     try:
-        return store.create_document(payload)
+        document = store.create_document(payload)
+        return DocumentImportResponse(**document.model_dump(), ocr_status=ocr_status, ocr_error=ocr_error, ocr_url=ocr_url)
     except ValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
-@router.post("/ocr-analyze")
-def ocr_analyze_document(payload: DocumentOcrAnalyzeRequest) -> dict:
+@router.post("/ocr-analyze", response_model=None)
+def ocr_analyze_document(payload: DocumentOcrAnalyzeRequest) -> dict | JSONResponse:
     """Run OCR and structured analysis for a document upload."""
-    ocr_result = process_ocr(payload.file_url)
-    analysis = analyze_file(payload.file_url, use_ai=payload.use_ai)
+    try:
+        ocr_result = process_ocr(payload.file_url)
+        analysis = analyze_file(payload.file_url, use_ai=payload.use_ai)
+    except HTTPException as exc:
+        # Preserve only this service's typed OCR error. Authentication, scope
+        # and unrelated failures still use the common application handlers.
+        if isinstance(exc.detail, dict) and str(exc.detail.get("code", "")).startswith("ocr_"):
+            return JSONResponse(status_code=exc.status_code, content={"error": exc.detail})
+        raise
     result = analysis.get("result") or {}
     extracted_text = result.get("summary")
 

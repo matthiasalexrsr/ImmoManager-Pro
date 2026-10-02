@@ -125,6 +125,14 @@ def _configure_runtime_environment(data_dir_arg=None):
     _persist_env_default(runtime_env, "FORM_DRAFT_TTL_DAYS", "7")
     _persist_env_default(runtime_env, "FORM_DRAFT_MAX_BYTES", "262144")
 
+    # Stable local OCR configuration belongs to the private data directory too.
+    # These modules import no app/config singleton before environment loading.
+    from .ocr_configuration import OCR_DEFAULTS, validate_ocr_environment
+    from .runtime_environment import persist_default
+    validate_ocr_environment({key: os.environ.get(key, value) for key, value in OCR_DEFAULTS.items()})
+    for key, value in OCR_DEFAULTS.items():
+        persist_default(runtime_env, key, value, persist_existing=True)
+
     return data_dir
 
 
@@ -300,6 +308,12 @@ if __name__ == "__main__":
     multiprocessing.freeze_support()
 
     prepare_standard_streams()
+    # A frozen image worker must not load private configuration, bind a port,
+    # create startup logs or launch the GUI. Its parent owns limits and cleanup.
+    if len(sys.argv) > 1 and sys.argv[1] == "--ocr-image-worker":
+        from backend.services.ocr_image_worker import main as image_worker_main
+
+        raise SystemExit(image_worker_main(sys.argv[2:]))
 
     # Set up a log file next to the .exe so errors survive a closed console
     _log_fh = _setup_logging_to_file()

@@ -46,6 +46,7 @@ from .routers import (
     messages,
     meters_standalone,
     notifications,
+    operational_metrics,
     outbox,
     photos,
     portfolios,
@@ -79,6 +80,7 @@ def build_api_v1() -> APIRouter:
     _admin_dep = [Depends(require_role("eigentuemer", "verwalter"))]
     api_v1.include_router(admin_runtime.router, dependencies=_admin_dep)
     api_v1.include_router(admin.router, dependencies=_admin_dep)
+    api_v1.include_router(operational_metrics.router, dependencies=_admin_dep)
     api_v1.include_router(audit.router, dependencies=_auth_dep)
     api_v1.include_router(dashboard.router, dependencies=_auth_dep)
     api_v1.include_router(search.router, dependencies=_auth_dep)

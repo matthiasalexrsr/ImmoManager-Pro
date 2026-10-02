@@ -86,6 +86,7 @@ _THIRD_PARTY_PACKAGES = [
     'reportlab',
     'httpx',
     'httpcore',
+    'PIL',  # Optional bounded image OCR, including lazy image-format plugins.
 ]
 
 collected_hiddenimports = []

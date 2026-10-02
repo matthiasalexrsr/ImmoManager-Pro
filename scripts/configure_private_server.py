@@ -14,6 +14,7 @@ from urllib.parse import urlsplit
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+from backend.ocr_configuration import OCR_DEFAULTS  # noqa: E402
 from scripts.private_server_backup import BackupError, protected_new_file  # noqa: E402
 
 
@@ -48,6 +49,7 @@ def configure(path: Path, origin: str, port: int = 8080) -> Path:
                f"POSTGRES_PASSWORD={secrets.token_hex(32)}\nJWT_SECRET_KEY={secrets.token_hex(48)}\n"
                f"ENCRYPTION_KEY={base64.urlsafe_b64encode(secrets.token_bytes(32)).decode('ascii')}\n"
                f"ENCRYPTION_INDEX_KEY={base64.urlsafe_b64encode(secrets.token_bytes(32)).decode('ascii')}\n")
+    content += "".join(f"{key}={value}\n" for key, value in OCR_DEFAULTS.items())
     path = path.absolute()
     path.parent.mkdir(parents=True, exist_ok=True)
     if os.path.lexists(path):

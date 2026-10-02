@@ -933,6 +933,40 @@
     }
   },
   "settings": {
+    "operations": {
+      "title": "Operational status",
+      "refresh": "Refresh status",
+      "loading": "Checking operational status …",
+      "loadError": "Operational status could not be loaded.",
+      "invalidResponse": "The status response is incomplete or invalid. Please check again.",
+      "scopeHint": "These counters cover the responding server process since its start. A restart resets them; multiple workers are not combined. Refresh is manual.",
+      "database": { "connected": "Database reachable", "unavailable": "Database unavailable", "not_configured": "Temporary memory only" },
+      "backend": { "sqlite": "SQLite", "postgresql": "PostgreSQL", "sql": "SQL database", "memory": "Memory store" },
+      "connectivityHint": "This check includes a real connection test. It does not verify migrations or a successful backup.",
+      "memoryHint": "Business data in this store is lost on restart. Configure a database for persistent operation.",
+      "completed": "Completed requests",
+      "errors": "Server errors / 5xx",
+      "aborted": "Aborted responses",
+      "inflight": "Current / peak",
+      "inflightHint": "This status request itself counts as an ongoing request. Durations include the entire response, including downloads.",
+      "requestTable": "Requests by management area",
+      "tableHint": "On narrow screens, scroll the table sideways. Keyboard: focus the table area and use the arrow keys.",
+      "group": "Area",
+      "mean": "Mean duration",
+      "empty": "No requests have completed in this process yet.",
+      "started": "Process started",
+      "uptime": "Uptime",
+      "cpu": "CPU time used",
+      "exceptions": "Unhandled errors",
+      "jobs": "Local runs: successful / failed",
+      "scheduler": "Automatic deadline runs",
+      "schedulerRunning": "Enabled and running",
+      "schedulerStopped": "Enabled, currently stopped",
+      "schedulerDisabled": "Disabled",
+      "jobHint": "Run counters cover manual and automatic local task/deadline runs. They do not cover every background job or email delivery request.",
+      "privacyHint": "Statistics retain fixed categories, counts and durations. They contain no names, user identifiers, IPs, search values, file paths or credentials.",
+      "groups": { "auth": "Sign-in & account", "administration": "System administration", "finance": "Finance", "property": "Properties & contracts", "people": "Tenants & contacts", "files": "Files", "operations": "Tasks & messages", "other": "Other requests", "unmatched": "Fallback / no matching route" }
+    },
     "areas": {
       "general": "General",
       "usersRoles": "Users & Roles",
@@ -3187,6 +3221,19 @@
       "discarding": "Discarding saved draft …",
       "pending": "Save operation started",
       "uncertain": "Check records before saving again"
+    }
+  },
+  "documentsOCR": {
+    "unavailable": "Text recognition is currently unavailable.",
+    "originalSaved": "The original was uploaded successfully and is retained. You can still save the document details.",
+    "retry": "Retry text recognition",
+    "analyzing": "Recognizing text…",
+    "corrections": {
+      "budget": "Reduce the resolution or split the document. An administrator can review the OCR budget named in the error.",
+      "timeout": "Split the document or ask an administrator to review the OCR time budget. Retry uses the saved original.",
+      "setup": "An administrator must check tool paths and installed language data; images also require Pillow.",
+      "original": "Check the original file. Save images again as PNG/JPEG or split the PDF if needed.",
+      "worker": "An administrator should check local OCR tools and available operating system resources."
     }
   }
 }

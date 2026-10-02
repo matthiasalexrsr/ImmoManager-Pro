@@ -15,7 +15,7 @@ from fastapi.responses import Response
 from ..config import settings
 from ..services.ai.document_ai import analyze_document
 from ..services.file_storage import get_file_storage
-from ..services.ocr_service import extract_text_from_bytes
+from ..services.ocr_service import OCRProcessingError, extract_text_with_details
 from ..services.portfolio_scope import register_upload, require_assigned_scope, require_file_access
 from ..services.task_queue import get_queue
 
@@ -108,11 +108,11 @@ def _ocr_key_from_file_key(file_key: str) -> str:
 
 
 def _perform_ocr(storage, key: str, ext: str) -> str | None:
-    """Attempt OCR/text extraction on the given file key."""
+    """Attempt bounded local OCR/text extraction on the given file key."""
     file_bytes = storage.get(key)
     if not file_bytes:
         return None
-    return extract_text_from_bytes(file_bytes, ext)
+    return extract_text_with_details(file_bytes, ext).text
 
 
 def _validate_upload(file: UploadFile) -> None:
@@ -172,8 +172,14 @@ async def upload_file(
 
     if ext in SUPPORTED_OCR_EXTENSIONS:
         def _ocr_and_save():
-            """Run OCR and persist the extracted text."""
-            ocr_text = _perform_ocr(storage, key, ext)
+            """Run OCR and persist only successfully extracted text."""
+            try:
+                ocr_text = _perform_ocr(storage, key, ext)
+            except OCRProcessingError as exc:
+                return {
+                    "has_ocr": False,
+                    "ocr_error": {"code": exc.code, "message": exc.message},
+                }
             if ocr_text:
                 ocr_key = _ocr_key_from_file_key(key)
                 storage.save(ocr_key, BytesIO(ocr_text.encode("utf-8")), content_type="text/plain")
@@ -209,7 +215,13 @@ def process_ocr(file_url: str = Query(..., description="Public file URL")) -> di
     if storage.get(key) is None:
         raise HTTPException(status_code=404, detail="Datei nicht gefunden")
 
-    text = _perform_ocr(storage, key, ext)
+    try:
+        text = _perform_ocr(storage, key, ext)
+    except OCRProcessingError as exc:
+        raise HTTPException(
+            status_code=exc.http_status,
+            detail={"code": exc.code, "message": exc.message},
+        ) from exc
     if not text:
         return {"processed": False, "has_ocr": False, "ocr_url": None}
 
@@ -321,7 +333,13 @@ def analyze_file(
         ext = file_key.rsplit(".", 1)[-1].lower() if "." in file_key else ""
         if ext not in SUPPORTED_OCR_EXTENSIONS:
             raise HTTPException(status_code=400, detail="Dateityp nicht für Analyse unterstützt")
-        ocr_text = _perform_ocr(storage, file_key, ext)
+        try:
+            ocr_text = _perform_ocr(storage, file_key, ext)
+        except OCRProcessingError as exc:
+            raise HTTPException(
+                status_code=exc.http_status,
+                detail={"code": exc.code, "message": exc.message},
+            ) from exc
 
     if not ocr_text:
         return {

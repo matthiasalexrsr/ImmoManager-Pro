@@ -187,3 +187,17 @@ The shared fixture rejects all uncaught browser errors.
 ```sh
 npm run test:e2e -- bank-matching.pw.mjs
 ```
+
+`settings-mobile.pw.mjs` checks System settings at 320 and 360 pixels with real
+Edge/Chromium, freshly migrated SQLite and viewport screenshots. It measures
+panel content and label bounds before focus, follows the actual Tab sequence,
+opens and cancels the native import file picker, and reads genuine database
+details with Enter. Hidden panel scrolling must never move labels out of view;
+document width alone cannot detect that failure. Backup/import/update commands
+must stay idle during this inspection. The sticky header, focused/unfocused
+skip link and keyboard scrolling of the metrics table are checked separately.
+Attached desktop and mobile screenshots are reviewed without pixel snapshots.
+
+```sh
+npm run test:e2e -- settings-mobile.pw.mjs operational-metrics.pw.mjs
+```

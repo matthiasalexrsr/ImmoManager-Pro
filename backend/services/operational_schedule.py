@@ -31,6 +31,7 @@ from ..db.orm_models import CalendarEventORM, NotificationORM, TaskORM
 from ..models import CalendarEvent, CalendarEventCreate, Notification, NotificationCreate, Task, TaskCreate
 from ..storage import NotFoundError, ValidationError
 from .concurrency import next_updated_at
+from .operational_metrics import metrics
 from .payments import EntityType, _memory_lock, payment_total
 from .recurrence import CatchUpLimit, RecurrenceError, catch_up, parse_plan
 
@@ -488,7 +489,7 @@ def operational_tick(store, request=None, *, kinds=None):
     request = request or TickRequest()
     kinds = set(kinds or {"tasks", "calendar", "overdue", "contracts", "due_tasks", "escalation"})
     budget = _Budget(request.max_items)
-    with _transaction(store) as tx:
+    with metrics.operational_tick(), _transaction(store) as tx:
         tx.resolve_alerts(budget)
         tasks, events, warnings = _recurring(tx, request, budget, kinds)
         if "calendar" in kinds:
