@@ -449,3 +449,26 @@ def test_context_sensitive_ner_revalidates_slow_whitespace_and_overlap(monkeypat
         and mention.source_start_offset == late_offset
         for mention in mentions
     )
+
+
+def test_action_item_unicode_keywords_and_message_ai_source_encoding():
+    from pathlib import Path
+
+    source_bytes = Path(message_ai.__file__).read_bytes()
+    assert not source_bytes.startswith(b"\xef\xbb\xbf")
+    source_text = source_bytes.decode("utf-8")
+    assert "\u00fcberweisen" in source_text
+    assert "pr\u00fcfen" in source_text
+    assert "kl\u00e4ren" in source_text
+    assert "\u00c3\u00bcberweisen" not in source_text
+    assert "pr\u00c3\u00bcfen" not in source_text
+    assert "kl\u00c3\u00a4ren" not in source_text
+
+    items = message_ai._extract_action_items(
+        "Bitte \u00fcberweisen. Bitte pr\u00fcfen. Bitte kl\u00e4ren."
+    )
+
+    assert len(items) == 3
+    assert any("\u00fcberweisen" in item for item in items)
+    assert any("pr\u00fcfen" in item for item in items)
+    assert any("kl\u00e4ren" in item for item in items)

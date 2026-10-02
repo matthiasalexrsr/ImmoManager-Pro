@@ -1,4 +1,4 @@
-﻿"""AI-powered message thread analysis with explicit full-source coverage."""
+"""AI-powered message thread analysis with explicit full-source coverage."""
 
 from __future__ import annotations
 
@@ -204,11 +204,11 @@ def _extract_action_items(text: str) -> list[str]:
         "dringend",
         "termin",
         "vereinbaren",
-        "Ã¼berweisen",
+        "überweisen",
         "reparieren",
         "beauftragen",
-        "prÃ¼fen",
-        "klÃ¤ren",
+        "prüfen",
+        "klären",
     ]
     sentences = [
         sentence.strip()
