@@ -135,7 +135,19 @@ class BaseRepository:
         guard_sql_write(self.db, self.orm_class.__table__, {**_orm_to_dict(orm_obj), **updates}, entity_id=entity_id)
         from ..services.document_version_guards import guard_edit
         from .sql_store import SQLAlchemyStore
-        guard_edit(SQLAlchemyStore(self.db), self.orm_class.__tablename__, orm_obj, updates)
+        active = SQLAlchemyStore(self.db)
+        guard_edit(active, self.orm_class.__tablename__, orm_obj, updates)
+        from ..services.tenancy_workflow import (
+            guard_handover_edit,
+            guard_meter_edit,
+            guard_task_workflow_edit,
+        )
+        if self.orm_class.__tablename__ == "tasks":
+            guard_task_workflow_edit(active, entity_id, self._to_pydantic(orm_obj), updates)
+        elif self.orm_class.__tablename__ == "handover_protocols":
+            guard_handover_edit(active, entity_id, self._to_pydantic(orm_obj), updates)
+        elif self.orm_class.__tablename__ == "meter_readings":
+            guard_meter_edit(active, entity_id, self._to_pydantic(orm_obj), updates)
         self._guard_contract_update(orm_obj, updates)
         if self.orm_class.__tablename__ == "invoices" and not _invoice_transfer_balance.get():
             from ..db.orm_models import PaymentORM
@@ -220,6 +232,10 @@ class BaseRepository:
             from .sql_store import SQLAlchemyStore
             with creation_guard(SQLAlchemyStore(self.db), data):
                 pass
+        if self.orm_class.__tablename__ == "meter_readings":
+            from ..services.tenancy_workflow import guard_meter_create
+            from .sql_store import SQLAlchemyStore
+            guard_meter_create(SQLAlchemyStore(self.db), data.handover_id)
         orm_obj = self.orm_class(id=_generate_id(), **data.model_dump())
         self.db.add(orm_obj)
         self.db.flush()
@@ -245,6 +261,19 @@ class BaseRepository:
             self._missing(entity_id)
         from ..services.payment_integrity import guard_sql_delete
         guard_sql_delete(self.db, self.orm_class.__tablename__, entity_id)
+        from ..services.tenancy_workflow import (
+            guard_handover_delete,
+            guard_meter_delete,
+            guard_task_workflow_delete,
+        )
+        from .sql_store import SQLAlchemyStore
+        active = SQLAlchemyStore(self.db)
+        if self.orm_class.__tablename__ == "tasks":
+            guard_task_workflow_delete(active, entity_id)
+        elif self.orm_class.__tablename__ == "handover_protocols":
+            guard_handover_delete(active, entity_id)
+        elif self.orm_class.__tablename__ == "meter_readings":
+            guard_meter_delete(active, entity_id)
         revision_condition = self._revision_condition(entity_id)
         if revision_condition is None:
             self.db.delete(orm_obj)

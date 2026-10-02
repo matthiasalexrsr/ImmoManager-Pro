@@ -155,6 +155,7 @@ class Settings(BaseSettings):
     bank_import_field_max_chars: int = Field(default=100000, ge=1024, le=100000000)
     contract_workspace_page_max_size: int = Field(default=500, gt=0)
     contract_correspondence_page_max_size: int = Field(default=100, gt=0)
+    tenancy_workflow_page_max_size: int = Field(default=500, gt=0)
     contract_workspace_search_max_chars: int = Field(default=200, gt=0)
     form_draft_ttl_days: int = Field(default=7, ge=1, le=365)
     form_draft_max_bytes: int = Field(default=262144, ge=1024, le=16777216)
