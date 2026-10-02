@@ -64,7 +64,7 @@ def test_implemented_communication_providers_and_planned_portal_are_distinguishe
 
     manager.set_enabled("whatsapp", True)
     manager.update_config("whatsapp", {
-        "phone_number_id": "synthetic", "api_token": "synthetic",
+        "phone_number_id": "123456789", "api_token": "synthetic",
     })
     whatsapp = manager.get_integration("whatsapp")
     assert whatsapp["configured"] is True

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -88,8 +89,12 @@ class WhatsAppIntegrationProvider:
 
     def is_configured(self, config: dict) -> bool:
         version = str(config.get("graph_version") or self.DEFAULT_GRAPH_VERSION)
-        return bool(config.get("phone_number_id") and config.get("api_token")
-                    and version.startswith("v") and version[1:].replace(".", "").isdigit())
+        phone_number_id = str(config.get("phone_number_id") or "")
+        return bool(
+            re.fullmatch(r"v\d+\.\d+", version)
+            and re.fullmatch(r"\d{1,32}", phone_number_id)
+            and config.get("api_token")
+        )
 
     def health(self, config: dict) -> dict:
         return {
@@ -105,13 +110,13 @@ class WhatsAppIntegrationProvider:
             return IntegrationActionResult(False, "WhatsApp-Konfiguration ist unvollständig.")
         action = payload.get("action") or "template"
         to = "".join(ch for ch in str(payload.get("to") or "") if ch.isdigit())
-        if not to:
-            return IntegrationActionResult(False, "Empfängernummer fehlt oder ist ungültig.")
+        if not 8 <= len(to) <= 15:
+            return IntegrationActionResult(False, "Empfängernummer ist nicht E.164-tauglich.")
         body: dict[str, Any] = {"messaging_product": "whatsapp", "to": to}
         if action == "template":
-            name = payload.get("template_name")
-            if not name:
-                return IntegrationActionResult(False, "Meta-Template-Name fehlt.")
+            name = str(payload.get("template_name") or "")
+            if not re.fullmatch(r"[a-z0-9_]{1,512}", name):
+                return IntegrationActionResult(False, "Meta-Template-Name fehlt oder ist ungültig.")
             body.update({
                 "type": "template",
                 "template": {"name": name, "language": {"code": payload.get("language_code") or "de"}},
@@ -122,8 +127,8 @@ class WhatsAppIntegrationProvider:
             if not config.get("allow_direct_text"):
                 return IntegrationActionResult(False, "Direkttext ist nicht freigegeben; Meta-Template verwenden.")
             text = str(payload.get("text") or "").strip()
-            if not text:
-                return IntegrationActionResult(False, "Nachrichtentext fehlt.")
+            if not text or len(text) > 4096:
+                return IntegrationActionResult(False, "Nachrichtentext fehlt oder ist zu lang.")
             body.update({"type": "text", "text": {"preview_url": False, "body": text}})
         else:
             return IntegrationActionResult(False, f"Unbekannte WhatsApp-Aktion: {action}")
@@ -268,6 +273,23 @@ class DeutschePostProvider:
             False, "Empfängerland ist für E-POST nicht eindeutig auflösbar."
         )
 
+    @staticmethod
+    def _validate_letter_fields(filename: str, recipient: dict, sender: dict, country: str) -> str | None:
+        if not re.fullmatch(r"[A-Za-z0-9._-]{5,200}", filename):
+            return "E-POST-Dateiname enthält unzulässige Zeichen oder Länge."
+        for value in (recipient.get("name"), recipient.get("street"), recipient.get("city"),
+                      sender.get("name"), sender.get("street"), sender.get("postal_code"), sender.get("city")):
+            if value is not None and len(str(value)) > 80:
+                return "Eine E-POST-Adresszeile überschreitet 80 Zeichen."
+        zip_code = str(recipient.get("postal_code") or "")
+        if country == "" and not re.fullmatch(r"\d{5}", zip_code):
+            return "Deutsche E-POST-Empfänger benötigen eine fünfstellige PLZ."
+        if country and not (zip_code == "   " or (3 <= len(zip_code) <= 20 and " " not in zip_code)):
+            return "Ausländische E-POST-PLZ ist formal ungültig."
+        if not str(recipient.get("name") or "").strip() or not str(recipient.get("city") or "").strip():
+            return "E-POST-Empfängername und Ort sind erforderlich."
+        return None
+
     def run(self, payload: dict, config: dict) -> IntegrationActionResult:
         base_url = str(config.get("base_url") or self.DEFAULT_BASE_URL).rstrip("/")
         if base_url != self.DEFAULT_BASE_URL:
@@ -321,8 +343,12 @@ class DeutschePostProvider:
                 country, country_error = self._country_name(client, recipient.get("country"))
                 if country_error:
                     return country_error
+                filename = str(payload.get("filename") or "immomanager-brief.pdf")
+                field_error = self._validate_letter_fields(filename, recipient, sender, country or "")
+                if field_error:
+                    return IntegrationActionResult(False, field_error)
                 letter = {
-                    "fileName": payload.get("filename") or "immomanager-brief.pdf",
+                    "fileName": filename,
                     "data": payload["pdf_base64"],
                     "isColor": bool(payload.get("is_color", config.get("is_color", False))),
                     "isDuplex": bool(payload.get("is_duplex", config.get("is_duplex", True))),

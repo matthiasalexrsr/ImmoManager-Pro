@@ -18,7 +18,7 @@ Base: `f3203d5`
 
 - E-Mail: Übergabe nur über den bereits gehärteten, manuell freigegebenen SMTP-Outbox.
 - WhatsApp: offizielle Meta Cloud API `/{graph-version}/{phone-number-id}/messages`; Standard `v26.0`.
-- WhatsApp-Direkttext ist opt-in; Standardweg ist ein freigegebenes Meta-Template.
+- WhatsApp-Direkttext bleibt Provider-seitig opt-in; das Kommunikationszentrum selbst verlangt fail-closed ein freigegebenes Meta-Template.
 - Deutsche Post: öffentliche E-POSTBUSINESS API unter `https://api.epost.docuguide.com`.
 - Implementiert sind Login, Testeinlieferung über `POST /api/Letter` und Status über `GET /api/Letter/{letterID}`.
 - Testsendungen setzen `testFlag=true`, Sperrflächenanzeige und Dubletten-Failsafe.
@@ -37,15 +37,18 @@ Base: `f3203d5`
 
 ## Verifikation
 
-- Kommunikations-/Integrations-/Rollen-Subset: 36 passed.
-- Tenant Privacy/Lifecycle/Wizard: 94 passed, 5 skipped.
-- Kommunikationszentrum UI: 3 passed, ohne React-Testwarnung.
-- Ruff: alle geänderten Python-Dateien sauber.
-- ESLint: sauber.
-- Vite Produktionsbuild: erfolgreich.
-- Alembic: frische SQLite-Datenbank erfolgreich von leer bis `a01b2c3d4e5f` migriert.
+- Kommunikationszentrum + Integrationsrouter: 29 bestanden.
+- Rollen-/Integrationskonfiguration: 19 bestanden.
+- Privacy/Lifecycle/Integrations-Gate: 98 bestanden, 5 optionale Skips; ein altes
+  nichtnumerisches WhatsApp-Fixture wurde an die echte Meta-ID-Form angepasst und
+  der zuvor rote Test danach isoliert bestanden.
+- CommunicationCenter Vitest: 2/2 bestanden.
+- Ruff und Mypy (6 neue/kritische Kommunikationspfade): bestanden.
+- Frontend ESLint und Vite-Produktionsbuild: bestanden.
+- Alembic: leer → Head, Downgrade auf `z1a2b3c4d5e6`, erneutes Upgrade: bestanden.
 - OpenAPI: 19 Kommunikationszentrum-Operationen, keine ungesicherten davon.
-- Bekannte vorbestehende Admin-Routen-Duplikate sind nicht Teil dieses Commits; separater Fix existiert auf `assist/openapi-contract`.
+- Bekannte vorbestehende Admin-Routen-Duplikate sind nicht Teil dieses Commits;
+  separater Fix existiert auf `assist/openapi-contract`.
 
 ## Öffentliche Spezifikationen
 
@@ -54,21 +57,13 @@ Base: `f3203d5`
 - E-POST Versionshistorie: https://api.epost.docuguide.com/versionhistory
 - Meta Graph API Versions: https://developers.facebook.com/docs/graph-api/changelog/versions/
 
-## Verifikation
+## Zusätzliche Release-Evidenz des Zwischencommits
 
-- Alembic Clean-DB-Upgrade bis `a01b2c3d4e5f`: bestanden
-- Kommunikations-/Integrations-/Rollen-/Privacy-Gate: 64 bestanden, 2 optionale Skips
-- Ruff für alle geänderten Backendpfade: bestanden
-- Mypy für die neuen/kritischen Kommunikationspfade: bestanden
-- CommunicationCenter Vitest: 3/3 bestanden
-- Frontend ESLint: bestanden
-- Vite Produktionsbuild: bestanden
-- Frontend-Vollsuite: 867/868 bestanden; ein bestehender Contract-Wizard-Test
-  überschritt unter paralleler Vollsuite-Last das 5-s-Testbudget. Derselbe Test
-  bestand isoliert in 1,37 s.
-
-Die verbleibende Starlette/httpx-Testclient-Deprecation stammt aus der vorhandenen
-Testumgebung und ist nicht durch diesen Workstream entstanden.
+- Frontend-Vollsuite vor den finalen Provider-Guards: 867/868 bestanden; ein
+  bestehender Contract-Wizard-Test überschritt unter paralleler Last das 5-s-Budget
+  und bestand isoliert in 1,37 s.
+- Die verbleibende Starlette/httpx-Testclient-Deprecation stammt aus der vorhandenen
+  Testumgebung und ist nicht durch diesen Workstream entstanden.
 
 ## Noch bewusst offen
 

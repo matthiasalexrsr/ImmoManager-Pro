@@ -127,6 +127,19 @@ def test_metrics_and_history_clear_endpoint():
     assert history.json()["items"] == []
 
 
+def test_communication_integration_history_redacts_payload_and_provider_response():
+    integration_manager.clear_history("whatsapp")
+    integration_manager._append_history("whatsapp", {
+        "action": "text", "to": "491701234567", "text": "Private Nachricht",
+        "pdf_base64": "sensitive-document",
+    }, {"success": True, "message": "accepted", "details": {
+        "external_reference": "wamid.synthetic", "response": {"phone": "491701234567"},
+    }})
+    item = integration_manager.list_history("whatsapp", limit=1)[0]
+    assert item["payload"] == {"action": "text"}
+    assert item["details"] == {"external_reference": "wamid.synthetic"}
+
+
 def test_readonly_can_inspect_but_cannot_mutate_or_run_integrations():
     client = TestClient(app)
     headers = _auth_headers("readonly")
