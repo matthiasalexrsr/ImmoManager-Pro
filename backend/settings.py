@@ -155,6 +155,11 @@ class Settings(BaseSettings):
     rent_batch_max_size: int = Field(default=500, ge=25, le=5000)
     bank_import_page_max_size: int = Field(default=500, ge=25, le=5000)
     bank_import_field_max_chars: int = Field(default=100000, ge=1024, le=100000000)
+    # Discovery refuses a resource overflow; these are not total row limits.
+    bank_discovery_record_max_chars: int = Field(default=8 * 1024 * 1024, gt=0)
+    bank_discovery_field_max_chars: int = Field(default=1024 * 1024, gt=0)
+    bank_discovery_temp_max_bytes: int = Field(default=2 * 1024 * 1024 * 1024, gt=0)
+    bank_discovery_timeout_seconds: float = Field(default=120.0, gt=0, allow_inf_nan=False)
     contract_workspace_page_max_size: int = Field(default=500, gt=0)
     contract_correspondence_page_max_size: int = Field(default=100, gt=0)
     tenancy_workflow_page_max_size: int = Field(default=500, gt=0)
@@ -208,6 +213,16 @@ class Settings(BaseSettings):
 
     # --- Contract wizard runtime behavior ---
     contract_wizard_required: bool = False
+
+    @field_validator("bank_discovery_record_max_chars", "bank_discovery_field_max_chars",
+                     "bank_discovery_temp_max_bytes", "bank_discovery_timeout_seconds", mode="before")
+    @classmethod
+    def validate_bank_discovery_numeric_type(cls, value: object, info: ValidationInfo) -> object:
+        if isinstance(value, bool):
+            raise ValueError("Bank discovery budget must be numeric, not boolean")
+        if info.field_name != "bank_discovery_timeout_seconds" and not isinstance(value, str) and type(value) is not int:
+            raise ValueError("Bank discovery byte/character budget must be an integer")
+        return value
 
     @field_validator("ocr_languages")
     @classmethod
