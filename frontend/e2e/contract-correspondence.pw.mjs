@@ -100,7 +100,7 @@ test('explicit letter approval survives a lost reply and preserves exact origina
     portfolio_access: 'selected', portfolio_ids: [box.portfolio.id],
   });
   // The full suite deliberately leaves overdue claims in other portfolios.
-  // Exercise this letter with its actual actor scope, including the local tick.
+  // Exercise the letter UI with the actual selected-portfolio actor scope.
   await page.evaluate(() => localStorage.clear());
   const headers = await login(page, writer, password);
   const { dialog, area, opener } = await open(page, box.contract);
@@ -170,8 +170,15 @@ test('explicit letter approval survives a lost reply and preserves exact origina
   await reopened.area.getByRole('button').filter({ hasText: box.data.subject }).click();
   expect(await download(page, reopened.area.getByRole('button', { name: 'Unverändertes freigegebenes PDF', exact: true }))).toEqual(preview);
   expect(await read(page, `/contracts/${box.contract.id}`, headers)).toEqual(box.contract);
+  const tickData = { as_of: box.data.deadline_date, days_ahead: 1, lookback_days: 1 };
+  const scopedTick = await page.request.post('/api/v1/tasks/operational-tick', {
+    headers, data: tickData,
+  });
+  expect(scopedTick.status()).toBe(403);
+  // This is an installation-wide operation: use its operator and documented
+  // default work budget, rather than a letter-specific arbitrary budget.
   const tick = await page.request.post('/api/v1/tasks/operational-tick', {
-    headers, data: { as_of: box.data.deadline_date, max_items: 100, days_ahead: 1, lookback_days: 1 },
+    headers: ownerHeaders, data: tickData,
   });
   expect(tick.status(), await tick.text()).toBe(200);
   const projected = await tick.json();
