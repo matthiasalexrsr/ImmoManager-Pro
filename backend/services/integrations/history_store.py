@@ -92,6 +92,8 @@ class SQLIntegrationHistoryStore:
                     yield connection
         except SQLAlchemyError:
             raise HistoryError("HISTORY_WRITE_FAILED") from None
+        except (ValueError, TypeError, KeyError, OverflowError):
+            raise HistoryError("HISTORY_CORRUPT") from None
 
     def _head(self, connection, integration_id):
         if connection.dialect.name == "postgresql":
@@ -258,6 +260,8 @@ class SQLIntegrationHistoryStore:
                 raise HistoryError("HISTORY_NOT_FOUND", 404)
             record, events = self._record(connection, run, deadline=deadline)
             record["observations"] = [{"state": event["state"], "event_number": event["event_number"], "created_at": stamp(event["created_at"]), "event_hash": event["event_hash"], "artifacts": artifacts} for event, artifacts in events]
+            if len(canonical(record)) > self.limits.page_bytes:
+                raise HistoryError("HISTORY_BUDGET_EXCEEDED", 413)
             actor.refresh()
             return record
 

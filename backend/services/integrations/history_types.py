@@ -30,9 +30,10 @@ class HistoryLimits:
     artifact_bytes: int = 16 * 1024 * 1024
     page_bytes: int = 32 * 1024 * 1024
     timeout_seconds: float = 60.0
+    temp_bytes: int = 512 * 1024 * 1024
 
     def __post_init__(self):
-        if any(type(value) is not int or value <= 0 for value in (self.artifact_bytes, self.page_bytes)):
+        if any(type(value) is not int or value <= 0 for value in (self.artifact_bytes, self.page_bytes, self.temp_bytes)):
             raise ValueError("History byte budgets must be positive integers")
         if isinstance(self.timeout_seconds, bool) or not isinstance(self.timeout_seconds, (int, float)) or not math.isfinite(self.timeout_seconds) or self.timeout_seconds <= 0:
             raise ValueError("History time budget must be finite and positive")

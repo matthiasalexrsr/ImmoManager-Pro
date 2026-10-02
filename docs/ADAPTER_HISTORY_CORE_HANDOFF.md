@@ -32,6 +32,9 @@ delivery, HTTP-byte or automatic-retry claim.
   Bytes are positive integers; time is finite and positive. No configuration
   ceiling or total-history count limit. Individual native SQL timeouts use
   signed-32-bit milliseconds; larger overall budgets remain valid.
+  Additive complete-export workspace budget `integration_history_temp_bytes` /
+  `INTEGRATION_HISTORY_TEMP_BYTES` default `536870912`, passed as `temp_bytes=`.
+  This is a configurable operation budget, not a retained-history count limit.
 
 ## Family and authenticated identity
 

@@ -179,6 +179,13 @@ def check_artifacts(event, artifacts):
 
 
 def validate_history_journal(connection, configuration, *, deadline=None, limits=None):
+    try:
+        return _validate_history_journal(connection, configuration, deadline=deadline, limits=limits)
+    except (TypeError, ValueError, KeyError, OverflowError):
+        raise HistoryError("HISTORY_CORRUPT") from None
+
+
+def _validate_history_journal(connection, configuration, *, deadline=None, limits=None):
     """Mapping[str,str] G44 config or explicit IBANKeyring; never ambient keys.
 
     Entire absent family returns False before key resolution. No mutation,
