@@ -111,24 +111,12 @@ def _ai_summarize(text: str) -> Optional[ThreadSummaryResult]:
     summaries: list[str] = []
 
     for section in plan.sections:
-        if len(section.text.split()) < 20:
-            covered.append(_range(section))
-            section_results.append(
-                {
-                    "section_index": section.index,
-                    "start_offset": section.start_offset,
-                    "end_offset": section.end_offset,
-                    "summary_text": None,
-                    "method": "short_section_no_summary",
-                    "model": model_id,
-                }
-            )
-            continue
         try:
+            word_count = len(section.text.split())
             raw = pipe(
                 section.text,
                 max_length=200,
-                min_length=30,
+                min_length=30 if word_count >= 20 else 1,
                 do_sample=False,
             )
             if (
@@ -152,7 +140,10 @@ def _ai_summarize(text: str) -> Optional[ThreadSummaryResult]:
             )
             summaries.append(summary)
         except Exception as exc:
-            logger.warning("Thread summarization section failed", exc_info=True)
+            logger.warning(
+                "Thread summarization section failed error_type=%s",
+                type(exc).__name__,
+            )
             missing.append(_failure(section, exc))
 
     coverage = _coverage(text, plan, model_id, covered, missing)

@@ -166,7 +166,15 @@ def _slow_token_plan(
     return SectionPlan(tuple(sections), "tokens", budget, effective_overlap)
 
 
-def _token_plan(text: str, pipe: Any, overlap: int = 0) -> SectionPlan | None:
+def _token_plan(
+    text: str,
+    pipe: Any,
+    overlap: int = 0,
+    *,
+    pair: bool = False,
+    reserved_tokens: int = 0,
+    require_special_tokens: bool = False,
+) -> SectionPlan | None:
     tokenizer = getattr(pipe, "tokenizer", None)
     if tokenizer is None:
         return None
@@ -175,11 +183,15 @@ def _token_plan(text: str, pipe: Any, overlap: int = 0) -> SectionPlan | None:
     if maximum is None or maximum > sys.maxsize:
         return None
     try:
-        special = tokenizer.num_special_tokens_to_add(pair=False)
+        special_raw = tokenizer.num_special_tokens_to_add(pair=pair)
     except Exception:
-        special = 0
-    special = _positive_int(special) or 0
-    budget = maximum - special
+        if require_special_tokens:
+            return None
+        special_raw = 0
+    special = _positive_int(special_raw) or 0
+    if type(reserved_tokens) is not int or reserved_tokens < 0:
+        return None
+    budget = maximum - special - reserved_tokens
     if budget < 1:
         return None
     try:
@@ -253,6 +265,44 @@ def plan_text_sections(
     return SectionPlan(sections, "characters", budget, effective_overlap)
 
 
+def plan_zero_shot_sections(
+    text: str,
+    pipe: Any,
+    candidate_labels: list[str] | tuple[str, ...],
+    *,
+    hypothesis_template: str,
+) -> SectionPlan | None:
+    """Budget premise text for HF zero-shot premise/hypothesis pairs.
+
+    HF's zero-shot pipeline tokenizes each source section together with a label
+    hypothesis and truncates ONLY_FIRST. Therefore the premise budget must
+    reserve pair special tokens plus the longest hypothesis. Returning None
+    means that budget cannot be proven from the pipeline tokenizer.
+    """
+    tokenizer = getattr(pipe, "tokenizer", None)
+    if tokenizer is None or not candidate_labels or "{}" not in hypothesis_template:
+        return None
+    hypothesis_counts: list[int] = []
+    for label in candidate_labels:
+        if not isinstance(label, str) or not label:
+            return None
+        try:
+            hypothesis = hypothesis_template.format(label)
+        except (IndexError, KeyError, ValueError):
+            return None
+        count = _token_count(tokenizer, hypothesis)
+        if count is None:
+            return None
+        hypothesis_counts.append(count)
+    return _token_plan(
+        text,
+        pipe,
+        pair=True,
+        reserved_tokens=max(hypothesis_counts),
+        require_special_tokens=True,
+    )
+
+
 class HuggingFaceRuntime:
     """Thread-safe, lazy-loading wrapper around HF pipelines and models."""
 
@@ -311,8 +361,13 @@ class HuggingFaceRuntime:
                 )
                 self._pipelines[cache_key] = pipe
                 return pipe
-            except Exception:
-                logger.warning("Failed to load HF pipeline %s/%s", task, model_id, exc_info=True)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to load HF pipeline task=%s model=%s error_type=%s",
+                    task,
+                    model_id,
+                    type(exc).__name__,
+                )
                 self._pipelines[cache_key] = _LOAD_FAILED
                 return None
 
@@ -341,8 +396,11 @@ class HuggingFaceRuntime:
                 logger.info("sentence-transformers not installed — embeddings disabled")
                 self._embedder = _LOAD_FAILED
                 return None
-            except Exception:
-                logger.warning("Failed to load embedding model", exc_info=True)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to load embedding model error_type=%s",
+                    type(exc).__name__,
+                )
                 self._embedder = _LOAD_FAILED
                 return None
 

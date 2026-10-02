@@ -14,7 +14,13 @@ from numbers import Integral, Real
 from typing import Any, Optional
 
 from ..ocr_service import _extract_invoice_fields
-from .hf_runtime import SectionPlan, TextSection, plan_text_sections, runtime
+from .hf_runtime import (
+    SectionPlan,
+    TextSection,
+    plan_text_sections,
+    plan_zero_shot_sections,
+    runtime,
+)
 from .schemas import (
     AnalysisCoverage,
     DocumentAIResult,
@@ -24,6 +30,8 @@ from .schemas import (
 )
 
 logger = logging.getLogger(__name__)
+
+_ZERO_SHOT_HYPOTHESIS_TEMPLATE = "This example is {}."
 
 _DOCUMENT_LABELS = [
     "Rechnung",
@@ -215,9 +223,28 @@ def _classify_document(
         return None, 0.0, None, _unavailable_coverage("classification", text), []
 
     model_id = _model_id(pipe, runtime.config.zero_shot_model)
-    plan = plan_text_sections(text, pipe, runtime.config.max_input_length)
+    verified_plan = plan_zero_shot_sections(
+        text,
+        pipe,
+        _DOCUMENT_LABELS,
+        hypothesis_template=_ZERO_SHOT_HYPOTHESIS_TEMPLATE,
+    )
+    pair_budget_verified = verified_plan is not None
+    plan = verified_plan or plan_text_sections(
+        text, pipe, runtime.config.max_input_length
+    )
     covered: list[SourceRange] = []
     missing: list[MissingRange] = []
+    if text and not pair_budget_verified:
+        missing.append(
+            MissingRange(
+                0,
+                0,
+                len(text),
+                "zero_shot_pair_budget_unverified",
+                "TokenizerPairBudgetUnavailable",
+            )
+        )
     outputs: list[dict[str, Any]] = []
     top_candidates: list[tuple[float, int, str]] = []
 
@@ -226,6 +253,7 @@ def _classify_document(
             raw = pipe(
                 section.text,
                 candidate_labels=_DOCUMENT_LABELS,
+                hypothesis_template=_ZERO_SHOT_HYPOTHESIS_TEMPLATE,
                 multi_label=False,
             )
             labels = raw.get("labels") if isinstance(raw, dict) else None
@@ -246,7 +274,8 @@ def _classify_document(
                     pairs.append((label, numeric_score))
             if not pairs:
                 raise ValueError("classification output empty")
-            covered.append(_range(section))
+            if pair_budget_verified:
+                covered.append(_range(section))
             outputs.append(
                 {
                     "section_index": section.index,
@@ -255,11 +284,15 @@ def _classify_document(
                     "labels": [label for label, _ in pairs],
                     "scores": [round(score, 6) for _, score in pairs],
                     "model": model_id,
+                    "pair_budget_verified": pair_budget_verified,
                 }
             )
             top_candidates.append((pairs[0][1], -section.index, pairs[0][0]))
         except Exception as exc:
-            logger.warning("Document classification section failed", exc_info=True)
+            logger.warning(
+                "Document classification section failed error_type=%s",
+                type(exc).__name__,
+            )
             missing.append(_failure(section, exc))
 
     coverage = _coverage("classification", text, plan, model_id, covered, missing)
@@ -284,24 +317,12 @@ def _summarize_document(
     summaries: list[str] = []
 
     for section in plan.sections:
-        if len(section.text.split()) < 30:
-            covered.append(_range(section))
-            outputs.append(
-                {
-                    "section_index": section.index,
-                    "start_offset": section.start_offset,
-                    "end_offset": section.end_offset,
-                    "summary_text": None,
-                    "method": "short_section_no_summary",
-                    "model": model_id,
-                }
-            )
-            continue
         try:
+            word_count = len(section.text.split())
             raw = pipe(
                 section.text,
                 max_length=150,
-                min_length=30,
+                min_length=30 if word_count >= 30 else 1,
                 do_sample=False,
             )
             if (
@@ -325,7 +346,10 @@ def _summarize_document(
             )
             summaries.append(summary)
         except Exception as exc:
-            logger.warning("Document summarization section failed", exc_info=True)
+            logger.warning(
+                "Document summarization section failed error_type=%s",
+                type(exc).__name__,
+            )
             missing.append(_failure(section, exc))
 
     coverage = _coverage("summarization", text, plan, model_id, covered, missing)
@@ -429,7 +453,10 @@ def _extract_entities(
                     _append_unique(grouped["dates"], normalized)
             covered.append(_range(section))
         except Exception as exc:
-            logger.warning("NER extraction section failed", exc_info=True)
+            logger.warning(
+                "NER extraction section failed error_type=%s",
+                type(exc).__name__,
+            )
             missing.append(_failure(section, exc))
 
     coverage = _coverage("ner", text, plan, model_id, covered, missing)

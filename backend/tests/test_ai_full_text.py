@@ -18,8 +18,11 @@ class CharTokenizer:
         self.model_max_length = model_max_length
 
     def num_special_tokens_to_add(self, pair=False):
-        assert pair is False
-        return 0
+        return 3 if pair else 0
+
+    def encode(self, text, add_special_tokens=False):
+        assert add_special_tokens is False
+        return list(range(len(text)))
 
     def __call__(
         self,
