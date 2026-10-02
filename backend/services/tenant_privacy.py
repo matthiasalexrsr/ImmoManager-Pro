@@ -9,18 +9,15 @@ from dataclasses import is_dataclass
 from datetime import datetime, timezone
 from tempfile import SpooledTemporaryFile
 
-from sqlalchemy import select
 from sqlalchemy.engine import Engine
-from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from ..db.contract_lifecycle_models import LIFECYCLE_MODELS
-from ..db.orm_models import ContractORM, TenantORM
 from ..models import TenantPatch
 from .concurrency import EditRevision, revision_scope, utc_datetime
 from .data_transfer import _atomic_store
 from .payments import _memory_lock
-from .tenant_data_graph import TenantExportError, TenantNotFoundError, tenant_data_graph
+from .tenant_data_graph import TenantExportError, tenant_data_graph
 
 PROFILE_FIELDS = (
     "full_name", "email", "phone", "address_line", "postal_code", "city", "country",
@@ -43,8 +40,15 @@ def _memory_state(value):
     from ..db.contract_wizard_models import WIZARD_MODELS
     from ..db.document_version_models import DOCUMENT_VERSION_MODELS
     from ..db.operational_job_models import JOB_MODELS
+    from ..db.operational_models import (
+        OperationalDispatchORM,
+        OperationalOccurrenceORM,
+        OperationalScheduleORM,
+        OperationalTickORM,
+    )
     from ..db.tenancy_workflow_models import TENANCY_WORKFLOW_MODELS
-    if isinstance(value, (*WIZARD_MODELS, *DOCUMENT_VERSION_MODELS, *LIFECYCLE_MODELS, *CORRESPONDENCE_MODELS, *JOB_MODELS, *TENANCY_WORKFLOW_MODELS)):
+    if isinstance(value, (*WIZARD_MODELS, *DOCUMENT_VERSION_MODELS, *LIFECYCLE_MODELS, *CORRESPONDENCE_MODELS, *JOB_MODELS, *TENANCY_WORKFLOW_MODELS,
+                          OperationalScheduleORM, OperationalOccurrenceORM, OperationalDispatchORM, OperationalTickORM)):
         return {column.name: _memory_state(getattr(value, column.name)) for column in value.__table__.columns}
     if isinstance(value, dict):
         return {key: _memory_state(item) for key, item in value.items()}
@@ -309,61 +313,46 @@ def anonymize_tenant_profile(active_store, tenant_id: str, *, plan_hash: str,
                              confirm_tenant_id: str) -> dict:
     if confirm_tenant_id != tenant_id:
         raise PrivacyConflict("Die Bestätigung gehört zu einem anderen Mieter.")
-    with _privacy_write(active_store) as staged:
-        from .portfolio_scope import current_scope, refresh_scope
-        captured = current_scope()
-        refresh_scope(captured)
-        db = getattr(staged, "db", None)
-        if db is not None:
-            # The tenant lock also blocks new contract FKs on PostgreSQL.
-            tenant_row = db.scalar(select(TenantORM).where(TenantORM.id == tenant_id).with_for_update())
-            if tenant_row is None:
-                raise TenantNotFoundError("Tenant not found")
-            # Lifecycle creation locks the contract before FK-checking its
-            # tenant. NOWAIT avoids a tenant -> contract / contract -> tenant
-            # deadlock and leaves the reviewed profile unchanged on contention.
-            try:
-                result = db.scalars(select(ContractORM.id).where(ContractORM.tenant_id == tenant_id)
-                    .order_by(ContractORM.id).with_for_update(nowait=db.get_bind().dialect.name == "postgresql")
-                    .execution_options(yield_per=100))
-                try:
-                    for _ in result:
-                        pass
-                finally:
-                    result.close()
-            except OperationalError as error:
-                if getattr(error.orig, "sqlstate", getattr(error.orig, "pgcode", None)) != "55P03":
-                    raise
-                raise PrivacyConflict("Vertragsvorgänge werden gerade bearbeitet. Vorschau neu laden und erneut versuchen.") from error
-        from .tenant_wizard_graph import lock_subject_journals, require_complete_subject_scope
-        require_complete_subject_scope(staged, tenant_id)
-        from .tenant_document_versions import require_complete_subject_scope as require_document_scope
-        require_document_scope(staged, tenant_id)
-        from .tenant_lifecycle_graph import require_complete_subject_scope as require_lifecycle_scope
-        require_lifecycle_scope(staged, tenant_id)
-        from .tenant_correspondence_graph import require_complete_subject_scope as require_correspondence_scope
-        require_correspondence_scope(staged, tenant_id)
-        lock_subject_journals(staged, tenant_id)
-        graph = _scoped_graph(staged, tenant_id)
-        plan = _plan(graph)
-        if plan["plan_hash"] != plan_hash:
-            raise PrivacyConflict("Der geprüfte Datenstand hat sich geändert. Vorschau neu laden.")
-        if not plan["can_anonymize"]:
-            raise PrivacyConflict("Aktive Mietverträge müssen vor der Stammdaten-Anonymisierung beendet werden.")
-        patch = TenantPatch.model_validate({
-            **{field: None for field in PROFILE_FIELDS if field not in {"full_name", "archived"}},
-            "full_name": f"Anonymisiert-{tenant_id}", "archived": True,
-        })
-        revision = EditRevision("tenants", tenant_id, utc_datetime(graph["tenant"]["updated_at"]))
-        with revision_scope(revision):
-            result = staged._patch_entity("tenant", tenant_id, patch)
-        expected = patch.model_dump()
-        if any(getattr(result, field) != value for field, value in expected.items()):
-            raise TenantExportError("Profile anonymization was not applied completely")
-        refresh_scope(captured)
-        return {"status": "profile_anonymized", "tenant_id": tenant_id,
-                "anonymized_fields": list(PROFILE_FIELDS),
-                "retained_collections": plan["retained_collections"],
-                "retained_personal_evidence": plan["retained_personal_evidence"],
-                "scope": plan["scope"], "note": plan["note"], "lifecycle_note": plan["lifecycle_note"],
-                "correspondence_note": plan["correspondence_note"]}
+    from .tenant_privacy_fence import lock_subject_write_fence, memory_account_fence
+    with ExitStack() as fences:
+        fences.enter_context(memory_account_fence(active_store))
+        with _privacy_write(active_store) as staged:
+            # SQLite acquires its account mutex after BEGIN, but releases it
+            # only after the outer SQL writer has actually committed.
+            fences.enter_context(memory_account_fence(staged, sqlite_staged=True))
+            from .portfolio_scope import current_scope, refresh_scope
+            captured = current_scope()
+            refresh_scope(captured)
+            lock_subject_write_fence(staged, tenant_id)
+            from .tenant_wizard_graph import lock_subject_journals, require_complete_subject_scope
+            require_complete_subject_scope(staged, tenant_id)
+            from .tenant_document_versions import require_complete_subject_scope as require_document_scope
+            require_document_scope(staged, tenant_id)
+            from .tenant_lifecycle_graph import require_complete_subject_scope as require_lifecycle_scope
+            require_lifecycle_scope(staged, tenant_id)
+            from .tenant_correspondence_graph import require_complete_subject_scope as require_correspondence_scope
+            require_correspondence_scope(staged, tenant_id)
+            lock_subject_journals(staged, tenant_id)
+            graph = _scoped_graph(staged, tenant_id)
+            plan = _plan(graph)
+            if plan["plan_hash"] != plan_hash:
+                raise PrivacyConflict("Der geprüfte Datenstand hat sich geändert. Vorschau neu laden.")
+            if not plan["can_anonymize"]:
+                raise PrivacyConflict("Aktive Mietverträge müssen vor der Stammdaten-Anonymisierung beendet werden.")
+            patch = TenantPatch.model_validate({
+                **{field: None for field in PROFILE_FIELDS if field not in {"full_name", "archived"}},
+                "full_name": f"Anonymisiert-{tenant_id}", "archived": True,
+            })
+            revision = EditRevision("tenants", tenant_id, utc_datetime(graph["tenant"]["updated_at"]))
+            with revision_scope(revision):
+                result = staged._patch_entity("tenant", tenant_id, patch)
+            expected = patch.model_dump()
+            if any(getattr(result, field) != value for field, value in expected.items()):
+                raise TenantExportError("Profile anonymization was not applied completely")
+            refresh_scope(captured)
+            return {"status": "profile_anonymized", "tenant_id": tenant_id,
+                    "anonymized_fields": list(PROFILE_FIELDS),
+                    "retained_collections": plan["retained_collections"],
+                    "retained_personal_evidence": plan["retained_personal_evidence"],
+                    "scope": plan["scope"], "note": plan["note"], "lifecycle_note": plan["lifecycle_note"],
+                    "correspondence_note": plan["correspondence_note"]}
