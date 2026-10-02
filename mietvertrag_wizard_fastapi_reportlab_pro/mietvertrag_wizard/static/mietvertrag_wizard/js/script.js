@@ -1394,4 +1394,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initialisierung
     showStep(0);
+    // Reveal controls only after handlers and legacy-storage sanitization exist.
+    // Deferred local PDF assets can still be loading when the HTML first paints.
+    document.getElementById('wizard-content')?.removeAttribute('hidden');
+    document.getElementById('wizard-loading')?.remove();
+    document.body.setAttribute('aria-busy', 'false');
 });

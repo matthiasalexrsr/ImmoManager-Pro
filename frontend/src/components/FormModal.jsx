@@ -54,7 +54,9 @@ export default function FormModal({ title, fields, initial, onSave, onClose, onS
       setError(null);
       primaryAction.current?.focus();
     } });
-  const draftReady = !draft.enabled || ['ready', 'saved', 'restored'].includes(draft.status);
+  // A background autosave must not swallow a deliberate click. prepareSubmit
+  // waits for that request and marks the latest values pending before onSave.
+  const draftReady = !draft.enabled || ['ready', 'saved', 'restored', 'saving'].includes(draft.status);
   const notifySaved = () => { if (!savedNotified.current) { savedNotified.current = true; onSaved?.(); } };
   const completeSave = async () => { if (await draft.complete()) { notifySaved(); onClose(); } };
   const requestClose = async () => {

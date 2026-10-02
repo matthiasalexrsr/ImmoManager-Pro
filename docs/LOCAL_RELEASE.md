@@ -46,6 +46,34 @@ Sie prüft sichtbare Oberflächenaktionen und die gespeicherten API-Ergebnisse:
 
 ## Prüfergebnisse
 
+CI #120 auf `ca3c923` ist abgeschlossen. Beide vollständigen Linux-Memory-
+Läufe (Python 3.11/3.12) bestanden mit jeweils 2.881 Tests, 109 expliziten
+Skips und 90 % Coverage. Auch der tatsächliche SMTP-Prozessfall bestand.
+Frontend: 728 Tests in 59 Dateien, Lint, Audit und Build bestanden. Der private
+PostgreSQL-Serverlebenszyklus bestand. Dies ist noch keine Gesamtfreigabe:
+beide SQL-Läufe meldeten jeweils vier Fehler bei der strikten Vorprüfung
+erhaltener Steuer-/Versandnachweise; PostgreSQL meldete drei Fehler beim
+Auslesen binärer Vertrags-PDF-Blöcke; die Browserprüfung bestand 51 von 52
+Fällen, mit einer veralteten Umfangsbehauptung in der Mieterauskunft.
+
+Die anschließenden Korrekturen verweigern bekannte Reset-Konflikte vor dem
+ersten Schreibbefehl und erhalten die Serialisierung gegen parallele neue
+Entwürfe. SQLAlchemy verarbeitet PostgreSQL-Binärblöcke explizit als
+LargeBinary, mit begrenzter Konvertierung von Treiber-Memoryviews. 23
+Reset-/Recovery-Fälle bestanden (acht PostgreSQL-Skips), ebenso 47
+Datenschutz-/Dateibelegfälle (drei PostgreSQL-Skips). Sieben tatsächliche
+Edge-/SQLite-Abläufe bestanden auf dem korrigierten Stand, einschließlich
+Vertragsassistenten-Initialisierung, Mieterauskunft und Speichern während
+eines laufenden Autosaves. Die neuen PostgreSQL-Korrekturen benötigen ihren
+echten CI-Nachweis. Unabhängige PostgreSQL-Gruppen laufen künftig auch nach
+einem fachlichen Fehler einer anderen Gruppe; ein Fehler bleibt weiterhin
+ein fehlgeschlagenes Gate.
+
+22 gemeinsame Windows-Konsole-/Laufzeit-/Diagnostikprüfungen bestanden.
+Umgeleitete cp1252-Konsolen geben Unicode sicher aus; UTF-8-Dateiprotokolle
+erhalten die Originalzeichen und JSON-Konsolenprotokolle bleiben gültiges
+JSON. Ruff und der erweiterte CI-Typcheck über 84 kritische Quellen bestanden.
+
 Aktueller Integrationsstand vom 2. Oktober 2026: 727 Frontendtests in 59 Dateien
 bestanden. Die integrierte Bankzuordnung, private Formularentwürfe und die
 mobile Vertragsansicht bestanden gemeinsam acht tatsächliche Edge-/SQLite-
@@ -78,8 +106,9 @@ PostgreSQL-Serverlebenszyklus, meldete jedoch neue Integrationsbefunde: drei
 Migration-/Rechnungs-Contractfälle, den Prozentzeichen-Import von PostgreSQL-
 Verbindungsoptionen, einen Vertragsassistenten-Überlauf bei 360 Pixeln sowie
 einen SMTP-Prozessbereinigungsfall unter Python 3.11. Diese Befunde werden
-gezielt korrigiert; der neue Linux-Nachweis der SMTP-Prozessbereinigung steht
-noch aus. CI #119 ist keine Gesamtfreigabe. Der Prozentzeichen-Fix
+gezielt korrigiert; der neue Linux-Nachweis der SMTP-Prozessbereinigung
+bestand inzwischen in beiden vollständigen Memory-Läufen von CI #120.
+CI #119 ist keine Gesamtfreigabe. Der Prozentzeichen-Fix
 bestand eine tatsächliche vollständige Migration mit Prozentzeichen im
 SQLite-Dateipfad. Die Rückwärtsprüfung der Vollsicherung für das v1-
 Zahlungsschema bestand mit Belegen und Originalbytes; zusammen mit bestehenden

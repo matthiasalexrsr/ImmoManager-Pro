@@ -70,3 +70,17 @@ Ohne `DATABASE_URL` erstellt die bestehende Testkonfiguration hierfür ihre
 eigene temporäre SQLite-Datenbank. Ein lokaler grüner SQLite-Lauf bestätigt
 keinen PostgreSQL-Lauf; dessen Ergebnis muss separat aus dem konfigurierten
 Testdienst/CI gemeldet werden.
+# Explicit save during background storage
+
+The Save action remains available while a background draft write is in flight.
+The explicit action waits for that real response, uses its returned draft
+revision to persist the submission marker, and only then invokes the business
+write. This prevents a short disabled-button interval from swallowing a mouse
+click. Loading, unresolved prior work, conflicts and uncertain business outcomes
+continue to require review before a business write.
+
+The unit regression holds the autosave response while changing values and
+clicking Save. The native browser regression holds only a real SQLite autosave
+response at 320 px, asserts no early business write, and checks exactly one
+persisted write plus draft cleanup. It runs with the preceding two-editor CAS
+suite to retain the shared-server acceptance scenario.

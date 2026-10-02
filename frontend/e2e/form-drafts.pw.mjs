@@ -99,6 +99,58 @@ test('two native tabs preserve the losing draft and restored original CAS after 
   } finally { await other.close(); await data.discard(); }
 });
 
+test('explicit mobile save waits for an in-flight real autosave and writes the business record once', async ({ page }) => {
+  const data = await workspace(page);
+  await page.setViewportSize({ width: 320, height: 800 });
+  const dialog = await edit(page, data.property);
+  await expect(dialog.getByText('Entwurfsschutz bereit', { exact: true })).toBeVisible();
+  const name = `Bewusst gespeichert ${data.suffix}`;
+  let release, started;
+  const held = new Promise(resolve => { release = resolve; });
+  const autosaveStarted = new Promise(resolve => { started = resolve; });
+  let delayed = false;
+  const draftWrites = [], businessWrites = [];
+  const onRequest = request => {
+    const path = new URL(request.url()).pathname;
+    if (request.method() === 'PUT' && path === `/api/v1/properties/${data.property.id}`) businessWrites.push(request);
+    if (request.method() === 'PUT' && path === '/api/v1/auth/users/me/form-drafts') draftWrites.push(request.postDataJSON());
+  };
+  page.on('request', onRequest);
+  await page.route('**/api/v1/auth/users/me/form-drafts', async route => {
+    const request = route.request();
+    if (request.method() !== 'PUT' || delayed) { await route.continue(); return; }
+    delayed = true;
+    // Only the real autosave response is delayed. Its ciphertext/CAS revision
+    // comes from the SQLite backend; no receipt or draft result is fabricated.
+    const response = await route.fetch();
+    expect(response.status()).toBe(200);
+    started();
+    await held;
+    await route.fulfill({ response });
+  });
+  try {
+    await dialog.getByLabel(/^Objektname/).fill(name);
+    await autosaveStarted;
+    await expect(dialog.getByText('Persönlichen Entwurf sichern …', { exact: true })).toBeVisible();
+    const save = dialog.getByRole('button', { name: 'Speichern', exact: true });
+    await expect(save).toBeEnabled();
+    await save.click();
+    await expect(dialog).toHaveAttribute('aria-busy', 'true');
+    expect(businessWrites).toHaveLength(0);
+    expect(draftWrites).toHaveLength(1);
+    expect(draftWrites[0].submission_pending).toBe(false);
+    const saved = page.waitForResponse(response => new URL(response.url()).pathname === `/api/v1/properties/${data.property.id}` && response.request().method() === 'PUT');
+    release();
+    expect((await saved).status()).toBe(200);
+    await expect(dialog).not.toBeVisible();
+    expect(businessWrites).toHaveLength(1);
+    expect(draftWrites).toHaveLength(2);
+    expect(draftWrites[1].submission_pending).toBe(true);
+    expect((await data.draft()).draft).toBeNull();
+    expect((await data.request(`/properties/${data.property.id}`)).name).toBe(name);
+  } finally { release(); page.off('request', onRequest); }
+});
+
 test('confirmed creation with failed draft cleanup cannot replay and next reopen demands review', async ({ page }) => {
   test.setTimeout(120_000);
   const data = await workspace(page);

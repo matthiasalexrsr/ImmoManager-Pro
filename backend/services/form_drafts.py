@@ -320,6 +320,10 @@ def form_draft(store, identity: DraftIdentity, actor, *, write: DraftWrite | Non
 
 def guard_destructive_reset(store):
     if hasattr(store, "db"):
+        # Already retained private data needs no lock/DML to refuse. The second
+        # read below still excludes an autosave committed during serialization.
+        if store.db.connection().execute(select(FormDraftORM.__table__.c.id).limit(1)).first() is not None:
+            raise ValueError("Persönliche Formularentwürfe sind vorhanden. Vor Teilimport oder Zurücksetzen ausdrücklich verwerfen oder vollständige Recovery separat wiederherstellen.")
         # Share the draft writer's lock order before checking the journal. A
         # concurrent autosave must finish before a destructive maintenance read.
         user_store = auth._user_store

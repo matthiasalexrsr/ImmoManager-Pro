@@ -22,12 +22,24 @@ test('contract wizard escapes user markup and never persists bank details', asyn
       fields: { 'zahlung-iban': { type: 'text', value } },
     }));
   }, legacyIban);
+  let releaseAsset;
+  const assetReady = new Promise(resolve => { releaseAsset = resolve; });
+  await page.route('**/mietvertrag/static/mietvertrag_wizard/vendor/pdfmake.min.js', async route => {
+    await assetReady;
+    await route.continue();
+  });
   await page.goto('/contract-wizard');
   await page.getByRole('button', { name: 'Vollständigen Klausel-/Staffel-Assistenten öffnen', exact: true }).click();
 
   const iframe = page.locator('iframe');
   await expect(iframe).toBeVisible();
   const frame = page.frameLocator('iframe');
+  try {
+    await expect(frame.getByRole('status')).toHaveText('Vertragsassistent wird vorbereitet …');
+    await expect(frame.getByText('Schritt 1: Angaben zum Vermieter')).not.toBeVisible();
+  } finally {
+    releaseAsset();
+  }
   await expect(frame.getByText('Schritt 1: Angaben zum Vermieter')).toBeVisible();
   const migrated = await page.evaluate(() => ({
     current: localStorage.getItem('mietvertragWizardFormState_v3'),
@@ -99,11 +111,13 @@ test('contract wizard escapes user markup and never persists bank details', asyn
   let fallbackDownload = false;
   const markDownload = () => { fallbackDownload = true; };
   page.on('download', markDownload);
-  const validationDialogPromise = page.waitForEvent('dialog');
+  const validationDialogPromise = page.waitForEvent('dialog').then(async dialog => {
+    const message = dialog.message();
+    await dialog.accept();
+    return message;
+  });
   await frame.getByRole('button', { name: 'PDF herunterladen', exact: true }).click();
-  const validationDialog = await validationDialogPromise;
-  expect(validationDialog.message()).toContain('Grundmiete fehlt.');
-  await validationDialog.accept();
+  expect(await validationDialogPromise).toContain('Grundmiete fehlt.');
   await page.waitForTimeout(300);
   page.off('download', markDownload);
   expect(fallbackDownload).toBe(false);

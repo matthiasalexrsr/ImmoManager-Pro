@@ -13,7 +13,7 @@ from itertools import chain
 from types import SimpleNamespace
 
 from fastapi import HTTPException
-from sqlalchemy import exists, func, or_, select
+from sqlalchemy import LargeBinary, exists, func, or_, select
 from sqlalchemy.exc import OperationalError
 
 from ..db.contract_wizard_models import (
@@ -137,6 +137,15 @@ def _drafts(store, tenant_id, contract_ids):
             or _snapshot_matches(_dump(row, ContractDraftORM), tenant_id, contract_ids)]
 
 
+def _binary_block(value, message):
+    # Untyped DBAPI BYTEA expressions can return a memoryview. Validate the
+    # actual byte budget before materializing that one bounded driver buffer.
+    size = value.nbytes if isinstance(value, memoryview) else len(value) if isinstance(value, (bytes, bytearray)) else 0
+    if not 0 < size <= BLOCK_SIZE:
+        _fail(message)
+    return bytes(value)
+
+
 def file_blocks(store, manifest):
     """One exact authorized evidence source; never materialize a complete SQL BLOB."""
     db = getattr(store, "db", None)
@@ -149,12 +158,10 @@ def file_blocks(store, manifest):
                 yield row.pdf[offset:offset + BLOCK_SIZE]
         else:
             for offset in range(0, manifest["size_bytes"], BLOCK_SIZE):
-                value = db.scalar(select(func.substr(ContractDraftORM.pdf, offset + 1, BLOCK_SIZE))
+                value = db.scalar(select(func.substr(ContractDraftORM.pdf, offset + 1, BLOCK_SIZE, type_=LargeBinary))
                     .where(ContractDraftORM.id == manifest["draft_id"],
                            ContractDraftORM.portfolio_id == manifest["portfolio_id"]))
-                if not isinstance(value, bytes):
-                    _fail("Missing reviewed PDF block")
-                yield value
+                yield _binary_block(value, "Missing or invalid reviewed PDF block")
     else:
         if db is None:
             chunks = sorted((row for row in _rows(store, ContractAttachmentChunkORM)
@@ -164,10 +171,9 @@ def file_blocks(store, manifest):
                 .where(ContractAttachmentChunkORM.attachment_id == manifest["attachment_id"])
                 .order_by(ContractAttachmentChunkORM.position).execution_options(yield_per=8))
         for position, row in enumerate(chunks):
-            if (row.position != position or row.portfolio_id != manifest["portfolio_id"]
-                    or not isinstance(row.data, bytes) or not 0 < len(row.data) <= BLOCK_SIZE):
+            if row.position != position or row.portfolio_id != manifest["portfolio_id"]:
                 _fail("Invalid archived attachment block")
-            yield row.data
+            yield _binary_block(row.data, "Invalid archived attachment block")
 
 
 def verified_blocks(store, manifest):

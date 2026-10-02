@@ -11,8 +11,10 @@
     <!-- Bootstrap CSS for modernes, ansprechendes Layout -->
     <link rel="stylesheet" href="{{ static_prefix }}/css/bootstrap.min.css" />
 </head>
-<body>
-    <div class="container">
+<body aria-busy="true">
+    <p id="wizard-loading" role="status">Vertragsassistent wird vorbereitet …</p>
+    <noscript>Für den Vertragsassistenten muss JavaScript im Browser aktiviert sein.</noscript>
+    <div class="container" id="wizard-content" hidden>
         <header>
             <h1>Mietvertrag Wizard</h1>
             <p>Dieser interaktive Assistent führt Sie Schritt für Schritt durch die Erstellung eines Wohnraum‑Mietvertrages. Bitte füllen Sie alle Felder sorgfältig aus. Angaben können jederzeit über die Zurück‑Schaltfläche korrigiert werden.</p>

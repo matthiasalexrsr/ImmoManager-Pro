@@ -28,7 +28,10 @@ test('tenant privacy: private download, stale-plan recovery and explicit profile
   expect(exported.headers()['cache-control']).toBe('private, no-store');
   const data = await exported.json();
   expect(data.tenant.email).toBe('synthetic-privacy@example.com');
-  expect(data.scope.file_content).toContain('excluded');
+  expect(data.scope.file_content).toBe('stored wizard PDF/originals included; other files metadata only');
+  expect(data.scope.wizard.unassigned_prospects).toBe('excluded; no name/email inference');
+  expect(data.contract_wizard_files).toEqual([]);
+  expect(data.wizard_file_contents).toEqual([]);
   await page.getByRole('button', { name: 'Anonymisierung prüfen', exact: true }).click();
   await expect(page.getByText('Geprüfter Umfang: Mieterstammdaten', { exact: true })).toBeVisible();
   await page.getByLabel('Bestätigung: vollständigen Namen eingeben', { exact: true }).fill(fullName);
@@ -48,4 +51,3 @@ test('tenant privacy: private download, stale-plan recovery and explicit profile
   const final = await page.request.get(`/api/v1/tenants/${tenant.id}`, { headers });
   expect(await final.json()).toMatchObject({ full_name: `Anonymisiert-${tenant.id}`, email: null, notes: null, archived: true });
 });
-

@@ -151,24 +151,30 @@ class SQLAlchemyStore:
         """Reset a test store only while no durable reviewed history exists."""
         from ..services.portfolio_scope import require_installation_scope
         require_installation_scope()
-        from ..services.form_drafts import guard_destructive_reset as guard_form_drafts
-        guard_form_drafts(self)
-        from ..services.contract_wizard import guard_destructive_reset
-        guard_destructive_reset(self)
-        from ..services.annual_tax_storage import guard_destructive_reset
-        guard_destructive_reset(self)
-        from ..services.bank_import_guards import guard_bank_import_reset
-        guard_bank_import_reset(self)
         from ..db.bank_import_models import BANK_IMPORT_TABLES
         from ..db.orm_models import Base
         from ..db.rent_batch_models import RENT_BATCH_TABLES, RentSourceRevisionORM
+        from ..services.annual_tax_storage import guard_destructive_reset as guard_annual_history
+        from ..services.bank_import_guards import guard_bank_import_reset
+        from ..services.contract_wizard import guard_destructive_reset as guard_contract_history
+        from ..services.form_drafts import guard_destructive_reset as guard_form_drafts
         # Durable reviewed content and factual transport history cannot be
         # discarded by an ordinary business/test reset. Full offline recovery
         # replaces the complete database through its separate explicit workflow.
-        if any(self.db.scalar(select(model.id).limit(1)) is not None
-                for model in (OutboxMessageORM, OutboxEventORM, OutboxCommandORM)):
-            self.db.rollback()
-            raise HTTPException(409, "outbox_history_exists: full offline recovery is required")
+        def check_retained_history():
+            guard_contract_history(self)
+            guard_annual_history(self)
+            guard_bank_import_reset(self)
+            if any(self.db.scalar(select(model.id).limit(1)) is not None
+                    for model in (OutboxMessageORM, OutboxEventORM, OutboxCommandORM)):
+                self.db.rollback()
+                raise HTTPException(409, "outbox_history_exists: full offline recovery is required")
+
+        # Known retained evidence refuses before even the draft writer's no-op
+        # auth-row lock. Recheck after serialization, before business deletions.
+        check_retained_history()
+        guard_form_drafts(self)
+        check_retained_history()
         # Snapshot IDs intentionally preserve historical references without
         # foreign keys to live contracts. Remove them before their live sources.
         # SQLAlchemy annotates Declarative __table__ as FromClause, although

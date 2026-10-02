@@ -6,6 +6,7 @@ import json
 import re
 from copy import deepcopy
 from datetime import date, datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 from fastapi import Depends, FastAPI, HTTPException
@@ -32,6 +33,28 @@ from backend.tests.test_contract_wizard_workflow import active as wizard_store
 from backend.tests.test_contract_wizard_workflow import command, data, prepare, publish
 
 active = wizard_store
+
+
+def test_bounded_pdf_driver_buffers_preserve_complete_original_bytes_and_digest():
+    from backend.services.tenant_wizard_graph import BLOCK_SIZE, verified_blocks
+
+    original = b"%PDF-" + bytes(range(256)) * 410
+    buffers = iter(memoryview(original[offset:offset + BLOCK_SIZE]) for offset in range(0, len(original), BLOCK_SIZE))
+    driver = SimpleNamespace(db=SimpleNamespace(scalar=lambda _query: next(buffers)))
+    manifest = {"kind": "reviewed_pdf", "draft_id": "synthetic-draft", "portfolio_id": "synthetic-portfolio",
+                "size_bytes": len(original), "sha256": hashlib.sha256(original).hexdigest()}
+    assert b"".join(verified_blocks(driver, manifest)) == original
+
+
+@pytest.mark.parametrize("invalid", [None, "not binary", memoryview(b"x" * (65536 + 1))])
+def test_invalid_driver_buffer_is_refused_before_export_success(invalid):
+    from backend.services.tenant_wizard_graph import verified_blocks
+
+    driver = SimpleNamespace(db=SimpleNamespace(scalar=lambda _query: invalid))
+    manifest = {"kind": "reviewed_pdf", "draft_id": "synthetic-draft", "portfolio_id": "synthetic-portfolio",
+                "size_bytes": 10, "sha256": hashlib.sha256(b"%PDF-hello").hexdigest()}
+    with pytest.raises(TenantExportError, match="PDF block"):
+        list(verified_blocks(driver, manifest))
 
 
 def completed(box, *, existing=False):

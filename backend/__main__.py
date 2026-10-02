@@ -17,6 +17,8 @@ import secrets
 import socket
 import sys
 
+from backend.console_encoding import prepare_standard_streams, safe_console_stream
+
 # ---------------------------------------------------------------------------
 # Frozen-bundle detection (used throughout)
 # ---------------------------------------------------------------------------
@@ -162,20 +164,23 @@ class _TeeWriter:
     """Write to both the console and a log file simultaneously."""
 
     def __init__(self, original, log_file):
-        self.original = original
+        self.original = safe_console_stream(original)
         self.log_file = log_file
 
     def write(self, text):
-        self.original.write(text)
         if self.log_file:
             try:
                 self.log_file.write(text)
                 self.log_file.flush()
             except OSError:
                 pass
+        if self.original is not None:
+            self.original.write(text)
+        return len(text)
 
     def flush(self):
-        self.original.flush()
+        if self.original is not None:
+            self.original.flush()
         if self.log_file:
             try:
                 self.log_file.flush()
@@ -192,6 +197,7 @@ class _TeeWriter:
 
 
 def main():
+    prepare_standard_streams()
     import argparse
 
     parser = argparse.ArgumentParser(
@@ -292,6 +298,8 @@ if __name__ == "__main__":
     # On Windows frozen bundles, child processes re-execute the script and
     # freeze_support() ensures they exit cleanly instead of re-spawning.
     multiprocessing.freeze_support()
+
+    prepare_standard_streams()
 
     # Set up a log file next to the .exe so errors survive a closed console
     _log_fh = _setup_logging_to_file()

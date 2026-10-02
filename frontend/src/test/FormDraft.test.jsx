@@ -128,6 +128,28 @@ describe('private form draft storage', () => {
     expect(api.put.mock.calls[1][1]).toMatchObject({ expected_revision: saved().revision, values: { name: 'Letzte Änderung' } });
   });
 
+  it('accepts explicit save during autosave and waits for its revision before one business write', async () => {
+    const pending = deferred(); api.put.mockReturnValueOnce(pending.promise);
+    const onSave = vi.fn(), onClose = vi.fn(); open({ onSave, onClose }); await ready();
+    edit('Erster Autosave');
+    await screen.findByText(translate('formDraft.status.saving'), {}, { timeout: 2000 });
+    edit('Letzte bewusste Eingabe');
+    const button = screen.getByRole('button', { name: 'Speichern', exact: true });
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+    expect(screen.getByRole('dialog')).toHaveAttribute('aria-busy', 'true');
+    expect(onSave).not.toHaveBeenCalled(); expect(api.put).toHaveBeenCalledTimes(1);
+    await act(async () => pending.resolve(saved('completed-autosave-revision')));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(api.put).toHaveBeenCalledTimes(2);
+    expect(api.put.mock.calls[1][1]).toMatchObject({ expected_revision: 'completed-autosave-revision',
+      submission_pending: true, values: { name: 'Letzte bewusste Eingabe' } });
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onSave.mock.calls[0][0].name).toBe('Letzte bewusste Eingabe');
+    expect(snapshotRevision(onSave.mock.calls[0][0]).updatedAt).toBe(initial.updated_at);
+    expect(api.del).toHaveBeenCalledTimes(1);
+  });
+
   it('does not replace an existing draft when another window wins its CAS', async () => {
     api.put.mockRejectedValueOnce(Object.assign(new Error('Anderes Fenster'), { statusCode: 409, code: 'DRAFT_CONFLICT' })); open(); await ready(); edit('Mein Stand');
     await screen.findByText('Anderes Fenster', {}, { timeout: 2000 });

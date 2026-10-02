@@ -65,6 +65,7 @@ jobs:
         run: >-
           mypy backend/app.py backend/domain backend/repositories backend/plugins
           backend/auth.py backend/dependencies.py backend/middleware.py backend/static_access.py
+          backend/console_encoding.py backend/logging_config.py
           backend/settings.py backend/recovery.py backend/services/full_recovery.py
           backend/services/recovery_sessions.py scripts/restore_session_security.py
           backend/services/recovery_archive.py backend/services/recovery_validation.py
@@ -136,6 +137,7 @@ jobs:
           python-version: '3.12'
           cache: pip
       - name: Install application dependencies
+        id: pg_dependencies
         run: python -m pip install -r requirements.txt
       - name: Exercise actual PostgreSQL locks, budgets and process uniqueness
         env:
@@ -143,26 +145,31 @@ jobs:
         run: pytest backend/tests/test_private_server_concurrency.py backend/tests/test_server_admin.py backend/tests/test_edit_concurrency.py backend/tests/test_operational_postgres.py backend/tests/test_effective_rent_adjustments.py backend/tests/test_booking_pages_postgres.py backend/tests/test_iban_encryption_postgres.py backend/tests/test_credit_concurrency.py backend/tests/test_portfolio_access_postgres.py backend/tests/test_datev_postgres.py backend/tests/test_rent_batches_postgres.py backend/tests/test_booking_scope.py -q --tb=short
 
       - name: Verify durable manual SMTP claims on PostgreSQL
+        if: ${{ !cancelled() && steps.pg_dependencies.outcome == 'success' }}
         env:
           TEST_SERVER_DATABASE_URL: postgresql://immo_ci:isolated_test_database@127.0.0.1:5432/immo_ci
         run: pytest backend/tests/test_outbox_postgres.py -q --tb=short
 
       - name: Verify retained annual evidence, account sessions and bank imports on PostgreSQL
+        if: ${{ !cancelled() && steps.pg_dependencies.outcome == 'success' }}
         env:
           TEST_SERVER_DATABASE_URL: postgresql://immo_ci:isolated_test_database@127.0.0.1:5432/immo_ci
         run: pytest backend/tests/test_annual_tax_postgres.py backend/tests/test_auth_sessions_postgres.py backend/tests/test_bank_imports_postgres.py backend/tests/test_restore_session_security.py::test_pg_offline_restore_streams_ciphertexts_rolls_back_then_revokes_without_dropping_receipts -q --tb=short
 
       - name: Verify reviewed contracts, shared occupancy and account snapshots on PostgreSQL
+        if: ${{ !cancelled() && steps.pg_dependencies.outcome == 'success' }}
         env:
           TEST_SERVER_DATABASE_URL: postgresql://immo_ci:isolated_test_database@127.0.0.1:5432/immo_ci
         run: pytest backend/tests/test_contract_wizard_postgres.py backend/tests/test_tenant_wizard_privacy_postgres.py backend/tests/test_account_balances.py::test_pg_real_repeatable_read_and_current_parent_checks -q --tb=short
 
       - name: Verify reviewed bank matches and receipt schema preservation on PostgreSQL
+        if: ${{ !cancelled() && steps.pg_dependencies.outcome == 'success' }}
         env:
           TEST_SERVER_DATABASE_URL: postgresql://immo_ci:isolated_test_database@127.0.0.1:5432/immo_ci
         run: pytest backend/tests/test_bank_matching_postgres.py backend/tests/test_bank_matching_schema_recovery.py -q --tb=short
 
       - name: Verify private encrypted draft conflicts on PostgreSQL
+        if: ${{ !cancelled() && steps.pg_dependencies.outcome == 'success' }}
         env:
           TEST_SERVER_DATABASE_URL: postgresql://immo_ci:isolated_test_database@127.0.0.1:5432/immo_ci
         run: pytest backend/tests/test_form_drafts.py::test_actual_postgresql_independent_draft_cas_and_raw_ciphertext backend/tests/test_form_drafts_postgres.py -q --tb=short

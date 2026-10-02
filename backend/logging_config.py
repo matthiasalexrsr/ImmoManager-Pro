@@ -4,6 +4,7 @@ Provides JSON logging (production) and colored text logging (development).
 Includes request context injection via RequestContextFilter.
 """
 
+import codecs
 import json
 import logging
 import logging.handlers
@@ -13,6 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .config import settings
+from .console_encoding import prepare_standard_streams, safe_console_stream
 from .safe_diagnostics import DiagnosticFormatter
 
 # Context variables for request-scoped data
@@ -42,6 +44,10 @@ class JSONFormatter(DiagnosticFormatter):
         "query_count",
     )
 
+    def __init__(self, *args, ensure_ascii=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.ensure_ascii = ensure_ascii
+
     def format(self, record):
         log_entry = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -64,7 +70,7 @@ class JSONFormatter(DiagnosticFormatter):
         if record.levelno >= logging.ERROR:
             log_entry["source"] = f"{Path(record.pathname).name}:{record.lineno}"
             log_entry["func"] = record.funcName
-        return json.dumps(log_entry, ensure_ascii=False)
+        return json.dumps(log_entry, ensure_ascii=self.ensure_ascii)
 
 
 class TextFormatter(DiagnosticFormatter):
@@ -99,6 +105,7 @@ class TextFormatter(DiagnosticFormatter):
 
 def setup_logging() -> None:
     """Configure root logger based on settings."""
+    prepare_standard_streams()
     root = logging.getLogger()
     root.setLevel(getattr(logging, settings.log_level.upper(), logging.INFO))
 
@@ -109,10 +116,18 @@ def setup_logging() -> None:
     ctx_filter = RequestContextFilter()
 
     # Console handler
-    console = logging.StreamHandler(sys.stdout)
+    console = logging.StreamHandler(safe_console_stream(sys.stdout))
     console.addFilter(ctx_filter)
     if settings.log_format == "json":
-        console.setFormatter(JSONFormatter())
+        encoding = getattr(console.stream, "encoding", None)
+        try:
+            utf8_console = bool(encoding and codecs.lookup(encoding).name == "utf-8")
+        except LookupError:
+            utf8_console = False
+        # Python's backslashreplace uses \Uxxxxxxxx for supplementary Unicode;
+        # JSON requires surrogate-pair \uxxxx escapes. Serialize valid ASCII
+        # JSON for legacy consoles; UTF-8 file handlers retain original Unicode.
+        console.setFormatter(JSONFormatter(ensure_ascii=not utf8_console))
     else:
         console.setFormatter(TextFormatter())
     root.addHandler(console)
