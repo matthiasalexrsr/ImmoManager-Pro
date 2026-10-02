@@ -159,8 +159,20 @@ def test_actual_encrypted_source_gone_keeps_all_facts_and_fences_old_claim(plan,
 
 
 def test_complete_older_sqlite_archive_without_either_family_roundtrips(plan, tmp_path):
-    # Core DTO/model imports register current metadata in this test process;
-    # the source image intentionally predates both complete optional families.
+    # Root now registers both metadata families before the initial migration's
+    # create_all, even when this fixture stops at a2. Explicitly form the genuine
+    # pre-family image in this disposable fixture, verifying there are no facts
+    # to discard. Runtime restore still performs no implicit schema repair.
+    family = {model.__tablename__ for model in (*TENANCY_WORKFLOW_MODELS, *JOB_MODELS)}
+    with closing(sqlite3.connect(plan.database)) as db:
+        names = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        assert not names & family or family <= names
+        for name in names & family:
+            assert db.execute('SELECT COUNT(*) FROM "' + name + '"').fetchone()[0] == 0
+        for table in reversed(Base.metadata.sorted_tables):
+            if table.name in family & names:
+                db.execute('DROP TABLE "' + table.name + '"')
+        db.commit()
     with closing(sqlite3.connect(plan.database)) as db:
         names = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         assert not names.intersection(model.__tablename__ for model in (*TENANCY_WORKFLOW_MODELS, *JOB_MODELS))

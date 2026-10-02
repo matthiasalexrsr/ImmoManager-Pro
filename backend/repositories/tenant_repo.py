@@ -34,6 +34,7 @@ from ..models import (
 )
 from ..storage import ValidationError
 from .base import BaseRepository
+from .guard_context import no_autoflush_guard
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +108,7 @@ class TenantRepository:
     def get_contract(self, contract_id: str) -> Contract:
         return self._contracts.get(contract_id)
 
+    @no_autoflush_guard
     def update_contract(self, contract_id: str, data: ContractCreate) -> Contract:
         if not self._contracts.exists(contract_id):
             self._contracts._missing(contract_id)

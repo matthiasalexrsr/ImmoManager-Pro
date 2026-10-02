@@ -22,6 +22,7 @@ from ..error_helpers import safe_db_operation
 from ..safe_diagnostics import exception_diagnostic
 from ..services.concurrency import conflict, expected_revision, next_updated_at
 from ..storage import NotFoundError, ValidationError
+from .guard_context import no_autoflush_guard
 
 _invoice_transfer_balance = ContextVar("invoice_transfer_balance", default=False)
 
@@ -117,6 +118,7 @@ class BaseRepository:
             raise conflict()
         raise NotFoundError(self.not_found_msg)
 
+    @no_autoflush_guard
     def _write(self, entity_id, updates):
         from ..services.payment_integrity import guard_sql_lifecycle_edit
         try:
@@ -192,7 +194,7 @@ class BaseRepository:
                 field in updates and updates[field] != getattr(orm_obj, field)
                 for field in ("tenant_id", "property_id", "unit_id")):
             from ..services.payment_integrity import guard_sql_delete
-            guard_sql_delete(self.db, "contracts", orm_obj.id)
+            guard_sql_delete(self.db, "contracts", orm_obj.id, deleting=False)
 
     @safe_db_operation("list_all")
     def list_all(self) -> list[Any]:
@@ -255,6 +257,7 @@ class BaseRepository:
             _invoice_transfer_balance.reset(token)
 
     @safe_db_operation("delete")
+    @no_autoflush_guard
     def delete(self, entity_id: str) -> None:
         orm_obj = self.db.get(self.orm_class, entity_id, populate_existing=True)
         if orm_obj is None:

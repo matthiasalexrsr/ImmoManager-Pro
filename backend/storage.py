@@ -438,6 +438,8 @@ class InMemoryStore:
         if data.portfolio_id not in self.portfolios:
             raise ValidationError("Portfolio existiert nicht")
         old = self.properties[property_id]
+        from .services.workflow_parent_guards import guard_parent_edit
+        guard_parent_edit(self, "property", old, data.model_dump())
         if old.portfolio_id != data.portfolio_id:
             from .services.contract_lifecycle import guard_delete_link
             guard_delete_link(self, "property", property_id)
@@ -508,6 +510,8 @@ class InMemoryStore:
         if data.property_id not in self.properties:
             raise ValidationError("Immobilie existiert nicht")
         old = self.units[unit_id]
+        from .services.workflow_parent_guards import guard_parent_edit
+        guard_parent_edit(self, "unit", old, data.model_dump())
         if old.property_id != data.property_id:
             from .services.contract_lifecycle import guard_delete_link
             guard_delete_link(self, "unit", unit_id)
@@ -637,13 +641,15 @@ class InMemoryStore:
         ):
             raise ValidationError("Vertragsnummer existiert bereits")
         old = self.contracts[contract_id]
+        from .services.workflow_parent_guards import guard_parent_edit
+        guard_parent_edit(self, "contract", old, data.model_dump())
         from .services.contract_occupancy import assert_occupancy
         if any(getattr(data, field) != getattr(old, field) for field in
                ("property_id", "unit_id", "start_date", "end_date", "status")):
             assert_occupancy(self, data, exclude_id=contract_id)
         if any(getattr(data, field) != getattr(old, field) for field in ("tenant_id", "property_id", "unit_id")):
             from .services.payment_integrity import guard_memory_delete
-            guard_memory_delete(self, "contract", contract_id)
+            guard_memory_delete(self, "contract", contract_id, deleting=False)
         contract = Contract(
             id=contract_id, created_at=old.created_at,
             updated_at=datetime.now(timezone.utc), **data.model_dump(),

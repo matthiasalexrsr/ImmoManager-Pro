@@ -37,3 +37,45 @@ Die vollständige konfigurierte CI-Produktionsgruppe bestand danach: 112 Zielarg
 TEHA hat 74 statisch aus dem öffentlichen Client abgeleitete Aufrufstellen im versionierten Katalog. Statische Aufrufstellen sind ausdrücklich weder live bestätigte Schnittstellen noch ausgeführte Schreibaktionen. Der Transport hatte zuvor sechs echte lesende Portaloperationen auf dem freigegebenen Konto bestätigt, einschließlich eines bytegleich geprüften PDFs. Die jüngere Vollbeobachtung vor der DTO-Auswertung ist mit synthetischen vollständigen, unbekannten und späten JSON-Feldern geprüft; ein erneuter echter Portallauf dieses jüngeren Stands wurde bisher nicht durchgeführt.
 
 Die Beobachtung erfasst vollständige fachliche Antwortkörper sowie Parameter, Requeststruktur und Metadaten; Zugangsdaten, Sitzungstoken und Cookies werden dabei nicht zu gewöhnlichen Logs oder Produktquelltext. Installationsweite private Integrationskonfigurationen sind nur für Eigentümer oder Verwalter mit Zugriff auf alle Portfolios zugänglich. WISO Steuer für Windows ist auf diesem Rechner weiterhin nicht installiert; ein tatsächlicher Import in diese Zielanwendung bleibt unbestätigt.
+
+## Zusammengesetzte Recovery- und Parentabnahme
+
+Ausgangspunkt `0becc28` enthält die lineare Runtimekorrektur `645e3d9`,
+die tatsächlichen SQL-Paralleltests `92c30c9`, den strikten Businessimport
+`3da317a` und die vollständige operative Recovery `0becc28`.
+
+| Geprüfte Quelle / Bereich | Tatsächliches Ergebnis | Grenze |
+| --- | --- | --- |
+| `92c30c9`, tatsächliche unabhängige SQL-Paralleltests | 6 bestanden, kein Skip, 16,26 Sekunden | SQLite und PostgreSQL; identischer Replay, Rollenwettlauf, konkurrierender Step samt erhaltenem Original. |
+| `0becc28`, Strict-SQL-Migration/Privacy-HTTP/Businessimport | 26 bestanden, 42,88 Sekunden | Kein stilles Duplicate-/NaN-Importieren; Startup auf zusammengesetzter linearer Migration. |
+| `0becc28` plus additive Parentguards, verschlüsselte Vollarchive | 18 bestanden, 40,09 Sekunden | Wechselakte mit Originalbelegen, Schritte, Leaseinvalidierung und fortsetzbare Jobquellen; wirklich ältere Archive ganz ohne die beiden neuen Familien. |
+| Parentguards einschließlich ganze-/Teilfamilie | 19 bestanden, 2 reine Memory-Schema-Skips, 36,61 Sekunden | Ganz abwesende Legacyfamilie weiter verwendbar; teilweise vorhandene Familie vor Parentänderung abgewiesen. |
+| `0becc28`, zusammengesetzte Recovery/Core/Runtime/Integritäts-/Parallelgruppe vor Autoflushnachtrag | 114 bestanden, 54 konkrete Varianten-Skips, 515,43 Sekunden | Skipgründe im Log; SQL-/PG-spezifische Fälle zählen nur in ihrer tatsächlich geeigneten Variante. |
+| Parentguards mit vollständiger No-Autoflush-Vorprüfung, unveränderte unabhängige Probe | 19 bestanden, 8 Varianten-Skips, 71,62 Sekunden | Zwölf SQL/PG-Pendingvarianten vor DML, Scopeabwehr und tatsächlicher Zwei-Session-PG-Parentwettlauf. Die sechs ursprünglich fehlgeschlagenen Varianten bestehen. |
+| Übernommene Parent-Pending-Produktregression mit zusätzlichen Callerzustandsassertionen | 19 bestanden, 8 Varianten-Skips, 39,46 Sekunden | Vorgemerkte Vorlage bleibt ungeschrieben in `Session.new`; Callertransaktion und vorherige Autoflush-Einstellung bleiben erhalten. |
+| Gleiche Guardquelle, bestehende SQLStore-/Payment-/Bankpayment-/Lifecyclegruppe | 130 bestanden, 3 Varianten-Skips, 226,18 Sekunden | Neue Guardgrenze erhält die vorhandenen fachlichen Mutationen. |
+| `92c30c9` plus erste E2E-Datei, echter Edge-/SQLite-Wechselablauf | 1 bestanden, 13,6 Sekunden Gesamtlauf | Zwei echte Objektvorlagen; verlorene bestätigte Antwort, identischer Retry, Tasklink, Abschluss, Reload; Screenshots 1440/360/320. Die nachfolgende UI-Überarbeitung und zusätzliche Versionänderung sind damit noch nicht abgenommen. |
+
+Der strikte Decoder liest bis zum konfigurierten Uploadbudget plus einem Byte.
+Er prüft die gesamte Datei vor jedem Import; Überschreitung ist eine ausdrückliche
+413 mit Hinweis auf das konfigurierbare Budget, kein erfolgreich importierter
+Präfix. Fehlende/ungültige positive Budgetkonfiguration wird vor dem Lesen
+abgewiesen. Dieses Budget begrenzt eine Anfrage, keinen Gesamtbestand.
+
+Die vollständige konfigurierte CI-Produktions-Typgruppe bestand nach Recovery
+erneut (131 Dateien); die drei zusätzlich neuen Recovery-/Parentmodule bestanden
+getrennt. Der anschließende Autoflushnachtrag bestand seine sechs gezielt
+geänderten Module. Alle bisherigen breiten Basisstände und deren Grenzen bleiben
+oben getrennt dokumentiert. Die aktive Vorschau bleibt Release 126.
+
+Aktuelle Belege: `work/workflow-concurrency-composed-92c30c9.log`,
+`work/recovery-startup-import-strict-composed.log`,
+`work/workflow-parent-and-recovery-final.log`,
+`work/workflow-parent-retention-family-final.log`,
+`work/workflow-recovery-composed-gates.log`,
+`work/workflow-parent-independent-fixed.log`,
+`work/workflow-parent-pending-owned-final.log`,
+`work/workflow-parent-composed-existing-guards.log`,
+`work/workflow-browser-second.log`,
+`work/release127-composed-current-mypy.log` und
+`work/release127-new-recovery-mypy.log`.
