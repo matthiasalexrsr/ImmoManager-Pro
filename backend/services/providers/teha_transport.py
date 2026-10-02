@@ -13,7 +13,6 @@ import hashlib
 import json
 import math
 import re
-from copy import deepcopy
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from time import monotonic
@@ -21,6 +20,7 @@ from typing import Any
 
 import httpx
 
+from .schema_observation import JsonSchemaObserver, json_snapshot, private_profile_snapshot
 from .teha_types import (
     TehaAccount,
     TehaDocument,
@@ -260,11 +260,13 @@ class TehaTransport:
         mandant = _number(payload.get("mandantId"))
         if mandant != 1:
             raise TehaError("provider_account_mismatch")
-        # Do not keep raw login JSON or guess which future fields are secrets.
-        private_source = {"id": identifier, "mandantId": mandant}
+        profile_schema = JsonSchemaObserver().observe(payload).report()
+        secret_values = (access, refresh or "", password, *(cookie.value or "" for cookie in self._client.cookies.jar))
+        private_source = private_profile_snapshot(payload, known_secret_values=secret_values)
         self._access_token = access
         self._refresh_token = refresh
-        return TehaAccount(account_id=identifier, mandant_id=mandant, _source=private_source)
+        return TehaAccount(account_id=identifier, mandant_id=mandant, _source=private_source,
+                           _profile_schema=profile_schema)
 
     def list_property_periods(self) -> list[TehaPropertyPeriod]:
         result = []
@@ -274,7 +276,7 @@ class TehaTransport:
                 period_number=_number(identity.get("abrechnungLaufendeNr"), zero=True),
                 lieg_nr=_text(row.get("liegenschaftenNummer")),
                 period_from_raw=_text(row.get("abrechnungVon")), period_to_raw=_text(row.get("abrechnungBis")),
-                _source=deepcopy(row)))
+                _source=json_snapshot(row)))
         return result
 
     def list_documents(self, lieg_nr: str) -> list[TehaDocument]:
@@ -286,7 +288,7 @@ class TehaTransport:
             if not isinstance(row.get("attachments"), list):
                 raise TehaError("provider_schema_changed")
             result.append(TehaDocument(reference=_text(row.get("reference")), filename=_text(row.get("fileName")),
-                                       lieg_nr=lieg_nr, _source=deepcopy(row)))
+                                       lieg_nr=lieg_nr, _source=json_snapshot(row)))
         return result
 
     def read_document(self, lieg_nr: str, reference: str) -> TehaDocumentContent:
@@ -317,7 +319,7 @@ class TehaTransport:
                 order_number=_number(row.get("auftragNummer")), period_number=_number(row.get("abrLfdNr"), zero=True),
                 lieg_nr=_text(row.get("liegenschaftsnummer")), termin_from_raw=_text(row.get("terminVon")),
                 termin_to_raw=_text(row.get("terminBis")), period_to_raw=_text(row.get("abrechnungBis")),
-                _source=deepcopy(row)))
+                _source=json_snapshot(row)))
         return result
 
     def read_order_users(self, termin_id: int) -> list[TehaOrderUser]:
@@ -325,5 +327,5 @@ class TehaTransport:
         result = []
         for row in _rows(self._request("GET", f"/api/Auftrag/{termin_id}"), "nutzerInAuftrag"):
             result.append(TehaOrderUser(user_id=_number(row.get("id")), unit_id=_number(row.get("neId")),
-                                        sequence_number=_text(row.get("lfdNr")), _source=deepcopy(row)))
+                                        sequence_number=_text(row.get("lfdNr")), _source=json_snapshot(row)))
         return result

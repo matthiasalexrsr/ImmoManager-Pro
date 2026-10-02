@@ -6,10 +6,11 @@ identities do not imply an internal property, tenant, unit or billing mapping.
 
 from __future__ import annotations
 
-from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
+
+from .schema_observation import json_snapshot
 
 TEHA_PORTAL_CONTRACT_VERSION = "observed-2026-10-02-v1"
 
@@ -35,7 +36,7 @@ class _PrivateSource:
 
     def source_snapshot(self) -> dict[str, Any]:
         """Explicit private provenance access; callers must authorize persistence."""
-        return deepcopy(self._source)
+        return json_snapshot(self._source)
 
     def __repr__(self) -> str:
         return f"<{type(self).__name__} private provider data>"
@@ -45,6 +46,15 @@ class _PrivateSource:
 class TehaAccount(_PrivateSource):
     account_id: int
     mandant_id: int
+    _profile_schema: dict[str, Any] = field(default_factory=dict, repr=False, kw_only=True)
+
+    def private_profile_snapshot(self) -> dict[str, Any]:
+        """Nonsecret profile/roles require authorized encrypted private storage."""
+        return self.source_snapshot()
+
+    def profile_schema_snapshot(self) -> dict[str, Any]:
+        """Observed names/types only; dynamic field names can still be private."""
+        return json_snapshot(self._profile_schema)
 
 
 @dataclass(frozen=True, repr=False)
@@ -67,10 +77,10 @@ class TehaDocument(_PrivateSource):
     lieg_nr: str
 
     def properties_snapshot(self) -> dict[str, Any]:
-        return deepcopy(self._source["properties"])
+        return json_snapshot(self._source["properties"])
 
     def attachments_snapshot(self) -> list[Any]:
-        return deepcopy(self._source["attachments"])
+        return json_snapshot(self._source["attachments"])
 
 
 @dataclass(frozen=True, repr=False)

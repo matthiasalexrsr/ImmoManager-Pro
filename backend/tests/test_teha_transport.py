@@ -91,7 +91,7 @@ def test_observed_authentication_and_private_session_close():
     assert json.loads(requests[0].content) == {"Mandant": 1, "Username": "synthetic-user", "PasswordHash": SECRET}
     assert "Authorization" not in requests[0].headers
     assert account.account_id == 7 and account.mandant_id == 1
-    assert account.source_snapshot() == {"id": 7, "mandantId": 1}
+    assert account.source_snapshot() == {"id": 7, "mandantId": 1, "error": None, "name": "synthetic-private-account"}
     assert transport.authenticated
     assert transport._refresh_token == REFRESH
     assert SECRET not in repr(transport) and ACCESS not in repr(transport)
@@ -103,6 +103,33 @@ def test_observed_authentication_and_private_session_close():
     assert_error("transport_closed", transport.list_property_periods)
     assert len(requests) == 1
     transport.close()  # Closing is idempotent.
+
+
+def test_private_auth_profile_retains_roles_and_unknowns_but_recursively_removes_secrets():
+    payload = login_payload(email="synthetic@example.invalid", rollen=["synthetic-role"],
+        Username="synthetic-user", unknown_profile={"extra": ["preserved", {"value": 42}],
+        "nested": {"Access_Token": ACCESS, "passwordHash": SECRET, "client_secret": "another-secret"},
+        "neutral_alias": REFRESH, "cookie_echo": "synthetic-cookie"}, Cookie="synthetic-cookie", unknown_flag=True)
+    original = json.loads(json.dumps(payload))
+    with TehaTransport(transport=httpx.MockTransport(lambda request: httpx.Response(200, json=payload,
+        headers={"Set-Cookie": "session=synthetic-cookie; Secure; HttpOnly"}))) as transport:
+        account = transport.authenticate("synthetic-user", SECRET)
+        profile = account.private_profile_snapshot()
+        schema = account.profile_schema_snapshot()
+    assert profile["email"] == "synthetic@example.invalid" and profile["Username"] == "synthetic-user"
+    assert profile["rollen"] == ["synthetic-role"] and profile["unknown_flag"] is True
+    assert profile["unknown_profile"] == {"extra": ["preserved", {"value": 42}], "nested": {}}
+    assert "Cookie" not in profile and "accessToken" not in profile and "refreshToken" not in profile
+    assert payload == original
+    profile["unknown_profile"]["extra"].append("external mutation")
+    assert account.private_profile_snapshot()["unknown_profile"]["extra"] == ["preserved", {"value": 42}]
+    encoded_schema = json.dumps(schema)
+    assert "/accessToken" in encoded_schema and "/unknown_profile/nested/Access_Token" in encoded_schema
+    for value in (SECRET, ACCESS, REFRESH, "another-secret", "synthetic-cookie", "synthetic@example.invalid", "preserved"):
+        assert value not in encoded_schema
+        assert value not in repr(account)
+    schema["fields"].clear()
+    assert account.profile_schema_snapshot()["fields"]
 
 
 def test_context_manager_clears_tokens_even_on_caller_exception():

@@ -23,7 +23,17 @@ Im Livebeleg war der einzige Auftrag terminiert und seine drei Datumsfelder ware
 
 ## Öffentliche Daten und sichere Fehler
 
-`teha_types.py` enthält getrennte DTOs. Private Providerquellen sind nur über explizite Snapshotmethoden verfügbar und fehlen in `repr`/`str`. Snapshotrückgaben sind tiefe Kopien. Accountantworten behalten absichtlich ausschließlich Account-/Mandantenidentität; unbekannte Loginantwortfelder und ursprüngliche Login-JSON werden nicht gespeichert. Access-/Refresh-Token und Cookies werden bei `close()` vollständig aus den Transportattributen entfernt; ein Ersatzlogin räumt die alte Identität vorher auf und scheitert ohne Restanmeldung. HTTP 401 entfernt die Sitzung und verlangt eine klare erneute Anmeldung. Es wird kein Refreshendpunkt angenommen und keine automatische Login-/Requestschleife gestartet.
+`teha_types.py` enthält getrennte DTOs. Private Providerquellen sind nur über explizite Snapshotmethoden verfügbar und fehlen in `repr`/`str`. Snapshotrückgaben sind tiefe, iterative Kopien. Nach der erweiterten Nutzeranweisung bewahren Accountantworten jetzt zusätzlich Profil-, Rollen- und unbekannte Nichtsecretfelder in `private_profile_snapshot()`. Rekursiv entfernte Token-/Passwort-/Authorization-/Cookie-/Secretkeys sowie exakte Wertaliase des gerade verwendeten Passworts, Access-/Refresh-Tokens und Sitzungscookies fehlen darin. Unbereinigte Login-JSON wird nicht aufbewahrt. Access-/Refresh-Token und Cookies bleiben separat im Sitzungsspeicher und werden bei `close()` vollständig aus den Transportattributen entfernt; ein Ersatzlogin räumt die alte Identität vorher auf und scheitert ohne Restanmeldung. HTTP 401 entfernt die Sitzung und verlangt eine klare erneute Anmeldung. Es wird kein Refreshendpunkt angenommen und keine automatische Login-/Requestschleife gestartet.
+
+Private Snapshots enthalten weiterhin persönliche Daten wie Benutzername, Email oder Rollen und bedeuten keine Veröffentlichungserlaubnis. Dauerhafte Speicherung benötigt ausdrücklich autorisierte Portfolio-/Benutzergrenzen und Verschlüsselung; kein allgemeiner Export, Integrationslog oder unverdecktes UI-Payload. Die Secretregel ist unter `PROFILE_SECRET_POLICY_VERSION=1` dokumentiert. Sie erkennt bekannte Keynamen und exakte bekannte Sitzungswertaliase, verspricht keine semantische Erkennung jedes denkbaren in Freitext eingebetteten Geheimnisses.
+
+## Vollständige Strukturbeobachtung ohne weitere Requests
+
+`schema_observation.py` ist anbieterunabhängig und führt ausschließlich bereits vorliegende JSON-Strukturen zusammen. `JsonSchemaObserver.observe()` erfasst jeden Wert iterativ, `merge()` vereinigt getrennte Batches und `report()` liefert ausschließlich normalisierte JSONPointer-Feldpfade, Typen, Typ-/Nullvorkommen und fehlende Objektfelder. Es gibt keine Beispiele, Originalwerte, Stringlängen, erste-100-Zeilen-Stichprobe oder Netzwerkaktion. Ein Fehler in einer späten Zeile ändert zuvor bestätigte Beobachtungen nicht. Aliasobjekte werden je Vorkommen gezählt, nur echte Vorfahrenzyklen werden abgewiesen.
+
+Arraypositionen sind auf Pointertoken `0` normalisiert und zusätzlich mit den Segmentpositionen `array_positions` markiert. Dadurch bleiben etwa ein echter Objektschlüssel `"0"` und eine Arrayposition trotz ähnlichem Pointer getrennt. Diese Pointer sind Schemapatterns; die erste Zeile muss nicht alle später beobachteten Felder enthalten. Normales JSONPointer-Escaping für `/`, `~` und leere Schlüssel bleibt erhalten.
+
+`profile_schema_snapshot()` bewahrt den vollständigen Auth-Feld-/Typkatalog vor dem Secretfilter. Damit sind auch Namen/Typen von Tokenfeldern untersuchbar, ihre konkreten Werte bleiben ausgeschlossen. Der Katalog ist keine pauschal öffentliche anonymisierte Datei: dynamische Objektschlüssel können selbst personenbezogene Kennungen enthalten und erfordern weiterhin autorisierte private Speicherung. Neue Endpunkte, Queries oder Provider-Schreiboperationen werden daraus nicht erfunden oder automatisch ausgeführt.
 
 `TehaError` enthält einen statischen sicheren Code, `retryable`, optional `retry_after_seconds` und `http_status`. HTTPX-Ausnahmetexte, Providerfehlermeldungen, Rohantworten, Passwort/Token und Redirectziele werden nicht übernommen. 429 und vorübergehende Server-/Netzwerkfehler sind als wiederholbar gekennzeichnet; `Retry-After` wird als Sekunden oder HTTP-Datum normalisiert. Tatsächliche Wiederholung gehört später in den dauerhaften Job, nicht in eine verborgene Transportschleife. 403 bleibt eine Berechtigungsablehnung und löst keine neue Anmeldung aus.
 
@@ -41,10 +51,11 @@ Datumsstrings bleiben unverändert; keine Zeitzone des Servers oder Windowsrechn
 
 ## Validierung dieser Einheit
 
-- 110 fokussierte Tests bestanden, einschließlich der sechs tatsächlichen Requestformen, vier Periodenzeilen zu zwei Immobilien, voller Liste mit 10.007 Zeilen, unveränderter PDF-/Hashausgabe und bewahrten unbekannten Feldern.
+- 149 fokussierte Transport-/Schema-Tests bestanden, einschließlich der sechs tatsächlichen Requestformen, vier Periodenzeilen zu zwei Immobilien, voller Liste mit 10.007 Zeilen, unveränderter PDF-/Hashausgabe und bewahrten unbekannten Feldern. Der erste unveränderte Transportcommit wurde mit 110 Tests geprüft; die separate Ergänzung erweitert die Profilbewahrung und Beobachtung.
 - Negative Fälle: numerische ID-/Booleanverwechslung, falsche Shapes, HTML200/ungültiges JSON, Providerfailure, Authwechsel/401, fehlende Anmeldung, 403/429/503, Timeouts, fremde Redirects und interne absolute URL/Pfadmanipulation, Base64/PDF-Signatur, Response-/Dokumentbudgets einschließlich Streaming und dekomprimiertem Inhalt.
-- Ruff für alle drei Providerdateien und die fokussierte Testdatei erfolgreich.
-- Mypy für dieselben vier Dateien mit Linux/Python 3.11 und Windows/Python 3.12 erfolgreich.
+- Neue Belege: erst in Zeile 10.007 auftauchende Felder und Typwechsel, korrekte Null-/Fehlendstatistik, Aliasvorkommen, Pointerescapes/Array-Objekt-0-Unterscheidung, 1.200 Ebenen ohne Pythonrekursion sowie unveränderte Eingänge und rekursiv geheimnisbereinigte private Profilsnapshots.
+- Ruff für alle vier Providerdateien und beide fokussierten Testdateien erfolgreich.
+- Mypy für dieselben sechs Dateien mit Linux/Python 3.11 und Windows/Python 3.12 erfolgreich.
 - Unabhängiger Read-only-Review: der gefundene interne Origin-Fallstrick wurde durch die feste Allowlist behoben und mit zusätzlichen synthetischen Fremdurl-/Traversal-/Query-Repros unabhängig bestätigt; keine weiteren blockierenden Befunde im Transportumfang.
 
 Keine echten Zugangsdaten, Tokens, Immobilienkennungen, Bewohnerdaten oder Originaldokumente befinden sich in Code oder Fixtures.
