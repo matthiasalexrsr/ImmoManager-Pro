@@ -96,10 +96,37 @@ HTTP-Projektion der Datei-, Dokument- und Threadanalyse samt explizitem Teilstat
 **86 PASS**, striktes SQL, 33,00 s, in `work/ai-http-projection-composed.log`;
 Ruff sowie Mypy der drei Routen bestehen. Diese Prüfung ist kein Nachweis eines
 externen Modells: ausschließlich synthetische Pipelines und Dokumente.
-Der zusätzliche Retokenisierungsbefund ist noch beim Backend-Assistenten aktiv.
+Der zusätzliche Retokenisierungsbefund ist inzwischen mit `fa12ef7` umgesetzt
+und als `4bb9519` übernommen: jedes tatsächlich abgeschnittene Tokenizerstück
+wird erneut geprüft, einschließlich Zero-Shot-Paarbudget und NER-Overlap.
+Ein dabei aufgefallener UTF-8-Regressionsfehler wurde mit `b4a65bb`/`5d8396f`
+korrigiert und durch echte deutsche Aktionssätze geprüft. Zusammengesetzt mit
+Root-HTTP-Projektion, bestehender Datei-/Zugriffs-/Integrationsgruppe: **102 PASS**,
+striktes SQL, 27,63 s; `work/ai-http-retokenization-composed.log`. Keine realen
+Modelle oder privaten Texte. Ruff der betroffenen Produkt-/Testquellen grün.
 
 Die UI-Überarbeitung `52912583` ist als `af583dc` enthalten. Der erweiterte echte
 Browserlauf fand beim Speichern einer neuen Entwurfsfassung eine 422 wegen
 `steps[0].id`; dieser konkrete Alltagsfehler und die sofortige Bindung aufgelöster
 Namen an Principal/Loader/ID werden beim Frontend-Assistenten korrigiert.
-Der endgültige UI-Browsergate steht folglich noch aus.
+Diese beiden konkreten Fehler sind mit `b3e639d`/`2cb653a` korrigiert. Das
+anschließende UI-Paket `6567bdb`/`e83790c` stellt auf kleinen Bildschirmen die
+aktive Wechselakte vor die lange neue Vorbereitung; die Formularinstanz bleibt
+gemountet und wird erst bei bestätigtem Erfolg kompakt. Unknown behält die
+ursprüngliche Vorschau und den identischen Retry. Root-E2E beweist reale
+201-Publikation mit verlorener Antwort, identischen Replay, Tasklink/Abschluss,
+Reload, geänderte neue Vorlage bei unveränderter alter Fassung und unterschiedliche
+Objektabläufe. Zusätzlich: kompakt/reopen mit derselben Objekt-/Einheitsbindung
+und tatsächliche Sidebar-/Scrollgeometrie bei 1440/360/320. **1 PASS**, 32,0 s
+Gesamtlauf, echter installierter Edge mit isoliertem SQL-Server;
+`work/workflow-browser-compact-edge-composed.log`. Lokaler gebündelter Chromium
+ließ sich zuvor nicht starten (`spawn UNKNOWN`); kein Produkt-/Testfilter wurde
+dafür geändert. Root hat die finalen Viewportbilder visuell geprüft; Full-page-
+Sticky-Captureartefakte zählen nicht als Layoutbeweis. Weitere Unit-/Typprüfungen
+und laufende Privacy-/Historykomposition sind separat dokumentiert.
+
+Die neue Wohnungsgeberbestätigung ist vor Sourceänderungen ausführlich in
+`WOHNUNGSGEBERBESTAETIGUNG_PLAN_20261002.md` geplant und auf die amtlichen Quellen
+abgeglichen. Backend-/Frontend-Assistenten werden dafür im bestehenden Chatpaar
+koordiniert. Vollständige Implementierung/PDF-/Browserabnahme ist damit noch nicht
+behauptet. Main und aktive Release126-Vorschau bleiben unverändert.

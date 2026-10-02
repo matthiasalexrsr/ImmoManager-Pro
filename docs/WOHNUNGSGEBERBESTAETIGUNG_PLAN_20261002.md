@@ -143,3 +143,22 @@ Offline-Vollsicherung akzeptiert Original und verweigert beschädigte Metadaten.
 Keine Hauptdatenbank, Privatnamen, Portalzugänge oder Release126-Vorschau werden
 für Tests verändert. Ein veröffentlichter Erfolg wird erst nach Komposition und
 den passenden Beweisen berichtet.
+
+## Ergänzung aus der unabhängigen Planprüfung, vor Featurecode
+
+Die Original-Publish-Hilfe setzt tatsächlich bereits gesperrte Eltern voraus;
+ein bloßer Aufruf ersetzt weder Account- noch Parent-Fence. Der Profil-Fence
+verweigert entgegengesetzte PG-Sperrketten mit NOWAIT. Diese tatsächliche
+Kombination wird getestet. Ein erfolgreicher identischer Replay prüft die
+gespeicherte Freigabe und aktuelle Zugänglichkeit, verlangt aber keinen neuen
+Review-ETag nach einer harmlosen späteren Namens-/Titelkorrektur.
+
+Die bestehende Originalbindung lässt sich im gewöhnlichen CRUD nicht auf eine
+andere Vertragspartei umschreiben: der reale Memory/SQLite-Gegenfall
+`test_contract_bound_original_keeps_tenant_and_derived_unit_through_all_cascades`
+belegt die Retentionssperre. Das unterscheidet sich von einem ausschließlich
+historischen Workflow ohne solchen Dokumentbeleg. Neue Featuretests erhalten
+diesen Schutz und belegen die vollständige aktuelle Personenauskunft. Weitere
+frei erfasste Haushaltsnamen sind im Original enthalten; eine eigenständige
+Auskunft nach Namen oder eine Zuordnung zu erfundenen TenantIDs wird nicht
+behauptet. Die Grenze wird im Quellen-/Scopehinweis dokumentiert.
