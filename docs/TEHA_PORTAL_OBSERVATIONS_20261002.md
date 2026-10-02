@@ -10,6 +10,8 @@ Die Anmeldung, Liegenschaftsliste, Dokumentliste, eine Originalrechnung und Kund
 
 Die Antwort besitzt unter anderem `id`, `mandantId`, `name`, `vorname`, `nachname`, `email`, `accessToken`, `refreshToken`, `rollen` und `error`. Nachfolgende Portalaufrufe verwenden `Authorization: Bearer …`. Die tatsächliche Refresh-Operation und ihre Fehlersemantik wurden noch nicht beobachtet. Eine Implementierung darf deshalb keinen Refresh-Endpunkt erfinden. Bei abgelaufener Sitzung ist zunächst eine eindeutige erneute Anmeldung vorzusehen; dauerhafte Geheimnisse benötigen getrennte geschützte Speicherung. Antworten und Fehlermeldungen dürfen keinen Token oder Passwortinhalt protokollieren.
 
+Die ergänzende statische Untersuchung der öffentlich ausgelieferten Portaldatei belegt inzwischen `POST /api/user/refresh` mit `RefreshToken`, noch keine tatsächliche erfolgreiche Erneuerung. Der [Interfacekatalog](TEHA_PUBLIC_INTERFACE_CATALOG_20261002.md) hält 74 Aufrufstellen und ihre öffentlichen Parameter-/Wertausdrücke getrennt von den Livebelegen fest.
+
 ## Liegenschaften und Abrechnungsperioden
 
 `GET /api/liegenschaften` antwortete mit HTTP 200 und den Schlüsseln `success`, `fehlermeldung`, `liegenschaften`.
