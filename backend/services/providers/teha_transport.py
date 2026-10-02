@@ -10,9 +10,11 @@ from __future__ import annotations
 import base64
 import binascii
 import hashlib
+import inspect
 import json
 import math
 import re
+from collections.abc import Callable
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from time import monotonic
@@ -20,7 +22,8 @@ from typing import Any
 
 import httpx
 
-from .schema_observation import JsonSchemaObserver, json_snapshot, private_profile_snapshot
+from .exchange_observation import PrivateJsonExchange, observe_json_exchange
+from .schema_observation import json_snapshot
 from .teha_types import (
     TehaAccount,
     TehaDocument,
@@ -94,7 +97,7 @@ def _retry_after(value: str | None) -> float | None:
         return None
 
 
-def _json_object(raw: bytes) -> dict[str, Any]:
+def _json_value(raw: bytes) -> Any:
     def unique(pairs):
         result = {}
         for key, value in pairs:
@@ -113,8 +116,8 @@ def _json_object(raw: bytes) -> dict[str, Any]:
         raise ValueError
 
     try:
-        return _object(json.loads(raw.decode("utf-8-sig"), object_pairs_hook=unique,
-                                  parse_float=finite, parse_constant=reject))
+        return json.loads(raw.decode("utf-8-sig"), object_pairs_hook=unique,
+                          parse_float=finite, parse_constant=reject)
     except (ValueError, UnicodeError, RecursionError):
         raise TehaError("provider_response_invalid_json") from None
 
@@ -130,16 +133,22 @@ class TehaTransport:
     def __init__(self, *, max_response_bytes: int = 64 * 1024**2,
                  max_document_bytes: int = 48 * 1024**2, timeout_seconds: float = 30.0,
                  response_deadline_seconds: float = 120.0,
+                 private_exchange_sink: Callable[[PrivateJsonExchange], None] | None = None,
                  transport: httpx.BaseTransport | None = None):
         if (type(max_response_bytes) is not int or max_response_bytes <= 0
                 or type(max_document_bytes) is not int or max_document_bytes <= 0
                 or not _positive(timeout_seconds) or not _positive(response_deadline_seconds)):
             raise TehaError("invalid_transport_budget")
+        if private_exchange_sink is not None and (not callable(private_exchange_sink)
+                                                 or inspect.iscoroutinefunction(private_exchange_sink)):
+            raise TehaError("invalid_observation_sink")
         self._response_budget = max_response_bytes
         self._document_budget = max_document_bytes
         self._response_deadline = response_deadline_seconds
         self._access_token: str | None = None
         self._refresh_token: str | None = None
+        self._private_exchange_sink = private_exchange_sink
+        self._last_exchange: PrivateJsonExchange | None = None
         self._closed = False
         self._client = httpx.Client(base_url=TEHA_ORIGIN, verify=True, trust_env=False,
                                     follow_redirects=False, timeout=timeout_seconds,
@@ -158,8 +167,44 @@ class TehaTransport:
         self._refresh_token = None
         self._client.cookies.clear()
 
+    def private_last_exchange_snapshot(self) -> dict[str, Any] | None:
+        """Only the latest parsed response, explicit private access, no history."""
+        return self._last_exchange.private_snapshot() if self._last_exchange else None
+
+    def private_exchange_schema_snapshot(self) -> dict[str, Any] | None:
+        """Complete latest request/response shape; no lifetime accumulation."""
+        return self._last_exchange.private_schema_snapshot() if self._last_exchange else None
+
+    def _session_secret_values(self) -> tuple[str, ...]:
+        return (self._access_token or "", self._refresh_token or "",
+                *(cookie.value or "" for cookie in self._client.cookies.jar))
+
+    def _observe_exchange(self, response: httpx.Response, body: dict | None, payload: Any,
+                          known_secret_values: tuple[str, ...]) -> None:
+        try:
+            request = response.request
+            exchange = observe_json_exchange(method=request.method, path=request.url.path,
+                query=[[key, value] for key, value in request.url.params.multi_items()], body=body,
+                request_headers=request.headers.multi_items(), status=response.status_code,
+                response_headers=response.headers.multi_items(), payload=payload,
+                known_secret_values=(*known_secret_values, *self._session_secret_values(),
+                                     *(cookie.value or "" for cookie in response.cookies.jar)))
+            if self._private_exchange_sink is not None:
+                result: Any = self._private_exchange_sink(exchange.independent_copy())
+                if result is not None:
+                    if inspect.iscoroutine(result):
+                        result.close()
+                    raise ValueError("invalid_observation_sink_result")
+            self._last_exchange = exchange
+        except Exception:
+            # Neither caller callback exceptions nor schema/copy failures may
+            # masquerade as success or expose private request/response text.
+            raise TehaError("provider_observation_failed") from None
+
     def close(self) -> None:
         self._clear_auth()
+        self._last_exchange = None
+        self._private_exchange_sink = None
         self._closed = True
         self._client.close()
 
@@ -184,28 +229,37 @@ class TehaTransport:
             raise TehaError("provider_operation_not_allowed")
         if not login and not self._access_token:
             raise TehaError("authentication_required")
+        self._last_exchange = None
+        known_secrets = (*self._session_secret_values(),
+                         body.get("PasswordHash", "") if login and body else "")
         headers = {} if login else {"Authorization": "Bearer " + str(self._access_token)}
         started = monotonic()
         try:
             with self._client.stream(method, path, json=body, headers=headers) as response:
                 status = response.status_code
                 if 300 <= status < 400:
-                    raise TehaError("provider_redirect_denied", http_status=status)
+                    status_error = TehaError("provider_redirect_denied", http_status=status)
+                else:
+                    status_error = None
                 if status == 401:
                     self._clear_auth()
-                    raise TehaError("authentication_failed" if login else "authentication_expired", http_status=status)
+                    status_error = TehaError("authentication_failed" if login else "authentication_expired",
+                                             http_status=status)
                 if status == 403:
-                    raise TehaError("provider_permission_denied", http_status=status)
+                    status_error = TehaError("provider_permission_denied", http_status=status)
                 if status == 429:
-                    raise TehaError("provider_rate_limited", retryable=True,
-                                    retry_after_seconds=_retry_after(response.headers.get("Retry-After")), http_status=status)
+                    status_error = TehaError("provider_rate_limited", retryable=True,
+                        retry_after_seconds=_retry_after(response.headers.get("Retry-After")), http_status=status)
                 if status in {408, 425} or 500 <= status < 600:
-                    raise TehaError("provider_temporarily_unavailable", retryable=True,
-                                    retry_after_seconds=_retry_after(response.headers.get("Retry-After")), http_status=status)
-                if not 200 <= status < 300:
-                    raise TehaError("authentication_failed" if login else "provider_http_error", http_status=status)
+                    status_error = TehaError("provider_temporarily_unavailable", retryable=True,
+                        retry_after_seconds=_retry_after(response.headers.get("Retry-After")), http_status=status)
+                if not 200 <= status < 300 and status_error is None:
+                    status_error = TehaError("authentication_failed" if login else "provider_http_error",
+                                             http_status=status)
                 mime = response.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
                 if mime != "application/json" and not (mime.startswith("application/") and mime.endswith("+json")):
+                    if status_error is not None:
+                        raise status_error
                     raise TehaError("provider_response_not_json")
                 length = response.headers.get("Content-Length")
                 if length and length.isascii() and length.isdigit():
@@ -225,7 +279,25 @@ class TehaTransport:
                     chunks.append(chunk)
                 if monotonic() - started > self._response_deadline:
                     raise TehaError("provider_response_deadline", retryable=True)
-                return _json_object(b"".join(chunks))
+                try:
+                    payload = _json_value(b"".join(chunks))
+                except TehaError:
+                    # A broken error body remains an HTTP failure, never an
+                    # accepted complete JSON observation. 2xx stays strict.
+                    if status_error is not None:
+                        raise status_error from None
+                    raise
+                self._observe_exchange(response, body, payload, known_secrets)
+                if status_error is not None:
+                    raise status_error
+                # Authentication alone needs ephemeral raw tokens. Every other
+                # DTO is projected from the whole sanitized envelope, so a
+                # secret named at top level cannot leak through a row alias.
+                if login:
+                    return _object(payload)
+                if self._last_exchange is None:
+                    raise TehaError("provider_observation_failed")
+                return _object(self._last_exchange.private_response_snapshot())
         except httpx.TimeoutException:
             raise TehaError("provider_timeout", retryable=True) from None
         except httpx.RequestError:
@@ -234,12 +306,13 @@ class TehaTransport:
     def authenticate(self, username: str, password: str) -> TehaAccount:
         # A failed replacement login must not silently retain an old identity.
         self._clear_auth()
+        self._last_exchange = None
         if (not isinstance(username, str) or not username.strip() or not isinstance(password, str)
                 or not password or any(c in username for c in "\r\n\0")):
             raise TehaError("invalid_credentials_input")
         try:
             return self._authenticate(username, password)
-        except TehaError:
+        except BaseException:
             self._clear_auth()
             raise
 
@@ -260,9 +333,12 @@ class TehaTransport:
         mandant = _number(payload.get("mandantId"))
         if mandant != 1:
             raise TehaError("provider_account_mismatch")
-        profile_schema = JsonSchemaObserver().observe(payload).report()
-        secret_values = (access, refresh or "", password, *(cookie.value or "" for cookie in self._client.cookies.jar))
-        private_source = private_profile_snapshot(payload, known_secret_values=secret_values)
+        if self._last_exchange is None:
+            raise TehaError("provider_observation_failed")
+        # The profile and its shape share all request/response/header secret
+        # knowledge. A neutral alias of a secret header cannot bypass via DTO.
+        profile_schema = self._last_exchange.private_response_schema_snapshot()
+        private_source = _object(self._last_exchange.private_response_snapshot())
         self._access_token = access
         self._refresh_token = refresh
         return TehaAccount(account_id=identifier, mandant_id=mandant, _source=private_source,

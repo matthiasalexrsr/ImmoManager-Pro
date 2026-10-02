@@ -82,7 +82,7 @@ def test_observed_authentication_and_private_session_close():
     def handler(request):
         requests.append(request)
         return httpx.Response(200, json=login_payload(unknown_secret="must-not-be-retained"),
-                              headers={"Set-Cookie": "private-session=synthetic; Secure; HttpOnly"})
+                              headers={"Set-Cookie": "private-session=synthetic-session-cookie; Secure; HttpOnly"})
 
     transport = TehaTransport(transport=httpx.MockTransport(handler))
     account = transport.authenticate("synthetic-user", SECRET)
