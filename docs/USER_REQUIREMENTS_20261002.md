@@ -1,5 +1,7 @@
 # Ergänzungen des Eigentümers vom 2. Oktober 2026
 
+Zusätzliche ausdrückliche Freigabe im laufenden Chat: Alle Adapter dürfen sämtliche auffindbaren Schnittstellen, Parameter und Werte extrahieren. Discovery, vollständige Feld-/Typbeobachtung und private unbekannte Quellfelder sind daher Teil des Adapterkonzepts. Dies ersetzt keine Daten-/Benutzerrechte und macht noch ungeprüfte externe Schreibvorgänge nicht zu einem fertigen Fachablauf. Zugangsdaten, Tokens und private Schema-/Objektwerte bleiben geschützt und gehören nicht in öffentliche Quellen oder allgemeine Diagnoseprotokolle.
+
 Diese Anforderungen ergänzen das historische Inventar. Sie sind verbindlicher Produktumfang, aber noch kein Nachweis einer vollständigen Implementierung. Der laufende Korrespondenz-/Fristenstand wird zuerst integriert, damit die neuen Abläufe dieselben Benutzerrechte, Sicherungen und Originalbelege verwenden.
 
 | Bereich | Konkreter gewünschter Ablauf | Bestehende Grundlage und notwendige Ergänzung |
