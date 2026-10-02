@@ -80,7 +80,7 @@ class IntegrationManager:
             "planned": manifest.planned,
             "enabled": enabled,
             "configured": configured,
-            "operational": not manifest.planned and enabled and configured and health.get("status") == "ok",
+            "operational": not manifest.planned and enabled and configured and health.get("status") in {"ok", "configured"},
             "capabilities": manifest.capabilities,
             "health": health,
             "config": self._safe_config(manifest, config),
@@ -262,7 +262,7 @@ class IntegrationManager:
         ticket = journal.accept(integration_id, actor, request, schema)
 
         def finish(result, state):
-            safe, response_schema = response_observation(result, known_secrets)
+            safe, response_schema = response_observation(result, known_secrets, integration_id=integration_id)
             journal.append(ticket, state, {"response": safe, "schema": response_schema})
             return {**safe, "run_id": ticket.run_id, "history_status": state, "history_recorded": True}
 
@@ -367,7 +367,7 @@ class IntegrationManager:
         if not configured:
             return "Konfiguration erforderlich"
         if health.get("transport_checked") is False:
-            return "Konfiguriert; SMTP-Transport noch ungeprüft"
+            return "Konfiguriert; Transport noch ungeprüft"
         if health_state in {"ok", "configured"}:
             return "Aktiv"
         return "Aktiv (eingeschränkt)"

@@ -19,7 +19,7 @@ RESOURCE_CAPABILITY = {
     **dict.fromkeys(("maintenance", "tasks", "calendar", "escalation", "meters", "handover-protocols", "tasks-status", "tenancy-changes"), "operations"),
     **dict.fromkeys(("documents", "files", "photos"), "documents"),
     **dict.fromkeys(("listings", "leads", "viewings"), "marketing"),
-    **dict.fromkeys(("messages", "contacts", "notifications", "notification-templates"), "communication"),
+    **dict.fromkeys(("messages", "contacts", "notifications", "notification-templates", "communication-center"), "communication"),
 }
 
 

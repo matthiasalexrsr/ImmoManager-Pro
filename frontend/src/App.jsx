@@ -31,6 +31,7 @@ const Contacts = lazy(() => import('./pages/Contacts'));
 const Statements = lazy(() => import('./pages/Statements'));
 const FinancialWorkspace = lazy(() => import('./pages/FinancialWorkspace'));
 const Messages = lazy(() => import('./pages/Messages'));
+const CommunicationCenter = lazy(() => import('./pages/CommunicationCenter'));
 const Settings = lazy(() => import('./pages/Settings'));
 const PropertyDetail = lazy(() => import('./pages/PropertyDetail'));
 const Categories = lazy(() => import('./pages/Categories'));
@@ -164,6 +165,7 @@ export default function App() {
           <Route path="statements" element={<Statements />} />
           <Route path="financial-workspace" element={<FinancialWorkspace />} />
           <Route path="messages" element={<Messages />} />
+          <Route path="communication-center" element={<CommunicationCenter />} />
           <Route path="outbox" element={<Outbox />} />
           <Route path="categories" element={<Categories />} />
           <Route path="deposits" element={<Deposits />} />

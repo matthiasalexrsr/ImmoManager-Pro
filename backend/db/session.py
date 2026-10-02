@@ -16,6 +16,7 @@ from .billing_dispute_models import (
     DISPUTE_MODELS,  # noqa: F401 — register retained dispute originals before fresh setup
 )
 from .booking_indexes import BOOKING_INDEXES  # noqa: F401 — register scaled booking indexes
+from .communication_center_models import CommunicationDraftORM  # noqa: F401 — register communication metadata
 from .contract_correspondence_models import CorrespondenceDraftORM  # noqa: F401 — register retained correspondence
 from .contract_lifecycle_models import ContractLifecycleDraftORM  # noqa: F401 — register retained lifecycle evidence
 from .contract_wizard_models import ContractDraftORM  # noqa: F401 — register reviewed contract metadata
@@ -117,6 +118,7 @@ def create_tables() -> None:
     from ..services.invoice_payment_schema import ensure_invoice_payment_columns, ensure_invoice_payment_immutability
     from ..services.portfolio_scope import ensure_portfolio_access_schema
     from .bank_import_schema import ensure_bank_import_schema
+    from .communication_center_models import ensure_communication_center_schema
     from .contract_correspondence_models import ensure_contract_correspondence_schema
     from .contract_lifecycle_models import ensure_contract_lifecycle_schema
     from .contract_wizard_models import ensure_contract_wizard_schema
@@ -140,6 +142,7 @@ def create_tables() -> None:
         ensure_session_schema(connection)
         ensure_bank_import_schema(connection)
         ensure_contract_wizard_schema(connection)
+        ensure_communication_center_schema(connection)
         ensure_contract_lifecycle_schema(connection)
         ensure_contract_correspondence_schema(connection)
         ensure_document_version_schema(connection)

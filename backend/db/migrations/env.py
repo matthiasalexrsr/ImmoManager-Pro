@@ -14,6 +14,7 @@ from backend.db.auth_models import AuthSetupORM  # noqa: F401 — register auth 
 from backend.db.bank_import_models import BankImportORM  # noqa: F401 — register retained bank import provenance
 from backend.db.billing_dispute_models import DISPUTE_MODELS  # noqa: F401 — register retained dispute originals
 from backend.db.booking_indexes import BOOKING_INDEXES  # noqa: F401 — register scaled booking indexes
+from backend.db.communication_center_models import CommunicationDraftORM  # noqa: F401 — register communication metadata
 from backend.db.contract_correspondence_models import (
     CorrespondenceDraftORM,  # noqa: F401 — register retained correspondence
 )

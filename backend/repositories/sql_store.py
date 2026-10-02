@@ -12,6 +12,7 @@ from pydantic import BaseModel as PydanticBaseModel
 from sqlalchemy import Table, select
 from sqlalchemy.orm import Session
 
+from ..db.communication_center_models import CommunicationDraftORM
 from ..db.outbox_models import OutboxCommandORM, OutboxEventORM, OutboxMessageORM
 from ..models import (
     Account,
@@ -174,6 +175,12 @@ class SQLAlchemyStore:
                     for model in (OutboxMessageORM, OutboxEventORM, OutboxCommandORM)):
                 self.db.rollback()
                 raise HTTPException(409, "outbox_history_exists: full offline recovery is required")
+            if self.db.scalar(select(CommunicationDraftORM.id).where(
+                    CommunicationDraftORM.status != "draft").limit(1)) is not None:
+                self.db.rollback()
+                raise HTTPException(
+                    409, "communication_history_exists: full offline recovery is required"
+                )
 
         # Known retained evidence refuses before even the draft writer's no-op
         # auth-row lock. Recheck after serialization, before business deletions.

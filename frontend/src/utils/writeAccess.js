@@ -10,7 +10,7 @@ export const RESOURCE_CAPABILITY = {
   meters: 'operations', 'handover-protocols': 'operations', 'tasks-status': 'operations',
   documents: 'documents', files: 'documents', photos: 'documents',
   listings: 'marketing', leads: 'marketing', viewings: 'marketing',
-  messages: 'communication', contacts: 'communication', notifications: 'communication', 'notification-templates': 'communication',
+  messages: 'communication', contacts: 'communication', notifications: 'communication', 'notification-templates': 'communication', 'communication-center': 'communication',
 };
 
 const all = ['administration', 'portfolio', 'rental', 'finance', 'billing', 'operations', 'documents', 'marketing', 'communication'];
