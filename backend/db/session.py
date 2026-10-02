@@ -13,6 +13,7 @@ from .access_models import UserAccessORM  # noqa: F401 — register access metad
 from .auth_models import AuthSetupORM  # noqa: F401 — register auth metadata before create_all
 from .bank_import_models import BankImportORM  # noqa: F401 — register retained bank import provenance
 from .booking_indexes import BOOKING_INDEXES  # noqa: F401 — register scaled booking indexes
+from .contract_correspondence_models import CorrespondenceDraftORM  # noqa: F401 — register retained correspondence
 from .contract_lifecycle_models import ContractLifecycleDraftORM  # noqa: F401 — register retained lifecycle evidence
 from .contract_wizard_models import ContractDraftORM  # noqa: F401 — register reviewed contract metadata
 from .credit_models import CreditReceiptORM  # noqa: F401 — register immutable credit metadata
@@ -57,6 +58,13 @@ def create_tables() -> None:
     """Create all tables (dev/test convenience). Use Alembic for production."""
     # Do not let create_all silently repair one half of a damaged retained pair.
     present = set(inspect(engine).get_table_names())
+    correspondence_tables = {"contract_correspondence_drafts", "contract_correspondence_commands", "contract_correspondence_events"}
+    if present & correspondence_tables and not correspondence_tables <= present:
+        raise RuntimeError("Incomplete contract correspondence journal schema; explicit schema recovery is required")
+    for name in correspondence_tables & present:
+        columns = {column["name"] for column in inspect(engine).get_columns(name)}
+        if not set(Base.metadata.tables[name].c.keys()) <= columns:
+            raise RuntimeError("Incomplete contract correspondence columns; explicit schema recovery is required")
     lifecycle_tables = {"contract_lifecycle_drafts", "contract_lifecycle_commands"}
     if present & lifecycle_tables and not lifecycle_tables <= present:
         raise RuntimeError("Incomplete contract lifecycle journal schema; explicit schema recovery is required")
@@ -65,6 +73,7 @@ def create_tables() -> None:
     from ..services.invoice_payment_schema import ensure_invoice_payment_columns, ensure_invoice_payment_immutability
     from ..services.portfolio_scope import ensure_portfolio_access_schema
     from .bank_import_schema import ensure_bank_import_schema
+    from .contract_correspondence_models import ensure_contract_correspondence_schema
     from .contract_lifecycle_models import ensure_contract_lifecycle_schema
     from .contract_wizard_models import ensure_contract_wizard_schema
     from .document_version_models import ensure_document_version_schema
@@ -80,6 +89,7 @@ def create_tables() -> None:
         ensure_bank_import_schema(connection)
         ensure_contract_wizard_schema(connection)
         ensure_contract_lifecycle_schema(connection)
+        ensure_contract_correspondence_schema(connection)
         ensure_document_version_schema(connection)
         ensure_invoice_payment_columns(connection)
         ensure_invoice_payment_immutability(connection)

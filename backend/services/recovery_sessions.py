@@ -49,6 +49,11 @@ def invalidate_and_inspect(connection, original_configuration, *, deadline):
         raise SessionRestoreError("restore_session_schema_incomplete: kompatible vollständige Sicherung erforderlich")
     # Validate every immutable original before revoking one family or creating
     # a new signing configuration. Both missing legacy tables remain compatible.
+    from .contract_correspondence_validation import EvidenceError, validate_correspondence_journal
+    try:
+        validate_correspondence_journal(connection, deadline=deadline)
+    except EvidenceError:
+        raise SessionRestoreError("restore_contract_correspondence_invalid: vollständige unveränderte Sicherung mit Originalen verwenden; Sicherheitsabschluss nicht ausgeführt") from None
     from .contract_lifecycle_validation import JournalValidationError, validate_lifecycle_journal
     from .document_version_validation import verify_document_versions
     from .recovery_archive import RecoveryError

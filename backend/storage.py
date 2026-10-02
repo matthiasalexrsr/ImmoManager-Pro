@@ -159,6 +159,9 @@ class InMemoryStore:
     # results must survive staging/rollback even though they are not business JSON.
     contract_lifecycle_drafts: Dict[str, Any] = field(default_factory=dict)
     contract_lifecycle_commands: Dict[str, Any] = field(default_factory=dict)
+    contract_correspondence_drafts: Dict[str, Any] = field(default_factory=dict)
+    contract_correspondence_commands: Dict[str, Any] = field(default_factory=dict)
+    contract_correspondence_events: Dict[str, Any] = field(default_factory=dict)
     def __getattribute__(self, name):
         value = object.__getattribute__(self, name)
         if isinstance(value, dict) and name in object.__getattribute__(self, "__dataclass_fields__"):
@@ -238,6 +241,8 @@ class InMemoryStore:
         require_installation_scope()
         from .services.contract_lifecycle import guard_destructive_reset as guard_lifecycle
         guard_lifecycle(self)
+        from .services.contract_correspondence import guard_destructive_reset as guard_correspondence
+        guard_correspondence(self)
         from .services.form_drafts import guard_destructive_reset as guard_form_drafts
         guard_form_drafts(self)
         from .services.contract_wizard import guard_destructive_reset
@@ -433,6 +438,8 @@ class InMemoryStore:
         if old.portfolio_id != data.portfolio_id:
             from .services.contract_lifecycle import guard_delete_link
             guard_delete_link(self, "property", property_id)
+            from .services.contract_correspondence import guard_delete_link as guard_correspondence_link
+            guard_correspondence_link(self, "property", property_id)
         from .services.document_version_guards import guard_edit
         guard_edit(self, "properties", old, data.model_dump())
         property_item = Property(
@@ -500,6 +507,8 @@ class InMemoryStore:
         if old.property_id != data.property_id:
             from .services.contract_lifecycle import guard_delete_link
             guard_delete_link(self, "unit", unit_id)
+            from .services.contract_correspondence import guard_delete_link as guard_correspondence_link
+            guard_correspondence_link(self, "unit", unit_id)
         from .services.document_version_guards import guard_edit
         guard_edit(self, "units", old, data.model_dump())
         unit = Unit(id=unit_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc), **data.model_dump())

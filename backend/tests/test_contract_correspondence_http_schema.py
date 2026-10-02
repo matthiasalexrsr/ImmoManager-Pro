@@ -16,7 +16,6 @@ from backend.db.contract_correspondence_models import (
     ensure_contract_correspondence_schema,
 )
 from backend.middleware import DBSessionMiddleware
-from backend.routers import contract_correspondence
 from backend.routing import build_api_v1
 from backend.services import contract_correspondence as service
 from backend.services.portfolio_http import PortfolioScopeMiddleware
@@ -36,10 +35,9 @@ def test_full_actual_api_with_jwt_scope_explicit_approval_readonly_download_and_
     user = auth.register_user("local-correspondence", "member@example.test", "Synthetic", "Strong123", "verwalter",
         portfolio_access="selected", portfolio_ids=[letter.p.id])
     headers = {"Authorization": "Bearer " + auth.create_access_token(user.id)}
-    # The production route builder plus this not-yet-Root-registered extension,
-    # with the actual authoritative portfolio middleware and actual JWT auth.
+    # The unmodified production route builder uses the real registered route,
+    # authoritative portfolio middleware and actual JWT authentication.
     router = build_api_v1()
-    router.include_router(contract_correspondence.router)
     app = FastAPI()
     app.include_router(router)
     base = "/api/v1/contracts/" + letter.contract.id + "/correspondence"

@@ -244,6 +244,16 @@ def download_file(key: str = Query(...)) -> Response:
         raise HTTPException(status_code=400, detail="Ungültiger Dateischlüssel")
 
     data = storage.get(safe_key)
+    if safe_key.startswith("contract-correspondence/"):
+        from ..dependencies import store
+        from ..services.contract_correspondence import read_pdf_for_key as read_correspondence_pdf
+        from ..services.portfolio_scope import current_scope
+        captured = current_scope()
+        if captured is None:
+            raise HTTPException(status_code=401, detail="Aktuelle Anmeldung erforderlich")
+        # This reserved virtual key always denotes the verified stored original,
+        # including when an unrelated physical file exists under the same key.
+        data = read_correspondence_pdf(store, safe_key, captured.user_id)
     if data is None and safe_key.startswith("contract-wizard/"):
         # Only exact server-generated wizard UUID keys are recognized. The
         # snapshot service rechecks current portfolio/document/contract scope.

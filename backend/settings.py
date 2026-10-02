@@ -145,6 +145,7 @@ class Settings(BaseSettings):
 
     # Operational batch sizes bound work per tick, never total stored records.
     operational_scheduler_enabled: bool = False
+    operational_scheduler_actor_id: str | None = None
     operational_scheduler_interval_seconds: int = Field(default=300, ge=10, le=86400)
     operational_scheduler_max_items: int = Field(default=500, ge=1, le=5000)
     operational_scheduler_lookback_days: int = Field(default=366, ge=1, le=3660)
@@ -153,6 +154,7 @@ class Settings(BaseSettings):
     bank_import_page_max_size: int = Field(default=500, ge=25, le=5000)
     bank_import_field_max_chars: int = Field(default=100000, ge=1024, le=100000000)
     contract_workspace_page_max_size: int = Field(default=500, gt=0)
+    contract_correspondence_page_max_size: int = Field(default=100, gt=0)
     contract_workspace_search_max_chars: int = Field(default=200, gt=0)
     form_draft_ttl_days: int = Field(default=7, ge=1, le=365)
     form_draft_max_bytes: int = Field(default=262144, ge=1024, le=16777216)

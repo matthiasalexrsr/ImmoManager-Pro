@@ -221,6 +221,11 @@ def _original_uri_matches(historical, key, old_root):
 
 
 def _scan(db, old_root, destination, catalog, deadline=None):
+    from .contract_correspondence_validation import EvidenceError, validate_correspondence_journal
+    try:
+        validate_correspondence_journal(db, deadline=deadline)
+    except (EvidenceError, sqlite3.Error):
+        raise RecoveryError("Die Vertragskorrespondenz ist ungültig. Vollständige unveränderte Sicherung mit Originalen verwenden.") from None
     from .contract_lifecycle_validation import JournalValidationError, validate_lifecycle_journal
     try:
         validate_lifecycle_journal(db)

@@ -170,6 +170,14 @@ def _database_info(path: Path, *, timeout_seconds: float = 300) -> dict:
         if tables & document_version_tables and not document_version_tables.issubset(tables):
             raise RecoveryError("Die Dokumenthistorie ist unvollständig. Vollständige Sicherung mit Originalen verwenden.")
         lifecycle_tables = {"contract_lifecycle_drafts", "contract_lifecycle_commands"}
+        correspondence_tables = {"contract_correspondence_drafts", "contract_correspondence_commands", "contract_correspondence_events"}
+        if tables & correspondence_tables and not correspondence_tables.issubset(tables):
+            raise RecoveryError("Die Vertragskorrespondenz ist unvollständig. Vollständige Sicherung mit Originalen verwenden.")
+        from .contract_correspondence_validation import EvidenceError, validate_correspondence_journal
+        try:
+            validate_correspondence_journal(db, deadline=deadline)
+        except (EvidenceError, sqlite3.Error):
+            raise RecoveryError("Die Vertragskorrespondenz ist ungültig. Vollständige unveränderte Sicherung mit Originalen verwenden.") from None
         if tables & lifecycle_tables and not lifecycle_tables.issubset(tables):
             raise RecoveryError("Die Vertragsablaufhistorie ist unvollständig. Vollständige Sicherung verwenden.")
         for table in Base.metadata.sorted_tables:
@@ -184,6 +192,8 @@ def _database_info(path: Path, *, timeout_seconds: float = 300) -> dict:
             if table.name in document_version_tables and not tables & document_version_tables:
                 continue
             if table.name in lifecycle_tables and not tables & lifecycle_tables:
+                continue
+            if table.name in correspondence_tables and not tables & correspondence_tables:
                 continue
             actual = {column[1] for column in db.execute('PRAGMA table_info("' + table.name.replace('"', '""') + '")')}
             # A verified backup must precede the offline w1 migration. These

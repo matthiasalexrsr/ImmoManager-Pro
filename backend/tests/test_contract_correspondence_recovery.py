@@ -16,7 +16,7 @@ from backend.repositories.sql_store import SQLAlchemyStore
 from backend.services import contract_correspondence as service
 from backend.services import recovery_sessions
 from backend.services.contract_correspondence_types import ApproveLetter, CreateLetter, ManualEvent, RevisionCommand
-from backend.services.contract_correspondence_validation import EvidenceError, validate_correspondence_journal
+from backend.services.contract_correspondence_validation import validate_correspondence_journal
 from backend.services.full_recovery import create_full_backup, restore_full_backup
 from backend.tests.test_contract_correspondence import data
 from backend.tests.test_full_recovery import PASSPHRASE
@@ -64,21 +64,13 @@ def test_actual_encrypted_archive_source_gone_keeps_exact_local_letter_and_manua
     archive = tmp_path / "complete-correspondence.immobak"
     create_full_backup(plan, archive, PASSPHRASE, offline=True)
     assert b"Synthetic manual observation" not in archive.read_bytes()
-    # Root registration is separate. Exercise the exact proposed security hook
-    # against the real restore transaction, without changing Root's sources.
-    original = recovery_sessions.invalidate_and_inspect
-    inspected = []
-    def inspect_first(connection, configuration, *, deadline):
-        assert validate_correspondence_journal(connection, deadline=deadline)
-        inspected.append(True)
-        return original(connection, configuration, deadline=deadline)
-    monkeypatch.setattr(recovery_sessions, "invalidate_and_inspect", inspect_first)
+    # Exercise the actual production pre-security validator without injecting
+    # another validation hook into the restore transaction.
     source = plan.database.parent.resolve()
     assert source == (tmp_path / "source").resolve()
     shutil.rmtree(source)
     target = tmp_path / "restored-correspondence"
     restore_full_backup(archive, target, PASSPHRASE)
-    assert inspected == [True]
     image = target / "database.sqlite3"
     assert journal(image) == before
     engine = create_engine("sqlite:///" + image.as_posix())
@@ -106,17 +98,7 @@ def test_invalid_manual_chain_is_rejected_before_the_actual_session_restore_dml(
         db.execute("DROP TRIGGER immo_contract_correspondence_events_update")
         db.execute("UPDATE contract_correspondence_events SET event_revision=2")
         db.commit()
-    original = recovery_sessions.invalidate_and_inspect
-    called = []
-    def inspect_first(connection, configuration, *, deadline):
-        try:
-            validate_correspondence_journal(connection, deadline=deadline)
-        except EvidenceError:
-            raise recovery_sessions.SessionRestoreError("restore_contract_correspondence_invalid") from None
-        called.append(True)
-        return original(connection, configuration, deadline=deadline)
-    monkeypatch.setattr(recovery_sessions, "invalidate_and_inspect", inspect_first)
     before = image.read_bytes()
     with pytest.raises(recovery_sessions.SessionRestoreError, match="restore_contract_correspondence_invalid"):
         recovery_sessions.secure_sqlite_restore(image, plan.configuration, deadline=time.monotonic() + 30)
-    assert called == [] and image.read_bytes() == before
+    assert image.read_bytes() == before

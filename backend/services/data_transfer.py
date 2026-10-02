@@ -127,6 +127,11 @@ def export_store_data(active_store, version: str) -> dict:
     from .bank_import_guards import guard_bank_import_business_transfer
     guard_bank_import_business_transfer(active_store, operation="export")
     with _export_snapshot(active_store) as snapshot:
+        from .contract_correspondence import guard_destructive_reset
+        try:
+            guard_destructive_reset(snapshot)
+        except ValueError as exc:
+            raise TransferError(str(exc)) from exc
         result: dict[str, Any] = {"version": version, "exported_at": datetime.now(timezone.utc).isoformat()}
         for spec in _specifications():
             result[spec.key] = list_records(snapshot, spec.list_method)
