@@ -244,7 +244,19 @@ def download_file(key: str = Query(...)) -> Response:
     if ".." in safe_key or safe_key.startswith("/"):
         raise HTTPException(status_code=400, detail="Ungültiger Dateischlüssel")
 
-    data = storage.get(safe_key)
+    data = None
+    if safe_key.startswith("housing-confirmations/"):
+        from ..dependencies import store
+        from ..services.housing_confirmation import read_pdf_for_key as read_housing_pdf
+        from ..services.portfolio_scope import current_scope
+        captured = current_scope()
+        if captured is None:
+            raise HTTPException(status_code=401, detail="Aktuelle Anmeldung erforderlich")
+        # Reserved generated originals always win over an unrelated physical
+        # upload with the same storage key.
+        data = read_housing_pdf(store, safe_key, captured.user_id)
+    else:
+        data = storage.get(safe_key)
     if safe_key.startswith("contract-correspondence/"):
         from ..dependencies import store
         from ..services.contract_correspondence import read_pdf_for_key as read_correspondence_pdf

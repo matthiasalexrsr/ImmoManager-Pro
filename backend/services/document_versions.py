@@ -168,6 +168,15 @@ def validate_manifest(row):
     try:
         snapshot = Document.model_validate(row.metadata_snapshot)
         validate_manifest_identity(row, snapshot.model_dump())
+        if snapshot.document_type == "housing_confirmation":
+            from .housing_confirmation_validation import (
+                HousingConfirmationValidationError,
+                validate_housing_confirmation_snapshot,
+            )
+            try:
+                validate_housing_confirmation_snapshot(row, row.metadata_snapshot)
+            except HousingConfirmationValidationError:
+                fail("Die archivierte Wohnungsgeberbestätigung ist beschädigt.", 503)
     except (ModelError, ManifestValidationError):
         fail("Die archivierten Dokumentmetadaten sind beschädigt.", 503)
     return snapshot
@@ -302,7 +311,7 @@ def persist_version_bytes(store, db, row, blocks, *, before_insert=None):
     return row
 
 
-def publish_generated_original(store, db, document, binding, actor_id, content, request_hash, *, before_insert=None):
+def publish_generated_original(store, db, document, binding, actor_id, content, request_hash, *, before_insert=None, metadata_extra=None):
     """Archive a freshly created, caller-locked generated PDF atomically.
 
     Restricted to a first original. The caller checks parent/actor rights and
@@ -322,13 +331,21 @@ def publish_generated_original(store, db, document, binding, actor_id, content, 
         raise ValidationError("Das erzeugte Schreiben ist kein PDF.")
     if len(content) > settings.max_upload_size_bytes:
         raise ValidationError("Das Schreiben überschreitet das technische Dokumentbudget. Budget anpassen.")
+    metadata_snapshot = document.model_dump(mode="json")
+    if metadata_extra is not None:
+        if not isinstance(metadata_extra, dict) or any(
+            key in metadata_snapshot or not isinstance(key, str) or not key
+            for key in metadata_extra
+        ):
+            raise ValidationError("Ungültige zusätzliche Originalmetadaten.")
+        metadata_snapshot = {**metadata_snapshot, **deepcopy(metadata_extra)}
     row = DocumentVersionORM(id=str(uuid4()), document_id=document.id, **binding,
         number=1, predecessor_id=None, restored_from_id=None, actor_id=actor_id,
         idempotency_key="generated-" + document.id, request_sha256=request_hash,
         operation="archive_original", comment="Bewusst lokal freigegebenes Original",
         filename=filename(document.file_url), media_type="application/pdf",
         sha256=hashlib.sha256(content).hexdigest(), size_bytes=len(content),
-        metadata_snapshot=document.model_dump(mode="json"), created_at=datetime.now(timezone.utc).replace(tzinfo=None))
+        metadata_snapshot=metadata_snapshot, created_at=datetime.now(timezone.utc).replace(tzinfo=None))
     validate_manifest(row)
     return persist_version_bytes(store, db, row,
         (content[offset:offset + CHUNK_BYTES] for offset in range(0, len(content), CHUNK_BYTES)),
@@ -368,6 +385,19 @@ def publish(store, document_id, command, actor_id, *, source=None, upload_name=N
         "command": command.model_dump(mode="json"), "upload_name": upload_name, "bytes": measured})
     with work(store, actor_id, write=True) as (active, db, _):
         document, binding = _document(active, db, document_id, lock=True)
+        existing_head = _head(active, db, document_id)
+        if (
+            document.document_type == "housing_confirmation"
+            or (
+                existing_head is not None
+                and isinstance(existing_head.metadata_snapshot, dict)
+                and "housing_confirmation" in existing_head.metadata_snapshot
+            )
+        ):
+            raise ValidationError(
+                "Wohnungsgeberbestätigungen werden nur über den eigenen geprüften Ablauf korrigiert; "
+                "dafür ein neues verknüpftes Original erstellen."
+            )
         replay, head = _claim(active, db, document, command, actor_id, request_hash)
         if replay:
             _authorized_version(active, db, document_id, replay.id, binding)
