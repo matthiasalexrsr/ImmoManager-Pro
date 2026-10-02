@@ -75,3 +75,27 @@ Schlüsselkonfiguration, beschädigte Familie oder unbestätigte Ausführung wir
 niemals als erfolgreiche Zustellung oder leere RAM-Historie ausgegeben.
 Coretests ersetzen nicht die zusätzlichen tatsächlichen Archiv-/Laufzeitgates.
 Abweichungen von diesem Plan werden vor ihrer Implementierung dokumentiert.
+
+## Präzisierung der Lockgrenze vor Code
+
+Root hat zusätzlich ausschließlich `InMemoryStore.clear_all` und seinen minimalen
+Context-Hook freigegeben. Der vorhandene `_payment_mutation` wurde tatsächlich
+gelesen: Er nimmt nur `payments._memory_lock`, ohne Accountlock. Der Core-Autor
+bestätigt für Historywrites Accountlock vor SQL-Writer/Historyhead; der Historystore
+nimmt selbst keinen Domänenlock und hält keinen Lock über Provider-I/O.
+
+Die Reset-Hülle muss deshalb den Accountlock vor dem vorhandenen
+`_payment_mutation` nehmen. Innerhalb dessen Domänenlock wird die eigene SQL-
+Historybarriere bis zum Ende der Mutation gehalten; kein Helper darf danach
+Account/Domain in umgekehrter Reihenfolge anfordern. Die entsprechende Memory-
+Subset-Staginggrenze in `data_transfer` verwendet dieselbe Reihenfolge. SQL-
+Rechecks bleiben hinter der bestehenden Account-/Domänenbarriere und verwenden
+dieselbe Callerconnection; kein fremder Pending-DML-Commit. Ein tatsächlicher
+paralleler Start wird ereignisgesteuert geprüft, statt die Reihenfolge nur aus
+Decoratornamen abzuleiten.
+
+Heads/Clears stehen ausschließlich im echten gemeinsamen SQL-Journal und werden
+nicht in Dataclass-Dicts gespiegelt oder beim Memoryreset ausgeblendet/gelöscht.
+Ihre bloße Existenz ist kein Subsetkonflikt; tatsächliche Runs/Event-/Chunkfakten
+bleiben die relevante Retentiongrenze. Die genaue Barriere-/Normalisierungs-API
+wird am versionierten Corestand belegt, bevor die Hookimplementierung beginnt.

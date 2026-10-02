@@ -11,15 +11,17 @@ os.environ.setdefault("ENCRYPTION_INDEX_KEY", base64.urlsafe_b64encode(b"synthet
 # Select the backend before application imports initialize its database.
 _backend = os.environ.get("TEST_STORE_BACKEND", "memory")
 _test_database_directory: Path | None = None
+# The integration journal always uses the real DATABASE_URL, including when
+# domain entities are intentionally kept in memory. Never let that independent
+# SQL store resolve the installation's default database during synthetic tests.
+# Each process owns its directory; explicit caller URLs remain untouched.
+if "DATABASE_URL" not in os.environ:
+    _test_database_directory = Path(tempfile.mkdtemp(prefix="immomanager-tests-"))
+    _database = _test_database_directory / "test.db"
+    os.environ["DATABASE_URL"] = f"sqlite:///{_database.as_posix()}"
 if _backend == "sql":
     os.environ.setdefault("SQLITE_PERSISTENT_STORE", "true")
     os.environ.setdefault("ALLOW_INMEMORY_FALLBACK", "false")
-    # Each process owns its directory. Never delete another run's database,
-    # including when the caller explicitly supplies DATABASE_URL.
-    if "DATABASE_URL" not in os.environ:
-        _test_database_directory = Path(tempfile.mkdtemp(prefix="immomanager-tests-"))
-        _database = _test_database_directory / "test.db"
-        os.environ["DATABASE_URL"] = f"sqlite:///{_database.as_posix()}"
 else:
     os.environ.setdefault("SQLITE_PERSISTENT_STORE", "false")
     os.environ.setdefault("ALLOW_INMEMORY_FALLBACK", "true")
