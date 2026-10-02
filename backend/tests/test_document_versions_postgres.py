@@ -13,6 +13,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
 from backend import auth
+from backend.db.contract_lifecycle_models import LIFECYCLE_MODELS
 from backend.db.document_version_models import DOCUMENT_VERSION_MODELS
 from backend.models import DocumentCreate, PortfolioCreate, PropertyCreate, UnitCreate
 from backend.repositories.sql_store import SQLAlchemyStore
@@ -34,6 +35,13 @@ from backend.tests.test_document_versions import (
 )
 
 
+def upgrade_live_store_schema(config):
+    """Modern service guards require the entire current application schema."""
+    # The dedicated y1 up/down test covers the historical migration boundary.
+    # Live CRUD also uses later retained journals and must run at today's head.
+    command.upgrade(config, "head")
+
+
 @pytest.fixture
 def postgres(tmp_path, monkeypatch):
     source = os.getenv("TEST_SERVER_DATABASE_URL")
@@ -52,8 +60,8 @@ def postgres(tmp_path, monkeypatch):
         config = Config("alembic.ini")
         monkeypatch.setenv("DATABASE_URL", scoped_url.render_as_string(hide_password=False))
         config.set_main_option("sqlalchemy.url", scoped_url.render_as_string(hide_password=False).replace("%", "%%"))
-        command.upgrade(config, "y1a2b3c4d5e6")
-        for model in DOCUMENT_VERSION_MODELS:
+        upgrade_live_store_schema(config)
+        for model in (*DOCUMENT_VERSION_MODELS, *LIFECYCLE_MODELS):
             assert {c["name"] for c in inspect(engine).get_columns(model.__tablename__)} == set(model.__table__.c.keys())
         with Session(engine) as db:
             store = SQLAlchemyStore(db)
