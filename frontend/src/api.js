@@ -428,6 +428,7 @@ export const api = {
   put: (path, data, options = {}) => request(path, { method: 'PUT', body: JSON.stringify(data), signal: options.signal, headers: conditionalHeaders(path, data, options) }),
   patch: (path, data, options = {}) => request(path, { method: 'PATCH', body: JSON.stringify(data), signal: options.signal, headers: conditionalHeaders(path, data, options) }),
   del: (path, options = {}) => request(path, { method: 'DELETE', signal: options.signal, headers: conditionalHeaders(path, null, options) }),
+  delJson: (path, data, { signal } = {}) => request(path, { method: 'DELETE', body: JSON.stringify(data), signal }),
 };
 
 export async function login(username, password, totp_code) {
