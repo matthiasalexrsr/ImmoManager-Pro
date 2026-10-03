@@ -173,11 +173,13 @@ def _database_info(path: Path, *, timeout_seconds: float = 300) -> dict:
         correspondence_tables = {"contract_correspondence_drafts", "contract_correspondence_commands", "contract_correspondence_events"}
         from .operational_job_validation import TABLES as job_tables
         from .operational_job_validation import JobIntegrityError, validate_job_journal
+        from .operational_scheduler_validation import validate_scheduler
         from .tenancy_workflow_validation import TABLES as workflow_tables
         from .tenancy_workflow_validation import WorkflowIntegrityError, validate_workflow_journal
         try:
             validate_workflow_journal(db, deadline=deadline)
             validate_job_journal(db, deadline=deadline)
+            validate_scheduler(db, deadline=deadline)
         except (WorkflowIntegrityError, JobIntegrityError, sqlite3.Error):
             raise RecoveryError("Mieterwechsel-/Arbeitslistenhistorie ist unvollständig oder ungültig. Vollständige unveränderte Sicherung verwenden.") from None
         if tables & correspondence_tables and not correspondence_tables.issubset(tables):

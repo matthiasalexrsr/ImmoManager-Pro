@@ -26,6 +26,7 @@ from backend.db.document_version_models import DocumentVersionORM  # noqa: F401 
 from backend.db.form_draft_models import FormDraftORM  # noqa: F401 — register private draft metadata
 from backend.db.operational_job_models import OperationalJobORM  # noqa: F401 — register resumable jobs
 from backend.db.operational_models import OperationalTickORM  # noqa: F401 — register scheduler metadata
+from backend.db.operational_scheduler_models import OperationalSchedulerORM  # noqa: F401 — register durable coordinator
 from backend.db.orm_models import Base
 from backend.db.outbox_models import OutboxMessageORM  # noqa: F401 — register durable SMTP metadata
 from backend.db.rent_batch_models import RentBatchORM  # noqa: F401 — register durable rental metadata

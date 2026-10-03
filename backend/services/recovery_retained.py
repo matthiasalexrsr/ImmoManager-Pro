@@ -4,9 +4,10 @@ from sqlalchemy import inspect, text
 from sqlalchemy.exc import DBAPIError
 
 from .operational_job_validation import TABLES as JOB_TABLES
+from .operational_scheduler_validation import TABLE as SCHEDULER_TABLE
 from .tenancy_workflow_validation import TABLES as WORKFLOW_TABLES
 
-TABLES = frozenset(JOB_TABLES) | WORKFLOW_TABLES
+TABLES = frozenset(JOB_TABLES) | WORKFLOW_TABLES | {SCHEDULER_TABLE}
 MESSAGE = "Gespeicherte Mieterwechsel- oder Arbeitslistenhistorie wird durch diese Teiloperation nicht übertragen. Vollständige Offline-Sicherung/Wiederherstellung verwenden."
 
 

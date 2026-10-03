@@ -22,6 +22,7 @@ from .document_version_models import DocumentVersionORM  # noqa: F401 — regist
 from .form_draft_models import FormDraftORM  # noqa: F401 — register private draft metadata
 from .operational_job_models import JOB_MODELS
 from .operational_models import OperationalTickORM  # noqa: F401 — register scheduler metadata
+from .operational_scheduler_models import OperationalSchedulerORM  # noqa: F401 — register durable coordinator
 from .orm_models import Base
 from .outbox_models import OutboxMessageORM  # noqa: F401 — register durable SMTP metadata
 from .rent_batch_models import RentBatchORM  # noqa: F401 — register durable rental metadata

@@ -50,6 +50,7 @@ def invalidate_and_inspect(connection, original_configuration, *, deadline):
     # Validate every immutable original before revoking one family or creating
     # a new signing configuration. Both missing legacy tables remain compatible.
     from .operational_job_validation import JobIntegrityError, reset_restored_job_claims, validate_job_journal
+    from .operational_scheduler_validation import reset_scheduler_claims, validate_scheduler
     from .tenancy_workflow_validation import WorkflowIntegrityError, validate_workflow_journal
     try:
         validate_workflow_journal(connection, deadline=deadline)
@@ -57,6 +58,7 @@ def invalidate_and_inspect(connection, original_configuration, *, deadline):
         raise SessionRestoreError("restore_tenancy_workflow_invalid: vollständige unveränderte Sicherung verwenden; Sicherheitsabschluss nicht ausgeführt") from None
     try:
         validate_job_journal(connection, deadline=deadline)
+        validate_scheduler(connection, deadline=deadline)
     except JobIntegrityError:
         raise SessionRestoreError("restore_operational_jobs_invalid: vollständige unveränderte Sicherung verwenden; Sicherheitsabschluss nicht ausgeführt") from None
     from .contract_correspondence_validation import EvidenceError, validate_correspondence_journal
@@ -116,6 +118,7 @@ def invalidate_and_inspect(connection, original_configuration, *, deadline):
     # All families have passed read-only proof. Claim reset and session revocation
     # share this outer offline transaction, including every later caller failure.
     reset_restored_job_claims(connection, deadline=deadline)
+    reset_scheduler_claims(connection, deadline=deadline)
     count = invalidate_restored_sessions(connection) if security_tables else 0
     if type(count) is not int or count < 0:
         raise SessionRestoreError("restore_session_count_invalid: Sicherheitsabschluss nicht bestätigt")

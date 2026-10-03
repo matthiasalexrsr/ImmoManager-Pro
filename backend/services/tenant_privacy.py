@@ -46,9 +46,10 @@ def _memory_state(value):
         OperationalScheduleORM,
         OperationalTickORM,
     )
+    from ..db.operational_scheduler_models import OperationalSchedulerORM
     from ..db.tenancy_workflow_models import TENANCY_WORKFLOW_MODELS
     if isinstance(value, (*WIZARD_MODELS, *DOCUMENT_VERSION_MODELS, *LIFECYCLE_MODELS, *CORRESPONDENCE_MODELS, *JOB_MODELS, *TENANCY_WORKFLOW_MODELS,
-                          OperationalScheduleORM, OperationalOccurrenceORM, OperationalDispatchORM, OperationalTickORM)):
+                          OperationalSchedulerORM, OperationalScheduleORM, OperationalOccurrenceORM, OperationalDispatchORM, OperationalTickORM)):
         return {column.name: _memory_state(getattr(value, column.name)) for column in value.__table__.columns}
     if isinstance(value, dict):
         return {key: _memory_state(item) for key, item in value.items()}
