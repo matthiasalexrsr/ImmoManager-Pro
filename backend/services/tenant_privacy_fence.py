@@ -131,6 +131,8 @@ def lock_subject_write_fence(store: Any, tenant_id: str) -> None:
     """
     db = getattr(store, "db", None)
     if db is None:
+        from .tenant_dispute_graph import lock_subject as lock_dispute_subject
+        lock_dispute_subject(store, tenant_id)
         from .tenant_measurement_graph import lock_measurement_subject
         lock_measurement_subject(store, tenant_id)
         # Workflow.work initializes its whole Memory family. Job collections
@@ -184,6 +186,8 @@ def lock_subject_write_fence(store: Any, tenant_id: str) -> None:
 
         from .tenant_measurement_graph import lock_measurement_subject
         lock_measurement_subject(store, tenant_id)
+        from .tenant_dispute_graph import lock_subject as lock_dispute_subject
+        lock_dispute_subject(store, tenant_id)
 
         # SELECT subqueries keep large histories out of Python memory. Domain
         # locks are NOWAIT too: a writer's earlier Tenant read-lock (original

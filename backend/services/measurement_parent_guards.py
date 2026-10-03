@@ -12,6 +12,7 @@ from ..db.measurement_history_models import MeasurementEvidenceORM, MeasurementF
 from ..db.measurement_history_schema import validate_measurement_schema
 from ..db.orm_models import (
     AllocationKeyORM,
+    BillingPeriodORM,
     ContractORM,
     DocumentORM,
     MeterORM,
@@ -19,6 +20,7 @@ from ..db.orm_models import (
     PropertyORM,
     TenantORM,
     UnitORM,
+    UtilityStatementORM,
 )
 from ..permissions import may_write_resource
 from .measurement_history import lock_measurement_property
@@ -27,16 +29,17 @@ from .portfolio_scope import current_scope, refresh_scope
 from .request_authority import require_fresh_request_authority
 
 PARENTS = {model.__tablename__: model for model in
-    (PortfolioORM, PropertyORM, UnitORM, ContractORM, TenantORM, AllocationKeyORM, MeterORM, DocumentORM)}
+    (PortfolioORM, PropertyORM, UnitORM, ContractORM, TenantORM, AllocationKeyORM, MeterORM, DocumentORM, BillingPeriodORM, UtilityStatementORM)}
 FIELDS = {"properties": ("portfolio_id",), "units": ("property_id",),
-          "contracts": ("property_id", "unit_id", "tenant_id"), "allocation_keys": ("property_id",)}
+          "contracts": ("property_id", "unit_id", "tenant_id"), "allocation_keys": ("property_id",),
+          "billing_periods": ("property_id",), "utility_statements": ("billing_period_id", "contract_id", "unit_id")}
 MESSAGE = ("Bestätigte historische Abrechnungsquellen benötigen diese ursprüngliche Zuordnung. "
            "Originale erhalten; fehlerhafte Quellen begründet korrigieren oder für eine tatsächlich neue "
            "Zuordnung einen eigenen Stammdatensatz anlegen. Bezeichnungen bleiben bearbeitbar.")
 
 
 def _resource(table):
-    return "billing" if table == "allocation_keys" else table
+    return "billing" if table in {"allocation_keys", "billing_periods", "utility_statements"} else table
 
 
 def fresh(table, captured):
@@ -71,7 +74,11 @@ def _references(table, identifier):
 
 def guard_retained(store, table, identifier):
     """Existence only, including hidden originals; caller owns locks and auth."""
-    if table not in PARENTS or not _available(store):
+    if table not in PARENTS:
+        return
+    from .billing_dispute_recovery import guard_parent
+    guard_parent(store, table, identifier)
+    if table in {"billing_periods", "utility_statements"} or not _available(store):
         return
     model, field = _references(table, identifier)
     if model is None:
@@ -96,6 +103,10 @@ def guard_retained(store, table, identifier):
 
 def guard_edit(store, table, current, changes):
     if current is not None and any(name in changes and changes[name] != getattr(current, name) for name in FIELDS.get(table, ())):
+        from .billing_dispute_recovery import guard_parent
+        guard_parent(store, table, current.id)
+        if table in {"billing_periods", "utility_statements"}:
+            return
         if _repairs_original_binding(store, table, current, changes):
             return
         guard_retained(store, table, current.id)
@@ -132,8 +143,10 @@ def _repairs_original_binding(store, table, current, changes):
 def _properties(db, table, row):
     if table == "properties":
         return {row.id}
-    if table in {"units", "contracts", "allocation_keys", "documents"}:
+    if table in {"units", "contracts", "allocation_keys", "documents", "billing_periods"}:
         return {row.property_id} - {None}
+    if table == "utility_statements":
+        return set(db.scalars(select(BillingPeriodORM.property_id).where(BillingPeriodORM.id == row.billing_period_id)))
     if table == "meters":
         return set(db.scalars(select(UnitORM.property_id).where(UnitORM.id == row.unit_id)))
     if table == "portfolios":
@@ -171,6 +184,8 @@ def _guard_sql_write(db, table, identifier, changes=None):
         return  # Existing repository preserves conditional 412 / ordinary 404.
     previous = {name: getattr(row, name) for name in FIELDS.get(table, ())}
     properties = _properties(db, table, row)
+    from .billing_dispute_recovery import property_ids
+    properties |= property_ids(active, table, identifier)
     if changes:
         properties |= {changes.get("property_id")} - {None}
         if changes.get("unit_id"):

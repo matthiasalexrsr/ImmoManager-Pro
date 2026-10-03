@@ -57,6 +57,7 @@ from ..services.measurement_history_calculation import HistoricalBasis, historic
 from ..services.measurement_history_validation import MeasurementIntegrityError
 from ..services.payments import FinancialConsistencyError
 from ..storage import NotFoundError, ValidationError
+from .billing_disputes import router as billing_dispute_router
 from .measurement_history import router as measurement_history_router
 
 
@@ -89,6 +90,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/billing", tags=["Abrechnung"])
 router.include_router(measurement_history_router)
+router.include_router(billing_dispute_router)
 
 
 @router.get("/contracts/{contract_id}/credits")

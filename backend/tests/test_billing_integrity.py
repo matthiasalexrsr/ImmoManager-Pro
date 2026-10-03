@@ -370,7 +370,10 @@ def test_finalization_rejects_changed_calculation_inputs(field):
 
 def test_disputed_financial_records_stay_immutable_but_can_be_revised():
     period, contract, _, cost, statement = generated_finalized()
-    billing.dispute_billing_period(period.id)
+    # A real pre-journal status remains valid historical input. It cannot be
+    # manufactured by the now-incomplete legacy action for a new dispute.
+    from backend.services import billing_settlement
+    billing_settlement._write(store, "billing_periods", period.model_copy(update={"status": "disputed"}))
     for mutation in (lambda: billing.patch_billing_period(period.id, BillingPeriodPatch(status="draft")),
         lambda: billing.patch_cost_item(cost.id, CostItemPatch(amount=1)),
         lambda: billing.patch_utility_statement(statement.id, UtilityStatementPatch(balance=1)),

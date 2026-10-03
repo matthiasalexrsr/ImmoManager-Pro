@@ -425,11 +425,10 @@ def mark_delivered(store, statement_id: str, channel: str) -> UtilityStatement:
 
 
 def dispute_period(store, period_id: str) -> BillingPeriod:
-    with atomic_billing(store, period_id):
-        period = store.get_billing_period(period_id)
-        if period.status not in {"finalized", "delivered"}:
-            raise ValidationError("Widerspruch nur für finalisierte oder zugestellte Perioden möglich.")
-        return _write(store, "billing_periods", period.model_copy(update={"status": "disputed"}))
+    period = store.get_billing_period(period_id)
+    if period.status not in {"finalized", "delivered"}:
+        raise ValidationError("Widerspruch nur für finalisierte oder zugestellte Perioden möglich.")
+    raise ValidationError("Bitte die konkrete Einzelabrechnung mit Grund, Eingangsdatum und Originalanlagen im Widerspruchsjournal prüfen und bestätigen.")
 
 
 def _statement_chain(store, statement) -> list:

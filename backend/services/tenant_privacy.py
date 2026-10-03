@@ -36,6 +36,7 @@ def _memory_copy(store):
 
 
 def _memory_state(value):
+    from ..db.billing_dispute_models import DISPUTE_MODELS
     from ..db.contract_correspondence_models import CORRESPONDENCE_MODELS
     from ..db.contract_wizard_models import WIZARD_MODELS
     from ..db.document_version_models import DOCUMENT_VERSION_MODELS
@@ -49,7 +50,7 @@ def _memory_state(value):
     )
     from ..db.operational_scheduler_models import OperationalSchedulerORM
     from ..db.tenancy_workflow_models import TENANCY_WORKFLOW_MODELS
-    if isinstance(value, (*MEASUREMENT_MODELS, *WIZARD_MODELS, *DOCUMENT_VERSION_MODELS, *LIFECYCLE_MODELS, *CORRESPONDENCE_MODELS, *JOB_MODELS, *TENANCY_WORKFLOW_MODELS,
+    if isinstance(value, (*DISPUTE_MODELS, *MEASUREMENT_MODELS, *WIZARD_MODELS, *DOCUMENT_VERSION_MODELS, *LIFECYCLE_MODELS, *CORRESPONDENCE_MODELS, *JOB_MODELS, *TENANCY_WORKFLOW_MODELS,
                           OperationalSchedulerORM, OperationalScheduleORM, OperationalOccurrenceORM, OperationalDispatchORM, OperationalTickORM)):
         return {column.name: _memory_state(getattr(value, column.name)) for column in value.__table__.columns}
     if isinstance(value, dict):
@@ -131,6 +132,8 @@ def _scoped_graph(store, tenant_id):
     graph = append_correspondence_graph(snapshot, graph)
     from .tenant_measurement_graph import append_measurement_graph
     graph = append_measurement_graph(snapshot, graph)
+    from .tenant_dispute_graph import append_dispute_graph
+    graph = append_dispute_graph(snapshot, graph)
     graph["scope"]["private_form_drafts"] = private_draft_retention(snapshot, tenant_id)
     return graph
 
@@ -233,6 +236,19 @@ def prepare_tenant_export(active_store, tenant_id: str, *, parent=None):
                         write(b",")
                     value({"position": position, "data_base64": base64.b64encode(block).decode("ascii")})
                 write(b"]}")
+            write(b'],"billing_dispute_evidence_contents":[')
+            from .tenant_dispute_graph import verified_blocks as dispute_blocks
+            for index, manifest in enumerate(graph["billing_dispute_evidence_files"]):
+                if index:
+                    write(b",")
+                write(b'{"id":')
+                value(manifest["id"])
+                write(b',"blocks":[')
+                for position, block in enumerate(dispute_blocks(snapshot, manifest)):
+                    if position:
+                        write(b",")
+                    value({"position": position, "data_base64": base64.b64encode(block).decode("ascii")})
+                write(b"]}")
             write(b"]}")
             refresh_scope(captured)
         return CompiledExport(path, {"size": size, "sha256": checksum.hexdigest()}, cleanup), captured
@@ -245,13 +261,14 @@ def _plan(graph: dict) -> dict:
     active_contracts = sum(contract["status"] == "active" for contract in graph["contracts"])
     retained = {name: len(rows) for name, rows in graph.items() if isinstance(rows, list)}
     from .tenant_correspondence_graph import PERSONAL_FIELDS as CORRESPONDENCE_FIELDS
+    from .tenant_dispute_graph import PERSONAL_FIELDS as DISPUTE_FIELDS
     from .tenant_document_versions import PERSONAL_FIELDS as DOCUMENT_FIELDS
     from .tenant_lifecycle_graph import PERSONAL_FIELDS as LIFECYCLE_FIELDS
     from .tenant_measurement_graph import PERSONAL_FIELDS as MEASUREMENT_FIELDS
     from .tenant_retained_graph import PERSONAL_FIELDS as RETAINED_FIELDS
     from .tenant_wizard_graph import PERSONAL_FIELDS
     wizard_retained = {name: {"count": len(graph.get(name, [])), "personal_fields": fields}
-                       for name, fields in (PERSONAL_FIELDS | DOCUMENT_FIELDS | LIFECYCLE_FIELDS | CORRESPONDENCE_FIELDS | RETAINED_FIELDS | MEASUREMENT_FIELDS).items() if graph.get(name)}
+                       for name, fields in (PERSONAL_FIELDS | DOCUMENT_FIELDS | LIFECYCLE_FIELDS | CORRESPONDENCE_FIELDS | RETAINED_FIELDS | MEASUREMENT_FIELDS | DISPUTE_FIELDS).items() if graph.get(name)}
     private = graph["scope"]["private_form_drafts"]
     if private["count"]:
         wizard_retained["private_form_drafts"] = {"count": private["count"],

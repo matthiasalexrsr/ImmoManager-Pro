@@ -255,6 +255,8 @@ class InMemoryStore:
         require_installation_scope()
         from .services.recovery_retained import guard_operational_history
         guard_operational_history(self)
+        from .services.billing_dispute_recovery import guard_partial_transfer
+        guard_partial_transfer(self)
         from .services.contract_lifecycle import guard_destructive_reset as guard_lifecycle
         guard_lifecycle(self)
         from .services.contract_correspondence import guard_destructive_reset as guard_correspondence

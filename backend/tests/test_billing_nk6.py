@@ -135,16 +135,18 @@ def test_infer_no_category():
 # ---------------------------------------------------------------------------
 
 
-def test_dispute_finalized_period():
+def test_legacy_dispute_requires_reviewed_statement_journal():
     period, *_ = _setup_full_scenario()
     billing.generate_utility_statements(period.id)
     billing.finalize_billing_period(period.id)
 
-    result = billing.dispute_billing_period(period.id)
-    assert result.status == "disputed"
+    with pytest.raises(HTTPException) as failure:
+        billing.dispute_billing_period(period.id)
+    assert failure.value.status_code == 400
+    assert store.get_billing_period(period.id).status == "finalized"
 
 
-def test_dispute_delivered_period():
+def test_legacy_dispute_does_not_block_other_delivered_statements():
     period, *_ = _setup_full_scenario()
     billing.generate_utility_statements(period.id)
     billing.finalize_billing_period(period.id)
@@ -154,8 +156,10 @@ def test_dispute_delivered_period():
     for stmt in stmts:
         billing.mark_statement_delivered(stmt.id)
 
-    result = billing.dispute_billing_period(period.id)
-    assert result.status == "disputed"
+    with pytest.raises(HTTPException) as failure:
+        billing.dispute_billing_period(period.id)
+    assert failure.value.status_code == 400
+    assert store.get_billing_period(period.id).status == "delivered"
 
 
 def test_dispute_rejects_draft():
