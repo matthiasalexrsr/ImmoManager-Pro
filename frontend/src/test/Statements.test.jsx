@@ -4,8 +4,12 @@ import Statements from '../pages/Statements';
 import { emptySummary, postedSummary } from './fixtures/settlements';
 import { ownerPeriod } from './fixtures/ownerShare';
 
-const mocks = vi.hoisted(() => ({ getAll: vi.fn(), get: vi.fn(), post: vi.fn(), put: vi.fn() }));
-vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ role: 'eigentuemer' }) }));
+const mocks = vi.hoisted(() => ({ getAll: vi.fn(), get: vi.fn(), post: vi.fn(), put: vi.fn(), role: 'eigentuemer' }));
+vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ role: mocks.role }) }));
+// Test only the page boundary here; the real workspace has its own actual-hook
+// and protected-read suites, followed by coordinated native browser proofs.
+vi.mock('../features/billingDisputes/BillingDisputeWorkspace', () => ({ default: ({ periodId, propertyId }) =>
+  <section aria-label="Widerspruchsakten" data-period={periodId} data-property={propertyId} /> }));
 vi.mock('../api', () => ({ api: mocks }));
 vi.mock('../i18n', () => {
   const t = key => key.split('.').at(-1);
@@ -13,13 +17,14 @@ vi.mock('../i18n', () => {
 });
 vi.mock('../components/StatusBadge', () => ({ default: ({ status }) => <span>{status}</span> }));
 vi.mock('../components/DataTable', () => ({
-  default: ({ title, data, onEdit, onAdd }) => (
+  default: ({ title, data, onEdit, onRowClick, onAdd }) => (
     <section aria-label={title}>
       <h2>{title}</h2>
       {onAdd && <button onClick={onAdd}>Add {title}</button>}
       {data.map(row => (
         <div key={row.id}>
           {onEdit && <button onClick={() => onEdit(row)}>Open {row.id}</button>}
+          {onRowClick && <button onClick={() => onRowClick(row)}>View {row.id}</button>}
           <span>{row.description || row.unit_label || row.label}</span>
           {row.total_costs != null && <output data-testid={`total-${row.id}`}>{row.total_costs}</output>}
         </div>
@@ -58,6 +63,7 @@ async function openPeriod(id = 'period') {
 
 describe('Statements workflow reliability', () => {
   beforeEach(() => {
+    mocks.role = 'eigentuemer';
     lists = structuredClone(fixture);
     mocks.getAll.mockReset().mockImplementation(read);
     mocks.get.mockReset().mockImplementation(read);
@@ -122,24 +128,26 @@ describe('Statements workflow reliability', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
-  it('opens a dispute dialog and lets the user cancel or submit', async () => {
-    lists['/billing/periods'][0].status = 'finalized';
-    mocks.post.mockResolvedValue({ ...period, status: 'disputed' });
+  it.each(['finalized', 'delivered', 'disputed', 'corrected'])('mounts the genuine dispute workspace for %s without the obsolete reason-only POST', async status => {
+    lists['/billing/periods'][0].status = status;
     render(<Statements />);
     await openPeriod();
-    fireEvent.click(screen.getByRole('button', { name: 'dispute' }));
-    let dialog = await screen.findByRole('dialog');
-    fireEvent.click(within(dialog).getByRole('button', { name: 'cancel' }));
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Widerspruchsakten' })).toHaveAttribute('data-period', 'period');
+    expect(screen.getByRole('region', { name: 'Widerspruchsakten' })).toHaveAttribute('data-property', 'property');
+    expect(screen.queryByRole('button', { name: 'dispute' })).not.toBeInTheDocument();
     expect(mocks.post).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'dispute' }));
-    dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByRole('textbox')).toBeRequired();
-    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: 'Beleg fehlt' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'save' }));
-    await waitFor(() => expect(mocks.post).toHaveBeenCalledWith(
-      '/billing/periods/period/dispute?reason=Beleg%20fehlt', {},
-    ));
+  });
+
+  it.each(['draft', 'review'])('keeps the immutable journal entry outside %s periods', async status => {
+    lists['/billing/periods'][0].status = status; render(<Statements />); await openPeriod();
+    expect(screen.queryByRole('region', { name: 'Widerspruchsakten' })).not.toBeInTheDocument();
+  });
+
+  it('retains authorized dispute reads for a readonly actor in immutable period details', async () => {
+    mocks.role = 'readonly'; lists['/billing/periods'][0].status = 'finalized'; render(<Statements />);
+    fireEvent.click(await screen.findByRole('button', { name: 'View period' }));
+    expect(screen.getByRole('region', { name: 'Widerspruchsakten' })).toHaveAttribute('data-period', 'period');
+    expect(screen.queryByRole('button', { name: 'startCorrection' })).not.toBeInTheDocument();
   });
 
   it('blocks generation and finalization after a failed preflight until retry succeeds', async () => {
