@@ -5,6 +5,7 @@ an observation of the actual connection, never a write/commit capability.
 """
 
 import sqlite3
+from contextlib import contextmanager
 from dataclasses import dataclass
 from math import isfinite
 from time import monotonic
@@ -32,11 +33,11 @@ class SQLiteInboxCheckLimits:
     ddl_bytes: int = 65536
     tokens: int = 4096
     depth: int = 64
-    catalog_rows: int = 512
+    batch_rows: int = 32
 
     def __post_init__(self):
         if any(type(value) is not int or value <= 0 for value in (
-            self.ddl_bytes, self.tokens, self.depth, self.catalog_rows
+            self.ddl_bytes, self.tokens, self.depth, self.batch_rows
         )):
             _fail("limits_invalid")
 
@@ -66,6 +67,7 @@ def _ascii(value):
     return value.translate(_ASCII_FOLD)
 
 
+@contextmanager
 def _rows(connection, sql, parameters, limits, deadline):
     _check(deadline)
     cursor = None
@@ -78,60 +80,69 @@ def _rows(connection, sql, parameters, limits, deadline):
             names = tuple(cursor.keys())
         else:
             _fail("catalog_invalid")
-        rows = []
-        while batch := cursor.fetchmany(min(32, limits.catalog_rows + 1)):
-            for values in batch:
+        def iterate():
+            while True:
                 _check(deadline)
-                if len(rows) >= limits.catalog_rows:
-                    _fail("budget_exceeded")
-                rows.append(dict(zip(names, values)))
-        _check(deadline)
-        return rows
+                batch = cursor.fetchmany(limits.batch_rows)
+                _check(deadline)
+                if not batch:
+                    break
+                for values in batch:
+                    _check(deadline)
+                    yield dict(zip(names, values))
+
+        yield iterate()
     finally:
         if cursor is not None:
             cursor.close()
 
 
+def _one(connection, sql, parameters, limits, deadline):
+    with _rows(connection, sql, parameters, limits, deadline) as rows:
+        row = next(rows, None)
+        if row is None or next(rows, None) is not None:
+            _fail("catalog_invalid")
+        return row
+
+
 def _functions(connection, limits, deadline):
     required = {("length", 1), ("substr", 3)}
     found = set()
-    rows = _rows(connection, "PRAGMA function_list", {}, limits, deadline)
-    if not rows:
-        _fail("function_invalid")
-    for row in rows:
-        if set(row) != {"name", "builtin", "type", "enc", "narg", "flags"}:
-            _fail("function_invalid")
-        name, arity = row["name"], row["narg"]
-        if not isinstance(name, str) or type(arity) is not int:
-            _fail("function_invalid")
-        name = _ascii(name)
-        if not any(name == target and arity in (count, -1) for target, count in required):
-            continue
-        if (type(row["builtin"]) is not int or row["builtin"] != 1
-                or row["type"] != "s" or row["enc"] not in {"utf8", "utf16le", "utf16be"}
-                or type(row["flags"]) is not int or row["flags"] & _FLAGS != _FLAGS):
-            _fail("function_invalid")
-        if (name, arity) in required:
-            found.add((name, arity))
+    with _rows(connection, "PRAGMA function_list", {}, limits, deadline) as rows:
+        for row in rows:
+            if set(row) != {"name", "builtin", "type", "enc", "narg", "flags"}:
+                _fail("function_invalid")
+            name, arity = row["name"], row["narg"]
+            if not isinstance(name, str) or type(arity) is not int:
+                _fail("function_invalid")
+            name = _ascii(name)
+            if not any(name == target and arity in (count, -1) for target, count in required):
+                continue
+            if (type(row["builtin"]) is not int or row["builtin"] != 1
+                    or row["type"] != "s" or row["enc"] not in {"utf8", "utf16le", "utf16be"}
+                    or type(row["flags"]) is not int or row["flags"] & _FLAGS != _FLAGS):
+                _fail("function_invalid")
+            if (name, arity) in required:
+                found.add((name, arity))
     if found != required:
         _fail("function_invalid")
 
 
 def _enabled(connection, limits, deadline):
-    rows = _rows(connection, "PRAGMA ignore_check_constraints", {}, limits, deadline)
-    if len(rows) != 1 or set(rows[0]) != {"ignore_check_constraints"}:
+    row = _one(connection, "PRAGMA ignore_check_constraints", {}, limits, deadline)
+    if set(row) != {"ignore_check_constraints"}:
         _fail("catalog_invalid")
-    value = rows[0]["ignore_check_constraints"]
+    value = row["ignore_check_constraints"]
     if type(value) is not int or value != 0:
         _fail("disabled")
 
 
 def _encoding(connection, limits, deadline):
-    rows = _rows(connection, "PRAGMA main.encoding", {}, limits, deadline)
-    if len(rows) != 1 or set(rows[0]) != {"encoding"}:
+    row = _one(connection, "PRAGMA main.encoding", {}, limits, deadline)
+    if set(row) != {"encoding"}:
         _fail("catalog_invalid")
     encoding = {"UTF-8": "utf-8", "UTF-16le": "utf-16le", "UTF-16be": "utf-16be"}.get(
-        rows[0]["encoding"]
+        row["encoding"]
     )
     if encoding is None:
         _fail("catalog_invalid")
@@ -152,15 +163,17 @@ def _decode(row, limits, encoding):
 def _present(connection, limits, deadline, encoding):
     matches = []
     for schema in ("main", "temp"):
-        rows = _rows(connection, f"""
+        with _rows(connection, f"""
             SELECT type, length(CAST(name AS BLOB)) AS size,
                    substr(CAST(name AS BLOB), 1, :cap) AS value
             FROM {schema}.sqlite_master
-        """, {"cap": limits.ddl_bytes}, limits, deadline)
-        for row in rows:
-            name = _decode(row, limits, encoding)
-            if _ascii(name) == TABLE:
-                matches.append((schema, row["type"], name))
+        """, {"cap": limits.ddl_bytes}, limits, deadline) as rows:
+            for row in rows:
+                name = _decode(row, limits, encoding)
+                if _ascii(name) == TABLE:
+                    matches.append((schema, row["type"], name))
+                    if len(matches) > 1:
+                        _fail("catalog_invalid")
     if not matches:
         return False
     if matches != [("main", "table", TABLE)]:
@@ -169,17 +182,19 @@ def _present(connection, limits, deadline, encoding):
 
 
 def _columns(connection, limits, deadline):
-    rows = _rows(connection, 'PRAGMA main.table_xinfo("notification_read_states")',
-                 {}, limits, deadline)
     fields = {}
-    for row in rows:
-        name = row.get("name")
-        if not isinstance(name, str):
-            _fail("catalog_invalid")
-        folded = _ascii(name)
-        if folded in fields:
-            _fail("catalog_invalid")
-        fields[folded] = row
+    with _rows(connection, 'PRAGMA main.table_xinfo("notification_read_states")',
+               {}, limits, deadline) as rows:
+        for row in rows:
+            name = row.get("name")
+            if not isinstance(name, str):
+                _fail("catalog_invalid")
+            folded = _ascii(name)
+            if folded not in IDENTITIES:
+                continue
+            if folded in fields:
+                _fail("catalog_invalid")
+            fields[folded] = row
     for name in IDENTITIES:
         row = fields.get(name)
         if row is None or row.get("hidden") != 0 or row.get("notnull") != 1:
@@ -470,14 +485,12 @@ def validate_sqlite_notification_identity_check(connection, *, limits=None, dead
             return False
         _enabled(connection, limits, deadline)
         _columns(connection, limits, deadline)
-        rows = _rows(connection, """
+        row = _one(connection, """
             SELECT length(CAST(sql AS BLOB)) AS size,
                    substr(CAST(sql AS BLOB), 1, :cap) AS value
             FROM main.sqlite_master WHERE type='table' AND name=:name
         """, {"name": TABLE, "cap": limits.ddl_bytes}, limits, deadline)
-        if len(rows) != 1:
-            _fail("catalog_invalid")
-        ddl = _decode(rows[0], limits, encoding)
+        ddl = _decode(row, limits, encoding)
         parse_sqlite_notification_identity_ddl(ddl, limits=limits, deadline=deadline)
         _enabled(connection, limits, deadline)
         _functions(connection, limits, deadline)

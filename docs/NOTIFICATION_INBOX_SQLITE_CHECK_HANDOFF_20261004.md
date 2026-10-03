@@ -23,8 +23,9 @@ to the existing fixed inbox schema refusal; do not expose driver values. False
 is only whole main-family absence, never standalone authorization of an old
 archive. The root proof must retain its parent/FK/PK/timestamp/data checks.
 
-Defaults: 65536 DDL/parser bytes, 4096 tokens, 64 nesting, 512 native catalog
-rows. Higher positive profiles are supported explicitly. Driver I/O and lock
+Defaults after the streaming correction: 65536 DDL/parser bytes, 4096 tokens,
+64 nesting, 32 native catalog rows **per fetch batch**, with no total stock cap.
+Only relevant matches are retained. Higher positive profiles are supported explicitly. Driver I/O and lock
 deadlines are external; service deadlines check native calls and parsing work.
 There is no DML probe or enforcement reset. No function callback is invoked to
 prove semantics. Unknown syntax or registered overrides refuse. The service

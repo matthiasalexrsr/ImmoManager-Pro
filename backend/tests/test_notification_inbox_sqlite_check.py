@@ -161,12 +161,27 @@ def test_native_actual_columns_prevent_double_quoted_literal_fallback():
     SQLiteInboxCheckLimits(ddl_bytes=32),
     SQLiteInboxCheckLimits(tokens=8),
     SQLiteInboxCheckLimits(depth=1),
-    SQLiteInboxCheckLimits(catalog_rows=1),
 ])
 def test_actual_native_metadata_or_parser_budgets_refuse(limits):
     with closing(_database()) as connection:
         with pytest.raises(SQLiteInboxCheckError, match="^notification_inbox_sqlite_check_budget_exceeded$"):
             validate_sqlite_notification_identity_check(connection, limits=limits)
+
+
+@pytest.mark.parametrize("stock", ["indexes", "functions"])
+def test_native_unrelated_catalog_stock_has_no_total_limit(stock):
+    with closing(_database()) as connection:
+        calls = []
+        for index in range(513):
+            if stock == "indexes":
+                connection.execute(f"CREATE INDEX unrelated_{index} ON notification_read_states(read_at)")
+            else:
+                connection.create_function(f"unrelated_{index}", 1, lambda *args: calls.append(args) or 1)
+        assert validate_sqlite_notification_identity_check(
+            connection, limits=SQLiteInboxCheckLimits(batch_rows=1),
+            deadline=monotonic() + 10,
+        ) is True
+        assert calls == []
 
 
 def test_native_readonly_transaction_and_data_are_preserved():
