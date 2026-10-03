@@ -253,6 +253,23 @@ def list_inbox(
             rows = _page(connection, principal, query, point)
             if _fresh_principal(connection, db) != principal:
                 raise HTTPException(403, "Berechtigungen wurden geändert. Inbox neu laden.")
+        # A parent can move while the immutable first read snapshot remains
+        # open without changing the actor's account/grants. Establish a fresh
+        # publication point after closing it, including actual current parents,
+        # dispatches, personal state, page projection and complete counts.
+        with db.no_autoflush, _snapshot(db.get_bind()) as connection:
+            if _fresh_principal(connection, db) != principal:
+                raise HTTPException(403, "Berechtigungen wurden geändert. Inbox neu laden.")
+            _schema(connection)
+            current_counts = _counts(connection, principal, query)
+            current_rows = _page(connection, principal, query, point)
+            if current_counts != (full, unread) or current_rows != rows:
+                raise HTTPException(409, {
+                    "code": "inbox_changed",
+                    "detail": "Die Inbox wurde zwischenzeitlich geändert. Bitte neu laden.",
+                })
+            if _fresh_principal(connection, db) != principal:
+                raise HTTPException(403, "Berechtigungen wurden geändert. Inbox neu laden.")
         selected = rows[:query.limit]
         more = len(rows) > query.limit
         cursor = None
