@@ -48,3 +48,14 @@ stop it through its own pg_ctl after the one previously infra-blocked unchanged
 notification keyset case. That case owns/drops only a UUID schema in synthetic
 immo_ci, leaving public and other installations untouched. Its Python gate is
 bounded to 90 seconds; service startup/shutdown are separate lifecycle evidence.
+
+The first actual SQL-auth HTTP gate on `49ce533` failed in 10.23 seconds
+(13.12 outer): real login, masked GET, CAS success and native stale412 succeeded,
+but the actual app's global HTTPException handler stringified our structured
+detail into an INTERNAL_ERROR message. No genuine safe structured code had
+reached the client. Correct only IntegrationPublicationRoute's ConfigStoreError
+boundary to return the existing structured `error` envelope directly, with the
+fixed actionable message/request ID and private/no-store headers. Retain the
+fixed `detail` object as the explicit compatibility path for older /api/v1
+consumers and isolated-router tests. Do not change unrelated global exception
+semantics or weaken the genuine HTTP test. Repeat exactly this one SQL case.
