@@ -1,13 +1,15 @@
-# D3 Financial Workspace UI – Plan und Handoff
+# D3 Financial Workspace UI â€“ Planaddendum und Handoff
 
 Stand: 03.10.2026
 Branch: `assist/financial-workspace-ui`
 Worktree: `C:\Users\matth\Documents\Codex\2026-10-01\wi\work\financial-workspace-ui`
 Basis: `18ba896eff397bbe0e46e8a13864f4c33304a11a`
 
-Dieser Plan wurde vor Frontend-Sourceänderungen erstellt.
+Dieser Plan wurde **vor SourceÃ¤nderungen** erstellt.
 
-## Verbindlich gelesen
+## Verbindliche VertrÃ¤ge
+
+Gelesen und maÃŸgeblich:
 
 - `docs/FINANCIAL_WORKSPACE_PLAN_20261003.md`
 - `docs/FINANCIAL_CASH_HANDOFF_20261003.md`
@@ -15,16 +17,19 @@ Dieser Plan wurde vor Frontend-Sourceänderungen erstellt.
 - `backend/services/financial_cash.py`
 - `backend/routers/workflow_references.py`
 - `backend/services/workflow_references.py`
-- bestehender `ReferenceChoice` / private bounded read
-- bestehender geschützter Blob-/CSV-Downloadpfad.
+- bestehendes `features/unitInventory/ReferenceChoice.jsx`
+- bestehende geschÃ¼tzte Blob-/CSV-Patterns im Frontend.
 
-## Echte Cash-HTTP-Verträge
+## Cash-HTTP-Vertrag
 
-### GET /reports/cash
+### Bericht
+
+`GET /reports/cash`
 
 Filter:
 
-- `date_from`, `date_to`
+- `date_from`
+- `date_to`
 - `portfolio_id`
 - wiederholtes `property_ids`
 - `unit_id`
@@ -35,189 +40,306 @@ Filter:
 Response:
 
 - `basis`
-- `currency=EUR`
-- kanonische `filters`
-- `source_hash` (SHA-256)
-- exakte MoneyStrings `income`, `expense`, `net`
-- `source_count`, `excluded_count`
-- vollständige Aggregate für `categories`, `months`, `locations`
-- erste/optionale Detailseite nur wenn serverseitig angefordert.
-
-Kein Betrag wird für die UI maßgeblich über `Number` oder Float summiert.
-
-### GET /reports/cash/sources
-
-Zusätzlich:
-
-- `after`
+- `currency` (EUR)
+- `filters`
 - `source_hash`
-- `limit` (1..500)
+- `income`
+- `expense`
+- `net`
+- `source_count`
+- `excluded_count`
+- `categories[]`
+- `months[]`
+- `locations[]`
+- ohne Detailseite standardmÃ¤ÃŸig keine nutzbare Belegliste.
 
-Cursor ist an Benutzer/Scope, alle Filter, Seitengröße und Quellenhash gebunden.
-Folgeseiten müssen denselben Sourcehash mitsenden.
+Alle Geldwerte sind **dezimal formatierte Strings**. Sie werden in der UI niemals
+Ã¼ber `Number`, `parseFloat` oder Float-Arithmetik gerundet.
 
-Quellzeile enthält u.a.:
+### Quellbelege
 
-- Buchungs-/Konto-/Kategorie-/Objekt-/Einheitsbezüge
-- `booking_date`
-- exaktes `amount` als MoneyString
-- `amount_cents` als ganzzahliger Dezimalstring
-- Status
-- `included`
-- `exclusion_reason`
-- Zahlungstext / Belegreferenz.
+`GET /reports/cash/sources`
 
-409 bei geändertem Quellenhash ist kein Leerbestand:
-„Buchungsquellen haben sich geändert – Auswertung erneut laden“.
+ZusÃ¤tzlich:
 
-### GET /reports/cash/export.csv
+- `after` opaker Cursor
+- `source_hash` zwingend fÃ¼r Folgeseiten
+- `limit` 1..500
 
-Nimmt dieselben CashFilters und exportiert den **vollständigen** gefilterten Bestand,
-nicht die sichtbare Quellseite. Download erfolgt als geschützter Blob.
+Response wie Bericht plus:
+
+- `items[]`
+- `has_more`
+- `next_after`
+
+Ein 409 bei geÃ¤ndertem Quellenbestand bedeutet **keinen Nullbestand**. Die UI
+zeigt einen klaren QuellenÃ¤nderungszustand und bietet â€žAuswertung aktualisierenâ€œ;
+die angewendeten Filter bleiben erhalten, Cursor und alte Quellseiten werden
+verworfen.
+
+### VollstÃ¤ndiger CSV
+
+`GET /reports/cash/export.csv`
+
+- identische Filter wie Bericht,
+- Exportiert den **vollstÃ¤ndigen** gefilterten Quellenbestand,
+- unabhÃ¤ngig von sichtbarer Belegseite,
+- geschÃ¼tzter Blob-Download,
+- keine clientseitige Rekonstruktion nur aus aktuell sichtbaren Items.
 
 ## ReferenceChoice-Vertrag
 
-Wiederverwendet wird der bestehende bounded `ReferenceChoice`; kein neuer Shared
-Picker wird gebaut.
+Erlaubte Kinds und Filter:
 
-Zulässige Filter:
+### portfolios
 
-- `portfolios`: Suche/selected/cursor/page_size; optional eigener `portfolio_id`
-- `accounts`: `portfolio_id`
-- `properties`: `portfolio_id`
-- `units`: `portfolio_id + property_id`
+- `search`
+- optional `portfolio_id` fÃ¼r exakte Bindung
+- `selected_id`
+- `cursor`
+- `page_size`
 
-`accounts` und `portfolios` dürfen **keine** property/unit/contract-Filter erhalten.
+### accounts
+
+- `portfolio_id`
+- `search`
+- `selected_id`
+- `cursor`
+- `page_size`
+
+Keine Property-/Unitfilter.
+
+### properties
+
+- `portfolio_id`
+- `search`
+- `selected_id`
+- `cursor`
+- `page_size`
+
+### units
+
+- `portfolio_id`
+- `property_id`
+- `search`
+- `selected_id`
+- `cursor`
+- `page_size`
 
 Parentwechsel:
 
-- Portfolioänderung löscht Properties, Unit und Account.
-- Propertyänderung löscht Unit.
-- Entfernung des Portfolios löscht alle abhängigen Referenzen.
-- alte ausgewählte Namen werden dadurch sofort neu autorisiert/neutral.
+- PortfolioÃ¤nderung lÃ¶scht Account, Properties und Unit.
+- Property-AuswahlÃ¤nderung lÃ¶scht Unit.
+- Entfernte Parentbindung macht die alte abhÃ¤ngige Auswahl sofort ungÃ¼ltig.
+- Keine alte `selected_id`-PrÃ¼fung darf unter einem neuen Parent weiterlaufen.
 
-Mehrere Immobilien bleiben als echte Mehrfachauswahl erhalten; jede Property wird
-über den bounded Referenzdienst gewählt, nicht durch Vollbestandsladen.
+Der vorhandene `ReferenceChoice` wird unverÃ¤ndert wiederverwendet. Kein neuer
+shared Picker.
 
 ## Filtermodell
 
-Filterentwurf und angewendete Filter sind getrennte Zustände.
+Der Arbeitsplatz hÃ¤lt zwei ZustÃ¤nde getrennt:
 
-Entwurf:
+### Entwurf
+
+Bearbeitbare Eingaben:
 
 - Zeitraum von/bis
 - Stichtag
-- Basis
 - Portfolio
-- 0..n Immobilien
-- optional Einheit
-- optional Konto
+- Immobilien
+- optionale Einheit
+- optionales Konto
+- Basis `confirmed_cash` oder `recorded_bookings`
 
-„Auswertung anwenden“ übernimmt atomar einen validierten Snapshot.
-Datumstipps/Parentwechsel lösen keine Zwischenberichte aus.
+Ã„nderungen am Entwurf starten **keinen** Bericht.
 
-Bei behebbaren Report-/Sourcefehlern bleiben angewendete Filter erhalten.
-Bei Actor-/Grantwechsel werden Report, Quellen, Cursor, Sourcehash und ausgewählte
-private Referenzdarstellungen render-synchron neutralisiert; laufende Requests und
-Exporte werden abgebrochen.
+### Angewendete Filter
 
-## MoneyStrings
+Erst â€žAuswertung anwendenâ€œ erzeugt einen kanonischen Snapshot der Filter und
+lÃ¤dt Bericht + erste Belegseite.
 
-Eigener Formatter:
+Ein behebbarer Fehler:
 
-1. akzeptiert ausschließlich /^-?\d+\.\d{2}$/,
-2. trennt Vorzeichen/Ganzzahl/Cent als Strings,
-3. fügt Tausendergruppen stringbasiert ein,
-4. verwendet Locale-Zeichen nur für Darstellung,
-5. erzeugt niemals `Number(money)` für fachliche Summen.
+- bewahrt den angewendeten Filter-Snapshot,
+- bewahrt den Entwurf,
+- zeigt keine Nullsummen,
+- erlaubt denselben Bericht erneut zu laden.
 
-Diagrammbalken dürfen ausschließlich aus `*_cents`/MoneyStrings über BigInt-
-Verhältnisse skaliert werden; kein Float ist ein fachlicher Betrag.
+## Actor-/Grantbindung
+
+Privater Zustand ist gebunden an:
+
+- Benutzer-ID
+- Rolle
+- Write-/Read-Kontext soweit im Authobjekt vorhanden
+- Portfoliozugriff / Portfolio-IDs
+
+Bei Ã„nderung:
+
+- Bericht, Quellseiten, Sourcehash, CSV-Zustand und ausgewÃ¤hlte Referenznamen
+  werden render-synchron neutral;
+- laufende Report-/Source-/CSV-Requests werden abgebrochen;
+- der neue Actor beginnt mit neutralem Filter-/Datenzustand.
+
+Keine alten Finanzsummen dÃ¼rfen wÃ¤hrend des neuen Effects noch sichtbar sein.
+
+## Exakte Geldverarbeitung
+
+Neue Feature-Helfer arbeiten mit MoneyStrings ausschlieÃŸlich als Strings bzw.
+ganzzahligen Cent-Strings.
+
+Geplant:
+
+- Validierung `^-?\d+\.\d{2}$`
+- Konvertierung MoneyString -> signierter BigInt-Centwert
+- Formatierung BigInt-Centwert -> lokalisierter EUR-Text
+- keine Floatarithmetik
+- Charts/Balken nur aus relativen BigInt-VerhÃ¤ltnissen; der fachliche Betrag
+  bleibt immer der Original-MoneyString.
+
+Beispiele:
+
+- `0.10` + `0.20` bleibt exakt `0.30`
+- sehr groÃŸe/negative Werte verlieren keine Ziffern.
 
 ## Darstellung
 
-- klare Kennzahlkarten Einnahmen / Ausgaben / Saldo, EUR
-- Hinweis „Zahlungsbasis“, nicht Periodenergebnis
-- Basisumschalter:
-  - bestätigte Zahlungen (Standard)
-  - aufgezeichnete Buchungen
-- Monatsauswertung
-- Kostenartenauswertung
-- Objekt-/Einheitsauswertung, „ohne Einheit“ sichtbar
-- jede Aggregatzeile kann Quellbelege fokussieren/filtern, ohne neue API zu erfinden
-- Quellbelegtabelle mit inkludiert/ausgeschlossen + verständlichem Ausschlussgrund
-- Belegseiten mit Vor/Zurück-Cursortrail
-- source_hash sichtbar nur in technischen Details
-- vollständiger CSV-Download unabhängig von sichtbarer Seite.
+### Kennzahlen
 
-Nicht behauptet:
+- Einnahmen
+- Ausgaben
+- Saldo
+- WÃ¤hrung klar EUR
+- Quelle: Zahlungsbasis, nicht â€žGewinnâ€œ oder â€žPeriodenergebnisâ€œ.
 
-- wirtschaftliches Periodenergebnis
-- AfA
-- Finanzierung
-- Forderungs-/Vertragsprognose
-- Budget-Istlogik.
+### Auswertungen
 
-## Fehlerzustände
+Tabs/Abschnitte aus denselben Berichtssummen:
 
-Getrennt:
+- Monate
+- Kostenarten
+- Objekte/Einheiten
 
-- Loading
-- echte leere Auswertung
-- ungültige Response
-- HTTP-/Netzwerkfehler
-- 409 Quellenänderung
-- 422 widersprüchliche Filter/Zuordnung
-- 401/403 private Sicht vergessen.
+Jede Zeile zeigt:
 
-Bei Fehlern keine Nullsummenkarten rendern.
+- Einnahmen
+- Ausgaben
+- Netto
+- Anzahl Quellen
 
-409-Aktion:
-„Aktuelle Buchungsquellen neu laden“ – Report neu abrufen, Sourcehash/Cursortrail
-verwerfen, Filter beibehalten.
+Objektkosten ohne Einheit werden als â€žOhne Einheitâ€œ angezeigt.
 
-Source-Seitenretry:
-gleiche angewendete Filter + gleicher Sourcehash + gleicher Cursor.
-Kein stiller Cursorfortschritt.
+### Quellbelege
 
-## Ownership
+Separate paginierte Tabelle:
+
+- Buchungsdatum
+- Konto
+- Kategorie
+- Objekt
+- Einheit
+- Betrag
+- Status
+- einbezogen / ausgeschlossen
+- Ausschlussgrund
+- Zahlungstext
+- Belegreferenz
+
+Kein Ã¶ffentlicher Beleglink wird behauptet; `receipt_url` ist nur eine
+Quellreferenz im Bericht und wird nicht als frei zugÃ¤ngliche Datei behandelt.
+
+## Pagination
+
+Der UI-Zustand hÃ¤lt einen Cursor-Stack fÃ¼r Vor/ZurÃ¼ck.
+
+- erste Seite: `after` leer, `source_hash` aus dem Report
+- nÃ¤chste Seite: `after=next_after` + exakt derselbe `source_hash`
+- vorherige Seite: gespeicherter Cursor aus dem Stack
+- Filter-/Actor-/Sourcehashwechsel lÃ¶scht den Stack
+
+Ein Cursorfehler behÃ¤lt angewendete Filter, aber zeigt keine alte Seite als
+aktuell.
+
+## CSV
+
+Button â€žVollstÃ¤ndiges CSV herunterladenâ€œ:
+
+- verwendet exakt die **angewendeten** Filter,
+- ruft `/reports/cash/export.csv` als geschÃ¼tzten Blob,
+- speichert die Serverdatei direkt,
+- kein clientseitiges SeitenzusammenfÃ¼gen,
+- laufender Export wird bei Actor-/Filterwechsel abgebrochen.
+
+## Sourcehash-Konflikt
+
+HTTP 409 auf Report-/Sources-Request:
+
+- eigener Zustand â€žBuchungsquellen haben sich geÃ¤ndertâ€œ,
+- keine Nullsummen,
+- alte private Ergebnisse werden nicht als aktuell gezeigt,
+- Button â€žAuswertung aktualisierenâ€œ verwendet dieselben angewendeten Filter,
+  startet aber bei Seite 1 und erwartet einen neuen Sourcehash.
+
+## Navigation/Wiring
+
+Neue Route und Sidebar-Eintrag:
+
+- Seite: `FinancialWorkspace`
+- Navigation: â€žFinanzauswertungenâ€œ
+
+Nur kleines getrenntes Wiring in:
+
+- `App.jsx`
+- `Layout.jsx`
+- `i18n.jsx`
+
+Keine Ã„nderung an bestehenden `FormModal`, `ReferenceChoice`,
+shared Pickern oder globalem Layout.
+
+## Lokales Feature-Ownership
 
 Neu:
 
-- `features/financialWorkspace/*`
-- neue Finanzseite + lokales CSS
-- eigener API-/Responsevalidator
+- `features/financialWorkspace/financialWorkspaceApi.js`
+- `features/financialWorkspace/financialWorkspaceModel.js`
+- `features/financialWorkspace/FinancialFilterPanel.jsx`
+- `features/financialWorkspace/FinancialSummary.jsx`
+- `features/financialWorkspace/FinancialSources.jsx`
+- `features/financialWorkspace/FinancialWorkspace.css`
+- `pages/FinancialWorkspace.jsx`
 - eigene Tests.
 
-Nur kleines Wiring:
+## Nicht in D3
 
-- App-Route
-- Sidebar unter Finanzen
-- DE/EN/ES-Navigation-/Pagecopy.
+Keine Behauptung oder Implementierung von:
 
-Nicht ändern:
+- wirtschaftlichem Periodenergebnis
+- AfA
+- Leistungsabgrenzung
+- Finanzierung
+- Vertragsprognose
+- Vorperiodenvergleich
+- XLSX/PDF-Bericht
+- dauerhaften Reportjobs
+- neuem Backendendpoint
 
-- Backend
-- Root/Main/Preview/E2E
-- FormModal
-- ReferenceChoice
-- shared Picker
-- globales Layout/CSS.
+Die Seite ist ausdrÃ¼cklich eine **Zahlungsbasis-/Cash-Sicht**.
 
-## Testkonzept
+## Geplante leichte PrÃ¼fungen vor Root-Browser-QA
 
-Leichte UI-/Unit-Verträge:
+Bis zur Slotabstimmung keine schweren Browser-/Recovery-Gates.
 
-- große/negative MoneyStrings ohne Number-Rundung
-- Filterentwurf vs angewendet
-- Parentinvalidierung
-- bounded References
-- Cash-Responsevalidierung
-- Quellenhash 409 + Reload
-- Cursorretry
-- Actorwechsel neutralisiert private Anzeige
-- vollständiger CSV-Pfad enthält Filter, aber keinen Seiten-Cursor
-- Aggregat-/Quellzeilen zeigen exakte Werte.
+Geplant:
 
-Schwere Browser-/Recovery-Gates bleiben Root und werden während Roots aktuellem
-Recovery-Slot nicht von diesem Branch gestartet.
+- reine MoneyString-/Filtermodelltests
+- API-Vertragstest mit exakten Queryparametern
+- ReferenceChoice-Parentinvalidierung
+- Actorwechsel render-synchron neutral
+- 409-Sourcehash-Recovery
+- Cursor-Vor/ZurÃ¼ck
+- kompletter CSV-Endpoint statt sichtbarer Seite
+- gezielter ESLint
+- Produktionsbuild erst im vereinbarten kurzen Slot.
+
+Root Ã¼bernimmt gemeinsame Browser-/Recovery-Abnahme.
