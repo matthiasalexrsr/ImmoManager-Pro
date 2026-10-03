@@ -377,8 +377,13 @@ def _closed_native_connections(box, pids):
         assert all(state is not None and not state.startswith("idle in transaction") for _pid, state in states)
 
 
-@pytest.mark.parametrize("family", ["sid", "grant", "property", "dispatch"])
-@pytest.mark.parametrize("order", ["change_first", "read_first"])
+@pytest.mark.parametrize("family,order", [
+    ("sid", "change_first"), ("sid", "read_first"),
+    ("grant", "change_first"), ("grant", "read_first"),
+    ("property", "change_first"), ("property", "read_first"),
+    ("dispatch", "change_first"), ("dispatch", "read_first"),
+], ids=["sid-change-first", "sid-read-first", "grant-change-first", "grant-read-first",
+        "property-change-first", "property-read-first", "dispatch-change-first", "dispatch-read-first"])
 def test_postgres_independent_read_restriction_orders(pg_read_race, monkeypatch, family, order):
     box, race = pg_read_race, _Race(family, order)
     box.races.append(race)
