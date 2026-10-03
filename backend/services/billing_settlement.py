@@ -21,10 +21,11 @@ from sqlalchemy import Table, inspect, select, text
 
 from ..models import BillingPeriod, BillingSettlement, CostItem, Receivable, UtilityStatement
 from ..storage import ValidationError
+from .billing_originals import IMMUTABLE as IMMUTABLE
+from .billing_originals import snapshot_hash as snapshot_hash
 from .payments import FinancialConsistencyError, _memory_lock
 from .rent_ledger import CENT, charge_total, contract_ledger_inputs, month_date
 
-IMMUTABLE = {"finalized", "delivered", "disputed", "corrected"}
 ELIGIBLE_CONTRACT_STATUSES = {"active", "terminated", "expired"}
 _COLLECTIONS = ("billing_periods", "cost_items", "utility_statements", "receivables", "billing_settlements")
 
@@ -314,14 +315,6 @@ def replace_statements(store, period_id: str, build) -> list[UtilityStatement]:
             raise FinancialConsistencyError("Korrektur muss sämtliche ursprünglichen Verträge enthalten.")
         _write(store, "billing_periods", period.model_copy(update={"owner_cost_share": owner}))
         return results
-
-
-def snapshot_hash(statements: list, owner_cost_share=None) -> str:
-    payload = [{key: value for key, value in s.model_dump(mode="json").items()
-        if key not in {"status", "snapshot_hash", "delivery_status", "delivered_at", "delivery_channel", "updated_at"}}
-        for s in sorted(statements, key=lambda s: s.id)]
-    return hashlib.sha256(json.dumps({"statements": payload, "owner_cost_share": owner_cost_share},
-        sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 
 def calculation_hash(store, period) -> str:

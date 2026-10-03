@@ -59,7 +59,7 @@ def validate_dispute_snapshot(family, *, parents, verified_period_hashes: Mappin
             statements_by_period.setdefault(statement["billing_period_id"], []).append(statement)
         period_hashes: dict[str, str] = {}
         def verified_statement(identifier):
-            from .billing_settlement import IMMUTABLE, snapshot_hash
+            from .billing_originals import IMMUTABLE, snapshot_hash
             statement = parents["utility_statements"][identifier]
             period = parents["billing_periods"][statement["billing_period_id"]]
             if period["id"] not in period_hashes:
