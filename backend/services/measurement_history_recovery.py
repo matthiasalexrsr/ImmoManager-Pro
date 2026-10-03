@@ -20,12 +20,16 @@ VALIDATE_SNAPSHOT = validate_measurement_snapshot
 
 
 def iter_measurement_family(store, name):
-    """Streaming rows for an already authorized backup snapshot, no side effects."""
+    """Stream an authorized snapshot in FK-safe order, without side effects."""
     model = next((candidate for candidate in MEASUREMENT_MODELS if candidate.__tablename__ == name), None)
     if model is None:
         raise ValueError("Unknown measurement family")
+    # UUID order can put a correction before its immutable predecessor during
+    # restore. Revisions are strictly increasing along every predecessor chain.
+    order = {"measurement_commands": ("ledger_id", "revision"),
+             "measurement_facts": ("ledger_id", "revision", "position")}.get(name, ("id",))
     if hasattr(store, "db"):
-        query = select(model).order_by(model.id).execution_options(yield_per=100)
+        query = select(model).order_by(*(getattr(model, field) for field in order)).execution_options(yield_per=100)
         result = store.db.scalars(query)
         try:
             for row in result:
@@ -33,7 +37,7 @@ def iter_measurement_family(store, name):
         finally:
             result.close()
     else:
-        for row in _rows(store, model):
+        for row in sorted(_rows(store, model), key=lambda item: tuple(getattr(item, field) for field in order)):
             yield payload(row)
 
 

@@ -98,11 +98,23 @@ def test_withdrawn_selection_and_date_shift_do_not_restore_stammdaten_fallback(c
     assert context["generate"]().status_code == 400
 
 
-def test_privacy_projection_and_pure_restore_reject_tampered_hash_or_missing_family(context):
+def test_privacy_projection_and_pure_restore_reject_tampered_hash_or_missing_family(context, monkeypatch):
     _key, changes, receipts = fixture_history(context)
+    # Correction IDs deliberately sort before originals: restore must respect
+    # the predecessor FK, not UUID ordering.
+    identifiers = iter(("00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000002"))
+    monkeypatch.setattr(history, "uuid4", lambda: next(identifiers))
+    fix = deepcopy(changes[0][2])
+    fix.update(predecessor_id=receipts[0]["fact_ids"][2], reason="Originalbeleg korrigiert")
+    fix["data"]["value"] = "130"
+    confirm(context, context["homes"][0], [fix], revision=1, command="restore-correction")
     active = context["active"]
     with scope_context(None):
         family = {name: list(iter_measurement_family(active.store, name)) for name in RESTORE_ORDER}
+        inserted = set()
+        for item in family["measurement_facts"]:
+            assert item["predecessor_id"] is None or item["predecessor_id"] in inserted
+            inserted.add(item["id"])
         parents = {name: {row.id: row.model_dump() for row in getattr(active.store, "list_" + name)()}
             for name in ("units", "properties", "meters", "allocation_keys", "contracts", "tenants")}
         parents["document_versions"] = {}

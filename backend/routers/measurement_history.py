@@ -12,6 +12,7 @@ from ..services.measurement_history_validation import MeasurementIntegrityError
 from ..services.request_authority import request_authority
 from ..storage import NotFoundError
 
+
 def private_response(response: Response):
     response.headers["Cache-Control"] = "private, no-store"
 
