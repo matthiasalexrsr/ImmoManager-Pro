@@ -55,7 +55,8 @@ test('C: real archived second-page original survives lost success and encrypted 
   const retained = (await box.api(draftPath(box.actor.id, box.period.id))).draft;
   expect(retained.submission_pending).toBe(true); expect(JSON.parse(retained.values.command_json)).toEqual(first);
   await page.unroute(routePath); await page.reload();
-  const periodRow = page.getByRole('row').filter({ has: page.getByText(box.period.label, { exact: true }) }); await periodRow.click();
+  const periodRow = page.getByRole('row').filter({ has: page.getByRole('cell', { name: box.property.name, exact: true }) }); await periodRow.click();
+  await expect(page.getByRole('heading', { name: box.period.label, exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Neue Akte erfassen', exact: true }).click();
   await commandForm(page).getByRole('button', { name: 'Nach Bestandsprüfung weiterbearbeiten', exact: true }).click();
   await expect(commandForm(page).getByRole('button', { name: 'Denselben Befehl erneut senden', exact: true })).toBeVisible();

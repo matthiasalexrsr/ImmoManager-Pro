@@ -98,8 +98,9 @@ export async function fixture(page, versions = 1) {
 
 export async function openPeriod(page, box) {
   await page.goto('/statements');
-  const row = page.getByRole('row').filter({ has: page.getByText(box.period.label, { exact: true }) });
+  const row = page.getByRole('row').filter({ has: page.getByRole('cell', { name: box.property.name, exact: true }) });
   await expect(row).toHaveCount(1); await row.click();
+  await expect(page.getByRole('heading', { name: box.period.label, exact: true })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Widerspruchsakten', exact: true })).toBeVisible();
 }
 
