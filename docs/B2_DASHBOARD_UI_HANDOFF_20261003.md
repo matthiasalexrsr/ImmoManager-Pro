@@ -143,12 +143,33 @@ und keine private Preview. Nativeausführung erst nach eigener Sourcefreeze
 und ausdrücklicher Rootslotfreigabe. JavaScript-Syntax/ESLint der Browser-
 quellen und Ruff des eigenen Seedhelpers sind bereits grün.
 
-## Noch offene Abnahme und klare Grenzen
+## Tatsächlicher erster nativer Lauf und offene Abnahme
 
-Aktuell **kein neuer Build, Server, Browser oder PG gestartet**. Drei B2-
-Browserfälle, der vierte FinCSSnachweis und tatsächliche Sichtung ihrer Bilder
-sind noch offen. Nativefehler werden nicht durch gelockerte Assertions
-verdeckt; nur relevante korrigierte Fälle werden erneut selektiert.
+Opt-in Test-/Runnerquellen sind sauber als `60e915a` separat freigegeben.
+Auf dieser während des Gates unveränderten Quelle liefen ein Build, ein
+eigener migrierter SQLite-Backendbereich und ein Edge-Worker: **3 PASS,
+1 FAIL**, keine Skips. Kontext-/Rightsfall 20,4 s und echte Leere/verlorene
+Antwort/älterer Stand/natives Cursor-422 26,2 s bestanden. Der bestehende
+vollständige FinCashflow bestand mit neuer Root-CSS in 23,1 s; alle drei
+Financebilder wurden tatsächlich angesehen. Alle eigenen Prozesse wurden
+durch das normale Runner-Finally geschlossen, der Tempbereich entfernt.
+
+Der 10.001er-Fall scheiterte nach korrekten Counts/letzter Unit und
+vollständigen Aufgaben an fünf ausgelassenen Benachrichtigungen: echte
+SQLite-CURRENT_TIMESTAMP-Sekundendarstellung gegenüber DateTime-Cursorbindung
+im B1-Backend. Root/Domain korrigieren diesen belegten Backendbefund;
+Frontend/Seed/Erwartung bleiben unverändert. Exakte Traceantworten, einzelne
+Ergebnisse, erhaltene absolute Bildpfade und die tatsächlich gesichteten
+28 unterschiedlichen PNGs stehen in
+`docs/B2_DASHBOARD_NATIVE_DIAGNOSIS_20261003.md`.
+
+Die Vertrags-Keyset-/Auswertungs-/Dunkelbildstrecke im ersten Fall wurde
+noch nicht erreicht. Gezielt genau dieser Fall bleibt nach Backendgate und
+Slotfreigabe offen. Eine leere zusätzliche 360er-Kontextdetailaufnahme zählt
+nicht als brauchbarer Bildbeleg; das vollständige 360er-Bild und die
+320er-/1440er-Detailaufnahmen zeigen den tatsächlichen Kontext. Separater
+Legacy-NotificationBell-Badge nach Grantentzug ist an Root gemeldet.
+Nativefehler werden nicht durch gelockerte Assertions verdeckt.
 
 B1-Memory-create-Lockgrenze bleibt unverändert und bekannt. Live-Keysets
 sind kein über Requests eingefrorener historischer Bestand. Der synthetische
