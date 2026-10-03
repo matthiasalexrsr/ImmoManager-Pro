@@ -287,3 +287,29 @@ Für den vorliegenden vorgeschlagenen Defaultvertrag gilt:
 - Hook und Komponente sprechen Mark-all ausschließlich über die injizierbare Servicegrenze an. Sobald der Backend-Handoff einen Job-/Continuation-DTO festlegt, wird nur diese Adaptergrenze erweitert; die UI erfindet bis dahin keine Zustandsmaschine oder Pollingroute.
 
 Auch für Readonly gilt weiterhin: persönliche `mark_read`-/`mark_all_read`-Fähigkeit kommt ausschließlich aus den serverseitigen `actions`, nicht aus allgemeinen Fach-`write_permissions`.
+
+## Phase-A-Vertrag nach Backendentscheidung
+
+Der additive Backendvertrag ist für Phase A jetzt enger festgelegt:
+
+- `GET /notifications/inbox?status=unread&after=&limit=10`
+- vollständiger persönlicher `full_count` / `unread_count`
+- bounded Reihenfolge `created_at DESC, id DESC`
+- `consistency: "live"`
+- `snapshot_token: null`
+- `actions.mark_all_read: false`
+- kein clientseitig erfundener Snapshot und kein Mark-all-Button in Phase A.
+
+Live-Seiten dürfen sich während des Paging ändern. Wenn der exakte Count zwischen geladener Seite und Folgeseite wechselt, kombiniert der Hook diese Seiten **nicht** zu einer scheinbar konsistenten Inbox. Er verwirft den alten privaten Seitenzustand und fordert eine frische Ladung an.
+
+Single-read bleibt vollständig action-gesteuert. Ein Readonly-Actor darf genau dann markieren, wenn der Server `item.actions.mark_read=true` liefert; allgemeine Fach-`write_permissions` sind keine Berechtigungsquelle.
+
+Für Phase B/C bleibt nur eine Adaptergrenze vorbereitet:
+
+- `actions.mark_all_read=true` ist erst zulässig, wenn dieselbe Page einen echten serverseitigen `selection_token` liefert;
+- der Command verwendet `selection_token + idempotency_key`;
+- ein unbekannter Job-/Continuation-DTO gilt im Defaultadapter als Fehler;
+- kein Datum, keine UUID und kein `snapshot_token` werden im Browser zur Selektion erfunden;
+- sobald Root den fortsetzbaren Backend-Jobvertrag festlegt, wird ausschließlich die Serviceadaptergrenze erweitert.
+
+Die globale `NotificationBell.jsx` bleibt in diesem Paket weiterhin unverändert und unverdrahtet.
