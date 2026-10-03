@@ -180,7 +180,8 @@ class _Image:
 
     def projection(self, fields, integers=()):
         text = [name for name in fields if name not in integers]
-        valid = lambda name: f"({name} IS NULL OR (typeof({name})='text' AND length(CAST({name} AS BLOB))<=:row_bytes))"
+        def valid(name):
+            return f"({name} IS NULL OR (typeof({name})='text' AND length(CAST({name} AS BLOB))<=:row_bytes))"
         columns = [name if name in integers else f"CASE WHEN {valid(name)} THEN {name} ELSE NULL END AS {name}"
                    for name in fields]
         columns.append("CASE WHEN " + " AND ".join(valid(name) for name in text) + " THEN 0 ELSE 1 END AS _invalid_text")
