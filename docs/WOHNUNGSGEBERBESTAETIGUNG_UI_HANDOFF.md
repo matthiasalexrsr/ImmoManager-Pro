@@ -305,3 +305,262 @@ Gezielter ESLint über Feature und diese Tests mit `--max-warnings=0`:
 Der konkrete Backend-Handoff war zu diesem Zeitpunkt weiterhin nicht verfügbar;
 deshalb existiert noch kein endgültiger API-Client und noch keine Vertrags-/Workflow-
 Integration gegen erfundene Endpoints.
+
+## Finaler Backendabgleich und Implementierungsstand
+
+Der verbindliche Backend-Handoff wurde nach seiner tatsächlichen Verfügbarkeit read-only gelesen:
+
+- Backend-Worktree: `work\housing-confirmation`
+- Backend-Commit: `b11f9f92d5c157b1c6ed579d79a85e684086cc54`
+- Basis: `679c8de9a97074f513bf611f7c636d40f2002fea`
+- Handoff: `docs/WOHNUNGSGEBERBESTAETIGUNG_BACKEND_HANDOFF_20261002.md`
+- zusätzlich geprüft:
+  - `backend/services/housing_confirmation_types.py`
+  - `backend/routers/housing_confirmations.py`
+  - öffentliche Responseformen in `backend/services/housing_confirmation.py`.
+
+Keine Backenddatei wurde in diesem UI-Worktree verändert.
+
+### Tatsächlich gebundener HTTP-Vertrag
+
+Prefix:
+
+`/contracts/{contract_id}/housing-confirmations`
+
+Verwendete Routen:
+
+- `GET /source`
+- `POST /preview`
+- `POST /`
+- `GET /?after=&limit=`
+- `GET /{document_id}/download`
+
+Der Backend-Endpunkt `POST /preview-pdf` bleibt für Roots PDF-QA verfügbar. Die
+Produktoberfläche verwendet für die fachliche Prüfung den strukturierten
+`/preview`-Review und öffnet nach Freigabe das verifizierte unveränderliche
+Original über den geschützten Download. Es wird kein öffentlicher PDF-Link erzeugt.
+
+### Exakte Requestprojektion
+
+`CertificateData` wird ausschließlich mit den echten Backendfeldern erzeugt:
+
+- `housing_provider_name`
+- `housing_provider_address`
+- `owner_same_as_provider`
+- `owner_name`
+- `move_in_date`
+- `issue_date`
+- `apartment_address`
+- `apartment_label`
+- `issuer_name`
+- `issuer_role`
+- `residents`
+
+UI-interne Bezeichnungen wie `dwelling_address`, `owner_relation` oder
+Personenzeilen-Keys verlassen die Komponente nicht.
+
+`PreviewRequest`:
+
+- `data`
+- exakt die frisch gelesenen `source_etags`
+- optional `correction_of: {document_id, version_id}`.
+
+`SaveRequest` ergänzt exakt:
+
+- `idempotency_key`
+- `review_hash`
+- `confirmed_actual_move_in: true`
+- `confirmed_authority: true`
+- `confirmed_residents: true`.
+
+Der Client erzeugt keinen SaveRequest, solange eine dieser drei Bestätigungen
+nicht ausdrücklich gesetzt ist.
+
+### Source und Vorschläge
+
+Der echte `GET /source`-Snapshot wird in ein reines View-Modell projiziert.
+Natürlich lesbar angezeigt werden Vertragsnummer, Objektname und Einheitslabel.
+
+Nur vom Server belegte Vorschläge werden angeboten:
+
+- Wohnungsgebername/-anschrift aus exakt gebundener veröffentlichter Wizardquelle,
+- Eigentümername aus Portfolio,
+- Wohnungsanschrift/-bezeichnung aus Objekt/Einheit,
+- Hauptmietername als **Vorschlag**.
+
+Der Hauptmieter wird erst nach ausdrücklichem Klick der Personenliste hinzugefügt.
+Weitere Personen sind freie vollständige Namen ohne UI-Hardcap und ohne
+Deduplizierung.
+
+`actual_move_in_date` aus der Source bleibt `null`. Das UI setzt das tatsächliche
+Einzugsdatum nicht aus Vertragsbeginn oder Übergabe. Ein Übergabetermin aus der
+Mieterwechselakte wird ausschließlich als deutlich bezeichnete Referenz angezeigt.
+
+### Preview und Recovery
+
+Jede fachliche Änderung an CertificateData verwirft die Preview sofort.
+
+Die drei Save-Bestätigungen gehören laut Backendvertrag nicht zum PreviewRequest.
+Sie können deshalb nach der Prüfung gesetzt werden, ohne den geprüften Reviewhash
+unnötig zu verwerfen.
+
+409/412 bereits beim Preview:
+
+- Formular bleibt erhalten,
+- Preview wird verworfen,
+- UI zeigt bewusst „Quelldaten haben sich geändert“,
+- erst „Aktuelle Quellen neu prüfen“ lädt Source/ETags neu,
+- kein stilles Replay.
+
+409/412 beim Publish verwenden denselben bewussten Review-Reload-Pfad des
+eingefrorenen Commandflows.
+
+Netzwerk/5xx:
+
+- vollständiger SaveRequest wird vor Versand tief geklont und eingefroren,
+- gleicher Payloadobjekt-/Idempotenz-/Reviewzustand wird bei
+  „Unverändert erneut senden“ wiederverwendet,
+- Eingaben/Preview werden während Unknown nicht ersetzt.
+
+401/403/404:
+
+- Source, Formularanzeige, Preview, History und Retry werden vergessen,
+- laufende Requests werden abgebrochen.
+
+Contract-/User-/Role-/Portfolio-Wechsel:
+
+- private Anzeige wird render-synchron über den Binding-Key neutralisiert,
+- der vorherige Name/Inhalt bleibt nicht bis zum nächsten Effect sichtbar.
+
+Es wird kein Housing-Entwurf und kein Personenname in `localStorage` geschrieben.
+
+### Historie, Korrekturen und PDF
+
+History verwendet die echte opake `after`-Cursorliste, maximal die angeforderte
+Seite.
+
+Jeder gespeicherte Eintrag wird als vollständiges Backend-`CertificateData`
+validiert. Korrektur startet mit den archivierten Fachwerten, aber ohne alte
+Freigabebestätigungen und mit exakt
+`{document_id, version_id}` als Korrekturbezug.
+
+Das gespeicherte Original wird ausschließlich über
+
+`GET /contracts/{contract_id}/housing-confirmations/{document_id}/download`
+
+per bestehendem authentifiziertem Blobclient geladen. Vor `window.open` prüft
+der Featureclient die PDF-Magic-Bytes; die Object-URL wird wieder freigegeben.
+Kein Portal-/Behördenlink wird behauptet.
+
+### Rechte
+
+Lesen/Preview bleiben serverautorisiert und portfolio-gebunden.
+
+Der Freigabebutton wird im UI nur aktiviert, wenn der bestehende Rechtehelper
+gleichzeitig Schreiben auf `/contracts` **und** `/documents` bestätigt.
+Der Backendserver prüft die Rechte bei jeder Mutation erneut.
+
+### Produkt-Einstiege
+
+**Vertrag / ContractLifecycle**
+
+Der bestehende Lifecycle-Dialog erhält genau eine zusätzliche Aktion
+„Wohnungsgeberbestätigung“. Die Vertragslisten-/Lifecycle-API wurde nicht geändert.
+Der Housing-Dialog erhält die exakte Contract-ID und seinen eigenen Opener für
+Tastatur-/Focus-Rückkehr.
+
+**Mieterwechsel / Einzug**
+
+`TenancyChangeFile` zeigt den Einstieg nur bei:
+
+- `mode=move_in|turnover`,
+- vorhandenem `next_contract_id`.
+
+Reines `move_out` zeigt keinen Housing-Einstieg.
+
+Die Seite öffnet denselben Housing-Dialog mit dem neuen Vertrag. Ein vorhandener
+`move_in_handover_date` wird nur als Referenzhinweis übergeben. Housing-Publish:
+
+- verknüpft keinen Evidence-Link automatisch,
+- markiert keinen Workflow-Step automatisch erledigt,
+- beendet keine Wechselakte automatisch.
+
+Da das Ergebnis ein reguläres `housing_confirmation`-DocumentVersion-Original
+ist, kann es anschließend über die bestehende Dokumentauswahl bewusst als
+`document_version`-Evidence verknüpft werden.
+
+### Dialog und Bedienung
+
+Der eigene Dialog übernimmt die etablierten Produktpatterns:
+
+- Focus-Trap und Escape,
+- Focus-Rückkehr zum auslösenden Button,
+- Request-Abort,
+- Close-Warnung bei personenbezogenen Dirty-Daten oder ungeklärtem Unknown,
+- kompakte Abschnitte Wohnung / Wohnungsgeber / Eigentümer / Personen / Ausstellung,
+- 320/360-Stacking ohne globale Layoutänderung,
+- DE/EN/ES-Texte,
+- keine elektronische Unterschrifts- oder Behördenübermittlungsbehauptung.
+
+## Tatsächlich ausgeführte Frontend-Gates
+
+### Housing + direkte Integrationen
+
+Serieller Gate über Housing, ContractLifecycle und TenancyChangeFile:
+
+**6 Testdateien / 61 Tests bestanden**.
+
+Enthalten sind u. a.:
+
+- exakte `CertificateData`-/PreviewRequest-/SaveRequest-Projektion,
+- alle drei `confirmed_*`-Bestätigungen,
+- 45 Personennamen und doppelte reale Namen ohne UI-Hardcap,
+- tatsächlicher Einzug bleibt manuell,
+- Hauptmieter nur nach explizitem Hinzufügen,
+- Preview-Invaliderung,
+- Bestätigungen verwerfen Preview nicht,
+- Preview-412 mit erhaltenem Formular und bewusstem Source-Reload,
+- Unknown-Success Exact Retry,
+- 401/403/404-Forget-Pfad,
+- render-synchrone Contract-/Actor-/Role-/Portfolio-Neutralisierung,
+- geschützter PDF-Download,
+- History/Korrektur mit `document_id/version_id`,
+- Dirty-Close-Warnung,
+- ContractLifecycle-Einstieg,
+- Einzugseinstieg nur für neuen Vertrag; kein `move_out`-Einstieg.
+
+### Housing + vollständiger bestehender Mieterwechsel-Gate
+
+Seriell mit `--maxWorkers=1`:
+
+**15 Testdateien / 105 Tests bestanden**.
+
+Damit bleiben insbesondere Mieterwechsel-CAS, Stable Keys, Referenzsuche,
+Lost-Reply-ExactRetry, Step-/Evidence-Commands und kompakte Vorbereitung grün.
+
+### ESLint
+
+ESLint über gesamtes `features/housingConfirmation`, die geänderten
+Contract-/Workflow-Einstiege und deren Tests mit `--max-warnings=0`:
+
+**bestanden, keine Warnung**.
+
+Der erste Lintbefehl enthielt versehentlich eine CSS-Datei; ESLint meldete nur
+„File ignored“ als Warnung. Der korrigierte JS/JSX-Lauf war vollständig grün.
+
+### Produktionsbuild
+
+`npm.cmd run build`
+
+**bestanden**, Vite 8.1.0, **679 Module transformiert**.
+
+## Bewusst bei Root
+
+Root registriert den Backendrouter und übernimmt weiterhin:
+
+- echten zusammengesetzten Browserlauf,
+- Edge/SQLite/Recovery/Privacy-Gates,
+- PDF-Text-/Mehrseiten-/visuelle QA,
+- 320/360/1440-Browserabnahme.
+
+Dieser UI-Branch behauptet diese Root-Gates nicht selbst.

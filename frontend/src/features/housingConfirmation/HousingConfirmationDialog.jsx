@@ -3,6 +3,7 @@ import { AlertTriangle, CheckCircle2, FileText, Plus, Trash2, X } from 'lucide-r
 import { useAuth } from '../../contexts/AuthContext';
 import { useConfirm } from '../../components/ConfirmDialog';
 import { useTranslation } from '../../i18n';
+import { authMayWrite } from '../../utils/writeAccess';
 import {
   addSuggestedOccupant,
   blankHousingForm,
@@ -10,6 +11,7 @@ import {
   formFromCertificateData,
   formSignature,
   housingBindingKey,
+  isConflictOutcome,
   isPrivateForgetOutcome,
   personRow,
   validateHousingForm,
@@ -34,6 +36,7 @@ function neutralPrivate(binding, service, { loading = false, accessDenied = fals
     nextCursor: null,
     loading,
     error: null,
+    sourceConflict: false,
     accessDenied,
     saved: false,
   };
@@ -46,7 +49,7 @@ function safeText(value) {
 function validateSourceView(value, contractId) {
   if (!value || typeof value !== 'object' || value.contract_id !== contractId
       || !safeText(value.contract_number) || !safeText(value.property_label)
-      || !safeText(value.unit_label) || !value.actions || typeof value.actions !== 'object') {
+      || !safeText(value.unit_label) || !value.source_etags || typeof value.source_etags !== 'object') {
     throw new Error('invalid_housing_source');
   }
   return {
@@ -66,10 +69,14 @@ function validatePreviewView(value) {
 }
 
 function validateHistoryItem(item) {
-  if (!item || typeof item !== 'object' || !safeText(item.id)
-      || !safeText(item.issue_date) || !item.actions || typeof item.actions !== 'object') {
+  if (!item || typeof item !== 'object' || !safeText(item.id) || !safeText(item.document_id)
+      || !safeText(item.version_id) || !safeText(item.contract_id)
+      || !safeText(item.issue_date) || !item.data || typeof item.data !== 'object') {
     throw new Error('invalid_housing_history');
   }
+  if (!(item.correction_of == null || (
+    safeText(item.correction_of.document_id) && safeText(item.correction_of.version_id)
+  ))) throw new Error('invalid_housing_history');
   return item;
 }
 
@@ -171,6 +178,7 @@ export default function HousingConfirmationDialog({
   const confirm = useConfirm();
   const titleId = useId();
   const binding = housingBindingKey(contractId, user);
+  const canPublish = authMayWrite(auth, '/contracts') && authMayWrite(auth, '/documents');
   const controllers = useRef(new Set());
   const [stored, setStored] = useState(() => neutralPrivate('', null));
   const view = stored.binding === binding && stored.service === service
@@ -218,6 +226,7 @@ export default function HousingConfirmationDialog({
         service,
         loading: true,
         error: null,
+        sourceConflict: false,
         accessDenied: false,
         preview: null,
         previewInvalidated: false,
@@ -295,33 +304,53 @@ export default function HousingConfirmationDialog({
   }, [binding, command, locked, service]);
 
   const patchForm = patch => updateForm(form => ({ ...form, ...patch }));
+  const patchConfirmation = patch => {
+    if (locked) return;
+    setStored(current => {
+      if (current.binding !== binding || current.service !== service || !current.form) return current;
+      return {
+        ...current,
+        form: { ...current.form, ...patch },
+        saved: false,
+        error: null,
+      };
+    });
+    if (!['unknown', 'sending'].includes(command.state.phase)) command.reset();
+  };
 
   const runPreview = async () => {
-    if (!view.form || typeof service?.preview !== 'function' || !view.source?.actions?.preview) return;
+    if (!view.form || typeof service?.preview !== 'function' || !view.source) return;
     const checked = validateHousingForm(view.form);
     if (!checked.valid) {
       setStored(current => current.binding === binding ? { ...current, error: tr('requiredFields') } : current);
       return;
     }
     const controller = startRequest();
-    setStored(current => current.binding === binding ? { ...current, error: null } : current);
+    setStored(current => current.binding === binding ? { ...current, error: null, sourceConflict: false } : current);
     try {
       const raw = await service.preview({
         contractId,
         data: checked.data,
+        sourceEtags: view.source.source_etags,
         correctionOf: view.correctionOf,
       }, { signal: controller.signal });
       if (controller.signal.aborted) return;
       const preview = validatePreviewView(raw);
       setStored(current => current.binding === binding && current.service === service
-        ? { ...current, preview, previewInvalidated: false, error: null, saved: false }
+        ? { ...current, preview, previewInvalidated: false, sourceConflict: false, error: null, saved: false }
         : current);
     } catch (error) {
       if (controller.signal.aborted || error?.name === 'AbortError') return;
       if (!forgetPrivate(error)) {
-        setStored(current => current.binding === binding
-          ? { ...current, error: error?.message || tr('errorTitle') }
-          : current);
+        if (isConflictOutcome(error)) {
+          setStored(current => current.binding === binding
+            ? { ...current, error: null, sourceConflict: true, preview: null }
+            : current);
+        } else {
+          setStored(current => current.binding === binding
+            ? { ...current, error: error?.message || tr('errorTitle') }
+            : current);
+        }
       }
     } finally {
       finishRequest(controller);
@@ -329,8 +358,8 @@ export default function HousingConfirmationDialog({
   };
 
   const publish = () => {
-    if (!view.form || !view.preview || typeof service?.preparePublish !== 'function'
-        || !view.source?.actions?.publish) return;
+    if (!view.form || !view.preview || !canPublish || typeof service?.preparePublish !== 'function'
+        || !view.source) return;
     const checked = validateHousingForm(view.form, { forPublish: true });
     if (!checked.valid) {
       setStored(current => current.binding === binding ? { ...current, error: tr('requiredFields') } : current);
@@ -339,8 +368,14 @@ export default function HousingConfirmationDialog({
     const prepared = service.preparePublish({
       contractId,
       data: checked.data,
+      sourceEtags: view.source.source_etags,
       preview: view.preview,
       correctionOf: view.correctionOf,
+      confirmations: {
+        confirmed_actual_move_in: view.form.confirmed_actual_move_in,
+        confirmed_authority: view.form.confirmed_authority,
+        confirmed_residents: view.form.confirmed_residents,
+      },
     });
     if (!prepared?.payload || typeof prepared.send !== 'function') {
       setStored(current => current.binding === binding ? { ...current, error: tr('errorTitle') } : current);
@@ -402,7 +437,7 @@ export default function HousingConfirmationDialog({
   };
 
   const openOriginal = async item => {
-    if (typeof service?.openOriginal !== 'function' || !item.actions?.open_original) return;
+    if (typeof service?.openOriginal !== 'function') return;
     const controller = startRequest();
     try {
       await service.openOriginal(item, { signal: controller.signal });
@@ -419,14 +454,14 @@ export default function HousingConfirmationDialog({
   };
 
   const startCorrection = item => {
-    if (locked || !item.actions?.correct || !item.data) return;
+    if (locked || !canPublish || !item.data) return;
     const form = formFromCertificateData(item.data);
     setStored(current => current.binding === binding && current.service === service
       ? {
         ...current,
         form,
         baseline: formSignature(form),
-        correctionOf: item.id,
+        correctionOf: { document_id: item.document_id, version_id: item.version_id },
         preview: null,
         previewInvalidated: false,
         saved: false,
@@ -470,6 +505,12 @@ export default function HousingConfirmationDialog({
         </div>}
         {view.error && <div className="housing-confirmation__notice housing-confirmation__notice--error" role="alert">
           <AlertTriangle size={18} /><span>{view.error}</span>
+        </div>}
+        {view.sourceConflict && <div className="housing-confirmation__notice housing-confirmation__notice--warning" role="alert">
+          <AlertTriangle size={18} /><div><strong>{tr('conflictTitle')}</strong><p>{tr('conflictBody')}</p></div>
+          <button type="button" className="btn btn-secondary" onClick={() => {
+            void loadBinding({ preserveForm: true });
+          }}>{tr('reloadSource')}</button>
         </div>}
         {command.state.phase === 'unknown' && <div className="housing-confirmation__notice housing-confirmation__notice--warning" role="alert">
           <AlertTriangle size={18} /><div><strong>{tr('unknownTitle')}</strong><p>{tr('unknownBody')}</p></div>
@@ -598,7 +639,7 @@ export default function HousingConfirmationDialog({
 
           <section className="housing-confirmation__review-actions">
             <button type="button" className="btn btn-secondary"
-              disabled={locked || !view.source.actions.preview} onClick={() => void runPreview()}>
+              disabled={locked} onClick={() => void runPreview()}>
               {tr('preview')}</button>
             {view.previewInvalidated && <p role="status">{tr('previewInvalidated')}</p>}
           </section>
@@ -611,16 +652,20 @@ export default function HousingConfirmationDialog({
             {view.preview.warnings.length > 0 && <div><h4>{tr('warnings')}</h4>
               <ul>{view.preview.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul></div>}
             <label className="housing-confirmation__check"><input type="checkbox"
-              checked={view.form.occupancy_confirmed} disabled={locked}
-              onChange={event => patchForm({ occupancy_confirmed: event.target.checked })} />
+              checked={view.form.confirmed_residents} disabled={locked}
+              onChange={event => patchConfirmation({ confirmed_residents: event.target.checked })} />
               <span>{tr('confirmOccupancy')}</span></label>
             <label className="housing-confirmation__check"><input type="checkbox"
-              checked={view.form.authority_confirmed} disabled={locked}
-              onChange={event => patchForm({ authority_confirmed: event.target.checked })} />
+              checked={view.form.confirmed_authority} disabled={locked}
+              onChange={event => patchConfirmation({ confirmed_authority: event.target.checked })} />
               <span>{tr('confirmAuthority')}</span></label>
+            <label className="housing-confirmation__check"><input type="checkbox"
+              checked={view.form.confirmed_actual_move_in} disabled={locked}
+              onChange={event => patchConfirmation({ confirmed_actual_move_in: event.target.checked })} />
+              <span>{tr('confirmActualMoveIn')}</span></label>
             <p className="housing-confirmation__policy">{tr('noAuthorityClaim')}</p>
             <button type="button" className="btn btn-primary"
-              disabled={locked || !view.source.actions.publish} onClick={publish}>{tr('publish')}</button>
+              disabled={locked || !canPublish} onClick={publish}>{tr('publish')}</button>
           </section>}
 
           {view.saved && <div className="housing-confirmation__notice housing-confirmation__notice--success" role="status">
@@ -634,11 +679,11 @@ export default function HousingConfirmationDialog({
             {view.history.length === 0 ? <p>{tr('noHistory')}</p> : <div className="housing-confirmation__history-list">
               {view.history.map(item => <article key={item.id}>
                 <div><FileText size={18} /><div><strong>{formatDate(item.issue_date, locale)}</strong>
-                  {item.corrects_label && <small>{tr('correctionOf')}: {item.corrects_label}</small>}</div></div>
+                  {item.correction_of && <small>{tr('correctionOf')}</small>}</div></div>
                 <div className="housing-confirmation__history-actions">
-                  {item.actions.open_original && <button type="button" className="btn btn-secondary btn-sm"
-                    onClick={() => void openOriginal(item)}>{tr('openPdf')}</button>}
-                  {item.actions.correct && item.data && <button type="button" className="btn btn-secondary btn-sm"
+                  <button type="button" className="btn btn-secondary btn-sm"
+                    onClick={() => void openOriginal(item)}>{tr('openPdf')}</button>
+                  {canPublish && item.data && <button type="button" className="btn btn-secondary btn-sm"
                     disabled={locked} onClick={() => startCorrection(item)}>{tr('correction')}</button>}
                 </div>
               </article>)}

@@ -10,6 +10,7 @@ import {
   validateTenancyChange,
 } from './tenancyWorkflowModel';
 import { workflowText } from './workflowCopy';
+import { housingText } from '../housingConfirmation/housingConfirmationText';
 import './TenancyWorkflows.css';
 
 function statusIcon(state) {
@@ -81,6 +82,7 @@ export default function TenancyChangeFile({
   onChanged,
   onReviewCurrent,
   onOpenTask,
+  onHousingConfirmation,
 }) {
   const checked = useMemo(() => validateTenancyChange(change), [change]);
   const [base, setBase] = useState(checked);
@@ -99,6 +101,7 @@ export default function TenancyChangeFile({
   const request = useRef(null);
   const command = useWorkflowCommand(principalKey);
   const tr = useCallback((key, params) => workflowText(locale, key, params), [locale]);
+  const htr = useCallback((key, params) => housingText(locale, key, params), [locale]);
 
   useEffect(() => () => request.current?.abort(), []);
   useEffect(() => {
@@ -251,6 +254,24 @@ export default function TenancyChangeFile({
           { label: tr('nextContract'), value: base.next_contract_id },
         ]} />
       </div>
+
+      {base.next_contract_id && ['move_in', 'turnover'].includes(base.mode)
+        && typeof onHousingConfirmation === 'function' && (
+        <section className="workflow-change__housing">
+          <div>
+            <strong>{htr('title')}</strong>
+            <p className="workflow-muted">{htr('moveInEntryHint')}</p>
+          </div>
+          <button type="button" className="btn btn-secondary"
+            onClick={event => onHousingConfirmation({
+              contractId: base.next_contract_id,
+              handoverDate: base.move_in_handover_date,
+              opener: event.currentTarget,
+            })}>
+            {htr('openFromMoveIn')}
+          </button>
+        </section>
+      )}
 
       {directions.map(direction => (
         <section key={direction} className="workflow-change__lane">

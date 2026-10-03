@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../i18n';
+import HousingConfirmationDialog from '../features/housingConfirmation/HousingConfirmationDialog';
+import { housingConfirmationService } from '../features/housingConfirmation/housingConfirmationApi';
 import {
   BoundedReferencePicker,
   TenancyChangeFile,
@@ -131,6 +133,7 @@ export default function TenancyWorkflows() {
   const [changeMore, setChangeMore] = useState(false);
   const [changeError, setChangeError] = useState(null);
   const [selectedChange, setSelectedChange] = useState(null);
+  const [housingConfirmation, setHousingConfirmation] = useState(null);
 
   const [contextProperty, setContextProperty] = useState(null);
   const [contextUnit, setContextUnit] = useState(null);
@@ -645,6 +648,7 @@ export default function TenancyWorkflows() {
             }}
             onReviewCurrent={({ change }) => refreshChange(change.id)}
             onOpenTask={() => navigate('/tasks')}
+            onHousingConfirmation={setHousingConfirmation}
           />
         )}
       </main>
@@ -667,6 +671,15 @@ export default function TenancyWorkflows() {
         </div>
       </header>
       {tab === 'templates' && manager ? renderTemplateWorkspace() : renderChangeWorkspace()}
+      {housingConfirmation && (
+        <HousingConfirmationDialog
+          contractId={housingConfirmation.contractId}
+          opener={housingConfirmation.opener}
+          service={housingConfirmationService}
+          tenancyContext={{ handover_date: housingConfirmation.handoverDate || null }}
+          onClose={() => setHousingConfirmation(null)}
+        />
+      )}
     </div>
   );
 }

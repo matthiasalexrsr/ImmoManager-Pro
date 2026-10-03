@@ -92,6 +92,43 @@ function nextChange(source, steps, revision = 'change-rev-2') {
 }
 
 describe('TenancyChangeFile against the core DTOs', () => {
+  it('offers housing confirmation only for the bound move-in contract and passes handover as reference only', () => {
+    const onHousingConfirmation = vi.fn();
+    const view = render(
+      <TenancyChangeFile
+        change={change({
+          mode: 'turnover',
+          next_contract_id: 'new-contract',
+          move_in_handover_date: '2026-10-11',
+        })}
+        onHousingConfirmation={onHousingConfirmation}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Bestätigung vorbereiten' }));
+    expect(onHousingConfirmation).toHaveBeenCalledWith(expect.objectContaining({
+      contractId: 'new-contract',
+      handoverDate: '2026-10-11',
+      opener: expect.any(HTMLElement),
+    }));
+
+    view.rerender(
+      <TenancyChangeFile
+        change={change({
+          mode: 'move_out',
+          next_contract_id: null,
+          move_in_handover_date: null,
+          move_in_template_version_id: null,
+          revision: 'change-rev-move-out',
+          etag: '"immo-workflow-v1:tenancy-change:change-1:change-rev-move-out"',
+        })}
+        onHousingConfirmation={onHousingConfirmation}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: 'Bestätigung vorbereiten' })).not.toBeInTheDocument();
+  });
+
+
   it('shows practical dates, blocker titles, translated responsibility, evidence context and task action without raw ids', () => {
     const blocker = step({
       id: 'step-before',

@@ -19,6 +19,12 @@ vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({
   user: mocks.auth, role: mocks.auth?.role, canWrite: () => mocks.canWrite,
 }) }));
 vi.mock('../components/ConfirmDialog', () => ({ useConfirm: () => mocks.confirm }));
+vi.mock('../features/housingConfirmation/HousingConfirmationDialog', () => ({
+  default: ({ contractId, onClose }) => <section role="dialog" aria-label="housing-confirmation-test">
+    <span>{contractId}</span>
+    <button type="button" onClick={onClose}>housing-close</button>
+  </section>,
+}));
 const languages = { 'de-DE': de, 'en-US': en, 'es-ES': es };
 const translate = (key, params) => {
   let value = key.split('.').reduce((node, part) => node?.[part], languages[mocks.locale]) || key;
@@ -166,6 +172,20 @@ async function fillRenewal({ unlimited = true } = {}) {
 }
 
 describe('contract lifecycle dialog', () => {
+  it('opens housing confirmation for the exact current contract without changing lifecycle state', async () => {
+    mount();
+    await ready();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Wohnungsgeberbestätigung' }));
+    const housing = await screen.findByRole('dialog', { name: 'housing-confirmation-test' });
+    expect(housing).toHaveTextContent('contract-1');
+    expect(screen.getByRole('heading', { name: de.contractLifecycle.title })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'housing-close' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'housing-confirmation-test' })).not.toBeInTheDocument());
+  });
+
+
   it('creates an open-ended renewal with a fresh strong ETag and bounded page reads', async () => {
     mount(); await ready(); await fillRenewal();
     fireEvent.click(screen.getByRole('button', { name: de.contractLifecycle.saveDraft }));

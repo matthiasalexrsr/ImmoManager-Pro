@@ -1,6 +1,8 @@
 const COPY = {
   'de-DE': {
     title: 'Wohnungsgeberbestätigung', eyebrow: 'Einzug & Meldung',
+    openFromContract: 'Wohnungsgeberbestätigung', openFromMoveIn: 'Bestätigung vorbereiten',
+    moveInEntryHint: 'Für den neuen Mietvertrag vorbereiten. Übergabe und Vertragsbeginn sind nur Referenzen; der tatsächliche Einzug wird im Formular bewusst eingetragen.',
     loading: 'Lade aktuelle Vertragsdaten …', loadFailed: 'Die aktuellen Vertragsdaten konnten nicht geladen werden.',
     accessLost: 'Die Wohnungsgeberbestätigung ist in diesem Zugriff nicht verfügbar.', close: 'Schließen',
     discardPrompt: 'Ungespeicherte Angaben oder eine ungeklärte Freigabe würden verworfen. Wirklich schließen?',
@@ -20,6 +22,7 @@ const COPY = {
     sourceSuggestion: 'Aus Vertrags-/Objektdaten übernehmen', preview: 'Vorschau prüfen',
     previewReady: 'Vorläufige Vorschau geprüft', previewInvalidated: 'Die Vorschau wurde wegen einer Änderung verworfen.',
     confirmOccupancy: 'Ich bestätige, dass die eingetragenen Personen tatsächlich in die Wohnung einziehen.',
+    confirmActualMoveIn: 'Ich bestätige, dass das angegebene Einzugsdatum der tatsächliche Einzug ist.',
     confirmAuthority: 'Ich bestätige, dass die ausstellende Person zur Ausstellung dieser Bestätigung befugt ist.',
     publish: 'Freigeben und Original speichern',
     published: 'Die freigegebene Fassung wurde als unveränderliches Original gespeichert.',
@@ -38,6 +41,8 @@ const COPY = {
   },
   'en-US': {
     title: 'Housing provider confirmation', eyebrow: 'Move-in & registration',
+    openFromContract: 'Housing provider confirmation', openFromMoveIn: 'Prepare confirmation',
+    moveInEntryHint: 'Prepare it for the new lease. Handover and contract start are references only; the actual move-in is entered deliberately in the form.',
     loading: 'Loading current contract data …', loadFailed: 'Current contract data could not be loaded.',
     accessLost: 'The housing confirmation is not available with this access.', close: 'Close',
     discardPrompt: 'Unsaved details or an unresolved release would be discarded. Close anyway?',
@@ -56,6 +61,7 @@ const COPY = {
     sourceSuggestion: 'Use contract/property suggestion', preview: 'Review preview',
     previewReady: 'Preliminary preview reviewed', previewInvalidated: 'The preview was discarded because an input changed.',
     confirmOccupancy: 'I confirm that the listed people are actually moving into the dwelling.',
+    confirmActualMoveIn: 'I confirm that the stated move-in date is the actual move-in date.',
     confirmAuthority: 'I confirm that the issuing person is authorized to issue this confirmation.',
     publish: 'Release and save original', published: 'The released version was stored as an immutable original.',
     noAuthorityClaim: 'No authority transmission or electronic signature is claimed here.',
@@ -71,6 +77,8 @@ const COPY = {
   },
   'es-ES': {
     title: 'Confirmación del arrendador', eyebrow: 'Entrada y empadronamiento',
+    openFromContract: 'Confirmación del arrendador', openFromMoveIn: 'Preparar confirmación',
+    moveInEntryHint: 'Prepárela para el nuevo contrato. La entrega y el inicio del contrato son solo referencias; la entrada real se indica de forma consciente en el formulario.',
     loading: 'Cargando datos actuales del contrato …', loadFailed: 'No se pudieron cargar los datos actuales del contrato.',
     accessLost: 'La confirmación no está disponible con este acceso.', close: 'Cerrar',
     discardPrompt: 'Se descartarían datos sin guardar o una liberación no aclarada. ¿Cerrar de todos modos?',
@@ -89,6 +97,7 @@ const COPY = {
     sourceSuggestion: 'Usar sugerencia del contrato/inmueble', preview: 'Revisar vista previa',
     previewReady: 'Vista previa provisional revisada', previewInvalidated: 'La vista previa se descartó por un cambio.',
     confirmOccupancy: 'Confirmo que las personas indicadas realmente entran en la vivienda.',
+    confirmActualMoveIn: 'Confirmo que la fecha indicada es la fecha real de entrada.',
     confirmAuthority: 'Confirmo que la persona emisora está autorizada a emitir esta confirmación.',
     publish: 'Liberar y guardar original', published: 'La versión liberada se guardó como original inmutable.',
     noAuthorityClaim: 'No se afirma ningún envío a la autoridad ni firma electrónica.',

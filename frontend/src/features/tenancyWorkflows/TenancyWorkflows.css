@@ -1147,3 +1147,40 @@
     padding-inline: .65rem;
   }
 }
+
+.workflow-change__housing {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .8rem;
+  min-width: 0;
+  padding: .8rem;
+  border: 1px solid var(--border-color, var(--border));
+  border-radius: var(--radius-md, 12px);
+  background: color-mix(in srgb, var(--primary) 6%, transparent);
+}
+
+.workflow-change__housing > div {
+  min-width: 0;
+}
+
+.workflow-change__housing p {
+  margin: .2rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.workflow-change__housing .btn {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 420px) {
+  .workflow-change__housing {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .workflow-change__housing .btn {
+    width: 100%;
+    min-height: 44px;
+  }
+}

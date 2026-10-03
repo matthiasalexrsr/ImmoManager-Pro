@@ -7,6 +7,9 @@ import useWriteAccess from '../hooks/useWriteAccess';
 import { useConfirm } from './ConfirmDialog';
 import { useTranslation } from '../i18n';
 import ContractCorrespondence from './ContractCorrespondence';
+import HousingConfirmationDialog from '../features/housingConfirmation/HousingConfirmationDialog';
+import { housingConfirmationService } from '../features/housingConfirmation/housingConfirmationApi';
+import { housingText } from '../features/housingConfirmation/housingConfirmationText';
 import './ContractLifecycle.css';
 
 const PAGE_SIZE = 25;
@@ -262,8 +265,8 @@ function FocusDialog({ children, titleId, busy, onClose, opener }) {
   </div>;
 }
 
-function LifecycleDialog({ contract, opener, onClose, onChanged, user }) {
-  const { t } = useTranslation();
+function LifecycleDialog({ contract, opener, onClose, onChanged, user, onHousingConfirmation }) {
+  const { t, locale } = useTranslation();
   const confirm = useConfirm();
   const label = useCallback(key => t(`contractLifecycle.${key}`), [t]);
   const controllers = useRef(new Set());
@@ -831,7 +834,13 @@ function LifecycleDialog({ contract, opener, onClose, onChanged, user }) {
 
     <footer className="contract-lifecycle__footer">
       <p>{label('disclaimer')}</p>
-      <button type="button" className="btn btn-secondary" onClick={onClose} disabled={dialogBusy}>{label('close')}</button>
+      <div className="contract-lifecycle__actions">
+        <button type="button" className="btn btn-secondary" disabled={dialogBusy}
+          onClick={event => onHousingConfirmation?.(event.currentTarget)}>
+          {housingText(locale, 'openFromContract')}
+        </button>
+        <button type="button" className="btn btn-secondary" onClick={onClose} disabled={dialogBusy}>{label('close')}</button>
+      </div>
     </footer>
   </FocusDialog>;
 }
@@ -840,7 +849,17 @@ export default function ContractLifecycle({ contract, opener, onClose, onChanged
   const auth = useAuth();
   const user = auth?.user;
   const key = useMemo(() => actorKey(user), [user]);
+  const [housingOpener, setHousingOpener] = useState(null);
   if (!contract?.id || !key) return null;
-  return <LifecycleDialog key={`${contract.id}:${key}`} contract={contract} opener={opener}
-    onClose={onClose} onChanged={onChanged} user={user} />;
+  return <>
+    <LifecycleDialog key={`${contract.id}:${key}`} contract={contract} opener={opener}
+      onClose={onClose} onChanged={onChanged} user={user}
+      onHousingConfirmation={setHousingOpener} />
+    {housingOpener && <HousingConfirmationDialog
+      contractId={contract.id}
+      opener={housingOpener}
+      service={housingConfirmationService}
+      onClose={() => setHousingOpener(null)}
+    />}
+  </>;
 }

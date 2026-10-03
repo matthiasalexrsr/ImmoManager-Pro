@@ -24,8 +24,9 @@ export function blankHousingForm() {
     issuer_name: '',
     issuer_role: '',
     occupants: [personRow()],
-    occupancy_confirmed: false,
-    authority_confirmed: false,
+    confirmed_actual_move_in: false,
+    confirmed_authority: false,
+    confirmed_residents: false,
   };
 }
 
@@ -63,8 +64,9 @@ export function formSnapshot(form) {
     issuer_name: form.issuer_name,
     issuer_role: form.issuer_role,
     occupants: form.occupants.map(item => item.name),
-    occupancy_confirmed: Boolean(form.occupancy_confirmed),
-    authority_confirmed: Boolean(form.authority_confirmed),
+    confirmed_actual_move_in: Boolean(form.confirmed_actual_move_in),
+    confirmed_authority: Boolean(form.confirmed_authority),
+    confirmed_residents: Boolean(form.confirmed_residents),
   };
 }
 
@@ -76,37 +78,36 @@ export function certificateDataFromForm(form) {
   const value = formSnapshot(form);
   if (!value) throw new Error('missing_form');
   return {
-    dwelling_address: value.dwelling_address.trim(),
-    dwelling_label: value.dwelling_label.trim() || null,
     housing_provider_name: value.housing_provider_name.trim(),
     housing_provider_address: value.housing_provider_address.trim(),
-    owner_is_provider: value.owner_relation === 'same',
+    owner_same_as_provider: value.owner_relation === 'same',
     owner_name: value.owner_relation === 'different' ? value.owner_name.trim() : null,
-    actual_move_in_date: value.actual_move_in_date,
+    move_in_date: value.actual_move_in_date,
     issue_date: value.issue_date,
+    apartment_address: value.dwelling_address.trim(),
+    apartment_label: value.dwelling_label.trim() || null,
     issuer_name: value.issuer_name.trim(),
     issuer_role: value.issuer_role,
-    occupant_names: value.occupants.map(name => name.trim()).filter(Boolean),
-    occupancy_confirmed: value.occupancy_confirmed,
-    authority_confirmed: value.authority_confirmed,
+    residents: value.occupants.map(name => name.trim()).filter(Boolean),
   };
 }
 
 export function validateHousingForm(form, { forPublish = false } = {}) {
   const data = certificateDataFromForm(form);
   const errors = [];
-  if (!data.dwelling_address) errors.push('dwelling_address');
+  if (!data.apartment_address) errors.push('apartment_address');
   if (!data.housing_provider_name) errors.push('housing_provider_name');
   if (!data.housing_provider_address) errors.push('housing_provider_address');
   if (!['same', 'different'].includes(form.owner_relation)) errors.push('owner_relation');
   if (form.owner_relation === 'different' && !data.owner_name) errors.push('owner_name');
-  if (!isDate(data.actual_move_in_date)) errors.push('actual_move_in_date');
+  if (!isDate(data.move_in_date)) errors.push('move_in_date');
   if (!isDate(data.issue_date)) errors.push('issue_date');
   if (!data.issuer_name) errors.push('issuer_name');
   if (!ISSUER_ROLES.includes(data.issuer_role)) errors.push('issuer_role');
-  if (!data.occupant_names.length) errors.push('occupant_names');
-  if (forPublish && !data.occupancy_confirmed) errors.push('occupancy_confirmed');
-  if (forPublish && !data.authority_confirmed) errors.push('authority_confirmed');
+  if (!data.residents.length) errors.push('residents');
+  if (forPublish && !form.confirmed_actual_move_in) errors.push('confirmed_actual_move_in');
+  if (forPublish && !form.confirmed_authority) errors.push('confirmed_authority');
+  if (forPublish && !form.confirmed_residents) errors.push('confirmed_residents');
   return { valid: errors.length === 0, errors, data };
 }
 
@@ -135,21 +136,22 @@ export function formFromCertificateData(data) {
   if (!data || typeof data !== 'object') return form;
   return {
     ...form,
-    dwelling_address: data.dwelling_address || '',
-    dwelling_label: data.dwelling_label || '',
+    dwelling_address: data.apartment_address || '',
+    dwelling_label: data.apartment_label || '',
     housing_provider_name: data.housing_provider_name || '',
     housing_provider_address: data.housing_provider_address || '',
-    owner_relation: data.owner_is_provider === true ? 'same'
-      : data.owner_is_provider === false ? 'different' : '',
+    owner_relation: data.owner_same_as_provider === true ? 'same'
+      : data.owner_same_as_provider === false ? 'different' : '',
     owner_name: data.owner_name || '',
-    actual_move_in_date: data.actual_move_in_date || '',
+    actual_move_in_date: data.move_in_date || '',
     issue_date: data.issue_date || '',
     issuer_name: data.issuer_name || '',
     issuer_role: ISSUER_ROLES.includes(data.issuer_role) ? data.issuer_role : '',
-    occupants: Array.isArray(data.occupant_names) && data.occupant_names.length
-      ? data.occupant_names.map(name => personRow(String(name)))
+    occupants: Array.isArray(data.residents) && data.residents.length
+      ? data.residents.map(name => personRow(String(name)))
       : [personRow()],
-    occupancy_confirmed: false,
-    authority_confirmed: false,
+    confirmed_actual_move_in: false,
+    confirmed_authority: false,
+    confirmed_residents: false,
   };
 }
