@@ -1,9 +1,11 @@
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ..auth import require_role
+from ..logging_config import request_id_var
 from ..services.checked_publication import CheckedPublicationRoute
 from ..services.integrations.config_store import ConfigStoreError
 from ..services.integrations.history_types import HistoryError
@@ -34,11 +36,15 @@ class IntegrationPublicationRoute(CheckedPublicationRoute):
             except HistoryError as error:
                 raise HTTPException(error.status, detail={"code": error.code, "message": error.message}) from None
             except ConfigStoreError as error:
-                raise HTTPException(
+                detail = {"code": error.code, "message": runtime_state_instruction(error.code)}
+                # Return this fixed safe domain envelope directly. The app's
+                # generic HTTPException handler stringifies dict details.
+                return JSONResponse(
                     status_code=412 if error.code == "state_revision_conflict" else 503,
-                    detail={"code": error.code, "message": runtime_state_instruction(error.code)},
+                    content={"error": {**detail, "request_id": request_id_var.get() or "-"},
+                             "detail": detail},  # documented v1 compatibility
                     headers={"Cache-Control": "private, no-store", "Vary": "Authorization"},
-                ) from None
+                )
 
         return checked
 

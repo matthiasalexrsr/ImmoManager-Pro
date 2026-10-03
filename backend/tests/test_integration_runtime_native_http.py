@@ -41,6 +41,9 @@ def test_real_sql_login_cipher_cas_and_missing_state_refuse_before_provider(acce
         json={"expected_revision": revision, "config": {"smtp_password": "stale-attempt"}})
     assert stale.status_code == 412
     assert stale.json()["detail"]["code"] == "state_revision_conflict"
+    assert stale.json()["error"]["code"] == "state_revision_conflict"
+    assert stale.json()["error"]["message"] == stale.json()["detail"]["message"]
+    assert stale.json()["error"]["request_id"] != "-"
     assert stale.headers["cache-control"] == "private, no-store"
     assert "authorization" in stale.headers["vary"].lower()
     assert path.read_bytes() == original
@@ -58,7 +61,10 @@ def test_real_sql_login_cipher_cas_and_missing_state_refuse_before_provider(acce
             return {table: session.scalar(text(f'SELECT count(*) FROM "{table}"')) for table in TABLES}
 
     before = journal_counts()
+    provider_reached = False
     def forbidden_provider(*_args, **_kwargs):
+        nonlocal provider_reached
+        provider_reached = True
         raise AssertionError("Missing encrypted state reached a provider")
 
     monkeypatch.setattr(private_manager._providers["email"], "run", forbidden_provider)
@@ -69,8 +75,10 @@ def test_real_sql_login_cipher_cas_and_missing_state_refuse_before_provider(acce
         result = client.request(method, route, headers=owner, **({"json": payload} if payload is not None else {}))
         assert result.status_code == 503
         assert result.json()["detail"]["code"] == "state_missing"
+        assert result.json()["error"]["code"] == "state_missing"
         assert result.headers["cache-control"] == "private, no-store"
         assert "authorization" in result.headers["vary"].lower()
         assert "SYNTHETIC_NATIVE_CIPHER_SECRET" not in result.text
         assert not path.exists()
     assert journal_counts() == before
+    assert not provider_reached
