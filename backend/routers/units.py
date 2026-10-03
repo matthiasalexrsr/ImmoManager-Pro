@@ -3,8 +3,10 @@ from fastapi import APIRouter, HTTPException, Query, status
 from ..dependencies import store
 from ..models import Unit, UnitCreate, UnitPatch
 from ..storage import NotFoundError, ValidationError
+from .unit_workspace import router as workspace_router
 
 router = APIRouter(prefix="/units", tags=["Einheiten"])
+router.include_router(workspace_router)
 
 
 @router.get("", response_model=list[Unit])
