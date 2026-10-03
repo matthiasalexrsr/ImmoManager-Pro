@@ -45,6 +45,9 @@ _SOURCE_SHA_CHECK = (
 _COMMAND_SHA_CHECK = (
     "length(command_sha256)=64 AND command_sha256=lower(command_sha256)"
 )
+_MAPPING_SHA_CHECK = (
+    "length(mapping_sha256)=64 AND mapping_sha256=lower(mapping_sha256)"
+)
 
 
 class TehaExternalMappingORM(Base):
@@ -164,6 +167,10 @@ class TehaImportReceiptORM(Base):
     source_kind: Mapped[str] = mapped_column(String(32), nullable=False)
     external_identity_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     mapping_generation: Mapped[int] = mapped_column(Integer, nullable=False)
+    mapping_id: Mapped[str] = mapped_column(
+        ForeignKey("teha_external_mappings.id", ondelete="RESTRICT"), nullable=False
+    )
+    mapping_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     source_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     content_sha256: Mapped[str | None] = mapped_column(String(64))
 
@@ -198,6 +205,7 @@ class TehaImportReceiptORM(Base):
         CheckConstraint(_SHA_CHECK, name="ck_teha_import_identity_sha"),
         CheckConstraint(_SOURCE_SHA_CHECK, name="ck_teha_import_source_sha"),
         CheckConstraint(_COMMAND_SHA_CHECK, name="ck_teha_import_command_sha"),
+        CheckConstraint(_MAPPING_SHA_CHECK, name="ck_teha_import_mapping_sha"),
         CheckConstraint(
             "content_sha256 IS NULL OR "
             "(length(content_sha256)=64 AND content_sha256=lower(content_sha256))",
