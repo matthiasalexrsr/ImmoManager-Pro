@@ -159,3 +159,28 @@ exakt obiger Datei; Migration zunächst `-k sqlite`, PostgreSQL später getrennt
 `-k postgresql`. Root legt native Slots und harte Gesamtbudgets vor Ausführung
 fest. Ein einfacher Operationslauf ersetzt keinen tatsächlichen vollständigen
 L2→M2-Alembic-Head-/DDLfreienStart-/Fullbackup-/Restore-Gate. Kein A–L-Gesamtclaim.
+
+## Tatsächliche unabhängige Rootprüfungen auf 72c0756
+
+Root hat die übernommenen Quellen anschließend getrennt ausgeführt. Die
+oben dokumentierte reine Quellenübergabe bleibt als Herkunft erhalten.
+
+| Gate | Tatsächliches Ergebnis | Harte Prozessgrenze |
+|---|---|---|
+| Readonly-HTTP, eigene SQLite-/SQLUserStore-Instanz | 9 PASS, 44,95 s, Exit 0 | 120 s |
+| Reiner Recoveryadapter einschließlich frischem Importprozess | 8 PASS, 1,13 s, Exit 0 | 30 s |
+| SQLite-Migrationsvorlage über Alembic Operations | 6 PASS, 1,46 s, Exit 0 | 60 s |
+
+Die fünf PostgreSQL-Migrationsfälle wurden im SQLite-Lauf ausdrücklich
+abgewählt; sie sind weder bestanden noch übersprungen. Alle Prüfprozesse
+sind beendet. Berichte: `artifacts/NOTIFICATION_INBOX_READONLY_HTTP_72c0756.xml`,
+`artifacts/NOTIFICATION_INBOX_RAW_RECOVERY_72c0756.xml` und
+`artifacts/NOTIFICATION_INBOX_M2_SQLITE_OPERATIONS_72c0756.xml`.
+
+Der HTTP-Gate verwendet den kleinen tatsächlichen Routeraufbau, nicht den
+Produktions-Appstart. Die Migration liegt weiterhin außerhalb `versions`;
+kein Schemahead, Registry-, INTERNAL- oder Restoreanschluss wurde aktiviert.
+Kein Login-/Sid-Racebeleg und kein positiver persönlicher Schreibzugriff.
+Der vollständige L2→M2-Upgrade-/Start-/Wiederherstellungsnachweis bleibt offen.
+Ein Starlette-TestClient- und sieben SQLite-Datetime-Adapterhinweise sind
+DeprecationWarnings; sie ersetzen keinen Produktfehler und bleiben sichtbar.

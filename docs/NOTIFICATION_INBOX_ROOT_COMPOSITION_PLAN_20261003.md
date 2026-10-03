@@ -168,3 +168,15 @@ unreleasedL2-Layout trotz widersprüchlicher Docs; Original-/Mappingtarget-
 Kreuzbindung und Dokumenttypregel. Root hat den lokalen GPT6.1Solxhigh-Agenten
 mit Vorcodekorrektur/finalemL2Freeze beauftragt. Kein bestehendes LiveL2
 angenommen, kein privates Schema verändert, keine Aktivierungsfreigabe.
+
+Readonly-Paket608890c/d543aad/72c0756 ist inzwischen unabhängig übernommen
+und gezielt ausgeführt: 9HTTP PASS44,95s/hard120, 8RawRecovery PASS1,13s/hard30,
+6SQLiteOperations PASS1,46s/hard60, jeweils Exit0 und abgeschlossene Prozesse.
+Die fünf PG-Migrationsfälle wurden ausdrücklich abgewählt, nicht abgenommen.
+Der kleine HTTPaufbau ist kein Produktionscoldstart und der Operationslauf
+kein entdeckter L2→M2-Head. Globale Registrierung/INTERNAL/Start/Restore und
+positiver Sid-gebundener Single-read bleiben bis zur gemeinsamen Prüfung offen.
+PG-Operationsfixture wird vor ihrem nativen Lauf auf ausschließlich explizite
+disposable Testziele, endliche Budgets und vollständiges Setupfailure-Cleanup
+gehärtet. Der tatsächliche native CHECK-Katalogvertrag bleibt ebenfalls offen;
+ein gültiger aktueller Bestand allein beweist keine vorhandene CHECKwirkung.
