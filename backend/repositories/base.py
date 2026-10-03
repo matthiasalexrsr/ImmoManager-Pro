@@ -120,6 +120,8 @@ class BaseRepository:
 
     @no_autoflush_guard
     def _write(self, entity_id, updates):
+        from ..services.measurement_parent_guards import guard_sql_write as guard_measurement_parent
+        guard_measurement_parent(self.db, self.orm_class.__tablename__, entity_id, updates)
         from ..services.payment_integrity import guard_sql_lifecycle_edit
         try:
             guard_sql_lifecycle_edit(self.db, self.orm_class.__tablename__, entity_id, updates)
@@ -259,6 +261,8 @@ class BaseRepository:
     @safe_db_operation("delete")
     @no_autoflush_guard
     def delete(self, entity_id: str) -> None:
+        from ..services.measurement_parent_guards import guard_sql_write as guard_measurement_parent
+        guard_measurement_parent(self.db, self.orm_class.__tablename__, entity_id)
         orm_obj = self.db.get(self.orm_class, entity_id, populate_existing=True)
         if orm_obj is None:
             self._missing(entity_id)

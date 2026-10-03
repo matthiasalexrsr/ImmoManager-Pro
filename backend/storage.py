@@ -132,7 +132,7 @@ def _version_mutation(method):
     @wraps(method)
     def guarded(self, *args, **kwargs):
         from .services.concurrency import guard_memory_revision, memory_mutation_depth, next_updated_at
-        from .services.payments import _memory_lock
+        from .services.measurement_parent_guards import memory_write
         arguments = dict(zip(parameters[1:], args)) | kwargs
         if method.__name__ == "_patch_entity":
             entity_type, entity_id = arguments["entity_type"], arguments["entity_id"]
@@ -145,8 +145,11 @@ def _version_mutation(method):
         if entry is None:
             return method(self, *args, **kwargs)
         table, _ = entry
-        with _memory_lock:
-            collection = getattr(self, table)
+        collection = getattr(self, table)
+        previous = collection.get(entity_id)
+        submitted = arguments.get("patch", arguments.get("data"))
+        changes = submitted.model_dump(exclude_unset=method.__name__ == "_patch_entity") if submitted is not None else None
+        with memory_write(self, table, previous, changes):
             previous = collection.get(entity_id)
             if memory_mutation_depth.get() == 0:
                 guard_memory_revision(table, entity_id, previous)
