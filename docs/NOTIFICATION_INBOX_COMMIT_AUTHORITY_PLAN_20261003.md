@@ -51,8 +51,9 @@ Keine Memory-/Legacy-/Crossdbfallbacks.
 SQLite BEGIN IMMEDIATE vor jedem Auth-/Fachsnapshot; kurz begrenzter eigener
 busy_timeout mit Wiederherstellung. PG READ COMMITTED, lock_timeout1s und
 statement_timeout5s vor erstem contended Lock. Tatsächliche Reihenfolge:
-**vorhandener auth_setup → User → Sid → Access/positive Grantzeugen →
-vorhandener operational_lock → konkrete Scopeparenten → Notification/Dispatch**.
+**vorhandener auth_setup → User → Sid → Access → vorhandener operational_lock →
+Measurementboundary → Portfolio → Property/Unit → konkrete positive Grantzeugen →
+Notification/Dispatch**.
 Fehlende Singletons/Familien:503, niemals seed/DDL/Repair. Managementlock lebt
 bis Commit; Rotation User→Sid und Revoke/Touch Sid-only bleiben kompatibel.
 
@@ -127,3 +128,24 @@ Root koordiniert später echte SQLite/PG-Zweiverbindungsraces für Sid/Expiry,
 Management/Grant/Origin, Locationparent und restrictive Dispatchinsert in
 beiden Reihenfolgen. Erst danach HTTP und perItem-Aktion aktivieren. Eigene
 Gates in diesem Auftrag ausdrücklich nicht genehmigt; Budgets im Handoff.
+
+## Quellenpräzisierung vor erstem Produktcommit, 04.10.2026
+
+Der Wrapper least ausdrücklich seine eigene neue Engineconnection, ohne
+vorhandene native Transaktion, und bindet nur seine eigene neue Session daran.
+Session beginnt die native Roottransaktion und committed sie selbst. Die Lease
+bleibt bis zur Bereinigung offen: SQLitebusy_timeout auf derselben tatsächlichen
+DBAPIconnection nach Transaktionsende zurücksetzen, erst dann in den Pool
+zurückgeben. Keine fremde Connection oder aktive/verschmutzte scoped Authsession
+übernehmen, schließen oder zurückrollen. Account-/Sididentityproben schließen
+nur nachweislich neue inaktive Sessions über deren tatsächliche jeweilige Factory.
+SQLiteframe prüft zusätzlich den tatsächlichen DBAPI-in_transaction-Status.
+
+Die positiven User-/Resourcegrantzeugen werden nach ihren konkreten
+Portfolio-/Locationparents gesperrt; auth_setup/User sind schon gehalten und
+schützen normale Accountgrantwrites. Das hält die FK-/Locationfolge konsistent.
+Selected Locationänderung beim vorhandenen lock_location ergibt409/404 und
+keinen aus einer alten Pfadannahme erteilten Read. Unrestricted erwirbt keine
+irrelevanten Scopeparentlocks. Der reine Hint liefert für aktive unrestricted
+Rows auch unbekannte, gebrochene und unvollständige Subjectpaare als Candidate;
+er wird ausschließlich nach tatsächlicher Readeligibility verwendet.
