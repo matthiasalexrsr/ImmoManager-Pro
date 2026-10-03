@@ -8,6 +8,7 @@ from ..services.checked_publication import CheckedPublicationRoute
 from ..services.integrations.config_store import ConfigStoreError
 from ..services.integrations.history_types import HistoryError
 from ..services.integrations.manager import integration_manager
+from ..services.integrations.runtime_factory import runtime_state_instruction
 from ..services.portfolio_scope import require_installation_scope
 
 
@@ -32,6 +33,12 @@ class IntegrationPublicationRoute(CheckedPublicationRoute):
                 return await handler(request)
             except HistoryError as error:
                 raise HTTPException(error.status, detail={"code": error.code, "message": error.message}) from None
+            except ConfigStoreError as error:
+                raise HTTPException(
+                    status_code=412 if error.code == "state_revision_conflict" else 503,
+                    detail={"code": error.code, "message": runtime_state_instruction(error.code)},
+                    headers={"Cache-Control": "private, no-store", "Vary": "Authorization"},
+                ) from None
 
         return checked
 
@@ -96,11 +103,6 @@ def get_integration_connection_state(integration_id: str) -> dict:
         return integration_manager.connection_state(integration_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Integration nicht gefunden") from exc
-    except ConfigStoreError as exc:
-        raise HTTPException(
-            status_code=503,
-            detail={"code": exc.code, "message": "Verbindungszustand nicht revisionssicher verfügbar."},
-        ) from None
 
 
 @router.patch("/{integration_id}/connection-state")
@@ -116,19 +118,6 @@ def patch_integration_connection_state(
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Integration nicht gefunden") from exc
-    except ConfigStoreError as exc:
-        status_code = 412 if exc.code == "state_revision_conflict" else 503
-        raise HTTPException(
-            status_code=status_code,
-            detail={
-                "code": exc.code,
-                "message": (
-                    "Verbindungszustand wurde parallel geändert. Aktuellen Stand neu laden."
-                    if status_code == 412
-                    else "Verbindungszustand konnte nicht revisionssicher geändert werden."
-                ),
-            },
-        ) from None
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

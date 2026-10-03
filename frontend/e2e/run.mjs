@@ -124,7 +124,7 @@ try {
   // Migrate the owned empty database before app import/create_all. This exercises
   // the same schema chain as a fresh installation without touching user data.
   await run(python, ['-m', 'alembic', 'upgrade', 'head'], { env: backendEnv });
-  backend = start(python, ['-m', 'backend', ...(freshInstallation ? [] : ['--seed']), '--no-browser', '--host', '127.0.0.1', '--port', String(port), '--data-dir', dataDir], {
+  backend = start(python, ['-m', 'backend', ...(freshInstallation ? [] : ['--seed']), '--initialize-integrations', '--no-browser', '--host', '127.0.0.1', '--port', String(port), '--data-dir', dataDir], {
     stdio: ['ignore', 'pipe', 'pipe'],
     env: backendEnv,
   });

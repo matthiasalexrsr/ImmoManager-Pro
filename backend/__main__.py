@@ -215,6 +215,10 @@ def main():
     parser.add_argument("--host", default="127.0.0.1", help="Bind address (default: 127.0.0.1)")
     parser.add_argument("--port", type=int, default=8000, help="Port (default: 8000)")
     parser.add_argument("--seed", action="store_true", help="Load demo data on startup")
+    parser.add_argument(
+        "--initialize-integrations", action="store_true",
+        help="Explicitly initialize encrypted integration state for a new installation; existing state is never replaced",
+    )
     parser.add_argument("--no-browser", action="store_true", help="Don't auto-open browser")
     parser.add_argument("--data-dir", default=None, help="Persistent data directory for SQLite, uploads, backups, and logs")
     args = parser.parse_args()
@@ -261,6 +265,20 @@ def _run(args, runtime):
         print("Starten Sie die App mit --port 9000 oder beenden Sie den anderen Prozess.")
         sys.exit(1)
 
+    # This runs inside the actual ManagedRuntime lifetime, after durable field
+    # keys and installation selection, and before app/SQL/background imports.
+    from backend.config import settings
+    runtime.bind_configuration(settings)
+    if args.initialize_integrations:
+        from backend.services.integrations.config_store import ConfigStoreError
+        from backend.services.integrations.runtime_factory import initialize_new, runtime_state_instruction
+        try:
+            initialize_new(settings.model_dump(mode="json"), expected_missing=True)
+        except ConfigStoreError as error:
+            print(f"FEHLER: Integrationsablage konnte nicht initialisiert werden ({error.code}).")
+            print(runtime_state_instruction(error.code))
+            raise SystemExit(1) from None
+
     # Import the app early so import errors are visible before uvicorn starts
     print("Lade Anwendung...")
     try:
@@ -272,9 +290,6 @@ def _run(args, runtime):
         sys.exit(1)
 
     print("Anwendung geladen.")
-    from backend.config import settings
-    runtime.bind_configuration(settings)
-
     # Seed demo data if requested
     if args.seed:
         print("Lade Demo-Daten...")
@@ -355,11 +370,13 @@ if __name__ == "__main__":
         # Clean exit (code 0 or None) should close the console normally.
         if exc.code:
             _pause_console()
+        raise
     except BaseException as exc:
         print(f"\nUnerwarteter Fehler:\n{exc}")
         import traceback
         traceback.print_exc()
         _pause_console()
+        raise SystemExit(1) from None
     finally:
         if _log_fh:
             try:
