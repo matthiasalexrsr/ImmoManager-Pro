@@ -118,3 +118,12 @@ Unicode separators inside quoted values. Extend the existing roundtrip cases to
 the actual dotenv parser, add comments/control/Unicode separators and legacy
 quoted-path cases, and have the cold signer child also compare the actual
 recovery._plan signer hash. Do not count the earlier20 PASS as backup-codec proof.
+
+Actual `b74c25f` focused26-case gate: 25 PASS/1 FAIL in28.75 seconds (29.81
+outer). The physical-newline record split created an unnecessary leading blank
+record in a newly absent configuration file; the existing two-process canonical
+key-pair assertion caught it. Remove only the final split sentinel through one
+physical-record helper, retaining real interior blank lines and Unicode values.
+Do not loosen the assertion. Recheck that exact case and the nine actual
+dotenv/loader opaque-value cases; retain the other green cases as distinct prior
+evidence rather than repeat the whole native selection without a new concern.
