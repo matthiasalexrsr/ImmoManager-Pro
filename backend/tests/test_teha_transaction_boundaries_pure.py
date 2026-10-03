@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
+import sys
+from types import ModuleType, SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 from pydantic import ValidationError
 
+from backend.services.providers import teha_receive_commands as commands
 from backend.services.providers.teha_command_types import OpaqueIdentity
 from backend.services.providers.teha_import_validation import (
     TehaImportEvidenceError,
@@ -137,3 +140,104 @@ def test_document_manifest_rejects_receipt_source_drift():
             {"teha_import": manifest},
             mapping=mapping,
         )
+
+
+ROOT_AUTHORITY_MODULE = "backend.services.commit_authority"
+
+
+def _root_authority(monkeypatch, result=None):
+    module = ModuleType(ROOT_AUTHORITY_MODULE)
+
+    class CommitAuthority:
+        def __init__(self, actor_id: str):
+            self.actor_id = actor_id
+
+    CommitAuthority.__module__ = ROOT_AUTHORITY_MODULE
+
+    def validate_commit_authority(authority, actor_id):
+        if authority.actor_id != actor_id:
+            raise HTTPException(401, "synthetic authority mismatch")
+        return result
+
+    validate_commit_authority.__module__ = ROOT_AUTHORITY_MODULE
+    module.CommitAuthority = CommitAuthority
+    module.validate_commit_authority = validate_commit_authority
+    monkeypatch.setitem(sys.modules, ROOT_AUTHORITY_MODULE, module)
+    return CommitAuthority
+
+
+def test_missing_root_commit_authority_contract_fails_before_any_loose_fallback(monkeypatch):
+    monkeypatch.delitem(sys.modules, ROOT_AUTHORITY_MODULE, raising=False)
+    with pytest.raises(HTTPException) as failure:
+        commands._require_root_commit_authority(None, "actor")
+    assert failure.value.status_code == 503
+
+
+def test_root_commit_authority_rejects_bool_lambda_and_duck_types(monkeypatch):
+    CommitAuthority = _root_authority(monkeypatch)
+    assert commands._require_root_commit_authority(CommitAuthority("actor"), "actor") is None
+    for forged in (
+        True,
+        False,
+        lambda: True,
+        SimpleNamespace(actor_id="actor", authorized=True),
+    ):
+        with pytest.raises(HTTPException) as failure:
+            commands._require_root_commit_authority(forged, "actor")
+        assert failure.value.status_code == 503
+
+
+def test_root_commit_authority_rejects_boolean_validator_result(monkeypatch):
+    CommitAuthority = _root_authority(monkeypatch, result=True)
+    with pytest.raises(HTTPException) as failure:
+        commands._require_root_commit_authority(CommitAuthority("actor"), "actor")
+    assert failure.value.status_code == 503
+
+
+def test_write_work_fails_503_before_session_writer_or_dml_without_root_authority(monkeypatch):
+    monkeypatch.delitem(sys.modules, ROOT_AUTHORITY_MODULE, raising=False)
+    touched = {"bind": False, "fresh": 0}
+
+    class BombDB:
+        def get_bind(self):
+            touched["bind"] = True
+            raise AssertionError("DB/session boundary must not be reached")
+
+    fake_store = SimpleNamespace(db=BombDB())
+    fake_scope = SimpleNamespace(
+        user_id="actor",
+        role="verwalter",
+        unrestricted=True,
+        portfolio_ids=(),
+    )
+    monkeypatch.setattr(
+        commands,
+        "_identity",
+        lambda actor_id, write_kind=None: (
+            {
+                "id": actor_id,
+                "role": "verwalter",
+                "is_active": True,
+            },
+            fake_scope,
+        ),
+    )
+
+    def fresh(actor_id):
+        touched["fresh"] += 1
+        raise AssertionError("fresh SID fence is supplemental, not commit authority")
+
+    monkeypatch.setattr(commands, "require_fresh_request_authority", fresh)
+
+    with pytest.raises(HTTPException) as failure:
+        with commands._work(
+            fake_store,
+            "actor",
+            write=True,
+            write_kind="document",
+            commit_authority=None,
+        ):
+            raise AssertionError("write body must not be entered")
+
+    assert failure.value.status_code == 503
+    assert touched == {"bind": False, "fresh": 0}
