@@ -69,3 +69,20 @@ echten historischen SQLite-NULL-Zeitfall und zwei UTC-Überläufe: 5 PASS in18,3
 Sekunden, hard90, keine Skips. Damit12 unterschiedliche positive Backendfälle
 komponiert, keine behauptete komplette12er-Grünwiederholung. Beide Prozesse
 normal beendet, keine PostgreSQL-Ausführung oder private Daten in diesen Gates.
+
+Der echte PostgreSQL-Gate auf `d3f5424` liefert2 PASS/1 FAIL in34,50 Sekunden,
+hard90: vollständiger10002er-Bestand/CSV und polymorphe Rechte bestehen; das
+Zeitintervall zählt0 statt3. Der tatsächliche ORM-Default ist aware UTC, die
+physische Spalte TIMESTAMP WITHOUT TIME ZONE. PostgreSQL wandelt den vom
+Treiber als TIMESTAMPTZ gebundenen Wert mit seiner Sessionzeitzone um. Der
+echte bisherige Repositorywriter hat denselben Fehler; keine reine Testabweichung.
+
+Vor Korrektur festgelegt: UTC-naiver Bindtyp ausschließlich für
+ChangeHistoryORM.changed_at, mit unverändertem physischen DateTime-DDLtyp.
+Aware Werte ausdrücklich nach UTC und dann ohne tzinfo binden. Naive Werte
+und bestehende historische Bytes erhalten; keine serverweite Zeitzonenänderung
+oder automatische historische Zeitkorrektur. Mehrdeutige alte PostgreSQLzeiten
+bleiben ein ausdrücklich offener historischer Prüfpunkt. Erweitere die echte
+PG-Abnahme um den tatsächlichen add_change_history-Default unter zwei eigenen
+Sessionzeitzonen. Prüfe diese Fehlerregression sowie Typ/SQLitebindung; die
+bereits grünen großen PG-Quellen-/Export-/Scopefälle nicht ohne Anlass wiederholen.
