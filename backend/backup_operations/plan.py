@@ -20,6 +20,7 @@ class Installation(BaseModel):
     backend: Literal["sqlite", "private_server"]
     app_root: Path
     python: Path
+    packaged: bool = False
     data_dir: Path | None = None
     project: str | None = None
     compose_file: Path | None = None
@@ -37,7 +38,7 @@ class Installation(BaseModel):
         if self.backend == "sqlite":
             if self.data_dir is None or any(value is not None for value in (self.project, self.compose_file, self.env_file)):
                 raise ValueError("Select one SQLite data directory")
-        elif self.data_dir is not None or not all((self.project, self.compose_file, self.env_file)):
+        elif self.packaged or self.data_dir is not None or not all((self.project, self.compose_file, self.env_file)):
             raise ValueError("Select one private Compose project/profile/environment")
         return self
 

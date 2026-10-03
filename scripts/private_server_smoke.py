@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from backend.ocr_configuration import OCR_DEFAULTS  # noqa: E402
 from scripts.configure_private_server import configure  # noqa: E402
-from scripts.private_server_backup import BackupError, backup, restore  # noqa: E402
+from scripts.private_server_backup import BackupError, backup, probe_restore, protected_new_file, restore  # noqa: E402
 
 PASSWORD = "synthetic private test passphrase"
 FILE_BYTES = b"Private server acceptance file; synthetic data only.\n"
@@ -253,10 +253,42 @@ def main() -> int:
             old_sessions = capture_old_sessions(source)
             receipt_signature, active_count = session_history(source)
             package = work / "private-recovery.immo"
+            lifecycle_stages = []
+            receipt_path = work / "backup-resume-obligation.json"
+            def lifecycle(stage, values):
+                lifecycle_stages.append(stage)
+                if stage == "prepared" and values["was_running"]:
+                    # Real daemon stop cannot precede this durable host receipt.
+                    with protected_new_file(receipt_path) as output:
+                        output.write(json.dumps(values, sort_keys=True).encode())
+                elif stage == "resumed":
+                    assert source.request("/health")["database_connected"] is True
+                    receipt_path.unlink()
             backup(project=source.project, destination=package, compose_file=ROOT / "compose.private-server.yml",
-                   env_file=environment, password=PASSWORD)
+                   env_file=environment, password=PASSWORD, lifecycle=lifecycle)
+            assert lifecycle_stages == ["prepared", "offline", "published", "resumed"] and not receipt_path.exists()
             # Backup must resume the source app; validate that independently.
             verify(source, references)
+            probe_receipt = work / "probe-ownership.json"
+            probe_project = None
+            def ownership(receipt):
+                nonlocal probe_project
+                if receipt is None:
+                    probe_receipt.unlink()
+                else:
+                    probe_project = receipt["project"]
+                    with protected_new_file(probe_receipt) as output:
+                        output.write(json.dumps(receipt).encode())
+            result = probe_restore(source=package, compose_file=ROOT / "compose.private-server.yml", password=PASSWORD,
+                                   ownership=ownership)
+            assert result["portless"] and result["source_inventory_verified"]
+            assert result["upload_files"] > 0 and result["sessions_revoked"] == active_count
+            assert probe_project != source.project and not probe_receipt.exists()
+            assert source.request("/health")["database_connected"] is True
+            source.request("/api/v1/auth/me", token=old_sessions["later_revoke_access"])
+            remaining = subprocess.run(["docker", "ps", "-aq", "--filter", "label=com.docker.compose.project=" + probe_project],
+                capture_output=True, check=True, timeout=30)
+            assert not remaining.stdout.strip()
             source.request("/api/v1/auth/sessions/" + old_sessions["later_revoke_id"] + "/revoke", method="POST",
                 token=old_sessions["later_revoke_access"], data={"confirmed": True})
             source.request("/api/v1/auth/me", token=old_sessions["later_revoke_access"], expected=401)

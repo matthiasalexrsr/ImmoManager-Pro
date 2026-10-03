@@ -55,8 +55,10 @@ class ProcessWitness:
                 self.birth = "linux:" + boot + ":" + fields[19]
             if expected is not None and self.birth != expected:
                 raise BackupOperationError("managed_process_identity_changed")
-        except (OSError, ValueError, IndexError):
+        except (OSError, ValueError, IndexError) as error:
             self.close()
+            if isinstance(error, ProcessLookupError) or os.name == "nt" and isinstance(error, OSError) and error.args == (87,):
+                raise BackupOperationError("managed_process_not_found") from None
             raise BackupOperationError("managed_process_witness_unavailable") from None
         except BaseException:
             self.close()

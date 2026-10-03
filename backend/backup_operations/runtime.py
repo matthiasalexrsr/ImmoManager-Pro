@@ -25,6 +25,7 @@ from .process import ProcessWitness, current_process_identity
 from .state import FileLease, private_directory, read_json, write_json
 
 _active_runtime = None
+_import_fence = None
 
 
 def runtime_directory(data_dir: Path) -> Path:
@@ -169,15 +170,66 @@ def application_startup_fence(settings):
     if not url.startswith(("sqlite:", "sqlite+pysqlite:")):
         yield
         return
-    directory = Path(settings.data_dir).absolute()
+    selected = settings.data_dir
+    if not selected:
+        selected = _import_fence[0] if _import_fence is not None else _active_runtime.data_dir if _active_runtime is not None else Path(__file__).resolve().parents[2]
+    directory = Path(selected).expanduser().absolute()
     if _active_runtime is not None:
         if directory.resolve() != _active_runtime.data_dir.resolve():
+            raise BackupOperationError("selected_installation_configuration_mismatch")
+        yield
+        return
+    if _import_fence is not None:
+        if directory.resolve() != _import_fence[0].resolve():
             raise BackupOperationError("selected_installation_configuration_mismatch")
         yield
         return
     directory.mkdir(parents=True, exist_ok=True)
     with FileLease(private_directory(runtime_directory(directory)) / "installation.lock"):
         yield
+
+
+def application_import_fence(*, data_dir=None, database_url=None):
+    """Root calls BEFORE auth/config/dependencies imports, then keeps this receipt.
+
+    Reads the same case-insensitive ambient/.env selection without constructing
+    Settings or touching a database. Direct ASGI holds its kernel lease for the
+    process lifetime; it remains unregistered and cannot be stopped by the runner.
+    The managed launcher already owns its exact process-bound lifetime lease.
+    """
+    global _import_fence
+    from dotenv import dotenv_values
+    persisted = dotenv_values(Path.cwd() / ".env")
+    values = {key.lower(): value for key, value in persisted.items() if value is not None}
+    values.update({key.lower(): value for key, value in os.environ.items()})
+    url = database_url if database_url is not None else values.get("database_url", "sqlite:///./immo_manager.db")
+    if not url.startswith(("sqlite:", "sqlite+pysqlite:")):
+        return None
+    selected = data_dir if data_dir is not None else values.get("data_dir")
+    if selected:
+        directory = Path(selected).expanduser().absolute()
+    elif bool(getattr(sys, "frozen", False)):
+        if os.name == "nt":
+            directory = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local") / "ImmoManagerPro"
+        elif sys.platform == "darwin":
+            directory = Path.home() / "Library" / "Application Support" / "ImmoManagerPro"
+        else:
+            directory = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share") / "ImmoManagerPro"
+    else:
+        directory = Path(__file__).resolve().parents[2]
+    if _active_runtime is not None:
+        if directory.resolve() != _active_runtime.data_dir.resolve():
+            raise BackupOperationError("selected_installation_configuration_mismatch")
+        return _active_runtime
+    if _import_fence is not None:
+        if directory.resolve() != _import_fence[0].resolve():
+            raise BackupOperationError("selected_installation_configuration_mismatch")
+        return _import_fence
+    directory.mkdir(parents=True, exist_ok=True)
+    lease = FileLease(private_directory(runtime_directory(directory)) / "installation.lock")
+    lease.__enter__()
+    _import_fence = (directory, lease)  # Retain until process exit, including import-only starts.
+    return _import_fence
 
 
 def control(record, operation="status", *, timeout=3):
@@ -207,7 +259,7 @@ def selected_runtime(installation: Installation):
                 or Path(record["data_dir"]).resolve() != installation.data_dir.resolve()
                 or Path(record["app_root"]).resolve() != installation.app_root.resolve()
                 or Path(record["python"]).resolve() != installation.python.resolve()
-                or not isinstance(record.get("frozen"), bool)
+                or not isinstance(record.get("frozen"), bool) or record["frozen"] != installation.packaged
                 or not isinstance(record.get("host"), str) or not isinstance(record.get("token"), str)
                 or type(record.get("port")) is not int or not 0 < record["port"] < 65536
                 or type(record.get("control_port")) is not int or not 0 < record["control_port"] < 65536
@@ -257,22 +309,45 @@ def stop_owned_runtime(installation, record, *, timeout=60):
     raise BackupOperationError("managed_runtime_did_not_stop")
 
 
+def stopped_runtime_lease(installation, record, *, timeout=60):
+    """A stopped receipt is evidence only after its original process exited."""
+    if selected_runtime(installation)["instance"] != record["instance"]:
+        raise BackupOperationError("managed_runtime_changed")
+    try:
+        with ProcessWitness(record["process"]["pid"], record["process"]["birth"]) as witness:
+            if not witness.wait(timeout):
+                raise BackupOperationError("managed_runtime_did_not_stop")
+    except BackupOperationError as error:
+        if error.code not in {"managed_process_not_found", "managed_process_identity_changed"}:
+            raise
+    lease = FileLease(runtime_directory(installation.data_dir) / "installation.lock")
+    lease.__enter__()
+    if not _port_free(record):
+        lease.__exit__(None, None, None)
+        raise BackupOperationError("unmanaged_listener_blocks_offline_backup")
+    return lease
+
+
 def resume_owned_runtime(installation, previous, *, timeout=60):
     """Only use a validated saved launch profile, never arbitrary PID/argv data."""
     current = selected_runtime(installation)
+    if (current.get("host"), current.get("port"), current.get("configuration_sha256")) != (
+            previous.get("host"), previous.get("port"), previous.get("configuration_sha256")):
+        raise BackupOperationError("managed_runtime_configuration_changed")
     try:
         active = control(current)
     except BackupOperationError:
         active = None
     if active is not None:
         if active["state"] == "ready":
+            if current.get("configuration_sha256") != previous.get("configuration_sha256"):
+                raise BackupOperationError("managed_runtime_configuration_changed")
             return active
         raise BackupOperationError("managed_runtime_not_ready_for_resume")
-    if current["instance"] != previous["instance"] and current.get("state") != "stopped":
+    if current["instance"] != previous["instance"]:
         raise BackupOperationError("managed_runtime_changed")
-    with FileLease(runtime_directory(installation.data_dir) / "installation.lock"):
-        if not _port_free(current):
-            raise BackupOperationError("unmanaged_listener_blocks_restart")
+    with stopped_runtime_lease(installation, previous, timeout=timeout):
+        pass
     # The child acquires the same installation lock before app/configuration
     # writes. A racing supported startup can win; it cannot run concurrently.
     command = [str(installation.python)] + ([] if current["frozen"] else ["-m", "backend"])
@@ -289,9 +364,13 @@ def resume_owned_runtime(installation, previous, *, timeout=60):
             if new["instance"] != previous["instance"]:
                 result = control(new)
                 if result["state"] == "ready":
+                    if (new.get("host"), new.get("port"), new.get("configuration_sha256")) != (
+                            previous.get("host"), previous.get("port"), previous.get("configuration_sha256")):
+                        raise BackupOperationError("managed_runtime_configuration_changed")
                     return result
-        except BackupOperationError:
-            pass
+        except BackupOperationError as error:
+            if error.code == "managed_runtime_configuration_changed":
+                raise
         if process.poll() is not None:
             # Another supported startup may own the lifetime lock now; allow
             # its authenticated readiness check above to settle on retry.

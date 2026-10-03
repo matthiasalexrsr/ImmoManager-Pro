@@ -153,6 +153,8 @@ def save_plan(directory: Path, plan: BackupPlan, *, expected_revision: int | Non
             previous = load_plan(directory)
             if expected_revision != previous.revision or previous.id != plan.id or plan.revision != previous.revision + 1:
                 raise BackupOperationError("backup_plan_revision_changed")
+            if previous.installation != plan.installation:
+                raise BackupOperationError("backup_plan_installation_changed")
             for key, reference in previous.key_files.items():
                 if plan.key_files.get(key) != reference:
                     raise BackupOperationError("retained_archive_key_reference_required")

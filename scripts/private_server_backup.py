@@ -492,6 +492,27 @@ class Docker:
             raise BackupError("Containerstatus ist nicht prüfbar.")
         return bool(lines)
 
+    def app_identity(self) -> list[dict]:
+        """Exact daemon identities, including stopped containers; never name adoption."""
+        ids = self.run(["ps", "-aq", "--no-trunc", "--filter", f"label=com.docker.compose.project={self.project}",
+                        "--filter", "label=com.docker.compose.service=app"], compose=False, stage="App-Prozessidentität")
+        values = ids.decode("ascii", errors="strict").splitlines()
+        if any(not re.fullmatch(r"[a-f0-9]{64}", item) for item in values):
+            raise BackupError("App-Prozessidentität ist nicht prüfbar.")
+        result = []
+        for container in sorted(values):
+            inspected = json.loads(self.run(["inspect", container], compose=False, stage="App-Prozessidentität"))
+            if not isinstance(inspected, list) or len(inspected) != 1:
+                raise BackupError("App-Prozessidentität ist nicht prüfbar.")
+            item = inspected[0]
+            labels = item.get("Config", {}).get("Labels", {})
+            if (item.get("Id") != container or not isinstance(item.get("Created"), str)
+                    or labels.get("com.docker.compose.project") != self.project
+                    or labels.get("com.docker.compose.service") != "app"):
+                raise BackupError("App-Prozessidentität wurde verändert.")
+            result.append({"id": container, "created": item["Created"]})
+        return result
+
     def require_new_project(self) -> None:
         containers = self.run(["ps", "-a", "--filter", f"label=com.docker.compose.project={self.project}",
                                "--format", "{{.ID}}"], compose=False, stage="Zielprojektprüfung")
@@ -758,11 +779,19 @@ def verify_package(source: Path, password: str, workspace: Path, limits: Limits,
     except Exception as exc:
         raise BackupError("Authentifiziertes ZIP-Paket ist beschädigt.") from exc
     manifest = _json(_read_file(workspace / "manifest.json", limits.small_bytes, deadline))
-    if (set(manifest) != {"format", "version", "source_project", "created_utc", "postgres_major", "origin", "compose_sha256", "files"}
+    manifest_keys = {"format", "version", "source_project", "created_utc", "postgres_major", "origin", "compose_sha256", "files"}
+    if (set(manifest) not in (manifest_keys, manifest_keys | {"database"})
             or manifest["format"] != "immomanager-private-server" or type(manifest["version"]) is not int or manifest["version"] != 1
             or type(manifest["postgres_major"]) is not int or manifest["postgres_major"] != 16
             or not isinstance(manifest["files"], dict) or set(manifest["files"]) != set(MEMBERS[:-1])):
         raise BackupError("Paketmanifest hat ein unbekanntes Format.")
+    if "database" in manifest:
+        database = manifest["database"]
+        if (not isinstance(database, dict) or set(database) != {"schema_sha256", "rows"}
+                or not isinstance(database["schema_sha256"], str) or not re.fullmatch(r"[a-f0-9]{64}", database["schema_sha256"])
+                or not isinstance(database["rows"], dict) or not database["rows"]
+                or any(not isinstance(name, str) or type(count) is not int or count < 0 for name, count in database["rows"].items())):
+            raise BackupError("Datenbankinventar im Paketmanifest ist ungültig.")
     _project(manifest["source_project"] if isinstance(manifest["source_project"], str) else "")
     if not isinstance(manifest["compose_sha256"], str) or not re.fullmatch(r"[a-f0-9]{64}", manifest["compose_sha256"]):
         raise BackupError("Compose-Prüfsumme im Manifest ist ungültig.")
@@ -817,7 +846,7 @@ def _publish_new(partial: Path, destination: Path) -> None:
 
 
 def backup(*, project: str, destination: Path, compose_file: Path, env_file: Path,
-           password: str, limits: Limits = Limits(), docker_factory=Docker) -> dict:
+           password: str, limits: Limits = Limits(), docker_factory=Docker, lifecycle=None) -> dict:
     project, password = _project(project), _password(password)
     destination = _safe_path(destination, existing=False)
     compose_file, env_file = _safe_path(compose_file), _safe_path(env_file)
@@ -841,14 +870,34 @@ def backup(*, project: str, destination: Path, compose_file: Path, env_file: Pat
         if not docker.running("db"):
             raise BackupError("PostgreSQL-Container läuft nicht; Sicherung verweigert.")
         was_running = docker.running("app")
+        identity = docker.app_identity() if lifecycle is not None else None
+        if lifecycle is not None:
+            # The caller commits this receipt before the first stop command.
+            lifecycle("prepared", {"project": project, "was_running": was_running,
+                      "compose_sha256": compose_digest, "env_fingerprint": env_fingerprint,
+                      "app_containers": identity})
         partial = destination.parent / ("." + destination.name + "." + uuid4().hex + ".partial")
         resume_failed = False
+        stop_requested = False
         try:
             if was_running:
+                if lifecycle is not None and docker.app_identity() != identity:
+                    raise BackupError("App-Prozessidentität wurde vor dem Stop verändert.")
+                stop_requested = True
                 docker.run(["stop", "--timeout", "30", "app"], stage="App anhalten")
             if docker.running("app"):
                 raise BackupError("App läuft noch; Sicherung verweigert.")
+            if lifecycle is not None:
+                lifecycle("offline", {})
             _wait_writers(docker)
+            inventory = None
+            if lifecycle is not None:
+                report = _json(docker.run(["run", "--rm", "--no-deps", "-T", "--entrypoint", "python", "app", "-m",
+                    "scripts.verify_private_server_probe", "--timeout-seconds", str(deadline.remaining())],
+                    maximum=limits.small_bytes, stage="Quelltabelleninventar prüfen"))
+                if report.get("verified") is not True or not isinstance(report.get("database"), dict):
+                    raise BackupError("Quelltabelleninventar wurde nicht bestätigt.")
+                inventory = report["database"]
             docker.run(["exec", "-T", "db", "/bin/sh", "-c", PG_DUMP], output=workspace / "database.dump",
                        maximum=limits.dump_bytes, stage="PostgreSQL-Sicherung")
             docker.run(["exec", "-T", "db", "/bin/sh", "-c", PG_LIST], input_file=workspace / "database.dump",
@@ -864,6 +913,8 @@ def backup(*, project: str, destination: Path, compose_file: Path, env_file: Pat
                         "files": {name: _digest(workspace / name, limits.dump_bytes if name == "database.dump" else
                                                 limits.tar_bytes if name == "appdata.tar.gz" else limits.small_bytes, deadline)
                                   for name in MEMBERS[:-1]}}
+            if inventory is not None:
+                manifest["database"] = inventory
             with _new_file(workspace / "manifest.json") as output:
                 output.write(json.dumps(manifest, sort_keys=True, ensure_ascii=True).encode("utf-8"))
             with encrypted_zip(partial, password) as archive:
@@ -886,22 +937,34 @@ def backup(*, project: str, destination: Path, compose_file: Path, env_file: Pat
             if _identity(partial.stat()) != package_identity:
                 raise BackupError("Verschlüsseltes Paket wurde vor der Veröffentlichung verändert.")
             _publish_new(partial, destination)
+            if lifecycle is not None:
+                lifecycle("published", {"size_bytes": destination.stat().st_size})
         finally:
             partial.unlink(missing_ok=True)
-            if was_running:
+            if was_running and stop_requested:
                 # The primary deadline might be exhausted. Reserve a separate,
                 # bounded recovery attempt, rather than skip restarting the app.
                 docker.deadline = Deadline(min(120, limits.timeout_seconds))
                 try:
+                    if lifecycle is not None and docker.app_identity() != identity:
+                        raise BackupError("App-Prozessidentität wurde vor dem Wiederanlauf verändert.")
                     docker.run(["up", "-d", "--no-deps", "--wait", "--wait-timeout", "90", "app"], stage="App wieder starten")
                     if not docker.running("app"):
                         raise BackupError("App ist nach der Sicherung nicht gestartet.")
+                    if lifecycle is not None:
+                        lifecycle("resumed", {})
                 except Exception:
                     resume_failed = True
             if resume_failed:
                 raise BackupError("Sicherung/Wiederanlauf nicht vollständig; App muss manuell geprüft und gestartet werden.")
         return {"scope": "postgresql-and-appdata-and-server-configuration", "encrypted": True,
                 "size_bytes": destination.stat().st_size, "project": project}
+
+
+def probe_restore(*, source: Path, compose_file: Path, password: str, limits: Limits = Limits(), **options):
+    """Separate portless restore path; ordinary restore still starts its new app."""
+    from scripts.private_server_probe import probe_restore as perform_probe
+    return perform_probe(source=source, compose_file=compose_file, password=password, limits=limits, **options)
 
 
 def restore(*, project: str, source: Path, compose_file: Path, env_output: Path,
