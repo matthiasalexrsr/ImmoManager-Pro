@@ -1,8 +1,29 @@
+import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import sessionmaker
 
+from backend import auth
 from backend.app import app
 from backend.auth import clear_users, create_access_token, register_user
+from backend.services.integrations.history_store import SQLIntegrationHistoryStore
 from backend.services.integrations.manager import integration_manager
+from backend.tests.test_integration_history_core import journal_engine
+
+
+@pytest.fixture(autouse=True)
+def actual_history(monkeypatch, tmp_path):
+    if isinstance(auth._user_store, auth.SQLUserStore):
+        factory = auth._user_store._session_factory
+        from backend.db.integration_history_schema import install_history_guards
+
+        with factory() as session, session.get_bind().begin() as connection:
+            install_history_guards(connection)
+        monkeypatch.setattr(integration_manager, "_history_store", SQLIntegrationHistoryStore(factory))
+        yield
+        return
+    with journal_engine(tmp_path, "sqlite") as engine:
+        monkeypatch.setattr(integration_manager, "_history_store", SQLIntegrationHistoryStore(sessionmaker(engine)))
+        yield
 
 
 def _auth_headers():

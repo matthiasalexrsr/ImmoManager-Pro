@@ -3,22 +3,37 @@
 import inspect
 
 import pytest
+from sqlalchemy.orm import sessionmaker
 
 from backend import auth
 from backend.routers import integrations
 from backend.services.integrations.config_store import InMemoryIntegrationConfigStore
+from backend.services.integrations.history_store import SQLIntegrationHistoryStore
 from backend.services.integrations.manager import IntegrationManager
+from backend.tests.test_integration_history_core import journal_engine
 from backend.tests.test_portfolio_access_http import access_http as _access_http
 
 access_http = _access_http
 
 
 @pytest.fixture
-def private_manager(monkeypatch):
-    manager = IntegrationManager(InMemoryIntegrationConfigStore())
-    manager.seed_defaults()
-    monkeypatch.setattr(integrations, "integration_manager", manager)
-    return manager
+def private_manager(monkeypatch, tmp_path, access_http):
+    if isinstance(auth._user_store, auth.SQLUserStore):
+        factory = auth._user_store._session_factory
+        from backend.db.integration_history_schema import install_history_guards
+
+        with factory() as session, session.get_bind().begin() as connection:
+            install_history_guards(connection)
+        manager = IntegrationManager(InMemoryIntegrationConfigStore(), history_store=SQLIntegrationHistoryStore(factory))
+        manager.seed_defaults()
+        monkeypatch.setattr(integrations, "integration_manager", manager)
+        yield manager
+        return
+    with journal_engine(tmp_path, "sqlite") as engine:
+        manager = IntegrationManager(InMemoryIntegrationConfigStore(), history_store=SQLIntegrationHistoryStore(sessionmaker(engine)))
+        manager.seed_defaults()
+        monkeypatch.setattr(integrations, "integration_manager", manager)
+        yield manager
 
 
 def test_selected_manager_cannot_read_global_other_portfolio_source(access_http, private_manager):

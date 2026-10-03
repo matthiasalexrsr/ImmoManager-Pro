@@ -4,7 +4,7 @@ import hashlib
 import hmac
 import secrets
 import time
-from contextlib import contextmanager, nullcontext
+from contextlib import ExitStack, contextmanager
 from datetime import datetime, timezone
 from typing import Any, cast
 from uuid import uuid4
@@ -64,7 +64,7 @@ class SQLIntegrationHistoryStore:
         return self.keyring if self.keyring is not None else ring_for()
 
     @contextmanager
-    def connection(self, *, write=False):
+    def connection(self, *, write=False, actor=None):
         # A factory gives an unscoped independent Session, never the domain
         # request's scoped registry. Use its bind, close it, own the Connection.
         with self.factory() as session:
@@ -73,7 +73,11 @@ class SQLIntegrationHistoryStore:
 
         account_lock = getattr(auth._user_store, "_lock", None) if write else None
         try:
-            with account_lock if account_lock is not None else nullcontext():
+            # The account lifetime is OUTSIDE transaction exit so a mutex taken
+            # after SQLite BEGIN remains held through the actual DB commit.
+            with ExitStack() as account_lifetime:
+                if account_lock is not None and engine.dialect.name != "sqlite":
+                    account_lifetime.enter_context(account_lock)
                 with engine.connect() as connection, connection.begin():
                     # PostgreSQL/SQLite timeout integer uses a signed 32-bit
                     # native contract. Larger configured overall budgets remain
@@ -83,12 +87,25 @@ class SQLIntegrationHistoryStore:
                         connection.exec_driver_sql("PRAGMA busy_timeout=" + str(milliseconds))
                         if write:
                             connection.exec_driver_sql("BEGIN IMMEDIATE")
+                            if account_lock is not None:
+                                account_lifetime.enter_context(account_lock)
                     elif connection.dialect.name == "postgresql":
                         connection.exec_driver_sql("SET LOCAL statement_timeout = " + str(milliseconds))
                         if not write:
                             connection.exec_driver_sql("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
                     if not ensure_history_schema(connection):
                         raise HistoryError("HISTORY_NOT_CONFIGURED")
+                    if write and actor is not None and actor.origin == "authenticated_request" and isinstance(auth._user_store, auth.SQLUserStore):
+                        # The actual configured auth carrier must be in this
+                        # shared database. Never seed or repair a missing marker.
+                        with auth._user_store._session_factory() as account_session:
+                            if account_session.get_bind() is not engine:
+                                raise HistoryError("HISTORY_NOT_CONFIGURED")
+                        from ...db.auth_models import AuthSetupORM
+
+                        carrier = cast(Table, AuthSetupORM.__table__)
+                        if connection.execute(update(carrier).where(carrier.c.id == 1).values(completed_at=carrier.c.completed_at)).rowcount != 1:
+                            raise HistoryError("HISTORY_NOT_CONFIGURED")
                     yield connection
         except SQLAlchemyError:
             raise HistoryError("HISTORY_WRITE_FAILED") from None
@@ -135,7 +152,7 @@ class SQLIntegrationHistoryStore:
         deadline = time.monotonic() + self.limits.timeout_seconds
         actor.refresh()
         ticket = RunTicket(uuid4().hex, secrets.token_hex(32))
-        with self.connection(write=True) as connection:
+        with self.connection(write=True, actor=actor) as connection:
             head = self._head(connection, integration_id)
             actor.refresh()  # Fresh after waiting for another writer.
             run = dict(id=ticket.run_id, integration_id=integration_id, run_sequence=head["run_sequence"] + 1,
@@ -152,7 +169,7 @@ class SQLIntegrationHistoryStore:
 
     def append(self, ticket: RunTicket, state, artifacts=None, *, actor=None):
         deadline = time.monotonic() + self.limits.timeout_seconds
-        with self.connection(write=True) as connection:
+        with self.connection(write=True, actor=actor) as connection:
             run = connection.execute(select(*bounded_projection(RUN, self.limits)).where(RUN.c.id == ticket.run_id)).mappings().first()
             if run is None:
                 raise HistoryError("HISTORY_NOT_FOUND", 404)
@@ -268,7 +285,7 @@ class SQLIntegrationHistoryStore:
     def clear(self, integration_id, actor):
         deadline = time.monotonic() + self.limits.timeout_seconds
         actor.refresh()
-        with self.connection(write=True) as connection:
+        with self.connection(write=True, actor=actor) as connection:
             head = self._head(connection, integration_id)
             actor.refresh()
             latest = select(func.max(EVENT.c.event_number)).where(EVENT.c.run_id == RUN.c.id).correlate(RUN).scalar_subquery()

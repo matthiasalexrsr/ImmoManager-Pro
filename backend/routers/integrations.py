@@ -1,8 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from typing import Literal
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
 from ..auth import require_role
 from ..services.checked_publication import CheckedPublicationRoute
+from ..services.integrations.history_types import HistoryError
 from ..services.integrations.manager import integration_manager
 from ..services.portfolio_scope import require_installation_scope
 
@@ -19,8 +22,21 @@ def _require_integration_administration(
     response.headers["Vary"] = "Authorization"
 
 
+class IntegrationPublicationRoute(CheckedPublicationRoute):
+    def get_route_handler(self):
+        handler = super().get_route_handler()
+
+        async def checked(request: Request) -> Response:
+            try:
+                return await handler(request)
+            except HistoryError as error:
+                raise HTTPException(error.status, detail={"code": error.code, "message": error.message}) from None
+
+        return checked
+
+
 router = APIRouter(prefix="/integrations", tags=["Integrationen"],
-                   route_class=CheckedPublicationRoute,
+                   route_class=IntegrationPublicationRoute,
                    dependencies=[Depends(_require_integration_administration)])
 
 
@@ -105,9 +121,20 @@ def run_integration_action(integration_id: str, body: IntegrationActionPayload) 
 def get_integration_history(
     integration_id: str,
     limit: int = Query(20, ge=1, le=100),
+    cursor: str | None = Query(None),
+    state: Literal["completed", "rejected", "outcome_uncertain", "observation_failed", "pending"] | None = Query(None),
+    projection: Literal["full", "summary"] = Query("full"),
 ) -> dict:
     try:
-        return {"items": integration_manager.list_history(integration_id, limit=limit)}
+        return integration_manager.history_page(integration_id, limit=limit, cursor=cursor, state=state, projection=projection)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Integration nicht gefunden") from exc
+
+
+@router.get("/{integration_id}/history/{run_id}")
+def get_integration_history_detail(integration_id: str, run_id: str) -> dict:
+    try:
+        return integration_manager.history_detail(integration_id, run_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Integration nicht gefunden") from exc
 
