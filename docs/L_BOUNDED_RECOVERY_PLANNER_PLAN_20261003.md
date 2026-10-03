@@ -81,3 +81,20 @@ actual pure-gate evidence and API handoff. Ruff/Mypy may inspect these files.
 No native integration, database, server, process-lifecycle or heavy gate starts
 until Root separately coordinates a slot. No Root/Main/Preview files are edited
 and only Root integrates the resulting commits.
+
+## Scope clarification before the final caller fix
+
+Root subsequently identified that existing legacy upgrade/status/return commands
+already load their own profile and deadline but still call the optional selector
+without forwarding them. Root authorized either an explicit remaining gap or the
+three narrow forwarding edits. Complete the authorized path: change only those
+three `_selected` call arguments, passing the already loaded limits and deadline.
+Do not change their installation/SQL/archive/return implementation.
+
+Add three own pure regression cases. Each invokes the actual corresponding legacy
+command and actual selector with a tiny explicit profile, replacing only the
+installation-lease boundary with a unit context seam. The actual bounded source
+read must refuse before SQL, receipt or archive work; the existing SQL/application
+tripwires remain active. Run just these three new cases because the previous 40
+planner cases are unchanged. Record this distinction in the handoff rather than
+claiming a newly executed 43-case combined run or actual legacy migration proof.
