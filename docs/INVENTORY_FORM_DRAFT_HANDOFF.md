@@ -3,6 +3,8 @@
 2026-10-03, eigener Branch `assist/bounded-legacy-lists`, Basis `8a6c1afa`.
 Plan separat vor Umsetzung committed: `3f0e0f0`,
 `docs/INVENTORY_FORM_DRAFT_PLAN.md`. Root integriert selbst.
+Implementierung und Tests: `56f627d`; dieser Abschluss ergänzt nur den präzisen
+Altwert-Testselector und die endgültigen Nachweise.
 
 ## Umsetzung
 
@@ -47,7 +49,7 @@ Pending-Draft fortgesetzt oder nach erkanntem Erfolg ausdrücklich verworfen wir
 Keine Änderung an Backend, Migration, workflow_references, Tenant-Privacy,
 DataTable, Layout, Search, Housing oder Billing; kein Root/Main/Vorschauwrite.
 
-## Bisherige Nachweise und ehrlicher Gatezustand
+## Nachweise und ehrlicher Gatezustand
 
 - Gezielte UI-Suite: Erstlauf **102 bestanden, 1 neue Testannahme fehlgeschlagen**,
   79,43 s. Nur die Erwartung der vom DOM normierten datetime-local-Zeichenfolge
@@ -55,7 +57,11 @@ DataTable, Layout, Search, Housing oder Billing; kein Root/Main/Vorschauwrite.
   Fokussierter Nachlauf **7 bestanden**, 9,81 s; nach reiner Testhelperbereinigung
   nochmals **7 bestanden**, 16,58 s. Damit alle **103 bisherigen Fälle** belegt:
   FormModal/FormDraft, drei Inventare, Kontakte, Dokument-OCR und Versionshistorie.
-  Der zuletzt hinzugefügte Altwert-Createfall wartet noch auf den kleinen UI-Gate.
+  Finaler kleiner Nachlauf: **8 bestanden**, 8,88 s; einschließlich zusätzlichem
+  Altwert-Createfall. Ein vorausgehender neuer Test wählte wegen gleicher
+  Beschriftung zunächst `apartment`; die Auswahl ist auf die tatsächliche
+  Altbestandoption präzisiert. Keine Runtimeänderung zur Testkorrektur.
+  Insgesamt **104 relevante UI-Fälle** in den ausdrücklich getrennten Läufen.
 - Echter Edge, erster kombinierter Lauf mit frischer synthetischer SQLite-App:
   **5 bestehende Fälle bestanden**, 5,8 min Gesamtzeit. Kontakte 2,
   Einheiten/Dokumente/Wartung je 1: vollständige CSV, 503 → tatsächlicher Readproof
@@ -74,29 +80,38 @@ DataTable, Layout, Search, Housing oder Billing; kein Root/Main/Vorschauwrite.
   tatsächlich erfolgreiches POST mit verlorener Antwort/503, Save gesperrt,
   genau eine aktuelle Bestandszeile und unveränderte herunterladbare Originalbytes.
   Sein letzter Cleanup-Schritt scheiterte am verkürzten Selector. Dieser ist
-  korrigiert (`Gespeicherten Entwurf verwerfen`); einzelner Endnachlauf ausstehend.
-- Produktionsbuild in beiden Browserläufen erfolgreich. Scoped ESLint für
-  Quell-/Test-/Browserdateien ohne Warnungen bestanden; nach dem letzten kleinen
-  Altwert-/Selectorupdate noch einmal statisch prüfen. diff-check bestanden.
+  korrigiert (`Gespeicherten Entwurf verwerfen`). Der einzelne finale Edge-Gate
+  ist **bestanden**, 11,3 s Testzeit, 12,9 s Gesamtzeit: nach erneutem Reload
+  nochmals tatsächliche Bestandsprüfung, ausdrückliches Verwerfen des Pending-
+  Drafts, genau ein Geschäfts-POST und eine Zeile; Draftcleanup bestätigt.
+  Damit **9 unterschiedliche Browserfälle** belegt: fünf Bestandsregressionen,
+  drei neue echte 412-Fälle, ein Createverlust-/Cleanupfall. Kein einheitlich
+  grüner Neunerlauf behauptet; die erfolglosen Fixture-/Selectorläufe sind oben
+  dokumentiert und bleiben als eigene Logs erhalten.
+- Produktionsbuild im finalen Einzelbrowserlauf auf der finalen Runtimequelle
+  erfolgreich. Scoped ESLint für Quell-/Test-/Browserdateien abschließend mit
+  `--max-warnings=0` ohne Warnungen bestanden. diff-check bestanden.
 - Keine eigenen Backend-/PostgreSQL-Gates, weil kein Backend geändert wird.
   Browser liefen nacheinander in eigenen frischen Datenverzeichnissen;
   PostgreSQL-Dienst und private Daten blieben unangetastet.
 
 Belege: `inventory-form-drafts-ui.log`, `inventory-form-drafts-ui-final.log`,
 `inventory-form-drafts-e2e.log`, `inventory-form-drafts-e2e-final.log`,
-`inventory-form-drafts-lint-final.log`. Der Create-Einzelnachlauf erhält eine
-eigene Logdatei. Aktuell keine laufende eigene Testsitzung; Browserrunner 42994
-und 72606 und UI-Runner 71532/32578/25493 sowie Lint 83584 sind beendet.
+`inventory-form-drafts-lint-final.log` und
+`inventory-form-drafts-create-e2e-final.log`. Die Browserbilder sind wechselnde
+ignorierte Playwright-Laufartefakte; die Bilder des zweiten Laufs wurden vor
+dem finalen Einzelbrowserlauf visuell geprüft. Aktuell keine laufende eigene
+Testsitzung; Browserrunner 42994/72606/58461 und UI-Runner
+71532/32578/25493/68764/16118 sowie Lint 83584 sind beendet. Finale Browser-
+und Lintsitzungen endeten mit Exit 0; keine Prozesse mit eigenem Checkoutpfad
+in der anschließenden Prozessprüfung gefunden.
 
-## Verbleibend vor finaler Paketabnahme
+## Root-Integration und verbleibende Grenzen
 
-1. Nach Ende des reservierten Root-PG/History-Gates: kleiner UI-Gate mit dem
-   zusätzlichen Altwertfall und unveränderten neuen Draftfällen (8 Fälle),
-   scoped ESLint und Build auf finaler Quelle.
-2. Genau der einzelne korrigierte Document-Createverlust-/Cleanupbrowserfall.
-   Die drei bereits grünen Real-412-Fälle und fünf Bestandsregressionen werden
-   ohne zusätzliche Quelleänderung nicht erneut teuer geprüft.
-3. Finalen Gatezustand und Prozessbereinigung in diesem Handoff ergänzen.
+Die eigenen Paketgates sind abgeschlossen. Root übernimmt die sauberen Commits
+und prüft die Komposition auf seiner finalen Quelle; eigener Checkout/Main/
+Vorschau wurden nicht integriert oder veröffentlicht. Keine weiteren eigenen
+schweren Tests nach diesem Handoff.
 
 Alte abweichende Draftfeldschemas (insbesondere frühere Wartungs-Date-only-
 Schemas) bleiben unter dem bestehenden sichtbaren Schutz erhalten und werden

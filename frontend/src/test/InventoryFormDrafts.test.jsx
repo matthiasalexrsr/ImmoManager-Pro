@@ -83,7 +83,8 @@ describe('inventory drafts share the existing private form lifecycle', () => {
     await userEvent.click(await screen.findByRole('button', { name: item.create, exact: true }));
     let dialog = await screen.findByRole('dialog'); await within(dialog).findByText('Entwurfsschutz bereit');
     fireEvent.change(within(dialog).getByLabelText(item.field), { target: { value: 'Historischer Entwurf' } });
-    await userEvent.selectOptions(within(dialog).getByLabelText('Art *'), 'Wohnung');
+    const typeChoice = within(dialog).getByLabelText('Art *');
+    await userEvent.selectOptions(typeChoice, within(typeChoice).getByRole('option', { name: 'Wohnung (Altbestand)', exact: true }));
     await chooseReferences(dialog, item);
     await userEvent.click(within(dialog).getByRole('button', { name: 'Abbrechen', exact: true }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
