@@ -70,7 +70,7 @@ def _schema(connection, deadline):
         columns = {row["name"]: row for row in _rows(
             connection, 'PRAGMA table_info("notification_read_states")', deadline=deadline
         )}
-        if not set(FIELDS) <= columns:
+        if not set(FIELDS) <= set(columns):
             raise InboxIntegrityError("notification_inbox_columns_incomplete")
         if any(not columns[field]["notnull"] for field in FIELDS):
             raise InboxIntegrityError("notification_inbox_nullability_invalid")
@@ -87,7 +87,7 @@ def _schema(connection, deadline):
     else:
         inspector = inspect(connection)
         columns = {column["name"]: column for column in inspector.get_columns(TABLE)}
-        if not set(FIELDS) <= columns:
+        if not set(FIELDS) <= set(columns):
             raise InboxIntegrityError("notification_inbox_columns_incomplete")
         if any(columns[field]["nullable"] for field in FIELDS):
             raise InboxIntegrityError("notification_inbox_nullability_invalid")
