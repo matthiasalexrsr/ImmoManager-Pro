@@ -109,3 +109,22 @@ Inventartabellen werden nicht umgestaltet. Browserprüfung bleibt streng,
 ergänzt tatsächliche Layoutmaße und wird als genau derselbe Fall wiederholt.
 Erst ein kompletter Durchlauf belegt Export und Rechteentzug; vorhandene
 fehlgeschlagene Belege werden nicht als Abnahme bezeichnet.
+
+Der korrigierte Fall auf `3856469` besteht tatsächlich vollständig: 1 PASS,
+47,0 Sekunden Fall/48,4 Sekunden Playwright. Echte Folgeseite, Suchpositionen
+101/1001/10001, vollständiger CSV mit10002 eindeutigen Kennungen und
+Formelabsicherung sowie tatsächlicher Rechteentzug auf denselben SQL-Actor
+sind erreicht. Ganze Dokumentbreite ist bei320/360/1440 korrekt. Der Runner
+ist normal geschlossen. Vier gespeicherte Aufnahmen wurden tatsächlich
+betrachtet, JSON/Layoutbelege vor Wiederholung gesichert.
+
+Die zusätzliche tatsächliche Layoutprüfung zeigt jedoch einen verbliebenen
+Produktfehler: die mobile Tabelle bleibt1080px breit, während das Dokument
+korrekt320/360px misst. Der Scrollcontainer verdeckt diesen Fehler der
+Eintragskarten. Die separat nachgeladene gemeinsame Inventar-CSS gewinnt bei
+gleicher Selektorspezifität. Vor dem nächsten Sourcefix festgelegt: scoped
+Historienselektor gewinnt unabhängig von Chunk-Ladereihenfolge; der Browser
+verlangt zusätzlich, dass mobile Tabelle und geöffnete Wertedefinitionen
+vollständig innerhalb der Akte liegen. Keine Abschwächung der vorhandenen
+Dokumentbreiten-, Export- oder Rechteprüfungen. Mobile praktische Abnahme
+steht trotz des ersten vollständigen grünen Durchlaufs bis dahin noch aus.
