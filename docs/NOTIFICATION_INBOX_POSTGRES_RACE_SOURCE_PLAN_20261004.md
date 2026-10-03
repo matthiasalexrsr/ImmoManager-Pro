@@ -115,3 +115,33 @@ je30sNode+8sCleanup. Danach weitere sechsRaces, Receipt undTimeoutcleanup in
 eigenem Rootslot, vorgeschlagen hard330s gesamt. Vor jedem Gate echter Freeze,
 genaue Nodes, dedizierter Rootserver und keine parallele native Last. Tatsächliche
 Dauer/Fixture-/Produktfehler/Timeouts werden erst nach Ausführung berichtet.
+
+## Zusätzlich vor Code: GET-Publikationsrepro mit echter Parentänderung
+
+Rootauftrag nach unabhängiger Quellenprüfung: list_inbox hält den bestehenden
+RepeatableSnapshot für Eligibility/Counts/Seite; dessen zwei frische SQLAccount-
+Prüfpunkte vergleichen Principal/Origin/Grants, aber lesen die Itemparents nicht
+außerhalb dieses früheren Fachdatenbestands erneut. Dies ist ein offener
+Quellenverdacht, ausdrücklich noch kein ausgeführter Leak-/FAILnachweis.
+
+Zusätzlicher elfter Node
+test_postgres_live_get_rechecks_published_parent_after_actual_owner_move:
+produktlist_inbox unverändert mit wirklichem selected Reader starten. Eigenes
+after_cursor_execute-Event hält nach der tatsächlichen bounded Notification-
+Contentprojektion an. Unabhängiger wirklicher Ownerwriter verschiebt
+property-one vonp-one nachp-two über SQLAlchemyStore.update_property und
+committed. Actor/Origin/Grants aus SQLUserStore vorher/nachher bleiben identisch;
+NativeReader-/Propertywriter-PIDs müssen verschieden sein. Danach GET fortsetzen.
+
+Geforderte sichere Publikation: tatsächlicher403/409-Konflikt oder wirklich leere
+Livepage mit full_count/unread_count0, weil das einzige Target jetzt außerhalb
+des unveränderten Readscopes liegt. Eine unveränderte ScopeDTO allein ist kein
+Parentrecheck. Es wird weder _fresh_principal noch eine Authgetterfunktion
+ersetzt. Reader/Writer/Pool/Schema finallyCleanup wie oben; optional erster
+separater tatsächlicher Rootgate hard45s (30sNode/8sCleanup). Ein unerwarteter
+503/Fixturefehler ist kein positiver Scopebeleg. Mit diesem Zusatz elf nur
+vorbereititete Parameterfälle, noch keinerlei Runtimeausführung.
+
+Rootactualsupportquery3c96be9 ist inzwischen gelesen: ausschließlich
+pg_catalog.host(pg_catalog.inet_server_addr()) an der früher fehlerhaften
+Addressdarstellung. Diese zentrale Korrektur ist echte Quellabhängigkeit.
