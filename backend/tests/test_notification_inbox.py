@@ -10,8 +10,8 @@ from sqlalchemy import MetaData, create_engine, event, select
 from sqlalchemy.orm import sessionmaker
 
 from backend import auth
+from backend.db import document_version_models  # noqa: F401 — actual FK metadata, own fixture
 from backend.db.access_models import ResourcePortfolioORM
-from backend.db import document_version_models  # noqa: F401: actual FK metadata, own fixture
 from backend.db.notification_inbox_models import NotificationReadStateORM
 from backend.db.operational_models import OperationalDispatchORM
 from backend.db.orm_models import Base, NotificationORM, PortfolioORM, PropertyORM

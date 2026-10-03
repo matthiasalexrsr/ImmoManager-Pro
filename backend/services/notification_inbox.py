@@ -27,7 +27,7 @@ from .notification_inbox_validation import (
     InboxIntegrityError,
     validate_notification_inbox_schema,
 )
-from .portfolio_scope import AccessScope, current_scope, scoped_clause, scope_from_user
+from .portfolio_scope import AccessScope, current_scope, scope_from_user, scoped_clause
 from .tenancy_workflow import decode_cursor, encode_cursor
 
 _AUTHORITY_MODULE = "backend.services.notification_inbox_commit_authority"
