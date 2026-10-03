@@ -269,13 +269,17 @@ def test_http_actual_auth_in_a_different_database_fails_closed(http_installation
         other.dispose()
 
 
-def test_http_no_read_write_endpoints_or_readstate_side_effects(http_installation):
+def test_http_legacy_tokens_and_forged_commands_have_no_readstate_side_effects(http_installation):
     box = http_installation
     _insert(box, [_notice("one")])
-    for method, path in (("post", PATH), ("patch", PATH),
-                         ("post", PATH + "/one/read"), ("post", PATH + "/read-all")):
+    for method, path in (("post", PATH), ("patch", PATH), ("post", PATH + "/read-all")):
         response = getattr(box.client, method)(path, headers=box.headers["reader-a"], json={"actor_id": "owner"})
         assert response.status_code in {404, 405}
+    assert box.client.post(PATH + "/one/read", headers=box.headers["reader-a"],
+                           json={"actor_id": "owner"}).status_code == 422
+    legacy = box.client.post(PATH + "/one/read", headers=box.headers["reader-a"], json={})
+    assert legacy.status_code == 401
+    _private(legacy)
     assert box.client.get(PATH).status_code == 401
     with box.engine.connect() as connection:
         assert connection.execute(select(NotificationReadStateORM.actor_id)).first() is None
