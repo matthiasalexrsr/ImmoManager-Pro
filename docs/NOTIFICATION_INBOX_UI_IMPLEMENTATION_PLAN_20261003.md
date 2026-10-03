@@ -273,3 +273,17 @@ korrekt konsumieren kann.
 Es beweist **nicht**, dass die neuen Endpoints existieren oder serverseitig
 korrekt implementiert sind. Root aktiviert die globale Glocke erst nach
 zentraler Backendimplementierung und gemeinsamer Rechte-/Browserabnahme.
+
+## Präzisierung: fortsetzbares Mark-all bleibt Backendvertrag
+
+Der parallele Domainentwurf kann Mark-all als fortsetzbare Aktion bzw. Job modellieren. Dieses Frontendpaket erfindet dafür **keinen** Job-Endpunkt, keine Pollingroute und keinen clientseitigen Snapshot aus Datum/UUID.
+
+Für den vorliegenden vorgeschlagenen Defaultvertrag gilt:
+
+- `snapshot_token` kommt ausschließlich aus `GET /notifications/inbox` und wird opak behandelt;
+- `idempotency_key` identifiziert nur den Mutationcommand und ist kein Snapshot;
+- der Default-API-Adapter akzeptiert bei Mark-all nur den ausdrücklich dokumentierten terminalen Response mit `marked_count`, `unread_count` und serverseitigem `snapshot_token`;
+- eine andere/fortsetzbare Response wird **nicht** als Erfolg interpretiert, sondern als noch nicht abgestimmter Backendvertrag behandelt;
+- Hook und Komponente sprechen Mark-all ausschließlich über die injizierbare Servicegrenze an. Sobald der Backend-Handoff einen Job-/Continuation-DTO festlegt, wird nur diese Adaptergrenze erweitert; die UI erfindet bis dahin keine Zustandsmaschine oder Pollingroute.
+
+Auch für Readonly gilt weiterhin: persönliche `mark_read`-/`mark_all_read`-Fähigkeit kommt ausschließlich aus den serverseitigen `actions`, nicht aus allgemeinen Fach-`write_permissions`.
