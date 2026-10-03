@@ -29,7 +29,7 @@ from .contract_workspace_search import UnicodeCasefold, ensure_sqlite_casefold
 from .portfolio_scope import current_scope, refresh_scope, scope_context, scope_from_user, scoped_clause
 from .reference_cursor import pack_reference_cursor, unpack_reference_cursor
 
-ReferenceKind = Literal["properties", "units", "contracts", "users", "documents", "handover-protocols", "meter-readings", "meters", "portfolios", "accounts"]
+ReferenceKind = Literal["properties", "units", "contracts", "users", "documents", "handover-protocols", "meter-readings", "meters", "portfolios", "accounts", "statements"]
 
 
 class WorkflowReferenceQuery(BaseModel):
@@ -39,6 +39,8 @@ class WorkflowReferenceQuery(BaseModel):
     property_id: str | None = Field(default=None, min_length=1)
     unit_id: str | None = Field(default=None, min_length=1)
     contract_id: str | None = Field(default=None, min_length=1)
+    period_id: str | None = Field(default=None, min_length=1)
+    dispute_case_id: str | None = Field(default=None, min_length=1)
     direction: Literal["move_in", "move_out"] | None = None
     selected_id: str | None = Field(default=None, min_length=1)
     cursor: str | None = Field(default=None, min_length=1)
@@ -54,7 +56,7 @@ class WorkflowReferenceQuery(BaseModel):
             raise ValueError("Bitte Suchtext ohne Steuerzeichen verwenden.")
         return value.strip().casefold() or None
 
-    @field_validator("portfolio_id", "property_id", "unit_id", "contract_id", "selected_id", "cursor")
+    @field_validator("portfolio_id", "property_id", "unit_id", "contract_id", "period_id", "dispute_case_id", "selected_id", "cursor")
     @classmethod
     def safe_identifier(cls, value):
         if value is not None:
@@ -250,6 +252,11 @@ def _reference_choices_locked(store, kind, query, actor_id):
         raise HTTPException(422, "Bitte eine kleinere Auswahlseite verwenden; alle weiteren Seiten bleiben verfügbar.")
     if query.direction and kind not in {"handover-protocols", "meter-readings"}:
         raise HTTPException(422, "Eine Übergaberichtung gilt nur für Protokolle und deren Ablesungen.")
+    if kind == "statements":
+        if bool(query.period_id) == bool(query.dispute_case_id):
+            raise HTTPException(422, "Bitte genau eine Abrechnungsperiode oder Widerspruchsakte auswählen.")
+    elif query.period_id or query.dispute_case_id:
+        raise HTTPException(422, "Abrechnungsperiode und Widerspruchsakte gelten nur für Einzelabrechnungen.")
     if kind in {"portfolios", "accounts"} and (query.property_id or query.unit_id or query.contract_id):
         raise HTTPException(422, "Konten und Portfolios werden anhand des Portfolios ausgewählt.")
     user = auth.get_user_by_id(actor_id)
@@ -267,6 +274,9 @@ def _reference_choices_locked(store, kind, query, actor_id):
                          "unrestricted": captured.unrestricted, "portfolio_ids": captured.portfolio_ids}}
     after = unpack_reference_cursor(query.cursor, binding)
     with scope_context(captured):
+        if kind == "statements":
+            from .billing_statement_choices import statement_reference_choices
+            return statement_reference_choices(store, query, actor_id, binding, after, resolve_parents=_parents)
         with Session(store.db.get_bind(), autoflush=False) if hasattr(store, "db") else nullcontext() as db:
             if db is not None:
                 from ..repositories.sql_store import SQLAlchemyStore
