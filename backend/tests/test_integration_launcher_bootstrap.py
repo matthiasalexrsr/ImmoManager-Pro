@@ -63,8 +63,17 @@ def environment(directory, *, key=KEY):
     return {**inherited, **values}
 
 
-def launch(directory, *, initialize=False, key=KEY):
+def launch(directory, *, initialize=False, key=KEY, keyring=None, without_external_keys=False):
     values = environment(directory, key=key)
+    if keyring is not None:
+        values["ENCRYPTION_KEY"] = ""
+        values["ENCRYPTION_KEYRING"] = json.dumps({"managed": keyring})
+        values["ENCRYPTION_ACTIVE_KEY_ID"] = "managed"
+    if without_external_keys:
+        assert not (ROOT / ".env").exists(), "Restart probe needs an application tree without another installation's .env"
+        for name in list(values):
+            if name.lower().startswith("encryption_") or name.lower() == "jwt_secret_key":
+                del values[name]
     values["EXPLICIT_INTEGRATION_INIT"] = "yes" if initialize else "no"
     result = subprocess.run([sys.executable, "-c", PROBE], cwd=ROOT, env=values,
                             capture_output=True, text=True, timeout=30)
@@ -126,11 +135,13 @@ def test_wrong_key_explicit_initialization_refuses_before_actual_app_without_rep
     assert boundary(launch(directory, initialize=True))["load"] == "authenticated"
     path = directory / "integrations.json"
     original = path.read_bytes()
+    original_configuration = (directory / ".env").read_bytes()
     result = launch(directory, initialize=True, key=OTHER_KEY)
     assert result.returncode == 1
     assert "APP_BOUNDARY" not in result.stdout
     assert "encrypted_state_unreadable" in result.stdout
     assert path.read_bytes() == original
+    assert (directory / ".env").read_bytes() == original_configuration
 
 
 def test_actual_held_installation_blocks_explicit_bootstrap_before_configuration_or_state(tmp_path):
@@ -143,3 +154,15 @@ def test_actual_held_installation_blocks_explicit_bootstrap_before_configuration
     assert "installation_busy" in result.stdout + result.stderr
     assert not (directory / ".env").exists()
     assert not (directory / "integrations.json").exists()
+
+
+@pytest.mark.parametrize("named_ring", [False, True], ids=["single-key", "named-keyring"])
+def test_actual_restart_without_external_keys_reopens_the_durably_selected_cipher(tmp_path, named_ring):
+    directory = tmp_path / "durable"
+    assert boundary(launch(directory, initialize=True, keyring=KEY if named_ring else None))["load"] == "authenticated"
+    original_state = (directory / "integrations.json").read_bytes()
+    original_configuration = (directory / ".env").read_bytes()
+    assert KEY.encode() in original_configuration
+    assert boundary(launch(directory, without_external_keys=True))["load"] == "authenticated"
+    assert (directory / "integrations.json").read_bytes() == original_state
+    assert (directory / ".env").read_bytes() == original_configuration

@@ -53,6 +53,19 @@ installation and its native ownership proof remain a later deployment task.
 
 ## Focused evidence required
 
+Independent review after the initial six real CLI cases found that externally
+supplied keys bypass persist_default's normal durable-default branch. Those six
+passing cases prove lifetime/import ordering, not a restart without the same
+external keys. Before initialization, validate the selected active keyring and
+authenticate any existing state. Then persist the entire chosen field-key/JWT
+bundle atomically in the selected runtime .env, using the existing private-file
+and configuration-sidecar primitives. Refuse conflicting existing values before
+any publication; this first-initialization action does not rotate keys. Only
+after durable publication may initialize_new publish an absent encrypted file.
+Add separate real restart-without-keys cases for single-key and named-keyring
+configuration, plus conflict/failure atomicity and runner environment isolation.
+Browser fixtures must not inherit any field keys from the user's environment.
+
 Keep pure factory gates distinct from native launcher/API evidence. Native cold
 child probes must prove actual lifetime exclusion before Settings/state work,
 new encrypted state before app import, byte-identical repeated explicit init,

@@ -116,3 +116,52 @@ def persist_default(config_file, key, proposed, *, persist_existing=False):
     finally:
         temporary.unlink(missing_ok=True)
 
+
+def persist_selected_values(config_file, values):
+    """Atomically retain an explicit key bundle; refuse rotation/conflicting keys."""
+    if not isinstance(values, dict) or not values:
+        raise RuntimeConfigurationError("Keine ausdrückliche Schlüsselkonfiguration ausgewählt.")
+    for key, value in values.items():
+        if (not isinstance(key, str) or not re.fullmatch(r"[A-Z][A-Z0-9_]*", key)
+                or not isinstance(value, str) or any(char in value for char in "\0\r\n")):
+            raise RuntimeConfigurationError("Ungültige ausgewählte Schlüsselkonfiguration.")
+    path = Path(config_file).absolute()
+    temporary = path.with_name(path.name + "." + uuid4().hex + ".tmp")
+    try:
+        with _locked(path):
+            info = _regular(path, missing_ok=True)
+            existing = path.read_text(encoding="utf-8") if info else ""
+            lines = existing.splitlines()
+            missing = []
+            # Prove the whole bundle before creating a temporary secret file.
+            for key, value in values.items():
+                matches = [line.partition("=")[2].strip().strip('"').strip("'")
+                           for line in lines if line.partition("=")[0].strip() == key]
+                if len(matches) > 1 or (matches and matches[0] != value):
+                    raise RuntimeConfigurationError(
+                        "Ausgewählte und gespeicherte Schlüssel unterscheiden sich. "
+                        "Konfiguration lokal prüfen; Erstinitialisierung ersetzt keine bestehenden Schlüssel."
+                    )
+                if not matches:
+                    missing.append(key + "=" + value)
+            if not missing:
+                return
+            from scripts.private_server_backup import protected_new_file
+            with protected_new_file(temporary) as output:
+                output.write(("\n".join([*lines, *missing]) + "\n").encode("utf-8"))
+            if info:
+                current_info = _regular(path)
+                if (current_info.st_dev, current_info.st_ino, current_info.st_mtime_ns, current_info.st_size) != (
+                        info.st_dev, info.st_ino, info.st_mtime_ns, info.st_size):
+                    raise RuntimeConfigurationError("Runtime-Konfiguration wurde verändert. Erneut prüfen.")
+            elif os.path.lexists(path):
+                raise RuntimeConfigurationError("Runtime-Konfiguration wurde parallel angelegt. Erneut prüfen.")
+            os.replace(temporary, path)
+    except (OSError, ValueError):
+        raise RuntimeConfigurationError(
+            "Schlüsselkonfiguration konnte nicht dauerhaft gespeichert werden. "
+            "Freien Speicher und Dateirechte prüfen; keine Integrationsdatei anlegen."
+        ) from None
+    finally:
+        temporary.unlink(missing_ok=True)
+

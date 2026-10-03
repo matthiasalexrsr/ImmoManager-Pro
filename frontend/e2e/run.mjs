@@ -111,6 +111,9 @@ try {
     // The server accepts canonical, padded base64url for 32-byte keys.
     ENCRYPTION_KEY: `${randomBytes(32).toString('base64url')}=`,
     ENCRYPTION_INDEX_KEY: `${randomBytes(32).toString('base64url')}=`,
+    ENCRYPTION_KEYRING: '',
+    ENCRYPTION_ACTIVE_KEY_ID: 'default',
+    ENCRYPTION_LEGACY_JWT_KEYS: '[]',
     SQLITE_PERSISTENT_STORE: 'true',
     ALLOW_INMEMORY_FALLBACK: 'false',
     AUTO_SEED_DEMO_DATA: 'false',
@@ -121,6 +124,13 @@ try {
     PLUGIN_DIRS: '[]',
     CORS_ORIGINS: url,
   };
+  // Settings are case-insensitive; remove inherited lower/mixed-case aliases
+  // before handing this explicitly owned synthetic key bundle to Python.
+  const fieldKeys = new Set(['encryption_key', 'encryption_index_key', 'encryption_keyring',
+    'encryption_active_key_id', 'encryption_legacy_jwt_keys', 'jwt_secret_key']);
+  for (const name of Object.keys(backendEnv)) {
+    if (fieldKeys.has(name.toLowerCase()) && name !== name.toUpperCase()) delete backendEnv[name];
+  }
   // Migrate the owned empty database before app import/create_all. This exercises
   // the same schema chain as a fresh installation without touching user data.
   await run(python, ['-m', 'alembic', 'upgrade', 'head'], { env: backendEnv });

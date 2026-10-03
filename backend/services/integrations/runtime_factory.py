@@ -37,6 +37,11 @@ _INSTRUCTIONS = {
         "Eine ausdrücklich neue Datei nur über den Launcher mit --initialize-integrations anlegen; "
         "Hilfe: python -m backend --help"
     ),
+    "runtime_key_configuration_unavailable": (
+        "Die ausgewählte Schlüsselkonfiguration konnte nicht unverändert dauerhaft gesichert werden. "
+        "Gespeicherte und ausgewählte Schlüssel, Dateirechte und freien Speicher lokal prüfen. "
+        "Erstinitialisierung ersetzt keine Schlüssel; vor einer Wiederholung die vollständige Sicherung prüfen."
+    ),
     "encryption_key_unavailable": (
         "Dauerhafte Feldschlüssel fehlen oder sind ungültig. Die vollständige Schlüsselkonfiguration "
         "der ausgewählten Installation wiederherstellen; keine Ersatzschlüssel für vorhandene Daten erzeugen."

@@ -146,6 +146,42 @@ def _port_available(host, port):
         return False
 
 
+def _initialize_integrations(settings, runtime):
+    from pathlib import Path
+
+    from backend.runtime_environment import RuntimeConfigurationError, persist_selected_values
+    from backend.services.iban_encryption import IBANEncryptionError, keyring_from_configuration
+    from backend.services.integrations.config_store import ConfigStoreError
+    from backend.services.integrations.runtime_factory import configured_runtime_store, initialize_new
+
+    values = settings.model_dump(mode="json")
+    if not settings.data_dir or Path(settings.data_dir).resolve() != runtime.data_dir.resolve():
+        raise ConfigStoreError("selected_installation_configuration_mismatch")
+    try:
+        ring = keyring_from_configuration(values)
+    except IBANEncryptionError:
+        raise ConfigStoreError("encryption_key_unavailable") from None
+    if not ring.active_key_id or ring.active_key_id not in ring.keys:
+        raise ConfigStoreError("encryption_key_unavailable")
+    selected = configured_runtime_store(values)
+    try:
+        selected.load()
+    except ConfigStoreError as error:
+        if error.code != "state_missing":
+            raise
+    # Existing ciphertext must authenticate before retaining an external key;
+    # an absent file must only be published after all keys are durable.
+    bundle = {name.upper(): values[name] for name in (
+        "encryption_key", "encryption_keyring", "encryption_active_key_id",
+        "encryption_index_key", "encryption_legacy_jwt_keys", "jwt_secret_key",
+    )}
+    try:
+        persist_selected_values(runtime.data_dir / ".env", bundle)
+    except RuntimeConfigurationError:
+        raise ConfigStoreError("runtime_key_configuration_unavailable") from None
+    initialize_new(values, expected_missing=True)
+
+
 def _setup_logging_to_file():
     """Write a startup log next to the .exe so errors survive a closed console."""
     if not IS_FROZEN:
@@ -271,9 +307,9 @@ def _run(args, runtime):
     runtime.bind_configuration(settings)
     if args.initialize_integrations:
         from backend.services.integrations.config_store import ConfigStoreError
-        from backend.services.integrations.runtime_factory import initialize_new, runtime_state_instruction
+        from backend.services.integrations.runtime_factory import runtime_state_instruction
         try:
-            initialize_new(settings.model_dump(mode="json"), expected_missing=True)
+            _initialize_integrations(settings, runtime)
         except ConfigStoreError as error:
             print(f"FEHLER: Integrationsablage konnte nicht initialisiert werden ({error.code}).")
             print(runtime_state_instruction(error.code))

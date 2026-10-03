@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from backend.runtime_environment import RuntimeConfigurationError, persist_default
+from backend.runtime_environment import RuntimeConfigurationError, persist_default, persist_selected_values
 
 ROOT = Path(__file__).resolve().parents[2]
 KEY = "ENCRYPTION_KEY"
@@ -84,3 +84,24 @@ def test_ambiguous_keys_require_repair_before_start(tmp_path, monkeypatch):
         persist_default(target, KEY, "synthetic-proposal")
     assert KEY not in os.environ
     assert target.read_text(encoding="utf-8") == content
+
+
+def test_explicit_key_bundle_refuses_any_conflict_before_appending_other_keys(tmp_path):
+    target = tmp_path / ".env"
+    original = b"# Keep the original\nENCRYPTION_KEY=existing-stable-key\n"
+    target.write_bytes(original)
+    with pytest.raises(RuntimeConfigurationError, match="Erstinitialisierung ersetzt keine"):
+        persist_selected_values(target, {"ENCRYPTION_INDEX_KEY": "new-index", "ENCRYPTION_KEY": "different-key"})
+    assert target.read_bytes() == original
+    assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_explicit_key_bundle_failed_atomic_publication_keeps_every_original_value(tmp_path, monkeypatch):
+    target = tmp_path / ".env"
+    original = b"# Existing runtime\nEXISTING=preserved\n"
+    target.write_bytes(original)
+    monkeypatch.setattr("backend.runtime_environment.os.replace", lambda *_: (_ for _ in ()).throw(PermissionError()))
+    with pytest.raises(RuntimeConfigurationError, match="dauerhaft gespeichert"):
+        persist_selected_values(target, {"ENCRYPTION_KEY": "synthetic-selected-key", "ENCRYPTION_INDEX_KEY": "synthetic-index"})
+    assert target.read_bytes() == original
+    assert not list(tmp_path.glob("*.tmp"))
