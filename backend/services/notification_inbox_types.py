@@ -40,7 +40,7 @@ class InboxPrincipal:
 
 class InboxItemActions(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
-    mark_read: bool = True
+    mark_read: bool = False
 
 
 class NotificationInboxItem(BaseModel):

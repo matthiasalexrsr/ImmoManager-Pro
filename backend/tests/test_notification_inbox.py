@@ -10,6 +10,7 @@ from sqlalchemy import MetaData, create_engine, event, select
 from sqlalchemy.orm import sessionmaker
 
 from backend import auth
+from backend.db.access_models import ResourcePortfolioORM
 from backend.db import document_version_models  # noqa: F401: actual FK metadata, own fixture
 from backend.db.notification_inbox_models import NotificationReadStateORM
 from backend.db.operational_models import OperationalDispatchORM
@@ -112,6 +113,7 @@ def test_sqlite_full_personal_counts_ignore_global_reads_and_never_scan_stock(in
     with _actor(box, "reader-a"):
         a = list_inbox(box.store)
         read = list_inbox(box.store, InboxQuery(status="read"))
+        enabled_metadata = list_inbox(box.store, read_actions_enabled=True)
     with _actor(box, "reader-b"):
         b = list_inbox(box.store)
     event.remove(box.engine, "before_cursor_execute", trace)
@@ -119,6 +121,8 @@ def test_sqlite_full_personal_counts_ignore_global_reads_and_never_scan_stock(in
     assert read.full_count == 1 and read.unread_count == 136
     assert b.full_count == b.unread_count == 137
     assert all(item.read_at is None for item in a.items + b.items)
+    assert all(item.actions.mark_read is False for item in a.items + read.items + b.items)
+    assert all(item.actions.mark_read is True for item in enabled_metadata.items)
     assert a.snapshot_token is None and a.consistency == "live" and not a.actions.mark_all_read
     assert not any(sql.lstrip().upper().startswith(("INSERT", "UPDATE", "DELETE", "CREATE", "ALTER"))
                    for sql in commands)
@@ -132,8 +136,14 @@ def test_sqlite_scope_dispatch_and_exact_filter_counts_share_eligibility(install
     _insert(box, [_notice("ordinary"), _notice("warning", severity="warning"),
                   _notice("other-role"), _notice("other-portfolio", entity_id="property-two"),
                   _notice("broken", entity_id="missing"), _notice("unknown", entity_type="unknown"),
-                  _notice("unlinked", entity_type=None, entity_id=None)])
+                  _notice("unlinked", entity_type=None, entity_id=None),
+                  _notice("assigned-unlinked", entity_type=None, entity_id=None),
+                  _notice("assigned-incomplete", entity_id=None)])
     with box.engine.begin() as connection:
+        connection.execute(ResourcePortfolioORM.__table__.insert(), [
+            {"resource_type": "notifications", "resource_id": identifier, "portfolio_id": "p-one"}
+            for identifier in ("assigned-unlinked", "assigned-incomplete")
+        ])
         connection.execute(OperationalDispatchORM.__table__.insert(), {
             "key": "1" * 64, "notification_id": "other-role", "target_role": "verwalter",
             "family": "task_due", "entity_type": "property", "entity_id": "property-one",
@@ -141,14 +151,15 @@ def test_sqlite_scope_dispatch_and_exact_filter_counts_share_eligibility(install
     with _actor(box, "reader-a"):
         page = list_inbox(box.store, InboxQuery(status="all"))
         warning = list_inbox(box.store, InboxQuery(status="all", severity="warning"))
-    assert {item.id for item in page.items} == {"ordinary", "warning"}
-    assert page.full_count == page.unread_count == 2
+    assert {item.id for item in page.items} == {"ordinary", "warning", "assigned-unlinked"}
+    assert page.full_count == page.unread_count == 3
     assert warning.full_count == warning.unread_count == 1
 
 
 def test_sqlite_cursor_binds_real_actor_query_and_changed_grants(installation):
     box = installation
-    _insert(box, [_notice(f"notice-{index}") for index in range(7)])
+    _insert(box, [_notice(f"notice-{index}", created_at=datetime(2026, 10, 3, 12))
+                  for index in range(7)])
     with _actor(box, "reader-a"):
         first = list_inbox(box.store, InboxQuery(limit=2))
         seen, cursor = [item.id for item in first.items], first.next_cursor

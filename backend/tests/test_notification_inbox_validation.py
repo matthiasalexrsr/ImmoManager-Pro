@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from backend.services.notification_inbox_types import InboxPage, InboxQuery
+from backend.services.notification_inbox_types import InboxItemActions, InboxPage, InboxQuery
 from backend.services.notification_inbox_validation import (
     InboxIntegrityError,
     validate_notification_inbox_database,
@@ -38,7 +38,8 @@ def _image(*, actor_column="actor_id VARCHAR NOT NULL", delete="CASCADE", read_t
 
 def test_query_and_live_page_forbid_request_authority_and_fake_snapshots():
     assert InboxQuery().limit == 10
-    for values in ({"actor_id": "other"}, {"snapshot_token": "fake"}, {"limit": 0},
+    for values in ({"actor_id": "other"}, {"snapshot_token": "fake"},
+                   {"read_actions_enabled": True}, {"limit": 0},
                    {"limit": 101}, {"limit": True}, {"after": ""}, {"status": "archived"}):
         with pytest.raises(ValidationError):
             InboxQuery(**values)
@@ -46,6 +47,7 @@ def test_query_and_live_page_forbid_request_authority_and_fake_snapshots():
                      has_more=False, next_cursor=None)
     assert page.snapshot_token is None and page.consistency == "live"
     assert page.actions.mark_all_read is False
+    assert InboxItemActions().mark_read is False
     with pytest.raises(ValidationError):
         InboxPage(items=[], full_count=0, unread_count=0, has_more=False,
                   next_cursor=None, snapshot_token="fake")

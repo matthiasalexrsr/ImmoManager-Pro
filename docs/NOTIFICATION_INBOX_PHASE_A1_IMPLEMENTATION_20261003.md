@@ -31,7 +31,9 @@ den Startup-/Migrationsimportlisten aktiviert. Root registriert später.
 ## Read-Schnittstelle
 
 ```python
-def list_inbox(store, query: InboxQuery | None = None) -> InboxPage: ...
+def list_inbox(
+    store, query: InboxQuery | None = None, *, read_actions_enabled: bool = False
+) -> InboxPage: ...
 ```
 
 Actor-ID kommt ausschließlich aus dem tatsächlichen `current_scope`.
@@ -60,6 +62,15 @@ normalisiert nur fehlende Nullfraktion, PG bleibt typisierter DateTime.
 Cursor bindet frischen Actor, effektiven Scope, Access/origin, Portfolio-IDs,
 Query/Limit/Sort/Version. snapshot_token=null, consistency=live,
 actions.mark_all_read=false. Keine stabile Bestandsbehauptung unter Inserts.
+
+Erster Anschluss ist ausdrücklich read-only: alle Itemaktionen melden
+`actions.mark_read=false`. Nur Root darf nach tatsächlicher Abnahme des
+HTTPwritefence den internen Keywordparameter `read_actions_enabled=True`
+setzen. Query/JSON akzeptieren dieses Flag nicht. Es ist ausschließlich
+UI-Metadatum und ersetzt niemals den separaten echten CommitAuthoritybeleg.
+Explizite Resourcegrants können tatsächlich unlinked Zeilen sichtbar machen;
+ein unvollständiges entity_type/entity_id-Paar bleibt für eingeschränkte
+Scopes trotzdem unsichtbar. Kein neuer privater Parentgraph wird erfunden.
 
 ## Zwingender Rootvertrag für vorbereiteten Einzelread
 

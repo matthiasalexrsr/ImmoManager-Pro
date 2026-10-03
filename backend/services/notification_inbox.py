@@ -5,7 +5,7 @@ import os
 from datetime import datetime
 
 from fastapi import HTTPException
-from sqlalchemy import String, case, cast, func, literal, or_, select, text
+from sqlalchemy import String, and_, case, cast, func, literal, or_, select, text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
@@ -16,6 +16,7 @@ from ..db.operational_models import OperationalDispatchORM
 from ..db.orm_models import NotificationORM, UserORM
 from .booking_export import _snapshot
 from .notification_inbox_types import (
+    InboxItemActions,
     InboxPage,
     InboxPrincipal,
     InboxQuery,
@@ -50,8 +51,11 @@ def _identity(connection):
     """Verify the actual target, not an assumed URL or unrelated default DB."""
     dialect = connection.dialect.name
     if dialect == "sqlite":
-        rows = connection.exec_driver_sql("PRAGMA database_list").all()
-        filename = next((row[2] for row in rows if row[1] == "main"), "")
+        rows = connection.exec_driver_sql("PRAGMA database_list")
+        try:
+            filename = next((row[2] for row in rows if row[1] == "main"), "")
+        finally:
+            rows.close()
         if not filename:
             raise _unavailable()
         return dialect, os.path.normcase(os.path.realpath(filename))
@@ -130,6 +134,11 @@ def _eligibility(table, principal, query):
     scoped = scoped_clause(table, scope=_scope(principal))
     if scoped is not None:
         criterion &= scoped
+        # An explicit unlinked resource grant does not repair a broken pair.
+        criterion &= or_(
+            and_(table.c.entity_type.is_(None), table.c.entity_id.is_(None)),
+            and_(table.c.entity_type.is_not(None), table.c.entity_id.is_not(None)),
+        )
     if principal.role != "eigentuemer":
         dispatch = OperationalDispatchORM.__table__
         criterion &= ~select(1).where(
@@ -221,11 +230,15 @@ def _page(connection, principal, query, point):
     ).mappings()]
 
 
-def list_inbox(store, query: InboxQuery | None = None) -> InboxPage:
+def list_inbox(
+    store, query: InboxQuery | None = None, *, read_actions_enabled: bool = False
+) -> InboxPage:
     """Only bounded native projections; actor derives from fresh actual SQL auth."""
     query = query or InboxQuery()
     if not isinstance(query, InboxQuery):
         raise TypeError("InboxQuery required")
+    if type(read_actions_enabled) is not bool:
+        raise TypeError("read_actions_enabled must be an internal boolean")
     db = getattr(store, "db", None)
     if not isinstance(db, Session):
         raise _unavailable()
@@ -251,7 +264,10 @@ def list_inbox(store, query: InboxQuery | None = None) -> InboxPage:
                 [stamp.isoformat(timespec="microseconds") if stamp is not None else None, last["id"]],
             )
         return InboxPage(
-            items=[NotificationInboxItem(**row) for row in selected], full_count=full,
+            # This internal release flag is UI metadata, never a write capability.
+            items=[NotificationInboxItem(**row, actions=InboxItemActions(
+                mark_read=read_actions_enabled
+            )) for row in selected], full_count=full,
             unread_count=unread, has_more=more, next_cursor=cursor,
         )
     except DBAPIError:
