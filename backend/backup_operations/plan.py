@@ -57,6 +57,7 @@ class BackupPlan(BaseModel):
     monthly_at: time = time(3, 30)
     retention_days: int = Field(default=90, ge=1, strict=True)
     retry_seconds: int = Field(default=900, ge=1, strict=True)
+    runtime_timeout_seconds: float = Field(default=120, gt=0, allow_inf_nan=False)
     capacity_file: Path | None = None
     enabled: bool = True
 

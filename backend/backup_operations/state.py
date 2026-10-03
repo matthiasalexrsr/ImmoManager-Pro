@@ -88,6 +88,8 @@ class FileLease:
         self.file: FileIO | None = None
 
     def __enter__(self):
+        if self.file is not None:
+            return self  # A stop operation may return an already acquired lease.
         if not self.path.exists():
             try:
                 with protected_new_file(self.path) as target:
