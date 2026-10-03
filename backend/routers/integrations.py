@@ -1,10 +1,11 @@
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ..auth import require_role
 from ..services.checked_publication import CheckedPublicationRoute
+from ..services.integrations.config_store import ConfigStoreError
 from ..services.integrations.history_types import HistoryError
 from ..services.integrations.manager import integration_manager
 from ..services.portfolio_scope import require_installation_scope
@@ -52,6 +53,20 @@ class IntegrationConfigPayload(BaseModel):
     config: dict = Field(default_factory=dict)
 
 
+class IntegrationConnectionStatePatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_revision: str = Field(pattern=r"^[a-f0-9]{64}$")
+    enabled: bool | None = None
+    config: dict | None = None
+
+    @model_validator(mode="after")
+    def require_change(self):
+        if self.enabled is None and self.config is None:
+            raise ValueError("Mindestens enabled oder config muss geändert werden.")
+        return self
+
+
 @router.get("")
 def list_integrations() -> dict:
     return {"integrations": integration_manager.list_integrations()}
@@ -73,6 +88,49 @@ def get_integration(integration_id: str) -> dict:
         return integration_manager.get_integration(integration_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Integration nicht gefunden") from exc
+
+
+@router.get("/{integration_id}/connection-state")
+def get_integration_connection_state(integration_id: str) -> dict:
+    try:
+        return integration_manager.connection_state(integration_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Integration nicht gefunden") from exc
+    except ConfigStoreError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": exc.code, "message": "Verbindungszustand nicht revisionssicher verfügbar."},
+        ) from None
+
+
+@router.patch("/{integration_id}/connection-state")
+def patch_integration_connection_state(
+    integration_id: str, body: IntegrationConnectionStatePatch
+) -> dict:
+    try:
+        return integration_manager.update_connection_state(
+            integration_id,
+            expected_revision=body.expected_revision,
+            enabled=body.enabled,
+            config_updates=body.config,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Integration nicht gefunden") from exc
+    except ConfigStoreError as exc:
+        status_code = 412 if exc.code == "state_revision_conflict" else 503
+        raise HTTPException(
+            status_code=status_code,
+            detail={
+                "code": exc.code,
+                "message": (
+                    "Verbindungszustand wurde parallel geändert. Aktuellen Stand neu laden."
+                    if status_code == 412
+                    else "Verbindungszustand konnte nicht revisionssicher geändert werden."
+                ),
+            },
+        ) from None
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/{integration_id}/schema")

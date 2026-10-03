@@ -7,7 +7,11 @@ from dataclasses import asdict
 
 from ...config import settings
 from .base import IntegrationProvider
-from .config_store import InMemoryIntegrationConfigStore, JsonFileIntegrationConfigStore
+from .config_store import (
+    ConfigStoreError,
+    InMemoryIntegrationConfigStore,
+    JsonFileIntegrationConfigStore,
+)
 from .connection_contract import ConnectionProbeResult, local_probe_result, manifest_parameters
 from .history_policy import preserve_config_masks, public_config, request_observation, response_observation
 from .history_store import configured_history
@@ -178,6 +182,72 @@ class IntegrationManager:
             return state
         current = self._store.update(merge)["config"][integration_id]
         return {"id": integration_id, "config": self._safe_config(manifest, current)}
+
+    def connection_state(self, integration_id: str) -> dict:
+        provider = self._providers.get(integration_id)
+        if provider is None:
+            raise KeyError(integration_id)
+        loader = getattr(self._store, "load_with_revision", None)
+        if loader is None:
+            raise ConfigStoreError("state_revision_unsupported")
+        state, revision = loader()
+        config = deepcopy(state.get("config", {}).get(integration_id, {}))
+        enabled = state.get("enabled", {}).get(
+            integration_id, provider.manifest.enabled_by_default
+        )
+        return {
+            "id": integration_id,
+            "enabled": enabled,
+            "config": self._safe_config(provider.manifest, config),
+            "revision": revision,
+        }
+
+    def update_connection_state(
+        self,
+        integration_id: str,
+        *,
+        expected_revision: str,
+        enabled: bool | None = None,
+        config_updates: dict | None = None,
+    ) -> dict:
+        provider = self._providers.get(integration_id)
+        if provider is None:
+            raise KeyError(integration_id)
+        if enabled is None and config_updates is None:
+            raise ValueError("Mindestens enabled oder config muss geändert werden.")
+        if enabled is not None and type(enabled) is not bool:
+            raise ValueError("enabled muss boolesch sein.")
+        if config_updates is not None and not isinstance(config_updates, dict):
+            raise ValueError("Config updates must be a dictionary")
+        updater = getattr(self._store, "update_if_revision", None)
+        if updater is None:
+            raise ConfigStoreError("state_revision_unsupported")
+        manifest = provider.manifest
+        updates = deepcopy(config_updates) if config_updates is not None else None
+
+        def mutate(state):
+            if enabled is not None:
+                state.setdefault("enabled", {})[integration_id] = enabled
+            if updates is not None:
+                current = state.setdefault("config", {}).setdefault(
+                    integration_id, {}
+                )
+                current.update(
+                    preserve_config_masks(updates, current, manifest)
+                )
+            return state
+
+        state, revision = updater(expected_revision, mutate)
+        current = deepcopy(state.get("config", {}).get(integration_id, {}))
+        current_enabled = state.get("enabled", {}).get(
+            integration_id, manifest.enabled_by_default
+        )
+        return {
+            "id": integration_id,
+            "enabled": current_enabled,
+            "config": self._safe_config(manifest, current),
+            "revision": revision,
+        }
 
     def run(self, integration_id: str, payload: dict) -> dict:
         provider = self._providers.get(integration_id)

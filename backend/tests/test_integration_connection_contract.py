@@ -1,11 +1,19 @@
 """DDL-free connection-test and parameter-evidence contract."""
 
 from dataclasses import dataclass
+from types import SimpleNamespace
 
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
+from backend.routers import integrations as integrations_router
+from backend.services import checked_publication
 from backend.services.integrations.base import IntegrationManifest
-from backend.services.integrations.config_store import InMemoryIntegrationConfigStore
+from backend.services.integrations.config_store import (
+    ConfigStoreError,
+    InMemoryIntegrationConfigStore,
+)
 from backend.services.integrations.connection_contract import (
     ConnectionProbeResult,
     ParameterEvidence,
@@ -180,3 +188,110 @@ def test_probe_result_that_claims_business_action_is_rejected():
 
     with pytest.raises(ValueError, match="side-effect-free"):
         manager.connection_test("synthetic-probe")
+
+
+def test_connection_state_cas_preserves_masked_secret_and_unknown_fields():
+    store = InMemoryIntegrationConfigStore()
+    manager = IntegrationManager(store=store)
+    manager.register(EmailIntegrationProvider())
+    manager.update_config(
+        "email",
+        {
+            "smtp_host": "smtp.synthetic.invalid",
+            "sender_email": "sender@example.invalid",
+            "smtp_password": "SYNTHETIC_CAS_PASSWORD",
+            "unknown": {"provider_field": "preserve-me"},
+        },
+    )
+
+    state = manager.connection_state("email")
+    assert state["config"]["smtp_password"] == "***"
+    assert state["config"]["unknown"] == {"provider_field": "preserve-me"}
+
+    changed = manager.update_connection_state(
+        "email",
+        expected_revision=state["revision"],
+        enabled=True,
+        config_updates={
+            "smtp_password": "***",
+            "unknown": {
+                "provider_field": "preserve-me",
+                "late_field": "new-observation",
+            },
+        },
+    )
+    assert changed["revision"] != state["revision"]
+    assert changed["enabled"] is True
+    assert changed["config"]["smtp_password"] == "***"
+    raw = store.load()
+    assert raw["config"]["email"]["smtp_password"] == "SYNTHETIC_CAS_PASSWORD"
+    assert raw["config"]["email"]["unknown"] == {
+        "provider_field": "preserve-me",
+        "late_field": "new-observation",
+    }
+
+    before = store.load()
+    with pytest.raises(ConfigStoreError) as failure:
+        manager.update_connection_state(
+            "email",
+            expected_revision=state["revision"],
+            config_updates={"smtp_host": "stale.invalid"},
+        )
+    assert failure.value.code == "state_revision_conflict"
+    assert store.load() == before
+
+
+def test_connection_state_http_exposes_revision_and_maps_stale_cas_to_412(
+    monkeypatch,
+):
+    store = InMemoryIntegrationConfigStore()
+    manager = IntegrationManager(store=store)
+    manager.register(EmailIntegrationProvider())
+    configured_email(manager)
+
+    monkeypatch.setattr(integrations_router, "integration_manager", manager)
+    async def fake_security(_request):
+        return SimpleNamespace(credentials="synthetic-access")
+
+    monkeypatch.setattr(checked_publication, "current_scope", lambda: object())
+    monkeypatch.setattr(checked_publication, "refresh_scope", lambda captured: captured)
+    monkeypatch.setattr(checked_publication, "security", fake_security)
+    monkeypatch.setattr(
+        checked_publication,
+        "decode_token",
+        lambda _token: SimpleNamespace(type="access"),
+    )
+
+    app = FastAPI()
+    app.include_router(integrations_router.router)
+    app.dependency_overrides[
+        integrations_router._require_integration_administration
+    ] = lambda: None
+    client = TestClient(app)
+
+    current = client.get("/integrations/email/connection-state")
+    assert current.status_code == 200
+    payload = current.json()
+    assert payload["config"]["smtp_password"] == "***"
+    assert len(payload["revision"]) == 64
+
+    updated = client.patch(
+        "/integrations/email/connection-state",
+        json={
+            "expected_revision": payload["revision"],
+            "enabled": True,
+            "config": {"smtp_password": "***"},
+        },
+    )
+    assert updated.status_code == 200
+    assert updated.json()["revision"] != payload["revision"]
+
+    stale = client.patch(
+        "/integrations/email/connection-state",
+        json={
+            "expected_revision": payload["revision"],
+            "config": {"smtp_host": "stale.invalid"},
+        },
+    )
+    assert stale.status_code == 412
+    assert stale.json()["detail"]["code"] == "state_revision_conflict"

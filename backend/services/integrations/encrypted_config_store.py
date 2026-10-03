@@ -7,12 +7,16 @@ fields are all inside the authenticated ciphertext.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import hashlib
+import hmac
+from collections.abc import Callable, Mapping
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+from ..iban_encryption import IBANEncryptionError, keyring_from_configuration
 from .config_store import (
+    _JSON_DEPTH,
     _LIMIT,
     ConfigStoreError,
     JsonFileIntegrationConfigStore,
@@ -43,9 +47,10 @@ class EncryptedJsonIntegrationConfigStore(JsonFileIntegrationConfigStore):
         *,
         max_plaintext_bytes: int = _LIMIT,
         lock_timeout: float = 5.0,
+        max_json_depth: int = _JSON_DEPTH,
         keyring: Any = None,
     ):
-        if type(max_plaintext_bytes) is not int or not 1 <= max_plaintext_bytes <= 16 * 1024**2:
+        if type(max_plaintext_bytes) is not int or max_plaintext_bytes < 1:
             raise ConfigStoreError("invalid_store_limit")
         envelope_limit = _envelope_limit(max_plaintext_bytes)
         # Reuse the reviewed file-lock/replace implementation without reducing
@@ -53,8 +58,9 @@ class EncryptedJsonIntegrationConfigStore(JsonFileIntegrationConfigStore):
         # larger only because authenticated encryption/base64 add bytes.
         super().__init__(
             file_path,
-            max_bytes=min(envelope_limit, 16 * 1024**2),
+            max_bytes=envelope_limit,
             lock_timeout=lock_timeout,
+            max_json_depth=max_json_depth,
         )
         self._maximum = envelope_limit
         self._plaintext_maximum = max_plaintext_bytes
@@ -67,13 +73,13 @@ class EncryptedJsonIntegrationConfigStore(JsonFileIntegrationConfigStore):
             raise ConfigStoreError("encryption_key_unavailable") from None
 
     def _encrypted_raw(self, state: dict) -> bytes:
-        plain = _encode(state, self._plaintext_maximum)
+        plain = _encode(state, self._plaintext_maximum, self._max_depth)
         try:
             token = encrypt(plain, IDENTITY, self._ring())
         except HistoryError:
             raise ConfigStoreError("encryption_failed") from None
         envelope = {"format": FORMAT, "ciphertext": token}
-        return _encode(envelope, self._maximum)
+        return _encode(envelope, self._maximum, self._max_depth)
 
     def _decrypt_envelope(self, envelope: dict) -> dict:
         if set(envelope) != {"format", "ciphertext"}:
@@ -88,7 +94,7 @@ class EncryptedJsonIntegrationConfigStore(JsonFileIntegrationConfigStore):
             raise ConfigStoreError("encrypted_state_unreadable") from None
         if len(plain) > self._plaintext_maximum:
             raise ConfigStoreError("state_too_large")
-        return _decode(plain)
+        return _decode(plain, self._max_depth)
 
     def _load_decrypted_locked(self) -> dict:
         return self._decrypt_envelope(super()._load_locked())
@@ -109,7 +115,7 @@ class EncryptedJsonIntegrationConfigStore(JsonFileIntegrationConfigStore):
             selected = {} if state is None else deepcopy(state)
             raw = self._encrypted_raw(selected)
             self._write_locked(raw)
-            return _decode(_encode(selected, self._plaintext_maximum))
+            return _decode(_encode(selected, self._plaintext_maximum, self._max_depth), self._max_depth)
 
     def save(self, state: dict) -> None:
         """Whole-state replacement after proving the previous encrypted file."""
@@ -123,9 +129,38 @@ class EncryptedJsonIntegrationConfigStore(JsonFileIntegrationConfigStore):
             current = self._load_decrypted_locked()
             candidate = mutate(deepcopy(current))
             # Validate the full candidate before encryption/publication.
-            checked = _decode(_encode(candidate, self._plaintext_maximum))
+            checked = _decode(_encode(candidate, self._plaintext_maximum, self._max_depth), self._max_depth)
             self._write_locked(self._encrypted_raw(checked))
             return deepcopy(checked)
+
+
+    def load_with_revision(self) -> tuple[dict, str]:
+        with self._locked():
+            raw = self._read_raw_locked()
+            state = self._decrypt_envelope(_decode(raw, self._max_depth))
+            return state, hashlib.sha256(raw).hexdigest()
+
+    def update_if_revision(
+        self, expected_revision: str, mutate: Callable[[dict], dict]
+    ) -> tuple[dict, str]:
+        with self._locked():
+            current_raw = self._read_raw_locked()
+            current_revision = hashlib.sha256(current_raw).hexdigest()
+            if (
+                not isinstance(expected_revision, str)
+                or not expected_revision
+                or not hmac.compare_digest(current_revision, expected_revision)
+            ):
+                raise ConfigStoreError("state_revision_conflict")
+            current = self._decrypt_envelope(_decode(current_raw, self._max_depth))
+            candidate = mutate(deepcopy(current))
+            checked = _decode(
+                _encode(candidate, self._plaintext_maximum, self._max_depth),
+                self._max_depth,
+            )
+            raw = self._encrypted_raw(checked)
+            self._write_locked(raw)
+            return deepcopy(checked), hashlib.sha256(raw).hexdigest()
 
     def migrate_legacy_plaintext(self) -> dict:
         """Explicit one-time conversion; never called by normal startup."""
@@ -133,10 +168,31 @@ class EncryptedJsonIntegrationConfigStore(JsonFileIntegrationConfigStore):
             current = super()._load_locked()
             if "format" in current or "ciphertext" in current:
                 return self._decrypt_envelope(current)
-            checked = _decode(_encode(current, self._plaintext_maximum))
+            checked = _decode(_encode(current, self._plaintext_maximum, self._max_depth), self._max_depth)
             self._write_locked(self._encrypted_raw(checked))
             return deepcopy(checked)
 
     @property
     def path(self) -> Path:
         return self._path
+
+def build_encrypted_integration_store(
+    file_path: str,
+    explicit_configuration: Mapping,
+    *,
+    max_plaintext_bytes: int = _LIMIT,
+    lock_timeout: float = 5.0,
+    max_json_depth: int = _JSON_DEPTH,
+) -> EncryptedJsonIntegrationConfigStore:
+    """Construction hook only; no initialization, migration, auth or provider I/O."""
+    try:
+        keyring = keyring_from_configuration(explicit_configuration)
+    except IBANEncryptionError:
+        raise ConfigStoreError("encryption_key_unavailable") from None
+    return EncryptedJsonIntegrationConfigStore(
+        file_path,
+        max_plaintext_bytes=max_plaintext_bytes,
+        lock_timeout=lock_timeout,
+        max_json_depth=max_json_depth,
+        keyring=keyring,
+    )
