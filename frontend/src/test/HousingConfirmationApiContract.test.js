@@ -4,6 +4,7 @@ const apiMock = vi.hoisted(() => ({
   get: vi.fn(),
   post: vi.fn(),
   getBlob: vi.fn(),
+  postBlob: vi.fn(),
 }));
 
 vi.mock('../api', () => ({ api: apiMock }));
@@ -246,7 +247,8 @@ describe('housing confirmation backend contract', () => {
     apiMock.getBlob.mockResolvedValue(pdf);
     const create = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:housing-pdf');
     const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
-    const open = vi.spyOn(window, 'open').mockReturnValue({});
+    const popup = { opener: window, location: { replace: vi.fn() }, close: vi.fn(), closed: false };
+    const open = vi.spyOn(window, 'open').mockReturnValue(popup);
 
     await housingConfirmationService.openOriginal(mapHousingRecord(rawRecord()));
 
@@ -255,10 +257,28 @@ describe('housing confirmation backend contract', () => {
       { signal: undefined },
     );
     expect(create).toHaveBeenCalled();
-    expect(open).toHaveBeenCalledWith('blob:housing-pdf', '_blank', 'noopener,noreferrer');
+    expect(open).toHaveBeenCalledWith('about:blank', '_blank');
+    expect(popup.opener).toBeNull();
+    expect(popup.location.replace).toHaveBeenCalledWith('blob:housing-pdf');
 
     create.mockRestore();
     revoke.mockRestore();
+    open.mockRestore();
+  });
+
+  it('reserves the tab before delayed access and closes it when the private download fails', async () => {
+    let fail;
+    apiMock.getBlob.mockImplementation(() => new Promise((_resolve, reject) => { fail = reject; }));
+    const popup = { opener: window, location: { replace: vi.fn() }, close: vi.fn(), closed: false };
+    const open = vi.spyOn(window, 'open').mockReturnValue(popup);
+    const operation = housingConfirmationService.openOriginal(mapHousingRecord(rawRecord()));
+    expect(open).toHaveBeenCalledWith('about:blank', '_blank');
+    expect(popup.opener).toBeNull();
+    expect(popup.location.replace).not.toHaveBeenCalled();
+    fail(Object.assign(new Error('Private access revoked'), { statusCode: 403 }));
+    await expect(operation).rejects.toThrow('Private access revoked');
+    expect(popup.close).toHaveBeenCalled();
+    expect(popup.location.replace).not.toHaveBeenCalled();
     open.mockRestore();
   });
 });

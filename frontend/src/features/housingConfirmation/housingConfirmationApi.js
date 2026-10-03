@@ -175,12 +175,31 @@ export function buildSaveRequest({
   };
 }
 
-async function verifiedPdf(path, { signal } = {}) {
-  const blob = await api.getBlob(path, { signal });
+async function verifiedPdf(blob) {
   const bytes = new Uint8Array(await blob.slice(0, 8).arrayBuffer());
   const header = String.fromCharCode(...bytes);
   if (!header.startsWith('%PDF-')) throw new Error('invalid_housing_pdf');
   return blob.type === 'application/pdf' ? blob : new Blob([blob], { type: 'application/pdf' });
+}
+
+async function openProtectedPdf(download, signal) {
+  // Reserve the user-triggered tab before awaiting the private download.
+  // noopener makes window.open return null even for successfully opened tabs.
+  const opened = window.open('about:blank', '_blank');
+  if (!opened) throw new Error('Bitte das Öffnen eines PDF-Fensters im Browser erlauben.');
+  let url;
+  try {
+    opened.opener = null;
+    const blob = await verifiedPdf(await download());
+    if (signal?.aborted || opened.closed) { opened.close(); return; }
+    url = URL.createObjectURL(blob);
+    opened.location.replace(url);
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (error) {
+    opened.close();
+    if (url) URL.revokeObjectURL(url);
+    throw error;
+  }
 }
 
 export const housingConfirmationService = {
@@ -230,15 +249,13 @@ export const housingConfirmationService = {
     };
   },
 
-  async openOriginal(item, { signal } = {}) {
+  openPreview({ contractId, data, sourceEtags, correctionOf }, { signal } = {}) {
+    const path = `/contracts/${encode(contractId)}/housing-confirmations/preview-pdf`;
+    return openProtectedPdf(() => api.postBlob(path, buildPreviewRequest({ data, sourceEtags, correctionOf }), { signal }), signal);
+  },
+
+  openOriginal(item, { signal } = {}) {
     const path = `/contracts/${encode(item.contract_id)}/housing-confirmations/${encode(item.document_id)}/download`;
-    const blob = await verifiedPdf(path, { signal });
-    const url = URL.createObjectURL(blob);
-    const opened = window.open(url, '_blank', 'noopener,noreferrer');
-    if (!opened) {
-      URL.revokeObjectURL(url);
-      throw new Error('pdf_open_blocked');
-    }
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    return openProtectedPdf(() => api.getBlob(path, { signal }), signal);
   },
 };

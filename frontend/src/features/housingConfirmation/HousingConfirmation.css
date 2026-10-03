@@ -47,6 +47,16 @@
   margin: 0;
 }
 
+.housing-confirmation__header h2 {
+  font-size: clamp(1.15rem, 3vw, 1.45rem);
+  overflow-wrap: anywhere;
+}
+
+.housing-confirmation .btn {
+  min-width: 0;
+  white-space: normal;
+}
+
 .housing-confirmation__header > div {
   min-width: 0;
 }
@@ -80,6 +90,7 @@
 
 .housing-confirmation__body {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 1rem;
   min-width: 0;
   overflow: auto;
@@ -151,6 +162,19 @@
   width: 100%;
   min-width: 0;
   max-width: 100%;
+  min-height: 42px;
+  padding: .55rem .7rem;
+  border: 1px solid var(--border-color, #d7dce5);
+  border-radius: .55rem;
+  font: inherit;
+  font-weight: 400;
+  color: var(--text-primary);
+  background: var(--bg-primary, #fff);
+}
+
+.housing-confirmation__section :is(input, select, textarea):focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }
 
 .housing-confirmation__section textarea {

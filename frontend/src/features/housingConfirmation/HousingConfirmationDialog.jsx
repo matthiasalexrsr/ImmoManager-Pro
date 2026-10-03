@@ -453,6 +453,24 @@ export default function HousingConfirmationDialog({
     }
   };
 
+  const openPreview = async () => {
+    if (!view.preview || !view.form || !view.source || typeof service?.openPreview !== 'function') return;
+    const checked = validateHousingForm(view.form);
+    if (!checked.valid) return;
+    const controller = startRequest();
+    try {
+      await service.openPreview({ contractId, data: checked.data, sourceEtags: view.source.source_etags,
+        correctionOf: view.correctionOf }, { signal: controller.signal });
+    } catch (error) {
+      if (controller.signal.aborted || error?.name === 'AbortError') return;
+      if (!forgetPrivate(error)) setStored(current => current.binding === binding
+        ? { ...current, error: isConflictOutcome(error) ? null : error?.message || tr('errorTitle'),
+          ...(isConflictOutcome(error) ? { sourceConflict: true, preview: null } : {}) } : current);
+    } finally {
+      finishRequest(controller);
+    }
+  };
+
   const startCorrection = item => {
     if (locked || !canPublish || !item.data) return;
     const form = formFromCertificateData(item.data);
@@ -553,8 +571,9 @@ export default function HousingConfirmationDialog({
             <label>{tr('dwellingLabel')}<input value={view.form.dwelling_label}
               onChange={event => patchForm({ dwelling_label: event.target.value })} /></label>
             <label>{tr('actualMoveIn')}<input type="date" value={view.form.actual_move_in_date}
-              onChange={event => patchForm({ actual_move_in_date: event.target.value })} />
-              <small>{tr('actualMoveInHint')}</small></label>
+              aria-describedby={`${titleId}-move-in-hint`}
+              onChange={event => patchForm({ actual_move_in_date: event.target.value })} /></label>
+            <small id={`${titleId}-move-in-hint`}>{tr('actualMoveInHint')}</small>
           </fieldset>
 
           <fieldset className="housing-confirmation__section" disabled={locked}>
@@ -649,6 +668,8 @@ export default function HousingConfirmationDialog({
               <CheckCircle2 size={19} /><strong>{tr('previewReady')}</strong>
             </div>
             <p>{tr('personsCount', { count: view.preview.person_count })}</p>
+            {typeof service?.openPreview === 'function' && <button type="button" className="btn btn-secondary"
+              disabled={locked} onClick={() => void openPreview()}>{tr('openPreviewPdf')}</button>}
             {view.preview.warnings.length > 0 && <div><h4>{tr('warnings')}</h4>
               <ul>{view.preview.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul></div>}
             <label className="housing-confirmation__check"><input type="checkbox"

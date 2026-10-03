@@ -422,6 +422,7 @@ export const api = {
   },
   get: (path, { signal } = {}) => request(path, { signal }),
   getBlob: (path, { signal } = {}) => request(path, { signal, responseType: 'blob' }),
+  postBlob: (path, data, { signal } = {}) => request(path, { method: 'POST', body: JSON.stringify(data), signal, responseType: 'blob' }),
   postForm: (path, formData, { signal } = {}) => request(path, { method: 'POST', body: formData, signal }),
   post: (path, data, { signal } = {}) => request(path, { method: 'POST', body: JSON.stringify(data), signal }),
   versionOptions: revisionOptions,
