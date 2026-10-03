@@ -49,16 +49,23 @@ _use_sql_store = bool(_database_url) and (
 )
 
 if _use_sql_store:
+    from .db.runtime_schema import RuntimeSchemaError
+
     try:
         from sqlalchemy.orm import Session, scoped_session
 
         from .db.session import SessionLocal, create_tables
         from .repositories import SQLAlchemyStore
 
-        # TODO: Move create_tables() into app.py lifespan to avoid import-time
-        # side effects. Requires conftest.py changes to ensure tables exist before
-        # tests run with SQL backend. See architecture review Phase 3.1.
-        create_tables()
+        if settings.is_production:
+            from .db.runtime_schema import validate_runtime_schema
+
+            # Production schema changes belong to the explicit maintenance
+            # command, including when this module is imported outside lifespan.
+            validate_runtime_schema(SessionLocal.kw["bind"])
+        else:
+            # Preserve existing local-development and isolated test bootstrap.
+            create_tables()
         # FastAPI dispatches sync endpoints into workers and cleanup in ASGI.
         # A thread-only registry cannot remove those worker sessions from ASGI.
         _scoped_session = scoped_session(SessionLocal, scopefunc=session_scope_key)
@@ -72,6 +79,10 @@ if _use_sql_store:
         enable_sql_audit(SessionLocal)
 
         logger.info("SQL backend initialized successfully (dialect=%s)", SessionLocal.kw["bind"].dialect.name)
+    except RuntimeSchemaError:
+        # A damaged/old production schema is never a reason to suggest an
+        # in-memory replacement. Preserve the actionable maintenance message.
+        raise
     except Exception:
         if not settings.allow_inmemory_fallback:
             raise RuntimeError(

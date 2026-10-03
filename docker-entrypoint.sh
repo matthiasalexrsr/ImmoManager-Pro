@@ -7,15 +7,8 @@ if [ -n "${TMPDIR:-}" ]; then
   chmod 700 "$TMPDIR"
 fi
 
-# Run database migrations (fail loudly if they fail)
-if [ -f alembic.ini ]; then
-    echo "Running database migrations..."
-    if ! alembic upgrade head; then
-        echo "ERROR: Database migration failed! Exiting." >&2
-        exit 1
-    fi
-    echo "Migrations applied successfully."
-fi
+# Schema maintenance is an explicit command (for example: alembic upgrade head).
+# An ordinary start, restart, backup resume, or restore must never migrate SQL.
 
 # Execute the main command
 exec "$@"

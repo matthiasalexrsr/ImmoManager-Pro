@@ -25,6 +25,15 @@ from backend.tests.test_tenancy_workflow_core import box as box
 from backend.tests.test_tenancy_workflow_core import preview_and_start, published_template, step
 
 
+@pytest.fixture(autouse=True)
+def complete_disclosure_schema(box):
+    # Disclosure traverses the full financial domain. Register it before every
+    # test so individually selected PostgreSQL cases cannot depend on imports
+    # performed by an earlier test (notably credit_receipts).
+    if box.engine is not None:
+        complete_domain_test_schema(box)
+
+
 def turnover(box):
     out = published_template(box, steps=[step("own-out", 0, title="OWN OUT TASK", anchor="previous_contract_end")])
     incoming = published_template(box, key="incoming", direction="move_in",

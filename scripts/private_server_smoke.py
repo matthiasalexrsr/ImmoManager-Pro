@@ -233,7 +233,10 @@ def main() -> int:
         source = Installation("immo-private-ci-" + uuid4().hex[:12], environment, port)
         restored = Installation("immo-private-ci-" + uuid4().hex[:12], work / "restored.env", port)
         try:
-            source.compose("up", "-d", "--build", "--wait", "app")
+            source.compose("build", "app")
+            source.compose("up", "-d", "--wait", "db")
+            source.compose("run", "--rm", "--no-deps", "-T", "app", "alembic", "upgrade", "head")
+            source.compose("up", "-d", "--wait", "app")
             assert source.request("/health")["database_connected"] is True
             assert b'<div id="root"' in source.request("/")
             source.request("/health", headers={"Host": "foreign.invalid", "X-Forwarded-Host": "synthetic.private.example"}, expected=400)

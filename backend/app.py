@@ -102,6 +102,8 @@ def _validate_startup_config() -> None:
 async def lifespan(app: FastAPI):
     """Startup / shutdown lifecycle."""
     logger.info("ImmoManager Pro %s starting up", settings.app_version)
+    # Reject an unsafe production auto-migration flag before it can change SQL.
+    _validate_startup_config()
     ensure_runtime_dirs()
 
     # Auto-migrate if enabled
@@ -114,9 +116,6 @@ async def lifespan(app: FastAPI):
             logger.info("Database migrations applied successfully")
         except Exception:
             logger.exception("Auto-migration failed")
-
-    # Check core configuration before starting third-party lifecycle hooks.
-    _validate_startup_config()
 
     # Load plugins
     if settings.plugin_dirs:

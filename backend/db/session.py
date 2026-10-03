@@ -58,6 +58,8 @@ SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
 def create_tables() -> None:
     """Create all tables (dev/test convenience). Use Alembic for production."""
+    if settings.is_production:
+        raise RuntimeError("Production schema changes require the explicit Alembic maintenance command.")
     # Do not let create_all silently repair one half of a damaged retained pair.
     present = set(inspect(engine).get_table_names())
     from .retained_family_schema import require_complete_family
