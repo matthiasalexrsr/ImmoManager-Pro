@@ -76,7 +76,7 @@ describe('actual bounded dispute file reads', () => {
     mocks.user.role = 'readonly'; const create = vi.fn(); const append = vi.fn();
     render(<BillingDisputeRead periodId="period" onNewCase={create} onEvent={append} />); await open();
     expect(screen.queryByRole('button', { name: 'Neue Akte erfassen' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Notiz', exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Notiz hinzufügen', exact: true })).not.toBeInTheDocument();
     expect(create).not.toHaveBeenCalled(); expect(append).not.toHaveBeenCalled();
   });
   it('rejects a mismatched original revision instead of displaying a plausible empty case', async () => {

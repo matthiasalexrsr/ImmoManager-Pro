@@ -2,8 +2,8 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import BillingDisputeWorkspace from '../features/billingDisputes/BillingDisputeWorkspace';
 import DisputeCommandPanel from '../features/billingDisputes/DisputeCommandPanel';
-import { appendCommand, openCommand } from '../features/billingDisputes/disputeModel';
-import { caseRow, evidence, originalStatement, periodStatus, preview } from './fixtures/disputes';
+import { appendCommand, openCommand, readPreview } from '../features/billingDisputes/disputeModel';
+import { caseRow, event, evidence, originalStatement, periodStatus, preview } from './fixtures/disputes';
 
 const mocks = vi.hoisted(() => ({ user: { id: 'actor', role: 'eigentuemer', portfolio_access: 'all' }, get: vi.fn(), post: vi.fn(), put: vi.fn(), del: vi.fn(), stored: null }));
 vi.mock('../api', () => ({ api: mocks }));
@@ -140,5 +140,45 @@ describe('dispute command forms, originals and protected choices', () => {
     expect(signal.aborted).toBe(true); expect(screen.queryByLabelText('Grund / Notiz')).not.toBeInTheDocument();
     await act(async () => { delayed.resolve(preview(mocks.post.mock.calls[0][1])); });
     expect(screen.queryByRole('region', { name: 'Geprüfte Vorschau' })).not.toBeInTheDocument(); expect(screen.queryByRole('button', { name: 'Neue Akte erfassen' })).not.toBeInTheDocument();
+  });
+  it('restores a pending reviewed command as locked UI and retains it past the real autosave interval', async () => {
+    const command = { ...openCommand('period', originalStatement, 'tenant_statement', 'original-pending-key'), reason: 'Originaler ausstehender Befehl', received_on: '2026-10-01' };
+    const checked = readPreview(preview(command), command);
+    const values = { period_id: 'period', case_id: '', command_json: JSON.stringify(checked.command), review_json: JSON.stringify(checked.review) };
+    mocks.stored = { ...stamp, schema: JSON.stringify(['case_id', 'command_json', 'period_id', 'review_json'].map(key => [key, 'text'])), values, original_values: { ...values, review_json: '' }, edit_revision: null, submission_pending: true };
+    workspace(); fireEvent.click(await screen.findByRole('button', { name: 'Neue Akte erfassen' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'formDraft.restoreAfterReview' }));
+    await screen.findByRole('button', { name: 'Denselben Befehl erneut senden' });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 850)); });
+    expect(mocks.put).not.toHaveBeenCalled(); expect(mocks.post).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'Eingaben bearbeiten' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'formDraft.discard' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Denselben Befehl erneut senden' }));
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledTimes(1)); expect(mocks.post.mock.calls[0][1]).toEqual(checked.command);
+  });
+  it('opens a real original event before recording its correction and never overwrites the original', async () => {
+    mocks.get.mockImplementation(path => path.startsWith('/billing/disputes?') ? Promise.resolve({ items: [caseRow], next_after_id: null })
+      : path.includes('/case/journal?') ? Promise.resolve({ items: [event(1)], next_after: null, revision: 27 })
+      : path === '/billing/disputes/case/events/event-1' ? Promise.resolve(event(1)) : read(path));
+    workspace(); fireEvent.click(await screen.findByRole('button', { name: 'Akte · statement-original' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Originalereignis öffnen · Revision 1' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Originalereignis berichtigen' }));
+    await screen.findByText('formDraft.status.ready');
+    fireEvent.change(screen.getByLabelText('Grund / Notiz'), { target: { value: 'Eigenständige Berichtigung' } });
+    fireEvent.change(screen.getByLabelText('Tatsächliches Beobachtungsdatum'), { target: { value: '2026-10-02' } });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Vorschau prüfen' })).toBeEnabled());
+    expect(within(screen.getByRole('region', { name: 'Berichtigt Originalereignis' })).getByText('Original reason 1')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Vorschau prüfen' })); await screen.findByRole('region', { name: 'Geprüfte Vorschau' });
+    expect(mocks.post.mock.calls[0][1]).toMatchObject({ corrects_event_id: 'event-1', expected_revision: 27, kind: 'correction', reason: 'Eigenständige Berichtigung', observed_on: '2026-10-02' });
+    expect(mocks.post.mock.calls.every(([path]) => path === '/billing/disputes/case/preview')).toBe(true);
+  });
+  it('hides a pending context when the same actor loses the actual billing grant', async () => {
+    const view = await newFile(); const delayed = pending(); mocks.post.mockReturnValueOnce(delayed.promise); fireEvent.click(screen.getByRole('button', { name: 'Vorschau prüfen' }));
+    const signal = mocks.post.mock.calls[0][2].signal; mocks.user = { ...mocks.user, write_permissions: [] };
+    view.rerender(<BillingDisputeWorkspace periodId="period" propertyId="property" />);
+    expect(signal.aborted).toBe(true); expect(screen.queryByLabelText('Grund / Notiz')).not.toBeInTheDocument();
+    await act(async () => { delayed.resolve(preview(mocks.post.mock.calls[0][1])); });
+    expect(screen.queryByRole('region', { name: 'Geprüfte Vorschau' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Neue Akte erfassen' })).not.toBeInTheDocument();
   });
 });

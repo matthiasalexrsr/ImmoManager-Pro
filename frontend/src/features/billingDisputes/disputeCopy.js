@@ -1,4 +1,6 @@
 const de = {
+  action_note: 'Notiz hinzufügen', action_in_review: 'Prüfung erfassen', action_withdrawn: 'Rücknahme erfassen', action_closed: 'Akte abschließen', action_reopened: 'Akte wiederaufnehmen',
+  action_correction: 'Originalereignis berichtigen', action_correction_link: 'Korrekturabrechnung verknüpfen',
   actionUnavailable: 'Diese Aktion ist im aktuellen Prüfstand nicht verfügbar.', sourceChanged: 'Bitte die geladene Originalfassung prüfen und für diesen Entwurf ausdrücklich übernehmen.',
   adoptSource: 'Geprüften Originalstand übernehmen', ownerOriginalMissing: 'Diese Periode liefert kein vollständiges unveränderbares Objektoriginal.',
   originalParty: 'Belegte Originalmietpartei', partyFrozen: 'Person und Anschrift sind im Original der tatsächlichen Finalisierung eingefroren.',
@@ -29,6 +31,8 @@ const de = {
 };
 const en = {
   ...de, title: 'Objection files', status: 'Review status', open: 'Open', in_review: 'Under review', withdrawn: 'Withdrawn', closed: 'Closed',
+  action_note: 'Add note', action_in_review: 'Record review', action_withdrawn: 'Record withdrawal', action_closed: 'Close file', action_reopened: 'Reopen file',
+  action_correction: 'Correct original event', action_correction_link: 'Link corrected statement',
   actionUnavailable: 'This action is unavailable in the current review status.', sourceChanged: 'Review the loaded original and explicitly adopt it for this draft.',
   adoptSource: 'Adopt reviewed original record', ownerOriginalMissing: 'This period has no complete immutable property original.',
   originalParty: 'Verified original tenant', partyFrozen: 'Person and postal address are frozen in the original at actual finalization.',
@@ -57,6 +61,8 @@ const en = {
 };
 const es = {
   ...en, title: 'Expedientes de reclamación', status: 'Estado de revisión', open: 'Abierto', in_review: 'En revisión', withdrawn: 'Retirado', closed: 'Cerrado',
+  action_note: 'Añadir nota', action_in_review: 'Registrar revisión', action_withdrawn: 'Registrar retirada', action_closed: 'Cerrar expediente', action_reopened: 'Reabrir expediente',
+  action_correction: 'Rectificar evento original', action_correction_link: 'Vincular liquidación rectificada',
   actionUnavailable: 'Esta acción no está disponible en el estado actual.', sourceChanged: 'Revise el original cargado y adóptelo expresamente para este borrador.',
   adoptSource: 'Adoptar original revisado', ownerOriginalMissing: 'Este período no tiene un original completo e inmutable del inmueble.',
   originalParty: 'Inquilino original acreditado', partyFrozen: 'La persona y la dirección postal se conservan en el original de la finalización real.',

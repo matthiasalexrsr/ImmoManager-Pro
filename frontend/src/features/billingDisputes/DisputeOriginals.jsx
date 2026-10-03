@@ -3,7 +3,9 @@ import { api } from '../../api';
 import { denied, PAGE_SIZE, readManifest } from './disputeModel';
 
 export function DisputeFailure({ error, tr, onRetry }) {
-  return <div className="dispute-error" role="alert">{denied(error) ? tr('unavailable')
+  const alert = useRef(null);
+  useEffect(() => { alert.current?.focus(); }, [error]);
+  return <div ref={alert} tabIndex={-1} className="dispute-error" role="alert">{denied(error) ? tr('unavailable')
     : error?.message === 'invalidDisputeResponse' ? tr('invalidDisputeResponse') : error?.message || tr('invalidDisputeResponse')}
     {onRetry && <button type="button" className="btn btn-secondary" onClick={onRetry}>{tr('retry')}</button>}</div>;
 }

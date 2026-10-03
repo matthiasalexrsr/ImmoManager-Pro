@@ -12,7 +12,7 @@ function OriginalEventRead({ caseId, eventId, principal, generation, tr, locale,
     {state.loading && <p role="status">{tr('loading')}</p>}
     {state.error && <DisputeFailure error={state.error} tr={tr} onRetry={() => setRetry(value => value + 1)} />}
     {state.data && <><EventOriginal event={state.data} tr={tr} locale={locale} onDenied={onDenied} />
-      {onCorrection && <button className="btn btn-secondary" type="button" onClick={() => onCorrection(state.data)}>{tr('correction')}</button>}</>}
+      {onCorrection && <button className="btn btn-secondary" type="button" onClick={() => onCorrection(state.data)}>{tr('action_correction')}</button>}</>}
   </section>;
 }
 
@@ -52,7 +52,7 @@ export default function DisputeCaseDetail({ caseId, periodId, principal, generat
       <p>{tr('financial')}</p>
       <details><summary>{tr('technical')}</summary><dl>{[['case', row.id], ['sourceStatement', row.statement_id], ['originalContract', row.contract_id], ['originalUnit', row.unit_id], ['snapshotHash', row.snapshot_hash], ['originalHash', row.original_hash]].map(([name, value]) => value && <div key={name}><dt>{tr(name)}</dt><dd>{value}</dd></div>)}</dl></details>
       <OriginalSnapshot key={row.original_hash} snapshot={row.original_snapshot} locale={locale} tr={tr} />
-      {onEvent && <div className="dispute-actions">{permittedEvents(row.state, row.case_kind).filter(kind => kind !== 'correction').map(kind => <button type="button" className="btn btn-secondary" key={kind} onClick={() => onEvent(row, kind)}>{tr(kind)}</button>)}</div>}
+      {onEvent && <div className="dispute-actions">{permittedEvents(row.state, row.case_kind).filter(kind => kind !== 'correction').map(kind => <button type="button" className="btn btn-secondary" key={kind} onClick={() => onEvent(row, kind)}>{tr(`action_${kind}`)}</button>)}</div>}
       <Chronicle key={row.id} caseId={caseId} principal={principal} generation={`${generation}:${retry}`} tr={tr} locale={locale} onDenied={onDenied}
         onCorrection={onEvent ? event => onEvent(row, 'correction', event) : undefined} />
     </>}
