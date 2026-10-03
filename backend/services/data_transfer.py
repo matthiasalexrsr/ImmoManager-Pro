@@ -333,9 +333,10 @@ def _exported_tables(active_store, specs: tuple[EntitySpec, ...]):
 
 def _check_unexported_sql_rows(db, exported_tables):
     """Refuse a partial restore that would cascade-delete unsupported children."""
-    from sqlalchemy import func, select
+    from sqlalchemy import func, inspect, select
 
     metadata = next(iter(exported_tables)).metadata
+    existing_tables = set(inspect(db.get_bind()).get_table_names())
     # These tables survive the supported-subset import. Source revisions are
     # derived, monotonic trigger metadata without foreign keys; retaining them
     # prevents an import from resetting a source revision. Actual saved rental
@@ -345,6 +346,8 @@ def _check_unexported_sql_rows(db, exported_tables):
     from .recovery_history import TECHNICAL_TABLES
     independent |= TECHNICAL_TABLES
     for table in metadata.tables.values():
+        if table.name not in existing_tables:
+            continue
         if table not in exported_tables and table.name not in independent:
             if db.scalar(select(func.count()).select_from(table)):
                 raise TransferError(f"Nicht exportierte Daten vorhanden ({table.name}). Vollsicherung erforderlich.")
