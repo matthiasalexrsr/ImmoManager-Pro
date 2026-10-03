@@ -22,7 +22,7 @@ def normalized_sql(sql: str | None) -> str | None:
         return None
     # Keep quoted names/literals byte-for-byte. Remove formatting only between
     # tokens, never inside a string (including a retention guard's message).
-    tokens = re.findall(r"'(?:''|[^'])*'|\"(?:\"\"|[^\"])*\"|`(?:``|[^`])*`|\[(?:[^\]])*\]|[A-Za-z_][A-Za-z_0-9]*|\d+(?:\.\d+)?|[^\s]", sql)
+    tokens = re.findall(r"'(?:''|[^'])*'|\"(?:\"\"|[^\"])*\"|`(?:``|[^`])*`|\[(?:[^\]])*\]|(?:!=|<>|<=|>=|==|\|\||->>|->)|[A-Za-z_][A-Za-z_0-9]*|\d+(?:\.\d+)?|[^\s]", sql)
     return " ".join(token if token[0] in "'\"`[" else token.lower() for token in tokens)
 
 

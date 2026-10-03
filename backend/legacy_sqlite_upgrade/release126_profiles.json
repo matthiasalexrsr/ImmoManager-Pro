@@ -500,7 +500,7 @@
             "index",
             "ix_accounts_iban_unindexed",
             "accounts",
-            "create index ix_accounts_iban_unindexed on accounts ( iban_fingerprint , iban ) where iban is not null and iban ! = '' and iban_fingerprint is null"
+            "create index ix_accounts_iban_unindexed on accounts ( iban_fingerprint , iban ) where iban is not null and iban != '' and iban_fingerprint is null"
           ],
           [
             "index",
@@ -698,7 +698,7 @@
             "table",
             "bookings",
             "bookings",
-            "create table bookings ( id varchar not null , account_id varchar not null , category_id varchar , property_id varchar , unit_id varchar , tenant_id varchar , booking_date date not null , amount numeric ( 12 , 2 ) not null , allocated_amount numeric ( 12 , 2 ) default '0' not null , status text not null , payment_text text , receipt_url text , created_at datetime not null , updated_at datetime not null , constraint ck_bookings_allocation check ( allocated_amount > = 0 and allocated_amount < = abs ( amount ) ) , constraint ck_bookings_amount_nonzero check ( amount ! = 0 ) , foreign key ( account_id ) references accounts ( id ) on delete cascade , foreign key ( category_id ) references categories ( id ) on delete set null , foreign key ( property_id ) references properties ( id ) on delete set null , foreign key ( tenant_id ) references tenants ( id ) on delete set null , foreign key ( unit_id ) references units ( id ) on delete set null , primary key ( id ) )"
+            "create table bookings ( id varchar not null , account_id varchar not null , category_id varchar , property_id varchar , unit_id varchar , tenant_id varchar , booking_date date not null , amount numeric ( 12 , 2 ) not null , allocated_amount numeric ( 12 , 2 ) default '0' not null , status text not null , payment_text text , receipt_url text , created_at datetime not null , updated_at datetime not null , constraint ck_bookings_allocation check ( allocated_amount >= 0 and allocated_amount <= abs ( amount ) ) , constraint ck_bookings_amount_nonzero check ( amount != 0 ) , foreign key ( account_id ) references accounts ( id ) on delete cascade , foreign key ( category_id ) references categories ( id ) on delete set null , foreign key ( property_id ) references properties ( id ) on delete set null , foreign key ( tenant_id ) references tenants ( id ) on delete set null , foreign key ( unit_id ) references units ( id ) on delete set null , primary key ( id ) )"
           ],
           [
             "table",
@@ -782,7 +782,7 @@
             "table",
             "contracts",
             "contracts",
-            "create table contracts ( id varchar not null , contract_number text not null , property_id varchar not null , unit_id varchar not null , tenant_id varchar not null , status text not null , start_date date not null , end_date date , notice_period text , deposit_amount numeric ( 12 , 2 ) , index_rent text , service_charge_settlement text , created_at datetime not null , updated_at datetime not null , constraint ck_contracts_dates check ( end_date is null or end_date > = start_date ) , foreign key ( property_id ) references properties ( id ) on delete cascade , foreign key ( tenant_id ) references tenants ( id ) on delete cascade , foreign key ( unit_id ) references units ( id ) on delete cascade , primary key ( id ) , unique ( contract_number ) )"
+            "create table contracts ( id varchar not null , contract_number text not null , property_id varchar not null , unit_id varchar not null , tenant_id varchar not null , status text not null , start_date date not null , end_date date , notice_period text , deposit_amount numeric ( 12 , 2 ) , index_rent text , service_charge_settlement text , created_at datetime not null , updated_at datetime not null , constraint ck_contracts_dates check ( end_date is null or end_date >= start_date ) , foreign key ( property_id ) references properties ( id ) on delete cascade , foreign key ( tenant_id ) references tenants ( id ) on delete cascade , foreign key ( unit_id ) references units ( id ) on delete cascade , primary key ( id ) , unique ( contract_number ) )"
           ],
           [
             "table",
@@ -824,13 +824,13 @@
             "table",
             "document_version_chunks",
             "document_version_chunks",
-            "create table document_version_chunks ( version_id varchar not null , position bigint not null , portfolio_id varchar not null , data blob not null , constraint ck_document_chunk_values check ( position > = 0 and length ( data ) between 1 and 65536 ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( version_id ) references document_versions ( id ) on delete restrict , primary key ( version_id , position ) )"
+            "create table document_version_chunks ( version_id varchar not null , position bigint not null , portfolio_id varchar not null , data blob not null , constraint ck_document_chunk_values check ( position >= 0 and length ( data ) between 1 and 65536 ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( version_id ) references document_versions ( id ) on delete restrict , primary key ( version_id , position ) )"
           ],
           [
             "table",
             "document_versions",
             "document_versions",
-            "create table document_versions ( id varchar not null , document_id varchar not null , portfolio_id varchar not null , property_id varchar not null , unit_id varchar , contract_id varchar , tenant_id varchar , number bigint not null , predecessor_id varchar , restored_from_id varchar , actor_id varchar not null , idempotency_key varchar ( 100 ) not null , request_sha256 varchar ( 64 ) not null , operation varchar ( 20 ) not null , comment text not null , filename text not null , media_type varchar ( 200 ) not null , sha256 varchar ( 64 ) not null , size_bytes bigint not null , metadata_snapshot json not null , created_at datetime not null , constraint ck_document_version_operation check ( operation in ( 'archive_original' , 'upload' , 'restore' ) ) , constraint ck_document_version_values check ( number > 0 and size_bytes > = 0 ) , constraint uq_document_version_command unique ( actor_id , idempotency_key ) , constraint uq_document_version_number unique ( document_id , number ) , foreign key ( contract_id ) references contracts ( id ) on delete restrict , foreign key ( document_id ) references documents ( id ) on delete restrict , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( predecessor_id ) references document_versions ( id ) on delete restrict , foreign key ( property_id ) references properties ( id ) on delete restrict , foreign key ( restored_from_id ) references document_versions ( id ) on delete restrict , foreign key ( tenant_id ) references tenants ( id ) on delete restrict , foreign key ( unit_id ) references units ( id ) on delete restrict , primary key ( id ) )"
+            "create table document_versions ( id varchar not null , document_id varchar not null , portfolio_id varchar not null , property_id varchar not null , unit_id varchar , contract_id varchar , tenant_id varchar , number bigint not null , predecessor_id varchar , restored_from_id varchar , actor_id varchar not null , idempotency_key varchar ( 100 ) not null , request_sha256 varchar ( 64 ) not null , operation varchar ( 20 ) not null , comment text not null , filename text not null , media_type varchar ( 200 ) not null , sha256 varchar ( 64 ) not null , size_bytes bigint not null , metadata_snapshot json not null , created_at datetime not null , constraint ck_document_version_operation check ( operation in ( 'archive_original' , 'upload' , 'restore' ) ) , constraint ck_document_version_values check ( number > 0 and size_bytes >= 0 ) , constraint uq_document_version_command unique ( actor_id , idempotency_key ) , constraint uq_document_version_number unique ( document_id , number ) , foreign key ( contract_id ) references contracts ( id ) on delete restrict , foreign key ( document_id ) references documents ( id ) on delete restrict , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( predecessor_id ) references document_versions ( id ) on delete restrict , foreign key ( property_id ) references properties ( id ) on delete restrict , foreign key ( restored_from_id ) references document_versions ( id ) on delete restrict , foreign key ( tenant_id ) references tenants ( id ) on delete restrict , foreign key ( unit_id ) references units ( id ) on delete restrict , primary key ( id ) )"
           ],
           [
             "table",
@@ -1166,13 +1166,13 @@
             "trigger",
             "immo_bank_import_rows_sealed_insert",
             "bank_import_rows",
-            "create trigger immo_bank_import_rows_sealed_insert before insert on bank_import_rows when ( select state from bank_imports where id = new . import_id ) ! = 'preparing' begin select raise ( abort , 'bank import review is sealed' ) ; end"
+            "create trigger immo_bank_import_rows_sealed_insert before insert on bank_import_rows when ( select state from bank_imports where id = new . import_id ) != 'preparing' begin select raise ( abort , 'bank import review is sealed' ) ; end"
           ],
           [
             "trigger",
             "immo_bank_import_seal",
             "bank_imports",
-            "create trigger immo_bank_import_seal before update on bank_imports when old . state ! = 'preparing' and ( old . id is not new . id or old . account_id is not new . account_id or old . portfolio_id is not new . portfolio_id or old . creator_id is not new . creator_id or old . scope_snapshot is not new . scope_snapshot or old . filename is not new . filename or old . source_sha256 is not new . source_sha256 or old . source_bytes is not new . source_bytes or old . mapping is not new . mapping or old . mapping_hash is not new . mapping_hash or old . preview_hash is not new . preview_hash or old . row_count is not new . row_count or old . error_count is not new . error_count or old . created_at is not new . created_at ) begin select raise ( abort , 'bank import review is immutable' ) ; end"
+            "create trigger immo_bank_import_seal before update on bank_imports when old . state != 'preparing' and ( old . id is not new . id or old . account_id is not new . account_id or old . portfolio_id is not new . portfolio_id or old . creator_id is not new . creator_id or old . scope_snapshot is not new . scope_snapshot or old . filename is not new . filename or old . source_sha256 is not new . source_sha256 or old . source_bytes is not new . source_bytes or old . mapping is not new . mapping or old . mapping_hash is not new . mapping_hash or old . preview_hash is not new . preview_hash or old . row_count is not new . row_count or old . error_count is not new . error_count or old . created_at is not new . created_at ) begin select raise ( abort , 'bank import review is immutable' ) ; end"
           ],
           [
             "trigger",
@@ -1184,7 +1184,7 @@
             "trigger",
             "immo_bank_import_source_chunks_sealed_insert",
             "bank_import_source_chunks",
-            "create trigger immo_bank_import_source_chunks_sealed_insert before insert on bank_import_source_chunks when ( select state from bank_imports where id = new . import_id ) ! = 'preparing' begin select raise ( abort , 'bank import review is sealed' ) ; end"
+            "create trigger immo_bank_import_source_chunks_sealed_insert before insert on bank_import_source_chunks when ( select state from bank_imports where id = new . import_id ) != 'preparing' begin select raise ( abort , 'bank import review is sealed' ) ; end"
           ],
           [
             "trigger",
@@ -18053,9 +18053,9 @@
         "tenancy_workflow_templates"
       ],
       "recipe": "fresh-create-all",
-      "schema_sha256": "bb82d51d9e7f89864da0b1216a0c1a96ae2d808395372642454c9de44de5542e",
+      "schema_sha256": "2234691717251fe28edd5ef74bab9e0ff1b6df42e5ab4701bc9338d9f3a43473",
       "source_commit": "1910f25f12b9930ca4345f5be4212c60a1f2c89e",
-      "validated_target_head": "j2a2b3c4d5e6"
+      "validated_target_head": "k2a2b3c4d5e6"
     },
     "release126-historical-receipt-checks": {
       "catalog": {
@@ -18550,7 +18550,7 @@
             "index",
             "ix_accounts_iban_unindexed",
             "accounts",
-            "create index ix_accounts_iban_unindexed on accounts ( iban_fingerprint , iban ) where iban is not null and iban ! = '' and iban_fingerprint is null"
+            "create index ix_accounts_iban_unindexed on accounts ( iban_fingerprint , iban ) where iban is not null and iban != '' and iban_fingerprint is null"
           ],
           [
             "index",
@@ -18748,7 +18748,7 @@
             "table",
             "bookings",
             "bookings",
-            "create table \"bookings\" ( id varchar not null , account_id varchar not null , category_id varchar , property_id varchar , unit_id varchar , tenant_id varchar , booking_date date not null , amount numeric ( 12 , 2 ) not null , allocated_amount numeric ( 12 , 2 ) default '0' not null , status text not null , payment_text text , receipt_url text , created_at datetime not null , updated_at datetime not null , constraint ck_bookings_allocation check ( allocated_amount > = 0 and ( allocated_amount = 0 or allocated_amount < = amount ) ) , constraint ck_bookings_amount_nonzero check ( amount ! = 0 ) , foreign key ( account_id ) references accounts ( id ) on delete cascade on update no action , foreign key ( category_id ) references categories ( id ) on delete set null on update no action , foreign key ( property_id ) references properties ( id ) on delete set null on update no action , foreign key ( tenant_id ) references tenants ( id ) on delete set null on update no action , foreign key ( unit_id ) references units ( id ) on delete set null on update no action , primary key ( id ) )"
+            "create table \"bookings\" ( id varchar not null , account_id varchar not null , category_id varchar , property_id varchar , unit_id varchar , tenant_id varchar , booking_date date not null , amount numeric ( 12 , 2 ) not null , allocated_amount numeric ( 12 , 2 ) default '0' not null , status text not null , payment_text text , receipt_url text , created_at datetime not null , updated_at datetime not null , constraint ck_bookings_allocation check ( allocated_amount >= 0 and ( allocated_amount = 0 or allocated_amount <= amount ) ) , constraint ck_bookings_amount_nonzero check ( amount != 0 ) , foreign key ( account_id ) references accounts ( id ) on delete cascade on update no action , foreign key ( category_id ) references categories ( id ) on delete set null on update no action , foreign key ( property_id ) references properties ( id ) on delete set null on update no action , foreign key ( tenant_id ) references tenants ( id ) on delete set null on update no action , foreign key ( unit_id ) references units ( id ) on delete set null on update no action , primary key ( id ) )"
           ],
           [
             "table",
@@ -18832,7 +18832,7 @@
             "table",
             "contracts",
             "contracts",
-            "create table contracts ( id varchar not null , contract_number text not null , property_id varchar not null , unit_id varchar not null , tenant_id varchar not null , status text not null , start_date date not null , end_date date , notice_period text , deposit_amount numeric ( 12 , 2 ) , index_rent text , service_charge_settlement text , created_at datetime not null , updated_at datetime not null , constraint ck_contracts_dates check ( end_date is null or end_date > = start_date ) , foreign key ( property_id ) references properties ( id ) on delete cascade , foreign key ( tenant_id ) references tenants ( id ) on delete cascade , foreign key ( unit_id ) references units ( id ) on delete cascade , primary key ( id ) , unique ( contract_number ) )"
+            "create table contracts ( id varchar not null , contract_number text not null , property_id varchar not null , unit_id varchar not null , tenant_id varchar not null , status text not null , start_date date not null , end_date date , notice_period text , deposit_amount numeric ( 12 , 2 ) , index_rent text , service_charge_settlement text , created_at datetime not null , updated_at datetime not null , constraint ck_contracts_dates check ( end_date is null or end_date >= start_date ) , foreign key ( property_id ) references properties ( id ) on delete cascade , foreign key ( tenant_id ) references tenants ( id ) on delete cascade , foreign key ( unit_id ) references units ( id ) on delete cascade , primary key ( id ) , unique ( contract_number ) )"
           ],
           [
             "table",
@@ -18874,13 +18874,13 @@
             "table",
             "document_version_chunks",
             "document_version_chunks",
-            "create table document_version_chunks ( version_id varchar not null , position bigint not null , portfolio_id varchar not null , data blob not null , constraint ck_document_chunk_values check ( position > = 0 and length ( data ) between 1 and 65536 ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( version_id ) references document_versions ( id ) on delete restrict , primary key ( version_id , position ) )"
+            "create table document_version_chunks ( version_id varchar not null , position bigint not null , portfolio_id varchar not null , data blob not null , constraint ck_document_chunk_values check ( position >= 0 and length ( data ) between 1 and 65536 ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( version_id ) references document_versions ( id ) on delete restrict , primary key ( version_id , position ) )"
           ],
           [
             "table",
             "document_versions",
             "document_versions",
-            "create table document_versions ( id varchar not null , document_id varchar not null , portfolio_id varchar not null , property_id varchar not null , unit_id varchar , contract_id varchar , tenant_id varchar , number bigint not null , predecessor_id varchar , restored_from_id varchar , actor_id varchar not null , idempotency_key varchar ( 100 ) not null , request_sha256 varchar ( 64 ) not null , operation varchar ( 20 ) not null , comment text not null , filename text not null , media_type varchar ( 200 ) not null , sha256 varchar ( 64 ) not null , size_bytes bigint not null , metadata_snapshot json not null , created_at datetime not null , constraint ck_document_version_operation check ( operation in ( 'archive_original' , 'upload' , 'restore' ) ) , constraint ck_document_version_values check ( number > 0 and size_bytes > = 0 ) , constraint uq_document_version_command unique ( actor_id , idempotency_key ) , constraint uq_document_version_number unique ( document_id , number ) , foreign key ( contract_id ) references contracts ( id ) on delete restrict , foreign key ( document_id ) references documents ( id ) on delete restrict , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( predecessor_id ) references document_versions ( id ) on delete restrict , foreign key ( property_id ) references properties ( id ) on delete restrict , foreign key ( restored_from_id ) references document_versions ( id ) on delete restrict , foreign key ( tenant_id ) references tenants ( id ) on delete restrict , foreign key ( unit_id ) references units ( id ) on delete restrict , primary key ( id ) )"
+            "create table document_versions ( id varchar not null , document_id varchar not null , portfolio_id varchar not null , property_id varchar not null , unit_id varchar , contract_id varchar , tenant_id varchar , number bigint not null , predecessor_id varchar , restored_from_id varchar , actor_id varchar not null , idempotency_key varchar ( 100 ) not null , request_sha256 varchar ( 64 ) not null , operation varchar ( 20 ) not null , comment text not null , filename text not null , media_type varchar ( 200 ) not null , sha256 varchar ( 64 ) not null , size_bytes bigint not null , metadata_snapshot json not null , created_at datetime not null , constraint ck_document_version_operation check ( operation in ( 'archive_original' , 'upload' , 'restore' ) ) , constraint ck_document_version_values check ( number > 0 and size_bytes >= 0 ) , constraint uq_document_version_command unique ( actor_id , idempotency_key ) , constraint uq_document_version_number unique ( document_id , number ) , foreign key ( contract_id ) references contracts ( id ) on delete restrict , foreign key ( document_id ) references documents ( id ) on delete restrict , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( predecessor_id ) references document_versions ( id ) on delete restrict , foreign key ( property_id ) references properties ( id ) on delete restrict , foreign key ( restored_from_id ) references document_versions ( id ) on delete restrict , foreign key ( tenant_id ) references tenants ( id ) on delete restrict , foreign key ( unit_id ) references units ( id ) on delete restrict , primary key ( id ) )"
           ],
           [
             "table",
@@ -19048,7 +19048,7 @@
             "table",
             "payments",
             "payments",
-            "create table \"payments\" ( id varchar not null , idempotency_key varchar ( 100 ) not null , receivable_id varchar , rent_charge_id varchar ( 36 ) , booking_id varchar , amount numeric ( 12 , 2 ) not null , payment_date date not null , note text , created_at datetime not null , constraint ck_payments_one_target check ( ( receivable_id is null ) ! = ( rent_charge_id is null ) ) , constraint ck_payments_positive check ( amount > 0 ) , constraint fk_payments_booking_id_bookings foreign key ( booking_id ) references bookings ( id ) on delete restrict , constraint fk_payments_receivable_id_receivables foreign key ( receivable_id ) references receivables ( id ) on delete restrict , constraint fk_payments_rent_charge_id_rent_charges foreign key ( rent_charge_id ) references rent_charges ( id ) on delete restrict , primary key ( id ) , unique ( idempotency_key ) )"
+            "create table \"payments\" ( id varchar not null , idempotency_key varchar ( 100 ) not null , receivable_id varchar , rent_charge_id varchar ( 36 ) , booking_id varchar , amount numeric ( 12 , 2 ) not null , payment_date date not null , note text , created_at datetime not null , constraint ck_payments_one_target check ( ( receivable_id is null ) != ( rent_charge_id is null ) ) , constraint ck_payments_positive check ( amount > 0 ) , constraint fk_payments_booking_id_bookings foreign key ( booking_id ) references bookings ( id ) on delete restrict , constraint fk_payments_receivable_id_receivables foreign key ( receivable_id ) references receivables ( id ) on delete restrict , constraint fk_payments_rent_charge_id_rent_charges foreign key ( rent_charge_id ) references rent_charges ( id ) on delete restrict , primary key ( id ) , unique ( idempotency_key ) )"
           ],
           [
             "table",
@@ -19216,13 +19216,13 @@
             "trigger",
             "immo_bank_import_rows_sealed_insert",
             "bank_import_rows",
-            "create trigger immo_bank_import_rows_sealed_insert before insert on bank_import_rows when ( select state from bank_imports where id = new . import_id ) ! = 'preparing' begin select raise ( abort , 'bank import review is sealed' ) ; end"
+            "create trigger immo_bank_import_rows_sealed_insert before insert on bank_import_rows when ( select state from bank_imports where id = new . import_id ) != 'preparing' begin select raise ( abort , 'bank import review is sealed' ) ; end"
           ],
           [
             "trigger",
             "immo_bank_import_seal",
             "bank_imports",
-            "create trigger immo_bank_import_seal before update on bank_imports when old . state ! = 'preparing' and ( old . id is not new . id or old . account_id is not new . account_id or old . portfolio_id is not new . portfolio_id or old . creator_id is not new . creator_id or old . scope_snapshot is not new . scope_snapshot or old . filename is not new . filename or old . source_sha256 is not new . source_sha256 or old . source_bytes is not new . source_bytes or old . mapping is not new . mapping or old . mapping_hash is not new . mapping_hash or old . preview_hash is not new . preview_hash or old . row_count is not new . row_count or old . error_count is not new . error_count or old . created_at is not new . created_at ) begin select raise ( abort , 'bank import review is immutable' ) ; end"
+            "create trigger immo_bank_import_seal before update on bank_imports when old . state != 'preparing' and ( old . id is not new . id or old . account_id is not new . account_id or old . portfolio_id is not new . portfolio_id or old . creator_id is not new . creator_id or old . scope_snapshot is not new . scope_snapshot or old . filename is not new . filename or old . source_sha256 is not new . source_sha256 or old . source_bytes is not new . source_bytes or old . mapping is not new . mapping or old . mapping_hash is not new . mapping_hash or old . preview_hash is not new . preview_hash or old . row_count is not new . row_count or old . error_count is not new . error_count or old . created_at is not new . created_at ) begin select raise ( abort , 'bank import review is immutable' ) ; end"
           ],
           [
             "trigger",
@@ -19234,7 +19234,7 @@
             "trigger",
             "immo_bank_import_source_chunks_sealed_insert",
             "bank_import_source_chunks",
-            "create trigger immo_bank_import_source_chunks_sealed_insert before insert on bank_import_source_chunks when ( select state from bank_imports where id = new . import_id ) ! = 'preparing' begin select raise ( abort , 'bank import review is sealed' ) ; end"
+            "create trigger immo_bank_import_source_chunks_sealed_insert before insert on bank_import_source_chunks when ( select state from bank_imports where id = new . import_id ) != 'preparing' begin select raise ( abort , 'bank import review is sealed' ) ; end"
           ],
           [
             "trigger",
@@ -36045,9 +36045,9 @@
         "tenancy_workflow_templates"
       ],
       "recipe": "historical-receipt-checks",
-      "schema_sha256": "c2ae1021ba7c76467b51962e573dbd3ef24e31f76bc5e5a91175bd8037cdc906",
+      "schema_sha256": "02edf6f990ecdd47789d7555aa25ec3fdd7812720e179a5dcf06bf980ecad955",
       "source_commit": "1910f25f12b9930ca4345f5be4212c60a1f2c89e",
-      "validated_target_head": "j2a2b3c4d5e6"
+      "validated_target_head": "k2a2b3c4d5e6"
     }
   }
 }

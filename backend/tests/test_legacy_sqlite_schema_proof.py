@@ -1,3 +1,4 @@
+import re
 import sqlite3
 from contextlib import closing
 
@@ -8,6 +9,7 @@ from backend.legacy_sqlite_upgrade.schema import (
     catalog,
     catalog_hash,
     inspect_legacy_sqlite,
+    normalized_table_sql,
     profiles,
     prove_legacy_schema,
 )
@@ -84,3 +86,44 @@ def test_stale_or_fabricated_proof_is_not_an_archive_bypass(legacy):
             proof.verify(connection)
         with pytest.raises(LegacySchemaError):
             prove_legacy_schema(connection)
+
+
+def test_constraint_declaration_order_has_identical_complete_native_proof(legacy, tmp_path):
+    _, name, reference = legacy
+    path = tmp_path / "same-native-constraints-different-order.sqlite"
+    changed = 0
+    with closing(sqlite3.connect(path)) as connection:
+        for sql in reference["ddl"]:
+            reordered = _reverse_table_constraints(sql)
+            changed += reordered != sql
+            assert normalized_table_sql(reordered) == normalized_table_sql(sql)
+            connection.execute(reordered)
+        connection.commit()
+    assert changed > 0
+    assert inspect_legacy_sqlite(path).profile_id == name
+
+
+def _reverse_table_constraints(sql):
+    # Preserve raw column/default definitions and all non-table objects. Native
+    # PRAGMA defaults retain their SQL spelling; only table constraint order is
+    # deliberately permuted to model SQLAlchemy's independent constraint set.
+    if not sql.lstrip().upper().startswith("CREATE TABLE"):
+        return sql
+    tokens = re.finditer(r"'(?:''|[^'])*'|\"(?:\"\"|[^\"])*\"|`(?:``|[^`])*`|\[(?:[^\]])*\]|[(),]", sql)
+    start = next(token.end() for token in tokens if token.group() == "(")
+    depth, position, pieces = 0, start, []
+    for token in tokens:
+        value = token.group()
+        if value == ")" and depth == 0:
+            pieces.append(sql[position:token.start()])
+            end = token.start()
+            break
+        if value == "," and depth == 0:
+            pieces.append(sql[position:token.start()])
+            position = token.end()
+        else:
+            depth += (value == "(") - (value == ")")
+    kinds = {"constraint", "primary", "foreign", "unique", "check"}
+    columns = [piece for piece in pieces if piece.split()[0].lower() not in kinds]
+    constraints = [piece for piece in pieces if piece.split()[0].lower() in kinds]
+    return sql[:start] + ",".join(columns + list(reversed(constraints))) + sql[end:]

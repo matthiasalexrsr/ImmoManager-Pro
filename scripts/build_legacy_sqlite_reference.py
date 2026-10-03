@@ -16,7 +16,7 @@ from contextlib import closing
 from pathlib import Path
 from zipfile import ZipFile
 
-from backend.legacy_sqlite_upgrade.schema import canonical_catalog, catalog, catalog_hash
+from backend.legacy_sqlite_upgrade.schema import catalog, catalog_hash
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = "1910f25"
@@ -95,7 +95,11 @@ def build(output: Path):
         if previous is not None:
             for name, reference in result.items():
                 old = previous[name]
-                if old["schema_sha256"] != catalog_hash(old["catalog"]) or canonical_catalog(old["catalog"]) != reference["catalog"]:
+                with closing(sqlite3.connect(":memory:")) as historical:
+                    for sql in old["ddl"]:
+                        historical.execute(sql)
+                    historical_catalog = catalog(historical)
+                if old["schema_sha256"] != catalog_hash(old["catalog"]) or historical_catalog != reference["catalog"]:
                     raise RuntimeError("Frozen historical schema changed; target-only regeneration refused")
                 reference["ddl"] = old["ddl"]  # Original historical DDL remains byte-for-byte frozen.
         output.write_text(json.dumps({"format": 1, "profiles": result}, ensure_ascii=False,
