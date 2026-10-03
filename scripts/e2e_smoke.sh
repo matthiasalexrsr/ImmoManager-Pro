@@ -28,12 +28,20 @@ docker compose "${COMPOSE_FILES[@]}" up -d --wait db
 docker compose "${COMPOSE_FILES[@]}" run --rm --no-deps -T app alembic upgrade head
 docker compose "${COMPOSE_FILES[@]}" up -d
 
-for _ in {1..60}; do
-  if curl -fsS http://localhost:8000/health >/dev/null; then
-    break
-  fi
-  sleep 2
-done
+wait_http() {
+  local url="$1"
+  for _ in {1..60}; do
+    if curl -fsS "$url" >/dev/null; then
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+
+wait_http http://localhost:8000/health
+wait_http http://localhost:9090/-/ready
+wait_http http://localhost:3001/api/health
 
 curl -fsS http://localhost:8000/health | tee /tmp/health.json
 curl -sS -o /tmp/wizard.html -w '%{http_code}' http://localhost:8000/mietvertrag/ >/tmp/wizard_status.txt
