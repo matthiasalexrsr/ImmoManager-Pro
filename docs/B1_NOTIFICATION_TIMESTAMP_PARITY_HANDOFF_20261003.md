@@ -29,3 +29,30 @@ Ruff auf beiden Produkt-/Testdateien PASS; `git diff --check` PASS. Alle Child-/
 Übernahmereihenfolge: `f50b982`, `2186106`, `418cd42`, dieser separate Handoffcommit. Akzeptierter positiver Backendnachweis sind **fünf tatsächliche Fälle** (drei neue SQLite, zwei vorhandene Memory/SQLite), außerdem zwei historische Assertion-Gegenproben. PG bleibt ausdrücklich infrastrukturell offen. Keine zusätzliche Registry/Auth/Recovery-/Migrationskomposition nötig.
 
 Root koordiniert den einzelnen PG-Nachlauf und nach eigenem Durabilitygate den einzelnen tatsächlichen B2-Browserfall. Die vorangegangene Browserfehlermeldung ist der echte unabhängige Trigger, keine bereits bestandene Browserabnahme dieses Fixes. Keine allgemeine B1/B2-/A–L-/Großbestandsfreigabe aus diesem kleinen Paket.
+
+## Tatsächliche Root-Nachläufe
+
+Rootquelle `984615b`, 03.10.2026: nach rein lesendem Inventar hat Root den
+originalen ausschließlich synthetischen16.15-Testcluster mit ausdrücklichem
+`-D .../postgres-test-1615-20261002/cluster -h 127.0.0.1 -p 58112` gestartet.
+Der echte Postmaster4060/Sitzung57031 führte seine eigene WAL-Wiederherstellung
+durch und meldete Bereitschaft; keine PID-Datei wurde manuell gelöscht, kein
+5432-Start, Windowsdienst oder privater Server geändert.
+
+Exakt der vorher infrastrukturell blockierte unveränderte PG-Fall:
+**1 PASS / 8,57 Sekunden**, **11,03 Sekunden outer**, harter90-Sekunden-Rahmen,
+keine Skips. Tatsächlich eigenes `housing_confirmation_<UUID>`-Schema,
+DateTime-PostgreSQLzweig, Vertragsfenster und Benachrichtigungs-/Taskseiten.
+Das aktuelle JUnit wurde zusätzlich mit dem tatsächlichen
+`verified_case_count`-Releasevalidator geprüft: genau eine ausgeführte explizite
+PG-Identität, keine übersprungenen/fehlgeschlagenen Fälle. Beleg Root
+`artifacts/B1_TIMESTAMP_PG_ROOT_20261003.xml`. Eigene Verbindungen/UUIDschema
+wurden von der Fixture geschlossen/entfernt; public blieb unberührt.
+
+Danach genau den selbst gestarteten Cluster über seinen pg_ctl mit -m fast,
+-w und30-Sekunden-Wartebudget geordnet beendet. Postmaster4060 meldete
+abgeschlossenen Shutdown, Sitzung57031 endete Exit0. Keine Testserverreste.
+Der tatsächliche10.001er-Browsernachlauf auf `599bfb0` bestand separat mit
+allen13 IDs jeder der drei Familien; Einzelheiten/Bilder in
+`B2_DASHBOARD_NATIVE_DIAGNOSIS_20261003.md`. Damit ist dieser konkrete Fehler
+auch in PG und Browser geprüft; dies ist weiterhin keine Gesamtfreigabe.
