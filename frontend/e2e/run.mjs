@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { once } from 'node:events';
 import { existsSync } from 'node:fs';
@@ -96,8 +96,17 @@ try {
   await run(process.execPath, [process.env.npm_execpath, 'run', 'build'], { cwd: frontendDir });
   const port = await freePort();
   const url = `http://127.0.0.1:${port}`;
+  // Read only the Settings class metadata, never the user's resolved values.
+  // A case-insensitive inherited setting must not redirect this owned fixture
+  // to another installation, database, keyring or operational scheduler.
+  const settingNames = new Set(JSON.parse(execFileSync(python, [
+    '-c', 'import json; from backend.settings import Settings; print(json.dumps(list(Settings.model_fields)))',
+  ], { cwd: projectDir, encoding: 'utf8', windowsHide: true, timeout: 10_000 }))
+    .map(name => name.toLowerCase()));
+  const inheritedEnvironment = Object.fromEntries(Object.entries(process.env)
+    .filter(([name]) => !settingNames.has(name.toLowerCase())));
   const backendEnv = {
-    ...process.env,
+    ...inheritedEnvironment,
     PYTHONUTF8: '1',
     PYTHONUNBUFFERED: '1',
     ENVIRONMENT: 'development',
@@ -124,13 +133,6 @@ try {
     PLUGIN_DIRS: '[]',
     CORS_ORIGINS: url,
   };
-  // Settings are case-insensitive; remove inherited lower/mixed-case aliases
-  // before handing this explicitly owned synthetic key bundle to Python.
-  const fieldKeys = new Set(['encryption_key', 'encryption_index_key', 'encryption_keyring',
-    'encryption_active_key_id', 'encryption_legacy_jwt_keys', 'jwt_secret_key']);
-  for (const name of Object.keys(backendEnv)) {
-    if (fieldKeys.has(name.toLowerCase()) && name !== name.toUpperCase()) delete backendEnv[name];
-  }
   // Migrate the owned empty database before app import/create_all. This exercises
   // the same schema chain as a fresh installation without touching user data.
   await run(python, ['-m', 'alembic', 'upgrade', 'head'], { env: backendEnv });
