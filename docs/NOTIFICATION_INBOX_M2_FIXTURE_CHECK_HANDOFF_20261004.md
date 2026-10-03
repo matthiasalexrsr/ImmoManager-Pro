@@ -117,3 +117,15 @@ Root korrigiert ausschließlich die Adresseprojektion zur expliziten nativen
 `pg_catalog.host(pg_catalog.inet_server_addr())`. Ziel, Loopbackvertrag,
 Timeouts und Cleanup werden nicht gelockert. Anschließend werden genau die
 fünf bislang nicht ausgeführten Operationsfälle erneut nativ geprüft.
+
+Korrigierter tatsächlicher Gate auf3c96be9: 5PASS in3,40s/hard90/Exit0,
+sechsSQLitefälle ausdrücklich abgewählt. UUID-Schemas, eigene Handles und
+Poolcheckouts erfolgreich aufgeräumt. Bericht
+`artifacts/NOTIFICATION_INBOX_M2_PG_OPERATIONS_ADDRESS_CORRECTED_20261004.xml`.
+Native Katalog-/OID-/conbin-Beobachtung im eigenen zusätzlichen Schema wurde
+unverändert in `artifacts/NOTIFICATION_INBOX_M2_PG16_NATIVE_CHECK_20261004.json`
+gesichert; sie ist eine Parsergrundlage, noch kein tatsächlicher Validator.
+
+EigenerPG16.15-Prozess13000, nur127.0.0.1:58112, anschließend normal per
+pg_ctl fast/wait beendet; keinePiddatei und keinListener58112 bleiben.
+Kein tatsächlicher K2→L2→M2-Upgrade/Produktionsstart oder Fullrestoreclaim.

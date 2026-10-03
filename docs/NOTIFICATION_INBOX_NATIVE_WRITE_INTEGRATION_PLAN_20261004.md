@@ -71,3 +71,27 @@ entfernt: sie fordert ausdrücklich einen inzwischen überholten Rootzustand.
 Quelle613a7b9 und tatsächlicher XMLbeleg bleiben nachvollziehbar; die aktuellen
 Positivtests verlangen unverändert die echte zentrale Registrierung. So bleibt
 die Gesamtsuite ausführbar, ohne eine fehlende Registrierung vorzutäuschen.
+
+## Tatsächliche native SQLite-Transaktionsabnahme
+
+Aufe3f399d: erste acht ausdrücklich ausgewählte Fälle PASS24,08s/hard90/Exit0;
+weitere24 bislang ungeprüfte Fälle PASS74,47s/hard150/Exit0. Beide Prozesse
+vollständig beendet. Mit den zwei weiterhin aktuellen Preregistrierungs-
+Negativfällen sind34 verschiedene aktuelle Nativecases positiv komponiert,
+kein wiederholter zusammenhängender34er-Lauf. Der historische fehlende-
+Registrierungsfall ist ein zusätzlich vorher bewiesener Zustand.
+
+Echte SQLUser-/Sid-/DBbindung, persönliche Actortrennung und insert-once,
+ausdrücklich unterstützte Selectedparents, echte Unrestrictedeligibility,
+Dispatch-/Ownerregel, unveränderte dirty Caller, fehlende Singletonfences,
+fremde Authdatenbank, reale Rollbacks nach Read-DML und endgültige Ziel-/
+Principalprüfung bestehen. SQLite BEGIN IMMEDIATE liegt vor Authsnapshots;
+eigene Session/Pool/Capabilityregistry sind geschlossen und die tatsächlich
+geleaste Connection erhält ihren ursprünglichen busy_timeout zurück.
+
+Die acht Änderungen nach Stage sind tatsächliche Mutationen auf derselben
+Connection; sie beweisen Abschlussprüfung und Rollback, keine unabhängige
+Concurrencyrace. PostgreSQL mit wirklichen unabhängigen Verbindungen und
+HTTP-/Browser-/Schema-/Vollrestorefreigabe bleiben getrennt offen. Berichte:
+`artifacts/NOTIFICATION_INBOX_NATIVE_FIRST_COMMIT_e3f399d.xml` und
+`artifacts/NOTIFICATION_INBOX_NATIVE_REMAINING_e3f399d.xml`.

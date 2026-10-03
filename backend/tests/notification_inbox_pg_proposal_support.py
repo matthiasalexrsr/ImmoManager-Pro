@@ -8,7 +8,7 @@ from time import monotonic
 from uuid import uuid4
 
 from sqlalchemy import create_engine, event, text
-from sqlalchemy.engine import Engine, URL, make_url
+from sqlalchemy.engine import URL, Engine, make_url
 from sqlalchemy.pool import QueuePool
 
 NODE_SECONDS = 30.0

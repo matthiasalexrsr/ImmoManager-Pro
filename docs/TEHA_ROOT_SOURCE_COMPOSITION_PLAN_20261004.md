@@ -47,3 +47,22 @@ offline nicht den ursprünglichen gesamten Auftrag; erforderliche unveränderlic
 Commandbelege sind vor tatsächlicher Writeaktivierung zu ergänzen. Danach eigene
 op-/zielgebundene Rootunit, native Sid-/Scope-/CAS-Races und tatsächliche
 HTTP-/Browserabläufe. Keine neue Anbieteraktion innerhalb gehaltenen DB-Locks.
+
+## Tatsächliche erste Rootgates
+
+Die abgegrenzte Reihe wurde bisd336401 übernommen;0570d9f verschiebt nur die
+eingefrorene L2-Vorlage und den Operationsimport nachproposals. Kein neuer
+entdeckter Alembichead. Alle nachfolgenden Rootprozesse verwenden eigene
+synthetische Konfiguration und sind vollständig beendet:
+
+- reine Original-/Mappingmanifestfälle: 26PASS0,89s/hard30/Exit0;
+- ausdrücklich als Runtime klassifizierte geschlossene Grenzen: 22PASS2,16s/
+  hard90/Exit0; keine positive Writeauthority aus Fakes;
+- eingefrorene L2-SQLite-Operations-/Schemafälle: 15PASS7,64s/hard90/Exit0;
+  genau ein PostgreSQLfall ausdrücklich abgewählt.
+
+Berichte liegen in `artifacts/TEHA_IMPORT_EVIDENCE_PURE_0570d9f.xml`,
+`artifacts/TEHA_RUNTIME_BOUNDARIES_3c96be9.xml` und
+`artifacts/TEHA_L2_SQLITE_OPERATIONS_3c96be9.xml`. Diese Gates beweisen keine
+zentral montierte HTTProute, vollständige Recovery/Retention, Anbieteraktion
+oder produktive TEHA-Schreibfunktion. Der Folgevertrag bleibt oben offen.

@@ -22,7 +22,8 @@ from backend.db.operational_models import OperationalDispatchORM, OperationalLoc
 from backend.db.orm_models import Base, NotificationORM, PortfolioORM, PropertyORM, TaskORM, UnitORM, UserORM
 from backend.db.session_models import AuthSessionORM
 from backend.repositories.sql_store import SQLAlchemyStore
-from backend.services import auth_sessions, notification_inbox as inbox
+from backend.services import auth_sessions
+from backend.services import notification_inbox as inbox
 from backend.services import notification_inbox_commit_authority as writer
 from backend.services.notification_inbox_types import InboxPrincipal
 from backend.services.notification_inbox_validation import TABLE

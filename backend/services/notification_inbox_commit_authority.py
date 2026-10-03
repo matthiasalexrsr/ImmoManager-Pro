@@ -21,7 +21,8 @@ from ..permissions import ROLE_CAPABILITIES
 from ..repositories.sql_store import SQLAlchemyStore
 from ..storage import ValidationError
 from . import notification_inbox as inbox
-from .auth_sessions import VERSION, factory as sid_factory
+from .auth_sessions import VERSION
+from .auth_sessions import factory as sid_factory
 from .contract_occupancy import lock_location
 from .measurement_history import lock_measurement_property
 from .notification_inbox_read_support import SELECTED_SUBJECT_TABLES, notification_read_subject_hint
