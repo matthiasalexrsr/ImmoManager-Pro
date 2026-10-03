@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import os
 import subprocess
 import sys
 from zipfile import ZipFile
@@ -11,10 +12,12 @@ import pytest
 from backend.services import full_recovery as recovery
 from backend.services.iban_encryption import IBANKeyring, generate_key, keyring_from_configuration
 from backend.services.integrations.encrypted_config_store import EncryptedJsonIntegrationConfigStore
+from backend.services.integrations.runtime_factory import configured_runtime_store
 from backend.services.recovery_archive import RecoveryError, decrypt_zip, encrypted_zip
 from backend.services.recovery_integration_state import verify_archived_integration_state
 from backend.tests.test_full_recovery import (
     PASSPHRASE,
+    PROBE,
     ROOT,
 )
 from backend.tests.test_full_recovery import (
@@ -50,12 +53,36 @@ def test_actual_encrypted_full_roundtrip_uses_archived_keys_after_signer_rotatio
     assert plan.integration_state.read_bytes() == before
     assert plan.database.read_bytes() == source_db
     assert result["signing_key_rotated"] is True
-    restored = EncryptedJsonIntegrationConfigStore(
-        str(target / "integrations.json"), keyring=keyring_from_configuration(values),
-    )
+    restored = configured_runtime_store(values)
     assert restored.load() == state
     assert b"synthetic-integration-secret" not in archive.read_bytes()
     assert b"SYNTHETIC_UNKNOWN" not in before
+    # Actual normal global factory and login in a fresh recovered app process;
+    # no init permission, fake security, mocked API response or provider action.
+    native_probe = PROBE.replace("print('RECOVERY_OK')", """
+with TestClient(app) as client:
+    login = client.post('/api/v1/auth/login', json={'username':'recovery-owner','password':'SyntheticPassword123!'})
+    assert login.status_code == 200
+    response = client.get('/api/v1/integrations/email/connection-state',
+        headers={'Authorization':'Bearer '+login.json()['access_token']})
+    assert response.status_code == 200
+    assert response.json()['config']['smtp_password'] == '***'
+    assert 'synthetic-integration-secret' not in response.text
+assert integration_manager._store.load()['future_private_extension'] == {'nested':[None,{'preserve':'SYNTHETIC_UNKNOWN'}]}
+print('ENCRYPTED_FACTORY_RECOVERY_OK')
+""")
+    env = os.environ.copy()
+    wrong = tmp_path / "wrong-ambient-data"
+    env.update(JWT_SECRET_KEY="deliberately-wrong-ambient-key", DATABASE_URL="sqlite:///:memory:",
+               DATA_DIR=str(wrong), SQLITE_PERSISTENT_STORE="false")
+    probe = subprocess.run([sys.executable, "-c", native_probe, str(target)], cwd=ROOT,
+        env=env, capture_output=True, text=True, timeout=30)
+    assert probe.returncode == 0, "Recovered native app failed; private child output withheld"
+    assert "ENCRYPTED_FACTORY_RECOVERY_OK" in probe.stdout
+    assert not wrong.exists()
+    assert (target / "integrations.json").read_bytes() == before
+    assert plan.integration_state.read_bytes() == before
+    assert plan.database.read_bytes() == source_db
 
 
 @pytest.mark.parametrize("fault", ["missing_key", "tampered", "malformed_envelope"])
