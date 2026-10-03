@@ -9,7 +9,7 @@ from typing import cast
 
 from fastapi import HTTPException
 from pydantic import BaseModel as PydanticBaseModel
-from sqlalchemy import Table, select
+from sqlalchemy import Table, inspect, select
 from sqlalchemy.orm import Session
 
 from ..db.communication_center_models import CommunicationDraftORM
@@ -206,8 +206,9 @@ class SQLAlchemyStore:
             self.db.execute(table.delete())
         for table in reversed(snapshot_tables[1:]):
             self.db.execute(table.delete())
+        existing_tables = set(inspect(self.db.get_bind()).get_table_names())
         for table in reversed(Base.metadata.sorted_tables):
-            if table.name in sidecar_tables or table.name in HISTORY_TABLES:
+            if table.name in sidecar_tables or table.name in HISTORY_TABLES or table.name not in existing_tables:
                 continue
             # Clearing an entire test/import store must remove correction leaves
             # before roots because SQLite RESTRICT is checked row by row.
