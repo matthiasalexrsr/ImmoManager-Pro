@@ -10,6 +10,7 @@ from uuid import uuid4
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import URL, Engine, make_url
 from sqlalchemy.pool import QueuePool
+from sqlalchemy.sql.elements import RollbackToSavepointClause
 
 NODE_SECONDS = 30.0
 CLEANUP_SECONDS = 8.0
@@ -104,6 +105,12 @@ def _engine(source: str | URL, schema: str, deadline: float) -> _OwnedEngine:
 
     @event.listens_for(engine, "before_cursor_execute")
     def before_sql(connection, cursor, statement, parameters, context, executemany):
+        compiled = getattr(context, "compiled", None)
+        if isinstance(getattr(compiled, "statement", None), RollbackToSavepointClause):
+            # PostgreSQL rejects all extra SQL after a constraint error until
+            # this genuine savepoint rollback has restored the transaction.
+            # Never interfere with SQLAlchemy's ordinary error recovery.
+            return
         _, sql_ms, lock_ms = _timeouts(deadline)
         # Bound each statement to its current remaining budget. These settings
         # touch only the disposable fixture connection, never a schema validator.
