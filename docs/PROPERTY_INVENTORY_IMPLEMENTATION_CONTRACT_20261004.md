@@ -43,8 +43,14 @@ eine getrennte Ansicht. Reserved ohne Vertrag wird nicht als freigegeben erklär
 unit_cold_rent_sum ist die vollständige monatliche Summe aktueller gültiger
 Unit-Stammmietwerte, einschließlich unvermieteter Units. Label „Stammmieten“
 mit Hinweis; keine Ertrags-, Forderungs- oder Vertragsmietbehauptung.
-Centprüfung, Integercents vor SQLSUM und kanonischer Decimalstring nach dem
-Backendvorschlag. Unvollständige/ungültige Quellen ergeben null, keine0Summe.
+Centprüfung, Integercents vor der Aggregation und kanonischer Decimalstring.
+SQLite nutzt eine eigene verbindungsgebundene exakte Centaggregation mit
+Pythonint-Akkumulator und Centstring-Ausgabe, um keine Int64-Gesamtbetragsgrenze
+einzuführen. Keine DDL/DML und kein Summieren ungeprüfter Floatquellen.
+SQLite-Betragssort verwendet Länge und bytewise kanonischen positiven Centtext;
+PG verwendet seine native SUM(bigint)-Numericquelle. Installer-/Sortiervertrag
+wird vor Code als eigener Plan konkretisiert. Unvollständige/ungültige Quellen
+ergeben null, keine0Summe.
 Gültiger leerer Unitbestand mit belegter Währung ergibt0.00.
 
 rent_currency übernimmt die tatsächlich deklarierte nichtblanke Portfolio-
