@@ -29,3 +29,24 @@ Kein Browser-/Build-/Backend-/DBprozess gehört zu diesen Clienttests. Private
 Zustände bleiben an actualserverActions/freshAuth/Principalgeneration gebunden.
 Keine Mark-all-/PhaseBC-Aktivierung und kein positiver nativer Serverbeleg aus
 Clientmocks. Gemeinsame HTTP-/UI-/Schema-/Rechteracefreigabe folgt separat.
+
+## Tatsächlicher Vorherbeleg
+
+Beide neuen gezielten Regressionen scheitern auf unveränderter Produktquelle:
+2FAIL/16abgewählt in2,84s, eigener Node vollständig beendet. Der UTF8-Log
+`artifacts/NOTIFICATION_INBOX_UI_COUNTEREXAMPLES_20261004.log` enthält beide
+konkreten Assertions. Anschließend scheiterte ausschließlich die Ausgabe des
+bereits gespeicherten Logs im Pythonwrapper an dessen Windows-CP1252-Stdout;
+der Wrapper wurde für weitere Gates ausdrücklich auf UTF8 gesetzt. Kein PASS
+aus diesem Lauf und kein zweiter Testlauf zur bloßen Logausgabe.
+
+Nach diesem Beleg erfolgen nur Abwärtsrundung und Prüfung der vereinten
+Seitenzahl vor Veröffentlichung. Kandidaten-/Auth-/Cursor-/Sortierverträge
+bleiben erhalten, globale Glocke unverändert unverdrahtet.
+
+Korrigierter tatsächlicher Rootgate: alle vier neuen Clienttestdateien,
+26PASS in4,74s/hard30/Exit0, Nodeprozess vollständig beendet. Beide belegten
+Regressionen bestehen, einschließlich Jahr0099 und negativer/exakter/positiver
+Millisekundengrenzen sowie neutralem Live-Reload. Bericht
+`artifacts/NOTIFICATION_INBOX_UI_ROOT_CORRECTED_20261004.log`.
+Kein Browser-/Build-/API-/DBbeleg aus diesen Clienttests.

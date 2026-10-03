@@ -68,6 +68,28 @@ function service(overrides = {}) {
 }
 
 describe('useNotificationInbox Phase A', () => {
+  it('requires reload when a net-zero live change exceeds the combined current count', async () => {
+    const currentUser = user();
+    const svc = service({
+      listInbox: vi.fn()
+        .mockResolvedValueOnce(page({
+          items: orderedItems(4, 2, 50), fullCount: 3, unreadCount: 3,
+          hasMore: true, nextCursor: 'opaque-next',
+        }))
+        .mockResolvedValueOnce(page({
+          items: orderedItems(2, 2, 48), fullCount: 3, unreadCount: 3,
+        })),
+    });
+    const { result } = renderHook(() => useNotificationInbox({
+      auth: auth(currentUser), service: svc,
+    }));
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    await act(async () => { await result.current.loadMore(); });
+    expect(result.current.phase).toBe('changed');
+    expect(result.current.items).toHaveLength(0);
+    expect(result.current.unreadCount).toBeNull();
+  });
+
   it('gates initial inbox publish through fresh /auth/me', async () => {
     const calls = [];
     const currentUser = user();

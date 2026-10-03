@@ -185,11 +185,17 @@ export default function useNotificationInbox({
         throw new Error('invalid_notification_inbox_page');
       }
 
+      const combinedItems = [...state.items, ...page.items];
+      if (combinedItems.length > page.full_count) {
+        publishChanged(expectedPrincipal, expectedService, ticket, controller);
+        return false;
+      }
+
       setStored({
         principal: expectedPrincipal,
         service: expectedService,
         phase: 'ready',
-        items: [...state.items, ...page.items],
+        items: combinedItems,
         fullCount: page.full_count,
         unreadCount: page.unread_count,
         hasMore: page.has_more,

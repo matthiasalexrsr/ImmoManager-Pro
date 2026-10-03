@@ -35,6 +35,17 @@ const livePage = (overrides = {}) => ({
 });
 
 describe('notification inbox Phase A model', () => {
+  it('rounds historical negative microseconds down to their actual millisecond', () => {
+    expect(inboxUtcDate('1969-12-31T23:59:59.999999Z').toISOString())
+      .toBe('1969-12-31T23:59:59.999Z');
+    expect(inboxUtcDate('0099-12-31T23:59:59.999999Z').toISOString())
+      .toBe('0099-12-31T23:59:59.999Z');
+    expect(inboxUtcDate('1969-12-31T23:59:59.999000Z').toISOString())
+      .toBe('1969-12-31T23:59:59.999Z');
+    expect(inboxUtcDate('1970-01-01T00:00:00.000001Z').toISOString())
+      .toBe('1970-01-01T00:00:00.000Z');
+  });
+
   it('accepts exact full count larger than bounded page without fake total', () => {
     const value = validateInboxPage(livePage({
       items: Array.from({ length: 10 }, (_, index) => item(String(20 - index), {

@@ -59,7 +59,9 @@ export function parseInboxUtcMicros(value) {
 export function inboxUtcDate(value) {
   if (value == null) return null;
   const micros = parseInboxUtcMicros(value);
-  const parsed = new Date(Number(micros / 1000n));
+  let milliseconds = micros / 1000n;
+  if (micros % 1000n < 0n) milliseconds -= 1n;
+  const parsed = new Date(Number(milliseconds));
   if (!Number.isFinite(parsed.getTime())) throw new Error('invalid_notification_timestamp');
   return parsed;
 }
