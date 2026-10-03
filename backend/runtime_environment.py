@@ -47,6 +47,13 @@ def _serialized_value(value):
     return value
 
 
+def _physical_records(content):
+    lines = content.split("\n")
+    if lines[-1] == "":
+        lines.pop()  # Final newline sentinel is not a new blank record.
+    return lines
+
+
 def _regular(path, missing_ok=False):
     try:
         info = path.lstat()
@@ -111,7 +118,7 @@ def persist_default(config_file, key, proposed, *, persist_existing=False):
             info = _regular(path, missing_ok=True)
             existing = path.read_text(encoding="utf-8") if info else ""
             matches = [runtime_value(line.partition("=")[2])
-                       for line in existing.split("\n") if line.partition("=")[0].strip().upper() == key]
+                       for line in _physical_records(existing) if line.partition("=")[0].strip().upper() == key]
             if len(matches) > 1:
                 raise RuntimeConfigurationError("Doppelte Runtime-Schlüssel. Konfigurationsdatei lokal bereinigen.")
             if matches and matches[0] == proposed:
@@ -120,7 +127,7 @@ def persist_default(config_file, key, proposed, *, persist_existing=False):
             if matches and matches[0] and matches[0] != "dev-secret-key-change-in-production" and (not persist_existing or not current):
                 os.environ[key] = matches[0]
                 return matches[0]
-            lines = [line for line in existing.split("\n") if line.partition("=")[0].strip().upper() != key]
+            lines = [line for line in _physical_records(existing) if line.partition("=")[0].strip().upper() != key]
             lines.append(key + "=" + _serialized_value(proposed))
             # The exclusive file has a verified private ACL before secret bytes.
             from scripts.private_server_backup import protected_new_file
@@ -156,7 +163,7 @@ def persist_selected_values(config_file, values):
         with _locked(path):
             info = _regular(path, missing_ok=True)
             existing = path.read_text(encoding="utf-8") if info else ""
-            lines = existing.split("\n")
+            lines = _physical_records(existing)
             missing = []
             # Prove the whole bundle before creating a temporary secret file.
             for key, value in values.items():
