@@ -10,11 +10,11 @@ import useDisputeRead from './useDisputeRead';
 import { DisputeFailure } from './DisputeOriginals';
 import './BillingDisputes.css';
 
-function ReadWorkspace({ periodId, principal, onNewCase, onEvent, generation = 0 }) {
+function ReadWorkspace({ periodId, principal, onNewCase, onEvent, onDenied: parentDenied, generation = 0 }) {
   const { locale } = useTranslation(); const tr = key => disputeText(locale, key);
   const [stateFilter, setStateFilter] = useState(''); const [pages, setPages] = useState({ source: '', trail: [''] });
   const [caseId, setCaseId] = useState(null); const [retry, setRetry] = useState(0); const [fenced, setFenced] = useState(false);
-  const onDenied = useCallback(() => { setFenced(true); setCaseId(null); }, []);
+  const onDenied = useCallback(() => { setFenced(true); setCaseId(null); parentDenied?.(); }, [parentDenied]);
   const { canWrite, isAllowed } = useWriteAccess('/billing');
   const source = JSON.stringify([periodId, stateFilter, generation, retry]);
   const trail = pages.source === source ? pages.trail : [''];
@@ -24,7 +24,7 @@ function ReadWorkspace({ periodId, principal, onNewCase, onEvent, generation = 0
     principal, `${generation}:${retry}`, row => readCasePage(row, periodId), onDenied);
   const refresh = () => { setFenced(false); setRetry(value => value + 1); };
   if (fenced) return <section className="billing-disputes panel" aria-label={tr('title')}><DisputeFailure error={{ statusCode: 403 }} tr={tr} onRetry={refresh} /></section>;
-  return <section className="billing-disputes" aria-label={tr('title')}><h2>{tr('title')}</h2>
+  return <section className="billing-disputes" aria-label={tr('title')}><h2 tabIndex={-1}>{tr('title')}</h2>
     <div className="dispute-actions"><button className="btn btn-secondary" type="button" onClick={refresh}>{tr('refresh')}</button>
       {canWrite && onNewCase && status.data && <button className="btn btn-primary" type="button" onClick={() => { if (isAllowed()) onNewCase(status.data); }}>{tr('newCase')}</button>}</div>
     <p>{tr('financial')}</p>{status.loading && <p role="status">{tr('loading')}</p>}
