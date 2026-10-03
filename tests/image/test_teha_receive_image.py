@@ -61,6 +61,9 @@ class ImageFixture:
                 sql = sql.replace("generation > 0", "generation >= 0")
             if schema_change == "type" and table.name == "teha_external_mappings":
                 sql = sql.replace("connection_key VARCHAR(200)", "connection_key TEXT")
+            if schema_change == "nullable_pk" and table.name == "teha_external_mappings":
+                assert "id VARCHAR NOT NULL" in sql
+                sql = sql.replace("id VARCHAR NOT NULL", "id VARCHAR", 1)
             self.db.execute(sql)
             for index in table.indexes:
                 self.db.execute(str(CreateIndex(index).compile(dialect=dialect())))
@@ -377,6 +380,65 @@ def test_frozen_schema_proof_includes_constraints_and_guards(change):
             image.validate()
     finally:
         image.db.close()
+
+
+def test_frozen_varchar_primary_key_requires_native_not_null():
+    image = ImageFixture(schema_change="nullable_pk")
+    try:
+        info = {row[1]: row for row in image.db.execute('PRAGMA main.table_info("teha_external_mappings")')}
+        assert info["id"][2] == "VARCHAR" and info["id"][3] == 0 and info["id"][5] == 1
+        assert image.db.execute("SELECT id FROM main.teha_external_mappings").fetchall() == [("MAP",)]
+        image.seal()
+        with pytest.raises(TehaImageError, match="TEHA_IMAGE_SCHEMA_INVALID"):
+            image.validate()
+    finally:
+        image.db.close()
+
+
+def test_empty_case_aliased_temp_shadows_cannot_hide_populated_main_image(image):
+    # Main guards must be installed before unqualified names resolve to TEMP.
+    # All mode changes and DDL below belong to this isolated fixture setup.
+    image.seal()
+    image.db.rollback()
+    image.db.execute("PRAGMA query_only=OFF")
+    aliases = {
+        "teha_external_mappings": "TeHa_ExTeRnAl_MaPpInGs",
+        "teha_import_receipts": "TEHA_IMPORT_RECEIPTS",
+        "document_versions": "DoCuMeNt_VeRsIoNs",
+        "document_version_chunks": "DOCUMENT_VERSION_CHUNKS",
+    }
+    for name, alias in aliases.items():
+        ddl = image.db.execute(
+            "SELECT sql FROM main.sqlite_schema WHERE type='table' AND name=?", (name,),
+        ).fetchone()[0]
+        prefix = f"CREATE TABLE {name}"
+        assert ddl.startswith(prefix + " ")
+        image.db.execute(ddl.replace(prefix, f'CREATE TEMP TABLE "{alias}"', 1))
+        if name.startswith("teha_"):
+            indices = image.db.execute(
+                "SELECT name,sql FROM main.sqlite_schema WHERE type='index' AND tbl_name=? AND sql IS NOT NULL", (name,),
+            ).fetchall()
+            for index_name, index_ddl in indices:
+                kind = "CREATE UNIQUE INDEX" if index_ddl.startswith("CREATE UNIQUE INDEX ") else "CREATE INDEX"
+                prefix = f"{kind} {index_name}"
+                assert index_ddl.startswith(prefix + " ") and f" ON {name} " in index_ddl
+                temp_ddl = index_ddl.replace(prefix, f'{kind} temp."{index_name}"', 1)
+                image.db.execute(temp_ddl.replace(f" ON {name} ", f' ON "{alias}" ', 1))
+    image.db.commit()
+    image.db.execute("PRAGMA query_only=ON")
+    image.db.execute("BEGIN")
+    main_counts = {name: image.db.execute(f'SELECT COUNT(*) FROM main."{name}"').fetchone()[0] for name in aliases}
+    assert main_counts["teha_external_mappings"] == main_counts["teha_import_receipts"] == main_counts["document_versions"] == 1
+    assert main_counts["document_version_chunks"] > 0
+    assert all(image.db.execute(f'SELECT COUNT(*) FROM temp."{alias}"').fetchone()[0] == 0 for alias in aliases.values())
+    assert all(image.db.execute(f'SELECT COUNT(*) FROM "{name}"').fetchone()[0] == 0 for name in aliases)
+    assert image.db.in_transaction and image.db.execute("PRAGMA query_only").fetchone()[0] == 1
+    assert image.db.execute("PRAGMA trusted_schema").fetchone()[0] == 0
+    before = image.db.total_changes
+    with pytest.raises(TehaImageError, match="TEHA_IMAGE_CONTEXT_REQUIRED"):
+        image.validate()
+    assert image.db.total_changes == before and image.db.in_transaction
+    assert {name: image.db.execute(f'SELECT COUNT(*) FROM main."{name}"').fetchone()[0] for name in aliases} == main_counts
 
 
 def test_explicit_resource_budget_rejects_instead_of_truncating_unknown_snapshot(image):
