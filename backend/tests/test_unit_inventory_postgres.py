@@ -1,6 +1,9 @@
 """Actual PostgreSQL, including the same full 10,002-row source/export gate."""
 
 from backend.tests.test_contract_lifecycle_postgres import postgres as postgres
+from backend.tests.test_inventory_export_consistency import (
+    test_sql_concurrent_source_change_aborts_complete_export as changed_export,
+)
 from backend.tests.test_unit_inventory import (
     test_duplicate_and_null_sort_values_visit_every_unit as stable_pages,
 )
@@ -15,3 +18,7 @@ def test_postgres_full_units_source(postgres, monkeypatch):
 
 def test_postgres_units_null_and_duplicate_sort(postgres):
     stable_pages(postgres.store, "cold_rent", "desc")
+
+
+def test_postgres_unit_export_change_stops_stream(postgres):
+    changed_export(postgres.store, "units")

@@ -22,8 +22,10 @@ from ..services.file_storage import get_file_storage
 from ..services.ocr_service import OCRProcessingError
 from ..services.portfolio_scope import register_upload, require_assigned_scope
 from ..storage import NotFoundError, ValidationError
+from .document_inventory import router as inventory_router
 
 router = APIRouter(prefix="/documents", tags=["Dokumente"])
+router.include_router(inventory_router)
 
 
 class DocumentOcrAnalyzeRequest(BaseModel):

@@ -11,20 +11,20 @@ vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 'owner
 vi.mock('../contexts/DataStoreContext', () => ({ useDataStore: () => ({ invalidateRelated: vi.fn() }), useEntities: () => ({ items: [] }) }));
 vi.mock('../components/ConfirmDialog', () => ({ useConfirm: () => vi.fn() }));
 vi.mock('../components/FileViewer', () => ({ default: () => null }));
-vi.mock('../components/DataTable', () => ({ default: ({ onAdd }) => <section data-testid="table">{onAdd && <button onClick={onAdd}>Create metadata</button>}</section> }));
 const translate = key => key.split('.').reduce((value, part) => value?.[part], de) ?? key;
 vi.mock('../i18n', () => ({ useTranslation: () => ({ t: translate, locale: 'de-DE' }) }));
 const original = '/uploads/documents/retained.png';
 const ocrError = () => Object.assign(new Error('Bild hat 1200 Pixel; Budget ist 100. Auflösung reduzieren.'), { code: 'ocr_pixel_budget', statusCode: 422 });
 
 beforeEach(() => {
-  vi.clearAllMocks(); mocks.role = 'eigentuemer'; mocks.get.mockResolvedValue([]); mocks.getAll.mockResolvedValue([]);
+  vi.clearAllMocks(); mocks.role = 'eigentuemer'; mocks.get.mockImplementation(path => Promise.resolve(path.includes('/summary?')
+    ? { total: 0, with_file: 0, analyzed: 0, no_assignment: 0 } : { items: [], has_more: false, next_cursor: null, selected: null })); mocks.getAll.mockResolvedValue([]);
   mocks.post.mockRejectedValue(ocrError());
   mocks.fetch.mockResolvedValue({ ok: true, json: async () => ({ file_url: original }) });
   vi.stubGlobal('fetch', mocks.fetch);
 });
 async function upload(ui) {
-  await screen.findByTestId('table');
+  await screen.findByRole('region', { name: 'Gefilterte Dokumente' });
   fireEvent.change(ui.container.querySelector('input[type=file]'), { target: { files: [new File(['original bytes'], 'invoice.png', { type: 'image/png' })] } });
 }
 
@@ -37,7 +37,7 @@ it('shows typed numeric OCR failure and correction while retaining original and 
   expect(screen.getByText(de.documentsOCR.originalSaved)).toBeInTheDocument();
   expect(mocks.post.mock.calls.map(([path]) => path)).toEqual(['/documents/ocr-analyze']);
   expect(screen.getByText(new RegExp(original))).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Create metadata' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Dokument erstellen' }));
   fireEvent.change(screen.getByLabelText(/^Titel/), { target: { value: 'Manual review original' } });
   mocks.post.mockResolvedValue({ id: 'document' });
   fireEvent.click(screen.getByRole('button', { name: de.ui.buttons.save }));

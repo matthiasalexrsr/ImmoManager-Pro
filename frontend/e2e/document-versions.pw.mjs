@@ -38,11 +38,13 @@ test('explicit document originals survive version upload, lost response, restore
   const uploaded = await uploadedResponse;
   expect(uploaded.status(), await uploaded.text()).toBe(200);
   const originalUrl = (await uploaded.json()).file_url;
-  await page.getByRole('button', { name: 'Neu', exact: true }).click();
+  await page.getByRole('button', { name: 'Dokument erstellen', exact: true }).click();
   const metadata = page.getByRole('dialog', { name: 'Dokument erstellen', exact: true });
   await metadata.getByLabel('Titel *', { exact: true }).fill(title);
-  await metadata.getByLabel('Immobilie', { exact: true }).selectOption(property.id);
-  await metadata.getByLabel('Einheit', { exact: true }).selectOption(unit.id);
+  await metadata.getByRole('searchbox', { name: 'Immobilie suchen', exact: true }).fill(property.name);
+  await metadata.getByRole('button', { name: property.name, exact: true }).click();
+  await metadata.getByRole('searchbox', { name: 'Einheit suchen', exact: true }).fill(unit.label);
+  await metadata.getByRole('button', { name: unit.label, exact: true }).click();
   await metadata.getByLabel('Tags', { exact: true }).fill('synthetic, immutable-evidence');
   const createdResponse = page.waitForResponse(response => new URL(response.url()).pathname === '/api/v1/documents' && response.request().method() === 'POST');
   await metadata.getByRole('button', { name: 'Speichern', exact: true }).click();
@@ -60,7 +62,8 @@ test('explicit document originals survive version upload, lost response, restore
     await expect(page.locator('.photo-drop-zone')).toContainText(originalUrl);
   }
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.getByRole('row').filter({ hasText: title }).getByRole('button', { name: 'Versionsverlauf', exact: true }).click();
+  await page.getByRole('searchbox', { name: 'Dokumente durchsuchen' }).fill(title);
+  await page.getByRole('button', { name: `${title} Versionshistorie`, exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Dokumentversionen', exact: true });
   await expect(dialog).toBeVisible();
   await expect(page.getByRole('dialog', { name: 'Dateiansicht', exact: true })).toHaveCount(0);
@@ -123,7 +126,7 @@ test('explicit document originals survive version upload, lost response, restore
   }
   // Exercise both the overlay and its underlying page while the original upload
   // receipt remains mounted. A new login/reload must not conceal this state.
-  const opener = page.getByRole('row').filter({ hasText: title }).getByRole('button', { name: 'Versionsverlauf', exact: true });
+  const opener = page.getByRole('button', { name: `${title} Versionshistorie`, exact: true });
   for (const width of [360, 320]) {
     await page.setViewportSize({ width, height: 800 });
     await expect(dialog.locator('.document-version-list > li')).toHaveCount(3);
@@ -161,7 +164,8 @@ test('explicit document originals survive version upload, lost response, restore
   await page.evaluate(() => localStorage.clear());
   const readerHeaders = await login(page, reader, password);
   await page.goto('/documents');
-  await page.getByRole('row').filter({ hasText: title }).getByRole('button', { name: 'Versionsverlauf', exact: true }).click();
+  await page.getByRole('searchbox', { name: 'Dokumente durchsuchen' }).fill(title);
+  await page.getByRole('button', { name: `${title} Versionshistorie`, exact: true }).click();
   await expect(dialog.locator('.document-version-list > li')).toHaveCount(3);
   await expect(dialog.getByLabel('Kommentar zum Vorgang', { exact: true })).toHaveCount(0);
   await expect(dialog.getByRole('button', { name: 'Neue Fassung veröffentlichen', exact: true })).toHaveCount(0);
