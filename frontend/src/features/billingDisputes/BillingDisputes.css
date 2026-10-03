@@ -1,0 +1,20 @@
+.billing-disputes, .dispute-case { min-width: 0; margin-block: 1rem; }
+.billing-disputes h2:focus { outline-offset: .3rem; }
+.dispute-actions, .dispute-facts { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; margin-block: .75rem; }
+.dispute-facts > div { min-width: 9rem; }
+.dispute-facts dt { color: var(--text-muted); }
+.dispute-facts dd { margin: .25rem 0; }
+.billing-disputes dd, .billing-disputes code, .billing-disputes li { overflow-wrap: anywhere; }
+.billing-disputes pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .8rem; }
+.dispute-reason { white-space: pre-wrap; overflow-wrap: anywhere; }
+.dispute-table { overflow: auto; max-width: 100%; }
+.dispute-table table { min-width: 520px; width: 100%; border-collapse: collapse; }
+.dispute-table td, .dispute-table th { padding: .5rem; border-bottom: 1px solid var(--border-color, #ddd); text-align: left; }
+.dispute-error, .dispute-legacy { padding: .75rem; border: 1px solid var(--color-warning, #c57600); border-radius: .5rem; margin-block: .75rem; }
+.dispute-error .btn { margin: .5rem; }
+.dispute-evidence ul, .dispute-case-list { list-style: none; padding: 0; }
+.dispute-evidence li, .dispute-case-list li { display: grid; gap: .4rem; padding: .75rem 0; border-bottom: 1px solid var(--border-color, #ddd); }
+.dispute-chronicle > ol { padding-left: 1.5rem; }
+.dispute-event { padding-block: .5rem; }
+.dispute-case { padding: 1rem; }
+@media (max-width: 480px) { .dispute-case { padding: .6rem; } .dispute-actions > .btn { max-width: 100%; white-space: normal; } }
