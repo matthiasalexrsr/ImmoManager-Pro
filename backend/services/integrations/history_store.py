@@ -64,7 +64,7 @@ class SQLIntegrationHistoryStore:
         return self.keyring if self.keyring is not None else ring_for()
 
     @contextmanager
-    def connection(self, *, write=False, actor=None):
+    def connection(self, *, write=False, actor=None, passthrough_body=False):
         # A factory gives an unscoped independent Session, never the domain
         # request's scoped registry. Use its bind, close it, own the Connection.
         with self.factory() as session:
@@ -72,6 +72,7 @@ class SQLIntegrationHistoryStore:
         from ... import auth
 
         account_lock = getattr(auth._user_store, "_lock", None) if write else None
+        body_passthrough = False
         try:
             # The account lifetime is OUTSIDE transaction exit so a mutex taken
             # after SQLite BEGIN remains held through the actual DB commit.
@@ -106,10 +107,18 @@ class SQLIntegrationHistoryStore:
                         carrier = cast(Table, AuthSetupORM.__table__)
                         if connection.execute(update(carrier).where(carrier.c.id == 1).values(completed_at=carrier.c.completed_at)).rowcount != 1:
                             raise HistoryError("HISTORY_NOT_CONFIGURED")
-                    yield connection
+                    try:
+                        yield connection
+                    except BaseException:
+                        body_passthrough = passthrough_body
+                        raise
         except SQLAlchemyError:
+            if body_passthrough:
+                raise
             raise HistoryError("HISTORY_WRITE_FAILED") from None
         except (ValueError, TypeError, KeyError, OverflowError):
+            if body_passthrough:
+                raise
             raise HistoryError("HISTORY_CORRUPT") from None
 
     def _head(self, connection, integration_id):
@@ -374,6 +383,6 @@ def lock_history_fence(connection, *, nowait=False):
 @contextmanager
 def history_fence(*, nowait=False):
     """Hold the actual configured journal connection throughout a Memory reset."""
-    with configured_history().connection(write=True) as connection:
+    with configured_history().connection(write=True, passthrough_body=True) as connection:
         lock_history_fence(connection, nowait=nowait)
         yield connection

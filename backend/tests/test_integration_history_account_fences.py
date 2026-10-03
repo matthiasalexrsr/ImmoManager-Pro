@@ -132,3 +132,12 @@ def test_missing_sqlauth_carrier_is_not_repaired(journal, monkeypatch):
     with engine.connect() as db:
         assert db.execute(text("SELECT 1 FROM auth_setup")).first() is None
         assert db.execute(text("SELECT 1 FROM integration_runs")).first() is None
+
+
+def test_history_fence_preserves_caller_validation_errors(journal):
+    store, _, _ = journal
+    from backend.storage import ValidationError
+
+    with pytest.raises(ValidationError, match="synthetic retention refusal"):
+        with store.connection(write=True, passthrough_body=True):
+            raise ValidationError("synthetic retention refusal")
