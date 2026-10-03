@@ -17,6 +17,10 @@ export function OriginalSnapshot({ snapshot, locale, tr, selected = [], onSelect
   const start = safePage * PAGE_SIZE;
   return <section aria-label={tr('original')} className="dispute-original">
     <h3>{tr('original')}</h3>
+    {snapshot.original_party && <section aria-label={tr('originalParty')}><h4>{tr('originalParty')}</h4><p>{tr('partyFrozen')}</p>
+      <p>{snapshot.original_party.identity.full_name}</p><address>{[snapshot.original_party.identity.address_line,
+        [snapshot.original_party.identity.postal_code, snapshot.original_party.identity.city].filter(Boolean).join(' '), snapshot.original_party.identity.country].filter(Boolean).map((line, index) => <div key={index}>{line}</div>)}</address>
+      <small>{tr('created')}: {new Date(snapshot.original_party.captured_at).toLocaleString(locale)}</small></section>}
     <dl className="dispute-facts">{[['revision', snapshot.revision], ['total', snapshot.total_cost], ['advance', snapshot.advance_paid], ['balance', snapshot.balance]].map(([key, value]) => value != null && <div key={key}><dt>{tr(key)}</dt><dd>{key === 'revision' ? value : money(value)}</dd></div>)}</dl>
     {rows.length > 0 && <><h4>{tr('positions')}</h4><div className="dispute-table" role="region" tabIndex={0} aria-label={tr('positions')}><table>
       <thead><tr>{onSelect && <th scope="col">{tr('positions')}</th>}<th scope="col">{tr('position')}</th><th scope="col">{tr('description')}</th><th scope="col">{tr('amount')}</th></tr></thead>

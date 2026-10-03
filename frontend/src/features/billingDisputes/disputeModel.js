@@ -25,6 +25,19 @@ export function readManifest(row) {
   return row;
 }
 
+export function readVersionPage(page, documentId) {
+  if (!page || page.document_id !== documentId || !Array.isArray(page.items) || page.items.length > PAGE_SIZE
+    || !(page.next_before === null || revision(page.next_before))) invalid();
+  let previous = Infinity;
+  for (const row of page.items) {
+    readManifest({ ...row, version_id: row.id });
+    if (row.document_id !== documentId || !revision(row.number) || row.number >= previous) invalid();
+    previous = row.number;
+  }
+  if (page.next_before !== null && page.items.at(-1)?.number !== page.next_before) invalid();
+  return page;
+}
+
 export function readEvent(row, caseId) {
   if (!row || !identifier(row.id) || row.case_id !== caseId || !revision(row.revision)
     || !kinds.includes(row.kind) || !identifier(row.reason) || !day(row.observed_on)
@@ -42,8 +55,18 @@ export function readCase(row, caseId, periodId) {
   if (row.case_kind === 'tenant_statement' && (!identifier(row.statement_id)
     || row.original_snapshot.id !== row.statement_id || row.original_snapshot.revision !== row.statement_revision)) invalid();
   if (row.case_kind === 'property_review' && (row.statement_id !== null || row.original_snapshot.period_id !== periodId)) invalid();
+  readOriginalParty(row.original_snapshot, periodId);
   if (readEvent(row.latest_event, caseId).revision !== row.revision) invalid();
   return row;
+}
+
+function readOriginalParty(snapshot, periodId) {
+  const party = snapshot.original_party;
+  if (party === undefined) return;
+  if (!object(party) || party.statement_id !== snapshot.id || party.period_id !== periodId || party.revision !== snapshot.revision
+    || party.contract_id !== snapshot.contract_id || party.unit_id !== snapshot.unit_id || !identifier(party.tenant_id)
+    || !object(party.identity) || !identifier(party.identity.full_name) || typeof party.captured_at !== 'string'
+    || !['address_line', 'postal_code', 'city', 'country'].every(key => party.identity[key] === null || typeof party.identity[key] === 'string')) invalid();
 }
 
 export function readCasePage(page, periodId) {
@@ -107,12 +130,14 @@ export function appendCommand(caseRow, kind, key = crypto.randomUUID()) {
 
 export function readPreview(result, command, caseId = null) {
   const { preview_hash: _oldHash, ...request } = command;
-  if (!result || !hash(result.preview_hash) || !object(result.binding) || !Array.isArray(result.evidence)
+  if (!result || !hash(result.preview_hash) || !object(result.binding) || !object(result.binding.original_snapshot) || !hash(result.binding.original_hash) || !Array.isArray(result.evidence)
     || canonical(result.request) !== canonical(request)) invalid();
   if (caseId ? result.binding.id !== caseId || result.binding.revision !== command.expected_revision
     : result.binding.period_id !== command.period_id || result.binding.statement_id !== command.statement_id
       || result.binding.snapshot_hash !== command.expected_snapshot_hash
       || result.binding.statement_revision !== command.expected_statement_revision) invalid();
+  readOriginalParty(result.binding.original_snapshot, result.binding.period_id);
+  if (command.kind === 'correction_link' && (!result.correction || result.correction.id !== command.correction_statement_id || !revision(result.correction.revision) || !hash(result.correction.snapshot_hash))) invalid();
   result.evidence.forEach(readManifest);
   if (new Set(result.evidence.map(row => row.version_id)).size !== result.evidence.length
     || canonical([...result.evidence.map(row => row.version_id)].sort()) !== canonical([...command.evidence_version_ids].sort())) invalid();

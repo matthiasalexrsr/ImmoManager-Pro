@@ -1,5 +1,11 @@
 const de = {
+  actionUnavailable: 'Diese Aktion ist im aktuellen Prüfstand nicht verfügbar.', sourceChanged: 'Bitte die geladene Originalfassung prüfen und für diesen Entwurf ausdrücklich übernehmen.',
+  adoptSource: 'Geprüften Originalstand übernehmen', ownerOriginalMissing: 'Diese Periode liefert kein vollständiges unveränderbares Objektoriginal.',
+  originalParty: 'Belegte Originalmietpartei', partyFrozen: 'Person und Anschrift sind im Original der tatsächlichen Finalisierung eingefroren.',
   title: 'Widerspruchsakten', status: 'Prüfstand', open: 'Offen', in_review: 'In Prüfung', withdrawn: 'Zurückgenommen', closed: 'Abgeschlossen',
+  chooseDocument: 'Dokument', chooseVersion: 'Archivierte Originalversion', version: 'Version', noVersions: 'Keine archivierten Versionen auf dieser Seite.',
+  selectedVersions: 'Gewählte Originalversionen', verifyVersions: 'Originalname, Zuordnung und Bytes werden in der Vorschau geprüft.', remove: 'Auswahl entfernen',
+  search: 'Suchen', selected: 'Ausgewählt', selectionUnavailable: 'Die gespeicherte Auswahl wird geprüft oder ist nicht verfügbar.', noChoices: 'Keine passenden Einträge auf dieser Seite.',
   opened: 'Eröffnet', note: 'Notiz', reopened: 'Wiederaufnahme', correction: 'Berichtigung', correction_link: 'Korrektur verknüpft',
   tenant_statement: 'Einzelabrechnung', property_review: 'Objektprüfung', loading: 'Wird geladen …', retry: 'Erneut laden',
   invalidDisputeResponse: 'Die Aktenantwort konnte nicht geprüft werden. Bitte den aktuellen Stand erneut laden.',
@@ -23,6 +29,12 @@ const de = {
 };
 const en = {
   ...de, title: 'Objection files', status: 'Review status', open: 'Open', in_review: 'Under review', withdrawn: 'Withdrawn', closed: 'Closed',
+  actionUnavailable: 'This action is unavailable in the current review status.', sourceChanged: 'Review the loaded original and explicitly adopt it for this draft.',
+  adoptSource: 'Adopt reviewed original record', ownerOriginalMissing: 'This period has no complete immutable property original.',
+  originalParty: 'Verified original tenant', partyFrozen: 'Person and postal address are frozen in the original at actual finalization.',
+  chooseDocument: 'Document', chooseVersion: 'Archived original version', version: 'Version', noVersions: 'No archived versions on this page.',
+  selectedVersions: 'Selected original versions', verifyVersions: 'Original name, references and bytes are verified in the preview.', remove: 'Remove selection',
+  search: 'Search', selected: 'Selected', selectionUnavailable: 'The saved selection is being verified or is unavailable.', noChoices: 'No matching entries on this page.',
   opened: 'Opened', note: 'Note', reopened: 'Reopened', correction: 'Correction', correction_link: 'Linked corrected statement',
   tenant_statement: 'Individual statement', property_review: 'Property review', loading: 'Loading …', retry: 'Try again',
   invalidDisputeResponse: 'The file response could not be verified. Please reload the current record.', unavailable: 'Access has changed or this file is unavailable.',
@@ -45,6 +57,12 @@ const en = {
 };
 const es = {
   ...en, title: 'Expedientes de reclamación', status: 'Estado de revisión', open: 'Abierto', in_review: 'En revisión', withdrawn: 'Retirado', closed: 'Cerrado',
+  actionUnavailable: 'Esta acción no está disponible en el estado actual.', sourceChanged: 'Revise el original cargado y adóptelo expresamente para este borrador.',
+  adoptSource: 'Adoptar original revisado', ownerOriginalMissing: 'Este período no tiene un original completo e inmutable del inmueble.',
+  originalParty: 'Inquilino original acreditado', partyFrozen: 'La persona y la dirección postal se conservan en el original de la finalización real.',
+  chooseDocument: 'Documento', chooseVersion: 'Versión original archivada', version: 'Versión', noVersions: 'No hay versiones archivadas en esta página.',
+  selectedVersions: 'Versiones originales elegidas', verifyVersions: 'El nombre original, las referencias y los bytes se verifican en la vista previa.', remove: 'Quitar selección',
+  search: 'Buscar', selected: 'Elegido', selectionUnavailable: 'Se está verificando la selección guardada o no está disponible.', noChoices: 'No hay entradas coincidentes en esta página.',
   opened: 'Apertura', note: 'Nota', reopened: 'Reapertura', correction: 'Rectificación', correction_link: 'Liquidación rectificada vinculada',
   tenant_statement: 'Liquidación individual', property_review: 'Revisión del inmueble', loading: 'Cargando …', retry: 'Reintentar',
   invalidDisputeResponse: 'No se pudo verificar la respuesta del expediente. Vuelva a cargar los datos actuales.', unavailable: 'El acceso ha cambiado o el expediente no está disponible.',
