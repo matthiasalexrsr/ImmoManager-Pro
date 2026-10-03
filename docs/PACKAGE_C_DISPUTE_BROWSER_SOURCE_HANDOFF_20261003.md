@@ -78,6 +78,9 @@ gefälschte Auth-/Draft-/Previewantworten oder Load-all-Auswahlhilfen.
 Die Fälle fotografieren tatsächliche Review-/Scope-/Originalansichten bei
 1440/360/320 und prüfen die Seitenbreite. Die Bilder müssen nach einem wirklichen
 Lauf noch angesehen werden; es existiert bislang kein visueller PASS.
+Zusätzlich zum vollständigen Seitenbild erhält jede Breite einen tatsächlichen
+Viewport-Ausschnitt beim Akten-/Review-/Fehlerkopf. So bleibt der fachliche
+Kontext auch bei der langen 25er Chronik für die Bildprüfung lesbar.
 
 ## Tatsächlich ausgeführte kleine Quellenchecks
 

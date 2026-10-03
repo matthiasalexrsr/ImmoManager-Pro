@@ -145,6 +145,13 @@ export async function responsive(page, testInfo, name) {
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
     const path = testInfo.outputPath(`${name}-${width}.png`); await page.screenshot({ path, fullPage: true, animations: 'disabled' });
     await testInfo.attach(`${name}-${width}`, { path, contentType: 'image/png' });
+    // Keep the actual file context legible even when the complete chronology
+    // makes the full-page image much taller than one screen.
+    const preview = page.locator('.dispute-preview'); const cases = page.locator('.dispute-case');
+    const target = await preview.count() ? preview : await cases.count() ? cases : page.locator('.billing-disputes').first();
+    await target.locator('h2, h3, [role="alert"]').first().scrollIntoViewIfNeeded();
+    const detail = testInfo.outputPath(`${name}-${width}-detail.png`); await page.screenshot({ path: detail, animations: 'disabled' });
+    await testInfo.attach(`${name}-${width}-detail`, { path: detail, contentType: 'image/png' });
   }
   await page.setViewportSize({ width: 1440, height: 1000 });
 }
