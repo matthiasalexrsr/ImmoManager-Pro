@@ -8,7 +8,7 @@ from pydantic import TypeAdapter
 
 from .measurement_history_types import FactData, MeasurementCommand
 
-DATA = TypeAdapter(FactData)
+DATA: TypeAdapter = TypeAdapter(FactData)
 
 
 class MeasurementIntegrityError(ValueError):
@@ -48,6 +48,9 @@ def validate_fact(row: dict, evidence: list[dict]) -> None:
             raise ValueError("withdrawal")
         if data.kind == "proration" and not evidence:
             raise ValueError("approval evidence")
+        for name in ("meter_id", "allocation_key_id", "contract_id"):
+            if row[name] != getattr(data, name, None):
+                raise ValueError("typed parent")
         if len({item["version_id"] for item in evidence}) != len(evidence):
             raise ValueError("duplicate evidence")
         for item in evidence:
@@ -73,6 +76,12 @@ def validate_measurement_snapshot(family: dict[str, list[dict]], *, parents: dic
         if any(len(maps[name]) != len(family[name]) for name in MEASUREMENT_TABLES):
             raise ValueError("duplicate ids")
         ledgers, commands, facts, evidence = (maps[name] for name in MEASUREMENT_TABLES)
+        by_command: dict[str, list] = {}
+        by_fact: dict[str, list] = {}
+        for fact in facts.values():
+            by_command.setdefault(fact["command_id"], []).append(fact)
+        for link in evidence.values():
+            by_fact.setdefault(link["fact_id"], []).append(link)
         command_keys, revisions, roots, successors = set(), set(), set(), set()
         for ledger in ledgers.values():
             unit = parents["units"][ledger["id"]]
@@ -91,14 +100,15 @@ def validate_measurement_snapshot(family: dict[str, list[dict]], *, parents: dic
                 raise ValueError("command")
             command_keys.add(marker)
             revisions.add(revision)
-            children = sorted((fact for fact in facts.values() if fact["command_id"] == command["id"]), key=lambda r: r["position"])
+            children = sorted(by_command.get(command["id"], []), key=lambda r: r["position"])
             if ([item["position"] for item in children] != list(range(len(parsed.changes)))
                     or command["result"] != {"revision": command["revision"], "fact_ids": [item["id"] for item in children]}):
                 raise ValueError("command result")
             for change, child in zip(parsed.changes, children, strict=True):
                 if (child["source_key"] != change.source_key or child["predecessor_id"] != change.predecessor_id
                         or child["data"] != change.data.model_dump(mode="json")
-                        or child["reason"] != change.reason or child["withdrawn"] != change.withdrawn):
+                        or child["reason"] != change.reason or child["withdrawn"] != change.withdrawn
+                        or set(change.evidence_version_ids) != {link["version_id"] for link in by_fact.get(child["id"], [])}):
                     raise ValueError("command facts")
         for ledger in ledgers.values():
             actual = sorted(revision for lid, revision in revisions if lid == ledger["id"])
@@ -106,7 +116,7 @@ def validate_measurement_snapshot(family: dict[str, list[dict]], *, parents: dic
                 raise ValueError("revision gap")
         for fact in facts.values():
             ledger, command = ledgers[fact["ledger_id"]], commands[fact["command_id"]]
-            links = [item for item in evidence.values() if item["fact_id"] == fact["id"]]
+            links = by_fact.get(fact["id"], [])
             validate_fact(fact, links)
             if (fact["portfolio_id"] != ledger["portfolio_id"] or fact["property_id"] != ledger["property_id"]
                     or command["ledger_id"] != ledger["id"] or fact["revision"] != command["revision"]):
@@ -140,6 +150,8 @@ def validate_measurement_snapshot(family: dict[str, list[dict]], *, parents: dic
                     raise ValueError("document original")
         if any(link["fact_id"] not in facts for link in evidence.values()):
             raise ValueError("orphan evidence")
+        for ledger in ledgers.values():
+            validate_effective([fact for fact in facts.values() if fact["ledger_id"] == ledger["id"] and fact["id"] not in successors])
     except (KeyError, TypeError, ValueError) as error:
         raise MeasurementIntegrityError("Historische Quellenfamilie ist unvollständig oder widersprüchlich.") from error
 
@@ -151,6 +163,7 @@ def overlaps(left, right) -> bool:
 def validate_effective(rows: list[dict]) -> None:
     """Local timeline consistency; incomplete evidence may be saved for repair."""
     current = {row["source_key"]: DATA.validate_python(row["data"]) for row in rows if not row["withdrawn"]}
+    by_id = {row["id"]: DATA.validate_python(row["data"]) for row in rows if not row["withdrawn"] and "id" in row}
     for key, data in current.items():
         if data.kind in {"reading", "proration"}:
             assignment = current.get(data.assignment_key)
@@ -160,6 +173,12 @@ def validate_effective(rows: list[dict]) -> None:
             last = first if data.kind == "reading" else data.valid_until
             if not assignment.valid_from <= first <= last <= assignment.valid_until:
                 raise MeasurementIntegrityError("Ablesung/Freigabe liegt außerhalb der belegten Zählerbetriebszeit.")
+            if data.kind == "proration":
+                left, right = by_id.get(data.start_reading_id), by_id.get(data.end_reading_id)
+                if (left is None or right is None or left.kind != "reading" or right.kind != "reading"
+                        or left.assignment_key != data.assignment_key or right.assignment_key != data.assignment_key
+                        or left.boundary_date != first or right.boundary_date != last or left.value > right.value):
+                    raise MeasurementIntegrityError("Zeitfreigabe benötigt die noch wirksamen Originalablesungen an beiden genannten Grenzen.")
         for other_key, other in current.items():
             if key >= other_key or data.kind != other.kind:
                 continue

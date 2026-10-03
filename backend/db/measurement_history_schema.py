@@ -1,5 +1,7 @@
 """Migration-only DDL and read-only family validation."""
 
+from typing import cast
+
 from sqlalchemy import Table, UniqueConstraint, inspect
 
 from ..services.measurement_history_validation import MeasurementIntegrityError
@@ -14,7 +16,7 @@ def validate_measurement_schema(connection) -> bool:
     if present != set(MEASUREMENT_TABLES):
         raise MeasurementIntegrityError("Historische Quellenfamilie ist unvollständig; Migration prüfen.")
     for model in MEASUREMENT_MODELS:
-        table: Table = model.__table__
+        table = cast(Table, model.__table__)
         columns = {row["name"] for row in inspector.get_columns(table.name)}
         unique = {tuple(row["column_names"]) for row in inspector.get_unique_constraints(table.name)}
         foreign = {(tuple(row["constrained_columns"]), row["referred_table"], tuple(row["referred_columns"]),
