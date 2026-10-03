@@ -1,7 +1,7 @@
 """Durable automatic coordination and bounded recurrence lookup indices."""
 
 from alembic import op
-from sqlalchemy import Index, inspect, select
+from sqlalchemy import inspect, select
 
 from backend.db.operational_job_models import OperationalWorkItemORM
 from backend.db.operational_models import OperationalOccurrenceORM
@@ -24,7 +24,7 @@ def upgrade():
     OperationalSchedulerORM.__table__.create(connection)
     for name, table, columns in INDICES:
         if name not in {value["name"] for value in inspect(connection).get_indexes(table.name)}:
-            Index(name, *(table.c[column] for column in columns)).create(connection)
+            op.create_index(name, table.name, list(columns))
 
 
 def downgrade():
