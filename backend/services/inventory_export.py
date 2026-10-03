@@ -28,6 +28,24 @@ def check_access(scope, token):
         raise HTTPException(401, "Bitte erneut anmelden.")
 
 
+def prepare_read(inventory, session, query):
+    prepare = getattr(inventory, "prepare_read", None)
+    if prepare is not None:
+        prepare(session, query)
+    elif query.search:
+        inventory.ensure_sqlite_casefold(session)
+
+
+def page_position(inventory, query, row):
+    position = getattr(inventory, "page_position", None)
+    return position(query, row) if position is not None else (row[query.sort_by], row["id"])
+
+
+def public_rows(inventory, rows):
+    project = getattr(inventory, "export_row", None)
+    return (project(row) for row in rows) if project is not None else rows
+
+
 def csv_chunks(store, query, *, inventory, fields, token=None, chunk_size=100):
     if type(chunk_size) is not int or chunk_size < 1:
         raise ValueError("Positive transfer batch required")
@@ -45,15 +63,14 @@ def csv_chunks(store, query, *, inventory, fields, token=None, chunk_size=100):
                 with _memory_lock, scope_context(scope):
                     check_access(scope, token)
                     rows = inventory.memory_page(store, query, scope, after, chunk_size)
-                    chunk = encode_rows(rows, fields, header=first)
+                    chunk = encode_rows(public_rows(inventory, rows), fields, header=first)
                 yield chunk
                 if len(rows) < chunk_size:
                     break
-                after, first = (rows[-1][query.sort_by], rows[-1]["id"]), False
+                after, first = page_position(inventory, query, rows[-1]), False
             return
         with _snapshot(engine) as connection, Session(bind=connection, autoflush=False) as snapshot:
-            if query.search:
-                inventory.ensure_sqlite_casefold(snapshot)
+            prepare_read(inventory, snapshot, query)
             after, first = None, True
             while True:
                 with scope_context(scope):
@@ -65,18 +82,17 @@ def csv_chunks(store, query, *, inventory, fields, token=None, chunk_size=100):
                     # batch instead of trusting access at export start forever.
                     if rows:
                         with Session(engine, autoflush=False) as live:
-                            if query.search:
-                                inventory.ensure_sqlite_casefold(live)
+                            prepare_read(inventory, live, query)
                             source = inventory.statement(query, scope).subquery()
                             current = {row["id"]: inventory.item(dict(row)).model_dump(mode="json") for row in
                                        live.execute(select(source).where(source.c.id.in_([row["id"] for row in rows]))).mappings()}
                         if any(current.get(row["id"]) != inventory.item(row).model_dump(mode="json") for row in rows):
                             raise HTTPException(409, "Daten oder Zuordnungen wurden geändert. Bitte den Export erneut starten.")
                     check_access(scope, token)
-                    chunk = encode_rows(rows, fields, header=first)
+                    chunk = encode_rows(public_rows(inventory, rows), fields, header=first)
                 yield chunk
                 if len(rows) < chunk_size:
                     break
-                after, first = (rows[-1][query.sort_by], rows[-1]["id"]), False
+                after, first = page_position(inventory, query, rows[-1]), False
     return generate()
 
