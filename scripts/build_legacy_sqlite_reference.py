@@ -16,7 +16,7 @@ from contextlib import closing
 from pathlib import Path
 from zipfile import ZipFile
 
-from backend.legacy_sqlite_upgrade.schema import catalog, catalog_hash
+from backend.legacy_sqlite_upgrade.schema import canonical_catalog, catalog, catalog_hash
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = "1910f25"
@@ -46,11 +46,13 @@ def clean_environment(data: Path, database: Path) -> dict:
     env.update(DATA_DIR=str(data), DATABASE_URL="sqlite:///" + database.as_posix(),
                UPLOADS_DIR=str(data / "uploads"), INTEGRATION_STATE_FILE=str(data / "integrations.json"),
                JWT_SECRET_KEY="synthetic-legacy-reference-key-" + "x" * 48,
-               ENVIRONMENT="development", STORAGE_BACKEND="sql", AUTO_MIGRATE="false")
+               ENVIRONMENT="development", STORAGE_BACKEND="sql", AUTO_MIGRATE="false",
+               AI_ENABLED="false", AUTO_SEED_DEMO_DATA="false")
     return env
 
 
 def build(output: Path):
+    previous = json.loads(output.read_text(encoding="utf-8"))["profiles"] if output.exists() else None
     commit = subprocess.check_output(["git", "rev-parse", SOURCE + "^{commit}"], cwd=ROOT, text=True).strip()
     archive = subprocess.check_output(["git", "archive", "--format=zip", commit, "backend"], cwd=ROOT)
     with tempfile.TemporaryDirectory(prefix="immo-legacy-reference-") as temporary:
@@ -90,6 +92,12 @@ def build(output: Path):
                 for table, target in required.items() if table in old}
             reference["missing_columns"] = {key: value for key, value in reference["missing_columns"].items() if value}
             reference["validated_target_head"] = head
+        if previous is not None:
+            for name, reference in result.items():
+                old = previous[name]
+                if old["schema_sha256"] != catalog_hash(old["catalog"]) or canonical_catalog(old["catalog"]) != reference["catalog"]:
+                    raise RuntimeError("Frozen historical schema changed; target-only regeneration refused")
+                reference["ddl"] = old["ddl"]  # Original historical DDL remains byte-for-byte frozen.
         output.write_text(json.dumps({"format": 1, "profiles": result}, ensure_ascii=False,
                                      sort_keys=True, indent=2) + "\n", encoding="utf-8")
 

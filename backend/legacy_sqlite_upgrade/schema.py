@@ -26,12 +26,50 @@ def normalized_sql(sql: str | None) -> str | None:
     return " ".join(token if token[0] in "'\"`[" else token.lower() for token in tokens)
 
 
+def normalized_table_sql(sql: str | None) -> str | None:
+    normalized = normalized_sql(sql)
+    if normalized is None:
+        return None
+    tokens = re.findall(r"'(?:''|[^'])*'|\"(?:\"\"|[^\"])*\"|`(?:``|[^`])*`|\[(?:[^\]])*\]|[^\s]+", normalized)
+    if tokens[:2] != ["create", "table"] or "(" not in tokens:
+        return normalized
+    start = tokens.index("(")
+    depth, pieces, piece = 0, [], []
+    for offset, token in enumerate(tokens[start + 1:], start + 1):
+        if token == ")" and depth == 0:
+            pieces.append(piece)
+            end = offset
+            break
+        if token == "," and depth == 0:
+            pieces.append(piece)
+            piece = []
+            continue
+        depth += (token == "(") - (token == ")")
+        piece.append(token)
+    else:
+        return normalized
+    kinds = {"constraint", "primary", "foreign", "unique", "check"}
+    columns = [value for value in pieces if value and value[0] not in kinds]
+    constraints = sorted([value for value in pieces if value and value[0] in kinds])
+    body = []
+    for value in columns + constraints:
+        if body:
+            body.append(",")
+        body.extend(value)
+    return " ".join(tokens[:start + 1] + body + tokens[end:])
+
+
+def canonical_catalog(value: dict) -> dict:
+    objects = [list(row) for row in value["objects"]]
+    for row in objects:
+        row[3] = normalized_table_sql(row[3]) if row[0] == "table" else normalized_sql(row[3])
+    return {"objects": objects, "tables": value["tables"]}
+
+
 def catalog(connection: sqlite3.Connection) -> dict:
     objects = [list(row) for row in connection.execute(
         "SELECT type,name,tbl_name,sql FROM sqlite_master "
         "WHERE name NOT LIKE 'sqlite_%' AND name <> 'alembic_version' ORDER BY type,name")]
-    for row in objects:
-        row[3] = normalized_sql(row[3])
     tables = {}
     for kind, name, _, _ in objects:
         if kind != "table":
@@ -49,7 +87,7 @@ def catalog(connection: sqlite3.Connection) -> dict:
             "foreign_keys": sorted([list(row[1:]) for row in connection.execute(f"PRAGMA foreign_key_list({quoted(name)})")]),
             "indices": indices,
         }
-    return {"objects": objects, "tables": tables}
+    return canonical_catalog({"objects": objects, "tables": tables})
 
 
 def catalog_hash(value: dict) -> str:

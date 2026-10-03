@@ -608,31 +608,31 @@
             "table",
             "accounts",
             "accounts",
-            "create table accounts ( id varchar not null , portfolio_id varchar not null , name text not null , bank_name text , iban text , iban_fingerprint varchar ( 64 ) , bic text , account_type text not null , opening_balance numeric ( 12 , 2 ) not null , balance numeric ( 12 , 2 ) not null , last_synced_at datetime , created_at datetime not null , updated_at datetime not null , primary key ( id ) , constraint uq_accounts_iban unique ( iban ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete cascade )"
+            "create table accounts ( id varchar not null , portfolio_id varchar not null , name text not null , bank_name text , iban text , iban_fingerprint varchar ( 64 ) , bic text , account_type text not null , opening_balance numeric ( 12 , 2 ) not null , balance numeric ( 12 , 2 ) not null , last_synced_at datetime , created_at datetime not null , updated_at datetime not null , constraint uq_accounts_iban unique ( iban ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete cascade , primary key ( id ) )"
           ],
           [
             "table",
             "allocation_keys",
             "allocation_keys",
-            "create table allocation_keys ( id varchar not null , property_id varchar not null , name text not null , key_type text not null , description text , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( property_id ) references properties ( id ) on delete cascade )"
+            "create table allocation_keys ( id varchar not null , property_id varchar not null , name text not null , key_type text not null , description text , created_at datetime not null , updated_at datetime not null , foreign key ( property_id ) references properties ( id ) on delete cascade , primary key ( id ) )"
           ],
           [
             "table",
             "annual_tax_profiles",
             "annual_tax_profiles",
-            "create table annual_tax_profiles ( id varchar not null , portfolio_id varchar not null , tax_year integer not null , previous_version_id varchar , idempotency_key varchar ( 200 ) not null , actor_id varchar not null , spec_json text not null , sha256 varchar ( 64 ) not null , created_at datetime not null , primary key ( id ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( previous_version_id ) references annual_tax_profiles ( id ) on delete restrict , unique ( idempotency_key ) )"
+            "create table annual_tax_profiles ( id varchar not null , portfolio_id varchar not null , tax_year integer not null , previous_version_id varchar , idempotency_key varchar ( 200 ) not null , actor_id varchar not null , spec_json text not null , sha256 varchar ( 64 ) not null , created_at datetime not null , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( previous_version_id ) references annual_tax_profiles ( id ) on delete restrict , primary key ( id ) , unique ( idempotency_key ) )"
           ],
           [
             "table",
             "annual_tax_projections",
             "annual_tax_projections",
-            "create table annual_tax_projections ( id varchar not null , portfolio_id varchar not null , tax_year integer not null , profile_version_id varchar not null , annual_root_key varchar , previous_projection_id varchar , idempotency_key varchar ( 200 ) not null , actor_id varchar not null , request_json text not null , manifest_json text not null , manifest_sha256 varchar ( 64 ) not null , created_at datetime not null , primary key ( id ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( profile_version_id ) references annual_tax_profiles ( id ) on delete restrict , unique ( annual_root_key ) , unique ( previous_projection_id ) , foreign key ( previous_projection_id ) references annual_tax_projections ( id ) on delete restrict , unique ( idempotency_key ) )"
+            "create table annual_tax_projections ( id varchar not null , portfolio_id varchar not null , tax_year integer not null , profile_version_id varchar not null , annual_root_key varchar , previous_projection_id varchar , idempotency_key varchar ( 200 ) not null , actor_id varchar not null , request_json text not null , manifest_json text not null , manifest_sha256 varchar ( 64 ) not null , created_at datetime not null , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( previous_projection_id ) references annual_tax_projections ( id ) on delete restrict , foreign key ( profile_version_id ) references annual_tax_profiles ( id ) on delete restrict , primary key ( id ) , unique ( annual_root_key ) , unique ( idempotency_key ) , unique ( previous_projection_id ) )"
           ],
           [
             "table",
             "annual_tax_sources",
             "annual_tax_sources",
-            "create table annual_tax_sources ( id varchar not null , portfolio_id varchar not null , projection_id varchar not null , booking_id varchar not null , sequence_number integer not null , source_json text not null , sha256 varchar ( 64 ) not null , primary key ( id ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( projection_id ) references annual_tax_projections ( id ) on delete restrict )"
+            "create table annual_tax_sources ( id varchar not null , portfolio_id varchar not null , projection_id varchar not null , booking_id varchar not null , sequence_number integer not null , source_json text not null , sha256 varchar ( 64 ) not null , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( projection_id ) references annual_tax_projections ( id ) on delete restrict , primary key ( id ) )"
           ],
           [
             "table",
@@ -644,7 +644,7 @@
             "table",
             "auth_refresh_tokens",
             "auth_refresh_tokens",
-            "create table auth_refresh_tokens ( token_hash varchar ( 64 ) not null , session_id varchar ( 36 ) not null , generation integer not null , expires_at datetime not null , consumed_at datetime , primary key ( token_hash ) , constraint uq_auth_refresh_generation unique ( session_id , generation ) , foreign key ( session_id ) references auth_sessions ( id ) on delete cascade )"
+            "create table auth_refresh_tokens ( token_hash varchar ( 64 ) not null , session_id varchar ( 36 ) not null , generation integer not null , expires_at datetime not null , consumed_at datetime , constraint uq_auth_refresh_generation unique ( session_id , generation ) , foreign key ( session_id ) references auth_sessions ( id ) on delete cascade , primary key ( token_hash ) )"
           ],
           [
             "table",
@@ -656,67 +656,67 @@
             "table",
             "auth_setup",
             "auth_setup",
-            "create table auth_setup ( id integer not null , completed_at datetime not null , primary key ( id ) , constraint ck_auth_setup_singleton check ( id = 1 ) )"
+            "create table auth_setup ( id integer not null , completed_at datetime not null , constraint ck_auth_setup_singleton check ( id = 1 ) , primary key ( id ) )"
           ],
           [
             "table",
             "bank_import_receipts",
             "bank_import_receipts",
-            "create table bank_import_receipts ( import_id varchar not null , ordinal bigint not null , account_id varchar not null , fingerprint varchar ( 64 ) not null , content_hash varchar ( 64 ) not null , booking_id varchar not null , published_at datetime not null , primary key ( import_id , ordinal ) , constraint uq_bank_import_account_fingerprint unique ( account_id , fingerprint ) , foreign key ( import_id ) references bank_imports ( id ) on delete restrict , foreign key ( account_id ) references accounts ( id ) on delete restrict )"
+            "create table bank_import_receipts ( import_id varchar not null , ordinal bigint not null , account_id varchar not null , fingerprint varchar ( 64 ) not null , content_hash varchar ( 64 ) not null , booking_id varchar not null , published_at datetime not null , constraint uq_bank_import_account_fingerprint unique ( account_id , fingerprint ) , foreign key ( account_id ) references accounts ( id ) on delete restrict , foreign key ( import_id ) references bank_imports ( id ) on delete restrict , primary key ( import_id , ordinal ) )"
           ],
           [
             "table",
             "bank_import_rows",
             "bank_import_rows",
-            "create table bank_import_rows ( import_id varchar not null , ordinal bigint not null , source_line bigint not null , booking_date date , value_date date , amount_cents bigint , payment_text text not null , bank_reference text , identity_base varchar ( 64 ) , identity_occurrence bigint not null , fingerprint varchar ( 64 ) , content_hash varchar ( 64 ) not null , error_code varchar , error_message text , duplicate_booking_id varchar , primary key ( import_id , ordinal ) , foreign key ( import_id ) references bank_imports ( id ) on delete cascade )"
+            "create table bank_import_rows ( import_id varchar not null , ordinal bigint not null , source_line bigint not null , booking_date date , value_date date , amount_cents bigint , payment_text text not null , bank_reference text , identity_base varchar ( 64 ) , identity_occurrence bigint not null , fingerprint varchar ( 64 ) , content_hash varchar ( 64 ) not null , error_code varchar , error_message text , duplicate_booking_id varchar , foreign key ( import_id ) references bank_imports ( id ) on delete cascade , primary key ( import_id , ordinal ) )"
           ],
           [
             "table",
             "bank_import_source_chunks",
             "bank_import_source_chunks",
-            "create table bank_import_source_chunks ( import_id varchar not null , chunk_no bigint not null , data blob not null , primary key ( import_id , chunk_no ) , foreign key ( import_id ) references bank_imports ( id ) on delete cascade )"
+            "create table bank_import_source_chunks ( import_id varchar not null , chunk_no bigint not null , data blob not null , foreign key ( import_id ) references bank_imports ( id ) on delete cascade , primary key ( import_id , chunk_no ) )"
           ],
           [
             "table",
             "bank_imports",
             "bank_imports",
-            "create table bank_imports ( id varchar not null , account_id varchar not null , portfolio_id varchar not null , creator_id varchar not null , scope_snapshot json , filename text not null , source_sha256 varchar ( 64 ) not null , source_bytes bigint not null , mapping json not null , mapping_hash varchar ( 64 ) not null , preview_hash varchar ( 64 ) not null , state varchar not null , revision bigint not null , row_count bigint not null , error_count bigint not null , duplicate_count bigint not null , published_count bigint not null , created_at datetime not null , committed_at datetime , primary key ( id ) , constraint uq_bank_import_source_mapping unique ( account_id , source_sha256 , mapping_hash ) , foreign key ( account_id ) references accounts ( id ) on delete restrict )"
+            "create table bank_imports ( id varchar not null , account_id varchar not null , portfolio_id varchar not null , creator_id varchar not null , scope_snapshot json , filename text not null , source_sha256 varchar ( 64 ) not null , source_bytes bigint not null , mapping json not null , mapping_hash varchar ( 64 ) not null , preview_hash varchar ( 64 ) not null , state varchar not null , revision bigint not null , row_count bigint not null , error_count bigint not null , duplicate_count bigint not null , published_count bigint not null , created_at datetime not null , committed_at datetime , constraint uq_bank_import_source_mapping unique ( account_id , source_sha256 , mapping_hash ) , foreign key ( account_id ) references accounts ( id ) on delete restrict , primary key ( id ) )"
           ],
           [
             "table",
             "billing_periods",
             "billing_periods",
-            "create table billing_periods ( id varchar not null , property_id varchar not null , label text not null , start_date date not null , end_date date not null , status text not null , source_period_id varchar , revision_number integer default '1' not null , revision_notes text , owner_cost_share json , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( property_id ) references properties ( id ) on delete cascade , foreign key ( source_period_id ) references billing_periods ( id ) on delete restrict )"
+            "create table billing_periods ( id varchar not null , property_id varchar not null , label text not null , start_date date not null , end_date date not null , status text not null , source_period_id varchar , revision_number integer default '1' not null , revision_notes text , owner_cost_share json , created_at datetime not null , updated_at datetime not null , foreign key ( property_id ) references properties ( id ) on delete cascade , foreign key ( source_period_id ) references billing_periods ( id ) on delete restrict , primary key ( id ) )"
           ],
           [
             "table",
             "billing_settlements",
             "billing_settlements",
-            "create table billing_settlements ( id varchar not null , billing_period_id varchar not null , statement_id varchar not null , source_statement_id varchar , root_statement_id varchar not null , contract_id varchar not null , signed_amount numeric ( 12 , 2 ) not null , kind varchar ( 20 ) not null , status varchar ( 30 ) not null , receivable_id varchar , created_at datetime not null , primary key ( id ) , foreign key ( billing_period_id ) references billing_periods ( id ) on delete restrict , unique ( statement_id ) , foreign key ( statement_id ) references utility_statements ( id ) on delete restrict , foreign key ( source_statement_id ) references utility_statements ( id ) on delete restrict , foreign key ( root_statement_id ) references utility_statements ( id ) on delete restrict , foreign key ( contract_id ) references contracts ( id ) on delete restrict , foreign key ( receivable_id ) references receivables ( id ) on delete restrict )"
+            "create table billing_settlements ( id varchar not null , billing_period_id varchar not null , statement_id varchar not null , source_statement_id varchar , root_statement_id varchar not null , contract_id varchar not null , signed_amount numeric ( 12 , 2 ) not null , kind varchar ( 20 ) not null , status varchar ( 30 ) not null , receivable_id varchar , created_at datetime not null , foreign key ( billing_period_id ) references billing_periods ( id ) on delete restrict , foreign key ( contract_id ) references contracts ( id ) on delete restrict , foreign key ( receivable_id ) references receivables ( id ) on delete restrict , foreign key ( root_statement_id ) references utility_statements ( id ) on delete restrict , foreign key ( source_statement_id ) references utility_statements ( id ) on delete restrict , foreign key ( statement_id ) references utility_statements ( id ) on delete restrict , primary key ( id ) , unique ( statement_id ) )"
           ],
           [
             "table",
             "bookings",
             "bookings",
-            "create table bookings ( id varchar not null , account_id varchar not null , category_id varchar , property_id varchar , unit_id varchar , tenant_id varchar , booking_date date not null , amount numeric ( 12 , 2 ) not null , allocated_amount numeric ( 12 , 2 ) default '0' not null , status text not null , payment_text text , receipt_url text , created_at datetime not null , updated_at datetime not null , primary key ( id ) , constraint ck_bookings_amount_nonzero check ( amount ! = 0 ) , constraint ck_bookings_allocation check ( allocated_amount > = 0 and allocated_amount < = abs ( amount ) ) , foreign key ( account_id ) references accounts ( id ) on delete cascade , foreign key ( category_id ) references categories ( id ) on delete set null , foreign key ( property_id ) references properties ( id ) on delete set null , foreign key ( unit_id ) references units ( id ) on delete set null , foreign key ( tenant_id ) references tenants ( id ) on delete set null )"
+            "create table bookings ( id varchar not null , account_id varchar not null , category_id varchar , property_id varchar , unit_id varchar , tenant_id varchar , booking_date date not null , amount numeric ( 12 , 2 ) not null , allocated_amount numeric ( 12 , 2 ) default '0' not null , status text not null , payment_text text , receipt_url text , created_at datetime not null , updated_at datetime not null , constraint ck_bookings_allocation check ( allocated_amount > = 0 and allocated_amount < = abs ( amount ) ) , constraint ck_bookings_amount_nonzero check ( amount ! = 0 ) , foreign key ( account_id ) references accounts ( id ) on delete cascade , foreign key ( category_id ) references categories ( id ) on delete set null , foreign key ( property_id ) references properties ( id ) on delete set null , foreign key ( tenant_id ) references tenants ( id ) on delete set null , foreign key ( unit_id ) references units ( id ) on delete set null , primary key ( id ) )"
           ],
           [
             "table",
             "budgets",
             "budgets",
-            "create table budgets ( id varchar ( 36 ) not null , property_id varchar ( 36 ) not null , year integer not null , category varchar ( 50 ) not null , planned_amount numeric ( 12 , 2 ) not null , actual_amount numeric ( 12 , 2 ) not null , notes text , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( property_id ) references properties ( id ) )"
+            "create table budgets ( id varchar ( 36 ) not null , property_id varchar ( 36 ) not null , year integer not null , category varchar ( 50 ) not null , planned_amount numeric ( 12 , 2 ) not null , actual_amount numeric ( 12 , 2 ) not null , notes text , created_at datetime not null , updated_at datetime not null , foreign key ( property_id ) references properties ( id ) , primary key ( id ) )"
           ],
           [
             "table",
             "calendar_events",
             "calendar_events",
-            "create table calendar_events ( id varchar not null , title text not null , event_type text not null , event_date date not null , event_time text , location text , participants text , property_id varchar , unit_id varchar , description text , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( property_id ) references properties ( id ) on delete set null , foreign key ( unit_id ) references units ( id ) on delete set null )"
+            "create table calendar_events ( id varchar not null , title text not null , event_type text not null , event_date date not null , event_time text , location text , participants text , property_id varchar , unit_id varchar , description text , created_at datetime not null , updated_at datetime not null , foreign key ( property_id ) references properties ( id ) on delete set null , foreign key ( unit_id ) references units ( id ) on delete set null , primary key ( id ) )"
           ],
           [
             "table",
             "categories",
             "categories",
-            "create table categories ( id varchar not null , portfolio_id varchar not null , name text not null , category_type text not null , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete cascade )"
+            "create table categories ( id varchar not null , portfolio_id varchar not null , name text not null , category_type text not null , created_at datetime not null , updated_at datetime not null , foreign key ( portfolio_id ) references portfolios ( id ) on delete cascade , primary key ( id ) )"
           ],
           [
             "table",
@@ -734,109 +734,109 @@
             "table",
             "contract_attachment_chunks",
             "contract_attachment_chunks",
-            "create table contract_attachment_chunks ( attachment_id varchar not null , position integer not null , portfolio_id varchar not null , data blob not null , primary key ( attachment_id , position ) , foreign key ( attachment_id ) references contract_attachment_evidence ( id ) on delete restrict , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict )"
+            "create table contract_attachment_chunks ( attachment_id varchar not null , position integer not null , portfolio_id varchar not null , data blob not null , foreign key ( attachment_id ) references contract_attachment_evidence ( id ) on delete restrict , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , primary key ( attachment_id , position ) )"
           ],
           [
             "table",
             "contract_attachment_evidence",
             "contract_attachment_evidence",
-            "create table contract_attachment_evidence ( id varchar not null , portfolio_id varchar not null , draft_id varchar not null , source_document_id varchar not null , metadata_snapshot json not null , sha256 varchar ( 64 ) , size_bytes bigint , mode varchar ( 20 ) not null , primary key ( id ) , constraint uq_contract_attachment_source unique ( draft_id , source_document_id ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( draft_id ) references contract_wizard_drafts ( id ) on delete restrict )"
+            "create table contract_attachment_evidence ( id varchar not null , portfolio_id varchar not null , draft_id varchar not null , source_document_id varchar not null , metadata_snapshot json not null , sha256 varchar ( 64 ) , size_bytes bigint , mode varchar ( 20 ) not null , constraint uq_contract_attachment_source unique ( draft_id , source_document_id ) , foreign key ( draft_id ) references contract_wizard_drafts ( id ) on delete restrict , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , primary key ( id ) )"
           ],
           [
             "table",
             "contract_lifecycle_commands",
             "contract_lifecycle_commands",
-            "create table contract_lifecycle_commands ( id varchar not null , portfolio_id varchar not null , contract_id varchar not null , draft_id varchar not null , actor_id varchar not null , command_key varchar ( 100 ) not null , operation varchar ( 20 ) not null , request json not null , request_hash varchar ( 64 ) not null , result json not null , created_at datetime not null , primary key ( id ) , constraint uq_contract_lifecycle_command unique ( actor_id , command_key ) , constraint ck_contract_lifecycle_command_operation check ( operation in ( 'create' , 'edit' , 'review' , 'confirm' , 'finalize' ) ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( contract_id ) references contracts ( id ) on delete restrict , foreign key ( draft_id ) references contract_lifecycle_drafts ( id ) on delete restrict )"
+            "create table contract_lifecycle_commands ( id varchar not null , portfolio_id varchar not null , contract_id varchar not null , draft_id varchar not null , actor_id varchar not null , command_key varchar ( 100 ) not null , operation varchar ( 20 ) not null , request json not null , request_hash varchar ( 64 ) not null , result json not null , created_at datetime not null , constraint ck_contract_lifecycle_command_operation check ( operation in ( 'create' , 'edit' , 'review' , 'confirm' , 'finalize' ) ) , constraint uq_contract_lifecycle_command unique ( actor_id , command_key ) , foreign key ( contract_id ) references contracts ( id ) on delete restrict , foreign key ( draft_id ) references contract_lifecycle_drafts ( id ) on delete restrict , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , primary key ( id ) )"
           ],
           [
             "table",
             "contract_lifecycle_drafts",
             "contract_lifecycle_drafts",
-            "create table contract_lifecycle_drafts ( id varchar not null , portfolio_id varchar not null , contract_id varchar not null , property_id varchar not null , unit_id varchar not null , tenant_id varchar not null , actor_id varchar not null , create_key varchar ( 100 ) not null , create_hash varchar ( 64 ) not null , data json not null , revision varchar ( 36 ) not null , state varchar ( 20 ) not null , source_contract_etag varchar not null , review json , review_hash varchar ( 64 ) , applied_contract_etag varchar , finalized_contract_etag varchar , successor_contract_id varchar , supersedes_draft_id varchar , superseded_by_draft_id varchar , created_at datetime not null , updated_at datetime not null , primary key ( id ) , constraint uq_contract_lifecycle_create unique ( actor_id , create_key ) , constraint ck_contract_lifecycle_state check ( state in ( 'draft' , 'reviewed' , 'confirmed' , 'pending_effective' , 'completed' , 'superseded' ) ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( contract_id ) references contracts ( id ) on delete restrict , foreign key ( property_id ) references properties ( id ) on delete restrict , foreign key ( unit_id ) references units ( id ) on delete restrict , foreign key ( tenant_id ) references tenants ( id ) on delete restrict , foreign key ( successor_contract_id ) references contracts ( id ) on delete restrict , foreign key ( supersedes_draft_id ) references contract_lifecycle_drafts ( id ) on delete restrict , foreign key ( superseded_by_draft_id ) references contract_lifecycle_drafts ( id ) on delete restrict )"
+            "create table contract_lifecycle_drafts ( id varchar not null , portfolio_id varchar not null , contract_id varchar not null , property_id varchar not null , unit_id varchar not null , tenant_id varchar not null , actor_id varchar not null , create_key varchar ( 100 ) not null , create_hash varchar ( 64 ) not null , data json not null , revision varchar ( 36 ) not null , state varchar ( 20 ) not null , source_contract_etag varchar not null , review json , review_hash varchar ( 64 ) , applied_contract_etag varchar , finalized_contract_etag varchar , successor_contract_id varchar , supersedes_draft_id varchar , superseded_by_draft_id varchar , created_at datetime not null , updated_at datetime not null , constraint ck_contract_lifecycle_state check ( state in ( 'draft' , 'reviewed' , 'confirmed' , 'pending_effective' , 'completed' , 'superseded' ) ) , constraint uq_contract_lifecycle_create unique ( actor_id , create_key ) , foreign key ( contract_id ) references contracts ( id ) on delete restrict , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( property_id ) references properties ( id ) on delete restrict , foreign key ( successor_contract_id ) references contracts ( id ) on delete restrict , foreign key ( superseded_by_draft_id ) references contract_lifecycle_drafts ( id ) on delete restrict , foreign key ( supersedes_draft_id ) references contract_lifecycle_drafts ( id ) on delete restrict , foreign key ( tenant_id ) references tenants ( id ) on delete restrict , foreign key ( unit_id ) references units ( id ) on delete restrict , primary key ( id ) )"
           ],
           [
             "table",
             "contract_signature_evidence",
             "contract_signature_evidence",
-            "create table contract_signature_evidence ( id varchar not null , portfolio_id varchar not null , draft_id varchar not null , actor_id varchar not null , signed_date date not null , tenant_signer text not null , landlord_signer text not null , reference text not null , note text , signed_document_id varchar , created_at datetime not null , primary key ( id ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( draft_id ) references contract_wizard_drafts ( id ) on delete restrict , foreign key ( signed_document_id ) references documents ( id ) on delete restrict )"
+            "create table contract_signature_evidence ( id varchar not null , portfolio_id varchar not null , draft_id varchar not null , actor_id varchar not null , signed_date date not null , tenant_signer text not null , landlord_signer text not null , reference text not null , note text , signed_document_id varchar , created_at datetime not null , foreign key ( draft_id ) references contract_wizard_drafts ( id ) on delete restrict , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( signed_document_id ) references documents ( id ) on delete restrict , primary key ( id ) )"
           ],
           [
             "table",
             "contract_template_versions",
             "contract_template_versions",
-            "create table contract_template_versions ( id varchar not null , portfolio_id varchar not null , root_id varchar not null , version integer not null , title text not null , body text not null , actor_id varchar not null , create_key varchar ( 100 ) not null , create_hash varchar ( 64 ) not null , created_at datetime not null , primary key ( id ) , constraint uq_contract_template_version unique ( root_id , version ) , constraint uq_contract_template_create unique ( actor_id , create_key ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict )"
+            "create table contract_template_versions ( id varchar not null , portfolio_id varchar not null , root_id varchar not null , version integer not null , title text not null , body text not null , actor_id varchar not null , create_key varchar ( 100 ) not null , create_hash varchar ( 64 ) not null , created_at datetime not null , constraint uq_contract_template_create unique ( actor_id , create_key ) , constraint uq_contract_template_version unique ( root_id , version ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , primary key ( id ) )"
           ],
           [
             "table",
             "contract_wizard_commands",
             "contract_wizard_commands",
-            "create table contract_wizard_commands ( id varchar not null , portfolio_id varchar not null , draft_id varchar not null , actor_id varchar not null , command_key varchar ( 100 ) not null , request_hash varchar ( 64 ) not null , result json not null , created_at datetime not null , primary key ( id ) , constraint uq_contract_wizard_command unique ( actor_id , command_key ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( draft_id ) references contract_wizard_drafts ( id ) on delete restrict )"
+            "create table contract_wizard_commands ( id varchar not null , portfolio_id varchar not null , draft_id varchar not null , actor_id varchar not null , command_key varchar ( 100 ) not null , request_hash varchar ( 64 ) not null , result json not null , created_at datetime not null , constraint uq_contract_wizard_command unique ( actor_id , command_key ) , foreign key ( draft_id ) references contract_wizard_drafts ( id ) on delete restrict , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , primary key ( id ) )"
           ],
           [
             "table",
             "contract_wizard_drafts",
             "contract_wizard_drafts",
-            "create table contract_wizard_drafts ( id varchar not null , portfolio_id varchar not null , actor_id varchar not null , create_key varchar ( 100 ) not null , create_hash varchar ( 64 ) not null , data json not null , revision integer not null , state varchar ( 20 ) not null , review json , review_hash varchar ( 64 ) , pdf blob , pdf_sha256 varchar ( 64 ) , contract_id varchar , document_id varchar , published_tenant_id varchar , created_at datetime not null , updated_at datetime not null , primary key ( id ) , constraint uq_contract_draft_create unique ( actor_id , create_key ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( contract_id ) references contracts ( id ) on delete restrict , foreign key ( document_id ) references documents ( id ) on delete restrict )"
+            "create table contract_wizard_drafts ( id varchar not null , portfolio_id varchar not null , actor_id varchar not null , create_key varchar ( 100 ) not null , create_hash varchar ( 64 ) not null , data json not null , revision integer not null , state varchar ( 20 ) not null , review json , review_hash varchar ( 64 ) , pdf blob , pdf_sha256 varchar ( 64 ) , contract_id varchar , document_id varchar , published_tenant_id varchar , created_at datetime not null , updated_at datetime not null , constraint uq_contract_draft_create unique ( actor_id , create_key ) , foreign key ( contract_id ) references contracts ( id ) on delete restrict , foreign key ( document_id ) references documents ( id ) on delete restrict , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , primary key ( id ) )"
           ],
           [
             "table",
             "contracts",
             "contracts",
-            "create table contracts ( id varchar not null , contract_number text not null , property_id varchar not null , unit_id varchar not null , tenant_id varchar not null , status text not null , start_date date not null , end_date date , notice_period text , deposit_amount numeric ( 12 , 2 ) , index_rent text , service_charge_settlement text , created_at datetime not null , updated_at datetime not null , primary key ( id ) , constraint ck_contracts_dates check ( end_date is null or end_date > = start_date ) , unique ( contract_number ) , foreign key ( property_id ) references properties ( id ) on delete cascade , foreign key ( unit_id ) references units ( id ) on delete cascade , foreign key ( tenant_id ) references tenants ( id ) on delete cascade )"
+            "create table contracts ( id varchar not null , contract_number text not null , property_id varchar not null , unit_id varchar not null , tenant_id varchar not null , status text not null , start_date date not null , end_date date , notice_period text , deposit_amount numeric ( 12 , 2 ) , index_rent text , service_charge_settlement text , created_at datetime not null , updated_at datetime not null , constraint ck_contracts_dates check ( end_date is null or end_date > = start_date ) , foreign key ( property_id ) references properties ( id ) on delete cascade , foreign key ( tenant_id ) references tenants ( id ) on delete cascade , foreign key ( unit_id ) references units ( id ) on delete cascade , primary key ( id ) , unique ( contract_number ) )"
           ],
           [
             "table",
             "cost_items",
             "cost_items",
-            "create table cost_items ( id varchar not null , billing_period_id varchar not null , description text not null , amount numeric ( 12 , 2 ) not null , allocation_key_id varchar not null , is_recoverable boolean not null , cost_category text , source_document_id varchar , vat_rate numeric ( 12 , 2 ) , net_amount numeric ( 12 , 2 ) , gross_amount numeric ( 12 , 2 ) , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( billing_period_id ) references billing_periods ( id ) on delete cascade , foreign key ( allocation_key_id ) references allocation_keys ( id ) on delete cascade )"
+            "create table cost_items ( id varchar not null , billing_period_id varchar not null , description text not null , amount numeric ( 12 , 2 ) not null , allocation_key_id varchar not null , is_recoverable boolean not null , cost_category text , source_document_id varchar , vat_rate numeric ( 12 , 2 ) , net_amount numeric ( 12 , 2 ) , gross_amount numeric ( 12 , 2 ) , created_at datetime not null , updated_at datetime not null , foreign key ( allocation_key_id ) references allocation_keys ( id ) on delete cascade , foreign key ( billing_period_id ) references billing_periods ( id ) on delete cascade , primary key ( id ) )"
           ],
           [
             "table",
             "credit_receipts",
             "credit_receipts",
-            "create table credit_receipts ( id varchar not null , contract_id varchar not null , source_settlement_id varchar not null , idempotency_key varchar ( 100 ) not null , amount_cents text not null , transaction_date date not null , method text not null , booking_id varchar , target_type text , target_id varchar , payment_id varchar , note text , actor_id varchar , created_at datetime not null , primary key ( id ) , constraint ck_credit_method check ( method in ( 'cash' , 'bank' , 'offset' ) ) , constraint ck_credit_links check ( ( method = 'bank' and booking_id is not null and payment_id is null and target_id is null and target_type is null ) or ( method = 'cash' and booking_id is null and payment_id is null and target_id is null and target_type is null ) or ( method = 'offset' and booking_id is null and payment_id is not null and target_id is not null and target_type in ( 'receivable' , 'rent_charge' ) ) ) , foreign key ( contract_id ) references contracts ( id ) on delete restrict , foreign key ( source_settlement_id ) references billing_settlements ( id ) on delete restrict , unique ( idempotency_key ) , foreign key ( booking_id ) references bookings ( id ) on delete restrict , unique ( payment_id ) , foreign key ( payment_id ) references payments ( id ) on delete restrict )"
+            "create table credit_receipts ( id varchar not null , contract_id varchar not null , source_settlement_id varchar not null , idempotency_key varchar ( 100 ) not null , amount_cents text not null , transaction_date date not null , method text not null , booking_id varchar , target_type text , target_id varchar , payment_id varchar , note text , actor_id varchar , created_at datetime not null , constraint ck_credit_links check ( ( method = 'bank' and booking_id is not null and payment_id is null and target_id is null and target_type is null ) or ( method = 'cash' and booking_id is null and payment_id is null and target_id is null and target_type is null ) or ( method = 'offset' and booking_id is null and payment_id is not null and target_id is not null and target_type in ( 'receivable' , 'rent_charge' ) ) ) , constraint ck_credit_method check ( method in ( 'cash' , 'bank' , 'offset' ) ) , foreign key ( booking_id ) references bookings ( id ) on delete restrict , foreign key ( contract_id ) references contracts ( id ) on delete restrict , foreign key ( payment_id ) references payments ( id ) on delete restrict , foreign key ( source_settlement_id ) references billing_settlements ( id ) on delete restrict , primary key ( id ) , unique ( idempotency_key ) , unique ( payment_id ) )"
           ],
           [
             "table",
             "credit_reversals",
             "credit_reversals",
-            "create table credit_reversals ( id varchar not null , receipt_id varchar not null , idempotency_key varchar ( 100 ) not null , amount_cents text not null , reversal_date date not null , reason text not null , payment_reversal_id varchar , actor_id varchar , created_at datetime not null , primary key ( id ) , unique ( receipt_id ) , foreign key ( receipt_id ) references credit_receipts ( id ) on delete restrict , unique ( idempotency_key ) , unique ( payment_reversal_id ) , foreign key ( payment_reversal_id ) references payment_reversals ( id ) on delete restrict )"
+            "create table credit_reversals ( id varchar not null , receipt_id varchar not null , idempotency_key varchar ( 100 ) not null , amount_cents text not null , reversal_date date not null , reason text not null , payment_reversal_id varchar , actor_id varchar , created_at datetime not null , foreign key ( payment_reversal_id ) references payment_reversals ( id ) on delete restrict , foreign key ( receipt_id ) references credit_receipts ( id ) on delete restrict , primary key ( id ) , unique ( idempotency_key ) , unique ( payment_reversal_id ) , unique ( receipt_id ) )"
           ],
           [
             "table",
             "datev_exports",
             "datev_exports",
-            "create table datev_exports ( id varchar not null , portfolio_id varchar not null , profile_version_id varchar not null , idempotency_key varchar ( 200 ) not null , actor_id varchar not null , request_json text not null , manifest_json text not null , created_at datetime not null , primary key ( id ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( profile_version_id ) references datev_profiles ( id ) on delete restrict , unique ( idempotency_key ) )"
+            "create table datev_exports ( id varchar not null , portfolio_id varchar not null , profile_version_id varchar not null , idempotency_key varchar ( 200 ) not null , actor_id varchar not null , request_json text not null , manifest_json text not null , created_at datetime not null , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( profile_version_id ) references datev_profiles ( id ) on delete restrict , primary key ( id ) , unique ( idempotency_key ) )"
           ],
           [
             "table",
             "datev_profiles",
             "datev_profiles",
-            "create table datev_profiles ( id varchar not null , portfolio_id varchar not null , previous_version_id varchar , idempotency_key varchar ( 200 ) not null , actor_id varchar not null , spec_json text not null , sha256 varchar ( 64 ) not null , created_at datetime not null , primary key ( id ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( previous_version_id ) references datev_profiles ( id ) on delete restrict , unique ( idempotency_key ) )"
+            "create table datev_profiles ( id varchar not null , portfolio_id varchar not null , previous_version_id varchar , idempotency_key varchar ( 200 ) not null , actor_id varchar not null , spec_json text not null , sha256 varchar ( 64 ) not null , created_at datetime not null , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( previous_version_id ) references datev_profiles ( id ) on delete restrict , primary key ( id ) , unique ( idempotency_key ) )"
           ],
           [
             "table",
             "deposits",
             "deposits",
-            "create table deposits ( id varchar not null , contract_id varchar not null , amount numeric ( 12 , 2 ) not null , status text not null , held_date date , return_date date , deductions numeric ( 12 , 2 ) , deduction_reason text , notes text , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( contract_id ) references contracts ( id ) on delete cascade )"
+            "create table deposits ( id varchar not null , contract_id varchar not null , amount numeric ( 12 , 2 ) not null , status text not null , held_date date , return_date date , deductions numeric ( 12 , 2 ) , deduction_reason text , notes text , created_at datetime not null , updated_at datetime not null , foreign key ( contract_id ) references contracts ( id ) on delete cascade , primary key ( id ) )"
           ],
           [
             "table",
             "document_version_chunks",
             "document_version_chunks",
-            "create table document_version_chunks ( version_id varchar not null , position bigint not null , portfolio_id varchar not null , data blob not null , primary key ( version_id , position ) , constraint ck_document_chunk_values check ( position > = 0 and length ( data ) between 1 and 65536 ) , foreign key ( version_id ) references document_versions ( id ) on delete restrict , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict )"
+            "create table document_version_chunks ( version_id varchar not null , position bigint not null , portfolio_id varchar not null , data blob not null , constraint ck_document_chunk_values check ( position > = 0 and length ( data ) between 1 and 65536 ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( version_id ) references document_versions ( id ) on delete restrict , primary key ( version_id , position ) )"
           ],
           [
             "table",
             "document_versions",
             "document_versions",
-            "create table document_versions ( id varchar not null , document_id varchar not null , portfolio_id varchar not null , property_id varchar not null , unit_id varchar , contract_id varchar , tenant_id varchar , number bigint not null , predecessor_id varchar , restored_from_id varchar , actor_id varchar not null , idempotency_key varchar ( 100 ) not null , request_sha256 varchar ( 64 ) not null , operation varchar ( 20 ) not null , comment text not null , filename text not null , media_type varchar ( 200 ) not null , sha256 varchar ( 64 ) not null , size_bytes bigint not null , metadata_snapshot json not null , created_at datetime not null , primary key ( id ) , constraint uq_document_version_number unique ( document_id , number ) , constraint uq_document_version_command unique ( actor_id , idempotency_key ) , constraint ck_document_version_values check ( number > 0 and size_bytes > = 0 ) , constraint ck_document_version_operation check ( operation in ( 'archive_original' , 'upload' , 'restore' ) ) , foreign key ( document_id ) references documents ( id ) on delete restrict , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( property_id ) references properties ( id ) on delete restrict , foreign key ( unit_id ) references units ( id ) on delete restrict , foreign key ( contract_id ) references contracts ( id ) on delete restrict , foreign key ( tenant_id ) references tenants ( id ) on delete restrict , foreign key ( predecessor_id ) references document_versions ( id ) on delete restrict , foreign key ( restored_from_id ) references document_versions ( id ) on delete restrict )"
+            "create table document_versions ( id varchar not null , document_id varchar not null , portfolio_id varchar not null , property_id varchar not null , unit_id varchar , contract_id varchar , tenant_id varchar , number bigint not null , predecessor_id varchar , restored_from_id varchar , actor_id varchar not null , idempotency_key varchar ( 100 ) not null , request_sha256 varchar ( 64 ) not null , operation varchar ( 20 ) not null , comment text not null , filename text not null , media_type varchar ( 200 ) not null , sha256 varchar ( 64 ) not null , size_bytes bigint not null , metadata_snapshot json not null , created_at datetime not null , constraint ck_document_version_operation check ( operation in ( 'archive_original' , 'upload' , 'restore' ) ) , constraint ck_document_version_values check ( number > 0 and size_bytes > = 0 ) , constraint uq_document_version_command unique ( actor_id , idempotency_key ) , constraint uq_document_version_number unique ( document_id , number ) , foreign key ( contract_id ) references contracts ( id ) on delete restrict , foreign key ( document_id ) references documents ( id ) on delete restrict , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( predecessor_id ) references document_versions ( id ) on delete restrict , foreign key ( property_id ) references properties ( id ) on delete restrict , foreign key ( restored_from_id ) references document_versions ( id ) on delete restrict , foreign key ( tenant_id ) references tenants ( id ) on delete restrict , foreign key ( unit_id ) references units ( id ) on delete restrict , primary key ( id ) )"
           ],
           [
             "table",
             "documents",
             "documents",
-            "create table documents ( id varchar not null , property_id varchar , unit_id varchar , contract_id varchar , title text not null , document_type text , document_date date , tags text , description text , file_url text not null , ai_document_type text , ai_summary text , ai_entities_json text , ai_confidence float , ai_model text , ai_analyzed_at datetime , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( property_id ) references properties ( id ) on delete set null , foreign key ( unit_id ) references units ( id ) on delete set null , foreign key ( contract_id ) references contracts ( id ) on delete set null )"
+            "create table documents ( id varchar not null , property_id varchar , unit_id varchar , contract_id varchar , title text not null , document_type text , document_date date , tags text , description text , file_url text not null , ai_document_type text , ai_summary text , ai_entities_json text , ai_confidence float , ai_model text , ai_analyzed_at datetime , created_at datetime not null , updated_at datetime not null , foreign key ( contract_id ) references contracts ( id ) on delete set null , foreign key ( property_id ) references properties ( id ) on delete set null , foreign key ( unit_id ) references units ( id ) on delete set null , primary key ( id ) )"
           ],
           [
             "table",
@@ -860,37 +860,37 @@
             "table",
             "handover_protocols",
             "handover_protocols",
-            "create table handover_protocols ( id varchar ( 36 ) not null , contract_id varchar ( 36 ) not null , unit_id varchar ( 36 ) not null , protocol_type varchar ( 20 ) not null , protocol_date date not null , tenant_present boolean not null , landlord_present boolean not null , key_count integer , key_details text , overall_condition varchar ( 20 ) , damages text , photos text , notes text , tenant_signature text , landlord_signature text , status varchar ( 20 ) not null , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( contract_id ) references contracts ( id ) , foreign key ( unit_id ) references units ( id ) )"
+            "create table handover_protocols ( id varchar ( 36 ) not null , contract_id varchar ( 36 ) not null , unit_id varchar ( 36 ) not null , protocol_type varchar ( 20 ) not null , protocol_date date not null , tenant_present boolean not null , landlord_present boolean not null , key_count integer , key_details text , overall_condition varchar ( 20 ) , damages text , photos text , notes text , tenant_signature text , landlord_signature text , status varchar ( 20 ) not null , created_at datetime not null , updated_at datetime not null , foreign key ( contract_id ) references contracts ( id ) , foreign key ( unit_id ) references units ( id ) , primary key ( id ) )"
           ],
           [
             "table",
             "insurances",
             "insurances",
-            "create table insurances ( id varchar not null , property_id varchar not null , unit_id varchar , insurance_type text not null , provider text not null , policy_number text , coverage_amount numeric ( 12 , 2 ) , premium_amount numeric ( 12 , 2 ) , premium_interval text not null , start_date date , end_date date , contact_person text , contact_phone text , notes text , status text not null , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( property_id ) references properties ( id ) on delete cascade , foreign key ( unit_id ) references units ( id ) on delete set null )"
+            "create table insurances ( id varchar not null , property_id varchar not null , unit_id varchar , insurance_type text not null , provider text not null , policy_number text , coverage_amount numeric ( 12 , 2 ) , premium_amount numeric ( 12 , 2 ) , premium_interval text not null , start_date date , end_date date , contact_person text , contact_phone text , notes text , status text not null , created_at datetime not null , updated_at datetime not null , foreign key ( property_id ) references properties ( id ) on delete cascade , foreign key ( unit_id ) references units ( id ) on delete set null , primary key ( id ) )"
           ],
           [
             "table",
             "invoices",
             "invoices",
-            "create table invoices ( id varchar not null , property_id varchar , supplier text not null , invoice_number text , payment_reference text , category text , notes text , invoice_date date not null , due_date date , net_amount numeric ( 12 , 2 ) not null , vat_amount numeric ( 12 , 2 ) not null , gross_amount numeric ( 12 , 2 ) not null , amount_paid numeric ( 12 , 2 ) default '0' not null , vat_rate numeric ( 12 , 2 ) not null , payment_terms text , status text not null , source_document_id varchar , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( property_id ) references properties ( id ) on delete set null , foreign key ( source_document_id ) references documents ( id ) on delete set null )"
+            "create table invoices ( id varchar not null , property_id varchar , supplier text not null , invoice_number text , payment_reference text , category text , notes text , invoice_date date not null , due_date date , net_amount numeric ( 12 , 2 ) not null , vat_amount numeric ( 12 , 2 ) not null , gross_amount numeric ( 12 , 2 ) not null , amount_paid numeric ( 12 , 2 ) default '0' not null , vat_rate numeric ( 12 , 2 ) not null , payment_terms text , status text not null , source_document_id varchar , created_at datetime not null , updated_at datetime not null , foreign key ( property_id ) references properties ( id ) on delete set null , foreign key ( source_document_id ) references documents ( id ) on delete set null , primary key ( id ) )"
           ],
           [
             "table",
             "leads",
             "leads",
-            "create table leads ( id varchar not null , listing_id varchar , unit_id varchar , full_name text not null , email text , phone text , source text , status text not null , priority integer default '0' not null , notes text , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( listing_id ) references listings ( id ) on delete set null , foreign key ( unit_id ) references units ( id ) on delete set null )"
+            "create table leads ( id varchar not null , listing_id varchar , unit_id varchar , full_name text not null , email text , phone text , source text , status text not null , priority integer default '0' not null , notes text , created_at datetime not null , updated_at datetime not null , foreign key ( listing_id ) references listings ( id ) on delete set null , foreign key ( unit_id ) references units ( id ) on delete set null , primary key ( id ) )"
           ],
           [
             "table",
             "listing_photos",
             "listing_photos",
-            "create table listing_photos ( id varchar not null , listing_id varchar not null , title text , file_url text not null , is_primary boolean not null , sort_order integer not null , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( listing_id ) references listings ( id ) on delete cascade )"
+            "create table listing_photos ( id varchar not null , listing_id varchar not null , title text , file_url text not null , is_primary boolean not null , sort_order integer not null , created_at datetime not null , updated_at datetime not null , foreign key ( listing_id ) references listings ( id ) on delete cascade , primary key ( id ) )"
           ],
           [
             "table",
             "listings",
             "listings",
-            "create table listings ( id varchar not null , unit_id varchar not null , title text not null , description text , portal text , listing_url text , status text not null , target_rent numeric ( 12 , 2 ) , service_charge numeric ( 12 , 2 ) , available_from date , contact_name text , contact_email text , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( unit_id ) references units ( id ) on delete cascade )"
+            "create table listings ( id varchar not null , unit_id varchar not null , title text not null , description text , portal text , listing_url text , status text not null , target_rent numeric ( 12 , 2 ) , service_charge numeric ( 12 , 2 ) , available_from date , contact_name text , contact_email text , created_at datetime not null , updated_at datetime not null , foreign key ( unit_id ) references units ( id ) on delete cascade , primary key ( id ) )"
           ],
           [
             "table",
@@ -902,7 +902,7 @@
             "table",
             "maintenance_cases",
             "maintenance_cases",
-            "create table maintenance_cases ( id varchar not null , property_id varchar not null , unit_id varchar , title text not null , description text , category text , priority text not null , status text not null , reported_by text , assignee text , due_date date , estimated_cost numeric ( 12 , 2 ) , contractor text , appointment_at datetime , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( property_id ) references properties ( id ) on delete cascade , foreign key ( unit_id ) references units ( id ) on delete set null )"
+            "create table maintenance_cases ( id varchar not null , property_id varchar not null , unit_id varchar , title text not null , description text , category text , priority text not null , status text not null , reported_by text , assignee text , due_date date , estimated_cost numeric ( 12 , 2 ) , contractor text , appointment_at datetime , created_at datetime not null , updated_at datetime not null , foreign key ( property_id ) references properties ( id ) on delete cascade , foreign key ( unit_id ) references units ( id ) on delete set null , primary key ( id ) )"
           ],
           [
             "table",
@@ -914,19 +914,19 @@
             "table",
             "messages",
             "messages",
-            "create table messages ( id varchar ( 36 ) not null , thread_id varchar ( 36 ) not null , sender_name varchar ( 200 ) not null , body text not null , attachment_ids text , sent_at datetime not null , primary key ( id ) , foreign key ( thread_id ) references message_threads ( id ) on delete cascade )"
+            "create table messages ( id varchar ( 36 ) not null , thread_id varchar ( 36 ) not null , sender_name varchar ( 200 ) not null , body text not null , attachment_ids text , sent_at datetime not null , foreign key ( thread_id ) references message_threads ( id ) on delete cascade , primary key ( id ) )"
           ],
           [
             "table",
             "meter_readings",
             "meter_readings",
-            "create table meter_readings ( id varchar ( 36 ) not null , handover_id varchar ( 36 ) not null , meter_type varchar ( 30 ) not null , meter_number varchar ( 50 ) , reading_value float not null , unit varchar ( 10 ) not null , photo_url text , notes text , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( handover_id ) references handover_protocols ( id ) on delete cascade )"
+            "create table meter_readings ( id varchar ( 36 ) not null , handover_id varchar ( 36 ) not null , meter_type varchar ( 30 ) not null , meter_number varchar ( 50 ) , reading_value float not null , unit varchar ( 10 ) not null , photo_url text , notes text , created_at datetime not null , updated_at datetime not null , foreign key ( handover_id ) references handover_protocols ( id ) on delete cascade , primary key ( id ) )"
           ],
           [
             "table",
             "meters",
             "meters",
-            "create table meters ( id varchar ( 36 ) not null , unit_id varchar ( 36 ) not null , meter_type varchar ( 30 ) not null , serial_number varchar ( 100 ) , location varchar ( 200 ) , installation_date date , next_inspection date , supplier varchar ( 200 ) , contract_number varchar ( 100 ) , contract_end_date date , is_active boolean not null , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( unit_id ) references units ( id ) )"
+            "create table meters ( id varchar ( 36 ) not null , unit_id varchar ( 36 ) not null , meter_type varchar ( 30 ) not null , serial_number varchar ( 100 ) , location varchar ( 200 ) , installation_date date , next_inspection date , supplier varchar ( 200 ) , contract_number varchar ( 100 ) , contract_end_date date , is_active boolean not null , created_at datetime not null , updated_at datetime not null , foreign key ( unit_id ) references units ( id ) , primary key ( id ) )"
           ],
           [
             "table",
@@ -950,19 +950,19 @@
             "table",
             "operational_lock",
             "operational_lock",
-            "create table operational_lock ( id integer not null , generation integer not null , primary key ( id ) , constraint ck_operational_singleton check ( id = 1 ) )"
+            "create table operational_lock ( id integer not null , generation integer not null , constraint ck_operational_singleton check ( id = 1 ) , primary key ( id ) )"
           ],
           [
             "table",
             "operational_occurrences",
             "operational_occurrences",
-            "create table operational_occurrences ( \"key\" varchar ( 64 ) not null , schedule_id varchar not null , occurrence_date date not null , target_kind varchar not null , target_id varchar not null , created_at datetime not null , primary key ( \"key\" ) , constraint uq_operational_occurrence unique ( schedule_id , occurrence_date ) )"
+            "create table operational_occurrences ( \"key\" varchar ( 64 ) not null , schedule_id varchar not null , occurrence_date date not null , target_kind varchar not null , target_id varchar not null , created_at datetime not null , constraint uq_operational_occurrence unique ( schedule_id , occurrence_date ) , primary key ( \"key\" ) )"
           ],
           [
             "table",
             "operational_schedules",
             "operational_schedules",
-            "create table operational_schedules ( id varchar not null , source_kind varchar not null , source_id varchar not null , anchor_date date not null , recurrence_rule text not null , active boolean not null , full_catch_up boolean not null , primary key ( id ) , constraint uq_operational_source unique ( source_kind , source_id ) )"
+            "create table operational_schedules ( id varchar not null , source_kind varchar not null , source_id varchar not null , anchor_date date not null , recurrence_rule text not null , active boolean not null , full_catch_up boolean not null , constraint uq_operational_source unique ( source_kind , source_id ) , primary key ( id ) )"
           ],
           [
             "table",
@@ -974,31 +974,31 @@
             "table",
             "outbox_commands",
             "outbox_commands",
-            "create table outbox_commands ( id varchar not null , portfolio_id varchar not null , message_id varchar not null , idempotency_key varchar ( 200 ) not null , actor_id varchar not null , kind varchar ( 30 ) not null , request_json text not null , result_json text , claim_token varchar , created_at datetime not null , primary key ( id ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( message_id ) references outbox_messages ( id ) on delete restrict , unique ( idempotency_key ) )"
+            "create table outbox_commands ( id varchar not null , portfolio_id varchar not null , message_id varchar not null , idempotency_key varchar ( 200 ) not null , actor_id varchar not null , kind varchar ( 30 ) not null , request_json text not null , result_json text , claim_token varchar , created_at datetime not null , foreign key ( message_id ) references outbox_messages ( id ) on delete restrict , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , primary key ( id ) , unique ( idempotency_key ) )"
           ],
           [
             "table",
             "outbox_events",
             "outbox_events",
-            "create table outbox_events ( id varchar not null , portfolio_id varchar not null , message_id varchar not null , actor_id varchar not null , revision integer not null , attempt_no integer not null , kind varchar ( 30 ) not null , state varchar ( 20 ) not null , phase varchar ( 20 ) not null , code varchar ( 100 ) , note text , created_at datetime not null , primary key ( id ) , constraint uq_outbox_event_revision unique ( message_id , revision ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( message_id ) references outbox_messages ( id ) on delete restrict )"
+            "create table outbox_events ( id varchar not null , portfolio_id varchar not null , message_id varchar not null , actor_id varchar not null , revision integer not null , attempt_no integer not null , kind varchar ( 30 ) not null , state varchar ( 20 ) not null , phase varchar ( 20 ) not null , code varchar ( 100 ) , note text , created_at datetime not null , constraint uq_outbox_event_revision unique ( message_id , revision ) , foreign key ( message_id ) references outbox_messages ( id ) on delete restrict , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , primary key ( id ) )"
           ],
           [
             "table",
             "outbox_messages",
             "outbox_messages",
-            "create table outbox_messages ( id varchar not null , portfolio_id varchar not null , idempotency_key varchar ( 200 ) not null , actor_id varchar not null , message_id varchar ( 254 ) not null , snapshot_json text not null , snapshot_sha256 varchar ( 64 ) not null , wire blob not null , wire_sha256 varchar ( 64 ) not null , state_json text not null , revision integer not null , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , unique ( idempotency_key ) , unique ( message_id ) )"
+            "create table outbox_messages ( id varchar not null , portfolio_id varchar not null , idempotency_key varchar ( 200 ) not null , actor_id varchar not null , message_id varchar ( 254 ) not null , snapshot_json text not null , snapshot_sha256 varchar ( 64 ) not null , wire blob not null , wire_sha256 varchar ( 64 ) not null , state_json text not null , revision integer not null , created_at datetime not null , updated_at datetime not null , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , primary key ( id ) , unique ( idempotency_key ) , unique ( message_id ) )"
           ],
           [
             "table",
             "payment_reversals",
             "payment_reversals",
-            "create table payment_reversals ( id varchar not null , payment_id varchar not null , idempotency_key varchar ( 100 ) not null , amount numeric ( 12 , 2 ) not null , reversal_date date not null , reason text not null , created_at datetime not null , primary key ( id ) , constraint ck_reversals_positive check ( amount > 0 ) , unique ( payment_id ) , foreign key ( payment_id ) references payments ( id ) on delete restrict , unique ( idempotency_key ) )"
+            "create table payment_reversals ( id varchar not null , payment_id varchar not null , idempotency_key varchar ( 100 ) not null , amount numeric ( 12 , 2 ) not null , reversal_date date not null , reason text not null , created_at datetime not null , constraint ck_reversals_positive check ( amount > 0 ) , foreign key ( payment_id ) references payments ( id ) on delete restrict , primary key ( id ) , unique ( idempotency_key ) , unique ( payment_id ) )"
           ],
           [
             "table",
             "payments",
             "payments",
-            "create table payments ( id varchar not null , idempotency_key varchar ( 100 ) not null , receivable_id varchar , rent_charge_id varchar ( 36 ) , invoice_id varchar , booking_id varchar , amount numeric ( 12 , 2 ) not null , payment_date date not null , note text , created_at datetime not null , primary key ( id ) , constraint ck_payments_positive check ( amount > 0 ) , constraint ck_payments_one_target check ( ( case when receivable_id is null then 0 else 1 end ) + ( case when rent_charge_id is null then 0 else 1 end ) + ( case when invoice_id is null then 0 else 1 end ) = 1 ) , unique ( idempotency_key ) , foreign key ( receivable_id ) references receivables ( id ) on delete restrict , foreign key ( rent_charge_id ) references rent_charges ( id ) on delete restrict , foreign key ( invoice_id ) references invoices ( id ) on delete restrict , foreign key ( booking_id ) references bookings ( id ) on delete restrict )"
+            "create table payments ( id varchar not null , idempotency_key varchar ( 100 ) not null , receivable_id varchar , rent_charge_id varchar ( 36 ) , invoice_id varchar , booking_id varchar , amount numeric ( 12 , 2 ) not null , payment_date date not null , note text , created_at datetime not null , constraint ck_payments_one_target check ( ( case when receivable_id is null then 0 else 1 end ) + ( case when rent_charge_id is null then 0 else 1 end ) + ( case when invoice_id is null then 0 else 1 end ) = 1 ) , constraint ck_payments_positive check ( amount > 0 ) , foreign key ( booking_id ) references bookings ( id ) on delete restrict , foreign key ( invoice_id ) references invoices ( id ) on delete restrict , foreign key ( receivable_id ) references receivables ( id ) on delete restrict , foreign key ( rent_charge_id ) references rent_charges ( id ) on delete restrict , primary key ( id ) , unique ( idempotency_key ) )"
           ],
           [
             "table",
@@ -1010,55 +1010,55 @@
             "table",
             "properties",
             "properties",
-            "create table properties ( id varchar not null , portfolio_id varchar not null , name text not null , property_type text not null , status text not null , year_built integer , living_area_sqm float , usable_area_sqm float , plot_area_sqm float , ownership_share float , purchase_price numeric ( 12 , 2 ) , purchase_date date , market_value numeric ( 12 , 2 ) , valuation_date date , address_line text , postal_code text , city text , country text , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete cascade )"
+            "create table properties ( id varchar not null , portfolio_id varchar not null , name text not null , property_type text not null , status text not null , year_built integer , living_area_sqm float , usable_area_sqm float , plot_area_sqm float , ownership_share float , purchase_price numeric ( 12 , 2 ) , purchase_date date , market_value numeric ( 12 , 2 ) , valuation_date date , address_line text , postal_code text , city text , country text , created_at datetime not null , updated_at datetime not null , foreign key ( portfolio_id ) references portfolios ( id ) on delete cascade , primary key ( id ) )"
           ],
           [
             "table",
             "receivables",
             "receivables",
-            "create table receivables ( amount_paid numeric ( 12 , 2 ) default '0' not null , id varchar not null , contract_id varchar not null , due_date date not null , amount_due numeric ( 12 , 2 ) not null , dunning_level text , description text , status text not null , statement_id varchar , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( contract_id ) references contracts ( id ) on delete cascade )"
+            "create table receivables ( amount_paid numeric ( 12 , 2 ) default '0' not null , id varchar not null , contract_id varchar not null , due_date date not null , amount_due numeric ( 12 , 2 ) not null , dunning_level text , description text , status text not null , statement_id varchar , created_at datetime not null , updated_at datetime not null , foreign key ( contract_id ) references contracts ( id ) on delete cascade , primary key ( id ) )"
           ],
           [
             "table",
             "rent_adjustments",
             "rent_adjustments",
-            "create table rent_adjustments ( id varchar ( 36 ) not null , contract_id varchar ( 36 ) not null , adjustment_type varchar ( 20 ) not null , effective_date date not null , previous_rent numeric ( 12 , 2 ) not null , new_rent numeric ( 12 , 2 ) not null , increase_percent numeric ( 12 , 2 ) , index_base_year integer , index_value numeric ( 12 , 2 ) , notes text , status varchar ( 20 ) not null , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( contract_id ) references contracts ( id ) )"
+            "create table rent_adjustments ( id varchar ( 36 ) not null , contract_id varchar ( 36 ) not null , adjustment_type varchar ( 20 ) not null , effective_date date not null , previous_rent numeric ( 12 , 2 ) not null , new_rent numeric ( 12 , 2 ) not null , increase_percent numeric ( 12 , 2 ) , index_base_year integer , index_value numeric ( 12 , 2 ) , notes text , status varchar ( 20 ) not null , created_at datetime not null , updated_at datetime not null , foreign key ( contract_id ) references contracts ( id ) , primary key ( id ) )"
           ],
           [
             "table",
             "rent_charges",
             "rent_charges",
-            "create table rent_charges ( id varchar ( 36 ) not null , contract_id varchar ( 36 ) not null , month varchar ( 7 ) not null , cold_rent numeric ( 12 , 2 ) not null , service_charge numeric ( 12 , 2 ) not null , heating_charge numeric ( 12 , 2 ) not null , other_charges numeric ( 12 , 2 ) not null , amount_paid numeric ( 12 , 2 ) not null , status varchar ( 20 ) not null , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( contract_id ) references contracts ( id ) )"
+            "create table rent_charges ( id varchar ( 36 ) not null , contract_id varchar ( 36 ) not null , month varchar ( 7 ) not null , cold_rent numeric ( 12 , 2 ) not null , service_charge numeric ( 12 , 2 ) not null , heating_charge numeric ( 12 , 2 ) not null , other_charges numeric ( 12 , 2 ) not null , amount_paid numeric ( 12 , 2 ) not null , status varchar ( 20 ) not null , created_at datetime not null , updated_at datetime not null , foreign key ( contract_id ) references contracts ( id ) , primary key ( id ) )"
           ],
           [
             "table",
             "rent_generation_batches",
             "rent_generation_batches",
-            "create table rent_generation_batches ( id varchar not null , creator_id varchar not null , idempotency_key varchar ( 100 ) not null , parameters json not null , scope_snapshot json , state varchar not null , phase varchar not null , revision bigint not null , preparation json not null , planner_cursor varchar , snapshot_hash varchar ( 64 ) , plan_hash varchar ( 64 ) , contract_count bigint not null , price_count bigint not null , examined_count bigint not null , created_count bigint not null , existing_count bigint not null , last_error varchar , created_at datetime not null , sealed_at datetime , confirmed_at datetime , completed_at datetime , primary key ( id ) , constraint uq_rent_batch_creator_key unique ( creator_id , idempotency_key ) )"
+            "create table rent_generation_batches ( id varchar not null , creator_id varchar not null , idempotency_key varchar ( 100 ) not null , parameters json not null , scope_snapshot json , state varchar not null , phase varchar not null , revision bigint not null , preparation json not null , planner_cursor varchar , snapshot_hash varchar ( 64 ) , plan_hash varchar ( 64 ) , contract_count bigint not null , price_count bigint not null , examined_count bigint not null , created_count bigint not null , existing_count bigint not null , last_error varchar , created_at datetime not null , sealed_at datetime , confirmed_at datetime , completed_at datetime , constraint uq_rent_batch_creator_key unique ( creator_id , idempotency_key ) , primary key ( id ) )"
           ],
           [
             "table",
             "rent_generation_contracts",
             "rent_generation_contracts",
-            "create table rent_generation_contracts ( batch_id varchar not null , contract_id varchar not null , contract_number varchar not null , portfolio_id varchar not null , property_id varchar not null , unit_id varchar not null , tenant_id varchar not null , start_date date not null , end_date date , status varchar not null , cold_cents bigint not null , service_cents bigint not null , heating_cents bigint not null , contract_revision bigint not null , unit_revision bigint not null , price_revision bigint not null , property_revision bigint not null , basis_hash varchar ( 64 ) not null , price_digest varchar ( 64 ) not null , prices_complete boolean not null , primary key ( batch_id , contract_id ) , foreign key ( batch_id ) references rent_generation_batches ( id ) on delete cascade )"
+            "create table rent_generation_contracts ( batch_id varchar not null , contract_id varchar not null , contract_number varchar not null , portfolio_id varchar not null , property_id varchar not null , unit_id varchar not null , tenant_id varchar not null , start_date date not null , end_date date , status varchar not null , cold_cents bigint not null , service_cents bigint not null , heating_cents bigint not null , contract_revision bigint not null , unit_revision bigint not null , price_revision bigint not null , property_revision bigint not null , basis_hash varchar ( 64 ) not null , price_digest varchar ( 64 ) not null , prices_complete boolean not null , foreign key ( batch_id ) references rent_generation_batches ( id ) on delete cascade , primary key ( batch_id , contract_id ) )"
           ],
           [
             "table",
             "rent_generation_prices",
             "rent_generation_prices",
-            "create table rent_generation_prices ( batch_id varchar not null , adjustment_id varchar not null , contract_id varchar not null , effective_date date not null , previous_cents bigint not null , new_cents bigint not null , source_hash varchar ( 64 ) not null , primary key ( batch_id , adjustment_id ) , constraint uq_rent_batch_price_date unique ( batch_id , contract_id , effective_date ) , foreign key ( batch_id ) references rent_generation_batches ( id ) on delete cascade )"
+            "create table rent_generation_prices ( batch_id varchar not null , adjustment_id varchar not null , contract_id varchar not null , effective_date date not null , previous_cents bigint not null , new_cents bigint not null , source_hash varchar ( 64 ) not null , constraint uq_rent_batch_price_date unique ( batch_id , contract_id , effective_date ) , foreign key ( batch_id ) references rent_generation_batches ( id ) on delete cascade , primary key ( batch_id , adjustment_id ) )"
           ],
           [
             "table",
             "rent_generation_results",
             "rent_generation_results",
-            "create table rent_generation_results ( batch_id varchar not null , contract_id varchar not null , month varchar ( 7 ) not null , charge_id varchar not null , was_created boolean not null , basis_revision varchar ( 64 ) not null , primary key ( batch_id , contract_id , month ) , foreign key ( batch_id ) references rent_generation_batches ( id ) on delete cascade )"
+            "create table rent_generation_results ( batch_id varchar not null , contract_id varchar not null , month varchar ( 7 ) not null , charge_id varchar not null , was_created boolean not null , basis_revision varchar ( 64 ) not null , foreign key ( batch_id ) references rent_generation_batches ( id ) on delete cascade , primary key ( batch_id , contract_id , month ) )"
           ],
           [
             "table",
             "rent_generation_selections",
             "rent_generation_selections",
-            "create table rent_generation_selections ( batch_id varchar not null , contract_id varchar not null , primary key ( batch_id , contract_id ) , foreign key ( batch_id ) references rent_generation_batches ( id ) on delete cascade )"
+            "create table rent_generation_selections ( batch_id varchar not null , contract_id varchar not null , foreign key ( batch_id ) references rent_generation_batches ( id ) on delete cascade , primary key ( batch_id , contract_id ) )"
           ],
           [
             "table",
@@ -1070,7 +1070,7 @@
             "table",
             "resource_portfolio_grants",
             "resource_portfolio_grants",
-            "create table resource_portfolio_grants ( resource_type varchar ( 80 ) not null , resource_id varchar not null , portfolio_id varchar not null , primary key ( resource_type , resource_id , portfolio_id ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete cascade )"
+            "create table resource_portfolio_grants ( resource_type varchar ( 80 ) not null , resource_id varchar not null , portfolio_id varchar not null , foreign key ( portfolio_id ) references portfolios ( id ) on delete cascade , primary key ( resource_type , resource_id , portfolio_id ) )"
           ],
           [
             "table",
@@ -1082,13 +1082,13 @@
             "table",
             "standalone_meter_readings",
             "standalone_meter_readings",
-            "create table standalone_meter_readings ( id varchar ( 36 ) not null , meter_id varchar ( 36 ) not null , reading_date date not null , value float not null , recorded_by varchar ( 100 ) , photo_url text , notes text , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( meter_id ) references meters ( id ) on delete cascade )"
+            "create table standalone_meter_readings ( id varchar ( 36 ) not null , meter_id varchar ( 36 ) not null , reading_date date not null , value float not null , recorded_by varchar ( 100 ) , photo_url text , notes text , created_at datetime not null , updated_at datetime not null , foreign key ( meter_id ) references meters ( id ) on delete cascade , primary key ( id ) )"
           ],
           [
             "table",
             "tasks",
             "tasks",
-            "create table tasks ( id varchar not null , title text not null , description text , assignee text , due_date date , priority text not null , status text not null , property_id varchar , unit_id varchar , recurrence_rule text , parent_task_id varchar , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( property_id ) references properties ( id ) on delete set null , foreign key ( unit_id ) references units ( id ) on delete set null , foreign key ( parent_task_id ) references tasks ( id ) on delete set null )"
+            "create table tasks ( id varchar not null , title text not null , description text , assignee text , due_date date , priority text not null , status text not null , property_id varchar , unit_id varchar , recurrence_rule text , parent_task_id varchar , created_at datetime not null , updated_at datetime not null , foreign key ( parent_task_id ) references tasks ( id ) on delete set null , foreign key ( property_id ) references properties ( id ) on delete set null , foreign key ( unit_id ) references units ( id ) on delete set null , primary key ( id ) )"
           ],
           [
             "table",
@@ -1106,49 +1106,49 @@
             "table",
             "units",
             "units",
-            "create table units ( id varchar not null , property_id varchar not null , label text not null , unit_type text not null , status text not null , area_sqm float , rooms float , person_count integer , floor text , cold_rent numeric ( 12 , 2 ) , service_charge_advance numeric ( 12 , 2 ) , heating_advance numeric ( 12 , 2 ) , features text , created_at datetime not null , updated_at datetime not null , primary key ( id ) , constraint ck_units_area_positive check ( area_sqm is null or area_sqm > 0 ) , foreign key ( property_id ) references properties ( id ) on delete cascade )"
+            "create table units ( id varchar not null , property_id varchar not null , label text not null , unit_type text not null , status text not null , area_sqm float , rooms float , person_count integer , floor text , cold_rent numeric ( 12 , 2 ) , service_charge_advance numeric ( 12 , 2 ) , heating_advance numeric ( 12 , 2 ) , features text , created_at datetime not null , updated_at datetime not null , constraint ck_units_area_positive check ( area_sqm is null or area_sqm > 0 ) , foreign key ( property_id ) references properties ( id ) on delete cascade , primary key ( id ) )"
           ],
           [
             "table",
             "upload_portfolio_grants",
             "upload_portfolio_grants",
-            "create table upload_portfolio_grants ( storage_key text not null , portfolio_id varchar not null , uploaded_by varchar , primary key ( storage_key , portfolio_id ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete cascade , foreign key ( uploaded_by ) references users ( id ) on delete set null )"
+            "create table upload_portfolio_grants ( storage_key text not null , portfolio_id varchar not null , uploaded_by varchar , foreign key ( portfolio_id ) references portfolios ( id ) on delete cascade , foreign key ( uploaded_by ) references users ( id ) on delete set null , primary key ( storage_key , portfolio_id ) )"
           ],
           [
             "table",
             "user_portfolio_access",
             "user_portfolio_access",
-            "create table user_portfolio_access ( user_id varchar not null , mode varchar ( 20 ) not null , origin varchar ( 30 ) not null , updated_at datetime not null , primary key ( user_id ) , constraint ck_user_access_mode check ( mode in ( 'all' , 'selected' ) ) , foreign key ( user_id ) references users ( id ) on delete cascade )"
+            "create table user_portfolio_access ( user_id varchar not null , mode varchar ( 20 ) not null , origin varchar ( 30 ) not null , updated_at datetime not null , constraint ck_user_access_mode check ( mode in ( 'all' , 'selected' ) ) , foreign key ( user_id ) references users ( id ) on delete cascade , primary key ( user_id ) )"
           ],
           [
             "table",
             "user_portfolio_grants",
             "user_portfolio_grants",
-            "create table user_portfolio_grants ( user_id varchar not null , portfolio_id varchar not null , primary key ( user_id , portfolio_id ) , foreign key ( user_id ) references users ( id ) on delete cascade , foreign key ( portfolio_id ) references portfolios ( id ) on delete cascade )"
+            "create table user_portfolio_grants ( user_id varchar not null , portfolio_id varchar not null , foreign key ( portfolio_id ) references portfolios ( id ) on delete cascade , foreign key ( user_id ) references users ( id ) on delete cascade , primary key ( user_id , portfolio_id ) )"
           ],
           [
             "table",
             "user_preferences",
             "user_preferences",
-            "create table user_preferences ( id varchar not null , user_id varchar not null , theme text not null , locale text not null , sidebar_collapsed boolean not null , items_per_page integer not null , date_format text not null , currency text not null , default_due_day integer not null , email_notifications text not null , reminder_days text not null , created_at datetime not null , updated_at datetime not null , primary key ( id ) , unique ( user_id ) , foreign key ( user_id ) references users ( id ) on delete cascade )"
+            "create table user_preferences ( id varchar not null , user_id varchar not null , theme text not null , locale text not null , sidebar_collapsed boolean not null , items_per_page integer not null , date_format text not null , currency text not null , default_due_day integer not null , email_notifications text not null , reminder_days text not null , created_at datetime not null , updated_at datetime not null , foreign key ( user_id ) references users ( id ) on delete cascade , primary key ( id ) , unique ( user_id ) )"
           ],
           [
             "table",
             "users",
             "users",
-            "create table users ( id varchar not null , username text not null , email text not null , full_name text not null , hashed_password text not null , role text not null , is_active boolean not null , totp_secret text , totp_enabled boolean not null , created_at datetime not null , updated_at datetime not null , primary key ( id ) , unique ( username ) , unique ( email ) )"
+            "create table users ( id varchar not null , username text not null , email text not null , full_name text not null , hashed_password text not null , role text not null , is_active boolean not null , totp_secret text , totp_enabled boolean not null , created_at datetime not null , updated_at datetime not null , primary key ( id ) , unique ( email ) , unique ( username ) )"
           ],
           [
             "table",
             "utility_statements",
             "utility_statements",
-            "create table utility_statements ( id varchar not null , billing_period_id varchar not null , contract_id varchar not null , unit_id varchar not null , total_cost numeric ( 12 , 2 ) not null , advance_paid numeric ( 12 , 2 ) not null , balance numeric ( 12 , 2 ) not null , revision integer not null , revision_notes text , status text not null , notes text , line_items json , delivery_status text , delivered_at datetime , delivery_channel text , snapshot_hash varchar , source_statement_id varchar , advance_details json , calculation_hash varchar , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( billing_period_id ) references billing_periods ( id ) on delete cascade , foreign key ( contract_id ) references contracts ( id ) on delete cascade , foreign key ( unit_id ) references units ( id ) on delete cascade , foreign key ( source_statement_id ) references utility_statements ( id ) on delete restrict )"
+            "create table utility_statements ( id varchar not null , billing_period_id varchar not null , contract_id varchar not null , unit_id varchar not null , total_cost numeric ( 12 , 2 ) not null , advance_paid numeric ( 12 , 2 ) not null , balance numeric ( 12 , 2 ) not null , revision integer not null , revision_notes text , status text not null , notes text , line_items json , delivery_status text , delivered_at datetime , delivery_channel text , snapshot_hash varchar , source_statement_id varchar , advance_details json , calculation_hash varchar , created_at datetime not null , updated_at datetime not null , foreign key ( billing_period_id ) references billing_periods ( id ) on delete cascade , foreign key ( contract_id ) references contracts ( id ) on delete cascade , foreign key ( source_statement_id ) references utility_statements ( id ) on delete restrict , foreign key ( unit_id ) references units ( id ) on delete cascade , primary key ( id ) )"
           ],
           [
             "table",
             "viewing_appointments",
             "viewing_appointments",
-            "create table viewing_appointments ( id varchar not null , lead_id varchar not null , unit_id varchar not null , scheduled_at datetime not null , status text not null , agent text , notes text , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( lead_id ) references leads ( id ) on delete cascade , foreign key ( unit_id ) references units ( id ) on delete cascade )"
+            "create table viewing_appointments ( id varchar not null , lead_id varchar not null , unit_id varchar not null , scheduled_at datetime not null , status text not null , agent text , notes text , created_at datetime not null , updated_at datetime not null , foreign key ( lead_id ) references leads ( id ) on delete cascade , foreign key ( unit_id ) references units ( id ) on delete cascade , primary key ( id ) )"
           ],
           [
             "trigger",
@@ -18024,6 +18024,10 @@
         ]
       },
       "missing_tables": [
+        "billing_dispute_cases",
+        "billing_dispute_commands",
+        "billing_dispute_events",
+        "billing_dispute_evidence",
         "contract_correspondence_commands",
         "contract_correspondence_drafts",
         "contract_correspondence_events",
@@ -18049,9 +18053,9 @@
         "tenancy_workflow_templates"
       ],
       "recipe": "fresh-create-all",
-      "schema_sha256": "ec9b5fd1fd9c7b2d333e48e01c918d1442eebba9eebcb554a7dce955e367e67a",
+      "schema_sha256": "bb82d51d9e7f89864da0b1216a0c1a96ae2d808395372642454c9de44de5542e",
       "source_commit": "1910f25f12b9930ca4345f5be4212c60a1f2c89e",
-      "validated_target_head": "h2a2b3c4d5e6"
+      "validated_target_head": "j2a2b3c4d5e6"
     },
     "release126-historical-receipt-checks": {
       "catalog": {
@@ -18654,31 +18658,31 @@
             "table",
             "accounts",
             "accounts",
-            "create table accounts ( id varchar not null , portfolio_id varchar not null , name text not null , bank_name text , iban text , iban_fingerprint varchar ( 64 ) , bic text , account_type text not null , opening_balance numeric ( 12 , 2 ) not null , balance numeric ( 12 , 2 ) not null , last_synced_at datetime , created_at datetime not null , updated_at datetime not null , primary key ( id ) , constraint uq_accounts_iban unique ( iban ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete cascade )"
+            "create table accounts ( id varchar not null , portfolio_id varchar not null , name text not null , bank_name text , iban text , iban_fingerprint varchar ( 64 ) , bic text , account_type text not null , opening_balance numeric ( 12 , 2 ) not null , balance numeric ( 12 , 2 ) not null , last_synced_at datetime , created_at datetime not null , updated_at datetime not null , constraint uq_accounts_iban unique ( iban ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete cascade , primary key ( id ) )"
           ],
           [
             "table",
             "allocation_keys",
             "allocation_keys",
-            "create table allocation_keys ( id varchar not null , property_id varchar not null , name text not null , key_type text not null , description text , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( property_id ) references properties ( id ) on delete cascade )"
+            "create table allocation_keys ( id varchar not null , property_id varchar not null , name text not null , key_type text not null , description text , created_at datetime not null , updated_at datetime not null , foreign key ( property_id ) references properties ( id ) on delete cascade , primary key ( id ) )"
           ],
           [
             "table",
             "annual_tax_profiles",
             "annual_tax_profiles",
-            "create table annual_tax_profiles ( id varchar not null , portfolio_id varchar not null , tax_year integer not null , previous_version_id varchar , idempotency_key varchar ( 200 ) not null , actor_id varchar not null , spec_json text not null , sha256 varchar ( 64 ) not null , created_at datetime not null , primary key ( id ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( previous_version_id ) references annual_tax_profiles ( id ) on delete restrict , unique ( idempotency_key ) )"
+            "create table annual_tax_profiles ( id varchar not null , portfolio_id varchar not null , tax_year integer not null , previous_version_id varchar , idempotency_key varchar ( 200 ) not null , actor_id varchar not null , spec_json text not null , sha256 varchar ( 64 ) not null , created_at datetime not null , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( previous_version_id ) references annual_tax_profiles ( id ) on delete restrict , primary key ( id ) , unique ( idempotency_key ) )"
           ],
           [
             "table",
             "annual_tax_projections",
             "annual_tax_projections",
-            "create table annual_tax_projections ( id varchar not null , portfolio_id varchar not null , tax_year integer not null , profile_version_id varchar not null , annual_root_key varchar , previous_projection_id varchar , idempotency_key varchar ( 200 ) not null , actor_id varchar not null , request_json text not null , manifest_json text not null , manifest_sha256 varchar ( 64 ) not null , created_at datetime not null , primary key ( id ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( profile_version_id ) references annual_tax_profiles ( id ) on delete restrict , unique ( annual_root_key ) , unique ( previous_projection_id ) , foreign key ( previous_projection_id ) references annual_tax_projections ( id ) on delete restrict , unique ( idempotency_key ) )"
+            "create table annual_tax_projections ( id varchar not null , portfolio_id varchar not null , tax_year integer not null , profile_version_id varchar not null , annual_root_key varchar , previous_projection_id varchar , idempotency_key varchar ( 200 ) not null , actor_id varchar not null , request_json text not null , manifest_json text not null , manifest_sha256 varchar ( 64 ) not null , created_at datetime not null , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( previous_projection_id ) references annual_tax_projections ( id ) on delete restrict , foreign key ( profile_version_id ) references annual_tax_profiles ( id ) on delete restrict , primary key ( id ) , unique ( annual_root_key ) , unique ( idempotency_key ) , unique ( previous_projection_id ) )"
           ],
           [
             "table",
             "annual_tax_sources",
             "annual_tax_sources",
-            "create table annual_tax_sources ( id varchar not null , portfolio_id varchar not null , projection_id varchar not null , booking_id varchar not null , sequence_number integer not null , source_json text not null , sha256 varchar ( 64 ) not null , primary key ( id ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( projection_id ) references annual_tax_projections ( id ) on delete restrict )"
+            "create table annual_tax_sources ( id varchar not null , portfolio_id varchar not null , projection_id varchar not null , booking_id varchar not null , sequence_number integer not null , source_json text not null , sha256 varchar ( 64 ) not null , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( projection_id ) references annual_tax_projections ( id ) on delete restrict , primary key ( id ) )"
           ],
           [
             "table",
@@ -18690,7 +18694,7 @@
             "table",
             "auth_refresh_tokens",
             "auth_refresh_tokens",
-            "create table auth_refresh_tokens ( token_hash varchar ( 64 ) not null , session_id varchar ( 36 ) not null , generation integer not null , expires_at datetime not null , consumed_at datetime , primary key ( token_hash ) , constraint uq_auth_refresh_generation unique ( session_id , generation ) , foreign key ( session_id ) references auth_sessions ( id ) on delete cascade )"
+            "create table auth_refresh_tokens ( token_hash varchar ( 64 ) not null , session_id varchar ( 36 ) not null , generation integer not null , expires_at datetime not null , consumed_at datetime , constraint uq_auth_refresh_generation unique ( session_id , generation ) , foreign key ( session_id ) references auth_sessions ( id ) on delete cascade , primary key ( token_hash ) )"
           ],
           [
             "table",
@@ -18702,67 +18706,67 @@
             "table",
             "auth_setup",
             "auth_setup",
-            "create table auth_setup ( id integer not null , completed_at datetime not null , primary key ( id ) , constraint ck_auth_setup_singleton check ( id = 1 ) )"
+            "create table auth_setup ( id integer not null , completed_at datetime not null , constraint ck_auth_setup_singleton check ( id = 1 ) , primary key ( id ) )"
           ],
           [
             "table",
             "bank_import_receipts",
             "bank_import_receipts",
-            "create table bank_import_receipts ( import_id varchar not null , ordinal bigint not null , account_id varchar not null , fingerprint varchar ( 64 ) not null , content_hash varchar ( 64 ) not null , booking_id varchar not null , published_at datetime not null , primary key ( import_id , ordinal ) , constraint uq_bank_import_account_fingerprint unique ( account_id , fingerprint ) , foreign key ( import_id ) references bank_imports ( id ) on delete restrict , foreign key ( account_id ) references accounts ( id ) on delete restrict )"
+            "create table bank_import_receipts ( import_id varchar not null , ordinal bigint not null , account_id varchar not null , fingerprint varchar ( 64 ) not null , content_hash varchar ( 64 ) not null , booking_id varchar not null , published_at datetime not null , constraint uq_bank_import_account_fingerprint unique ( account_id , fingerprint ) , foreign key ( account_id ) references accounts ( id ) on delete restrict , foreign key ( import_id ) references bank_imports ( id ) on delete restrict , primary key ( import_id , ordinal ) )"
           ],
           [
             "table",
             "bank_import_rows",
             "bank_import_rows",
-            "create table bank_import_rows ( import_id varchar not null , ordinal bigint not null , source_line bigint not null , booking_date date , value_date date , amount_cents bigint , payment_text text not null , bank_reference text , identity_base varchar ( 64 ) , identity_occurrence bigint not null , fingerprint varchar ( 64 ) , content_hash varchar ( 64 ) not null , error_code varchar , error_message text , duplicate_booking_id varchar , primary key ( import_id , ordinal ) , foreign key ( import_id ) references bank_imports ( id ) on delete cascade )"
+            "create table bank_import_rows ( import_id varchar not null , ordinal bigint not null , source_line bigint not null , booking_date date , value_date date , amount_cents bigint , payment_text text not null , bank_reference text , identity_base varchar ( 64 ) , identity_occurrence bigint not null , fingerprint varchar ( 64 ) , content_hash varchar ( 64 ) not null , error_code varchar , error_message text , duplicate_booking_id varchar , foreign key ( import_id ) references bank_imports ( id ) on delete cascade , primary key ( import_id , ordinal ) )"
           ],
           [
             "table",
             "bank_import_source_chunks",
             "bank_import_source_chunks",
-            "create table bank_import_source_chunks ( import_id varchar not null , chunk_no bigint not null , data blob not null , primary key ( import_id , chunk_no ) , foreign key ( import_id ) references bank_imports ( id ) on delete cascade )"
+            "create table bank_import_source_chunks ( import_id varchar not null , chunk_no bigint not null , data blob not null , foreign key ( import_id ) references bank_imports ( id ) on delete cascade , primary key ( import_id , chunk_no ) )"
           ],
           [
             "table",
             "bank_imports",
             "bank_imports",
-            "create table bank_imports ( id varchar not null , account_id varchar not null , portfolio_id varchar not null , creator_id varchar not null , scope_snapshot json , filename text not null , source_sha256 varchar ( 64 ) not null , source_bytes bigint not null , mapping json not null , mapping_hash varchar ( 64 ) not null , preview_hash varchar ( 64 ) not null , state varchar not null , revision bigint not null , row_count bigint not null , error_count bigint not null , duplicate_count bigint not null , published_count bigint not null , created_at datetime not null , committed_at datetime , primary key ( id ) , constraint uq_bank_import_source_mapping unique ( account_id , source_sha256 , mapping_hash ) , foreign key ( account_id ) references accounts ( id ) on delete restrict )"
+            "create table bank_imports ( id varchar not null , account_id varchar not null , portfolio_id varchar not null , creator_id varchar not null , scope_snapshot json , filename text not null , source_sha256 varchar ( 64 ) not null , source_bytes bigint not null , mapping json not null , mapping_hash varchar ( 64 ) not null , preview_hash varchar ( 64 ) not null , state varchar not null , revision bigint not null , row_count bigint not null , error_count bigint not null , duplicate_count bigint not null , published_count bigint not null , created_at datetime not null , committed_at datetime , constraint uq_bank_import_source_mapping unique ( account_id , source_sha256 , mapping_hash ) , foreign key ( account_id ) references accounts ( id ) on delete restrict , primary key ( id ) )"
           ],
           [
             "table",
             "billing_periods",
             "billing_periods",
-            "create table billing_periods ( id varchar not null , property_id varchar not null , label text not null , start_date date not null , end_date date not null , status text not null , source_period_id varchar , revision_number integer default '1' not null , revision_notes text , owner_cost_share json , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( property_id ) references properties ( id ) on delete cascade , foreign key ( source_period_id ) references billing_periods ( id ) on delete restrict )"
+            "create table billing_periods ( id varchar not null , property_id varchar not null , label text not null , start_date date not null , end_date date not null , status text not null , source_period_id varchar , revision_number integer default '1' not null , revision_notes text , owner_cost_share json , created_at datetime not null , updated_at datetime not null , foreign key ( property_id ) references properties ( id ) on delete cascade , foreign key ( source_period_id ) references billing_periods ( id ) on delete restrict , primary key ( id ) )"
           ],
           [
             "table",
             "billing_settlements",
             "billing_settlements",
-            "create table billing_settlements ( id varchar not null , billing_period_id varchar not null , statement_id varchar not null , source_statement_id varchar , root_statement_id varchar not null , contract_id varchar not null , signed_amount numeric ( 12 , 2 ) not null , kind varchar ( 20 ) not null , status varchar ( 30 ) not null , receivable_id varchar , created_at datetime not null , primary key ( id ) , foreign key ( billing_period_id ) references billing_periods ( id ) on delete restrict , unique ( statement_id ) , foreign key ( statement_id ) references utility_statements ( id ) on delete restrict , foreign key ( source_statement_id ) references utility_statements ( id ) on delete restrict , foreign key ( root_statement_id ) references utility_statements ( id ) on delete restrict , foreign key ( contract_id ) references contracts ( id ) on delete restrict , foreign key ( receivable_id ) references receivables ( id ) on delete restrict )"
+            "create table billing_settlements ( id varchar not null , billing_period_id varchar not null , statement_id varchar not null , source_statement_id varchar , root_statement_id varchar not null , contract_id varchar not null , signed_amount numeric ( 12 , 2 ) not null , kind varchar ( 20 ) not null , status varchar ( 30 ) not null , receivable_id varchar , created_at datetime not null , foreign key ( billing_period_id ) references billing_periods ( id ) on delete restrict , foreign key ( contract_id ) references contracts ( id ) on delete restrict , foreign key ( receivable_id ) references receivables ( id ) on delete restrict , foreign key ( root_statement_id ) references utility_statements ( id ) on delete restrict , foreign key ( source_statement_id ) references utility_statements ( id ) on delete restrict , foreign key ( statement_id ) references utility_statements ( id ) on delete restrict , primary key ( id ) , unique ( statement_id ) )"
           ],
           [
             "table",
             "bookings",
             "bookings",
-            "create table \"bookings\" ( id varchar not null , account_id varchar not null , category_id varchar , property_id varchar , unit_id varchar , tenant_id varchar , booking_date date not null , amount numeric ( 12 , 2 ) not null , allocated_amount numeric ( 12 , 2 ) default '0' not null , status text not null , payment_text text , receipt_url text , created_at datetime not null , updated_at datetime not null , primary key ( id ) , constraint ck_bookings_amount_nonzero check ( amount ! = 0 ) , constraint ck_bookings_allocation check ( allocated_amount > = 0 and ( allocated_amount = 0 or allocated_amount < = amount ) ) , foreign key ( category_id ) references categories ( id ) on delete set null on update no action , foreign key ( tenant_id ) references tenants ( id ) on delete set null on update no action , foreign key ( property_id ) references properties ( id ) on delete set null on update no action , foreign key ( account_id ) references accounts ( id ) on delete cascade on update no action , foreign key ( unit_id ) references units ( id ) on delete set null on update no action )"
+            "create table \"bookings\" ( id varchar not null , account_id varchar not null , category_id varchar , property_id varchar , unit_id varchar , tenant_id varchar , booking_date date not null , amount numeric ( 12 , 2 ) not null , allocated_amount numeric ( 12 , 2 ) default '0' not null , status text not null , payment_text text , receipt_url text , created_at datetime not null , updated_at datetime not null , constraint ck_bookings_allocation check ( allocated_amount > = 0 and ( allocated_amount = 0 or allocated_amount < = amount ) ) , constraint ck_bookings_amount_nonzero check ( amount ! = 0 ) , foreign key ( account_id ) references accounts ( id ) on delete cascade on update no action , foreign key ( category_id ) references categories ( id ) on delete set null on update no action , foreign key ( property_id ) references properties ( id ) on delete set null on update no action , foreign key ( tenant_id ) references tenants ( id ) on delete set null on update no action , foreign key ( unit_id ) references units ( id ) on delete set null on update no action , primary key ( id ) )"
           ],
           [
             "table",
             "budgets",
             "budgets",
-            "create table budgets ( id varchar ( 36 ) not null , property_id varchar ( 36 ) not null , year integer not null , category varchar ( 50 ) not null , planned_amount numeric ( 12 , 2 ) not null , actual_amount numeric ( 12 , 2 ) not null , notes text , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( property_id ) references properties ( id ) )"
+            "create table budgets ( id varchar ( 36 ) not null , property_id varchar ( 36 ) not null , year integer not null , category varchar ( 50 ) not null , planned_amount numeric ( 12 , 2 ) not null , actual_amount numeric ( 12 , 2 ) not null , notes text , created_at datetime not null , updated_at datetime not null , foreign key ( property_id ) references properties ( id ) , primary key ( id ) )"
           ],
           [
             "table",
             "calendar_events",
             "calendar_events",
-            "create table calendar_events ( id varchar not null , title text not null , event_type text not null , event_date date not null , event_time text , location text , participants text , property_id varchar , unit_id varchar , description text , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( property_id ) references properties ( id ) on delete set null , foreign key ( unit_id ) references units ( id ) on delete set null )"
+            "create table calendar_events ( id varchar not null , title text not null , event_type text not null , event_date date not null , event_time text , location text , participants text , property_id varchar , unit_id varchar , description text , created_at datetime not null , updated_at datetime not null , foreign key ( property_id ) references properties ( id ) on delete set null , foreign key ( unit_id ) references units ( id ) on delete set null , primary key ( id ) )"
           ],
           [
             "table",
             "categories",
             "categories",
-            "create table categories ( id varchar not null , portfolio_id varchar not null , name text not null , category_type text not null , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete cascade )"
+            "create table categories ( id varchar not null , portfolio_id varchar not null , name text not null , category_type text not null , created_at datetime not null , updated_at datetime not null , foreign key ( portfolio_id ) references portfolios ( id ) on delete cascade , primary key ( id ) )"
           ],
           [
             "table",
@@ -18780,109 +18784,109 @@
             "table",
             "contract_attachment_chunks",
             "contract_attachment_chunks",
-            "create table contract_attachment_chunks ( attachment_id varchar not null , position integer not null , portfolio_id varchar not null , data blob not null , primary key ( attachment_id , position ) , foreign key ( attachment_id ) references contract_attachment_evidence ( id ) on delete restrict , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict )"
+            "create table contract_attachment_chunks ( attachment_id varchar not null , position integer not null , portfolio_id varchar not null , data blob not null , foreign key ( attachment_id ) references contract_attachment_evidence ( id ) on delete restrict , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , primary key ( attachment_id , position ) )"
           ],
           [
             "table",
             "contract_attachment_evidence",
             "contract_attachment_evidence",
-            "create table contract_attachment_evidence ( id varchar not null , portfolio_id varchar not null , draft_id varchar not null , source_document_id varchar not null , metadata_snapshot json not null , sha256 varchar ( 64 ) , size_bytes bigint , mode varchar ( 20 ) not null , primary key ( id ) , constraint uq_contract_attachment_source unique ( draft_id , source_document_id ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( draft_id ) references contract_wizard_drafts ( id ) on delete restrict )"
+            "create table contract_attachment_evidence ( id varchar not null , portfolio_id varchar not null , draft_id varchar not null , source_document_id varchar not null , metadata_snapshot json not null , sha256 varchar ( 64 ) , size_bytes bigint , mode varchar ( 20 ) not null , constraint uq_contract_attachment_source unique ( draft_id , source_document_id ) , foreign key ( draft_id ) references contract_wizard_drafts ( id ) on delete restrict , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , primary key ( id ) )"
           ],
           [
             "table",
             "contract_lifecycle_commands",
             "contract_lifecycle_commands",
-            "create table contract_lifecycle_commands ( id varchar not null , portfolio_id varchar not null , contract_id varchar not null , draft_id varchar not null , actor_id varchar not null , command_key varchar ( 100 ) not null , operation varchar ( 20 ) not null , request json not null , request_hash varchar ( 64 ) not null , result json not null , created_at datetime not null , primary key ( id ) , constraint uq_contract_lifecycle_command unique ( actor_id , command_key ) , constraint ck_contract_lifecycle_command_operation check ( operation in ( 'create' , 'edit' , 'review' , 'confirm' , 'finalize' ) ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( contract_id ) references contracts ( id ) on delete restrict , foreign key ( draft_id ) references contract_lifecycle_drafts ( id ) on delete restrict )"
+            "create table contract_lifecycle_commands ( id varchar not null , portfolio_id varchar not null , contract_id varchar not null , draft_id varchar not null , actor_id varchar not null , command_key varchar ( 100 ) not null , operation varchar ( 20 ) not null , request json not null , request_hash varchar ( 64 ) not null , result json not null , created_at datetime not null , constraint ck_contract_lifecycle_command_operation check ( operation in ( 'create' , 'edit' , 'review' , 'confirm' , 'finalize' ) ) , constraint uq_contract_lifecycle_command unique ( actor_id , command_key ) , foreign key ( contract_id ) references contracts ( id ) on delete restrict , foreign key ( draft_id ) references contract_lifecycle_drafts ( id ) on delete restrict , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , primary key ( id ) )"
           ],
           [
             "table",
             "contract_lifecycle_drafts",
             "contract_lifecycle_drafts",
-            "create table contract_lifecycle_drafts ( id varchar not null , portfolio_id varchar not null , contract_id varchar not null , property_id varchar not null , unit_id varchar not null , tenant_id varchar not null , actor_id varchar not null , create_key varchar ( 100 ) not null , create_hash varchar ( 64 ) not null , data json not null , revision varchar ( 36 ) not null , state varchar ( 20 ) not null , source_contract_etag varchar not null , review json , review_hash varchar ( 64 ) , applied_contract_etag varchar , finalized_contract_etag varchar , successor_contract_id varchar , supersedes_draft_id varchar , superseded_by_draft_id varchar , created_at datetime not null , updated_at datetime not null , primary key ( id ) , constraint uq_contract_lifecycle_create unique ( actor_id , create_key ) , constraint ck_contract_lifecycle_state check ( state in ( 'draft' , 'reviewed' , 'confirmed' , 'pending_effective' , 'completed' , 'superseded' ) ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( contract_id ) references contracts ( id ) on delete restrict , foreign key ( property_id ) references properties ( id ) on delete restrict , foreign key ( unit_id ) references units ( id ) on delete restrict , foreign key ( tenant_id ) references tenants ( id ) on delete restrict , foreign key ( successor_contract_id ) references contracts ( id ) on delete restrict , foreign key ( supersedes_draft_id ) references contract_lifecycle_drafts ( id ) on delete restrict , foreign key ( superseded_by_draft_id ) references contract_lifecycle_drafts ( id ) on delete restrict )"
+            "create table contract_lifecycle_drafts ( id varchar not null , portfolio_id varchar not null , contract_id varchar not null , property_id varchar not null , unit_id varchar not null , tenant_id varchar not null , actor_id varchar not null , create_key varchar ( 100 ) not null , create_hash varchar ( 64 ) not null , data json not null , revision varchar ( 36 ) not null , state varchar ( 20 ) not null , source_contract_etag varchar not null , review json , review_hash varchar ( 64 ) , applied_contract_etag varchar , finalized_contract_etag varchar , successor_contract_id varchar , supersedes_draft_id varchar , superseded_by_draft_id varchar , created_at datetime not null , updated_at datetime not null , constraint ck_contract_lifecycle_state check ( state in ( 'draft' , 'reviewed' , 'confirmed' , 'pending_effective' , 'completed' , 'superseded' ) ) , constraint uq_contract_lifecycle_create unique ( actor_id , create_key ) , foreign key ( contract_id ) references contracts ( id ) on delete restrict , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( property_id ) references properties ( id ) on delete restrict , foreign key ( successor_contract_id ) references contracts ( id ) on delete restrict , foreign key ( superseded_by_draft_id ) references contract_lifecycle_drafts ( id ) on delete restrict , foreign key ( supersedes_draft_id ) references contract_lifecycle_drafts ( id ) on delete restrict , foreign key ( tenant_id ) references tenants ( id ) on delete restrict , foreign key ( unit_id ) references units ( id ) on delete restrict , primary key ( id ) )"
           ],
           [
             "table",
             "contract_signature_evidence",
             "contract_signature_evidence",
-            "create table contract_signature_evidence ( id varchar not null , portfolio_id varchar not null , draft_id varchar not null , actor_id varchar not null , signed_date date not null , tenant_signer text not null , landlord_signer text not null , reference text not null , note text , signed_document_id varchar , created_at datetime not null , primary key ( id ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( draft_id ) references contract_wizard_drafts ( id ) on delete restrict , foreign key ( signed_document_id ) references documents ( id ) on delete restrict )"
+            "create table contract_signature_evidence ( id varchar not null , portfolio_id varchar not null , draft_id varchar not null , actor_id varchar not null , signed_date date not null , tenant_signer text not null , landlord_signer text not null , reference text not null , note text , signed_document_id varchar , created_at datetime not null , foreign key ( draft_id ) references contract_wizard_drafts ( id ) on delete restrict , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( signed_document_id ) references documents ( id ) on delete restrict , primary key ( id ) )"
           ],
           [
             "table",
             "contract_template_versions",
             "contract_template_versions",
-            "create table contract_template_versions ( id varchar not null , portfolio_id varchar not null , root_id varchar not null , version integer not null , title text not null , body text not null , actor_id varchar not null , create_key varchar ( 100 ) not null , create_hash varchar ( 64 ) not null , created_at datetime not null , primary key ( id ) , constraint uq_contract_template_version unique ( root_id , version ) , constraint uq_contract_template_create unique ( actor_id , create_key ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict )"
+            "create table contract_template_versions ( id varchar not null , portfolio_id varchar not null , root_id varchar not null , version integer not null , title text not null , body text not null , actor_id varchar not null , create_key varchar ( 100 ) not null , create_hash varchar ( 64 ) not null , created_at datetime not null , constraint uq_contract_template_create unique ( actor_id , create_key ) , constraint uq_contract_template_version unique ( root_id , version ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , primary key ( id ) )"
           ],
           [
             "table",
             "contract_wizard_commands",
             "contract_wizard_commands",
-            "create table contract_wizard_commands ( id varchar not null , portfolio_id varchar not null , draft_id varchar not null , actor_id varchar not null , command_key varchar ( 100 ) not null , request_hash varchar ( 64 ) not null , result json not null , created_at datetime not null , primary key ( id ) , constraint uq_contract_wizard_command unique ( actor_id , command_key ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( draft_id ) references contract_wizard_drafts ( id ) on delete restrict )"
+            "create table contract_wizard_commands ( id varchar not null , portfolio_id varchar not null , draft_id varchar not null , actor_id varchar not null , command_key varchar ( 100 ) not null , request_hash varchar ( 64 ) not null , result json not null , created_at datetime not null , constraint uq_contract_wizard_command unique ( actor_id , command_key ) , foreign key ( draft_id ) references contract_wizard_drafts ( id ) on delete restrict , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , primary key ( id ) )"
           ],
           [
             "table",
             "contract_wizard_drafts",
             "contract_wizard_drafts",
-            "create table contract_wizard_drafts ( id varchar not null , portfolio_id varchar not null , actor_id varchar not null , create_key varchar ( 100 ) not null , create_hash varchar ( 64 ) not null , data json not null , revision integer not null , state varchar ( 20 ) not null , review json , review_hash varchar ( 64 ) , pdf blob , pdf_sha256 varchar ( 64 ) , contract_id varchar , document_id varchar , published_tenant_id varchar , created_at datetime not null , updated_at datetime not null , primary key ( id ) , constraint uq_contract_draft_create unique ( actor_id , create_key ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( contract_id ) references contracts ( id ) on delete restrict , foreign key ( document_id ) references documents ( id ) on delete restrict )"
+            "create table contract_wizard_drafts ( id varchar not null , portfolio_id varchar not null , actor_id varchar not null , create_key varchar ( 100 ) not null , create_hash varchar ( 64 ) not null , data json not null , revision integer not null , state varchar ( 20 ) not null , review json , review_hash varchar ( 64 ) , pdf blob , pdf_sha256 varchar ( 64 ) , contract_id varchar , document_id varchar , published_tenant_id varchar , created_at datetime not null , updated_at datetime not null , constraint uq_contract_draft_create unique ( actor_id , create_key ) , foreign key ( contract_id ) references contracts ( id ) on delete restrict , foreign key ( document_id ) references documents ( id ) on delete restrict , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , primary key ( id ) )"
           ],
           [
             "table",
             "contracts",
             "contracts",
-            "create table contracts ( id varchar not null , contract_number text not null , property_id varchar not null , unit_id varchar not null , tenant_id varchar not null , status text not null , start_date date not null , end_date date , notice_period text , deposit_amount numeric ( 12 , 2 ) , index_rent text , service_charge_settlement text , created_at datetime not null , updated_at datetime not null , primary key ( id ) , constraint ck_contracts_dates check ( end_date is null or end_date > = start_date ) , unique ( contract_number ) , foreign key ( property_id ) references properties ( id ) on delete cascade , foreign key ( unit_id ) references units ( id ) on delete cascade , foreign key ( tenant_id ) references tenants ( id ) on delete cascade )"
+            "create table contracts ( id varchar not null , contract_number text not null , property_id varchar not null , unit_id varchar not null , tenant_id varchar not null , status text not null , start_date date not null , end_date date , notice_period text , deposit_amount numeric ( 12 , 2 ) , index_rent text , service_charge_settlement text , created_at datetime not null , updated_at datetime not null , constraint ck_contracts_dates check ( end_date is null or end_date > = start_date ) , foreign key ( property_id ) references properties ( id ) on delete cascade , foreign key ( tenant_id ) references tenants ( id ) on delete cascade , foreign key ( unit_id ) references units ( id ) on delete cascade , primary key ( id ) , unique ( contract_number ) )"
           ],
           [
             "table",
             "cost_items",
             "cost_items",
-            "create table cost_items ( id varchar not null , billing_period_id varchar not null , description text not null , amount numeric ( 12 , 2 ) not null , allocation_key_id varchar not null , is_recoverable boolean not null , cost_category text , source_document_id varchar , vat_rate numeric ( 12 , 2 ) , net_amount numeric ( 12 , 2 ) , gross_amount numeric ( 12 , 2 ) , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( billing_period_id ) references billing_periods ( id ) on delete cascade , foreign key ( allocation_key_id ) references allocation_keys ( id ) on delete cascade )"
+            "create table cost_items ( id varchar not null , billing_period_id varchar not null , description text not null , amount numeric ( 12 , 2 ) not null , allocation_key_id varchar not null , is_recoverable boolean not null , cost_category text , source_document_id varchar , vat_rate numeric ( 12 , 2 ) , net_amount numeric ( 12 , 2 ) , gross_amount numeric ( 12 , 2 ) , created_at datetime not null , updated_at datetime not null , foreign key ( allocation_key_id ) references allocation_keys ( id ) on delete cascade , foreign key ( billing_period_id ) references billing_periods ( id ) on delete cascade , primary key ( id ) )"
           ],
           [
             "table",
             "credit_receipts",
             "credit_receipts",
-            "create table credit_receipts ( id varchar not null , contract_id varchar not null , source_settlement_id varchar not null , idempotency_key varchar ( 100 ) not null , amount_cents text not null , transaction_date date not null , method text not null , booking_id varchar , target_type text , target_id varchar , payment_id varchar , note text , actor_id varchar , created_at datetime not null , primary key ( id ) , constraint ck_credit_method check ( method in ( 'cash' , 'bank' , 'offset' ) ) , constraint ck_credit_links check ( ( method = 'bank' and booking_id is not null and payment_id is null and target_id is null and target_type is null ) or ( method = 'cash' and booking_id is null and payment_id is null and target_id is null and target_type is null ) or ( method = 'offset' and booking_id is null and payment_id is not null and target_id is not null and target_type in ( 'receivable' , 'rent_charge' ) ) ) , foreign key ( contract_id ) references contracts ( id ) on delete restrict , foreign key ( source_settlement_id ) references billing_settlements ( id ) on delete restrict , unique ( idempotency_key ) , foreign key ( booking_id ) references bookings ( id ) on delete restrict , unique ( payment_id ) , foreign key ( payment_id ) references payments ( id ) on delete restrict )"
+            "create table credit_receipts ( id varchar not null , contract_id varchar not null , source_settlement_id varchar not null , idempotency_key varchar ( 100 ) not null , amount_cents text not null , transaction_date date not null , method text not null , booking_id varchar , target_type text , target_id varchar , payment_id varchar , note text , actor_id varchar , created_at datetime not null , constraint ck_credit_links check ( ( method = 'bank' and booking_id is not null and payment_id is null and target_id is null and target_type is null ) or ( method = 'cash' and booking_id is null and payment_id is null and target_id is null and target_type is null ) or ( method = 'offset' and booking_id is null and payment_id is not null and target_id is not null and target_type in ( 'receivable' , 'rent_charge' ) ) ) , constraint ck_credit_method check ( method in ( 'cash' , 'bank' , 'offset' ) ) , foreign key ( booking_id ) references bookings ( id ) on delete restrict , foreign key ( contract_id ) references contracts ( id ) on delete restrict , foreign key ( payment_id ) references payments ( id ) on delete restrict , foreign key ( source_settlement_id ) references billing_settlements ( id ) on delete restrict , primary key ( id ) , unique ( idempotency_key ) , unique ( payment_id ) )"
           ],
           [
             "table",
             "credit_reversals",
             "credit_reversals",
-            "create table credit_reversals ( id varchar not null , receipt_id varchar not null , idempotency_key varchar ( 100 ) not null , amount_cents text not null , reversal_date date not null , reason text not null , payment_reversal_id varchar , actor_id varchar , created_at datetime not null , primary key ( id ) , unique ( receipt_id ) , foreign key ( receipt_id ) references credit_receipts ( id ) on delete restrict , unique ( idempotency_key ) , unique ( payment_reversal_id ) , foreign key ( payment_reversal_id ) references payment_reversals ( id ) on delete restrict )"
+            "create table credit_reversals ( id varchar not null , receipt_id varchar not null , idempotency_key varchar ( 100 ) not null , amount_cents text not null , reversal_date date not null , reason text not null , payment_reversal_id varchar , actor_id varchar , created_at datetime not null , foreign key ( payment_reversal_id ) references payment_reversals ( id ) on delete restrict , foreign key ( receipt_id ) references credit_receipts ( id ) on delete restrict , primary key ( id ) , unique ( idempotency_key ) , unique ( payment_reversal_id ) , unique ( receipt_id ) )"
           ],
           [
             "table",
             "datev_exports",
             "datev_exports",
-            "create table datev_exports ( id varchar not null , portfolio_id varchar not null , profile_version_id varchar not null , idempotency_key varchar ( 200 ) not null , actor_id varchar not null , request_json text not null , manifest_json text not null , created_at datetime not null , primary key ( id ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( profile_version_id ) references datev_profiles ( id ) on delete restrict , unique ( idempotency_key ) )"
+            "create table datev_exports ( id varchar not null , portfolio_id varchar not null , profile_version_id varchar not null , idempotency_key varchar ( 200 ) not null , actor_id varchar not null , request_json text not null , manifest_json text not null , created_at datetime not null , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( profile_version_id ) references datev_profiles ( id ) on delete restrict , primary key ( id ) , unique ( idempotency_key ) )"
           ],
           [
             "table",
             "datev_profiles",
             "datev_profiles",
-            "create table datev_profiles ( id varchar not null , portfolio_id varchar not null , previous_version_id varchar , idempotency_key varchar ( 200 ) not null , actor_id varchar not null , spec_json text not null , sha256 varchar ( 64 ) not null , created_at datetime not null , primary key ( id ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( previous_version_id ) references datev_profiles ( id ) on delete restrict , unique ( idempotency_key ) )"
+            "create table datev_profiles ( id varchar not null , portfolio_id varchar not null , previous_version_id varchar , idempotency_key varchar ( 200 ) not null , actor_id varchar not null , spec_json text not null , sha256 varchar ( 64 ) not null , created_at datetime not null , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( previous_version_id ) references datev_profiles ( id ) on delete restrict , primary key ( id ) , unique ( idempotency_key ) )"
           ],
           [
             "table",
             "deposits",
             "deposits",
-            "create table deposits ( id varchar not null , contract_id varchar not null , amount numeric ( 12 , 2 ) not null , status text not null , held_date date , return_date date , deductions numeric ( 12 , 2 ) , deduction_reason text , notes text , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( contract_id ) references contracts ( id ) on delete cascade )"
+            "create table deposits ( id varchar not null , contract_id varchar not null , amount numeric ( 12 , 2 ) not null , status text not null , held_date date , return_date date , deductions numeric ( 12 , 2 ) , deduction_reason text , notes text , created_at datetime not null , updated_at datetime not null , foreign key ( contract_id ) references contracts ( id ) on delete cascade , primary key ( id ) )"
           ],
           [
             "table",
             "document_version_chunks",
             "document_version_chunks",
-            "create table document_version_chunks ( version_id varchar not null , position bigint not null , portfolio_id varchar not null , data blob not null , primary key ( version_id , position ) , constraint ck_document_chunk_values check ( position > = 0 and length ( data ) between 1 and 65536 ) , foreign key ( version_id ) references document_versions ( id ) on delete restrict , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict )"
+            "create table document_version_chunks ( version_id varchar not null , position bigint not null , portfolio_id varchar not null , data blob not null , constraint ck_document_chunk_values check ( position > = 0 and length ( data ) between 1 and 65536 ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( version_id ) references document_versions ( id ) on delete restrict , primary key ( version_id , position ) )"
           ],
           [
             "table",
             "document_versions",
             "document_versions",
-            "create table document_versions ( id varchar not null , document_id varchar not null , portfolio_id varchar not null , property_id varchar not null , unit_id varchar , contract_id varchar , tenant_id varchar , number bigint not null , predecessor_id varchar , restored_from_id varchar , actor_id varchar not null , idempotency_key varchar ( 100 ) not null , request_sha256 varchar ( 64 ) not null , operation varchar ( 20 ) not null , comment text not null , filename text not null , media_type varchar ( 200 ) not null , sha256 varchar ( 64 ) not null , size_bytes bigint not null , metadata_snapshot json not null , created_at datetime not null , primary key ( id ) , constraint uq_document_version_number unique ( document_id , number ) , constraint uq_document_version_command unique ( actor_id , idempotency_key ) , constraint ck_document_version_values check ( number > 0 and size_bytes > = 0 ) , constraint ck_document_version_operation check ( operation in ( 'archive_original' , 'upload' , 'restore' ) ) , foreign key ( document_id ) references documents ( id ) on delete restrict , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( property_id ) references properties ( id ) on delete restrict , foreign key ( unit_id ) references units ( id ) on delete restrict , foreign key ( contract_id ) references contracts ( id ) on delete restrict , foreign key ( tenant_id ) references tenants ( id ) on delete restrict , foreign key ( predecessor_id ) references document_versions ( id ) on delete restrict , foreign key ( restored_from_id ) references document_versions ( id ) on delete restrict )"
+            "create table document_versions ( id varchar not null , document_id varchar not null , portfolio_id varchar not null , property_id varchar not null , unit_id varchar , contract_id varchar , tenant_id varchar , number bigint not null , predecessor_id varchar , restored_from_id varchar , actor_id varchar not null , idempotency_key varchar ( 100 ) not null , request_sha256 varchar ( 64 ) not null , operation varchar ( 20 ) not null , comment text not null , filename text not null , media_type varchar ( 200 ) not null , sha256 varchar ( 64 ) not null , size_bytes bigint not null , metadata_snapshot json not null , created_at datetime not null , constraint ck_document_version_operation check ( operation in ( 'archive_original' , 'upload' , 'restore' ) ) , constraint ck_document_version_values check ( number > 0 and size_bytes > = 0 ) , constraint uq_document_version_command unique ( actor_id , idempotency_key ) , constraint uq_document_version_number unique ( document_id , number ) , foreign key ( contract_id ) references contracts ( id ) on delete restrict , foreign key ( document_id ) references documents ( id ) on delete restrict , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( predecessor_id ) references document_versions ( id ) on delete restrict , foreign key ( property_id ) references properties ( id ) on delete restrict , foreign key ( restored_from_id ) references document_versions ( id ) on delete restrict , foreign key ( tenant_id ) references tenants ( id ) on delete restrict , foreign key ( unit_id ) references units ( id ) on delete restrict , primary key ( id ) )"
           ],
           [
             "table",
             "documents",
             "documents",
-            "create table documents ( id varchar not null , property_id varchar , unit_id varchar , contract_id varchar , title text not null , document_type text , document_date date , tags text , description text , file_url text not null , ai_document_type text , ai_summary text , ai_entities_json text , ai_confidence float , ai_model text , ai_analyzed_at datetime , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( property_id ) references properties ( id ) on delete set null , foreign key ( unit_id ) references units ( id ) on delete set null , foreign key ( contract_id ) references contracts ( id ) on delete set null )"
+            "create table documents ( id varchar not null , property_id varchar , unit_id varchar , contract_id varchar , title text not null , document_type text , document_date date , tags text , description text , file_url text not null , ai_document_type text , ai_summary text , ai_entities_json text , ai_confidence float , ai_model text , ai_analyzed_at datetime , created_at datetime not null , updated_at datetime not null , foreign key ( contract_id ) references contracts ( id ) on delete set null , foreign key ( property_id ) references properties ( id ) on delete set null , foreign key ( unit_id ) references units ( id ) on delete set null , primary key ( id ) )"
           ],
           [
             "table",
@@ -18906,37 +18910,37 @@
             "table",
             "handover_protocols",
             "handover_protocols",
-            "create table handover_protocols ( id varchar ( 36 ) not null , contract_id varchar ( 36 ) not null , unit_id varchar ( 36 ) not null , protocol_type varchar ( 20 ) not null , protocol_date date not null , tenant_present boolean not null , landlord_present boolean not null , key_count integer , key_details text , overall_condition varchar ( 20 ) , damages text , photos text , notes text , tenant_signature text , landlord_signature text , status varchar ( 20 ) not null , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( contract_id ) references contracts ( id ) , foreign key ( unit_id ) references units ( id ) )"
+            "create table handover_protocols ( id varchar ( 36 ) not null , contract_id varchar ( 36 ) not null , unit_id varchar ( 36 ) not null , protocol_type varchar ( 20 ) not null , protocol_date date not null , tenant_present boolean not null , landlord_present boolean not null , key_count integer , key_details text , overall_condition varchar ( 20 ) , damages text , photos text , notes text , tenant_signature text , landlord_signature text , status varchar ( 20 ) not null , created_at datetime not null , updated_at datetime not null , foreign key ( contract_id ) references contracts ( id ) , foreign key ( unit_id ) references units ( id ) , primary key ( id ) )"
           ],
           [
             "table",
             "insurances",
             "insurances",
-            "create table insurances ( id varchar not null , property_id varchar not null , unit_id varchar , insurance_type text not null , provider text not null , policy_number text , coverage_amount numeric ( 12 , 2 ) , premium_amount numeric ( 12 , 2 ) , premium_interval text not null , start_date date , end_date date , contact_person text , contact_phone text , notes text , status text not null , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( property_id ) references properties ( id ) on delete cascade , foreign key ( unit_id ) references units ( id ) on delete set null )"
+            "create table insurances ( id varchar not null , property_id varchar not null , unit_id varchar , insurance_type text not null , provider text not null , policy_number text , coverage_amount numeric ( 12 , 2 ) , premium_amount numeric ( 12 , 2 ) , premium_interval text not null , start_date date , end_date date , contact_person text , contact_phone text , notes text , status text not null , created_at datetime not null , updated_at datetime not null , foreign key ( property_id ) references properties ( id ) on delete cascade , foreign key ( unit_id ) references units ( id ) on delete set null , primary key ( id ) )"
           ],
           [
             "table",
             "invoices",
             "invoices",
-            "create table invoices ( id varchar not null , property_id varchar , supplier text not null , invoice_number text , payment_reference text , category text , notes text , invoice_date date not null , due_date date , net_amount numeric ( 12 , 2 ) not null , vat_amount numeric ( 12 , 2 ) not null , gross_amount numeric ( 12 , 2 ) not null , vat_rate numeric ( 12 , 2 ) not null , payment_terms text , status text not null , source_document_id varchar , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( property_id ) references properties ( id ) on delete set null , foreign key ( source_document_id ) references documents ( id ) on delete set null )"
+            "create table invoices ( id varchar not null , property_id varchar , supplier text not null , invoice_number text , payment_reference text , category text , notes text , invoice_date date not null , due_date date , net_amount numeric ( 12 , 2 ) not null , vat_amount numeric ( 12 , 2 ) not null , gross_amount numeric ( 12 , 2 ) not null , vat_rate numeric ( 12 , 2 ) not null , payment_terms text , status text not null , source_document_id varchar , created_at datetime not null , updated_at datetime not null , foreign key ( property_id ) references properties ( id ) on delete set null , foreign key ( source_document_id ) references documents ( id ) on delete set null , primary key ( id ) )"
           ],
           [
             "table",
             "leads",
             "leads",
-            "create table leads ( id varchar not null , listing_id varchar , unit_id varchar , full_name text not null , email text , phone text , source text , status text not null , priority integer default '0' not null , notes text , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( listing_id ) references listings ( id ) on delete set null , foreign key ( unit_id ) references units ( id ) on delete set null )"
+            "create table leads ( id varchar not null , listing_id varchar , unit_id varchar , full_name text not null , email text , phone text , source text , status text not null , priority integer default '0' not null , notes text , created_at datetime not null , updated_at datetime not null , foreign key ( listing_id ) references listings ( id ) on delete set null , foreign key ( unit_id ) references units ( id ) on delete set null , primary key ( id ) )"
           ],
           [
             "table",
             "listing_photos",
             "listing_photos",
-            "create table listing_photos ( id varchar not null , listing_id varchar not null , title text , file_url text not null , is_primary boolean not null , sort_order integer not null , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( listing_id ) references listings ( id ) on delete cascade )"
+            "create table listing_photos ( id varchar not null , listing_id varchar not null , title text , file_url text not null , is_primary boolean not null , sort_order integer not null , created_at datetime not null , updated_at datetime not null , foreign key ( listing_id ) references listings ( id ) on delete cascade , primary key ( id ) )"
           ],
           [
             "table",
             "listings",
             "listings",
-            "create table listings ( id varchar not null , unit_id varchar not null , title text not null , description text , portal text , listing_url text , status text not null , target_rent numeric ( 12 , 2 ) , service_charge numeric ( 12 , 2 ) , available_from date , contact_name text , contact_email text , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( unit_id ) references units ( id ) on delete cascade )"
+            "create table listings ( id varchar not null , unit_id varchar not null , title text not null , description text , portal text , listing_url text , status text not null , target_rent numeric ( 12 , 2 ) , service_charge numeric ( 12 , 2 ) , available_from date , contact_name text , contact_email text , created_at datetime not null , updated_at datetime not null , foreign key ( unit_id ) references units ( id ) on delete cascade , primary key ( id ) )"
           ],
           [
             "table",
@@ -18948,7 +18952,7 @@
             "table",
             "maintenance_cases",
             "maintenance_cases",
-            "create table maintenance_cases ( id varchar not null , property_id varchar not null , unit_id varchar , title text not null , description text , category text , priority text not null , status text not null , reported_by text , assignee text , due_date date , estimated_cost numeric ( 12 , 2 ) , contractor text , appointment_at datetime , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( property_id ) references properties ( id ) on delete cascade , foreign key ( unit_id ) references units ( id ) on delete set null )"
+            "create table maintenance_cases ( id varchar not null , property_id varchar not null , unit_id varchar , title text not null , description text , category text , priority text not null , status text not null , reported_by text , assignee text , due_date date , estimated_cost numeric ( 12 , 2 ) , contractor text , appointment_at datetime , created_at datetime not null , updated_at datetime not null , foreign key ( property_id ) references properties ( id ) on delete cascade , foreign key ( unit_id ) references units ( id ) on delete set null , primary key ( id ) )"
           ],
           [
             "table",
@@ -18960,19 +18964,19 @@
             "table",
             "messages",
             "messages",
-            "create table messages ( id varchar ( 36 ) not null , thread_id varchar ( 36 ) not null , sender_name varchar ( 200 ) not null , body text not null , attachment_ids text , sent_at datetime not null , primary key ( id ) , foreign key ( thread_id ) references message_threads ( id ) on delete cascade )"
+            "create table messages ( id varchar ( 36 ) not null , thread_id varchar ( 36 ) not null , sender_name varchar ( 200 ) not null , body text not null , attachment_ids text , sent_at datetime not null , foreign key ( thread_id ) references message_threads ( id ) on delete cascade , primary key ( id ) )"
           ],
           [
             "table",
             "meter_readings",
             "meter_readings",
-            "create table meter_readings ( id varchar ( 36 ) not null , handover_id varchar ( 36 ) not null , meter_type varchar ( 30 ) not null , meter_number varchar ( 50 ) , reading_value float not null , unit varchar ( 10 ) not null , photo_url text , notes text , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( handover_id ) references handover_protocols ( id ) on delete cascade )"
+            "create table meter_readings ( id varchar ( 36 ) not null , handover_id varchar ( 36 ) not null , meter_type varchar ( 30 ) not null , meter_number varchar ( 50 ) , reading_value float not null , unit varchar ( 10 ) not null , photo_url text , notes text , created_at datetime not null , updated_at datetime not null , foreign key ( handover_id ) references handover_protocols ( id ) on delete cascade , primary key ( id ) )"
           ],
           [
             "table",
             "meters",
             "meters",
-            "create table meters ( id varchar ( 36 ) not null , unit_id varchar ( 36 ) not null , meter_type varchar ( 30 ) not null , serial_number varchar ( 100 ) , location varchar ( 200 ) , installation_date date , next_inspection date , supplier varchar ( 200 ) , contract_number varchar ( 100 ) , contract_end_date date , is_active boolean not null , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( unit_id ) references units ( id ) )"
+            "create table meters ( id varchar ( 36 ) not null , unit_id varchar ( 36 ) not null , meter_type varchar ( 30 ) not null , serial_number varchar ( 100 ) , location varchar ( 200 ) , installation_date date , next_inspection date , supplier varchar ( 200 ) , contract_number varchar ( 100 ) , contract_end_date date , is_active boolean not null , created_at datetime not null , updated_at datetime not null , foreign key ( unit_id ) references units ( id ) , primary key ( id ) )"
           ],
           [
             "table",
@@ -18996,19 +19000,19 @@
             "table",
             "operational_lock",
             "operational_lock",
-            "create table operational_lock ( id integer not null , generation integer not null , primary key ( id ) , constraint ck_operational_singleton check ( id = 1 ) )"
+            "create table operational_lock ( id integer not null , generation integer not null , constraint ck_operational_singleton check ( id = 1 ) , primary key ( id ) )"
           ],
           [
             "table",
             "operational_occurrences",
             "operational_occurrences",
-            "create table operational_occurrences ( \"key\" varchar ( 64 ) not null , schedule_id varchar not null , occurrence_date date not null , target_kind varchar not null , target_id varchar not null , created_at datetime not null , primary key ( \"key\" ) , constraint uq_operational_occurrence unique ( schedule_id , occurrence_date ) )"
+            "create table operational_occurrences ( \"key\" varchar ( 64 ) not null , schedule_id varchar not null , occurrence_date date not null , target_kind varchar not null , target_id varchar not null , created_at datetime not null , constraint uq_operational_occurrence unique ( schedule_id , occurrence_date ) , primary key ( \"key\" ) )"
           ],
           [
             "table",
             "operational_schedules",
             "operational_schedules",
-            "create table operational_schedules ( id varchar not null , source_kind varchar not null , source_id varchar not null , anchor_date date not null , recurrence_rule text not null , active boolean not null , full_catch_up boolean not null , primary key ( id ) , constraint uq_operational_source unique ( source_kind , source_id ) )"
+            "create table operational_schedules ( id varchar not null , source_kind varchar not null , source_id varchar not null , anchor_date date not null , recurrence_rule text not null , active boolean not null , full_catch_up boolean not null , constraint uq_operational_source unique ( source_kind , source_id ) , primary key ( id ) )"
           ],
           [
             "table",
@@ -19020,31 +19024,31 @@
             "table",
             "outbox_commands",
             "outbox_commands",
-            "create table outbox_commands ( id varchar not null , portfolio_id varchar not null , message_id varchar not null , idempotency_key varchar ( 200 ) not null , actor_id varchar not null , kind varchar ( 30 ) not null , request_json text not null , result_json text , claim_token varchar , created_at datetime not null , primary key ( id ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( message_id ) references outbox_messages ( id ) on delete restrict , unique ( idempotency_key ) )"
+            "create table outbox_commands ( id varchar not null , portfolio_id varchar not null , message_id varchar not null , idempotency_key varchar ( 200 ) not null , actor_id varchar not null , kind varchar ( 30 ) not null , request_json text not null , result_json text , claim_token varchar , created_at datetime not null , foreign key ( message_id ) references outbox_messages ( id ) on delete restrict , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , primary key ( id ) , unique ( idempotency_key ) )"
           ],
           [
             "table",
             "outbox_events",
             "outbox_events",
-            "create table outbox_events ( id varchar not null , portfolio_id varchar not null , message_id varchar not null , actor_id varchar not null , revision integer not null , attempt_no integer not null , kind varchar ( 30 ) not null , state varchar ( 20 ) not null , phase varchar ( 20 ) not null , code varchar ( 100 ) , note text , created_at datetime not null , primary key ( id ) , constraint uq_outbox_event_revision unique ( message_id , revision ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , foreign key ( message_id ) references outbox_messages ( id ) on delete restrict )"
+            "create table outbox_events ( id varchar not null , portfolio_id varchar not null , message_id varchar not null , actor_id varchar not null , revision integer not null , attempt_no integer not null , kind varchar ( 30 ) not null , state varchar ( 20 ) not null , phase varchar ( 20 ) not null , code varchar ( 100 ) , note text , created_at datetime not null , constraint uq_outbox_event_revision unique ( message_id , revision ) , foreign key ( message_id ) references outbox_messages ( id ) on delete restrict , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , primary key ( id ) )"
           ],
           [
             "table",
             "outbox_messages",
             "outbox_messages",
-            "create table outbox_messages ( id varchar not null , portfolio_id varchar not null , idempotency_key varchar ( 200 ) not null , actor_id varchar not null , message_id varchar ( 254 ) not null , snapshot_json text not null , snapshot_sha256 varchar ( 64 ) not null , wire blob not null , wire_sha256 varchar ( 64 ) not null , state_json text not null , revision integer not null , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , unique ( idempotency_key ) , unique ( message_id ) )"
+            "create table outbox_messages ( id varchar not null , portfolio_id varchar not null , idempotency_key varchar ( 200 ) not null , actor_id varchar not null , message_id varchar ( 254 ) not null , snapshot_json text not null , snapshot_sha256 varchar ( 64 ) not null , wire blob not null , wire_sha256 varchar ( 64 ) not null , state_json text not null , revision integer not null , created_at datetime not null , updated_at datetime not null , foreign key ( portfolio_id ) references portfolios ( id ) on delete restrict , primary key ( id ) , unique ( idempotency_key ) , unique ( message_id ) )"
           ],
           [
             "table",
             "payment_reversals",
             "payment_reversals",
-            "create table payment_reversals ( id varchar not null , payment_id varchar not null , idempotency_key varchar ( 100 ) not null , amount numeric ( 12 , 2 ) not null , reversal_date date not null , reason text not null , created_at datetime not null , primary key ( id ) , constraint ck_reversals_positive check ( amount > 0 ) , unique ( payment_id ) , foreign key ( payment_id ) references payments ( id ) on delete restrict , unique ( idempotency_key ) )"
+            "create table payment_reversals ( id varchar not null , payment_id varchar not null , idempotency_key varchar ( 100 ) not null , amount numeric ( 12 , 2 ) not null , reversal_date date not null , reason text not null , created_at datetime not null , constraint ck_reversals_positive check ( amount > 0 ) , foreign key ( payment_id ) references payments ( id ) on delete restrict , primary key ( id ) , unique ( idempotency_key ) , unique ( payment_id ) )"
           ],
           [
             "table",
             "payments",
             "payments",
-            "create table \"payments\" ( id varchar not null , idempotency_key varchar ( 100 ) not null , receivable_id varchar , rent_charge_id varchar ( 36 ) , booking_id varchar , amount numeric ( 12 , 2 ) not null , payment_date date not null , note text , created_at datetime not null , primary key ( id ) , constraint fk_payments_rent_charge_id_rent_charges foreign key ( rent_charge_id ) references rent_charges ( id ) on delete restrict , constraint ck_payments_positive check ( amount > 0 ) , constraint fk_payments_booking_id_bookings foreign key ( booking_id ) references bookings ( id ) on delete restrict , constraint fk_payments_receivable_id_receivables foreign key ( receivable_id ) references receivables ( id ) on delete restrict , constraint ck_payments_one_target check ( ( receivable_id is null ) ! = ( rent_charge_id is null ) ) , unique ( idempotency_key ) )"
+            "create table \"payments\" ( id varchar not null , idempotency_key varchar ( 100 ) not null , receivable_id varchar , rent_charge_id varchar ( 36 ) , booking_id varchar , amount numeric ( 12 , 2 ) not null , payment_date date not null , note text , created_at datetime not null , constraint ck_payments_one_target check ( ( receivable_id is null ) ! = ( rent_charge_id is null ) ) , constraint ck_payments_positive check ( amount > 0 ) , constraint fk_payments_booking_id_bookings foreign key ( booking_id ) references bookings ( id ) on delete restrict , constraint fk_payments_receivable_id_receivables foreign key ( receivable_id ) references receivables ( id ) on delete restrict , constraint fk_payments_rent_charge_id_rent_charges foreign key ( rent_charge_id ) references rent_charges ( id ) on delete restrict , primary key ( id ) , unique ( idempotency_key ) )"
           ],
           [
             "table",
@@ -19056,55 +19060,55 @@
             "table",
             "properties",
             "properties",
-            "create table properties ( id varchar not null , portfolio_id varchar not null , name text not null , property_type text not null , status text not null , year_built integer , living_area_sqm float , usable_area_sqm float , plot_area_sqm float , ownership_share float , purchase_price numeric ( 12 , 2 ) , purchase_date date , market_value numeric ( 12 , 2 ) , valuation_date date , address_line text , postal_code text , city text , country text , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete cascade )"
+            "create table properties ( id varchar not null , portfolio_id varchar not null , name text not null , property_type text not null , status text not null , year_built integer , living_area_sqm float , usable_area_sqm float , plot_area_sqm float , ownership_share float , purchase_price numeric ( 12 , 2 ) , purchase_date date , market_value numeric ( 12 , 2 ) , valuation_date date , address_line text , postal_code text , city text , country text , created_at datetime not null , updated_at datetime not null , foreign key ( portfolio_id ) references portfolios ( id ) on delete cascade , primary key ( id ) )"
           ],
           [
             "table",
             "receivables",
             "receivables",
-            "create table receivables ( amount_paid numeric ( 12 , 2 ) default '0' not null , id varchar not null , contract_id varchar not null , due_date date not null , amount_due numeric ( 12 , 2 ) not null , dunning_level text , description text , status text not null , statement_id varchar , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( contract_id ) references contracts ( id ) on delete cascade )"
+            "create table receivables ( amount_paid numeric ( 12 , 2 ) default '0' not null , id varchar not null , contract_id varchar not null , due_date date not null , amount_due numeric ( 12 , 2 ) not null , dunning_level text , description text , status text not null , statement_id varchar , created_at datetime not null , updated_at datetime not null , foreign key ( contract_id ) references contracts ( id ) on delete cascade , primary key ( id ) )"
           ],
           [
             "table",
             "rent_adjustments",
             "rent_adjustments",
-            "create table rent_adjustments ( id varchar ( 36 ) not null , contract_id varchar ( 36 ) not null , adjustment_type varchar ( 20 ) not null , effective_date date not null , previous_rent numeric ( 12 , 2 ) not null , new_rent numeric ( 12 , 2 ) not null , increase_percent numeric ( 12 , 2 ) , index_base_year integer , index_value numeric ( 12 , 2 ) , notes text , status varchar ( 20 ) not null , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( contract_id ) references contracts ( id ) )"
+            "create table rent_adjustments ( id varchar ( 36 ) not null , contract_id varchar ( 36 ) not null , adjustment_type varchar ( 20 ) not null , effective_date date not null , previous_rent numeric ( 12 , 2 ) not null , new_rent numeric ( 12 , 2 ) not null , increase_percent numeric ( 12 , 2 ) , index_base_year integer , index_value numeric ( 12 , 2 ) , notes text , status varchar ( 20 ) not null , created_at datetime not null , updated_at datetime not null , foreign key ( contract_id ) references contracts ( id ) , primary key ( id ) )"
           ],
           [
             "table",
             "rent_charges",
             "rent_charges",
-            "create table rent_charges ( id varchar ( 36 ) not null , contract_id varchar ( 36 ) not null , month varchar ( 7 ) not null , cold_rent numeric ( 12 , 2 ) not null , service_charge numeric ( 12 , 2 ) not null , heating_charge numeric ( 12 , 2 ) not null , other_charges numeric ( 12 , 2 ) not null , amount_paid numeric ( 12 , 2 ) not null , status varchar ( 20 ) not null , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( contract_id ) references contracts ( id ) )"
+            "create table rent_charges ( id varchar ( 36 ) not null , contract_id varchar ( 36 ) not null , month varchar ( 7 ) not null , cold_rent numeric ( 12 , 2 ) not null , service_charge numeric ( 12 , 2 ) not null , heating_charge numeric ( 12 , 2 ) not null , other_charges numeric ( 12 , 2 ) not null , amount_paid numeric ( 12 , 2 ) not null , status varchar ( 20 ) not null , created_at datetime not null , updated_at datetime not null , foreign key ( contract_id ) references contracts ( id ) , primary key ( id ) )"
           ],
           [
             "table",
             "rent_generation_batches",
             "rent_generation_batches",
-            "create table rent_generation_batches ( id varchar not null , creator_id varchar not null , idempotency_key varchar ( 100 ) not null , parameters json not null , scope_snapshot json , state varchar not null , phase varchar not null , revision bigint not null , preparation json not null , planner_cursor varchar , snapshot_hash varchar ( 64 ) , plan_hash varchar ( 64 ) , contract_count bigint not null , price_count bigint not null , examined_count bigint not null , created_count bigint not null , existing_count bigint not null , last_error varchar , created_at datetime not null , sealed_at datetime , confirmed_at datetime , completed_at datetime , primary key ( id ) , constraint uq_rent_batch_creator_key unique ( creator_id , idempotency_key ) )"
+            "create table rent_generation_batches ( id varchar not null , creator_id varchar not null , idempotency_key varchar ( 100 ) not null , parameters json not null , scope_snapshot json , state varchar not null , phase varchar not null , revision bigint not null , preparation json not null , planner_cursor varchar , snapshot_hash varchar ( 64 ) , plan_hash varchar ( 64 ) , contract_count bigint not null , price_count bigint not null , examined_count bigint not null , created_count bigint not null , existing_count bigint not null , last_error varchar , created_at datetime not null , sealed_at datetime , confirmed_at datetime , completed_at datetime , constraint uq_rent_batch_creator_key unique ( creator_id , idempotency_key ) , primary key ( id ) )"
           ],
           [
             "table",
             "rent_generation_contracts",
             "rent_generation_contracts",
-            "create table rent_generation_contracts ( batch_id varchar not null , contract_id varchar not null , contract_number varchar not null , portfolio_id varchar not null , property_id varchar not null , unit_id varchar not null , tenant_id varchar not null , start_date date not null , end_date date , status varchar not null , cold_cents bigint not null , service_cents bigint not null , heating_cents bigint not null , contract_revision bigint not null , unit_revision bigint not null , price_revision bigint not null , property_revision bigint not null , basis_hash varchar ( 64 ) not null , price_digest varchar ( 64 ) not null , prices_complete boolean not null , primary key ( batch_id , contract_id ) , foreign key ( batch_id ) references rent_generation_batches ( id ) on delete cascade )"
+            "create table rent_generation_contracts ( batch_id varchar not null , contract_id varchar not null , contract_number varchar not null , portfolio_id varchar not null , property_id varchar not null , unit_id varchar not null , tenant_id varchar not null , start_date date not null , end_date date , status varchar not null , cold_cents bigint not null , service_cents bigint not null , heating_cents bigint not null , contract_revision bigint not null , unit_revision bigint not null , price_revision bigint not null , property_revision bigint not null , basis_hash varchar ( 64 ) not null , price_digest varchar ( 64 ) not null , prices_complete boolean not null , foreign key ( batch_id ) references rent_generation_batches ( id ) on delete cascade , primary key ( batch_id , contract_id ) )"
           ],
           [
             "table",
             "rent_generation_prices",
             "rent_generation_prices",
-            "create table rent_generation_prices ( batch_id varchar not null , adjustment_id varchar not null , contract_id varchar not null , effective_date date not null , previous_cents bigint not null , new_cents bigint not null , source_hash varchar ( 64 ) not null , primary key ( batch_id , adjustment_id ) , constraint uq_rent_batch_price_date unique ( batch_id , contract_id , effective_date ) , foreign key ( batch_id ) references rent_generation_batches ( id ) on delete cascade )"
+            "create table rent_generation_prices ( batch_id varchar not null , adjustment_id varchar not null , contract_id varchar not null , effective_date date not null , previous_cents bigint not null , new_cents bigint not null , source_hash varchar ( 64 ) not null , constraint uq_rent_batch_price_date unique ( batch_id , contract_id , effective_date ) , foreign key ( batch_id ) references rent_generation_batches ( id ) on delete cascade , primary key ( batch_id , adjustment_id ) )"
           ],
           [
             "table",
             "rent_generation_results",
             "rent_generation_results",
-            "create table rent_generation_results ( batch_id varchar not null , contract_id varchar not null , month varchar ( 7 ) not null , charge_id varchar not null , was_created boolean not null , basis_revision varchar ( 64 ) not null , primary key ( batch_id , contract_id , month ) , foreign key ( batch_id ) references rent_generation_batches ( id ) on delete cascade )"
+            "create table rent_generation_results ( batch_id varchar not null , contract_id varchar not null , month varchar ( 7 ) not null , charge_id varchar not null , was_created boolean not null , basis_revision varchar ( 64 ) not null , foreign key ( batch_id ) references rent_generation_batches ( id ) on delete cascade , primary key ( batch_id , contract_id , month ) )"
           ],
           [
             "table",
             "rent_generation_selections",
             "rent_generation_selections",
-            "create table rent_generation_selections ( batch_id varchar not null , contract_id varchar not null , primary key ( batch_id , contract_id ) , foreign key ( batch_id ) references rent_generation_batches ( id ) on delete cascade )"
+            "create table rent_generation_selections ( batch_id varchar not null , contract_id varchar not null , foreign key ( batch_id ) references rent_generation_batches ( id ) on delete cascade , primary key ( batch_id , contract_id ) )"
           ],
           [
             "table",
@@ -19116,7 +19120,7 @@
             "table",
             "resource_portfolio_grants",
             "resource_portfolio_grants",
-            "create table resource_portfolio_grants ( resource_type varchar ( 80 ) not null , resource_id varchar not null , portfolio_id varchar not null , primary key ( resource_type , resource_id , portfolio_id ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete cascade )"
+            "create table resource_portfolio_grants ( resource_type varchar ( 80 ) not null , resource_id varchar not null , portfolio_id varchar not null , foreign key ( portfolio_id ) references portfolios ( id ) on delete cascade , primary key ( resource_type , resource_id , portfolio_id ) )"
           ],
           [
             "table",
@@ -19128,13 +19132,13 @@
             "table",
             "standalone_meter_readings",
             "standalone_meter_readings",
-            "create table standalone_meter_readings ( id varchar ( 36 ) not null , meter_id varchar ( 36 ) not null , reading_date date not null , value float not null , recorded_by varchar ( 100 ) , photo_url text , notes text , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( meter_id ) references meters ( id ) on delete cascade )"
+            "create table standalone_meter_readings ( id varchar ( 36 ) not null , meter_id varchar ( 36 ) not null , reading_date date not null , value float not null , recorded_by varchar ( 100 ) , photo_url text , notes text , created_at datetime not null , updated_at datetime not null , foreign key ( meter_id ) references meters ( id ) on delete cascade , primary key ( id ) )"
           ],
           [
             "table",
             "tasks",
             "tasks",
-            "create table tasks ( id varchar not null , title text not null , description text , assignee text , due_date date , priority text not null , status text not null , property_id varchar , unit_id varchar , recurrence_rule text , parent_task_id varchar , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( property_id ) references properties ( id ) on delete set null , foreign key ( unit_id ) references units ( id ) on delete set null , foreign key ( parent_task_id ) references tasks ( id ) on delete set null )"
+            "create table tasks ( id varchar not null , title text not null , description text , assignee text , due_date date , priority text not null , status text not null , property_id varchar , unit_id varchar , recurrence_rule text , parent_task_id varchar , created_at datetime not null , updated_at datetime not null , foreign key ( parent_task_id ) references tasks ( id ) on delete set null , foreign key ( property_id ) references properties ( id ) on delete set null , foreign key ( unit_id ) references units ( id ) on delete set null , primary key ( id ) )"
           ],
           [
             "table",
@@ -19152,49 +19156,49 @@
             "table",
             "units",
             "units",
-            "create table units ( id varchar not null , property_id varchar not null , label text not null , unit_type text not null , status text not null , area_sqm float , rooms float , person_count integer , floor text , cold_rent numeric ( 12 , 2 ) , service_charge_advance numeric ( 12 , 2 ) , heating_advance numeric ( 12 , 2 ) , features text , created_at datetime not null , updated_at datetime not null , primary key ( id ) , constraint ck_units_area_positive check ( area_sqm is null or area_sqm > 0 ) , foreign key ( property_id ) references properties ( id ) on delete cascade )"
+            "create table units ( id varchar not null , property_id varchar not null , label text not null , unit_type text not null , status text not null , area_sqm float , rooms float , person_count integer , floor text , cold_rent numeric ( 12 , 2 ) , service_charge_advance numeric ( 12 , 2 ) , heating_advance numeric ( 12 , 2 ) , features text , created_at datetime not null , updated_at datetime not null , constraint ck_units_area_positive check ( area_sqm is null or area_sqm > 0 ) , foreign key ( property_id ) references properties ( id ) on delete cascade , primary key ( id ) )"
           ],
           [
             "table",
             "upload_portfolio_grants",
             "upload_portfolio_grants",
-            "create table upload_portfolio_grants ( storage_key text not null , portfolio_id varchar not null , uploaded_by varchar , primary key ( storage_key , portfolio_id ) , foreign key ( portfolio_id ) references portfolios ( id ) on delete cascade , foreign key ( uploaded_by ) references users ( id ) on delete set null )"
+            "create table upload_portfolio_grants ( storage_key text not null , portfolio_id varchar not null , uploaded_by varchar , foreign key ( portfolio_id ) references portfolios ( id ) on delete cascade , foreign key ( uploaded_by ) references users ( id ) on delete set null , primary key ( storage_key , portfolio_id ) )"
           ],
           [
             "table",
             "user_portfolio_access",
             "user_portfolio_access",
-            "create table user_portfolio_access ( user_id varchar not null , mode varchar ( 20 ) not null , origin varchar ( 30 ) not null , updated_at datetime not null , primary key ( user_id ) , constraint ck_user_access_mode check ( mode in ( 'all' , 'selected' ) ) , foreign key ( user_id ) references users ( id ) on delete cascade )"
+            "create table user_portfolio_access ( user_id varchar not null , mode varchar ( 20 ) not null , origin varchar ( 30 ) not null , updated_at datetime not null , constraint ck_user_access_mode check ( mode in ( 'all' , 'selected' ) ) , foreign key ( user_id ) references users ( id ) on delete cascade , primary key ( user_id ) )"
           ],
           [
             "table",
             "user_portfolio_grants",
             "user_portfolio_grants",
-            "create table user_portfolio_grants ( user_id varchar not null , portfolio_id varchar not null , primary key ( user_id , portfolio_id ) , foreign key ( user_id ) references users ( id ) on delete cascade , foreign key ( portfolio_id ) references portfolios ( id ) on delete cascade )"
+            "create table user_portfolio_grants ( user_id varchar not null , portfolio_id varchar not null , foreign key ( portfolio_id ) references portfolios ( id ) on delete cascade , foreign key ( user_id ) references users ( id ) on delete cascade , primary key ( user_id , portfolio_id ) )"
           ],
           [
             "table",
             "user_preferences",
             "user_preferences",
-            "create table user_preferences ( id varchar not null , user_id varchar not null , theme text not null , locale text not null , sidebar_collapsed boolean not null , items_per_page integer not null , date_format text not null , currency text not null , default_due_day integer not null , email_notifications text not null , reminder_days text not null , created_at datetime not null , updated_at datetime not null , primary key ( id ) , unique ( user_id ) , foreign key ( user_id ) references users ( id ) on delete cascade )"
+            "create table user_preferences ( id varchar not null , user_id varchar not null , theme text not null , locale text not null , sidebar_collapsed boolean not null , items_per_page integer not null , date_format text not null , currency text not null , default_due_day integer not null , email_notifications text not null , reminder_days text not null , created_at datetime not null , updated_at datetime not null , foreign key ( user_id ) references users ( id ) on delete cascade , primary key ( id ) , unique ( user_id ) )"
           ],
           [
             "table",
             "users",
             "users",
-            "create table users ( id varchar not null , username text not null , email text not null , full_name text not null , hashed_password text not null , role text not null , is_active boolean not null , totp_secret text , totp_enabled boolean not null , created_at datetime not null , updated_at datetime not null , primary key ( id ) , unique ( username ) , unique ( email ) )"
+            "create table users ( id varchar not null , username text not null , email text not null , full_name text not null , hashed_password text not null , role text not null , is_active boolean not null , totp_secret text , totp_enabled boolean not null , created_at datetime not null , updated_at datetime not null , primary key ( id ) , unique ( email ) , unique ( username ) )"
           ],
           [
             "table",
             "utility_statements",
             "utility_statements",
-            "create table utility_statements ( id varchar not null , billing_period_id varchar not null , contract_id varchar not null , unit_id varchar not null , total_cost numeric ( 12 , 2 ) not null , advance_paid numeric ( 12 , 2 ) not null , balance numeric ( 12 , 2 ) not null , revision integer not null , revision_notes text , status text not null , notes text , line_items json , delivery_status text , delivered_at datetime , delivery_channel text , snapshot_hash varchar , source_statement_id varchar , advance_details json , calculation_hash varchar , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( billing_period_id ) references billing_periods ( id ) on delete cascade , foreign key ( contract_id ) references contracts ( id ) on delete cascade , foreign key ( unit_id ) references units ( id ) on delete cascade , foreign key ( source_statement_id ) references utility_statements ( id ) on delete restrict )"
+            "create table utility_statements ( id varchar not null , billing_period_id varchar not null , contract_id varchar not null , unit_id varchar not null , total_cost numeric ( 12 , 2 ) not null , advance_paid numeric ( 12 , 2 ) not null , balance numeric ( 12 , 2 ) not null , revision integer not null , revision_notes text , status text not null , notes text , line_items json , delivery_status text , delivered_at datetime , delivery_channel text , snapshot_hash varchar , source_statement_id varchar , advance_details json , calculation_hash varchar , created_at datetime not null , updated_at datetime not null , foreign key ( billing_period_id ) references billing_periods ( id ) on delete cascade , foreign key ( contract_id ) references contracts ( id ) on delete cascade , foreign key ( source_statement_id ) references utility_statements ( id ) on delete restrict , foreign key ( unit_id ) references units ( id ) on delete cascade , primary key ( id ) )"
           ],
           [
             "table",
             "viewing_appointments",
             "viewing_appointments",
-            "create table viewing_appointments ( id varchar not null , lead_id varchar not null , unit_id varchar not null , scheduled_at datetime not null , status text not null , agent text , notes text , created_at datetime not null , updated_at datetime not null , primary key ( id ) , foreign key ( lead_id ) references leads ( id ) on delete cascade , foreign key ( unit_id ) references units ( id ) on delete cascade )"
+            "create table viewing_appointments ( id varchar not null , lead_id varchar not null , unit_id varchar not null , scheduled_at datetime not null , status text not null , agent text , notes text , created_at datetime not null , updated_at datetime not null , foreign key ( lead_id ) references leads ( id ) on delete cascade , foreign key ( unit_id ) references units ( id ) on delete cascade , primary key ( id ) )"
           ],
           [
             "trigger",
@@ -36012,6 +36016,10 @@
         ]
       },
       "missing_tables": [
+        "billing_dispute_cases",
+        "billing_dispute_commands",
+        "billing_dispute_events",
+        "billing_dispute_evidence",
         "contract_correspondence_commands",
         "contract_correspondence_drafts",
         "contract_correspondence_events",
@@ -36037,9 +36045,9 @@
         "tenancy_workflow_templates"
       ],
       "recipe": "historical-receipt-checks",
-      "schema_sha256": "d518913c5ea91f353d0b0ce7e8eae018ff83b877d96d3c7f07f455b72d9fc711",
+      "schema_sha256": "c2ae1021ba7c76467b51962e573dbd3ef24e31f76bc5e5a91175bd8037cdc906",
       "source_commit": "1910f25f12b9930ca4345f5be4212c60a1f2c89e",
-      "validated_target_head": "h2a2b3c4d5e6"
+      "validated_target_head": "j2a2b3c4d5e6"
     }
   }
 }
