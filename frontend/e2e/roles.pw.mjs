@@ -79,7 +79,7 @@ test('accountant: actual finance creation and monthly preview, with portfolio an
   await dialog.getByRole('button', { name: 'Speichern', exact: true }).click();
   const response = await saved; expect(response.status(), await response.text()).toBe(201); const created = await response.json();
   expect(await get(page, `/accounts/${created.id}`)).toMatchObject({ name, account_type: 'Mietkonto' });
-  await page.reload(); await loaded(page); await page.getByLabel('Wartungsfälle durchsuchen', { exact: true }).fill(name);
+  await page.reload(); await loaded(page); await page.locator('.shared-table-search input').fill(name);
   await expect(page.getByRole('row').filter({ hasText: name })).toHaveCount(1);
   await page.goto('/rent-charges'); await page.getByRole('button', { name: 'Monatliche Sollstellung', exact: true }).click();
   const generation = page.getByRole('dialog');
@@ -118,7 +118,7 @@ test('technician: actual maintenance creation persists, finance and billing comm
   await dialog.getByRole('button', { name: 'Speichern', exact: true }).click();
   const response = await saved; expect(response.status(), await response.text()).toBe(201); const created = await response.json();
   expect(await get(page, `/maintenance/${created.id}`)).toMatchObject({ title: name, property_id: properties[0].id });
-  await page.reload(); await loaded(page); await page.locator('.shared-table-search input').fill(name);
+  await page.reload(); await loaded(page); await page.getByLabel('Wartungsfälle durchsuchen', { exact: true }).fill(name);
   await expect(page.getByRole('row').filter({ hasText: name })).toHaveCount(1);
   await page.goto('/meters'); await loaded(page); await expect(page.getByRole('button', { name: 'Neu', exact: true })).toBeVisible();
   await page.goto('/documents'); await loaded(page); await expect(page.locator('input[type="file"]')).toHaveCount(1);
