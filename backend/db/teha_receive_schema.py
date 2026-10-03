@@ -77,7 +77,8 @@ def validate_teha_receive_schema(connection) -> bool:
         names = {
             row[0]
             for row in connection.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
+                "SELECT name FROM main.sqlite_master WHERE type='table' AND name IN (?, ?)",
+                TEHA_RECEIVE_TABLES,
             )
         }
 

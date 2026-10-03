@@ -91,7 +91,10 @@ class _Database:
 
     def tables(self):
         if self.sqlite:
-            return {row[0] for row in self.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            return {row[0] for row in self.execute(
+                "SELECT name FROM main.sqlite_master WHERE type='table' AND name IN (:versions, :chunks)",
+                {"versions": "document_versions", "chunks": "document_version_chunks"},
+            )}
         return set(inspect(self.connection).get_table_names())
 
     def columns(self, table):
