@@ -1,6 +1,12 @@
 """Same meter projections and original history on an actual isolated PostgreSQL schema."""
 
-from backend.tests.test_contract_lifecycle_postgres import postgres as postgres
+from types import SimpleNamespace
+
+import pytest
+from sqlalchemy.orm import Session
+
+from backend.repositories.sql_store import SQLAlchemyStore
+from backend.tests.measurement_history_postgres_support import migrated_postgres
 from backend.tests.test_meter_inventory import (
     test_bounded_sql_never_autoflush_or_load_all_history as bounded_sql,
 )
@@ -19,6 +25,15 @@ from backend.tests.test_meter_inventory import (
 from backend.tests.test_meter_inventory import (
     test_scope_detail_history_summary_export_and_revoke as access,
 )
+
+
+@pytest.fixture
+def postgres(monkeypatch):
+    # This slice needs the actual composed e2 unit column and j2/k2 guards.
+    # Each case owns one disposable schema and seeds its own authorized rows.
+    with migrated_postgres(monkeypatch) as (engine, _config):
+        with Session(engine) as db:
+            yield SimpleNamespace(store=SQLAlchemyStore(db), engine=engine, db=db)
 
 
 def test_postgres_complete_meter_source(postgres, monkeypatch):
