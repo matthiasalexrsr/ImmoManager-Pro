@@ -101,3 +101,19 @@ Gemeinsame tatsächliche L2/M2-Registry-/Head-/Startup-/Fullcontainer-Kompositio
 vollständiger nativer CHECKbeleg und positive CommitAuthority bleiben getrennt
 offen. Keine SharedRuntime/Recovery/Registry/CI-/Migrationaktivierung in diesem
 Nachtrag, kein A–L-Gesamtclaim.
+
+## Tatsächlicher erster Root-PG-Lauf und Korrektur vor Code
+
+Auf0570d9f: fünf ausgewählte PostgreSQL-Operationsfälle scheitern beim
+Fixture-Connect, 5ERROR in3,08s/hard90/Exit1; sechsSQLitefälle abgewählt.
+Kein CREATE SCHEMA oder Migrationsaufruf erreicht, keine native Abnahme.
+Die tatsächliche Adresse wird als inet nach text mit Netzmaske ausgegeben.
+Ein separat begrenzter echter Testziel-SELECT beweist zugleich
+`inet_server_addr()::text='127.0.0.1/32'` und
+`host(inet_server_addr())='127.0.0.1'`. Datenbank/Rolle/Port/Schema sind
+immo_ci/immo_ci/58112/pg_catalog.
+
+Root korrigiert ausschließlich die Adresseprojektion zur expliziten nativen
+`pg_catalog.host(pg_catalog.inet_server_addr())`. Ziel, Loopbackvertrag,
+Timeouts und Cleanup werden nicht gelockert. Anschließend werden genau die
+fünf bislang nicht ausgeführten Operationsfälle erneut nativ geprüft.

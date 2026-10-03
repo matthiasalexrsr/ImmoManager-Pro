@@ -84,7 +84,7 @@ def _engine(source: str | URL, schema: str, deadline: float) -> _OwnedEngine:
             remaining(deadline)
             cursor = handle.cursor()
             try:
-                cursor.execute("SELECT current_database(),current_user,inet_server_addr()::text,"
+                cursor.execute("SELECT current_database(),current_user,pg_catalog.host(pg_catalog.inet_server_addr()),"
                                "inet_server_port(),current_schema()")
                 row = cursor.fetchone()
                 if row != ("immo_ci", "immo_ci", "127.0.0.1", actual.port, schema):
