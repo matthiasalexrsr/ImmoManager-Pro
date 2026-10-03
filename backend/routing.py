@@ -37,6 +37,7 @@ from .routers import (
     documents,
     escalation,
     files,
+    financial_cash,
     form_drafts,
     handover_protocols,
     history,
@@ -106,6 +107,7 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(bank_imports.router, dependencies=_auth_dep)
     api_v1.include_router(bank_matching.router, dependencies=_auth_dep)
     api_v1.include_router(bookings.router, dependencies=_auth_dep)
+    api_v1.include_router(financial_cash.router, dependencies=_auth_dep)
     api_v1.include_router(receivables.router, dependencies=_auth_dep)
     api_v1.include_router(invoices.router, dependencies=_auth_dep)
     api_v1.include_router(maintenance.router, dependencies=_auth_dep)

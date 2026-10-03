@@ -281,6 +281,7 @@ jobs:
           backend/tests/test_operational_jobs_postgres.py
           backend/tests/test_housing_confirmation_postgres.py
           backend/tests/test_global_search_postgres.py
+          backend/tests/test_financial_cash_postgres.py
           backend/tests/test_workflow_runtime_integration.py::test_postgres_persistent_session_revoke_after_insert_rolls_back_and_allows_exact_retry
           backend/tests/test_workflow_runtime_integration.py::test_actual_postgres_composed_migration_chain_is_linear_and_preserves_old_property
           backend/tests/test_production_startup.py::test_postgres_production_starts_with_native_role_without_schema_ddl_privileges

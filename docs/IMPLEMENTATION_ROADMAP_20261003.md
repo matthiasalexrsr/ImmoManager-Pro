@@ -17,11 +17,11 @@ Stand: 03.10.2026. Der Nutzer hat den vollständigen Analyse- und Implementierun
 | Paket | Inhalt | Abschlussnachweis | Aktueller Zustand |
 |---|---|---|---|
 | A | Konsolidierung, gemeinsame Releaseprüfung, aktuelles Anforderungsinventar | Exakter Gesamtcommit, vollständige erforderliche Prüfungen, kontrollierte Auslieferung | Begonnen |
-| B | Vollständige Listen/Suche/Kennzahlen, Unitworkspace, einheitliche UI | Letzte Datensätze erreichbar; keine falschen Leerbestände/Altdaten; mobile Browserprobe | Unitworkspace integriert5e636e0; vollständige Suche geprüft, Dokument-/Einheitenlisten in Arbeit |
+| B | Vollständige Listen/Suche/Kennzahlen, Unitworkspace, einheitliche UI | Letzte Datensätze erreichbar; keine falschen Leerbestände/Altdaten; mobile Browserprobe | Unitworkspace5e636e0, Sucheeafe874 und Einheiten6ef8846 integriert; Dokumentpaket separat geliefert |
 | C | Mediengetrennte Verbrauchsgrundlage, historische Mess-/Bewohnerdaten, Kostenregeln, Widerspruch | Wasser/Strom-Gegenprobe 50:50; explizite fehlende Zuordnung; unveränderte Originaljahre | Medienbindung integriert5de8762; historische Quellen separat in Arbeit |
-| D | Zahlungsfluss, Periodenergebnis, Prognose, Kaution/Mahnungen/Rechnungsprüfung | Abstimmung Gesamt/Objekt/Einheit; keine Doppelzählung; gleiche Exportwerte | Offen |
-| E | Vollständiger dauerhafter Scheduler, Müll-/Ablesepläne/ICS | >10.000 Ereignisse fortsetzbar, Neustart/Parallelworker ohne Dublette | Schedulerüberführung geplant0cc9590 und in Arbeit; Betriebspläne anschließend |
-| F | Wohnungsgeberbestätigung und geführte Übergabe | Unveränderliche Korrekturoriginale, Unicode/Mehrseiten-PDF, exakter Retry, Browser | Backend/PDF/Accountfence integriertc253eaa; echte UI-Anbindung im bisherigen Assistenzchat in Arbeit |
+| D | Zahlungsfluss, Periodenergebnis, Prognose, Kaution/Mahnungen/Rechnungsprüfung | Abstimmung Gesamt/Objekt/Einheit; keine Doppelzählung; gleiche Exportwerte | Gemeinsame exakte Buchungsquelle samt CSV/Belegseiten und historische Szenariokorrektur geprüft; Arbeitsfläche und übriges D offen |
+| E | Vollständiger dauerhafter Scheduler, Müll-/Ablesepläne/ICS | >10.000 Ereignisse fortsetzbar, Neustart/Parallelworker ohne Dublette | E1 f15efbd/dd0c5f2 integriert; weitere Familien und echter Ankerfortschritt separat in Prüfung; Betriebspläne anschließend |
+| F | Wohnungsgeberbestätigung und geführte Übergabe | Unveränderliche Korrekturoriginale, Unicode/Mehrseiten-PDF, exakter Retry, Browser | Backend/PDF/Accountfence c253eaa und UI3b89187 integriert; zusammengesetzter Browserlauf in Arbeit, geführte Übergabe offen |
 | G | Strom-/Dienstleistungsverträge, versionierte Tarife/Fristen | Tarif-/Fristwechsel, mehrere Orte, keine Doppelbuchung | Offen |
 | H | Schäden/Projekte, Handwerker, Aufträge/Kosten/Protokolle | Mehrere Gewerke, Nachtrag, Teilrechnung, Restmängel, Zyklenschutz | Offen |
 | I | Dauerhaftes Integrationsjournal, Secretablage, TEHA-Abgleich | Neustart/Recovery, vollständige Historie, belegte fachliche Zuordnung/Import | History-Core integriert8bb1d26; Manager/Runtime im bisherigen Assistenzchat uncommittet |
@@ -35,9 +35,9 @@ Stand: 03.10.2026. Der Nutzer hat den vollständigen Analyse- und Implementierun
 - Native Fachaudit-Agent: `work/billing-measurement-history`, historische Mess-/Bewohnerquellen und Berechnung.
 - Native Plattform-Agent: `work/durable-scheduler`, Überführung sämtlicher Schedulerfamilien auf dauerhafte Jobs.
 - Native UI-Agent: `work/bounded-legacy-lists`, vollständige Dokument-/Einheitenlisten und danach weitere Altansichten.
-- Bestehender Frontend-Assistenzchat: Housing-API-/UI-Anbindung gegen echten Backendhandoff.
+- Bestehender Frontend-Assistenzchat: aktuelle Verbrauchsmedien/Maßeinheiten in Billing-/Zähleroberfläche; Housing geliefert.
 - Bestehender Backend-Assistenzchat: Manager/HTTP, anschließend Runtime/Recovery der privaten Integrationshistorie.
-- Schemafolge: Historyd2 → Medienbindunge2 bereits integriert. Scheduler`f2a2b3c4d5e6` folgt aufe2; Messhistorie`g2a2b3c4d5e6` folgt auff2. Keine Platzhalter, parallelen Köpfe oder Blindstempel.
+- Schemafolge: Historyd2 → Medienbindunge2 → Scheduler`f2a2b3c4d5e6` integriert; Messhistorie`g2a2b3c4d5e6` folgt auff2 und Schedulerfortschrittsindex`h2a2b3c4d5e6` aufg2. Keine Platzhalter, parallelen Köpfe oder Blindstempel.
 
 ## Gemeinsame Abnahme
 
