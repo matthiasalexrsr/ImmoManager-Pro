@@ -17,6 +17,8 @@ from sqlalchemy import Integer
 
 from ...db.integration_history_models import (
     TABLES as HISTORY_TABLE_NAMES,
+)
+from ...db.integration_history_models import (
     IntegrationRunEventORM,
     IntegrationRunORM,
 )
@@ -24,6 +26,8 @@ from ...db.teha_receive_release_l2 import L2_TABLE_NAMES, frozen_l2_tables
 from ...db.teha_receive_schema import TehaReceiveSchemaError
 from ..document_version_validation import (
     TABLES as ORIGINAL_TABLE_NAMES,
+)
+from ..document_version_validation import (
     VERSION_FIELDS,
     verify_document_versions,
 )
@@ -31,13 +35,21 @@ from ..iban_encryption import IBANKeyring
 from ..integrations.history_crypto import stamp
 from ..integrations.history_types import HistoryError, HistoryLimits
 from ..integrations.history_validation import (
-    checked_json, raw_projection, rows, validate_history_journal, verified_artifacts,
+    checked_json,
+    raw_projection,
+    rows,
+    validate_history_journal,
+    verified_artifacts,
 )
 from ..recovery_archive import RecoveryError
 from .teha_import_validation import TehaImportEvidenceError, mapping_reference, validate_document_manifest
 from .teha_receive_contract import ExternalIdentity
 from .teha_receive_image_evidence import (
-    TehaImageEvidenceError, exchange_from_artifacts, prove_content, prove_source, prove_source_association,
+    TehaImageEvidenceError,
+    exchange_from_artifacts,
+    prove_content,
+    prove_source,
+    prove_source_association,
 )
 from .teha_receive_image_schema import validate_teha_image_schema
 

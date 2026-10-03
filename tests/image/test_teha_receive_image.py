@@ -20,7 +20,8 @@ from backend.db.integration_history_models import HISTORY_MODELS
 from backend.db.teha_receive_release_l2 import frozen_l2_tables
 from backend.models import Document
 from backend.services.iban_encryption import IBANKeyring
-from backend.services.integrations.history_crypto import CHUNK_BYTES, canonical, digest as history_digest, encrypt, event_identity, run_identity
+from backend.services.integrations.history_crypto import CHUNK_BYTES, canonical, encrypt, event_identity, run_identity
+from backend.services.integrations.history_crypto import digest as history_digest
 from backend.services.integrations.history_types import HistoryLimits
 from backend.services.providers.teha_import_validation import build_document_manifest, mapping_reference
 from backend.services.providers.teha_receive_contract import ExternalIdentity, digest
