@@ -1,15 +1,15 @@
-# NotificationBell â€“ sichere Inbox-/Badge-Vorcodeanalyse
+# NotificationBell – sichere Inbox-/Badge-Vorcodeanalyse
 
 Stand: 03.10.2026
 Worktree: `work/financial-workspace-browser-qa`
-Scope dieses Dokuments: reine Sourceanalyse, **keine SharedsourceÃ¤nderung**.
+Scope dieses Dokuments: reine Sourceanalyse, **keine Sharedsourceänderung**.
 
 ## Ausgangsbefund aus Root B2
 
 Der echte Rechteentzug-Browserfall zeigte einen stale Badgewert `10` in der
-globalen Kopfzeile, wÃ¤hrend die Dashboarddaten bereits korrekt verborgen waren.
+globalen Kopfzeile, während die Dashboarddaten bereits korrekt verborgen waren.
 
-Die aktuelle `NotificationBell.jsx` erklÃ¤rt den Befund vollstÃ¤ndig:
+Die aktuelle `NotificationBell.jsx` erklärt den Befund vollständig:
 
 - `GET /notifications?status=unread&limit=10`
 - Badge = `items.length`
@@ -17,18 +17,18 @@ Die aktuelle `NotificationBell.jsx` erklÃ¤rt den Befund vollstÃ¤ndig:
   `unreadCount`-Zustand
 - kein `AbortController`
 - 60-s-Intervall ohne Principal-/Grantbindung
-- `markAllRead` PATCHt nur die aktuell sichtbaren maximal 10 EintrÃ¤ge
+- `markAllRead` PATCHt nur die aktuell sichtbaren maximal 10 Einträge
 - kein Cursor
-- kein vollstÃ¤ndiger serverseitiger Ungelesen-Count.
+- kein vollständiger serverseitiger Ungelesen-Count.
 
-Damit ist `10` weder ein verlÃ¤sslicher Gesamtcount noch nach einem
-Scopefehler ein verlÃ¤sslicher aktueller Zustand.
+Damit ist `10` weder ein verlässlicher Gesamtcount noch nach einem
+Scopefehler ein verlässlicher aktueller Zustand.
 
-## TatsÃ¤chlich gelesene Frontend-Auth-/Fehlerpfade
+## Tatsächlich gelesene Frontend-Auth-/Fehlerpfade
 
 ### AuthContext
 
-`AuthContext` hÃ¤lt:
+`AuthContext` hält:
 
 - `user`
 - `role`
@@ -42,40 +42,40 @@ Es gibt keinen eigenen globalen Grant-/Portfolio-Scope-Eventbus.
 
 `api.watchSessionChange` beobachtet:
 
-- LocalStorage-TokenÃ¤nderungen
+- LocalStorage-Tokenänderungen
 - `immomanager-session-change`.
 
 `ProtectedRoute` reagiert darauf mit:
 
 - `clearUser()`
 - Reload bei neuem Actor
-- Login bei ungÃ¼ltiger Session.
+- Login bei ungültiger Session.
 
-Das schÃ¼tzt echte Token-/Actorwechsel.
+Das schützt echte Token-/Actorwechsel.
 
 ### Gleicher Actor, neue Grants
 
-FÃ¼r denselben Benutzer mit geÃ¤nderten Portfolio-Grants existiert kein
+Für denselben Benutzer mit geänderten Portfolio-Grants existiert kein
 allgemeines `scope-change`-/`authorization-change`-Event.
 
-`ProtectedRoute` lÃ¤dt `/auth/me` bei seiner Sessionvalidierung, nicht
-kontinuierlich bei jeder GrantÃ¤nderung.
+`ProtectedRoute` lädt `/auth/me` bei seiner Sessionvalidierung, nicht
+kontinuierlich bei jeder Grantänderung.
 
-Andere private Komponenten lÃ¶sen dieses Problem lokal, z. B.
-`DashboardBoundary` mit einer frischen `/auth/me`-PrÃ¼fung.
+Andere private Komponenten lösen dieses Problem lokal, z. B.
+`DashboardBoundary` mit einer frischen `/auth/me`-Prüfung.
 
 ### API-Fehler
 
 - 401 versucht einmal Tokenrefresh; bleibt 401 bestehen, wird die aktuelle
-  Session invalidiert und Login ausgelÃ¶st.
+  Session invalidiert und Login ausgelöst.
 - 403/404 werden als normale API-Fehler an die Komponente geworfen.
 - Netzwerkfehler nach Safe-GET-Retries werden ebenfalls geworfen.
 - `AbortError` wird nicht automatisch wiederholt.
 
-Folge fÃ¼r NotificationBell: Die Komponente muss 403/404 und Netzwerk/5xx
+Folge für NotificationBell: Die Komponente muss 403/404 und Netzwerk/5xx
 selbst sicher darstellen. Ein Fehler darf nicht wie ein alter Erfolg aussehen.
 
-## TatsÃ¤chlich gelesener Notification-Backendstand
+## Tatsächlich gelesener Notification-Backendstand
 
 ### Aktuelle Liste
 
@@ -90,8 +90,8 @@ liefert `list[Notification]` mit:
 
 Der Router:
 
-1. lÃ¤dt zunÃ¤chst `store.list_notifications()`,
-2. filtert danach Ã¼ber `notification_visible(..., user.role)`,
+1. lädt zunächst `store.list_notifications()`,
+2. filtert danach über `notification_visible(..., user.role)`,
 3. filtert Status/Typ/Severity,
 4. schneidet erst danach `skip:skip+limit`.
 
@@ -104,13 +104,13 @@ Es gibt:
 
 ### Sichtbarkeit
 
-`notification_visible` prÃ¼ft aktuell nur den Operational-Dispatch-`target_role`:
+`notification_visible` prüft aktuell nur den Operational-Dispatch-`target_role`:
 
-- kein Target â†’ sichtbar
-- Owner â†’ sichtbar
-- gleiche Zielrolle â†’ sichtbar.
+- kein Target → sichtbar
+- Owner → sichtbar
+- gleiche Zielrolle → sichtbar.
 
-Die Funktion prÃ¼ft **keine Portfolio-Grants**.
+Die Funktion prüft **keine Portfolio-Grants**.
 
 ### Notification-Modell
 
@@ -132,30 +132,30 @@ Es gibt kein `portfolio_id` am Notification-Datensatz.
 
 `status` und `read_at` liegen aktuell direkt auf der Notification.
 
-Damit ist â€žgelesenâ€œ heute ein **globaler** Zustand des Datensatzes. Wenn zwei
-Benutzer dieselbe Notification sehen dÃ¼rfen, wÃ¼rde ein persÃ¶nliches
-â€žgelesenâ€œ eines Benutzers den gemeinsamen Datensatz verÃ¤ndern.
+Damit ist „gelesen“ heute ein **globaler** Zustand des Datensatzes. Wenn zwei
+Benutzer dieselbe Notification sehen dürfen, würde ein persönliches
+„gelesen“ eines Benutzers den gemeinsamen Datensatz verändern.
 
-FÃ¼r eine echte persÃ¶nliche globale Glocke darf der neue Inboxvertrag deshalb
+Für eine echte persönliche globale Glocke darf der neue Inboxvertrag deshalb
 nicht voraussetzen, dass `Notification.status` bereits ein per-user
 Ungelesenstatus ist.
 
 ## Zielbild der Glocke
 
-Die Glocke ist ein kompakter **persÃ¶nlicher, aktuell autorisierter Inboxblick**:
+Die Glocke ist ein kompakter **persönlicher, aktuell autorisierter Inboxblick**:
 
 - exakter ungelesener Gesamtcount
 - erste bounded Seite
 - weitere Seiten per Cursor
 - keine Stockbegrenzung auf 10
-- keine privaten Altwerte nach Actor-/GrantÃ¤nderung
-- Fehler â‰  leer
-- â€žalle gelesenâ€œ wirkt auf den vollstÃ¤ndigen autorisierten Snapshot, nicht nur
+- keine privaten Altwerte nach Actor-/Grantänderung
+- Fehler ≠ leer
+- „alle gelesen“ wirkt auf den vollständigen autorisierten Snapshot, nicht nur
   auf sichtbare Zeilen.
 
 ## Erforderlicher additiver Backendvertrag
 
-Die folgenden Routen sind **PlanvorschlÃ¤ge**, keine bereits existierenden
+Die folgenden Routen sind **Planvorschläge**, keine bereits existierenden
 Endpoints.
 
 ### GET /notifications/inbox
@@ -186,17 +186,17 @@ Response:
 
 Semantik:
 
-- `full_count` = exakte Anzahl aller DatensÃ¤tze, die den aktuellen
+- `full_count` = exakte Anzahl aller Datensätze, die den aktuellen
   Inboxfiltern **und** dem aktuellen Actor/Scope entsprechen.
 - `unread_count` = exakte Anzahl aller aktuell autorisierten ungelesenen
-  InboxeintrÃ¤ge, unabhÃ¤ngig von der Seite.
+  Inboxeinträge, unabhängig von der Seite.
 - Bei `status=unread` sind `full_count` und `unread_count` identisch.
-- Der Badge verwendet ausschlieÃŸlich `unread_count`.
+- Der Badge verwendet ausschließlich `unread_count`.
 - Niemals `items.length` als FakeTotal.
 
 ### NotificationInboxItem
 
-Nur fÃ¼r die Glocke nÃ¶tige Ã¶ffentliche Felder:
+Nur für die Glocke nötige öffentliche Felder:
 
 - `id`
 - `notification_type`
@@ -206,24 +206,24 @@ Nur fÃ¼r die Glocke nÃ¶tige Ã¶ffentliche Felder:
 - `entity_type|null`
 - `entity_id|null`
 - `created_at`
-- persÃ¶nlicher `read_at|null`
+- persönlicher `read_at|null`
 - `actions.mark_read`.
 
-Keine versteckten Domainobjekte oder vollstÃ¤ndigen Entitypayloads.
+Keine versteckten Domainobjekte oder vollständigen Entitypayloads.
 
-## PersÃ¶nlicher Read-State
+## Persönlicher Read-State
 
-FÃ¼r die Inbox ist ein actor-gebundener Read-State nÃ¶tig, z. B. logisch:
+Für die Inbox ist ein actor-gebundener Read-State nötig, z. B. logisch:
 
 `(notification_id, user_id) -> read_at`
 
 Die konkrete Persistenzform bleibt Backendownership, aber der Vertrag muss
 garantieren:
 
-- Benutzer A liest â†’ Benutzer B bleibt unverÃ¤ndert
+- Benutzer A liest → Benutzer B bleibt unverändert
 - `unread_count` ist pro Actor
 - Mark-all ist pro Actor
-- LÃ¶schen/Archivieren des gemeinsamen Notification-Datensatzes ist davon
+- Löschen/Archivieren des gemeinsamen Notification-Datensatzes ist davon
   getrennt.
 
 Der bestehende globale `Notification.status` darf nicht still als
@@ -232,22 +232,22 @@ per-user Inboxzustand umgedeutet werden.
 ## Portfolio-/Grant-Scope
 
 Weil Notification kein `portfolio_id` besitzt, muss der Inboxservice die
-ScopezugehÃ¶rigkeit serverseitig Ã¼ber `entity_type/entity_id` auflÃ¶sen.
+Scopezugehörigkeit serverseitig über `entity_type/entity_id` auflösen.
 
 Regeln:
 
 1. Operational-`target_role` bleibt eine notwendige Sichtbarkeitsbedingung.
-2. Bei portfoliofÃ¤higen Entitytypen wird die zugehÃ¶rige Portfolio-ID Ã¼ber die
-   Domainreferenz aufgelÃ¶st und gegen den **frischen** Actor-Scope geprÃ¼ft.
-3. Entity-spezifische Notification mit nicht sicher auflÃ¶sbarer Referenz wird
-   einem eingeschrÃ¤nkten Benutzer nicht angezeigt.
+2. Bei portfoliofähigen Entitytypen wird die zugehörige Portfolio-ID über die
+   Domainreferenz aufgelöst und gegen den **frischen** Actor-Scope geprüft.
+3. Entity-spezifische Notification mit nicht sicher auflösbarer Referenz wird
+   einem eingeschränkten Benutzer nicht angezeigt.
 4. Bewusst globale Notification ohne Entitybezug darf nach Rollenregel
    sichtbar sein.
 5. Direkter Zugriff auf eine nicht sichtbare Notification liefert 404, nicht
    Entity-/Scopeinformationen.
 
-Damit zÃ¤hlt `unread_count` nur nach **vollstÃ¤ndiger** Rollen- und
-PortfolioprÃ¼fung.
+Damit zählt `unread_count` nur nach **vollständiger** Rollen- und
+Portfolioprüfung.
 
 ## Cursor und Snapshot
 
@@ -263,7 +263,7 @@ Der opake Cursor bindet mindestens:
 - `portfolio_access_origin`
 - sortierte `portfolio_ids`
 - Inboxfilter
-- SeitengrÃ¶ÃŸe
+- Seitengröße
 - `snapshot_token`.
 
 Keine Offsetpagination und keine feste Gesamtbestandsgrenze.
@@ -271,16 +271,16 @@ Keine Offsetpagination und keine feste Gesamtbestandsgrenze.
 Der Snapshot verhindert:
 
 - Duplikate zwischen Seiten
-- SprÃ¼nge durch parallel neu eintreffende Notifications
-- Mark-all gegen eine andere Inbox als die gerade geprÃ¼fte.
+- Sprünge durch parallel neu eintreffende Notifications
+- Mark-all gegen eine andere Inbox als die gerade geprüfte.
 
-Bei geÃ¤nderten Grants oder ungÃ¼ltigem Snapshot:
+Bei geänderten Grants oder ungültigem Snapshot:
 
 - Cursor nicht still weiterverwenden
-- 409/422 mit neutraler Aufforderung â€žBenachrichtigungen neu ladenâ€œ
+- 409/422 mit neutraler Aufforderung „Benachrichtigungen neu laden“
 - keine Altseite als aktuell ausgeben.
 
-## Einzelnes â€žgelesenâ€œ
+## Einzelnes „gelesen“
 
 Bevorzugter additiver Command:
 
@@ -289,8 +289,8 @@ Bevorzugter additiver Command:
 Server:
 
 - authentifiziert frisch
-- prÃ¼ft aktuelle Rollen-/Portfolio-Sichtbarkeit
-- schreibt nur persÃ¶nlichen Read-State
+- prüft aktuelle Rollen-/Portfolio-Sichtbarkeit
+- schreibt nur persönlichen Read-State
 - idempotent.
 
 Response mindestens:
@@ -303,11 +303,11 @@ Response mindestens:
 ```
 
 Alternativ kann die UI danach GET /inbox neu laden. Der Badge darf nicht lokal
-nur `-1` rechnen, wenn ParallelÃ¤nderungen mÃ¶glich sind.
+nur `-1` rechnen, wenn Paralleländerungen möglich sind.
 
-## â€žAlle als gelesenâ€œ
+## „Alle als gelesen“
 
-Die aktuelle Browser-Schleife Ã¼ber zehn sichtbare PATCHs muss entfallen.
+Die aktuelle Browser-Schleife über zehn sichtbare PATCHs muss entfallen.
 
 Vorgeschlagener Command:
 
@@ -324,11 +324,11 @@ Request:
 
 Semantik:
 
-- markiert alle ungelesenen, aktuell autorisierten EintrÃ¤ge des **geprÃ¼ften
-  Snapshots** fÃ¼r genau diesen Actor
-- keine spÃ¤ter eingetroffene Notification wird versehentlich mitmarkiert
+- markiert alle ungelesenen, aktuell autorisierten Einträge des **geprüften
+  Snapshots** für genau diesen Actor
+- keine später eingetroffene Notification wird versehentlich mitmarkiert
 - Server revalidiert Scope/Role beim Command
-- Replay mit gleichem IdempotenzschlÃ¼ssel ist sicher.
+- Replay mit gleichem Idempotenzschlüssel ist sicher.
 
 Response:
 
@@ -341,7 +341,7 @@ Response:
 ```
 
 Falls nach dem Snapshot neue Notifications eingetroffen sind, darf
-`unread_count` entsprechend grÃ¶ÃŸer als 0 sein.
+`unread_count` entsprechend größer als 0 sein.
 
 ## Sichere Frontend-Bindung
 
@@ -357,7 +357,7 @@ NotificationBell braucht eine eigene Renderbindung mindestens aus:
 - sortierten `write_permissions`.
 
 `useWriteAccess` allein reicht nicht, weil dessen Principal heute nur
-User-ID + Rolle enthÃ¤lt.
+User-ID + Rolle enthält.
 
 ### Render-synchrone Neutralisierung
 
@@ -367,7 +367,7 @@ Wenn Render-Principal != State-Principal:
 
 - Badge sofort neutral
 - Dropdowninhalt sofort neutral
-- Dropdown schlieÃŸen
+- Dropdown schließen
 - alter State nicht bis zum Effect weiter anzeigen.
 
 Das entspricht den bereits etablierten privaten Workspacepatterns.
@@ -381,9 +381,9 @@ Weil es kein globales Same-Actor-Grantchange-Event gibt:
 - Weichen frische Grants vom lokalen Principal ab:
   - alte Inbox sofort verwerfen
   - `AuthContext.updateUser(freshUser)`
-  - erst unter neuem Principal Inbox laden/verÃ¶ffentlichen.
-- Eine Inboxantwort darf nur verÃ¶ffentlicht werden, wenn die Bindung wÃ¤hrend
-  des Requests unverÃ¤ndert geblieben ist.
+  - erst unter neuem Principal Inbox laden/veröffentlichen.
+- Eine Inboxantwort darf nur veröffentlicht werden, wenn die Bindung während
+  des Requests unverändert geblieben ist.
 
 Dies ist lokales Glockenverhalten und erfordert keinen neuen globalen
 Dashboard-/App-Eventbus.
@@ -400,13 +400,13 @@ Ein Controller pro aktiver Refreshgeneration:
 - optional `visibilitychange`/Window-Focus nur als gezielter Refresh, nicht
   als zweiter paralleler Poller.
 
-Keine Antwort einer alten Generation darf State verÃ¶ffentlichen.
+Keine Antwort einer alten Generation darf State veröffentlichen.
 
 ## Fehlerbedienung
 
 ### 401
 
-API-Client Ã¼bernimmt Sessioninvalidierung/Login.
+API-Client übernimmt Sessioninvalidierung/Login.
 
 Bell:
 
@@ -415,7 +415,7 @@ Bell:
 ### 403 / 404
 
 - private Inbox/Badge sofort vergessen
-- Dropdown schlieÃŸen oder neutralen â€žZugriff geÃ¤ndertâ€œ-Zustand zeigen
+- Dropdown schließen oder neutralen „Zugriff geändert“-Zustand zeigen
 - kein alter Count
 - keine alten Titel/Inhalte.
 
@@ -427,68 +427,68 @@ Sicherer Zustand:
 
 - Badgezahl ausblenden
 - private Liste nicht als aktuell rendern
-- neutraler Text â€žBenachrichtigungen konnten nicht aktualisiert werdenâ€œ
+- neutraler Text „Benachrichtigungen konnten nicht aktualisiert werden“
 - expliziter Retry.
 
 Kein Fake-`0`: Fehler ist ein eigener Zustand.
 
 ## Bounded UI
 
-Die Glocke kann weiterhin zehn EintrÃ¤ge auf der ersten Seite zeigen.
+Die Glocke kann weiterhin zehn Einträge auf der ersten Seite zeigen.
 
 Aber:
 
 - Badge kommt vom exakten `unread_count`
-- `has_more/next_cursor` erlaubt â€žWeitere ladenâ€œ
+- `has_more/next_cursor` erlaubt „Weitere laden“
 - Seiten bleiben bounded
 - keine 10er-Stockgrenze
-- â€žAlle gelesenâ€œ ist serverseitig vollstÃ¤ndig.
+- „Alle gelesen“ ist serverseitig vollständig.
 
 ## Tastatur/Fokus
 
-Beibehalten bzw. prÃ¤zisieren:
+Beibehalten bzw. präzisieren:
 
 - Glockenbutton `aria-expanded`
-- Escape schlieÃŸt und Fokus zurÃ¼ck auf Glockenbutton
+- Escape schließt und Fokus zurück auf Glockenbutton
 - Mark-read als echtes Button-/Menuitem-Verhalten statt klickbarem
-  `div role=listitem`, sofern die spÃ¤tere UI-Ã„nderung erfolgt
-- â€žAlle gelesenâ€œ, Retry und â€žWeitere ladenâ€œ tastaturerreichbar
+  `div role=listitem`, sofern die spätere UI-Änderung erfolgt
+- „Alle gelesen“, Retry und „Weitere laden“ tastaturerreichbar
 - kein Mark-read allein durch Fokus.
 
 ## Vorgesehene kleine Tests nach Vertragsfreigabe
 
 Frontend:
 
-1. 17 ungelesene, Seite 10 â†’ Badge 17, nicht 10.
-2. 403 nach vorherigem Erfolg â†’ alter Badge/Inhalt im selben Render weg.
-3. Netzwerk/5xx â†’ Fehlerzustand, weder alter Erfolg noch Fake-0.
-4. Principal-/Grantwechsel â†’ render-synchron neutral, alter Request abortiert.
-5. frisches `/auth/me` mit neuem Portfolio-Scope â†’ alter State nicht
-   verÃ¶ffentlicht.
+1. 17 ungelesene, Seite 10 → Badge 17, nicht 10.
+2. 403 nach vorherigem Erfolg → alter Badge/Inhalt im selben Render weg.
+3. Netzwerk/5xx → Fehlerzustand, weder alter Erfolg noch Fake-0.
+4. Principal-/Grantwechsel → render-synchron neutral, alter Request abortiert.
+5. frisches `/auth/me` mit neuem Portfolio-Scope → alter State nicht
+   veröffentlicht.
 6. Cursor Seite 1/2 ohne Duplikate.
 7. Mark-all verwendet genau einen Servercommand, keine sichtbare 10er-Schleife.
-8. Mark-all von Actor A verÃ¤ndert Actor B nicht.
+8. Mark-all von Actor A verändert Actor B nicht.
 9. neue Notification nach Snapshot bleibt nach Mark-all ungelesen.
 10. Escape/Fokus/Keyboard.
 
 Backendvertrag:
 
-1. `unread_count` ist exact FullCount Ã¼ber >Seitenbudget.
+1. `unread_count` ist exact FullCount über >Seitenbudget.
 2. Cursor bindet Scope/Filter/Limit/Snapshot.
-3. Grantentzug macht alten Cursor ungÃ¼ltig.
-4. Entityportfolio wird vollstÃ¤ndig gescoped.
-5. nicht auflÃ¶sbare private Entitynotification leakt nicht.
+3. Grantentzug macht alten Cursor ungültig.
+4. Entityportfolio wird vollständig gescoped.
+5. nicht auflösbare private Entitynotification leakt nicht.
 6. per-user Read-State ist isoliert.
-7. Mark-all verarbeitet >SeitengrÃ¶ÃŸe vollstÃ¤ndig und idempotent.
+7. Mark-all verarbeitet >Seitengröße vollständig und idempotent.
 
 ## Nicht Teil dieses Vorcodepakets
 
-- keine Ã„nderung an `NotificationBell.jsx`
-- keine Ã„nderung an AuthContext/App/API/shared Hooks
-- keine Backend-/Schema-/RouterÃ¤nderung
+- keine Änderung an `NotificationBell.jsx`
+- keine Änderung an AuthContext/App/API/shared Hooks
+- keine Backend-/Schema-/Routeränderung
 - keine Dashboard-Neuerfindung
 - kein Browser-/Build-/DB-/Recoverylauf
 - keine privaten Daten oder Secrets.
 
-Der nÃ¤chste Implementierungsschritt sollte erst erfolgen, nachdem Root den
+Der nächste Implementierungsschritt sollte erst erfolgen, nachdem Root den
 serverseitigen Inbox-/Read-State-Vertrag festgelegt hat.
