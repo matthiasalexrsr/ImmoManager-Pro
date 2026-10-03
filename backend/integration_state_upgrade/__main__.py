@@ -24,6 +24,7 @@ MESSAGES = {
     "integration_upgrade_receipt_invalid": "Der geschützte Operationsnachweis ist ungültig oder nicht zugänglich. Richtige Installation und Operationskennung prüfen.",
     "integration_upgrade_selection_invalid": "Datenbank-, Upload- oder Konfigurationsauswahl ist ungültig. Die vollständige vorhandene Installation und deren ausdrücklich gespeicherte Konfiguration wählen.",
     "integration_upgrade_capacity_invalid": "Kapazitätsprofil oder Zeitbudget ist ungültig. Dokumentierte positive Größen und endliche Zeitwerte wählen.",
+    "integration_upgrade_configuration_budget_exceeded": "Die Konfigurationsdatei überschreitet das gewählte Ressourcenbudget. Die richtige Datei prüfen oder das dokumentierte Größenbudget im Kapazitätsprofil erhöhen.",
     "integration_upgrade_archive_not_verified": "Passphrase oder vollständiges Archiv konnte nicht bestätigt werden. Richtige Passphrase und unveränderte Sicherung prüfen; der Integrationszustand wurde nicht zurückgesetzt.",
     "integration_upgrade_passphrases_differ": "Die eingegebenen Passphrasen stimmen nicht überein. Vorgang mit derselben Passphrase in beiden Eingaben erneut starten.",
     "integration_upgrade_page_invalid": "Positive Seitengröße und gültige Operationskennung der vorherigen Seite verwenden.",

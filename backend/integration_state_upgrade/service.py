@@ -37,9 +37,19 @@ def _hash(path, deadline):
     return _hash_file(_safe_path(path), deadline)
 
 
-def _configuration_files(root, deadline):
-    return {name: _hash(root / name, deadline) if (root / name).exists() else None
-            for name in (".env", "configuration.json")}
+def _configuration_files(root, deadline, limits):
+    from scripts.private_server_backup import _safe_path
+    result: dict[str, dict[str, object] | None] = {}
+    for name in (".env", "configuration.json"):
+        _remaining(deadline)
+        path = root / name
+        if not path.exists():
+            result[name] = None
+            continue
+        if _safe_path(path).stat().st_size > min(limits.metadata_bytes, limits.file_bytes):
+            raise IntegrationUpgradeError("integration_upgrade_configuration_budget_exceeded")
+        result[name] = _hash(path, deadline)
+    return result
 
 
 def _configuration_binding(plan, configuration_files):
@@ -53,19 +63,19 @@ def _configuration_binding(plan, configuration_files):
     }
 
 
-def _selected(args, root, deadline):
+def _selected(args, root, deadline, limits):
     from backend.legacy_sqlite_upgrade.service import _selected as select
     from scripts.private_server_backup import _safe_path
-    before = _configuration_files(root, deadline)
+    before = _configuration_files(root, deadline, limits)
     from backend.services.recovery_archive import RecoveryError
     try:
-        plan = select(args, root)
+        plan = select(args, root, limits=limits, deadline=deadline)
     except RecoveryError:
         raise IntegrationUpgradeError("integration_upgrade_selection_invalid") from None
     if plan.integration_state is None:
         raise IntegrationUpgradeError("integration_state_missing")
     _safe_path(plan.integration_state)
-    after = _configuration_files(root, deadline)
+    after = _configuration_files(root, deadline, limits)
     if before != after:
         raise IntegrationUpgradeError("integration_upgrade_selection_changed")
     return plan, after
@@ -150,8 +160,8 @@ def _matched_state(plan, receipt, limits):
     return "changed"
 
 
-def _assert_binding(args, root, receipt, deadline):
-    fresh, files = _selected(args, root, deadline)
+def _assert_binding(args, root, receipt, deadline, limits):
+    fresh, files = _selected(args, root, deadline, limits)
     if _configuration_binding(fresh, files) != receipt["binding"]:
         raise IntegrationUpgradeError("integration_upgrade_selection_changed")
     return fresh
@@ -202,7 +212,7 @@ def upgrade(args, password: str, *, limits=None, _checkpoint=lambda phase: None)
     with installation_lease(args.data_dir) as root:
         limits = _limits(args, limits)
         deadline = time.monotonic() + limits.timeout_seconds
-        plan, selected_files = _selected(args, root, deadline)
+        plan, selected_files = _selected(args, root, deadline, limits)
         with _database_lease(plan, deadline):
             proof = _state(plan, limits)
             if not proof["legacy_requires_migration"]:
@@ -221,7 +231,7 @@ def upgrade(args, password: str, *, limits=None, _checkpoint=lambda phase: None)
                 "original_sha256": proof["state_revision"], "archive": str(args.output.absolute()),
                 "backup_restore_verified": False,
             }
-            _assert_binding(args, root, receipt, deadline)
+            _assert_binding(args, root, receipt, deadline, limits)
             _write(directory, receipt, limits)
             _checkpoint("prepared")
             create_full_backup(plan, Path(receipt["archive"]), password, offline=True,
@@ -231,15 +241,15 @@ def upgrade(args, password: str, *, limits=None, _checkpoint=lambda phase: None)
             receipt.update(phase="backup_validated", backup_restore_verified=True)
             _write(directory, receipt, limits)
             _checkpoint("backup_validated")
-            _assert_binding(args, root, receipt, deadline)
+            _assert_binding(args, root, receipt, deadline, limits)
 
             def prepared(encrypted_sha):
                 _remaining(deadline)
-                _assert_binding(args, root, receipt, deadline)
+                _assert_binding(args, root, receipt, deadline, limits)
                 receipt.update(phase="conversion_prepared", encrypted_sha256=encrypted_sha)
                 _write(directory, receipt, limits)
                 _checkpoint("conversion_prepared")
-                _assert_binding(args, root, receipt, deadline)
+                _assert_binding(args, root, receipt, deadline, limits)
 
             _store(plan, limits, deadline, args).migrate_legacy_plaintext(
                 expected_revision=receipt["original_sha256"], before_publish=prepared,
@@ -260,7 +270,7 @@ def status(args, *, limits=None):
         limits = _limits(args, limits)
         deadline = time.monotonic() + limits.timeout_seconds
         _, receipt = _receipt(root, args.operation_id, limits)
-        plan = _assert_binding(args, root, receipt, deadline)
+        plan = _assert_binding(args, root, receipt, deadline, limits)
         return {"operation_id": receipt["operation_id"], "recorded_phase": receipt["phase"],
                 "state": _matched_state(plan, receipt, limits),
                 "backup_restore_verified": receipt.get("backup_restore_verified") is True}
@@ -324,7 +334,7 @@ def rollback(args, password: str, *, limits=None, _checkpoint=lambda phase: None
         limits = _limits(args, limits)
         deadline = time.monotonic() + limits.timeout_seconds
         directory, receipt = _receipt(root, args.operation_id, limits)
-        plan = _assert_binding(args, root, receipt, deadline)
+        plan = _assert_binding(args, root, receipt, deadline, limits)
         if receipt.get("backup_restore_verified") is not True:
             raise IntegrationUpgradeError("integration_upgrade_backup_not_verified")
         with _database_lease(plan, deadline):
@@ -335,24 +345,24 @@ def rollback(args, password: str, *, limits=None, _checkpoint=lambda phase: None
             if actual == "original":
                 def verified(_sha):
                     _remaining(deadline)
-                    _assert_binding(args, root, receipt, deadline)
+                    _assert_binding(args, root, receipt, deadline, limits)
                     receipt["phase"] = "returned"
                     _write(directory, receipt, limits)
                 _store(plan, limits, deadline, args).verify_legacy_revision(
                     expected_revision=receipt["original_sha256"], before_verified=verified,
                 )
                 return {"operation_id": receipt["operation_id"], "status": "original_verified"}
-            _assert_binding(args, root, receipt, deadline)
+            _assert_binding(args, root, receipt, deadline, limits)
 
             def prepared(original_sha):
                 _remaining(deadline)
                 if original_sha != receipt["original_sha256"]:
                     raise IntegrationUpgradeError("integration_upgrade_archive_source_mismatch")
-                _assert_binding(args, root, receipt, deadline)
+                _assert_binding(args, root, receipt, deadline, limits)
                 receipt["phase"] = "return_prepared"
                 _write(directory, receipt, limits)
                 _checkpoint("return_prepared")
-                _assert_binding(args, root, receipt, deadline)
+                _assert_binding(args, root, receipt, deadline, limits)
 
             _store(plan, limits, deadline, args).restore_legacy_plaintext(
                 original, expected_revision=receipt["encrypted_sha256"], before_publish=prepared,

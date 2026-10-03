@@ -91,3 +91,11 @@ before CAS uses the actual remaining operation budget. Regression sources cover
 these paths and real command output with only password entry adapted for the
 Windows subprocess console. Native results are pending until recorded in the
 separate acceptance handoff; source/lint success alone is not release acceptance.
+
+The configuration planner now receives the selected capacity profile and the
+same deadline on every fresh binding check. Configuration files are size-checked
+before streaming their identity/hash and bounded again during actual parsing.
+The independent planner's fixed JSON ceiling is replaced by an explicit budget.
+Native independent SQLite writers will be tested both before maintenance and
+through complete backup, isolated probe and publication, rather than deriving
+write exclusion only from inspection of BEGIN IMMEDIATE.

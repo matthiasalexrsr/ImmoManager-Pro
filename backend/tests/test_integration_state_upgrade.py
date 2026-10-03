@@ -268,8 +268,8 @@ def test_configuration_change_during_actual_selection_is_not_bound_to_cached_key
     select = legacy._selected
     original = plan.integration_state.read_bytes()
 
-    def changed_selection(*values):
-        result = select(*values)
+    def changed_selection(*values, **options):
+        result = select(*values, **options)
         with (args.data_dir / ".env").open("a", encoding="utf-8") as target:
             target.write("\nUNKNOWN_SELECTION_CHANGE=true\n")
         return result
@@ -456,6 +456,103 @@ with JsonFileIntegrationConfigStore(sys.argv[1])._locked():
         if holder is not None:
             _, errors = holder.communicate(input=b"x", timeout=15)
             assert holder.returncode == 0, errors.decode()
+
+
+def test_independent_native_sqlite_writer_refuses_maintenance_before_archive(plan, tmp_path):
+    args = arguments(plan, tmp_path)
+    original = plan.integration_state.read_bytes()
+    script = """
+import sqlite3,sys
+from pathlib import Path
+with sqlite3.connect(Path(sys.argv[1]).resolve().as_uri()+'?mode=rw',uri=True,timeout=.05) as db:
+    db.execute('BEGIN IMMEDIATE')
+    print('ready',flush=True)
+    sys.stdin.buffer.read(1)
+    db.rollback()
+"""
+    holder = subprocess.Popen([sys.executable, "-c", script, str(plan.database)],
+        cwd=ROOT, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        assert holder.stdout.readline().strip() == b"ready"
+        with pytest.raises(service.IntegrationUpgradeError, match="database_busy"):
+            service.upgrade(args, PASSPHRASE)
+        assert plan.integration_state.read_bytes() == original and not args.output.exists()
+        assert not (args.data_dir / ".integration-state-upgrade").exists()
+    finally:
+        _, errors = holder.communicate(input=b"x", timeout=15)
+        assert holder.returncode == 0, errors.decode()
+
+
+def test_native_sqlite_writer_is_excluded_through_actual_backup_probe_and_publication(plan, tmp_path, monkeypatch):
+    args = arguments(plan, tmp_path)
+    probe = service._probe
+    blocked = []
+    script = """
+import sqlite3,sys
+from pathlib import Path
+try:
+    with sqlite3.connect(Path(sys.argv[1]).resolve().as_uri()+'?mode=rw',uri=True,timeout=.05) as db:
+        db.execute('BEGIN IMMEDIATE')
+        db.execute("UPDATE portfolios SET name='Independent writer after maintenance'")
+    print('written')
+except sqlite3.OperationalError as error:
+    if error.sqlite_errorcode not in (sqlite3.SQLITE_BUSY,sqlite3.SQLITE_LOCKED):
+        raise
+    print('writer-blocked')
+"""
+
+    def writer():
+        result = subprocess.run([sys.executable, "-c", script, str(plan.database)],
+            cwd=ROOT, capture_output=True, text=True, timeout=15)
+        assert result.returncode == 0, result.stderr
+        return result.stdout.strip()
+
+    def observed_probe(*values):
+        blocked.append(writer())
+        result = probe(*values)
+        blocked.append(writer())
+        return result
+
+    def checkpoint(phase):
+        if phase in {"prepared", "conversion_prepared"}:
+            blocked.append(writer())
+
+    monkeypatch.setattr(service, "_probe", observed_probe)
+    result = service.upgrade(args, PASSPHRASE, _checkpoint=checkpoint)
+    assert result["backup_restore_verified"] is True and blocked == ["writer-blocked"] * 4
+    assert writer() == "written"
+    with sqlite3.connect(plan.database) as db:
+        assert db.execute("SELECT name FROM portfolios").fetchone()[0] == "Independent writer after maintenance"
+
+
+@pytest.mark.parametrize("name", [".env", "configuration.json"])
+def test_selected_configuration_budget_is_applied_before_planner_parse(plan, tmp_path, name):
+    from backend.services.full_recovery import RecoveryLimits
+    args = arguments(plan, tmp_path)
+    if name == "configuration.json":
+        (args.data_dir / name).write_text(json.dumps(plan.configuration), encoding="utf-8")
+        (args.data_dir / ".env").write_bytes(b"")
+    original = plan.integration_state.read_bytes()
+    with pytest.raises(service.IntegrationUpgradeError, match="configuration_budget_exceeded"):
+        service.upgrade(args, PASSPHRASE, limits=RecoveryLimits(metadata_bytes=128))
+    assert plan.integration_state.read_bytes() == original and not args.output.exists()
+    assert not (args.data_dir / ".integration-state-upgrade").exists()
+
+
+def test_larger_explicit_configuration_profile_reaches_real_planner_and_fresh_binding(plan, tmp_path):
+    from backend.legacy_sqlite_upgrade.service import installation_lease
+    from backend.services.full_recovery import RecoveryLimits
+    args = arguments(plan, tmp_path)
+    path = args.data_dir / "configuration.json"
+    path.write_bytes(b" " * (16 * 1024**2 + 1) + json.dumps(plan.configuration).encode())
+    limits = RecoveryLimits(metadata_bytes=20 * 1024**2)
+    deadline = time.monotonic() + 20
+    with installation_lease(args.data_dir) as root:
+        selected, files = service._selected(args, root, deadline, limits)
+        receipt = {"binding": service._configuration_binding(selected, files)}
+        fresh = service._assert_binding(args, root, receipt, deadline, limits)
+    assert files["configuration.json"]["size"] > 16 * 1024**2
+    assert fresh.configuration == selected.configuration and selected.database == plan.database
 
 
 @pytest.mark.parametrize("fault, expected", [
