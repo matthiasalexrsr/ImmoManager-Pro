@@ -26,6 +26,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from .encrypted_types import EncryptedIBAN, register_account_encryption
+from .time_types import UTCNaiveDateTime
 
 
 def _utcnow():
@@ -764,7 +765,7 @@ class ChangeHistoryORM(Base):
     old_value: Mapped[str | None] = mapped_column(Text)
     new_value: Mapped[str | None] = mapped_column(Text)
     changed_by: Mapped[str | None] = mapped_column(String(36))
-    changed_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    changed_at: Mapped[datetime] = mapped_column(UTCNaiveDateTime(), default=_utcnow)
     reason: Mapped[str | None] = mapped_column(Text)
 
 

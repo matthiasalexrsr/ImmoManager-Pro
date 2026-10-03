@@ -88,6 +88,15 @@ def test_ties_unicode_search_exact_fields_interval_and_cursor_binding(active):
         assert error.value.status_code == 422
 
 
+def test_offset_aware_history_input_keeps_its_utc_instant(active):
+    utc = datetime(2026, 1, 1, 3, 0, 0, 123456, tzinfo=timezone.utc)
+    original = utc.astimezone(timezone(timedelta(hours=2)))
+    add_rows(active, [row(0, changed_at=original)])
+    result = service.history_inventory_page(active, Query(changed_from=utc, changed_before=utc + timedelta(microseconds=1)))
+    assert [item.id for item in result.items] == ["history-000000"]
+    assert service.stamp(result.items[0].changed_at) == utc.replace(tzinfo=None)
+
+
 @pytest.mark.parametrize("active", ["sqlite"], indirect=True)
 def test_sqlite_actual_seconds_microseconds_and_no_autoflush(active):
     with active.db.get_bind().begin() as connection:
