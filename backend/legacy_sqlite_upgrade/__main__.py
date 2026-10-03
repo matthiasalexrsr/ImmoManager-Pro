@@ -16,6 +16,8 @@ MESSAGES = {
     "legacy_offline_required": "Zuerst Anwendung und Hintergrundschreiber beenden und --offline angeben.",
     "legacy_rollback_refused_after_changes": "Seit dem Upgrade wurde der Bestand verändert. Rückweg verweigert, damit keine neueren Daten verloren gehen.",
     "legacy_installation_files_changed": "Originale oder Einstellungen wurden verändert. Unveränderte vollständige Sicherung prüfen.",
+    "legacy_selected_database_changed": "Die gewählte Datenbank wurde ersetzt oder gehört nicht zu dieser Operation. Rückweg abgebrochen; richtigen unveränderten Bestand wählen.",
+    "legacy_return_resources_changed": "Originalsnapshot oder Vollarchiv wurden verändert. Rückweg abgebrochen; die unveränderten geprüften Sicherungen dieser Operation erhalten.",
     "legacy_target_requires_reference_validation": "Diese Programmversion benötigt zuerst einen geprüften Upgrade-Referenzkatalog.",
     "legacy_operation_timed_out": "Der Vorgang hat sein Zeitbudget überschritten. Status prüfen; bei Bedarf ein größeres positives Budget wählen.",
     "legacy_database_budget_exceeded": "Die Datenbank überschreitet das gewählte Kapazitätsprofil. Ein passendes positives Sicherungsbudget wählen; der Bestand bleibt unverändert.",

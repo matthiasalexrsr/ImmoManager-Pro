@@ -162,7 +162,7 @@ def test_unmanaged_native_writer_blocks_before_archive(legacy_installation):
     assert inspect_legacy_sqlite(database)
 
 
-@pytest.mark.parametrize("changed", ["business", "upload", "snapshot"])
+@pytest.mark.parametrize("changed", ["business", "upload", "snapshot", "database"])
 def test_checked_rollback_refuses_newer_data_or_replaced_return_resources(legacy_installation, changed):
     args, database = legacy_installation
     result = service.upgrade(args, PASSPHRASE, limits=RecoveryLimits(timeout_seconds=600))
@@ -173,6 +173,11 @@ def test_checked_rollback_refuses_newer_data_or_replaced_return_resources(legacy
             connection.commit()
     elif changed == "upload":
         (args.data_dir / "uploads/proof.bin").write_bytes(b"Synthetic newer original")
+    elif changed == "database":
+        clone = database.with_name("synthetic-cloned-database.sqlite")
+        with closing(sqlite3.connect(database)) as source, closing(sqlite3.connect(clone)) as destination:
+            source.backup(destination)
+        os.replace(clone, database)
     else:
         snapshot = args.data_dir / ".legacy-sqlite-upgrade" / args.operation_id / "original.sqlite"
         snapshot.write_bytes(b"Synthetic replaced return snapshot")

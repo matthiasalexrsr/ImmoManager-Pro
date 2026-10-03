@@ -320,7 +320,8 @@ def status(args, *, limits=None):
         deadline = time.monotonic() + limits.timeout_seconds
         plan = _selected(args, root)
         _, receipt = _receipt(root, args.operation_id, maximum_metadata=limits.manifest_bytes)
-        if str(plan.database) != receipt["database"]:
+        if (str(plan.database) != receipt["database"] or
+                [plan.database.stat().st_dev, plan.database.stat().st_ino] != receipt["database_identity"]):
             raise LegacyUpgradeError("legacy_selected_database_changed")
         engine = create_engine("sqlite:///" + plan.database.as_posix(), poolclass=NullPool, hide_parameters=True)
         try:
@@ -400,6 +401,7 @@ def rollback(args, *, limits=None, _checkpoint=lambda phase: None):
                 if _matched_state(connection, receipt, deadline) != "original":
                     raise LegacyUpgradeError("legacy_rollback_validation_failed")
                 if (_hash_file(snapshot, deadline) != receipt["snapshot"]
+                        or _hash_file(Path(receipt["archive"]), deadline) != receipt["archive_identity"]
                         or _file_state(plan, root, limits, deadline) != receipt["files"]):
                     raise LegacyUpgradeError("legacy_return_resources_changed")
                 _checkpoint("rollback_transaction_prepared")
