@@ -37,8 +37,9 @@ wird bearbeitet. Kein Runtime-/Import-/DB-/PG-/CLI-/Browserstart im Auftrag.
 
 Fixture verlangt TEST_SERVER_DATABASE_URL ausdrücklich, fehlt es: FAIL,
 niemals Skip/SQLitefallback. Vor jedem connect URL auf tatsächlichen dedizierten
-Targetvertrag prüfen: PostgreSQL, immo_ci@127.0.0.1:58112/immo_ci. Vorgegebene
-Connectionoptions werden überschrieben; Adminsearchpath nur pg_catalog,
+Targetvertrag prüfen: PostgreSQL, immo_ci@127.0.0.1:58112/immo_ci. Zusätzliche
+URL-Queryoverrides außer options werden abgewiesen; vorgegebene Connectionoptions
+werden überschrieben. Adminsearchpath nur pg_catalog,
 Fachsearchpath nur zufälliges `inbox_pg_<uuidhex>` ohne public.
 
 Ein unabhängiger Adminengine erstellt ausschließlich dieses UUID-Schema.
