@@ -84,6 +84,14 @@ def scope_hash(actor):
 
 
 def _policy(identity):
+    if identity.collection == "billing/disputes":
+        from ..db.billing_dispute_models import BillingDisputeCaseORM
+        from .billing_dispute_drafts import DisputeDraftValues, validate_identity
+        try:
+            validate_identity(identity)
+        except HTTPException as error:
+            raise DraftError(error.status_code, "DRAFT_IDENTITY_INVALID", error.detail) from None
+        return DisputeDraftValues, BillingDisputeCaseORM.__table__
     name = POLICIES.get(identity.collection)
     if name is None:
         raise DraftError(422, "DRAFT_FORM_UNSUPPORTED", "Dieses Formular unterstützt keine automatische Entwurfssicherung.")
@@ -119,7 +127,7 @@ def _payload(identity, actor, request):
     model, _ = _policy(identity)
     allowed = set(model.model_fields) - FORBIDDEN_KEYS
     _safe_values(request.values, allowed)
-    snapshot_fields = set(getattr(models, POLICIES[identity.collection]).model_fields) - FORBIDDEN_KEYS - {"id", "created_at", "updated_at"}
+    snapshot_fields = allowed if identity.collection == "billing/disputes" else set(getattr(models, POLICIES[identity.collection]).model_fields) - FORBIDDEN_KEYS - {"id", "created_at", "updated_at"}
     _safe_values(request.original_values, snapshot_fields)
     revision = request.edit_revision
     if identity.entity_id:
@@ -157,6 +165,13 @@ def _visible(store, table, identifier, actor):
 
 
 def _resources(store, identity, actor, value):
+    if identity.collection == "billing/disputes":
+        from .billing_dispute_drafts import validate_resources
+        try:
+            validate_resources(store, identity, value)
+        except HTTPException as error:
+            raise DraftError(error.status_code, "DRAFT_REFERENCE_INVALID", error.detail) from None
+        return
     _, table = _policy(identity)
     if identity.entity_id and not _visible(store, table, identity.entity_id, actor):
         raise DraftError(404, "DRAFT_RESOURCE_UNAVAILABLE", "Der zugehörige Datensatz ist nicht mehr zugänglich.")
