@@ -7,7 +7,7 @@ from typing import Any
 
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from sqlalchemy import Date, case, func, literal, or_, select
+from sqlalchemy import Date, String, case, cast, func, literal, or_, select
 
 from ..db.booking_order import bytewise_id
 from ..db.orm_models import Base
@@ -177,6 +177,13 @@ def _sql_hints(connection, query, scope, family, point):
     collection, day_field, fields, _total, _url = HINTS[family]
     table = Base.metadata.tables[collection]
     day, identifier = table.c[day_field], bytewise_id(table.c.id)
+    if family == "notifications" and connection.dialect.name == "sqlite":
+        # CURRENT_TIMESTAMP lacks the fraction that SQLite's DateTime binder
+        # always emits. Use one lossless key for both ordering and comparison.
+        raw = cast(day, String)
+        day = case((func.length(raw) == 19, raw + ".000000"), else_=raw)
+        if point is not None and point[0] is not None:
+            point = point[0].isoformat(sep=" ", timespec="microseconds"), point[1]
     fields = tuple(dict.fromkeys([*fields, day_field]))
     statement = select(*(table.c[field] for field in fields)).where(_visible(table, scope))
     statement = statement.where(_expiring(table, query) if family == "expiring_contracts" else
