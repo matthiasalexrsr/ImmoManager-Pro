@@ -38,7 +38,7 @@ def test_complete_profile_reproves_exact_catalog_and_later_omissions(legacy):
     assert path.read_bytes() == before
 
 
-@pytest.mark.parametrize("damage", ["guard", "foreign_key", "index", "check", "partial_family", "extra_table", "stamp"])
+@pytest.mark.parametrize("damage", ["guard", "foreign_key", "index", "check", "partial_family", "extra_table", "stamp", "marker_trigger"])
 def test_full_detection_refuses_unknown_or_weakened_schema_without_repair(legacy, damage):
     path, _, _ = legacy
     with closing(sqlite3.connect(path)) as connection:
@@ -60,9 +60,12 @@ def test_full_detection_refuses_unknown_or_weakened_schema_without_repair(legacy
             connection.execute("DROP TABLE contract_lifecycle_commands")
         elif damage == "extra_table":
             connection.execute("CREATE TABLE unrelated(id INTEGER PRIMARY KEY)")
-        else:
+        elif damage == "stamp":
             connection.execute("CREATE TABLE alembic_version(version_num VARCHAR(32) NOT NULL PRIMARY KEY)")
             connection.execute("INSERT INTO alembic_version VALUES ('z1a2b3c4d5e6')")
+        else:
+            connection.execute("CREATE TABLE alembic_version(version_num VARCHAR(32) NOT NULL PRIMARY KEY)")
+            connection.execute("CREATE TRIGGER injected_marker AFTER INSERT ON alembic_version BEGIN UPDATE portfolios SET name='Injected changed state'; END")
         connection.commit()
     before = path.read_bytes()
     with pytest.raises((LegacySchemaError, sqlite3.DatabaseError)):

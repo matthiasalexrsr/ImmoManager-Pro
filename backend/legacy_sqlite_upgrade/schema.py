@@ -29,8 +29,7 @@ def normalized_sql(sql: str | None) -> str | None:
 def catalog(connection: sqlite3.Connection) -> dict:
     objects = [list(row) for row in connection.execute(
         "SELECT type,name,tbl_name,sql FROM sqlite_master "
-        "WHERE name NOT LIKE 'sqlite_%' AND name <> 'alembic_version' "
-        "AND tbl_name <> 'alembic_version' ORDER BY type,name")]
+        "WHERE name NOT LIKE 'sqlite_%' AND name <> 'alembic_version' ORDER BY type,name")]
     for row in objects:
         row[3] = normalized_sql(row[3])
     tables = {}
@@ -95,6 +94,13 @@ def prove_legacy_schema(connection: sqlite3.Connection) -> LegacySchemaProof:
             raise LegacySchemaError("legacy_database_already_versioned")
         expected_version = [(0, "version_num", "VARCHAR(32)", 1, None, 1)]
         if connection.execute("PRAGMA table_info(alembic_version)").fetchall() != expected_version:
+            raise LegacySchemaError("legacy_version_marker_unsupported")
+        definitions = {
+            normalized_sql("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL PRIMARY KEY)"),
+            normalized_sql("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL, CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num))"),
+        }
+        definition = connection.execute("SELECT sql FROM sqlite_master WHERE name='alembic_version'").fetchone()[0]
+        if normalized_sql(definition) not in definitions:
             raise LegacySchemaError("legacy_version_marker_unsupported")
     actual = catalog(connection)
     digest = catalog_hash(actual)
