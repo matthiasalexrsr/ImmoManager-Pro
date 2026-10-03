@@ -25,9 +25,14 @@ test('History: native 10002 complete export, reached rows, mobile detail and act
     const layout = await page.evaluate(() => ({ width: innerWidth, document: document.documentElement.scrollWidth,
       contentMargin: getComputedStyle(document.querySelector('.main-content')).marginLeft,
       history: document.querySelector('.history-inventory').getBoundingClientRect().toJSON(),
-      table: document.querySelector('.history-inventory table').getBoundingClientRect().toJSON() }));
+      table: document.querySelector('.history-inventory table').getBoundingClientRect().toJSON(),
+      detail: document.querySelector('.history-values dd').getBoundingClientRect().toJSON() }));
     await writeFile(testInfo.outputPath(`history-layout-${width}.json`), JSON.stringify(layout, null, 2));
     expect(layout.document <= layout.width + 1).toBe(true);
+    if (width <= 900) {
+      expect(layout.table.right <= layout.history.right + 1).toBe(true);
+      expect(layout.detail.right <= layout.history.right + 1 && layout.detail.left >= layout.history.left).toBe(true);
+    }
     await page.screenshot({ path: testInfo.outputPath(`history-${width}.png`), fullPage: true });
   }
   await page.setViewportSize({ width: 1440, height: 1000 });
