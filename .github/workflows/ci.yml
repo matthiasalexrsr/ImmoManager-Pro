@@ -328,6 +328,19 @@ jobs:
           backend/tests/test_measurement_history_migration.py
           -k postgres -q --tb=short
 
+      - name: Require actual PostgreSQL complete inventory and export evidence
+        if: ${{ !cancelled() && steps.pg_dependencies.outcome == 'success' }}
+        env:
+          TEST_SERVER_DATABASE_URL: postgresql://immo_ci:isolated_test_database@127.0.0.1:5432/immo_ci
+        run: >-
+          python scripts/run_postgres_gate.py
+          backend/tests/test_unit_inventory_postgres.py
+          backend/tests/test_document_inventory_postgres.py
+          backend/tests/test_maintenance_inventory_postgres.py
+          backend/tests/test_maintenance_date_filter_postgres.py
+          backend/tests/test_contact_inventory_postgres.py
+          -k postgres -q --tb=short
+
   browser-e2e:
     name: Browser workflows (Chromium + SQLite)
     runs-on: ubuntu-latest

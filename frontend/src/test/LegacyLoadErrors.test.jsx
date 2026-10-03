@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import Contacts from '../pages/Contacts';
 import HandoverProtocols from '../pages/HandoverProtocols';
 import Leads from '../pages/Leads';
 import Listings from '../pages/Listings';
@@ -84,7 +83,8 @@ beforeEach(() => {
 });
 
 const primaryCases = [
-  ['Contacts', Contacts, '/contacts', 'Kontakte'],
+  // Contacts now has a cursor source, actor binding and independent totals;
+  // ContactInventory.test.jsx exercises that actual contract and its retry.
   ['HandoverProtocols', HandoverProtocols, '/handover-protocols', 'Übergabeprotokolle'],
   ['Leads', Leads, '/leads', 'Interessenten'],
   ['Listings', Listings, '/listings', 'Inserate'],
