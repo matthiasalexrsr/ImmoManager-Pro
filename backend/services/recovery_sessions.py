@@ -49,6 +49,12 @@ def invalidate_and_inspect(connection, original_configuration, *, deadline):
         raise SessionRestoreError("restore_session_schema_incomplete: kompatible vollständige Sicherung erforderlich")
     # Validate every immutable original before revoking one family or creating
     # a new signing configuration. Both missing legacy tables remain compatible.
+    from .measurement_history_database import validate_measurement_database
+    from .measurement_history_validation import MeasurementIntegrityError
+    try:
+        validate_measurement_database(connection, deadline=deadline)
+    except MeasurementIntegrityError:
+        raise SessionRestoreError("restore_measurement_history_invalid: vollständige unveränderte Sicherung verwenden; Sicherheitsabschluss nicht ausgeführt") from None
     from .operational_job_validation import JobIntegrityError, reset_restored_job_claims, validate_job_journal
     from .operational_scheduler_validation import reset_scheduler_claims, validate_scheduler
     from .tenancy_workflow_validation import WorkflowIntegrityError, validate_workflow_journal

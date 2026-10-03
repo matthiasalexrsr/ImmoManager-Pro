@@ -221,6 +221,12 @@ def _original_uri_matches(historical, key, old_root):
 
 
 def _scan(db, old_root, destination, catalog, deadline=None):
+    from .measurement_history_database import validate_measurement_database
+    from .measurement_history_validation import MeasurementIntegrityError
+    try:
+        validate_measurement_database(db, deadline=deadline)
+    except (MeasurementIntegrityError, sqlite3.Error):
+        raise RecoveryError("Historische Abrechnungsquellen sind ungültig. Vollständige unveränderte Sicherung verwenden.") from None
     from ..db.integration_history_schema import ensure_history_schema
     from .integrations.history_types import HistoryError
     try:

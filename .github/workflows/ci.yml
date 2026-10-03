@@ -316,6 +316,18 @@ jobs:
           backend/tests/test_tenant_privacy_write_fence.py::test_pg_actual_job_cannot_publish_after_confirmed_hash_barrier
           -k postgres -q --tb=short
 
+      - name: Require actual PostgreSQL historical source integrity and migration evidence
+        if: ${{ !cancelled() && steps.pg_dependencies.outcome == 'success' }}
+        env:
+          TEST_SERVER_DATABASE_URL: postgresql://immo_ci:isolated_test_database@127.0.0.1:5432/immo_ci
+        run: >-
+          python scripts/run_postgres_gate.py
+          backend/tests/test_measurement_history_database.py
+          backend/tests/test_measurement_history_http.py
+          backend/tests/test_measurement_history_integrity.py
+          backend/tests/test_measurement_history_migration.py
+          -k postgres -q --tb=short
+
   browser-e2e:
     name: Browser workflows (Chromium + SQLite)
     runs-on: ubuntu-latest

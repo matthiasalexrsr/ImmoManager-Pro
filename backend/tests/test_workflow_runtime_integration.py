@@ -198,7 +198,7 @@ def test_actual_postgres_composed_migration_chain_is_linear_and_preserves_old_pr
     config.set_main_option("script_location", str(root / "backend/db/migrations"))
     command.upgrade(config, "head")
     with postgres.engine.connect() as connection:
-        assert connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar_one() == "c2a2b3c4d5e6"
+        assert connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar_one() == "h2a2b3c4d5e6"
         assert {model.__tablename__ for model in (*TENANCY_WORKFLOW_MODELS, *JOB_MODELS)} <= set(inspect(connection).get_table_names())
     command.downgrade(config, "a2a2b3c4d5e6")
     with postgres.engine.connect() as connection:

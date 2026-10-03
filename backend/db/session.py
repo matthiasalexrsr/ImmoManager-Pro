@@ -21,6 +21,7 @@ from .datev_models import DatevProfileORM  # noqa: F401 — register DATEV metad
 from .document_version_models import DocumentVersionORM  # noqa: F401 — register immutable document originals
 from .form_draft_models import FormDraftORM  # noqa: F401 — register private draft metadata
 from .integration_history_models import HISTORY_MODELS
+from .measurement_history_models import MEASUREMENT_MODELS  # noqa: F401 — register historical sources before create_all
 from .operational_job_models import JOB_MODELS
 from .operational_models import OperationalTickORM  # noqa: F401 — register scheduler metadata
 from .operational_scheduler_models import OperationalSchedulerORM  # noqa: F401 — register durable coordinator
@@ -85,6 +86,11 @@ def create_tables() -> None:
 
     require_complete_family(engine, TENANCY_WORKFLOW_MODELS, "tenancy workflow")
     require_complete_family(engine, JOB_MODELS, "operational job")
+    from .measurement_history_schema import validate_measurement_guards, validate_measurement_schema
+    with engine.connect() as connection:
+        measurement_present = validate_measurement_schema(connection)
+        if measurement_present:
+            validate_measurement_guards(connection)
     from .integration_history_schema import ensure_history_schema
     with engine.connect() as connection:
         ensure_history_schema(connection)
@@ -115,6 +121,9 @@ def create_tables() -> None:
     from .session_models import ensure_session_schema
     from .tenancy_workflow_schema import ensure_tenancy_workflow_schema
     with engine.begin() as connection:
+        if not measurement_present:
+            from .measurement_history_schema import install_measurement_guards
+            install_measurement_guards(connection)  # Explicit dev/test convenience; never production.
         ensure_portfolio_access_schema(connection, bootstrap_legacy=bootstrap_legacy_access)
         ensure_rent_batch_schema(connection)
         ensure_outbox_schema(connection)

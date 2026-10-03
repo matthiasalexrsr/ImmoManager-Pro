@@ -179,11 +179,18 @@ def _database_info(path: Path, *, timeout_seconds: float = 300) -> dict:
             raise RecoveryError("Die Dokumenthistorie ist unvollständig. Vollständige Sicherung mit Originalen verwenden.")
         lifecycle_tables = {"contract_lifecycle_drafts", "contract_lifecycle_commands"}
         correspondence_tables = {"contract_correspondence_drafts", "contract_correspondence_commands", "contract_correspondence_events"}
+        from ..db.measurement_history_models import MEASUREMENT_TABLES
+        from .measurement_history_database import validate_measurement_database
+        from .measurement_history_validation import MeasurementIntegrityError
         from .operational_job_validation import TABLES as job_tables
         from .operational_job_validation import JobIntegrityError, validate_job_journal
         from .operational_scheduler_validation import validate_scheduler
         from .tenancy_workflow_validation import TABLES as workflow_tables
         from .tenancy_workflow_validation import WorkflowIntegrityError, validate_workflow_journal
+        try:
+            validate_measurement_database(db, deadline=deadline)
+        except (MeasurementIntegrityError, sqlite3.Error):
+            raise RecoveryError("Historische Abrechnungsquellen sind unvollständig oder ungültig. Vollständige unveränderte Sicherung verwenden.") from None
         try:
             validate_workflow_journal(db, deadline=deadline)
             validate_job_journal(db, deadline=deadline)
@@ -217,6 +224,8 @@ def _database_info(path: Path, *, timeout_seconds: float = 300) -> dict:
             if table.name in workflow_tables and not tables & workflow_tables:
                 continue
             if table.name in job_tables and not tables.intersection(job_tables):
+                continue
+            if table.name in MEASUREMENT_TABLES and not tables.intersection(MEASUREMENT_TABLES):
                 continue
             if table.name in history_tables and not tables.intersection(history_tables):
                 continue

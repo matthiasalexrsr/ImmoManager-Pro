@@ -43,3 +43,14 @@ def validate_runtime_schema(engine) -> None:
                     "Server database schema is incomplete. Restore a complete compatible backup or perform an "
                     "explicit schema repair; startup will not create missing tables or columns."
                 )
+        from ..services.measurement_history_validation import MeasurementIntegrityError
+        from .measurement_history_schema import validate_measurement_guards, validate_measurement_schema
+        try:
+            if not validate_measurement_schema(connection):
+                raise MeasurementIntegrityError("missing measurement family")
+            validate_measurement_guards(connection)
+        except MeasurementIntegrityError:
+            raise RuntimeSchemaError(
+                "Server historical source schema or original protection is incomplete. Explicit migration or "
+                "compatible full restore is required; startup will not repair it."
+            ) from None

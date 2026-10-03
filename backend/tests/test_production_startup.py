@@ -121,7 +121,7 @@ def test_actual_production_import_and_lifespan_succeed_when_native_driver_denies
     assert "STARTUP_OK" in start(env)
 
 
-@pytest.mark.parametrize("damage", ["revision", "unversioned", "table", "column"])
+@pytest.mark.parametrize("damage", ["revision", "unversioned", "table", "column", "measurement_guard"])
 def test_production_refuses_schema_damage_without_repair(migrated_sqlite, damage):
     path, env = migrated_sqlite
     with sqlite3.connect(path) as db:
@@ -131,10 +131,14 @@ def test_production_refuses_schema_damage_without_repair(migrated_sqlite, damage
             db.execute("DROP TABLE alembic_version")
         elif damage == "table":
             db.execute("DROP TABLE operational_job_lanes")
+        elif damage == "measurement_guard":
+            db.execute("DROP TRIGGER preserve_measurement_facts_update")
         else:
             db.execute("ALTER TABLE users DROP COLUMN totp_secret")
     before = catalog(path)
     failure = "migration revision" if damage in {"revision", "unversioned"} else "schema is incomplete"
+    if damage == "measurement_guard":
+        failure = "historical source schema or original protection"
     assert "EXPECTED_STARTUP_REJECTION" in start({**env, "EXPECT_STARTUP_FAILURE": failure})
     assert catalog(path) == before
 

@@ -3,9 +3,10 @@
 import sqlite3
 from typing import cast
 
-from sqlalchemy import Table, UniqueConstraint, inspect
+from sqlalchemy import Table, UniqueConstraint, inspect, text
 
 from ..services.measurement_history_validation import MeasurementIntegrityError
+from .document_version_models import DocumentVersionORM  # noqa: F401 — standalone offline FK metadata
 from .measurement_history_models import MEASUREMENT_MODELS, MEASUREMENT_TABLES
 
 
@@ -68,3 +69,33 @@ def install_measurement_guards(connection):
         connection.exec_driver_sql("CREATE FUNCTION immo_measurement_immutable() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'measurement originals are immutable'; END; $$ LANGUAGE plpgsql")
         for name in MEASUREMENT_TABLES[1:]:
             connection.exec_driver_sql(f"CREATE TRIGGER preserve_{name} BEFORE UPDATE OR DELETE ON {name} FOR EACH ROW EXECUTE FUNCTION immo_measurement_immutable()")
+
+
+def validate_measurement_guards(connection) -> None:
+    """Read-only native guard proof, including body rather than names alone."""
+    raw = isinstance(connection, sqlite3.Connection)
+    dialect = "sqlite" if raw else connection.dialect.name
+    if dialect == "sqlite":
+        sql = "SELECT name,sql FROM sqlite_master WHERE type='trigger'"
+        result = connection.execute(sql if raw else text(sql))
+        actual = {row[0]: " ".join(row[1].split()).casefold() for row in result}
+        for name in MEASUREMENT_TABLES[1:]:
+            for operation in ("update", "delete"):
+                trigger = f"preserve_{name}_{operation}"
+                expected = (f"CREATE TRIGGER {trigger} BEFORE {operation.upper()} ON {name} "
+                    "BEGIN SELECT RAISE(ABORT,'measurement originals are immutable'); END")
+                if actual.get(trigger) != " ".join(expected.split()).casefold():
+                    raise MeasurementIntegrityError("Historische Originalschutzregel fehlt oder ist beschädigt; explizite Migration/Wiederherstellung prüfen.")
+    elif dialect == "postgresql":
+        result = connection.execute(text("""SELECT t.tgname,t.tgtype,t.tgenabled,p.prosrc
+            FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid
+            JOIN pg_namespace n ON n.oid=c.relnamespace JOIN pg_proc p ON p.oid=t.tgfoid
+            WHERE n.nspname=current_schema() AND NOT t.tgisinternal"""))
+        native_rules = {row[0]: (row[1], row[2], " ".join(row[3].split()).casefold()) for row in result}
+        body = "begin raise exception 'measurement originals are immutable'; end;"
+        for name in MEASUREMENT_TABLES[1:]:
+            rule = native_rules.get(f"preserve_{name}")
+            if rule is None or rule[0] != 27 or rule[1] not in {"O", "A"} or rule[2] != body:
+                raise MeasurementIntegrityError("Historische Originalschutzregel fehlt oder ist deaktiviert; explizite Migration/Wiederherstellung prüfen.")
+    else:
+        raise MeasurementIntegrityError("Ungeprüfter Datenbanktyp für historische Originale.")

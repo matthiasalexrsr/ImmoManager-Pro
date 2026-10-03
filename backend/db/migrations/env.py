@@ -25,6 +25,7 @@ from backend.db.datev_models import DatevProfileORM  # noqa: F401 — register D
 from backend.db.document_version_models import DocumentVersionORM  # noqa: F401 — register immutable document originals
 from backend.db.form_draft_models import FormDraftORM  # noqa: F401 — register private draft metadata
 from backend.db.integration_history_models import HISTORY_MODELS  # noqa: F401 — register independent private journal
+from backend.db.measurement_history_models import MEASUREMENT_MODELS  # noqa: F401 — register historical sources
 from backend.db.operational_job_models import OperationalJobORM  # noqa: F401 — register resumable jobs
 from backend.db.operational_models import OperationalTickORM  # noqa: F401 — register scheduler metadata
 from backend.db.operational_scheduler_models import OperationalSchedulerORM  # noqa: F401 — register durable coordinator

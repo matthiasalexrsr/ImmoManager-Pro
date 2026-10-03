@@ -49,6 +49,9 @@ def test_full_chain_downgrade_reupgrade_columns_indices_and_no_guessed_history(n
 
 def test_downgrade_refuses_retained_sources_before_any_schema_change(native):
     engine, config = native
+    # Exercise g2's own retained-source downgrade boundary independently of
+    # subsequent additive revisions (h2 and later).
+    command.downgrade(config, "g2a2b3c4d5e6")
     from sqlalchemy.orm import Session
 
     from backend.models import PortfolioCreate, PropertyCreate, UnitCreate
