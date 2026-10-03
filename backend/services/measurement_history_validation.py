@@ -77,9 +77,11 @@ def validate_measurement_snapshot(family: dict[str, list[dict]], *, parents: dic
             raise ValueError("duplicate ids")
         ledgers, commands, facts, evidence = (maps[name] for name in MEASUREMENT_TABLES)
         by_command: dict[str, list] = {}
+        by_ledger: dict[str, list] = {}
         by_fact: dict[str, list] = {}
         for fact in facts.values():
             by_command.setdefault(fact["command_id"], []).append(fact)
+            by_ledger.setdefault(fact["ledger_id"], []).append(fact)
         for link in evidence.values():
             by_fact.setdefault(link["fact_id"], []).append(link)
         command_keys, revisions, roots, successors = set(), set(), set(), set()
@@ -136,8 +138,7 @@ def validate_measurement_snapshot(family: dict[str, list[dict]], *, parents: dic
             for field, collection in (("meter_id", "meters"), ("allocation_key_id", "allocation_keys"), ("contract_id", "contracts")):
                 if fact[field]:
                     parent = parents[collection][fact[field]]
-                    if (field == "meter_id" and parent["unit_id"] != ledger["id"]
-                            or field == "allocation_key_id" and parent["property_id"] != ledger["property_id"]
+                    if (field == "allocation_key_id" and parent["property_id"] != ledger["property_id"]
                             or field == "contract_id" and (parent["unit_id"] != ledger["id"] or parent["tenant_id"] != fact["tenant_id"])):
                         raise ValueError("retained subject")
             if fact["tenant_id"]:
@@ -151,20 +152,26 @@ def validate_measurement_snapshot(family: dict[str, list[dict]], *, parents: dic
         if any(link["fact_id"] not in facts for link in evidence.values()):
             raise ValueError("orphan evidence")
         for ledger in ledgers.values():
-            validate_effective([fact for fact in facts.values() if fact["ledger_id"] == ledger["id"] and fact["id"] not in successors])
+            validate_effective([fact for fact in by_ledger.get(ledger["id"], []) if fact["id"] not in successors])
+        assigned: dict[str, list] = {}
+        for fact in facts.values():
+            if fact["kind"] == "assignment" and fact["id"] not in successors and not fact["withdrawn"]:
+                assigned.setdefault(fact["meter_id"], []).append(DATA.validate_python(fact["data"]))
+        for assignments in assigned.values():
+            ordered = sorted(assignments, key=lambda row: (row.valid_from, row.valid_until))
+            if any(left.valid_until > right.valid_from for left, right in zip(ordered, ordered[1:])):
+                raise ValueError("overlapping physical meter across units")
     except (KeyError, TypeError, ValueError) as error:
         raise MeasurementIntegrityError("Historische Quellenfamilie ist unvollständig oder widersprüchlich.") from error
-
-
-def overlaps(left, right) -> bool:
-    return max(left.valid_from, right.valid_from) < min(left.valid_until, right.valid_until)
 
 
 def validate_effective(rows: list[dict]) -> None:
     """Local timeline consistency; incomplete evidence may be saved for repair."""
     current = {row["source_key"]: DATA.validate_python(row["data"]) for row in rows if not row["withdrawn"]}
     by_id = {row["id"]: DATA.validate_python(row["data"]) for row in rows if not row["withdrawn"] and "id" in row}
-    for key, data in current.items():
+    intervals: dict[tuple, list] = {}
+    readings = set()
+    for data in current.values():
         if data.kind in {"reading", "proration"}:
             assignment = current.get(data.assignment_key)
             if assignment is None or assignment.kind != "assignment":
@@ -179,15 +186,18 @@ def validate_effective(rows: list[dict]) -> None:
                         or left.assignment_key != data.assignment_key or right.assignment_key != data.assignment_key
                         or left.boundary_date != first or right.boundary_date != last or left.value > right.value):
                     raise MeasurementIntegrityError("Zeitfreigabe benötigt die noch wirksamen Originalablesungen an beiden genannten Grenzen.")
-        for other_key, other in current.items():
-            if key >= other_key or data.kind != other.kind:
-                continue
-            if data.kind == "reading":
-                if data.assignment_key == other.assignment_key and data.boundary_date == other.boundary_date:
-                    raise MeasurementIntegrityError("Eine Grenzablesung benötigt eine eindeutige Quellenreihe; vorhandenen Wert korrigieren.")
-            elif overlaps(data, other):
-                if (data.kind == "occupancy" or data.kind == "assignment" and (
-                        data.meter_id == other.meter_id or data.circuit_path == other.circuit_path)
-                        or data.kind == "selection" and data.allocation_key_id == other.allocation_key_id
-                        or data.kind == "proration" and data.assignment_key == other.assignment_key):
-                    raise MeasurementIntegrityError("Historische Zeitabschnitte derselben Grundlage überschneiden sich.")
+        if data.kind == "reading":
+            reading_marker = (data.assignment_key, data.boundary_date)
+            if reading_marker in readings:
+                raise MeasurementIntegrityError("Eine Grenzablesung benötigt eine eindeutige Quellenreihe; vorhandenen Wert korrigieren.")
+            readings.add(reading_marker)
+            continue
+        markers = [("occupancy",)] if data.kind == "occupancy" else (
+            [("meter", data.meter_id), ("circuit", data.circuit_path)] if data.kind == "assignment" else
+            [("selection", data.allocation_key_id)] if data.kind == "selection" else [("proration", data.assignment_key)])
+        for interval_marker in markers:
+            intervals.setdefault(interval_marker, []).append(data)
+    for group in intervals.values():
+        ordered = sorted(group, key=lambda item: (item.valid_from, item.valid_until))
+        if any(left.valid_until > right.valid_from for left, right in zip(ordered, ordered[1:])):
+            raise MeasurementIntegrityError("Historische Zeitabschnitte derselben Grundlage überschneiden sich.")

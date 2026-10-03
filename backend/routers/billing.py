@@ -52,8 +52,12 @@ from ..services.credit_types import (
     CreditReversal,
     CreditReversalCreate,
 )
+from ..services.measurement_history import legacy_meter_sources, property_units
+from ..services.measurement_history_calculation import HistoricalBasis, historical_basis
+from ..services.measurement_history_validation import MeasurementIntegrityError
 from ..services.payments import FinancialConsistencyError
 from ..storage import NotFoundError, ValidationError
+from .measurement_history import router as measurement_history_router
 
 
 def _assert_period_mutable(period: BillingPeriod) -> None:
@@ -72,6 +76,8 @@ def _billing_call(operation, *args):
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except MeasurementIntegrityError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 def _compute_snapshot_hash(period_id: str) -> str:
@@ -82,6 +88,7 @@ def _compute_snapshot_hash(period_id: str) -> str:
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/billing", tags=["Abrechnung"])
+router.include_router(measurement_history_router)
 
 
 @router.get("/contracts/{contract_id}/credits")
@@ -121,9 +128,19 @@ def reverse_credit_receipt(receipt_id: str, payload: CreditReversalCreate, user=
 def _consumption_basis(period, keys, contracts, costs) -> ConsumptionBasis:
     if not any(key.key_type == "consumption" for key in keys.values()):
         return ConsumptionBasis()
-    return consumption_basis(period, keys.values(), contracts,
-        store.list_meters(), store.list_standalone_meter_readings(),
+    meters, readings = legacy_meter_sources(store, period)
+    return consumption_basis(period, keys.values(), contracts, meters, readings,
         {cost.allocation_key_id for cost in costs if cost.amount != 0})
+
+
+def _historical_basis(period, keys, contracts, costs):
+    try:
+        return historical_basis(store, period, keys, contracts, property_units(store, period.property_id),
+            {cost.allocation_key_id for cost in costs if cost.amount != 0})
+    except MeasurementIntegrityError as error:
+        result = HistoricalBasis(managed_keys=set(keys))
+        result.block("HISTORICAL_SOURCE_CORRUPT", str(error), period.id)
+        return result
 
 
 # ---------------------------------------------------------------------------
@@ -391,8 +408,6 @@ def _run_billing_period_preflight(period_id: str) -> BillingPreflightResult:
     used_key_ids = {ci.allocation_key_id for ci in cost_items}
     allocation_keys = {k.id: k for k in store.list_allocation_keys() if k.id in used_key_ids}
 
-    if not contracts_in_period:
-        add_issue("blocker", "NO_ACTIVE_CONTRACTS", "Keine gültigen Verträge im Abrechnungszeitraum gefunden (Entwürfe und stornierte Verträge sind ausgeschlossen)")
     if not all_cost_items:
         add_issue("blocker", "NO_COST_ITEMS", "Keine Kostenpositionen für diese Periode vorhanden")
 
@@ -413,7 +428,13 @@ def _run_billing_period_preflight(period_id: str) -> BillingPreflightResult:
     missing_person_count_unit_ids: list[str] = []
 
     requires_area = any(k.key_type == "area_sqm" for k in allocation_keys.values())
-    requires_person_count = any(k.key_type == "person_count" for k in allocation_keys.values())
+    history = _historical_basis(period, allocation_keys, contracts_in_period, cost_items)
+    blockers.extend(history.blockers)
+    owner_only = (not contracts_in_period and bool(history.managed_keys)
+        and set(allocation_keys) == history.managed_keys and not history.blockers and bool(history.weights))
+    if not contracts_in_period and not owner_only:
+        add_issue("blocker", "NO_ACTIVE_CONTRACTS", "Keine gültigen Mietverträge oder vollständig belegte historische Leerstandsgrundlage vorhanden.")
+    requires_person_count = any(k.key_type == "person_count" and k.id not in history.managed_keys for k in allocation_keys.values())
     requires_consumption = any(k.key_type == "consumption" for k in allocation_keys.values())
 
     vacant_days = settlement.property_vacancy(store, period, contracts_in_period)
@@ -422,7 +443,7 @@ def _run_billing_period_preflight(period_id: str) -> BillingPreflightResult:
         missing_owner_area = [uid for uid in vacant_units if requires_area and not (store.get_unit(uid).area_sqm or 0) > 0]
         if missing_owner_area:
             add_issue("blocker", "MISSING_OWNER_AREA", "Für den Eigentümeranteil fehlen Flächen leerstehender Einheiten", ", ".join(sorted(missing_owner_area)))
-        unsupported = [k.name for k in allocation_keys.values() if k.key_type in {"person_count", "consumption"}]
+        unsupported = [k.name for k in allocation_keys.values() if k.key_type in {"person_count", "consumption"} and k.id not in history.managed_keys]
         if unsupported:
             add_issue("blocker", "VACANCY_ALLOCATION_BASIS_MISSING",
                 "Leerstand kann bei Personen-/Verbrauchsschlüsseln ohne datierte Bewohner- bzw. Verbrauchsanteile des Eigentümers nicht zuverlässig aufgeteilt werden",
@@ -459,9 +480,11 @@ def _run_billing_period_preflight(period_id: str) -> BillingPreflightResult:
 
     consumption_units_with_data = set()
     if requires_consumption:
-        basis = _consumption_basis(period, allocation_keys, contracts_in_period, cost_items)
+        basis = _consumption_basis(period, {kid: key for kid, key in allocation_keys.items() if kid not in history.managed_keys}, contracts_in_period, cost_items)
         blockers.extend(basis.blockers)
         consumption_units_with_data = {uid for weights in basis.weights.values() for uid in weights}
+        consumption_units_with_data.update(uid for kid, weights in history.weights.items()
+            if allocation_keys[kid].key_type == "consumption" for uid, _contract_id in weights)
 
     if missing_unit_contract_ids:
         add_issue(
@@ -672,12 +695,6 @@ def _build_utility_statements(period: BillingPeriod) -> tuple[list[UtilityStatem
     if settlement.overlapping_contract_ids(contracts_in_period, period):
         raise HTTPException(status_code=400, detail="Überschneidende Vertragszeiträume derselben Einheit müssen vor der Abrechnung geklärt werden.")
 
-    if not contracts_in_period:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Keine gültigen Verträge im Abrechnungszeitraum gefunden (Entwürfe und stornierte Verträge sind ausgeschlossen)",
-        )
-
     preflight = _run_billing_period_preflight(period_id)
     if preflight.has_blockers:
         raise HTTPException(status_code=400, detail="Abrechnung blockiert: " + "; ".join(i.message for i in preflight.blockers))
@@ -696,11 +713,14 @@ def _build_utility_statements(period: BillingPeriod) -> tuple[list[UtilityStatem
 
     if used_key_ids - set(allocation_keys):
         raise HTTPException(status_code=400, detail="Verteilerschlüssel fehlen.")
-    unit_cache = {u.id: u for u in store.list_units() if u.property_id == period.property_id}
+    unit_cache = {u.id: u for u in property_units(store, period.property_id)}
     vacant_days = settlement.property_vacancy(store, period, contracts_in_period)
     period_days = (period.end_date - period.start_date).days + 1
 
-    basis = _consumption_basis(period, allocation_keys, contracts_in_period, cost_items)
+    history = _historical_basis(period, allocation_keys, contracts_in_period, cost_items)
+    if history.blockers:
+        raise HTTPException(status_code=400, detail="; ".join(issue.message for issue in history.blockers))
+    basis = _consumption_basis(period, {kid: key for kid, key in allocation_keys.items() if kid not in history.managed_keys}, contracts_in_period, cost_items)
     if basis.blockers:
         raise HTTPException(status_code=400, detail="Abrechnung blockiert: " + "; ".join(i.message for i in basis.blockers))
 
@@ -711,6 +731,10 @@ def _build_utility_statements(period: BillingPeriod) -> tuple[list[UtilityStatem
             continue
 
         for key_id, key in allocation_keys.items():
+            if key_id in history.managed_keys:
+                engine.add_unit_share(key_id, UnitShare(unit_id=unit.id, contract_id=contract.id,
+                    share_value=history.weights[key_id].get((unit.id, contract.id), Decimal(0))))
+                continue
             if key.key_type == "area_sqm":
                 share_value = Decimal(str(unit.area_sqm or 0))
             elif key.key_type == "unit_count":
@@ -759,9 +783,12 @@ def _build_utility_statements(period: BillingPeriod) -> tuple[list[UtilityStatem
         owner_id = f"owner:{unit_id}"
         owner_ids.add(owner_id)
         for key_id, key in allocation_keys.items():
-            base = Decimal(str(unit.area_sqm)) if key.key_type == "area_sqm" else Decimal("1")
-            engine.add_unit_share(key_id, UnitShare(unit_id=unit_id, contract_id=owner_id,
-                share_value=base * vacant / period_days))
+            if key_id in history.managed_keys:
+                share = history.weights[key_id].get((unit_id, owner_id), Decimal(0))
+            else:
+                base = Decimal(str(unit.area_sqm)) if key.key_type == "area_sqm" else Decimal("1")
+                share = base * vacant / period_days
+            engine.add_unit_share(key_id, UnitShare(unit_id=unit_id, contract_id=owner_id, share_value=share))
 
     # Add cost entries
     for ci in cost_items:
@@ -796,6 +823,10 @@ def _build_utility_statements(period: BillingPeriod) -> tuple[list[UtilityStatem
         "tenant_cost_total": float(sum((stmt.total_cost for stmt in generated if stmt.contract_id not in owner_ids), Decimal("0"))),
         "vacant_unit_days": {uid: days for uid, days in vacant_days.items() if days},
         "line_items": owner_lines, "policy": "property_units_occupied_days"}
+    if history.managed_keys:
+        owner["historical_sources"] = [{key: row[key] for key in ("id", "content_hash")} for row in history.sources]
+        if not contracts_in_period and history.managed_keys == set(allocation_keys) and not history.blockers:
+            owner["historically_confirmed_vacancy"] = True
     statements = [UtilityStatement(id=str(uuid4()), billing_period_id=period_id,
         contract_id=stmt.contract_id, unit_id=stmt.unit_id, total_cost=float(stmt.total_cost),
         advance_paid=float(stmt.advance_paid), balance=float(stmt.balance),

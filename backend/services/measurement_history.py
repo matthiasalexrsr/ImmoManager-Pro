@@ -9,7 +9,7 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 from sqlalchemy import exists, select, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session, aliased
 
 from .. import auth
@@ -22,7 +22,7 @@ from ..db.measurement_history_models import (
     MeasurementLedgerORM,
 )
 from ..db.measurement_history_schema import validate_measurement_schema
-from ..db.orm_models import ContractORM, TenantORM
+from ..db.orm_models import ContractORM, MeterORM, TenantORM
 from ..permissions import may_write_resource
 from .contract_occupancy import begin_writer, lock_location
 from .measurement_history_types import MeasurementCommand
@@ -191,8 +191,9 @@ def _reference(store, unit, prop, data):
     result = dict(meter_id=None, allocation_key_id=None, contract_id=None, tenant_id=None)
     if data.kind == "assignment":
         meter = store.get_meter(data.meter_id)
-        if meter.unit_id != unit.id:
-            raise HTTPException(404, "Zähler gehört nicht zur ausgewählten Einheit.")
+        meter_unit = store.get_unit(meter.unit_id)
+        if meter_unit.property_id != prop.id:
+            raise HTTPException(404, "Zähler gehört nicht zur zugänglichen Immobilie.")
         result["meter_id"] = meter.id
     elif data.kind == "selection":
         key = store.get_allocation_key(data.allocation_key_id)
@@ -251,6 +252,11 @@ def confirm(store, unit_id: str, command: MeasurementCommand, actor_id: str):
             revision = ledger.revision + 1
             command_id = str(uuid4())
             facts, links = [], []
+            meter_ids = sorted({change.data.meter_id for change in command.changes if change.data.kind == "assignment"})
+            if hasattr(active, "db"):
+                for meter_id in meter_ids:
+                    if active.db.scalar(select(MeterORM.id).where(MeterORM.id == meter_id).with_for_update()) is None:
+                        raise HTTPException(404, "Zähler ist nicht zugänglich.")
             for position, change in enumerate(command.changes):
                 previous = current.get(change.source_key)
                 if change.predecessor_id != (previous.id if previous else None):
@@ -262,11 +268,14 @@ def confirm(store, unit_id: str, command: MeasurementCommand, actor_id: str):
                 data = change.data
                 first = data.boundary_date if data.kind == "reading" else data.valid_from
                 last = first if data.kind == "reading" else data.valid_until
+                references = ({name: getattr(previous, name) for name in
+                    ("meter_id", "allocation_key_id", "contract_id", "tenant_id")}
+                    if change.withdrawn and previous is not None else _reference(active, unit, prop, data))
                 fact = MeasurementFactORM(id=str(uuid4()), ledger_id=unit.id, command_id=command_id,
                     portfolio_id=prop.portfolio_id, property_id=prop.id, source_key=change.source_key,
                     predecessor_id=change.predecessor_id, revision=revision, position=position, kind=data.kind,
                     valid_from=first, valid_until=last, withdrawn=change.withdrawn, reason=change.reason,
-                    data=data.model_dump(mode="json"), **_reference(active, unit, prop, data))
+                    data=data.model_dump(mode="json"), **references)
                 own = []
                 for identifier in change.evidence_version_ids:
                     original = _document(active, identifier, unit, prop)
@@ -276,6 +285,27 @@ def confirm(store, unit_id: str, command: MeasurementCommand, actor_id: str):
                 facts.append(fact)
                 links.extend(own)
                 current[change.source_key] = fact
+            for fact in facts:
+                if fact.kind != "assignment" or fact.withdrawn:
+                    continue
+                if hasattr(active, "db"):
+                    # Only an existence bit crosses this Core boundary. A physical
+                    # meter cannot be allocated twice, including hidden old units.
+                    table = MeasurementFactORM.__table__
+                    later = table.alias()
+                    overlap = active.db.connection().scalar(select(exists(select(table.c.id).where(
+                        table.c.kind == "assignment", table.c.meter_id == fact.meter_id,
+                        table.c.ledger_id != unit.id, table.c.withdrawn.is_(False),
+                        table.c.valid_from < fact.valid_until, table.c.valid_until > fact.valid_from,
+                        ~exists(select(later.c.id).where(later.c.predecessor_id == table.c.id))))))
+                else:
+                    all_facts = list(_rows(active, MeasurementFactORM))
+                    obsolete = {row.predecessor_id for row in all_facts}
+                    overlap = any(row.kind == "assignment" and row.meter_id == fact.meter_id and row.ledger_id != unit.id
+                        and row.id not in obsolete and not row.withdrawn and row.valid_from < fact.valid_until
+                        and row.valid_until > fact.valid_from for row in all_facts)
+                if overlap:
+                    raise conflict("Dieser physische Zähler ist im Zeitraum bereits einer anderen Einheit zugeordnet. Datierte Betriebsabschnitte klären.")
             validate_effective([payload(row) for row in current.values()])
             result = {"revision": revision, "fact_ids": [fact.id for fact in facts]}
             _add(active, MeasurementCommandORM(id=command_id, ledger_id=unit.id, portfolio_id=prop.portfolio_id,
@@ -287,6 +317,11 @@ def confirm(store, unit_id: str, command: MeasurementCommand, actor_id: str):
             return result
     except IntegrityError as error:
         raise conflict("Quellenkonflikt oder veränderte Elternbelege. Aktuellen Stand laden.") from error
+    except OperationalError as error:
+        if (getattr(error.orig, "sqlite_errorcode", 0) & 255 in {5, 6}
+                or getattr(error.orig, "sqlstate", None) in {"40001", "40P01", "55P03"}):
+            raise conflict("Die Quellen werden gerade geändert. Den unveränderten Befehl mit demselben Wiederholungsschlüssel erneut senden.") from error
+        raise
 
 
 def sources(store, unit_id, actor_id, start: date, end: date):
@@ -309,6 +344,18 @@ def journal(store, unit_id, actor_id, *, after=0, page_size=50):
                 if row.ledger_id == unit.id and row.revision > after), key=lambda row: row.revision)
         return {"items": [payload(row) for row in rows[:page_size]],
             "next_after": rows[page_size - 1].revision if len(rows) > page_size else None}
+
+
+def original(store, unit_id, fact_id, actor_id):
+    """Exact preserved source, including a superseded/withdrawn original."""
+    with work(store, unit_id, actor_id) as (active, unit, _prop):
+        if hasattr(active, "db"):
+            row = active.db.scalar(select(MeasurementFactORM).where(MeasurementFactORM.id == fact_id, MeasurementFactORM.ledger_id == unit.id))
+        else:
+            row = active.__dict__.get(MeasurementFactORM.__tablename__, {}).get(fact_id)
+        if row is None or row.ledger_id != unit.id:
+            raise HTTPException(404, "Quellenoriginal nicht verfügbar.")
+        return verified_rows(active, [row])[0]
 
 
 def period_sources(store, period):

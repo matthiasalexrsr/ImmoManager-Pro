@@ -74,6 +74,7 @@ class MeasurementFactORM(Base):
         Index("ix_measurement_fact_period", "property_id", "valid_from", "valid_until", "ledger_id"),
         Index("ix_measurement_fact_source", "ledger_id", "source_key", "revision"),
         Index("ix_measurement_fact_subject", "tenant_id", "ledger_id", "revision"),
+        Index("ix_measurement_fact_meter", "meter_id", "valid_from", "valid_until"),
         Index("ix_measurement_fact_key", "allocation_key_id", "valid_from", "valid_until"))
 
 

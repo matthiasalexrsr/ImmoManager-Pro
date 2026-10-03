@@ -2,7 +2,7 @@
 
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 
 from ..auth import require_auth
 from ..dependencies import get_store
@@ -12,7 +12,11 @@ from ..services.measurement_history_validation import MeasurementIntegrityError
 from ..services.request_authority import request_authority
 from ..storage import NotFoundError
 
-router = APIRouter(prefix="/measurement-history", tags=["Historische Abrechnungsgrundlagen"])
+def private_response(response: Response):
+    response.headers["Cache-Control"] = "private, no-store"
+
+
+router = APIRouter(prefix="/measurement-history", tags=["Historische Abrechnungsgrundlagen"], dependencies=[Depends(private_response)])
 
 
 def call(operation, request, store, user, *args, **kwargs):
@@ -41,3 +45,9 @@ def journal(unit_id: str, request: Request, after: int = Query(0, ge=0), page_si
 def confirm(unit_id: str, command: MeasurementCommand, request: Request,
             store=Depends(get_store), user=Depends(require_auth)):
     return call(history.confirm, request, store, user, unit_id, command)
+
+
+@router.get("/units/{unit_id}/facts/{fact_id}")
+def original(unit_id: str, fact_id: str, request: Request,
+             store=Depends(get_store), user=Depends(require_auth)):
+    return call(history.original, request, store, user, unit_id, fact_id)
