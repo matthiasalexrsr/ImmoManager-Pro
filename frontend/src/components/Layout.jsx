@@ -45,6 +45,7 @@ const NAV_SECTIONS = [
   { labelKey: 'navigation.sections.finance', items: [
     ['/accounts', 'finance.accounts.title', AccountIcon],
     ['/bookings', 'finance.bookings.title', BookingIcon],
+    ['/financial-workspace', 'navigation.main.financialWorkspace', ChartIcon],
     ['/datev', 'pages.datev.title', DocumentIcon],
     ['/annual-tax', 'finance.tax', DocumentIcon],
     ['/invoices', 'finance.invoices.title', InvoiceIcon],
