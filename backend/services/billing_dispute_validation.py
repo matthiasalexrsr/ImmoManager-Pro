@@ -1,6 +1,7 @@
 """Pure validation of retained dispute hashes, commands and parent bindings."""
 
 from datetime import date
+from typing import Mapping
 
 from fastapi.encoders import jsonable_encoder
 
@@ -41,7 +42,7 @@ def validate_event(row, evidence, case):
         raise DisputeIntegrityError("Widerspruchsoriginal ist beschädigt; Original und Wiederherstellung prüfen.")
 
 
-def validate_dispute_snapshot(family, *, parents):
+def validate_dispute_snapshot(family, *, parents, verified_period_hashes: Mapping[str, str] | None = None):
     from ..db.billing_dispute_models import DISPUTE_TABLES
     from ..models import UtilityStatement
     if not set(DISPUTE_TABLES).intersection(family):
@@ -62,8 +63,13 @@ def validate_dispute_snapshot(family, *, parents):
             statement = parents["utility_statements"][identifier]
             period = parents["billing_periods"][statement["billing_period_id"]]
             if period["id"] not in period_hashes:
-                period_hashes[period["id"]] = snapshot_hash(
-                    [UtilityStatement.model_validate(row) for row in statements_by_period[period["id"]]], period["owner_cost_share"])
+                if verified_period_hashes is not None:
+                    # Internal native recovery hook: Root computes this from
+                    # actual database bytes, never an HTTP/request payload.
+                    period_hashes[period["id"]] = verified_period_hashes[period["id"]]
+                else:
+                    period_hashes[period["id"]] = snapshot_hash(
+                        [UtilityStatement.model_validate(row) for row in statements_by_period[period["id"]]], period["owner_cost_share"])
             if (statement["status"] not in IMMUTABLE or period["status"] not in IMMUTABLE
                     or statement["snapshot_hash"] != period_hashes[period["id"]]):
                 raise ValueError("finalized statement original")
