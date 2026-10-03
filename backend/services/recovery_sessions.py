@@ -77,6 +77,12 @@ def invalidate_and_inspect(connection, original_configuration, *, deadline):
         verify_document_versions(connection, deadline=deadline)
     except RecoveryError:
         raise SessionRestoreError("restore_document_versions_invalid: unveränderte vollständige Sicherung verwenden; Sicherheitsabschluss nicht ausgeführt") from None
+    from .integrations.history_types import HistoryError
+    from .recovery_history import normalize_restored_history, validate_configured_history
+    try:
+        validate_configured_history(connection, original_configuration, deadline=deadline)
+    except (HistoryError, ValueError):
+        raise SessionRestoreError("restore_integration_history_invalid: unveränderte vollständige Sicherung und gesicherte Schlüssel-/Budgetkonfiguration verwenden; Sicherheitsabschluss nicht ausgeführt") from None
     legacy = False
     if "accounts" in tables:
         keyring = None
@@ -117,6 +123,7 @@ def invalidate_and_inspect(connection, original_configuration, *, deadline):
             connection.execution_options(stream_results=False)
     # All families have passed read-only proof. Claim reset and session revocation
     # share this outer offline transaction, including every later caller failure.
+    normalize_restored_history(connection, original_configuration, deadline=deadline)
     reset_restored_job_claims(connection, deadline=deadline)
     reset_scheduler_claims(connection, deadline=deadline)
     count = invalidate_restored_sessions(connection) if security_tables else 0

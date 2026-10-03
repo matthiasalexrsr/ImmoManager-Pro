@@ -110,6 +110,16 @@ def _payment_mutation(method):
     return guarded
 
 
+def _history_reset_mutation(method):
+    """Only the installation reset holds the shared SQL journal to publication."""
+    @wraps(method)
+    def guarded(self, *args, **kwargs):
+        from .services.recovery_history import memory_history_boundary
+        with memory_history_boundary():
+            return method(self, *args, **kwargs)
+    return guarded
+
+
 def _version_mutation(method):
     """Check and change under the same lock as payment-backed memory writes.
 
@@ -234,6 +244,7 @@ class InMemoryStore:
         from .services.payments import reverse_memory_payment
         return reverse_memory_payment(self, entity_type, entity_id, payment_id, payload)
 
+    @_history_reset_mutation
     @_payment_mutation
     def clear_all(self) -> None:
         """Clear all entity collections. Used by tests to reset state."""

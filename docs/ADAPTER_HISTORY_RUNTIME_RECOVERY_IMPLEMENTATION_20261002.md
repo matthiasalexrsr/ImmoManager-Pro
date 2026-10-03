@@ -99,3 +99,61 @@ nicht in Dataclass-Dicts gespiegelt oder beim Memoryreset ausgeblendet/gelöscht
 Ihre bloße Existenz ist kein Subsetkonflikt; tatsächliche Runs/Event-/Chunkfakten
 bleiben die relevante Retentiongrenze. Die genaue Barriere-/Normalisierungs-API
 wird am versionierten Corestand belegt, bevor die Hookimplementierung beginnt.
+
+## Erweiterung: ausdrückliche Ressourcen-Konfiguration
+
+Root hat die bestehende `backend/settings.py` und ihre Environment-Anbindung
+zusätzlich freigegeben. Mit dem Core-Autor abgestimmte Felder sind
+`integration_history_artifact_bytes`, `integration_history_page_bytes` und
+`integration_history_timeout_seconds`; die ENV-Namen sind entsprechend
+`INTEGRATION_HISTORY_ARTIFACT_BYTES`, `INTEGRATION_HISTORY_PAGE_BYTES` und
+`INTEGRATION_HISTORY_TIMEOUT_SECONDS`. Dokumentierte Anfangswerte sind
+16.777.216 Byte je Artefakt, 33.554.432 Byte je Antwort-/Prüfschritt und
+60 Sekunden. Diese Werte besitzen keine Obergrenze und begrenzen niemals die
+Anzahl gespeicherter Ausführungen. Bytewerte müssen echte positive ganze Zahlen
+sein, Zeitwerte positiv und endlich. Boolesche Werte werden verweigert.
+
+Runtime übergibt diese tatsächlichen Settings ausdrücklich als `HistoryLimits`
+an `configure_history`. Offlineprüfungen bauen denselben Limitswert ausschließlich
+aus der archivierten Konfigurationsmap, ohne globale Settings oder `.env` zu lesen;
+alte Archive ohne Historienfamilie werden bereits vor Budget-/Schlüsselauflösung
+erkannt. Für vorhandene Familien ohne neuere Budgetfelder gelten nur die oben
+dokumentierten kompatiblen Anfangswerte. Die ausdrücklich frische
+Memory-Domäneninitialisierung erstellt ausschließlich die fünf Tabellen auf der
+vorhandenen `SessionLocal`-Engine, niemals eine neue Hilfsdatenbank.
+
+Die jetzt fest angekündigten Core-APIs sind `lock_history_fence(connection,
+nowait=False)` für die vorhandene Callertransaktion, `history_fence(nowait=False)`
+für die lange tatsächliche SQL-Grenze der Memory-Mutation und
+`mark_restored_unconfirmed(connection, configuration, deadline=None, limits=None)`.
+Keine davon erhält einen neuen Providerauftrag. Die schmale neue Memory-Reset-
+Hülle sitzt vor dem bestehenden `_payment_mutation`; ihr Context nimmt Account,
+Domain-RLock und History in dieser Reihenfolge. Der bestehende Payment-Decorator
+darf den bereits gehaltenen reentranten Domainlock innerhalb erneut nehmen.
+
+## Präzisierung nach konkretem SQLite-Gegenbeweis
+
+Root hat im freigegebenen Core einen tatsächlichen Lockkonflikt identifiziert:
+Ein bestehender SQLitewriter benötigt beim Abschluss den Memory-Accountlock;
+ein neuer Historywriter darf diesen Lock deshalb nicht schon während des Wartens
+auf `BEGIN IMMEDIATE` halten. SQLite erhält eine ausdrücklich dokumentierte
+Ausnahme: Zuerst den tatsächlichen gemeinsamen Writer erwerben, danach Account
+und Memory-Domain; diese Autorität bleibt durch die echte SQL-Commitgrenze und
+die Memory-Veröffentlichung erhalten. PostgreSQL behält Account → Domain →
+History. Der consumerseitige Context wird erst gegen den versionierten Corefix
+abgenommen; eine Ereignisbarriere beweist die native SQLite-Konstellation.
+
+`data_transfer._atomic_store` und `_staged_memory` werden auch von der separaten
+Privacy-Mutation unter deren eigenen Locks benutzt. Sie erhalten deshalb keine
+neue implizite Historybarriere. Nur der ausdrückliche Geschäftsimport umschließt
+seinen gesamten Staging-/Veröffentlichungspfad mit dem neuen Context;
+Subsetexport und `clear_all` haben ebenfalls ausdrückliche Grenzen. Damit werden
+keine fremden Privacy-/Autoritäts-Lockregeln durch einen gemeinsam verwendeten
+Hilfscontext geändert.
+
+Der Autor ergänzt im nächsten versionierten Paket das frei erhöhbare positive
+`HistoryLimits.temp_bytes`. Konsistente Konfiguration:
+`integration_history_temp_bytes` / `INTEGRATION_HISTORY_TEMP_BYTES`, Anfangswert
+536.870.912 Byte. Dieser Wert begrenzt die private Exportdatei pro Arbeitsschritt,
+niemals die Anzahl historischer Läufe. Neue Constructorparameter werden erst mit
+dem tatsächlich versionierten Dataclassvertrag aktiviert.

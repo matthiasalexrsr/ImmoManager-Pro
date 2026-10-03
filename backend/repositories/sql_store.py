@@ -152,6 +152,7 @@ class SQLAlchemyStore:
         from ..services.portfolio_scope import require_installation_scope
         require_installation_scope()
         from ..db.bank_import_models import BANK_IMPORT_TABLES
+        from ..db.integration_history_models import TABLES as HISTORY_TABLES
         from ..db.orm_models import Base
         from ..db.rent_batch_models import RENT_BATCH_TABLES, RentSourceRevisionORM
         from ..services.annual_tax_storage import guard_destructive_reset as guard_annual_history
@@ -199,7 +200,7 @@ class SQLAlchemyStore:
         for table in reversed(snapshot_tables[1:]):
             self.db.execute(table.delete())
         for table in reversed(Base.metadata.sorted_tables):
-            if table.name in sidecar_tables:
+            if table.name in sidecar_tables or table.name in HISTORY_TABLES:
                 continue
             # Clearing an entire test/import store must remove correction leaves
             # before roots because SQLite RESTRICT is checked row by row.

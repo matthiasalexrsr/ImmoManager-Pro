@@ -20,6 +20,7 @@ from typing import Any
 from zipfile import ZipFile
 
 from .recovery_archive import CHUNK, RecoveryError, check_zip_budget, decrypt_zip, encrypted_zip
+from .recovery_history import verify_history
 from .recovery_validation import (
     rebase_file_references,
     validate_file_references,
@@ -160,7 +161,14 @@ def _database_info(path: Path, *, timeout_seconds: float = 300) -> dict:
         if not required.issubset(tables):
             raise RecoveryError("Unbekanntes oder unvollstaendiges ImmoManager-Datenbankschema.")
         from ..db.auth_models import AuthSetupORM  # noqa: F401 — register installation metadata
+        from ..db.integration_history_models import TABLES as history_tables
+        from ..db.integration_history_schema import ensure_history_schema
         from ..db.orm_models import Base
+        from .integrations.history_types import HistoryError
+        try:
+            ensure_history_schema(db)  # Structural proof; archive keys follow separately.
+        except (HistoryError, sqlite3.Error):
+            raise RecoveryError("Integrationshistorie ist unvollständig oder strukturell ungültig. Vollständige unveränderte Sicherung verwenden.") from None
         # Pre-G03 archives have no managed families. Rotating their signer is
         # still mandatory; do not silently accept a partially missing journal.
         session_tables = {"auth_sessions", "auth_refresh_tokens"}
@@ -209,6 +217,8 @@ def _database_info(path: Path, *, timeout_seconds: float = 300) -> dict:
             if table.name in workflow_tables and not tables & workflow_tables:
                 continue
             if table.name in job_tables and not tables.intersection(job_tables):
+                continue
+            if table.name in history_tables and not tables.intersection(history_tables):
                 continue
             actual = {column[1] for column in db.execute('PRAGMA table_info("' + table.name.replace('"', '""') + '")')}
             # A verified backup must precede the offline w1 migration. These
@@ -319,6 +329,7 @@ def create_full_backup(plan: RecoveryPlan, destination: Path, password: str, *,
             database_info = _database_info(image, timeout_seconds=_remaining(deadline))
             verify_iban_key(image, configuration, deadline=deadline)
             verify_private_drafts(image, configuration, deadline=deadline)
+            verify_history(image, configuration, deadline=deadline)
             reference_report = validate_file_references(image, str(uploads), expected_upload_files=set(files), deadline=deadline)
             manifest = {"format": "immomanager-full", "version": 1,
                         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -515,6 +526,7 @@ def restore_full_backup(source: Path, destination: Path, password: str, *,
         values = _rebased_configuration(_json((staged / "configuration.json").read_bytes()), destination)
         verify_iban_key(staged / "database.sqlite3", values, deadline=deadline)
         verify_private_drafts(staged / "database.sqlite3", values, deadline=deadline)
+        verify_history(staged / "database.sqlite3", values, deadline=deadline)
         upload_files = {name.removeprefix("uploads/") for name in manifest["files"] if name.startswith("uploads/")}
         reference_report = validate_file_references(staged / "database.sqlite3", manifest["original_upload_root"],
                                                    expected_upload_files=upload_files, deadline=deadline)

@@ -5,7 +5,7 @@ when it would invalidate business rows outside the supported subset.
 """
 
 from collections import defaultdict
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from copy import deepcopy
 from dataclasses import dataclass, is_dataclass
 from datetime import datetime, timezone
@@ -108,7 +108,8 @@ def list_records(active_store, method_name: str) -> list[dict]:
 @contextmanager
 def _export_snapshot(active_store):
     if is_dataclass(active_store):
-        with _memory_lock():
+        from .recovery_history import memory_history_boundary
+        with memory_history_boundary(), _memory_lock():
             yield deepcopy(active_store)
         return
     db = active_store.db
@@ -341,6 +342,8 @@ def _check_unexported_sql_rows(db, exported_tables):
     # jobs/contracts/prices/results remain unsupported business data below and
     # therefore still require a full recovery backup before replacement.
     independent = {"users", "user_preferences", "audit_logs", "change_history", "revoked_tokens", "login_attempts", "auth_setup", "auth_sessions", "auth_refresh_tokens", "operational_lock", "rent_source_revisions"}
+    from .recovery_history import TECHNICAL_TABLES
+    independent |= TECHNICAL_TABLES
     for table in metadata.tables.values():
         if table not in exported_tables and table.name not in independent:
             if db.scalar(select(func.count()).select_from(table)):
@@ -437,7 +440,9 @@ def import_store_data(active_store, data: dict, *, replace_existing: bool) -> di
     specs = _specifications()
     try:
         prepared = _prepare(data, specs, replace_existing=replace_existing)
-        with _atomic_store(active_store) as staged:
+        from .recovery_history import memory_history_boundary
+        boundary = memory_history_boundary() if is_dataclass(active_store) else nullcontext()
+        with boundary, _atomic_store(active_store) as staged:
             guard_operational_history(staged, serialized=True)
             guard_contract_lifecycle_reset(staged, serialized=True)
             guard_contract_history(staged)

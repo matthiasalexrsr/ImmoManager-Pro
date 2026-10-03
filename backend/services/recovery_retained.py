@@ -14,17 +14,17 @@ MESSAGE = "Gespeicherte Mieterwechsel- oder Arbeitslistenhistorie wird durch die
 def guard_operational_history(store, *, serialized=False):
     """Refuse before destructive DML, and recheck behind the shared writer fence."""
     from ..storage import ValidationError
+    from .recovery_history import guard_history_retention
     if not hasattr(store, "db"):
         if any(store.__dict__.get(name) for name in TABLES):
             raise ValidationError(MESSAGE)
+        guard_history_retention(store, serialized=serialized)
         return
     db = store.db
     names = set(inspect(db.get_bind()).get_table_names())
     for family in (set(JOB_TABLES), WORKFLOW_TABLES):
         if names & family and not family <= names:
             raise ValidationError("Unvollständige Mieterwechsel-/Arbeitslistentabellen. Teiloperation vor Datenänderung abgebrochen.")
-    if not names & TABLES:
-        return
     if serialized:
         from .contract_occupancy import begin_writer
         begin_writer(db)
@@ -53,3 +53,4 @@ def guard_operational_history(store, *, serialized=False):
         retained = pending or any(db.execute(text('SELECT 1 FROM "' + name + '" LIMIT 1')).first() is not None for name in sorted(TABLES & names))
     if retained:
         raise ValidationError(MESSAGE)
+    guard_history_retention(store, serialized=serialized)

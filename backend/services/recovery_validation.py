@@ -221,6 +221,12 @@ def _original_uri_matches(historical, key, old_root):
 
 
 def _scan(db, old_root, destination, catalog, deadline=None):
+    from ..db.integration_history_schema import ensure_history_schema
+    from .integrations.history_types import HistoryError
+    try:
+        ensure_history_schema(db)  # No key map here; full proof precedes this path.
+    except (HistoryError, sqlite3.Error):
+        raise RecoveryError("Integrationshistorie ist strukturell ungültig. Vollständige unveränderte Sicherung verwenden.") from None
     from .operational_job_validation import JobIntegrityError, validate_job_journal
     from .operational_scheduler_validation import validate_scheduler
     from .tenancy_workflow_validation import WorkflowIntegrityError, validate_workflow_journal
