@@ -5,8 +5,10 @@ from sqlalchemy.orm import sessionmaker
 from backend import auth
 from backend.app import app
 from backend.auth import clear_users, create_access_token, register_user
+from backend.services.integrations.history_policy import request_observation, response_observation
 from backend.services.integrations.history_store import SQLIntegrationHistoryStore
 from backend.services.integrations.manager import integration_manager
+from backend.services.integrations.providers import WhatsAppIntegrationProvider
 from backend.tests.test_integration_history_core import journal_engine
 
 
@@ -128,23 +130,27 @@ def test_metrics_and_history_clear_endpoint():
 
 
 def test_communication_integration_history_redacts_payload_and_provider_response():
-    integration_manager.clear_history("whatsapp")
-    integration_manager._append_history("whatsapp", {
+    provider = WhatsAppIntegrationProvider()
+    request, _schema, known = request_observation("whatsapp", {
         "action": "text", "to": "491701234567", "text": "Private Nachricht",
         "pdf_base64": "sensitive-document",
-    }, {"success": True, "message": "accepted", "details": {
-        "external_reference": "wamid.synthetic", "response": {"phone": "491701234567"},
-    }})
-    item = integration_manager.list_history("whatsapp", limit=1)[0]
-    assert item["payload"] == {"action": "text"}
-    assert item["details"] == {"external_reference": "wamid.synthetic"}
+    }, {"phone_number_id": "123", "api_token": "secret"}, provider.manifest)
+    response, _response_schema = response_observation({
+        "success": True, "message": "accepted", "details": {
+            "external_reference": "wamid.synthetic", "response": {"phone": "491701234567"},
+        },
+    }, known, integration_id="whatsapp")
+    assert request["payload"] == {"action": "text"}
+    assert response["details"] == {"external_reference": "wamid.synthetic"}
+    assert "491701234567" not in repr({"request": request, "response": response})
+    assert "Private Nachricht" not in repr({"request": request, "response": response})
 
 
-def test_readonly_can_inspect_but_cannot_mutate_or_run_integrations():
+def test_readonly_cannot_inspect_or_mutate_installation_integrations():
     client = TestClient(app)
     headers = _auth_headers("readonly")
-    assert client.get("/api/v1/integrations", headers=headers).status_code == 200
-    assert client.get("/api/v1/integrations/whatsapp/schema", headers=headers).status_code == 200
+    assert client.get("/api/v1/integrations", headers=headers).status_code == 403
+    assert client.get("/api/v1/integrations/whatsapp/schema", headers=headers).status_code == 403
     assert client.patch("/api/v1/integrations/contract-wizard", headers=headers,
                         json={"enabled": True}).status_code == 403
     assert client.put("/api/v1/integrations/whatsapp/config", headers=headers,

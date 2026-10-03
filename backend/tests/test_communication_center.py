@@ -14,6 +14,7 @@ from backend.communication_models import (
     CommunicationTemplateUpdate,
     RenderRequest,
 )
+from backend.db import session as _registered_session  # noqa: F401 — register the production ORM family
 from backend.db.communication_center_models import CommunicationDraftORM  # noqa: F401
 from backend.db.orm_models import Base
 from backend.models import ContractCreate, PortfolioCreate, PropertyCreate, TenantCreate, UnitCreate
