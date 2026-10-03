@@ -321,7 +321,7 @@ def _parse_env(data: bytes) -> dict[str, str]:
         if not line or line.startswith("#"):
             continue
         key, equal, value = line.partition("=")
-        if (not equal or key not in ENV_KEYS or key in values or (not value and key not in OCR_PATH_KEYS) or any(c in value for c in "\x00$\\")
+        if (not equal or key not in ENV_KEYS or key in values or (not value and key not in OCR_PATH_KEYS and key != "OPERATIONAL_SCHEDULER_ACTOR_ID") or any(c in value for c in "\x00$\\")
                 or key not in ENCRYPTION_ENV_KEYS and any(c in value for c in "\"'")):
             raise BackupError("Serverkonfiguration enthält unbekannte, doppelte oder unsichere Werte.")
         values[key] = value
