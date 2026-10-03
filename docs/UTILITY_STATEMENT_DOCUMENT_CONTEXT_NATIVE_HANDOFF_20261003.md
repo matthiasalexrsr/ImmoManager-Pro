@@ -10,6 +10,8 @@ Own isolated `work/future-document-context-native`, branch
 - `bb877fb`: actual finalization capture, lazy native source/parent/hash adapter,
   existing complete database verifier and narrow checked-source integration.
 - `2843516`: independently testable native finalization/correction/restore tests.
+- `4a7a3e5`: honest initial handoff with pure/Memory proof and pending SQL gates.
+- This separate evidence commit adds only the completed native SQL results.
 
 No DDL, Auth/factory/model/router, retained registry, central recovery, CI/UI or
 PDF renderer source was changed. Existing FinancialSource-v1 fields, profile,
@@ -104,18 +106,56 @@ plus actual correction after changed object/unit/contract/tenant labels; genuine
 legacy source retaining its object gap; rollback after context capture AND the
 first actually finalized statement DML. Process closed and slot released.
 
-Ruff of all eight changed service/test files, Mypy of the two context services
-and diff-check passed. SQLite/PG/native backup gates are prepared, but not yet
-run; do not claim that acceptance from the pure/Memory results above.
+Frozen clean HEAD `4a7a3e5`, actual SQLite gate: **6 PASS, 51.04 seconds, no
+skips**, hard 150-second process budget including the 30-second backup child.
+Cases: actual reviewed capture/correction after current parent labels changed;
+genuine context-less/party-less source and actual new unproved correction;
+rehashed partial context coverage AND rehashed orphan context without party;
+altered unselected original source sibling; exact original SQLite backup.
+Both rehashed corruption cases returned original-source HTTP 409 and passed
+through the existing real `invalidate_and_inspect` failure before any session
+row changed (exact before/after SQL rows compared). The actual native database
+checker ran without a dispute case. Separate engine connections read the exact
+whole financial SHA and frozen owner original.
+
+The backup used `sqlite3.Connection.backup` on the actual finalized database,
+then a read-only query-only transaction checked the original owner JSON exactly
+against its original stored values and actual complete financial SHA after the
+live property address changed. A
+fresh child performed the complete native party/context proof while fixed
+fail-closed import blockers rejected Auth/config/dependencies/app/Storage/
+repositories/settlement/operative context capture. Child exited normally with
+`PURE_NATIVE_CONTEXT_ORIGINAL`; no ambient application import was permitted.
+This is an actual original database backup/reopen proof, not a newly invented
+replacement dataset, and not a fullcontainer restore/publication claim.
+
+Same frozen clean HEAD `4a7a3e5`, actual PostgreSQL gate: **4 PASS, 73.71 seconds,
+no skips**, hard 120-second process budget. Cases: reviewed original plus actual
+correction with independent native whole-SHA/context/original reads; genuine
+legacy source with actual source-period hash; altered source sibling; rollback
+after the first actually finalized statement DML. Dedicated disposable local
+database on port 58112, only four own random `measurement_<UUID>` schemas from
+the existing native fixture. Every fixture's successful teardown disposed its
+engines and dropped only its own schema; all connection-return assertions
+passed. No public data/service start/restart, private data or provider action.
+Pytest and wrapper exited normally; no owned native process remains.
+
+The completed targeted gates comprise **63 pure + 6 Memory + 6 SQLite + 4
+PostgreSQL PASS**, no skips in any of these runs. This is the exact selected
+coverage; other parametrized nodes in the new test file were not run as a broad
+suite. Ruff of all eight changed service/test files, Mypy of the two context
+services and diff-check passed. Product/tests were unchanged throughout every
+native gate; only this handoff gains the later results.
 
 ## Remaining Root responsibilities and limits
 
 Root retains actual commit-time account/token/grant authorization, explicit issuer
 HTTP/UI input/review policy, shared raw/native protection and ordinary registry/
 privacy composition. A trusted internal actor argument does not add those
-authority guarantees by itself. This source packet does not claim SQL race or
-revocation proof, an archived original PDF, dispatch, or a large-stock job/ZIP
-memory proof.
+authority guarantees by itself. Independent SQL reads and actual SQL rollback
+are proved above; cross-process write/revocation races are not claimed. This
+source packet does not claim a fullcontainer restore, an archived original PDF,
+dispatch, or a large-stock job/ZIP memory proof.
 
 Future archive publication must use a real coherently verified full period, its
 exact selected stored context and unchanged FinancialSource-v1 before
