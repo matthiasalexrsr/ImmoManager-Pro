@@ -41,6 +41,7 @@ from ..models import (
 )
 from ..services import billing_settlement as settlement
 from ..services import credit_ledger
+from ..services.billing_consumption import ConsumptionBasis, consumption_basis
 from ..services.booking_lookup import BookingLookupQuery
 from ..services.booking_query import BookingQueryError
 from ..services.credit_choices import CreditChoiceKind, CreditChoices, credit_choices
@@ -117,36 +118,12 @@ def reverse_credit_receipt(receipt_id: str, payload: CreditReversalCreate, user=
     return _billing_call(lambda active, rid, command: credit_ledger.reverse_receipt(active, rid, command, getattr(user, "id", None)), receipt_id, payload)
 
 
-def _build_consumption_by_unit(period, contract_unit_ids: set[str]) -> dict[str, Decimal]:
-    """Aggregate consumption per unit from standalone meters/readings in period."""
-    meters = [
-        m
-        for m in store.list_meters()
-        if m.unit_id in contract_unit_ids and m.is_active is not False
-    ]
-    meter_by_id = {m.id: m for m in meters}
-
-    readings_by_meter: dict[str, list] = {}
-    for reading in store.list_standalone_meter_readings():
-        meter = meter_by_id.get(reading.meter_id)
-        if meter is None:
-            continue
-        if not (period.start_date <= reading.reading_date <= period.end_date):
-            continue
-        readings_by_meter.setdefault(reading.meter_id, []).append(reading)
-
-    consumption_by_unit: dict[str, Decimal] = {}
-    for meter_id, readings in readings_by_meter.items():
-        if len(readings) < 2:
-            continue
-        sorted_readings = sorted(readings, key=lambda r: r.reading_date)
-        consumption = Decimal(str(sorted_readings[-1].value)) - Decimal(str(sorted_readings[0].value))
-        if consumption <= 0:
-            continue
-        unit_id = meter_by_id[meter_id].unit_id
-        consumption_by_unit[unit_id] = consumption_by_unit.get(unit_id, Decimal("0")) + consumption
-
-    return consumption_by_unit
+def _consumption_basis(period, keys, contracts, costs) -> ConsumptionBasis:
+    if not any(key.key_type == "consumption" for key in keys.values()):
+        return ConsumptionBasis()
+    return consumption_basis(period, keys.values(), contracts,
+        store.list_meters(), store.list_standalone_meter_readings(),
+        {cost.allocation_key_id for cost in costs if cost.amount != 0})
 
 
 # ---------------------------------------------------------------------------
@@ -468,7 +445,7 @@ def _run_billing_period_preflight(period_id: str) -> BillingPreflightResult:
 
         if requires_area and (unit.area_sqm is None or unit.area_sqm <= 0):
             area_missing_unit_ids.append(unit.id)
-        _pc = unit.person_count if getattr(unit, "person_count", None) else unit.rooms
+        _pc = unit.person_count
         if requires_person_count and (_pc is None or _pc <= 0):
             missing_person_count_unit_ids.append(unit.id)
 
@@ -482,9 +459,9 @@ def _run_billing_period_preflight(period_id: str) -> BillingPreflightResult:
 
     consumption_units_with_data = set()
     if requires_consumption:
-        contract_unit_ids = {c.unit_id for c in contracts_in_period}
-        consumption_by_unit = _build_consumption_by_unit(period, contract_unit_ids)
-        consumption_units_with_data = {uid for uid, val in consumption_by_unit.items() if val > 0}
+        basis = _consumption_basis(period, allocation_keys, contracts_in_period, cost_items)
+        blockers.extend(basis.blockers)
+        consumption_units_with_data = {uid for weights in basis.weights.values() for uid in weights}
 
     if missing_unit_contract_ids:
         add_issue(
@@ -504,7 +481,7 @@ def _run_billing_period_preflight(period_id: str) -> BillingPreflightResult:
         add_issue(
             "blocker",
             "MISSING_PERSON_COUNT",
-            "person_count (oder rooms als Fallback) fehlt oder ist 0 für person_count-Verteilung",
+            "Tatsächliche Bewohnerzahl (person_count) fehlt oder ist 0. Bewohnerzahl prüfen und an der Einheit ergänzen; Zimmer sind keine Personen.",
             ", ".join(sorted(set(missing_person_count_unit_ids))),
         )
     if requires_consumption and not consumption_units_with_data and contracts_in_period:
@@ -723,8 +700,9 @@ def _build_utility_statements(period: BillingPeriod) -> tuple[list[UtilityStatem
     vacant_days = settlement.property_vacancy(store, period, contracts_in_period)
     period_days = (period.end_date - period.start_date).days + 1
 
-    contract_unit_ids = {c.unit_id for c in contracts_in_period}
-    consumption_by_unit = _build_consumption_by_unit(period, contract_unit_ids)
+    basis = _consumption_basis(period, allocation_keys, contracts_in_period, cost_items)
+    if basis.blockers:
+        raise HTTPException(status_code=400, detail="Abrechnung blockiert: " + "; ".join(i.message for i in basis.blockers))
 
     # Register unit shares for each allocation key
     for contract in contracts_in_period:
@@ -738,14 +716,14 @@ def _build_utility_statements(period: BillingPeriod) -> tuple[list[UtilityStatem
             elif key.key_type == "unit_count":
                 share_value = Decimal("1")
             elif key.key_type == "person_count":
-                _pc = unit.person_count if getattr(unit, "person_count", None) else unit.rooms
+                _pc = unit.person_count
                 share_value = Decimal(str(_pc or 0))
             elif key.key_type == "consumption":
-                share_value = consumption_by_unit.get(unit.id, Decimal("0"))
+                share_value = basis.weights[key_id][unit.id]
             else:
                 raise HTTPException(status_code=400, detail=f"Nicht unterstützter Verteilerschlüssel: {key.key_type}")
 
-            if share_value <= Decimal("0"):
+            if share_value < Decimal("0") or (share_value == 0 and key.key_type != "consumption"):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=(

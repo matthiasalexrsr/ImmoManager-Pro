@@ -2423,7 +2423,7 @@ class TestGenerateUtilityStatements:
         assert by_unit[self.unit1.id].total_cost == 300.0
         assert by_unit[self.unit2.id].total_cost == 300.0
 
-    def test_generate_person_count_key_uses_rooms(self) -> None:
+    def test_generate_person_count_key_uses_explicit_people_not_rooms(self) -> None:
         ak_person = store.create_allocation_key(
             AllocationKeyCreate(property_id=self.prop.id, name="Personen", key_type="person_count")
         )
@@ -2436,7 +2436,7 @@ class TestGenerateUtilityStatements:
             )
         )
 
-        # rooms as proxy: 60%/40% split (3.0 vs 2.0)
+        # Actual people: 60%/40% split, independent of the room counts.
         store.update_unit(
             self.unit1.id,
             UnitCreate(
@@ -2445,6 +2445,7 @@ class TestGenerateUtilityStatements:
                 unit_type="Wohnung",
                 area_sqm=60.0,
                 rooms=3.0,
+                person_count=3,
                 service_charge_advance=150.0,
                 heating_advance=50.0,
             ),
@@ -2457,6 +2458,7 @@ class TestGenerateUtilityStatements:
                 unit_type="Wohnung",
                 area_sqm=40.0,
                 rooms=2.0,
+                person_count=2,
                 service_charge_advance=100.0,
                 heating_advance=30.0,
             ),
@@ -2469,7 +2471,8 @@ class TestGenerateUtilityStatements:
 
     def test_generate_consumption_key_uses_meter_readings(self) -> None:
         ak_consumption = store.create_allocation_key(
-            AllocationKeyCreate(property_id=self.prop.id, name="Verbrauch", key_type="consumption")
+            AllocationKeyCreate(property_id=self.prop.id, name="Verbrauch", key_type="consumption",
+                consumption_medium="heating", consumption_unit="kWh")
         )
         store.create_cost_item(
             CostItemCreate(
@@ -2480,8 +2483,8 @@ class TestGenerateUtilityStatements:
             )
         )
 
-        m1 = store.create_meter(MeterCreate(unit_id=self.unit1.id, meter_type="heating", serial_number="M1"))
-        m2 = store.create_meter(MeterCreate(unit_id=self.unit2.id, meter_type="heating", serial_number="M2"))
+        m1 = store.create_meter(MeterCreate(unit_id=self.unit1.id, meter_type="heating", serial_number="M1", measurement_unit="kWh"))
+        m2 = store.create_meter(MeterCreate(unit_id=self.unit2.id, meter_type="heating", serial_number="M2", measurement_unit="kWh"))
 
         store.create_standalone_meter_reading(
             StandaloneMeterReadingCreate(meter_id=m1.id, reading_date=datetime.date(2024, 1, 1), value=100.0)
