@@ -1,9 +1,4 @@
-"""Prepared expected-refusal cases for the known CHECK gap; UNEXECUTED.
-
-Source control flow currently accepts these native shapes. Strict xfail keeps
-that known absence visible; it is not a green safety/validator acceptance. When
-the separately reviewed validator exists, remove xfail and obtain actual proof.
-"""
+"""Real regressions for five formerly accepted weak native identity guards."""
 
 import sqlite3
 from contextlib import closing
@@ -36,7 +31,6 @@ def _untrusted_image(check):
     return connection
 
 
-@pytest.mark.xfail(strict=True, reason="Known missing native CHECK proof; not a passed safety case")
 @pytest.mark.parametrize("check", [
     None,
     "1",

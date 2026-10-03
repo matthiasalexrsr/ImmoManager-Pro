@@ -6,6 +6,15 @@ from time import monotonic
 
 from sqlalchemy import DateTime, String, inspect, text
 
+from .notification_inbox_pg16_check import (
+    PG16InboxCheckError,
+    validate_pg16_notification_identity_check,
+)
+from .notification_inbox_sqlite_check import (
+    SQLiteInboxCheckError,
+    validate_sqlite_notification_identity_check,
+)
+
 TABLE = "notification_read_states"
 TABLES = (TABLE,)
 FIELDS = ("actor_id", "notification_id", "read_at")
@@ -118,6 +127,19 @@ def _schema(connection, deadline):
         ("notification_id", "notifications", "id", "CASCADE"),
     } <= foreign:
         raise InboxIntegrityError("notification_inbox_foreign_keys_invalid")
+    try:
+        if isinstance(connection, sqlite3.Connection) or connection.dialect.name == "sqlite":
+            guarded = validate_sqlite_notification_identity_check(connection, deadline=deadline)
+        elif connection.dialect.name == "postgresql":
+            guarded = validate_pg16_notification_identity_check(connection, deadline=deadline)
+        else:
+            guarded = False
+        if not guarded:
+            raise InboxIntegrityError("notification_inbox_identity_guard_invalid")
+    except (SQLiteInboxCheckError, PG16InboxCheckError) as error:
+        code = ("notification_inbox_validation_timeout" if str(error).endswith("_timeout")
+                else "notification_inbox_identity_guard_invalid")
+        raise InboxIntegrityError(code) from None
     _check(deadline)
     return True
 
