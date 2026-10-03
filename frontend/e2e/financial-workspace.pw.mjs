@@ -506,7 +506,9 @@ test('FinancialWorkspace: real scoped cash report, exact sums, source pages, has
   }
 
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.getByLabel('Grundlage', { exact: true }).selectOption('recorded_bookings');
+  const basisChoice = page.getByRole('combobox', { name: 'Grundlage', exact: true });
+  await expect(basisChoice).toBeVisible();
+  await basisChoice.selectOption('recorded_bookings', { timeout: 10_000 });
   const recordedResponse = page.waitForResponse(response =>
     new URL(response.url()).pathname === '/api/v1/reports/cash' && response.status() === 200);
   await apply.click();
