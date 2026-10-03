@@ -38,7 +38,20 @@ const account = { id: 'account', portfolio_id: 'portfolio', name: 'Existing bank
 const pending = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
 beforeEach(() => {
   vi.clearAllMocks(); mocks.role = 'eigentuemer'; mocks.permissions = undefined;
-  mocks.getAll.mockResolvedValue([]); mocks.get.mockResolvedValue([]); mocks.confirm.mockResolvedValue(true);
+  mocks.getAll.mockResolvedValue([]);
+  mocks.get.mockImplementation(async path => {
+    if (path.startsWith('/documents/inventory/page?') || path.startsWith('/maintenance/inventory/page?')) {
+      return { items: [], has_more: false, next_cursor: null };
+    }
+    if (path.startsWith('/documents/inventory/summary?')) {
+      return { total: 0, with_file: 0, analyzed: 0, no_assignment: 0 };
+    }
+    if (path.startsWith('/maintenance/inventory/summary?')) {
+      return { total: 0, open: 0, in_progress: 0, overdue: 0, no_appointment: 0, no_assignee: 0 };
+    }
+    return [];
+  });
+  mocks.confirm.mockResolvedValue(true);
   for (const method of ['post', 'put', 'patch', 'del', 'postForm']) mocks[method].mockResolvedValue({});
 });
 function mount(Component) { return render(<MemoryRouter>{createElement(Component)}</MemoryRouter>); }
@@ -68,6 +81,13 @@ describe('role-specific page controls', () => {
     mocks.role = role; mount(Component);
     await screen.findByTestId('table');
     expect(screen.queryByRole('button', { name: 'Create record' }) !== null).toBe(allowed(role, capability));
+    expect(mocks.post).not.toHaveBeenCalled();
+    expect(mocks.put).not.toHaveBeenCalled();
+  });
+  for (const [Component, capability, emptyText, createLabel] of inventoryCases) it.each(roles)(`${Component.name}: %s can create only in its business area`, async role => {
+    mocks.role = role; mount(Component);
+    await screen.findByText(emptyText);
+    expect(screen.queryByRole('button', { name: createLabel }) !== null).toBe(allowed(role, capability));
     expect(mocks.post).not.toHaveBeenCalled();
     expect(mocks.put).not.toHaveBeenCalled();
   });
