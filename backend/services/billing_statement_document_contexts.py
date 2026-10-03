@@ -131,6 +131,15 @@ def document_context_family(period):
         raise DocumentContextIntegrityError("Das gespeicherte Dokumentkontextoriginal ist beschädigt.") from error
 
 
+def protect_period_document_contexts(current, replacement):
+    """Keep originals immutable, including an old intentionally absent family."""
+    old, new = document_context_family(current), document_context_family(replacement)
+    if old is not None and (new is None or old.model_dump(mode="json") != new.model_dump(mode="json")):
+        raise DocumentContextIntegrityError("Eingefrorene Dokumentkontextoriginale dürfen nicht überschrieben werden.")
+    if old is None and new is not None and (_data(current)["status"] not in {"draft", "review"} or _data(replacement)["status"] != "finalized"):
+        raise DocumentContextIntegrityError("Dokumentkontextoriginale entstehen ausschließlich bei einer neuen tatsächlichen Finalisierung.")
+
+
 def _same_context(context, statement, period, original):
     expected = {"statement_id": statement["id"], "period_id": period["id"], "revision": statement["revision"],
         "portfolio_id": original.portfolio_id, "property_id": period["property_id"], "unit_id": statement["unit_id"],
