@@ -5,8 +5,11 @@ from fastapi import APIRouter, HTTPException, Query, status
 from ..dependencies import store
 from ..models import MaintenanceCase, MaintenanceCaseCreate, MaintenanceCasePatch
 from ..storage import NotFoundError, ValidationError
+from .maintenance_inventory import router as inventory_router
 
 router = APIRouter(prefix="/maintenance", tags=["Instandhaltung"])
+
+router.include_router(inventory_router)
 
 
 @router.get("", response_model=list[MaintenanceCase])

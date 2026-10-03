@@ -1,9 +1,9 @@
-"""Complete document CSV through the shared, tested bounded snapshot exporter."""
+"""Complete maintenance CSV through the shared, tested bounded snapshot exporter."""
 
-from . import document_inventory as inventory
+from . import maintenance_inventory as inventory
 from .inventory_export import csv_chunks as export_chunks
 
-FIELDS = (*inventory.FIELDS, "property_name", "unit_label", "contract_label")
+FIELDS = (*inventory.FIELDS, "property_name", "unit_label")
 
 
 def csv_chunks(store, query, *, token=None, chunk_size=100):
