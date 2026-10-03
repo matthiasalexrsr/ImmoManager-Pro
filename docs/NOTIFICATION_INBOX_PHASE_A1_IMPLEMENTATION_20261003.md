@@ -132,3 +132,19 @@ Positive insert-once/Rollback-/Sid-/Parentraces benötigen anschließend den
 tatsächlichen Rootfence; keine Test-Lambda ersetzt ihn und kein Skip gilt als
 Abnahme. Quellen werden vorbereitet, in diesem Auftrag noch nicht nativ
 ausgeführt. Statische Diffs werden geprüft, reale Gates separat koordiniert.
+
+## Konkreter Korrekturhinweis vor dem Validatorfix
+
+Root hat nach Integration bis `62f138e` den tatsächlichen zwölfteiligen
+Pure-/Raw-Gate mit `--noconftest`, hart30s, ausgeführt: 7 PASS / 5 FAIL in
+1.43s, normaler Exit1. Roots isolierter Rawfixture-Befund belegt die Ursache:
+`set(FIELDS) <= columns` vergleicht Set und Dict und wirft TypeError. Derselbe
+Fehler steht im Raw-SQLite- und im SQLAlchemy-Inspectorzweig von `_schema`.
+
+Geplante eng begrenzte Korrektur: an beiden Stellen die tatsächlichen
+Spaltennamensets mit `set(FIELDS) <= set(columns)` vergleichen. Alle folgenden
+Form-/Nullability-/PK-/FK-/Zeitprüfungen und Testassertions bleiben unverändert.
+Die bisher teilweise generische TypeError-Abweisung beweist die negativen
+fachlichen Fälle nicht; Root wiederholt deshalb nach Übernahme den ganzen
+zwölfteiligen Pure-Gate, anschließend die sechs eigenen SQLitefälle. Hier
+kein neuer Runtime-/Import-/App-/DB-/PG-/Teststart und noch kein Fix-PASS.
