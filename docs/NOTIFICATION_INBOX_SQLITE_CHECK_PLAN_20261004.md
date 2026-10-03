@@ -31,7 +31,10 @@ enumeration is limited metadata, never a notification/read-state stock scan.
 
 ## Native evidence and ordering
 
-1. Read bounded main/temp object-name metadata. Match SQLite's ASCII identifier
+1. First prove the function bindings specified in step 3: object names too can
+   come from an untrusted database. Then read capped BLOB name prefixes and
+   actual byte lengths from bounded main/temp object-name metadata, using only
+   the already verified helpers. Match SQLite's ASCII identifier
    case rules in Python. Reject a temp shadow, wrong-cased main object, view or
    multiple matches; only whole absence returns false.
 2. Require exactly one native `PRAGMA ignore_check_constraints` value equal to
