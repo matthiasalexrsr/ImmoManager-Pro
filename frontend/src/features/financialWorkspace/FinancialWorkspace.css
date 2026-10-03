@@ -63,9 +63,18 @@
 }
 
 .financial-workspace__date-grid input,
-.financial-workspace__date-grid select {
+.financial-workspace__date-grid select,
+.financial-workspace__reference-grid .inventory-reference input {
   width: 100%;
   min-width: 0;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: .65rem .75rem;
+  border: 1px solid var(--border-color);
+  border-radius: .55rem;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font: inherit;
 }
 
 .financial-workspace__reference-grid {
@@ -76,6 +85,56 @@
 .financial-workspace__reference-grid .inventory-reference {
   min-width: 0;
   margin: 0;
+  padding: .75rem;
+  border: 1px solid var(--border-color);
+  border-radius: .65rem;
+}
+
+.financial-workspace__reference-grid .inventory-reference legend {
+  padding-inline: .3rem;
+  font-weight: 650;
+}
+
+.financial-workspace__reference-grid .inventory-reference > label {
+  display: block;
+  margin-bottom: .35rem;
+  color: var(--text-secondary);
+  font-size: .85rem;
+}
+
+.financial-workspace__reference-grid .inventory-reference > p,
+.financial-workspace__reference-grid .inventory-pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .45rem;
+}
+
+.financial-workspace__reference-grid .inventory-reference ul {
+  list-style: none;
+  margin-block: .65rem;
+  padding: 0;
+  max-height: 15rem;
+  overflow-y: auto;
+}
+
+.financial-workspace__reference-grid .inventory-reference li + li {
+  margin-top: .35rem;
+}
+
+.financial-workspace__reference-grid .inventory-reference li button {
+  width: 100%;
+  min-height: 44px;
+  justify-content: flex-start;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.financial-workspace__reference-grid .inventory-reference button[aria-pressed="true"] {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 9%, var(--bg-primary));
+  color: var(--text-primary);
 }
 
 .financial-workspace__selected-properties,
