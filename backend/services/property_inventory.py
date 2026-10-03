@@ -10,7 +10,8 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 from sqlalchemy import and_, case, func, literal, or_, select
 from sqlalchemy.engine import Connection, Engine
-from sqlalchemy.exc import DBAPIError, TimeoutError as PoolTimeout
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import TimeoutError as PoolTimeout
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import SingletonThreadPool, StaticPool
 
@@ -24,12 +25,24 @@ from .contract_workspace_search import UnicodeCasefold, ensure_sqlite_casefold
 from .payments import _memory_lock
 from .portfolio_scope import current_scope, memory_visible, refresh_scope, scoped_clause
 from .property_inventory_money import (
-    CentRank, CurrencyLabel, ExactCentSum, SourceCents, SourceMoneyValid,
-    cent_text, currency_label, install_exact_sum, money_text, source_cents,
+    CentRank,
+    CurrencyLabel,
+    ExactCentSum,
+    SourceCents,
+    SourceMoneyValid,
+    cent_text,
+    currency_label,
+    install_exact_sum,
+    money_text,
+    source_cents,
 )
 from .property_inventory_types import (
-    COUNT_FIELDS, PropertyInventoryItem, PropertyInventoryPage, PropertyInventoryQuery,
-    PropertyInventorySummary, PropertyInventoryTotals,
+    COUNT_FIELDS,
+    PropertyInventoryItem,
+    PropertyInventoryPage,
+    PropertyInventoryQuery,
+    PropertyInventorySummary,
+    PropertyInventoryTotals,
 )
 from .reference_cursor import pack_reference_cursor, unpack_reference_cursor
 
