@@ -289,3 +289,53 @@ Noch nicht bewiesen bzw. noch nicht implementiert:
 Root sollte die globale Glocke erst aktivieren, wenn Backend Phase A
 implementiert, die DTOs gegengeprüft und die gemeinsamen Rechte-/Browserfälle
 bestanden sind.
+
+## Aktuelle Verifikation nach Root-Vertragsbestätigung
+
+Die Phase-A-Unterkomponente wurde nach erneuter Prüfung der Rootquellen unverändert bestätigt. Es waren **keine Sourcekorrekturen** erforderlich.
+
+Bestätigt:
+
+- `GET /notifications/inbox` wird ausschließlich über den unverdrahteten Feature-Client konsumiert;
+- `full_count` / `unread_count` kommen ausschließlich vom Server und werden nie aus `items.length` geschätzt;
+- Cursorseiten bleiben bounded und werden bei Live-Countänderung nicht still zusammengemischt;
+- vor Initial-Load, Folgeseite und persönlichem Read erfolgt jeweils frisches `GET /auth/me`;
+- Principalbindung enthält Actor, Rolle, Portfoliozugriff/-origin, sortierte Portfolio-IDs und Write-Permissions;
+- bei abweichender Renderbindung ist Count/Itemzustand sofort neutral und der alte Request wird abgebrochen;
+- 401/403/404, Netzwerk/5xx und ungültige Responses veröffentlichen keinen alten privaten Erfolg und keinen Fake-0;
+- persönliches `mark_read` wird ausschließlich über `item.actions.mark_read` gesteuert. Ein Readonly-Actor ist damit zulässig, wenn der Backendaktionsvertrag dies ausdrücklich erlaubt; allgemeine Fach-`write_permissions` sind **keine** Read-Berechtigungsquelle;
+- die globale `NotificationBell.jsx` bleibt unverändert und unverdrahtet;
+- kein Browser-Allread-Loop und kein Mark-all-Client in Phase A.
+
+### Tatsächlich erneut ausgeführte leichte Gates
+
+`npm.cmd test -- NotificationInboxModel.test.js NotificationInboxApi.test.js NotificationInboxHook.test.jsx NotificationInboxPanel.test.jsx`
+
+Ergebnis:
+
+- **4 Testdateien bestanden**
+- **24/24 Tests bestanden**
+- Vitest-Dauer: **6,01 s**
+- Prozess vollständig beendet
+- **Exitcode 0**
+
+Gezielter ESLint:
+
+`npx.cmd eslint src/features/notificationInbox src/test/NotificationInboxModel.test.js src/test/NotificationInboxApi.test.js src/test/NotificationInboxHook.test.jsx src/test/NotificationInboxPanel.test.jsx --max-warnings=0`
+
+Ergebnis:
+
+- keine Ausgabe/Warnung
+- Prozess vollständig beendet
+- **Exitcode 0**
+
+Weiterhin bewusst **nicht** ausgeführt bzw. aktiviert:
+
+- globale NotificationBell-Umschaltung,
+- Browser,
+- Produktionsbuild,
+- Backend,
+- SQLite/PostgreSQL,
+- Recovery.
+
+Der vorhandene fremde untracked Plan `docs/PROPERTIES_SERVER_INVENTORY_UI_PLAN_20261004.md` wurde nicht verändert und nicht gestaged.
