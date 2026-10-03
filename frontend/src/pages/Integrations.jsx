@@ -12,27 +12,12 @@ const ICONS = {
   listing: BuildingIcon,
 };
 
-const runPayloadFor = (integrationId) => {
-  if (integrationId === 'email') {
-    return {
-      recipient: 'demo@example.com',
-      subject: 'ImmoManager Pro Test',
-      body: 'Integrationstest erfolgreich.',
-    };
-  }
-
-  if (integrationId === 'contract-wizard') {
-    return { tenant_name: 'Max Mustermann', property_name: 'Musterstraße 1' };
-  }
-
-  return {};
-};
-
 export default function Integrations() {
   const { t } = useTranslation();
   const auth = useAuth();
   const [integrations, setIntegrations] = useState([]);
   const [messages, setMessages] = useState({});
+  const [checking, setChecking] = useState({});
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const { canWrite, isAllowed } = useWriteAccess('/integrations');
@@ -44,14 +29,17 @@ export default function Integrations() {
   const grant = useMemo(() => ({ principal, canAdminister }), [principal, canAdminister]);
   const currentGrant = useRef(grant);
   const pendingActions = useRef(new Set());
+  const pendingTests = useRef(new Map());
 
   useLayoutEffect(() => {
     currentGrant.current = grant;
     const actions = pendingActions.current;
+    const tests = pendingTests.current;
     return () => {
       currentGrant.current = null;
       for (const controller of actions) controller.abort();
       actions.clear();
+      tests.clear();
     };
   }, [grant]);
 
@@ -70,6 +58,7 @@ export default function Integrations() {
     pendingLoad.current?.abort();
     setIntegrations([]);
     setMessages({});
+    setChecking({});
     if (!canAdminister) { setLoading(false); setLoadError(null); return; }
     const controller = new AbortController();
     pendingLoad.current = controller;
@@ -101,26 +90,32 @@ export default function Integrations() {
     }
   };
 
-  const runIntegration = async (id) => {
+  const testConnection = async (id) => {
+    if (pendingTests.current.has(id)) return;
     const action = beginAction();
     if (!action) return;
+    pendingTests.current.set(id, action.controller);
+    setChecking(prev => ({ ...prev, [id]: true }));
+    setMessages(prev => ({ ...prev, [id]: '' }));
     try {
-      const res = await api.post(`/integrations/${id}/run`, { payload: runPayloadFor(id) }, { signal: action.controller.signal });
+      const res = await api.post(`/integrations/${id}/connection-test`, {}, { signal: action.controller.signal });
       if (!action.allowed()) return;
-      setMessages((prev) => ({ ...prev, [id]: res.message || t('pages.integrations.actionExecuted') || 'Aktion ausgeführt' }));
-      const history = await api.get(`/integrations/${id}/history?limit=1`, { signal: action.controller.signal });
-      if (!action.allowed()) return;
-      const latest = history?.items?.[0];
-      if (latest) {
-        setMessages((prev) => ({
-          ...prev,
-          [id]: `${res.message || t('pages.integrations.actionExecuted') || 'Aktion ausgeführt'} (${latest.created_at})`,
-        }));
+      let key = 'connectionUnconfirmed';
+      if (res?.integration_id === id && res.business_action_performed === false && res.test_message_sent === false) {
+        if (res.status === 'configuration_invalid') key = 'connectionConfigInvalid';
+        else if (res.status === 'not_supported' && res.configured && res.network_checked === false) key = 'connectionConfigOnly';
+        else if (res.status === 'checked' && res.configured && res.probe_supported && res.network_checked === true) key = 'connectionChecked';
+        else if (res.status === 'failed') key = 'connectionFailed';
       }
+      setMessages(prev => ({ ...prev, [id]: t(`pages.integrations.${key}`) }));
     } catch (err) {
       if (!action.allowed()) return;
       setMessages((prev) => ({ ...prev, [id]: `${t('pages.integrations.error') || 'Fehler'}: ${err.message}` }));
     } finally {
+      if (pendingTests.current.get(id) === action.controller) {
+        pendingTests.current.delete(id);
+        if (action.allowed()) setChecking(prev => ({ ...prev, [id]: false }));
+      }
       action.finish();
     }
   };
@@ -165,14 +160,14 @@ export default function Integrations() {
                 </p>
 
                 {canWrite && <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-                  <button className="btn btn-sm btn-secondary" onClick={() => toggleIntegration(intg.id, !intg.enabled)}>
+                  <button className="btn btn-sm btn-secondary" disabled={checking[intg.id]} onClick={() => toggleIntegration(intg.id, !intg.enabled)}>
                     {intg.enabled ? t('pages.integrations.disable') || 'Deaktivieren' : t('pages.integrations.enable') || 'Aktivieren'}
                   </button>
-                  <button className="btn btn-sm btn-primary" disabled={intg.planned} onClick={() => runIntegration(intg.id)}>
-                    {t('pages.integrations.runTest') || 'Test ausführen'}
+                  <button className="btn btn-sm btn-primary" disabled={intg.planned || checking[intg.id]} onClick={() => testConnection(intg.id)}>
+                    {t(checking[intg.id] ? 'pages.integrations.connectionChecking' : 'pages.integrations.runTest')}
                   </button>
                 </div>}
-                {messages[intg.id] && <div className="text-muted" style={{ marginBottom: '1rem' }}>{messages[intg.id]}</div>}
+                {messages[intg.id] && <div role="status" className="text-muted" style={{ marginBottom: '1rem' }}>{messages[intg.id]}</div>}
 
                 <h4 style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>{t('pages.integrations.capabilities') || 'Capabilities:'}</h4>
                 <ul className="integration-features">

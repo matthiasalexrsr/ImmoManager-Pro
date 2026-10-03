@@ -108,19 +108,55 @@ it.each(['eigentuemer', 'verwalter'])('does not publish a late POST or request h
   expect(mocks.get.mock.calls.every(([url]) => url === '/integrations')).toBe(true);
 });
 
-it('discards a late history response after revocation and reauthorization', async () => {
-  let finish;
-  mocks.post.mockResolvedValue({ message: 'SYNTHETIC_OLD_PRIVATE_RUN' });
-  mocks.get.mockImplementation(url => url.includes('/history')
-    ? new Promise(resolve => { finish = resolve; }) : Promise.resolve(result('Current private provider')));
-  const view = render(<Integrations />);
+const probe = (changes = {}) => ({ integration_id: 'email', status: 'not_supported',
+  configured: true, probe_supported: false, network_checked: false,
+  business_action_performed: false, test_message_sent: false, ...changes });
+
+it.each([['de-DE', de], ['en-US', en], ['es-ES', es]])('checks configured SMTP without a message or history request in %s', async (locale, catalog) => {
+  mocks.locale = locale;
+  mocks.get.mockResolvedValue({ integrations: [{ ...result('Configured SMTP').integrations[0], id: 'email', category: 'communication' }] });
+  mocks.post.mockResolvedValue(probe());
+  render(<Integrations />);
+  await screen.findByText('Configured SMTP');
+  fireEvent.click(screen.getByRole('button', { name: catalog.pages.integrations.runTest }));
+  await screen.findByText(catalog.pages.integrations.connectionConfigOnly);
+  expect(mocks.post).toHaveBeenCalledExactlyOnceWith('/integrations/email/connection-test', {}, expect.objectContaining({ signal: expect.any(AbortSignal) }));
+  expect(mocks.get).toHaveBeenCalledTimes(1);
+});
+
+it.each([
+  [{ status: 'checked', probe_supported: true, network_checked: true }, 'connectionChecked'],
+  [{ status: 'checked', network_checked: false }, 'connectionUnconfirmed'],
+  [{ status: 'checked', probe_supported: true, network_checked: true, test_message_sent: true }, 'connectionUnconfirmed'],
+  [{ status: 'checked', probe_supported: true, network_checked: true, integration_id: 'other' }, 'connectionUnconfirmed'],
+  [{ status: 'configuration_invalid', configured: false }, 'connectionConfigInvalid'],
+  [{ status: 'failed' }, 'connectionFailed'],
+])('describes the actual probe outcome without invented success: %j', async (changes, key) => {
+  mocks.get.mockResolvedValue({ integrations: [{ ...result('Configured SMTP').integrations[0], id: 'email' }] });
+  mocks.post.mockResolvedValue(probe(changes));
+  render(<Integrations />);
+  await screen.findByText('Configured SMTP');
+  fireEvent.click(screen.getByRole('button', { name: de.pages.integrations.runTest }));
+  await screen.findByText(de.pages.integrations[key]);
+});
+
+it('keeps one pending probe and permits a deliberate retry after a recoverable error', async () => {
+  let fail;
+  mocks.post.mockImplementationOnce(() => new Promise((_, reject) => { fail = reject; }));
+  mocks.post.mockResolvedValue(probe({ integration_id: 'synthetic' }));
+  render(<Integrations />);
   await screen.findByText('Current private provider');
   fireEvent.click(screen.getByRole('button', { name: de.pages.integrations.runTest }));
-  await screen.findByText('SYNTHETIC_OLD_PRIVATE_RUN');
-  await revokeAndRestore(view, 'eigentuemer');
-  await act(async () => finish({ items: [{ created_at: 'SYNTHETIC_PRIVATE_HISTORY' }] }));
-  expect(screen.queryByText(/SYNTHETIC_PRIVATE_HISTORY/)).not.toBeInTheDocument();
-  expect(screen.queryByText(/SYNTHETIC_OLD_PRIVATE_RUN/)).not.toBeInTheDocument();
+  const pending = screen.getByRole('button', { name: de.pages.integrations.connectionChecking });
+  expect(pending).toBeDisabled();
+  fireEvent.click(pending);
+  expect(mocks.post).toHaveBeenCalledTimes(1);
+  await act(async () => fail(new Error('SYNTHETIC_RECOVERABLE_PROBE_ERROR')));
+  expect(screen.getByRole('status')).toHaveTextContent('SYNTHETIC_RECOVERABLE_PROBE_ERROR');
+  expect(mocks.post).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole('button', { name: de.pages.integrations.runTest }));
+  await screen.findByText(de.pages.integrations.connectionConfigOnly);
+  expect(mocks.post).toHaveBeenCalledTimes(2);
 });
 
 it.each(['patch', 'post'])('discards a late private %s error after revocation and reauthorization', async operation => {
