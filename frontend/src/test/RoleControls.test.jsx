@@ -45,19 +45,24 @@ function mount(Component) { return render(<MemoryRouter>{createElement(Component
 const roles = ['eigentuemer', 'verwalter', 'buchhaltung', 'techniker', 'readonly'];
 const cases = [
   [Accounts, 'finance'], [RentCharges, 'finance'], [Statements, 'billing'],
-  [Maintenance, 'operations'], [Documents, 'documents'],
+];
+const inventories = [
+  [Meters, 'operations', 'Zähler', 'Zähler anlegen', ['active', 'inactive', 'no_reading', 'unknown_unit', 'overdue', 'due_soon']],
+  [Maintenance, 'operations', 'Wartungsfälle', 'Wartungsfall anlegen', ['open', 'in_progress', 'overdue', 'no_appointment', 'no_assignee']],
+  [Documents, 'documents', 'Dokumente', 'Dokument erstellen', ['with_file', 'analyzed', 'no_assignment']],
 ];
 const allowed = (role, capability) => ['eigentuemer', 'verwalter'].includes(role)
   || role === 'buchhaltung' && ['finance', 'billing', 'documents'].includes(capability)
   || role === 'techniker' && ['operations', 'documents'].includes(capability);
 
 describe('role-specific page controls', () => {
-  it.each(roles)('Meters: %s receives only permitted inventory commands', async role => {
+  for (const [Component, capability, noun, create, counts] of inventories) it.each(roles)(`${Component.name}: %s receives only permitted inventory commands`, async role => {
     mocks.role = role;
-    mocks.get.mockImplementation(async path => path.includes('/summary?') ? { total: 0, active: 0, inactive: 0, no_reading: 0, unknown_unit: 0, overdue: 0, due_soon: 0 } : { items: [], has_more: false, next_cursor: null });
-    mount(Meters); await screen.findByText('Keine passenden Zähler auf dieser Seite.');
-    expect(screen.queryByRole('button', { name: 'Zähler anlegen' }) !== null).toBe(allowed(role, 'operations'));
+    mocks.get.mockImplementation(async path => path.includes('/summary?') ? Object.fromEntries(['total', ...counts].map(key => [key, 0])) : { items: [], has_more: false, next_cursor: null });
+    mount(Component); await screen.findByText(`Keine passenden ${noun} auf dieser Seite.`);
+    expect(screen.queryByRole('button', { name: create }) !== null).toBe(allowed(role, capability));
     expect(mocks.post).not.toHaveBeenCalled(); expect(mocks.put).not.toHaveBeenCalled();
+    expect(mocks.getAll).not.toHaveBeenCalled();
   });
   for (const [Component, capability] of cases) it.each(roles)(`${Component.name}: %s can create only in its business area`, async role => {
     mocks.role = role; mount(Component);
