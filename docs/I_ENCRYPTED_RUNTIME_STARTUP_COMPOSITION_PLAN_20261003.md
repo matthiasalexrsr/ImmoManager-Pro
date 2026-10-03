@@ -81,3 +81,16 @@ The platform agent owns manager/factory/three Settings budgets and pure tests.
 One coordinated native slot is used. Small commits separate source, tests and
 actual evidence. This packet neither establishes full I acceptance nor changes
 the old live preview.
+
+## Follow-up before code: stored key names
+
+Independent read-only review of `22dacfc` found stored names were compared
+case-sensitively although Settings consumes them case-insensitively. Normalize
+the stored left-hand side for bundle matching, duplicate/conflict detection and
+the existing normal persist_default path. Preserve the original lines on an
+unchanged match. A lower/mixed-case conflict or any mixed-case duplicate must
+refuse before publishing any other selected key. Add focused filesystem
+regressions for exact preserved bytes, conflicting aliases and duplicate aliases;
+do not rerun unrelated app/browser cases because this changes no valid canonical
+configuration path. Broader .env syntax remains the existing simple KEY=VALUE
+launcher contract and is not expanded implicitly in this correction.
