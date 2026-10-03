@@ -257,7 +257,7 @@ def test_source_compare_and_prepublication_receipt_failure_leave_exact_plaintext
     def refused(_sha):
         raise OSError("SYNTHETIC_RECEIPT_FAILURE")
 
-    with pytest.raises(OSError):
+    with pytest.raises(ConfigStoreError, match="state_io_failed"):
         store.migrate_legacy_plaintext(expected_revision=hashlib.sha256(original).hexdigest(), before_publish=refused)
     assert path.read_bytes() == original
 

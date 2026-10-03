@@ -30,6 +30,7 @@ MESSAGES = {
     "integration_upgrade_page_invalid": "Positive Seitengröße und gültige Operationskennung der vorherigen Seite verwenden.",
     "integration_upgrade_disk_full": "Speicherplatz fehlt. Platz schaffen, vorhandene Sicherung erhalten und den Operationsstatus vor einer Wiederholung prüfen.",
     "state_busy": "Ein anderer Integrationsschreiber hält die Datei. Schreiber beenden; mit passendem --state-lock-timeout erneut prüfen.",
+    "state_io_failed": "Datei oder geschützter Operationsnachweis konnte nicht sicher verarbeitet werden. Dateirechte und Speicherplatz prüfen; Operationsstatus vor einer Wiederholung prüfen.",
     "invalid_lock_timeout": "Eine endliche positive Wartezeit mit --state-lock-timeout wählen.",
     "durability_unconfirmed": "Das Dateiergebnis ist noch nicht bestätigt. Operationsstatus prüfen; weder Umstellung noch Rückweg blind wiederholen.",
     "encryption_key_unavailable": "Die stabilen Verschlüsselungsschlüssel fehlen oder sind ungültig. Vollständige Schlüsselkonfiguration der ausgewählten Installation wiederherstellen.",
