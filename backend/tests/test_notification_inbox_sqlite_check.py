@@ -22,8 +22,8 @@ def _ddl(expression=CANONICAL, *, extra="", guard=True):
     clause = f", CONSTRAINT ck_notification_read_identity CHECK ({expression})" if guard else ""
     return f"""CREATE TABLE notification_read_states (
         actor_id VARCHAR NOT NULL, notification_id VARCHAR NOT NULL,
-        read_at DATETIME NOT NULL, PRIMARY KEY(actor_id,notification_id)
-        {clause}{extra})"""
+        read_at DATETIME NOT NULL{extra}, PRIMARY KEY(actor_id,notification_id)
+        {clause})"""
 
 
 def _database(ddl=None, encoding="UTF-8"):
