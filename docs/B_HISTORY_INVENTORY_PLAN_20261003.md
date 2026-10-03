@@ -86,3 +86,26 @@ bleiben ein ausdrücklich offener historischer Prüfpunkt. Erweitere die echte
 PG-Abnahme um den tatsächlichen add_change_history-Default unter zwei eigenen
 Sessionzeitzonen. Prüfe diese Fehlerregression sowie Typ/SQLitebindung; die
 bereits grünen großen PG-Quellen-/Export-/Scopefälle nicht ohne Anlass wiederholen.
+
+## Native Oberfläche: tatsächlicher erster Fehler und Korrekturplan
+
+Auf `460f812` baut die native Edge-Abnahme 725 Module und die frische,
+synthetische SQL-Installation bis K2 erfolgreich. Der einzige Browserfall
+erreicht echte Anmeldung, 10002 Treffer, 25 Zeilen und vollständige lange
+Werte bei 1440px. Bei 360px scheitert die unveränderte Prüfung der gesamten
+Dokumentbreite nach 6,7 Sekunden; Export, Folgeseiten und Rechteentzug werden
+dadurch noch nicht erreicht. Die Fehleraufnahme zeigt den nach rechts
+versetzten Inhalt. Der gemeinsame Shell-Stil animiert `margin-left` auch
+beim Wechsel auf den mobilen Vollbreiteninhalt. Ein historischer Desktop-
+Abstand plus bereits mobile Breite erzeugt während dieses Wechsels Überlauf.
+Fehlerbild, Desktopaufnahme und Trace sind vor Wiederholung geschützt unter
+`artifacts/B_HISTORY_BROWSER_460f812_FAILED` abgelegt.
+
+Vor Korrektur festgelegt: mobile Shell ohne Animation dieses Desktopabstands;
+die Navigation behält ihre eigene Drawer-Animation. Die Historie erhält auf
+schmalen Bildschirmen lesbare Eintragskarten innerhalb derselben Tabelle,
+vollständige Details und erreichbare Spaltenbeschriftungen. Die übrigen
+Inventartabellen werden nicht umgestaltet. Browserprüfung bleibt streng,
+ergänzt tatsächliche Layoutmaße und wird als genau derselbe Fall wiederholt.
+Erst ein kompletter Durchlauf belegt Export und Rechteentzug; vorhandene
+fehlgeschlagene Belege werden nicht als Abnahme bezeichnet.
