@@ -6,6 +6,7 @@ import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
+import PageLoadState from '../components/PageLoadState';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 
@@ -139,10 +140,11 @@ export default function Viewings() {
   const { t } = useTranslation();
   const confirm = useConfirm();
   const store = useDataStore();
-  const { items: leads } = useEntities('leads', '/leads');
-  const { items: units } = useEntities('units', '/units');
+  const { items: leads, loading: leadsLoading, error: leadsError, reload: reloadLeads } = useEntities('leads', '/leads');
+  const { items: units, loading: unitsLoading, error: unitsError, reload: reloadUnits } = useEntities('units', '/units');
   const [viewings, setViewings] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [modal, setModal] = useState(null);
   const { canWrite, isAllowed, requireWrite } = useWriteAccess('/viewings', () => setModal(null));
   const [deleteError, setDeleteError] = useState(null);
@@ -152,15 +154,18 @@ export default function Viewings() {
 
   const refreshData = () => {
     setLoading(true);
-    api.get('/viewings').catch(err => { console.warn('[Viewings]', err.message); return []; })
+    setError(null);
+    api.get('/viewings')
       .then(v => setViewings(v || []))
+      .catch(setError)
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     let cancelled = false;
-    api.get('/viewings').catch(err => { console.warn('[Viewings]', err.message); return []; })
+    api.get('/viewings')
       .then(data => { if (!cancelled) setViewings(data || []); })
+      .catch(e => { if (!cancelled) setError(e); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, []);
@@ -244,7 +249,16 @@ export default function Viewings() {
     }
   };
 
-  if (loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  const sourceError = error || leadsError || unitsError;
+  const sourceLoading = loading || leadsLoading || unitsLoading;
+  const retryLoad = () => {
+    reloadLeads?.();
+    reloadUnits?.();
+    refreshData();
+  };
+  if (sourceLoading || sourceError) {
+    return <PageLoadState loading={sourceLoading} error={sourceError} onRetry={retryLoad} />;
+  }
 
   const statusLabels = { scheduled: 'Geplant', completed: 'Durchgeführt', cancelled: 'Abgesagt', no_show: 'Nicht erschienen' };
 

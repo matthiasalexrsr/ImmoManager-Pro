@@ -6,6 +6,7 @@ import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
+import PageLoadState from '../components/PageLoadState';
 import { useConfirm } from '../components/ConfirmDialog';
 
 const TYPE_OPTIONS = [
@@ -43,8 +44,8 @@ export default function HandoverProtocols() {
   const { t } = useTranslation();
   const confirm = useConfirm();
   const store = useDataStore();
-  const { items: units } = useEntities('units', '/units');
-  const { items: contracts } = useEntities('contracts', '/contracts');
+  const { items: units, loading: unitsLoading, error: unitsError, reload: reloadUnits } = useEntities('units', '/units');
+  const { items: contracts, loading: contractsLoading, error: contractsError, reload: reloadContracts } = useEntities('contracts', '/contracts');
   const [protocols, setProtocols] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -54,17 +55,18 @@ export default function HandoverProtocols() {
 
   const refreshData = () => {
     setLoading(true);
-    api.get('/handover-protocols').catch(err => { console.warn('[HandoverProtocols] protocols:', err.message); return []; })
+    setError(null);
+    api.get('/handover-protocols')
       .then(p => setProtocols(p || []))
-      .catch(e => setError(e.message))
+      .catch(setError)
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     let cancelled = false;
-    api.get('/handover-protocols').catch(err => { console.warn('[HandoverProtocols] protocols:', err.message); return []; })
+    api.get('/handover-protocols')
       .then(data => { if (!cancelled) setProtocols(data || []); })
-      .catch(e => { if (!cancelled) setError(e.message); })
+      .catch(e => { if (!cancelled) setError(e); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, []);
@@ -128,8 +130,16 @@ export default function HandoverProtocols() {
     }
   };
 
-  if (loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
-  if (error) return <div className="page"><div className="alert alert-error">{error}</div></div>;
+  const sourceError = error || unitsError || contractsError;
+  const sourceLoading = loading || unitsLoading || contractsLoading;
+  const retryLoad = () => {
+    reloadUnits?.();
+    reloadContracts?.();
+    refreshData();
+  };
+  if (sourceLoading || sourceError) {
+    return <PageLoadState loading={sourceLoading} error={sourceError} onRetry={retryLoad} />;
+  }
 
   return (
     <div className="page">
