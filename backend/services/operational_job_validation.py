@@ -55,12 +55,15 @@ def validate_job_journal(connection, *, deadline=None):
             job = _object(values, ("parameters",))
             UUID(job.id)
             if (not _hex(job.create_key) or not _hex(job.scope_hash) or not _hex(job.request_hash) or _hash(job.parameters) != job.request_hash
-                    or job.parameters.get("semantics_version") != 1 or job.revision <= 0 or job.turn < 0
+                    or job.parameters.get("semantics_version") not in {1, 2} or job.revision <= 0 or job.turn < 0
                     or job.state not in {"queued", "running", "completed", "attention", "cancelled"}):
                 raise ValueError
             request = JobCreate.model_validate({key: value for key, value in job.parameters.items() if key != "semantics_version"}
                                                | {"idempotency_key": job.create_key})
-            lanes = list(_rows(connection, "SELECT family,state FROM operational_job_lanes WHERE job_id=:job LIMIT 4", {"job": job.id}))
+            if (any(family.startswith("recurring_") for family in request.families)
+                    and job.parameters["semantics_version"] != 2):
+                raise ValueError
+            lanes = list(_rows(connection, "SELECT family,state FROM operational_job_lanes WHERE job_id=:job LIMIT " + str(len(FAMILIES) + 1), {"job": job.id}))
             if sorted(row["family"] for row in lanes) != sorted(request.families):
                 raise ValueError
             if job.state == "completed" and any(row["state"] != "completed" for row in lanes):
@@ -114,6 +117,13 @@ def validate_job_journal(connection, *, deadline=None):
                 if (not lane or lane["job_id"] != item.job_id or not item.source_id
                         or item.action_key != lane["family"] + ":" + item.source_id or not _hex(item.planned_revision)):
                     raise ValueError
+                if lane["family"].startswith("recurring_"):
+                    if (not isinstance(item.result, dict) or set(item.result) - {"created_count", "next_index", "adoption_cursor", "adoption_done"}
+                            or any(type(item.result[key]) is not int or item.result[key] < 0
+                                   for key in ("created_count", "next_index") if key in item.result)
+                            or "adoption_cursor" in item.result and not isinstance(item.result["adoption_cursor"], str)
+                            or "adoption_done" in item.result and type(item.result["adoption_done"]) is not bool):
+                        raise ValueError
                 key, target = item.result.get("effect_key"), item.result.get("target_id")
                 if key:
                     if lane["family"] == "correspondence":

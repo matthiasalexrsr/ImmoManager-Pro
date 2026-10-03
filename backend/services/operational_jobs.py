@@ -4,7 +4,7 @@ Phase 1 covers overdue money items and approved correspondence dates only.
 No email, cash posting, global scheduler hook, or implicit caller-session commit.
 """
 
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from contextvars import ContextVar
 from copy import deepcopy
 from dataclasses import dataclass
@@ -23,9 +23,14 @@ from sqlalchemy.orm import Session
 from .. import auth
 from ..db.contract_correspondence_models import CorrespondenceDraftORM
 from ..db.operational_job_models import JOB_MODELS, OperationalJobLaneORM, OperationalJobORM, OperationalWorkItemORM
-from ..db.operational_models import OperationalDispatchORM, OperationalLockORM, OperationalOccurrenceORM
-from ..db.orm_models import CalendarEventORM, ReceivableORM, RentChargeORM
-from ..models import CalendarEvent, CalendarEventCreate, Notification, NotificationCreate
+from ..db.operational_models import (
+    OperationalDispatchORM,
+    OperationalLockORM,
+    OperationalOccurrenceORM,
+    OperationalScheduleORM,
+)
+from ..db.orm_models import CalendarEventORM, ReceivableORM, RentChargeORM, TaskORM
+from ..models import CalendarEvent, CalendarEventCreate, Notification, NotificationCreate, Task
 from ..repositories.sql_store import SQLAlchemyStore
 from ..storage import NotFoundError
 from . import contract_correspondence as correspondence
@@ -41,9 +46,9 @@ from .portfolio_scope import current_scope, refresh_scope, scope_context, scope_
 POLICY = PacketPolicy()
 _request_token: ContextVar[str | None] = ContextVar("operational_job_request_token", default=None)
 SOURCE_MODELS: dict[str, Any] = {"overdue_rent_charge": RentChargeORM, "overdue_receivable": ReceivableORM,
-                 "correspondence": CorrespondenceDraftORM}
+                 "correspondence": CorrespondenceDraftORM, "recurring_task": TaskORM, "recurring_calendar": OperationalScheduleORM}
 COLLECTIONS = {"overdue_rent_charge": "rent_charges", "overdue_receivable": "receivables",
-               "correspondence": "contract_correspondence_drafts"}
+               "correspondence": "contract_correspondence_drafts", "recurring_task": "tasks"}
 
 
 class ClaimLost(RuntimeError):
@@ -161,7 +166,8 @@ class Unit(_Transaction):
     def create(self, kind, payload):
         if self.db is not None:
             return super().create(kind, payload)
-        model, collection = {"calendar": (CalendarEvent, "calendar_events"), "notification": (Notification, "notifications")}[kind]
+        model, collection = {"calendar": (CalendarEvent, "calendar_events"), "notification": (Notification, "notifications"),
+                             "task": (Task, "tasks")}[kind]
         value = model(id=str(uuid4()), **payload.model_dump())
         self.touch(collection, value.id)
         getattr(self.store, collection)[value.id] = value
@@ -185,9 +191,14 @@ def atomic(store, captured):
     """Same auth -> operational -> domain ordering as legacy, bounded Memory undo."""
     if hasattr(store, "db"):
         bind = store.db.get_bind()
-        with scope_context(captured), Session(bind=getattr(bind, "engine", bind), expire_on_commit=False) as db:
+        from .tenant_privacy_fence import memory_account_fence
+        with ExitStack() as fences, scope_context(captured), Session(bind=getattr(bind, "engine", bind), expire_on_commit=False) as db:
+            fences.enter_context(memory_account_fence(store))
             with db.begin():
                 begin_writer(db)
+                # The outer stack releases the Memory account lock only after
+                # the actual transaction commit; SQLite writer comes first.
+                fences.enter_context(memory_account_fence(SQLAlchemyStore(db), sqlite_staged=True))
                 if db.get_bind().dialect.name == "postgresql":
                     # Apply before the first contended auth/domain row lock.
                     db.execute(text("SET LOCAL lock_timeout = '5s'"))
@@ -260,6 +271,11 @@ def _source_query(family, parameters):
     model = SOURCE_MODELS[family]
     point, _, upper = _bounds(parameters)
     query = select(model.id)
+    if family == "recurring_task":
+        return query.where(model.recurrence_rule.is_not(None), model.parent_task_id.is_(None),
+                           model.status.not_in(("cancelled", "archived")))
+    if family == "recurring_calendar":
+        return query.where(model.source_kind == "calendar", model.active.is_(True))
     if family == "correspondence":
         return query.where(model.state == "approved", model.deadline_date <= upper)
     query = query.where(model.status.not_in(("paid", "cancelled", "void")))
@@ -272,8 +288,13 @@ def _source_query(family, parameters):
 
 def _source_memory(unit, family, parameters):
     point, _, upper = _bounds(parameters)
+    if family == "recurring_calendar":
+        yield from (row.id for row in unit.memory["schedules"].values() if row.source_kind == "calendar" and row.active)
+        return
     for row in unit.store.__dict__.get(COLLECTIONS[family], {}).values():
-        if family == "correspondence":
+        if family == "recurring_task":
+            eligible = bool(row.recurrence_rule and not row.parent_task_id and row.status not in {"cancelled", "archived"})
+        elif family == "correspondence":
             eligible = row.state == "approved" and row.deadline_date <= upper
         else:
             due = row.due_date if family == "overdue_receivable" else date.fromisoformat(row.month + "-03")
@@ -292,7 +313,11 @@ def _upper(unit, family, parameters):
 def create_job(store, payload: JobCreate, actor_id=None):
     captured = _operator(actor_id)
     _schema(store)
-    parameters = payload.model_dump(mode="json", exclude={"idempotency_key"}) | {"semantics_version": 1}
+    parameters = payload.model_dump(mode="json", exclude={"idempotency_key"})
+    recurrence = any(family.startswith("recurring_") for family in parameters["families"])
+    if not recurrence:
+        parameters.pop("full_catch_up")
+    parameters["semantics_version"] = 2 if recurrence else 1
     request_hash = digest(parameters)
     # Index the digest, so legitimate long caller references never hit the
     # PostgreSQL B-tree tuple-size limit. Command receipts retain their request.
@@ -372,6 +397,9 @@ def _checked_claim(unit, claim):
 
 
 def _source(unit, family, identifier, *, lock=False):
+    if family.startswith("recurring_"):
+        from .operational_recurrence_jobs import source
+        return source(unit, family, identifier)
     if unit.db is not None and lock:
         model = SOURCE_MODELS[family]
         value = unit.db.scalar(select(model).where(model.id == identifier).with_for_update().execution_options(populate_existing=True))
@@ -385,7 +413,8 @@ def _source(unit, family, identifier, *, lock=False):
 def _revision(source):
     if getattr(source, "review_hash", None):
         return source.review_hash
-    return digest(source.model_dump(mode="json"))
+    from .operational_recurrence_jobs import revision
+    return revision(source)
 
 
 def _discover(unit, job, lane, width, deadline):
@@ -427,9 +456,9 @@ def _items(unit, lane_id, state, limit, *, ready_at=None):
         query = select(OperationalWorkItemORM).where(OperationalWorkItemORM.lane_id == lane_id, OperationalWorkItemORM.state == state)
         if ready_at is not None:
             query = query.where(or_(OperationalWorkItemORM.next_attempt_at.is_(None), OperationalWorkItemORM.next_attempt_at <= ready_at))
-        return list(unit.db.scalars(query.order_by(OperationalWorkItemORM.id).limit(limit)))
+        return list(unit.db.scalars(query.order_by(OperationalWorkItemORM.attempts, OperationalWorkItemORM.id).limit(limit)))
     return nsmallest(limit, (row for row in unit.store.__dict__.get(OperationalWorkItemORM.__tablename__, {}).values()
-        if row.lane_id == lane_id and row.state == state and (ready_at is None or row.next_attempt_at is None or row.next_attempt_at <= ready_at)), key=lambda row: row.id)
+        if row.lane_id == lane_id and row.state == state and (ready_at is None or row.next_attempt_at is None or row.next_attempt_at <= ready_at)), key=lambda row: (row.attempts, row.id))
 
 
 def _overdue(unit, job, lane, item):
@@ -465,6 +494,8 @@ def _overdue(unit, job, lane, item):
 def _needed(unit, job, lane, source):
     """Avoid materializing a new done-work record for every unchanged old source."""
     point, lower, upper = _bounds(job.parameters)
+    if lane.family.startswith("recurring_"):
+        return True
     if lane.family == "correspondence":
         schedule = "contract-correspondence:" + source.id + ":" + source.review_hash
         key = _key(schedule, source.deadline_date)
@@ -575,7 +606,7 @@ def prepare_claim(store, claim: Claim, payload: JobContinue, *, policy=POLICY):
     captured = _operator(claim.actor_id)
     with atomic(store, captured) as unit:
         job, lane = _checked_claim(unit, claim)
-        if not _items(unit, lane.id, "ready", 1):
+        if lane.family.startswith("recurring_") or not _items(unit, lane.id, "ready", 1):
             _discover(unit, job, lane, min(payload.max_items, policy.page_size), monotonic() + policy.packet_seconds)
         _finish_claim(unit, claim, lane, release=False)
 
@@ -597,9 +628,15 @@ def run_claim(store, claim: Claim, payload: JobContinue, *, policy=POLICY):
                     break
                 current_item = item.id
                 unit.touch_row(item)
-                outcome, result = (_correspondence(unit, job, lane, item) if lane.family == "correspondence" else _overdue(unit, job, lane, item))
-                setattr(lane, outcome, getattr(lane, outcome) + 1)
-                item.state, item.result, item.error_code = "done", result, None
+                done = True
+                if lane.family.startswith("recurring_"):
+                    from .operational_recurrence_jobs import apply
+                    done, outcome, result = apply(unit, job, lane, item, width=width, deadline=deadline)
+                else:
+                    outcome, result = (_correspondence(unit, job, lane, item) if lane.family == "correspondence" else _overdue(unit, job, lane, item))
+                if done:
+                    setattr(lane, outcome, getattr(lane, outcome) + 1)
+                item.state, item.result, item.error_code = "done" if done else "ready", result, None
                 item.revision, item.attempts = item.revision + 1, item.attempts + 1
                 processed += 1
             if lane.exhausted and not _items(unit, lane.id, "ready", 1):

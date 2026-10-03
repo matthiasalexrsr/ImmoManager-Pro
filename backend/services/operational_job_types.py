@@ -7,8 +7,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-Family = Literal["overdue_rent_charge", "overdue_receivable", "correspondence"]
-FAMILIES: tuple[Family, ...] = ("overdue_rent_charge", "overdue_receivable", "correspondence")
+Family = Literal["overdue_rent_charge", "overdue_receivable", "correspondence", "recurring_task", "recurring_calendar"]
+BASE_FAMILIES: tuple[Family, ...] = ("overdue_rent_charge", "overdue_receivable", "correspondence")
+FAMILIES: tuple[Family, ...] = (*BASE_FAMILIES, "recurring_task", "recurring_calendar")
 
 
 class JobCreate(BaseModel):
@@ -17,7 +18,8 @@ class JobCreate(BaseModel):
     as_of: date
     lookback_days: int = Field(default=366, ge=1, strict=True)
     days_ahead: int = Field(default=90, ge=1, strict=True)
-    families: tuple[Family, ...] = FAMILIES
+    families: tuple[Family, ...] = BASE_FAMILIES
+    full_catch_up: bool = Field(default=False, strict=True)
 
     @field_validator("families")
     @classmethod

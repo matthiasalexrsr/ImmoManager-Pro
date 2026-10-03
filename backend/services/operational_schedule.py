@@ -506,7 +506,7 @@ def operational_tick(store, request=None, *, kinds=None, actor_id=None):
     with metrics.operational_tick(), scope_context(captured), _transaction(store, captured=captured) as tx:
         tx.resolve_alerts(budget)
         tasks, events, warnings = _recurring(tx, request, budget, kinds)
-        if "calendar" in kinds:
+        if "calendar" in kinds or "deadlines" in kinds:
             events.extend(_calendar_deadlines(tx, request, budget))
         notifications, rules_checked, more_warnings, deadline_events = _notifications(tx, request, budget, kinds)
         events.extend(deadline_events)
@@ -552,10 +552,14 @@ def recent_ticks(store, limit=20):
 
 
 def scheduler_status():
-    return {"automatic_enabled": bool(_scheduler and _scheduler.enabled),
+    result = {"automatic_enabled": bool(_scheduler and _scheduler.enabled),
             "automatic_running": bool(_scheduler and _scheduler._thread and _scheduler._thread.is_alive()),
             "interval_seconds": _scheduler.interval_seconds if _scheduler else None,
             "correspondence_projection_configured": bool(_scheduler and _scheduler.actor_id)}
+    if _scheduler:
+        result["durable"] = _scheduler.durable_status
+        result["compatibility_pass"] = _scheduler.compatibility_status
+    return result
 
 
 class OperationalScheduler:
@@ -569,6 +573,8 @@ class OperationalScheduler:
         TickRequest(**self.parameters)
         self._stop = Event()
         self._thread = None
+        self.durable_status = {"state": "not_started"}
+        self.compatibility_status = {"state": "not_started", "durable": False}
 
     def start(self):
         global _scheduler
@@ -583,13 +589,24 @@ class OperationalScheduler:
         try:
             while not self._stop.is_set():
                 try:
-                    if self.actor_id is None:
-                        operational_tick(self.store, TickRequest(**self.parameters))
-                    else:
-                        operational_tick(self.store, TickRequest(**self.parameters), actor_id=self.actor_id)
+                    from .operational_scheduler import advance
+                    self.durable_status = advance(self.store, self.actor_id,
+                        {**self.parameters, "interval_seconds": self.interval_seconds})
                 except Exception:
-                    logger.exception("Operativer Lauf fehlgeschlagen; kein erfolgreicher Lauf protokolliert")
-                if self._stop.wait(self.interval_seconds):
+                    self.durable_status = {"state": "attention", "last_error": "automatic_worker_failed"}
+                    logger.exception("Automatische Arbeitsliste unterbrochen; gespeicherter Fortschritt bleibt erhalten")
+                # E1 compatibility only. These are still explicitly atomic
+                # families; their failure must not roll back durable packets.
+                if self.durable_status.get("state") == "completed":
+                    try:
+                        operational_tick(self.store, TickRequest(**self.parameters),
+                            kinds={"deadlines", "due_tasks", "contracts", "escalation"}, actor_id=self.actor_id)
+                        self.compatibility_status = {"state": "completed", "durable": False}
+                    except Exception:
+                        self.compatibility_status = {"state": "attention", "durable": False}
+                        logger.exception("Separater atomarer Kompatibilitätslauf fehlgeschlagen")
+                delay = min(1, self.interval_seconds) if self.durable_status.get("state") in {"reserved", "running", "queued"} else self.interval_seconds
+                if self._stop.wait(delay):
                     break
         finally:
             remove = getattr(getattr(self.store, "db", None), "remove", None)
