@@ -52,3 +52,18 @@ selektierte Grants, Dispatchrolle, kaputte polymorphe Paare, Resourcegrant,
 Cursorbindung/Chronologie und fehlende Capability vor jeglichem Inbox-DML.
 Kein behaupteter positiver Write, HTTP-, PostgreSQL- oder Browsernachweis aus
 diesen ersten vorbereiteten Quellenprüfungen.
+
+## Tatsächlicher erster Puregate
+
+Root `62f138e`: 7 PASS/5 FAIL in1,43s, hard30, normalExit1. Positives Rawimage
+wird fälschlich als beschädigtes Schema abgewiesen. Unverhüllte isolierte
+Diagnose auf derselben eigenen In-memory-Testdatenbank zeigt tatsächlichen
+TypeError bei `set(FIELDS) <= columns` (columns ist ein dict). Beide Raw-/
+SQLInspectorzweige haben diesen Quellenfehler. Es wurden keine App/Auth/
+Settings/Storemodule importiert und keine private Datenbank verwendet.
+
+Domain ist vor Sourcefix mit präzisem Befund beauftragt: Vergleich gegen
+tatsächliche Spaltennamensets in beiden Zweigen, ohne schwächere Schema-/FK-/
+Zeitprüfungen. Der komplette12erPuregate muss nach der Quellenkorrektur erneut
+laufen, weil vorherige Negativfälle zum Teil am unbeabsichtigten TypeError
+scheitern konnten. Erst danach die sechs nativen eigenen SQL-Quellenfälle.
