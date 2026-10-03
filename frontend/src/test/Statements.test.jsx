@@ -145,7 +145,8 @@ describe('Statements workflow reliability', () => {
 
   it('retains authorized dispute reads for a readonly actor in immutable period details', async () => {
     mocks.role = 'readonly'; lists['/billing/periods'][0].status = 'finalized'; render(<Statements />);
-    fireEvent.click(await screen.findByRole('button', { name: 'View period' }));
+    const view = await screen.findByRole('button', { name: 'View period' });
+    await act(async () => { fireEvent.click(view); });
     expect(screen.getByRole('region', { name: 'Widerspruchsakten' })).toHaveAttribute('data-period', 'period');
     expect(screen.queryByRole('button', { name: 'startCorrection' })).not.toBeInTheDocument();
   });
