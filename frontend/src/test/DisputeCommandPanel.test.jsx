@@ -57,6 +57,22 @@ beforeEach(() => {
 });
 
 describe('dispute command forms, originals and protected choices', () => {
+  it('describes a verified frozen person when the native preview omits the case-only note', async () => {
+    mocks.post.mockImplementation((_path, command) => {
+      const checked = preview(command); delete checked.binding.party_binding_note;
+      checked.binding.party_binding = 'frozen_at_statement_finalization';
+      checked.binding.original_snapshot = { ...originalStatement, original_party: {
+        statement_id: originalStatement.id, period_id: 'period', revision: 3, contract_id: 'contract', unit_id: 'unit', tenant_id: 'retained-tenant', captured_at: '2026-10-01T12:00:00Z',
+        identity: { full_name: 'Belegte frühere Originalperson', address_line: 'Originalstraße 3', postal_code: '12345', city: 'Originalstadt', country: 'DE' },
+      } };
+      return Promise.resolve(checked);
+    });
+    await newFile(); fireEvent.click(screen.getByRole('button', { name: 'Vorschau prüfen' }));
+    const review = await screen.findByRole('region', { name: 'Geprüfte Vorschau' });
+    expect(within(review).getByRole('region', { name: 'Belegte Originalmietpartei' })).toHaveTextContent('Belegte frühere Originalperson');
+    expect(within(review).getAllByText('Person und Anschrift sind im Original der tatsächlichen Finalisierung eingefroren.')).toHaveLength(2);
+    expect(review).not.toHaveTextContent('Diese Akte liefert keinen belegten damaligen Personenbezug.');
+  });
   it('uses bounded document/version pages, literal original positions and unchanged preview confirmation', async () => {
     await newFile();
     fireEvent.click(screen.getByRole('checkbox', { name: 'Position 1: Original position 1' }));

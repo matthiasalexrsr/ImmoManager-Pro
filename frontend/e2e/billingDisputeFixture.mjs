@@ -145,6 +145,7 @@ export async function appendNative(box, caseId, kind, reason) {
 export async function responsive(page, testInfo, name) {
   for (const width of [1440, 360, 320]) {
     await page.setViewportSize({ width, height: width === 1440 ? 1000 : 844 });
+    await page.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
     const path = testInfo.outputPath(`${name}-${width}.png`); await page.screenshot({ path, fullPage: true, animations: 'disabled' });
     await testInfo.attach(`${name}-${width}`, { path, contentType: 'image/png' });
@@ -153,6 +154,7 @@ export async function responsive(page, testInfo, name) {
     const preview = page.locator('.dispute-preview'); const cases = page.locator('.dispute-case');
     const target = await preview.count() ? preview : await cases.count() ? cases : page.locator('.billing-disputes').first();
     await target.locator('h2, h3, [role="alert"]').first().scrollIntoViewIfNeeded();
+    await page.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
     const detail = testInfo.outputPath(`${name}-${width}-detail.png`); await page.screenshot({ path: detail, animations: 'disabled' });
     await testInfo.attach(`${name}-${width}-detail`, { path: detail, contentType: 'image/png' });
   }

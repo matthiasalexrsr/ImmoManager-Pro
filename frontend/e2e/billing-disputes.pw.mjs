@@ -13,13 +13,17 @@ async function inspect(page, receipt, statementId) {
   const currentRevision = caseDetail(page).locator(':scope > .dispute-facts > div').filter({ has: page.getByText('Revision', { exact: true }) }).locator('dd');
   await expect(currentRevision).toHaveText(String(receipt.revision));
 }
-async function uiEvent(page, caseId, action, reason) {
+async function uiEvent(page, caseId, action, reason, snapshots) {
   await caseDetail(page).getByRole('button', { name: action, exact: true }).click(); const form = commandForm(page);
   await expect(form.getByText('Entwurfsschutz bereit', { exact: true })).toBeVisible();
   await form.getByLabel('Grund / Notiz', { exact: true }).fill(reason);
   await form.getByLabel('Tatsächliches Beobachtungsdatum', { exact: true }).fill('2026-10-02');
   await form.getByRole('button', { name: 'Vorschau prüfen', exact: true }).click();
-  await expect(form.getByRole('region', { name: 'Geprüfte Vorschau', exact: true })).toBeVisible();
+  const review = form.getByRole('region', { name: 'Geprüfte Vorschau', exact: true });
+  await expect(review).toBeVisible();
+  await expect(review.getByRole('region', { name: 'Belegte Originalmietpartei', exact: true })).toBeVisible();
+  await expect(review).not.toContainText('Diese Akte liefert keinen belegten damaligen Personenbezug.');
+  if (snapshots) await responsive(page, snapshots.testInfo, snapshots.name);
   const saving = page.waitForResponse(requestIs(`/billing/disputes/${caseId}/events`, 'POST'));
   await form.getByRole('button', { name: 'Unverändert bestätigen', exact: true }).click();
   const saved = await saving; expect(saved.status(), await saved.text()).toBe(200);
@@ -146,7 +150,8 @@ test('C: native state actions, original-event correction, actual lineage and ori
   const actions = [['Notiz hinzufügen', 'note', 'open'], ['Prüfung erfassen', 'in_review', 'in_review'], ['Rücknahme erfassen', 'withdrawn', 'withdrawn'],
     ['Akte wiederaufnehmen', 'reopened', 'open'], ['Akte abschließen', 'closed', 'closed'], ['Akte wiederaufnehmen', 'reopened', 'open']];
   for (const [label, kind, state] of actions) {
-    const result = await uiEvent(page, initial.case_id, label, `Tatsächliche Aktion ${kind}`);
+    const result = await uiEvent(page, initial.case_id, label, `Tatsächliche Aktion ${kind}`,
+      kind === 'note' ? { testInfo, name: 'C-native-reviewed-frozen-person' } : undefined);
     const actual = await box.api(`/billing/disputes/${initial.case_id}`); expect(actual).toMatchObject({ revision: result.revision, state }); expect(actual.latest_event.kind).toBe(kind);
   }
   await box.api(`/tenants/${box.tenants[0].id}`, { full_name: `Aktuelle Namensänderung ${box.tag}` }, 'PATCH', 200);

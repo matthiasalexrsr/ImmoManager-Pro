@@ -105,7 +105,8 @@ export default function DisputeCommandPanel({ periodId, propertyId, caseId = '',
       <p>{tr(command.kind || 'opened')}</p><p className="dispute-reason">{command.reason}</p><p>{tr('actualDate')}: {command.received_on || command.observed_on}</p>
       {caseId && <p>{tr('case')} · {tr('revision')} {command.expected_revision}</p>}
       {command.line_item_refs?.length > 0 && <p>{tr('positions')}: {command.line_item_refs.map(index => index + 1).join(', ')}</p>}
-      <p>{review.binding.party_binding_note || tr(command.case_kind === 'property_review' || review.binding.case_kind === 'property_review' ? 'propertyParty' : 'partyUnknown')}</p>
+      <p>{review.binding.party_binding_note || tr(review.binding.original_snapshot.original_party ? 'partyFrozen'
+        : command.case_kind === 'property_review' || review.binding.case_kind === 'property_review' ? 'propertyParty' : 'partyUnknown')}</p>
       <OriginalSnapshot snapshot={review.binding.original_snapshot} selected={command.line_item_refs || []} tr={tr} locale={locale} />
       {review.correction && <section aria-label={tr('statementLink')}><h4>{tr('statementLink')}</h4><pre>{JSON.stringify(review.correction, null, 2)}</pre></section>}
       {command.corrects_event_id && <p>{tr('correctionTarget')}: <code>{command.corrects_event_id}</code></p>}
