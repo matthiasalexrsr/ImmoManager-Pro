@@ -255,3 +255,16 @@ Root übernimmt echte Browser-QA 320/360/1440 und spätere g2-Komposition.
 - kein Main/Preview/Root-Write,
 - keine Root-E2E-Dateien,
 - keine globalen Layoutänderungen.
+
+## Abschlussnachweis der bereits ausgeführten Gates
+
+Dieser Nachtrag dokumentiert ausschließlich die Prüfungen der bereits abgeschlossenen Source-Runde zu `1f3df03`. Für diesen Dokumentationscommit wurden **keine** neuen Browser-, Test-, Lint- oder Buildprozesse gestartet, damit Roots laufende gemeinsame Recovery-Abnahme nicht gestört wird.
+
+Tatsächlich ausgeführt und vor dem sauberen Sourcecommit abgeschlossen wurden:
+
+- gezielte Frontendtests für `BillingDimensions.test.js` und die angepassten `FinancePages.test.jsx`-Fälle einschließlich AllocationKey-/Meter-Dimensionen, fehlender Verbrauchsbindung, freien historischen Werten, fehlender Zählereinheit, unverändertem All-Readings-Pfad, behebbaren Savefehlern und Actorwechsel;
+- gezielter ESLint über die geänderten Billing-Dimensions-Helfer, `AllocationKeys.jsx`, `Meters.jsx` und die zugehörigen Tests;
+- Produktionsbuild des Frontends;
+- `git diff --check` vor dem Sourcecommit.
+
+Der Sourcecommit `1f3df03` wurde danach mit sauberem Worktree hinterlassen. Echte 320/360/1440-Browser-QA, gemeinsame Recovery-Abnahme und spätere g2-Komposition bleiben bei Root bzw. den dafür zugewiesenen nativen Agenten.
