@@ -70,5 +70,8 @@ Recoveryprüfung liegen außerhalb dieses Elternschutzpakets.
 
 Das dauerhaft gespeicherte Widerspruchsjournal ist das eigene Folgepaket nach
 `PACKAGE_C_DISPUTE_JOURNAL_PLAN.md`; dafür reservierte Root ausschließlich
-`i2a2b3c4d5e6` mit Vorgänger `h2a2b3c4d5e6`. Dieser Handoff behauptet keine
+`j2a2b3c4d5e6` mit Vorgänger `h2a2b3c4d5e6`. Die frühere i2-Reservierung
+war falsch: i2 ist bereits eine historische Migration vor j1. Root hat den
+vollständigen Graph geprüft; diese alte Migration bleibt unverändert.
+Dieser Handoff behauptet keine
 fertige Widerspruchsoberfläche und enthält keine solche Migration.
