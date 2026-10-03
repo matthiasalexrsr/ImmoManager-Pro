@@ -19,10 +19,14 @@ runtime_state_instruction(code: str) -> str
 Normal construction performs no state load, initialize, migration, key generation,
 provider call, network access, Settings construction or ambient key lookup.
 Without a configured state path it returns the existing memory store with the
-chosen payload/depth budgets. With a path it returns the existing encrypted
-store using an immutable snapshot of explicit field-key configuration. Keyring
-validation is deferred to actual store work, so missing/invalid integration keys
-or files do not abort unrelated application modules during global registration.
+chosen payload/depth budgets. With a path it returns a narrow cached delegation
+to the existing encrypted store using an immutable snapshot of explicit field-key
+configuration. FileStore construction/path normalization and keyring validation
+are deferred to the first real store operation, so missing/invalid integration
+keys, paths or files do not abort unrelated application modules during global
+registration. The delegation forwards load/save/update/revision/CAS without new
+filesystem, locking, serialization or encryption logic. Explicit initialization
+materializes and returns the existing actual EncryptedJsonIntegrationConfigStore.
 The cipher uses the existing stable field-keyring implementation; no second
 encryption format or persistence service is introduced.
 
