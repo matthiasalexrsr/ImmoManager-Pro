@@ -1,7 +1,5 @@
 """Atomic, reviewed dispute journal without implicit financial/status changes."""
 
-import hashlib
-import json
 from contextlib import contextmanager, nullcontext
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -36,6 +34,8 @@ from ..storage import NotFoundError
 from .billing_dispute_types import AppendDisputeEvent, OpenDispute
 from .billing_dispute_validation import DisputeIntegrityError, digest, event_hash, event_state, payload, validate_event
 from .billing_settlement import IMMUTABLE, _root_period
+from .billing_statement_parties import FROZEN_BINDING, LEGACY_BINDING, StatementPartyIntegrityError, party
+from .billing_statement_party_storage import statement_snapshot_hash as _statement_snapshot_hash
 from .contract_occupancy import begin_writer
 from .measurement_history import _identity, lock_measurement_property
 from .portfolio_scope import memory_visible, refresh_scope, scope_context
@@ -54,35 +54,6 @@ def _rows(store, model, **filters):
     return (row for row in sorted(store.__dict__.get(model.__tablename__, {}).values(), key=lambda item: tuple(getattr(item, name) for name in order))
             if all(getattr(row, name) == value for name, value in filters.items())
             and memory_visible(store, model.__tablename__, row))
-
-
-def _statement_snapshot_hash(active, period):
-    """Exact existing settlement digest, streamed by statement ID in SQL."""
-    from ..models import UtilityStatement
-    encoder = json.JSONEncoder(sort_keys=True, ensure_ascii=False)
-    checksum = hashlib.sha256()
-    def value(item):
-        for block in encoder.iterencode(item):
-            checksum.update(block.encode("utf-8"))
-    checksum.update(b'{"owner_cost_share": ')
-    value(period.owner_cost_share)
-    checksum.update(b', "statements": [')
-    if hasattr(active, "db"):
-        rows = _rows(active, UtilityStatementORM, billing_period_id=period.id)
-    else:
-        rows = sorted((row for row in active.list_utility_statements() if row.billing_period_id == period.id), key=lambda row: row.id)
-    try:
-        for index, row in enumerate(rows):
-            if index:
-                checksum.update(b", ")
-            statement = UtilityStatement.model_validate(row, from_attributes=True) if hasattr(active, "db") else row
-            value(statement.model_dump(mode="json", exclude={"status", "snapshot_hash", "delivery_status", "delivered_at", "delivery_channel", "updated_at"}))
-    finally:
-        close = getattr(rows, "close", None)
-        if close is not None:
-            close()
-    checksum.update(b"]}")
-    return checksum.hexdigest()
 
 
 def _case(store, case_id):
@@ -187,6 +158,8 @@ def _mapped(operation):
             return operation(*args, **kwargs)
         except NotFoundError as error:
             raise HTTPException(404, "Abrechnungsobjekt nicht verfügbar.") from error
+        except StatementPartyIntegrityError as error:
+            raise DisputeIntegrityError(str(error)) from error
         except IntegrityError as error:
             raise conflict("Eine Akte oder Revision wurde gleichzeitig bestätigt. Bestand laden und denselben Befehl wiederholen.") from error
         except OperationalError as error:
@@ -213,20 +186,27 @@ def _original(active, period, command):
             raise conflict("Revision oder Originalhash der Einzelabrechnung stimmt nicht mit der geprüften Fassung überein.")
         contract = active.get_contract(statement.contract_id)
         unit = active.get_unit(statement.unit_id)
+        original_party = party(statement, period)
+        tenant_id = original_party.tenant_id if original_party is not None else contract.tenant_id
         if contract.property_id != prop.id or unit.property_id != prop.id or contract.unit_id != unit.id:
             raise conflict("Der Abrechnungsvertrag besitzt eine widersprüchliche Objektbindung.")
         if hasattr(active, "db") and active.db.info.get("dispute_write"):
             active.db.scalar(select(ContractORM.id).where(ContractORM.id == contract.id).with_for_update())
-            active.db.scalar(select(TenantORM.id).where(TenantORM.id == contract.tenant_id).with_for_update(read=True))
+            active.db.scalar(select(TenantORM.id).where(TenantORM.id == tenant_id).with_for_update(read=True))
             active.db.scalar(select(UtilityStatementORM.id).where(UtilityStatementORM.id == statement.id).with_for_update())
-        active.get_tenant(contract.tenant_id)
+        active.get_tenant(tenant_id)
         if _statement_snapshot_hash(active, period) != statement.snapshot_hash:
             raise DisputeIntegrityError("Abrechnungsinhalt weicht vom finalisierten Originalhash ab.")
         if any(index >= len(statement.line_items or []) for index in command.line_item_refs):
             raise HTTPException(422, "Beanstandete Position existiert nicht im Abrechnungsoriginal.")
         original = statement.model_dump(mode="json", exclude={"status", "delivery_status", "delivered_at", "delivery_channel", "updated_at"})
-        base.update(statement_id=statement.id, contract_id=contract.id, tenant_id=contract.tenant_id,
-                    unit_id=unit.id, statement_revision=statement.revision, party_binding="verified_at_case_opening")
+        if original_party is not None:
+            if original_party.portfolio_id != prop.portfolio_id or original_party.property_id != prop.id:
+                raise DisputeIntegrityError("Die gespeicherte Originalpartei besitzt eine andere Objektbindung.")
+            original["original_party"] = original_party.model_dump(mode="json")
+        base.update(statement_id=statement.id, contract_id=contract.id, tenant_id=tenant_id,
+                    unit_id=unit.id, statement_revision=statement.revision,
+                    party_binding=FROZEN_BINDING if original_party is not None else LEGACY_BINDING)
         return {**base, "snapshot_hash": statement.snapshot_hash, "original_snapshot": original, "original_hash": digest(original)}
     owner = period.owner_cost_share
     if owner is None:
@@ -376,6 +356,9 @@ def _append_preview(active, case, command):
         correction_period = active.get_billing_period(statement.billing_period_id)
         if correction_period.property_id != case.property_id or _statement_snapshot_hash(active, correction_period) != statement.snapshot_hash:
             raise DisputeIntegrityError("Die verknüpfte Korrektur weicht von ihrem finalisierten Original ab.")
+        correction_party = party(statement, correction_period)
+        if correction_party is not None and correction_party.tenant_id != case.tenant_id:
+            raise conflict("Die Korrektur besitzt eine andere belegte ursprüngliche Mietpartei.")
         visited = {statement.id}
         current = statement
         while current.source_statement_id:
@@ -387,6 +370,9 @@ def _append_preview(active, case, command):
             current = active.get_utility_statement(current.source_statement_id)
             if current.contract_id != case.contract_id:
                 raise DisputeIntegrityError("Die Korrekturkette enthält eine andere Mietpartei.")
+            current_party = party(current, active.get_billing_period(current.billing_period_id))
+            if current_party is not None and current_party.tenant_id != case.tenant_id:
+                raise DisputeIntegrityError("Die Korrekturkette enthält eine andere belegte ursprüngliche Mietpartei.")
         else:
             raise conflict("Die Korrektur gehört nicht zur beanstandeten Originalfassung.")
         correction = {"id": statement.id, "revision": statement.revision, "snapshot_hash": statement.snapshot_hash}
@@ -433,7 +419,8 @@ def read_case(store, case_id, actor_id):
             raise DisputeIntegrityError("Letzte Journalrevision fehlt.")
         return {**jsonable_encoder(deepcopy(payload(case))), "latest_event": _verified(active, case, latest[0]),
                 "legacy_period_status": period.status == "disputed",
-                "party_binding_note": "Mieterbezug beim Öffnen geprüft; die frühere Abrechnung speichert keine damalige Mieteridentität."}
+                "party_binding_note": ("Mietpartei und postalische Identität sind im gehashten Original der tatsächlichen Abrechnungsfinalisierung eingefroren."
+                    if case.party_binding == FROZEN_BINDING else "Mieterbezug beim Öffnen geprüft; die frühere Abrechnung speichert keine damalige Mieteridentität.")}
 
 
 @_mapped

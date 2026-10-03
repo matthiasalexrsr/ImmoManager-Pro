@@ -45,11 +45,19 @@ def validate_event(row, evidence, case):
 def validate_dispute_snapshot(family, *, parents, verified_period_hashes: Mapping[str, str] | None = None):
     from ..db.billing_dispute_models import DISPUTE_TABLES
     from ..models import UtilityStatement
+    from .billing_statement_parties import (
+        FROZEN_BINDING,
+        LEGACY_BINDING,
+        party,
+        validate_statement_parties,
+    )
     if not set(DISPUTE_TABLES).intersection(family):
         return
     if not set(DISPUTE_TABLES).issubset(family):
         raise DisputeIntegrityError("Unvollständiges Widerspruchsjournal.")
     try:
+        if verified_period_hashes is None:
+            validate_statement_parties(parents=parents)
         maps = {name: {row["id"]: row for row in family[name]} for name in DISPUTE_TABLES}
         if any(len(maps[name]) != len(family[name]) for name in DISPUTE_TABLES):
             raise ValueError("duplicate ids")
@@ -126,8 +134,10 @@ def validate_dispute_snapshot(family, *, parents, verified_period_hashes: Mappin
                     raise ValueError("correction predecessor")
             if row["correction_statement_id"]:
                 correction = verified_statement(row["correction_statement_id"])
+                correction_party = party(correction, parents["billing_periods"][correction["billing_period_id"]])
                 if (correction["snapshot_hash"] != row["correction_snapshot_hash"]
                         or correction["contract_id"] != case["contract_id"]
+                        or correction_party is not None and correction_party.tenant_id != case["tenant_id"]
                         or correction["unit_id"] != case["unit_id"]
                         or parents["billing_periods"][correction["billing_period_id"]]["property_id"] != case["property_id"]):
                     raise ValueError("correction statement")
@@ -138,6 +148,9 @@ def validate_dispute_snapshot(family, *, parents, verified_period_hashes: Mappin
                         raise ValueError("correction cycle")
                     if correction["contract_id"] != case["contract_id"] or correction["unit_id"] != case["unit_id"]:
                         raise ValueError("correction chain party")
+                    source_party = party(correction, parents["billing_periods"][correction["billing_period_id"]])
+                    if source_party is not None and source_party.tenant_id != case["tenant_id"]:
+                        raise ValueError("correction original party")
                     seen.add(correction["id"])
             elif row["correction_snapshot_hash"] is not None:
                 raise ValueError("orphan correction hash")
@@ -157,16 +170,22 @@ def validate_dispute_snapshot(family, *, parents, verified_period_hashes: Mappin
                 unit = parents["units"][case["unit_id"]]
                 contract = parents["contracts"][case["contract_id"]]
                 parents["tenants"][case["tenant_id"]]
+                original_party = party(statement, period)
+                original_snapshot = UtilityStatement.model_validate(statement).model_dump(mode="json",
+                    exclude={"status", "delivery_status", "delivered_at", "delivery_channel", "updated_at"})
+                if original_party is not None:
+                    original_snapshot["original_party"] = original_party.model_dump(mode="json")
+                binding_matches = ((all(getattr(original_party, field) == case[field]
+                    for field in ("tenant_id", "portfolio_id", "property_id", "contract_id", "unit_id")) and case["party_binding"] == FROZEN_BINDING)
+                    if original_party is not None else (contract["tenant_id"] == case["tenant_id"] and case["party_binding"] == LEGACY_BINDING))
                 if (case["statement_id"] in bound_statements or statement["billing_period_id"] != period["id"]
                         or statement["contract_id"] != case["contract_id"] or statement["unit_id"] != case["unit_id"]
                         or unit["property_id"] != prop["id"] or statement["revision"] != case["statement_revision"]
                         or contract["property_id"] != prop["id"] or contract["unit_id"] != unit["id"]
-                        or contract["tenant_id"] != case["tenant_id"]
+                        or not binding_matches
                         or statement["snapshot_hash"] != case["snapshot_hash"]
                         or case["original_snapshot"]["id"] != statement["id"]
-                        or case["original_snapshot"] != UtilityStatement.model_validate(statement).model_dump(mode="json",
-                            exclude={"status", "delivery_status", "delivered_at", "delivery_channel", "updated_at"})
-                        or case["party_binding"] != "verified_at_case_opening"):
+                        or case["original_snapshot"] != original_snapshot):
                     raise ValueError("statement binding")
                 bound_statements.add(case["statement_id"])
             elif (case["case_kind"] != "property_review" or any(case[name] is not None for name in

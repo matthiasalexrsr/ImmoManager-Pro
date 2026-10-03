@@ -154,6 +154,10 @@ def _graph(store: Any, tenant_id: str) -> dict:
     data: dict[str, Any] = {"tenant": tenant, "contracts": contracts}
     for name, model, optional in _CONTRACT_COLLECTIONS:
         data[name] = _select(_read(store, f"list_{name}", model), "contract_id", ids, optional)
+    from .billing_statement_parties import party
+    snapshot = getattr(store, "store", store)
+    data["utility_statements"] = [row for row in data["utility_statements"]
+        if (original := party(row, snapshot.get_billing_period(row["billing_period_id"]))) is None or original.tenant_id == tenant_id]
 
     data["billing_settlements"] = _select(
         _rows(_settlements(store), m.BillingSettlement), "contract_id", ids,

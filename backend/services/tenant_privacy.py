@@ -134,6 +134,8 @@ def _scoped_graph(store, tenant_id):
     graph = append_measurement_graph(snapshot, graph)
     from .tenant_dispute_graph import append_dispute_graph
     graph = append_dispute_graph(snapshot, graph)
+    from .billing_statement_party_storage import append_graph as append_statement_parties
+    graph = append_statement_parties(snapshot, graph)
     graph["scope"]["private_form_drafts"] = private_draft_retention(snapshot, tenant_id)
     return graph
 
@@ -260,6 +262,7 @@ def prepare_tenant_export(active_store, tenant_id: str, *, parent=None):
 def _plan(graph: dict) -> dict:
     active_contracts = sum(contract["status"] == "active" for contract in graph["contracts"])
     retained = {name: len(rows) for name, rows in graph.items() if isinstance(rows, list)}
+    from .billing_statement_party_storage import PERSONAL_FIELDS as PARTY_FIELDS
     from .tenant_correspondence_graph import PERSONAL_FIELDS as CORRESPONDENCE_FIELDS
     from .tenant_dispute_graph import PERSONAL_FIELDS as DISPUTE_FIELDS
     from .tenant_document_versions import PERSONAL_FIELDS as DOCUMENT_FIELDS
@@ -268,7 +271,7 @@ def _plan(graph: dict) -> dict:
     from .tenant_retained_graph import PERSONAL_FIELDS as RETAINED_FIELDS
     from .tenant_wizard_graph import PERSONAL_FIELDS
     wizard_retained = {name: {"count": len(graph.get(name, [])), "personal_fields": fields}
-                       for name, fields in (PERSONAL_FIELDS | DOCUMENT_FIELDS | LIFECYCLE_FIELDS | CORRESPONDENCE_FIELDS | RETAINED_FIELDS | MEASUREMENT_FIELDS | DISPUTE_FIELDS).items() if graph.get(name)}
+                       for name, fields in (PERSONAL_FIELDS | DOCUMENT_FIELDS | LIFECYCLE_FIELDS | CORRESPONDENCE_FIELDS | RETAINED_FIELDS | MEASUREMENT_FIELDS | DISPUTE_FIELDS | PARTY_FIELDS).items() if graph.get(name)}
     private = graph["scope"]["private_form_drafts"]
     if private["count"]:
         wizard_retained["private_form_drafts"] = {"count": private["count"],

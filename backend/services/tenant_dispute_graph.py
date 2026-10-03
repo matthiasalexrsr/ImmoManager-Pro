@@ -84,7 +84,7 @@ def append_dispute_graph(store, graph):
         for command in _rows(store, Command, case_id=case.id):
             graph["billing_dispute_commands"].append(jsonable_encoder({key: getattr(command, key) for key in
                 ("id", "case_id", "actor_id", "revision", "request_hash", "result", "created_at")}))
-    graph["scope"]["billing_disputes"] = "Exakt eingefrorene Akten dieser Person samt Originalgründen und Anlagen bleiben erhalten; Objektprüfungen und andere Mietparteien sind ausgeschlossen. Der Mieterbezug wurde beim Öffnen geprüft, frühere Abrechnungen speichern keine damalige Identität."
+    graph["scope"]["billing_disputes"] = "Exakt eingefrorene Akten dieser Person samt Originalgründen und Anlagen bleiben erhalten; Objektprüfungen und andere Mietparteien sind ausgeschlossen. Neue Fassungen belegen die Partei bei Finalisierung; alte Fassungen ohne solchen Nachweis behalten die beim Öffnen geprüfte Bindung."
     return graph
 
 
