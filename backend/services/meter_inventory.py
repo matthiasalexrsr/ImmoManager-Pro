@@ -151,7 +151,7 @@ def statement(query, scope):
         readings.c.reading_date.desc(), bytewise_id(readings.c.id).desc()).limit(1).correlate(meters).scalar_subquery()
     result = select(meters, units.c.property_id, properties.c.name.label("property_name"), units.c.label.label("unit_label"),
         readings.c.id.label("last_reading_id"), readings.c.reading_date.label("last_reading_date"),
-        readings.c.value.label("last_reading_value")).join(units, and_(units.c.id == meters.c.unit_id, _visible(units, scope))).join(
+        readings.c.value.label("last_reading_value")).select_from(meters).join(units, and_(units.c.id == meters.c.unit_id, _visible(units, scope))).join(
         properties, and_(properties.c.id == units.c.property_id, _visible(properties, scope))).outerjoin(
         readings, readings.c.id == latest_id).where(_visible(meters, scope))
     for key in ("unit_id", "meter_type", "measurement_unit", "supplier", "is_active"):
@@ -281,7 +281,7 @@ def meter_inventory_detail(store, meter_id: str):
     query = MeterInventoryQuery()
     with _read_context(store, query):
         if hasattr(store, "db"):
-            row = store.db.execute(statement(query, scope).where(MeterORM.id == meter_id).limit(1)).mappings().first()
+            row = store.db.execute(statement(query, scope).where(MeterORM.__table__.c.id == meter_id).limit(1)).mappings().first()
         else:
             row = next(memory_rows(store, query, scope, meter_id=meter_id), None)
     refresh_scope(scope)
