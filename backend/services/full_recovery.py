@@ -179,6 +179,17 @@ def _database_info(path: Path, *, timeout_seconds: float = 300) -> dict:
             raise RecoveryError("Die Dokumenthistorie ist unvollständig. Vollständige Sicherung mit Originalen verwenden.")
         lifecycle_tables = {"contract_lifecycle_drafts", "contract_lifecycle_commands"}
         correspondence_tables = {"contract_correspondence_drafts", "contract_correspondence_commands", "contract_correspondence_events"}
+        communication_tables = {"communication_templates", "communication_blocks", "communication_drafts"}
+        from ..db.measurement_history_models import MEASUREMENT_TABLES
+        from ..db.measurement_history_schema import validate_measurement_schema
+        from .measurement_history_validation import MeasurementIntegrityError
+        measurement_tables = set(MEASUREMENT_TABLES)
+        if tables & communication_tables and not communication_tables.issubset(tables):
+            raise RecoveryError("Das Kommunikationszentrum ist unvollständig. Vollständige Sicherung verwenden.")
+        try:
+            validate_measurement_schema(db)
+        except (MeasurementIntegrityError, sqlite3.Error):
+            raise RecoveryError("Die historische Messquellenfamilie ist unvollständig oder ungültig. Vollständige Sicherung verwenden.") from None
         from .operational_job_validation import TABLES as job_tables
         from .operational_job_validation import JobIntegrityError, validate_job_journal
         from .operational_scheduler_validation import validate_scheduler
@@ -199,7 +210,10 @@ def _database_info(path: Path, *, timeout_seconds: float = 300) -> dict:
             raise RecoveryError("Die Vertragskorrespondenz ist ungültig. Vollständige unveränderte Sicherung mit Originalen verwenden.") from None
         if tables & lifecycle_tables and not lifecycle_tables.issubset(tables):
             raise RecoveryError("Die Vertragsablaufhistorie ist unvollständig. Vollständige Sicherung verwenden.")
-        for table in Base.metadata.sorted_tables:
+        # Column compatibility does not depend on FK dependency order. Avoid
+        # resolving optional/new-family foreign keys that an older archive (or
+        # a focused recovery process) intentionally has not registered.
+        for table in sorted(Base.metadata.tables.values(), key=lambda item: item.name):
             if table.name in session_tables and not tables & session_tables:
                 continue
             # x1 adds a private journal. An older complete image has no table;
@@ -214,6 +228,10 @@ def _database_info(path: Path, *, timeout_seconds: float = 300) -> dict:
                 continue
             if table.name in correspondence_tables and not tables & correspondence_tables:
                 continue
+            if table.name in communication_tables and not tables & communication_tables:
+                continue
+            if table.name in measurement_tables and not tables & measurement_tables:
+                continue
             if table.name in workflow_tables and not tables & workflow_tables:
                 continue
             if table.name in job_tables and not tables.intersection(job_tables):
@@ -227,8 +245,12 @@ def _database_info(path: Path, *, timeout_seconds: float = 300) -> dict:
             # All other missing columns and incomplete journals remain errors.
             compatible_missing = {"invoices": {"amount_paid"}, "payments": {"invoice_id"}}
             missing = set(table.columns.keys()) - actual
-            if missing - compatible_missing.get(table.name, set()):
-                raise RecoveryError("Das Datenbankschema passt nicht zu dieser Programmversion.")
+            incompatible = missing - compatible_missing.get(table.name, set())
+            if incompatible:
+                fields = ", ".join(sorted(incompatible))
+                raise RecoveryError(
+                    f"Das Datenbankschema passt nicht zu dieser Programmversion ({table.name}: {fields})."
+                )
         counts = {}
         for table in sorted(tables - {"sqlite_sequence"}):
             if time.monotonic() > deadline:

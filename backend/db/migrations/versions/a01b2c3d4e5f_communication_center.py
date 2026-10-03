@@ -1,14 +1,14 @@
 """Communication center templates, blocks and reviewed drafts.
 
 Revision ID: a01b2c3d4e5f
-Revises: z1a2b3c4d5e6
+Revises: h2a2b3c4d5e6
 """
 
 import sqlalchemy as sa
 from alembic import op
 
 revision = "a01b2c3d4e5f"
-down_revision = "z1a2b3c4d5e6"
+down_revision = "h2a2b3c4d5e6"
 branch_labels = None
 depends_on = None
 
