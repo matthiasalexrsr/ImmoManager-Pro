@@ -29,7 +29,9 @@ export function nativeApi(page, headers) {
     const response = await page.request.fetch(`/api/v1${path}`, { headers, method, ...(data === undefined ? {} : { data }) });
     if (status !== undefined) expect(response.status(), `${path}: ${await response.text()}`).toBe(status);
     else expect(response.ok(), `${path}: ${response.status()} ${await response.text()}`).toBeTruthy();
-    return response.status() === 204 ? null : response.json();
+    if (response.status() === 204) return null;
+    expect(response.headers()['content-type'], `${path}: the actual API must return JSON`).toMatch(/^application\/json(?:;|$)/);
+    return response.json();
   };
 }
 
@@ -49,7 +51,7 @@ export async function finalize(api, periodId) {
 }
 
 export async function fixture(page, versions = 1) {
-  const headers = await login(page); const api = nativeApi(page, headers); const actor = await api('/auth/users/me');
+  const headers = await login(page); const api = nativeApi(page, headers); const actor = await api('/auth/me');
   const health = await (await page.request.get('/health')).json();
   expect(health).toMatchObject({ store_backend: 'SQLAlchemyStore', database_connected: true });
   const tag = randomUUID(); const portfolio = await api('/portfolios', { name: `C Browser ${tag}` }, 'POST', 201);
