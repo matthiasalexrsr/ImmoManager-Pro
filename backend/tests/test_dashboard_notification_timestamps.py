@@ -44,6 +44,9 @@ def summary():
 
 @pytest.fixture
 def sqlite_store(request, tmp_path):
+    # Register the actual FK target before repeated standalone create_all calls.
+    from backend.db import document_version_models  # noqa: F401
+
     engine = create_engine("sqlite:///" + (tmp_path / "notification-timestamps.sqlite").as_posix())
     if getattr(request, "param", False):
         # An owned synthetic legacy table; never mutate shared ORM metadata.
