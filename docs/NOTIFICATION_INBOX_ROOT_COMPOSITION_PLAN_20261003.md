@@ -67,3 +67,17 @@ tatsächliche Spaltennamensets in beiden Zweigen, ohne schwächere Schema-/FK-/
 Zeitprüfungen. Der komplette12erPuregate muss nach der Quellenkorrektur erneut
 laufen, weil vorherige Negativfälle zum Teil am unbeabsichtigten TypeError
 scheitern konnten. Erst danach die sechs nativen eigenen SQL-Quellenfälle.
+
+Beide Vergleiche sind in5dcd35a korrigiert. Vollständiger reiner12er-Gate:
+12 PASS in1,23s, hard30, normalExit0; keine App-/SQLUser-/HTTP-Abnahme daraus.
+
+Der tatsächliche eigene SQLite-/SQLUserStore-Gate auf ed70ae8 liefert5 PASS/
+1 FAIL in15,08s, hard120, normalExit1. Persönliche Counts/Rollen/Scopes,
+Cursorbindung/Grantwechsel, abweichende Quellen und Fakecapabilities ohne
+DML bestehen. Der Zeitfall scheitert vor dem Produktaufruf an einer neuen
+Fixturezeile: `dict(CursorResult)` versucht dessen Mappingprotokoll statt
+Iteration und wirft TypeError. Das ist kein positiver Zeit-/NULL-Keysetbeleg.
+Vor dem Fixturefix festgelegt: die tatsächlichen fünf Fixturezeilen über
+`result.all()` als Rows lesen; native CURRENT_TIMESTAMP-/Mikrosekunden-/NULL-
+Assertions vollständig erhalten. Danach nur diesen unvollständigen Fall
+wiederholen; keine unnötige Wiederholung der fünf grünen Quellenfälle.

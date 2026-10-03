@@ -191,7 +191,7 @@ def test_sqlite_current_timestamp_zero_fraction_microsecond_and_null_keysets(ins
         # Native one-statement CURRENT_TIMESTAMP, not a bound cloned fixture.
         connection.execute(NotificationORM.__table__.insert().values([_notice(item) for item in ids]))
         stamp = connection.execute(select(NotificationORM.__table__.c.created_at).limit(1)).scalar_one()
-        raw = dict(connection.exec_driver_sql("SELECT id,created_at FROM notifications"))
+        raw = dict(connection.exec_driver_sql("SELECT id,created_at FROM notifications").all())
     assert all(len(raw[item]) == 19 for item in ids)
     bound = ["notice-Z", "notice-ä", "notice-c"]
     _insert(box, [_notice(item, created_at=stamp) for item in bound])
