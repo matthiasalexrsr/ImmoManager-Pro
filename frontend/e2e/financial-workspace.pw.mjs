@@ -456,7 +456,8 @@ test('FinancialWorkspace: real scoped cash report, exact sums, source pages, has
   expect(await conflict.text()).toContain('Buchungsquellen haben sich geändert');
   await expect(sources.getByRole('alert')).toContainText('Die Buchungsquellen haben sich geändert.');
   await expect(metrics).toContainText(moneyDe(3000n));
-  await expect(page.getByText(fixture.visiblePortfolio.name, { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Angewendete Auswahl', { exact: true })
+    .getByText(fixture.visiblePortfolio.name, { exact: true })).toBeVisible();
 
   const refreshedReport = page.waitForResponse(response =>
     new URL(response.url()).pathname === '/api/v1/reports/cash' && response.status() === 200);
