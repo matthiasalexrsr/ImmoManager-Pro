@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 
 import pytest
@@ -128,7 +129,7 @@ def test_plaintext_requires_explicit_migration_and_conversion_is_atomic(tmp_path
     assert failure.value.code == "plaintext_state_requires_migration"
     assert b"LEGACY_SYNTHETIC_PASSWORD" in path.read_bytes()
 
-    assert encrypted.migrate_legacy_plaintext() == legacy_state
+    assert encrypted.migrate_legacy_plaintext(expected_revision=hashlib.sha256(path.read_bytes()).hexdigest()) == legacy_state
     assert encrypted.load() == legacy_state
     raw = path.read_bytes()
     assert b"LEGACY_SYNTHETIC_PASSWORD" not in raw
@@ -168,5 +169,5 @@ def test_envelope_like_damage_is_never_reinterpreted_as_legacy_plaintext(tmp_pat
     path.write_text(json.dumps(envelope), encoding="utf-8")
 
     with pytest.raises(ConfigStoreError) as failure:
-        store.migrate_legacy_plaintext()
+        store.migrate_legacy_plaintext(expected_revision=hashlib.sha256(path.read_bytes()).hexdigest())
     assert failure.value.code == "encrypted_state_invalid"

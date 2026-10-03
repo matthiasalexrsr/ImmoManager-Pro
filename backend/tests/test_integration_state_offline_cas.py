@@ -224,7 +224,7 @@ def test_encrypted_store_cas_preserves_unknown_fields_and_stale_revision_is_atom
     assert store.load() == updated
 
 
-def test_offline_cli_converts_plaintext_atomically_without_secret_output(tmp_path):
+def test_legacy_unfenced_cli_refuses_and_directs_to_complete_maintenance(tmp_path):
     state_path = tmp_path / "integrations.json"
     config_path = tmp_path / "archive-configuration.json"
     secret = "SYNTHETIC_CLI_SECRET_MUST_NOT_PRINT"
@@ -262,16 +262,20 @@ def test_offline_cli_converts_plaintext_atomically_without_secret_output(tmp_pat
         timeout=30,
         check=False,
     )
-    assert result.returncode == 0, result.stderr
+    assert result.returncode == 2, result.stderr
     assert secret not in result.stdout + result.stderr
-    assert json.loads(result.stdout)["status"] == "verified_encrypted"
-    new_bytes = state_path.read_bytes()
-    assert new_bytes != old_bytes
-    assert secret.encode() not in new_bytes
-    assert json.loads(new_bytes)["format"] == FORMAT
+    report = json.loads(result.stderr)
+    assert report["code"] == "fenced_maintenance_required"
+    assert "backend.integration_state_upgrade convert" in report["maintenance_command"]
+    assert state_path.read_bytes() == old_bytes
 
-    # Explicit migration is idempotent on an already encrypted valid state.
+    # Verification remains the original read-only command after a checked
+    # conversion; here the lower-level primitive gets the actual source SHA.
+    import hashlib
+    store = build_encrypted_integration_store(str(state_path), config)
+    store.migrate_legacy_plaintext(expected_revision=hashlib.sha256(old_bytes).hexdigest())
     before_second = state_path.read_bytes()
+    command[2] = "verify"
     second = subprocess.run(
         command,
         cwd=root,
@@ -337,4 +341,4 @@ def test_cli_failure_leaves_plaintext_bytes_unchanged_and_never_prints_secret(
     assert result.returncode == 2
     assert secret not in result.stdout + result.stderr
     assert state_path.read_bytes() == before
-    assert json.loads(result.stderr)["code"] == "state_too_deep"
+    assert json.loads(result.stderr)["code"] == "fenced_maintenance_required"

@@ -47,6 +47,8 @@ database, uploads, keys, sessions and configuration are never rolled back by thi
 state-only return. Changed connection values reject instead of losing later
 edits. An already returned exact source is recognized idempotently. Ambiguous
 post-replace durability errors retain the prepared phase for explicit status.
+The explicit `list` command discovers protected operation IDs after lost output,
+with bounded keyset pages. Its receipt summaries contain no provider values.
 
 ## Concrete ownership and compatibility
 
@@ -75,3 +77,17 @@ explicit selection/configuration mismatch; legacy helper refuses unsafe conversi
 missing/malformed state and wrong keys never become empty configuration. Real
 subprocess crash/restart and independent file locks supplement unit fault points.
 All fixtures synthetic, bounded coordinated test slots, honest separate counts.
+
+## Source review before the native gate
+
+Independent reviews found and corrected configuration parsing/publication races,
+an unchecked already-original return after a long restore probe, incomplete
+operation discovery after termination before the first receipt, and reuse of a
+lock budget captured before backup/probe. Configuration fingerprints now bracket
+the actual parse; publication uses a fresh bound parse under the state sidecar.
+The no-op return checks the actual source SHA under the same lock. Incomplete
+UUID directories remain explicit discoverable entries. A fresh store immediately
+before CAS uses the actual remaining operation budget. Regression sources cover
+these paths and real command output with only password entry adapted for the
+Windows subprocess console. Native results are pending until recorded in the
+separate acceptance handoff; source/lint success alone is not release acceptance.

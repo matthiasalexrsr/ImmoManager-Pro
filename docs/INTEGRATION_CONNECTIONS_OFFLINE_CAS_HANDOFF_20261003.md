@@ -67,6 +67,15 @@ bleibt Root-owned.
 
 ## 3. Expliziter Offline-/Maintenance-Konvertierungsweg
 
+**Aktualisierung 03.10., zentrale Komposition:** Der unten dokumentierte
+isolierte frühere `migrate-plaintext`-Aufruf wird vom Programm jetzt mit
+`fenced_maintenance_required` abgelehnt. Umstellung erfolgt ausschließlich über
+`python -m backend.integration_state_upgrade convert --data-dir <installation>
+--output <neues-vollarchiv> --offline`, einschließlich Lebenszyklus-Sperre,
+tatsächlicher Vollsicherung/Wiederherstellungsprobe und geprüftem Rückweg.
+Die früheren Helper-Prüfzahlen belegen diese neue Komposition nicht.
+`verify` bleibt die unveränderte explizite, nur lesende Prüfung.
+
 Neu:
 `scripts/integration_state_maintenance.py`
 

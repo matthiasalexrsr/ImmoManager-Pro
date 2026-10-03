@@ -162,15 +162,75 @@ class EncryptedJsonIntegrationConfigStore(JsonFileIntegrationConfigStore):
             self._write_locked(raw)
             return deepcopy(checked), hashlib.sha256(raw).hexdigest()
 
-    def migrate_legacy_plaintext(self) -> dict:
-        """Explicit one-time conversion; never called by normal startup."""
+    def migrate_legacy_plaintext(
+        self, *, expected_revision: str,
+        before_publish: Callable[[str], None] | None = None,
+    ) -> dict:
+        """Explicit SHA-CAS conversion; never called by normal startup.
+
+        The maintenance owner may durably record the encrypted candidate SHA
+        before replacement. Callback failure prevents publication. The callback
+        receives no configuration values and must not call this store again.
+        """
         with self._locked():
-            current = super()._load_locked()
+            original_raw = self._read_raw_locked()
+            self._check_migration_revision(original_raw, expected_revision)
+            current = _decode(original_raw, self._max_depth)
             if "format" in current or "ciphertext" in current:
                 return self._decrypt_envelope(current)
             checked = _decode(_encode(current, self._plaintext_maximum, self._max_depth), self._max_depth)
-            self._write_locked(self._encrypted_raw(checked))
+            if len(original_raw) > self._plaintext_maximum:
+                raise ConfigStoreError("state_too_large")
+            candidate = self._encrypted_raw(checked)
+            if before_publish is not None:
+                before_publish(hashlib.sha256(candidate).hexdigest())
+            self._write_locked(candidate)
             return deepcopy(checked)
+
+    def restore_legacy_plaintext(
+        self, original_raw: bytes, *, expected_revision: str,
+        before_publish: Callable[[str], None] | None = None,
+    ) -> None:
+        """Checked maintenance return of exact archived bytes, without data loss."""
+        if not isinstance(original_raw, bytes):
+            raise ConfigStoreError("invalid_state")
+        if len(original_raw) > self._plaintext_maximum:
+            raise ConfigStoreError("state_too_large")
+        original = _decode(original_raw, self._max_depth)
+        if "format" in original or "ciphertext" in original:
+            raise ConfigStoreError("legacy_return_source_invalid")
+        canonical = _encode(original, self._plaintext_maximum, self._max_depth)
+        with self._locked():
+            current_raw = self._read_raw_locked()
+            self._check_migration_revision(current_raw, expected_revision)
+            current = self._decrypt_envelope(_decode(current_raw, self._max_depth))
+            if not hmac.compare_digest(
+                hashlib.sha256(_encode(current, self._plaintext_maximum, self._max_depth)).digest(),
+                hashlib.sha256(canonical).digest(),
+            ):
+                raise ConfigStoreError("legacy_return_payload_changed")
+            if before_publish is not None:
+                before_publish(hashlib.sha256(original_raw).hexdigest())
+            self._write_locked(original_raw)
+
+    def verify_legacy_revision(
+        self, *, expected_revision: str, before_verified: Callable[[str], None],
+    ) -> None:
+        """Linearizable checked no-op return; no publication or secret output."""
+        with self._locked():
+            raw = self._read_raw_locked()
+            self._check_migration_revision(raw, expected_revision)
+            state = _decode(raw, self._max_depth)
+            if len(raw) > self._plaintext_maximum or "format" in state or "ciphertext" in state:
+                raise ConfigStoreError("legacy_return_source_invalid")
+            before_verified(hashlib.sha256(raw).hexdigest())
+
+    @staticmethod
+    def _check_migration_revision(raw: bytes, expected: str) -> None:
+        if not isinstance(expected, str) or not expected or not hmac.compare_digest(
+            hashlib.sha256(raw).hexdigest(), expected,
+        ):
+            raise ConfigStoreError("state_revision_conflict")
 
     @property
     def path(self) -> Path:

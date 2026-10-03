@@ -1,4 +1,4 @@
-"""Offline maintenance for encrypted integration state.
+"""Read-only verification of encrypted integration state.
 
 Explicit files only. No runtime Settings, live auth, provider calls or secret output.
 """
@@ -18,7 +18,6 @@ if str(ROOT) not in sys.path:
 from backend.services.integrations.config_store import ConfigStoreError  # noqa: E402
 from backend.services.integrations.encrypted_config_store import (  # noqa: E402
     FORMAT,
-    build_encrypted_integration_store,
 )
 from backend.services.integrations.integration_state_offline import (  # noqa: E402
     load_explicit_configuration,
@@ -77,22 +76,14 @@ def parser() -> argparse.ArgumentParser:
 
 
 def execute(args: argparse.Namespace) -> dict[str, object]:
+    if args.operation == "migrate-plaintext":
+        # Legacy entry remains recognizable, but must not bypass the lifetime
+        # fence, complete backup/probe or checked return of the reviewed CLI.
+        raise ConfigStoreError("fenced_maintenance_required")
     configuration = load_explicit_configuration(
         args.configuration,
         max_bytes=args.max_configuration_bytes,
     )
-    if args.operation == "migrate-plaintext":
-        store = build_encrypted_integration_store(
-            args.state_file,
-            configuration,
-            max_plaintext_bytes=args.max_state_bytes,
-            lock_timeout=args.lock_timeout,
-            max_json_depth=args.max_json_depth,
-        )
-        # The store uses its reviewed lock/temp/fsync/os.replace path. It never
-        # creates a plaintext backup or calls providers.
-        store.migrate_legacy_plaintext()
-
     verified = verify_encrypted_integration_state(
         args.state_file,
         configuration,
@@ -115,7 +106,9 @@ def main(argv: list[str] | None = None) -> int:
     except ConfigStoreError as error:
         print(
             json.dumps(
-                {"status": "failed", "code": error.code},
+                {"status": "failed", "code": error.code,
+                 **({"maintenance_command": "python -m backend.integration_state_upgrade convert --data-dir <installation> --output <new-full-backup> --offline"}
+                    if error.code == "fenced_maintenance_required" else {})},
                 sort_keys=True,
             ),
             file=sys.stderr,
