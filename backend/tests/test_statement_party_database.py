@@ -8,9 +8,10 @@ from copy import deepcopy
 from pathlib import Path
 
 import pytest
-from sqlalchemy import text, update
+from sqlalchemy import select, text, update
 
-from backend.db.orm_models import BillingPeriodORM
+from backend.db.orm_models import BillingPeriodORM, UtilityStatementORM
+from backend.services.billing_dispute_database import _period_hash
 from backend.services.billing_statement_parties import KEY, StatementPartyIntegrityError
 from backend.services.billing_statement_party_database import validate_statement_party_database
 from backend.services.data_transfer import TransferError, export_store_data
@@ -113,3 +114,67 @@ def test_absent_old_tables_are_compatible_partial_tables_are_not(tmp_path):
         connection.execute("CREATE TABLE billing_periods(id TEXT PRIMARY KEY, owner_cost_share JSON)")
         with pytest.raises(StatementPartyIntegrityError):
             validate_statement_party_database(connection)
+
+
+def _native_rehash(connection, period_id, owner):
+    """Owned corrupt fixture: a recomputed SHA cannot legalise invalid meaning."""
+    connection.execute(update(BillingPeriodORM).where(BillingPeriodORM.id == period_id).values(owner_cost_share=owner))
+    period = dict(connection.execute(select(BillingPeriodORM.__table__).where(BillingPeriodORM.id == period_id)).mappings().one())
+    snapshot_hash = _period_hash(connection, period, deadline=None)
+    connection.execute(update(UtilityStatementORM).where(UtilityStatementORM.billing_period_id == period_id).values(snapshot_hash=snapshot_hash))
+    return snapshot_hash
+
+
+def test_rehashed_missing_sibling_original_still_fails_actual_native_semantic_proof(context):
+    _, period = original(context)
+    active = context["active"]
+    changed = deepcopy(period["owner_cost_share"])
+    assert len(changed[KEY]["statements"]) == 2
+    del changed[KEY]["statements"][next(iter(changed[KEY]["statements"]))]
+    with active.engine.begin() as connection:
+        rehashed = _native_rehash(connection, period["id"], changed)
+        stored = connection.scalars(select(UtilityStatementORM.snapshot_hash).where(UtilityStatementORM.billing_period_id == period["id"])).all()
+        assert stored == [rehashed, rehashed]
+    with active.engine.begin() as connection:
+        before = connection.execute(text("SELECT id,revoked_at FROM auth_sessions ORDER BY id")).all()
+        with pytest.raises(StatementPartyIntegrityError):
+            validate_statement_party_database(connection)
+        with pytest.raises(SessionRestoreError, match="restore_statement_party_original_invalid"):
+            invalidate_and_inspect(connection, {}, deadline=time.monotonic() + 30)
+        assert connection.execute(text("SELECT id,revoked_at FROM auth_sessions ORDER BY id")).all() == before
+
+
+def test_legacy_source_sibling_bytes_are_reproved_from_actual_native_correction(context):
+    statement, period = original(context)
+    active = context["active"]
+    legacy = deepcopy(period["owner_cost_share"])
+    del legacy[KEY]
+    with active.engine.begin() as connection:
+        _native_rehash(connection, period["id"], legacy)
+        assert validate_statement_party_database(connection) is False
+    # Actual new correction/finalisation captures its known party at this
+    # finalisation, without retroactively inventing a legacy original identity.
+    headers = context["headers"]
+    response = active.client.post(f"/api/v1/billing/periods/{period['id']}/revisions", headers=headers,
+                                 params={"revision_notes": "Synthetic correction from explicit legacy source"})
+    assert response.status_code == 200, response.text
+    revised_id = response.json()["new_period_id"]
+    assert active.client.post(f"/api/v1/billing/periods/{revised_id}/generate", headers=headers).status_code == 201
+    assert active.client.post(f"/api/v1/billing/periods/{revised_id}/finalize", headers=headers).status_code == 200
+    active.store.db.remove()
+    with active.engine.connect() as connection:
+        assert validate_statement_party_database(connection)
+    # Damage the *other* legacy source statement. Neither the selected source
+    # ID nor its retained SHA/reference is changed. Complete actual source
+    # period hashing must nevertheless detect its sibling's altered bytes.
+    with active.engine.begin() as connection:
+        sibling = connection.execute(select(UtilityStatementORM.__table__).where(
+            UtilityStatementORM.billing_period_id == period["id"], UtilityStatementORM.id != statement["id"])).mappings().one()
+        connection.execute(update(UtilityStatementORM).where(UtilityStatementORM.id == sibling["id"]).values(total_cost=sibling["total_cost"] + 1))
+    with active.engine.begin() as connection:
+        before = connection.execute(text("SELECT id,revoked_at FROM auth_sessions ORDER BY id")).all()
+        with pytest.raises(StatementPartyIntegrityError):
+            validate_statement_party_database(connection)
+        with pytest.raises(SessionRestoreError, match="restore_statement_party_original_invalid"):
+            invalidate_and_inspect(connection, {}, deadline=time.monotonic() + 30)
+        assert connection.execute(text("SELECT id,revoked_at FROM auth_sessions ORDER BY id")).all() == before
