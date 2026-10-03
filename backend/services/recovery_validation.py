@@ -221,6 +221,12 @@ def _original_uri_matches(historical, key, old_root):
 
 
 def _scan(db, old_root, destination, catalog, deadline=None):
+    from .billing_dispute_database import validate_dispute_database
+    from .billing_dispute_validation import DisputeIntegrityError
+    try:
+        validate_dispute_database(db, deadline=deadline)
+    except (DisputeIntegrityError, sqlite3.Error):
+        raise RecoveryError("Widerspruchsoriginale sind ungültig. Vollständige unveränderte Sicherung verwenden.") from None
     from .measurement_history_database import validate_measurement_database
     from .measurement_history_validation import MeasurementIntegrityError
     try:

@@ -3,13 +3,14 @@
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import DBAPIError
 
+from ..db.billing_dispute_models import DISPUTE_TABLES
 from ..db.measurement_history_models import MEASUREMENT_TABLES
 from .operational_job_validation import TABLES as JOB_TABLES
 from .operational_scheduler_validation import TABLE as SCHEDULER_TABLE
 from .tenancy_workflow_validation import TABLES as WORKFLOW_TABLES
 
-TABLES = frozenset(JOB_TABLES) | WORKFLOW_TABLES | {SCHEDULER_TABLE} | frozenset(MEASUREMENT_TABLES)
-MESSAGE = "Gespeicherte Mieterwechsel-, Arbeitslisten- oder Abrechnungshistorie wird durch diese Teiloperation nicht übertragen. Vollständige Offline-Sicherung/Wiederherstellung verwenden."
+TABLES = frozenset(JOB_TABLES) | WORKFLOW_TABLES | {SCHEDULER_TABLE} | frozenset(MEASUREMENT_TABLES) | frozenset(DISPUTE_TABLES)
+MESSAGE = "Gespeicherte Mieterwechsel-, Arbeitslisten-, Abrechnungs- oder Widerspruchshistorie wird durch diese Teiloperation nicht übertragen. Vollständige Offline-Sicherung/Wiederherstellung verwenden."
 
 
 def guard_operational_history(store, *, serialized=False):
@@ -23,7 +24,7 @@ def guard_operational_history(store, *, serialized=False):
         return
     db = store.db
     names = set(inspect(db.get_bind()).get_table_names())
-    for family in (set(JOB_TABLES), WORKFLOW_TABLES, set(MEASUREMENT_TABLES)):
+    for family in (set(JOB_TABLES), WORKFLOW_TABLES, set(MEASUREMENT_TABLES), set(DISPUTE_TABLES)):
         if names & family and not family <= names:
             raise ValidationError("Unvollständige Mieterwechsel-/Arbeitslistentabellen. Teiloperation vor Datenänderung abgebrochen.")
     if serialized:
@@ -36,6 +37,7 @@ def guard_operational_history(store, *, serialized=False):
                 db.connection().exec_driver_sql('LOCK TABLE "auth_setup" IN SHARE ROW EXCLUSIVE MODE')
             parents = ("operational_lock", "users", "portfolios", "tenants", "documents", "properties", "units", "contracts",
                        "meters", "allocation_keys", "document_versions",
+                       "billing_periods", "utility_statements",
                        "tasks", "handover_protocols", "meter_readings", "rent_charges", "receivables", "calendar_events", "notifications")
             try:
                 # Include domain parents BEFORE children, even for the supported

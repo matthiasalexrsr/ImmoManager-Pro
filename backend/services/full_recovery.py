@@ -168,17 +168,16 @@ def _database_info(path: Path, *, timeout_seconds: float = 300) -> dict:
             legacy_proof = None  # Continue the strict existing current-schema path.
         from ..db.auth_models import AuthSetupORM  # noqa: F401 — register installation metadata
         from ..db.billing_dispute_models import DISPUTE_TABLES
-        from ..db.billing_dispute_schema import validate_dispute_guards, validate_dispute_schema
         from ..db.integration_history_models import TABLES as history_tables
         from ..db.integration_history_schema import ensure_history_schema
         from ..db.orm_models import Base
+        from .billing_dispute_database import validate_dispute_database
         from .billing_dispute_validation import DisputeIntegrityError
         from .integrations.history_types import HistoryError
         try:
-            if validate_dispute_schema(db):
-                validate_dispute_guards(db)
+            validate_dispute_database(db, deadline=deadline)
         except (DisputeIntegrityError, sqlite3.Error):
-            raise RecoveryError("Widerspruchsoriginale sind strukturell unvollständig oder ungeschützt. Vollständige unveränderte Sicherung verwenden.") from None
+            raise RecoveryError("Widerspruchsoriginale sind unvollständig oder ungültig. Vollständige unveränderte Sicherung verwenden.") from None
         try:
             ensure_history_schema(db)  # Structural proof; archive keys follow separately.
         except (HistoryError, sqlite3.Error):

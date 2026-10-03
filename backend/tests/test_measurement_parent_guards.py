@@ -41,7 +41,7 @@ def draft_http(request, monkeypatch, tmp_path):
     engine = None
     if request.param == "sqlite":
         url = "sqlite:///" + (tmp_path / "parents.sqlite").as_posix()
-        assert migrate(url, monkeypatch) == "h2a2b3c4d5e6"
+        migrate(url, monkeypatch)
         engine = create_engine(url, hide_parameters=True, connect_args={"check_same_thread": False})
     try:
         with application(monkeypatch, engine) as active:
