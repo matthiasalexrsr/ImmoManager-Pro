@@ -45,7 +45,7 @@ from backend.services.providers.teha_receive_contract import (
 )
 
 migration = importlib.import_module(
-    "backend.db.migrations.versions.l2a2b3c4d5e6_teha_receive_mapping_import"
+    "backend.db.migrations.proposals.l2a2b3c4d5e6_teha_receive_mapping_import"
 )
 
 
