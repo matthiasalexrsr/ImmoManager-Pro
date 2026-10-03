@@ -69,15 +69,16 @@ def statement_snapshot_hash(store, period):
     return checksum.hexdigest()
 
 
-def freeze(store, period, statements):
+def freeze(store, period, statements, *, actor_id: str | None = None):
     """Called exactly once by actual finalization, within its existing locks."""
     if family(period) is not None:
         raise StatementPartyIntegrityError("Ein vorhandenes Parteienoriginal darf nicht neu eingefroren werden.")
-    from .portfolio_scope import current_scope
-    captured = current_scope()
+    from .billing_statement_document_context_storage import capture_actor
+    actor_id = capture_actor(actor_id)
     prop = store.get_property(period.property_id)
     entries = {}
     verified_sources = {}
+    verified_contexts = set()
     for statement in statements:
         contract = store.get_contract(statement.contract_id)
         unit = store.get_unit(statement.unit_id)
@@ -93,6 +94,10 @@ def freeze(store, period, statements):
                     verified_sources[source_period.id] = statement_snapshot_hash(store, source_period)
                 if verified_sources[source_period.id] != source.snapshot_hash:
                     raise StatementPartyIntegrityError("Die belegte Korrekturquelle weicht vom gespeicherten Original ab.")
+                if source_period.id not in verified_contexts:
+                    from .billing_statement_document_context_storage import validate_stored_document_contexts
+                    validate_stored_document_contexts(store, source_period, verified_period_hash=verified_sources[source_period.id])
+                    verified_contexts.add(source_period.id)
         tenant_id = source_party.tenant_id if source_party is not None else contract.tenant_id
         if hasattr(store, "db"):
             from ..db.orm_models import TenantORM
@@ -106,7 +111,7 @@ def freeze(store, period, statements):
         entries[statement.id] = StatementParty(statement_id=statement.id, period_id=period.id,
             revision=statement.revision, portfolio_id=prop.portfolio_id, property_id=prop.id,
             unit_id=unit.id, contract_id=contract.id, tenant_id=tenant_id, identity=PartyIdentity.model_validate(identity),
-            captured_at=datetime.now(timezone.utc), captured_by=captured.user_id if captured else None,
+            captured_at=datetime.now(timezone.utc), captured_by=actor_id,
             basis="source_original" if source_party is not None else "contract_at_correction_finalization" if source else "contract_at_finalization",
             source_statement_id=source.id if source else None, source_snapshot_hash=source.snapshot_hash if source else None)
     return {**deepcopy(period.owner_cost_share), KEY: StatementParties(schema_version=SCHEMA, statements=entries).model_dump(mode="json")}

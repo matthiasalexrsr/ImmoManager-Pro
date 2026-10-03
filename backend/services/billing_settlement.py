@@ -10,6 +10,7 @@ Credits remain available; this ledger never claims that a refund was paid.
 import hashlib
 import json
 from calendar import monthrange
+from collections.abc import Mapping
 from contextlib import contextmanager
 from copy import deepcopy
 from datetime import date, datetime, timezone
@@ -23,6 +24,7 @@ from ..models import BillingPeriod, BillingSettlement, CostItem, Receivable, Uti
 from ..storage import NotFoundError, ValidationError
 from .billing_originals import IMMUTABLE as IMMUTABLE
 from .billing_originals import snapshot_hash as snapshot_hash
+from .billing_statement_document_contexts import ReviewedIssuer
 from .payments import FinancialConsistencyError, _memory_lock
 from .rent_ledger import CENT, charge_total, contract_ledger_inputs, month_date
 
@@ -183,6 +185,7 @@ def _types(collection: str):
 def _write(store, collection: str, model):
     """Internal writes only, within atomic_billing. Public CRUD cannot bypass guards."""
     if collection == "billing_periods":
+        from .billing_statement_document_contexts import DocumentContextIntegrityError, protect_period_document_contexts
         from .billing_statement_parties import StatementPartyIntegrityError, protect_period_original
         try:
             existing = store.get_billing_period(model.id)
@@ -191,7 +194,8 @@ def _write(store, collection: str, model):
         else:
             try:
                 protect_period_original(existing, model)
-            except StatementPartyIntegrityError as error:
+                protect_period_document_contexts(existing, model)
+            except (StatementPartyIntegrityError, DocumentContextIntegrityError) as error:
                 raise FinancialConsistencyError(str(error)) from error
     if hasattr(store, "db"):
         orm_type, read_type = _types(collection)
@@ -350,10 +354,21 @@ def calculation_hash(store, period) -> str:
     return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 
-def finalize_period(store, period_id: str, preflight) -> BillingPeriod:
+def finalize_period(store, period_id: str, preflight, *,
+                    reviewed_issuers: Mapping[str, ReviewedIssuer] | None = None,
+                    actor_id: str | None = None) -> BillingPeriod:
+    from .billing_statement_document_context_storage import capture_actor, capture_finalization_context
+    from .billing_statement_document_contexts import DocumentContextIntegrityError
+
     with atomic_billing(store, period_id):
+        try:
+            actor_id = capture_actor(actor_id)
+        except DocumentContextIntegrityError as error:
+            raise FinancialConsistencyError(str(error)) from error
         period = store.get_billing_period(period_id)
         if period.status in {"finalized", "delivered"}:
+            if reviewed_issuers:
+                raise FinancialConsistencyError("Finalisierte Originale können keine neue Ausstellerprüfung erhalten; eine neue Korrekturfassung verwenden.")
             return period
         assert_mutable(period)
         if period.status not in {"draft", "review"}:
@@ -384,8 +399,11 @@ def finalize_period(store, period_id: str, preflight) -> BillingPeriod:
         from .billing_statement_parties import StatementPartyIntegrityError
         from .billing_statement_party_storage import freeze
         try:
-            owner = freeze(store, period, statements)
-        except StatementPartyIntegrityError as error:
+            owner = freeze(store, period, statements, actor_id=actor_id)
+            transient = period.model_copy(update={"owner_cost_share": owner})
+            owner = capture_finalization_context(store, transient, statements,
+                reviewed_issuers=reviewed_issuers, actor_id=actor_id)
+        except (StatementPartyIntegrityError, DocumentContextIntegrityError) as error:
             raise FinancialConsistencyError(str(error)) from error
         digest = snapshot_hash(statements, owner)
         for stmt in statements:

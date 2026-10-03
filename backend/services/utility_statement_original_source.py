@@ -273,7 +273,18 @@ class _Reader:
                 digest = snapshot_hash(list(self.rows(identifier)), period.owner_cost_share)
             self.verified[identifier] = digest
             rows = statements()
-            if family(period) is None:
+            from .billing_statement_document_contexts import DocumentContextIntegrityError, document_context_family
+            try:
+                contexts = document_context_family(period)
+            except DocumentContextIntegrityError as error:
+                raise UtilityOriginalIntegrityError("Die gespeicherte Dokumentkontextquelle ist beschädigt oder unvollständig.") from error
+            if contexts is not None:
+                from .billing_statement_document_context_storage import validate_stored_document_contexts
+                try:
+                    validate_stored_document_contexts(self.store, period, statements=rows, verified_period_hash=digest)
+                except DocumentContextIntegrityError as error:
+                    raise UtilityOriginalIntegrityError("Die gespeicherte Dokumentkontextquelle ist beschädigt oder unvollständig.") from error
+            elif family(period) is None:
                 for _row in rows:
                     pass
             else:
