@@ -150,7 +150,9 @@ def reset_writer_race(box, monkeypatch):
         sql = statement.lstrip().upper()
         if sql.startswith("LOCK TABLE "):
             reset_locks.append(statement)
-        if sql.startswith("BEGIN IMMEDIATE") or sql.startswith('LOCK TABLE "PROPERTIES" IN EXCLUSIVE MODE'):
+        if (sql.startswith("BEGIN IMMEDIATE")
+                or sql.startswith('LOCK TABLE "PROPERTIES" IN EXCLUSIVE MODE')
+                or sql.startswith('LOCK TABLE "OPERATIONAL_LOCK" IN EXCLUSIVE MODE NOWAIT')):
             reset_lock_attempt.set()
             reset_progress.set()
         if sql.startswith(("INSERT ", "UPDATE ", "DELETE ")):
