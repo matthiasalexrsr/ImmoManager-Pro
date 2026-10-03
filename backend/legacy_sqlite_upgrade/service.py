@@ -180,11 +180,11 @@ def _write(directory, value, *, maximum_metadata):
     write_json(directory / "operation.json", value)
 
 
-def _selected(args, root):
+def _selected(args, root, *, limits=None, deadline=None):
     from backend.recovery import _plan
     from scripts.private_server_backup import _safe_path
     args.data_dir = root
-    plan = _plan(args)
+    plan = _plan(args, limits=limits, deadline=deadline)
     _safe_path(plan.database)
     return plan
 
