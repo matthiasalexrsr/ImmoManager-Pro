@@ -57,6 +57,8 @@ def _sqlite_url(db_path):
 
 def _load_env_file(path):
     """Load a simple KEY=VALUE file without overriding existing env vars."""
+    from .runtime_environment import runtime_value
+
     if not os.path.isfile(path):
         return
     try:
@@ -67,7 +69,7 @@ def _load_env_file(path):
                     continue
                 key, value = line.split("=", 1)
                 key = key.strip()
-                value = value.strip().strip('"').strip("'")
+                value = runtime_value(value)
                 if key and key not in os.environ:
                     os.environ[key] = value
     except OSError:

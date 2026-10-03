@@ -4,6 +4,7 @@ This module deliberately imports no application settings during launcher setup.
 """
 import errno
 import importlib
+import json
 import os
 import re
 import stat
@@ -20,6 +21,28 @@ _locks: dict[str, Any] = {}
 
 class RuntimeConfigurationError(RuntimeError):
     pass
+
+
+def runtime_value(raw):
+    """Decode our simple env value without dropping literal boundary quotes."""
+    value = raw.strip()
+    if len(value) >= 2 and value[0] == value[-1] == '"':
+        try:
+            decoded = json.loads(value)
+            if isinstance(decoded, str):
+                return decoded
+        except ValueError:
+            pass  # Existing simply quoted paths need not be JSON strings.
+        return value[1:-1]
+    if len(value) >= 2 and value[0] == value[-1] == "'":
+        return value[1:-1]
+    return value
+
+
+def _serialized_value(value):
+    if value != value.strip() or any(char in value for char in "'\"\\") or any(ord(char) < 32 for char in value):
+        return json.dumps(value, ensure_ascii=False)
+    return value
 
 
 def _regular(path, missing_ok=False):
@@ -85,7 +108,7 @@ def persist_default(config_file, key, proposed, *, persist_existing=False):
         with _locked(path):
             info = _regular(path, missing_ok=True)
             existing = path.read_text(encoding="utf-8") if info else ""
-            matches = [line.partition("=")[2].strip().strip('"').strip("'")
+            matches = [runtime_value(line.partition("=")[2])
                        for line in existing.splitlines() if line.partition("=")[0].strip().upper() == key]
             if len(matches) > 1:
                 raise RuntimeConfigurationError("Doppelte Runtime-Schlüssel. Konfigurationsdatei lokal bereinigen.")
@@ -96,7 +119,7 @@ def persist_default(config_file, key, proposed, *, persist_existing=False):
                 os.environ[key] = matches[0]
                 return matches[0]
             lines = [line for line in existing.splitlines() if line.partition("=")[0].strip().upper() != key]
-            lines.append(key + "=" + proposed)
+            lines.append(key + "=" + _serialized_value(proposed))
             # The exclusive file has a verified private ACL before secret bytes.
             from scripts.private_server_backup import protected_new_file
             with protected_new_file(temporary) as output:
@@ -135,7 +158,7 @@ def persist_selected_values(config_file, values):
             missing = []
             # Prove the whole bundle before creating a temporary secret file.
             for key, value in values.items():
-                matches = [line.partition("=")[2].strip().strip('"').strip("'")
+                matches = [runtime_value(line.partition("=")[2])
                            for line in lines if line.partition("=")[0].strip().upper() == key]
                 if len(matches) > 1 or (matches and matches[0] != value):
                     raise RuntimeConfigurationError(
@@ -143,7 +166,7 @@ def persist_selected_values(config_file, values):
                         "Konfiguration lokal prüfen; Erstinitialisierung ersetzt keine bestehenden Schlüssel."
                     )
                 if not matches:
-                    missing.append(key + "=" + value)
+                    missing.append(key + "=" + _serialized_value(value))
             if not missing:
                 return
             from scripts.private_server_backup import protected_new_file

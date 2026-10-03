@@ -157,3 +157,23 @@ def test_normal_default_refuses_mixed_case_duplicate_before_using_key(tmp_path, 
         persist_default(target, KEY, "synthetic-replacement")
     assert KEY not in os.environ
     assert target.read_bytes() == original
+
+
+@pytest.mark.parametrize("value", ["synthetic-signer-ending'", '"synthetic-signer"',
+    " leading and trailing signer ", r"synthetic\\signer\path", "synthetic-signer-é\tquoted'"])
+def test_selected_bundle_actual_loader_and_settings_roundtrip(tmp_path, monkeypatch, value):
+    from backend.__main__ import _load_env_file
+    from backend.settings import Settings
+
+    for name in list(os.environ):
+        if name.lower() == "jwt_secret_key":
+            monkeypatch.delenv(name)
+    target = tmp_path / ".env"
+    persist_selected_values(target, {"JWT_SECRET_KEY": value})
+    original = target.read_bytes()
+    _load_env_file(target)
+    assert os.environ["JWT_SECRET_KEY"] == value
+    assert Settings(_env_file=None).jwt_secret_key == value
+    persist_selected_values(target, {"JWT_SECRET_KEY": value})
+    assert target.read_bytes() == original
+    monkeypatch.delenv("JWT_SECRET_KEY")

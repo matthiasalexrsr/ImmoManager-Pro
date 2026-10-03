@@ -1,6 +1,7 @@
 """Real owned CLI lifetime/bootstrap, stopped at the actual app import boundary."""
 
 import base64
+import hashlib
 import json
 import os
 import subprocess
@@ -18,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[2]
 KEY = base64.urlsafe_b64encode(b"synthetic-launcher-key".ljust(32, b"0")).decode()
 OTHER_KEY = base64.urlsafe_b64encode(b"synthetic-wrong-key".ljust(32, b"0")).decode()
 PROBE = r'''
-import json, os, runpy, sys
+import hashlib, json, os, runpy, sys
 from pathlib import Path
 class AppBoundary:
     def find_spec(self, fullname, path=None, target=None):
@@ -40,6 +41,8 @@ class AppBoundary:
                 result = {"load": "authenticated", "unknown_preserved": value.get("unknown") == {"exact": "future field"}}
             except ConfigStoreError as error:
                 result = {"load": error.code}
+            if os.environ.get("REPORT_SIGNING_KEY_DIGEST") == "yes":
+                result["signer_sha256"] = hashlib.sha256(settings.jwt_secret_key.encode()).hexdigest()
             print("APP_BOUNDARY " + json.dumps(result))
             raise SystemExit(73)
 sys.meta_path.insert(0, AppBoundary())
@@ -63,8 +66,11 @@ def environment(directory, *, key=KEY):
     return {**inherited, **values}
 
 
-def launch(directory, *, initialize=False, key=KEY, keyring=None, without_external_keys=False):
+def launch(directory, *, initialize=False, key=KEY, keyring=None, without_external_keys=False, signer=None):
     values = environment(directory, key=key)
+    if signer is not None:
+        values["JWT_SECRET_KEY"] = signer
+        values["REPORT_SIGNING_KEY_DIGEST"] = "yes"
     if keyring is not None:
         values["ENCRYPTION_KEY"] = ""
         values["ENCRYPTION_KEYRING"] = json.dumps({"managed": keyring})
@@ -142,6 +148,18 @@ def test_wrong_key_explicit_initialization_refuses_before_actual_app_without_rep
     assert "encrypted_state_unreadable" in result.stdout
     assert path.read_bytes() == original
     assert (directory / ".env").read_bytes() == original_configuration
+
+
+def test_actual_restart_keeps_signer_with_spaces_quotes_and_backslashes(tmp_path):
+    directory = tmp_path / "quoted-signer"
+    signer = " synthetic-signer\\path-'quoted'\" "
+    expected = hashlib.sha256(signer.encode()).hexdigest()
+    first = boundary(launch(directory, initialize=True, signer=signer))
+    assert first["load"] == "authenticated" and first["signer_sha256"] == expected
+    original = (directory / ".env").read_bytes()
+    second = boundary(launch(directory, signer=signer, without_external_keys=True))
+    assert second["load"] == "authenticated" and second["signer_sha256"] == expected
+    assert (directory / ".env").read_bytes() == original
 
 
 def test_actual_held_installation_blocks_explicit_bootstrap_before_configuration_or_state(tmp_path):
