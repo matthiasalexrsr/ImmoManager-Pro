@@ -1,5 +1,6 @@
 """Real SQL authentication and encrypted runtime HTTP composition."""
 
+import pytest
 from sqlalchemy import text
 
 from backend import auth
@@ -10,6 +11,7 @@ from backend.tests.test_integration_private_boundary import private_manager as p
 from backend.tests.test_portfolio_access_http import access_http as access_http
 
 
+@pytest.mark.parametrize("access_http", ["sql"], indirect=True)
 def test_real_sql_login_cipher_cas_and_missing_state_refuse_before_provider(access_http, private_manager, tmp_path, monkeypatch):
     client, _, _, _, *_ = access_http
     path = tmp_path / "explicit-native-integrations.json"

@@ -82,3 +82,34 @@ as 20 completely new distinct cases. Processes closed normally.
 The subsequent genuine SQL-authenticated route and fresh full recovered app
 gates are recorded separately in
 `I_ENCRYPTED_RUNTIME_NATIVE_ACCEPTANCE_HANDOFF_20261003.md`.
+
+## Final codec composition with the actual backup parser
+
+The above20-case gate verified the then-current launcher/Settings codec only.
+Further independent review found that ordinary `#` comments and some JSON
+control escapes changed values in the actual backup dotenv parser; the JSON
+decoder also reinterpreted legacy simply quoted Windows paths. Final product
+`b74c25f` writes risky values using recognized dotenv double-quote escapes and
+a fixed version comment. Only this explicit comment permits escaped decoding
+by the shared launcher/persistence helper; old simply quoted paths stay literal.
+Recovery's actual `dotenv_values(interpolate=False)` needs no new secret format
+or parser patch. Dollar expressions stay literal. Physical records split only
+on newline so quoted Unicode separators do not become fake configuration lines.
+
+Actual26-case gate on `b74c25f`: **25 PASS / 1 FAIL, 28.75 seconds**, **29.81
+outer**, hard90 seconds. All nine actual dotenv/loader/Settings roundtrips,
+alias/conflict/atomicity/legacy path cases and both fresh restart cases passed.
+The signer child now separately selects actual `recovery._plan` and compares
+its signer hash with the actual runtime hash across restart. The existing
+two-process canonical key-pair assertion caught one unnecessary empty record
+from splitting a newly absent file; its assertion was not relaxed.
+
+`1719abb` removes only the final newline split sentinel through a shared helper,
+preserving true interior records and Unicode values. Exactly that two-process
+case plus the nine actual codec roundtrips were rechecked: **10 PASS / 5.12
+seconds**, **6.71 outer**, hard60 seconds, no skips. All children closed normally.
+Together these establish **26 different positive focused cases**, not a single
+all26 green run and not 20+25+10 newly different cases. Ruff/diff checks passed.
+The earlier JSON-codec evidence is retained as historical evidence, not the
+final backup-compatible implementation. Other actual app/SQL/fullarchive gates
+remain in their separate handoff; no private key was changed or transmitted.
