@@ -301,6 +301,42 @@ def test_legacy_optional_selection_passes_exact_profile_and_deadline(tmp_path, m
     assert observed[-1] == {"limits": None, "deadline": None}
 
 
+@pytest.mark.parametrize("command", ["upgrade", "status", "rollback"])
+def test_each_legacy_command_passes_its_loaded_profile_before_any_sql(tmp_path, monkeypatch, command):
+    from backend.legacy_sqlite_upgrade import service
+
+    original = source_bytes(".env")
+    (tmp_path / ".env").write_bytes(original)
+    args = arguments(tmp_path)
+    args.offline = True
+    limits = replace(RecoveryLimits(), metadata_bytes=len(original) - 1, timeout_seconds=2)
+    actual_select = service._selected
+    observed = []
+
+    @contextmanager
+    def pure_lease(directory):
+        assert directory == tmp_path
+        yield directory
+
+    def observed_selection(values, root, **options):
+        assert options["limits"] is limits
+        assert time.monotonic() < options["deadline"] <= started + 2
+        observed.append(options)
+        return actual_select(values, root, **options)
+
+    monkeypatch.setattr(service, "installation_lease", pure_lease)
+    monkeypatch.setattr(service, "_selected", observed_selection)
+    started = time.monotonic()
+    with pytest.raises(RecoveryError, match="Größenbudget"):
+        if command == "upgrade":
+            service.upgrade(args, "synthetic-unused-passphrase", limits=limits)
+        else:
+            getattr(service, command)(args, limits=limits)
+    assert len(observed) == 1
+    assert (tmp_path / ".env").read_bytes() == original
+    assert sorted(path.name for path in tmp_path.iterdir()) == [".env"]
+
+
 def test_recovery_backup_cli_passes_loaded_profile_and_remaining_archive_time(tmp_path, monkeypatch, capsys):
     (tmp_path / ".env").write_bytes(source_bytes(".env"))
     profile = tmp_path / "capacity.json"

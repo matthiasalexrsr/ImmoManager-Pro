@@ -202,7 +202,7 @@ def upgrade(args, password: str, *, limits=None, _checkpoint=lambda phase: None)
     with installation_lease(args.data_dir) as root:
         limits = _limits(args, limits)
         deadline = time.monotonic() + limits.timeout_seconds
-        plan = _selected(args, root)
+        plan = _selected(args, root, limits=limits, deadline=deadline)
         from sqlalchemy import create_engine
         from sqlalchemy.pool import NullPool
 
@@ -318,7 +318,7 @@ def status(args, *, limits=None):
     with installation_lease(args.data_dir) as root:
         limits = _limits(args, limits)
         deadline = time.monotonic() + limits.timeout_seconds
-        plan = _selected(args, root)
+        plan = _selected(args, root, limits=limits, deadline=deadline)
         _, receipt = _receipt(root, args.operation_id, maximum_metadata=limits.manifest_bytes)
         if (str(plan.database) != receipt["database"] or
                 [plan.database.stat().st_dev, plan.database.stat().st_ino] != receipt["database_identity"]):
@@ -343,7 +343,7 @@ def rollback(args, *, limits=None, _checkpoint=lambda phase: None):
     with installation_lease(args.data_dir) as root:
         limits = _limits(args, limits)
         deadline = time.monotonic() + limits.timeout_seconds
-        plan = _selected(args, root)
+        plan = _selected(args, root, limits=limits, deadline=deadline)
         directory, receipt = _receipt(root, args.operation_id, maximum_metadata=limits.manifest_bytes)
         snapshot = directory / "original.sqlite"
         if (str(plan.database) != receipt["database"] or
