@@ -86,7 +86,7 @@ def persist_default(config_file, key, proposed, *, persist_existing=False):
             info = _regular(path, missing_ok=True)
             existing = path.read_text(encoding="utf-8") if info else ""
             matches = [line.partition("=")[2].strip().strip('"').strip("'")
-                       for line in existing.splitlines() if line.startswith(key + "=")]
+                       for line in existing.splitlines() if line.partition("=")[0].strip().upper() == key]
             if len(matches) > 1:
                 raise RuntimeConfigurationError("Doppelte Runtime-Schlüssel. Konfigurationsdatei lokal bereinigen.")
             if matches and matches[0] == proposed:
@@ -95,7 +95,7 @@ def persist_default(config_file, key, proposed, *, persist_existing=False):
             if matches and matches[0] and matches[0] != "dev-secret-key-change-in-production" and (not persist_existing or not current):
                 os.environ[key] = matches[0]
                 return matches[0]
-            lines = [line for line in existing.splitlines() if not line.startswith(key + "=")]
+            lines = [line for line in existing.splitlines() if line.partition("=")[0].strip().upper() != key]
             lines.append(key + "=" + proposed)
             # The exclusive file has a verified private ACL before secret bytes.
             from scripts.private_server_backup import protected_new_file
@@ -136,7 +136,7 @@ def persist_selected_values(config_file, values):
             # Prove the whole bundle before creating a temporary secret file.
             for key, value in values.items():
                 matches = [line.partition("=")[2].strip().strip('"').strip("'")
-                           for line in lines if line.partition("=")[0].strip() == key]
+                           for line in lines if line.partition("=")[0].strip().upper() == key]
                 if len(matches) > 1 or (matches and matches[0] != value):
                     raise RuntimeConfigurationError(
                         "Ausgewählte und gespeicherte Schlüssel unterscheiden sich. "
