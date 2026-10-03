@@ -47,3 +47,27 @@ Schemaaktivierung verlangt separat eingefrorenes L2, M2-Katalogschutz,
 vollständige Registry, expliziten Upgrade, DDLfreien Start sowie vollständige
 Sicherung/Wiederherstellung. Ein einfacher Operationslauf ersetzt diese Kette
 nicht. TEHA erhält eine eigene op-/zielgebundene Unit, keinen Notificationbeleg.
+
+## Tatsächlich ausgeführte erste Gates
+
+Auf613a7b9: 43 reine Kandidaten-/PG-Fixtureguardfälle PASS in0,76s,
+hard30/Exit0; sie verbinden sich mit keiner Datenbank. Anschließend die drei
+vorgesehenen echten SQLUser-/Sid-Preregistrierungsfälle PASS in8,52s,
+hard45/Exit0. Alle Prozesse beendet. Legacytoken, falscher Actor,
+unregistrierte nominale Fälschungen und die tatsächlich fehlende INTERNAL-
+Registrierung verweigern Read-DML. Berichte liegen unter
+`artifacts/NOTIFICATION_INBOX_PURE_HINT_FIXTURE_20261004.xml` und
+`artifacts/NOTIFICATION_INBOX_NATIVE_PREREGISTRATION_613a7b9.xml`.
+
+Danach wird nur die zentrale INTERNAL-Klassifikation ergänzt. Kein Router-
+Write, Hintschalter, M2-Head, aktuelles Laufzeitschema oder Vorschauupdate wird
+damit aktiviert. Der Preregistrierungstest gehört ab jetzt zum dokumentierten
+vorherigen Zustand und wird nicht durch künstliches Entfernen des realen
+Anschlusses wiederholt. Positive Transaktionsevidenz folgt erst im nächsten
+gezielten Gate.
+
+Die historische Preregistrierungsfunktion wird aus der aktiven Testsuite
+entfernt: sie fordert ausdrücklich einen inzwischen überholten Rootzustand.
+Quelle613a7b9 und tatsächlicher XMLbeleg bleiben nachvollziehbar; die aktuellen
+Positivtests verlangen unverändert die echte zentrale Registrierung. So bleibt
+die Gesamtsuite ausführbar, ohne eine fehlende Registrierung vorzutäuschen.

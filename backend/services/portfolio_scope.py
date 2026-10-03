@@ -80,6 +80,7 @@ INTERNAL = frozenset(
         "auth_refresh_tokens",
         "user_preferences",
         "form_drafts",  # Each operation explicitly binds the freshly checked actor.
+        "notification_read_states",  # Actor/notification pair is bound by the owned single-read transaction.
         "login_attempts",
         "revoked_tokens",
         "audit_logs",

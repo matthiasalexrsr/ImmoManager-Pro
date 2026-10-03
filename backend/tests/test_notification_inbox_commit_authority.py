@@ -257,17 +257,6 @@ def test_nominal_constructor_subclass_and_unregistered_forges_are_denied(read_in
     assert _read_rows(box) == []
 
 
-def test_pre_registration_is_closed_before_native_read_dml(read_installation):
-    assert TABLE not in writer.INTERNAL, "Pre-registration node only; do not remove real Root registration"
-    box = read_installation
-    _insert(box, [_notice("notice")])
-    with pytest.raises(HTTPException) as denied:
-        _commit(box, "owner")
-    assert denied.value.status_code == 503
-    assert denied.value.detail["code"] == "inbox_commit_registration_unavailable"
-    assert _read_rows(box) == []
-
-
 @pytest.mark.parametrize("model", [AuthSetupORM, OperationalLockORM])
 def test_missing_existing_singleton_is_not_seeded(read_installation, model):
     _registered()
