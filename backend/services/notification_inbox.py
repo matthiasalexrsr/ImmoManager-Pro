@@ -23,11 +23,12 @@ from .notification_inbox_types import (
     NotificationInboxItem,
     NotificationReadResult,
 )
+from .notification_inbox_read_support import notification_read_subject_hint
 from .notification_inbox_validation import (
     InboxIntegrityError,
     validate_notification_inbox_schema,
 )
-from .portfolio_scope import AccessScope, current_scope, scope_from_user, scoped_clause
+from .portfolio_scope import RESOURCE_ALIASES, AccessScope, current_scope, scope_from_user, scoped_clause
 from .tenancy_workflow import decode_cursor, encode_cursor
 
 _AUTHORITY_MODULE = "backend.services.notification_inbox_commit_authority"
@@ -217,6 +218,7 @@ def _page(connection, principal, query, point):
     statement = select(
         table.c.id, table.c.notification_type, table.c.title, table.c.content,
         table.c.severity, table.c.entity_type, table.c.entity_id, table.c.created_at, read_at,
+        table.c.status.label("source_status"),
     ).where(_eligibility(table, principal, query), _status(table, principal, query))
     day, identifier, point = _order(connection, table, point)
     if point is not None:
@@ -281,9 +283,15 @@ def list_inbox(
                 [stamp.isoformat(timespec="microseconds") if stamp is not None else None, last["id"]],
             )
         return InboxPage(
-            # This internal release flag is UI metadata, never a write capability.
-            items=[NotificationInboxItem(**row, actions=InboxItemActions(
-                mark_read=read_actions_enabled
+            # A candidate hint never issues the operation's commit capability.
+            items=[NotificationInboxItem(**{key: value for key, value in row.items()
+                                           if key != "source_status"}, actions=InboxItemActions(
+                mark_read=read_actions_enabled and row["read_at"] is None
+                and notification_read_subject_hint(
+                    status=row["source_status"], unrestricted=principal.unrestricted,
+                    entity_type=row["entity_type"], entity_id=row["entity_id"],
+                    resource_aliases=RESOURCE_ALIASES,
+                )
             )) for row in selected], full_count=full,
             unread_count=unread, has_more=more, next_cursor=cursor,
         )

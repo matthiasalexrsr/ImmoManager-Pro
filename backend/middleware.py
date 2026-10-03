@@ -145,6 +145,7 @@ _WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 _METHOD_TO_ACTION = {"POST": "create", "PUT": "update", "PATCH": "patch", "DELETE": "delete"}
 _API_PATH_RE = re.compile(r"/api/v1/(\w[\w-]*)(?:/([^/]+))?")
 _SKIP_PATHS = {"/api/v1/auth/login", "/api/v1/auth/register", "/api/v1/auth/refresh"}
+_PERSONAL_NOTIFICATION_READ = re.compile(r"/api/v1/notifications/inbox/([^/]+)/read")
 
 
 class AuditMiddleware(BaseHTTPMiddleware):
@@ -189,6 +190,9 @@ class AuditMiddleware(BaseHTTPMiddleware):
                 entity_type = match.group(1).replace("-", "_")
                 entity_id = match.group(2) or "new"
                 action = _METHOD_TO_ACTION.get(request.method, request.method.lower())
+                personal_read = _PERSONAL_NOTIFICATION_READ.fullmatch(request.url.path)
+                if request.method == "POST" and personal_read:
+                    entity_type, entity_id, action = "notification_read_states", personal_read.group(1), "read"
 
                 user_id = getattr(request.state, "audit_user_id", None)
                 username = getattr(request.state, "audit_username", None)
@@ -240,6 +244,7 @@ class RBACWriteGuardMiddleware(BaseHTTPMiddleware):
             and request.url.path.startswith("/api/v1/")
             and request.url.path not in _RBAC_SKIP_PATHS
             and not (request.method == "POST" and re.fullmatch(r"/api/v1/auth/sessions/[^/]+/revoke", request.url.path))
+            and not (request.method == "POST" and _PERSONAL_NOTIFICATION_READ.fullmatch(request.url.path))
         ):
             role = self._get_user_role(request)
             from .permissions import may_write_resource
