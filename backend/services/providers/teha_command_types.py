@@ -68,7 +68,7 @@ class MappingSelection(StrictModel):
 class DocumentImportData(StrictModel):
     title: str = Field(min_length=1, max_length=500)
     document_date: date | None = None
-    document_type: str = Field(default="teha_document", min_length=1, max_length=100)
+    document_type: str = Field(default="teha_document", min_length=1)
     contract_id: str | None = Field(default=None, min_length=1, max_length=100)
     expected_contract_etag: str | None = Field(default=None, min_length=1, max_length=512)
 

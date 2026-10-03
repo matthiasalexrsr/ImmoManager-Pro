@@ -1,10 +1,11 @@
 """Persist explicit TEHA mappings and immutable local import receipts."""
 
 from alembic import op
-from sqlalchemy import select
+from sqlalchemy import inspect, select
 
-from backend.db.teha_receive_models import TEHA_RECEIVE_MODELS
+from backend.db.teha_receive_release_l2 import L2_TABLE_NAMES, frozen_l2_tables
 from backend.db.teha_receive_schema import (
+    TehaReceiveSchemaError,
     install_teha_receive_guards,
     validate_teha_receive_schema,
 )
@@ -18,12 +19,15 @@ def upgrade():
     connection = op.get_bind()
     if connection.dialect.name not in {"sqlite", "postgresql"}:
         raise RuntimeError("TEHA receive persistence supports SQLite and PostgreSQL")
-    if validate_teha_receive_schema(connection):
-        raise RuntimeError(
-            "TEHA receive family already exists; explicit reconciliation required"
+    present = set(inspect(connection).get_table_names()).intersection(L2_TABLE_NAMES)
+    if present:
+        label = "partial" if present != set(L2_TABLE_NAMES) else "already present"
+        raise TehaReceiveSchemaError(
+            "TEHA receive family " + label + "; explicit offline maintenance required; "
+            "see docs/TEHA_L2_MAINTENANCE_20261004.md"
         )
-    for model in TEHA_RECEIVE_MODELS:
-        model.__table__.create(connection)
+    for table in frozen_l2_tables():
+        table.create(connection)
     install_teha_receive_guards(connection)
 
 
@@ -31,14 +35,15 @@ def downgrade():
     connection = op.get_bind()
     if not validate_teha_receive_schema(connection):
         raise RuntimeError("TEHA receive family is absent")
-    for model in TEHA_RECEIVE_MODELS:
-        if connection.execute(select(model.__table__).limit(1)).first() is not None:
+    tables = frozen_l2_tables()
+    for table in tables:
+        if connection.execute(select(table).limit(1)).first() is not None:
             raise RuntimeError(
                 "Downgrade would erase TEHA mapping/import evidence; "
                 "retain a compatible full recovery"
             )
-    for model in reversed(TEHA_RECEIVE_MODELS):
-        model.__table__.drop(connection)
+    for table in reversed(tables):
+        table.drop(connection)
     if connection.dialect.name == "postgresql":
         connection.exec_driver_sql(
             "DROP FUNCTION IF EXISTS immo_teha_receive_immutable()"

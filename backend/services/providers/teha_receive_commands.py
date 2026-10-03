@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import hashlib
-import inspect
 from contextlib import contextmanager
 from datetime import datetime, timezone
-from importlib import import_module
 from types import SimpleNamespace
 from typing import Any, Iterable, cast
 from uuid import NAMESPACE_URL, uuid4, uuid5
@@ -31,6 +29,7 @@ from ...db.orm_models import (
 )
 from ...db.teha_receive_models import TehaExternalMappingORM, TehaImportReceiptORM
 from ...db.teha_receive_schema import (
+    TehaReceiveSchemaError,
     validate_identity_binding,
     validate_teha_receive_schema,
 )
@@ -73,37 +72,32 @@ from .teha_receive_contract import (
 )
 
 INTEGRATION_ID = "teha"
-_ROOT_COMMIT_AUTHORITY_MODULE = "backend.services.commit_authority"
+
+
+def _schema_unavailable() -> HTTPException:
+    return HTTPException(503, {
+        "code": "teha_l2_schema_requires_maintenance",
+        "message": "TEHA-Mapping- und Importbelege benötigen die ausdrücklich geprüfte L2-Einrichtung. Keine Daten wurden repariert.",
+        "maintenance_path": "docs/TEHA_L2_MAINTENANCE_20261004.md",
+    })
 
 
 def _commit_authority_unavailable() -> HTTPException:
-    return HTTPException(
-        503,
-        "Zentrale CommitAuthority ist noch nicht aktiviert. "
-        "TEHA-Schreibvorgang wurde vor Datenänderungen abgebrochen.",
-    )
+    return HTTPException(503, {
+        "code": "teha_write_unit_unavailable",
+        "message": "Die zentrale TEHA-Schreibeinheit ist noch nicht implementiert. Der Fachschreibvorgang wurde vor Datenänderungen abgebrochen.",
+    })
 
 
-def _require_root_commit_authority(authority: Any, actor_id: str) -> None:
-    """Accept only Root's exact authority type and Root-owned validator."""
-    try:
-        module = import_module(_ROOT_COMMIT_AUTHORITY_MODULE)
-    except ModuleNotFoundError as error:
-        if error.name != _ROOT_COMMIT_AUTHORITY_MODULE:
-            raise
-        raise _commit_authority_unavailable() from None
-    authority_type = getattr(module, "CommitAuthority", None)
-    validator = getattr(module, "validate_commit_authority", None)
-    if (
-        not isinstance(authority_type, type)
-        or type(authority) is not authority_type
-        or not inspect.isfunction(validator)
-        or validator.__module__ != _ROOT_COMMIT_AUTHORITY_MODULE
-        or validator.__name__ != "validate_commit_authority"
-    ):
-        raise _commit_authority_unavailable()
-    if validator(authority, actor_id) is not None:
-        raise _commit_authority_unavailable()
+def _require_root_commit_authority(_authority: Any, _actor_id: str) -> None:
+    """No positive contract exists: actor-only or Notification proofs cannot write.
+
+    A future Root unit must own the actual Session, transaction, database target,
+    operation and targets through commit. Checking a nominal Python type twice
+    cannot bind the independent Session below to such a unit. Do not dynamically
+    load or accept a proposed generic module while that real contract is absent.
+    """
+    raise _commit_authority_unavailable()
 
 
 def _now() -> datetime:
@@ -142,13 +136,11 @@ def _work(
     write_kind: str | None = None,
     commit_authority: Any = None,
 ):
+    if write:
+        _require_root_commit_authority(commit_authority, actor_id)
     if not hasattr(store, "db"):
         raise HTTPException(503, "Persistente TEHA-Mappingdatenbank erforderlich.")
     user, captured = _identity(actor_id, write_kind=write_kind if write else None)
-    if write:
-        # Root's typed authority contract is mandatory before the writer or any
-        # DML. The request-token fence below is supplemental, never equivalent.
-        _require_root_commit_authority(commit_authority, actor_id)
     require_fresh_request_authority(actor_id)
     bind = store.db.get_bind()
     db = Session(getattr(bind, "engine", bind), autoflush=False, expire_on_commit=False)
@@ -161,7 +153,7 @@ def _work(
                     auth._user_store._lock_management(db)
                     refresh_scope(captured)
             if not validate_teha_receive_schema(db.connection()):
-                raise HTTPException(503, "TEHA-Mappingfamilie ist nicht eingerichtet.")
+                raise _schema_unavailable()
             yield SimpleNamespace(store=active, db=db, captured=captured, user=user)
             refresh_scope(captured)
             latest = auth.get_user_by_id(actor_id)
@@ -183,6 +175,9 @@ def _work(
             if write:
                 _require_root_commit_authority(commit_authority, actor_id)
                 db.commit()
+        except TehaReceiveSchemaError:
+            db.rollback()
+            raise _schema_unavailable() from None
         except BaseException:
             db.rollback()
             raise
@@ -515,7 +510,10 @@ def _target_binding(unit, kind: str, target_id: str, portfolio_id: str, *, lock:
             statement = statement.with_for_update()
         return unit.db.scalar(statement)
 
-    local = {"portfolio_id": portfolio_id, "property_id": None, "unit_id": None}
+    local = {
+        "portfolio_id": portfolio_id, "property_id": None, "unit_id": None,
+        "tenant_id": None, "billing_period_id": None,
+    }
     if kind == "property":
         row = selected(PropertyORM, target_id)
         actual_portfolio = row.portfolio_id if row is not None else None
@@ -537,6 +535,8 @@ def _target_binding(unit, kind: str, target_id: str, portfolio_id: str, *, lock:
         local["property_id"] = parent.id
         if kind == "unit":
             local["unit_id"] = row.id
+        else:
+            local["billing_period_id"] = row.id
     elif kind == "user":
         grant_stmt = select(ResourcePortfolioORM).where(
             ResourcePortfolioORM.resource_type == "tenants",
@@ -548,6 +548,7 @@ def _target_binding(unit, kind: str, target_id: str, portfolio_id: str, *, lock:
         grant = unit.db.scalar(grant_stmt)
         row = selected(TenantORM, target_id)
         actual_portfolio = portfolio_id if grant is not None and row is not None else None
+        local["tenant_id"] = row.id if row is not None else None
     else:
         parent_values = unit.db.execute(
             select(TaskORM.property_id, TaskORM.unit_id).where(TaskORM.id == target_id)
@@ -562,6 +563,7 @@ def _target_binding(unit, kind: str, target_id: str, portfolio_id: str, *, lock:
             or parent is None
             or row.property_id != parent.id
             or row.unit_id != task_unit_id
+            or (task_unit_id is not None and parent_unit is None)
             or (
                 parent_unit is not None
                 and parent_unit.property_id != parent.id
@@ -606,6 +608,7 @@ def confirm_mapping(
     history=None,
     commit_authority: Any = None,
 ) -> dict[str, Any]:
+    _require_root_commit_authority(commit_authority, actor_id)
     identity = _opaque(payload.identity)
     if identity.kind == "document":
         raise HTTPException(422, "Dokumentidentitäten werden importiert, nicht als Mappingziel gespeichert.")
@@ -852,6 +855,7 @@ def _preview(
         local_binding,
         mapping_reference_sha,
     ) = _load_mapping(unit, payload, lock=lock)
+    mapping_target_binding = dict(local_binding)
     _, mapping_snapshot = _verified_source(
         actor_id,
         mapping_row.source_history_run_id,
@@ -942,7 +946,7 @@ def _preview(
                 "units", contract_unit.id, contract_unit.updated_at
             )
         local_binding = {
-            **local_binding,
+            "portfolio_id": local_binding["portfolio_id"],
             "property_id": property_id,
             "unit_id": unit_id,
             "contract_id": contract_id,
@@ -971,7 +975,7 @@ def _preview(
         task_data = payload.task
         assert task_data is not None
         local_binding = {
-            **local_binding,
+            "portfolio_id": local_binding["portfolio_id"],
             "property_id": property_id,
             "unit_id": unit_id,
             "contract_id": None,
@@ -1038,6 +1042,7 @@ def _preview(
         "mapping_generation": mapping_row.generation,
         "mapping_revision": mapping_row.revision,
         "mapping_reference_sha256": mapping_reference_sha,
+        "mapping_target_binding": mapping_target_binding,
         "mapping_sha256": mapping_sha,
         "mapping_selection_sha256": mapping_selection_sha,
         "target_etags": target_etags,
@@ -1113,16 +1118,20 @@ def _verify_receipt_target(unit, row, *, mapping_row=None) -> None:
         raise HTTPException(
             503, "TEHA-Importbeleg verweist auf ein fehlendes oder widersprüchliches Mapping."
         )
-    _, mapping_sha = _mapping_reference(mapping_row)
+    mapping_reference_value, mapping_sha = _mapping_reference(mapping_row)
     if row.mapping_sha256 != mapping_sha:
         raise HTTPException(
             503, "TEHA-Importbeleg und unveränderliche Mappingreferenz widersprechen sich."
         )
+    _, _, mapping_target_binding = _target_binding(
+        unit, mapping_row.kind, mapping_reference_value["target_id"],
+        mapping_row.portfolio_id, lock=False,
+    )
 
     if row.source_kind == "document":
         if not row.document_id or not row.document_version_id or not row.content_sha256:
             raise HTTPException(503, "TEHA-Dokumentbeleg ist unvollständig.")
-        document, binding = document_versions._document(
+        _document, binding = document_versions._document(
             unit.store, unit.db, row.document_id
         )
         version = document_versions._authorized_version(
@@ -1138,6 +1147,7 @@ def _verify_receipt_target(unit, row, *, mapping_row=None) -> None:
                 row,
                 version.metadata_snapshot,
                 mapping=mapping_row,
+                mapping_target_binding=mapping_target_binding,
             )
         except TehaImportEvidenceError:
             raise HTTPException(
@@ -1145,8 +1155,6 @@ def _verify_receipt_target(unit, row, *, mapping_row=None) -> None:
             ) from None
         for _ in document_versions.verified_blocks(unit.store, version):
             pass
-        if document.document_type != "teha_document":
-            raise HTTPException(503, "TEHA-Dokumenttyp wurde widersprüchlich gespeichert.")
         return
 
     if not row.task_id:
@@ -1154,27 +1162,9 @@ def _verify_receipt_target(unit, row, *, mapping_row=None) -> None:
     task = unit.db.get(TaskORM, row.task_id)
     if task is None:
         raise HTTPException(503, "TEHA-Aufgabenbeleg verweist auf eine fehlende Aufgabe.")
-    target_id = next(
-        getattr(mapping_row, name)
-        for name in (
-            "internal_property_id",
-            "billing_period_id",
-            "unit_id",
-            "tenant_id",
-            "task_id",
-        )
-        if getattr(mapping_row, name) is not None
-    )
-    _, _, local_binding = _target_binding(
-        unit,
-        mapping_row.kind,
-        target_id,
-        mapping_row.portfolio_id,
-        lock=False,
-    )
     if (
-        task.property_id != local_binding["property_id"]
-        or task.unit_id != local_binding["unit_id"]
+        task.property_id != mapping_target_binding["property_id"]
+        or task.unit_id != mapping_target_binding["unit_id"]
     ):
         raise HTTPException(503, "TEHA-Aufgabenbeleg und lokales Mappingziel widersprechen sich.")
 
@@ -1228,6 +1218,7 @@ def import_document(
     history=None,
     commit_authority: Any = None,
 ) -> dict[str, Any]:
+    _require_root_commit_authority(commit_authority, actor_id)
     identity = _opaque(payload.preview.identity)
     if (
         not isinstance(content, bytes)
@@ -1358,6 +1349,8 @@ def import_document(
             mapping_generation=current["mapping_generation"],
             mapping_sha256=current["mapping_sha256"],
             local_binding=binding,
+            mapping_target_binding=current["mapping_target_binding"],
+            document_type=cast(str, document.document_type),
         )
         version = document_versions.publish_generated_original(
             unit.store,
@@ -1396,7 +1389,8 @@ def import_document(
         unit.db.flush()
         try:
             validate_document_manifest(
-                version, receipt, version.metadata_snapshot, mapping=mapping_row
+                version, receipt, version.metadata_snapshot, mapping=mapping_row,
+                mapping_target_binding=current["mapping_target_binding"],
             )
         except TehaImportEvidenceError:
             raise HTTPException(503, "TEHA-Originalmanifest konnte nicht bestätigt werden.") from None
@@ -1413,6 +1407,7 @@ def import_technical_order(
     history=None,
     commit_authority: Any = None,
 ) -> dict[str, Any]:
+    _require_root_commit_authority(commit_authority, actor_id)
     identity = _opaque(payload.preview.identity)
     command_sha = digest(payload.model_dump(mode="json"))
     with _work(

@@ -6,11 +6,13 @@ import hashlib
 import json
 import sqlite3
 from collections.abc import Mapping
-from typing import Any, cast
+from typing import Any
 
-from sqlalchemy import Index, Table, UniqueConstraint, inspect
+from sqlalchemy import Index, UniqueConstraint, inspect
 
-from .teha_receive_models import TEHA_RECEIVE_MODELS, TEHA_RECEIVE_TABLES
+from .teha_receive_release_l2 import L2_TABLE_NAMES, frozen_l2_tables
+
+TEHA_RECEIVE_TABLES = L2_TABLE_NAMES
 
 
 class TehaReceiveSchemaError(RuntimeError):
@@ -81,7 +83,7 @@ def validate_teha_receive_schema(connection) -> bool:
 
         def columns(name):
             return {
-                row[1]
+                row[1]: not bool(row[3] or row[5])
                 for row in connection.execute(f'PRAGMA table_info("{name}")')
             }
 
@@ -126,7 +128,7 @@ def validate_teha_receive_schema(connection) -> bool:
         names = set(inspector.get_table_names())
 
         def columns(name):
-            return {row["name"] for row in inspector.get_columns(name)}
+            return {row["name"]: row["nullable"] for row in inspector.get_columns(name)}
 
         def primary(name):
             return tuple(
@@ -162,8 +164,7 @@ def validate_teha_receive_schema(connection) -> bool:
     if not family.issubset(names):
         raise TehaReceiveSchemaError("partial TEHA receive family")
 
-    for model in TEHA_RECEIVE_MODELS:
-        table = cast(Table, model.__table__)
+    for table in frozen_l2_tables():
         expected_unique = {
             tuple(column.name for column in item.columns)
             for item in table.constraints
@@ -184,7 +185,7 @@ def validate_teha_receive_schema(connection) -> bool:
             for item in table.foreign_key_constraints
         }
         if (
-            not set(table.columns.keys()).issubset(columns(table.name))
+            columns(table.name) != {column.name: column.nullable for column in table.columns}
             or primary(table.name)
             != tuple(column.name for column in table.primary_key.columns)
             or not expected_unique.issubset(uniques(table.name))

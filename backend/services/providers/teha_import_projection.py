@@ -28,13 +28,13 @@ def _id(value: str, name: str) -> str:
     return value
 
 
-def _text(value: str, name: str, *, maximum: int = 500) -> str:
+def _text(value: str, name: str, *, maximum: int | None = 500, trim: bool = True) -> str:
     if not isinstance(value, str):
         raise TypeError(f"{name} must be text")
-    value = value.strip()
+    value = value.strip() if trim else value
     if (
-        not value
-        or len(value) > maximum
+        not value.strip()
+        or (maximum is not None and len(value) > maximum)
         or any(ord(char) < 32 and char not in "\n\t" for char in value)
     ):
         raise ValueError(f"{name} is invalid")
@@ -136,7 +136,7 @@ def document_projection(
         _id(contract_id, "contract_id") if contract_id is not None else None
     )
     title = _text(title, "title")
-    document_type = _text(document_type, "document_type", maximum=100)
+    document_type = _text(document_type, "document_type", maximum=None, trim=False)
     provenance = ImportProvenance(
         history_run_id=evidence.history_run_id,
         external_identity_token=evidence.identity.token,

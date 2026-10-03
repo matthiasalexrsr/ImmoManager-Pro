@@ -9,6 +9,7 @@ from pydantic import ValidationError as PydanticValidationError
 
 from ..auth import require_role
 from ..config import settings
+from ..db.teha_receive_schema import TehaReceiveSchemaError
 from ..dependencies import get_store
 from ..routers.datev import PrivateDownloadResponse
 from ..services.integrations.history_types import HistoryError
@@ -44,6 +45,8 @@ def _call(operation, *args, **kwargs):
         raise HTTPException(error.status, {"code": error.code, "message": error.message}) from None
     except TehaReceiveError as error:
         raise HTTPException(409, {"code": error.code, "message": "TEHA-Historienbeleg ist nicht verwendbar."}) from None
+    except TehaReceiveSchemaError:
+        raise commands._schema_unavailable() from None
 
 
 router = APIRouter(
