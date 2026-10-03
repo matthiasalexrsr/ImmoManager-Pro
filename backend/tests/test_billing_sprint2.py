@@ -17,6 +17,9 @@ from backend.models import (
     UnitCreate,
 )
 from backend.routers import billing
+from backend.tests.test_billing_disputes import context as context
+from backend.tests.test_billing_disputes import draft_http as draft_http
+from backend.tests.test_utility_statement_draft_preview import generated
 
 
 def _clear_store() -> None:
@@ -223,23 +226,18 @@ def test_mark_delivered_rejects_draft_period():
 # Batch ZIP export
 # ---------------------------------------------------------------------------
 
-def test_export_zip_returns_zip():
-    period, *_ = _setup_full_scenario()
-    billing.generate_utility_statements(period.id)
-
-    response = billing.export_billing_period_zip(period.id)
-    assert response.media_type == "application/zip"
-    assert len(response.body) > 0
-    # Verify it's a valid ZIP (magic bytes PK\x03\x04)
-    assert response.body[:4] == b"PK\x03\x04"
+@pytest.mark.parametrize("draft_http", ["memory"], indirect=True)
+def test_export_zip_returns_zip(context):
+    statement = generated(context)
+    response = context["active"].client.get("/api/v1/billing/periods/" + statement["billing_period_id"] + "/export-zip", headers=context["headers"])
+    assert response.status_code == 200 and response.headers["content-type"] == "application/zip"
+    assert response.content[:4] == b"PK\x03\x04"
 
 
-def test_export_zip_rejects_empty_period():
-    period, *_ = _setup_full_scenario()
-    # Don't generate statements
-    with pytest.raises(HTTPException) as exc_info:
-        billing.export_billing_period_zip(period.id)
-    assert exc_info.value.status_code == 400
+@pytest.mark.parametrize("draft_http", ["memory"], indirect=True)
+def test_export_zip_rejects_empty_period(context):
+    response = context["active"].client.get("/api/v1/billing/periods/" + context["period"]["id"] + "/export-zip", headers=context["headers"])
+    assert response.status_code == 400
 
 
 # ---------------------------------------------------------------------------

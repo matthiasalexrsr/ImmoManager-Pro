@@ -1013,10 +1013,13 @@ def import_cost_item_from_ocr(
 
 
 def _utility_source_call(operation, *args):
+    from ..services.utility_statement_original_source import UtilityPreviewEmptyError
     try:
         return operation(store, *args)
     except NotFoundError as error:
         raise HTTPException(404, "Die Abrechnungsquelle ist nicht verfügbar.") from error
+    except UtilityPreviewEmptyError as error:
+        raise HTTPException(400, "Keine generierten Einzelabrechnungen für die Vorschau vorhanden.") from error
     except ValueError as error:
         raise HTTPException(409, "Die ursprüngliche Abrechnungsquelle ist beschädigt oder nicht eindeutig finalisiert.") from error
     except ImportError as error:
@@ -1036,11 +1039,12 @@ def download_utility_statement_pdf(statement_id: str, actor_id: str | None = Non
         from ..services.utility_statement_pdf import prepare_pdf_preview
         return prepare_pdf_preview(active, identifier, actor_id)
     content, source = _utility_source_call(prepare, statement_id, actor_id)
+    draft = source.schema_version == "utility-statement-draft-source/1"
     return RawResponse(content, media_type="application/pdf", headers={
         "Content-Disposition": f'attachment; filename="statement_{statement_id}.pdf"',
         "Cache-Control": "private, no-store", "Vary": "Authorization", "X-Content-SHA256": hashlib.sha256(content).hexdigest(),
-        "X-Utility-Source-SHA256": source.source_digest, "X-Utility-Original-SHA256": source.statement_original["snapshot_hash"],
-        "X-Utility-Render-Profile": source.render_profile, "X-Utility-Preview": "checked-derivation",
+        "X-Utility-Source-SHA256": source.source_digest, **({} if draft else {"X-Utility-Original-SHA256": source.statement_original["snapshot_hash"]}),
+        "X-Utility-Render-Profile": source.render_profile, "X-Utility-Preview": "draft-derivation" if draft else "checked-derivation",
     })
 
 

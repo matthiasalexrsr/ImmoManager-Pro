@@ -135,6 +135,8 @@ def test_actual_two_corrections_verify_complete_ancestral_financial_originals(co
     assert [link["revision"] for link in source["source_chain"]] == [2, 1]
     assert all(link["original_party"]["identity"]["full_name"] == "Synthetic occupant 0" for link in source["source_chain"])
     assert source["original_party"]["identity"]["full_name"] == "Synthetic occupant 0"
+    member = get(context, selected, headers=context["active"].headers(context["active"].member))
+    assert member.status_code == 200 and member.json() == source, member.text
     sibling = next(row for row in statements if row["billing_period_id"] == original["billing_period_id"] and row["id"] != original["id"])
     # Independent native corruption of an unselected old-period sibling must
     # invalidate even a valid-looking newest statement/source cache.
@@ -170,7 +172,7 @@ def test_actual_legacy_is_explicit_unproved_and_draft_or_foreign_actor_rejected(
     generated = context["generate"]()
     assert generated.status_code == 201, generated.text
     selected = next(row for row in generated.json() if row["contract_id"] == context["leases"][0]["id"])
-    assert_rejected(context, selected)
+    assert get(context, selected).status_code == 409
     # Actual generated originals in an explicit pre-party-version fixture;
     # finalization never infers a past identity for these historical rows.
     with scope_context(None), billing_settlement.atomic_billing(active.store, context["period"]["id"]):

@@ -17,11 +17,17 @@ from .billing_statement_parties import FROZEN_BINDING, StatementParty, family, p
 SCHEMA: Literal["utility-statement-original-source/1"] = "utility-statement-original-source/1"
 PROFILE: Literal["utility-statement-pdf-preview/1"] = "utility-statement-pdf-preview/1"
 UNPROVED: Literal["historical_party_unproved"] = "historical_party_unproved"
+DRAFT_SCHEMA: Literal["utility-statement-draft-source/1"] = "utility-statement-draft-source/1"
+DRAFT_PROFILE: Literal["utility-statement-draft-pdf-preview/1"] = "utility-statement-draft-pdf-preview/1"
 MUTABLE = {"status", "delivery_status", "delivered_at", "delivery_channel", "updated_at"}
 SHA = r"^[0-9a-f]{64}$"
 
 
 class UtilityOriginalIntegrityError(ValueError):
+    pass
+
+
+class UtilityPreviewEmptyError(UtilityOriginalIntegrityError):
     pass
 
 
@@ -130,6 +136,67 @@ def validate_source(value):
         raise UtilityOriginalIntegrityError("Die geprüfte Abrechnungsquelle ist beschädigt oder unvollständig.") from error
 
 
+class UtilityStatementDraftSource(BaseModel):
+    """Saved generated draft; no frozen identity or final original is asserted."""
+    model_config = ConfigDict(extra="forbid")
+    schema_version: Literal["utility-statement-draft-source/1"]
+    mode: Literal["draft"] = "draft"
+    render_profile: Literal["utility-statement-draft-pdf-preview/1"]
+    statement_draft: dict
+    period_context: PeriodReference
+    original_party: None = None
+    party_binding: Literal["not_frozen"] = "not_frozen"
+    previous_original: UtilityStatementOriginalSource | None
+    source_digest: str = Field(pattern=SHA)
+
+    @model_validator(mode="after")
+    def exact_draft(self):
+        raw = self.statement_draft
+        typed = UtilityStatement.model_validate(raw).model_dump(mode="json", exclude=MUTABLE - {"status"})
+        if (source_digest(raw) != source_digest(typed) or raw["status"] not in {"draft", "review"} or raw["snapshot_hash"] is not None
+                or raw["billing_period_id"] != self.period_context.id or raw["revision"] != self.period_context.revision_number):
+            raise ValueError("Draft source is not the exact saved generated draft")
+        previous = self.previous_original
+        if (previous is None) != (raw["source_statement_id"] is None):
+            raise ValueError("Correction draft requires its actual previous original")
+        if previous is not None:
+            old = previous.statement_original
+            if (old["id"] != raw["source_statement_id"] or old["contract_id"] != raw["contract_id"] or old["unit_id"] != raw["unit_id"]
+                    or old["revision"] >= raw["revision"] or previous.period_context.id == self.period_context.id
+                    or previous.period_context.property_id != self.period_context.property_id
+                    or previous.period_context.start_date != self.period_context.start_date or previous.period_context.end_date != self.period_context.end_date):
+                raise ValueError("Draft refers to a different previous original")
+        if self.source_digest != source_digest(self.model_dump(mode="json", exclude={"source_digest"})):
+            raise ValueError("Draft source digest differs")
+        return self
+
+    @property
+    def statement_original(self):
+        # Shared renderer reads these saved financials without asserting an
+        # original mode; the serialized DTO always calls them statement_draft.
+        return self.statement_draft
+
+    @property
+    def source_chain(self):
+        if self.previous_original is None:
+            return []
+        previous = self.previous_original
+        raw = previous.statement_original
+        return [SourceLink(statement_id=raw["id"], contract_id=raw["contract_id"], unit_id=raw["unit_id"], revision=raw["revision"],
+            snapshot_hash=raw["snapshot_hash"], source_statement_id=raw["source_statement_id"], period_context=previous.period_context,
+            party_binding=previous.party_binding, original_party=previous.original_party), *previous.source_chain]
+
+
+def validate_preview(value):
+    try:
+        raw = value.model_dump(mode="json") if isinstance(value, BaseModel) else value
+        if raw["schema_version"] == DRAFT_SCHEMA:
+            return UtilityStatementDraftSource.model_validate(raw)
+        return validate_source(raw)
+    except (ValueError, TypeError, KeyError) as error:
+        raise UtilityOriginalIntegrityError("Die gespeicherte Vorschauquelle ist beschädigt oder unvollständig.") from error
+
+
 class _Reader:
     """Caller owns Work snapshot; only affected originals/parents are loaded."""
 
@@ -141,13 +208,16 @@ class _Reader:
                 self.name = name
                 self.lookup = lru_cache(maxsize=128)(self._lookup)
             def _lookup(self, identifier):
-                if self.name == "tenants" and hasattr(store, "db"):
-                    from sqlalchemy import select
-
-                    from ..db.orm_models import TenantORM
+                if self.name == "tenants":
                     # Actual parent existence only: no current name or hidden
                     # profile is read to replace a proved frozen party.
-                    found = store.db.connection().scalar(select(TenantORM.__table__.c.id).where(TenantORM.__table__.c.id == identifier))
+                    if hasattr(store, "db"):
+                        from sqlalchemy import select
+
+                        from ..db.orm_models import TenantORM
+                        found = store.db.connection().scalar(select(TenantORM.__table__.c.id).where(TenantORM.__table__.c.id == identifier))
+                    else:
+                        found = identifier if identifier in store.tenants else None
                     if found is None:
                         raise KeyError(identifier)
                     return {"id": found}
@@ -245,6 +315,27 @@ class _Reader:
             "period_context": _period_reference(period).model_dump(mode="json"), "original_party": original.model_dump(mode="json") if original else None,
             "party_binding": FROZEN_BINDING if original else UNPROVED, "source_chain": [row.model_dump(mode="json") for row in chain]}
         return validate_source({**body, "source_digest": source_digest(body)})
+
+    def preview(self, identifier):
+        statement = self.store.get_utility_statement(identifier)
+        period = self.store.get_billing_period(statement.billing_period_id)
+        if period.status in IMMUTABLE:
+            return self.source(identifier)
+        if (period.status not in {"draft", "review"} or statement.status not in {"draft", "review"}
+                or statement.snapshot_hash is not None or statement.revision != period.revision_number or family(period) is not None):
+            raise UtilityOriginalIntegrityError("Entwurf und Abrechnungsperiode besitzen keine eindeutige unveröffentlichte Bindung.")
+        contract, unit = self.parents["contracts"][statement.contract_id], self.parents["units"][statement.unit_id]
+        prop = self.parents["properties"][period.property_id]
+        self.parents["portfolios"][prop["portfolio_id"]]
+        if contract["unit_id"] != unit["id"] or contract["property_id"] != prop["id"] or unit["property_id"] != prop["id"]:
+            raise UtilityOriginalIntegrityError("Die gespeicherte Entwurfseinheit gehört nicht zur tatsächlichen Vertragsbindung.")
+        previous = self.source(statement.source_statement_id) if statement.source_statement_id else None
+        if previous is not None and period.source_period_id != previous.period_context.id:
+            raise UtilityOriginalIntegrityError("Die Korrekturvorschau besitzt eine andere tatsächliche Periodenquelle.")
+        body = {"schema_version": DRAFT_SCHEMA, "mode": "draft", "render_profile": DRAFT_PROFILE,
+            "statement_draft": statement.model_dump(mode="json", exclude=MUTABLE - {"status"}), "period_context": _period_reference(period).model_dump(mode="json"),
+            "original_party": None, "party_binding": "not_frozen", "previous_original": previous.model_dump(mode="json") if previous else None}
+        return validate_preview({**body, "source_digest": source_digest(body)})
 
 
 def _period_reference(period):

@@ -17,7 +17,13 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from .utility_statement_original_source import PROFILE, UNPROVED, UtilityOriginalIntegrityError, validate_source
+from .utility_statement_original_source import (
+    UNPROVED,
+    UtilityOriginalIntegrityError,
+    UtilityPreviewEmptyError,
+    UtilityStatementDraftSource,
+    validate_preview,
+)
 
 _FONT_LOCK = Lock()
 REGULAR, BOLD = "ImmoUtilityNoto", "ImmoUtilityNotoBold"
@@ -59,7 +65,8 @@ def _table(rows, widths, *, repeat=0, header=False):
 
 
 def render_pdf(value):
-    source = validate_source(value)
+    source = validate_preview(value)
+    draft = isinstance(source, UtilityStatementDraftSource)
     _fonts()
     body = ParagraphStyle("UtilityBody", fontName=REGULAR, fontSize=9, leading=12, textColor=INK, spaceAfter=5)
     title = ParagraphStyle("UtilityTitle", parent=body, fontName=BOLD, fontSize=18, leading=23, spaceAfter=9)
@@ -69,10 +76,13 @@ def render_pdf(value):
     statement, period = source.statement_original, source.period_context
     buffer = BytesIO()
     document = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=18*mm, rightMargin=18*mm, topMargin=20*mm,
-        bottomMargin=23*mm, title="Geprüfte Betriebskostenabrechnung - PDF-Vorschau", author="ImmoManager Pro", invariant=1)
-    story = [_p("Betriebskostenabrechnung", title), _p("Geprüfte PDF-Vorschau", heading),
-        _p("Diese Ableitung wurde anhand der gespeicherten Abrechnungsquellen geprüft. Archivierung und Versand sind gesonderte Vorgänge.", small)]
-    if source.party_binding == UNPROVED:
+        bottomMargin=23*mm, title="Entwurf der Betriebskostenabrechnung" if draft else "Geprüfte Betriebskostenabrechnung - PDF-Vorschau", author="ImmoManager Pro", invariant=1)
+    story = [_p("Betriebskostenabrechnung", title), _p("Entwurf - nicht finalisiert" if draft else "Geprüfte PDF-Vorschau", heading),
+        _p("Diese Vorschau zeigt den gespeicherten generierten Entwurf. Die Kosten und ihre Bindung können sich bis zur Finalisierung ändern." if draft else
+            "Diese Ableitung wurde anhand der gespeicherten Abrechnungsquellen geprüft. Archivierung und Versand sind gesonderte Vorgänge.", small)]
+    if draft:
+        story += [_p("Mietpartei noch nicht eingefroren", heading), _p("Dieser Entwurf enthält keinen Identitätsnachweis einer finalisierten Originalpartei.", body)]
+    elif source.party_binding == UNPROVED:
         story += [_p("Historische Mietpartei nicht belegt", heading),
             _p("Die damalige Mietpartei und ihre postalische Identität wurden in dieser älteren Abrechnungsfassung nicht eingefroren.", body)]
     else:
@@ -84,12 +94,12 @@ def render_pdf(value):
         [_p("Fassung", body), _p(statement["revision"], body)],
         [_p("Einheitenreferenz", body), _p(statement["unit_id"], small)],
         [_p("Vertragsreferenz", body), _p(statement["contract_id"], small)],
-    ], [43*mm, WIDTH-43*mm]), _p("Ursprüngliche Kostenpositionen", heading)]
+    ], [43*mm, WIDTH-43*mm]), _p("Gespeicherte Kostenpositionen (Entwurf)" if draft else "Ursprüngliche Kostenpositionen", heading)]
     rows = [[_p("Kostenart", body), _p("Anteil", amount_style)]]
     for item in statement.get("line_items") or []:
         rows.append([_p(item.get("description") or "Kostenposition", body), _p(_money(item.get("allocated_amount")), amount_style)])
     if len(rows) == 1:
-        rows.append([_p("Keine umgelegten Einzelpositionen im Original", body), _p(_money(0), amount_style)])
+        rows.append([_p("Keine Einzelpositionen in dieser Quellenfassung gespeichert", body), _p("Nicht einzeln belegt", small)])
     story += [_table(rows, [WIDTH-37*mm, 37*mm], repeat=1, header=True), Spacer(1, 9), _table([
         [_p("Gesamtkosten", body), _p(_money(statement["total_cost"]), amount_style)],
         [_p("Bezahlte Vorauszahlungen", body), _p(_money(statement["advance_paid"]), amount_style)],
@@ -107,14 +117,23 @@ def render_pdf(value):
         for link in source.source_chain:
             suffix = "Historische Partei unbelegt" if link.party_binding == UNPROVED else "Ursprüngliche Partei belegt"
             story.append(_p(f"Fassung {link.revision}: {link.statement_id}. {suffix}.", small))
-    story += [_p("Quellnachweis", heading), _p("Abrechnungsreferenz: " + statement["id"], small),
-        _p("Originalhash der vollständigen Periode: " + statement["snapshot_hash"], small),
-        _p("Hash der ausgewählten Quellenfassung: " + source.source_digest, small), _p("Rendererprofil: " + PROFILE, small)]
+    story += [_p("Entwurfsquelle" if draft else "Quellnachweis", heading), _p("Abrechnungsreferenz: " + statement["id"], small)]
+    if not draft:
+        story.append(_p("Originalhash der vollständigen Periode: " + statement["snapshot_hash"], small))
+    story += [_p("Hash der ausgewählten Quellenfassung: " + source.source_digest, small), _p("Rendererprofil: " + source.render_profile, small)]
     def footer(canvas, doc):
         canvas.saveState()
+        if draft:
+            canvas.saveState()
+            canvas.setFont(BOLD, 70)
+            canvas.setFillColor(colors.HexColor("#EEEEEE"))
+            canvas.translate(A4[0] / 2, A4[1] / 2)
+            canvas.rotate(45)
+            canvas.drawCentredString(0, 0, "ENTWURF")
+            canvas.restoreState()
         canvas.setFont(REGULAR, 7)
         canvas.setFillColor(MUTED)
-        canvas.drawString(18*mm, 12*mm, "Geprüfte PDF-Vorschau")
+        canvas.drawString(18*mm, 12*mm, "Entwurf - nicht finalisiert" if draft else "Geprüfte PDF-Vorschau")
         canvas.drawRightString(A4[0]-18*mm, 12*mm, f"Seite {doc.page}")
         canvas.restoreState()
     document.build(story, onFirstPage=footer, onLaterPages=footer)
@@ -125,7 +144,7 @@ def prepare_pdf_preview(store, identifier, actor_id):
     from .billing_disputes import work
     from .utility_statement_original_source import _Reader
     with work(store, actor_id) as (active, _case, _period, _add):
-        source = _Reader(active).source(identifier)
+        source = _Reader(active).preview(identifier)
         return render_pdf(source), source
 
 
@@ -134,11 +153,13 @@ def prepare_period_zip(store, identifier, actor_id):
     from .utility_statement_original_source import _Reader
     with work(store, actor_id, period_id=identifier) as (active, _case, _period, _add):
         reader = _Reader(active)
-        reader.period(identifier)
+        period = active.get_billing_period(identifier)
+        if period.status not in {"draft", "review"}:
+            reader.period(identifier)
         buffer, count = BytesIO(), 0
         with ZipFile(buffer, "w", ZIP_DEFLATED) as archive:
             for statement in reader.rows(identifier):
-                source = reader.source(statement.id)
+                source = reader.preview(statement.id)
                 content = render_pdf(source)
                 for suffix, data in (("pdf", content), ("source.json", json.dumps(source.model_dump(mode="json"), sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))):
                     metadata = ZipInfo(f"statement_{statement.id}.{suffix}", date_time=(1980, 1, 1, 0, 0, 0))
@@ -146,7 +167,7 @@ def prepare_period_zip(store, identifier, actor_id):
                     archive.writestr(metadata, data)
                 count += 1
         if count == 0:
-            raise UtilityOriginalIntegrityError("Keine finalisierten Einzelabrechnungen für die geprüfte Vorschau vorhanden.")
+            raise UtilityPreviewEmptyError("Keine generierten Einzelabrechnungen für die Vorschau vorhanden.")
         return buffer.getvalue()
 
 
