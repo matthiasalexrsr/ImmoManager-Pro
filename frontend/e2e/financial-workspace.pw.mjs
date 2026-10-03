@@ -394,7 +394,7 @@ test('FinancialWorkspace: real scoped cash report, exact sums, source pages, has
   expect(firstSources.items).toHaveLength(50);
   expect(new Set(firstSources.items.map(item => item.id)).size).toBe(50);
   await expect(sourceTable(page).locator('tbody tr')).toHaveCount(50);
-  const receiptRow = sourceTable(page).getByRole('row').filter({ hasText: fixture.formula.label });
+  const receiptRow = sourceTable(page).getByRole('row').filter({ hasText: fixture.formula.payment_text });
   await expect(receiptRow).toContainText('Belegreferenz');
   await expect(receiptRow.getByRole('link')).toHaveCount(0);
   await sources.locator('.financial-workspace__table-scroll').focus();
