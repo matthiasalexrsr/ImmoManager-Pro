@@ -44,6 +44,15 @@ Elternänderungen werden getrennt vom Domain-Agenten fertiggestellt.
   sind in diesen 54 Fällen enthalten.
 - Ruff und Mypy des neuen Prüfers und der Schemaprüfung grün.
 
+Nach Wiederanlauf des dedizierten Testdienstes bestanden **9 tatsächliche
+PostgreSQL-Fälle ohne Skips**, 100,36 s, im strikten Runner: fünf native
+Quellenprüfungen, drei tatsächliche Migrations-/Originalschutzprüfungen und
+der zuvor nur durch Dienstausfall fehlgeschlagene Produktionsstart mit
+einer Datenbankrolle ohne DDL-Rechte. Damit sind alle 55 Fälle der obigen
+Vollbackup-/Startauswahl durch abgeschlossene Läufe belegt. Der initiale
+Dienstausfall bleibt im ersten Log sichtbar und wurde nicht ausgeblendet.
+Mypy prüft nun auch die vier betroffenen Recoverydienste: sieben Quellen grün.
+
 CI verlangt die tatsächlichen PostgreSQL-Quellen-, HTTP-, Integritäts- und
 Migrationsfälle über den strikten Runner ohne Skip-Freigabe. Dies ist weiterhin
 eine Fachkomposition, keine Freigabe aller Pakete A–L oder der laufenden Vorschau.
