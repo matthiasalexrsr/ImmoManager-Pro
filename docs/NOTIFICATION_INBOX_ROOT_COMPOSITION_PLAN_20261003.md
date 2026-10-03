@@ -137,3 +137,34 @@ Domain bereitet separat tatsächliche PostgreSQL-Quellenfälle vor. Eine echte
 Notification-Repositoryzeit unter zwei Sessionzeitzonen wird gegen UTC gemessen,
 bevor weitere Zeitdefaults verändert werden. Diese Vorbereitung startet keinen
 DB-/Serverprozess und behauptet keine native Abnahme.
+
+## Tatsächliche weitere Rootprüfungen und Quellenkoordination
+
+PG-Vorbereitungen c0f56dc/10cf3db/10ec75d wurden geprüft und als
+f5d8f2d/290c357/8703b60 übernommen. Zwei Scope-/Cursor-/Micro-/NULL-Fälle
+PASS13,91s, kompletter10002-Fall/sechsWalks PASS80,00s. Echte Repositorywriter
+unter Berlin/NewYork hatten2FAIL: nachvollziehbare+2h/−4h-Verschiebung im
+plainDateTime-func.now-Default. Vorcodee98b2c5→Source92adf0d normalisiert nur
+Notificationzeitfelder und deren SQLdefaults aufUTC; physicalDDLgleich,
+SQLiteCURRENT_TIMESTAMP bleibt bestehen, keine Altzeilenumschreibung.
+Native korrigierte2Zonefälle PASS11,44s, betroffenerSQLiteFall PASS9,16s,
+pureZeittyp/Dialekt10PASS0,65s. Details/Grenzen/Serverabschluss im separaten
+NOTIFICATION_UTC_WRITER_CORRECTION_PLAN_20261003.md. Kein persönlicher Write,
+HTTP, Migration, Recovery oder vollständiger Release als Nebenbeleg.
+
+M2 m2a2b3c4d5e6 ist für die persönliche Inbox explizit reserviert, nach
+TEHA-L2 l2a2b3c4d5e6. Plattform bereitet die genaue additive Readonly-HTTP-
+Quelle und inaktive Revisionsvorlage außerhalb versions vor; Root entscheidet
+gemeinsam über tatsächliche Aktivierung/Schemaqualifikation/Recovery/INTERNAL.
+Frontend erhält den tatsächlichen Phase-A-live/null-Vertrag und genau
+{notification_id,read_at} für Single-read. Keine aus der Livepage erfundene
+Mark-all-Selektion oder synchroner Terminaldefault. Globale Bell bleibt bis
+zur gemeinsamen echten API-/UIabnahme unverdrahtet.
+
+TEHA-Chat hat150aa66clean übergeben und die tatsächliche Gesprächslängengrenze
+erreicht. Unabhängiger Readonlyreview fand vier konkrete offene Grenzen:
+Actor-onlyAuthority ungebunden an neu erzeugte Unit; tatsächlich verändertes
+unreleasedL2-Layout trotz widersprüchlicher Docs; Original-/Mappingtarget-
+Kreuzbindung und Dokumenttypregel. Root hat den lokalen GPT6.1Solxhigh-Agenten
+mit Vorcodekorrektur/finalemL2Freeze beauftragt. Kein bestehendes LiveL2
+angenommen, kein privates Schema verändert, keine Aktivierungsfreigabe.

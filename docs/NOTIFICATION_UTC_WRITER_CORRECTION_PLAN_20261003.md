@@ -31,3 +31,21 @@ der native Sekunden-/Mikrosekunden-/NULL-Keysets verwendet, weil dessen Default
 berührt wird. Kein erneuter 10002-Vollwalk ohne neue Sorge. Native Gates seriell;
 die eigene PostgreSQLinstanz bleibt während der beiden Zonenfälle geöffnet und
 wird nach dem gezielten Folgegate explizit beendet.
+
+## Tatsächliche Korrekturabnahme
+
+Source92adf0d: reine UTC-Bind-/Dialekt-/DDL-Prüfung10PASS0,65s (hard30),
+Ruff/Diffcheck grün. Beide unverfälschten tatsächlichen PG-Zonenfälle jetzt
+2PASS11,44s (hard90), einschließlich created_at/updated_at und tatsächlichem
+bestehendem Globalread mit aware UTC-bind. Firstcreated bleibt unverändert;
+gespeicherte Zeiten und tatsächliche Rückgaben liegen in den unabhängigen
+UTCbefore/after-Fenstern. Kein positiver persönlicher stage_read-/Sidbeleg.
+Betroffener SQLite-Default-/Micro-/NULL-Keysetfall1PASS9,16s (hard45), native
+Sekundenrepräsentation ausdrücklich geprüft. Keine Wiederholung der zuvor
+grünen Großbestandsfälle behauptet. PG1+2+2 verschiedene positive Fälle sind
+somit komponiert, kein gemeinsamer neuer5er-Gate und keine Gesamtfreigabe.
+
+Eigener Postmaster2760/Session51498/58112 wurde mit exakt eigenem Clusterpfad
+normal beendet (pg_ctl normalExit0). Tatsächliche shutdown-Ausgabe23:36:52CEST,
+ServerprozessnormalExit0; danach kein Listener58112. Keine fremden Prozesse,
+privaten Daten oder Live126installation angefasst. Native Testprozesse beendet.
