@@ -61,7 +61,7 @@ def build(output: Path):
         source.mkdir()
         with ZipFile(io.BytesIO(archive)) as bundle:
             bundle.extractall(source)  # Input is the exact repository tree, not a user archive.
-        result = {}
+        result: dict[str, dict] = {}
         for recipe in ("fresh-create-all", "historical-receipt-checks"):
             data = owner / recipe
             data.mkdir()

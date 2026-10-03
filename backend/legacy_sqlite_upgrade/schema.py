@@ -34,7 +34,9 @@ def normalized_table_sql(sql: str | None) -> str | None:
     if tokens[:2] != ["create", "table"] or "(" not in tokens:
         return normalized
     start = tokens.index("(")
-    depth, pieces, piece = 0, [], []
+    depth = 0
+    pieces: list[list[str]] = []
+    piece: list[str] = []
     for offset, token in enumerate(tokens[start + 1:], start + 1):
         if token == ")" and depth == 0:
             pieces.append(piece)
@@ -51,7 +53,7 @@ def normalized_table_sql(sql: str | None) -> str | None:
     kinds = {"constraint", "primary", "foreign", "unique", "check"}
     columns = [value for value in pieces if value and value[0] not in kinds]
     constraints = sorted([value for value in pieces if value and value[0] in kinds])
-    body = []
+    body: list[str] = []
     for value in columns + constraints:
         if body:
             body.append(",")
