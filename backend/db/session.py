@@ -12,6 +12,9 @@ from ..config import settings
 from .access_models import UserAccessORM  # noqa: F401 — register access metadata before create_all
 from .auth_models import AuthSetupORM  # noqa: F401 — register auth metadata before create_all
 from .bank_import_models import BankImportORM  # noqa: F401 — register retained bank import provenance
+from .billing_dispute_models import (
+    DISPUTE_MODELS,  # noqa: F401 — register retained dispute originals before fresh setup
+)
 from .booking_indexes import BOOKING_INDEXES  # noqa: F401 — register scaled booking indexes
 from .contract_correspondence_models import CorrespondenceDraftORM  # noqa: F401 — register retained correspondence
 from .contract_lifecycle_models import ContractLifecycleDraftORM  # noqa: F401 — register retained lifecycle evidence
@@ -86,8 +89,12 @@ def create_tables() -> None:
 
     require_complete_family(engine, TENANCY_WORKFLOW_MODELS, "tenancy workflow")
     require_complete_family(engine, JOB_MODELS, "operational job")
+    from .billing_dispute_schema import validate_dispute_guards, validate_dispute_schema
     from .measurement_history_schema import validate_measurement_guards, validate_measurement_schema
     with engine.connect() as connection:
+        dispute_present = validate_dispute_schema(connection)
+        if dispute_present:
+            validate_dispute_guards(connection)
         measurement_present = validate_measurement_schema(connection)
         if measurement_present:
             validate_measurement_guards(connection)
@@ -121,6 +128,9 @@ def create_tables() -> None:
     from .session_models import ensure_session_schema
     from .tenancy_workflow_schema import ensure_tenancy_workflow_schema
     with engine.begin() as connection:
+        if not dispute_present:
+            from .billing_dispute_schema import install_dispute_guards
+            install_dispute_guards(connection)  # Explicit fresh dev/test setup only.
         if not measurement_present:
             from .measurement_history_schema import install_measurement_guards
             install_measurement_guards(connection)  # Explicit dev/test convenience; never production.

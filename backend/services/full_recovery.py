@@ -151,6 +151,7 @@ def _database_info(path: Path, *, timeout_seconds: float = 300) -> dict:
                                  timeout=min(0.2, timeout_seconds))) as db:
         db.execute("PRAGMA trusted_schema=OFF")
         db.set_progress_handler(lambda: int(time.monotonic() > deadline), 1000)
+        db.execute("BEGIN")  # One unchanged native image for every proof/count.
         if db.execute("PRAGMA integrity_check").fetchall() != [("ok",)]:
             raise RecoveryError("SQLite-Integritaetspruefung fehlgeschlagen.")
         if db.execute("PRAGMA foreign_key_check").fetchone():
@@ -160,11 +161,24 @@ def _database_info(path: Path, *, timeout_seconds: float = 300) -> dict:
         required = {"users", "auth_setup", "portfolios", "bookings", "receivables", "rent_charges", "payments", "payment_reversals"}
         if not required.issubset(tables):
             raise RecoveryError("Unbekanntes oder unvollstaendiges ImmoManager-Datenbankschema.")
+        from ..legacy_sqlite_upgrade.schema import LegacySchemaError, prove_legacy_schema
+        try:
+            legacy_proof = prove_legacy_schema(db)
+        except LegacySchemaError:
+            legacy_proof = None  # Continue the strict existing current-schema path.
         from ..db.auth_models import AuthSetupORM  # noqa: F401 — register installation metadata
+        from ..db.billing_dispute_models import DISPUTE_TABLES
+        from ..db.billing_dispute_schema import validate_dispute_guards, validate_dispute_schema
         from ..db.integration_history_models import TABLES as history_tables
         from ..db.integration_history_schema import ensure_history_schema
         from ..db.orm_models import Base
+        from .billing_dispute_validation import DisputeIntegrityError
         from .integrations.history_types import HistoryError
+        try:
+            if validate_dispute_schema(db):
+                validate_dispute_guards(db)
+        except (DisputeIntegrityError, sqlite3.Error):
+            raise RecoveryError("Widerspruchsoriginale sind strukturell unvollständig oder ungeschützt. Vollständige unveränderte Sicherung verwenden.") from None
         try:
             ensure_history_schema(db)  # Structural proof; archive keys follow separately.
         except (HistoryError, sqlite3.Error):
@@ -229,6 +243,8 @@ def _database_info(path: Path, *, timeout_seconds: float = 300) -> dict:
                 continue
             if table.name in history_tables and not tables.intersection(history_tables):
                 continue
+            if table.name in DISPUTE_TABLES and not tables.intersection(DISPUTE_TABLES):
+                continue
             actual = {column[1] for column in db.execute('PRAGMA table_info("' + table.name.replace('"', '""') + '")')}
             # A verified backup must precede the offline w1 migration. These
             # two additive columns were absent in the supported two-target
@@ -236,6 +252,8 @@ def _database_info(path: Path, *, timeout_seconds: float = 300) -> dict:
             # All other missing columns and incomplete journals remain errors.
             compatible_missing = {"invoices": {"amount_paid"}, "payments": {"invoice_id"}}
             missing = set(table.columns.keys()) - actual
+            if legacy_proof is not None and legacy_proof.permits_missing(table.name, missing):
+                continue  # Only omissions from this actual complete frozen catalog.
             if missing - compatible_missing.get(table.name, set()):
                 raise RecoveryError("Das Datenbankschema passt nicht zu dieser Programmversion.")
         counts = {}
@@ -244,6 +262,8 @@ def _database_info(path: Path, *, timeout_seconds: float = 300) -> dict:
                 raise RecoveryError("Datenbankprüfung hat das Zeitlimit überschritten.")
             quoted = '"' + table.replace('"', '""') + '"'
             counts[table] = db.execute("SELECT COUNT(*) FROM " + quoted).fetchone()[0]
+        if legacy_proof is not None:
+            legacy_proof.verify(db)
         return {"schema_sha256": hashlib.sha256(_json_bytes(schema)).hexdigest(), "rows": counts}
 
 

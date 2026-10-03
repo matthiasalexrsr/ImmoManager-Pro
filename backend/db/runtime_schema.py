@@ -54,3 +54,14 @@ def validate_runtime_schema(engine) -> None:
                 "Server historical source schema or original protection is incomplete. Explicit migration or "
                 "compatible full restore is required; startup will not repair it."
             ) from None
+        from ..services.billing_dispute_validation import DisputeIntegrityError
+        from .billing_dispute_schema import validate_dispute_guards, validate_dispute_schema
+        try:
+            if not validate_dispute_schema(connection):
+                raise DisputeIntegrityError("missing dispute family")
+            validate_dispute_guards(connection)
+        except DisputeIntegrityError:
+            raise RuntimeSchemaError(
+                "Server dispute originals or native protection are incomplete. Explicit migration or "
+                "compatible full restore is required; startup will not repair them."
+            ) from None
