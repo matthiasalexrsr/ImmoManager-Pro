@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../api';
 import { accessDenied, checkedSummary, families, freshTrails, summaryQuery } from './dashboardModel';
 
-const initial = principal => ({ principal, status: 'loading', data: null, error: null, loadedAt: null,
+const initial = principal => ({ principal, status: 'loading', data: null, error: null, loadedAt: null, version: 0,
   trails: freshTrails(), query: { limit: 5, asOf: null } });
 
 /** One request publishes counts and all three current work pages together. */
@@ -19,7 +19,7 @@ export default function useDashboardSummary(principal, onDenied) {
     try {
       const data = checkedSummary(await api.get(summaryQuery(query, trails), { signal: controller.signal }), query, trails);
       if (!alive.current || controller.signal.aborted) return;
-      publish({ principal, status: 'ready', data, error: null, loadedAt: new Date(), trails,
+      publish({ principal, status: 'ready', data, error: null, loadedAt: new Date(), version: previous.version + 1, trails,
         query: { ...query, asOf: data.as_of } });
     } catch (error) {
       if (!alive.current || controller.signal.aborted) return;
