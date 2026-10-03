@@ -140,7 +140,7 @@ Parentrecheck. Es wird weder _fresh_principal noch eine Authgetterfunktion
 ersetzt. Reader/Writer/Pool/Schema finallyCleanup wie oben; optional erster
 separater tatsächlicher Rootgate hard45s (30sNode/8sCleanup). Ein unerwarteter
 503/Fixturefehler ist kein positiver Scopebeleg. Mit diesem Zusatz elf nur
-vorbereititete Parameterfälle, noch keinerlei Runtimeausführung.
+vorbereitete Parameterfälle, noch keinerlei Runtimeausführung.
 
 Rootactualsupportquery3c96be9 ist inzwischen gelesen: ausschließlich
 pg_catalog.host(pg_catalog.inet_server_addr()) an der früher fehlerhaften
