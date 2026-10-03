@@ -197,9 +197,10 @@ def test_actual_postgres_composed_migration_chain_is_linear_and_preserves_old_pr
     monkeypatch.setenv("DATABASE_URL", postgres.engine.url.render_as_string(hide_password=False))
     config = Config(str(root / "alembic.ini"))
     config.set_main_option("script_location", str(root / "backend/db/migrations"))
+    expected_head = ScriptDirectory.from_config(config).get_current_head()
     command.upgrade(config, "head")
     with postgres.engine.connect() as connection:
-        assert connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar_one() == ScriptDirectory.from_config(config).get_current_head()
+        assert connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar_one() == expected_head
         assert {model.__tablename__ for model in (*TENANCY_WORKFLOW_MODELS, *JOB_MODELS)} <= set(inspect(connection).get_table_names())
     command.downgrade(config, "a2a2b3c4d5e6")
     with postgres.engine.connect() as connection:
