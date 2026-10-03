@@ -153,7 +153,7 @@ def _commit(box, actor, identifier="notice"):
 @pytest.mark.parametrize("kind,identifier", [
     ("unit", "unit-one"), ("task", "task-one"), ("unknown", "missing"),
     ("tenant", "missing-tenant"), (None, "incomplete"), ("unknown", None), (None, None),
-])
+], ids=["unit", "task", "unknown", "tenant", "partial-id", "partial-type", "unlinked"])
 def test_unrestricted_all_subjects_use_real_auth_and_insert_once(read_installation, kind, identifier):
     _registered()
     box = read_installation
