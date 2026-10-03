@@ -2,10 +2,11 @@
 
 from datetime import date, datetime
 
-from sqlalchemy import BigInteger, CheckConstraint, Date, DateTime, ForeignKey, String
+from sqlalchemy import BigInteger, CheckConstraint, Date, DateTime, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 
-from .orm_models import Base
+from .operational_job_models import OperationalWorkItemORM
+from .orm_models import Base, TaskORM
 
 
 class OperationalSchedulerORM(Base):
@@ -29,3 +30,10 @@ class OperationalSchedulerORM(Base):
         CheckConstraint("generation > 0 AND fence >= 0", name="ck_scheduler_versions"),
         CheckConstraint("state IN ('reserved','running','completed','attention','cancelled')", name="ck_scheduler_state"),
     )
+
+
+# Registration is metadata-only; h2 owns production DDL. Explicit development
+# installations using create_all receive the same bounded lookup indices.
+Index("ix_scheduler_completed_source", OperationalWorkItemORM.action_key, OperationalWorkItemORM.planned_revision,
+      OperationalWorkItemORM.state, OperationalWorkItemORM.created_at, OperationalWorkItemORM.id)
+Index("ix_scheduler_task_due", TaskORM.parent_task_id, TaskORM.due_date, TaskORM.id)
