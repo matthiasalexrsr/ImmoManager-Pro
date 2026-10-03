@@ -23,7 +23,7 @@ def draft_http(request, monkeypatch, tmp_path):
     engine = None
     if request.param == "sqlite":
         url = "sqlite:///" + (tmp_path / "measurement-api.sqlite").as_posix()
-        migrate(url, monkeypatch)
+        assert migrate(url, monkeypatch) == "a01b2c3d4e5f"
         engine = create_engine(url, hide_parameters=True, connect_args={"check_same_thread": False})
     try:
         with application(monkeypatch, engine) as active:
