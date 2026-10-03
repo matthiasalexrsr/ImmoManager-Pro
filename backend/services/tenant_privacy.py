@@ -39,6 +39,7 @@ def _memory_state(value):
     from ..db.contract_correspondence_models import CORRESPONDENCE_MODELS
     from ..db.contract_wizard_models import WIZARD_MODELS
     from ..db.document_version_models import DOCUMENT_VERSION_MODELS
+    from ..db.measurement_history_models import MEASUREMENT_MODELS
     from ..db.operational_job_models import JOB_MODELS
     from ..db.operational_models import (
         OperationalDispatchORM,
@@ -48,7 +49,7 @@ def _memory_state(value):
     )
     from ..db.operational_scheduler_models import OperationalSchedulerORM
     from ..db.tenancy_workflow_models import TENANCY_WORKFLOW_MODELS
-    if isinstance(value, (*WIZARD_MODELS, *DOCUMENT_VERSION_MODELS, *LIFECYCLE_MODELS, *CORRESPONDENCE_MODELS, *JOB_MODELS, *TENANCY_WORKFLOW_MODELS,
+    if isinstance(value, (*MEASUREMENT_MODELS, *WIZARD_MODELS, *DOCUMENT_VERSION_MODELS, *LIFECYCLE_MODELS, *CORRESPONDENCE_MODELS, *JOB_MODELS, *TENANCY_WORKFLOW_MODELS,
                           OperationalSchedulerORM, OperationalScheduleORM, OperationalOccurrenceORM, OperationalDispatchORM, OperationalTickORM)):
         return {column.name: _memory_state(getattr(value, column.name)) for column in value.__table__.columns}
     if isinstance(value, dict):
@@ -128,6 +129,8 @@ def _scoped_graph(store, tenant_id):
     graph = append_lifecycle_graph(snapshot, graph)
     from .tenant_correspondence_graph import append_correspondence_graph
     graph = append_correspondence_graph(snapshot, graph)
+    from .tenant_measurement_graph import append_measurement_graph
+    graph = append_measurement_graph(snapshot, graph)
     graph["scope"]["private_form_drafts"] = private_draft_retention(snapshot, tenant_id)
     return graph
 
@@ -244,10 +247,11 @@ def _plan(graph: dict) -> dict:
     from .tenant_correspondence_graph import PERSONAL_FIELDS as CORRESPONDENCE_FIELDS
     from .tenant_document_versions import PERSONAL_FIELDS as DOCUMENT_FIELDS
     from .tenant_lifecycle_graph import PERSONAL_FIELDS as LIFECYCLE_FIELDS
+    from .tenant_measurement_graph import PERSONAL_FIELDS as MEASUREMENT_FIELDS
     from .tenant_retained_graph import PERSONAL_FIELDS as RETAINED_FIELDS
     from .tenant_wizard_graph import PERSONAL_FIELDS
     wizard_retained = {name: {"count": len(graph.get(name, [])), "personal_fields": fields}
-                       for name, fields in (PERSONAL_FIELDS | DOCUMENT_FIELDS | LIFECYCLE_FIELDS | CORRESPONDENCE_FIELDS | RETAINED_FIELDS).items() if graph.get(name)}
+                       for name, fields in (PERSONAL_FIELDS | DOCUMENT_FIELDS | LIFECYCLE_FIELDS | CORRESPONDENCE_FIELDS | RETAINED_FIELDS | MEASUREMENT_FIELDS).items() if graph.get(name)}
     private = graph["scope"]["private_form_drafts"]
     if private["count"]:
         wizard_retained["private_form_drafts"] = {"count": private["count"],

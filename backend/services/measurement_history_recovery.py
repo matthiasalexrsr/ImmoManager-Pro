@@ -73,7 +73,7 @@ def retained_measurement_subject(store, tenant_id):
     else:
         commands = [row for row in _rows(store, MeasurementCommandORM) if row.id in command_ids]
     return {"facts": items, "commands": [{key: getattr(row, key) for key in
-        ("id", "ledger_id", "actor_id", "revision", "request_hash", "created_at")} for row in commands],
+        ("id", "ledger_id", "actor_id", "revision", "request_hash", "created_at")} for row in sorted(commands, key=lambda item: (item.ledger_id, item.revision))],
         "retention": "Unveränderliche historische Abrechnungsquellen bleiben mit ihrem ursprünglichen Personenbezug erhalten. Gemeinsam erfasste Angaben anderer Mietverhältnisse werden hier nicht ausgegeben."}
 
 

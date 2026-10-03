@@ -131,6 +131,8 @@ def lock_subject_write_fence(store: Any, tenant_id: str) -> None:
     """
     db = getattr(store, "db", None)
     if db is None:
+        from .tenant_measurement_graph import lock_measurement_subject
+        lock_measurement_subject(store, tenant_id)
         # Workflow.work initializes its whole Memory family. Job collections
         # are deliberately lazy (a queued job has no work-items yet), so absent
         # Memory job dictionaries are empty, not a missing SQL migration.
@@ -179,6 +181,9 @@ def lock_subject_write_fence(store: Any, tenant_id: str) -> None:
             contract_ids = union(current,
                 select(table.c.previous_contract_id).where(condition),
                 select(table.c.next_contract_id).where(condition))
+
+        from .tenant_measurement_graph import lock_measurement_subject
+        lock_measurement_subject(store, tenant_id)
 
         # SELECT subqueries keep large histories out of Python memory. Domain
         # locks are NOWAIT too: a writer's earlier Tenant read-lock (original
