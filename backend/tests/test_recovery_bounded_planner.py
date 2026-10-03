@@ -11,6 +11,7 @@ import time
 from argparse import Namespace
 from contextlib import contextmanager
 from dataclasses import replace
+from pathlib import Path
 
 import dotenv
 import pytest
@@ -144,6 +145,48 @@ def test_absent_stored_secret_never_falls_back_to_ambient_or_generates_files(tmp
     with pytest.raises(RecoveryError, match="Schlüssel"):
         recovery._plan(arguments(tmp_path))
     assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("style", ["lower", "mixed"])
+def test_case_insensitive_stored_names_select_actual_signer_and_paths(tmp_path, style):
+    names = ["JWT_SECRET_KEY", "DATABASE_URL", "UPLOADS_DIR", "INTEGRATION_STATE_FILE"]
+    selected = [tmp_path / "chosen.sqlite", tmp_path / "chosen-uploads", tmp_path / "chosen-integrations.json"]
+    selected[2].write_text("synthetic-state", encoding="utf-8")
+    values = [SECRET, "sqlite:///" + selected[0].as_posix(), selected[1].as_posix(), selected[2].as_posix()]
+    raw = "".join(f'{name.lower() if style == "lower" else name.title()}="{value}"\n'
+                  for name, value in zip(names, values, strict=True)).encode()
+    (tmp_path / ".env").write_bytes(raw)
+    plan = recovery._plan(arguments(tmp_path))
+    assert plan.database == selected[0] and plan.uploads == selected[1] and plan.integration_state == selected[2]
+    assert plan.configuration["JWT_SECRET_KEY"] == SECRET
+    assert plan.configuration["DATABASE_URL"] == values[1]
+    assert Path(plan.configuration["UPLOADS_DIR"]) == selected[1]
+    assert Path(plan.configuration["INTEGRATION_STATE_FILE"]) == selected[2]
+    assert (tmp_path / ".env").read_bytes() == raw
+    assert not selected[0].exists() and not selected[1].exists()
+
+
+@pytest.mark.parametrize("name", ["JWT_SECRET_KEY", "DATABASE_URL", "UPLOADS_DIR"])
+@pytest.mark.parametrize("same_value", [True, False])
+def test_case_aliases_are_refused_before_selected_paths_or_secret_use(tmp_path, name, same_value):
+    first, second = "synthetic-first-value", "synthetic-first-value" if same_value else "synthetic-other-value"
+    raw = (f"{name}={first}\n{name.lower()}={second}\n").encode()
+    (tmp_path / ".env").write_bytes(raw)
+    with pytest.raises(RecoveryError, match="Großschreibung") as error:
+        recovery._plan(arguments(tmp_path))
+    assert first not in str(error.value) and second not in str(error.value)
+    assert (tmp_path / ".env").read_bytes() == raw
+    assert sorted(path.name for path in tmp_path.iterdir()) == [".env"]
+
+
+def test_recovered_json_overrides_lowercase_dotenv_names(tmp_path):
+    raw = b"jwt_secret_key=synthetic-env-value\nuploads_dir=relative-old-value\n"
+    (tmp_path / ".env").write_bytes(raw)
+    values = {"JWT_SECRET_KEY": SECRET, "UPLOADS_DIR": (tmp_path / "actual-uploads").as_posix()}
+    (tmp_path / "configuration.json").write_text(json.dumps(values), encoding="utf-8")
+    plan = recovery._plan(arguments(tmp_path))
+    assert plan.configuration["JWT_SECRET_KEY"] == SECRET and plan.uploads == tmp_path / "actual-uploads"
+    assert (tmp_path / ".env").read_bytes() == raw
 
 
 def test_actual_file_replacement_before_open_rejects_new_identity(tmp_path, monkeypatch):

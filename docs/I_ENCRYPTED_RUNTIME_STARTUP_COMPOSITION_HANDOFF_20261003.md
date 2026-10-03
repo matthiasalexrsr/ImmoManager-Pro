@@ -113,3 +113,21 @@ all26 green run and not 20+25+10 newly different cases. Ruff/diff checks passed.
 The earlier JSON-codec evidence is retained as historical evidence, not the
 final backup-compatible implementation. Other actual app/SQL/fullarchive gates
 remain in their separate handoff; no private key was changed or transmitted.
+
+## Case-insensitive stored names in the actual backup planner
+
+Independent review found recovery._plan selected signer/path names before its
+existing lowercase Settings conversion. Normalize known dotenv names before
+selection and before strict recovered JSON precedence. Distinct case aliases
+are refused with a value-free instruction; historical same-name dotenv last
+assignment remains compatible. Original source bytes are not rewritten.
+
+Actual pure gate with plugin autoload disabled/--noconftest, hard45 seconds:
+8 PASS/2 FAIL in2.09 seconds. Both failures were new tests comparing POSIX path
+spelling with the existing Windows-native configuration path representation;
+actual selected Path identities and signer had already matched. Correct those
+two assertions to compare Path identities, retaining every selected-path/value
+and no-source-write assertion. Exact two-case rerun, hard30: 2 PASS/1.11 seconds.
+Thus10 different positive cases compose the evidence, including9 new alias/
+precedence cases and one existing same-name dotenv regression; no all10 green
+rerun claimed. No app, SQL, archive, CLI child or private installation opened.

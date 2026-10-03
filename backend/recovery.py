@@ -125,6 +125,15 @@ def _plan(args, *, limits: RecoveryLimits | None = None, deadline: float | None 
         except UnicodeError:
             raise RecoveryError("Die gespeicherte Konfiguration muss gültiger UTF-8-Text sein.") from None
         _remaining(deadline)
+        normalized: dict[str, str | None] = {}
+        for name, value in persisted.items():
+            if name.lower() not in Settings.model_fields:
+                continue
+            key = name.upper()
+            if key in normalized:
+                raise RecoveryError("Doppelte Konfigurationsnamen mit unterschiedlicher Großschreibung. Datei lokal bereinigen.")
+            normalized[key] = value
+        persisted = normalized
     recovered_config = root / "configuration.json"
     recovered_raw = _configuration_bytes(recovered_config, maximum, deadline)
     if recovered_raw is not None:
