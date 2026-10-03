@@ -1,7 +1,7 @@
 # Paket I – Offline-Verifikation, Legacy-Konvertierung, Ressourcenpolitik und CAS
 
-Prerequisite/resource+CAS commit: `0d26a173d2fef86c2c100191d6bfa44341baa43f`  
-Original base: `7b6073f96106f0fc2efdb51430f53e5de75a69bb`  
+Prerequisite/resource+CAS commit: `0d26a173d2fef86c2c100191d6bfa44341baa43f`
+Original base: `7b6073f96106f0fc2efdb51430f53e5de75a69bb`
 Branch/Checkout: `assist/integration-connections` / `work/integration-connections`
 
 Dieser Folgebaustein ändert ausschließlich den DDL-freien

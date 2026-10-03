@@ -1,7 +1,7 @@
 # Paket I – Offline-Verifikation, Legacy-Konvertierung, Ressourcenpolitik und CAS
 
-Stand: 03.10.2026  
-Parent: `7b6073f96106f0fc2efdb51430f53e5de75a69bb`  
+Stand: 03.10.2026
+Parent: `7b6073f96106f0fc2efdb51430f53e5de75a69bb`
 Checkout: `work/integration-connections`
 
 Vor Code gelesen: aktueller Klartext-/Encrypted-ConfigStore, Stable-Keyring/
