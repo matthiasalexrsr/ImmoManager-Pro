@@ -210,6 +210,22 @@ def test_opened_descriptor_cannot_substitute_another_actual_file(tmp_path, monke
         recovery._plan(arguments(tmp_path))
 
 
+def test_actual_file_with_distinct_creation_and_modification_times_is_readable(tmp_path):
+    source = tmp_path / ".env"
+    original = source_bytes(source.name)
+    source.write_bytes(original)
+    info = source.stat()
+    os.utime(source, ns=(info.st_atime_ns, info.st_mtime_ns - 2_000_000_000))
+    with source.open("rb") as opened:
+        actual = os.fstat(opened.fileno())
+        named = source.lstat()
+        assert (actual.st_dev, actual.st_ino, actual.st_size, actual.st_mtime_ns) == (
+            named.st_dev, named.st_ino, named.st_size, named.st_mtime_ns,
+        )
+    assert recovery._plan(arguments(tmp_path)).configuration["JWT_SECRET_KEY"] == SECRET
+    assert source.read_bytes() == original
+
+
 @pytest.mark.parametrize("name", [".env", "configuration.json"])
 def test_nonregular_configuration_source_is_never_treated_as_absent(tmp_path, name):
     (tmp_path / name).mkdir()

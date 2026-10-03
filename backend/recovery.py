@@ -31,8 +31,14 @@ from .services.full_recovery import (
 from .services.recovery_archive import RecoveryError
 
 
+def _configuration_identity(info):
+    # Windows lstat/fstat ctime can describe different native timestamps.
+    return info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns
+
+
 def _configuration_fingerprint(info):
-    return info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns
+    # Compare ctime only within the same stat API, retaining change detection.
+    return (*_configuration_identity(info), info.st_ctime_ns)
 
 
 def _regular_configuration(info):
@@ -60,7 +66,7 @@ def _configuration_bytes(path: Path, maximum: int, deadline: float) -> bytes | N
             descriptor = None
             opened = os.fstat(source.fileno())
             _regular_configuration(opened)
-            if _configuration_fingerprint(before) != _configuration_fingerprint(opened):
+            if _configuration_identity(before) != _configuration_identity(opened):
                 raise RecoveryError("Konfiguration wurde während der Auswahl verändert.")
             raw = bytearray()
             while True:
@@ -75,9 +81,10 @@ def _configuration_bytes(path: Path, maximum: int, deadline: float) -> bytes | N
             named = path.lstat()
             _regular_configuration(final)
             _regular_configuration(named)
-            fingerprint = _configuration_fingerprint(opened)
-            if (len(raw) != opened.st_size or fingerprint != _configuration_fingerprint(final)
-                    or fingerprint != _configuration_fingerprint(named)):
+            if (len(raw) != opened.st_size
+                    or _configuration_fingerprint(opened) != _configuration_fingerprint(final)
+                    or _configuration_fingerprint(before) != _configuration_fingerprint(named)
+                    or _configuration_identity(final) != _configuration_identity(named)):
                 raise RecoveryError("Konfiguration wurde während der Auswahl verändert.")
     except OSError:
         raise RecoveryError("Konfiguration konnte nicht unverändert gelesen werden. Auswahl und Dateirechte prüfen.") from None
