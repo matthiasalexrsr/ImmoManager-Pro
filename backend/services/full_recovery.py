@@ -21,6 +21,7 @@ from zipfile import ZipFile
 
 from .recovery_archive import CHUNK, RecoveryError, check_zip_budget, decrypt_zip, encrypted_zip
 from .recovery_history import verify_history
+from .recovery_integration_state import verify_archived_integration_state
 from .recovery_validation import (
     rebase_file_references,
     validate_file_references,
@@ -48,10 +49,11 @@ class RecoveryLimits:
     metadata_bytes: int = 16 * 1024**2
     manifest_bytes: int = 64 * 1024**2
     central_directory_bytes: int = 32 * 1024**2
+    integration_json_depth: int = 64
 
     def __post_init__(self):
         for name in ("total_bytes", "file_bytes", "files", "compression_ratio", "metadata_bytes",
-                     "manifest_bytes", "central_directory_bytes"):
+                     "manifest_bytes", "central_directory_bytes", "integration_json_depth"):
             if type(getattr(self, name)) is not int or getattr(self, name) <= 0:
                 raise RecoveryError("Sicherungsgrenzen müssen positive ganze Zahlen sein.")
         if not math.isfinite(self.timeout_seconds) or self.timeout_seconds <= 0:
@@ -332,14 +334,18 @@ def create_full_backup(plan: RecoveryPlan, destination: Path, password: str, *,
     destination.parent.mkdir(parents=True, exist_ok=True)
     files, directories = _tree(plan.uploads, limits, deadline=deadline)
     extras = {}
+    integration_proof = None
     if plan.runtime_env is not None:
         extras["original-runtime.env"] = (plan.runtime_env, _fingerprint(plan.runtime_env))
     if plan.integration_state is not None:
         extras["integrations.json"] = (plan.integration_state, _fingerprint(plan.integration_state))
         if extras["integrations.json"][1][0] > min(limits.metadata_bytes, limits.file_bytes):
             raise RecoveryError("Integrationszustand überschreitet die Größengrenze.")
-        if not isinstance(_json(plan.integration_state.read_bytes()), dict):
-            raise RecoveryError("Integrationszustand muss ein JSON-Objekt sein.")
+        integration_proof = verify_archived_integration_state(
+            plan.integration_state, configuration,
+            max_plaintext_bytes=min(limits.metadata_bytes, limits.file_bytes),
+            max_json_depth=limits.integration_json_depth,
+        )
     if any(expected[0] > min(limits.metadata_bytes, limits.file_bytes) for _, expected in extras.values()):
         raise RecoveryError("Runtime-Metadaten überschreiten die Größengrenze.")
     if len(files) + len(directories) + len(extras) + 4 > limits.files:
@@ -377,6 +383,10 @@ def create_full_backup(plan: RecoveryPlan, destination: Path, password: str, *,
                     records["integrations.json"] = _add_bytes(archive, "integrations.json", b"{}", maximum=limits.metadata_bytes)
                 for name, (path, expected) in extras.items():
                     records[name] = _add_file(archive, name, path, expected, limits, deadline=deadline)
+                if integration_proof is not None and (
+                    records["integrations.json"]["sha256"] != integration_proof["state_revision"]
+                ):
+                    raise RecoveryError("Integrationszustand wurde während der Prüfung geändert; Sicherung erneut starten.")
                 for name, expected in files.items():
                     _remaining(deadline)
                     portable = _portable("uploads/" + name)
@@ -555,9 +565,12 @@ def restore_full_backup(source: Path, destination: Path, password: str, *,
             (staged / directory).mkdir(exist_ok=True)
         if _database_info(staged / "database.sqlite3", timeout_seconds=_remaining(deadline)) != manifest["database"]:
             raise RecoveryError("Datenbankschema oder Zeilenanzahlen stimmen nicht mit der Sicherung ueberein.")
-        if not isinstance(_json((staged / "integrations.json").read_bytes()), dict):
-            raise RecoveryError("Integrationszustand ist kein JSON-Objekt.")
         values = _rebased_configuration(_json((staged / "configuration.json").read_bytes()), destination)
+        verify_archived_integration_state(
+            staged / "integrations.json", values,
+            max_plaintext_bytes=min(limits.metadata_bytes, limits.file_bytes),
+            max_json_depth=limits.integration_json_depth,
+        )
         verify_iban_key(staged / "database.sqlite3", values, deadline=deadline)
         verify_private_drafts(staged / "database.sqlite3", values, deadline=deadline)
         verify_history(staged / "database.sqlite3", values, deadline=deadline)
