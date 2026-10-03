@@ -39,6 +39,17 @@ def current_orm_read_compatibility(engine):
         ensure_invoice_payment_columns(connection)
         assert inspect(connection).get_check_constraints("payments") == before
         assert all("invoice_id" not in check["sqltext"] for check in before)
+        # Current ORM models gained nullable measurement-binding metadata after
+        # this frozen m1 image. Keep the historical financial revision/stamp
+        # unchanged while permitting current fixture writers to populate m1.
+        for table, columns in {
+            "allocation_keys": ("consumption_medium", "consumption_unit"),
+            "meters": ("measurement_unit",),
+        }.items():
+            present = {column["name"] for column in inspect(connection).get_columns(table)}
+            for column in columns:
+                if column not in present:
+                    connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} TEXT"))
 
 
 def test_fresh_chain_and_empty_down_up_support_negative_allocations(tmp_path, monkeypatch):
