@@ -8,10 +8,15 @@ Commits, in order:
 - `262dff4`: pre-code profile, compatibility and test plan.
 - `ea8f96f`: bounded planner, optional composition and own pure tests.
 - `a6cc541`: actual Windows stat-API timestamp correction and one regression.
+- `dc5c209`: initial 40-case handoff, with the then remaining legacy-caller gap.
+- `7ab2a39`: Root-authorized pre-code clarification for the three legacy callers.
+- `257dadb`: three loaded-profile/deadline forwarding edits and own three cases.
+- `e6a50b9`: compare test deadlines at actual selector observation time.
 - This document records evidence; it changes no product source.
 
-Only product edits are `backend/recovery.py` and the optional forwarding
-signature/body of `backend/legacy_sqlite_upgrade/service.py::_selected`.
+Only product edits are `backend/recovery.py`, the optional forwarding
+signature/body of `backend/legacy_sqlite_upgrade/service.py::_selected`, and
+three exact forwarding calls in legacy upgrade/status/rollback.
 Root's integration-state maintenance service, startup/factory/schema/auth,
 settings, CI and all original/private installations remain untouched.
 
@@ -51,9 +56,10 @@ database URL or field key enters the plan.
 Recovery backup CLI now passes its already loaded profile and one deadline through
 the fenced selector, then gives actual full-backup creation only the remaining
 time. Existing installation lease and SQLite writer code remain structurally in
-place. Optional legacy selector calls without keywords retain default behavior;
-existing legacy upgrade/status/return caller bodies were not expanded in this
-narrow packet.
+place. Optional legacy selector calls without keywords retain default behavior.
+The existing legacy upgrade/status/rollback commands now pass their already
+loaded profile/deadline, closing the initial handoff's explicit remaining gap.
+Their implementation changes are exactly those three call-argument lists.
 
 Root integration must forward its chosen profile/deadline through every fresh
 maintenance selection, including publication callbacks:
@@ -67,8 +73,8 @@ and wrapper-fixture signature edits. Its pre-parse fingerprint reads must also
 respect the selected source-byte budget before reading oversized files; merely
 passing the budget after an earlier full-file hash is insufficient for the stated
 all-reads profile boundary. Keep the existing parse-before/after and publication
-freshness checks. Root may separately choose to forward already loaded profiles
-from older legacy command callers; the new optional selector API supports that.
+freshness checks. The older legacy command caller forwarding is completed in
+`257dadb`; it does not need a further Root product implementation.
 
 ## Actual verification and corrected first result
 
@@ -99,6 +105,28 @@ file descriptor, nonregular/hardlinked sources, finite/pre-expired deadlines,
 actual synchronous parser overrun checks and optional profile forwarding.
 Ruff and Mypy then passed all three changed Python files, both exit 0.
 All own execution sessions finished normally.
+
+After the separately authorized three-caller fix, on frozen `e6a50b9` source:
+
+```powershell
+$env:PYTEST_DISABLE_PLUGIN_AUTOLOAD = '1'
+& 'C:/Users/matth/Documents/Codex/2026-10-01/wi/outputs/ImmoManager-Pro/.venv/Scripts/python.exe' -m pytest --noconftest backend/tests/test_recovery_bounded_planner.py -q -k test_each_legacy_command_passes_its_loaded_profile_before_any_sql
+```
+
+**3 passed, 40 deselected, 0.92 s, exit 0, no skips**. Exact NodeIDs:
+
+- `backend/tests/test_recovery_bounded_planner.py::test_each_legacy_command_passes_its_loaded_profile_before_any_sql[upgrade]`
+- `backend/tests/test_recovery_bounded_planner.py::test_each_legacy_command_passes_its_loaded_profile_before_any_sql[status]`
+- `backend/tests/test_recovery_bounded_planner.py::test_each_legacy_command_passes_its_loaded_profile_before_any_sql[rollback]`
+
+Each case invokes the actual command and selector, verifies identity of the
+passed loaded profile and its actual remaining deadline, and lets the actual
+bounded source reader refuse the too-small metadata budget before SQL, receipt
+or archive work. Only the installation-lease context is replaced by a pure unit
+seam; the SQL/application tripwires remain active. Ruff/Mypy both then passed
+the two changed Python files, exit 0. The earlier 40 cases were unchanged and
+not rerun after these three forwarding edits. Thus evidence is the separately
+executed **40 + 3** cases, not a claimed single 43-case combined acceptance.
 
 ## Acceptance limits
 
