@@ -8,7 +8,8 @@ export default defineConfig({
   testDir: '.',
   // The separate extension keeps browser tests out of Vitest's unit-test discovery.
   testMatch: process.env.IMMO_E2E_MODE === 'setup' ? '**/auth.pw.mjs' : '**/*.pw.mjs',
-  testIgnore: process.env.IMMO_E2E_MODE === 'setup' ? [] : ['**/auth.pw.mjs'],
+  testIgnore: process.env.IMMO_E2E_MODE === 'setup' ? [] : ['**/auth.pw.mjs',
+    ...(!process.env.IMMO_E2E_HISTORY_FIXTURE ? ['**/history-inventory.pw.mjs'] : [])],
   fullyParallel: false,
   workers: 1,
   retries: 0,

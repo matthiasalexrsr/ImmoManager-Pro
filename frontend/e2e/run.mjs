@@ -19,7 +19,8 @@ const defaultPython = join(projectDir, '.venv', process.platform === 'win32' ? '
 const python = process.env.IMMO_E2E_PYTHON || (existsSync(defaultPython) ? defaultPython : 'python');
 const freshInstallation = process.argv.includes('--fresh-install');
 const dashboardFixture = process.argv.includes('--dashboard-fixture');
-const playwrightArgs = process.argv.slice(2).filter(arg => !['--fresh-install', '--dashboard-fixture'].includes(arg));
+const historyFixture = process.argv.includes('--history-fixture');
+const playwrightArgs = process.argv.slice(2).filter(arg => !['--fresh-install', '--dashboard-fixture', '--history-fixture'].includes(arg));
 let backend;
 let backendStopped;
 let backendError;
@@ -92,7 +93,7 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
 
 try {
   if (!process.env.npm_execpath) throw new Error('Start this runner through npm run test:e2e.');
-  if (freshInstallation && dashboardFixture) throw new Error('The dashboard fixture requires the isolated demo account.');
+  if (freshInstallation && (dashboardFixture || historyFixture)) throw new Error('The inventory fixtures require the isolated demo account.');
   await run(process.execPath, [process.env.npm_execpath, 'run', 'build'], { cwd: frontendDir });
   const port = await freePort();
   const url = `http://127.0.0.1:${port}`;
@@ -152,10 +153,13 @@ try {
   // SQL database. Other suites and the product startup have no new seed path.
   const dashboardManifest = join(dataDir, 'dashboard-fixture.json');
   if (dashboardFixture) await run(python, ['-m', 'frontend.e2e.dashboard_seed', dashboardManifest], { env: backendEnv });
+  const historyManifest = join(dataDir, 'history-fixture.json');
+  if (historyFixture) await run(python, ['-m', 'frontend.e2e.history_seed', historyManifest], { env: backendEnv });
   await run(process.execPath, [require.resolve('@playwright/test/cli'), 'test', '--config', 'e2e/playwright.config.mjs', ...playwrightArgs], {
     cwd: frontendDir,
     env: { ...process.env, IMMO_E2E_URL: url, IMMO_E2E_MODE: freshInstallation ? 'setup' : 'demo',
-      ...(dashboardFixture ? { IMMO_E2E_DASHBOARD_FIXTURE: dashboardManifest } : {}) },
+      ...(dashboardFixture ? { IMMO_E2E_DASHBOARD_FIXTURE: dashboardManifest } : {}),
+      ...(historyFixture ? { IMMO_E2E_HISTORY_FIXTURE: historyManifest } : {}) },
   });
 } catch (error) {
   console.error(error.message);

@@ -6,7 +6,6 @@ from sqlalchemy import select, text
 
 from backend.db.orm_models import ChangeHistoryORM
 from backend.services.history_inventory import HistoryInventoryQuery, history_inventory_summary
-
 from backend.tests.test_history_inventory import (
     test_complete_large_source_filter_summary_legacy_and_export as full_source,
 )

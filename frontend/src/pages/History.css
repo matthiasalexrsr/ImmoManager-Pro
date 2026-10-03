@@ -1,0 +1,10 @@
+.history-inventory .history-count { margin: 16px 0; padding: 18px; }
+.history-inventory .history-identity { display: block; color: var(--muted); font-size: .82rem; overflow-wrap: anywhere; }
+.history-inventory td details { min-width: 210px; max-width: 460px; }
+.history-inventory summary { cursor: pointer; color: var(--primary); }
+.history-inventory .history-values { display: grid; grid-template-columns: 85px minmax(0, 1fr); gap: 8px 12px; margin: 14px 0; }
+.history-inventory .history-values dt { font-weight: 600; }
+.history-inventory .history-values dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.history-inventory .inventory-filters input { max-width: 100%; min-width: 0; }
+.history-inventory .history-advanced { grid-column: 1 / -1; }
+.history-inventory .history-extra-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 12px; margin-top: 12px; }
