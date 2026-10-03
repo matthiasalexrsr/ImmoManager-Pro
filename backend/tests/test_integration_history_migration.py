@@ -15,7 +15,7 @@ from backend.services.integrations.history_store import CLEAR, SQLIntegrationHis
 from backend.tests.test_integration_history_core import ACTOR, completed, journal_engine
 
 
-@pytest.mark.parametrize("dialect", ["sqlite", "pg"])
+@pytest.mark.parametrize("dialect", ["sqlite", pytest.param("pg", id="postgres")])
 def test_actual_full_chain_empty_down_up_and_retained_refusal(tmp_path, monkeypatch, dialect):
     with journal_engine(tmp_path, dialect, create_family=False) as engine:
         url = engine.url

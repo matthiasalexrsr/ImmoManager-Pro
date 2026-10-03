@@ -55,7 +55,7 @@ def journal_engine(tmp_path, dialect, *, create_family=True):
             admin.dispose()
 
 
-@pytest.fixture(params=["sqlite", "pg"])
+@pytest.fixture(params=["sqlite", pytest.param("pg", id="postgres")])
 def journal(request, tmp_path):
     with journal_engine(tmp_path, request.param) as engine:
         ring = IBANKeyring("synthetic", {"synthetic": generate_key()})

@@ -22,6 +22,7 @@ from backend import auth
 from backend.db.bank_import_models import BANK_IMPORT_TABLES  # noqa: F401 — register reset sidecars before create_all
 from backend.db.integration_history_models import HISTORY_MODELS, TABLES
 from backend.db.integration_history_schema import install_history_guards
+from backend.db.measurement_history_schema import install_measurement_guards
 from backend.db.orm_models import Base
 from backend.db.rent_batch_models import RENT_BATCH_TABLES  # noqa: F401 — register reset sidecars before create_all
 from backend.db.session_models import (  # noqa: F401 — register restore security tables before create_all
@@ -49,12 +50,15 @@ from backend.tests.test_integration_history_core import ACTOR, completed, journa
 ROOT = Path(__file__).resolve().parents[2]
 
 
-@pytest.fixture(params=["memory", "sqlite", "pg"])
+@pytest.fixture(params=["memory", "sqlite", pytest.param("pg", id="postgres")])
 def active(request, tmp_path, monkeypatch):
     with journal_engine(tmp_path, "pg" if request.param == "pg" else "sqlite", create_family=False) as engine:
         Base.metadata.create_all(engine)
         with engine.begin() as connection:
             install_history_guards(connection)
+            # Explicit native fixture construction must install the same
+            # original guards as Alembic; restore never repairs them.
+            install_measurement_guards(connection)
         factory = sessionmaker(engine)
         ring = IBANKeyring("synthetic", {"synthetic": generate_key()})
         journal = SQLIntegrationHistoryStore(factory, keyring=ring)

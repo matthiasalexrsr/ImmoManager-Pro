@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from backend import auth
 from backend.db.operational_job_models import JOB_MODELS, ensure_operational_job_schema
+from backend.db.operational_scheduler_models import OperationalSchedulerORM
 from backend.db.orm_models import Base
 from backend.db.tenancy_workflow_models import TENANCY_WORKFLOW_MODELS
 from backend.models import (
@@ -163,7 +164,7 @@ def test_complete_older_sqlite_archive_without_either_family_roundtrips(plan, tm
     # create_all, even when this fixture stops at a2. Explicitly form the genuine
     # pre-family image in this disposable fixture, verifying there are no facts
     # to discard. Runtime restore still performs no implicit schema repair.
-    family = {model.__tablename__ for model in (*TENANCY_WORKFLOW_MODELS, *JOB_MODELS)}
+    family = {model.__tablename__ for model in (*TENANCY_WORKFLOW_MODELS, *JOB_MODELS, OperationalSchedulerORM)}
     with closing(sqlite3.connect(plan.database)) as db:
         names = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         assert not names & family or family <= names
@@ -175,7 +176,7 @@ def test_complete_older_sqlite_archive_without_either_family_roundtrips(plan, tm
         db.commit()
     with closing(sqlite3.connect(plan.database)) as db:
         names = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        assert not names.intersection(model.__tablename__ for model in (*TENANCY_WORKFLOW_MODELS, *JOB_MODELS))
+        assert not names.intersection(family)
     before = _database_info(plan.database)
     archive = tmp_path / "complete-older.immobak"
     create_full_backup(plan, archive, PASSPHRASE, offline=True)

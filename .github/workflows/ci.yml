@@ -212,9 +212,18 @@ jobs:
         env:
           TEST_SERVER_DATABASE_URL: postgresql://immo_ci:isolated_test_database@127.0.0.1:5432/immo_ci
         run: >-
-          pytest backend/tests/test_integration_history_core.py
+          python scripts/run_postgres_gate.py backend/tests/test_integration_history_core.py
           backend/tests/test_integration_history_migration.py
-          backend/tests/test_integration_history_runtime_recovery.py -q --tb=short
+          backend/tests/test_integration_history_runtime_recovery.py
+          -k 'postgres and not memory and not sqlite' -q --tb=short
+
+      - name: Require retained measurement parent and privacy publication proof
+        if: ${{ !cancelled() && steps.pg_dependencies.outcome == 'success' }}
+        env:
+          TEST_SERVER_DATABASE_URL: postgresql://immo_ci:isolated_test_database@127.0.0.1:5432/immo_ci
+        run: >-
+          python scripts/run_postgres_gate.py backend/tests/test_measurement_parent_guards.py
+          -k 'postgres and not sqlite' -q --tb=short
 
       - name: Verify durable manual SMTP claims on PostgreSQL
         if: ${{ !cancelled() && steps.pg_dependencies.outcome == 'success' }}
