@@ -81,3 +81,59 @@ Vor dem Fixturefix festgelegt: die tatsächlichen fünf Fixturezeilen über
 `result.all()` als Rows lesen; native CURRENT_TIMESTAMP-/Mikrosekunden-/NULL-
 Assertions vollständig erhalten. Danach nur diesen unvollständigen Fall
 wiederholen; keine unnötige Wiederholung der fünf grünen Quellenfälle.
+
+Gezielter Folgefall auf2e58c12: 1 PASS in5,66s, hard45, normalExit0. Damit sechs
+unterschiedliche positive SQL-Quellenfälle komponiert. Pool-/eigene Session-
+Aufräumprüfungen bestehen. Kein vollständiger wiederholter6er-Gate, kein
+positiver Write und keine HTTP-/PostgreSQL-/Migrations-/Recoveryabnahme.
+
+## Unabhängig geprüfter nächster CommitAuthorityvertrag
+
+Plattformreview ist rein lesend, ohne Tests/Edits. Die vorhandene Rotation
+sperrt User vor Sid. Deshalb native Reihenfolge: vorhandener auth_setup-
+Managementsingleton → tatsächlicher User → tatsächliche Sid-Familie. Der
+Singleton darf bei Abwesenheit nicht heimlich angelegt werden. SQLUserStore-
+Managementwrite schützt dabei normalen Rollen-/Grant-/Aktivitätswechsel;
+revoke/touch sperren nur Sid. Sid→User würde einen echten Deadlock ermöglichen.
+
+Root besitzt eine frische kurze Session, dieselbe tatsächliche Auth-/Fach-
+Connection und genau eine Operation. SQLite BEGIN IMMEDIATE vor jedem Snapshot;
+PostgreSQL Lock-/Statementbudgets vor erstem Lock. Keine laufende oder
+verschmutzte fremde Session übernehmen. In der gehaltenen Unit ausschließlich
+decode_signed_token und native User/Sidprüfung; decode_token kann über touch
+einen zweiten Writer starten. Legacytoken ohne Sid verlangt erneute Anmeldung
+für persönliche Writes. Refreshgeneration wird nicht mit session_version
+verwechselt. Rawtoken bleibt weder in DB noch Logs.
+
+Der vorhandene operational_lock schützt auch noch nicht vorhandene
+Dispatchzeilen gegen restriktiven Insert des Tickwriters. Tatsächliche
+Notification-, Resourcegrant- und positiven Scopeparentzeugen müssen bis
+Commit gehalten werden. Parentprüfung übernimmt zentralen Alias-/CSV-/Scope-
+Graph und vorhandene Location-/Measurement-/Tenantgrenzen. Nach wartenden
+Locks Elternbindung erneut lesen; geänderter Pfad ergibt Konflikt. Kein
+Installationsstocklock und keine vorgetäuschte generische Parentfähigkeit.
+Unbelegte Zielzweige behalten mark_read=false bis zum tatsächlich geprüften
+eigenen Anschluss.
+
+Der konkrete NotificationReadCommitAuthoritybeleg entsteht ausschließlich im
+Rootwrapper und ist gegen dessen Ausstellerregistrierung identitätsgeprüft:
+genaue Session/SessionTransaction/Connection, Actor/Sid/Principal, Operation,
+Notification-ID und tatsächlich gehaltene Fences. Savepoint-/Targetwechsel,
+beendete/fehlerhafte Transaktion und Wiederverwendung sind unzulässig.
+Der DTO ist kein Beleg. Wrapper prüft nach Flush und nach allen Wartezeiten
+Credential-/Familienablauf, Konto, vollständige Principal-/Targetbindung
+unmittelbar vor Commit. Keine spätere Fachaktion vor Commit. Ein Sessionhook
+verweigert einen verfrühten Commit, ersetzt die explizite Abschlussprüfung aber
+nicht. Domainstage_read besitzt weiterhin weder Commit noch Rollback.
+
+Native Raceprüfungen müssen beide wirklichen Reihenfolgen beweisen: Änderung
+gewinnt zuerst → kein Read; Read hält Fences zuerst → Änderung erst nach Read-
+Commit. Danach HTTPpublish-Verweigerung darf nicht als Rückrollen eines schon
+geordneten Commits beschrieben werden. Wiederholung bleibt insert-once.
+TEHA braucht eine eigene Capability auf demselben Account-/Sidkern, kein
+Notificationbeleg und keine Providerkontakte innerhalb der DB-Locks.
+
+Domain bereitet separat tatsächliche PostgreSQL-Quellenfälle vor. Eine echte
+Notification-Repositoryzeit unter zwei Sessionzeitzonen wird gegen UTC gemessen,
+bevor weitere Zeitdefaults verändert werden. Diese Vorbereitung startet keinen
+DB-/Serverprozess und behauptet keine native Abnahme.
