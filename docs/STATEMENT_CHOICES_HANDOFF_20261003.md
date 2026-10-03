@@ -89,7 +89,13 @@ shared reference extension (14 lines) and focused tests (191 lines).
 - Shared SQLite/PostgreSQL CTE/Nullsafe-party/source/regexp/limit compilation
   green; this is static evidence, not native PostgreSQL acceptance.
 - Ruff touched files and Mypy both source services green.
-- Actual native PostgreSQL acceptance remains pending its coordinated slot.
+- Four actual native PostgreSQL HTTP cases: 4 PASS, no skips, 54.90 s,
+  own random migrated schemas against dedicated 127.0.0.1:58112. Source
+  `7ed9100` unchanged. All four actual cases also passed on migrated SQLite.
+  Actual CTE/page filters, unicode literal search, pinned/context/authority
+  bindings, two real correction revisions, independent current-contract
+  rebind, hash rejection, legacy original and independent source cycle proved.
+  Native PostgreSQL run closed; coordinated heavy slot returned immediately.
 
 Root and UI assistant were immediately informed after the clean contractcommit,
 including exact query/response/selected/cursor and legacy/frozen metadata rules.
