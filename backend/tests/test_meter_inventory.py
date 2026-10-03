@@ -2,26 +2,68 @@
 
 import csv
 import io
+import shutil
 from datetime import date, datetime, timedelta, timezone
 
 import pytest
 from fastapi import HTTPException
-from sqlalchemy import event, update
+from sqlalchemy import create_engine, event, update
+from sqlalchemy.orm import Session
 
 from backend import auth
-from backend.db.orm_models import MeterORM, StandaloneMeterReadingORM
+from backend.db.billing_dispute_schema import install_dispute_guards
+from backend.db.orm_models import Base, MeterORM, StandaloneMeterReadingORM
 from backend.models import Meter, MeterCreate, StandaloneMeterReading
+from backend.repositories.sql_store import SQLAlchemyStore
 from backend.routers import meter_inventory as router
 from backend.services import meter_inventory as service
 from backend.services.meter_inventory import MeterInventoryQuery as Query
 from backend.services.meter_inventory import MeterReadingsQuery as ReadingQuery
 from backend.services.meter_inventory_export import csv_chunks
 from backend.services.portfolio_scope import scope_context
-from backend.tests.test_contract_workspace import active as active
+from backend.storage import InMemoryStore
+from backend.tests.form_draft_api_support import migrate
 from backend.tests.test_contract_workspace import install_actor, seed
 from backend.tests.test_portfolio_access_http import access_http as access_http
 
 STAMP = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+
+@pytest.fixture(scope="module")
+def migrated_template(tmp_path_factory):
+    path = tmp_path_factory.mktemp("meter-native-template") / "template.sqlite"
+    with pytest.MonkeyPatch.context() as environment:
+        assert migrate("sqlite:///" + path.as_posix(), environment) == "k2a2b3c4d5e6"
+    return path
+
+
+@pytest.fixture(params=["memory", "sqlite"])
+def active(request, tmp_path, migrated_template):
+    if request.param == "memory":
+        yield InMemoryStore()
+        return
+    path = tmp_path / "meter-inventory.sqlite"
+    shutil.copyfile(migrated_template, path)
+    engine = create_engine("sqlite:///" + path.as_posix(), connect_args={"check_same_thread": False})
+    try:
+        with Session(engine) as db:
+            yield SQLAlchemyStore(db)
+    finally:
+        engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def compatibility_fixture_journal_guards():
+    # The reused legacy HTTP fixture creates metadata directly. Install the
+    # actual j2 native original guards in that fixture only; product startup
+    # and recovery stay Root-owned. Service fixtures use full Alembic instead.
+    def guards(_metadata, connection, **_kwargs):
+        install_dispute_guards(connection)
+    event.listen(Base.metadata, "after_create", guards)
+    try:
+        yield
+    finally:
+        event.remove(Base.metadata, "after_create", guards)
 
 
 def insert(store, items, model, collection):
