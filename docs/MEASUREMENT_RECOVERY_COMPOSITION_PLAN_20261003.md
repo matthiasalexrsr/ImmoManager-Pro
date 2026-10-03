@@ -1,0 +1,9 @@
+# Historische Messquellen: zentrale Betriebsintegration
+
+Der gelieferte Quellenkern wird in den bestehenden Start- und Wiederherstellungsweg eingebunden. Die vier Tabellen werden vor der Schemaerkennung registriert. Ein normaler Produktionsstart prüft ausschließlich; Installation und Migration bleiben ausdrücklich getrennt.
+
+Die Offline-Prüfung erkennt vollständig fehlende ältere Quellenfamilien, verweigert jedoch teilweise fehlende Tabellen, beschädigte Fremdschlüssel, fehlende Originalschutzregeln und widersprüchliche Originale. Sie liest Quellen je Einheitenakte und nur deren tatsächliche Eltern. Eine SQL-Prüfung erfasst zusätzlich überschneidende physische Zählerzuordnungen über mehrere Einheiten. Kein Gesamtbestand wird abgeschnitten oder als eine globale Python-Liste geladen. Die größte einzelne Akte bleibt vorerst die Speichergrenze des vorhandenen reinen Fachprüfers; eine spätere schrittweise Prüfung einzelner Quellenreihen bleibt erforderlich.
+
+Vollarchive erhalten die vorhandene physische Datenbank einschließlich Originalen und Schutzregeln. Die fachliche Teilübertragung wird weiterhin ausdrücklich verweigert, wenn zurückzubehaltende Historie vorhanden ist. Sicherheitsabschluss und Claim-/Sessionerneuerung erfolgen erst nach erfolgreicher Prüfung sämtlicher Quellen. Die laufende Parentguard-/Datenschutzarbeit des Domain-Assistenten bleibt getrennt.
+
+Abnahme: tatsächliche Memory-/SQLite-/PostgreSQL-Quellen, Roh-SQLite und SQLAlchemy, Korrekturen, beschädigte Hashes, fehlende Tabellen/Schutzregeln, globale Zählerüberschneidung, unveränderte Quellen nach Vollwiederherstellung, verweigerte Teilübertragung und Produktionsstart unter tatsächlich verbotenem DDL. Die Prüfung gilt für den gemeinsamen aktuellen Migrationsstand; historische einzelne Migrationsrundläufe bleiben ausdrücklich benannt.
