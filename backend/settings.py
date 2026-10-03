@@ -147,8 +147,8 @@ class Settings(BaseSettings):
     operational_scheduler_enabled: bool = False
     operational_scheduler_actor_id: str | None = None
     operational_scheduler_interval_seconds: int = Field(default=300, ge=10, le=86400)
-    operational_scheduler_max_items: int = Field(default=500, ge=1, le=5000)
-    operational_scheduler_lookback_days: int = Field(default=366, ge=1, le=3660)
+    operational_scheduler_max_items: int = Field(default=500, ge=1)
+    operational_scheduler_lookback_days: int = Field(default=366, ge=1)
     booking_page_max_size: int = Field(default=500, ge=25, le=5000)
     workflow_reference_page_budget: int = Field(default=1000, ge=1)
     workflow_reference_cursor_seconds: int = Field(default=3600, ge=1)

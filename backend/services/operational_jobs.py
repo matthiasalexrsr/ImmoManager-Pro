@@ -1,7 +1,7 @@
 """Independent, fair, restart-persistent packets; legacy ticks stay atomic.
 
-Phase 1 covers overdue money items and approved correspondence dates only.
-No email, cash posting, global scheduler hook, or implicit caller-session commit.
+Money alerts, approved correspondence, recurrence and operational projections.
+No email, cash posting or implicit caller-session commit.
 """
 
 from contextlib import ExitStack, contextmanager
@@ -29,7 +29,7 @@ from ..db.operational_models import (
     OperationalOccurrenceORM,
     OperationalScheduleORM,
 )
-from ..db.orm_models import CalendarEventORM, ReceivableORM, RentChargeORM, TaskORM
+from ..db.orm_models import CalendarEventORM, NotificationORM, ReceivableORM, RentChargeORM, TaskORM
 from ..models import CalendarEvent, CalendarEventCreate, Notification, NotificationCreate, Task
 from ..repositories.sql_store import SQLAlchemyStore
 from ..storage import NotFoundError
@@ -39,6 +39,7 @@ from .contract_lifecycle import Work, digest
 from .contract_occupancy import begin_writer
 from .correspondence_calendar import STALE_MARKER, account_lock
 from .operational_job_types import JobCommand, JobContinue, JobCreate, PacketPolicy
+from .operational_projection_jobs import MODELS as PROJECTION_MODELS
 from .operational_schedule import _key, _memory_lock, _seed_lock, _state_lock, _Transaction
 from .payments import payment_total
 from .portfolio_scope import current_scope, refresh_scope, scope_context, scope_from_user
@@ -46,7 +47,8 @@ from .portfolio_scope import current_scope, refresh_scope, scope_context, scope_
 POLICY = PacketPolicy()
 _request_token: ContextVar[str | None] = ContextVar("operational_job_request_token", default=None)
 SOURCE_MODELS: dict[str, Any] = {"overdue_rent_charge": RentChargeORM, "overdue_receivable": ReceivableORM,
-                 "correspondence": CorrespondenceDraftORM, "recurring_task": TaskORM, "recurring_calendar": OperationalScheduleORM}
+                 "correspondence": CorrespondenceDraftORM, "recurring_task": TaskORM, "recurring_calendar": OperationalScheduleORM,
+                 **PROJECTION_MODELS}
 COLLECTIONS = {"overdue_rent_charge": "rent_charges", "overdue_receivable": "receivables",
                "correspondence": "contract_correspondence_drafts", "recurring_task": "tasks"}
 
@@ -179,6 +181,11 @@ class Unit(_Transaction):
             previous = self.memory["dispatches"].get(key)
             if previous:
                 self.touch("notifications", previous.notification_id)
+        else:
+            previous = self.db.get(OperationalDispatchORM, key)
+            if previous:
+                self.db.scalar(select(NotificationORM).where(NotificationORM.id == previous.notification_id)
+                    .with_for_update().execution_options(populate_existing=True))
         return super().notify(key, payload, role)
 
     def record(self, schedule_id, day, kind, target_id):
@@ -268,6 +275,9 @@ def _bounds(parameters):
 
 
 def _source_query(family, parameters):
+    if family in PROJECTION_MODELS:
+        from .operational_projection_jobs import query as projection_query
+        return projection_query(family, parameters)
     model = SOURCE_MODELS[family]
     point, _, upper = _bounds(parameters)
     query = select(model.id)
@@ -287,6 +297,10 @@ def _source_query(family, parameters):
 
 
 def _source_memory(unit, family, parameters):
+    if family in PROJECTION_MODELS:
+        from .operational_projection_jobs import memory_sources
+        yield from memory_sources(unit, family, parameters)
+        return
     point, _, upper = _bounds(parameters)
     if family == "recurring_calendar":
         yield from (row.id for row in unit.memory["schedules"].values() if row.source_kind == "calendar" and row.active)
@@ -304,9 +318,13 @@ def _source_memory(unit, family, parameters):
             yield row.id
 
 
+def _identifier_column(family):
+    return SOURCE_MODELS[family].key if family == "alert_resolution" else SOURCE_MODELS[family].id
+
+
 def _upper(unit, family, parameters):
     if unit.db is not None:
-        return unit.db.scalar(_source_query(family, parameters).order_by(SOURCE_MODELS[family].id.desc()).limit(1))
+        return unit.db.scalar(_source_query(family, parameters).order_by(_identifier_column(family).desc()).limit(1))
     return max(_source_memory(unit, family, parameters), default=None)
 
 
@@ -317,7 +335,7 @@ def create_job(store, payload: JobCreate, actor_id=None):
     recurrence = any(family.startswith("recurring_") for family in parameters["families"])
     if not recurrence:
         parameters.pop("full_catch_up")
-    parameters["semantics_version"] = 2 if recurrence else 1
+    parameters["semantics_version"] = 3 if recurrence or any(family in PROJECTION_MODELS for family in parameters["families"]) else 1
     request_hash = digest(parameters)
     # Index the digest, so legitimate long caller references never hit the
     # PostgreSQL B-tree tuple-size limit. Command receipts retain their request.
@@ -397,6 +415,9 @@ def _checked_claim(unit, claim):
 
 
 def _source(unit, family, identifier, *, lock=False):
+    if family in PROJECTION_MODELS:
+        from .operational_projection_jobs import source as projection_source
+        return projection_source(unit, family, identifier, lock=lock)
     if family.startswith("recurring_"):
         from .operational_recurrence_jobs import source
         return source(unit, family, identifier)
@@ -421,11 +442,11 @@ def _discover(unit, job, lane, width, deadline):
     if lane.exhausted:
         return
     if unit.db is not None:
-        model = SOURCE_MODELS[lane.family]
-        query = _source_query(lane.family, job.parameters).where(model.id <= lane.upper)
+        column = _identifier_column(lane.family)
+        query = _source_query(lane.family, job.parameters).where(column <= lane.upper)
         if lane.cursor is not None:
-            query = query.where(model.id > lane.cursor)
-        rows = list(unit.db.scalars(query.order_by(model.id).limit(width + 1)))
+            query = query.where(column > lane.cursor)
+        rows = list(unit.db.scalars(query.order_by(column).limit(width + 1)))
     else:
         rows = nsmallest(width + 1, (identifier for identifier in _source_memory(unit, lane.family, job.parameters)
             if identifier <= lane.upper and (lane.cursor is None or identifier > lane.cursor)))
@@ -495,7 +516,11 @@ def _needed(unit, job, lane, source):
     """Avoid materializing a new done-work record for every unchanged old source."""
     point, lower, upper = _bounds(job.parameters)
     if lane.family.startswith("recurring_"):
-        return True
+        from .operational_recurrence_jobs import needed
+        return needed(unit, job, lane.family, source)
+    if lane.family in PROJECTION_MODELS:
+        from .operational_projection_jobs import needed as projection_needed
+        return projection_needed(unit, job, lane.family, source)
     if lane.family == "correspondence":
         schedule = "contract-correspondence:" + source.id + ":" + source.review_hash
         key = _key(schedule, source.deadline_date)
@@ -606,7 +631,7 @@ def prepare_claim(store, claim: Claim, payload: JobContinue, *, policy=POLICY):
     captured = _operator(claim.actor_id)
     with atomic(store, captured) as unit:
         job, lane = _checked_claim(unit, claim)
-        if lane.family.startswith("recurring_") or not _items(unit, lane.id, "ready", 1):
+        if lane.family.startswith("recurring_") or lane.family == "escalation" or not _items(unit, lane.id, "ready", 1):
             _discover(unit, job, lane, min(payload.max_items, policy.page_size), monotonic() + policy.packet_seconds)
         _finish_claim(unit, claim, lane, release=False)
 
@@ -629,7 +654,10 @@ def run_claim(store, claim: Claim, payload: JobContinue, *, policy=POLICY):
                 current_item = item.id
                 unit.touch_row(item)
                 done = True
-                if lane.family.startswith("recurring_"):
+                if lane.family in PROJECTION_MODELS:
+                    from .operational_projection_jobs import apply
+                    done, outcome, result = apply(unit, job, lane, item, width=width, deadline=deadline)
+                elif lane.family.startswith("recurring_"):
                     from .operational_recurrence_jobs import apply
                     done, outcome, result = apply(unit, job, lane, item, width=width, deadline=deadline)
                 else:

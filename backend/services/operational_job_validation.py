@@ -55,13 +55,16 @@ def validate_job_journal(connection, *, deadline=None):
             job = _object(values, ("parameters",))
             UUID(job.id)
             if (not _hex(job.create_key) or not _hex(job.scope_hash) or not _hex(job.request_hash) or _hash(job.parameters) != job.request_hash
-                    or job.parameters.get("semantics_version") not in {1, 2} or job.revision <= 0 or job.turn < 0
+                    or job.parameters.get("semantics_version") not in {1, 2, 3} or job.revision <= 0 or job.turn < 0
                     or job.state not in {"queued", "running", "completed", "attention", "cancelled"}):
                 raise ValueError
             request = JobCreate.model_validate({key: value for key, value in job.parameters.items() if key != "semantics_version"}
                                                | {"idempotency_key": job.create_key})
             if (any(family.startswith("recurring_") for family in request.families)
-                    and job.parameters["semantics_version"] != 2):
+                    and job.parameters["semantics_version"] not in {2, 3}):
+                raise ValueError
+            if any(family not in {"overdue_rent_charge", "overdue_receivable", "correspondence", "recurring_task", "recurring_calendar"}
+                   for family in request.families) and job.parameters["semantics_version"] != 3:
                 raise ValueError
             lanes = list(_rows(connection, "SELECT family,state FROM operational_job_lanes WHERE job_id=:job LIMIT " + str(len(FAMILIES) + 1), {"job": job.id}))
             if sorted(row["family"] for row in lanes) != sorted(request.families):
@@ -124,11 +127,18 @@ def validate_job_journal(connection, *, deadline=None):
                             or "adoption_cursor" in item.result and not isinstance(item.result["adoption_cursor"], str)
                             or "adoption_done" in item.result and type(item.result["adoption_done"]) is not bool):
                         raise ValueError
+                if lane["family"] == "escalation":
+                    if (not isinstance(item.result, dict) or set(item.result) - {"upper", "cursor", "created_count"}
+                            or any(item.result.get(key) is not None and not isinstance(item.result[key], str) for key in ("upper", "cursor"))
+                            or "created_count" in item.result and (type(item.result["created_count"]) is not int or item.result["created_count"] < 0)):
+                        raise ValueError
                 key, target = item.result.get("effect_key"), item.result.get("target_id")
                 if key:
-                    if lane["family"] == "correspondence":
+                    if lane["family"] in {"correspondence", "contract_expiry"}:
                         original = _one(connection, "SELECT target_id,target_kind,schedule_id FROM operational_occurrences WHERE key=:key", {"key": key})
-                        if not original or original["target_id"] != target or original["target_kind"] != "calendar" or not original["schedule_id"].startswith("contract-correspondence:" + item.source_id + ":"):
+                        prefix = "contract-correspondence:" + item.source_id + ":" if lane["family"] == "correspondence" else "contract-deadline:" + item.source_id
+                        matches = original and (original["schedule_id"].startswith(prefix) if lane["family"] == "correspondence" else original["schedule_id"] == prefix)
+                        if not original or original["target_id"] != target or original["target_kind"] != "calendar" or not matches:
                             raise ValueError
                     else:
                         original = _one(connection, "SELECT notification_id,entity_type,entity_id FROM operational_dispatches WHERE key=:key", {"key": key})

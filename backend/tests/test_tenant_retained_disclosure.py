@@ -317,6 +317,7 @@ def test_corrupt_retained_hash_receipt_or_terminal_actor_never_publishes_partial
 
 @pytest.mark.parametrize("partial", [False, True])
 def test_actual_old_sql_images_allow_wholly_absent_families_but_refuse_partial_family(box, partial):
+    from backend.db.operational_scheduler_models import OperationalSchedulerORM
     from backend.db.orm_models import Base
     from backend.db.tenancy_workflow_models import WorkflowCommandORM
     from backend.services.tenant_data_graph import TenantExportError
@@ -328,6 +329,9 @@ def test_actual_old_sql_images_allow_wholly_absent_families_but_refuse_partial_f
     else:
         box.db.rollback()
         tables = [WorkflowCommandORM.__table__] if partial else [model.__table__ for model in (WORKFLOW | JOBS).values()]
+        if not partial:
+            # A pre-job image predates its referencing automatic coordinator too.
+            tables.append(OperationalSchedulerORM.__table__)
         Base.metadata.drop_all(box.engine, tables=tables)
     if partial:
         with pytest.raises(TenantExportError):

@@ -7,7 +7,7 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy import select, update
 
-from backend.db.operational_job_models import OperationalJobORM
+from backend.db.operational_job_models import OperationalJobORM, OperationalWorkItemORM
 from backend.db.operational_models import OperationalOccurrenceORM
 from backend.db.operational_scheduler_models import OperationalSchedulerORM
 from backend.models import CalendarEventCreate, TaskCreate, TaskPatch
@@ -104,7 +104,7 @@ def test_real_ten_thousand_occurrences_continue_without_global_overflow(installa
         pytest.skip("Large native SQL acceptance")
     template = box.store.create_task(TaskCreate(title="Long history", due_date=date(1990, 1, 1), recurrence_rule="FREQ=DAILY;COUNT=10003"))
     job = jobs.create_job(box.store, JobCreate(idempotency_key="large-series", as_of=date(2020, 1, 1),
-        lookback_days=20000, families=("recurring_task",), full_catch_up=True), "actor")
+        lookback_days=1, families=("recurring_task",), full_catch_up=True), "actor")
     policy = PacketPolicy(page_size=256, packet_seconds=2, lease_seconds=20)
     first_count = None
     for _ in range(250):
@@ -124,3 +124,68 @@ def test_real_ten_thousand_occurrences_continue_without_global_overflow(installa
     with box.engine.connect() as connection:
         assert validate_job_journal(connection)
     assert box.db.get(OperationalJobORM, job["id"]).state == "completed"
+
+
+def test_full_history_ignores_lookback_and_completed_series_do_not_grow_work_journal(installation):
+    box = installation
+    box.store.create_task(TaskCreate(title="35 years", due_date=date(1990, 1, 1), recurrence_rule="FREQ=YEARLY;COUNT=35"))
+    template = box.store.create_calendar_event(CalendarEventCreate(title="36 years", event_date=date(1990, 1, 1), event_type="other"))
+    configure_calendar(box.store, template.id, CalendarScheduleInput(recurrence_rule="FREQ=YEARLY;COUNT=36", full_catch_up=True))
+    parameters = dict(as_of=date(2026, 1, 1), lookback_days=1, families=("recurring_task", "recurring_calendar"), full_catch_up=True)
+    first = jobs.create_job(box.store, JobCreate(idempotency_key="historic-series", **parameters), "actor")
+    assert finish(box, first, width=4)["state"] == "completed"
+    assert len(box.store.list_tasks()) == 36 and len(box.store.list_calendar_events()) == 36
+    second = jobs.create_job(box.store, JobCreate(idempotency_key="historic-series-repeat", **parameters), "actor")
+    assert finish(box, second, width=4)["state"] == "completed"
+    if box.db is not None:
+        assert box.db.scalar(select(OperationalWorkItemORM.id).where(OperationalWorkItemORM.job_id == second["id"]).limit(1)) is None
+    else:
+        assert not any(item.job_id == second["id"] for item in box.store.__dict__[OperationalWorkItemORM.__tablename__].values())
+
+
+def test_automatic_configuration_accepts_long_history_without_legacy_tick_limits():
+    from backend.services.operational_schedule import OperationalScheduler
+    from backend.settings import Settings
+    settings = Settings(operational_scheduler_lookback_days=30000, operational_scheduler_max_items=20000)
+    worker = OperationalScheduler(None, lookback_days=settings.operational_scheduler_lookback_days,
+                                  max_items=settings.operational_scheduler_max_items)
+    assert worker.parameters == {"max_items": 20000, "lookback_days": 30000}
+
+
+def test_upgrade_recovers_unattached_exact_legacy_receipt_instead_of_replacing_parameters(installation):
+    from backend.services.contract_lifecycle import digest
+    box = installation
+    claim = scheduler.reserve(box.store, "actor", PARAMETERS)
+    legacy = jobs.create_job(box.store, JobCreate(idempotency_key="automatic:" + claim.generation_key,
+        as_of=claim.as_of, families=("recurring_task",), lookback_days=1, full_catch_up=True), "actor")
+    frozen = {**legacy["parameters"], "semantics_version": 2}
+    if box.db is not None:
+        box.db.rollback()
+        with box.engine.begin() as connection:
+            connection.execute(update(OperationalJobORM).where(OperationalJobORM.id == legacy["id"])
+                .values(parameters=frozen, request_hash=digest(frozen)))
+    else:
+        original = box.store.__dict__[OperationalJobORM.__tablename__][legacy["id"]]
+        original.parameters, original.request_hash = frozen, digest(frozen)
+    expire(box)
+    resumed = scheduler.advance(box.store, "actor", PARAMETERS)
+    assert resumed["job_id"] == legacy["id"] and resumed["families"] == ["recurring_task"]
+    assert jobs.read_job(box.store, legacy["id"], "actor")["parameters"] == frozen
+
+
+def test_late_legacy_child_is_adopted_after_reusing_completed_progress(installation):
+    box = installation
+    source = box.store.create_task(TaskCreate(title="Legacy continuation", due_date=date(2026, 1, 1), recurrence_rule="FREQ=DAILY"))
+    parameters = dict(families=("recurring_task",), full_catch_up=True, lookback_days=1)
+    first = jobs.create_job(box.store, JobCreate(idempotency_key="before-manual-child", as_of=date(2026, 1, 3), **parameters), "actor")
+    assert finish(box, first, width=2)["state"] == "completed"
+    child = box.store.create_task(TaskCreate(title="Imported legacy child", due_date=date(2026, 1, 4), parent_task_id=source.id))
+    second = jobs.create_job(box.store, JobCreate(idempotency_key="after-manual-child", as_of=date(2026, 1, 4), **parameters), "actor")
+    assert finish(box, second, width=2)["state"] == "completed"
+    assert len(box.store.list_tasks()) == 4
+    from backend.services.operational_schedule import _key
+    if box.db is not None:
+        record = box.db.get(OperationalOccurrenceORM, _key("task:" + source.id, date(2026, 1, 4)))
+    else:
+        record = box.store._operational_state["occurrences"][_key("task:" + source.id, date(2026, 1, 4))]
+    assert record.target_id == child.id

@@ -415,11 +415,13 @@ def _jobs(store, graph):
         return
     tenant_id = graph["tenant"]["id"]
     own = {"overdue_rent_charge": {row["id"] for row in graph["rent_charges"]},
-           "overdue_receivable": {row["id"] for row in graph["receivables"]}}
+           "overdue_receivable": {row["id"] for row in graph["receivables"]},
+           "contract_expiry": {row["id"] for row in graph["contracts"]}}
     c, p = ContractORM.__table__, PropertyORM.__table__
     parents = select(c.c.id).join(p, p.c.id == c.c.property_id).where(c.c.tenant_id == tenant_id, _scope(p.c.portfolio_id))
     sql_sources = {"overdue_rent_charge": select(RentChargeORM.id).where(RentChargeORM.contract_id.in_(parents)),
                    "overdue_receivable": select(ReceivableORM.id).where(ReceivableORM.contract_id.in_(parents)),
+                   "contract_expiry": parents,
                    "correspondence": select(CorrespondenceDraftORM.id).where(CorrespondenceDraftORM.tenant_id == tenant_id,
                        CorrespondenceDraftORM.state == "approved", _scope(CorrespondenceDraftORM.portfolio_id))}
     correspondence = {row.id: row for row in _rows(store, CorrespondenceDraftORM,
@@ -455,10 +457,12 @@ def _jobs(store, graph):
         effect = row.result.get("effect_key")
         _require(not row.result.get("target_id") or isinstance(effect, str) and bool(effect))
         if effect:
-            if parent.family == "correspondence":
+            if parent.family in {"correspondence", "contract_expiry"}:
                 original = _effect(store, OperationalOccurrenceORM, effect)
+                prefix = ("contract-correspondence:" + row.source_id + ":" if parent.family == "correspondence"
+                          else "contract-deadline:" + row.source_id)
                 _require(original.target_id == row.result.get("target_id") and original.target_kind == "calendar"
-                         and original.schedule_id.startswith("contract-correspondence:" + row.source_id + ":"))
+                         and (original.schedule_id.startswith(prefix) if parent.family == "correspondence" else original.schedule_id == prefix))
             else:
                 original = _effect(store, OperationalDispatchORM, effect)
                 _require(original.notification_id == row.result.get("target_id") and original.entity_id == row.source_id

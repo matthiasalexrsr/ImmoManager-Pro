@@ -66,3 +66,28 @@ and recovery hooks are supplied separately for Root composition.
   Root integrates the minimal central hook patch before final release evidence.
 - No Docker/backup success is inferred. Full backup scheduling and isolated,
   portless restore probes are separate package L after E.
+
+## E2 refinement and central schema allocation
+
+E1 is an integration checkpoint only. E2 replaces its explicitly separate
+compatibility pass with seven bounded job families: task deadline, maintenance
+deadline, maintenance appointment, due-task notification, contract expiry,
+escalation and alert resolution. A rule has its own resumable target cursor, so
+one large escalation cannot monopolize the other job lanes. Ordinary source rows
+are locked and re-read before their effect; an alert resolution also locks its
+underlying source and notification. Contract-expiry execution evidence belongs
+to its actual contract subject in retained disclosure.
+
+Full catch-up means the complete anchored history, independently of lookback.
+New semantics version 3 is distinct from the initial version 2 recurrence
+checkpoint. A finished, revision-identical full-history work item may seed the
+next occurrence index. Version 2 proofs and non-full proofs cannot hide an older
+gap. Unchanged projections avoid another retained work row; finished series
+avoid rescanning old occurrences. Synthetic acceptance includes 35/36-year
+series and 10003 daily occurrences with lookback=1.
+
+The centrally integrated f2 is now fixed. Root allocated follow-up index revision
+`h2a2b3c4d5e6`, parent `g2a2b3c4d5e6`, separately from E2 behavior. It indexes the
+completed recurrence source/revision lookup; E2 remains correct without it.
+The g2 predecessor is owned by Domain C, so the complete migration-head gate is
+a Root composition gate. No placeholder predecessor is created here.

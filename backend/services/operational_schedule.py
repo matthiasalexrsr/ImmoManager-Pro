@@ -569,12 +569,14 @@ class OperationalScheduler:
             raise ValueError("Scheduler interval must be between 10 and 86400 seconds")
         self.store, self.enabled, self.interval_seconds = store, enabled, interval_seconds
         self.actor_id = actor_id.strip() or None if isinstance(actor_id, str) else None
+        from .operational_job_types import JobContinue, JobCreate
+        JobContinue(max_items=max_items)
+        JobCreate(idempotency_key="validate-configuration", as_of=date.today(), lookback_days=lookback_days)
         self.parameters = {"max_items": max_items, "lookback_days": lookback_days}
-        TickRequest(**self.parameters)
         self._stop = Event()
         self._thread = None
         self.durable_status = {"state": "not_started"}
-        self.compatibility_status = {"state": "not_started", "durable": False}
+        self.compatibility_status = {"state": "replaced_by_durable_families", "durable": True}
 
     def start(self):
         global _scheduler
@@ -595,16 +597,6 @@ class OperationalScheduler:
                 except Exception:
                     self.durable_status = {"state": "attention", "last_error": "automatic_worker_failed"}
                     logger.exception("Automatische Arbeitsliste unterbrochen; gespeicherter Fortschritt bleibt erhalten")
-                # E1 compatibility only. These are still explicitly atomic
-                # families; their failure must not roll back durable packets.
-                if self.durable_status.get("state") == "completed":
-                    try:
-                        operational_tick(self.store, TickRequest(**self.parameters),
-                            kinds={"deadlines", "due_tasks", "contracts", "escalation"}, actor_id=self.actor_id)
-                        self.compatibility_status = {"state": "completed", "durable": False}
-                    except Exception:
-                        self.compatibility_status = {"state": "attention", "durable": False}
-                        logger.exception("Separater atomarer Kompatibilitätslauf fehlgeschlagen")
                 delay = min(1, self.interval_seconds) if self.durable_status.get("state") in {"reserved", "running", "queued"} else self.interval_seconds
                 if self._stop.wait(delay):
                     break

@@ -7,9 +7,12 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-Family = Literal["overdue_rent_charge", "overdue_receivable", "correspondence", "recurring_task", "recurring_calendar"]
+Family = Literal["overdue_rent_charge", "overdue_receivable", "correspondence", "recurring_task", "recurring_calendar",
+                 "task_deadline", "maintenance_deadline", "maintenance_appointment", "due_task", "contract_expiry",
+                 "escalation", "alert_resolution"]
 BASE_FAMILIES: tuple[Family, ...] = ("overdue_rent_charge", "overdue_receivable", "correspondence")
-FAMILIES: tuple[Family, ...] = (*BASE_FAMILIES, "recurring_task", "recurring_calendar")
+FAMILIES: tuple[Family, ...] = (*BASE_FAMILIES, "recurring_task", "recurring_calendar", "task_deadline",
+    "maintenance_deadline", "maintenance_appointment", "due_task", "contract_expiry", "escalation", "alert_resolution")
 
 
 class JobCreate(BaseModel):

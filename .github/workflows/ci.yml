@@ -279,6 +279,7 @@ jobs:
           backend/tests/test_tenancy_workflow_concurrency.py
           backend/tests/test_workflow_references_postgres.py
           backend/tests/test_operational_jobs_postgres.py
+          backend/tests/test_durable_scheduler_postgres.py
           backend/tests/test_housing_confirmation_postgres.py
           backend/tests/test_global_search_postgres.py
           backend/tests/test_financial_cash_postgres.py

@@ -5,8 +5,9 @@ from datetime import timedelta
 from uuid import uuid4
 
 from fastapi import HTTPException
-from sqlalchemy import func, update
+from sqlalchemy import func, select, update
 
+from ..db.operational_job_models import OperationalJobORM
 from ..db.operational_scheduler_models import OperationalSchedulerORM
 from . import operational_jobs as jobs
 from .contract_lifecycle import digest
@@ -26,10 +27,11 @@ class SchedulerClaim:
     job_id: str | None
 
 
-def _view(row):
+def _view(row, unit):
+    job = unit.row(OperationalJobORM, row.job_id) if row.job_id else None
     return {"generation": row.generation, "job_id": row.job_id, "state": row.state,
             "last_error": row.last_error, "next_due_at": row.next_due_at,
-            "updated_at": row.updated_at, "families": list(FAMILIES)}
+            "updated_at": row.updated_at, "families": job.parameters["families"] if job is not None else list(FAMILIES)}
 
 
 def _hash(parameters):
@@ -128,7 +130,26 @@ def finish(store, claim, result, *, interval_seconds):
         row.next_due_at = row.updated_at + timedelta(seconds=interval_seconds) if row.state == "completed" else None
         _fence(unit, claim)
         row.lease_token = row.lease_expires_at = None
-        return _view(row)
+        return _view(row, unit)
+
+
+def _reserved_job(store, claim):
+    """Recover an exact pre-attachment receipt even across a software upgrade.
+
+    Its frozen family set/semantics belong to that job, not today's defaults.
+    The next completed generation will naturally include the new families.
+    """
+    captured = jobs._operator(claim.actor_id)
+    with jobs.atomic(store, captured) as unit:
+        _checked(unit, claim)
+        key = digest("automatic:" + claim.generation_key)
+        if unit.db is not None:
+            previous = unit.db.scalar(select(OperationalJobORM).where(OperationalJobORM.actor_id == claim.actor_id,
+                OperationalJobORM.create_key == key).limit(1))
+        else:
+            previous = next((row for row in unit.store.__dict__.get(OperationalJobORM.__tablename__, {}).values()
+                             if row.actor_id == claim.actor_id and row.create_key == key), None)
+        return previous.id if previous is not None else None
 
 
 def advance(store, actor_id, parameters, *, policy=PacketPolicy(), worker_id=None):
@@ -137,10 +158,12 @@ def advance(store, actor_id, parameters, *, policy=PacketPolicy(), worker_id=Non
         return status(store, actor_id)
     identifier = claim.job_id
     if identifier is None:
-        result = jobs.create_job(store, JobCreate(idempotency_key="automatic:" + claim.generation_key,
-            as_of=claim.as_of, lookback_days=parameters["lookback_days"],
-            full_catch_up=parameters.get("full_catch_up", False), families=FAMILIES), actor_id)
-        identifier = result["id"]
+        identifier = _reserved_job(store, claim)
+        if identifier is None:
+            result = jobs.create_job(store, JobCreate(idempotency_key="automatic:" + claim.generation_key,
+                as_of=claim.as_of, lookback_days=parameters["lookback_days"],
+                full_catch_up=parameters.get("full_catch_up", False), families=FAMILIES), actor_id)
+            identifier = result["id"]
         attach(store, claim, identifier)
     result = jobs.continue_job(store, identifier, JobContinue(max_items=parameters["max_items"]),
                                actor_id, policy=policy, worker_id=worker_id)
@@ -155,4 +178,4 @@ def status(store, actor_id):
             return {"state": "not_started", "families": list(FAMILIES)}
         if (row.actor_id, row.scope_hash) != (actor_id, jobs._scope_hash(captured)):
             return {"state": "configuration_changed", "families": list(FAMILIES)}
-        return _view(row)
+        return _view(row, unit)
