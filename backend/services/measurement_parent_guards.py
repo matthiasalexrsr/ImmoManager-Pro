@@ -76,6 +76,8 @@ def guard_retained(store, table, identifier):
     """Existence only, including hidden originals; caller owns locks and auth."""
     if table not in PARENTS:
         return
+    from .billing_statement_party_storage import guard_parent as guard_party_parent
+    guard_party_parent(store, table, identifier)
     from .billing_dispute_recovery import guard_parent
     guard_parent(store, table, identifier)
     if table in {"billing_periods", "utility_statements"} or not _available(store):
@@ -103,6 +105,8 @@ def guard_retained(store, table, identifier):
 
 def guard_edit(store, table, current, changes):
     if current is not None and any(name in changes and changes[name] != getattr(current, name) for name in FIELDS.get(table, ())):
+        from .billing_statement_party_storage import guard_parent as guard_party_parent
+        guard_party_parent(store, table, current.id)
         from .billing_dispute_recovery import guard_parent
         guard_parent(store, table, current.id)
         if table in {"billing_periods", "utility_statements"}:
@@ -186,6 +190,8 @@ def _guard_sql_write(db, table, identifier, changes=None):
     properties = _properties(db, table, row)
     from .billing_dispute_recovery import property_ids
     properties |= property_ids(active, table, identifier)
+    from .billing_statement_party_storage import parent_property_ids
+    properties |= parent_property_ids(active, table, identifier)
     if changes:
         properties |= {changes.get("property_id")} - {None}
         if changes.get("unit_id"):

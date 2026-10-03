@@ -20,7 +20,7 @@ from uuid import uuid4
 from sqlalchemy import Table, inspect, select, text
 
 from ..models import BillingPeriod, BillingSettlement, CostItem, Receivable, UtilityStatement
-from ..storage import ValidationError
+from ..storage import NotFoundError, ValidationError
 from .billing_originals import IMMUTABLE as IMMUTABLE
 from .billing_originals import snapshot_hash as snapshot_hash
 from .payments import FinancialConsistencyError, _memory_lock
@@ -182,6 +182,17 @@ def _types(collection: str):
 
 def _write(store, collection: str, model):
     """Internal writes only, within atomic_billing. Public CRUD cannot bypass guards."""
+    if collection == "billing_periods":
+        from .billing_statement_parties import StatementPartyIntegrityError, protect_period_original
+        try:
+            existing = store.get_billing_period(model.id)
+        except NotFoundError:
+            pass
+        else:
+            try:
+                protect_period_original(existing, model)
+            except StatementPartyIntegrityError as error:
+                raise FinancialConsistencyError(str(error)) from error
     if hasattr(store, "db"):
         orm_type, read_type = _types(collection)
         row = store.db.get(orm_type, model.id)
@@ -326,7 +337,7 @@ def calculation_hash(store, period) -> str:
     payload = {"period": period.model_dump(mode="json", include={"property_id", "start_date", "end_date", "source_period_id", "revision_number"}),
         "costs": [c.model_dump(mode="json") for c in costs],
         "keys": [k.model_dump(mode="json") for k in sorted(store.list_allocation_keys(), key=lambda k: k.id) if k.id in used_keys],
-        "contracts": [{f: c.model_dump(mode="json")[f] for f in ("id", "unit_id", "start_date", "end_date", "status")} for c in contracts],
+        "contracts": [{f: c.model_dump(mode="json")[f] for f in ("id", "unit_id", "tenant_id", "start_date", "end_date", "status")} for c in contracts],
         "units": [{f: u.model_dump(mode="json").get(f) for f in ("id", "area_sqm", "rooms", "person_count")} for u in units],
         "advances": [actual_paid_advances(store, c, period)[1] for c in contracts],
         "meters": [m.model_dump(mode="json") for m in sorted(store.list_meters(), key=lambda m: m.id) if m.unit_id in {u.id for u in units}],
@@ -370,6 +381,12 @@ def finalize_period(store, period_id: str, preflight) -> BillingPeriod:
                 raise FinancialConsistencyError("Bezahlte Vorauszahlungen wurden geändert; Einzelabrechnungen erneut erzeugen.")
             if (Decimal(str(stmt.total_cost)) - actual).quantize(CENT) != Decimal(str(stmt.balance)):
                 raise FinancialConsistencyError("Einzelabrechnung enthält einen inkonsistenten Saldo.")
+        from .billing_statement_parties import StatementPartyIntegrityError
+        from .billing_statement_party_storage import freeze
+        try:
+            owner = freeze(store, period, statements)
+        except StatementPartyIntegrityError as error:
+            raise FinancialConsistencyError(str(error)) from error
         digest = snapshot_hash(statements, owner)
         for stmt in statements:
             _write(store, "utility_statements", stmt.model_copy(update={"status": "finalized", "snapshot_hash": digest}))
@@ -378,7 +395,7 @@ def finalize_period(store, period_id: str, preflight) -> BillingPeriod:
             if source.status not in {"finalized", "delivered", "disputed"}:
                 raise FinancialConsistencyError("Ursprüngliche Abrechnung ist nicht mehr korrigierbar.")
             _write(store, "billing_periods", source.model_copy(update={"status": "corrected"}))
-        return _write(store, "billing_periods", period.model_copy(update={"status": "finalized"}))
+        return _write(store, "billing_periods", period.model_copy(update={"status": "finalized", "owner_cost_share": owner}))
 
 
 def create_revision(store, period_id: str, notes: str) -> dict:
