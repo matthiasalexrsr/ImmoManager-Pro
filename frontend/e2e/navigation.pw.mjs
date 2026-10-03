@@ -168,7 +168,7 @@ test('global search: keyboard reaches real seeded data, Escape and empty results
     await page.keyboard.press('Control+k');
     await expect(input).toBeVisible();
     await expect(input).toBeFocused();
-    const response = page.waitForResponse(reply => new URL(reply.url()).pathname === '/api/v1/search' && new URL(reply.url()).searchParams.get('q') === property.name);
+    const response = page.waitForResponse(reply => new URL(reply.url()).pathname === '/api/v1/search/page' && new URL(reply.url()).searchParams.get('q') === property.name);
     await input.fill(property.name);
     const reply = await response;
     expect(reply.status()).toBe(200);
