@@ -18,7 +18,8 @@ const backendLog = join(dataDir, 'backend.log');
 const defaultPython = join(projectDir, '.venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python');
 const python = process.env.IMMO_E2E_PYTHON || (existsSync(defaultPython) ? defaultPython : 'python');
 const freshInstallation = process.argv.includes('--fresh-install');
-const playwrightArgs = process.argv.slice(2).filter(arg => arg !== '--fresh-install');
+const dashboardFixture = process.argv.includes('--dashboard-fixture');
+const playwrightArgs = process.argv.slice(2).filter(arg => !['--fresh-install', '--dashboard-fixture'].includes(arg));
 let backend;
 let backendStopped;
 let backendError;
@@ -91,6 +92,7 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
 
 try {
   if (!process.env.npm_execpath) throw new Error('Start this runner through npm run test:e2e.');
+  if (freshInstallation && dashboardFixture) throw new Error('The dashboard fixture requires the isolated demo account.');
   await run(process.execPath, [process.env.npm_execpath, 'run', 'build'], { cwd: frontendDir });
   const port = await freePort();
   const url = `http://127.0.0.1:${port}`;
@@ -134,9 +136,14 @@ try {
   backend.stderr.on('data', chunk => { log += chunk.toString(); });
   backend.on('error', error => { backendError = error; log += `\n${error.stack}\n`; });
   await waitForBackend(url);
+  // Opt-in B2 test support writes only this runner's already migrated temporary
+  // SQL database. Other suites and the product startup have no new seed path.
+  const dashboardManifest = join(dataDir, 'dashboard-fixture.json');
+  if (dashboardFixture) await run(python, ['-m', 'frontend.e2e.dashboard_seed', dashboardManifest], { env: backendEnv });
   await run(process.execPath, [require.resolve('@playwright/test/cli'), 'test', '--config', 'e2e/playwright.config.mjs', ...playwrightArgs], {
     cwd: frontendDir,
-    env: { ...process.env, IMMO_E2E_URL: url, IMMO_E2E_MODE: freshInstallation ? 'setup' : 'demo' },
+    env: { ...process.env, IMMO_E2E_URL: url, IMMO_E2E_MODE: freshInstallation ? 'setup' : 'demo',
+      ...(dashboardFixture ? { IMMO_E2E_DASHBOARD_FIXTURE: dashboardManifest } : {}) },
   });
 } catch (error) {
   console.error(error.message);

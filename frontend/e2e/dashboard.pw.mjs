@@ -16,14 +16,14 @@ test('dashboard: actual SQL figures, six reports, mobile layouts and dark presen
     expect(response.ok(), `${path}: ${await response.text()}`).toBeTruthy();
     return response.json();
   };
-  const [stats, units, aging, locale] = await Promise.all([get('/dashboard/stats'), get('/units?limit=1000'), get('/reports/receivables-aging'), page.request.get('/i18n/de-DE').then(response => response.json())]);
+  const [stats, aging, locale] = await Promise.all([get('/dashboard/stats'), get('/reports/receivables-aging'), page.request.get('/i18n/de-DE').then(response => response.json())]);
   const dashboard = page.locator('.dashboard-home');
   const translate = key => key.split('.').reduce((value, segment) => value?.[segment], locale);
   const money = value => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(value);
   await expect(dashboard.getByRole('heading', { name: 'Verwaltung im Überblick', level: 1 })).toBeVisible();
   await expect(dashboard.getByRole('article', { name: 'Immobilien', exact: true })).toContainText(String(stats.property_count));
-  const occupied = units.filter(unit => ['occupied', 'rented'].includes(unit.status)).length;
-  await expect(dashboard.getByRole('article', { name: 'Vermietete Einheiten' })).toContainText(`${occupied} / ${units.length}`);
+  const integer = value => new Intl.NumberFormat('de-DE').format(value);
+  await expect(dashboard.getByRole('article', { name: 'Belegte Einheiten' })).toContainText(`${integer(stats.occupancy.occupied)} / ${integer(stats.occupancy.total)}`);
   await expect(dashboard.getByRole('article', { name: 'Offene Beträge' })).toContainText(money(aging.openTotal));
   await expect(dashboard.getByRole('alert')).toHaveCount(0);
   const attach = async name => {
