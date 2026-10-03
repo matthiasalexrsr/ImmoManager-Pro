@@ -1,6 +1,6 @@
 # B1 Dashboard: Quellenübergabe und tatsächlicher Nachweis
 
-Basis: freigegebenes Root `79ea761`, eigener Merge `c98e259`, Vor-Code-Vertrag `c924cf1`. Dieses Paket besitzt ausschließlich die Dashboard-Statsquelle, ihren Router, synthetische Tests und diese Dokumente. Kein Schemahead, keine DDLrevision, private Installation oder gemeinsame Authority-/App-/Settings-/Frontendquelle wurde geändert.
+Basis: freigegebenes Root `79ea761`, eigener Merge `c98e259`, Vor-Code-Vertrag `c924cf1`, Produkt `f1cd91d`, eingefrorene Gatequelle `f49c895`. Dieses Paket besitzt ausschließlich die Dashboard-Statsquelle, ihren Router, synthetische Tests und diese Dokumente. Kein Schemahead, keine DDLrevision, private Installation oder gemeinsame Authority-/App-/Settings-/Frontendquelle wurde geändert.
 
 ## API für die zentrale Integration
 
@@ -31,9 +31,15 @@ python -m pytest backend/tests/test_dashboard_summary.py::test_full_counts_and_o
 
 Nur die erste Selektion wird für die Negativbaseline mit `B1_DASHBOARD_BASELINE=79ea761` wiederholt. Anschließend ist dieses Merkmal entfernt. Harte Prozessbudgets 30/30/45 s wurden eingehalten, keine Skips. Quelle und Fixtures blieben während jedes Laufes unverändert.
 
-## Noch ausstehende Abnahme
+## Tatsächliche übrige Abnahme
 
-Die getrennt vereinbarten nächsten Läufe umfassen 14 übrige Servicefälle plus 18 echte HTTPcredentials-Fälle (120 s), anschließend 7 PostgreSQLfälle (90 s). Diese Abschnitte werden erst nach tatsächlichem Ende um Ergebnisse ergänzt. Lint und Typprüfung der fünf eigenen Pythondateien sind grün; das ersetzt keine Laufzeitabnahme.
+Die Quelle blieb während der beiden getrennten Läufe exakt `f49c895`, Checkout sauber. Der erste Prozess prüfte 14 übrige Servicefälle plus 18 echte HTTPcredentials-Fälle mit hartem 120-s-Budget: **30 PASS, 2 Fixture-FAIL in 57,80 s**. Die beiden Memory-Fälle für Rolle/Aktivierung bei ausgewählten Portfolios erhielten 422 »Ein ausgewähltes Portfolio existiert nicht«. `auth._validate_user_scope` liest ausdrücklich `dependencies.store`; die eigene Fixture hatte bisher nur den Dashboardrouter auf ihren isolierten Store gebunden. SQL prüft dagegen seine tatsächliche eigene Session.
+
+Der anschließend vereinbarte unveränderte PostgreSQLlauf: **7 PASS in 31,17 s**, harter Prozessrahmen 90 s, keine Skips. Jeder Fall erzeugte und entfernte ausschließlich sein eigenes UUIDschema im dedizierten Testserver `127.0.0.1:58112/immo_ci`; kein privater Datenbestand.
+
+Erst nach normalem vollständigem Prozessende wurde ausschließlich `client_for` in der eigenen Testquelle korrigiert: auch `dependencies.store` wird per `monkeypatch` auf denselben isolierten Store gesetzt. Kein Fehlerstatus wurde akzeptiert oder eine Produktprüfung gelockert. Die beiden exakt zuvor roten Fälle liefen danach tatsächlich **2 PASS in 3,21 s**, 30-s-Deadline. Keine zusätzliche breite Wiederholung.
+
+Damit sind **47 unterschiedliche positive Fälle** belegt: 8 Counterminifälle + 30 übrige Fälle + 2 korrigierte Memory-Fixturefälle + 7 tatsächliche PostgreSQLfälle. Die zwei reproduzierten historischen Rollenfehler und die zwei initialen Fixturefehler werden getrennt berichtet. Das sind zusammengesetzte fokussierte Nachweise, kein behaupteter einzelner 47-Fälle-Lauf. Produktquelle `f1cd91d` blieb unverändert.
 
 Die unveränderten ersten acht Counterfälle werden nicht nochmals selektiert:
 
@@ -54,6 +60,33 @@ python -m pytest backend/tests/test_dashboard_summary_postgres.py -q --no-cov --
 ```
 
 Der PostgreSQLlauf erhält ausdrücklich die freigegebene dedizierte Testserver-URL; jede Fixture erzeugt und entfernt ausschließlich ihr eigenes UUIDschema. Der kombinierte PG-Keysetfall prüft alle drei Hinweisfamilien, einschließlich Datumsgleichständen, NULL-Aufgaben und den beiden inklusiven Vertragsfenstergrenzen.
+
+Der exakte Fixture-Nachlauf:
+
+```text
+python -m pytest
+  backend/tests/test_dashboard_summary_authority.py::test_actual_credential_and_fresh_actor_are_checked_before_headers[memory-role-selected]
+  backend/tests/test_dashboard_summary_authority.py::test_actual_credential_and_fresh_actor_are_checked_before_headers[memory-activation-selected]
+  -q --no-cov --tb=short
+```
+
+Die sieben tatsächlichen PostgreSQL-NodeIDs:
+
+```text
+backend/tests/test_dashboard_summary_postgres.py::test_postgres_complete_10001_counts_with_small_actual_pages
+backend/tests/test_dashboard_summary_postgres.py::test_postgres_target_role_counts_and_scoped_hints_match
+backend/tests/test_dashboard_summary_postgres.py::test_postgres_contract_window_and_equal_time_notification_keysets
+backend/tests/test_dashboard_summary_postgres.py::test_postgres_real_credentials_and_account_changes_reject_prepared_json[session]
+backend/tests/test_dashboard_summary_postgres.py::test_postgres_real_credentials_and_account_changes_reject_prepared_json[role]
+backend/tests/test_dashboard_summary_postgres.py::test_postgres_real_credentials_and_account_changes_reject_prepared_json[grants]
+backend/tests/test_dashboard_summary_postgres.py::test_postgres_real_credentials_and_account_changes_reject_prepared_json[activation]
+```
+
+Nachweisumfang: 121 Aufgaben mit Gleichständen und NULL-Fälligkeiten ohne Verlust/Duplikat; 90-Tage-Verträge mit beiden inklusiven Grenzen und ausgeschlossenen Nachbarfällen; 102 Meldungen mit identischem gespeichertem Erstellungszeitpunkt; vollständige sichtbare Totals auch auf Folgeseiten. Native SQLite verweigerte Daten-/Schemawrites während der Summary; pending ORMobjekte blieben ungeflusht. Sourcefehler blieb ein tatsächlicher Fehler. SQLmaterialisierung wurde durch Stocklisten-Tripwires und vier beobachtete Fachabfragen mit bounded Projektionen geprüft. Präsenz und Eskalationen wurden nicht durch Mehrfachdokumente/-regeln vervielfacht. Der Datum-min-Fix und die kompakte vollständige Grantbindung besitzen tatsächliche Grenzfälle; die Grantbindung ist keine SQLgroßscope-Messung.
+
+Die HTTPfälle verwenden echte signierte Zugriffstoken, native Memory-/SQLkonto- und Sitzungszustände sowie die tatsächliche gemeinsame Veröffentlichungsroute. Rollen-, Grant-, Aktivierungs- und Sitzungsentzug nach Lesen verwehrte die vorbereitete Antwort bei selected und all. Tatsächliche Tokenrotation innerhalb derselben gültigen Familie erlaubte den gebundenen Cursor weiterhin; manipulierte/fremde Querybindung wurde 422. PostgreSQL prüfte die Konto-/Sitzungsänderungen ebenfalls mit echten nativen Quellen.
+
+Alle eigenen Prozesse/Execsessions endeten normal vollständig. Keine fremden Prozesse oder PIDs wurden beendet. Ruff und Mypy der fünf Pythondateien sind zusätzlich grün. Vorhandene Starlette-TestClient-Deprecation war der einzige Hinweis; keine produktseitige Lockerung oder neue Abhängigkeit wurde daraus abgeleitet.
 
 ## Präzise Grenzen
 

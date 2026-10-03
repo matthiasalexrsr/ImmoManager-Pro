@@ -5,7 +5,7 @@ from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import sessionmaker
 
-from backend import auth
+from backend import auth, dependencies
 from backend.routers import dashboard as router
 from backend.services import auth_sessions
 from backend.services.portfolio_http import PortfolioScopeMiddleware
@@ -15,6 +15,9 @@ from backend.tests.test_contract_workspace import seed
 
 
 def client_for(store, portfolio_id, monkeypatch, *, mode="selected"):
+    # Memory account assignment uses the central store, matching production's
+    # shared account/router data source; SQL uses its own actual session.
+    monkeypatch.setattr(dependencies, "store", store)
     accounts: auth.UserStore
     if hasattr(store, "db"):
         factory = sessionmaker(bind=store.db.get_bind())
