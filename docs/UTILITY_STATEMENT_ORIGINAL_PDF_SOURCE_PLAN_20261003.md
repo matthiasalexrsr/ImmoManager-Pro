@@ -199,3 +199,48 @@ source/role/token revocation before publication, native source ancestry proof,
 Unicode/long positions/multipage cent/readability and actual rendered PNG QA.
 Root coordinates heavy Python/native/visual slots before execution; initial
 planning/static work doesn't start a test/browser process.
+
+## Root usability correction: separate draft preview before code
+
+Actual UI inspection confirms `Statements.jsx` offers the existing PDF button
+for generated draft statements (lines 98-103) and the period ZIP action without
+an immutable-state filter. Root explicitly requires retaining that useful
+authenticated derivation after the original-only first packet. This is a
+separate contract, never a historical original or archive receipt.
+
+Keep `original-source` strict: unfinalized periods/statements return conflict.
+Existing PDF and ZIP handlers choose their mode from actual statement/period
+state within the same actor-bound coherent read. Immutable mode retains the
+complete source/party/ancestry verification above. Draft/review mode gets a
+strict `utility-statement-draft-source/1` DTO, `mode="draft"`, render profile
+`utility-statement-draft-pdf-preview/1`, exact saved generated statement JSON
+(including draft status, excluding mutable delivery/update bookkeeping), the
+same retained period context, `party_binding="not_frozen"`, and
+`original_party=null`. No current tenant/profile/display label is read or
+presented as an original. The source digest binds this whole distinct DTO.
+
+If this is an actual correction draft with source_statement_id, include its
+verified `previous_original` DTO using the existing full original reader. The
+pure draft DTO verifies its actual statement/contract/unit/period/date/revision
+relationship. This reference proves the previous original only; it never
+pretends the current draft has its own frozen party. Initial drafts contain
+null previous_original. Operative reads verify parent property/unit/contract
+bindings, draft status, absent final snapshot_hash/party original and actual
+source-period link. Malformed mixed status or stale fake original markers fail
+closed. No document/version/status writes are introduced.
+
+Use the shared cost/amount layout, a prominent heading "Entwurf - nicht
+finalisiert", explanatory absence of frozen party, an ENTWURF watermark on
+every page and draft-labelled footer. Immutable profile/DTO/bytes remain
+unchanged. PDF headers report `X-Utility-Preview: draft-derivation`, the distinct
+profile and exact source/content SHA; omit X-Utility-Original-SHA256 for drafts.
+ZIP includes each exact selected mode's source JSON beside its rendered PDF.
+It preserves authenticated draft export without claiming original provenance.
+
+Separate tests after the first packet: actual generation -> draft PDF/ZIP
+(watermark, byte/source SHA, no frozen/current name); original-source rejects
+draft; actual correction draft verifies previous original and rejects changed
+old source; actual finalization switches to strict immutable source/PDF mode.
+Authorization and late publication fences remain the same in both modes.
+Update the four obsolete direct PDF/ZIP tests to authenticated HTTP with actual
+generation, rather than restoring an unauthenticated bypass or text fallback.
