@@ -280,3 +280,23 @@ Aus `frontend`:
 `npm run test:e2e -- financial-workspace.pw.mjs`
 
 Der bestehende Runner führt dabei automatisch den Produktionsbuild aus, migriert eine eigene temporäre SQLite-Datenbank bis Alembic-Head, startet den lokalen Backendserver mit synthetischer Demo-Basis und ruft ausschließlich diese Playwright-Datei auf. Dieser Lauf wurde in der Vorbereitungsphase ausdrücklich **noch nicht** gestartet.
+
+## Statischer Native-Source-Audit nach Testquellenreview
+
+Ohne Browser-/Backend-/Buildstart wurden die Testannahmen nochmals direkt gegen die aktuellen nativen Quellen abgeglichen:
+
+- `financial_cash.py` sortiert Quellbelege stabil nach `(booking_date,id)` und bindet Cursor an Filter, Scope, Seitengröße und Sourcehash.
+- Sources-Seiten liefern dieselben Gesamtsummen und denselben `source_hash` wie der Report; Seite 2 muss ID-disjunkt zu Seite 1 sein, „Vorherige Seite“ muss serverseitig wieder exakt die IDs von Seite 1 liefern.
+- Die erste Sources-Seite wird im Browsercase jetzt zusätzlich an exakt beide angewendeten Immobilien, fehlende Einheit, Konto, Basis, Stichtag und den Report-`source_hash` gebunden. Eine verspätete frühere Ein-Objekt-Antwort kann dadurch nicht versehentlich als aktuelle Seite akzeptiert werden.
+- Verborgene Portfolio-/Kontoreferenzen werden nicht mehr nur über „kein Button sichtbar“ geprüft. Der Test wartet auf die echte `workflow-references`-Response mit exaktem Suchtext/Parentfilter und prüft, dass die verborgene ID nicht in `items` vorkommt.
+- Zusätzlich wird ein direkter Cash-Request auf das nicht berechtigte Portfolio mit dem eingeschränkten Browseractor geprüft; nur der native 403/404-Scope-Abweis ist zulässig und der Responsebody darf weder verborgenen Namen noch Booking-ID enthalten.
+- `ReferenceChoice` wurde unverändert gelassen; seine nativen Queryfelder `search,selected_id,cursor,page_size` und Parentfilter werden im Browsercase beobachtet.
+- `csv_chunks` exportiert aus demselben vollständigen Source-Iterator, schützt Textzellen über `csv_cell` und ist unabhängig von sichtbaren Quellseiten. Der Browsercase prüft daher vollständige IDs, ausgeschlossene Quellen und den geschützten Formeltext.
+- Eine Quellzeile mit `receipt_url` wird ausdrücklich als reine Belegreferenz geprüft; die FinancialWorkspace-UI darf daraus keinen öffentlichen Link rendern.
+
+Statische Prüfungen nach diesen Korrekturen:
+
+- `node --check frontend/e2e/financial-workspace.pw.mjs`: bestanden.
+- `git diff --check`: bestanden.
+
+Weiterhin **nicht** ausgeführt: Playwright, Testserver, Build, SQLite/PostgreSQL oder Recovery.

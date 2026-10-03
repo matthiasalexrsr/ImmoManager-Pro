@@ -238,14 +238,40 @@ test('FinancialWorkspace: real scoped cash report, exact sums, source pages, has
   await expect(page.getByText('Diese Sicht zeigt Zahlungsflüsse.', { exact: false })).toBeVisible();
 
   const portfolioSearch = page.getByLabel('Portfolio suchen', { exact: true });
+  const hiddenPortfolioLookup = page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.pathname === '/api/v1/workflow-references/portfolios'
+      && url.searchParams.get('search') === fixture.hiddenPortfolio.name
+      && response.status() === 200;
+  });
   await portfolioSearch.fill(fixture.hiddenPortfolio.name);
+  const hiddenPortfolioPage = await (await hiddenPortfolioLookup).json();
+  expect(hiddenPortfolioPage.items.some(item => item.id === fixture.hiddenPortfolio.id)).toBe(false);
   await expect(page.getByRole('button', { name: fixture.hiddenPortfolio.name, exact: true })).toHaveCount(0);
   await chooseReference(page, 'Portfolio', fixture.visiblePortfolio.name, fixture.visiblePortfolio.name);
 
   const accountSearch = page.getByLabel('Konto suchen', { exact: true });
+  const hiddenAccountLookup = page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.pathname === '/api/v1/workflow-references/accounts'
+      && url.searchParams.get('search') === fixture.hiddenAccount.name
+      && url.searchParams.get('portfolio_id') === fixture.visiblePortfolio.id
+      && response.status() === 200;
+  });
   await accountSearch.fill(fixture.hiddenAccount.name);
+  const hiddenAccountPage = await (await hiddenAccountLookup).json();
+  expect(hiddenAccountPage.items.some(item => item.id === fixture.hiddenAccount.id)).toBe(false);
   await expect(page.getByRole('button', { name: fixture.hiddenAccount.name, exact: true })).toHaveCount(0);
   await chooseReference(page, 'Konto', fixture.account.name, fixture.account.name);
+
+  const hiddenCash = await page.request.get(
+    `/api/v1/reports/cash?portfolio_id=${encodeURIComponent(fixture.hiddenPortfolio.id)}&basis=confirmed_cash&as_of=2026-02-28`,
+    { headers: fixture.readerHeaders },
+  );
+  expect([403, 404]).toContain(hiddenCash.status());
+  const hiddenCashBody = await hiddenCash.text();
+  expect(hiddenCashBody).not.toContain(fixture.hiddenPortfolio.name);
+  expect(hiddenCashBody).not.toContain(fixture.hiddenBooking.id);
 
   await chooseReference(page, 'Immobilie hinzufügen', fixture.propertyA.name, fixture.propertyA.name);
   await chooseReference(page, 'Einheit', fixture.unitA.label, fixture.unitA.label);
@@ -288,6 +314,8 @@ test('FinancialWorkspace: real scoped cash report, exact sums, source pages, has
   await page.keyboard.press('Enter');
   const singleResponse = await singleReportResponse;
   const singleUrl = new URL(singleResponse.url());
+  expect(singleUrl.searchParams.get('date_from')).toBe('2026-01-01');
+  expect(singleUrl.searchParams.get('date_to')).toBe('2026-03-31');
   expect(singleUrl.searchParams.get('portfolio_id')).toBe(fixture.visiblePortfolio.id);
   expect(singleUrl.searchParams.getAll('property_ids')).toEqual([fixture.propertyA.id]);
   expect(singleUrl.searchParams.get('unit_id')).toBe(fixture.unitA.id);
@@ -302,8 +330,23 @@ test('FinancialWorkspace: real scoped cash report, exact sums, source pages, has
 
   const multiReportResponse = page.waitForResponse(response =>
     new URL(response.url()).pathname === '/api/v1/reports/cash' && response.status() === 200);
+  const firstSourcesResponse = page.waitForResponse(response => {
+    const url = new URL(response.url());
+    const properties = url.searchParams.getAll('property_ids').sort();
+    return url.pathname === '/api/v1/reports/cash/sources'
+      && !url.searchParams.has('after')
+      && !url.searchParams.has('unit_id')
+      && properties.length === 2
+      && properties[0] === [fixture.propertyA.id, fixture.propertyB.id].sort()[0]
+      && properties[1] === [fixture.propertyA.id, fixture.propertyB.id].sort()[1]
+      && response.status() === 200;
+  });
   await apply.click();
   const multiResponse = await multiReportResponse;
+  const multiJson = await multiResponse.json();
+  const firstSourcesHttp = await firstSourcesResponse;
+  const firstSourcesUrl = new URL(firstSourcesHttp.url());
+  const firstSources = await firstSourcesHttp.json();
   const multiUrl = new URL(multiResponse.url());
   expect(multiUrl.searchParams.getAll('property_ids').sort()).toEqual(
     [fixture.propertyA.id, fixture.propertyB.id].sort(),
@@ -334,7 +377,19 @@ test('FinancialWorkspace: real scoped cash report, exact sums, source pages, has
   await expect(locationCard).toContainText(`${fixture.propertyB.name} · Ohne Einheit`);
 
   const sources = page.locator('.financial-workspace__sources');
+  expect(firstSourcesUrl.searchParams.get('source_hash')).toBe(multiJson.source_hash);
+  expect(firstSourcesUrl.searchParams.get('account_id')).toBe(fixture.account.id);
+  expect(firstSourcesUrl.searchParams.get('basis')).toBe('confirmed_cash');
+  expect(firstSourcesUrl.searchParams.get('as_of')).toBe('2026-02-28');
+  expect(firstSources.source_hash).toBe(multiJson.source_hash);
+  expect(firstSources.source_count).toBe(56);
+  expect(firstSources.excluded_count).toBe(4);
+  expect(firstSources.items).toHaveLength(50);
+  expect(new Set(firstSources.items.map(item => item.id)).size).toBe(50);
   await expect(sourceTable(page).locator('tbody tr')).toHaveCount(50);
+  const receiptRow = sourceTable(page).getByRole('row').filter({ hasText: fixture.formula.label });
+  await expect(receiptRow).toContainText('Belegreferenz');
+  await expect(receiptRow.getByRole('link')).toHaveCount(0);
   await sources.locator('.financial-workspace__table-scroll').focus();
   await expect(sources.locator('.financial-workspace__table-scroll')).toBeFocused();
   await expect(sources.locator('a')).toHaveCount(0);
@@ -347,8 +402,14 @@ test('FinancialWorkspace: real scoped cash report, exact sums, source pages, has
   });
   await sources.getByRole('button', { name: 'Nächste Seite', exact: true }).click();
   const nextResponse = await nextRequest;
+  const nextJson = await nextResponse.json();
   const nextUrl = new URL(nextResponse.url());
-  expect(nextUrl.searchParams.get('source_hash')).toMatch(/^[a-f0-9]{64}$/);
+  expect(nextUrl.searchParams.get('source_hash')).toBe(firstSources.source_hash);
+  expect(nextJson.source_hash).toBe(firstSources.source_hash);
+  expect(nextJson.source_count).toBe(firstSources.source_count);
+  expect(nextJson.excluded_count).toBe(firstSources.excluded_count);
+  expect(nextJson.items).toHaveLength(10);
+  expect(nextJson.items.some(item => firstSources.items.some(first => first.id === item.id))).toBe(false);
   expect(nextUrl.searchParams.get('portfolio_id')).toBe(fixture.visiblePortfolio.id);
   expect(nextUrl.searchParams.getAll('property_ids').sort()).toEqual(
     [fixture.propertyA.id, fixture.propertyB.id].sort(),
@@ -356,7 +417,16 @@ test('FinancialWorkspace: real scoped cash report, exact sums, source pages, has
   await expect(sourceTable(page).locator('tbody tr')).toHaveCount(10);
   await expect(sourceTable(page)).toContainText(`FW ${fixture.suffix} expense feb 20`);
 
+  const previousRequest = page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.pathname === '/api/v1/reports/cash/sources'
+      && !url.searchParams.has('after')
+      && url.searchParams.get('source_hash') === firstSources.source_hash
+      && response.status() === 200;
+  });
   await sources.getByRole('button', { name: 'Vorherige Seite', exact: true }).click();
+  const previousJson = await (await previousRequest).json();
+  expect(previousJson.items.map(item => item.id)).toEqual(firstSources.items.map(item => item.id));
   await expect(sourceTable(page).locator('tbody tr')).toHaveCount(50);
 
   const addedAfterReport = await create(page, fixture.owner, '/bookings', {
