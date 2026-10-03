@@ -535,6 +535,10 @@ class UserStore(ABC):
     def list_all(self) -> list[dict]:
         ...
 
+    def assignment_choices(self, portfolio_id: str, search: str | None, after: str | None, limit: int) -> list[dict]:
+        """Minimal bounded candidates; never fall back to a full account export."""
+        raise NotImplementedError
+
     @abstractmethod
     def clear(self) -> None:
         ...
@@ -634,6 +638,21 @@ class InMemoryUserStore(UserStore):
         with self._lock:
             return [user.copy() for user in self._by_id.values()]
 
+    def assignment_choices(self, portfolio_id, search, after, limit):
+        import heapq
+
+        from .permissions import may_write_resource
+
+        with self._lock:
+            candidates = (user for user in self._by_id.values()
+                          if user["is_active"] and may_write_resource(user["role"], "tasks")
+                          and (user["role"] == "eigentuemer" or user.get("portfolio_access") == "all"
+                               or portfolio_id in user.get("portfolio_ids", ()))
+                          and (after is None or user["id"] < after)
+                          and (not search or any(search in str(user[field]).casefold() for field in ("id", "full_name", "role"))))
+            return [{key: user[key] for key in ("id", "full_name", "role")}
+                    for user in heapq.nlargest(limit, candidates, key=lambda user: user["id"])]
+
     def clear(self) -> None:
         with self._lock:
             self._by_id.clear()
@@ -710,6 +729,33 @@ class SQLUserStore(UserStore):
         for row in session.query(UserPortfolioORM).all():
             grants.setdefault(row.user_id, []).append(row.portfolio_id)
         return [self._to_dict(user, accesses, grants) for user in users]
+
+    def assignment_choices(self, portfolio_id, search, after, limit):
+        from sqlalchemy import exists, or_, select
+
+        from .db.booking_order import bytewise_id
+        from .db.orm_models import UserORM
+        from .permissions import ROLE_CAPABILITIES
+        from .services.contract_workspace_search import UnicodeCasefold, ensure_sqlite_casefold
+
+        session = self._session_factory()
+        try:
+            eligible_roles = [role for role, capabilities in ROLE_CAPABILITIES.items() if "operations" in capabilities]
+            statement = select(UserORM.id, UserORM.full_name, UserORM.role).where(
+                UserORM.is_active.is_(True), UserORM.role.in_(eligible_roles),
+                or_(UserORM.role == "eigentuemer",
+                    exists(select(1).where(UserAccessORM.user_id == UserORM.id, UserAccessORM.mode == "all")),
+                    exists(select(1).where(UserPortfolioORM.user_id == UserORM.id, UserPortfolioORM.portfolio_id == portfolio_id))))
+            if after is not None:
+                statement = statement.where(bytewise_id(UserORM.id) < after)
+            if search:
+                ensure_sqlite_casefold(session)
+                escaped = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+                statement = statement.where(or_(*(UnicodeCasefold(column).like(f"%{escaped}%", escape="\\")
+                                                 for column in (UserORM.id, UserORM.full_name, UserORM.role))))
+            return [dict(row) for row in session.execute(statement.order_by(bytewise_id(UserORM.id).desc()).limit(limit)).mappings()]
+        finally:
+            self._finalize_session(session)
 
     def get_by_id(self, user_id: str) -> Optional[dict]:
         from .db.orm_models import UserORM
@@ -1051,6 +1097,11 @@ def get_user_by_id(user_id: str) -> Optional[dict]:
 def list_users() -> list[UserRead]:
     """List all users."""
     return [_to_user_read(u) for u in _user_store.list_all()]
+
+
+def assignment_choices(portfolio_id: str, search: str | None, after: str | None, limit: int) -> list[dict]:
+    """Scoped callers pass an already authorized property portfolio."""
+    return _user_store.assignment_choices(portfolio_id, search, after, limit)
 
 
 def update_user(user_id: str, updates: dict, *, actor_id: str | None = None) -> UserRead:

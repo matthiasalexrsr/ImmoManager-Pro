@@ -168,7 +168,7 @@ test('global search: keyboard reaches real seeded data, Escape and empty results
     await page.keyboard.press('Control+k');
     await expect(input).toBeVisible();
     await expect(input).toBeFocused();
-    const response = page.waitForResponse(reply => new URL(reply.url()).pathname === '/api/v1/search' && new URL(reply.url()).searchParams.get('q') === property.name);
+    const response = page.waitForResponse(reply => new URL(reply.url()).pathname === '/api/v1/search/page' && new URL(reply.url()).searchParams.get('q') === property.name);
     await input.fill(property.name);
     const reply = await response;
     expect(reply.status()).toBe(200);
@@ -190,7 +190,7 @@ test('global search: keyboard reaches real seeded data, Escape and empty results
     await expect(input).toHaveAttribute('aria-expanded', 'false');
     await expect(input).toBeFocused();
     await expect(search.getByRole('listbox')).not.toBeVisible();
-    const emptyResponse = page.waitForResponse(reply => new URL(reply.url()).pathname === '/api/v1/search' && new URL(reply.url()).searchParams.get('q') === 'navigation-no-match-20261001');
+    const emptyResponse = page.waitForResponse(reply => new URL(reply.url()).pathname === '/api/v1/search/page' && new URL(reply.url()).searchParams.get('q') === 'navigation-no-match-20261001');
     await input.fill('navigation-no-match-20261001');
     const empty = await emptyResponse;
     expect(empty.status()).toBe(200);

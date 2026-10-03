@@ -100,3 +100,17 @@ def test_targeted_notifications_are_filtered_on_list_get_and_mutation(installati
     assert client.patch(f"/api/v1/notifications/{alert_id}", headers=accountant, json={"content": "Forbidden"}).status_code == 404
     assert client.delete(f"/api/v1/notifications/{alert_id}", headers=accountant).status_code == 404
     assert active.get_notification(alert_id).status == "unread"
+
+
+def test_accountant_generates_due_notifications_without_calendar_permission(installation):
+    client, active = installation
+    accountant = credentials("buchhaltung")
+    task = active.create_task(TaskCreate(title="Accounting follow-up", due_date=date(2026, 10, 2)))
+    result = client.post("/api/v1/notifications/generate/due-tasks?as_of=2026-10-02", headers=accountant)
+    assert result.status_code == 201, result.text
+    assert len(result.json()) == 1 and result.json()[0]["entity_id"] == task.id
+    assert client.post("/api/v1/notifications/generate/due-tasks?as_of=2026-10-02", headers=accountant).json() == []
+    assert active.list_calendar_events() == []
+    assert client.post("/api/v1/tasks/operational-tick", headers=accountant, json={}).status_code == 403
+    reader = credentials("readonly")
+    assert client.post("/api/v1/notifications/generate/due-tasks?as_of=2026-10-02", headers=reader).status_code == 403

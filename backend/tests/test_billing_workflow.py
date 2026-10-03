@@ -241,6 +241,7 @@ def test_consumption_based_generation():
 
     key = store.create_allocation_key(AllocationKeyCreate(
         property_id=prop.id, name="Verbrauch", key_type="consumption",
+        consumption_medium="heating", consumption_unit="kWh",
     ))
     store.create_cost_item(CostItemCreate(
         billing_period_id=period.id, description="Heizung",
@@ -248,8 +249,8 @@ def test_consumption_based_generation():
     ))
 
     # Create meters and readings: u1 consumes 300, u2 consumes 100
-    m1 = store.create_meter(MeterCreate(unit_id=u1.id, meter_type="heating"))
-    m2 = store.create_meter(MeterCreate(unit_id=u2.id, meter_type="heating"))
+    m1 = store.create_meter(MeterCreate(unit_id=u1.id, meter_type="heating", measurement_unit="kWh"))
+    m2 = store.create_meter(MeterCreate(unit_id=u2.id, meter_type="heating", measurement_unit="kWh"))
     store.create_standalone_meter_reading(StandaloneMeterReadingCreate(
         meter_id=m1.id, reading_date=datetime.date(2025, 1, 1), value=1000.0,
     ))

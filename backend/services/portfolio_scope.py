@@ -71,7 +71,10 @@ class AccessScope:
 
 _scope: ContextVar[AccessScope | None] = ContextVar("immo_portfolio_scope", default=None)
 _guarding: ContextVar[bool] = ContextVar("immo_scope_guarding", default=False)
-GLOBAL_READ = frozenset({"tax_rates", "notification_templates", "escalation_rules"})
+GLOBAL_READ = frozenset({
+    "tax_rates", "notification_templates", "escalation_rules",
+    "communication_templates", "communication_blocks",
+})
 INTERNAL = frozenset(
     {
         "users",
@@ -92,6 +95,9 @@ INTERNAL = frozenset(
         "operational_occurrences",
         "operational_schedules",
         "operational_dispatches",
+        "operational_jobs",  # Bound installation actor is checked in the job service.
+        "operational_job_lanes",
+        "operational_work_items",
     }
 )
 RESOURCE_ALIASES = {

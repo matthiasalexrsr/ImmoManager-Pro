@@ -13,7 +13,9 @@ from io import BytesIO
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
 
+from ..config import settings
 from ..services.bank_import import BankImportError
+from ..services.data_transfer import decode_snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -52,14 +54,25 @@ async def import_data(file: UploadFile = File(...)) -> dict:
     Delegates to the canonical admin import function for full entity coverage
     and dependency-aware ordering. Creates new records (does not overwrite).
     """
+    maximum = settings.max_upload_size_bytes
+    if type(maximum) is not int or maximum <= 0:
+        raise HTTPException(status_code=503, detail=(
+            "Das Uploadbudget ist ungültig. Die Administration muss MAX_UPLOAD_SIZE_BYTES "
+            "als positive Bytezahl konfigurieren; danach die Importdatei erneut hochladen."
+        ))
     try:
-        content = await file.read()
-        data = json.loads(content.decode("utf-8"))
+        content = await file.read(maximum + 1)
+        if len(content) > maximum:
+            raise HTTPException(status_code=413, detail=(
+                f"Die Importdatei überschreitet das konfigurierte Uploadbudget von {maximum} Bytes. "
+                "MAX_UPLOAD_SIZE_BYTES kann durch die Administration angepasst werden; "
+                "anschließend die vollständige Datei erneut hochladen."
+            ))
+        data = decode_snapshot(content)
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Ungültige JSON-Datei: {exc}") from exc
-
-    if not isinstance(data, dict):
-        raise HTTPException(status_code=400, detail="JSON muss ein Objekt sein")
 
     from .admin import _import_store_data
     try:

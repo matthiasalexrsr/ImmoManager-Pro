@@ -45,7 +45,7 @@ def lock_lifecycle_parents(store, *, contract_ids=(), property_ids=(), unit_ids=
 def _lock_lifecycle_links(store, table_name: str, identifier: str) -> None:
     from sqlalchemy import select
 
-    from ..db.orm_models import ContractORM, PropertyORM
+    from ..db.orm_models import ContractORM, PropertyORM, TenantORM
     if table_name == "contracts":
         lock_lifecycle_parents(store, contract_ids=(identifier,))
     elif table_name == "units":
@@ -53,6 +53,11 @@ def _lock_lifecycle_links(store, table_name: str, identifier: str) -> None:
     elif table_name == "properties":
         lock_lifecycle_parents(store, property_ids=(identifier,))
     elif table_name == "tenants":
+        # Correspondence approval takes tenant before property/unit/contract.
+        # Follow that order before deleting a party to avoid an inverted wait.
+        from .contract_occupancy import begin_writer
+        begin_writer(store.db)
+        store.db.scalar(select(TenantORM.id).where(TenantORM.id == identifier).with_for_update())
         identifiers = store.db.scalars(select(ContractORM.id).where(ContractORM.tenant_id == identifier))
         lock_lifecycle_parents(store, contract_ids=identifiers)
     elif table_name == "portfolios":
@@ -61,23 +66,39 @@ def _lock_lifecycle_links(store, table_name: str, identifier: str) -> None:
 
 
 def guard_sql_lifecycle_edit(db, table_name: str, identifier: str, changes: dict) -> None:
+    with db.no_autoflush:
+        _guard_sql_lifecycle_edit(db, table_name, identifier, changes)
+
+
+def _guard_sql_lifecycle_edit(db, table_name: str, identifier: str, changes: dict) -> None:
     from ..repositories.sql_store import SQLAlchemyStore
+    from .contract_correspondence import guard_delete_link as guard_correspondence_link
     from .contract_lifecycle import guard_contract_mutation, guard_delete_link, guard_known_rent_period
+    from .workflow_parent_guards import guard_parent_edit
     store = SQLAlchemyStore(db)
     if table_name == "contracts" and {"property_id", "unit_id", "tenant_id", "start_date", "end_date", "status"} & changes.keys():
         lock_lifecycle_parents(store, contract_ids=(identifier,),
             property_ids=(changes["property_id"],) if changes.get("property_id") else (),
             unit_ids=(changes["unit_id"],) if changes.get("unit_id") else ())
         guard_contract_mutation(store, identifier, changes)
+        current_contract = store.get_contract(identifier)
+        guard_parent_edit(store, "contract", current_contract, changes)
+        if any(field in changes and changes[field] != getattr(current_contract, field)
+               for field in ("property_id", "unit_id", "tenant_id")):
+            guard_correspondence_link(store, "contract", identifier)
     elif table_name == "properties" and "portfolio_id" in changes:
         lock_lifecycle_parents(store, property_ids=(identifier,))
+        guard_parent_edit(store, "property", store.get_property(identifier), changes)
         if store.get_property(identifier).portfolio_id != changes["portfolio_id"]:
             guard_delete_link(store, "property", identifier)
+            guard_correspondence_link(store, "property", identifier)
     elif table_name == "units" and "property_id" in changes:
         lock_lifecycle_parents(store, unit_ids=(identifier,),
             property_ids=(changes["property_id"],) if changes.get("property_id") else ())
+        guard_parent_edit(store, "unit", store.get_unit(identifier), changes)
         if store.get_unit(identifier).property_id != changes["property_id"]:
             guard_delete_link(store, "unit", identifier)
+            guard_correspondence_link(store, "unit", identifier)
     elif table_name == "rent_charges" and {"contract_id", "month"} & changes.keys():
         previous = store.get_rent_charge(identifier)
         contract_id = changes.get("contract_id", previous.contract_id)
@@ -99,9 +120,12 @@ def guard_contract_lifecycle_reset(store, *, serialized: bool = False) -> None:
         if store.db.get_bind().dialect.name == "postgresql":
             # Rare explicit maintenance operation: use the same parent-first
             # order as lifecycle writes, never journal-first vs parent-last.
-            for name in ("properties", "units", "contracts", "contract_lifecycle_drafts", "contract_lifecycle_commands"):
+            for name in ("properties", "units", "contracts", "contract_lifecycle_drafts", "contract_lifecycle_commands",
+                         "contract_correspondence_drafts", "contract_correspondence_commands", "contract_correspondence_events"):
                 store.db.connection().exec_driver_sql(f'LOCK TABLE "{name}" IN EXCLUSIVE MODE')
     guard_destructive_reset(store)
+    from .contract_correspondence import guard_destructive_reset as guard_correspondence
+    guard_correspondence(store)
 
 
 def guard_booking_edit(old, updates, has_receipts: bool) -> None:
@@ -121,7 +145,12 @@ def guard_invoice_edit(old, updates, has_receipts: bool) -> dict:
     return {**updates, "status": status}
 
 
-def guard_memory_delete(store, entity_type: str, entity_id: str) -> None:
+def guard_memory_delete(store, entity_type: str, entity_id: str, *, deleting: bool = True) -> None:
+    if deleting:
+        from .workflow_parent_guards import guard_parent_retention
+        guard_parent_retention(store, entity_type, entity_id)
+    from .contract_correspondence import guard_delete_link as guard_correspondence_link
+    guard_correspondence_link(store, entity_type, entity_id)
     from .contract_lifecycle import guard_delete_link as guard_lifecycle_link
     guard_lifecycle_link(store, entity_type, entity_id)
     from .contract_wizard import guard_delete_link
@@ -162,11 +191,21 @@ def guard_memory_delete(store, entity_type: str, entity_id: str) -> None:
             raise ValidationError(HISTORY_MESSAGE)
 
 
-def guard_sql_delete(db, table_name: str, entity_id: str) -> None:
+def guard_sql_delete(db, table_name: str, entity_id: str, *, deleting: bool = True) -> None:
+    with db.no_autoflush:
+        _guard_sql_delete(db, table_name, entity_id, deleting=deleting)
+
+
+def _guard_sql_delete(db, table_name: str, entity_id: str, *, deleting: bool = True) -> None:
     from ..repositories.sql_store import SQLAlchemyStore
     from .contract_lifecycle import guard_delete_link as guard_lifecycle_link
     active = SQLAlchemyStore(db)
     _lock_lifecycle_links(active, table_name, entity_id)
+    if deleting:
+        from .workflow_parent_guards import guard_parent_retention
+        guard_parent_retention(active, table_name, entity_id)
+    from .contract_correspondence import guard_delete_link as guard_correspondence_link
+    guard_correspondence_link(active, table_name, entity_id)
     guard_lifecycle_link(active, table_name, entity_id)
     from .contract_wizard import guard_delete_link
     guard_delete_link(SQLAlchemyStore(db), table_name, entity_id)

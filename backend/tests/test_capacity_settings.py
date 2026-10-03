@@ -14,12 +14,14 @@ def test_contract_workspace_budgets_accept_large_installation_environment(monkey
 
     monkeypatch.setenv("CONTRACT_WORKSPACE_PAGE_MAX_SIZE", "6000")
     monkeypatch.setenv("CONTRACT_WORKSPACE_SEARCH_MAX_CHARS", "12000")
+    monkeypatch.setenv("CONTRACT_CORRESPONDENCE_PAGE_MAX_SIZE", "8000")
     configured = Settings(_env_file=None)
     assert configured.contract_workspace_page_max_size == 6000
     assert configured.contract_workspace_search_max_chars == 12000
+    assert configured.contract_correspondence_page_max_size == 8000
 
 
-@pytest.mark.parametrize("name", ["contract_workspace_page_max_size", "contract_workspace_search_max_chars"])
+@pytest.mark.parametrize("name", ["contract_workspace_page_max_size", "contract_workspace_search_max_chars", "contract_correspondence_page_max_size"])
 @pytest.mark.parametrize("value", [0, -1])
 def test_contract_workspace_budgets_require_positive_capacity(name, value):
     from pydantic import ValidationError

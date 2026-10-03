@@ -6,10 +6,18 @@ import { useTranslation } from '../i18n';
 import { useFinanceData } from '../hooks/useFinanceData';
 import FinanceLoadState from '../components/FinanceLoadState';
 import { useDataStore } from '../contexts/DataStoreContext';
+import { useAuth } from '../contexts/AuthContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
+import BillingDimensionValue from '../features/billingDimensions/BillingDimensionValue';
+import {
+  DIMENSION_HINTS,
+  billingPrincipalKey,
+  meterPayload,
+} from '../features/billingDimensions/billingDimensions';
+import '../features/billingDimensions/BillingDimensions.css';
 
 const METER_TYPE_LABELS = {
   cold_water: 'Kaltwasser',
@@ -23,8 +31,9 @@ const METER_COLUMNS = [
   { key: 'serial_number', label: 'Seriennr.', filterType: 'text' },
   { key: 'property_name', label: 'Immobilie', filterType: 'text' },
   { key: 'unit_label', label: 'Einheit', filterType: 'text' },
-  { key: 'meter_type', label: 'Typ', filterType: 'select',
-    render: v => METER_TYPE_LABELS[v] || v },
+  { key: 'meter_type', label: 'Typ', filterType: 'select', render: v => METER_TYPE_LABELS[v] || v },
+  { key: 'measurement_unit', label: 'Maßeinheit',
+    render: value => <BillingDimensionValue value={value} kind="unit" /> },
   { key: 'location', label: 'Standort' },
   { key: 'supplier', label: 'Versorger', filterType: 'text' },
   { key: 'installation_date', label: 'Einbaudatum', type: 'date' },
@@ -48,13 +57,15 @@ const READING_COLUMNS = [
   { key: 'reading_date', label: 'Datum', type: 'date', filterType: 'dateRange' },
   { key: 'value', label: 'Zählerstand', type: 'number', align: 'right',
     render: v => v != null ? Number(v).toFixed(2) : '—' },
+  { key: 'measurement_unit', label: 'Maßeinheit',
+    render: value => <BillingDimensionValue value={value} kind="unit" /> },
   { key: 'consumption', label: 'Verbrauch', type: 'number', align: 'right',
     render: v => v != null ? v.toFixed(2) : '—' },
   { key: 'recorded_by', label: 'Erfasst von', filterType: 'text' },
   { key: 'notes', label: 'Notizen' },
 ];
 
-export default function Meters() {
+function MetersView() {
   const { t } = useTranslation();
   const confirm = useConfirm();
   const store = useDataStore();
@@ -62,7 +73,7 @@ export default function Meters() {
   const [actionError, setActionError] = useState(null);
   const [modal, setModal] = useState(null);
   const { canWrite, isAllowed, requireWrite } = useWriteAccess('/meters', () => setModal(null));
-  const [groupBy, setGroupBy] = useState('none'); // 'none' | 'property' | 'type' | 'supplier'
+  const [groupBy, setGroupBy] = useState('none');
 
   const { data: { rawMeters, allReadings, units, properties }, loading, error, reload: refreshData } = useFinanceData({
     rawMeters: '/meters', allReadings: '/meters/readings/all', units: '/units', properties: '/properties',
@@ -89,7 +100,9 @@ export default function Meters() {
   }, [rawMeters, units, properties, readingsByMeter]);
   const selectedMeter = meters.find(meter => meter.id === selectedMeterId) || null;
   const readings = (readingsByMeter.get(selectedMeterId) || []).map((reading, index, rows) => ({
-    ...reading, consumption: index > 0 ? Number(reading.value) - Number(rows[index - 1].value) : null,
+    ...reading,
+    measurement_unit: selectedMeter?.measurement_unit ?? null,
+    consumption: index > 0 ? Number(reading.value) - Number(rows[index - 1].value) : null,
   }));
   const handleSelectMeter = meter => setSelectedMeterId(meter.id);
 
@@ -103,6 +116,8 @@ export default function Meters() {
       { value: 'electricity', label: 'Strom' },
       { value: 'gas', label: 'Gas' },
     ]},
+    { key: 'measurement_unit', label: 'Tatsächliche Maßeinheit',
+      placeholder: 'z.B. m³ oder kWh', hint: DIMENSION_HINTS.meterUnit },
     { key: 'serial_number', label: 'Seriennummer' },
     { key: 'location', label: 'Standort' },
     { key: 'installation_date', label: 'Einbaudatum', type: 'date' },
@@ -114,7 +129,8 @@ export default function Meters() {
 
   const readingFields = [
     { key: 'meter_id', label: 'Zähler', type: 'select', required: true,
-      options: meters.map(m => ({ value: m.id, label: `${m.serial_number || m.id.slice(0, 8)} (${METER_TYPE_LABELS[m.meter_type] || m.meter_type})` })) },
+      options: meters.map(m => ({ value: m.id,
+        label: `${m.serial_number || m.id.slice(0, 8)} (${METER_TYPE_LABELS[m.meter_type] || m.meter_type})` })) },
     { key: 'reading_date', label: 'Ablesedatum', type: 'date', required: true },
     { key: 'value', label: 'Zählerstand', type: 'number', required: true },
     { key: 'recorded_by', label: 'Erfasst von' },
@@ -123,10 +139,11 @@ export default function Meters() {
 
   const handleSaveMeter = async (data) => {
     requireWrite();
+    const payload = meterPayload(data);
     if (modal === 'create-meter') {
-      await api.post('/meters', data);
+      await api.post('/meters', payload);
     } else if (modal && modal.id) {
-      await api.put(`/meters/${modal.id}`, data);
+      await api.put(`/meters/${modal.id}`, payload);
     }
   };
 
@@ -151,9 +168,7 @@ export default function Meters() {
     try {
       if (!isAllowed()) return;
       await api.del(`/meters/${row.id}`, revisionOptions(row));
-      if (selectedMeter?.id === row.id) {
-        setSelectedMeterId(null);
-      }
+      if (selectedMeter?.id === row.id) setSelectedMeterId(null);
       setModal(null);
       refreshData();
       if (store) store.invalidateRelated('meters', 'units');
@@ -162,10 +177,8 @@ export default function Meters() {
     }
   };
 
-  // Group meters
   const getGroupedMeters = () => {
     if (groupBy === 'none') return [{ label: null, meters }];
-
     const groups = {};
     meters.forEach(m => {
       let key;
@@ -175,13 +188,11 @@ export default function Meters() {
       if (!groups[key]) groups[key] = [];
       groups[key].push(m);
     });
-
     return Object.entries(groups)
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([label, meters]) => ({ label, meters }));
+      .map(([label, groupedMeters]) => ({ label, meters: groupedMeters }));
   };
 
-  // Summary stats
   const stats = {
     total: meters.length,
     active: meters.filter(m => m.is_active !== false).length,
@@ -197,13 +208,11 @@ export default function Meters() {
   };
 
   if (loading || error) return <FinanceLoadState loading={loading} error={error} onRetry={refreshData} />;
-
   const grouped = getGroupedMeters();
 
   return (
     <div className="page">
       {actionError && <div className="alert alert-error" role="alert">{actionError}</div>}
-      {/* Summary Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
         <div className="panel" style={{ padding: '1rem', textAlign: 'center' }}>
           <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--primary)' }}>{stats.total}</div>
@@ -225,8 +234,7 @@ export default function Meters() {
         ))}
       </div>
 
-      {/* Group-by controls */}
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
         <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Gruppieren nach:</span>
         {[
           { value: 'none', label: 'Keine' },
@@ -245,9 +253,8 @@ export default function Meters() {
         ))}
       </div>
 
-      {/* Meter tables per group */}
       {grouped.map((group, gi) => (
-        <div key={gi} style={{ marginBottom: group.label ? '2rem' : 0 }}>
+        <div key={group.label || 'all'} style={{ marginBottom: group.label ? '2rem' : 0 }}>
           {group.label && (
             <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.1rem', borderBottom: '2px solid var(--primary)', paddingBottom: '0.25rem' }}>
               {group.label} ({group.meters.length})
@@ -265,11 +272,10 @@ export default function Meters() {
         </div>
       ))}
 
-      {/* Selected meter readings */}
       {selectedMeter && (
         <div style={{ marginTop: '1.5rem' }}>
           <div className="panel" style={{ padding: '1rem', marginBottom: '1rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', flexWrap: 'wrap' }}>
               <div>
                 <h3 style={{ margin: 0 }}>
                   Ablesungen — {selectedMeter.serial_number || selectedMeter.id.slice(0, 8)} ({METER_TYPE_LABELS[selectedMeter.meter_type] || selectedMeter.meter_type})
@@ -280,8 +286,12 @@ export default function Meters() {
                   {selectedMeter.supplier && <span> | Versorger: {selectedMeter.supplier}</span>}
                   {selectedMeter.contract_number && <span> | Vertrag: {selectedMeter.contract_number}</span>}
                 </div>
+                <div className="billing-dimension-context" style={{ marginTop: '.4rem' }}>
+                  <strong>Maßeinheit:</strong>
+                  <BillingDimensionValue value={selectedMeter.measurement_unit} kind="unit" />
+                </div>
               </div>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                 {canWrite && <button className="btn btn-sm btn-primary" onClick={() => setModal('create-reading')}>
                   + Ablesung erfassen
                 </button>}
@@ -294,41 +304,33 @@ export default function Meters() {
               </div>
             </div>
           </div>
-          <DataTable
-            title=""
-            columns={READING_COLUMNS}
-            data={readings}
-          />
+          <DataTable title="" columns={READING_COLUMNS} data={readings} />
         </div>
       )}
 
       {canWrite && modal === 'create-meter' && (
         <FormModal onSaved={afterSave} draftConfig={{ collection: 'meters' }}
-          title="Zähler anlegen"
-          fields={meterFields}
-          initial={null}
-          onSave={handleSaveMeter}
-          onClose={() => setModal(null)}
-        />
+          title="Zähler anlegen" fields={meterFields} initial={null}
+          onSave={handleSaveMeter} onClose={() => setModal(null)} />
       )}
       {canWrite && modal && modal !== 'create-meter' && modal !== 'create-reading' && modal.id && (
         <FormModal onSaved={afterSave} draftConfig={{ collection: 'meters' }}
-          title="Zähler bearbeiten"
-          fields={meterFields}
-          initial={modal}
-          onSave={handleSaveMeter}
-          onClose={() => setModal(null)}
-        />
+          title="Zähler bearbeiten" fields={meterFields} initial={modal}
+          onSave={handleSaveMeter} onClose={() => setModal(null)} />
       )}
       {canWrite && modal === 'create-reading' && (
         <FormModal
-          title="Ablesung erfassen"
-          fields={readingFields}
+          title="Ablesung erfassen" fields={readingFields}
           initial={selectedMeter ? { meter_id: selectedMeter.id } : null}
-          onSave={handleSaveReading}
-          onClose={() => setModal(null)}
+          onSave={handleSaveReading} onClose={() => setModal(null)}
         />
       )}
     </div>
   );
+}
+
+export default function Meters() {
+  const auth = useAuth();
+  const binding = billingPrincipalKey(auth);
+  return <MetersView key={binding || 'billing-meters-neutral'} />;
 }

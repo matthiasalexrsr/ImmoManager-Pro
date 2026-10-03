@@ -6,6 +6,7 @@ import logging
 import mimetypes
 import posixpath
 import uuid
+from dataclasses import asdict
 from io import BytesIO
 from urllib.parse import unquote, urlparse
 
@@ -243,7 +244,29 @@ def download_file(key: str = Query(...)) -> Response:
     if ".." in safe_key or safe_key.startswith("/"):
         raise HTTPException(status_code=400, detail="Ungültiger Dateischlüssel")
 
-    data = storage.get(safe_key)
+    data = None
+    if safe_key.startswith("housing-confirmations/"):
+        from ..dependencies import store
+        from ..services.housing_confirmation import read_pdf_for_key as read_housing_pdf
+        from ..services.portfolio_scope import current_scope
+        captured = current_scope()
+        if captured is None:
+            raise HTTPException(status_code=401, detail="Aktuelle Anmeldung erforderlich")
+        # Reserved generated originals always win over an unrelated physical
+        # upload with the same storage key.
+        data = read_housing_pdf(store, safe_key, captured.user_id)
+    else:
+        data = storage.get(safe_key)
+    if safe_key.startswith("contract-correspondence/"):
+        from ..dependencies import store
+        from ..services.contract_correspondence import read_pdf_for_key as read_correspondence_pdf
+        from ..services.portfolio_scope import current_scope
+        captured = current_scope()
+        if captured is None:
+            raise HTTPException(status_code=401, detail="Aktuelle Anmeldung erforderlich")
+        # This reserved virtual key always denotes the verified stored original,
+        # including when an unrelated physical file exists under the same key.
+        data = read_correspondence_pdf(store, safe_key, captured.user_id)
     if data is None and safe_key.startswith("contract-wizard/"):
         # Only exact server-generated wizard UUID keys are recognized. The
         # snapshot service rechecks current portfolio/document/contract scope.
@@ -344,6 +367,8 @@ def analyze_file(
     if not ocr_text:
         return {
             "analyzed": False,
+            "analysis_complete": False,
+            "partial": False,
             "message": "Kein Text extrahierbar",
             "result": None,
         }
@@ -351,18 +376,13 @@ def analyze_file(
     result = analyze_document(ocr_text, use_ai=use_ai)
 
     return {
-        "analyzed": True,
-        "message": "Analyse abgeschlossen",
-        "result": {
-            "document_type": result.document_type,
-            "document_type_confidence": result.document_type_confidence,
-            "summary": result.summary,
-            "entities": result.entities,
-            "invoice_number": result.invoice_number,
-            "invoice_date": result.invoice_date,
-            "total_amount": result.total_amount,
-            "supplier": result.supplier,
-            "cost_category": result.cost_category,
-            "ai_model": result.ai_model,
-        },
+        "analyzed": result.analysis_complete,
+        "analysis_complete": result.analysis_complete,
+        "partial": not result.analysis_complete,
+        "message": (
+            "Analyse abgeschlossen" if result.analysis_complete else
+            "Teilergebnis verfügbar. Die angeforderte Analyse ist noch nicht vollständig; "
+            "fehlende Abschnitte und Funktionen sind im Ergebnis ausgewiesen."
+        ),
+        "result": asdict(result),
     }

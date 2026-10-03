@@ -28,7 +28,7 @@ test('tenant privacy: private download, stale-plan recovery and explicit profile
   expect(exported.headers()['cache-control']).toBe('private, no-store');
   const data = await exported.json();
   expect(data.tenant.email).toBe('synthetic-privacy@example.com');
-  expect(data.scope.file_content).toBe('stored wizard and document version originals included; other files metadata only');
+  expect(data.scope.file_content).toBe('stored wizard, document-version and reviewed communication PDF originals included; other files metadata only');
   expect(data.scope.wizard.unassigned_prospects).toBe('excluded; no name/email inference');
   expect(data.contract_wizard_files).toEqual([]);
   expect(data.wizard_file_contents).toEqual([]);

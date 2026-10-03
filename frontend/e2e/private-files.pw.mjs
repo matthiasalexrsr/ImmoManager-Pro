@@ -65,7 +65,8 @@ test('private attachments: image/PDF upload, protected viewer and unit photo sur
   }
 
   await page.goto('/documents');
-  await page.getByRole('row').filter({ hasText: documents[0].title }).click();
+  await page.getByRole('searchbox', { name: 'Dokumente durchsuchen' }).fill(unique);
+  await page.getByRole('button', { name: documents[0].title, exact: true }).click();
   const viewer = page.getByRole('dialog', { name: 'Dateiansicht' });
   const picture = viewer.getByAltText('Dokument');
   await expect(picture).toHaveAttribute('src', /^blob:/);
@@ -74,7 +75,7 @@ test('private attachments: image/PDF upload, protected viewer and unit photo sur
   await viewer.getByRole('link', { name: 'Herunterladen', exact: true }).click();
   expect((await download).suggestedFilename()).toMatch(/\.png$/);
   await viewer.getByRole('button', { name: 'Schließen' }).click();
-  await page.getByRole('row').filter({ hasText: documents[1].title }).click();
+  await page.getByRole('button', { name: documents[1].title, exact: true }).click();
   const frame = viewer.getByTitle('PDF Viewer');
   await expect(frame).toHaveAttribute('src', /^blob:/);
   await expect(frame).not.toHaveAttribute('sandbox');
@@ -103,7 +104,7 @@ test('private attachments: image/PDF upload, protected viewer and unit photo sur
   await testInfo.attach('private-pdf-viewer', { path: screenshot, contentType: 'image/png' });
   await viewer.getByRole('button', { name: 'Schließen' }).click();
 
-  await page.getByRole('row').filter({ hasText: documents[2].title }).click();
+  await page.getByRole('button', { name: documents[2].title, exact: true }).click();
   await expect(viewer.getByRole('alert')).toHaveText('Dateiinhalt passt nicht zum Dateityp. Die Datei kann nur heruntergeladen werden.');
   await expect(viewer.locator('iframe')).toHaveCount(0);
   await expect(viewer.getByRole('link', { name: 'Herunterladen', exact: true })).toHaveAttribute('download', /\.pdf$/);
@@ -137,7 +138,7 @@ test('private attachments: image/PDF upload, protected viewer and unit photo sur
   await expect(photo).toHaveAttribute('src', /^blob:/);
   await expect.poll(() => photo.evaluate(element => element.naturalWidth)).toBe(1);
   await page.goto('/documents');
-  await page.getByRole('row').filter({ hasText: documents[0].title }).click();
+  await page.getByRole('button', { name: documents[0].title, exact: true }).click();
   await expect(picture).toHaveAttribute('src', /^blob:/);
   await expect.poll(() => picture.evaluate(element => element.naturalWidth)).toBe(1);
   expect(directUploads, 'Image and viewer requests use protected downloads, never public uploads URLs').toEqual([]);

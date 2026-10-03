@@ -7,9 +7,9 @@ and shared across routers, scheduled jobs, and export pipelines.
 from __future__ import annotations
 
 from calendar import monthrange
-from collections import defaultdict
+from collections.abc import Iterable
 from datetime import date, timedelta
-from decimal import Decimal
+from decimal import Decimal, localcontext
 from typing import Any
 
 # ---------------------------------------------------------------------------
@@ -223,46 +223,46 @@ def compute_maintenance_costs(*, maintenance_cases: list) -> dict[str, Any]:
 
 def compute_liquidity_forecast(
     *,
-    bookings: list,
+    bookings: Iterable[Any],
     months: int = 12,
     today: date | None = None,
+    starting_balance: str | None = None,
 ) -> dict[str, Any]:
-    """Project balance forward using calendar-aware month arithmetic."""
+    """Explicit historical scenario using twelve complete months, including zeros."""
+    from .financial_cash import cents
+
     today = today or date.today()
-    cutoff = today - timedelta(days=365)
-    recent = [b for b in bookings if b.booking_date >= cutoff]
-
-    monthly_income: dict[str, float] = defaultdict(float)
-    monthly_expense: dict[str, float] = defaultdict(float)
-    for b in recent:
-        key = f"{b.booking_date.year}-{b.booking_date.month:02d}"
-        if b.amount > 0:
-            monthly_income[key] += b.amount
-        else:
-            monthly_expense[key] += abs(b.amount)
-
-    n_months = max(len(monthly_income), 1)
-    avg_income = sum(monthly_income.values()) / n_months
-    avg_expense = sum(monthly_expense.values()) / n_months
-    current_balance = sum(b.amount for b in bookings)
-
-    forecast = []
-    balance = current_balance
-    for i in range(1, months + 1):
-        month_date = _add_months(today, i)
-        balance += avg_income - avg_expense
-        forecast.append({
-            "month": f"{month_date.year}-{month_date.month:02d}",
-            "projected_income": round(avg_income, 2),
-            "projected_expense": round(avg_expense, 2),
-            "projected_balance": round(balance, 2),
-        })
-
-    return {
-        "current_balance": round(current_balance, 2),
-        "avg_monthly_income": round(avg_income, 2),
-        "avg_monthly_expense": round(avg_expense, 2),
-        "avg_monthly_net": round(avg_income - avg_expense, 2),
-        "forecast_months": months,
-        "forecast": forecast,
-    }
+    if type(months) is not int or months < 1 or months > (9999 - today.year) * 12 + 12 - today.month:
+        raise ValueError("Der Prognosezeitraum liegt außerhalb des darstellbaren Kalenders.")
+    current_month = today.replace(day=1)
+    cutoff = _add_months(current_month, -12)
+    income, expense, total = 0, 0, 0
+    for booking in bookings:
+        if booking.booking_date > today or getattr(booking, "status", "confirmed") in {"cancelled", "void"}:
+            continue
+        amount = cents(booking.amount)
+        total += amount
+        if cutoff <= booking.booking_date < current_month:
+            income += max(amount, 0)
+            expense += max(-amount, 0)
+    initial = cents(starting_balance) if starting_balance is not None else total
+    with localcontext() as context:
+        context.prec = max(34, len(str(abs(initial))) + len(str(months)) + 16)
+        average_income, average_expense = Decimal(income) / 1200, Decimal(expense) / 1200
+        balance = Decimal(initial) / 100
+        forecast = []
+        def rounded(value):
+            return format(value.quantize(Decimal(".01")), ".2f")
+        for index in range(1, months + 1):
+            day = _add_months(current_month, index)
+            balance += average_income - average_expense
+            precise = {"income": rounded(average_income), "expense": rounded(average_expense), "balance": rounded(balance)}
+            forecast.append({"month": f"{day.year:04d}-{day.month:02d}", "projected_income": float(precise["income"]),
+                "projected_expense": float(precise["expense"]), "projected_balance": float(precise["balance"]), "exact": precise})
+        exact = {"current_balance": rounded(Decimal(initial) / 100), "avg_monthly_income": rounded(average_income),
+                 "avg_monthly_expense": rounded(average_expense), "avg_monthly_net": rounded(average_income - average_expense)}
+    return {**{key: float(value) for key, value in exact.items()}, "exact": exact, "currency": "EUR", "forecast_months": months,
+        "forecast": forecast, "scenario": "twelve_completed_calendar_month_average", "history_months": 12,
+        "history_from": cutoff.isoformat(), "history_until": current_month.isoformat(), "as_of": today.isoformat(),
+        "balance_basis": "explicit_scenario_start" if starting_balance is not None else "stored_bookings_without_undated_opening",
+        "opening_balance_included": False}

@@ -283,14 +283,17 @@ def test_sql_failure_rolls_back_business_rows_keys_and_run_history(tmp_path):
 
 
 def test_scheduler_requires_explicit_enable_and_stops_without_second_tick(monkeypatch):
-    import backend.services.operational_schedule as service
     called = Event()
-    monkeypatch.setattr(service, "operational_tick", lambda *args: called.set())
+    from backend.services import operational_scheduler as durable
+    def packet(*args):
+        called.set()
+        return {"state": "running"}
+    monkeypatch.setattr(durable, "advance", packet)
     disabled = OperationalScheduler(InMemoryStore())
     disabled.start()
     assert not called.is_set()
     assert not scheduler_status()["automatic_running"]
-    enabled = OperationalScheduler(InMemoryStore(), enabled=True, interval_seconds=10)
+    enabled = OperationalScheduler(InMemoryStore(), enabled=True, interval_seconds=10, actor_id="explicit-synthetic-actor")
     enabled.start()
     assert called.wait(timeout=2)
     assert scheduler_status()["automatic_running"]

@@ -7,6 +7,7 @@ Original blocks are bounded inside SQL before the driver materializes bytes.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import sqlite3
 import time
@@ -206,7 +207,7 @@ def _verify_document_versions(connection, *, deadline=None) -> int:
         _fail()
     fields = ",".join("CASE WHEN typeof(v.created_at)='text' AND length(v.created_at)<=128 THEN v.created_at ELSE NULL END"
                       if name == "created_at" and db.dialect == "sqlite" else "v." + name for name in VERSION_FIELDS)
-    identity_fields = ("id", "property_id", "unit_id", "contract_id", "file_url")
+    identity_fields = ("id", "property_id", "unit_id", "contract_id", "file_url", "document_type")
     date_fields = ("document_date", "ai_analyzed_at", "created_at", "updated_at")
     snapshot_fields = identity_fields + date_fields
     projections = ",".join([*(db.snapshot(name) for name in identity_fields),
@@ -235,6 +236,29 @@ def _verify_document_versions(connection, *, deadline=None) -> int:
             Document.model_validate({"title": "", **{key: value for key, value in snapshot.items()
                 if value is not None or key not in {"created_at", "updated_at"}}})
             validate_manifest_identity(row, snapshot)
+            if snapshot.get("document_type") == "housing_confirmation":
+                raw = db.one(
+                    "SELECT metadata_snapshot FROM document_versions WHERE id=:id",
+                    {"id": row["id"]},
+                )
+                if raw is None:
+                    _fail()
+                full_snapshot = raw[0]
+                if isinstance(full_snapshot, str):
+                    try:
+                        full_snapshot = json.loads(full_snapshot)
+                    except (json.JSONDecodeError, UnicodeError):
+                        _fail()
+                if not isinstance(full_snapshot, Mapping):
+                    _fail()
+                from .housing_confirmation_validation import (
+                    HousingConfirmationValidationError,
+                    validate_housing_confirmation_snapshot,
+                )
+                try:
+                    validate_housing_confirmation_snapshot(row, full_snapshot)
+                except HousingConfirmationValidationError:
+                    _fail()
             (document_id, document_source, document_property, document_unit, document_contract, property_portfolio, portfolio_id,
              unit_property, contract_property, contract_unit, contract_tenant, tenant_id, document_unit_property) = values[-13:]
             if (type(row["number"]) is not int or row["number"] < 1 or type(row["size_bytes"]) is not int or row["size_bytes"] < 0

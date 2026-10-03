@@ -1,9 +1,43 @@
-from fastapi import APIRouter, HTTPException, Query
+from typing import Literal
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
+from ..auth import require_role
+from ..services.checked_publication import CheckedPublicationRoute
+from ..services.integrations.history_types import HistoryError
 from ..services.integrations.manager import integration_manager
+from ..services.portfolio_scope import require_installation_scope
 
-router = APIRouter(prefix="/integrations", tags=["Integrationen"])
+
+def _require_integration_administration(
+    response: Response, _actor=Depends(require_role("eigentuemer", "verwalter")),
+):
+    # The legacy manager stores global configuration/history. A read is not a
+    # scoped property lookup and must not inherit general business read access.
+    if _actor.role != "eigentuemer" and _actor.portfolio_access != "all":
+        raise HTTPException(403, "Installationsverwaltung erforderlich")
+    require_installation_scope()
+    response.headers["Cache-Control"] = "private, no-store"
+    response.headers["Vary"] = "Authorization"
+
+
+class IntegrationPublicationRoute(CheckedPublicationRoute):
+    def get_route_handler(self):
+        handler = super().get_route_handler()
+
+        async def checked(request: Request) -> Response:
+            try:
+                return await handler(request)
+            except HistoryError as error:
+                raise HTTPException(error.status, detail={"code": error.code, "message": error.message}) from None
+
+        return checked
+
+
+router = APIRouter(prefix="/integrations", tags=["Integrationen"],
+                   route_class=IntegrationPublicationRoute,
+                   dependencies=[Depends(_require_integration_administration)])
 
 
 class IntegrationTogglePayload(BaseModel):
@@ -77,6 +111,11 @@ def update_integration_config(integration_id: str, body: IntegrationConfigPayloa
 
 @router.post("/{integration_id}/run")
 def run_integration_action(integration_id: str, body: IntegrationActionPayload) -> dict:
+    if integration_id in {"email", "whatsapp", "deutsche-post"}:
+        raise HTTPException(
+            status_code=409,
+            detail="Kommunikationsversand nur über geprüfte Kommunikations-/Outbox-Workflows ausführen",
+        )
     try:
         return integration_manager.run(integration_id, body.payload)
     except KeyError as exc:
@@ -87,9 +126,20 @@ def run_integration_action(integration_id: str, body: IntegrationActionPayload) 
 def get_integration_history(
     integration_id: str,
     limit: int = Query(20, ge=1, le=100),
+    cursor: str | None = Query(None),
+    state: Literal["completed", "rejected", "outcome_uncertain", "observation_failed", "pending"] | None = Query(None),
+    projection: Literal["full", "summary"] = Query("full"),
 ) -> dict:
     try:
-        return {"items": integration_manager.list_history(integration_id, limit=limit)}
+        return integration_manager.history_page(integration_id, limit=limit, cursor=cursor, state=state, projection=projection)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Integration nicht gefunden") from exc
+
+
+@router.get("/{integration_id}/history/{run_id}")
+def get_integration_history_detail(integration_id: str, run_id: str) -> dict:
+    try:
+        return integration_manager.history_detail(integration_id, run_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Integration nicht gefunden") from exc
 

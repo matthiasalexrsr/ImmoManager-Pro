@@ -21,7 +21,12 @@ trap cleanup EXIT
 # while SPA routes still fail in the release image.
 (cd frontend && npm ci && npm run build)
 
-docker compose "${COMPOSE_FILES[@]}" up -d --build
+# Even the development smoke installation establishes its schema explicitly;
+# the shared container entrypoint performs no hidden migration on any restart.
+docker compose "${COMPOSE_FILES[@]}" build app
+docker compose "${COMPOSE_FILES[@]}" up -d --wait db
+docker compose "${COMPOSE_FILES[@]}" run --rm --no-deps -T app alembic upgrade head
+docker compose "${COMPOSE_FILES[@]}" up -d
 
 for _ in {1..60}; do
   if curl -fsS http://localhost:8000/health >/dev/null; then

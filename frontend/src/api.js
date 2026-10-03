@@ -422,12 +422,14 @@ export const api = {
   },
   get: (path, { signal } = {}) => request(path, { signal }),
   getBlob: (path, { signal } = {}) => request(path, { signal, responseType: 'blob' }),
+  postBlob: (path, data, { signal } = {}) => request(path, { method: 'POST', body: JSON.stringify(data), signal, responseType: 'blob' }),
   postForm: (path, formData, { signal } = {}) => request(path, { method: 'POST', body: formData, signal }),
   post: (path, data, { signal } = {}) => request(path, { method: 'POST', body: JSON.stringify(data), signal }),
   versionOptions: revisionOptions,
   put: (path, data, options = {}) => request(path, { method: 'PUT', body: JSON.stringify(data), signal: options.signal, headers: conditionalHeaders(path, data, options) }),
   patch: (path, data, options = {}) => request(path, { method: 'PATCH', body: JSON.stringify(data), signal: options.signal, headers: conditionalHeaders(path, data, options) }),
   del: (path, options = {}) => request(path, { method: 'DELETE', signal: options.signal, headers: conditionalHeaders(path, null, options) }),
+  delJson: (path, data, { signal } = {}) => request(path, { method: 'DELETE', body: JSON.stringify(data), signal }),
 };
 
 export async function login(username, password, totp_code) {

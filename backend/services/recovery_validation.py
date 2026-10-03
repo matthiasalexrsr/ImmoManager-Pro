@@ -221,6 +221,26 @@ def _original_uri_matches(historical, key, old_root):
 
 
 def _scan(db, old_root, destination, catalog, deadline=None):
+    from ..db.integration_history_schema import ensure_history_schema
+    from .integrations.history_types import HistoryError
+    try:
+        ensure_history_schema(db)  # No key map here; full proof precedes this path.
+    except (HistoryError, sqlite3.Error):
+        raise RecoveryError("Integrationshistorie ist strukturell ungültig. Vollständige unveränderte Sicherung verwenden.") from None
+    from .operational_job_validation import JobIntegrityError, validate_job_journal
+    from .operational_scheduler_validation import validate_scheduler
+    from .tenancy_workflow_validation import WorkflowIntegrityError, validate_workflow_journal
+    try:
+        validate_workflow_journal(db, deadline=deadline)
+        validate_job_journal(db, deadline=deadline)
+        validate_scheduler(db, deadline=deadline)
+    except (WorkflowIntegrityError, JobIntegrityError, sqlite3.Error):
+        raise RecoveryError("Mieterwechsel-/Arbeitslistenhistorie ist ungültig. Vollständige unveränderte Sicherung verwenden.") from None
+    from .contract_correspondence_validation import EvidenceError, validate_correspondence_journal
+    try:
+        validate_correspondence_journal(db, deadline=deadline)
+    except (EvidenceError, sqlite3.Error):
+        raise RecoveryError("Die Vertragskorrespondenz ist ungültig. Vollständige unveränderte Sicherung mit Originalen verwenden.") from None
     from .contract_lifecycle_validation import JournalValidationError, validate_lifecycle_journal
     try:
         validate_lifecycle_journal(db)

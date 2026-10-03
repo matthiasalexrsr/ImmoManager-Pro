@@ -30,6 +30,7 @@ const Meters = lazy(() => import('./pages/Meters'));
 const Contacts = lazy(() => import('./pages/Contacts'));
 const Statements = lazy(() => import('./pages/Statements'));
 const Messages = lazy(() => import('./pages/Messages'));
+const CommunicationCenter = lazy(() => import('./pages/CommunicationCenter'));
 const Settings = lazy(() => import('./pages/Settings'));
 const PropertyDetail = lazy(() => import('./pages/PropertyDetail'));
 const Categories = lazy(() => import('./pages/Categories'));
@@ -51,6 +52,7 @@ const NotificationTemplates = lazy(() => import('./pages/NotificationTemplates')
 const History = lazy(() => import('./pages/History'));
 const AllocationKeys = lazy(() => import('./pages/AllocationKeys'));
 const HandoverProtocols = lazy(() => import('./pages/HandoverProtocols'));
+const TenancyWorkflows = lazy(() => import('./pages/TenancyWorkflows'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 
 export function ProtectedRoute({ children }) {
@@ -161,6 +163,7 @@ export default function App() {
           <Route path="contacts" element={<Contacts />} />
           <Route path="statements" element={<Statements />} />
           <Route path="messages" element={<Messages />} />
+          <Route path="communication-center" element={<CommunicationCenter />} />
           <Route path="outbox" element={<Outbox />} />
           <Route path="categories" element={<Categories />} />
           <Route path="deposits" element={<Deposits />} />
@@ -181,6 +184,7 @@ export default function App() {
           <Route path="history" element={<History />} />
           <Route path="allocation-keys" element={<AllocationKeys />} />
           <Route path="handover-protocols" element={<HandoverProtocols />} />
+          <Route path="tenancy-workflows" element={<TenancyWorkflows />} />
           <Route path="settings" element={<Settings />} />
           <Route path="*" element={<NotFound />} />
         </Route>

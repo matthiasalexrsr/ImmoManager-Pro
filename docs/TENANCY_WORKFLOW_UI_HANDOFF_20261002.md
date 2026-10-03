@@ -1,0 +1,428 @@
+# P1/P2 Frontend Handoff – Mieterwechsel
+
+Stand: 2. Oktober 2026
+
+## Arbeitsbereich und Abgrenzung
+
+- UI-Worktree: `C:\Users\matth\Documents\Codex\2026-10-01\wi\work\tenancy-workflow-ui`
+- Branch: `assist/tenancy-workflow-ui`
+- ursprüngliche gemeinsame Basis: `7ccee8ca4518966d1dbb07ef625eb31d2133337a`
+- vorheriger UI-Stand: `8fa4e645694983cfc6b48db18054f213563edac9`
+- verbindliche Spezifikation: `docs/TENANCY_WORKFLOW_CONTRACT_20261002.md`
+- Root-Integrationsworktree, Main, Preview, bestehende Lifecycle-/Korrespondenzdateien und der Core-Worktree wurden nicht verändert.
+- Zugangsdaten und TEHA-Daten wurden nicht verwendet.
+
+Der finale Commit, der diese Datei enthält, wird im Root-Handoff/Chat mit vollständiger SHA genannt.
+
+## Aktuell gelesener Core-Sourcevertrag
+
+Der Coreautor arbeitet weiterhin uncommittet in
+`C:\Users\matth\Documents\Codex\2026-10-01\wi\work\tenancy-workflow-core`.
+Deshalb ist nicht nur dessen Branch-HEAD, sondern der konkrete gelesene Dateistand relevant.
+
+Read-only geprüft:
+
+- `backend/services/tenancy_workflow_types.py`
+  SHA-256 `97482DC0BA325EEF3166F9D5989013569C85CBFFA07D14808572182F7A116E86`
+- `backend/routers/tenancy_workflows.py`
+  SHA-256 `E20D805B4B25BA3C28896DB4E70AED53314B435C9E5036D2EFB88A565674B8EE`
+- `backend/services/tenancy_workflow.py`
+  SHA-256 `F7AC382BB45335BDF4368C71650BD46A3214AA4C0F20290E365F2A8E0D02C661`
+
+Die UI bildet die dort sichtbaren DTOs und Responseformen ab:
+
+- `CreateTemplate.expected_revision` und `StartTenancyChange.expected_revision` sind exakt `"new"`.
+- `TemplateStepInput` verlangt **genau eine** Verantwortung: konkreter `assignee_user_id` **oder** `assignee_role`. Neue UI-Schritte starten deshalb mit einer Rolle; „keine feste Zuweisung“ ist kein editierbarer Zustand mehr.
+- `CreateTemplateVersion`: `idempotency_key, expected_revision, based_on_version_id`.
+- `UpdateTemplateVersion`: `idempotency_key, expected_revision, steps`.
+- `PublishTemplateVersion`: `idempotency_key, expected_revision`.
+- `StartTenancyChange`: Auswahlfelder plus `idempotency_key, expected_revision:"new", preview_hash, source_etags`.
+- `ReanchorPreview`: `expected_revision` plus beide Übergabetermine.
+- `ReanchorTenancyChange`: zusätzlich `idempotency_key, preview_hash, source_etags`.
+- `UpdateStep`, `CreateStepTask`, `AddEvidence` und `RemoveEvidence` führen **beide** CAS-Stände: `expected_revision` des Schritts und `expected_change_revision` der Wechselakte.
+- `UpdateStep` sendet für `not_applicable` einen bewussten nichtleeren `not_applicable_reason`; bei anderen Zuständen keinen Ausnahmegrund.
+- `AddEvidence` sendet `evidence: EvidenceInput`; Dokumentbelege enthalten `document_id` und immutable `document_version_id`.
+- `DELETE /tenancy-changes/{change_id}/steps/{step_id}/evidence/{link_id}` besitzt einen JSON-Body vom Typ `RemoveEvidence`; dafür wurde im gemeinsamen API-Client additiv `delJson` ergänzt.
+- `CompleteTenancyChange`: `idempotency_key, expected_revision`.
+- Create/Update/Publish Template liefern `WorkflowTemplateVersion`.
+- Start/Reanchor/Complete/Patch Change liefern eine vollständige `TenancyChange`.
+- Step/Task/Evidence-Mutationen liefern den aktualisierten `WorkflowStep`; der Core ändert dabei zugleich die Elternrevision der Wechselakte. Nach **bekannt erfolgreicher** Step-/Task-/Evidence-Mutation lädt der UI-Container deshalb die Wechselakte frisch per `GET /tenancy-changes/{id}`. Es wird keine Elternrevision aus einer Step-Response erfunden.
+- Template-/Change-Listen verwenden `{items,next_cursor,has_more}` mit opakem `after`-Cursor.
+- Server-`actions` bleiben die autoritative Fähigkeitsquelle für UI-Aktionen; der Server autorisiert jede Mutation erneut.
+
+## Kanonische skalierbare Referenzsuche
+
+Root implementiert den additiven Backend-Endpunkt in einem separaten
+`work/workflow-references`-Arbeitsbereich. Der Frontendteil ist auf den verbindlich mitgeteilten Vertrag umgestellt:
+
+`GET /api/v1/workflow-references/{kind}`
+
+Kinds:
+
+- `properties`
+- `units`
+- `contracts`
+- `users`
+- `documents`
+- `handover-protocols`
+- `meter-readings`
+- `meters`
+
+Queryparameter:
+
+`search, property_id, unit_id, contract_id, direction, selected_id, cursor, page_size`
+
+Response:
+
+`{items,next_cursor,has_more,selected}`
+
+Frontendverhalten:
+
+- `BoundedReferencePicker` reicht Suchtext an `loadPage` durch; es findet **keine lokale Volltextfilterung** mehr statt.
+- Jede Suchänderung verwirft den alten Cursor, bricht die veraltete Anfrage ab und startet mit `cursor=null`.
+- „Weitere laden“ reicht den opaken Servercursor und denselben Suchtext unverändert weiter.
+- `selected_id` wird bei jedem Request mitgegeben; `response.selected` hält eine bereits gewählte Referenz sichtbar, auch wenn sie nicht auf der aktuellen Trefferseite liegt.
+- Es gibt keine browserseitige Gesamtbestandsgrenze.
+- Benutzer werden mit `property_id` geladen; die UI erwartet nur minimale Felder wie `id, full_name, role` und verwendet keine E-Mail-/Tokenfelder.
+- Verträge werden mit Objekt+Einheit gescopt.
+- Dokumente, Übergabeprotokolle und Zählerstände werden mit Objekt, Einheit, fachlichem Vertrag und `direction` geladen.
+- Finalisierte/richtungskonsistente Handover-/Meter-Reading-Auswahl wird vom Referenzendpunkt geliefert; die **finale Evidence-Validierung bleibt im Core**.
+- Dokumente werden über die kanonische Referenzsuche gewählt; die konkrete unveränderliche Originalfassung wird weiterhin separat über `/documents/{id}/versions` gewählt.
+- Die Workflowvorlagenliste selbst ist weiterhin der bestehende `/workflow-templates`-Cursorvertrag ohne `search`; in diesem Picker ist die Suchbox daher bewusst deaktiviert, statt eine nicht vorhandene API zu behaupten.
+
+Da Roots Referenzbackend nicht in diesem UI-Worktree integriert ist, wird keine Live-HTTP-/E2E-Fertigmeldung für `/workflow-references/*` behauptet.
+
+## Implementiertes Sourceartefakt
+
+### Vorlagen und Versionen
+
+- neue Vorlage auf Objekt oder optional Einheit mit erster Draft-Fassung;
+- getrennte `move_in`-/`move_out`-Vorlagen;
+- mindestens ein Schritt;
+- Stable-Key, Position, Titel/Beschreibung;
+- Pflicht/optional;
+- vier Terminanker:
+  `previous_contract_end`, `next_contract_start`,
+  `move_out_handover`, `move_in_handover`;
+- Offset in Tagen;
+- Verantwortung genau als konkreter Benutzer **oder** Rolle;
+- Abhängigkeiten über stabile Step-Keys inklusive lokaler Zyklusprüfung;
+- Beleganforderung `none|document_original|handover_protocol|meter_reading`;
+- neue Fassungen nur aus veröffentlichter/ausgemusterter Basis;
+- Editieren/Publizieren nur bei aktueller Server-`action`.
+
+### Wechselakte
+
+- Cursorliste und Detailakte;
+- Startmodi `move_out|move_in|turnover`;
+- Alt-/Neuvertrag und beide Übergabetermine bleiben getrennte Fakten;
+- Start strikt Preview → Confirm mit unverändertem `preview_hash` und `source_etags`;
+- Schritte zeigen Originalfälligkeit, aktuelle Fälligkeit, Blockierung, Verantwortung, echte `task_id`, Abschlussfakten und Evidence-Links;
+- `not_applicable` nur mit bewusstem Grund;
+- Reanchor strikt Preview → Confirm; abgeschlossene/unzutreffende Schritte bleiben unverändert;
+- Task-Projektion ausschließlich über `POST .../steps/{step_id}/task`, kein allgemeines Task-CRUD;
+- Evidence Add/Remove ausschließlich über die fachlichen Step-Endpunkte;
+- Originaldokument immer mit konkreter immutable `document_version_id`;
+- finalisierte Übergabeprotokolle und Zählerstände sind über den kanonischen Referenzvertrag auswählbar;
+- Aktenabschluss nur bei serverseitiger `complete_change`-Action;
+- ausdrücklicher Abbruch über den echten `PatchTenancyChange`-DTO mit Grund.
+
+## CAS, Rechteentzug und unklare Antworten
+
+`useWorkflowCommand` friert vor dem Versand eine tiefe Kopie des vollständigen Commands ein.
+
+- Netzwerkfehler und HTTP 5xx gelten als unklarer Ausgang. Nur der **exakt gleiche eingefrorene Command** mit identischem Idempotenzschlüssel und denselben Revisionen darf wiederholt werden.
+- HTTP 409/412 werden nicht automatisch wiederholt; die UI verlangt bewusstes Neuladen/Prüfen.
+- HTTP 403 ist kein „unknown success“ und wird nicht exakt wiederholt.
+- Der Commandzustand ist an den Principal/Scope-Schlüssel gebunden und wird bei Benutzer-/Rollen-/Grantwechsel verworfen.
+- Nach bestätigtem Step-/Task-/Evidence-Erfolg wird frische Parent-Wahrheit gelesen, bevor ein weiterer Child-Command vorbereitet wird.
+
+## Responsive und Sprache
+
+- Responsive Feature-CSS mit expliziten Breakpoints bis 360 px und 320 px.
+- Referenzpicker, Formulare, Evidence-Dialog und Aktionen stapeln auf schmalen Ansichten.
+- Featuretexte sind DE/EN/ES vorhanden; Wrappertexte wurden ebenfalls lokalisiert.
+
+## Konsolidierung des älteren eigenen Frontendartefakts
+
+Read-only geprüft und **nicht verändert**:
+
+`C:\Users\matth\Documents\Codex\2026-10-01\wi\work\tenancy-workflow-frontend`
+
+Dort verbleiben die bereits vorhandenen uncommitteten modularen Featuredateien und sechs Testdateien auf Basis `7ccee8c`.
+Die brauchbaren Teile wurden gezielt in **denselben** aktiven `tenancy-workflow-ui`-Worktree übernommen und anschließend auf die aktuellen Core-DTOs sowie den kanonischen Referenzvertrag korrigiert. Es wurde kein dritter paralleler Entwurf angelegt.
+
+Übernommen bzw. weiterentwickelt wurden insbesondere:
+
+- modulare Template-/Start-/Aktenkomponenten;
+- bounded Picker;
+- tief eingefrorener Unknown-Success-Replay;
+- Principal-Reset;
+- Zyklusprüfung;
+- die sechs älteren Tests als Basis für die erweiterte Suite.
+
+Der alte Worktree bleibt damit als Herkunftsartefakt erhalten; Root soll den finalen Commit aus `tenancy-workflow-ui` verwenden.
+
+## Relevante Dateien im finalen UI-Artefakt
+
+- `frontend/src/pages/TenancyWorkflows.jsx`
+- `frontend/src/pages/TenancyWorkflows.css`
+- `frontend/src/features/tenancyWorkflows/BoundedReferencePicker.jsx`
+- `frontend/src/features/tenancyWorkflows/DocumentVersionPicker.jsx`
+- `frontend/src/features/tenancyWorkflows/EvidenceLinkDialog.jsx`
+- `frontend/src/features/tenancyWorkflows/TenancyChangeFile.jsx`
+- `frontend/src/features/tenancyWorkflows/TenancyChangeStartForm.jsx`
+- `frontend/src/features/tenancyWorkflows/WorkflowTemplateCreateForm.jsx`
+- `frontend/src/features/tenancyWorkflows/WorkflowTemplateDesigner.jsx`
+- `frontend/src/features/tenancyWorkflows/WorkflowCommandNotice.jsx`
+- `frontend/src/features/tenancyWorkflows/TenancyWorkflows.css`
+- `frontend/src/features/tenancyWorkflows/referenceLoaders.js`
+- `frontend/src/features/tenancyWorkflows/tenancyWorkflowApi.js`
+- `frontend/src/features/tenancyWorkflows/tenancyWorkflowModel.js`
+- `frontend/src/features/tenancyWorkflows/useWorkflowCommand.js`
+- `frontend/src/features/tenancyWorkflows/workflowCopy.js`
+- `frontend/src/features/tenancyWorkflows/index.js`
+- `frontend/src/api.js` (additives DELETE-mit-JSON-Hilfsmittel)
+- Workflowtests unter `frontend/src/test/`
+- `docs/TENANCY_WORKFLOW_UI_HANDOFF_20261002.md`
+
+Route/Navigation aus dem ersten UI-Commit bleiben bestehen:
+`frontend/src/App.jsx`, `frontend/src/components/Layout.jsx`, `frontend/src/i18n.jsx`.
+
+## Tatsächlich ausgeführte Prüfungen auf dem finalen Sourcezustand
+
+### Gezielte Workflow-Suite
+
+Command:
+
+`npm.cmd test -- BoundedReferencePicker.test.jsx TenancyChangeFile.test.jsx TenancyChangeStartForm.test.jsx TenancyWorkflowModel.test.js WorkflowCommand.test.jsx WorkflowTemplateDesigner.test.jsx WorkflowTemplateCreateForm.test.jsx TenancyWorkflowApiContract.test.js`
+
+Ergebnis: **8 Testdateien, 39 Tests bestanden**.
+
+Enthalten sind u. a.:
+
+- `CreateTemplate expected_revision:"new"`;
+- genau ein Verantwortlicher: Benutzer XOR Rolle;
+- Create/Update/Publish Template DTOs;
+- Start Preview→Confirm mit `expected_revision:"new"`, Hash und Quell-ETags;
+- Reanchor Preview→Confirm;
+- Step/Task/Evidence mit Step- und Change-Revision;
+- Add/Remove Document Evidence inklusive immutable Version;
+- finalisierter Meter-Reading-Auswahlpfad;
+- DELETE mit JSON-Body;
+- serverseitige Referenzsuche mit `search`, `selected_id`, opakem Cursor und `page_size`;
+- Suchänderung startet mit leerem Cursor;
+- ausgewählte Referenz wird über `response.selected` erhalten;
+- Unknown Success exakt wiederholen;
+- 409/412 nicht wiederholen;
+- 403/Rechteentzug nicht wiederholen;
+- Principalwechsel verwirft privaten Commandzustand.
+
+### ESLint
+
+Gezielter ESLint über gemeinsamen API-Client, gesamtes `features/tenancyWorkflows`, Seitencontainer und alle acht Workflow-Testdateien mit `--max-warnings=0`.
+
+Ergebnis: **bestanden, keine Ausgabe/Warnung**.
+
+### Produktionsbuild
+
+`npm.cmd run build`
+
+Ergebnis: **bestanden**, Vite 8.1.0, **670 Module transformiert**.
+
+### Vollständige Frontend-Suite
+
+`npm.cmd test`
+
+Ergebnis: **980/981 Tests bestanden, 78/79 Testdateien bestanden**.
+
+Einziger Fehler:
+`src/test/ContractWorkspace.test.jsx` –
+`requests only explicit cursor pages, reaches record 125, and returns with the original query`
+überschritt unter paralleler Vollsuite das feste 5-s-Testlimit (gemessene Testzeit ca. 5,802 s).
+Dieser Bereich wurde durch den Workflow-Diff nicht verändert.
+
+Direkter isolierter Gegencheck auf demselben finalen Sourcezustand:
+
+`npx.cmd vitest run ContractWorkspace.test.jsx --testNamePattern='requests only explicit cursor pages, reaches record 125, and returns with the original query'`
+
+Ergebnis: **1/1 bestanden**, Testzeit **2,362 s** (32 weitere Tests der Datei bewusst übersprungen).
+
+Bestehende fachfremde React-Testwarnungen zu `act(...)` bzw. doppelten Keys wurden im Vollsuite-Output weiterhin ausgegeben; sie stammen nicht aus den Workflowdateien.
+
+## Noch nicht behauptet
+
+- keine Live-HTTP-/Browser-E2E-Abnahme des Core-Branches, solange dessen uncommittete Arbeit nicht integriert ist;
+- keine Live-Abnahme von Roots separatem `workflow-references`-Backend in diesem UI-Worktree;
+- keine Änderung an Main, Root-Preview, Root-Integrationsworktree, Core-Worktree oder `work/workflow-references`;
+- keine Verarbeitung von Zugangsdaten oder TEHA-Daten.
+
+## Additive Integrationskorrektur: Dokumentreferenzen ohne Richtung
+
+Nach Root-Integration wurde der kanonische Referenzvertrag präzisiert: `direction` ist nur für `handover-protocols` und `meter-readings` zulässig, nicht für `documents`.
+
+Der UI-Stand wurde entsprechend korrigiert:
+
+- `documentReferenceLoader` sendet für `documents` nur `property_id`, `unit_id`, `contract_id` sowie die allgemeinen Such-/Cursorparameter.
+- `EvidenceLinkDialog` reicht `step.direction` nicht mehr an den Dokumentloader weiter.
+- Der Dokument-`sourceKey` enthält deshalb ebenfalls keine Richtung mehr.
+- Handover-Protokolle und Zählerstände behalten `direction` unverändert und exakt bei.
+- Die Auswahl einer konkreten immutable `document_version_id` über `/documents/{id}/versions` bleibt unverändert.
+
+Gezielt geprüft:
+
+- `TenancyWorkflowApiContract.test.js` + `TenancyChangeFile.test.jsx`: **14/14 Tests bestanden**.
+- Der API-Vertragstest prüft Documents mit Property/Unit/Contract **ohne** `direction`, Handover mit `direction=move_out` und Meter Readings mit `direction=move_in`.
+- Gezielter ESLint über die geänderten Loader-/Dialog-/Container-/Testdateien mit `--max-warnings=0`: **bestanden, keine Ausgabe/Warnung**.
+
+## Additiver UI-Semantikfix: kanonische Suche benennen
+
+Beim Read-only-Abgleich des integrierten Root-Referenzdienstes wurde bestätigt, dass der Picker serverseitig über den referenzfähigen Bestand sucht. Die alten Copy-Texte „geladene Treffer filtern“ waren daher sachlich veraltet. DE/EN/ES wurden auf neutrale globale Referenzsuche und „keine Treffer“ umgestellt; Request-/Cursorlogik bleibt unverändert.
+
+## Additives Bedienpaket: praktische Mieterwechsel-UI
+
+Ausgangspunkt für den Read-only-Integrationsabgleich war Roots integrierter Stand ab `645e3d9`. Root-/Main-/Preview-/E2E-Dateien wurden nicht verändert.
+
+### Bedieninformationen statt Technikwerte
+
+- Prüfsummen, ETags, Revisionen, Workflow-/Step-/Task-/Evidence-IDs und interne Step-Keys sind keine normale Hauptinformation mehr.
+- Notwendige Diagnosewerte bleiben in standardmäßig geschlossenen nativen `<details>` unter „Technische Details“ verfügbar.
+- Start- und Reanchor-Vorschauen zeigen als Hauptinhalt Terminanker, betroffene Schritte, Konflikte und verständliche Bestätigung; Preview-Hash/Quell-ETags stehen nur in den technischen Details.
+- Dokumentversionen zeigen Versionsnummer, Dateiname und Datum; SHA-256 und Versions-ID nur aufgeklappt.
+- Bereits verknüpfte Belege zeigen verständliche Belegart, Ein-/Auszugsrichtung und Verknüpfungsdatum. Technische Link-/Referenz-/Snapshotwerte sind eingeklappt.
+- Aufgabenaktionen zeigen „Aufgabe öffnen“ statt der Task-ID.
+- Blockierungen werden über Schritttitel statt Step-IDs erklärt.
+- Rollen werden DE/EN/ES verständlich bezeichnet.
+
+### Berechtigte Referenznamen
+
+Objekt-/Einheitsnamen in Workflowlisten und Detailköpfen werden ausschließlich über den bestehenden kanonischen Referenzdienst aufgelöst:
+
+- genau die bekannte ID als `selected_id`,
+- `page_size=1`,
+- kein unbeschränktes Laden von Gesamtbeständen,
+- Principal-/Grantwechsel löst eine neue Prüfung aus und entfernt den zuvor sichtbaren Namen sofort bis zur neuen autorisierten Antwort.
+- Verträge der geöffneten Wechselakte und aktive konkrete Verantwortliche werden auf dieselbe Weise lesbar aufgelöst; nicht mehr berechtigte Referenzen fallen neutral zurück.
+
+### Stabile Schrittkennungen
+
+- Neue Vorlagenschritte erhalten ihren `stable_key` intern einmalig über `crypto.randomUUID()`.
+- Der Key wird nicht aus dem Titel erzeugt und ist kein normales Eingabefeld.
+- Bestehende serverseitige Keys werden beim Editieren nicht geändert.
+- Abhängigkeiten bleiben über sichtbare Schritttitel auswählbar; intern werden weiterhin ausschließlich die unveränderten Stable Keys übertragen.
+
+### Unknown Reply / bestätigter Start
+
+- Unknown-Success wird in normaler Sprache als unterbrochene Verbindung erklärt.
+- „Unverändert erneut senden“ verwendet weiterhin exakt dasselbe tief eingefrorene Commandobjekt mit demselben Idempotenzschlüssel/CAS-Stand.
+- Eine Startvorschau und ihre Auswahl bleiben während eines Unknown Outcomes erhalten.
+- Erst nachdem der Start tatsächlich erfolgreich beantwortet wurde und `onCreated` ausgelöst wurde, werden Formularauswahl und Vorschau zurückgesetzt. Die bereits bestätigte Vorschau bietet danach nicht erneut „Wechselakte starten“ an.
+
+### Rail, 320/360 px und Hauptaktion
+
+- `.workflow-start` ist ein CSS-Inline-Size-Container.
+- Eine einzelne Einzugs- oder Auszugs-Lane spannt unabhängig von der Fensterbreite die gesamte verfügbare Railbreite.
+- Unter 42rem Containerbreite werden Start-Lanes einspaltig gestapelt; unter 24rem auch die Moduswahl.
+- Auf sehr schmalen Ansichten werden Aktionsleisten einspaltig, Buttons mindestens 44px hoch und die primäre Aktion steht in der Bedienreihenfolge zuerst.
+- Technische Werte, Belegkarten, Referenzen und Modale verwenden `min-width:0`/Umbruchregeln, damit lange interne Werte die 320/360px-Ansicht nicht verbreitern.
+
+### Tatsächlich ausgeführte Prüfungen
+
+Workflow-Suite:
+
+`npm.cmd test -- BoundedReferencePicker.test.jsx TenancyChangeFile.test.jsx TenancyChangeStartForm.test.jsx TenancyWorkflowApiContract.test.js TenancyWorkflowModel.test.js WorkflowCommand.test.jsx WorkflowTemplateCreateForm.test.jsx WorkflowTemplateDesigner.test.jsx WorkflowReferenceLabel.test.jsx`
+
+Ergebnis: **9 Testdateien / 46 Tests bestanden**.
+
+Explizit abgedeckt sind u. a.:
+
+- bounded `selected_id`-Namensauflösung für Objekt und Einheit,
+- Principalwechsel verwirft den alten berechtigten Namen vor der neuen Antwort,
+- bestehender Stable Key bleibt bei sichtbarer Titeländerung unverändert,
+- neuer Stable Key wird intern erzeugt und nicht als Eingabefeld angeboten,
+- Rollenanzeige und praktische Wechselakteninformationen,
+- Lost Reply bewahrt Preview/Command; erfolgreicher Exact-Retry räumt die Startvorbereitung erst anschließend auf,
+- bestehende DTO-/CAS-/Evidence-/Reanchor-Verträge bleiben unverändert.
+
+ESLint über das gesamte `features/tenancyWorkflows`, `pages/TenancyWorkflows.jsx` und alle neun Workflowtests mit `--max-warnings=0`: **bestanden, keine Warnung**.
+
+Produktionsbuild `npm.cmd run build`: **bestanden**, Vite 8.1.0, **673 Module transformiert**.
+
+Roots echter Edge-/SQLite-/Browsernachweis und dessen Recovery/E2E-Dateien bleiben ausdrücklich Root-Verantwortung; in diesem UI-Worktree wird kein neuer Browser-E2E-Nachweis behauptet.
+
+## Additive Fixes nach Root-Edge-Abnahme: Referenzbindung + TemplateStepInput-Projektion
+
+### 1. Referenznamen ohne stale Renderfenster
+
+`usePinnedReference` speichert den aufgelösten Wert jetzt zusammen mit seiner exakten Renderbindung aus `id`, **Loaderidentität** und `principalKey`. Bereits während des ersten Renders mit einer abweichenden Bindung wird `undefined` zurückgegeben; der zuvor berechtigte Name kann daher nicht bis zum nachfolgenden `useEffect` sichtbar bleiben.
+
+Unverändert bleiben:
+
+- Auflösung ausschließlich über `selected_id`,
+- `page_size=1`,
+- Abbruch alter Requests per `AbortController`,
+- neutrale Anzeige bis zur aktuellen autorisierten Antwort.
+
+Der Regressionstest protokolliert den Hook-Wert direkt während des Renders und belegt, dass der **erste Render** nach Wechsel von ID, Loader und Principal bereits neutral ist, bevor der Effect den neuen Requestzustand setzt.
+
+### 2. Strikte Requestprojektion für Template-Schritte
+
+Roots tatsächliches `UpdateTemplateVersion.steps: list[TemplateStepInput]` erlaubt exakt:
+
+`stable_key, position, title, description, default_requirement, anchor, offset_days, assignee_user_id, assignee_role, depends_on_step_keys, evidence_requirement`.
+
+Serverantwortfelder wie `id` dürfen nicht zurück in den PUT gelangen. Die zentrale Command-Schicht projiziert deshalb Create-/Update-Steps ausdrücklich auf genau diese erlaubten Inputfelder. Damit werden auch zukünftige Response-Metadaten nicht versehentlich in Write-Requests gespiegelt.
+
+- vorhandene und neue `stable_key` bleiben unverändert,
+- Abhängigkeiten bleiben unverändert als Stable Keys erhalten,
+- Server-`step.id`, ETags und sonstige Responsefelder werden verworfen,
+- DTO/CAS/Idempotenz bleiben unverändert.
+
+Der UI-Regressionstest startet mit einer Server-Draft-Version, deren Step bereits `id: server-step-77` besitzt, ändert den Titel, speichert den Draft und prüft den PUT-Step feldgenau ohne `id`. Anschließend wird die vom Save gelieferte `revision-2` erfolgreich mit dem bestehenden Publish-Command veröffentlicht.
+
+### Prüfungen dieses Fixcommits
+
+- Gezielte Regressionen (`WorkflowReferenceLabel`, `WorkflowTemplateDesigner`, `TenancyWorkflowModel`): **3 Testdateien / 20 Tests bestanden**.
+- Vollständige Workflow-Suite: **9 Testdateien / 48 Tests bestanden**.
+- Der zuvor einmal unter Parallelbelastung knapp über 5 s gelaufene Startformular-Test wurde unverändert isoliert geprüft: **1/1 bestanden, 1,15 s Testzeit**; kein Timeout und keine Assertion wurde abgeschwächt.
+- ESLint über gesamtes `features/tenancyWorkflows`, `pages/TenancyWorkflows.jsx` und alle neun Workflowtests mit `--max-warnings=0`: **bestanden, keine Ausgabe/Warnung**.
+- Produktionsbuild `npm.cmd run build`: **bestanden**, Vite 8.1.0, **673 Module transformiert**.
+
+Root-/Main-/Preview-/Backend-/E2E-Dateien wurden nicht verändert.
+
+## Geplantes Addendum: Arbeitsfokus nach Start einer Wechselakte
+
+Für den nächsten additiven UI-Fix bleibt die bestehende Vorbereitung **dauerhaft gemountet**, wird aber nach einem bestätigten erfolgreichen Start kompakt eingeklappt. Der gerade gestartete bzw. ausgewählte Wechsel erhält auf schmalen Workflow-Layouts Vorrang vor Rail/Listen, damit die eigentliche Arbeit auf 320/360 px unmittelbar sichtbar ist. Eine klare Aktion „Weiteren Wechsel vorbereiten“ öffnet dieselbe vorhandene Vorbereitung mit Objekt-/Einheitsauswahl und Vorlagen wieder; es wird keine zweite Formularinstanz angelegt.
+
+Unknown/Netzwerk/5xx ist ausdrücklich davon ausgenommen: solange kein tatsächliches `onCreated` erfolgt ist, bleibt die Vorbereitung offen und Formular, Vorschau sowie eingefrorener Exact-Retry-Command bleiben unangetastet. Die Änderung bleibt auf Workflow-Seitenfluss/Copy/CSS und kleine UI-Tests beschränkt; globales Layout, Root-E2E, Backend, Auth und History werden nicht verändert.
+
+### Umgesetzt und geprüft: kompakte Vorbereitung nach erfolgreichem Start
+
+Der geplante Seitenfluss ist umgesetzt:
+
+- Die bestehende Vorbereitung bleibt **immer gemountet**. Eingeklappter Zustand verwendet nur `hidden`; es wird keine zweite Formularinstanz erzeugt und kein lokaler Commandzustand durch Unmount verworfen.
+- Initial bleibt die Vorbereitung offen, also entsteht für einen neuen Wechsel kein zusätzlicher Klick.
+- Erst im tatsächlichen erfolgreichen `onCreated`-Pfad setzt die Seite die gerade gestartete Wechselakte als Auswahl und klappt die Vorbereitung kompakt ein.
+- Der kompakte Toggle heißt bei vorhandener/gestarteter Akte „Weiteren Wechsel vorbereiten“ und zeigt den bereits gewählten Objekt-/Einheitskontext. Öffnen stellt dieselbe Vorbereitung wieder bereit; Objekt-/Einheitswahl und Vorlagen bleiben direkt erreichbar.
+- Bei Unknown/Netzwerk/5xx wird `onCreated` nicht aufgerufen. Die Vorbereitung bleibt daher automatisch offen; Formular, Preview und eingefrorener Exact-Retry-Command bleiben unverändert verfügbar. Manuelles Einklappen würde den Zustand ebenfalls nicht unmounten.
+- Auf einspaltigen Workflow-Layouts bis 960 px erhält eine ausgewählte Wechselakte visuelle Priorität vor Rail und Wechselaktenliste. Damit liegt die gerade gestartete bzw. ausgewählte Arbeit auf 320/360 px nicht mehr unter einer langen neuen Vorbereitung.
+- Desktop behält das bestehende Zwei-Spaltenprinzip. Es wurden ausschließlich lokale Workflow-Seiten-/Copy-/CSS-Dateien geändert; kein globales Layout oder `index.css`.
+- Der Vorbereitungstoggle besitzt einen kurzen expliziten Accessible Name; Objekt-/Einheitskontext bleibt sichtbar, wird aber nicht Teil des Aktionsnamens.
+
+Neue kleine UI-Prüfungen:
+
+- bestätigter Erfolg -> Vorbereitung kompakt,
+- „Weiteren Wechsel vorbereiten“ -> dieselbe gemountete Vorbereitung wieder offen,
+- Formularzustand des Panel-Children bleibt beim Ein-/Ausklappen erhalten,
+- ohne bestätigten Erfolg bleibt der Unknown-Retry sichtbar und die Vorbereitung offen,
+- kompakter Toggle zeigt den aktuellen Objekt-/Einheitskontext.
+
+Direkter Flow-Test plus bestehender Startformular-Lost-Reply-Test: **2 Testdateien / 6 Tests bestanden**.
+
+Vollständiger Workflow-Gate mit unveränderten Assertions seriell (`--maxWorkers=1`): **10 Testdateien / 51 Tests bestanden**. Ein vorheriger paralleler Lauf hatte ausschließlich den bereits bekannten festen 5-s-Timeout des DOM-intensiven Startformular-Tests (50/51); derselbe Test war isoliert und im seriellen Gesamtgate klar grün. Kein Testtimeout und keine Assertion wurden abgeschwächt.
+
+ESLint über gesamtes Workflow-Feature, `pages/TenancyWorkflows.jsx` und alle zehn Workflowtests mit `--max-warnings=0`: **bestanden, keine Warnung**.
+
+Produktionsbuild `npm.cmd run build`: **bestanden**, Vite 8.1.0, **673 Module transformiert**.
+
+Roots Edge-/SQLite-/Browser-E2E, Backend, Auth, History und globale Layoutdateien wurden nicht verändert.

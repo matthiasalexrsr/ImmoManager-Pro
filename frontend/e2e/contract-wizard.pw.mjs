@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { test, expect } from './demoFixtures.mjs';
 
 async function loginOwner(page) {
@@ -16,11 +17,21 @@ async function loginOwner(page) {
 }
 
 async function listCount(page, path, headers) {
-  const response = await page.request.get(path, { headers });
-  expect(response.status(), await response.text()).toBe(200);
-  const body = await response.json();
-  expect(Array.isArray(body)).toBe(true);
-  return body.length;
+  let count = 0;
+  for (let skip = 0; ; skip += 100) {
+    const response = await page.request.get(`${path}?skip=${skip}&limit=100&sort_by=id&sort_order=asc`, { headers });
+    expect(response.status(), await response.text()).toBe(200);
+    const body = await response.json();
+    expect(Array.isArray(body)).toBe(true);
+    count += body.length;
+    if (body.length < 100) return count;
+  }
+}
+
+async function create(page, path, headers, data) {
+  const response = await page.request.post(`/api/v1${path}`, { headers, data });
+  expect(response.status(), await response.text()).toBe(201);
+  return response.json();
 }
 
 test('contract wizard escapes user markup and never persists bank details', async ({ page }) => {
@@ -203,6 +214,15 @@ test('legacy wizard blocks incoherent fixed-term and Staffel drafts before previ
 test('persisted contract wizard reviews, publishes and records manual signature without cash side effects', async ({ page }) => {
   test.setTimeout(120_000);
   const headers = await loginOwner(page);
+  const suffix = randomUUID();
+  const portfolio = await create(page, '/portfolios', headers, { name: `Wizard ${suffix}` });
+  const fixtureProperty = await create(page, '/properties', headers, {
+    portfolio_id: portfolio.id, name: `Wizard property ${suffix}`, property_type: 'residential',
+  });
+  const fixtureUnit = await create(page, '/units', headers, {
+    property_id: fixtureProperty.id, label: `Wizard vacant unit ${suffix}`, unit_type: 'apartment',
+    status: 'vacant', area_sqm: 70, cold_rent: 900,
+  });
   const before = {
     contracts: await listCount(page, '/api/v1/contracts', headers),
     deposits: await listCount(page, '/api/v1/deposits', headers),
@@ -212,11 +232,12 @@ test('persisted contract wizard reviews, publishes and records manual signature 
   await page.goto('/contract-wizard');
   await page.getByRole('button', { name: 'Neuen Entwurf vorbereiten', exact: true }).click();
   const property = page.getByLabel('Immobilie *', { exact: true });
-  await expect.poll(() => property.locator('option').count()).toBeGreaterThan(1);
-  await property.selectOption({ index: 1 });
+  await page.getByRole('textbox', { name: /^Immobilie:/ }).fill(fixtureProperty.name);
+  await expect(property.locator(`option[value="${fixtureProperty.id}"]`)).toHaveCount(1);
+  await property.selectOption(fixtureProperty.id);
   const unit = page.getByLabel('Einheit *', { exact: true });
-  await expect.poll(() => unit.locator('option').count()).toBeGreaterThan(1);
-  await unit.selectOption({ index: 1 });
+  await expect(unit.locator(`option[value="${fixtureUnit.id}"]`)).toHaveCount(1);
+  await unit.selectOption(fixtureUnit.id);
 
   const contractNumber = `E2E-WIZ-${Date.now()}`;
   await page.getByLabel('Vermieter / vollständiger Name *', { exact: true }).fill('E2E Vermieter');

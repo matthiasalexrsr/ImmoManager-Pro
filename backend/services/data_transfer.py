@@ -5,7 +5,7 @@ when it would invalidate business rows outside the supported subset.
 """
 
 from collections import defaultdict
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from copy import deepcopy
 from dataclasses import dataclass, is_dataclass
 from datetime import datetime, timezone
@@ -108,7 +108,8 @@ def list_records(active_store, method_name: str) -> list[dict]:
 @contextmanager
 def _export_snapshot(active_store):
     if is_dataclass(active_store):
-        with _memory_lock():
+        from .recovery_history import memory_history_boundary
+        with memory_history_boundary(), _memory_lock():
             yield deepcopy(active_store)
         return
     db = active_store.db
@@ -127,6 +128,13 @@ def export_store_data(active_store, version: str) -> dict:
     from .bank_import_guards import guard_bank_import_business_transfer
     guard_bank_import_business_transfer(active_store, operation="export")
     with _export_snapshot(active_store) as snapshot:
+        from .contract_correspondence import guard_destructive_reset
+        from .recovery_retained import guard_operational_history
+        try:
+            guard_operational_history(snapshot)
+            guard_destructive_reset(snapshot)
+        except ValueError as exc:
+            raise TransferError(str(exc)) from exc
         result: dict[str, Any] = {"version": version, "exported_at": datetime.now(timezone.utc).isoformat()}
         for spec in _specifications():
             result[spec.key] = list_records(snapshot, spec.list_method)
@@ -325,16 +333,21 @@ def _exported_tables(active_store, specs: tuple[EntitySpec, ...]):
 
 def _check_unexported_sql_rows(db, exported_tables):
     """Refuse a partial restore that would cascade-delete unsupported children."""
-    from sqlalchemy import func, select
+    from sqlalchemy import func, inspect, select
 
     metadata = next(iter(exported_tables)).metadata
+    existing_tables = set(inspect(db.get_bind()).get_table_names())
     # These tables survive the supported-subset import. Source revisions are
     # derived, monotonic trigger metadata without foreign keys; retaining them
     # prevents an import from resetting a source revision. Actual saved rental
     # jobs/contracts/prices/results remain unsupported business data below and
     # therefore still require a full recovery backup before replacement.
     independent = {"users", "user_preferences", "audit_logs", "change_history", "revoked_tokens", "login_attempts", "auth_setup", "auth_sessions", "auth_refresh_tokens", "operational_lock", "rent_source_revisions"}
+    from .recovery_history import TECHNICAL_TABLES
+    independent |= TECHNICAL_TABLES
     for table in metadata.tables.values():
+        if table.name not in existing_tables:
+            continue
         if table not in exported_tables and table.name not in independent:
             if db.scalar(select(func.count()).select_from(table)):
                 raise TransferError(f"Nicht exportierte Daten vorhanden ({table.name}). Vollsicherung erforderlich.")
@@ -413,7 +426,9 @@ def import_store_data(active_store, data: dict, *, replace_existing: bool) -> di
     from .form_drafts import guard_destructive_reset as guard_form_drafts
     from .payment_integrity import guard_contract_lifecycle_reset
     from .payments import FinancialConsistencyError
+    from .recovery_retained import guard_operational_history
     try:
+        guard_operational_history(active_store)
         guard_contract_lifecycle_reset(active_store)
         guard_contract_history(active_store)
         guard_partial_restore(active_store, data)
@@ -428,7 +443,10 @@ def import_store_data(active_store, data: dict, *, replace_existing: bool) -> di
     specs = _specifications()
     try:
         prepared = _prepare(data, specs, replace_existing=replace_existing)
-        with _atomic_store(active_store) as staged:
+        from .recovery_history import memory_history_boundary
+        boundary = memory_history_boundary() if is_dataclass(active_store) else nullcontext()
+        with boundary, _atomic_store(active_store) as staged:
+            guard_operational_history(staged, serialized=True)
             guard_contract_lifecycle_reset(staged, serialized=True)
             guard_contract_history(staged)
             if replace_existing:

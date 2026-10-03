@@ -660,6 +660,18 @@ class AllocationKeyCreate(BaseModel):
     name: str
     key_type: str  # area_sqm, unit_count, person_count, consumption
     description: Optional[str] = None
+    consumption_medium: Optional[str] = None
+    consumption_unit: Optional[str] = None
+
+    @field_validator("consumption_medium", "consumption_unit")
+    @classmethod
+    def validate_consumption_binding(cls, value):
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            raise ValueError("Verbrauchsmedium und Maßeinheit dürfen nicht leer sein; ungeklärte Angaben als null speichern.")
+        return value
 
 
 class AllocationKey(AllocationKeyCreate):
@@ -673,6 +685,13 @@ class AllocationKeyPatch(BaseModel):
     name: Optional[str] = None
     key_type: Optional[str] = None
     description: Optional[str] = None
+    consumption_medium: Optional[str] = None
+    consumption_unit: Optional[str] = None
+
+    @field_validator("consumption_medium", "consumption_unit")
+    @classmethod
+    def validate_consumption_binding(cls, value):
+        return AllocationKeyCreate.validate_consumption_binding(value)
 
 
 class CostItemCreate(BaseModel):
@@ -1390,12 +1409,18 @@ class MeterCreate(BaseModel):
     contract_number: Optional[str] = None
     contract_end_date: Optional[date] = None
     meter_type: str  # cold_water, hot_water, heating, electricity, gas
+    measurement_unit: Optional[str] = None
     serial_number: Optional[str] = None
     location: Optional[str] = None
     installation_date: Optional[date] = None
     next_inspection: Optional[date] = None
     supplier: Optional[str] = None
     is_active: bool = True
+
+    @field_validator("measurement_unit")
+    @classmethod
+    def validate_measurement_unit(cls, value):
+        return AllocationKeyCreate.validate_consumption_binding(value)
 
 
 class Meter(MeterCreate):
@@ -1409,12 +1434,18 @@ class MeterPatch(BaseModel):
     contract_number: Optional[str] = None
     contract_end_date: Optional[date] = None
     meter_type: Optional[str] = None
+    measurement_unit: Optional[str] = None
     serial_number: Optional[str] = None
     location: Optional[str] = None
     installation_date: Optional[date] = None
     next_inspection: Optional[date] = None
     supplier: Optional[str] = None
     is_active: Optional[bool] = None
+
+    @field_validator("measurement_unit")
+    @classmethod
+    def validate_measurement_unit(cls, value):
+        return MeterCreate.validate_measurement_unit(value)
 
 
 # ---------------------------------------------------------------------------

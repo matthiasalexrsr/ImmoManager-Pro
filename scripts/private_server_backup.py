@@ -69,9 +69,10 @@ REQUIRED_ENV_KEYS = frozenset({"APP_ORIGIN", "APP_HOST", "APP_HTTP_PORT", "POSTG
 ENCRYPTION_ENV_KEYS = frozenset({"ENCRYPTION_KEY", "ENCRYPTION_KEYRING", "ENCRYPTION_ACTIVE_KEY_ID",
                                  "ENCRYPTION_INDEX_KEY", "ENCRYPTION_LEGACY_JWT_KEYS"})
 DRAFT_ENV_KEYS = frozenset({"FORM_DRAFT_TTL_DAYS", "FORM_DRAFT_MAX_BYTES"})
-CONTRACT_WORKSPACE_ENV_KEYS = frozenset({"CONTRACT_WORKSPACE_PAGE_MAX_SIZE", "CONTRACT_WORKSPACE_SEARCH_MAX_CHARS"})
+CONTRACT_WORKSPACE_ENV_KEYS = frozenset({"CONTRACT_WORKSPACE_PAGE_MAX_SIZE", "CONTRACT_WORKSPACE_SEARCH_MAX_CHARS",
+                                      "CONTRACT_CORRESPONDENCE_PAGE_MAX_SIZE"})
 OCR_ENV_KEYS = frozenset(OCR_DEFAULTS)
-ENV_KEYS = REQUIRED_ENV_KEYS | ENCRYPTION_ENV_KEYS | DRAFT_ENV_KEYS | CONTRACT_WORKSPACE_ENV_KEYS | OCR_ENV_KEYS
+ENV_KEYS = REQUIRED_ENV_KEYS | ENCRYPTION_ENV_KEYS | DRAFT_ENV_KEYS | CONTRACT_WORKSPACE_ENV_KEYS | OCR_ENV_KEYS | {"OPERATIONAL_SCHEDULER_ACTOR_ID"}
 PG_DUMP = 'exec pg_dump -Fc --no-owner --no-acl --no-password -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
 PG_LIST = 'exec pg_restore --list'
 PG_RESTORE = ('exec pg_restore --exit-on-error --no-owner --no-privileges --no-password '
@@ -320,7 +321,7 @@ def _parse_env(data: bytes) -> dict[str, str]:
         if not line or line.startswith("#"):
             continue
         key, equal, value = line.partition("=")
-        if (not equal or key not in ENV_KEYS or key in values or (not value and key not in OCR_PATH_KEYS) or any(c in value for c in "\x00$\\")
+        if (not equal or key not in ENV_KEYS or key in values or (not value and key not in OCR_PATH_KEYS and key != "OPERATIONAL_SCHEDULER_ACTOR_ID") or any(c in value for c in "\x00$\\")
                 or key not in ENCRYPTION_ENV_KEYS and any(c in value for c in "\"'")):
             raise BackupError("Serverkonfiguration enthält unbekannte, doppelte oder unsichere Werte.")
         values[key] = value
