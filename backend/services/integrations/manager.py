@@ -10,7 +10,6 @@ from .base import IntegrationProvider
 from .config_store import (
     ConfigStoreError,
     InMemoryIntegrationConfigStore,
-    JsonFileIntegrationConfigStore,
 )
 from .connection_contract import ConnectionProbeResult, local_probe_result, manifest_parameters
 from .history_policy import preserve_config_masks, public_config, request_observation, response_observation
@@ -24,6 +23,7 @@ from .providers import (
     ListingPortalProvider,
     WhatsAppIntegrationProvider,
 )
+from .runtime_factory import configured_runtime_store
 
 
 class IntegrationManager:
@@ -43,7 +43,7 @@ class IntegrationManager:
         integration_id = provider.manifest.integration_id
         self._providers[integration_id] = provider
 
-    def seed_defaults(self) -> None:
+    def seed_defaults(self, *, load_state: bool = True) -> None:
         for provider in (
             EmailIntegrationProvider(),
             WhatsAppIntegrationProvider(),
@@ -53,7 +53,8 @@ class IntegrationManager:
             HuggingFaceProvider(),
         ):
             self.register(provider)
-        self._load_state()
+        if load_state:
+            self._load_state()
 
     def list_integrations(self) -> list[dict]:
         return [self.get_integration(integration_id) for integration_id in sorted(self._providers.keys())]
@@ -372,13 +373,6 @@ class IntegrationManager:
         return "Aktiv (eingeschränkt)"
 
 
-_config_store = (
-    JsonFileIntegrationConfigStore(settings.integration_state_file)
-    if settings.integration_state_file
-    else InMemoryIntegrationConfigStore()
-)
+_config_store = configured_runtime_store(settings.model_dump(mode="json"))
 integration_manager = IntegrationManager(store=_config_store)
-if isinstance(_config_store, JsonFileIntegrationConfigStore):
-    # Explicit startup bootstrap. Subsequent reads fail on a missing/damaged file.
-    _config_store.initialize()
-integration_manager.seed_defaults()
+integration_manager.seed_defaults(load_state=False)

@@ -200,6 +200,9 @@ class Settings(BaseSettings):
 
     # --- Integrations ---
     integration_state_file: str | None = None
+    integration_state_payload_bytes: int = Field(default=1024 * 1024, gt=0)
+    integration_state_json_depth: int = Field(default=64, gt=0)
+    integration_state_lock_timeout_seconds: float = Field(default=5.0, gt=0, allow_inf_nan=False)
     # Work budgets per artifact/proof/response, never a total history count cap.
     integration_history_artifact_bytes: int = Field(default=16 * 1024 * 1024, gt=0)
     integration_history_page_bytes: int = Field(default=32 * 1024 * 1024, gt=0)
@@ -218,6 +221,21 @@ class Settings(BaseSettings):
 
     # --- Contract wizard runtime behavior ---
     contract_wizard_required: bool = False
+
+    @field_validator("integration_state_payload_bytes", "integration_state_json_depth",
+                     "integration_state_lock_timeout_seconds", mode="before")
+    @classmethod
+    def validate_integration_state_budget_type(cls, value: object, info: ValidationInfo) -> object:
+        if isinstance(value, bool):
+            raise ValueError("Integration state budget must be numeric, not boolean")
+        if info.field_name != "integration_state_lock_timeout_seconds":
+            if isinstance(value, str):
+                raw = value.strip()
+                if not raw.isascii() or not raw.isdecimal():
+                    raise ValueError("Integration state integer budget must be a positive integer")
+            elif type(value) is not int:
+                raise ValueError("Integration state integer budget must be a positive integer")
+        return value
 
     @field_validator("integration_history_artifact_bytes", "integration_history_page_bytes",
                      "integration_history_temp_bytes", "integration_history_timeout_seconds", mode="before")
