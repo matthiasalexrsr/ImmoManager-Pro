@@ -1,0 +1,98 @@
+.notification-inbox-panel {
+  display: grid;
+  gap: .75rem;
+  min-width: 0;
+  max-width: 28rem;
+}
+
+.notification-inbox-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  min-width: 0;
+}
+
+.notification-inbox-header > div {
+  display: grid;
+  gap: .1rem;
+  min-width: 0;
+}
+
+.notification-inbox-header span,
+.notification-inbox-item time {
+  color: var(--text-secondary, #667085);
+  font-size: .78rem;
+}
+
+.notification-inbox-list {
+  display: grid;
+  gap: .5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.notification-inbox-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: .6rem;
+  min-width: 0;
+  padding: .7rem;
+  border: 1px solid var(--border-color, #d7dce5);
+  border-radius: .75rem;
+}
+
+.notification-inbox-item__content {
+  min-width: 0;
+}
+
+.notification-inbox-item p {
+  margin: .2rem 0;
+  overflow-wrap: anywhere;
+}
+
+.notification-inbox-state,
+.notification-inbox-empty,
+.notification-inbox-error,
+.notification-inbox-changed {
+  margin: 0;
+  padding: .75rem;
+}
+
+.notification-inbox-error {
+  border: 1px solid var(--danger, #b42318);
+  border-radius: .75rem;
+}
+
+.notification-inbox-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+  margin-top: .65rem;
+}
+
+.notification-inbox-more {
+  justify-self: stretch;
+}
+
+@media (max-width: 360px) {
+  .notification-inbox-header,
+  .notification-inbox-item,
+  .notification-inbox-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .notification-inbox-header,
+  .notification-inbox-actions {
+    display: grid;
+  }
+
+  .notification-inbox-header .btn,
+  .notification-inbox-item .btn,
+  .notification-inbox-actions .btn {
+    width: 100%;
+    min-height: 44px;
+  }
+}
