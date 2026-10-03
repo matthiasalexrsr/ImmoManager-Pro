@@ -70,7 +70,10 @@ def runtime_template(tmp_path_factory):
 @pytest.fixture
 def plan(runtime_template, tmp_path):
     root = tmp_path / "source"
-    shutil.copytree(runtime_template, root)
+    # Runtime control tokens and kernel-lock carriers belong to the original
+    # exited process, not to a cloned installation. copytree also does not
+    # preserve their protected Windows directory ACL.
+    shutil.copytree(runtime_template, root, ignore=shutil.ignore_patterns(".backup-runtime"))
     values = json.loads((root / "configuration-for-test.json").read_text(encoding="utf-8"))
     values.update(DATA_DIR=str(root), UPLOADS_DIR=str(root / "uploads"),
                   DATABASE_URL="sqlite:///" + (root / "runtime.db").as_posix(),

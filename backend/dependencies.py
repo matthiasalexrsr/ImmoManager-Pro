@@ -20,6 +20,9 @@ from contextvars import ContextVar
 from threading import get_ident
 from typing import cast
 
+from .backup_operations.application import (
+    APPLICATION_IMPORT_LEASE,  # noqa: F401 — direct imports also precede SQL writers
+)
 from .compat.ui_contracts import ensure_ui_contracts
 from .config import settings
 

@@ -10,6 +10,7 @@ __pycache__/
 
 # Environment / secrets
 .env
+.backup-runtime/
 .env.server
 .env.server.*
 !.env.server.example

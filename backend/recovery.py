@@ -3,9 +3,15 @@
 import argparse
 import getpass
 import json
+import sqlite3
+import sys
+from contextlib import closing, contextmanager
 from pathlib import Path
 from typing import Any
 
+from .backup_operations.plan import BackupOperationError
+from .backup_operations.runtime import ManagedRuntime, runtime_directory
+from .backup_operations.state import FileLease, private_directory
 from .services.full_recovery import (
     RecoveryLimits,
     RecoveryPlan,
@@ -60,6 +66,38 @@ def _plan(args):
                         integrations if integrations.exists() else None)
 
 
+def _run_recovered(args):
+    root = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parents[1]
+    with ManagedRuntime(args.data_dir.expanduser().resolve(), app_root=root, host="127.0.0.1", port=args.port) as runtime:
+        load_recovered_environment(args.data_dir)
+        from .app import app
+        from .config import settings
+        runtime.bind_configuration(settings)
+        runtime.run(app)
+
+
+@contextmanager
+def _offline_backup(args):
+    """Supported writers/startups are excluded before plan/SQL/archive work."""
+    directory = args.data_dir.expanduser().resolve()
+    if not directory.is_dir():
+        raise RecoveryError("Der ausgewählte Datenordner existiert nicht.")
+    try:
+        with FileLease(private_directory(runtime_directory(directory)) / "installation.lock"):
+            plan = _plan(args)
+            # URI rw prevents accidentally creating an absent selected database.
+            with closing(sqlite3.connect(plan.database.resolve().as_uri() + "?mode=rw", uri=True, timeout=5)) as writer:
+                try:
+                    writer.execute("BEGIN IMMEDIATE")
+                    yield plan
+                finally:
+                    writer.rollback()
+    except BackupOperationError:
+        raise RecoveryError("Die ausgewählte Installation wird verwendet. Anwendung vollständig beenden und den Offline-Sicherungsbefehl erneut ausführen.") from None
+    except sqlite3.OperationalError:
+        raise RecoveryError("Die ausgewählte Datenbank ist nicht verfügbar oder wird noch beschrieben. Datenbankpfad prüfen, Schreibvorgang beenden und Sicherung erneut ausführen.") from None
+
+
 def main():
     parser = argparse.ArgumentParser(description="Vollsicherung und Wiederherstellung von ImmoManager")
     commands = parser.add_subparsers(dest="operation", required=True)
@@ -82,11 +120,7 @@ def main():
     args = parser.parse_args()
     try:
         if args.operation == "run":
-            load_recovered_environment(args.data_dir)
-            import uvicorn
-
-            from .app import app
-            uvicorn.run(app, host="127.0.0.1", port=args.port)
+            _run_recovered(args)
             return
         from .services.capacity_settings import CapacityProfileError, load_capacity
         try:
@@ -98,12 +132,15 @@ def main():
         if args.operation == "backup":
             if getpass.getpass("Passphrase wiederholen: ") != password:
                 raise RecoveryError("Die Passphrasen stimmen nicht ueberein.")
-            result = create_full_backup(_plan(args), args.output, password, offline=args.offline, limits=limits)
+            with _offline_backup(args) as plan:
+                result = create_full_backup(plan, args.output, password, offline=args.offline, limits=limits)
         else:
             result = restore_full_backup(args.archive, args.destination, password, limits=limits)
         print(json.dumps(result, ensure_ascii=False))
     except RecoveryError as exc:
         parser.exit(2, f"Fehler: {exc}\n")
+    except BackupOperationError as exc:
+        parser.exit(2, f"Start der ausgewählten Installation nicht möglich ({exc.code}); Auswahl prüfen und erneut versuchen.\n")
     except Exception as exc:
         parser.exit(2, f"Vollsicherung abgebrochen ({type(exc).__name__}); Details nicht ausgegeben.\n")
 
