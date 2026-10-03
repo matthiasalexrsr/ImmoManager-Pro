@@ -26,6 +26,7 @@ from backend.db.operational_models import (
     OperationalScheduleORM,
     OperationalTickORM,
 )
+from backend.db.operational_scheduler_models import OperationalSchedulerORM
 from backend.db.orm_models import TenantORM
 from backend.db.tenancy_workflow_models import TENANCY_WORKFLOW_MODELS, WorkflowCommandORM
 from backend.models import ContractPatch, TaskCreate, TenantCreate, TenantPatch
@@ -352,12 +353,14 @@ def test_partial_family_refuses_before_profile_dml_without_repair(box, monkeypat
 
 def test_wholly_absent_legacy_families_are_allowed_without_bootstrap(box, monkeypatch):
     monkeypatch.setattr(auth, "_user_store", auth.InMemoryUserStore())
-    families = (*JOB_MODELS, *TENANCY_WORKFLOW_MODELS, *OPERATIONAL_FAMILY)
+    families = (OperationalSchedulerORM, *JOB_MODELS, *TENANCY_WORKFLOW_MODELS, *OPERATIONAL_FAMILY)
     if box.engine is not None:
         complete_domain_test_schema(box)
         box.db.rollback()
         with box.engine.begin() as connection:
-            for group in (JOB_MODELS, TENANCY_WORKFLOW_MODELS, OPERATIONAL_FAMILY):
+            # f2's scheduler retains the selected job: remove this owned empty
+            # child explicitly before simulating complete legacy-family absence.
+            for group in ((OperationalSchedulerORM,), JOB_MODELS, TENANCY_WORKFLOW_MODELS, OPERATIONAL_FAMILY):
                 for model in reversed(group):
                     model.__table__.drop(connection)
     else:
