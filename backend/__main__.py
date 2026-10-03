@@ -219,6 +219,22 @@ def main():
     parser.add_argument("--data-dir", default=None, help="Persistent data directory for SQLite, uploads, backups, and logs")
     args = parser.parse_args()
 
+    # Select the installation before any configuration, app or background
+    # writer. Read-only env loading preserves existing launcher precedence.
+    from pathlib import Path
+
+    from backend.backup_operations.runtime import ManagedRuntime
+    _load_env_file(os.path.join(_exe_dir(), ".env"))
+    selected = args.data_dir or os.environ.get("DATA_DIR")
+    if not selected:
+        selected = _default_windows_data_dir() if IS_FROZEN or os.name == "nt" else _exe_dir()
+    with ManagedRuntime(Path(selected).expanduser().absolute(), app_root=Path(_exe_dir()),
+                        host=args.host, port=args.port) as runtime:
+        _run(args, runtime)
+
+
+def _run(args, runtime):
+
     # When running as frozen .exe, set working directory and sys.path
     base_dir = _get_base_dir()
 
@@ -228,6 +244,8 @@ def main():
             sys.path.insert(0, base_dir)
 
     data_dir = _configure_runtime_environment(args.data_dir)
+    if os.environ.get("DATA_DIR") and os.path.realpath(os.environ["DATA_DIR"]) != os.path.realpath(runtime.data_dir):
+        raise RuntimeError("Ausgewählter Datenordner und geladene DATA_DIR-Konfiguration unterscheiden sich. Startkonfiguration korrigieren.")
 
     print("ImmoManager Pro v1.0.0")
     print(f"Python {sys.version}")
@@ -254,6 +272,8 @@ def main():
         sys.exit(1)
 
     print("Anwendung geladen.")
+    from backend.config import settings
+    runtime.bind_configuration(settings)
 
     # Seed demo data if requested
     if args.seed:
@@ -286,12 +306,10 @@ def main():
     print("Druecke Strg+C zum Beenden.\n")
 
     try:
-        import uvicorn
-
         # Use the imported app object directly instead of string-based import.
         # String-based import ("backend.app:app") can fail in PyInstaller bundles
         # because uvicorn's module loader doesn't find frozen modules.
-        uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+        runtime.run(app, log_level="info")
     except KeyboardInterrupt:
         print("\nServer beendet.")
     except Exception as exc:
