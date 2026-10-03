@@ -1,7 +1,15 @@
 # Separates Folgepaket: dauerhaftes Widerspruchsjournal
 
-Planungsstand auf Basis `bc90599`; noch keine Umsetzung oder Migration dieses
-Pakets. Die Parent-/Privacy-Komposition ist davon unabhängig.
+Ursprünglicher Planungsstand auf Basis `bc90599`. Der konkrete Domainstand,
+native Belege und die noch ausstehenden zentralen/UI-Anteile sind jetzt in
+`docs/PACKAGE_C_DISPUTE_JOURNAL_HANDOFF.md` dokumentiert. Die ursprüngliche
+Lückenbeschreibung unten hält den damaligen Ausgangsstand fest.
+
+Umsetzung reserviert nach tatsächlicher Graphprüfung: ausschließlich
+`j2a2b3c4d5e6` mit Vorgänger `h2a2b3c4d5e6`. Die zunächst von Root genannte
+Kennung i2 ist eine bereits bestehende historische Migration; sie bleibt
+unverändert. Der erste SQLiteprobeversuch erkannte die doppelte Kennung vor DDL,
+danach wurde nur die neue uncommittete Journalmigration auf j2 umbenannt.
 
 ## Tatsächlich vorhandene Lücke
 
