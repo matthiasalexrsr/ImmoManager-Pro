@@ -28,4 +28,7 @@
 .dispute-command textarea { display: block; width: 100%; max-width: 100%; min-height: 7rem; box-sizing: border-box; }
 .dispute-command input, .dispute-command select { max-width: 100%; }
 .dispute-draft, .dispute-preview { margin-block: 1rem; padding: .75rem; border: 1px solid var(--border-color, #ddd); border-radius: .5rem; }
-@media (max-width: 480px) { .dispute-case { padding: .6rem; } .dispute-actions > .btn { max-width: 100%; white-space: normal; } }
+@media (max-width: 480px) {
+  .dispute-case { padding: .6rem; }
+  .billing-disputes .btn, .dispute-case .btn { min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+}
