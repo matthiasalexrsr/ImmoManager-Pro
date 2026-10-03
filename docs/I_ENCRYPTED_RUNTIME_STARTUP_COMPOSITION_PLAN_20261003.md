@@ -104,3 +104,17 @@ as one JSON-quoted value. Preserve ordinary safe existing spelling and files;
 do not expand ambient variables. Add actual loader/Settings roundtrips and one
 fresh two-process launcher check comparing only signer hashes. No secret values
 are emitted by its child report. NUL/CR/LF validation remains unchanged.
+
+Further independent review found the JSON-quoted codec was insufficient for the
+actual recovery dotenv parser (`#` comments/control escapes) and could reinterpret
+existing simply quoted Windows paths. Before changing code again, replace new
+risky-value serialization with dotenv-compatible double quotes and recognized
+escape sequences, plus a fixed trailing version comment. Only that explicit
+marker grants escaped decoding in the launcher/comparison helper; old quoted
+paths remain literal. The marker is an ordinary dotenv comment, so the actual
+interpolate=False recovery parser returns the same value without another secret
+format/store. Split persisted physical records at newline only, preserving
+Unicode separators inside quoted values. Extend the existing roundtrip cases to
+the actual dotenv parser, add comments/control/Unicode separators and legacy
+quoted-path cases, and have the cold signer child also compare the actual
+recovery._plan signer hash. Do not count the earlier20 PASS as backup-codec proof.
