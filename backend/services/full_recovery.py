@@ -173,7 +173,13 @@ def _database_info(path: Path, *, timeout_seconds: float = 300) -> dict:
         from ..db.orm_models import Base
         from .billing_dispute_database import validate_dispute_database
         from .billing_dispute_validation import DisputeIntegrityError
+        from .billing_statement_parties import StatementPartyIntegrityError
+        from .billing_statement_party_database import validate_statement_party_database
         from .integrations.history_types import HistoryError
+        try:
+            validate_statement_party_database(db, deadline=deadline)
+        except (StatementPartyIntegrityError, sqlite3.Error):
+            raise RecoveryError("Originalparteien der Abrechnungen sind ungültig. Vollständige unveränderte Sicherung verwenden.") from None
         try:
             validate_dispute_database(db, deadline=deadline)
         except (DisputeIntegrityError, sqlite3.Error):

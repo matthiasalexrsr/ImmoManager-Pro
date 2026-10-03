@@ -32,7 +32,9 @@ def _rows(connection, statement, *, deadline):
         result = connection.execute(str(compiled), compiled.params)
         names = [item[0] for item in result.description]
     else:
-        result = connection.execute(statement)
+        # PostgreSQL needs a real server cursor; fetchmany alone can still leave
+        # the complete result buffered inside the native driver.
+        result = connection.execute(statement.execution_options(stream_results=True, yield_per=100))
         names = list(result.keys())
     try:
         while batch := result.fetchmany(100):

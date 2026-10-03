@@ -1,6 +1,6 @@
 """Retained workflow/job boundaries for business-subset transfer and reset."""
 
-from sqlalchemy import inspect, text
+from sqlalchemy import exists, func, inspect, select, text
 from sqlalchemy.exc import DBAPIError
 
 from ..db.billing_dispute_models import DISPUTE_TABLES
@@ -13,12 +13,30 @@ TABLES = frozenset(JOB_TABLES) | WORKFLOW_TABLES | {SCHEDULER_TABLE} | frozenset
 MESSAGE = "Gespeicherte Mieterwechsel-, Arbeitslisten-, Abrechnungs- oder Widerspruchshistorie wird durch diese Teiloperation nicht übertragen. Vollständige Offline-Sicherung/Wiederherstellung verwenden."
 
 
+def _party_originals(store):
+    from .billing_statement_parties import KEY
+    if not hasattr(store, "db"):
+        for period in store.__dict__.get("billing_periods", {}).values():
+            owner = period.owner_cost_share
+            if isinstance(owner, dict) and KEY in owner:
+                return True
+        return False
+    from ..db.orm_models import BillingPeriodORM
+    owner = BillingPeriodORM.__table__.c.owner_cost_share
+    present = (func.json_type(owner, "$." + KEY) if store.db.get_bind().dialect.name == "sqlite"
+               else func.json_typeof(owner[KEY]))
+    with store.db.no_autoflush:
+        pending = any(isinstance(row, BillingPeriodORM) and isinstance(row.owner_cost_share, dict)
+                      and KEY in row.owner_cost_share for row in store.db.new | store.db.dirty | store.db.deleted)
+        return pending or bool(store.db.connection().scalar(select(exists(select(BillingPeriodORM.id).where(present.is_not(None))))))
+
+
 def guard_operational_history(store, *, serialized=False):
     """Refuse before destructive DML, and recheck behind the shared writer fence."""
     from ..storage import ValidationError
     from .recovery_history import guard_history_retention
     if not hasattr(store, "db"):
-        if any(store.__dict__.get(name) for name in TABLES):
+        if any(store.__dict__.get(name) for name in TABLES) or _party_originals(store):
             raise ValidationError(MESSAGE)
         guard_history_retention(store, serialized=serialized)
         return
@@ -55,6 +73,6 @@ def guard_operational_history(store, *, serialized=False):
     with db.no_autoflush:
         pending = any(getattr(getattr(row, "__table__", None), "name", None) in TABLES for row in db.new | db.dirty | db.deleted)
         retained = pending or any(db.execute(text('SELECT 1 FROM "' + name + '" LIMIT 1')).first() is not None for name in sorted(TABLES & names))
-    if retained:
+    if retained or ("billing_periods" in names and _party_originals(store)):
         raise ValidationError(MESSAGE)
     guard_history_retention(store, serialized=serialized)

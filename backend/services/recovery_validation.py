@@ -221,6 +221,12 @@ def _original_uri_matches(historical, key, old_root):
 
 
 def _scan(db, old_root, destination, catalog, deadline=None):
+    from .billing_statement_parties import StatementPartyIntegrityError
+    from .billing_statement_party_database import validate_statement_party_database
+    try:
+        validate_statement_party_database(db, deadline=deadline)
+    except (StatementPartyIntegrityError, sqlite3.Error):
+        raise RecoveryError("Originalparteien der Abrechnungen sind ungültig. Vollständige unveränderte Sicherung verwenden.") from None
     from .billing_dispute_database import validate_dispute_database
     from .billing_dispute_validation import DisputeIntegrityError
     try:
