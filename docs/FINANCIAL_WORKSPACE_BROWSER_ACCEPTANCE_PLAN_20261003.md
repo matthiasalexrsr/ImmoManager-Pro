@@ -272,3 +272,11 @@ Wegen koordinierter Rechnerlast aktuell bewusst nicht ausgeführt:
 
 Nach Commit der Testquellen wird der konkrete Playwright-Aufruf angekündigt und
 erst nach Slotfreigabe gestartet.
+
+## Vorgesehener isolierter Lauf nach Slotfreigabe
+
+Aus `frontend`:
+
+`npm run test:e2e -- financial-workspace.pw.mjs`
+
+Der bestehende Runner führt dabei automatisch den Produktionsbuild aus, migriert eine eigene temporäre SQLite-Datenbank bis Alembic-Head, startet den lokalen Backendserver mit synthetischer Demo-Basis und ruft ausschließlich diese Playwright-Datei auf. Dieser Lauf wurde in der Vorbereitungsphase ausdrücklich **noch nicht** gestartet.
