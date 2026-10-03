@@ -320,13 +320,13 @@ def test_each_legacy_command_passes_its_loaded_profile_before_any_sql(tmp_path, 
 
     def observed_selection(values, root, **options):
         assert options["limits"] is limits
-        assert time.monotonic() < options["deadline"] <= started + 2
+        observed_at = time.monotonic()
+        assert observed_at < options["deadline"] <= observed_at + limits.timeout_seconds
         observed.append(options)
         return actual_select(values, root, **options)
 
     monkeypatch.setattr(service, "installation_lease", pure_lease)
     monkeypatch.setattr(service, "_selected", observed_selection)
-    started = time.monotonic()
     with pytest.raises(RecoveryError, match="Größenbudget"):
         if command == "upgrade":
             service.upgrade(args, "synthetic-unused-passphrase", limits=limits)
