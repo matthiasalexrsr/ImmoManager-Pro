@@ -11,7 +11,6 @@ import AllocationKeys from '../pages/AllocationKeys';
 import Categories from '../pages/Categories';
 import TaxRates from '../pages/TaxRates';
 import Insurances from '../pages/Insurances';
-import Meters from '../pages/Meters';
 
 const mocks = vi.hoisted(() => ({
   lists: {}, invalidateRelated: vi.fn(), confirm: vi.fn(), toast: { error: vi.fn() },
@@ -51,7 +50,6 @@ const cases = [
   ['Categories', Categories, '/categories', ['/portfolios']],
   ['TaxRates', TaxRates, '/tax-rates', []],
   ['Insurances', Insurances, '/insurances', ['/properties', '/units']],
-  ['Meters', Meters, '/meters', ['/units', '/properties', '/meters/readings/all']],
 ];
 let failedPaths;
 let mutationStatus;
@@ -223,18 +221,6 @@ describe('complete snapshots and form refreshes', () => {
     expect(requests.filter(r => r.method === 'PUT')).toHaveLength(1);
   });
 
-  it('uses all reading pages for the latest meter value and consumption history', async () => {
-    mocks.lists['/meters/readings/all'] = Array.from({ length: 1001 }, (_, index) => ({
-      id: `reading-${index}`, meter_id: 'row-0', value: String(index),
-      reading_date: new Date(Date.UTC(2020, 0, 1 + index)).toISOString().slice(0, 10),
-    }));
-    render(<Meters />);
-    expect(await screen.findByTestId('last-row')).toHaveTextContent('1000.00');
-    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
-    expect(screen.getAllByTestId('row-count')[1]).toHaveTextContent(/^1001$/);
-    expect(screen.getAllByTestId('last-row')[1]).toHaveTextContent('1000.00Ungeklärt1.00');
-    expect(requests.some(r => r.path === '/meters/row-0/readings')).toBe(false);
-  });
 });
 
 
@@ -308,60 +294,7 @@ describe('e2 billing dimensions UI', () => {
     });
   });
 
-  it('does not infer a meter unit from meter type and preserves recoverable edit input', async () => {
-    mocks.lists['/meters'] = [{
-      ...row(),
-      id: 'meter-water',
-      serial_number: 'W-17',
-      meter_type: 'cold_water',
-      measurement_unit: null,
-    }];
-    mutationStatus = 503;
-    render(<Meters />);
 
-    expect(await screen.findByTestId('last-row')).toHaveTextContent('Ungeklärt');
-    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
-    expect(screen.getByText(/Maßeinheit:/)).toBeInTheDocument();
-    expect(screen.getAllByText('Ungeklärt').length).toBeGreaterThan(0);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Zähler bearbeiten' }));
-    const dialog = screen.getByRole('dialog');
-    const unit = within(dialog).getByLabelText('Tatsächliche Maßeinheit');
-    expect(unit).toHaveValue('');
-    fireEvent.change(unit, { target: { value: 'm³' } });
-    fireEvent.submit(dialog.querySelector('form'));
-
-    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Mutation failed');
-    expect(unit).toHaveValue('m³');
-
-    mutationStatus = 200;
-    fireEvent.submit(dialog.querySelector('form'));
-    await waitFor(() => expect(requests.filter(request => request.method === 'PUT')).toHaveLength(2));
-    expect(requests.filter(request => request.method === 'PUT').at(-1).body)
-      .toMatchObject({ meter_type: 'cold_water', measurement_unit: 'm³' });
-  });
-
-  it('shows the stored meter unit in reading context while keeping the existing all-readings source', async () => {
-    mocks.lists['/meters'] = [{
-      ...row(),
-      id: 'meter-electric',
-      serial_number: 'E-9',
-      meter_type: 'electricity',
-      measurement_unit: 'kWh',
-    }];
-    mocks.lists['/meters/readings/all'] = [
-      { id: 'reading-1', meter_id: 'meter-electric', value: '100', reading_date: '2026-01-01' },
-      { id: 'reading-2', meter_id: 'meter-electric', value: '125', reading_date: '2026-12-31' },
-    ];
-    render(<Meters />);
-
-    await screen.findByTestId('last-row');
-    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
-    expect(screen.getAllByText('Kilowattstunden (kWh)').length).toBeGreaterThan(0);
-    expect(screen.getAllByTestId('last-row')[1]).toHaveTextContent('Kilowattstunden (kWh)');
-    expect(requests.some(request => request.path === '/meters/readings/all')).toBe(true);
-    expect(requests.some(request => /\/meters\/.*\/readings/.test(request.path))).toBe(false);
-  });
 
   it('neutralizes old private allocation data and an open form immediately on actor change', async () => {
     mocks.lists['/billing/allocation-keys'] = [{

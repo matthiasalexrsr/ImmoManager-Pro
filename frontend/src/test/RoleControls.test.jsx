@@ -45,13 +45,20 @@ function mount(Component) { return render(<MemoryRouter>{createElement(Component
 const roles = ['eigentuemer', 'verwalter', 'buchhaltung', 'techniker', 'readonly'];
 const cases = [
   [Accounts, 'finance'], [RentCharges, 'finance'], [Statements, 'billing'],
-  [Meters, 'operations'], [Maintenance, 'operations'], [Documents, 'documents'],
+  [Maintenance, 'operations'], [Documents, 'documents'],
 ];
 const allowed = (role, capability) => ['eigentuemer', 'verwalter'].includes(role)
   || role === 'buchhaltung' && ['finance', 'billing', 'documents'].includes(capability)
   || role === 'techniker' && ['operations', 'documents'].includes(capability);
 
 describe('role-specific page controls', () => {
+  it.each(roles)('Meters: %s receives only permitted inventory commands', async role => {
+    mocks.role = role;
+    mocks.get.mockImplementation(async path => path.includes('/summary?') ? { total: 0, active: 0, inactive: 0, no_reading: 0, unknown_unit: 0, overdue: 0, due_soon: 0 } : { items: [], has_more: false, next_cursor: null });
+    mount(Meters); await screen.findByText('Keine passenden Zähler auf dieser Seite.');
+    expect(screen.queryByRole('button', { name: 'Zähler anlegen' }) !== null).toBe(allowed(role, 'operations'));
+    expect(mocks.post).not.toHaveBeenCalled(); expect(mocks.put).not.toHaveBeenCalled();
+  });
   for (const [Component, capability] of cases) it.each(roles)(`${Component.name}: %s can create only in its business area`, async role => {
     mocks.role = role; mount(Component);
     await screen.findByTestId('table');
@@ -90,9 +97,11 @@ describe('role-specific page controls', () => {
     expect(screen.getByText(account.name)).toBeInTheDocument();
   });
   it('allows read-only meter reading navigation without edit or creation controls', async () => {
-    mocks.role = 'readonly'; mocks.getAll.mockImplementation(async path => path === '/meters' ? [{ id: 'meter', serial_number: 'Meter M', meter_type: 'cold_water' }] : []);
-    mount(Meters); fireEvent.click(await screen.findByRole('button', { name: 'View record' }));
-    expect(screen.getByText(/Ablesungen/)).toBeInTheDocument();
+    mocks.role = 'readonly';
+    const row = { id: 'meter', unit_id: 'unit', serial_number: 'Meter M', meter_type: 'cold_water', updated_at: '2026-10-01T00:00:00Z', edit_etag: 'exact-etag' };
+    mocks.get.mockImplementation(async path => path.startsWith('/meters/inventory/detail/') ? row : path.includes('/inventory/page?') ? { items: [row], has_more: false, next_cursor: null } : path.includes('/summary?') ? { total: 1, active: 1, inactive: 0, no_reading: 1, unknown_unit: 1, overdue: 0, due_soon: 0 } : { items: [], has_more: false, next_cursor: null });
+    mount(Meters); fireEvent.click(await screen.findByRole('button', { name: 'Meter M Ablesungen anzeigen' }));
+    expect(await screen.findByText('Ablesungen · Meter M')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Zähler bearbeiten|Ablesung erfassen/ })).not.toBeInTheDocument();
   });
   it('keeps the billing period readable for technicians while hiding generation, revision, cost and workflow commands', async () => {

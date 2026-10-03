@@ -1,7 +1,7 @@
 """Index bounded current meter readings without rewriting measurement originals."""
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision = "k2a2b3c4d5e6"
 down_revision = "j2a2b3c4d5e6"

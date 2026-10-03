@@ -200,6 +200,17 @@ Testläufe vor koordinierter Slotfreigabe.
   Teilläufe/Fehler/Skips separat protokollieren. Build/Lint/diff-check und
   saubere Quell-/Handoffcommits, Root erhält exakte Hashes und Restgrenzen.
 
+### Belegte Präzisierung während der Umsetzung
+
+Rootfreigegebene Indexreservierung k2→j2 wurde separat geplant und als
+reiner Sourcepatch vorbereitet; DDL bleibt bis zum abgestimmten Graph-/Slotgate
+aus. Die bestehende private Draftpolicy unterstützt bereits ausdrücklich
+`meters/readings`/`StandaloneMeterReading`; deshalb verwendet die erhaltene
+Ableseeingabe dieselbe FormModalpersistenz mit metergebundenem
+`formKey=meter:<id>`. Damit bleiben Eingabe und unklarer POST-Erfolg auch nach
+Reload prüfbar, ohne eine zweite Persistenz oder neue serverseitige
+Idempotenz. Erfolgreiche Ablesungen laden die erste Detailseite neu.
+
 Kein Fortschritt von E, keine fertige historische Quellen-UI, kein vollständiger
 Startup-/Recoverybeleg und kein indexgestützter Laufzeitnachweis werden aus
 diesem B-Adapter abgeleitet.
