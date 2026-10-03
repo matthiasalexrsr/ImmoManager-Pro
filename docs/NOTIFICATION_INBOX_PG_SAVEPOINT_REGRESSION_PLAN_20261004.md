@@ -62,3 +62,12 @@ seriell ausführen, vorgeschlagen hard90s gesamt (je tatsächlicher zentraler
 Root integriert die zusätzliche Regression und owns weitere Inboxkomposition.
 Zwei vorbereitete Fälle sind keine zwei tatsächlichen PASS. Die früheren
 zwei SetupERROR werden nicht nachträglich als ausgeführte Sid-Races gezählt.
+
+Präzisierung noch vor Testsourcecommit: zusätzlich ein erfolgreicher typisierter
+Savepoint/Release ohne weitere Rowmutation, damit das enge Rollback-Skip nicht
+als Abschalten sämtlicher Transactioninstrumentierung missverstanden wird.
+Vor der abschließenden normalen Budgetabfrage beide GUCs nur auf der wirklichen
+eigenen Connection über festen direkten DBAPIset_config auf30000ms setzen.
+Die folgende gewöhnliche SQLAlchemyquery muss tatsächlich wieder≤5000/1500ms
+liefern; damit beweisen nicht bloß Startupdefaults die Budgets. NativeCursor
+immer schließen, keine Deadline-/Auth-/Statusmockfunktion als Ersatz.
