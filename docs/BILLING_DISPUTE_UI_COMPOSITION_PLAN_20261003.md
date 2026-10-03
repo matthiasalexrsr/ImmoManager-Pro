@@ -77,3 +77,19 @@ agents. No private source data or credentials are used as fixtures.
 The future frozen-party Domain packet must be composed with these paths once
 its clean source and actual native gates are delivered. This plan does not
 approve an A-L release, deployment, external write or untested recovery path.
+
+## Observed shared-hook correction before UI composition
+
+The UI assistant's actual shared-hook regression `8be0829` fails on the old
+implementation: after explicitly restoring a pending draft, the 650 ms
+autosave writes submission_pending=false. Preserve that existing pending flag
+in the restored lifecycle and when retrying draft persistence. Only explicit
+resume or a known rejected business result may clear it. The prepared JSON
+request and review must remain byte-for-byte unchanged.
+
+Additionally expose an optional numeric errorStatus in the hook's result for
+actual GET/PUT/DELETE/restore failures, resetting it on successful/renewed
+operations. The feature can then hide private previews immediately after
+401/403/404 without interpreting translated error text. Ordinary forms retain
+the same message string and explicit editing/resume behavior. Run the actual
+pending reload/timer regression and existing form-draft tests after the fix.

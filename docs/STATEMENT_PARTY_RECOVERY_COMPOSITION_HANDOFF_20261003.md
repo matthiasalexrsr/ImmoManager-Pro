@@ -36,7 +36,7 @@ or failure. Raw SQLite retains its bound-parameter read-only path.
   previously composed native journal original smoke. The count is five tests,
   not the number of assertions.
 - Six selected cases passed in 79.92 seconds with no skips: three actual
-  PostgreSQL no-case/source/security/subset cases, the native PostgreSQL case
+  PostgreSQL no-case/security/subset cases, the native PostgreSQL case
   proof, and both actual encrypted full-container original/evidence roundtrips.
   The containers now contain and prove the actual frozen-party contract.
 - Ruff and Mypy passed for all six changed product sources.
