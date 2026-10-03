@@ -64,11 +64,13 @@ def test_downgrade_refuses_retained_sources_before_any_schema_change(native):
     with engine.begin() as connection:
         connection.execute(text("INSERT INTO measurement_ledgers(id, portfolio_id, property_id, revision) VALUES(:id,:portfolio,:property,0)"),
             {"id": unit.id, "portfolio": portfolio.id, "property": prop.id})
+    with engine.connect() as connection:
+        original_revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
     with pytest.raises(RuntimeError, match="erase historical"):
         command.downgrade(config, "f2a2b3c4d5e6")
     with engine.connect() as connection:
         assert validate_measurement_schema(connection)
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "g2a2b3c4d5e6"
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == original_revision
 
 
 def test_native_original_update_delete_guards_and_restrict_fks(native):

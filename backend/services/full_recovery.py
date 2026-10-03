@@ -251,7 +251,11 @@ def _database_info(path: Path, *, timeout_seconds: float = 300) -> dict:
                 continue
             if table.name in communication_tables and not tables & communication_tables:
                 continue
-            if table.name in measurement_tables and not tables & measurement_tables:
+            # Measurement-family completeness and shape are validated above.
+            # Older archives may legitimately predate individual measurement
+            # tables; do not reinterpret an absent legacy table as missing
+            # columns after the family-level fail-closed check has passed.
+            if table.name in measurement_tables and table.name not in tables:
                 continue
             if table.name in workflow_tables and not tables & workflow_tables:
                 continue
