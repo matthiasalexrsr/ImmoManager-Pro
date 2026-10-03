@@ -28,7 +28,9 @@ def _image(*, actor_column="actor_id VARCHAR NOT NULL", delete="CASCADE", read_t
             read_at {read_type} NOT NULL,
             PRIMARY KEY(actor_id,notification_id),
             FOREIGN KEY(actor_id) REFERENCES users(id) ON DELETE {delete},
-            FOREIGN KEY(notification_id) REFERENCES notifications(id) ON DELETE CASCADE
+            FOREIGN KEY(notification_id) REFERENCES notifications(id) ON DELETE CASCADE,
+            CONSTRAINT ck_notification_read_identity
+                CHECK(length(actor_id)>0 AND length(notification_id)>0)
         )
     """)
     db.execute("INSERT INTO users VALUES ('reader-a')")
