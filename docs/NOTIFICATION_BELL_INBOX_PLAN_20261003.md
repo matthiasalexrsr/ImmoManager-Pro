@@ -1,477 +1,494 @@
-# NotificationBell – Vorcodeanalyse und sicherer Inbox-Vertrag
+# NotificationBell â€“ sichere Inbox-/Badge-Vorcodeanalyse
 
-Stand: 03.10.2026  
-Checkout: `work/financial-workspace-browser-qa`  
-Branch: `assist/financial-workspace-browser-qa`
+Stand: 03.10.2026
+Worktree: `work/financial-workspace-browser-qa`
+Scope dieses Dokuments: reine Sourceanalyse, **keine SharedsourceÃ¤nderung**.
 
-Dieses Dokument ist eine **reine Vorcodeanalyse**. Es wurden keine
-NotificationBell-, Auth-, API-, Dashboard-, Backend- oder Sharedsource-Dateien
-geändert und kein Browser-/Build-/Backend-/DB-Lauf gestartet.
+## Ausgangsbefund aus Root B2
 
-## Ausgangsbefund
+Der echte Rechteentzug-Browserfall zeigte einen stale Badgewert `10` in der
+globalen Kopfzeile, wÃ¤hrend die Dashboarddaten bereits korrekt verborgen waren.
 
-Im echten B2-Rechteentzug wurde ein stale Badge `10` in der globalen
-NotificationBell beobachtet, während Dashboarddaten bereits korrekt verborgen
-waren.
+Die aktuelle `NotificationBell.jsx` erklÃ¤rt den Befund vollstÃ¤ndig:
 
-Die aktuelle Rootquelle
-`frontend/src/components/NotificationBell.jsx` bestätigt vier Ursachen:
+- `GET /notifications?status=unread&limit=10`
+- Badge = `items.length`
+- Fehler behalten den letzten erfolgreichen `notifications`- und
+  `unreadCount`-Zustand
+- kein `AbortController`
+- 60-s-Intervall ohne Principal-/Grantbindung
+- `markAllRead` PATCHt nur die aktuell sichtbaren maximal 10 EintrÃ¤ge
+- kein Cursor
+- kein vollstÃ¤ndiger serverseitiger Ungelesen-Count.
 
-1. `GET /notifications?status=unread&limit=10` lädt nur die erste Seite.
-2. `unreadCount = items.length` macht die ersten maximal zehn Datensätze zum
-   angeblichen Gesamtcount.
-3. Fetchfehler loggen nur eine Warnung. Vorherige Items und Badge bleiben als
-   alter „Erfolg“ sichtbar.
-4. `markAllRead` iteriert ausschließlich über die aktuell geladenen maximal
-   zehn Items.
+Damit ist `10` weder ein verlÃ¤sslicher Gesamtcount noch nach einem
+Scopefehler ein verlÃ¤sslicher aktueller Zustand.
 
-Zusätzlich:
-
-- laufende Fetches werden weder bei Unmount noch bei neuer Abfrage abgebrochen;
-- die Glocke ist nicht an einen Actor-/Grant-Key gebunden;
-- das 60-Sekunden-Intervall ist die einzige regelmäßige Aktualisierung;
-- Öffnen, Window-Focus oder Visibility-Änderung erzwingen keine frische
-  Autoritätsprüfung.
-
-## Tatsächlich geprüfte Auth-/API-Mechanismen
+## TatsÃ¤chlich gelesene Frontend-Auth-/Fehlerpfade
 
 ### AuthContext
 
-`AuthContext` hält den frisch von `/auth/me` geladenen User inklusive Rolle,
-Portfoliozugriff und Write-Permissions.
+`AuthContext` hÃ¤lt:
+
+- `user`
+- `role`
+- `writePermissions`
+- `updateUser`
+- `clearUser`.
+
+Es gibt keinen eigenen globalen Grant-/Portfolio-Scope-Eventbus.
 
 ### Sessionwechsel
 
-`api.watchSessionChange(...)` beobachtet:
+`api.watchSessionChange` beobachtet:
 
-- Access-/Refresh-Tokenänderungen im Storage,
+- LocalStorage-TokenÃ¤nderungen
 - `immomanager-session-change`.
 
 `ProtectedRoute` reagiert darauf mit:
 
-- sofortigem `clearUser()`,
-- Navigation zu Login oder Full Reload,
-- anschließend frischem `GET /auth/me`.
+- `clearUser()`
+- Reload bei neuem Actor
+- Login bei ungÃ¼ltiger Session.
 
-Damit werden **Actor-/Sessionwechsel** bereits zentral sicher neutralisiert.
+Das schÃ¼tzt echte Token-/Actorwechsel.
 
-### Was nicht existiert
+### Gleicher Actor, neue Grants
 
-Es gibt **kein** allgemeines Frontendevent für einen serverseitigen
-Rollen-/Portfolio-Grantwechsel innerhalb derselben noch gültigen Session.
+FÃ¼r denselben Benutzer mit geÃ¤nderten Portfolio-Grants existiert kein
+allgemeines `scope-change`-/`authorization-change`-Event.
 
-Ein solcher Rechteentzug wird erst bei einer neuen autorisierten Anfrage sichtbar.
-Darum darf die NotificationBell nicht darauf vertrauen, dass sich ihr
-`AuthContext.user` vor dem nächsten Inbox-Request ändert.
+`ProtectedRoute` lÃ¤dt `/auth/me` bei seiner Sessionvalidierung, nicht
+kontinuierlich bei jeder GrantÃ¤nderung.
+
+Andere private Komponenten lÃ¶sen dieses Problem lokal, z. B.
+`DashboardBoundary` mit einer frischen `/auth/me`-PrÃ¼fung.
 
 ### API-Fehler
 
-Der gemeinsame API-Client liefert strukturierte Fehler mit `statusCode`.
+- 401 versucht einmal Tokenrefresh; bleibt 401 bestehen, wird die aktuelle
+  Session invalidiert und Login ausgelÃ¶st.
+- 403/404 werden als normale API-Fehler an die Komponente geworfen.
+- Netzwerkfehler nach Safe-GET-Retries werden ebenfalls geworfen.
+- `AbortError` wird nicht automatisch wiederholt.
 
-- 401 invalidiert nur das tatsächlich verwendete aktuelle Tokenpaar und führt
-  bei notwendigem Logout zu Login.
-- 403/404 bleiben normale autorisierte Ressourcenfehler.
-- Netzwerkfehler sind als `isNetwork` markiert.
-- AbortError wird unverändert durchgereicht.
+Folge fÃ¼r NotificationBell: Die Komponente muss 403/404 und Netzwerk/5xx
+selbst sicher darstellen. Ein Fehler darf nicht wie ein alter Erfolg aussehen.
 
-Für private Glockendaten bedeutet das:
+## TatsÃ¤chlich gelesener Notification-Backendstand
 
-- 401/403/404 dürfen nie einen alten Badge/Listenzustand als aktuellen Erfolg
-  stehen lassen;
-- Netzwerk/5xx dürfen ebenfalls nicht als „alter Erfolg“ dargestellt werden;
-  der Zustand ist dann **unbekannt/nicht verfügbar**, nicht `0` und nicht der
-  vorherige Count.
+### Aktuelle Liste
 
-## Tatsächlich geprüfte Notification-Sichtbarkeit
+`GET /notifications`
 
-### Legacy Notifications-Router
+liefert `list[Notification]` mit:
 
-Aktuell:
+- skip/limit
+- status
+- notification_type
+- severity.
 
-`GET /notifications?skip=&limit=&status=`
+Der Router:
 
-liefert `list[Notification]`.
+1. lÃ¤dt zunÃ¤chst `store.list_notifications()`,
+2. filtert danach Ã¼ber `notification_visible(..., user.role)`,
+3. filtert Status/Typ/Severity,
+4. schneidet erst danach `skip:skip+limit`.
 
-Er filtert:
+Es gibt:
 
-- über den Store/Portfolio-Scope,
-- zusätzlich über `notification_visible(...)` für Dispatch-Zielrollen,
-- anschließend per Status/Typ/Severity,
-- dann über `skip:skip+limit`.
+- keinen Cursor,
+- keinen FullCount,
+- keinen serverseitigen Badgecount,
+- keinen Inbox-Snapshot.
 
-Er liefert **keinen**:
+### Sichtbarkeit
 
-- vollständigen Count,
-- opaken Cursor,
-- Snapshot-/Sourcehash,
-- atomischen „alle gelesen“-Command.
+`notification_visible` prÃ¼ft aktuell nur den Operational-Dispatch-`target_role`:
 
-### Dashboard ist die Referenzsemantik
+- kein Target â†’ sichtbar
+- Owner â†’ sichtbar
+- gleiche Zielrolle â†’ sichtbar.
 
-`dashboard_summary.py` besitzt bereits die richtige Kombination:
+Die Funktion prÃ¼ft **keine Portfolio-Grants**.
 
-1. `scoped_clause(notifications, scope)`
-2. Dispatch-/Rollenregel über `_notification_clause(...)`
-3. vollständiges `unread_notifications`-Count
-4. stabile Notification-Seite
-5. opake Cursorbindung mit:
-   - Actor-ID
-   - Rolle
-   - unrestricted
-   - Portfolio-Hash
-   - Seitengröße
-   - Sortierdefinition
+### Notification-Modell
 
-Der Inbox-Vertrag darf **keine parallele Sichtbarkeitsfamilie** implementieren.
-Die vorhandene Dashboard-/Portfolio-Scope-Prädikatlogik muss geteilt bzw.
-extrahiert und wiederverwendet werden.
+`Notification` besitzt u. a.:
 
-## Aktuelle Read-Semantik – wichtige Grenze
+- `notification_type`
+- `title`
+- `content`
+- `severity`
+- `entity_type`
+- `entity_id`
+- `status`
+- `read_at`
+- Zeitstempel.
 
-`Notification.status` und `read_at` liegen heute **global am
-Notification-Datensatz**.
+Es gibt kein `portfolio_id` am Notification-Datensatz.
 
-Es existiert kein per-user Read-State.
+### Wichtige Mehrbenutzergrenze
 
-Daraus folgt:
+`status` und `read_at` liegen aktuell direkt auf der Notification.
 
-- Ein Bell-Fix darf nicht behaupten, bereits eine persönliche Benutzer-Inbox mit
-  unabhängigen gelesen/ungelesen-Zuständen zu besitzen.
-- Ein serverseitiges „alle gelesen“ in diesem Paket behält die heutige globale
-  Notification-Read-Semantik.
-- Falls zukünftig per-user Read-State gewünscht ist, benötigt das ein eigenes
-  Modell/Migration/API-Paket und darf nicht still in die Bell eingebaut werden.
+Damit ist â€žgelesenâ€œ heute ein **globaler** Zustand des Datensatzes. Wenn zwei
+Benutzer dieselbe Notification sehen dÃ¼rfen, wÃ¼rde ein persÃ¶nliches
+â€žgelesenâ€œ eines Benutzers den gemeinsamen Datensatz verÃ¤ndern.
 
-## Empfohlener additiver Inbox-Vertrag
+FÃ¼r eine echte persÃ¶nliche globale Glocke darf der neue Inboxvertrag deshalb
+nicht voraussetzen, dass `Notification.status` bereits ein per-user
+Ungelesenstatus ist.
 
-Die folgenden Namen sind ein **Planvorschlag**, keine heute vorhandenen
+## Zielbild der Glocke
+
+Die Glocke ist ein kompakter **persÃ¶nlicher, aktuell autorisierter Inboxblick**:
+
+- exakter ungelesener Gesamtcount
+- erste bounded Seite
+- weitere Seiten per Cursor
+- keine Stockbegrenzung auf 10
+- keine privaten Altwerte nach Actor-/GrantÃ¤nderung
+- Fehler â‰  leer
+- â€žalle gelesenâ€œ wirkt auf den vollstÃ¤ndigen autorisierten Snapshot, nicht nur
+  auf sichtbare Zeilen.
+
+## Erforderlicher additiver Backendvertrag
+
+Die folgenden Routen sind **PlanvorschlÃ¤ge**, keine bereits existierenden
 Endpoints.
 
 ### GET /notifications/inbox
 
-Zweck:
-
-- kleine globale Bell-Inbox,
-- nur aktuell autorisierte ungelesene Notifications,
-- vollständiger Badgecount,
-- begrenzte Seite.
-
 Query:
 
-- `after: string | null` – opaker Cursor
-- `source_hash: string | null` – bei Folgeseiten verpflichtend
-- `page_size` – bounded, Default für Bell 10; Serverbudget begrenzt
+- `status=unread|read|all`, Default `unread`
+- optional `notification_type`
+- optional `severity`
+- `after` opaker Cursor
+- `limit`, Default 10, mit serverseitigem Seitenbudget.
 
-Kein `skip`.
+Response:
 
-### NotificationInboxPage
-
-Vorgeschlagene Response:
-
-```text
-{
-  items: NotificationInboxItem[],
-  unread_count: integer,
-  has_more: boolean,
-  next_cursor: string | null,
-  source_hash: sha256,
-  scope_hash: sha256
-}
 ```
-
-`NotificationInboxItem` enthält nur die Bell-Felder:
-
-- id
-- title
-- content
-- severity
-- notification_type
-- entity_type
-- entity_id
-- created_at
-
-Kein unbeschränkter privater Entity-Snapshot.
-
-### unread_count
-
-`unread_count` ist die **vollständige Anzahl aller aktuell sichtbaren
-ungelesenen Notifications**, nicht `items.length`.
-
-Es gilt dieselbe Sichtbarkeit wie Dashboard:
-
-- aktueller Portfolio-/Resource-Scope,
-- aktuelle Dispatch-/Rollenregel,
-- Status `unread`.
-
-Count und Seite entstehen aus derselben konsistenten Sicht.
-
-Keine Bestandsobergrenze.
-
-### Reihenfolge
-
-Stabil und deterministisch:
-
-- `created_at DESC`
-- danach bytewise `id DESC`
-
-Die Bell zeigt damit die neuesten Notifications zuerst.
-
-### source_hash
-
-Hash über die aktuell sichtbare ungelesene Menge und relevante sichtbare
-Notificationfelder.
-
-Zweck:
-
-- Folgeseite erkennt zwischenzeitlich geänderten Inboxbestand,
-- Mark-all kann exakt an den vom Benutzer gesehenen Bestand gebunden werden.
-
-Bei Folgeseite mit altem Hash:
-
-- 409 „Benachrichtigungen haben sich geändert. Bitte neu laden.“
-- kein Teilresultat als aktuell veröffentlichen.
-
-### scope_hash
-
-Opaque Hash aus der frisch serverseitig geprüften Autoritätsbindung, mindestens:
-
-- Actor-ID
-- Rolle
-- unrestricted
-- sortierte Portfolio-Grants
-
-Keine Grants im Klartext in der Response.
-
-Cursor bindet an:
-
-- Actor-/Scope-Hash
-- Status = unread
-- page_size
-- source_hash
-- Sortierdefinition
-
-Ein Cursor eines alten Actors/Scopes ist damit nicht wiederverwendbar.
-
-## Server-Command „alle gelesen“
-
-Das heutige Client-Loop über zehn IDs ist nicht korrekt.
-
-Vorgeschlagen:
-
-`POST /notifications/inbox/read-all`
-
-Request:
-
-```text
 {
-  idempotency_key: uuid,
-  expected_source_hash: sha256
+  "items": [NotificationInboxItem],
+  "full_count": 137,
+  "unread_count": 137,
+  "has_more": true,
+  "next_cursor": "...",
+  "snapshot_token": "...",
+  "actions": {
+    "mark_all_read": true
+  }
 }
 ```
 
 Semantik:
 
-1. frische Auth-/Portfolio-/Rollenprüfung;
-2. aktuellen sichtbaren ungelesenen Inboxbestand bestimmen;
-3. wenn Hash nicht dem erwarteten Snapshot entspricht: 409, **keine Writes**;
-4. alle Notifications dieses exakten autorisierten Snapshots atomisch auf
-   heutigen globalen `read`-Status setzen;
-5. keine später hinzugekommenen Notifications markieren;
-6. Idempotency-Receipt ermöglicht Exact Retry nach verlorener Antwort;
-7. Replay prüft Auth/Scope frisch, bevor ein alter Receipt zurückgegeben wird.
+- `full_count` = exakte Anzahl aller DatensÃ¤tze, die den aktuellen
+  Inboxfiltern **und** dem aktuellen Actor/Scope entsprechen.
+- `unread_count` = exakte Anzahl aller aktuell autorisierten ungelesenen
+  InboxeintrÃ¤ge, unabhÃ¤ngig von der Seite.
+- Bei `status=unread` sind `full_count` und `unread_count` identisch.
+- Der Badge verwendet ausschlieÃŸlich `unread_count`.
+- Niemals `items.length` als FakeTotal.
 
-Response:
+### NotificationInboxItem
 
-```text
-{
-  updated_count: integer,
-  unread_count: integer,
-  source_hash: sha256,
-  scope_hash: sha256
-}
-```
+Nur fÃ¼r die Glocke nÃ¶tige Ã¶ffentliche Felder:
 
-`unread_count` ist der echte Zustand nach dem Command; er muss nicht zwingend
-null sein, falls inzwischen neue Notifications entstanden sind.
+- `id`
+- `notification_type`
+- `title`
+- `content`
+- `severity`
+- `entity_type|null`
+- `entity_id|null`
+- `created_at`
+- persÃ¶nlicher `read_at|null`
+- `actions.mark_read`.
 
-## Einzelne Notification als gelesen
+Keine versteckten Domainobjekte oder vollstÃ¤ndigen Entitypayloads.
 
-Der bestehende `POST /notifications/{id}/read` kann prinzipiell weiterverwendet
-werden, sollte aber serverseitig dieselben aktuellen Scope-/Dispatchregeln und
-die `communication`-Writeberechtigung erzwingen.
+## PersÃ¶nlicher Read-State
 
-Heute schützt primär die UI über `useWriteAccess('/notifications')`; der
-neue sichere Vertrag darf Mutationserlaubnis nicht nur dem Client überlassen.
+FÃ¼r die Inbox ist ein actor-gebundener Read-State nÃ¶tig, z. B. logisch:
 
-Nach erfolgreichem Einzel-Read:
+`(notification_id, user_id) -> read_at`
 
-- keine lokale `unreadCount--`-Schätzung,
-- Inboxseite/count frisch serverseitig laden.
+Die konkrete Persistenzform bleibt Backendownership, aber der Vertrag muss
+garantieren:
 
-## Geplante sichere Bell-Bedienung
+- Benutzer A liest â†’ Benutzer B bleibt unverÃ¤ndert
+- `unread_count` ist pro Actor
+- Mark-all ist pro Actor
+- LÃ¶schen/Archivieren des gemeinsamen Notification-Datensatzes ist davon
+  getrennt.
 
-### Renderbindung
+Der bestehende globale `Notification.status` darf nicht still als
+per-user Inboxzustand umgedeutet werden.
 
-NotificationBell erhält `useAuth()` und bildet einen Principal-Key aus:
+## Portfolio-/Grant-Scope
+
+Weil Notification kein `portfolio_id` besitzt, muss der Inboxservice die
+ScopezugehÃ¶rigkeit serverseitig Ã¼ber `entity_type/entity_id` auflÃ¶sen.
+
+Regeln:
+
+1. Operational-`target_role` bleibt eine notwendige Sichtbarkeitsbedingung.
+2. Bei portfoliofÃ¤higen Entitytypen wird die zugehÃ¶rige Portfolio-ID Ã¼ber die
+   Domainreferenz aufgelÃ¶st und gegen den **frischen** Actor-Scope geprÃ¼ft.
+3. Entity-spezifische Notification mit nicht sicher auflÃ¶sbarer Referenz wird
+   einem eingeschrÃ¤nkten Benutzer nicht angezeigt.
+4. Bewusst globale Notification ohne Entitybezug darf nach Rollenregel
+   sichtbar sein.
+5. Direkter Zugriff auf eine nicht sichtbare Notification liefert 404, nicht
+   Entity-/Scopeinformationen.
+
+Damit zÃ¤hlt `unread_count` nur nach **vollstÃ¤ndiger** Rollen- und
+PortfolioprÃ¼fung.
+
+## Cursor und Snapshot
+
+Stabile Reihenfolge:
+
+`created_at DESC, id DESC`.
+
+Der opake Cursor bindet mindestens:
 
 - User-ID
 - Rolle
-- Portfoliozugriff
-- Portfolio-IDs
-- Write-Permissions
+- `portfolio_access`
+- `portfolio_access_origin`
+- sortierte `portfolio_ids`
+- Inboxfilter
+- SeitengrÃ¶ÃŸe
+- `snapshot_token`.
 
-Bei einer abweichenden Renderbindung:
+Keine Offsetpagination und keine feste Gesamtbestandsgrenze.
 
-- Items sofort neutral,
-- Badge sofort neutral,
-- geöffnetes privates Dropdown schließen,
-- alte Requests aborten.
+Der Snapshot verhindert:
 
-Kein alter Actorname/Count darf bis zum Effect sichtbar bleiben.
+- Duplikate zwischen Seiten
+- SprÃ¼nge durch parallel neu eintreffende Notifications
+- Mark-all gegen eine andere Inbox als die gerade geprÃ¼fte.
 
-### Gleiche Session, serverseitiger Grantwechsel
+Bei geÃ¤nderten Grants oder ungÃ¼ltigem Snapshot:
 
-Weil heute kein globales Grant-Change-Event existiert, führt die Bell eine
-frische Inboxprüfung aus bei:
+- Cursor nicht still weiterverwenden
+- 409/422 mit neutraler Aufforderung â€žBenachrichtigungen neu ladenâ€œ
+- keine Altseite als aktuell ausgeben.
 
-- Mount,
-- Öffnen der Bell,
-- `window.focus`,
-- `visibilitychange` auf sichtbar,
-- bestehendem periodischem Intervall.
+## Einzelnes â€žgelesenâ€œ
 
-Eine solche autoritätssensitive Prüfung darf den alten privaten Count nicht als
-sicher aktuellen Wert weiteranzeigen.
+Bevorzugter additiver Command:
 
-Während der frischen Prüfung:
+`POST /notifications/inbox/{id}/read`
 
-- Badge nicht mit altem Wert darstellen;
-- bei geöffneter Bell neutralen „wird geprüft“-Zustand zeigen.
+Server:
 
-### Fehlerzustände
+- authentifiziert frisch
+- prÃ¼ft aktuelle Rollen-/Portfolio-Sichtbarkeit
+- schreibt nur persÃ¶nlichen Read-State
+- idempotent.
 
-#### 401/403/404
+Response mindestens:
 
-Sofort:
+```
+{
+  "item": NotificationInboxItem,
+  "unread_count": 136
+}
+```
 
-- Items löschen,
-- Badge löschen,
-- Dropdown schließen oder neutralen Zugriff-geändert-Zustand zeigen,
-- laufende alte Requests aborten.
+Alternativ kann die UI danach GET /inbox neu laden. Der Badge darf nicht lokal
+nur `-1` rechnen, wenn ParallelÃ¤nderungen mÃ¶glich sind.
 
-Keine Retryanzeige mit alten privaten Items.
+## â€žAlle als gelesenâ€œ
 
-#### Netzwerk / 5xx
+Die aktuelle Browser-Schleife Ã¼ber zehn sichtbare PATCHs muss entfallen.
 
-- alten Badge/Items **nicht** weiter als aktuell zeigen;
-- Zustand = „Benachrichtigungen derzeit nicht verfügbar“;
-- manuelle Retry-Aktion im Dropdown;
-- nicht als `0 ungelesen` darstellen.
+Vorgeschlagener Command:
 
-#### Abort
+`POST /notifications/inbox/mark-all-read`
 
-- kein Fehlertext;
-- alte Completion ignorieren;
-- neuer Request besitzt Generation/Ticket.
+Request:
 
-### Paging
+```
+{
+  "snapshot_token": "...",
+  "idempotency_key": "..."
+}
+```
 
-Bell lädt initial nur `page_size=10`, Badge kommt aus `unread_count`.
+Semantik:
 
-„Weitere laden“:
+- markiert alle ungelesenen, aktuell autorisierten EintrÃ¤ge des **geprÃ¼ften
+  Snapshots** fÃ¼r genau diesen Actor
+- keine spÃ¤ter eingetroffene Notification wird versehentlich mitmarkiert
+- Server revalidiert Scope/Role beim Command
+- Replay mit gleichem IdempotenzschlÃ¼ssel ist sicher.
 
-- verwendet `next_cursor + source_hash`,
-- ersetzt nicht den vollständigen Count,
-- speichert nur die tatsächlich geladenen bounded Seiten,
-- keine unbeschränkte Stockliste.
+Response:
 
-Optional kann der Dropdown bei kleinem Bell-Design nur Seite 1 darstellen; dann
-muss trotzdem der Badge aus `unread_count` kommen. Mark-all bleibt vollständig
-serverseitig.
+```
+{
+  "marked_count": 137,
+  "unread_count": 0,
+  "snapshot_token": "new-or-current"
+}
+```
 
-### Mark-all UI
+Falls nach dem Snapshot neue Notifications eingetroffen sind, darf
+`unread_count` entsprechend grÃ¶ÃŸer als 0 sein.
 
-Button nur wenn:
+## Sichere Frontend-Bindung
 
-- Inbox frisch und erfolgreich geladen,
-- `unread_count > 0`,
-- aktueller User serverseitig zur Communication-Mutation berechtigt.
+### Principal-Key
 
-Während Command:
+NotificationBell braucht eine eigene Renderbindung mindestens aus:
 
-- Button busy,
-- kein paralleler Mark-all.
+- `user.id`
+- `user.role`
+- `portfolio_access`
+- `portfolio_access_origin`
+- sortierten `portfolio_ids`
+- sortierten `write_permissions`.
 
-Unknown/Lost Reply:
+`useWriteAccess` allein reicht nicht, weil dessen Principal heute nur
+User-ID + Rolle enthÃ¤lt.
 
-- exakt derselbe `idempotency_key + expected_source_hash` erneut senden;
-- keine neue Hashannahme erzeugen.
+### Render-synchrone Neutralisierung
 
-409:
+State wird mit seinem Principal gespeichert.
 
-- Inbox neu laden,
-- Benutzer entscheidet erneut über Mark-all.
+Wenn Render-Principal != State-Principal:
 
-## Warum Dashboard nicht einfach kopiert wird
+- Badge sofort neutral
+- Dropdowninhalt sofort neutral
+- Dropdown schlieÃŸen
+- alter State nicht bis zum Effect weiter anzeigen.
 
-Dashboard ist die **Semantikreferenz**, aber die Bell soll nicht den kompletten
-Dashboard-Summary-Endpunkt pollen.
+Das entspricht den bereits etablierten privaten Workspacepatterns.
 
-Stattdessen:
+### Fresh-auth Publish-Gate
 
-- Scope-/Notification-Prädikate und Cursorbindung gemeinsam nutzen,
-- dedizierte kleine Inbox-Projektion für Bell-Count/Page,
-- keine zweite Rechte- oder Countlogik.
+Weil es kein globales Same-Actor-Grantchange-Event gibt:
 
-## Tests für ein späteres Implementierungspaket
+- Initial load, Dropdown-Open und Poll-Zyklus revalidieren zuerst
+  `GET /auth/me`.
+- Weichen frische Grants vom lokalen Principal ab:
+  - alte Inbox sofort verwerfen
+  - `AuthContext.updateUser(freshUser)`
+  - erst unter neuem Principal Inbox laden/verÃ¶ffentlichen.
+- Eine Inboxantwort darf nur verÃ¶ffentlicht werden, wenn die Bindung wÃ¤hrend
+  des Requests unverÃ¤ndert geblieben ist.
 
-Noch nicht ausgeführt, nur geplant:
+Dies ist lokales Glockenverhalten und erfordert keinen neuen globalen
+Dashboard-/App-Eventbus.
 
-### Backend
+## Abort und Polling
 
-- >10 sichtbare ungelesene Notifications: Seite 10, `unread_count` vollständig.
-- >eine Cursorseite: disjunkte IDs, stabiler Sort, kein Bestandscap.
-- Grantentzug zwischen Seite 1/2: alter Cursor 403/422/409 gemäß Vertrag, keine
-  Daten des alten Scopes.
-- Dispatch-Rollenfilter identisch zu Dashboard.
-- Portfolio-/entity-bound Notification verschwindet nach Grantentzug aus Count
-  und Seite.
-- ungebundene Notification folgt bestehender Resource-Grant-Semantik.
-- Mark-all bearbeitet >10 vollständig.
-- Mark-all mit altem Hash: 409, keine Teilwrites.
-- verlorene Mark-all-Antwort + Exact Retry: gleicher Receipt, keine späteren
-  Notifications zusätzlich markieren.
-- readonly / fehlende communication-Writeberechtigung: Mutation 403.
+Ein Controller pro aktiver Refreshgeneration:
 
-### Frontend
+- neuer Refresh abortet den vorherigen
+- Principalwechsel abortet
+- Unmount abortet
+- Poll cleanup entfernt Timer
+- Dropdown-Open kann sofort aktualisieren
+- optional `visibilitychange`/Window-Focus nur als gezielter Refresh, nicht
+  als zweiter paralleler Poller.
 
-- Badge 37 bei 10 geladenen Items.
-- Fetch 403 nach vorherigem Badge 10: Badge/Items sofort neutral.
-- Netzwerk/5xx: kein alter Badge als Erfolg.
-- Actor-/Principalwechsel: erster Render bereits neutral.
-- Requestabbruch verhindert Late Completion.
-- Focus/Visibility/Open triggert frische Autoritätsprüfung.
-- Mark-all ruft genau einen serverseitigen Command auf, keine 10er-Schleife.
-- Sourcehash-409 zeigt Reload statt lokaler Countkorrektur.
-- Tastatur: Bell, Items, Retry, Mark-all erreichbar; Escape schließt.
-- 320/360: Badge/Dropdown ohne horizontales Überlaufen.
+Keine Antwort einer alten Generation darf State verÃ¶ffentlichen.
 
-## Nicht Bestandteil dieser Analyse
+## Fehlerbedienung
 
-- keine Änderung an Root-Dashboardfamilie,
-- keine Änderung an NotificationBell,
-- keine Backendimplementation,
-- keine Migration für per-user Read-State,
-- keine Browser-/Build-/DB-/Recovery-Prüfung,
+### 401
+
+API-Client Ã¼bernimmt Sessioninvalidierung/Login.
+
+Bell:
+
+- private Inbox/Badge sofort neutral.
+
+### 403 / 404
+
+- private Inbox/Badge sofort vergessen
+- Dropdown schlieÃŸen oder neutralen â€žZugriff geÃ¤ndertâ€œ-Zustand zeigen
+- kein alter Count
+- keine alten Titel/Inhalte.
+
+### Netzwerk / 5xx
+
+Nicht als leer und nicht als letzter Erfolg darstellen.
+
+Sicherer Zustand:
+
+- Badgezahl ausblenden
+- private Liste nicht als aktuell rendern
+- neutraler Text â€žBenachrichtigungen konnten nicht aktualisiert werdenâ€œ
+- expliziter Retry.
+
+Kein Fake-`0`: Fehler ist ein eigener Zustand.
+
+## Bounded UI
+
+Die Glocke kann weiterhin zehn EintrÃ¤ge auf der ersten Seite zeigen.
+
+Aber:
+
+- Badge kommt vom exakten `unread_count`
+- `has_more/next_cursor` erlaubt â€žWeitere ladenâ€œ
+- Seiten bleiben bounded
+- keine 10er-Stockgrenze
+- â€žAlle gelesenâ€œ ist serverseitig vollstÃ¤ndig.
+
+## Tastatur/Fokus
+
+Beibehalten bzw. prÃ¤zisieren:
+
+- Glockenbutton `aria-expanded`
+- Escape schlieÃŸt und Fokus zurÃ¼ck auf Glockenbutton
+- Mark-read als echtes Button-/Menuitem-Verhalten statt klickbarem
+  `div role=listitem`, sofern die spÃ¤tere UI-Ã„nderung erfolgt
+- â€žAlle gelesenâ€œ, Retry und â€žWeitere ladenâ€œ tastaturerreichbar
+- kein Mark-read allein durch Fokus.
+
+## Vorgesehene kleine Tests nach Vertragsfreigabe
+
+Frontend:
+
+1. 17 ungelesene, Seite 10 â†’ Badge 17, nicht 10.
+2. 403 nach vorherigem Erfolg â†’ alter Badge/Inhalt im selben Render weg.
+3. Netzwerk/5xx â†’ Fehlerzustand, weder alter Erfolg noch Fake-0.
+4. Principal-/Grantwechsel â†’ render-synchron neutral, alter Request abortiert.
+5. frisches `/auth/me` mit neuem Portfolio-Scope â†’ alter State nicht
+   verÃ¶ffentlicht.
+6. Cursor Seite 1/2 ohne Duplikate.
+7. Mark-all verwendet genau einen Servercommand, keine sichtbare 10er-Schleife.
+8. Mark-all von Actor A verÃ¤ndert Actor B nicht.
+9. neue Notification nach Snapshot bleibt nach Mark-all ungelesen.
+10. Escape/Fokus/Keyboard.
+
+Backendvertrag:
+
+1. `unread_count` ist exact FullCount Ã¼ber >Seitenbudget.
+2. Cursor bindet Scope/Filter/Limit/Snapshot.
+3. Grantentzug macht alten Cursor ungÃ¼ltig.
+4. Entityportfolio wird vollstÃ¤ndig gescoped.
+5. nicht auflÃ¶sbare private Entitynotification leakt nicht.
+6. per-user Read-State ist isoliert.
+7. Mark-all verarbeitet >SeitengrÃ¶ÃŸe vollstÃ¤ndig und idempotent.
+
+## Nicht Teil dieses Vorcodepakets
+
+- keine Ã„nderung an `NotificationBell.jsx`
+- keine Ã„nderung an AuthContext/App/API/shared Hooks
+- keine Backend-/Schema-/RouterÃ¤nderung
+- keine Dashboard-Neuerfindung
+- kein Browser-/Build-/DB-/Recoverylauf
 - keine privaten Daten oder Secrets.
 
-## Empfohlene Aufteilung für Umsetzung
-
-1. Backend: gemeinsame Notification-Visibility-Hilfe aus Dashboard/Operational-
-   Schedule extrahieren und Inbox-/Mark-all-Vertrag implementieren.
-2. Frontend: Bell an Principal/Abort/Inbox-DTO binden.
-3. Root: Rechteentzug-B2 + >10-Badge + Mark-all + Errorzustände gemeinsam
-   browserprüfen.
-
-Ohne den serverseitigen vollständigen Count und atomischen Mark-all-Command ist
-ein reiner Bell-Frontendfix bewusst **nicht** als vollständig korrekt anzusehen.
+Der nÃ¤chste Implementierungsschritt sollte erst erfolgen, nachdem Root den
+serverseitigen Inbox-/Read-State-Vertrag festgelegt hat.
