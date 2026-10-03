@@ -94,3 +94,35 @@ Dieser konkrete separate Legacy-Grenzbefund wurde Root gemeldet.
 Erst nach tatsächlichem Backendfix/Gate und Rootslotfreigabe wird genau der
 fehlgeschlagene erste B2-Fall selektiert erneut ausgeführt. Die drei grünen
 Fälle werden ohne neue relevante Änderung nicht breit wiederholt.
+
+## Selektiver tatsächlicher Root-Nachlauf
+
+2026-10-03, eingefrorener Integrationsstand `599bfb0`, einschließlich echtem
+SQLite-Keysetfix `4f22733` sowie verschlüsselter Runtimefactory und dauerhaftem
+Launcher-Schlüsselbundle. Genau der vorher fehlgeschlagene erste Fall wurde
+erneut ausgeführt: **1 PASS, 15,6 Sekunden Fall / 17,4 Sekunden Playwright**,
+ein Worker, keine Wiederholungen oder Skips. Der Runner baute die Oberfläche,
+migrierte die eigene frische SQLiteinstallation tatsächlich bis k2, startete
+den echten Backendlauncher mit ausdrücklicher Erstinitialisierung und säte
+10.001 Einheiten. Seine eigenen Backendprozesse wurden im finally beendet und
+sein eigener temporärer Installationsordner nach Kopie des Logs entfernt.
+Es gab keinen harten äußeren Gesamtprozess-Timer; Metadatenschritt 10 Sekunden,
+Backendbereitschaft 90 Sekunden und Browserfall 120 Sekunden waren begrenzt.
+
+Vollständige Belegung, letzte echte Unit sowie **alle 13 eindeutigen IDs jeder
+der drei Hinweisfamilien** wurden mit unveränderten nativen Antwortcursoren
+erreicht. Keine alten Vollbestands-/Hinweislistenabfragen und kein Tenant-N+1.
+Die anschließend echten sechs unabhängigen Auswertungen, Tabellenbedienung,
+Tastaturseitenwechsel, Mobilbreiten und dunkle Ansicht wurden nun ebenfalls
+erreicht. Die anderen drei grünen Fälle wurden nicht breit wiederholt.
+
+Gesicherte Belege:
+`C:/Users/matth/Documents/Codex/2026-10-01/wi/artifacts/B2_DASHBOARD_UI/root-599bfb0/test-results`.
+Root hat drei neue vollständige Bilder tatsächlich angesehen:
+`B2-complete-work-320.png`, `B2-analysis-360.png` und
+`B2-analysis-dark-1440.png`. Ruhige Karten, lesbare Zeilen und getrennte
+Hinweisseiten; die mobile Auswertungstabelle scrollt in ihrem eigenen Bereich.
+Die alte Header-Badgebegrenzung auf 10 bleibt als separates bekanntes Problem
+offen. Diese Sichtung ist keine allgemeine Abnahme aller 18 neuen PNGs oder
+des gesamten Produkts. PostgreSQL-Keysetnachprüfung und gemeinsame Freigabe
+sind weiterhin separate offene Gates.
