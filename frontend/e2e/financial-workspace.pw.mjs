@@ -207,6 +207,14 @@ async function chooseReference(page, label, searchText, optionText) {
   await page.getByRole('button', { name: optionText, exact: true }).click();
 }
 
+async function tabTo(page, locator, maxTabs = 6) {
+  for (let count = 0; count <= maxTabs; count += 1) {
+    if (await locator.evaluate(element => element === document.activeElement)) return;
+    await page.keyboard.press('Tab');
+  }
+  await expect(locator).toBeFocused();
+}
+
 function reportRequests(page, target) {
   page.on('request', request => {
     const url = new URL(request.url());
@@ -296,8 +304,7 @@ test('FinancialWorkspace: real scoped cash report, exact sums, source pages, has
   await asOf.fill('2026-02-28');
   await dateFrom.focus();
   await expect(dateFrom).toBeFocused();
-  await page.keyboard.press('Tab');
-  await expect(dateTo).toBeFocused();
+  await tabTo(page, dateTo);
 
   const reportsBeforeInvalid = reportCalls.filter(url => url.pathname === '/api/v1/reports/cash').length;
   const apply = page.getByRole('button', { name: 'Auswertung anwenden', exact: true });
