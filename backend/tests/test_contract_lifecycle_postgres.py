@@ -64,7 +64,7 @@ def postgres(monkeypatch):
         config.set_main_option("sqlalchemy.url", scoped.render_as_string(hide_password=False).replace("%", "%%"))
         # Reset/privacy integrations inspect every retained journal, including
         # correspondence. Exercise the complete migrated application schema.
-        command.upgrade(config, "a2a2b3c4d5e6")
+        command.upgrade(config, "head")
         for model in (*LIFECYCLE_MODELS, *CORRESPONDENCE_MODELS):
             assert set(model.__table__.c.keys()) == {col["name"] for col in inspect(engine).get_columns(model.__tablename__)}
         db = Session(engine)
