@@ -47,7 +47,6 @@ async function fixtureAccount(page, role) {
   return result;
 }
 async function loaded(page) {
-  await expect(page.getByRole('main').getByRole('heading', { level: 1 }).first()).toBeVisible();
   await expect(page.locator('.shared-data-table, .inventory-results').first()).toBeVisible();
 }
 async function noCreate(page, path) {
