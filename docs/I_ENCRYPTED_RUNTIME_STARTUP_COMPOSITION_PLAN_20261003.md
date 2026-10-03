@@ -94,3 +94,13 @@ regressions for exact preserved bytes, conflicting aliases and duplicate aliases
 do not rerun unrelated app/browser cases because this changes no valid canonical
 configuration path. Broader .env syntax remains the existing simple KEY=VALUE
 launcher contract and is not expanded implicitly in this correction.
+
+A second review identified quote/whitespace loss for otherwise accepted external
+JWT values. Use one shared simple KEY=VALUE value decoder for launcher loading
+and both persistence comparisons. Remove only a matching quote pair; decode
+our JSON-quoted strings without stripping literal quote characters. Serialize
+strings containing quotes, backslashes, control characters or boundary spaces
+as one JSON-quoted value. Preserve ordinary safe existing spelling and files;
+do not expand ambient variables. Add actual loader/Settings roundtrips and one
+fresh two-process launcher check comparing only signer hashes. No secret values
+are emitted by its child report. NUL/CR/LF validation remains unchanged.
