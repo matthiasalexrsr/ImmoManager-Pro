@@ -43,12 +43,19 @@ def _schema(value: Any) -> dict[str, Any]:
     return JsonSchemaObserver().observe(value).report()
 
 
-def _request(operation: str, arguments: dict[str, Any]) -> dict[str, Any]:
+def _request(
+    operation: str,
+    arguments: dict[str, Any],
+    connection_key: str | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "operation": operation,
+        "arguments": json_snapshot(arguments),
+    }
+    if connection_key is not None:
+        payload["connection_key"] = connection_key
     return {
-        "payload": {
-            "operation": operation,
-            "arguments": json_snapshot(arguments),
-        },
+        "payload": payload,
         "privacy_policy": {
             "source": "teha_private_exchange",
             "credentials_in_request_artifact": False,
@@ -86,10 +93,18 @@ def history_exchange(
     detail: dict[str, Any],
     *,
     expected_operation: str | None = None,
+    expected_connection_key: str | None = None,
 ) -> dict[str, Any]:
     """Extract the already-verified encrypted terminal exchange from detail."""
     if not isinstance(detail, dict) or detail.get("integration_id") != INTEGRATION_ID:
         raise TehaReceiveError("history_not_teha")
+    payload = detail.get("payload")
+    if expected_connection_key is not None:
+        if (
+            not isinstance(payload, dict)
+            or payload.get("connection_key") != expected_connection_key
+        ):
+            raise TehaReceiveError("history_connection_mismatch")
     observations = detail.get("observations")
     if not isinstance(observations, list) or not observations:
         raise TehaReceiveError("history_evidence_invalid")
@@ -124,6 +139,7 @@ class JournaledTehaReader:
         transport: TehaTransport,
         history: SQLIntegrationHistoryStore,
         actor: HistoryActor,
+        connection_key: str,
     ):
         if not isinstance(transport, TehaTransport):
             raise TypeError("transport must be TehaTransport")
@@ -131,9 +147,18 @@ class JournaledTehaReader:
             raise TypeError("history must be SQLIntegrationHistoryStore")
         if not isinstance(actor, HistoryActor):
             raise TypeError("actor must be HistoryActor")
+        if (
+            not isinstance(connection_key, str)
+            or not connection_key
+            or len(connection_key) > 200
+            or connection_key != connection_key.strip()
+            or any(ord(char) < 32 for char in connection_key)
+        ):
+            raise ValueError("connection_key must be an opaque stable connection namespace")
         self.transport = transport
         self.history = history
         self.actor = actor
+        self.connection_key = connection_key
         self._usable = True
 
     def _poison(self) -> None:
@@ -198,7 +223,7 @@ class JournaledTehaReader:
     ) -> TehaReadReceipt[T]:
         if not self._usable:
             raise TehaReceiveError("reader_session_not_usable")
-        accepted = _request(operation, arguments)
+        accepted = _request(operation, arguments, self.connection_key)
         ticket = self.history.accept(
             INTEGRATION_ID,
             self.actor,

@@ -380,7 +380,7 @@ def test_journaled_read_preserves_complete_unknown_exchange_and_omits_credential
         "future_top_level": {"retained": True},
     }
     with transport_for(lambda request: httpx.Response(200, json=response)) as transport:
-        reader = JournaledTehaReader(transport, sqlite_history, ACTOR)
+        reader = JournaledTehaReader(transport, sqlite_history, ACTOR, "synthetic-connection")
         authentication = reader.authenticate("synthetic-user", PASSWORD)
         received = reader.list_property_periods()
 
@@ -414,7 +414,7 @@ def test_mid_read_network_error_is_uncertain_and_never_retried(sqlite_history):
 
     with transport_for(handler) as transport:
         transport.authenticate("synthetic-user", PASSWORD)
-        reader = JournaledTehaReader(transport, sqlite_history, ACTOR)
+        reader = JournaledTehaReader(transport, sqlite_history, ACTOR, "synthetic-connection")
         with pytest.raises(TehaError) as failure:
             reader.list_property_periods()
 
@@ -451,7 +451,7 @@ def test_success_is_not_returned_when_terminal_exchange_cannot_be_journaled(tmp_
         }
         transport = transport_for(lambda request: httpx.Response(200, json=response))
         transport.authenticate("synthetic-user", PASSWORD)
-        reader = JournaledTehaReader(transport, small, ACTOR)
+        reader = JournaledTehaReader(transport, small, ACTOR, "synthetic-connection")
 
         with pytest.raises(HistoryError, match="HISTORY_BUDGET_EXCEEDED"):
             reader.list_property_periods()
@@ -477,7 +477,7 @@ def test_document_read_history_keeps_unknown_envelope_but_not_base64_pdf(sqlite_
 
     with transport_for(handler) as transport:
         transport.authenticate("synthetic-user", PASSWORD)
-        reader = JournaledTehaReader(transport, sqlite_history, ACTOR)
+        reader = JournaledTehaReader(transport, sqlite_history, ACTOR, "synthetic-connection")
         received = reader.read_document("SYNTHETIC-LIEG-41", "opaque-ref-1")
 
     assert received.value.content == document_bytes
