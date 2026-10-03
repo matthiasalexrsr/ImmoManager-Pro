@@ -506,8 +506,11 @@ def test_linux_detached_descendant_does_not_hold_cleanup_open(tmp_path):
     assert time.monotonic() - started < 3
     assert ready.exists() and not completed.exists()
     status = Path("/proc") / ready.read_text() / "stat"
-    if status.exists():
-        assert status.read_text().rsplit(")", 1)[1].split()[0] == "Z"  # terminated, awaiting init's reap
+    try:
+        state = status.read_text().rsplit(")", 1)[1].split()[0]
+    except (FileNotFoundError, ProcessLookupError):
+        state = None  # already reaped after termination
+    assert state in {None, "Z"}
 
 
 def test_billing_ocr_review_returns_draft_without_persisting_cost(monkeypatch):
