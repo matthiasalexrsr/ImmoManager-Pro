@@ -406,3 +406,88 @@ that later work is implemented and measured.
 
 No native/browser/visual process was started for this plan. Source/renderer
 product acceptance and this unimplemented archive/jobs proposal remain distinct.
+
+## Assigned pure future-context packet: interfaces before code
+
+Root accepted the architecture and assigned only these new own sources:
+
+- `backend/services/billing_statement_document_contexts.py`: strict
+  PostalIdentity/ReviewedIssuer/StatementDocumentContext/StatementDocumentContexts,
+  pure capture/correction and complete-family snapshot validation;
+- `backend/services/utility_statement_archive_source.py`: strict archive-source
+  wrapper/completeness and pure binding to unchanged FinancialSource-v1;
+- `backend/tests/test_billing_statement_document_contexts.py`: synthetic pure
+  positive/negative family/correction/import regression, no operative fixture.
+
+Exact proposed exported helper signatures:
+
+```python
+document_context_family(period) -> StatementDocumentContexts | None
+capture_document_contexts(period, statements, *, parents, reviewed_issuers,
+                          actor_id, captured_at, verified_period_hashes=None,
+                          statements_for_period=None) -> dict
+validate_period_document_contexts(period, statements, *, parents,
+                                 verified_period_hashes=None,
+                                 statements_for_period=None) -> None
+validate_document_context_snapshot(*, parents) -> None
+build_archive_source(financial_source, document_context) -> UtilityStatementArchiveSource
+validate_archive_source(value) -> UtilityStatementArchiveSource
+require_complete_archive_source(value) -> UtilityStatementArchiveSource
+```
+
+Capture returns a NEW owner JSON copy containing the context family; it performs
+no write/finalize/authorization. It accepts only actual draft/review periods and
+matching unhashed draft/review Statements, no existing context family. Root
+first supplies its newly captured existing Party-v1 family in that draft owner
+JSON, then calls capture, then hashes/finalizes all originals atomically. Actual
+referenced parents are supplied by Root's locked snapshot, with identity/location
+checks in the helper. Never call it on a finalized old period to fill omissions.
+
+`reviewed_issuers` is an internal mapping by actual Statement ID, containing
+strict explicit issuer name/postal identity, role landlord/representative,
+optional independently named landlord, and strict true confirmation. Unknown
+Statement keys or unconfirmed values fail. Absent review means issuer=None and
+explicit incompleteness, not a fallback to Portfolio or prior issuer. A provided
+review needs the actual nonempty captured actor; Root authenticates the human
+review and supplies server capture time, never a client historical timestamp.
+Postal completeness for this first product profile means nonempty name/street/
+postal-code/city, rental street/postal-code/city/unit designation and contract
+number, and the existing frozen recipient postal fields. Country/floor/property
+display name remain explicitly optional. Representative issuer additionally
+needs the named landlord postal identity; no authority/signature is inferred.
+
+Each context records exact parents/period dates/revision, Party-v1 digest,
+object/contract designation, explicit issuer or null, capture actor/time, source
+Statement/snapshot/context digest and object-binding mode. Initial capture reads
+current supplied object/contract parents. Correction proves the complete prior
+actual source period/family; copies only its object/designation, including missing
+values, or uses historical_object_unproved/null when context is absent. Current
+renamed/addressed object cannot fill any correction gap. Issuer belongs only to
+the explicit review of the new finalization. Entries contain no mutable success
+or completeness flag that could legalize missing fields.
+
+The validator composes existing pure parties, exact unchanged settlement hashes
+and recursive actual prior contexts, checks all coverage and source relations,
+and rejects cycles, duplicate/missing/foreign entries or recomputed digest with
+wrong source/object. Default pure snapshots derive hashes from complete supplied
+rows. `verified_period_hashes` and `statements_for_period` are INTERNAL Root-native
+hooks only: the former holds actual streamed complete-period SHA results, the
+latter supplies actual rows for targeted source periods. They are never HTTP/
+JSON request fields. Native paths consume period iterables once without global
+RAM history; a missing explicit native hash is an error. Parent maps may be
+targeted/lazy. Root's verifier owns coherent DB snapshot and actual cache origin.
+
+ArchiveSource schema remains `utility-statement-archive-source/1`; fields are
+exact FinancialSource-v1, optional selected context, context digest, explicit
+missing-fields tuple/list, derived completeness and archive-source digest. Pure
+model validation proves exact selected Statement/parents/dates/party binding,
+context digest and financial source digest. It is no substitute for actual
+native whole-family/source proof. A missing context is valid explicit unproved
+state; `require_complete_archive_source` alone refuses complete publication.
+Root leaves incomplete financial finalization allowed without changing existing
+finalize request requirements. Actual Finalize/Guard/Recovery/Archive/Privacy/
+HTTP/UI/shared code and migrations stay outside this own packet.
+
+Heavy/native tests wait for the Root Finance/B1 slot. Static checks may run while
+other agents own the native slot; results are recorded separately from later
+actual operative finalization/native integration proof, which Root owns.
