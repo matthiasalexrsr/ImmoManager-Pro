@@ -22,7 +22,12 @@ test('History: native 10002 complete export, reached rows, mobile detail and act
   await expect(view.getByText(box.long_value.trim(), { exact: true })).toBeVisible();
   for (const width of [1440, 360, 320]) {
     await page.setViewportSize({ width, height: 1000 });
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+    const layout = await page.evaluate(() => ({ width: innerWidth, document: document.documentElement.scrollWidth,
+      contentMargin: getComputedStyle(document.querySelector('.main-content')).marginLeft,
+      history: document.querySelector('.history-inventory').getBoundingClientRect().toJSON(),
+      table: document.querySelector('.history-inventory table').getBoundingClientRect().toJSON() }));
+    await writeFile(testInfo.outputPath(`history-layout-${width}.json`), JSON.stringify(layout, null, 2));
+    expect(layout.document <= layout.width + 1).toBe(true);
     await page.screenshot({ path: testInfo.outputPath(`history-${width}.png`), fullPage: true });
   }
   await page.setViewportSize({ width: 1440, height: 1000 });
