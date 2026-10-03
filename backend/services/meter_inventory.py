@@ -142,18 +142,20 @@ def _matches(column, search):
     return bytewise_id(UnicodeCasefold(column)).like(f"%{term}%", escape="\\")
 
 
-def statement(query, scope):
+def statement(query, scope, *, latest=True):
     meters, units, properties, readings = (model.__table__ for model in
         (MeterORM, UnitORM, PropertyORM, StandaloneMeterReadingORM))
     # A reading has exactly one scope parent, this authorized meter. LIMIT 1
     # picks a stable day/ID winner without ranking/materializing all histories.
     latest_id = select(readings.c.id).where(readings.c.meter_id == meters.c.id).order_by(
         readings.c.reading_date.desc(), bytewise_id(readings.c.id).desc()).limit(1).correlate(meters).scalar_subquery()
+    columns = (readings.c.id.label("last_reading_id"), readings.c.reading_date.label("last_reading_date"),
+               readings.c.value.label("last_reading_value")) if latest else ()
     result = select(meters, units.c.property_id, properties.c.name.label("property_name"), units.c.label.label("unit_label"),
-        readings.c.id.label("last_reading_id"), readings.c.reading_date.label("last_reading_date"),
-        readings.c.value.label("last_reading_value")).select_from(meters).join(units, and_(units.c.id == meters.c.unit_id, _visible(units, scope))).join(
-        properties, and_(properties.c.id == units.c.property_id, _visible(properties, scope))).outerjoin(
-        readings, readings.c.id == latest_id).where(_visible(meters, scope))
+                    *columns).select_from(meters).join(units, and_(units.c.id == meters.c.unit_id, _visible(units, scope))).join(
+        properties, and_(properties.c.id == units.c.property_id, _visible(properties, scope))).where(_visible(meters, scope))
+    if latest:
+        result = result.outerjoin(readings, readings.c.id == latest_id)
     for key in ("unit_id", "meter_type", "measurement_unit", "supplier", "is_active"):
         if getattr(query, key) is not None:
             result = result.where(meters.c[key] == getattr(query, key))
@@ -163,7 +165,8 @@ def statement(query, scope):
                              (query.inspection_to, meters.c.next_inspection.__le__)):
         if bound is not None:
             result = result.where(operation(bound))
-    conditions = {"no_reading": readings.c.id.is_(None),
+    conditions = {"no_reading": readings.c.id.is_(None) if latest else ~select(1).select_from(readings).where(
+                     readings.c.meter_id == meters.c.id).correlate(meters).exists(),
                   "unknown_unit": or_(meters.c.measurement_unit.is_(None), func.trim(meters.c.measurement_unit) == ""),
                   "overdue": meters.c.next_inspection < query.as_of,
                   "due_soon": and_(meters.c.next_inspection >= query.as_of,
@@ -189,6 +192,20 @@ def ordered(base, query, after, limit):
             sort.is_(None), sort < value if descending else sort > value, and_(sort == value, id_after)))
     return result.order_by(sort.desc().nulls_last() if descending else sort.asc().nulls_last(),
                            identifier.desc() if descending else identifier.asc()).limit(limit)
+
+
+def page_statement(query, scope, after, limit):
+    if query.sort_by in {"last_reading_date", "last_reading_value"}:
+        return ordered(statement(query, scope), query, after, limit)
+    # Select the visible meter packet first. The latest-reading join then probes
+    # only that bounded packet, even if sorting meter names needs a stock scan.
+    visible = ordered(statement(query, scope, latest=False), query, after, limit).subquery()
+    readings = StandaloneMeterReadingORM.__table__
+    latest_id = select(readings.c.id).where(readings.c.meter_id == visible.c.id).order_by(
+        readings.c.reading_date.desc(), bytewise_id(readings.c.id).desc()).limit(1).correlate(visible).scalar_subquery()
+    enriched = select(visible, readings.c.id.label("last_reading_id"), readings.c.reading_date.label("last_reading_date"),
+                      readings.c.value.label("last_reading_value")).select_from(visible).outerjoin(readings, readings.c.id == latest_id)
+    return ordered(enriched, query, None, limit)
 
 
 def memory_rows(store, query, scope, *, meter_id=None):
@@ -268,7 +285,7 @@ def meter_inventory_page(store, query: MeterInventoryQuery):
     refresh_scope(scope)
     after = position(query, scope)
     with _read_context(store, query):
-        selected = ([dict(row) for row in store.db.execute(ordered(statement(query, scope), query, after, query.page_size + 1)).mappings()]
+        selected = ([dict(row) for row in store.db.execute(page_statement(query, scope, after, query.page_size + 1)).mappings()]
                     if hasattr(store, "db") else memory_page(store, query, scope, after, query.page_size + 1))
     refresh_scope(scope)
     page = _page(selected, query, scope)
