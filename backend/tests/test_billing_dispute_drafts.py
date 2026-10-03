@@ -2,8 +2,14 @@
 
 import json
 from copy import deepcopy
+from datetime import datetime, timedelta, timezone
+
+import pytest
+from sqlalchemy import update
 
 from backend import auth
+from backend.db.form_draft_models import FormDraftORM
+from backend.services import form_draft_crypto
 from backend.services.portfolio_scope import scope_context
 from backend.tests.form_draft_api_support import ENDPOINT
 from backend.tests.test_billing_disputes import (
@@ -58,6 +64,20 @@ def reviewed(context, command, case_id=""):
     return {**review["request"], "preview_hash": review["preview_hash"]}, review
 
 
+def expire(context, *, corrupt=False):
+    active = context["active"]
+    expired = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=1)
+    updates = {"expires_at": expired}
+    if corrupt:
+        updates["payload"] = "synthetic-unreadable-ciphertext"
+    if active.engine is not None:
+        with active.engine.begin() as connection:
+            connection.execute(update(FormDraftORM).values(**updates))
+    else:
+        for row in active.store.__dict__["_form_drafts"].values():
+            row.update(updates)
+
+
 def test_incomplete_scalar_envelope_encrypts_without_creating_case(context):
     statement = finalized(context)
     command = opening(context, statement, reason="", received_on="", statement_id=None,
@@ -105,6 +125,13 @@ def test_exact_pending_open_and_old_event_preview_restore_after_real_success(con
     assert json.loads(restored["values"]["command_json"])["expected_revision"] == 1
     assert context["active"].client.post(path, headers=context["headers"], json=event_command).json() == event_receipt
     assert "Private synthetic" not in "".join(row["payload"] for row in context["active"].snapshot())
+    expire(context)
+    retained = restore(context, event_body)
+    assert retained["submission_pending"] and retained["expiry_deferred"]
+    assert retained["values"] == event_body["values"] and retained["revision"] == restored["revision"]
+    assert context["active"].client.post(path, headers=context["headers"], json=event_command).json() == event_receipt
+    # A new create without the retained CAS cannot replace an uncertain command.
+    save(context, event_body, expected=409)
 
 
 def test_tab_cas_current_grants_and_owner_discard_keep_private_envelope(context):
@@ -187,3 +214,50 @@ def test_original_event_and_actual_correction_lineage_are_checked_even_before_re
     save(context, envelope(context, command, case_id=receipt["case_id"], revision=saved["revision"]), expected=404)
     # Only the explicitly confirmed opening exists. Draft checks never append.
     assert client.get(BASE + f"/{receipt['case_id']}", headers=headers).json()["revision"] == 1
+
+
+@pytest.mark.parametrize("revoke", ["all_portfolios", "readonly"])
+def test_only_fresh_owner_may_discard_after_complete_write_grant_revocation(context, revoke):
+    statement = finalized(context)
+    active = context["active"]
+    headers = active.headers(active.member)
+    body = envelope(context, opening(context, statement), owner=active.member)
+    first = save(context, body, headers=headers)
+    body["expected_revision"] = first["revision"]
+    latest = save(context, body, headers=headers)
+    updates = {"portfolio_access": "selected", "portfolio_ids": []} if revoke == "all_portfolios" else {"role": "readonly"}
+    with scope_context(None):
+        auth.update_user(active.member.id, updates, actor_id=active.owner.id)
+    restore(context, body, headers=headers, expected=403)
+    save(context, body, headers=headers, expected=403)
+    path_query = {**query(body), "expected_revision": latest["revision"]}
+    foreign = active.client.delete(ENDPOINT, headers=context["headers"], params=path_query)
+    assert foreign.status_code == 403 and len(active.snapshot()) == 1, foreign.text
+    stale = active.client.delete(ENDPOINT, headers=headers, params={**query(body), "expected_revision": first["revision"]})
+    assert stale.status_code == 409 and len(active.snapshot()) == 1, stale.text
+    result = active.client.delete(ENDPOINT, headers=headers, params=path_query)
+    assert result.status_code == 200 and result.json() == {"discarded": True}, result.text
+    assert active.snapshot() == []
+
+
+def test_damaged_expired_ciphertext_is_retained_and_owner_discard_needs_no_old_key(context, monkeypatch):
+    statement = finalized(context)
+    active = context["active"]
+    body = envelope(context, opening(context, statement))
+    first = save(context, body)
+    body["expected_revision"] = first["revision"]
+    latest = save(context, body)
+    expire(context, corrupt=True)
+    before = active.snapshot()
+    restore(context, body, expected=503)
+    assert active.snapshot() == before
+    stale = active.client.delete(ENDPOINT, headers=context["headers"],
+        params={**query(body), "expected_revision": first["revision"]})
+    assert stale.status_code == 409 and active.snapshot() == before
+    def no_key(*args, **kwargs):
+        raise AssertionError("Owner-only discard reached old private decryption")
+    monkeypatch.setattr(form_draft_crypto, "decrypt", no_key)
+    result = active.client.delete(ENDPOINT, headers=context["headers"],
+        params={**query(body), "expected_revision": latest["revision"]})
+    assert result.status_code == 200 and result.json() == {"discarded": True}, result.text
+    assert active.snapshot() == []

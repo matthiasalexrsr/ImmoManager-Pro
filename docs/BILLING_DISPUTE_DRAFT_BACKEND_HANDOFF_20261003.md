@@ -44,6 +44,11 @@ replacement while the account retains a write role and another portfolio.
 The extra case of complete grant removal/readonly discard is not proved by
 this source packet and is recorded for a separate focused core correction.
 
+Follow-up: `PRIVATE_DRAFT_OWNER_EXPIRY_ACCEPTANCE_20261003.md` records the
+separate actually executed complete grant/readonly discard and deferred pending
+expiry correction. The preceding five-family results belong to the original
+special-policy source, not a retroactive claim of those new cases.
+
 ## Actual executed gates
 
 `backend/tests/test_billing_dispute_drafts.py`, each profile selected separately:
