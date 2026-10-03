@@ -43,6 +43,10 @@ class AppBoundary:
                 result = {"load": error.code}
             if os.environ.get("REPORT_SIGNING_KEY_DIGEST") == "yes":
                 result["signer_sha256"] = hashlib.sha256(settings.jwt_secret_key.encode()).hexdigest()
+                from argparse import Namespace
+                from backend.recovery import _plan
+                selected = _plan(Namespace(data_dir=Path(settings.data_dir), database=None, uploads=None, integrations=None))
+                result["backup_signer_sha256"] = hashlib.sha256(selected.configuration['JWT_SECRET_KEY'].encode()).hexdigest()
             print("APP_BOUNDARY " + json.dumps(result))
             raise SystemExit(73)
 sys.meta_path.insert(0, AppBoundary())
@@ -152,13 +156,15 @@ def test_wrong_key_explicit_initialization_refuses_before_actual_app_without_rep
 
 def test_actual_restart_keeps_signer_with_spaces_quotes_and_backslashes(tmp_path):
     directory = tmp_path / "quoted-signer"
-    signer = " synthetic-signer\\path-'quoted'\" "
+    signer = " synthetic-signer\\path-'quoted'\" #literal\v "
     expected = hashlib.sha256(signer.encode()).hexdigest()
     first = boundary(launch(directory, initialize=True, signer=signer))
     assert first["load"] == "authenticated" and first["signer_sha256"] == expected
+    assert first["backup_signer_sha256"] == expected
     original = (directory / ".env").read_bytes()
     second = boundary(launch(directory, signer=signer, without_external_keys=True))
     assert second["load"] == "authenticated" and second["signer_sha256"] == expected
+    assert second["backup_signer_sha256"] == expected
     assert (directory / ".env").read_bytes() == original
 
 

@@ -160,8 +160,12 @@ def test_normal_default_refuses_mixed_case_duplicate_before_using_key(tmp_path, 
 
 
 @pytest.mark.parametrize("value", ["synthetic-signer-ending'", '"synthetic-signer"',
-    " leading and trailing signer ", r"synthetic\\signer\path", "synthetic-signer-é\tquoted'"])
+    " leading and trailing signer ", r"synthetic\\signer\path", "synthetic-signer-é\tquoted'",
+    "synthetic # signer", "synthetic\v\f\a\bcontrol", "synthetic\x1c\x85\u2028\u2029separator",
+    "synthetic-${NEVER_EXPAND}"])
 def test_selected_bundle_actual_loader_and_settings_roundtrip(tmp_path, monkeypatch, value):
+    from dotenv import dotenv_values
+
     from backend.__main__ import _load_env_file
     from backend.settings import Settings
 
@@ -171,9 +175,22 @@ def test_selected_bundle_actual_loader_and_settings_roundtrip(tmp_path, monkeypa
     target = tmp_path / ".env"
     persist_selected_values(target, {"JWT_SECRET_KEY": value})
     original = target.read_bytes()
+    assert dotenv_values(target, interpolate=False)["JWT_SECRET_KEY"] == value
     _load_env_file(target)
     assert os.environ["JWT_SECRET_KEY"] == value
     assert Settings(_env_file=None).jwt_secret_key == value
     persist_selected_values(target, {"JWT_SECRET_KEY": value})
     assert target.read_bytes() == original
     monkeypatch.delenv("JWT_SECRET_KEY")
+
+
+@pytest.mark.parametrize("quoted", ['"C:\\new\\temp"', "'C:\\new\\temp'"])
+def test_legacy_simply_quoted_windows_paths_remain_literal(tmp_path, monkeypatch, quoted):
+    from backend.__main__ import _load_env_file
+
+    monkeypatch.delenv("DATA_DIR", raising=False)
+    target = tmp_path / ".env"
+    target.write_text("DATA_DIR=" + quoted + "\n", encoding="utf-8")
+    _load_env_file(target)
+    assert os.environ["DATA_DIR"] == r"C:\new\temp"
+    monkeypatch.delenv("DATA_DIR")

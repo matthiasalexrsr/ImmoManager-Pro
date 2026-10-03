@@ -4,7 +4,7 @@ This module deliberately imports no application settings during launcher setup.
 """
 import errno
 import importlib
-import json
+import io
 import os
 import re
 import stat
@@ -17,6 +17,7 @@ from uuid import uuid4
 
 _guard = threading.Lock()
 _locks: dict[str, Any] = {}
+_VALUE_MARKER = " # immomanager-runtime-value:v1"
 
 
 class RuntimeConfigurationError(RuntimeError):
@@ -24,24 +25,25 @@ class RuntimeConfigurationError(RuntimeError):
 
 
 def runtime_value(raw):
-    """Decode our simple env value without dropping literal boundary quotes."""
+    """Decode marked dotenv values; retain literal legacy simply quoted paths."""
     value = raw.strip()
-    if len(value) >= 2 and value[0] == value[-1] == '"':
-        try:
-            decoded = json.loads(value)
-            if isinstance(decoded, str):
-                return decoded
-        except ValueError:
-            pass  # Existing simply quoted paths need not be JSON strings.
-        return value[1:-1]
-    if len(value) >= 2 and value[0] == value[-1] == "'":
+    if value.endswith(_VALUE_MARKER):
+        from dotenv import dotenv_values
+
+        decoded = dotenv_values(stream=io.StringIO("VALUE=" + value), interpolate=False).get("VALUE")
+        if not isinstance(decoded, str):
+            raise RuntimeConfigurationError("Ungültige kodierte Runtime-Konfiguration.")
+        return decoded
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
         return value[1:-1]
     return value
 
 
 def _serialized_value(value):
-    if value != value.strip() or any(char in value for char in "'\"\\") or any(ord(char) < 32 for char in value):
-        return json.dumps(value, ensure_ascii=False)
+    if value != value.strip() or any(char in value for char in "'\"\\#$") or any(ord(char) < 32 for char in value):
+        escapes = {"\\": "\\\\", '"': '\\"', "\a": "\\a", "\b": "\\b", "\f": "\\f",
+                   "\n": "\\n", "\r": "\\r", "\t": "\\t", "\v": "\\v"}
+        return '"' + "".join(escapes.get(char, char) for char in value) + '"' + _VALUE_MARKER
     return value
 
 
@@ -109,7 +111,7 @@ def persist_default(config_file, key, proposed, *, persist_existing=False):
             info = _regular(path, missing_ok=True)
             existing = path.read_text(encoding="utf-8") if info else ""
             matches = [runtime_value(line.partition("=")[2])
-                       for line in existing.splitlines() if line.partition("=")[0].strip().upper() == key]
+                       for line in existing.split("\n") if line.partition("=")[0].strip().upper() == key]
             if len(matches) > 1:
                 raise RuntimeConfigurationError("Doppelte Runtime-Schlüssel. Konfigurationsdatei lokal bereinigen.")
             if matches and matches[0] == proposed:
@@ -118,7 +120,7 @@ def persist_default(config_file, key, proposed, *, persist_existing=False):
             if matches and matches[0] and matches[0] != "dev-secret-key-change-in-production" and (not persist_existing or not current):
                 os.environ[key] = matches[0]
                 return matches[0]
-            lines = [line for line in existing.splitlines() if line.partition("=")[0].strip().upper() != key]
+            lines = [line for line in existing.split("\n") if line.partition("=")[0].strip().upper() != key]
             lines.append(key + "=" + _serialized_value(proposed))
             # The exclusive file has a verified private ACL before secret bytes.
             from scripts.private_server_backup import protected_new_file
@@ -154,7 +156,7 @@ def persist_selected_values(config_file, values):
         with _locked(path):
             info = _regular(path, missing_ok=True)
             existing = path.read_text(encoding="utf-8") if info else ""
-            lines = existing.splitlines()
+            lines = existing.split("\n")
             missing = []
             # Prove the whole bundle before creating a temporary secret file.
             for key, value in values.items():
