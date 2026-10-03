@@ -1,130 +1,52 @@
-# TEHA transactional mapping/import commands – handoff 2026-10-03
+# TEHA transactional command source – historical handoff 2026-10-03
 
-Worktree: `work/teha-receive-domain`, branch `assist/teha-receive-domain`.
+This document records the development predecessor at `150aa66`, following
+`8015fe5`, `45824f6` and `503854a`. Its release and authority claims are
+superseded by `TEHA_RELEASE_LAYOUT_CORRECTION_HANDOFF_20261004.md`.
 
-This handoff belongs to the follow-up source package after:
+L2 was never delivered in Root/live126. The final initial release includes the
+receipt's non-null mapping ID/digest/FK. Earlier isolated source/database layouts
+are not schema-identical and are never silently repaired; follow
+`TEHA_L2_MAINTENANCE_20261004.md`.
 
-- `8c85fb4` – DDL-free TEHA receive domain
-- `2ce5e86` – L2 mapping/import-receipt persistence
-- `3be51c7` – transactional mapping/import plan
-- `8015fe5` / `45824f6` – receipt/mapping evidence tightening
-- `503854a` – connection namespace bound into journaled TEHA reads
+## Authority correction
 
-## Scope of this follow-up
+The predecessor proposed a dynamically imported actor-only `CommitAuthority`
+and validator. That contract cannot prove the actual Session, transaction,
+database target, operation or resource targets. It has been removed. Root has
+not supplied an actual TEHA write unit, and this package invents no replacement
+generic type. Every public mapping/document/task write and `_work(write=True)`
+returns 503 `teha_write_unit_unavailable` before business access, even if an
+actor-only fake module is installed. Notification capabilities do not unlock it.
 
-The prepared transactional source now has local command implementations for:
+Management serialization, request-token checks and fresh scope/role checks
+remain supplemental fences. Prepared SQL/atomicity code behind the write gate
+does not constitute a positive commit guarantee or runtime acceptance.
 
-- append-only mapping confirmation with History/source hash + opaque identity verification,
-  mapping generation CAS and current local target/portfolio checks;
-- local import preview with mapping generation and target revision binding;
-- local PDF import into the existing Document + DocumentVersion original family;
-- local technical-order import as an existing open Task plus immutable L2 receipt;
-- replay/conflict checks bound to actor, idempotency key, source/content hashes,
-  mapping generation and current local target state;
-- download verification through the existing immutable DocumentVersion bytes.
+## Source and activation
 
-No second queue, history, document store, finance booking or provider-write path was added.
-Raw/unknown TEHA fields remain in the encrypted IntegrationHistory artifact only.
-Relational L2 identity values remain limited to the allow-listed opaque identity components.
+Prepared source covers mapping confirmation, local preview, document/task
+import, exact immutable receipt replay and DocumentVersion download. Source
+History binds a stable opaque connection namespace and hashes the complete
+sanitized source; original bytes remain in the existing document chunk family.
+No provider write or finance mutation is present.
 
-## Mandatory Root CommitAuthority boundary
+The router defines local endpoints with `WorkflowAuthorityRoute`; it is not
+registered by this checkout's central routing. These are dormant route/source
+changes. Root retains ownership of registration, actual unit integration,
+Recovery/retention, Startup, Settings and any future job adapter.
 
-The earlier addendum wording has been corrected.
+## Historical test observations
 
-Management serialization, `require_fresh_request_authority`, fresh user/role checks,
-and a final SID/permission recheck are **supplemental fences only**. They are not called
-a commit guarantee.
+The predecessor reported seven passing tests from
+`backend/tests/test_teha_transaction_boundaries_pure.py`. That file imported the
+runtime service and thereby Auth/config/Settings. Even `--noconftest` could not
+make those imports no-runtime. The observed PASS was not a no-runtime proof.
+Its positive actor-only assertion and the unexecuted synthetic positive command
+suite have been removed. Their source remains in Git history for review.
 
-Every mapping/import write enters `_work(..., write=True)`. Before a Session bind,
-writer acquisition or any DML, it requires the exact Root-owned contract:
-
-- module: `backend.services.commit_authority`
-- type: `CommitAuthority`
-- validator: `validate_commit_authority(authority, actor_id)`
-- valid result contract: validator returns `None`; denial raises its own typed error
-
-The implementation accepts only that exact type and exact validator function. Bool,
-lambda, duck-typed objects and a truthy validator return are rejected.
-
-**Current HTTP write routes deliberately pass no authority.** Therefore until Root
-implements and injects the actual CommitAuthority, these operations fail with HTTP 503
-before DB/session/writer/DML:
-
-- `PUT /integrations/teha/mappings/{kind}/{external_key}`
-- `POST /integrations/teha/imports/document`
-- `POST /integrations/teha/imports/technical-order`
-
-Read-only source/preview functionality does not require commit authority.
-
-The authority is checked a second time immediately before the outer commit after the
-fresh scope/user/request-authority checks. That second validation supplements rather
-than replaces the first pre-DML gate.
-
-## Journal/source namespace
-
-`JournaledTehaReader` now requires a stable opaque `connection_key`; accepted
-history artifacts include it. `history_exchange(..., expected_connection_key=...)`
-fails closed when source/content evidence belongs to another encrypted connection
-namespace. This prevents same-looking provider IDs from being mixed across separate
-TEHA connections.
-
-## Router contract
-
-`backend/routers/teha.py` adds the local endpoints listed above plus:
-
-- `POST /integrations/teha/imports/preview`
-- `GET /integrations/teha/imports/{receipt_id}/document`
-
-The router continues using `WorkflowAuthorityRoute` and the installation-admin
-boundary. It performs no provider write. Document upload bytes are bounded by the
-existing `max_upload_size_bytes`.
-
-## Source-only gates run in this finalization round
-
-Per Root instruction, no application server, DB, PostgreSQL, browser or portal process
-was started in this round.
-
-Executed pure/static gates only:
-
-1. `pytest backend/tests/test_teha_transaction_boundaries_pure.py -q -rs --tb=short`
-   -> **7 passed**.
-
-   Includes the new proof that a write `_work` without Root CommitAuthority returns
-   HTTP 503 before `store.db.get_bind()`, before the request-authority fallback and
-   before the write body can execute.
-
-2. Connection-namespace source checks:
-   - Ruff on `teha_journal_reader.py` + its prepared tests: **passed**.
-   - Mypy `teha_journal_reader.py`: **no issues**.
-   - `py_compile`: **passed**.
-   - `git diff --check`: **passed**.
-
-3. Transactional source checks:
-   - Ruff on command/router/pure/prepared transactional test files: **passed**.
-   - Mypy on `teha_receive_commands.py` and `routers/teha.py`: **no issues**.
-   - `py_compile`: **passed**.
-   - `git diff --check`: **passed**.
-
-The prepared DB/atomicity suite `backend/tests/test_teha_transactional_commands.py`
-is committed as reviewable test source but was **not executed in this round** because
-Root explicitly requested no App/DB/PG processes. Root owns the independent composed
-runtime/DB/PG acceptance.
-
-## Exact remaining Root integration
-
-1. Provide the real typed `backend.services.commit_authority` contract and inject a
-   valid authority into the three write commands. Until then writes remain intentionally
-   unavailable with 503.
-2. Keep Root's existing central registration/recovery/startup/settings/connection-store
-   ownership for the L2 family; this package does not duplicate those files.
-3. If resumable OperationalJobs integration is desired, add only the previously proposed
-   `teha_receive` family adapter (`upper/discover/apply`) in the shared job core after
-   central review. No shared job-core edit is present here.
-4. Run the committed transactional DB suite on the fully composed Root source, including
-   the actual CommitAuthority implementation. PostgreSQL/browser/portal gates were not
-   claimed here.
-5. Provider writes remain a separate future acceptance package requiring real external
-   result evidence; no automatic email, provider mutation or blind replay is present.
-
-No Root/Main/Preview files, live provider credentials, private portal values or real
-tenant/provider data were used in this finalization.
+The correction provides independent manifest tests under `tests/pure` and
+explicit native-slot runtime boundary/schema tests under `backend/tests`.
+No Python imports, tests, application, database, PostgreSQL, browser or portal
+processes were run in the 2026-10-04 correction slot. New runtime acceptance
+belongs to Root; old Ruff/Mypy/compile results do not validate the new source.

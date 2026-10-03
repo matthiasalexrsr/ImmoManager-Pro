@@ -1,5 +1,14 @@
 # Paket I / TEHA – Mapping-/Importreceipt-Persistenz
 
+**Releasekorrektur 2026-10-04:** Dieses Dokument beschreibt den historischen
+Entwicklungsstand. L2 wurde nie in Root/live126 ausgeliefert. Das endgültige
+initiale Layout ergänzt gegenüber dem ursprünglichen `2ce5e86`-Layout
+`mapping_id`, `mapping_sha256`, Mapping-FK und Digestconstraint. Es ist nicht
+schemaidentisch. Maßgeblich sind `TEHA_L2_MAINTENANCE_20261004.md` und
+`TEHA_RELEASE_LAYOUT_CORRECTION_HANDOFF_20261004.md`; alte isolierte
+Entwicklungsschemas werden nicht automatisch repariert. Frühere Testresultate
+gelten nur für ihren damaligen Source-Stand, nicht als Gate dieser Korrektur.
+
 Branch/Checkout: `assist/teha-receive-domain` /
 `work/teha-receive-domain`.
 

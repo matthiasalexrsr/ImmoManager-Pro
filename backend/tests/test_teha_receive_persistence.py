@@ -8,7 +8,16 @@ from datetime import datetime
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import create_engine, delete, insert, select, update
+from sqlalchemy import (
+    CheckConstraint,
+    UniqueConstraint,
+    create_engine,
+    delete,
+    insert,
+    inspect,
+    select,
+    update,
+)
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from backend.db.integration_history_models import IntegrationHistoryHeadORM, IntegrationRunORM
@@ -19,6 +28,7 @@ from backend.db.teha_receive_models import (
     TehaExternalMappingORM,
     TehaImportReceiptORM,
 )
+from backend.db.teha_receive_release_l2 import frozen_l2_tables
 from backend.db.teha_receive_schema import (
     TehaReceiveSchemaError,
     canonical_identity,
@@ -103,6 +113,8 @@ def _document_receipt(identifier="receipt-document", *, command="import-document
         "source_kind": "document",
         "external_identity_hash": external.token,
         "mapping_generation": 1,
+        "mapping_id": "mapping-1",
+        "mapping_sha256": "a" * 64,
         "source_sha256": "b" * 64,
         "content_sha256": "c" * 64,
         "document_id": "document-local",
@@ -128,6 +140,8 @@ def _task_receipt(identifier="receipt-task", *, command="import-task"):
         "source_kind": "technical_order",
         "external_identity_hash": external.token,
         "mapping_generation": 1,
+        "mapping_id": "mapping-1",
+        "mapping_sha256": "a" * 64,
         "source_sha256": "e" * 64,
         "content_sha256": None,
         "document_id": None,
@@ -161,6 +175,45 @@ def test_reserved_revision_and_two_table_family_only():
         "teha_external_mappings",
         "teha_import_receipts",
     )
+
+
+def test_frozen_release_schema_matches_models_but_owns_independent_metadata():
+    def signature(table):
+        return (
+            [(column.name, str(column.type), column.nullable) for column in table.columns],
+            tuple(column.name for column in table.primary_key.columns),
+            {(item.name, str(item.sqltext).replace(" ", "")) for item in table.constraints if isinstance(item, CheckConstraint)},
+            {(item.name, tuple(column.name for column in item.columns)) for item in table.constraints if isinstance(item, UniqueConstraint)},
+            {(tuple(element.parent.name for element in item.elements), item.referred_table.name, tuple(element.column.name for element in item.elements), item.ondelete) for item in table.foreign_key_constraints},
+            {(item.name, item.unique, tuple(column.name for column in item.columns), str(item.dialect_options["sqlite"].get("where")), str(item.dialect_options["postgresql"].get("where"))) for item in table.indexes},
+        )
+
+    for frozen, model in zip(frozen_l2_tables(), TEHA_RECEIVE_MODELS, strict=True):
+        assert frozen.metadata is not Base.metadata
+        assert signature(frozen) == signature(model.__table__)
+
+
+def test_initial_migration_refuses_existing_complete_family_before_ddl(sqlite_schema, monkeypatch):
+    with sqlite_schema.begin() as connection:
+        with pytest.raises(TehaReceiveSchemaError, match="already present"):
+            _upgrade(connection, monkeypatch)
+        assert set(inspect(connection).get_table_names()) == set(TEHA_RECEIVE_TABLES)
+        assert validate_teha_receive_schema(connection) is True
+
+
+def test_old_development_family_is_not_repaired(tmp_path, monkeypatch):
+    engine = create_engine("sqlite:///" + (tmp_path / "old-development.db").as_posix())
+    try:
+        with engine.begin() as connection:
+            connection.exec_driver_sql("CREATE TABLE teha_external_mappings (id VARCHAR PRIMARY KEY)")
+            connection.exec_driver_sql("CREATE TABLE teha_import_receipts (id VARCHAR PRIMARY KEY)")
+            with pytest.raises(TehaReceiveSchemaError, match="invalid"):
+                validate_teha_receive_schema(connection)
+            with pytest.raises(TehaReceiveSchemaError, match="already present"):
+                _upgrade(connection, monkeypatch)
+            assert [column["name"] for column in inspect(connection).get_columns("teha_import_receipts")] == ["id"]
+    finally:
+        engine.dispose()
 
 
 @pytest.mark.parametrize(

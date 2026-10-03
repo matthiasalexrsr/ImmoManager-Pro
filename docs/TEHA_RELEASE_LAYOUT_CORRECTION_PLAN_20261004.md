@@ -26,10 +26,11 @@ to silently upgrade. The reserved revision remains `l2a2b3c4d5e6` after K2.
    for property, period, unit and user mappings; no same-portfolio A/B substitution
    is accepted. Technical-order mappings cannot serve as document mappings.
 3. Preserve document classification in the immutable TEHA original extension and
-   compare it to the archived Document snapshot and the live document during
-   replay/download. Preserve supported classification strings rather than forcing
-   `teha_document` or inventing an enum. Changes require explicit review rather
-   than making a permitted import unusable on its next read.
+   compare it to the archived Document snapshot during replay/download. Preserve
+   the immutable original's classification when the live Document is later
+   recategorized through the ordinary document domain. Preserve classification strings rather than forcing
+   `teha_document` or inventing an enum/length limit. An altered archived
+   classification fails evidence validation; live categorization stays mutable.
 4. Remove the proposed dynamic actor-only CommitAuthority acceptance. No actual
    Root Unit/Session/transaction/database-target/operation/target contract exists.
    Every mapping/import write therefore remains HTTP 503 before the business
@@ -38,7 +39,7 @@ to silently upgrade. The reserved revision remains `l2a2b3c4d5e6` after K2.
 5. Separate pure manifest/identity test source from runtime-boundary test source.
    Pure helpers must not import auth, global Settings, runtime stores or ORM
    registration. Replace positive fake-capability test claims with explicit
-   fail-closed coverage; former positive command tests remain clearly deferred
+   fail-closed coverage; former positive command tests are removed and their acceptance remains deferred
    until a real Root unit can be exercised in the native slot.
 
 ## Verification and scope

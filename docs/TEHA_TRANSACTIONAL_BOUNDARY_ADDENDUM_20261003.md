@@ -4,9 +4,12 @@ Basis: `3be51c706059d23e5d5cac22c2768b0525953428` im isolierten
 `work/teha-receive-domain`. Dieses Addendum präzisiert den bereits vor Code
 committeten Plan `TEHA_TRANSACTIONAL_MAPPING_IMPORT_PLAN_20261003.md`.
 
-Keine neue Migration, Queue oder History wird eingeführt. Die bestehende
-L2-Familie aus `2ce5e86` bleibt unverändert. Raw/unbekannte TEHA-Felder leben
-ausschließlich im verschlüsselten Integrationsjournal.
+Die reservierte L2-Revision bleibt bestehen; keine zweite Queue oder History
+wird eingeführt. Das nie ausgelieferte Entwicklungs-Layout aus `2ce5e86` ist
+nicht schemaidentisch mit dem jetzt eingefrorenen initialen L2-Release inklusive
+Mapping-ID/Digest/FK. Siehe `TEHA_L2_MAINTENANCE_20261004.md`.
+Raw/unbekannte TEHA-Felder leben ausschließlich im verschlüsselten Journal.
+Die folgenden Writepfade sind vorbereiteter Fachcode und aktuell gesperrt.
 
 ## Transaktionsgrenzen
 
@@ -25,13 +28,12 @@ ausschließlich im verschlüsselten Integrationsjournal.
    Owner/All-Scope-Verwalter, aktuelle Installationsrechte,
    `require_fresh_request_authority` und bei SQL-UserStore die vorhandene
    Management-Serialisierung. **Diese Prüfungen sind nur zusätzliche Fences und
-   keine Commitgarantie.** Solange Root nicht den exakten typisierten
-   `backend.services.commit_authority.CommitAuthority` plus
-   `validate_commit_authority()` bereitstellt **und** die HTTP-/Servicegrenze
-   eine solche Authority ausdrücklich übergibt, brechen alle Mapping- und
-   Importwrites mit HTTP 503 ab, bevor Session/Writer/DML betreten werden. Die
-   Authority wird vor dem Writer und unmittelbar vor dem äußeren Commit erneut
-   validiert. Dieses Paket erfindet keinen Ersatztyp und akzeptiert weder
+   keine Commitgarantie.** Solange Root nicht die tatsächliche
+   Unit/Session-/Transaktions-/Datenbankziel-/Operation-/Targetbindung
+   bereitstellt, brechen alle Mapping- und Importwrites mit HTTP 503 ab, bevor
+   Fachsession/Writer/DML betreten werden. Der frühere dynamische Actor-only-Hook
+   ist entfernt; auch ein namensgleicher Pythonmodultyp wird nicht akzeptiert.
+   Dieses Paket erfindet keinen Ersatztyp und akzeptiert weder
    Managementlock, letzten SID-Check, bool/lambda noch Duck-Typ als
    CommitAuthority.
 
@@ -47,17 +49,24 @@ ausschließlich im verschlüsselten Integrationsjournal.
    ein Unique-Race wird nach sauberem Rollback als Konflikt gemeldet, nie als
    fremder Replay.
 
-6. **Mappinggeneration im L2-Receipt.** Das bestehende L2-Receipt bleibt
-   schemaidentisch und speichert `mapping_generation`, Source-/Content-SHA und
-   den idempotenten Command-SHA. Es bekommt **keine** nachträglichen
-   `mapping_id`-/`mapping_sha256`-Spalten.
+6. **Initiales L2-Release-Layout.** L2 wurde nie in Root/live126 ausgeliefert.
+   Das endgültige initiale Receipt speichert `mapping_id`, `mapping_sha256`,
+   Mapping-FK, Generation, Source-/Content-SHA und Command-SHA. Die eingefrorene
+   Migration importiert keine laufenden ORM-Modelle. Frühere isolierte
+   Entwicklungsdatenbanken werden nicht automatisch repariert; siehe
+   `TEHA_L2_MAINTENANCE_20261004.md`.
 
 7. **Exakte Mappingreferenz bei Dokumenten.** Das unveränderliche
-   DocumentVersion-`teha_import`-Manifest enthält zusätzlich
-   `mapping_id`, Generation und den kanonischen Mappingdigest. Der Digest
+   DocumentVersion-`teha_import/2`-Manifest enthält `mapping_id`, Generation,
+   kanonischen Mappingdigest, geprüften kindgenauen Target-/Elternkontext und
+   die archivierte Dokumentklassifikation. Receipt-Connection/Portfolio,
+   Mapping-Connection/Portfolio und Originalbinding müssen übereinstimmen;
+   gleicher Portfoliobesitz erlaubt kein Original B für Mappingziel A. Der Digest
    umfasst Mapping-ID, opaque Identität/hash, Generation/Revision, lokales Ziel
    und Mapping-Source-History/SHA. Replay/Download berechnen ihn aus der
-   unveränderlichen Mappinggeneration neu.
+   unveränderlichen Mappinggeneration neu und prüfen aktuelle Eltern/Grants.
+   Klassifikation wird gegen den unveränderlichen Originalsnapshot geprüft;
+   normale spätere lokale Neukategorisierung ersetzt diesen Beleg nicht.
 
 8. **Technikauftrag.** Für Task-Receipts bindet der Command-SHA die bestätigte
    Preview inklusive Mappingauswahl/-revision/-generation. Vor Task-DML und vor
@@ -71,9 +80,10 @@ ausschließlich im verschlüsselten Integrationsjournal.
    nicht als eigener Replay ausgegeben.
 
 10. **Originalbytes.** Dokumentbytes müssen SHA und Größe des terminalen
-    `read_document`-Historienmanifests entsprechen. Document + erstes
-    DocumentVersion-Original + L2-Receipt werden in derselben caller-owned
-    Transaktion geschrieben. Replay/Download validiert Manifest und alle
+    `read_document`-Historienmanifests entsprechen. Der vorbereitete Fachpfad
+    schreibt Document + erstes DocumentVersion-Original + L2-Receipt in einer
+    Fachsession. Eine tatsächliche Root-owned Transaktion/Commitgarantie ist
+    noch nicht implementiert; Writes brechen vorher mit 503 ab. Replay/Download validiert Manifest und alle
     DocumentVersion-Chunks vor Erfolg.
 
 11. **Recovery bleibt Root-owned.** Root soll die L2-Tabellen gemeinsam mit
@@ -89,7 +99,9 @@ Dieses Paket ändert weder OperationalJobs noch Registry/Startup/Recovery.
 
 ## Prüfgrenze
 
-Dieses Paket führt zunächst ausschließlich lokale synthetische SQLite-/Pure-
-Tests und statische Gates aus. Ein echter PostgreSQL-/Browser-/Portal-Gate wird
-erst nach Root-Slot angekündigt und gestartet. Keine Liveprovider, Zugangsdaten
-oder privaten Portalwerte werden verwendet.
+Die Korrekturrunde 2026-10-04 bereitet Testquellen vor und prüft nur Source-Diffs.
+Keine Pythonimports, Testausführung, App-/DB-/PostgreSQL-/Browser-/Portalprozesse.
+Die frühere Datei `test_teha_transaction_boundaries_pure.py` importierte den
+Runtime-Service und damit Auth/Settings; ihr beobachteter PASS war kein
+No-Runtime-Beleg. Neue Manifestfälle liegen unter `tests/pure`, Runtimefälle
+unter `backend/tests/test_teha_runtime_boundaries.py`. Native Gates bleiben Root.

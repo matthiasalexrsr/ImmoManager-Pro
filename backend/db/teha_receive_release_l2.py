@@ -6,8 +6,18 @@ from current models or silently reconcile an older isolated development layout.
 """
 
 from sqlalchemy import (
-    JSON, CheckConstraint, Column, DateTime, ForeignKey, Index, Integer,
-    MetaData, String, Table, UniqueConstraint, text,
+    JSON,
+    CheckConstraint,
+    Column,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    MetaData,
+    String,
+    Table,
+    UniqueConstraint,
+    text,
 )
 
 L2_TABLE_NAMES = ("teha_external_mappings", "teha_import_receipts")
