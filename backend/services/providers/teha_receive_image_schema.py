@@ -89,13 +89,18 @@ def validate_teha_image_schema(connection, *, schema_bytes):
                                   if isinstance(item, CheckConstraint))
         if _checks(row[0]) != expected_checks:
             raise TehaReceiveSchemaError("invalid TEHA image CHECKs")
-        info = list(connection.execute(f'PRAGMA table_info("{table.name}")'))
+        info = list(connection.execute(f'PRAGMA main.table_info("{table.name}")'))
         actual_types = {value[1]: value[2].upper().replace(" ", "") for value in info}
         expected_types = {column.name: column.type.compile(dialect=dialect()).upper().replace(" ", "")
                           for column in table.columns}
         if actual_types != expected_types:
             raise TehaReceiveSchemaError("invalid TEHA image types")
-        indices = list(connection.execute(f'PRAGMA index_list("{table.name}")'))
+        # Ordinary SQLite VARCHAR primary keys may be nullable. The primary
+        # key bit cannot stand in for the frozen column's native NOT NULL bit.
+        actual_nullable = {value[1]: not bool(value[3]) for value in info}
+        if actual_nullable != {column.name: column.nullable for column in table.columns}:
+            raise TehaReceiveSchemaError("invalid TEHA image nullability")
+        indices = list(connection.execute(f'PRAGMA main.index_list("{table.name}")'))
         full_uniques = set()
         named = {}
         for index in indices:
@@ -104,8 +109,8 @@ def validate_teha_image_schema(connection, *, schema_bytes):
             if not isinstance(name, str) or len(name.encode("utf-8")) > schema_bytes:
                 raise TehaReceiveSchemaError("invalid TEHA image index")
             quoted = name.replace('"', '""')
-            columns = tuple(value[2] for value in connection.execute(f'PRAGMA index_info("{quoted}")'))
-            for value in connection.execute(f'PRAGMA index_xinfo("{quoted}")'):
+            columns = tuple(value[2] for value in connection.execute(f'PRAGMA main.index_info("{quoted}")'))
+            for value in connection.execute(f'PRAGMA main.index_xinfo("{quoted}")'):
                 if value[5] and (value[1] < 0 or value[3] or value[4].upper() != "BINARY"):
                     raise TehaReceiveSchemaError("invalid TEHA image index ordering")
             named[name] = (bool(index[2]), bool(index[4]), columns)

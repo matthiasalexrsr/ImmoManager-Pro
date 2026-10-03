@@ -15,10 +15,18 @@ from dataclasses import dataclass
 
 from sqlalchemy import Integer
 
-from ...db.integration_history_models import IntegrationRunEventORM, IntegrationRunORM
+from ...db.integration_history_models import (
+    TABLES as HISTORY_TABLE_NAMES,
+    IntegrationRunEventORM,
+    IntegrationRunORM,
+)
 from ...db.teha_receive_release_l2 import L2_TABLE_NAMES, frozen_l2_tables
 from ...db.teha_receive_schema import TehaReceiveSchemaError
-from ..document_version_validation import VERSION_FIELDS, verify_document_versions
+from ..document_version_validation import (
+    TABLES as ORIGINAL_TABLE_NAMES,
+    VERSION_FIELDS,
+    verify_document_versions,
+)
 from ..iban_encryption import IBANKeyring
 from ..integrations.history_crypto import stamp
 from ..integrations.history_types import HistoryError, HistoryLimits
@@ -36,6 +44,11 @@ from .teha_receive_image_schema import validate_teha_image_schema
 _SHA = re.compile(r"[0-9a-f]{64}\Z")
 _TARGET = {"property": "internal_property_id", "period": "billing_period_id", "unit": "unit_id",
            "user": "tenant_id", "technical_order": "task_id"}
+_IMAGE_RELATIONS = frozenset((
+    *L2_TABLE_NAMES, *HISTORY_TABLE_NAMES, *ORIGINAL_TABLE_NAMES,
+    "portfolios", "properties", "billing_periods", "units", "tenants", "tasks",
+    "documents", "contracts", "resource_portfolio_grants",
+))
 
 
 class TehaImageError(ValueError):
@@ -98,6 +111,60 @@ class _Image:
             return dict(zip((item[0] for item in cursor.description), value, strict=True)) if value is not None else None
         finally:
             cursor.close()
+
+    def assert_main_name_binding(self):
+        """Reject actual name-resolution escapes before reused image APIs run."""
+        names = tuple(sorted(_IMAGE_RELATIONS))
+        marks = ",".join("?" for _ in names)
+        # SQLite identifiers resolve ASCII case-insensitively, with TEMP first.
+        # Index aliases matter too: reused schema APIs use index PRAGMAs.
+        shadow = self.one(
+            "SELECT 1 AS present FROM temp.sqlite_schema AS shadow WHERE "
+            f"(shadow.type IN ('table','view') AND shadow.name COLLATE NOCASE IN ({marks})) OR "
+            "(shadow.type='index' AND EXISTS (SELECT 1 FROM main.sqlite_schema AS selected "
+            f"WHERE selected.type='index' AND selected.tbl_name COLLATE NOCASE IN ({marks}) "
+            "AND selected.name COLLATE NOCASE=shadow.name)) LIMIT 1", names + names,
+        )
+        if shadow is not None:
+            _fail("TEHA_IMAGE_CONTEXT_REQUIRED")
+        # Only fixed relation-presence facts are retained, not the catalog stock.
+        self.check()
+        cursor = self.connection.execute(
+            "SELECT name FROM main.sqlite_schema WHERE type IN ('table','view') "
+            f"AND name COLLATE NOCASE IN ({marks})", names,
+        )
+        try:
+            present = set()
+            for (name,) in cursor:
+                self.check()
+                present.add(name.lower())
+        finally:
+            cursor.close()
+        missing = tuple(name for name in names if name not in present)
+        self.check()
+        if not missing:
+            return
+        marks = ",".join("?" for _ in missing)
+        # An unrelated attachment is harmless; a missing-main relation supplied
+        # by that attachment would make the image proof span different images.
+        cursor = self.connection.execute(
+            "SELECT CASE WHEN length(CAST(name AS BLOB))<=? THEN name ELSE NULL END "
+            "FROM pragma_database_list WHERE name NOT IN ('main','temp')", (self.limits.schema_bytes,),
+        )
+        try:
+            for (alias,) in cursor:
+                self.check()
+                if alias is None:
+                    _fail("TEHA_IMAGE_BUDGET_EXCEEDED")
+                quoted = alias.replace('"', '""')
+                if self.one(
+                    f'SELECT 1 AS present FROM "{quoted}".sqlite_schema '
+                    f"WHERE type IN ('table','view') AND name COLLATE NOCASE IN ({marks}) LIMIT 1", missing,
+                ) is not None:
+                    _fail("TEHA_IMAGE_CONTEXT_REQUIRED")
+        finally:
+            cursor.close()
+        self.check()
 
     def projection(self, fields, integers=()):
         text = [name for name in fields if name not in integers]
@@ -359,6 +426,7 @@ def validate_teha_receive_image(connection, *, image_keys, history_limits, image
     image = _Image(connection, image_keys, history_limits, image_limits, deadline)
     try:
         image.check()
+        image.assert_main_name_binding()
         if not validate_teha_image_schema(connection, schema_bytes=image_limits.schema_bytes):
             # Entire absence is legacy-compatible only when no retained TEHA
             # original asserts the missing receipt family. No key lookup.
