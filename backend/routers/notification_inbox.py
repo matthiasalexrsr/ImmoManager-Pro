@@ -10,8 +10,8 @@ from ..auth import decode_signed_token, require_auth
 from ..dependencies import get_store
 from ..models import UserRead
 from ..services import notification_inbox
-from ..services.checked_publication import CheckedPublicationRoute
 from ..services.auth_sessions import VERSION
+from ..services.checked_publication import CheckedPublicationRoute
 from ..services.notification_inbox_commit_authority import commit_notification_read
 from ..services.notification_inbox_types import InboxPage, InboxQuery, NotificationReadResult
 from ..services.portfolio_scope import current_scope, scope_from_user
@@ -72,7 +72,8 @@ def page(
     try:
         return notification_inbox.list_inbox(
             store, domain_query, read_actions_enabled=bool(
-                claims.sid and claims.session_version == VERSION
+                claims.sid and type(claims.session_version) is int
+                and claims.session_version == VERSION
             )
         )
     except HTTPException as error:

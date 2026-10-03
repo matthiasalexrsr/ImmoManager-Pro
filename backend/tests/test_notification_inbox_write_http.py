@@ -1,6 +1,5 @@
 """Real SQLUser/Sid HTTP command through the actual readonly RBAC middleware."""
 
-from contextlib import contextmanager
 
 import pytest
 from fastapi import FastAPI
@@ -26,8 +25,8 @@ PATH = "/api/v1/notifications/inbox"
 
 
 @pytest.fixture
-def http_writer(read_installation, monkeypatch):
-    box = read_installation
+def http_writer(request, monkeypatch):
+    box = request.getfixturevalue("read_installation")
     monkeypatch.setattr(dependencies, "store", box.store)
     application = FastAPI()
     application.include_router(inbox_router.router, prefix="/api/v1")

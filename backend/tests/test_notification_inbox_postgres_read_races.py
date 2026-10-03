@@ -25,9 +25,9 @@ from backend.db.orm_models import Base, NotificationORM, PortfolioORM, PropertyO
 from backend.db.session_models import AuthSessionORM
 from backend.models import PropertyCreate
 from backend.repositories.sql_store import SQLAlchemyStore
-from backend.services import auth_sessions, notification_inbox as inbox
+from backend.services import auth_sessions, operational_schedule
+from backend.services import notification_inbox as inbox
 from backend.services import notification_inbox_commit_authority as writer
-from backend.services import operational_schedule
 from backend.services.notification_inbox_types import InboxQuery
 from backend.services.notification_inbox_validation import TABLE
 from backend.services.portfolio_scope import scope_context, scope_from_user

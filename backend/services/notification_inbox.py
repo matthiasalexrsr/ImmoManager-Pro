@@ -15,6 +15,7 @@ from ..db.notification_inbox_models import NotificationReadStateORM
 from ..db.operational_models import OperationalDispatchORM
 from ..db.orm_models import NotificationORM, UserORM
 from .booking_export import _snapshot
+from .notification_inbox_read_support import notification_read_subject_hint
 from .notification_inbox_types import (
     InboxItemActions,
     InboxPage,
@@ -23,7 +24,6 @@ from .notification_inbox_types import (
     NotificationInboxItem,
     NotificationReadResult,
 )
-from .notification_inbox_read_support import notification_read_subject_hint
 from .notification_inbox_validation import (
     InboxIntegrityError,
     validate_notification_inbox_schema,
