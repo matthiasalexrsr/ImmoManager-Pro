@@ -343,3 +343,46 @@ Geplant:
 - Produktionsbuild erst im vereinbarten kurzen Slot.
 
 Root Ã¼bernimmt gemeinsame Browser-/Recovery-Abnahme.
+
+## Implementierter D3-Stand
+
+Die Zahlungsübersicht ist im eigenen Feature umgesetzt und bindet sich ausschließlich an die bestehenden, gelesenen HTTP-Verträge.
+
+Umgesetzt:
+
+- getrennte Filterentwürfe und angewendete Filter für Zeitraum, Stichtag, Portfolio, mehrere Immobilien, optionale Einheit und Konto sowie Zahlungsbasis;
+- bounded `ReferenceChoice` für Portfolio/Konto/Immobilie/Einheit mit den erlaubten Parentfiltern;
+- Portfolioänderung invalidiert Konto, Immobilien und Einheit; Immobilienänderung invalidiert die Einheit;
+- Report-, Sources- und CSV-Requests werden an dieselbe kanonische Filteridentität gebunden;
+- Cash-Responses mit abweichenden Responsefiltern werden verworfen;
+- MoneyStrings werden ausschließlich per `BigInt`/Centstrings formatiert, ohne `Number`-/Float-Rundung;
+- Einnahmen, Ausgaben, Saldo, Monats-, Kostenarten- und Objekt-/Einheitsauswertung;
+- Quellbelegseiten mit opakem Cursor und `source_hash`;
+- 409 auf Quellseiten zeigt Quellenänderung und lädt bewusst mit denselben angewendeten Filtern neu;
+- andere behebbaren Sourcefehler behalten Filter und Cursor und erlauben Retry derselben Seite;
+- 401/403/404 sowie Actor-/Grantwechsel neutralisieren alte private Ergebnisse synchron und brechen laufende Requests/CSV ab;
+- vollständiger CSV-Download verwendet ausschließlich `/reports/cash/export.csv` mit den angewendeten Filtern, ohne sichtbare Seiten clientseitig zusammenzufügen;
+- keine Periodenergebnis-, AfA-, Finanzierungs- oder Vertragsprognosefunktion.
+
+### Bewusst leichte Prüfungen in diesem Slot
+
+Ausgeführt:
+
+`npm.cmd test -- FinancialWorkspaceModel.test.js FinancialWorkspaceApi.test.js FinancialWorkspace.test.jsx`
+
+Ergebnis: **3 Testdateien / 11 Tests bestanden**.
+
+Abgedeckt:
+
+- sehr große und negative MoneyStrings ohne Float,
+- wiederholte `property_ids` im Query,
+- Report-/Sources-Filterbindung,
+- vollständiger CSV-Endpoint ohne Seiten-Cursor,
+- Filterentwurf ohne Zwischenreport,
+- Parentinvalidierung,
+- Sourcehash-409 mit bewusstem Refresh,
+- render-synchroner Actor-/Grantwechsel.
+
+Gezielter ESLint über Feature, Page und diese drei Tests mit `--max-warnings=0`: **bestanden, keine Ausgabe**.
+
+In diesem Slot absichtlich **nicht** gestartet: Produktionsbuild, Gesamtsuite, Browser-/Recovery-Abnahme. Diese folgen erst nach kurzer Slotabstimmung bzw. bei Root.

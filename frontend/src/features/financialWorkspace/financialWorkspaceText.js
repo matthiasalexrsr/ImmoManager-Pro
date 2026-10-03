@@ -1,0 +1,77 @@
+const COPY = {
+  'de-DE': {
+    title: 'Finanzauswertungen', subtitle: 'Zahlungsübersicht aus bestätigten oder aufgezeichneten Buchungen.',
+    paymentBasis: 'Zahlungsbasis', notPeriodResult: 'Diese Sicht zeigt Zahlungsflüsse. Sie ist kein wirtschaftliches Periodenergebnis und keine vertragliche Prognose.',
+    filters: 'Auswahl', apply: 'Auswertung anwenden', dateFrom: 'Zeitraum von', dateTo: 'Zeitraum bis', asOf: 'Stichtag',
+    basis: 'Grundlage', confirmed_cash: 'Bestätigte Zahlungen', recorded_bookings: 'Aufgezeichnete Buchungen',
+    recordedHint: 'Enthält auch unbestätigte Buchungen; stornierte und zukünftige Quellen bleiben als Ausschlüsse nachvollziehbar.',
+    portfolio: 'Portfolio', account: 'Konto', properties: 'Immobilien', addProperty: 'Immobilie hinzufügen', unit: 'Einheit',
+    remove: 'Entfernen', income: 'Einnahmen', expense: 'Ausgaben', net: 'Saldo', sources: 'Quellbelege',
+    sourceCount: 'Einbezogene Buchungen', excludedCount: 'Ausgeschlossene Quellen', months: 'Monate', categories: 'Kostenarten',
+    locations: 'Objekte und Einheiten', noCategory: 'Ohne Kostenart', noProperty: 'Ohne Immobilie', noUnit: 'Ohne Einheit',
+    count: 'Buchungen', loading: 'Auswertung wird geladen …', retry: 'Erneut laden', empty: 'Für diese Auswahl wurden keine Zahlungsquellen gefunden.',
+    invalidResponse: 'Die Finanzantwort konnte nicht sicher geprüft werden.', sourceChanged: 'Die Buchungsquellen haben sich geändert.',
+    reloadSources: 'Aktuelle Buchungsquellen neu laden', filterConflict: 'Die Filter passen nicht zusammen. Bitte Auswahl prüfen.',
+    sourceError: 'Quellbelege konnten nicht geladen werden.', previous: 'Vorherige Seite', next: 'Nächste Seite', page: 'Seite',
+    bookingDate: 'Datum', source: 'Quelle', category: 'Kostenart', location: 'Zuordnung', amount: 'Betrag', state: 'Berücksichtigung',
+    included: 'Einbezogen', excludedAfterCutoff: 'Nach Stichtag', excludedCancelled: 'Storniert', excludedUnconfirmed: 'Nicht bestätigt',
+    paymentText: 'Buchungstext', receipt: 'Belegreferenz', exportCsv: 'Vollständiges CSV', exporting: 'CSV wird erstellt …',
+    exportFresh: 'Der CSV-Export wird aus dem vollständigen aktuellen Filterbestand erzeugt, unabhängig von der sichtbaren Belegseite.',
+    technical: 'Technische Details', sourceHash: 'Quellenhash', applied: 'Angewendete Auswahl',
+    propertyNeedsPortfolio: 'Immobilien werden innerhalb der aktuellen Berechtigung gesucht.', unitNeedsProperty: 'Für die Einheitenwahl bitte genau eine Immobilie auswählen.',
+    noProperties: 'Keine Immobilie ausgewählt', custom: 'Individuell', clear: 'Auswahl entfernen',
+  },
+  'en-US': {
+    title: 'Financial analysis', subtitle: 'Payment overview from confirmed or recorded bookings.',
+    paymentBasis: 'Payment basis', notPeriodResult: 'This view shows payment flows. It is not an economic period result or contractual forecast.',
+    filters: 'Selection', apply: 'Apply analysis', dateFrom: 'Period from', dateTo: 'Period to', asOf: 'Cut-off date',
+    basis: 'Basis', confirmed_cash: 'Confirmed payments', recorded_bookings: 'Recorded bookings',
+    recordedHint: 'Also includes unconfirmed bookings; cancelled and future sources remain traceable as exclusions.',
+    portfolio: 'Portfolio', account: 'Account', properties: 'Properties', addProperty: 'Add property', unit: 'Unit',
+    remove: 'Remove', income: 'Income', expense: 'Expenses', net: 'Net', sources: 'Source records',
+    sourceCount: 'Included bookings', excludedCount: 'Excluded sources', months: 'Months', categories: 'Cost categories',
+    locations: 'Properties and units', noCategory: 'No category', noProperty: 'No property', noUnit: 'No unit',
+    count: 'Bookings', loading: 'Loading analysis …', retry: 'Retry', empty: 'No payment sources were found for this selection.',
+    invalidResponse: 'The financial response could not be validated safely.', sourceChanged: 'The booking sources have changed.',
+    reloadSources: 'Reload current booking sources', filterConflict: 'The filters are inconsistent. Please review the selection.',
+    sourceError: 'Source records could not be loaded.', previous: 'Previous page', next: 'Next page', page: 'Page',
+    bookingDate: 'Date', source: 'Source', category: 'Category', location: 'Assignment', amount: 'Amount', state: 'Treatment',
+    included: 'Included', excludedAfterCutoff: 'After cut-off', excludedCancelled: 'Cancelled', excludedUnconfirmed: 'Unconfirmed',
+    paymentText: 'Booking text', receipt: 'Receipt reference', exportCsv: 'Full CSV', exporting: 'Creating CSV …',
+    exportFresh: 'CSV is generated from the complete current filter set, independent of the visible source page.',
+    technical: 'Technical details', sourceHash: 'Source hash', applied: 'Applied selection',
+    propertyNeedsPortfolio: 'Properties are searched within your current authorization.', unitNeedsProperty: 'Select exactly one property before choosing a unit.',
+    noProperties: 'No property selected', custom: 'Custom', clear: 'Clear selection',
+  },
+  'es-ES': {
+    title: 'Análisis financiero', subtitle: 'Resumen de pagos a partir de apuntes confirmados o registrados.',
+    paymentBasis: 'Base de pagos', notPeriodResult: 'Esta vista muestra flujos de pago. No es un resultado económico del periodo ni una previsión contractual.',
+    filters: 'Selección', apply: 'Aplicar análisis', dateFrom: 'Periodo desde', dateTo: 'Periodo hasta', asOf: 'Fecha de corte',
+    basis: 'Base', confirmed_cash: 'Pagos confirmados', recorded_bookings: 'Apuntes registrados',
+    recordedHint: 'Incluye también apuntes no confirmados; las fuentes anuladas y futuras permanecen como exclusiones trazables.',
+    portfolio: 'Cartera', account: 'Cuenta', properties: 'Inmuebles', addProperty: 'Añadir inmueble', unit: 'Unidad',
+    remove: 'Quitar', income: 'Ingresos', expense: 'Gastos', net: 'Saldo', sources: 'Fuentes',
+    sourceCount: 'Apuntes incluidos', excludedCount: 'Fuentes excluidas', months: 'Meses', categories: 'Categorías de coste',
+    locations: 'Inmuebles y unidades', noCategory: 'Sin categoría', noProperty: 'Sin inmueble', noUnit: 'Sin unidad',
+    count: 'Apuntes', loading: 'Cargando análisis …', retry: 'Reintentar', empty: 'No se encontraron fuentes de pago para esta selección.',
+    invalidResponse: 'No se pudo validar de forma segura la respuesta financiera.', sourceChanged: 'Las fuentes contables han cambiado.',
+    reloadSources: 'Recargar fuentes actuales', filterConflict: 'Los filtros no son coherentes. Revise la selección.',
+    sourceError: 'No se pudieron cargar las fuentes.', previous: 'Página anterior', next: 'Página siguiente', page: 'Página',
+    bookingDate: 'Fecha', source: 'Fuente', category: 'Categoría', location: 'Asignación', amount: 'Importe', state: 'Tratamiento',
+    included: 'Incluido', excludedAfterCutoff: 'Después del corte', excludedCancelled: 'Anulado', excludedUnconfirmed: 'No confirmado',
+    paymentText: 'Texto contable', receipt: 'Referencia del justificante', exportCsv: 'CSV completo', exporting: 'Creando CSV …',
+    exportFresh: 'El CSV se genera desde todo el conjunto filtrado actual, con independencia de la página visible.',
+    technical: 'Detalles técnicos', sourceHash: 'Hash de fuentes', applied: 'Selección aplicada',
+    propertyNeedsPortfolio: 'Los inmuebles se buscan dentro de su autorización actual.', unitNeedsProperty: 'Seleccione exactamente un inmueble antes de elegir una unidad.',
+    noProperties: 'Ningún inmueble seleccionado', custom: 'Personalizado', clear: 'Quitar selección',
+  },
+};
+
+export function financialText(locale, key, params = {}) {
+  const messages = COPY[locale] || COPY['de-DE'];
+  let value = messages[key] || COPY['de-DE'][key] || key;
+  for (const [name, replacement] of Object.entries(params)) {
+    value = value.replaceAll(`{{${name}}}`, String(replacement));
+  }
+  return value;
+}
