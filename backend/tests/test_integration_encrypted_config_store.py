@@ -156,3 +156,17 @@ def test_failed_update_publishes_neither_plaintext_nor_partial_state(tmp_path, r
     assert path.read_bytes() == before
     assert store.load() == initial
     assert b"NEW_SHOULD_NOT_PUBLISH" not in path.read_bytes()
+
+
+def test_envelope_like_damage_is_never_reinterpreted_as_legacy_plaintext(tmp_path, rings):
+    path = tmp_path / "integrations.json"
+    store = EncryptedJsonIntegrationConfigStore(str(path), keyring=rings[0])
+    store.initialize({"config": {"email": {"smtp_password": "synthetic"}}})
+
+    envelope = json.loads(path.read_text(encoding="utf-8"))
+    envelope["unexpected"] = "must-not-be-migrated"
+    path.write_text(json.dumps(envelope), encoding="utf-8")
+
+    with pytest.raises(ConfigStoreError) as failure:
+        store.migrate_legacy_plaintext()
+    assert failure.value.code == "encrypted_state_invalid"

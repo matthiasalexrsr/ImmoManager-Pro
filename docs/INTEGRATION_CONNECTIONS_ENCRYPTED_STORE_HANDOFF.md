@@ -36,8 +36,10 @@ Dateisperre atomar. Sie wird von diesem Paket **nirgendwo beim normalen Startup
 aufgerufen**.
 
 Falscher/fehlender Key oder manipuliertes Ciphertext ergibt einen festen
-ConfigStore-Fehler ohne Credential-/Ciphertexttext. Ein fehlgeschlagener Update
-publiziert weder Teilzustand noch Klartext.
+ConfigStore-Fehler ohne Credential-/Ciphertexttext. Ein envelope-artig
+beschädigter Zustand wird auch durch die explizite Legacy-Konvertierung niemals
+als Klartextbestand umgedeutet. Ein fehlgeschlagener Update publiziert weder
+Teilzustand noch Klartext.
 
 ## Maskierung
 
@@ -64,7 +66,7 @@ Es gibt keine neue Migration. Die reservierte lineare Migration
 ## Ausgeführte leichte Gates
 
 `pytest backend/tests/test_integration_encrypted_config_store.py -q -rs --tb=short`
-→ **5 passed**
+→ **6 passed**
 
 Zusätzlich:
 - Ruff: **passed**

@@ -77,6 +77,8 @@ class EncryptedJsonIntegrationConfigStore(JsonFileIntegrationConfigStore):
 
     def _decrypt_envelope(self, envelope: dict) -> dict:
         if set(envelope) != {"format", "ciphertext"}:
+            if "format" in envelope or "ciphertext" in envelope:
+                raise ConfigStoreError("encrypted_state_invalid")
             raise ConfigStoreError("plaintext_state_requires_migration")
         if envelope.get("format") != FORMAT or not isinstance(envelope.get("ciphertext"), str):
             raise ConfigStoreError("encrypted_state_invalid")
@@ -129,7 +131,7 @@ class EncryptedJsonIntegrationConfigStore(JsonFileIntegrationConfigStore):
         """Explicit one-time conversion; never called by normal startup."""
         with self._locked():
             current = super()._load_locked()
-            if set(current) == {"format", "ciphertext"}:
+            if "format" in current or "ciphertext" in current:
                 return self._decrypt_envelope(current)
             checked = _decode(_encode(current, self._plaintext_maximum))
             self._write_locked(self._encrypted_raw(checked))
