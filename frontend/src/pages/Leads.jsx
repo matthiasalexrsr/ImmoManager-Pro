@@ -5,6 +5,7 @@ import { api } from '../api';
 import { useTranslation } from '../i18n';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
+import PageLoadState from '../components/PageLoadState';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 
@@ -43,6 +44,7 @@ export default function Leads() {
   const [units, setUnits] = useState([]);
   const [listings, setListings] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [modal, setModal] = useState(null);
   const { canWrite, isAllowed, requireWrite } = useWriteAccess('/leads', () => setModal(null));
   const [deleteError, setDeleteError] = useState(null);
@@ -50,28 +52,31 @@ export default function Leads() {
 
   const refreshData = () => {
     setLoading(true);
+    setError(null);
     Promise.all([
-      api.get('/leads').catch(err => { console.warn('[Leads]', err.message); return []; }),
-      api.get('/units').catch(() => []),
-      api.get('/listings').catch(() => []),
+      api.get('/leads'),
+      api.get('/units'),
+      api.get('/listings'),
     ]).then(([l, u, li]) => {
       setLeads(l || []);
       setUnits(u || []);
       setListings(li || []);
-    }).finally(() => setLoading(false));
+    }).catch(setError).finally(() => setLoading(false));
   };
 
   useEffect(() => {
     let cancelled = false;
     Promise.all([
-      api.get('/leads').catch(err => { console.warn('[Leads]', err.message); return []; }),
-      api.get('/units').catch(err => { console.warn('[Leads] units:', err.message); return []; }),
-    ]).then(([l, u]) => {
+      api.get('/leads'),
+      api.get('/units'),
+      api.get('/listings'),
+    ]).then(([l, u, li]) => {
       if (cancelled) return;
       setLeads(l || []);
       setUnits(u || []);
+      setListings(li || []);
     }).catch(e => {
-      if (!cancelled) console.warn('[Leads] load failed:', e.message);
+      if (!cancelled) setError(e);
     }).finally(() => {
       if (!cancelled) setLoading(false);
     });
@@ -172,7 +177,7 @@ export default function Leads() {
     }
   };
 
-  if (loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  if (loading || error) return <PageLoadState loading={loading} error={error} onRetry={refreshData} />;
 
   const statusCounts = leads.reduce((acc, l) => { acc[l.status] = (acc[l.status] || 0) + 1; return acc; }, {});
   const grouped = getGrouped();

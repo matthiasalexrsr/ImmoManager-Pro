@@ -1,0 +1,301 @@
+.tenancy-workflow-page {
+  --workflow-page-border: color-mix(in srgb, var(--border-color, #d7dce5) 88%, transparent);
+}
+
+.tenancy-workflow-page__hero {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.tenancy-workflow-page__hero h1 {
+  margin: .2rem 0 .35rem;
+  font-size: clamp(1.85rem, 4vw, 2.6rem);
+  letter-spacing: -.035em;
+}
+
+.tenancy-workflow-page__hero p {
+  max-width: 64ch;
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.tenancy-workflow-page__tabs {
+  display: inline-flex;
+  gap: .25rem;
+  padding: .25rem;
+  border: 1px solid var(--workflow-page-border);
+  border-radius: .8rem;
+  background: var(--surface, #fff);
+}
+
+.tenancy-workflow-page__tabs button {
+  min-height: 40px;
+  padding: .55rem .8rem;
+  border: 0;
+  border-radius: .62rem;
+  background: transparent;
+  color: var(--text-muted);
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.tenancy-workflow-page__tabs button[aria-selected="true"] {
+  background: var(--primary);
+  color: #fff;
+}
+
+.tenancy-workflow-page__columns {
+  display: grid;
+  grid-template-columns: minmax(18rem, .82fr) minmax(0, 1.55fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.tenancy-workflow-page__rail,
+.tenancy-workflow-page__detail {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.tenancy-workflow-page__list,
+.tenancy-workflow-page__versionbar,
+.tenancy-workflow-page__versions,
+.tenancy-workflow-page__empty {
+  border: 1px solid var(--workflow-page-border);
+  border-radius: .95rem;
+  background: var(--surface, #fff);
+}
+
+.tenancy-workflow-page__list {
+  display: grid;
+  gap: .5rem;
+  padding: .8rem;
+}
+
+.tenancy-workflow-page__section-head,
+.tenancy-workflow-page__versionbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .7rem;
+}
+
+.tenancy-workflow-page__section-head h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.tenancy-workflow-page__list > button:not(.btn) {
+  display: grid;
+  gap: .15rem;
+  width: 100%;
+  padding: .72rem;
+  border: 1px solid var(--workflow-page-border);
+  border-radius: .72rem;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tenancy-workflow-page__list > button:not(.btn):hover,
+.tenancy-workflow-page__list > button:not(.btn):focus-visible,
+.tenancy-workflow-page__list > button.is-selected {
+  border-color: var(--primary);
+  outline: none;
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+}
+
+.tenancy-workflow-page__list span,
+.tenancy-workflow-page__list small,
+.tenancy-workflow-page__versionbar span {
+  color: var(--text-muted);
+  font-size: .78rem;
+}
+
+.tenancy-workflow-page__list code {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: .7rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tenancy-workflow-page__versionbar {
+  padding: .72rem .85rem;
+}
+
+.tenancy-workflow-page__versionbar > div {
+  display: grid;
+  gap: .12rem;
+  min-width: 0;
+}
+
+.tenancy-workflow-page__versionbar span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tenancy-workflow-page__versions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .42rem;
+  padding: .65rem;
+}
+
+.tenancy-workflow-page__versions button {
+  min-height: 36px;
+  padding: .4rem .62rem;
+  border: 1px solid var(--workflow-page-border);
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.tenancy-workflow-page__versions button.is-selected {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+}
+
+.tenancy-workflow-page__empty {
+  padding: 3rem 1rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.tenancy-workflow-page__context {
+  margin: 0;
+}
+
+@media (max-width: 960px) {
+  .tenancy-workflow-page__columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 620px) {
+  .tenancy-workflow-page__hero {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .tenancy-workflow-page__tabs {
+    width: 100%;
+  }
+
+  .tenancy-workflow-page__tabs button {
+    flex: 1 1 0;
+  }
+
+  .tenancy-workflow-page__section-head,
+  .tenancy-workflow-page__versionbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .tenancy-workflow-page__section-head .btn,
+  .tenancy-workflow-page__versionbar .btn {
+    width: 100%;
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 360px) {
+  .tenancy-workflow-page {
+    padding-inline: .5rem;
+  }
+
+  .tenancy-workflow-page__list,
+  .tenancy-workflow-page__versionbar,
+  .tenancy-workflow-page__versions,
+  .tenancy-workflow-page__empty {
+    border-left: 0;
+    border-right: 0;
+    border-radius: 0;
+  }
+
+  .tenancy-workflow-page__tabs {
+    display: grid;
+  }
+}
+
+@media (max-width: 320px) {
+  .tenancy-workflow-page {
+    padding-inline: .35rem;
+  }
+
+  .tenancy-workflow-page__versions button,
+  .tenancy-workflow-page__tabs button {
+    width: 100%;
+  }
+}
+
+.tenancy-workflow-page__preparation {
+  display: grid;
+  gap: .75rem;
+  min-width: 0;
+}
+
+.tenancy-workflow-page__preparation-toggle {
+  display: grid;
+  gap: .18rem;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: .75rem .85rem;
+  border: 1px solid var(--workflow-page-border);
+  border-radius: .9rem;
+  background: var(--surface, #fff);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tenancy-workflow-page__preparation-toggle span {
+  font-weight: 800;
+}
+
+.tenancy-workflow-page__preparation-toggle small {
+  min-width: 0;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.tenancy-workflow-page__preparation.is-compact .tenancy-workflow-page__preparation-toggle {
+  border-style: dashed;
+}
+
+.tenancy-workflow-page__preparation-body {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.tenancy-workflow-page__preparation-body[hidden] {
+  display: none;
+}
+
+@media (max-width: 960px) {
+  .tenancy-workflow-page__columns--active-change > .tenancy-workflow-page__detail {
+    order: -1;
+  }
+
+  .tenancy-workflow-page__columns--active-change > .tenancy-workflow-page__rail {
+    order: 0;
+  }
+}
+
+@media (max-width: 360px) {
+  .tenancy-workflow-page__preparation-toggle {
+    border-left: 0;
+    border-right: 0;
+    border-radius: 0;
+    padding-inline: .65rem;
+  }
+}

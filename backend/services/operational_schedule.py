@@ -20,6 +20,7 @@ from sqlalchemy import Table, select, text, update
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import Executable
 
+from .. import auth
 from ..db.operational_models import (
     OperationalDispatchORM,
     OperationalLockORM,
@@ -31,8 +32,11 @@ from ..db.orm_models import CalendarEventORM, NotificationORM, TaskORM
 from ..models import CalendarEvent, CalendarEventCreate, Notification, NotificationCreate, Task, TaskCreate
 from ..storage import NotFoundError, ValidationError
 from .concurrency import next_updated_at
+from .contract_occupancy import begin_writer
+from .correspondence_calendar import CURSOR_KIND, account_lock, actor_scope, project
 from .operational_metrics import metrics
 from .payments import EntityType, _memory_lock, payment_total
+from .portfolio_scope import refresh_scope, scope_context
 from .recurrence import CatchUpLimit, RecurrenceError, catch_up, parse_plan
 
 logger = logging.getLogger(__name__)
@@ -202,12 +206,17 @@ class _Transaction:
 
 
 @contextmanager
-def _transaction(store):
+def _transaction(store, *, captured=None):
     if hasattr(store, "db"):
         # A fresh Session avoids committing a caller's unrelated pending writes.
         from ..repositories.sql_store import SQLAlchemyStore
-        with Session(bind=store.db.get_bind(), expire_on_commit=False) as db:
+        bind = store.db.get_bind()
+        with Session(bind=getattr(bind, "engine", bind), expire_on_commit=False) as db:
             with db.begin():
+                begin_writer(db)
+                if captured is not None and isinstance(auth._user_store, auth.SQLUserStore):
+                    auth._user_store._lock_management(db)
+                refresh_scope(captured)
                 if db.get_bind().dialect.name == "postgresql":
                     db.execute(text("SET LOCAL lock_timeout = '5s'"))
                     db.execute(text("SET LOCAL statement_timeout = '30s'"))
@@ -215,15 +224,17 @@ def _transaction(store):
                 db.execute(update(OperationalLockORM).where(OperationalLockORM.id == 1)
                            .values(generation=OperationalLockORM.generation + 1))
                 yield _Transaction(SQLAlchemyStore(db), db)
+                refresh_scope(captured)
         store.db.expire_all()
     else:
         # Memory is scoped to this store. SQL is the restart-persistent backend.
-        with _state_lock, _memory_lock:
+        with account_lock(), _state_lock, _memory_lock:
             state = getattr(store, "_operational_state", None)
             snapshot = {name: deepcopy(getattr(store, name)) for name in ("tasks", "calendar_events", "notifications")}
             previous = deepcopy(state)
             try:
                 yield _Transaction(store)
+                refresh_scope(captured)
             except Exception:
                 for name, rows in snapshot.items():
                     setattr(store, name, rows)
@@ -262,10 +273,12 @@ def _schedule_view(row):
 
 def list_schedules(store, kind=None):
     if hasattr(store, "db"):
-        rows = store.db.scalars(select(OperationalScheduleORM)).all()
+        rows = store.db.scalars(select(OperationalScheduleORM).where(
+            OperationalScheduleORM.source_kind != CURSOR_KIND)).all()
     else:
         rows = getattr(store, "_operational_state", {}).get("schedules", {}).values()
-    return [_schedule_view(row) for row in rows if kind is None or row.source_kind == kind]
+    return [_schedule_view(row) for row in rows if row.source_kind != CURSOR_KIND
+            and (kind is None or row.source_kind == kind)]
 
 
 class _Budget:
@@ -485,23 +498,26 @@ def _notifications(tx, request, budget, kinds):
     return generated, rules_checked, warnings, events
 
 
-def operational_tick(store, request=None, *, kinds=None):
+def operational_tick(store, request=None, *, kinds=None, actor_id=None):
     request = request or TickRequest()
     kinds = set(kinds or {"tasks", "calendar", "overdue", "contracts", "due_tasks", "escalation"})
     budget = _Budget(request.max_items)
-    with metrics.operational_tick(), _transaction(store) as tx:
+    captured = actor_scope(actor_id, require_calendar="calendar" in kinds)
+    with metrics.operational_tick(), scope_context(captured), _transaction(store, captured=captured) as tx:
         tx.resolve_alerts(budget)
         tasks, events, warnings = _recurring(tx, request, budget, kinds)
-        if "calendar" in kinds:
+        if "calendar" in kinds or "deadlines" in kinds:
             events.extend(_calendar_deadlines(tx, request, budget))
         notifications, rules_checked, more_warnings, deadline_events = _notifications(tx, request, budget, kinds)
         events.extend(deadline_events)
+        correspondence_events, correspondence_result = project(tx, request, budget, captured) if "calendar" in kinds else ([], {"enabled": False, "reason": "calendar_not_requested"})
+        events.extend(correspondence_events)
         result = {"as_of": request.as_of.isoformat(), "tasks_created": len(tasks), "calendar_events_created": len(events),
                   "rules_checked": rules_checked, "notifications_generated": len(notifications),
                   "notification_ids": [item.id for item in notifications], "warnings": warnings + more_warnings,
                   "task_ids": [item.id for item in tasks], "calendar_event_ids": [item.id for item in events],
                   "lookback_days": request.lookback_days, "max_items": request.max_items,
-                  "full_catch_up": request.full_catch_up}
+                  "full_catch_up": request.full_catch_up, "correspondence": correspondence_result}
         if tx.db:
             tx.db.add(OperationalTickORM(id=str(uuid4()), as_of=request.as_of, result=result))
         else:
@@ -536,21 +552,31 @@ def recent_ticks(store, limit=20):
 
 
 def scheduler_status():
-    return {"automatic_enabled": bool(_scheduler and _scheduler.enabled),
+    result = {"automatic_enabled": bool(_scheduler and _scheduler.enabled),
             "automatic_running": bool(_scheduler and _scheduler._thread and _scheduler._thread.is_alive()),
-            "interval_seconds": _scheduler.interval_seconds if _scheduler else None}
+            "interval_seconds": _scheduler.interval_seconds if _scheduler else None,
+            "correspondence_projection_configured": bool(_scheduler and _scheduler.actor_id)}
+    if _scheduler:
+        result["durable"] = _scheduler.durable_status
+        result["compatibility_pass"] = _scheduler.compatibility_status
+    return result
 
 
 class OperationalScheduler:
     """An explicitly enabled local worker; lifecycle is owned by app lifespan."""
-    def __init__(self, store, *, enabled=False, interval_seconds=300, max_items=500, lookback_days=366):
+    def __init__(self, store, *, enabled=False, interval_seconds=300, max_items=500, lookback_days=366, actor_id=None):
         if not 10 <= interval_seconds <= 86400:
             raise ValueError("Scheduler interval must be between 10 and 86400 seconds")
         self.store, self.enabled, self.interval_seconds = store, enabled, interval_seconds
+        self.actor_id = actor_id.strip() or None if isinstance(actor_id, str) else None
+        from .operational_job_types import JobContinue, JobCreate
+        JobContinue(max_items=max_items)
+        JobCreate(idempotency_key="validate-configuration", as_of=date.today(), lookback_days=lookback_days)
         self.parameters = {"max_items": max_items, "lookback_days": lookback_days}
-        TickRequest(**self.parameters)
         self._stop = Event()
         self._thread = None
+        self.durable_status = {"state": "not_started"}
+        self.compatibility_status = {"state": "replaced_by_durable_families", "durable": True}
 
     def start(self):
         global _scheduler
@@ -565,10 +591,14 @@ class OperationalScheduler:
         try:
             while not self._stop.is_set():
                 try:
-                    operational_tick(self.store, TickRequest(**self.parameters))
+                    from .operational_scheduler import advance
+                    self.durable_status = advance(self.store, self.actor_id,
+                        {**self.parameters, "interval_seconds": self.interval_seconds})
                 except Exception:
-                    logger.exception("Operativer Lauf fehlgeschlagen; kein erfolgreicher Lauf protokolliert")
-                if self._stop.wait(self.interval_seconds):
+                    self.durable_status = {"state": "attention", "last_error": "automatic_worker_failed"}
+                    logger.exception("Automatische Arbeitsliste unterbrochen; gespeicherter Fortschritt bleibt erhalten")
+                delay = min(1, self.interval_seconds) if self.durable_status.get("state") in {"reserved", "running", "queued"} else self.interval_seconds
+                if self._stop.wait(delay):
                     break
         finally:
             remove = getattr(getattr(self.store, "db", None), "remove", None)

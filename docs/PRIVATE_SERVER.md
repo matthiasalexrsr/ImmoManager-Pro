@@ -14,7 +14,10 @@ folgenden Befehlen `https://immo.example.internal` durch diese Adresse ersetzen:
 
 ```powershell
 python scripts/configure_private_server.py --origin https://immo.example.internal --output .env.server
-docker compose --env-file .env.server -f compose.private-server.yml -p immomanager up -d --build --wait app
+docker compose --env-file .env.server -f compose.private-server.yml -p immomanager build app
+docker compose --env-file .env.server -f compose.private-server.yml -p immomanager up -d --wait db
+docker compose --env-file .env.server -f compose.private-server.yml -p immomanager run --rm --no-deps -T app alembic upgrade head
+docker compose --env-file .env.server -f compose.private-server.yml -p immomanager up -d --wait app
 docker compose --env-file .env.server -f compose.private-server.yml -p immomanager exec app python scripts/server_admin.py initial-owner --username verwaltung --email verwaltung@example.invalid --full-name "Verwaltung"
 ```
 
@@ -24,6 +27,16 @@ IBAN-Schlüssel, wird vor dem Schreiben geschützt und nicht überschrieben.
 Diese Datei mit der Installation erhalten. Keine Schlüssel durch neue Werte
 ersetzen, um einen Lesefehler zu umgehen. Der initiale Eigentümer lässt sich
 nicht ein zweites Mal über die Einrichtung anlegen.
+
+Schemaänderungen erfolgen nur durch den ausdrücklich ausgeführten
+Migrationsbefehl. Ein normaler Start prüft die passende Migrationsversion sowie
+die benötigten Tabellen und Spalten und verändert das Schema nicht. Ein
+fehlendes, unvollständiges oder anders versioniertes Schema verhindert den Start
+mit einem Wartungshinweis. Das gilt auch für Neustarts nach einer Sicherung.
+Eine ältere lokale SQLite-Datenbank ohne Alembicstand vorher auf einer Kopie
+migrieren und prüfen; nicht ungeprüft stempeln oder als frische Installation
+behandeln. Vor einem Versionswechsel eine vollständige Sicherung erstellen und
+die Migration samt Wiederherstellung an einem separaten Ziel abnehmen.
 
 Bei der Anmeldung Zwei-Faktor-Authentifizierung einrichten und weitere Konten
 über die Benutzerverwaltung erstellen. Finanz-, Betriebs- und Eigentümerrollen

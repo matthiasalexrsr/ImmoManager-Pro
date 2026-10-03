@@ -1,5 +1,7 @@
 """Internal messaging router: threads and messages."""
 
+from dataclasses import asdict
+
 from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
@@ -113,11 +115,7 @@ def summarize_thread_endpoint(thread_id: str) -> dict:
     result = summarize_thread(msg_dicts, subject=thread.subject)
 
     return {
+        **asdict(result),
         "thread_id": thread_id,
-        "summary": result.summary,
-        "key_points": result.key_points,
-        "action_items": result.action_items,
-        "sentiment": result.sentiment,
-        "ai_model": result.ai_model,
         "message_count": len(messages),
     }

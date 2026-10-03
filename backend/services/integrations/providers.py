@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
+import re
 from dataclasses import dataclass
+from typing import Any
+
+import httpx
 
 from ..email_service import EmailConfig, EmailConfigError, submit_email
 from ..portal_adapter import get_adapter, list_adapters
@@ -67,27 +73,90 @@ class EmailIntegrationProvider:
 
 @dataclass
 class WhatsAppIntegrationProvider:
+    DEFAULT_GRAPH_VERSION = "v26.0"
+
     @property
     def manifest(self) -> IntegrationManifest:
         return IntegrationManifest(
             integration_id="whatsapp",
-            name="WhatsApp Business API",
+            name="WhatsApp Business Cloud API",
             category="communication",
-            description="Versand von WhatsApp-Nachrichten mit Templates und Benachrichtigungen.",
-            planned=True,
-            capabilities=["Template-Nachrichten", "Status-Updates", "Medienversand"],
+            description="Expliziter Versand über Metas offizielle Cloud API; Templates werden bevorzugt.",
+            capabilities=["Template-Nachrichten", "Direkttext (optional)", "Message-ID"],
             required_config_keys=["phone_number_id", "api_token"],
             secret_config_keys=["api_token"],
         )
 
     def is_configured(self, config: dict) -> bool:
-        return bool(config.get("phone_number_id") and config.get("api_token"))
+        version = str(config.get("graph_version") or self.DEFAULT_GRAPH_VERSION)
+        phone_number_id = str(config.get("phone_number_id") or "")
+        return bool(
+            re.fullmatch(r"v\d+\.\d+", version)
+            and re.fullmatch(r"\d{1,32}", phone_number_id)
+            and config.get("api_token")
+        )
 
     def health(self, config: dict) -> dict:
-        return {"status": "planned", "provider": "meta", "implemented": False}
+        return {
+            "status": "configured" if self.is_configured(config) else "not_configured",
+            "provider": "meta_whatsapp_cloud",
+            "transport_checked": False,
+            "allow_direct_text": bool(config.get("allow_direct_text")),
+            "graph_version": str(config.get("graph_version") or self.DEFAULT_GRAPH_VERSION),
+        }
 
     def run(self, payload: dict, config: dict) -> IntegrationActionResult:
-        return IntegrationActionResult(success=False, message="WhatsApp-Adapter noch nicht implementiert; gespeicherte Zugangsdaten ermöglichen keinen Versand")
+        if not self.is_configured(config):
+            return IntegrationActionResult(False, "WhatsApp-Konfiguration ist unvollständig.")
+        action = payload.get("action") or "template"
+        to = "".join(ch for ch in str(payload.get("to") or "") if ch.isdigit())
+        if not 8 <= len(to) <= 15:
+            return IntegrationActionResult(False, "Empfängernummer ist nicht E.164-tauglich.")
+        body: dict[str, Any] = {"messaging_product": "whatsapp", "to": to}
+        if action == "template":
+            name = str(payload.get("template_name") or "")
+            if not re.fullmatch(r"[a-z0-9_]{1,512}", name):
+                return IntegrationActionResult(False, "Meta-Template-Name fehlt oder ist ungültig.")
+            body.update({
+                "type": "template",
+                "template": {"name": name, "language": {"code": payload.get("language_code") or "de"}},
+            })
+            if payload.get("components"):
+                body["template"]["components"] = payload["components"]
+        elif action == "text":
+            if not config.get("allow_direct_text"):
+                return IntegrationActionResult(False, "Direkttext ist nicht freigegeben; Meta-Template verwenden.")
+            text = str(payload.get("text") or "").strip()
+            if not text or len(text) > 4096:
+                return IntegrationActionResult(False, "Nachrichtentext fehlt oder ist zu lang.")
+            body.update({"type": "text", "text": {"preview_url": False, "body": text}})
+        else:
+            return IntegrationActionResult(False, f"Unbekannte WhatsApp-Aktion: {action}")
+        graph_version = str(config.get("graph_version") or self.DEFAULT_GRAPH_VERSION)
+        url = (
+            f"https://graph.facebook.com/{graph_version}/"
+            f"{config['phone_number_id']}/messages"
+        )
+        try:
+            response = httpx.post(
+                url, json=body,
+                headers={"Authorization": f"Bearer {config['api_token']}"},
+                timeout=30.0,
+            )
+            data = response.json()
+        except (httpx.HTTPError, ValueError):
+            return IntegrationActionResult(False, "WhatsApp-Transport fehlgeschlagen.",
+                                           {"status": "unknown", "retry_automatically": False})
+        if response.status_code >= 400:
+            error = data.get("error", {}) if isinstance(data, dict) else {}
+            return IntegrationActionResult(False, "WhatsApp API hat die Nachricht abgelehnt.", {
+                "status_code": response.status_code, "code": error.get("code"),
+                "type": error.get("type"), "retry_automatically": False,
+            })
+        message_id = ((data.get("messages") or [{}])[0].get("id") if isinstance(data, dict) else None)
+        return IntegrationActionResult(True, "WhatsApp API hat die Nachricht angenommen.", {
+            "external_reference": message_id, "accepted": True, "delivery_confirmed": False,
+        })
 
 
 @dataclass
@@ -118,27 +187,207 @@ class ContractWizardProvider:
 
 @dataclass
 class DeutschePostProvider:
+    DEFAULT_BASE_URL = "https://api.epost.docuguide.com"
+
     @property
     def manifest(self) -> IntegrationManifest:
         return IntegrationManifest(
             integration_id="deutsche-post",
-            name="Deutsche Post API",
+            name="Deutsche Post E-POSTBUSINESS",
             category="delivery",
-            description="Briefversand und Einschreiben über API vorbereiten.",
-            planned=True,
-            capabilities=["Briefauftrag", "Adressvalidierung", "Sendungsverfolgung"],
-            required_config_keys=["api_key"],
-            secret_config_keys=["api_key"],
+            description="Hybridbrief-Testeinlieferung und Statusabfrage über die offizielle E-POSTBUSINESS API.",
+            capabilities=["Testbrief", "Hybridbrief", "Sendungsstatus"],
+            required_config_keys=[
+                "vendor_id", "ekp", "secret", "password",
+                "sender_name", "sender_street", "sender_zip_code", "sender_city",
+            ],
+            secret_config_keys=["secret", "password"],
         )
 
     def is_configured(self, config: dict) -> bool:
-        return bool(config.get("api_key"))
+        return all(config.get(key) for key in (
+            "vendor_id", "ekp", "secret", "password",
+            "sender_name", "sender_street", "sender_zip_code", "sender_city",
+        ))
 
     def health(self, config: dict) -> dict:
-        return {"status": "planned", "provider": "deutsche_post", "implemented": False}
+        return {
+            "status": "configured" if self.is_configured(config) else "not_configured",
+            "provider": "epostbusiness",
+            "base_url": config.get("base_url") or self.DEFAULT_BASE_URL,
+            "transport_checked": False,
+            "production_enabled": bool(config.get("production_enabled")),
+        }
+
+    def _login(self, client: httpx.Client, config: dict) -> tuple[str | None, IntegrationActionResult | None]:
+        request = {
+            "vendorID": config["vendor_id"],
+            "ekp": config["ekp"],
+            "secret": config["secret"],
+            "password": config["password"],
+        }
+        if config.get("vendor_sub_id"):
+            request["vendorSubID"] = config["vendor_sub_id"]
+        if config.get("token_duration"):
+            request["tokenDuration"] = int(config["token_duration"])
+        try:
+            response = client.post("/api/Login", json=request)
+            data = response.json()
+        except (httpx.HTTPError, ValueError):
+            return None, IntegrationActionResult(
+                False, "E-POST-Login konnte nicht sicher bestätigt werden.",
+                {"status": "unknown", "retry_automatically": False},
+            )
+        if response.status_code >= 400 or not isinstance(data, dict) or not data.get("token"):
+            code = data.get("code") if isinstance(data, dict) else None
+            return None, IntegrationActionResult(
+                False, "E-POST hat die Anmeldung abgelehnt.",
+                {"status_code": response.status_code, "code": code, "retry_automatically": False},
+            )
+        return str(data["token"]), None
+
+    def _country_name(
+        self, client: httpx.Client, value: object
+    ) -> tuple[str | None, IntegrationActionResult | None]:
+        raw = str(value or "").strip().upper()
+        if raw in {"", "D", "DE", "DE2", "DEUTSCHLAND", "GERMANY"}:
+            return "", None
+        try:
+            response = client.get("/countries.json")
+            countries = response.json()
+        except (httpx.HTTPError, ValueError):
+            return None, IntegrationActionResult(
+                False, "E-POST-Länderliste konnte nicht verlässlich geprüft werden.",
+                {"status": "unknown", "retry_automatically": False},
+            )
+        if response.status_code >= 400 or not isinstance(countries, list):
+            return None, IntegrationActionResult(False, "E-POST-Länderliste ist nicht verfügbar.")
+        for item in countries:
+            if not isinstance(item, dict):
+                continue
+            code = str(item.get("CountryCode") or "").strip().upper()
+            name = str(item.get("Country") or "").strip().upper()
+            if raw in {code, name} and name:
+                return name, None
+        return None, IntegrationActionResult(
+            False, "Empfängerland ist für E-POST nicht eindeutig auflösbar."
+        )
+
+    @staticmethod
+    def _validate_letter_fields(filename: str, recipient: dict, sender: dict, country: str) -> str | None:
+        if not re.fullmatch(r"[A-Za-z0-9._-]{5,200}", filename):
+            return "E-POST-Dateiname enthält unzulässige Zeichen oder Länge."
+        for value in (recipient.get("name"), recipient.get("street"), recipient.get("city"),
+                      sender.get("name"), sender.get("street"), sender.get("postal_code"), sender.get("city")):
+            if value is not None and len(str(value)) > 80:
+                return "Eine E-POST-Adresszeile überschreitet 80 Zeichen."
+        zip_code = str(recipient.get("postal_code") or "")
+        if country == "" and not re.fullmatch(r"\d{5}", zip_code):
+            return "Deutsche E-POST-Empfänger benötigen eine fünfstellige PLZ."
+        if country and not (zip_code == "   " or (3 <= len(zip_code) <= 20 and " " not in zip_code)):
+            return "Ausländische E-POST-PLZ ist formal ungültig."
+        if not str(recipient.get("name") or "").strip() or not str(recipient.get("city") or "").strip():
+            return "E-POST-Empfängername und Ort sind erforderlich."
+        return None
 
     def run(self, payload: dict, config: dict) -> IntegrationActionResult:
-        return IntegrationActionResult(success=False, message="Post-Adapter noch nicht implementiert; gespeicherte Zugangsdaten ermöglichen keinen Versand")
+        base_url = str(config.get("base_url") or self.DEFAULT_BASE_URL).rstrip("/")
+        if base_url != self.DEFAULT_BASE_URL:
+            return IntegrationActionResult(
+                False, "E-POST-Basis-URL ist nicht die freigegebene offizielle API-Adresse."
+            )
+        action = payload.get("action") or "send"
+        if action == "send":
+            test_mode = bool(payload.get("test_mode", True))
+            if not test_mode and not config.get("production_enabled"):
+                return IntegrationActionResult(False, "Produktiver E-POST-Versand ist nicht freigegeben.")
+            if not test_mode and not payload.get("pdfa_validated"):
+                return IntegrationActionResult(
+                    False, "Produktiver E-POST-Versand erfordert nachgewiesenes PDF/A-1b."
+                )
+        try:
+            with httpx.Client(base_url=base_url, timeout=60.0) as client:
+                if action == "health":
+                    response = client.get("/api/Login/HealthCheck")
+                    return IntegrationActionResult(
+                        response.status_code < 500,
+                        "E-POST HealthCheck ausgeführt.",
+                        {"status_code": response.status_code, "response": response.json()},
+                    )
+                token, error = self._login(client, config)
+                if error:
+                    return error
+                headers = {"Authorization": f"Bearer {token}"}
+                if action == "status":
+                    letter_id = payload.get("letter_id")
+                    if not letter_id:
+                        return IntegrationActionResult(False, "letter_id fehlt.")
+                    response = client.get(f"/api/Letter/{int(letter_id)}", headers=headers)
+                    data = response.json()
+                    return IntegrationActionResult(
+                        response.is_success, "E-POST Sendungsstatus abgerufen.",
+                        {"external_reference": str(letter_id), "status_code": response.status_code, "response": data},
+                    )
+                if action != "send":
+                    return IntegrationActionResult(False, f"Unbekannte E-POST-Aktion: {action}")
+                raw = base64.b64decode(payload.get("pdf_base64") or "", validate=True)
+                if not raw.startswith(b"%PDF-") or len(raw) > 20 * 1024 * 1024:
+                    return IntegrationActionResult(False, "Brief-PDF fehlt, ist ungültig oder größer als 20 MB.")
+                recipient = payload.get("recipient") or {}
+                sender = {
+                    "name": config.get("sender_name") or (payload.get("sender") or {}).get("name"),
+                    "street": config.get("sender_street") or (payload.get("sender") or {}).get("street"),
+                    "postal_code": config.get("sender_zip_code") or (payload.get("sender") or {}).get("postal_code"),
+                    "city": config.get("sender_city") or (payload.get("sender") or {}).get("city"),
+                }
+                country, country_error = self._country_name(client, recipient.get("country"))
+                if country_error:
+                    return country_error
+                filename = str(payload.get("filename") or "immomanager-brief.pdf")
+                field_error = self._validate_letter_fields(filename, recipient, sender, country or "")
+                if field_error:
+                    return IntegrationActionResult(False, field_error)
+                letter = {
+                    "fileName": filename,
+                    "data": payload["pdf_base64"],
+                    "isColor": bool(payload.get("is_color", config.get("is_color", False))),
+                    "isDuplex": bool(payload.get("is_duplex", config.get("is_duplex", True))),
+                    "testFlag": test_mode,
+                    "testShowRestrictedArea": bool(test_mode),
+                    "addressLine1": recipient.get("name") or "",
+                    "addressLine2": recipient.get("street") or "",
+                    "zipCode": recipient.get("postal_code") or "",
+                    "city": recipient.get("city") or "",
+                    "country": country,
+                    "senderAdressLine1": sender.get("name"),
+                    "senderStreet": sender.get("street"),
+                    "senderZipCode": sender.get("postal_code"),
+                    "senderCity": sender.get("city"),
+                    "custom1": payload.get("reference"),
+                    "activateDuplicateFailsafe": True,
+                }
+                if test_mode and config.get("test_email"):
+                    letter["testEMail"] = config["test_email"]
+                response = client.post("/api/Letter", json=[letter], headers=headers)
+                data = response.json()
+        except (httpx.HTTPError, ValueError, TypeError, binascii.Error):
+            return IntegrationActionResult(
+                False, "E-POST-Transport fehlgeschlagen oder lieferte keine verwertbare Antwort.",
+                {"status": "unknown", "retry_automatically": False},
+            )
+        if response.status_code >= 400:
+            return IntegrationActionResult(
+                False, "E-POST hat die Einlieferung abgelehnt.",
+                {"status_code": response.status_code, "response": data, "retry_automatically": False},
+            )
+        first = data[0] if isinstance(data, list) and data else {}
+        letter_id = first.get("letterID") or first.get("letterId") or first.get("id")
+        return IntegrationActionResult(
+            True,
+            "E-POST-Testsendung angenommen." if test_mode else "E-POST-Sendung angenommen.",
+            {"external_reference": str(letter_id) if letter_id is not None else None,
+             "accepted": True, "test_mode": test_mode, "response": data},
+        )
 
 
 @dataclass

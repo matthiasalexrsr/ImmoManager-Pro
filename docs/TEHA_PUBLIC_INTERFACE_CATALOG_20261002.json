@@ -1,0 +1,3475 @@
+{
+  "catalogue_version": 1,
+  "observed_on": "2026-10-02",
+  "source_url": "https://kunden.socs.ws/assets/index-isnTekQ1.js",
+  "source_sha256": "c0809d5357b5a5e3b058bce6dfa23942c9da3a0806849eed76013ed387cddd27",
+  "source_bytes": 1259135,
+  "evidence_scope": "Static public client call sites, not an exhaustive server specification or live probe.",
+  "values_scope": "Public literal values and symbolic request expressions only; no authenticated account values.",
+  "keys_scope": "Direct inline keys are incomplete when computed, spread or identifier-defined; arguments retain exact public expressions.",
+  "discovery_does_not_execute_requests": true,
+  "call_site_count": 74,
+  "calls": [
+    {
+      "method": "POST",
+      "path": "/api/Account/change-password",
+      "inline_second_argument_keys": [
+        "OldPassword",
+        "NewPassword"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{OldPassword:e,NewPassword:n}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "OldPassword",
+              "key_expression": "OldPassword",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "NewPassword",
+              "key_expression": "NewPassword",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${cy}/change-password`",
+      "source_offset": 1243369,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/Account/profile",
+      "inline_second_argument_keys": [],
+      "inline_key_analysis_complete": false,
+      "arguments": [],
+      "url_expression": "`${cy}/profile`",
+      "source_offset": 1243637,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Account/profile",
+      "inline_second_argument_keys": [
+        "NewUsername",
+        "Email",
+        "TelefonVorwahl",
+        "TelefonRufnummer"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{NewUsername:e.newUsername,Email:e.email,TelefonVorwahl:e.telefonVorwahl,TelefonRufnummer:e.telefonRufnummer}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "NewUsername",
+              "key_expression": "NewUsername",
+              "value": {
+                "present": true,
+                "syntax": "MemberExpression",
+                "source_expression": "e.newUsername"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Email",
+              "key_expression": "Email",
+              "value": {
+                "present": true,
+                "syntax": "MemberExpression",
+                "source_expression": "e.email"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "TelefonVorwahl",
+              "key_expression": "TelefonVorwahl",
+              "value": {
+                "present": true,
+                "syntax": "MemberExpression",
+                "source_expression": "e.telefonVorwahl"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "TelefonRufnummer",
+              "key_expression": "TelefonRufnummer",
+              "value": {
+                "present": true,
+                "syntax": "MemberExpression",
+                "source_expression": "e.telefonRufnummer"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${cy}/profile`",
+      "source_offset": 1243868,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/auftrag",
+      "inline_second_argument_keys": [],
+      "inline_key_analysis_complete": false,
+      "arguments": [],
+      "url_expression": "\"/api/auftrag\"",
+      "source_offset": 1211087,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/Auftrag/{parameter}",
+      "inline_second_argument_keys": [],
+      "inline_key_analysis_complete": false,
+      "arguments": [],
+      "url_expression": "`/api/Auftrag/${e}`",
+      "source_offset": 396014,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/Auftrag/{parameter}/infohv-dokumente",
+      "inline_second_argument_keys": [],
+      "inline_key_analysis_complete": false,
+      "arguments": [],
+      "url_expression": "`/api/Auftrag/${e}/infohv-dokumente`",
+      "source_offset": 396252,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/Auftrag/{parameter}/offene-nutzer",
+      "inline_second_argument_keys": [],
+      "inline_key_analysis_complete": false,
+      "arguments": [],
+      "url_expression": "`/api/Auftrag/${e}/offene-nutzer`",
+      "source_offset": 396124,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Auftrag/create-folgeauftrag",
+      "inline_second_argument_keys": [
+        "Altauftrag",
+        "AuftraggeberName",
+        "AuftraggeberMail",
+        "Nutzer"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{Altauftrag:e,AuftraggeberName:n,AuftraggeberMail:t,Nutzer:a.map(d=>({Id:d.id,BewohnerName:d.bewohnerName,Anmeldeart:d.anmeldeart,Kontaktdaten:d.kontaktdaten,Zusatzinfos:d.zusatzinfos}))}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Altauftrag",
+              "key_expression": "Altauftrag",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "AuftraggeberName",
+              "key_expression": "AuftraggeberName",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "AuftraggeberMail",
+              "key_expression": "AuftraggeberMail",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "t"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Nutzer",
+              "key_expression": "Nutzer",
+              "value": {
+                "present": true,
+                "syntax": "CallExpression",
+                "source_expression": "a.map(d=>({Id:d.id,BewohnerName:d.bewohnerName,Anmeldeart:d.anmeldeart,Kontaktdaten:d.kontaktdaten,Zusatzinfos:d.zusatzinfos}))"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "\"/api/Auftrag/create-folgeauftrag\"",
+      "source_offset": 403951,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Auftrag/create-serviceauftrag",
+      "inline_second_argument_keys": [
+        "LiegId",
+        "AbrLfdNr",
+        "Auftragsart",
+        "Beschreibung",
+        "Ansprechpartner",
+        "Vorgangsnummer",
+        "Wunschtermin",
+        "Nutzer"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{LiegId:e,AbrLfdNr:n,Auftragsart:t,Beschreibung:r,Ansprechpartner:d,Vorgangsnummer:f,Wunschtermin:gl(m),Nutzer:a.map(h=>({NutzereinheitId:h.nutzereinheitId,BewohnerName:h.bewohnerName,GeraeteIds:h.geraeteIds}))}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "LiegId",
+              "key_expression": "LiegId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "AbrLfdNr",
+              "key_expression": "AbrLfdNr",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Auftragsart",
+              "key_expression": "Auftragsart",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "t"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Beschreibung",
+              "key_expression": "Beschreibung",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "r"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Ansprechpartner",
+              "key_expression": "Ansprechpartner",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "d"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Vorgangsnummer",
+              "key_expression": "Vorgangsnummer",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "f"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Wunschtermin",
+              "key_expression": "Wunschtermin",
+              "value": {
+                "present": true,
+                "syntax": "CallExpression",
+                "source_expression": "gl(m)"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Nutzer",
+              "key_expression": "Nutzer",
+              "value": {
+                "present": true,
+                "syntax": "CallExpression",
+                "source_expression": "a.map(h=>({NutzereinheitId:h.nutzereinheitId,BewohnerName:h.bewohnerName,GeraeteIds:h.geraeteIds}))"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "\"/api/Auftrag/create-serviceauftrag\"",
+      "source_offset": 403584,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/Auftrag/jahresablesung",
+      "inline_second_argument_keys": [],
+      "inline_key_analysis_complete": false,
+      "arguments": [],
+      "url_expression": "\"/api/Auftrag/jahresablesung\"",
+      "source_offset": 396362,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Auftrag/update-anmeldedaten",
+      "inline_second_argument_keys": [
+        "Auftragsnummer",
+        "TerminId",
+        "Nutzer"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{Auftragsnummer:e,TerminId:n,Nutzer:t.map(r=>({Id:r.id,BewohnerName:r.bewohnerName,Anmeldeart:r.anmeldeart,Kontaktdaten:r.kontaktdaten,Zusatzinfos:r.zusatzinfos}))}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Auftragsnummer",
+              "key_expression": "Auftragsnummer",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "TerminId",
+              "key_expression": "TerminId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Nutzer",
+              "key_expression": "Nutzer",
+              "value": {
+                "present": true,
+                "syntax": "CallExpression",
+                "source_expression": "t.map(r=>({Id:r.id,BewohnerName:r.bewohnerName,Anmeldeart:r.anmeldeart,Kontaktdaten:r.kontaktdaten,Zusatzinfos:r.zusatzinfos}))"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "\"/api/Auftrag/update-anmeldedaten\"",
+      "source_offset": 402511,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/liegenschaften",
+      "inline_second_argument_keys": [],
+      "inline_key_analysis_complete": false,
+      "arguments": [],
+      "url_expression": "\"/api/liegenschaften\"",
+      "source_offset": 806183,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/Liegenschaften",
+      "inline_second_argument_keys": [],
+      "inline_key_analysis_complete": false,
+      "arguments": [],
+      "url_expression": "`${wn}`",
+      "source_offset": 394664,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/aktuelle-periode",
+      "inline_second_argument_keys": [
+        "LiegId"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{LiegId:e}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "LiegId",
+              "key_expression": "LiegId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/aktuelle-periode`",
+      "source_offset": 398179,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/betriebskosten",
+      "inline_second_argument_keys": [
+        "AbrLfdNr",
+        "LiegId"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{AbrLfdNr:e,LiegId:n}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "AbrLfdNr",
+              "key_expression": "AbrLfdNr",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "LiegId",
+              "key_expression": "LiegId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/betriebskosten`",
+      "source_offset": 397053,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/betriebskosten-kostenpositionen",
+      "inline_second_argument_keys": [
+        "AbrLfdNr",
+        "LiegId"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{AbrLfdNr:e,LiegId:n}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "AbrLfdNr",
+              "key_expression": "AbrLfdNr",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "LiegId",
+              "key_expression": "LiegId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/betriebskosten-kostenpositionen`",
+      "source_offset": 397195,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/brennstoffkosten",
+      "inline_second_argument_keys": [
+        "AbrLfdNr",
+        "LiegId"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{AbrLfdNr:e,LiegId:n}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "AbrLfdNr",
+              "key_expression": "AbrLfdNr",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "LiegId",
+              "key_expression": "LiegId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/brennstoffkosten`",
+      "source_offset": 394763,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/changelog-pdf",
+      "inline_second_argument_keys": [
+        "AbrLfdNr",
+        "LiegId"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{AbrLfdNr:e,LiegId:n}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "AbrLfdNr",
+              "key_expression": "AbrLfdNr",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "LiegId",
+              "key_expression": "LiegId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/changelog-pdf`",
+      "source_offset": 402388,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/co2kostenaufteilung",
+      "inline_second_argument_keys": [
+        "AbrLfdNr",
+        "LiegId"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{AbrLfdNr:e,LiegId:n}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "AbrLfdNr",
+              "key_expression": "AbrLfdNr",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "LiegId",
+              "key_expression": "LiegId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/co2kostenaufteilung`",
+      "source_offset": 397503,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/Liegenschaften/dashboard",
+      "inline_second_argument_keys": [],
+      "inline_key_analysis_complete": false,
+      "arguments": [],
+      "url_expression": "`${wn}/dashboard`",
+      "source_offset": 394573,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/datenaustausch/aktive",
+      "inline_second_argument_keys": [
+        "LiegIds"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{LiegIds:e}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "LiegIds",
+              "key_expression": "LiegIds",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/datenaustausch/aktive`",
+      "source_offset": 395213,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/datenaustausch/dokument-content",
+      "inline_second_argument_keys": [
+        "AbrLfdNr",
+        "LiegId",
+        "DocumentId"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{AbrLfdNr:e,LiegId:n,DocumentId:t}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "AbrLfdNr",
+              "key_expression": "AbrLfdNr",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "LiegId",
+              "key_expression": "LiegId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "DocumentId",
+              "key_expression": "DocumentId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "t"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/datenaustausch/dokument-content`",
+      "source_offset": 395634,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/datenaustausch/dokumente",
+      "inline_second_argument_keys": [
+        "AbrLfdNr",
+        "LiegId"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{AbrLfdNr:e,LiegId:n}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "AbrLfdNr",
+              "key_expression": "AbrLfdNr",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "LiegId",
+              "key_expression": "LiegId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/datenaustausch/dokumente`",
+      "source_offset": 395526,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/datenaustausch/dokumente-zip",
+      "inline_second_argument_keys": [
+        "AbrLfdNr",
+        "LiegId",
+        "DocumentIds"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{AbrLfdNr:e,LiegId:n,DocumentIds:t&&t.length>0?t:void 0}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "AbrLfdNr",
+              "key_expression": "AbrLfdNr",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "LiegId",
+              "key_expression": "LiegId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "DocumentIds",
+              "key_expression": "DocumentIds",
+              "value": {
+                "present": true,
+                "syntax": "ConditionalExpression",
+                "source_expression": "t&&t.length>0?t:void 0",
+                "condition": {
+                  "present": true,
+                  "syntax": "LogicalExpression",
+                  "source_expression": "t&&t.length>0"
+                },
+                "if_true": {
+                  "present": true,
+                  "syntax": "Identifier",
+                  "source_expression": "t"
+                },
+                "if_false": {
+                  "present": true,
+                  "syntax": "UnaryExpression",
+                  "source_expression": "void 0"
+                }
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/datenaustausch/dokumente-zip`",
+      "source_offset": 395762,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/datenaustausch/export-a",
+      "inline_second_argument_keys": [
+        "AbrLfdNr",
+        "LiegId"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{AbrLfdNr:e,LiegId:n}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "AbrLfdNr",
+              "key_expression": "AbrLfdNr",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "LiegId",
+              "key_expression": "LiegId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/datenaustausch/export-a`",
+      "source_offset": 395907,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/datenaustausch/upload",
+      "inline_second_argument_keys": [
+        "AbrLfdNr",
+        "LiegId",
+        "Dateien"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{AbrLfdNr:e,LiegId:n,Dateien:t.map(r=>({FileName:r.fileName,Content:r.content}))}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "AbrLfdNr",
+              "key_expression": "AbrLfdNr",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "LiegId",
+              "key_expression": "LiegId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Dateien",
+              "key_expression": "Dateien",
+              "value": {
+                "present": true,
+                "syntax": "CallExpression",
+                "source_expression": "t.map(r=>({FileName:r.fileName,Content:r.content}))"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/datenaustausch/upload`",
+      "source_offset": 395363,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/datenpruefung",
+      "inline_second_argument_keys": [
+        "AbrLfdNr",
+        "LiegId"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{AbrLfdNr:e,LiegId:n}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "AbrLfdNr",
+              "key_expression": "AbrLfdNr",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "LiegId",
+              "key_expression": "LiegId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/datenpruefung`",
+      "source_offset": 401956,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/document-content",
+      "inline_second_argument_keys": [
+        "Ref"
+      ],
+      "inline_key_analysis_complete": false,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{Ref:e,...SO(n)}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Ref",
+              "key_expression": "Ref",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "spread",
+              "argument": {
+                "present": true,
+                "syntax": "CallExpression",
+                "source_expression": "SO(n)"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": false
+        }
+      ],
+      "url_expression": "`${wn}/document-content`",
+      "source_offset": 402991,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/document-kapitel",
+      "inline_second_argument_keys": [
+        "Ref",
+        "LiegNr",
+        "LiegId",
+        "AbrLfdNr"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{Ref:e,LiegNr:n,LiegId:t,AbrLfdNr:a}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Ref",
+              "key_expression": "Ref",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "LiegNr",
+              "key_expression": "LiegNr",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "LiegId",
+              "key_expression": "LiegId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "t"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "AbrLfdNr",
+              "key_expression": "AbrLfdNr",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "a"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/document-kapitel`",
+      "source_offset": 403114,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/document-kapitel-content",
+      "inline_second_argument_keys": [
+        "Ref",
+        "Key",
+        "LiegNr",
+        "LiegId",
+        "AbrLfdNr"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{Ref:e,Key:n,LiegNr:t,LiegId:a,AbrLfdNr:r}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Ref",
+              "key_expression": "Ref",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Key",
+              "key_expression": "Key",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "LiegNr",
+              "key_expression": "LiegNr",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "t"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "LiegId",
+              "key_expression": "LiegId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "a"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "AbrLfdNr",
+              "key_expression": "AbrLfdNr",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "r"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/document-kapitel-content`",
+      "source_offset": 403259,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/document-kapitel-zip",
+      "inline_second_argument_keys": [
+        "Ref",
+        "FileName",
+        "LiegNr",
+        "LiegId",
+        "AbrLfdNr"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{Ref:e,FileName:n,LiegNr:t,LiegId:a,AbrLfdNr:r}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Ref",
+              "key_expression": "Ref",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "FileName",
+              "key_expression": "FileName",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "LiegNr",
+              "key_expression": "LiegNr",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "t"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "LiegId",
+              "key_expression": "LiegId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "a"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "AbrLfdNr",
+              "key_expression": "AbrLfdNr",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "r"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/document-kapitel-zip`",
+      "source_offset": 403418,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/documents",
+      "inline_second_argument_keys": [
+        "LiegNr"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{LiegNr:e}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "LiegNr",
+              "key_expression": "LiegNr",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/documents`",
+      "source_offset": 402809,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/geraeteanzeigen",
+      "inline_second_argument_keys": [
+        "AbrLfdNr",
+        "LiegId"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{AbrLfdNr:e,LiegId:n}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "AbrLfdNr",
+              "key_expression": "AbrLfdNr",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "LiegId",
+              "key_expression": "LiegId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/geraeteanzeigen`",
+      "source_offset": 400496,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/Liegenschaften/GetEnumValues",
+      "inline_second_argument_keys": [],
+      "inline_key_analysis_complete": false,
+      "arguments": [],
+      "url_expression": "`${wn}/GetEnumValues`",
+      "source_offset": 397957,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/hausnebenkosten",
+      "inline_second_argument_keys": [
+        "AbrLfdNr",
+        "LiegId"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{AbrLfdNr:e,LiegId:n}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "AbrLfdNr",
+              "key_expression": "AbrLfdNr",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "LiegId",
+              "key_expression": "LiegId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/hausnebenkosten`",
+      "source_offset": 397816,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/kml-abschliessen",
+      "inline_second_argument_keys": [
+        "AbrLfdNr",
+        "LiegId"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{AbrLfdNr:e,LiegId:n}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "AbrLfdNr",
+              "key_expression": "AbrLfdNr",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "LiegId",
+              "key_expression": "LiegId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/kml-abschliessen`",
+      "source_offset": 402259,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/mieter-create-eigentuemer",
+      "inline_second_argument_keys": [
+        "SocsMieterId",
+        "EmailEigentuemer"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{SocsMieterId:e,EmailEigentuemer:n}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "SocsMieterId",
+              "key_expression": "SocsMieterId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "EmailEigentuemer",
+              "key_expression": "EmailEigentuemer",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/mieter-create-eigentuemer`",
+      "source_offset": 398624,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/mieter-create-email",
+      "inline_second_argument_keys": [
+        "SocsMieterId",
+        "Email"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{SocsMieterId:e,Email:n}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "SocsMieterId",
+              "key_expression": "SocsMieterId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Email",
+              "key_expression": "Email",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/mieter-create-email`",
+      "source_offset": 398494,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/mieter-create-email-pdf",
+      "inline_second_argument_keys": [
+        "SocsMieterId",
+        "Email"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{SocsMieterId:e,Email:n}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "SocsMieterId",
+              "key_expression": "SocsMieterId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Email",
+              "key_expression": "Email",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/mieter-create-email-pdf`",
+      "source_offset": 398771,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/mieter-create-ignore",
+      "inline_second_argument_keys": [
+        "SocsMieterId"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{SocsMieterId:e}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "SocsMieterId",
+              "key_expression": "SocsMieterId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/mieter-create-ignore`",
+      "source_offset": 400258,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/mieter-create-postal",
+      "inline_second_argument_keys": [
+        "SocsMieterId"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{SocsMieterId:e}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "SocsMieterId",
+              "key_expression": "SocsMieterId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/mieter-create-postal`",
+      "source_offset": 398903,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/mieter-delete-ignore",
+      "inline_second_argument_keys": [
+        "SocsMieterId"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{SocsMieterId:e}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "SocsMieterId",
+              "key_expression": "SocsMieterId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/mieter-delete-ignore`",
+      "source_offset": 400376,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/mieter-edit",
+      "inline_second_argument_keys": [
+        "Id",
+        "Email"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{Id:e,Email:n}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Id",
+              "key_expression": "Id",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Email",
+              "key_expression": "Email",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/mieter-edit`",
+      "source_offset": 399026,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/mieter-edit-anschrift",
+      "inline_second_argument_keys": [
+        "Id",
+        "UseNeAnschrift",
+        "Anschrift"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{Id:e,UseNeAnschrift:n,Anschrift:{Name:t.name,Strasse:t.strasse,Plz:t.plz,Stadt:t.stadt}}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Id",
+              "key_expression": "Id",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "UseNeAnschrift",
+              "key_expression": "UseNeAnschrift",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Anschrift",
+              "key_expression": "Anschrift",
+              "value": {
+                "present": true,
+                "syntax": "ObjectExpression",
+                "source_expression": "{Name:t.name,Strasse:t.strasse,Plz:t.plz,Stadt:t.stadt}",
+                "fields": [
+                  {
+                    "kind": "ObjectProperty",
+                    "computed": false,
+                    "key": "Name",
+                    "key_expression": "Name",
+                    "value": {
+                      "present": true,
+                      "syntax": "MemberExpression",
+                      "source_expression": "t.name"
+                    }
+                  },
+                  {
+                    "kind": "ObjectProperty",
+                    "computed": false,
+                    "key": "Strasse",
+                    "key_expression": "Strasse",
+                    "value": {
+                      "present": true,
+                      "syntax": "MemberExpression",
+                      "source_expression": "t.strasse"
+                    }
+                  },
+                  {
+                    "kind": "ObjectProperty",
+                    "computed": false,
+                    "key": "Plz",
+                    "key_expression": "Plz",
+                    "value": {
+                      "present": true,
+                      "syntax": "MemberExpression",
+                      "source_expression": "t.plz"
+                    }
+                  },
+                  {
+                    "kind": "ObjectProperty",
+                    "computed": false,
+                    "key": "Stadt",
+                    "key_expression": "Stadt",
+                    "value": {
+                      "present": true,
+                      "syntax": "MemberExpression",
+                      "source_expression": "t.stadt"
+                    }
+                  }
+                ],
+                "inline_key_analysis_complete": true
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/mieter-edit-anschrift`",
+      "source_offset": 399140,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/mieter-for-lieg",
+      "inline_second_argument_keys": [
+        "Id"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{Id:e}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Id",
+              "key_expression": "Id",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/mieter-for-lieg`",
+      "source_offset": 398299,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/mieter-generate-invitation-pdf",
+      "inline_second_argument_keys": [
+        "Id"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{Id:e}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Id",
+              "key_expression": "Id",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/mieter-generate-invitation-pdf`",
+      "source_offset": 400017,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/mieter-get-events",
+      "inline_second_argument_keys": [
+        "Id"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{Id:e}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Id",
+              "key_expression": "Id",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/mieter-get-events`",
+      "source_offset": 400138,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/mieter-lock",
+      "inline_second_argument_keys": [
+        "Id"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{Id:e}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Id",
+              "key_expression": "Id",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/mieter-lock`",
+      "source_offset": 399699,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/mieter-reset-password",
+      "inline_second_argument_keys": [
+        "Id"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{Id:e}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Id",
+              "key_expression": "Id",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/mieter-reset-password`",
+      "source_offset": 399905,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/mieter-switch-to-email",
+      "inline_second_argument_keys": [
+        "Id",
+        "Email"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{Id:e,Email:n}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Id",
+              "key_expression": "Id",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Email",
+              "key_expression": "Email",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/mieter-switch-to-email`",
+      "source_offset": 399337,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/mieter-switch-to-email-pdf",
+      "inline_second_argument_keys": [
+        "Id",
+        "Email"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{Id:e,Email:n}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Id",
+              "key_expression": "Id",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Email",
+              "key_expression": "Email",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/mieter-switch-to-email-pdf`",
+      "source_offset": 399460,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/mieter-switch-to-postal",
+      "inline_second_argument_keys": [
+        "Id"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{Id:e}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Id",
+              "key_expression": "Id",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/mieter-switch-to-postal`",
+      "source_offset": 399585,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/mieter-unlock",
+      "inline_second_argument_keys": [
+        "Id"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{Id:e}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Id",
+              "key_expression": "Id",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/mieter-unlock`",
+      "source_offset": 399801,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/nutzer",
+      "inline_second_argument_keys": [
+        "AbrLfdNr",
+        "LiegId"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{AbrLfdNr:e,LiegId:n}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "AbrLfdNr",
+              "key_expression": "AbrLfdNr",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "LiegId",
+              "key_expression": "LiegId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/nutzer`",
+      "source_offset": 398060,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/remove-mieterwechsel",
+      "inline_second_argument_keys": [
+        "AbrLfdNr",
+        "LiegId",
+        "MieterId",
+        "NutzereinheitId"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{AbrLfdNr:e,LiegId:n,MieterId:t,NutzereinheitId:a}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "AbrLfdNr",
+              "key_expression": "AbrLfdNr",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "LiegId",
+              "key_expression": "LiegId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "MieterId",
+              "key_expression": "MieterId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "t"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "NutzereinheitId",
+              "key_expression": "NutzereinheitId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "a"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/remove-mieterwechsel`",
+      "source_offset": 400923,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/save-abrechnung-einstellungen",
+      "inline_second_argument_keys": [
+        "AbrLfdNr",
+        "LiegId",
+        "AbrechnungEinstellungen"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{AbrLfdNr:e,LiegId:n,AbrechnungEinstellungen:t}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "AbrLfdNr",
+              "key_expression": "AbrLfdNr",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "LiegId",
+              "key_expression": "LiegId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "AbrechnungEinstellungen",
+              "key_expression": "AbrechnungEinstellungen",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "t"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/save-abrechnung-einstellungen`",
+      "source_offset": 395052,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/save-betriebskosten",
+      "inline_second_argument_keys": [
+        "AbrLfdNr",
+        "LiegId",
+        "Positionen"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{AbrLfdNr:e,LiegId:n,Positionen:t}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "AbrLfdNr",
+              "key_expression": "AbrLfdNr",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "LiegId",
+              "key_expression": "LiegId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Positionen",
+              "key_expression": "Positionen",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "t"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/save-betriebskosten`",
+      "source_offset": 397358,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/save-brennstoffkosten",
+      "inline_second_argument_keys": [
+        "AbrLfdNr",
+        "LiegId",
+        "Energietraeger"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{AbrLfdNr:e,LiegId:n,Energietraeger:a}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "AbrLfdNr",
+              "key_expression": "AbrLfdNr",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "LiegId",
+              "key_expression": "LiegId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Energietraeger",
+              "key_expression": "Energietraeger",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "a"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/save-brennstoffkosten`",
+      "source_offset": 396602,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/save-co2kostenaufteilung",
+      "inline_second_argument_keys": [
+        "AbrLfdNr",
+        "LiegId",
+        "Co2KostenaufteilungDto"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{AbrLfdNr:e,LiegId:n,Co2KostenaufteilungDto:t}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "AbrLfdNr",
+              "key_expression": "AbrLfdNr",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "LiegId",
+              "key_expression": "LiegId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Co2KostenaufteilungDto",
+              "key_expression": "Co2KostenaufteilungDto",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "t"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/save-co2kostenaufteilung`",
+      "source_offset": 397654,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/save-eigentuemerMieterwechsel",
+      "inline_second_argument_keys": [
+        "AbrLfdNr",
+        "LiegId",
+        "Mieter"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{AbrLfdNr:e,LiegId:n,Mieter:t}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "AbrLfdNr",
+              "key_expression": "AbrLfdNr",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "LiegId",
+              "key_expression": "LiegId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Mieter",
+              "key_expression": "Mieter",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "t"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/save-eigentuemerMieterwechsel`",
+      "source_offset": 401098,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/save-flaechenwechsel",
+      "inline_second_argument_keys": [
+        "AbrLfdNr",
+        "LiegId",
+        "Flaechen"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{AbrLfdNr:e,LiegId:n,Flaechen:t}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "AbrLfdNr",
+              "key_expression": "AbrLfdNr",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "LiegId",
+              "key_expression": "LiegId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Flaechen",
+              "key_expression": "Flaechen",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "t"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/save-flaechenwechsel`",
+      "source_offset": 401249,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/save-hausnebenkosten",
+      "inline_second_argument_keys": [
+        "AbrLfdNr",
+        "LiegId",
+        "HausnebenkostenPositionen"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{AbrLfdNr:e,LiegId:n,HausnebenkostenPositionen:t}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "AbrLfdNr",
+              "key_expression": "AbrLfdNr",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "LiegId",
+              "key_expression": "LiegId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "HausnebenkostenPositionen",
+              "key_expression": "HausnebenkostenPositionen",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "t"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/save-hausnebenkosten`",
+      "source_offset": 402098,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/save-nutzer",
+      "inline_second_argument_keys": [
+        "AbrLfdNr",
+        "LiegId",
+        "Mieter"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{AbrLfdNr:e,LiegId:n,Mieter:t}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "AbrLfdNr",
+              "key_expression": "AbrLfdNr",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "LiegId",
+              "key_expression": "LiegId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Mieter",
+              "key_expression": "Mieter",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "t"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/save-nutzer`",
+      "source_offset": 400788,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/save-personenwechsel",
+      "inline_second_argument_keys": [
+        "AbrLfdNr",
+        "LiegId",
+        "Mieter"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{AbrLfdNr:e,LiegId:n,Mieter:t}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "AbrLfdNr",
+              "key_expression": "AbrLfdNr",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "LiegId",
+              "key_expression": "LiegId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Mieter",
+              "key_expression": "Mieter",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "t"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/save-personenwechsel`",
+      "source_offset": 401393,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/save-vorauszahlung",
+      "inline_second_argument_keys": [
+        "AbrLfdNr",
+        "LiegId",
+        "Mieter"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{AbrLfdNr:e,LiegId:n,Mieter:t}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "AbrLfdNr",
+              "key_expression": "AbrLfdNr",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "LiegId",
+              "key_expression": "LiegId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Mieter",
+              "key_expression": "Mieter",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "t"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/save-vorauszahlung`",
+      "source_offset": 401536,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/save-weiteres",
+      "inline_second_argument_keys": [
+        "AbrLfdNr",
+        "LiegId",
+        "WeitereAngaben"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{AbrLfdNr:e,LiegId:n,WeitereAngaben:t}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "AbrLfdNr",
+              "key_expression": "AbrLfdNr",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "LiegId",
+              "key_expression": "LiegId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "WeitereAngaben",
+              "key_expression": "WeitereAngaben",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "t"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/save-weiteres`",
+      "source_offset": 401813,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/save-zwischenablesung",
+      "inline_second_argument_keys": [
+        "AbrLfdNr",
+        "LiegId",
+        "Anzeigen",
+        "Mieter"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{AbrLfdNr:e,LiegId:n,Anzeigen:a,Mieter:t}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "AbrLfdNr",
+              "key_expression": "AbrLfdNr",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "LiegId",
+              "key_expression": "LiegId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Anzeigen",
+              "key_expression": "Anzeigen",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "a"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Mieter",
+              "key_expression": "Mieter",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "t"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/save-zwischenablesung`",
+      "source_offset": 400632,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/sonderleistungen",
+      "inline_second_argument_keys": [
+        "AbrLfdNr",
+        "LiegId"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{AbrLfdNr:e,LiegId:n}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "AbrLfdNr",
+              "key_expression": "AbrLfdNr",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "LiegId",
+              "key_expression": "LiegId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/sonderleistungen`",
+      "source_offset": 394909,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/upload-kostenmieterliste",
+      "inline_second_argument_keys": [
+        "AbrLfdNr",
+        "LiegId",
+        "Filename",
+        "PdfBytes"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{AbrLfdNr:e,LiegId:n,Filename:t,PdfBytes:a}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "AbrLfdNr",
+              "key_expression": "AbrLfdNr",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "LiegId",
+              "key_expression": "LiegId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Filename",
+              "key_expression": "Filename",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "t"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "PdfBytes",
+              "key_expression": "PdfBytes",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "a"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/upload-kostenmieterliste`",
+      "source_offset": 396894,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/Liegenschaften/weiteres",
+      "inline_second_argument_keys": [
+        "AbrLfdNr",
+        "LiegId"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{AbrLfdNr:e,LiegId:n}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "AbrLfdNr",
+              "key_expression": "AbrLfdNr",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "LiegId",
+              "key_expression": "LiegId",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${wn}/weiteres`",
+      "source_offset": 401675,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/user",
+      "inline_second_argument_keys": [
+        "Mandant",
+        "Username",
+        "PasswordHash"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{Mandant:1,Username:n,PasswordHash:t}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Mandant",
+              "key_expression": "Mandant",
+              "value": {
+                "present": true,
+                "syntax": "NumericLiteral",
+                "source_expression": "1",
+                "static_value": 1
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Username",
+              "key_expression": "Username",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "PasswordHash",
+              "key_expression": "PasswordHash",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "t"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "\"/api/user\"",
+      "source_offset": 320622,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/user/confirm-reset-password",
+      "inline_second_argument_keys": [
+        "MandantId",
+        "Key",
+        "Password"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{MandantId:1,Key:e,Password:n}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "MandantId",
+              "key_expression": "MandantId",
+              "value": {
+                "present": true,
+                "syntax": "NumericLiteral",
+                "source_expression": "1",
+                "static_value": 1
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Key",
+              "key_expression": "Key",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Password",
+              "key_expression": "Password",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "n"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${tC}/confirm-reset-password`",
+      "source_offset": 329789,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/user/refresh",
+      "inline_second_argument_keys": [
+        "RefreshToken"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{RefreshToken:e}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "RefreshToken",
+              "key_expression": "RefreshToken",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "\"/api/user/refresh\"",
+      "source_offset": 318670,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/user/reset-password",
+      "inline_second_argument_keys": [
+        "MandantId",
+        "Username"
+      ],
+      "inline_key_analysis_complete": true,
+      "arguments": [
+        {
+          "present": true,
+          "syntax": "ObjectExpression",
+          "source_expression": "{MandantId:1,Username:e}",
+          "fields": [
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "MandantId",
+              "key_expression": "MandantId",
+              "value": {
+                "present": true,
+                "syntax": "NumericLiteral",
+                "source_expression": "1",
+                "static_value": 1
+              }
+            },
+            {
+              "kind": "ObjectProperty",
+              "computed": false,
+              "key": "Username",
+              "key_expression": "Username",
+              "value": {
+                "present": true,
+                "syntax": "Identifier",
+                "source_expression": "e"
+              }
+            }
+          ],
+          "inline_key_analysis_complete": true
+        }
+      ],
+      "url_expression": "`${tC}/reset-password`",
+      "source_offset": 329690,
+      "evidence": "static-public-client-call",
+      "live_verified": false,
+      "runtime_request_schema_verified": false
+    }
+  ]
+}

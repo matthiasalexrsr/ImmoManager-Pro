@@ -22,8 +22,10 @@ from ..services.file_storage import get_file_storage
 from ..services.ocr_service import OCRProcessingError
 from ..services.portfolio_scope import register_upload, require_assigned_scope
 from ..storage import NotFoundError, ValidationError
+from .document_inventory import router as inventory_router
 
 router = APIRouter(prefix="/documents", tags=["Dokumente"])
+router.include_router(inventory_router)
 
 
 class DocumentOcrAnalyzeRequest(BaseModel):
@@ -143,11 +145,13 @@ def ocr_analyze_document(payload: DocumentOcrAnalyzeRequest) -> dict | JSONRespo
     extracted_text = result.get("summary")
 
     return {
-        "success": bool(analysis.get("analyzed") or ocr_result.get("has_ocr")),
+        "success": bool(analysis.get("analysis_complete")),
         "processed": bool(ocr_result.get("processed")),
         "has_ocr": bool(ocr_result.get("has_ocr")),
         "ocr_url": ocr_result.get("ocr_url"),
         "analyzed": bool(analysis.get("analyzed")),
+        "analysis_complete": bool(analysis.get("analysis_complete")),
+        "partial": bool(analysis.get("partial")),
         "message": analysis.get("message"),
         "document_type": result.get("document_type"),
         "guessedType": result.get("document_type"),

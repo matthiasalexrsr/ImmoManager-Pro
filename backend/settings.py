@@ -145,14 +145,24 @@ class Settings(BaseSettings):
 
     # Operational batch sizes bound work per tick, never total stored records.
     operational_scheduler_enabled: bool = False
+    operational_scheduler_actor_id: str | None = None
     operational_scheduler_interval_seconds: int = Field(default=300, ge=10, le=86400)
-    operational_scheduler_max_items: int = Field(default=500, ge=1, le=5000)
-    operational_scheduler_lookback_days: int = Field(default=366, ge=1, le=3660)
+    operational_scheduler_max_items: int = Field(default=500, ge=1)
+    operational_scheduler_lookback_days: int = Field(default=366, ge=1)
     booking_page_max_size: int = Field(default=500, ge=25, le=5000)
+    workflow_reference_page_budget: int = Field(default=1000, ge=1)
+    workflow_reference_cursor_seconds: int = Field(default=3600, ge=1)
     rent_batch_max_size: int = Field(default=500, ge=25, le=5000)
     bank_import_page_max_size: int = Field(default=500, ge=25, le=5000)
     bank_import_field_max_chars: int = Field(default=100000, ge=1024, le=100000000)
+    # Discovery refuses a resource overflow; these are not total row limits.
+    bank_discovery_record_max_chars: int = Field(default=8 * 1024 * 1024, gt=0)
+    bank_discovery_field_max_chars: int = Field(default=1024 * 1024, gt=0)
+    bank_discovery_temp_max_bytes: int = Field(default=2 * 1024 * 1024 * 1024, gt=0)
+    bank_discovery_timeout_seconds: float = Field(default=120.0, gt=0, allow_inf_nan=False)
     contract_workspace_page_max_size: int = Field(default=500, gt=0)
+    contract_correspondence_page_max_size: int = Field(default=100, gt=0)
+    tenancy_workflow_page_max_size: int = Field(default=500, gt=0)
     contract_workspace_search_max_chars: int = Field(default=200, gt=0)
     form_draft_ttl_days: int = Field(default=7, ge=1, le=365)
     form_draft_max_bytes: int = Field(default=262144, ge=1024, le=16777216)
@@ -190,6 +200,11 @@ class Settings(BaseSettings):
 
     # --- Integrations ---
     integration_state_file: str | None = None
+    # Work budgets per artifact/proof/response, never a total history count cap.
+    integration_history_artifact_bytes: int = Field(default=16 * 1024 * 1024, gt=0)
+    integration_history_page_bytes: int = Field(default=32 * 1024 * 1024, gt=0)
+    integration_history_temp_bytes: int = Field(default=512 * 1024 * 1024, gt=0)
+    integration_history_timeout_seconds: float = Field(default=60.0, gt=0, allow_inf_nan=False)
 
     # --- AI / Hugging Face ---
     ai_enabled: bool = True  # Master toggle for AI features
@@ -203,6 +218,31 @@ class Settings(BaseSettings):
 
     # --- Contract wizard runtime behavior ---
     contract_wizard_required: bool = False
+
+    @field_validator("integration_history_artifact_bytes", "integration_history_page_bytes",
+                     "integration_history_temp_bytes", "integration_history_timeout_seconds", mode="before")
+    @classmethod
+    def validate_history_budget_type(cls, value: object, info: ValidationInfo) -> object:
+        if isinstance(value, bool):
+            raise ValueError("Integration history budget must be numeric, not boolean")
+        if info.field_name != "integration_history_timeout_seconds":
+            if isinstance(value, str):
+                raw = value.strip()
+                if not raw.isascii() or not raw.isdecimal():
+                    raise ValueError("Integration history byte budget must be an integer")
+            elif type(value) is not int:
+                raise ValueError("Integration history byte budget must be an integer")
+        return value
+
+    @field_validator("bank_discovery_record_max_chars", "bank_discovery_field_max_chars",
+                     "bank_discovery_temp_max_bytes", "bank_discovery_timeout_seconds", mode="before")
+    @classmethod
+    def validate_bank_discovery_numeric_type(cls, value: object, info: ValidationInfo) -> object:
+        if isinstance(value, bool):
+            raise ValueError("Bank discovery budget must be numeric, not boolean")
+        if info.field_name != "bank_discovery_timeout_seconds" and not isinstance(value, str) and type(value) is not int:
+            raise ValueError("Bank discovery byte/character budget must be an integer")
+        return value
 
     @field_validator("ocr_languages")
     @classmethod

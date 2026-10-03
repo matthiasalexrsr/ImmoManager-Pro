@@ -6,6 +6,10 @@ import { useAuth } from '../contexts/AuthContext';
 import useWriteAccess from '../hooks/useWriteAccess';
 import { useConfirm } from './ConfirmDialog';
 import { useTranslation } from '../i18n';
+import ContractCorrespondence from './ContractCorrespondence';
+import HousingConfirmationDialog from '../features/housingConfirmation/HousingConfirmationDialog';
+import { housingConfirmationService } from '../features/housingConfirmation/housingConfirmationApi';
+import { housingText } from '../features/housingConfirmation/housingConfirmationText';
 import './ContractLifecycle.css';
 
 const PAGE_SIZE = 25;
@@ -261,8 +265,8 @@ function FocusDialog({ children, titleId, busy, onClose, opener }) {
   </div>;
 }
 
-function LifecycleDialog({ contract, opener, onClose, onChanged, user }) {
-  const { t } = useTranslation();
+function LifecycleDialog({ contract, opener, onClose, onChanged, user, onHousingConfirmation }) {
+  const { t, locale } = useTranslation();
   const confirm = useConfirm();
   const label = useCallback(key => t(`contractLifecycle.${key}`), [t]);
   const controllers = useRef(new Set());
@@ -292,6 +296,8 @@ function LifecycleDialog({ contract, opener, onClose, onChanged, user }) {
   const [form, setForm] = useState(blankForm);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [correspondenceBusy, setCorrespondenceBusy] = useState(false);
+  const [correspondenceOpened, setCorrespondenceOpened] = useState(false);
   const [error, setError] = useState(null);
   const [retry, setRetry] = useState(null);
   const [needsReload, setNeedsReload] = useState(false);
@@ -695,7 +701,8 @@ function LifecycleDialog({ contract, opener, onClose, onChanged, user }) {
       })}</span>
     </div> : null;
 
-  return <FocusDialog titleId={titleId} busy={busy} onClose={onClose} opener={opener}>
+  const dialogBusy = busy || correspondenceBusy;
+  return <FocusDialog titleId={titleId} busy={dialogBusy} onClose={onClose} opener={opener}>
     <header className="contract-lifecycle__header">
       <div>
         <p className="contract-lifecycle__eyebrow">{label('eyebrow')}</p>
@@ -703,17 +710,23 @@ function LifecycleDialog({ contract, opener, onClose, onChanged, user }) {
         <p>{contract.contract_number} · {source?.status || contract.status}</p>
       </div>
       <button type="button" className="contract-lifecycle__icon-button" onClick={onClose}
-        disabled={busy} aria-label={label('close')}><X size={20} /></button>
+        disabled={dialogBusy} aria-label={label('close')}><X size={20} /></button>
     </header>
 
-    <nav className="contract-lifecycle__tabs" aria-label={label('tabs')}>
+    <nav className="contract-lifecycle__tabs contract-lifecycle__tabs--correspondence" aria-label={label('tabs')}>
       <button type="button" className={tab === 'draft' ? 'is-active' : ''} onClick={() => setTab('draft')}
-        aria-pressed={tab === 'draft'}>{canWrite ? label('draftTab') : label('ownDraftsTab')}</button>
+        disabled={dialogBusy} aria-pressed={tab === 'draft'}>{canWrite ? label('draftTab') : label('ownDraftsTab')}</button>
       <button type="button" className={tab === 'history' ? 'is-active' : ''} onClick={() => setTab('history')}
-        aria-pressed={tab === 'history'}>{label('historyTab')}</button>
+        disabled={dialogBusy} aria-pressed={tab === 'history'}>{label('historyTab')}</button>
+      <button type="button" className={tab === 'correspondence' ? 'is-active' : ''} disabled={dialogBusy}
+        onClick={() => { setCorrespondenceOpened(true); setTab('correspondence'); }}
+        aria-pressed={tab === 'correspondence'}>{t('contractCorrespondence.tab')}</button>
     </nav>
 
     <div className="contract-lifecycle__body">
+      {correspondenceOpened && !accessDenied && <div hidden={tab !== 'correspondence'}>
+        <ContractCorrespondence contract={contract} onBusyChange={setCorrespondenceBusy} />
+      </div>}
       {loading && <p role="status">{label('loading')}</p>}
       {error && <div className="contract-lifecycle__error" role="alert">
         <AlertTriangle size={18} aria-hidden="true" /><span>{error}</span>
@@ -821,7 +834,13 @@ function LifecycleDialog({ contract, opener, onClose, onChanged, user }) {
 
     <footer className="contract-lifecycle__footer">
       <p>{label('disclaimer')}</p>
-      <button type="button" className="btn btn-secondary" onClick={onClose} disabled={busy}>{label('close')}</button>
+      <div className="contract-lifecycle__actions">
+        <button type="button" className="btn btn-secondary" disabled={dialogBusy}
+          onClick={event => onHousingConfirmation?.(event.currentTarget)}>
+          {housingText(locale, 'openFromContract')}
+        </button>
+        <button type="button" className="btn btn-secondary" onClick={onClose} disabled={dialogBusy}>{label('close')}</button>
+      </div>
     </footer>
   </FocusDialog>;
 }
@@ -830,7 +849,17 @@ export default function ContractLifecycle({ contract, opener, onClose, onChanged
   const auth = useAuth();
   const user = auth?.user;
   const key = useMemo(() => actorKey(user), [user]);
+  const [housingOpener, setHousingOpener] = useState(null);
   if (!contract?.id || !key) return null;
-  return <LifecycleDialog key={`${contract.id}:${key}`} contract={contract} opener={opener}
-    onClose={onClose} onChanged={onChanged} user={user} />;
+  return <>
+    <LifecycleDialog key={`${contract.id}:${key}`} contract={contract} opener={opener}
+      onClose={onClose} onChanged={onChanged} user={user}
+      onHousingConfirmation={setHousingOpener} />
+    {housingOpener && <HousingConfirmationDialog
+      contractId={contract.id}
+      opener={housingOpener}
+      service={housingConfirmationService}
+      onClose={() => setHousingOpener(null)}
+    />}
+  </>;
 }

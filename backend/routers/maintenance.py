@@ -5,8 +5,11 @@ from fastapi import APIRouter, HTTPException, Query, status
 from ..dependencies import store
 from ..models import MaintenanceCase, MaintenanceCaseCreate, MaintenanceCasePatch
 from ..storage import NotFoundError, ValidationError
+from .maintenance_inventory import router as inventory_router
 
 router = APIRouter(prefix="/maintenance", tags=["Instandhaltung"])
+
+router.include_router(inventory_router)
 
 
 @router.get("", response_model=list[MaintenanceCase])
@@ -21,30 +24,23 @@ def list_maintenance_cases(
     date_to: date | None = Query(None),
 ) -> list[MaintenanceCase]:
     filters = {"property_id": property_id, "status": status_filter}
-    has_date_filter = isinstance(date_from, date) or isinstance(date_to, date)
-    results = store._list_paginated(
+    if isinstance(date_from, date) or isinstance(date_to, date):
+        from ..services.maintenance_list import filtered_maintenance
+
+        return filtered_maintenance(
+            store, skip=skip, limit=limit, filters=filters, sort_by=sort_by,
+            descending=(sort_order == "desc"),
+            date_from=date_from if isinstance(date_from, date) else None,
+            date_to=date_to if isinstance(date_to, date) else None,
+        )
+    return store._list_paginated(
         entity_type="maintenance",
-        skip=0 if has_date_filter else skip,
-        limit=10000 if has_date_filter else limit,
+        skip=skip,
+        limit=limit,
         filters=filters,
         order_by=sort_by,
         order_desc=(sort_order == "desc"),
     )
-    if isinstance(date_from, date):
-        results = [
-            r for r in results
-            if getattr(r, 'due_date', None)
-            and r.due_date >= date_from
-        ]
-    if isinstance(date_to, date):
-        results = [
-            r for r in results
-            if getattr(r, 'due_date', None)
-            and r.due_date <= date_to
-        ]
-    if has_date_filter:
-        results = results[skip : skip + limit]
-    return results
 
 
 @router.post("", response_model=MaintenanceCase, status_code=status.HTTP_201_CREATED)

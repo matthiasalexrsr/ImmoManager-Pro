@@ -1,0 +1,48 @@
+.billing-dimension-value {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-width: 0;
+  padding: .18rem .45rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface, #fff) 88%, var(--border-color, #d7dce5) 12%);
+  font-size: .78rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.billing-dimension-value--missing {
+  background: color-mix(in srgb, var(--danger, #dc2626) 11%, transparent);
+  color: var(--danger, #b91c1c);
+  font-weight: 750;
+}
+
+.billing-dimension-value--unknown {
+  background: color-mix(in srgb, var(--warning, #d97706) 11%, transparent);
+  color: color-mix(in srgb, var(--warning, #d97706) 82%, #111 18%);
+  font-weight: 700;
+}
+
+.billing-dimension-value--custom {
+  border: 1px dashed var(--border-color, #d7dce5);
+  background: transparent;
+}
+
+.billing-dimension-context {
+  display: inline-flex;
+  gap: .25rem;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.billing-dimension-context strong,
+.billing-dimension-context span {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 360px) {
+  .billing-dimension-value {
+    border-radius: .55rem;
+  }
+}

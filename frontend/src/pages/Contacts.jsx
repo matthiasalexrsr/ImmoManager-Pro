@@ -6,6 +6,7 @@ import { useTranslation } from '../i18n';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
+import PageLoadState from '../components/PageLoadState';
 import { useConfirm } from '../components/ConfirmDialog';
 
 const COLUMNS = [
@@ -48,19 +49,21 @@ export default function Contacts() {
   const confirm = useConfirm();
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [modal, setModal] = useState(null);
   const { canWrite, isAllowed, requireWrite } = useWriteAccess('/contacts', () => setModal(null));
   const [tab, setTab] = useState('all');
 
   const loadData = () => {
+    setLoading(true);
+    setError(null);
     api.get('/contacts').then(data => {
-      // Add display_name for each contact
       const enriched = (data || []).map(c => ({
         ...c,
         display_name: c.company_name || [c.first_name, c.last_name].filter(Boolean).join(' ') || 'Unbenannt',
       }));
       setContacts(enriched);
-    }).catch(() => setContacts([])).finally(() => setLoading(false));
+    }).catch(setError).finally(() => setLoading(false));
   };
 
   useEffect(() => { loadData(); }, []);
@@ -96,7 +99,7 @@ export default function Contacts() {
     manager: contacts.filter(c => c.contact_type === 'manager').length,
   };
 
-  if (loading) return <div className="page-loading">Laden...</div>;
+  if (loading || error) return <PageLoadState loading={loading} error={error} onRetry={loadData} />;
 
   return (
     <div className="page">

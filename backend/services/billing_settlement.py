@@ -156,6 +156,8 @@ def atomic_billing(store, period_id: str):
                 if not db.connection().connection.driver_connection.in_transaction:
                     db.execute(text("BEGIN IMMEDIATE"))
             root = _root_period(store, period_id)
+            from .measurement_history import lock_measurement_property
+            lock_measurement_property(store, root.property_id)
             db.execute(select(BillingPeriodORM).where(BillingPeriodORM.id == root.id).with_for_update()
                 .execution_options(populate_existing=True)).scalar_one()
             from .credit_ledger import lock_contract
@@ -294,6 +296,8 @@ def replace_statements(store, period_id: str, build) -> list[UtilityStatement]:
         assert_mutable(period)
         models, owner = build(period)
         calculation = calculation_hash(store, period)
+        if not models and owner.get("historically_confirmed_vacancy"):
+            owner["calculation_hash"] = calculation
         previous = {s.contract_id: s for s in store.list_utility_statements()
                     if s.billing_period_id == period.source_period_id} if period.source_period_id else {}
         for old in [s for s in store.list_utility_statements() if s.billing_period_id == period_id]:
@@ -335,6 +339,10 @@ def calculation_hash(store, period) -> str:
         "meters": [m.model_dump(mode="json") for m in sorted(store.list_meters(), key=lambda m: m.id) if m.unit_id in {u.id for u in units}],
         "readings": [r.model_dump(mode="json") for r in sorted(store.list_standalone_meter_readings(), key=lambda r: r.id)
                      if period.start_date <= r.reading_date <= period.end_date]}
+    from .measurement_history import period_sources
+    historical = period_sources(store, period)
+    if historical:
+        payload["historical_sources"] = [{key: row[key] for key in ("id", "content_hash")} for row in historical]
     return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 
@@ -350,7 +358,10 @@ def finalize_period(store, period_id: str, preflight) -> BillingPeriod:
             raise ValidationError("Finalisierung blockiert: Preflight enthält Blocker.")
         statements = [s for s in store.list_utility_statements() if s.billing_period_id == period_id]
         contracts = eligible_contracts(store, period)
-        if not statements or {s.contract_id for s in statements} != {c.id for c in contracts}:
+        owner = period.owner_cost_share
+        owner_only = (not contracts and owner is not None and owner.get("historically_confirmed_vacancy")
+            and owner.get("historical_sources") and owner.get("calculation_hash") == calculation_hash(store, period))
+        if (not statements and not owner_only) or {s.contract_id for s in statements} != {c.id for c in contracts}:
             raise ValidationError("Einzelabrechnungen fehlen; bitte vollständig neu erzeugen.")
         costs = sum((Decimal(str(c.amount)) for c in store.list_cost_items()
                      if c.billing_period_id == period_id), Decimal("0")).quantize(CENT)

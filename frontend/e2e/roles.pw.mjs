@@ -46,12 +46,12 @@ async function fixtureAccount(page, role) {
   expect(denied.status(), 'An explicit fixture grant must not expose another portfolio').toBe(404);
   return result;
 }
-async function loaded(page) { await expect(page.locator('.shared-data-table')).toBeVisible(); }
+async function loaded(page) {
+  await expect(page.locator('.shared-data-table, .inventory-results').first()).toBeVisible();
+}
 async function noCreate(page, path) {
   await page.goto(path); await loaded(page);
-  await expect(page.getByRole('button', { name: 'Neu', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Bearbeiten', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Löschen', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /(^Neu$|anlegen$|bearbeiten$|löschen$)/i })).toHaveCount(0);
 }
 async function propertiesReadOnly(page) {
   await page.goto('/properties');
@@ -108,16 +108,16 @@ test('technician: actual maintenance creation persists, finance and billing comm
   await expect(page.getByRole('heading', { name: account.testPeriodLabel, exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: /Abrechnungen erstellen|Finalisieren|Korrektur starten|Forderungen.*buchen/ })).toHaveCount(0);
   await expect(page.locator('input[type="file"]')).toHaveCount(0);
-  await page.goto('/maintenance'); await loaded(page); await page.getByRole('button', { name: 'Neu', exact: true }).click();
+  await page.goto('/maintenance'); await loaded(page); await page.getByRole('button', { name: 'Wartungsfall anlegen', exact: true }).click();
   const dialog = page.getByRole('dialog'); const name = unique('Technik Reparatur');
   const properties = await get(page, '/properties'); expect(properties.length).toBeGreaterThan(0);
-  await dialog.getByLabel(/^Immobilie/).selectOption(properties[0].id);
+  await dialog.getByRole('button', { name: properties[0].name, exact: true }).click();
   await dialog.getByLabel(/^Titel/).fill(name);
   const saved = page.waitForResponse(response => new URL(response.url()).pathname === '/api/v1/maintenance' && response.request().method() === 'POST');
   await dialog.getByRole('button', { name: 'Speichern', exact: true }).click();
   const response = await saved; expect(response.status(), await response.text()).toBe(201); const created = await response.json();
   expect(await get(page, `/maintenance/${created.id}`)).toMatchObject({ title: name, property_id: properties[0].id });
-  await page.reload(); await loaded(page); await page.locator('.shared-table-search input').fill(name);
+  await page.reload(); await loaded(page); await page.getByLabel('Wartungsfälle durchsuchen', { exact: true }).fill(name);
   await expect(page.getByRole('row').filter({ hasText: name })).toHaveCount(1);
   await page.goto('/meters'); await loaded(page); await expect(page.getByRole('button', { name: 'Neu', exact: true })).toBeVisible();
   await page.goto('/documents'); await loaded(page); await expect(page.locator('input[type="file"]')).toHaveCount(1);

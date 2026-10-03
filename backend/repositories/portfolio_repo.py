@@ -26,6 +26,7 @@ from ..models import (
 from ..storage import NotFoundError, ValidationError
 from .account_repo import AccountRepository
 from .base import BaseRepository
+from .guard_context import no_autoflush_guard
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,7 @@ class PortfolioRepository:
         self._commit()
         return result
 
+    @no_autoflush_guard
     def delete_portfolio(self, portfolio_id: str) -> None:
         try:
             self._portfolios.get(portfolio_id)
@@ -141,6 +143,7 @@ class PortfolioRepository:
     def get_property(self, property_id: str) -> Property:
         return self._properties.get(property_id)
 
+    @no_autoflush_guard
     def update_property(self, property_id: str, data: PropertyCreate) -> Property:
         if not self._portfolios.exists(data.portfolio_id):
             # A deleted ancestor also removes the edited subject. Preserve its
@@ -170,6 +173,7 @@ class PortfolioRepository:
     def get_unit(self, unit_id: str) -> Unit:
         return self._units.get(unit_id)
 
+    @no_autoflush_guard
     def update_unit(self, unit_id: str, data: UnitCreate) -> Unit:
         if not self._properties.exists(data.property_id):
             if not self._units.exists(unit_id):

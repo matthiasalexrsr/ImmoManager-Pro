@@ -9,18 +9,15 @@ from dataclasses import is_dataclass
 from datetime import datetime, timezone
 from tempfile import SpooledTemporaryFile
 
-from sqlalchemy import select
 from sqlalchemy.engine import Engine
-from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from ..db.contract_lifecycle_models import LIFECYCLE_MODELS
-from ..db.orm_models import ContractORM, TenantORM
 from ..models import TenantPatch
 from .concurrency import EditRevision, revision_scope, utc_datetime
 from .data_transfer import _atomic_store
 from .payments import _memory_lock
-from .tenant_data_graph import TenantExportError, TenantNotFoundError, tenant_data_graph
+from .tenant_data_graph import TenantExportError, tenant_data_graph
 
 PROFILE_FIELDS = (
     "full_name", "email", "phone", "address_line", "postal_code", "city", "country",
@@ -39,9 +36,20 @@ def _memory_copy(store):
 
 
 def _memory_state(value):
+    from ..db.contract_correspondence_models import CORRESPONDENCE_MODELS
     from ..db.contract_wizard_models import WIZARD_MODELS
     from ..db.document_version_models import DOCUMENT_VERSION_MODELS
-    if isinstance(value, (*WIZARD_MODELS, *DOCUMENT_VERSION_MODELS, *LIFECYCLE_MODELS)):
+    from ..db.operational_job_models import JOB_MODELS
+    from ..db.operational_models import (
+        OperationalDispatchORM,
+        OperationalOccurrenceORM,
+        OperationalScheduleORM,
+        OperationalTickORM,
+    )
+    from ..db.operational_scheduler_models import OperationalSchedulerORM
+    from ..db.tenancy_workflow_models import TENANCY_WORKFLOW_MODELS
+    if isinstance(value, (*WIZARD_MODELS, *DOCUMENT_VERSION_MODELS, *LIFECYCLE_MODELS, *CORRESPONDENCE_MODELS, *JOB_MODELS, *TENANCY_WORKFLOW_MODELS,
+                          OperationalSchedulerORM, OperationalScheduleORM, OperationalOccurrenceORM, OperationalDispatchORM, OperationalTickORM)):
         return {column.name: _memory_state(getattr(value, column.name)) for column in value.__table__.columns}
     if isinstance(value, dict):
         return {key: _memory_state(item) for key, item in value.items()}
@@ -118,6 +126,10 @@ def _scoped_graph(store, tenant_id):
     graph = append_document_versions(snapshot, graph)
     from .tenant_lifecycle_graph import append_lifecycle_graph
     graph = append_lifecycle_graph(snapshot, graph)
+    from .tenant_correspondence_graph import append_correspondence_graph
+    graph = append_correspondence_graph(snapshot, graph)
+    from .tenant_communication_graph import append_communication_graph
+    graph = append_communication_graph(snapshot, graph)
     graph["scope"]["private_form_drafts"] = private_draft_retention(snapshot, tenant_id)
     return graph
 
@@ -169,6 +181,7 @@ def prepare_tenant_export(active_store, tenant_id: str, *, parent=None):
 
     from .datev_export import CompiledExport
     from .portfolio_scope import current_scope, refresh_scope
+    from .tenant_communication_graph import verified_blocks as communication_blocks
     from .tenant_document_versions import verified_blocks as document_blocks
     from .tenant_wizard_graph import verified_blocks
     cleanup = ExitStack()
@@ -180,7 +193,10 @@ def prepare_tenant_export(active_store, tenant_id: str, *, parent=None):
         with _read_snapshot(active_store) as snapshot, protected_new_file(path) as output:
             graph = _scoped_graph(snapshot, tenant_id)
             graph["exported_at"] = datetime.now(timezone.utc).isoformat()
-            graph["scope"]["file_content"] = "stored wizard and document version originals included; other files metadata only"
+            graph["scope"]["file_content"] = (
+                "stored wizard, document-version and reviewed communication PDF originals included; "
+                "other files metadata only"
+            )
             def write(block):
                 nonlocal size
                 output.write(block)
@@ -220,6 +236,18 @@ def prepare_tenant_export(active_store, tenant_id: str, *, parent=None):
                         write(b",")
                     value({"position": position, "data_base64": base64.b64encode(block).decode("ascii")})
                 write(b"]}")
+            write(b'],"communication_pdf_contents":[')
+            for index, manifest in enumerate(graph["communication_pdf_files"]):
+                if index:
+                    write(b",")
+                write(b'{"id":')
+                value(manifest["id"])
+                write(b',"blocks":[')
+                for position, block in enumerate(communication_blocks(snapshot, manifest)):
+                    if position:
+                        write(b",")
+                    value({"position": position, "data_base64": base64.b64encode(block).decode("ascii")})
+                write(b"]}")
             write(b"]}")
             refresh_scope(captured)
         return CompiledExport(path, {"size": size, "sha256": checksum.hexdigest()}, cleanup), captured
@@ -231,11 +259,18 @@ def prepare_tenant_export(active_store, tenant_id: str, *, parent=None):
 def _plan(graph: dict) -> dict:
     active_contracts = sum(contract["status"] == "active" for contract in graph["contracts"])
     retained = {name: len(rows) for name, rows in graph.items() if isinstance(rows, list)}
+    from .tenant_communication_graph import PERSONAL_FIELDS as COMMUNICATION_FIELDS
+    from .tenant_correspondence_graph import PERSONAL_FIELDS as CORRESPONDENCE_FIELDS
     from .tenant_document_versions import PERSONAL_FIELDS as DOCUMENT_FIELDS
     from .tenant_lifecycle_graph import PERSONAL_FIELDS as LIFECYCLE_FIELDS
+    from .tenant_retained_graph import PERSONAL_FIELDS as RETAINED_FIELDS
     from .tenant_wizard_graph import PERSONAL_FIELDS
+    evidence_fields = (
+        PERSONAL_FIELDS | DOCUMENT_FIELDS | LIFECYCLE_FIELDS |
+        CORRESPONDENCE_FIELDS | COMMUNICATION_FIELDS | RETAINED_FIELDS
+    )
     wizard_retained = {name: {"count": len(graph.get(name, [])), "personal_fields": fields}
-                       for name, fields in (PERSONAL_FIELDS | DOCUMENT_FIELDS | LIFECYCLE_FIELDS).items() if graph.get(name)}
+                       for name, fields in evidence_fields.items() if graph.get(name)}
     private = graph["scope"]["private_form_drafts"]
     if private["count"]:
         wizard_retained["private_form_drafts"] = {"count": private["count"],
@@ -244,6 +279,10 @@ def _plan(graph: dict) -> dict:
     if lifecycle_private["count"]:
         wizard_retained["private_lifecycle_drafts"] = {"count": lifecycle_private["count"],
             "personal_fields": ["private pre-confirmation contract work"], "contents_exported": False}
+    correspondence_private = graph["scope"]["private_correspondence_drafts"]
+    if correspondence_private["count"]:
+        wizard_retained["private_correspondence_drafts"] = {"count": correspondence_private["count"],
+            "personal_fields": ["private recipients, letter text and reviewed source snapshots"], "contents_exported": False}
     return {
         "tenant_id": graph["tenant"]["id"],
         "plan_hash": _graph_hash(graph),
@@ -260,13 +299,23 @@ def _plan(graph: dict) -> dict:
                 + (" Auch gespeicherte Vertragsentwürfe, frühere Prüfsnapshots/Vorgangsergebnisse, "
                    "Vorlagentexte, Unterzeichner und archivierte PDF-/Anlageninhalte enthalten weiterhin "
                    "Personenangaben. Sie werden durch diese Stammdaten-Aktion nicht anonymisiert."
-                   if any(name not in {"private_form_drafts", "private_lifecycle_drafts"} for name in wizard_retained) else "")
+                   if any(name not in {"private_form_drafts", "private_lifecycle_drafts", "private_correspondence_drafts"} for name in wizard_retained) else "")
                 + (" Private Stammdaten-Formularentwürfe anderer Benutzer bleiben verschlüsselt erhalten. "
                    "Sie sind nicht Teil dieses Beziehungsexports und müssen vom jeweiligen Benutzer geprüft/verworfen werden."
-                   if private["count"] else ""),
+                   if private["count"] else "")
+                + (" Freigegebene Korrespondenz und manuelle Versand-/Empfangsnotizen behalten ihre ursprünglichen "
+                   "Empfänger, Namen und Originalinhalte. Auch private offene Schreiben bleiben erhalten; ihre Inhalte "
+                   "werden in dieser Auskunft nicht ausgegeben. Eine automatische Zustellung wird nicht behauptet."
+                   if correspondence_private["count"] or graph["contract_correspondence_drafts"] else ""),
         "lifecycle_note": "Bestätigte Vertragsvorgänge mit Gründen, früheren Prüfsnapshots und Freigabeergebnissen "
                           "bleiben unverändert erhalten. Private offene Vertragsentwürfe werden nur gezählt; "
                           "ihre Inhalte und frühere private Bearbeitungsergebnisse werden nicht ausgegeben.",
+        "correspondence_note": "Freigegebene Schreiben, ursprüngliche Empfänger-/Quellnamen, archivierte Originale und "
+                               "manuelle Beobachtungsbelege bleiben unverändert erhalten. Private offene Schreiben "
+                               "anderer Benutzer werden nur gezählt; frühere private Bearbeitungsantworten werden nicht ausgegeben.",
+        "retained_workflow_note": "Historische Mieterwechsel, ihre zugeordneten Schritte, Vorlagen und Nachweise sowie "
+                                  "zugehörige Arbeitslisteneinträge bleiben erhalten. Die Auskunft umfasst nur belegte "
+                                  "Mieterzuordnungen; fremde Vertragsparteien und allgemeine Arbeitslaufdaten werden nicht ausgegeben.",
     }
 
 
@@ -279,6 +328,8 @@ def preview_tenant_anonymization(active_store, tenant_id: str) -> dict:
         require_document_scope(snapshot, tenant_id)
         from .tenant_lifecycle_graph import require_complete_subject_scope as require_lifecycle_scope
         require_lifecycle_scope(snapshot, tenant_id)
+        from .tenant_correspondence_graph import require_complete_subject_scope as require_correspondence_scope
+        require_correspondence_scope(snapshot, tenant_id)
         return _plan(graph)
 
 
@@ -286,58 +337,46 @@ def anonymize_tenant_profile(active_store, tenant_id: str, *, plan_hash: str,
                              confirm_tenant_id: str) -> dict:
     if confirm_tenant_id != tenant_id:
         raise PrivacyConflict("Die Bestätigung gehört zu einem anderen Mieter.")
-    with _privacy_write(active_store) as staged:
-        from .portfolio_scope import current_scope, refresh_scope
-        captured = current_scope()
-        refresh_scope(captured)
-        db = getattr(staged, "db", None)
-        if db is not None:
-            # The tenant lock also blocks new contract FKs on PostgreSQL.
-            tenant_row = db.scalar(select(TenantORM).where(TenantORM.id == tenant_id).with_for_update())
-            if tenant_row is None:
-                raise TenantNotFoundError("Tenant not found")
-            # Lifecycle creation locks the contract before FK-checking its
-            # tenant. NOWAIT avoids a tenant -> contract / contract -> tenant
-            # deadlock and leaves the reviewed profile unchanged on contention.
-            try:
-                result = db.scalars(select(ContractORM.id).where(ContractORM.tenant_id == tenant_id)
-                    .order_by(ContractORM.id).with_for_update(nowait=db.get_bind().dialect.name == "postgresql")
-                    .execution_options(yield_per=100))
-                try:
-                    for _ in result:
-                        pass
-                finally:
-                    result.close()
-            except OperationalError as error:
-                if getattr(error.orig, "sqlstate", getattr(error.orig, "pgcode", None)) != "55P03":
-                    raise
-                raise PrivacyConflict("Vertragsvorgänge werden gerade bearbeitet. Vorschau neu laden und erneut versuchen.") from error
-        from .tenant_wizard_graph import lock_subject_journals, require_complete_subject_scope
-        require_complete_subject_scope(staged, tenant_id)
-        from .tenant_document_versions import require_complete_subject_scope as require_document_scope
-        require_document_scope(staged, tenant_id)
-        from .tenant_lifecycle_graph import require_complete_subject_scope as require_lifecycle_scope
-        require_lifecycle_scope(staged, tenant_id)
-        lock_subject_journals(staged, tenant_id)
-        graph = _scoped_graph(staged, tenant_id)
-        plan = _plan(graph)
-        if plan["plan_hash"] != plan_hash:
-            raise PrivacyConflict("Der geprüfte Datenstand hat sich geändert. Vorschau neu laden.")
-        if not plan["can_anonymize"]:
-            raise PrivacyConflict("Aktive Mietverträge müssen vor der Stammdaten-Anonymisierung beendet werden.")
-        patch = TenantPatch.model_validate({
-            **{field: None for field in PROFILE_FIELDS if field not in {"full_name", "archived"}},
-            "full_name": f"Anonymisiert-{tenant_id}", "archived": True,
-        })
-        revision = EditRevision("tenants", tenant_id, utc_datetime(graph["tenant"]["updated_at"]))
-        with revision_scope(revision):
-            result = staged._patch_entity("tenant", tenant_id, patch)
-        expected = patch.model_dump()
-        if any(getattr(result, field) != value for field, value in expected.items()):
-            raise TenantExportError("Profile anonymization was not applied completely")
-        refresh_scope(captured)
-        return {"status": "profile_anonymized", "tenant_id": tenant_id,
-                "anonymized_fields": list(PROFILE_FIELDS),
-                "retained_collections": plan["retained_collections"],
-                "retained_personal_evidence": plan["retained_personal_evidence"],
-                "scope": plan["scope"], "note": plan["note"], "lifecycle_note": plan["lifecycle_note"]}
+    from .tenant_privacy_fence import lock_subject_write_fence, memory_account_fence
+    with ExitStack() as fences:
+        fences.enter_context(memory_account_fence(active_store))
+        with _privacy_write(active_store) as staged:
+            # SQLite acquires its account mutex after BEGIN, but releases it
+            # only after the outer SQL writer has actually committed.
+            fences.enter_context(memory_account_fence(staged, sqlite_staged=True))
+            from .portfolio_scope import current_scope, refresh_scope
+            captured = current_scope()
+            refresh_scope(captured)
+            lock_subject_write_fence(staged, tenant_id)
+            from .tenant_wizard_graph import lock_subject_journals, require_complete_subject_scope
+            require_complete_subject_scope(staged, tenant_id)
+            from .tenant_document_versions import require_complete_subject_scope as require_document_scope
+            require_document_scope(staged, tenant_id)
+            from .tenant_lifecycle_graph import require_complete_subject_scope as require_lifecycle_scope
+            require_lifecycle_scope(staged, tenant_id)
+            from .tenant_correspondence_graph import require_complete_subject_scope as require_correspondence_scope
+            require_correspondence_scope(staged, tenant_id)
+            lock_subject_journals(staged, tenant_id)
+            graph = _scoped_graph(staged, tenant_id)
+            plan = _plan(graph)
+            if plan["plan_hash"] != plan_hash:
+                raise PrivacyConflict("Der geprüfte Datenstand hat sich geändert. Vorschau neu laden.")
+            if not plan["can_anonymize"]:
+                raise PrivacyConflict("Aktive Mietverträge müssen vor der Stammdaten-Anonymisierung beendet werden.")
+            patch = TenantPatch.model_validate({
+                **{field: None for field in PROFILE_FIELDS if field not in {"full_name", "archived"}},
+                "full_name": f"Anonymisiert-{tenant_id}", "archived": True,
+            })
+            revision = EditRevision("tenants", tenant_id, utc_datetime(graph["tenant"]["updated_at"]))
+            with revision_scope(revision):
+                result = staged._patch_entity("tenant", tenant_id, patch)
+            expected = patch.model_dump()
+            if any(getattr(result, field) != value for field, value in expected.items()):
+                raise TenantExportError("Profile anonymization was not applied completely")
+            refresh_scope(captured)
+            return {"status": "profile_anonymized", "tenant_id": tenant_id,
+                    "anonymized_fields": list(PROFILE_FIELDS),
+                    "retained_collections": plan["retained_collections"],
+                    "retained_personal_evidence": plan["retained_personal_evidence"],
+                    "scope": plan["scope"], "note": plan["note"], "lifecycle_note": plan["lifecycle_note"],
+                    "correspondence_note": plan["correspondence_note"]}

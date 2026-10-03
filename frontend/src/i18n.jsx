@@ -12,6 +12,7 @@ const BUILTIN_TRANSLATIONS = {
     navigation: {
       main: {
         contractWizard: 'Mietvertrag-Wizard',
+        tenancyWorkflows: 'Mieterwechsel',
         notificationTemplates: 'Benachrichtigungsvorlagen',
       },
     },
@@ -140,6 +141,7 @@ const BUILTIN_TRANSLATIONS = {
     navigation: {
       main: {
         contractWizard: 'Lease Wizard',
+        tenancyWorkflows: 'Tenancy changes',
         notificationTemplates: 'Notification Templates',
       },
     },
@@ -268,6 +270,7 @@ const BUILTIN_TRANSLATIONS = {
     navigation: {
       main: {
         contractWizard: 'Asistente de contrato',
+        tenancyWorkflows: 'Cambios de inquilino',
         notificationTemplates: 'Plantillas de notificacion',
       },
     },

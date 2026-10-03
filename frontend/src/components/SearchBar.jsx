@@ -2,7 +2,9 @@ import { useState, useEffect, useRef, useId } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
+import { useAuth } from '../contexts/AuthContext';
 import { SearchIcon, CloseIcon, ENTITY_ICON_MAP } from './Icons';
+import './SearchBar.css';
 
 const ENTITY_ROUTES = {
   property: '/properties',
@@ -100,10 +102,18 @@ function searchResults(data) {
   });
 }
 
-export default function SearchBar() {
-  const { t } = useTranslation();
+const PAGE_TEXT = {
+  de: { previous: 'Vorherige Treffer', next: 'Weitere Treffer', page: 'Seite', restart: 'Suche neu starten', emptyPage: 'Auf dieser Seite sind aktuell keine Treffer vorhanden.', invalid: 'Die Suchantwort ist unvollständig. Bitte erneut versuchen.' },
+  en: { previous: 'Previous results', next: 'More results', page: 'Page', restart: 'Restart search', emptyPage: 'There are currently no matches on this page.', invalid: 'The search response is incomplete. Please retry.' },
+  es: { previous: 'Resultados anteriores', next: 'Más resultados', page: 'Página', restart: 'Reiniciar búsqueda', emptyPage: 'No hay resultados en esta página.', invalid: 'La respuesta de búsqueda está incompleta. Vuelva a intentarlo.' },
+};
+
+function SearchControl() {
+  const { t, locale = 'de-DE' } = useTranslation();
+  const copy = PAGE_TEXT[locale.slice(0, 2)] || PAGE_TEXT.de;
   const [query, setQuery] = useState('');
-  const [search, setSearch] = useState({ term: '', results: [], loading: false, error: null });
+  const [search, setSearch] = useState({ term: '', cursor: null, results: [], loading: false, error: null, next: null });
+  const [pages, setPages] = useState([null]);
   const [revision, setRevision] = useState(0);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -113,8 +123,9 @@ export default function SearchBar() {
   const listId = `${useId()}-search-results`;
   const navigate = useNavigate();
   const term = query.trim();
+  const cursor = pages.at(-1);
   const expanded = open && term.length >= 2;
-  const currentSearch = search.term === term ? search : { results: [], loading: true, error: null };
+  const currentSearch = search.term === term && search.cursor === cursor ? search : { results: [], loading: true, error: null, next: null };
   const grouped = new Map();
   if (expanded) currentSearch.results.forEach(result => {
     if (!grouped.has(result.entity_type)) grouped.set(result.entity_type, []);
@@ -142,20 +153,21 @@ export default function SearchBar() {
   useEffect(() => {
     if (!open || term.length < 2) return;
     const controller = new AbortController();
-    setSearch({ term, results: [], loading: true, error: null });
+    setSearch({ term, cursor, results: [], loading: true, error: null, next: null });
     const timer = setTimeout(() => {
-      api.get(`/search?q=${encodeURIComponent(term)}`, { signal: controller.signal })
+      api.get(`/search/page?q=${encodeURIComponent(term)}${cursor ? `&after=${encodeURIComponent(cursor)}` : ''}`, { signal: controller.signal })
         .then(data => {
           if (controller.signal.aborted) return;
-          setSearch({ term, results: searchResults(data), loading: false, error: null });
+          if (!Array.isArray(data?.results) || (data.has_more && (typeof data.next_after !== 'string' || !data.next_after))) throw new Error(copy.invalid);
+          setSearch({ term, cursor, results: searchResults(data), loading: false, error: null, next: data.has_more ? data.next_after : null });
           setActiveIndex(-1);
         })
         .catch(error => {
-          if (!controller.signal.aborted) setSearch({ term, results: [], loading: false, error: error?.message || true });
+          if (!controller.signal.aborted) setSearch({ term, cursor, results: [], loading: false, error: error?.message || true, next: null });
         });
     }, 300);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [term, open, revision]);
+  }, [term, cursor, open, revision, copy.invalid]);
 
   useEffect(() => {
     if (!open) return;
@@ -172,8 +184,18 @@ export default function SearchBar() {
   const handleSelect = result => {
     setOpen(false);
     setQuery('');
+    setPages([null]);
     setActiveIndex(-1);
     navigate(result.url);
+  };
+
+  // Return focus before a loading update disables/removes the action button.
+  // Otherwise the browser emits focusout with no destination and closes the
+  // whole search while the requested next page is still pending.
+  const searchAction = action => {
+    inputRef.current?.focus();
+    setActiveIndex(-1);
+    action();
   };
 
   const handleKeyDown = (e) => {
@@ -225,7 +247,7 @@ export default function SearchBar() {
           type="text"
           placeholder={`${t('ui.form.search')}...`}
           value={query}
-          onChange={e => { setQuery(e.target.value); setOpen(true); setActiveIndex(-1); }}
+          onChange={e => { setQuery(e.target.value); setPages([null]); setOpen(true); setActiveIndex(-1); }}
           onFocus={() => setOpen(true)}
           onKeyDown={handleKeyDown}
           className="search-bar-input"
@@ -241,7 +263,7 @@ export default function SearchBar() {
           <button
             className="search-bar-clear"
             type="button"
-            onClick={() => { setQuery(''); setActiveIndex(-1); inputRef.current?.focus(); }}
+            onClick={() => { setQuery(''); setPages([null]); setActiveIndex(-1); inputRef.current?.focus(); }}
             aria-label={`${t('ui.form.search')}: ${t('ui.buttons.reset')}`}
           >
             <CloseIcon size={14} />
@@ -255,9 +277,10 @@ export default function SearchBar() {
           {currentSearch.loading && <div className="search-bar-loading" role="status">{t('ui.table.loading')}</div>}
           {currentSearch.error && <div className="search-bar-empty" role="alert">
             <p>{typeof currentSearch.error === 'string' ? currentSearch.error : t('toasts.error.generic')}</p>
-            <button type="button" className="btn btn-sm btn-secondary" onClick={() => setRevision(value => value + 1)}>{t('ui.buttons.retry')}</button>
+            <button type="button" className="btn btn-sm btn-secondary" onClick={() => searchAction(() => setRevision(value => value + 1))}>{t('ui.buttons.retry')}</button>
+            {pages.length > 1 && <button type="button" className="btn btn-sm btn-secondary" onClick={() => searchAction(() => setPages([null]))}>{copy.restart}</button>}
           </div>}
-          {!currentSearch.loading && !currentSearch.error && options.length === 0 && <div className="search-bar-empty" role="status">{t('search.global.noResults')}</div>}
+          {!currentSearch.loading && !currentSearch.error && options.length === 0 && <div className="search-bar-empty" role="status">{pages.length > 1 ? copy.emptyPage : t('search.global.noResults')}</div>}
           <div id={listId} role="listbox" ref={listRef} aria-label={t('ui.form.search')} aria-busy={currentSearch.loading}>
           {!currentSearch.loading && (() => {
             let globalIndex = 0;
@@ -294,8 +317,24 @@ export default function SearchBar() {
             ));
           })()}
           </div>
+          {(pages.length > 1 || currentSearch.next) && <nav className="search-bar-pages" aria-label={t('ui.form.search')}>
+            <button type="button" className="btn btn-sm btn-secondary" disabled={currentSearch.loading || pages.length === 1}
+              onClick={() => searchAction(() => setPages(value => value.slice(0, -1)))}>{copy.previous}</button>
+            <span>{copy.page} {pages.length}</span>
+            <button type="button" className="btn btn-sm btn-secondary" disabled={currentSearch.loading || !currentSearch.next}
+              onClick={() => searchAction(() => setPages(value => [...value, currentSearch.next]))}>{copy.next}</button>
+          </nav>}
         </div>
       )}
     </div>
   );
+}
+
+export default function SearchBar() {
+  const auth = useAuth();
+  const user = auth?.user;
+  const principal = user ? JSON.stringify([user.id, user.role, user.portfolio_access,
+    user.portfolio_access_origin, [...(user.portfolio_ids || [])].sort()]) : '';
+  // A changed account or object scope discards private results synchronously.
+  return <SearchControl key={principal} />;
 }

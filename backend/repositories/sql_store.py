@@ -9,9 +9,10 @@ from typing import cast
 
 from fastapi import HTTPException
 from pydantic import BaseModel as PydanticBaseModel
-from sqlalchemy import Table, select
+from sqlalchemy import Table, inspect, select
 from sqlalchemy.orm import Session
 
+from ..db.communication_center_models import CommunicationDraftORM
 from ..db.outbox_models import OutboxCommandORM, OutboxEventORM, OutboxMessageORM
 from ..models import (
     Account,
@@ -152,6 +153,7 @@ class SQLAlchemyStore:
         from ..services.portfolio_scope import require_installation_scope
         require_installation_scope()
         from ..db.bank_import_models import BANK_IMPORT_TABLES
+        from ..db.integration_history_models import TABLES as HISTORY_TABLES
         from ..db.orm_models import Base
         from ..db.rent_batch_models import RENT_BATCH_TABLES, RentSourceRevisionORM
         from ..services.annual_tax_storage import guard_destructive_reset as guard_annual_history
@@ -159,10 +161,12 @@ class SQLAlchemyStore:
         from ..services.contract_wizard import guard_destructive_reset as guard_contract_history
         from ..services.form_drafts import guard_destructive_reset as guard_form_drafts
         from ..services.payment_integrity import guard_contract_lifecycle_reset
+        from ..services.recovery_retained import guard_operational_history
         # Durable reviewed content and factual transport history cannot be
         # discarded by an ordinary business/test reset. Full offline recovery
         # replaces the complete database through its separate explicit workflow.
         def check_retained_history():
+            guard_operational_history(self)
             guard_contract_lifecycle_reset(self)
             guard_contract_history(self)
             guard_annual_history(self)
@@ -171,6 +175,12 @@ class SQLAlchemyStore:
                     for model in (OutboxMessageORM, OutboxEventORM, OutboxCommandORM)):
                 self.db.rollback()
                 raise HTTPException(409, "outbox_history_exists: full offline recovery is required")
+            if self.db.scalar(select(CommunicationDraftORM.id).where(
+                    CommunicationDraftORM.status != "draft").limit(1)) is not None:
+                self.db.rollback()
+                raise HTTPException(
+                    409, "communication_history_exists: full offline recovery is required"
+                )
 
         # Known retained evidence refuses before even the draft writer's no-op
         # auth-row lock. Recheck after serialization, before business deletions.
@@ -180,6 +190,7 @@ class SQLAlchemyStore:
             # A read-only table barrier keeps that order even if the permanent
             # auth marker is absent, without writing it before history recheck.
             self.db.connection().exec_driver_sql('LOCK TABLE "auth_setup" IN SHARE ROW EXCLUSIVE MODE')
+        guard_operational_history(self, serialized=True)
         guard_contract_lifecycle_reset(self, serialized=True)
         check_retained_history()
         guard_form_drafts(self)
@@ -195,8 +206,9 @@ class SQLAlchemyStore:
             self.db.execute(table.delete())
         for table in reversed(snapshot_tables[1:]):
             self.db.execute(table.delete())
+        existing_tables = set(inspect(self.db.get_bind()).get_table_names())
         for table in reversed(Base.metadata.sorted_tables):
-            if table.name in sidecar_tables:
+            if table.name in sidecar_tables or table.name in HISTORY_TABLES or table.name not in existing_tables:
                 continue
             # Clearing an entire test/import store must remove correction leaves
             # before roots because SQLite RESTRICT is checked row by row.

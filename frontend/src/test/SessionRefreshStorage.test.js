@@ -97,6 +97,28 @@ it('never replays a consumed refresh token from a stale renderer cache', async (
   expect(stores.map(store => store.getItem('refresh_token'))).toEqual(['rotated-refresh', 'rotated-refresh']);
 });
 
+it('uses the request-time refresh snapshot when renderer keys propagate out of step', async () => {
+  let rotations = 0;
+  fetchMock.mockImplementation(async (url, options) => {
+    if (url.endsWith('/auth/refresh')) {
+      rotations++;
+      if (rotations === 1) {
+        // Chromium may expose the new refresh key in another renderer before
+        // that renderer observes the matching access-key write.
+        stores[1].setItem('refresh_token', 'rotated-refresh');
+        return ok(pair('rotated'));
+      }
+      return denied();
+    }
+    return options.headers.Authorization === 'Bearer rotated-access' ? ok({ id: 'owner' }) : denied();
+  });
+  const first = await tab(0); const second = await tab(1);
+  const results = await Promise.all([first.api.get('/auth/me'), second.api.get('/auth/me')]);
+  expect(results).toEqual([{ id: 'owner' }, { id: 'owner' }]);
+  expect(rotations).toBe(1);
+  expect(stores.map(store => store.getItem('access_token'))).toEqual(['rotated-access', 'rotated-access']);
+});
+
 it('keeps a failed pair commit retryable without resending the one-use token', async () => {
   let rotations = 0;
   fetchMock.mockImplementation(async (url, options) => {

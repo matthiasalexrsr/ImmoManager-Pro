@@ -71,11 +71,17 @@ def test_memory_backend_leaves_sqlite_files_alone(tmp_path):
     legacy = tmp_path / "immo_test.db"
     legacy.write_bytes(b"unchanged")
     process = start_probe(probe_env(tmp_path, backend="memory"))
+    database = None
     try:
-        assert json.loads(process.stdout.readline())["url"] is None
+        url = json.loads(process.stdout.readline())["url"]
+        assert url and url.startswith("sqlite:///")
+        database = Path(url.removeprefix("sqlite:///"))
+        assert database.parent != tmp_path
+        assert database.parent.is_dir()
     finally:
         finish_probe(process)
     assert legacy.read_bytes() == b"unchanged"
+    assert database is not None and not database.parent.exists()
 
 
 def test_owned_temporary_directory_is_cleaned_after_session(tmp_path):

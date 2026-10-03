@@ -173,7 +173,7 @@ def test_encrypted_roundtrip_stops_writers_resumes_original_and_starts_after_bot
 
 
 def test_large_contract_workspace_budgets_survive_encrypted_server_restore(installation):
-    configured = ENV + b"CONTRACT_WORKSPACE_PAGE_MAX_SIZE=6000\nCONTRACT_WORKSPACE_SEARCH_MAX_CHARS=12000\n"
+    configured = ENV + b"CONTRACT_WORKSPACE_PAGE_MAX_SIZE=6000\nCONTRACT_WORKSPACE_SEARCH_MAX_CHARS=12000\nCONTRACT_CORRESPONDENCE_PAGE_MAX_SIZE=8000\nOPERATIONAL_SCHEDULER_ACTOR_ID=synthetic-explicit-account\n"
     installation[1].write_bytes(configured)
     source, _, docker = save(installation)
     assert configured not in source.read_bytes()
@@ -181,6 +181,8 @@ def test_large_contract_workspace_budgets_survive_encrypted_server_restore(insta
     restored = tool._parse_env((installation[0] / "restored.env").read_bytes())
     assert restored["CONTRACT_WORKSPACE_PAGE_MAX_SIZE"] == "6000"
     assert restored["CONTRACT_WORKSPACE_SEARCH_MAX_CHARS"] == "12000"
+    assert restored["CONTRACT_CORRESPONDENCE_PAGE_MAX_SIZE"] == "8000"
+    assert restored["OPERATIONAL_SCHEDULER_ACTOR_ID"] == "synthetic-explicit-account"
 
 
 @pytest.mark.parametrize("name", sorted(tool.CONTRACT_WORKSPACE_ENV_KEYS))

@@ -1,0 +1,39 @@
+.contract-correspondence { min-width: 0; color: var(--text-primary, #173044); }
+.contract-lifecycle__tabs--correspondence { flex-wrap: wrap; }
+.contract-correspondence > h3 { margin: 0 0 .5rem; }
+.contract-correspondence-policy { background: #eef6f4; border-left: 3px solid #2a7a70; padding: .8rem 1rem; line-height: 1.55; }
+.contract-correspondence p, .contract-correspondence small, .contract-correspondence dd,
+.contract-correspondence button { overflow-wrap: anywhere; }
+.contract-correspondence-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin: .8rem 0; }
+.contract-correspondence button { min-height: 44px; max-width: 100%; border: 1px solid #cedbdc; border-radius: 7px; background: #fff; color: inherit; padding: .6rem .85rem; cursor: pointer; }
+.contract-correspondence button[aria-pressed="true"], .contract-correspondence button[type="submit"] { background: #173d48; color: #fff; }
+.contract-correspondence button:disabled { cursor: default; opacity: .55; }
+.contract-correspondence :focus-visible { outline: 3px solid #268e81; outline-offset: 3px; }
+.contract-correspondence-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: .65rem; margin: 1rem 0; }
+.contract-correspondence-cards > button { text-align: left; display: grid; gap: .35rem; }
+.contract-correspondence form, .contract-correspondence fieldset, .contract-correspondence-sources { min-width: 0; }
+.contract-correspondence fieldset { border: 1px solid #d4dfe0; border-radius: 8px; padding: 1rem; margin: 1rem 0; }
+.contract-correspondence legend { font-weight: 650; padding: 0 .35rem; }
+.contract-correspondence label { display: grid; gap: .4rem; font-weight: 500; margin: .85rem 0; min-width: 0; }
+.contract-correspondence input:not([type="checkbox"]), .contract-correspondence select, .contract-correspondence textarea {
+  display: block; width: 100%; min-width: 0; box-sizing: border-box; padding: .7rem; border: 1px solid #bccdd0; border-radius: 6px; background: #fff; color: inherit; font: inherit;
+}
+.contract-correspondence textarea { resize: vertical; line-height: 1.55; }
+.contract-correspondence-dates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem; }
+.contract-correspondence .contract-correspondence-check { display: flex; align-items: flex-start; gap: .6rem; line-height: 1.5; }
+.contract-correspondence-check input { flex: 0 0 auto; width: 18px; height: 18px; margin-top: .2rem; }
+.contract-correspondence-review, .contract-correspondence-events { min-width: 0; margin-top: 1.3rem; padding-top: 1rem; border-top: 1px solid #d1dddd; }
+.contract-correspondence-review dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem; }
+.contract-correspondence-review dt { color: #607480; font-size: .85rem; }
+.contract-correspondence-review dd { margin: .3rem 0; white-space: pre-wrap; }
+.contract-correspondence-review pre { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; font: inherit; line-height: 1.6; background: #faf8f1; border: 1px solid #e5e2d8; border-radius: 6px; padding: 1rem; }
+.contract-correspondence-review small { display: block; margin: .7rem 0; }
+.contract-correspondence-events article { border: 1px solid #d7e2e2; border-radius: 7px; padding: .8rem; margin: .7rem 0; }
+.contract-correspondence-events article p { white-space: pre-wrap; }
+.contract-correspondence-error { background: #fff1ec; border: 1px solid #ecc9bd; border-radius: 7px; padding: .9rem; margin: .8rem 0; overflow-wrap: anywhere; }
+@media (max-width: 540px) {
+  .contract-correspondence-dates, .contract-correspondence-review dl { grid-template-columns: minmax(0, 1fr); }
+  .contract-correspondence fieldset { padding: .7rem; }
+  .contract-correspondence-actions > button { flex: 1 1 130px; }
+  .contract-correspondence input[type="date"] { max-width: 100%; }
+}

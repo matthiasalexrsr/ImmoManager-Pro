@@ -21,7 +21,9 @@ from .routers import (
     budgets,
     calendar,
     categories,
+    communication_center,
     contacts,
+    contract_correspondence,
     contract_lifecycle,
     contract_wizard,
     contract_workspace,
@@ -36,9 +38,11 @@ from .routers import (
     documents,
     escalation,
     files,
+    financial_cash,
     form_drafts,
     handover_protocols,
     history,
+    housing_confirmations,
     i18n,
     insurances,
     integrations,
@@ -49,6 +53,7 @@ from .routers import (
     messages,
     meters_standalone,
     notifications,
+    operational_jobs,
     operational_metrics,
     outbox,
     photos,
@@ -63,10 +68,12 @@ from .routers import (
     tasks,
     tasks_status,
     tax_rates,
+    tenancy_workflows,
     tenants,
     units,
     updates,
     viewings,
+    workflow_references,
 )
 
 
@@ -92,6 +99,8 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(units.router, dependencies=_auth_dep)
     api_v1.include_router(tenants.router, dependencies=_auth_dep)
     api_v1.include_router(contract_lifecycle.router, dependencies=_auth_dep)
+    api_v1.include_router(contract_correspondence.router, dependencies=_auth_dep)
+    api_v1.include_router(housing_confirmations.router, dependencies=_auth_dep)
     api_v1.include_router(contract_workspace.router, dependencies=_auth_dep)
     api_v1.include_router(contracts.router, dependencies=_auth_dep)
     api_v1.include_router(contract_wizard.router, dependencies=_auth_dep)
@@ -99,12 +108,16 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(bank_imports.router, dependencies=_auth_dep)
     api_v1.include_router(bank_matching.router, dependencies=_auth_dep)
     api_v1.include_router(bookings.router, dependencies=_auth_dep)
+    api_v1.include_router(financial_cash.router, dependencies=_auth_dep)
     api_v1.include_router(receivables.router, dependencies=_auth_dep)
     api_v1.include_router(invoices.router, dependencies=_auth_dep)
     api_v1.include_router(maintenance.router, dependencies=_auth_dep)
     api_v1.include_router(documents.router, dependencies=_auth_dep)
     api_v1.include_router(document_versions.router, dependencies=_auth_dep)
+    api_v1.include_router(tenancy_workflows.router, dependencies=_auth_dep)
+    api_v1.include_router(operational_jobs.router, dependencies=_auth_dep)
     api_v1.include_router(tasks.router, dependencies=_auth_dep)
+    api_v1.include_router(workflow_references.router, dependencies=_auth_dep)
     api_v1.include_router(calendar.router, dependencies=_auth_dep)
     api_v1.include_router(listings.router, dependencies=_auth_dep)
     api_v1.include_router(categories.router, dependencies=_auth_dep)
@@ -126,6 +139,7 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(meters_standalone.router, dependencies=_auth_dep)
     api_v1.include_router(outbox.router, dependencies=_auth_dep)
     api_v1.include_router(messages.router, dependencies=_auth_dep)
+    api_v1.include_router(communication_center.router, dependencies=_auth_dep)
     api_v1.include_router(rent_batches.router, dependencies=_auth_dep)
     api_v1.include_router(rent_charges.router, dependencies=_auth_dep)
     api_v1.include_router(integrations.router, dependencies=_auth_dep)
