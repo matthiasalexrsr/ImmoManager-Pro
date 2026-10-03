@@ -202,3 +202,27 @@ def test_linked_payment_receipt_does_not_duplicate_its_bank_booking(active):
     assert report["source_count"] == 1
     assert payment.booking_id == row.id
     assert report["source_count"] == len(service.report(active, service.CashFilters(account_id=account.id), details=True)["items"])
+
+
+def test_financial_reference_choices_are_complete_scoped_and_portfolio_filtered(access_http):
+    client, store, _owner, member, _user, portfolios, properties, *_ = access_http
+    accounts = [store.create_account(AccountCreate(portfolio_id=portfolios[0].id, name=f"Financial choice {index:03}", account_type="bank"))
+        for index in range(27)]
+    params = {"portfolio_id": portfolios[0].id, "search": "Financial choice", "page_size": 25, "selected_id": accounts[0].id}
+    first = client.get("/api/v1/workflow-references/accounts", headers=member, params=params)
+    assert first.status_code == 200, first.text
+    first_data = first.json()
+    assert len(first_data["items"]) == 25 and first_data["has_more"]
+    assert first_data["selected"]["id"] == accounts[0].id
+    second = client.get("/api/v1/workflow-references/accounts", headers=member, params=params | {"cursor": first_data["next_cursor"]})
+    assert second.status_code == 200, second.text
+    assert len(second.json()["items"]) == 2 and second.json()["has_more"] is False
+    assert len({row["id"] for row in first_data["items"] + second.json()["items"]}) == 27
+    available = client.get("/api/v1/workflow-references/portfolios", headers=member)
+    assert available.status_code == 200, available.text
+    assert [row["id"] for row in available.json()["items"]] == [portfolios[0].id]
+    property_page = client.get("/api/v1/workflow-references/properties", headers=member, params={"portfolio_id": portfolios[0].id})
+    assert property_page.status_code == 200, property_page.text
+    assert [row["id"] for row in property_page.json()["items"]] == [properties[0].id]
+    assert client.get("/api/v1/workflow-references/accounts", headers=member, params={"portfolio_id": portfolios[1].id}).status_code == 404
+    assert client.get("/api/v1/workflow-references/accounts", headers=member, params={"unit_id": "unknown"}).status_code == 422

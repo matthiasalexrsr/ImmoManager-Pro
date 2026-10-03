@@ -13,11 +13,13 @@ from .. import auth
 from ..config import settings
 from ..db.booking_order import bytewise_id
 from ..db.orm_models import (
+    AccountORM,
     ContractORM,
     DocumentORM,
     HandoverProtocolORM,
     MeterORM,
     MeterReadingORM,
+    PortfolioORM,
     PropertyORM,
     TenantORM,
     UnitORM,
@@ -27,12 +29,13 @@ from .contract_workspace_search import UnicodeCasefold, ensure_sqlite_casefold
 from .portfolio_scope import current_scope, refresh_scope, scope_context, scope_from_user, scoped_clause
 from .reference_cursor import pack_reference_cursor, unpack_reference_cursor
 
-ReferenceKind = Literal["properties", "units", "contracts", "users", "documents", "handover-protocols", "meter-readings", "meters"]
+ReferenceKind = Literal["properties", "units", "contracts", "users", "documents", "handover-protocols", "meter-readings", "meters", "portfolios", "accounts"]
 
 
 class WorkflowReferenceQuery(BaseModel):
     model_config = ConfigDict(extra="forbid")
     search: str | None = None
+    portfolio_id: str | None = Field(default=None, min_length=1)
     property_id: str | None = Field(default=None, min_length=1)
     unit_id: str | None = Field(default=None, min_length=1)
     contract_id: str | None = Field(default=None, min_length=1)
@@ -51,7 +54,7 @@ class WorkflowReferenceQuery(BaseModel):
             raise ValueError("Bitte Suchtext ohne Steuerzeichen verwenden.")
         return value.strip().casefold() or None
 
-    @field_validator("property_id", "unit_id", "contract_id", "selected_id", "cursor")
+    @field_validator("portfolio_id", "property_id", "unit_id", "contract_id", "selected_id", "cursor")
     @classmethod
     def safe_identifier(cls, value):
         if value is not None:
@@ -62,9 +65,12 @@ class WorkflowReferenceQuery(BaseModel):
 
 
 MODELS: dict[str, Any] = {"properties": PropertyORM, "units": UnitORM, "contracts": ContractORM,
+                         "portfolios": PortfolioORM, "accounts": AccountORM,
                          "documents": DocumentORM, "handover-protocols": HandoverProtocolORM,
                          "meter-readings": MeterReadingORM, "meters": MeterORM}
 FIELDS = {
+    "portfolios": ("id", "name"),
+    "accounts": ("id", "name", "portfolio_id", "account_type", "bank_name"),
     "properties": ("id", "name", "portfolio_id", "address_line", "postal_code", "city", "status"),
     "units": ("id", "label", "property_id", "status"),
     "contracts": ("id", "contract_number", "property_id", "unit_id", "tenant_id", "status", "start_date", "end_date"),
@@ -78,6 +84,8 @@ FIELDS = {
 def _parents(store, query):
     property_id, unit_id, contract_id = query.property_id, query.unit_id, query.contract_id
     try:
+        if query.portfolio_id:
+            store.get_portfolio(query.portfolio_id)
         if contract_id:
             contract = store.get_contract(contract_id)
             if (property_id and property_id != contract.property_id) or (unit_id and unit_id != contract.unit_id):
@@ -89,6 +97,8 @@ def _parents(store, query):
                 raise HTTPException(422, "Einheit und Immobilie gehören nicht zusammen.")
             property_id = unit.property_id
         prop = store.get_property(property_id) if property_id else None
+        if prop and query.portfolio_id and prop.portfolio_id != query.portfolio_id:
+            raise HTTPException(422, "Immobilie und Portfolio gehören nicht zusammen.")
         return prop, unit_id, contract_id
     except NotFoundError:
         raise HTTPException(404, "Die ausgewählte Referenz ist nicht verfügbar.") from None
@@ -99,7 +109,9 @@ def _statement(kind):
     columns = [getattr(model, field) for field in FIELDS[kind]]
     statement = select(*columns)
     property_column = unit_column = contract_column = None
-    if kind == "properties":
+    if kind in {"portfolios", "accounts"}:
+        pass
+    elif kind == "properties":
         property_column = model.id
     elif kind == "units":
         property_column, unit_column = model.property_id, model.id
@@ -167,6 +179,13 @@ def _eligible(choice, kind, prop, unit_id, contract_id, direction):
 def _rows(store, kind, query, prop, unit_id, contract_id, after, *, selected=False):
     if hasattr(store, "db"):
         statement, property_column, unit_column, contract_column = _statement(kind)
+        if query.portfolio_id:
+            if kind == "portfolios":
+                statement = statement.where(MODELS[kind].id == query.portfolio_id)
+            elif kind in {"accounts", "properties"}:
+                statement = statement.where(MODELS[kind].portfolio_id == query.portfolio_id)
+            else:
+                statement = statement.where(property_column.in_(select(PropertyORM.id).where(PropertyORM.portfolio_id == query.portfolio_id)))
         if prop:
             statement = statement.where(property_column == prop.id)
         if unit_id and unit_column is not None:
@@ -204,6 +223,12 @@ def _rows(store, kind, query, prop, unit_id, contract_id, after, *, selected=Fal
                 continue
             if not choice or not _eligible(choice, kind, prop, unit_id, contract_id, query.direction):
                 continue
+            if query.portfolio_id:
+                portfolio = choice["id"] if kind == "portfolios" else choice.get("portfolio_id")
+                if portfolio is None and choice.get("property_id"):
+                    portfolio = store.get_property(choice["property_id"]).portfolio_id
+                if portfolio != query.portfolio_id:
+                    continue
             if not selected and query.search and not any(query.search in value.casefold() for value in choice.values() if isinstance(value, str)):
                 continue
             yield choice
@@ -225,6 +250,8 @@ def _reference_choices_locked(store, kind, query, actor_id):
         raise HTTPException(422, "Bitte eine kleinere Auswahlseite verwenden; alle weiteren Seiten bleiben verfügbar.")
     if query.direction and kind not in {"handover-protocols", "meter-readings"}:
         raise HTTPException(422, "Eine Übergaberichtung gilt nur für Protokolle und deren Ablesungen.")
+    if kind in {"portfolios", "accounts"} and (query.property_id or query.unit_id or query.contract_id):
+        raise HTTPException(422, "Konten und Portfolios werden anhand des Portfolios ausgewählt.")
     user = auth.get_user_by_id(actor_id)
     if not user or not user["is_active"]:
         raise HTTPException(401, "Die Anmeldung ist nicht mehr gültig.")
