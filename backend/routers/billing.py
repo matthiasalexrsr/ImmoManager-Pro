@@ -8,6 +8,7 @@ Status machine for billing periods:
   finalized -> corrected (via revision endpoint)
 """
 
+import hashlib
 import logging
 from decimal import Decimal
 from typing import Annotated
@@ -16,7 +17,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
 
-from ..auth import get_current_user
+from ..auth import get_current_user, require_auth
 from ..dependencies import store
 from ..domain.billing_engine import (
     AdvancePayment,
@@ -44,6 +45,7 @@ from ..services import credit_ledger
 from ..services.billing_consumption import ConsumptionBasis, consumption_basis
 from ..services.booking_lookup import BookingLookupQuery
 from ..services.booking_query import BookingQueryError
+from ..services.checked_publication import CheckedPublicationRoute
 from ..services.credit_choices import CreditChoiceKind, CreditChoices, credit_choices
 from ..services.credit_types import (
     CreditOffsetCreate,
@@ -89,6 +91,7 @@ def _compute_snapshot_hash(period_id: str) -> str:
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/billing", tags=["Abrechnung"])
+utility_preview_router = APIRouter(route_class=CheckedPublicationRoute)
 router.include_router(measurement_history_router)
 router.include_router(billing_dispute_router)
 
@@ -885,45 +888,19 @@ def export_billing_period(period_id: str, export_format: str = Query("csv", alia
     )
 
 
-@router.get("/periods/{period_id}/export-zip")
-def export_billing_period_zip(period_id: str):
-    """Export all statement PDFs for a billing period as a ZIP archive."""
-    import io
-    import zipfile
-
+@utility_preview_router.get("/periods/{period_id}/export-zip")
+def export_billing_period_zip(period_id: str, user=Depends(require_auth)):
+    """Checked derived PDFs and exact selected-source JSON, in one read snapshot."""
     from starlette.responses import Response as RawResponse
 
-    try:
-        store.get_billing_period(period_id)
-    except FinancialConsistencyError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except NotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-
-    period_statements = [
-        s for s in store.list_utility_statements() if s.billing_period_id == period_id
-    ]
-    if not period_statements:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Keine Einzelabrechnungen zum Exportieren vorhanden",
-        )
-
-    zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        for stmt in period_statements:
-            pdf_response = download_utility_statement_pdf(stmt.id)
-            ext = "pdf" if pdf_response.media_type == "application/pdf" else "txt"
-            filename = f"statement_{stmt.id}.{ext}"
-            zf.writestr(filename, pdf_response.body)
-
-    return RawResponse(
-        content=zip_buffer.getvalue(),
-        media_type="application/zip",
-        headers={
-            "Content-Disposition": f'attachment; filename="billing_period_{period_id}.zip"',
-        },
-    )
+    def prepare(active, identifier, actor_id):
+        from ..services.utility_statement_pdf import prepare_period_zip
+        return prepare_period_zip(active, identifier, actor_id)
+    content = _utility_source_call(prepare, period_id, user.id)
+    return RawResponse(content, media_type="application/zip", headers={
+        "Content-Disposition": f'attachment; filename="billing_period_{period_id}.zip"',
+        "Cache-Control": "private, no-store", "Vary": "Authorization", "X-Content-SHA256": hashlib.sha256(content).hexdigest(),
+    })
 
 
 @router.post("/statements/{statement_id}/mark-delivered", response_model=UtilityStatement)
@@ -1035,99 +1012,49 @@ def import_cost_item_from_ocr(
     }
 
 
-def download_utility_statement_pdf(statement_id: str):
-    """Generate a PDF for a single utility statement (or text fallback)."""
+def _utility_source_call(operation, *args):
+    try:
+        return operation(store, *args)
+    except NotFoundError as error:
+        raise HTTPException(404, "Die Abrechnungsquelle ist nicht verfügbar.") from error
+    except ValueError as error:
+        raise HTTPException(409, "Die ursprüngliche Abrechnungsquelle ist beschädigt oder nicht eindeutig finalisiert.") from error
+    except ImportError as error:
+        raise HTTPException(503, "Der PDF-Renderer ist nicht verfügbar.") from error
+
+
+def download_utility_statement_pdf(statement_id: str, actor_id: str | None = None):
+    """Read-only checked PDF derivation, with actual source and content digests."""
     from starlette.responses import Response as RawResponse
 
-    try:
-        stmt = store.get_utility_statement(statement_id)
-    except FinancialConsistencyError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except NotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-
-    # Try to build a real PDF with reportlab
-    try:
-        import io
-
-        from reportlab.lib.pagesizes import A4
-        from reportlab.lib.styles import getSampleStyleSheet
-        from reportlab.lib.units import mm
-        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
-        buffer = io.BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=20*mm, rightMargin=20*mm,
-                                topMargin=25*mm, bottomMargin=18*mm)
-        styles = getSampleStyleSheet()
-        story = []
-
-        story.append(Paragraph("Betriebskostenabrechnung", styles["Title"]))
-        story.append(Spacer(1, 12))
-
-        # Try to resolve names
-        unit_label = stmt.unit_id
-        try:
-            unit = store.get_unit(stmt.unit_id)
-            unit_label = unit.label or stmt.unit_id
-        except Exception:
-            logger.debug("Could not resolve unit label for %s", stmt.unit_id, exc_info=True)
-
-        story.append(Paragraph(f"Einheit: {unit_label}", styles["Normal"]))
-        story.append(Paragraph(f"Vertrag: {stmt.contract_id}", styles["Normal"]))
-        story.append(Paragraph(f"Revision: {stmt.revision}", styles["Normal"]))
-        story.append(Spacer(1, 12))
-
-        # Line items table
-        if stmt.line_items:
-            rows = [["Kostenart", "Anteil (€)"]]
-            for li in stmt.line_items:
-                rows.append([
-                    li.get("description", "—"),
-                    f"{li.get('allocated_amount', 0):.2f} €",
-                ])
-            rows.append(["Gesamtkosten", f"{stmt.total_cost:.2f} €"])
-            rows.append(["Vorauszahlungen", f"{stmt.advance_paid:.2f} €"])
-            rows.append(["Saldo", f"{stmt.balance:.2f} €"])
-
-            t = Table(rows)
-            t.setStyle(TableStyle([
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("ALIGN", (1, 0), (1, -1), "RIGHT"),
-                ("LINEBELOW", (0, 0), (-1, 0), 0.5, (0, 0, 0)),
-                ("LINEABOVE", (0, -3), (-1, -3), 0.5, (0, 0, 0)),
-            ]))
-            story.append(t)
-        else:
-            story.append(Paragraph(f"Gesamtkosten: {stmt.total_cost:.2f} €", styles["Normal"]))
-            story.append(Paragraph(f"Vorauszahlungen: {stmt.advance_paid:.2f} €", styles["Normal"]))
-            story.append(Paragraph(f"Saldo: {stmt.balance:.2f} €", styles["Normal"]))
-
-        doc.build(story)
-        return RawResponse(
-            content=buffer.getvalue(),
-            media_type="application/pdf",
-            headers={"Content-Disposition": f'attachment; filename="statement_{statement_id}.pdf"'},
-        )
-    except ImportError:
-        # Fallback: plain text
-        lines = [
-            "Betriebskostenabrechnung",
-            f"Statement ID: {stmt.id}",
-            f"Einheit: {stmt.unit_id}",
-            f"Vertrag: {stmt.contract_id}",
-            f"Gesamtkosten: {stmt.total_cost:.2f} €",
-            f"Vorauszahlung: {stmt.advance_paid:.2f} €",
-            f"Saldo: {stmt.balance:.2f} €",
-            f"Status: {stmt.status}",
-            f"Revision: {stmt.revision}",
-        ]
-        return RawResponse(
-            content="\n".join(lines).encode("utf-8"),
-            media_type="text/plain",
-            headers={"Content-Disposition": f'attachment; filename="statement_{statement_id}.txt"'},
-        )
+    from ..services.portfolio_scope import current_scope
+    captured = current_scope()
+    actor_id = actor_id or (captured.user_id if captured else None)
+    if actor_id is None:
+        raise HTTPException(401, "Authentifizierung erforderlich.")
+    def prepare(active, identifier, actor_id):
+        from ..services.utility_statement_pdf import prepare_pdf_preview
+        return prepare_pdf_preview(active, identifier, actor_id)
+    content, source = _utility_source_call(prepare, statement_id, actor_id)
+    return RawResponse(content, media_type="application/pdf", headers={
+        "Content-Disposition": f'attachment; filename="statement_{statement_id}.pdf"',
+        "Cache-Control": "private, no-store", "Vary": "Authorization", "X-Content-SHA256": hashlib.sha256(content).hexdigest(),
+        "X-Utility-Source-SHA256": source.source_digest, "X-Utility-Original-SHA256": source.statement_original["snapshot_hash"],
+        "X-Utility-Render-Profile": source.render_profile, "X-Utility-Preview": "checked-derivation",
+    })
 
 
-@router.get("/statements/{statement_id}/pdf")
-def get_utility_statement_pdf(statement_id: str):
+@utility_preview_router.get("/statements/{statement_id}/original-source")
+def get_utility_statement_original_source(statement_id: str, user=Depends(require_auth)):
+    from ..services.utility_statement_original_source import original_source_preview
+    source = _utility_source_call(original_source_preview, statement_id, user.id)
+    return JSONResponse(source.model_dump(mode="json"), headers={"Cache-Control": "private, no-store", "Vary": "Authorization"})
+
+
+@utility_preview_router.get("/statements/{statement_id}/pdf")
+def get_utility_statement_pdf(statement_id: str, user=Depends(require_auth)):
     """Download a PDF for a single utility statement."""
-    return download_utility_statement_pdf(statement_id)
+    return download_utility_statement_pdf(statement_id, user.id)
+
+
+router.include_router(utility_preview_router)
