@@ -19,7 +19,10 @@ const doc = (id = 'document-a', title = 'Private Rechnung') => ({ id, title, pro
   updated_at: '2026-10-03T00:00:00.000001Z', edit_etag: 'doc-revision' });
 const page = (items, cursor = null) => ({ items, has_more: Boolean(cursor), next_cursor: cursor });
 const totals = { total: 10001, with_file: 9999, analyzed: 301, no_assignment: 12 };
-const response = path => path.includes('/summary?') ? totals : path.startsWith('/workflow-references/')
+const draftPath = '/auth/users/me/form-drafts';
+const draftSaved = { revision: 'draft-a', updated_at: '2026-10-03T00:00:00Z', expires_at: '2026-10-10T00:00:00Z' };
+const writes = () => mocks.put.mock.calls.filter(([path]) => path.startsWith('/documents/'));
+const response = path => path.startsWith(draftPath) ? { draft: null } : path.includes('/summary?') ? totals : path.startsWith('/workflow-references/')
   ? { ...page([{ id: 'property-a', name: 'Lindenhof' }]), selected: { id: 'selected', name: 'Bestehende Zuordnung' } }
   : path.startsWith('/documents/inventory/') ? page([doc()]) : { ...doc(), description: 'Vollständiger Beschreibungstext' };
 const view = () => render(<MemoryRouter><Documents /></MemoryRouter>);
@@ -29,6 +32,8 @@ beforeEach(() => {
   Object.values(mocks).forEach(value => value?.mockReset?.());
   mocks.user = { id: 'owner', role: 'eigentuemer', portfolio_access: 'all', portfolio_ids: [] };
   mocks.get.mockImplementation(path => Promise.resolve(response(path)));
+  mocks.put.mockImplementation(path => Promise.resolve(path === draftPath ? draftSaved : {}));
+  mocks.del.mockResolvedValue({ discarded: true });
 });
 
 describe('bounded document list and retained document workflows', () => {
@@ -72,18 +77,19 @@ describe('bounded document list and retained document workflows', () => {
   });
 
   it('reads the exact full document before editing and preserves its failed draft and revision', async () => {
-    mocks.put.mockRejectedValue(new Error('Dokument konnte nicht gespeichert werden'));
+    mocks.put.mockImplementation(path => path === draftPath ? Promise.resolve(draftSaved) : Promise.reject(new Error('Dokument konnte nicht gespeichert werden')));
     view(); await screen.findByRole('button', { name: 'Private Rechnung bearbeiten' });
     await userEvent.click(screen.getByRole('button', { name: 'Private Rechnung bearbeiten' }));
     const dialog = await screen.findByRole('dialog');
+    await within(dialog).findByText('Entwurfsschutz bereit');
     expect(mocks.get.mock.calls.some(([path]) => path === '/documents/document-a')).toBe(true);
     expect(within(dialog).getByLabelText('Beschreibung')).toHaveValue('Vollständiger Beschreibungstext');
     fireEvent.change(within(dialog).getByLabelText('Titel *'), { target: { value: 'Erhaltener Entwurf' } });
     fireEvent.submit(dialog.querySelector('form'));
     expect(await within(dialog).findByText('Dokument konnte nicht gespeichert werden')).toBeVisible();
     expect(within(dialog).getByLabelText('Titel *')).toHaveValue('Erhaltener Entwurf');
-    expect(mocks.put.mock.calls[0][1]).toMatchObject({ property_id: 'property-a', unit_id: 'unit-a', contract_id: 'contract-a', description: 'Vollständiger Beschreibungstext' });
-    expect(mocks.put.mock.calls[0][2].ifMatch.updatedAt).toBe(doc().updated_at);
+    expect(writes()[0][1]).toMatchObject({ property_id: 'property-a', unit_id: 'unit-a', contract_id: 'contract-a', description: 'Vollständiger Beschreibungstext' });
+    expect(writes()[0][2].ifMatch.updatedAt).toBe(doc().updated_at);
   });
 
   it.each(['user', 'scope', 'role'])('removes previous document names immediately on %s change', async kind => {

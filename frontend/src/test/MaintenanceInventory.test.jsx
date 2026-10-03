@@ -15,7 +15,10 @@ const row = (id = 'case-a', title = 'Heizung prüfen') => ({ id, title, property
   created_at: '2026-01-01T00:00:00', updated_at: '2026-10-03T00:00:00.000001Z', edit_etag: 'case-revision' });
 const page = (items, cursor = null) => ({ items, has_more: Boolean(cursor), next_cursor: cursor });
 const totals = { total: 10025, open: 10024, in_progress: 1, overdue: 10, no_appointment: 301, no_assignee: 12, as_of: '2026-10-03' };
-const response = path => path.includes('/summary?') ? totals : path.startsWith('/workflow-references/')
+const draftPath = '/auth/users/me/form-drafts';
+const draftSaved = { revision: 'draft-a', updated_at: '2026-10-03T00:00:00Z', expires_at: '2026-10-10T00:00:00Z' };
+const writes = () => mocks.put.mock.calls.filter(([path]) => path.startsWith('/maintenance/'));
+const response = path => path.startsWith(draftPath) ? { draft: null } : path.includes('/summary?') ? totals : path.startsWith('/workflow-references/')
   ? { ...page([{ id: 'property-a', name: 'Lindenhof' }]), selected: { id: 'selected', name: 'Bestehende Zuordnung' } }
   : path.startsWith('/maintenance/inventory/') ? page([row()]) : { ...row(), description: 'Vollständiger Bericht' };
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
@@ -24,6 +27,8 @@ beforeEach(() => {
   Object.values(mocks).forEach(value => value?.mockReset?.());
   mocks.user = { id: 'owner', role: 'eigentuemer', portfolio_access: 'all', portfolio_ids: [] };
   mocks.get.mockImplementation(path => Promise.resolve(response(path)));
+  mocks.put.mockImplementation(path => Promise.resolve(path === draftPath ? draftSaved : {}));
+  mocks.del.mockResolvedValue({ discarded: true });
 });
 
 describe('complete maintenance case inventory', () => {
@@ -51,18 +56,19 @@ describe('complete maintenance case inventory', () => {
   });
 
   it('loads full case before edit and retains fields, precise appointment and revision after failure', async () => {
-    mocks.put.mockRejectedValue(new Error('Speichern vorübergehend gesperrt'));
+    mocks.put.mockImplementation(path => path === draftPath ? Promise.resolve(draftSaved) : Promise.reject(new Error('Speichern vorübergehend gesperrt')));
     render(<Maintenance />); await screen.findByText('Heizung prüfen');
     await userEvent.click(screen.getByRole('button', { name: 'Heizung prüfen bearbeiten' }));
     const dialog = await screen.findByRole('dialog');
+    await within(dialog).findByText('Entwurfsschutz bereit');
     expect(within(dialog).getByLabelText('Beschreibung')).toHaveValue('Vollständiger Bericht');
     expect(within(dialog).getByLabelText('Termin mit Uhrzeit')).toHaveValue('2026-01-01T15:30');
     fireEvent.change(within(dialog).getByLabelText('Titel *'), { target: { value: 'Erhaltener Auftrag' } });
     fireEvent.submit(dialog.querySelector('form'));
     expect(await within(dialog).findByText('Speichern vorübergehend gesperrt')).toBeVisible();
     expect(within(dialog).getByLabelText('Titel *')).toHaveValue('Erhaltener Auftrag');
-    expect(mocks.put.mock.calls[0][1]).toMatchObject({ property_id: 'property-a', unit_id: 'unit-a', description: 'Vollständiger Bericht', appointment_at: '2026-01-01T15:30:00', estimated_cost: 0 });
-    expect(mocks.put.mock.calls[0][2].ifMatch.updatedAt).toBe(row().updated_at);
+    expect(writes()[0][1]).toMatchObject({ property_id: 'property-a', unit_id: 'unit-a', description: 'Vollständiger Bericht', appointment_at: '2026-01-01T15:30:00', estimated_cost: 0 });
+    expect(writes()[0][2].ifMatch.updatedAt).toBe(row().updated_at);
   });
 
   it.each(['user', 'scope', 'role'])('drops private page and pending edit on %s change', async kind => {

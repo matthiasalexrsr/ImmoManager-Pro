@@ -14,6 +14,7 @@ import './UnitInventory.css';
 
 const defaults = { search: '', status: '', unit_type: '', property_id: '', view: 'all', area_min: '', area_max: '', rent_min: '', rent_max: '', sort_by: 'label', sort_order: 'asc' };
 const types = { apartment: 'Wohnung', commercial: 'Gewerbe', parking: 'Stellplatz', basement: 'Keller', other: 'Sonstiges' };
+const legacyTypes = Object.fromEntries(Object.values(types).map(label => [label, `${label} (Altbestand)`]));
 const statuses = { vacant: 'Leer', occupied: 'Vermietet', rented: 'Vermietet (Altbestand)', reserved: 'Reserviert' };
 const named = (labels, value) => Object.hasOwn(labels, value) ? labels[value] : value;
 
@@ -25,13 +26,14 @@ function Inventory({ principal }) {
   const [pages, setPages] = useState({ source: '', trail: [null] });
   const [generation, setGeneration] = useState(0);
   const [modal, setModal] = useState(null);
-  const [property, setProperty] = useState('');
+  const [opening, setOpening] = useState(false);
   const [actionError, setActionError] = useState(null);
   const [exporting, setExporting] = useState(false);
   const exportRequest = useRef(null);
+  const editRequest = useRef(null);
   const alive = useRef(true);
   const { canWrite, isAllowed, requireWrite } = useWriteAccess('/units', () => setModal(null));
-  useEffect(() => { alive.current = true; return () => { alive.current = false; exportRequest.current?.abort(); }; }, []);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; exportRequest.current?.abort(); editRequest.current?.abort(); }; }, []);
   const query = queryString({ ...filters, page_size: 25 });
   const trail = pages.source === query ? pages.trail : [null];
   const state = usePrivateRead(`/units/inventory/page?${query}${trail.at(-1) ? `&cursor=${encodeURIComponent(trail.at(-1))}` : ''}`, principal, generation);
@@ -43,14 +45,25 @@ function Inventory({ principal }) {
   const number = value => value == null ? '—' : new Intl.NumberFormat(locale).format(value);
   const change = (key, value) => { exportRequest.current?.abort(); setExporting(false); setActionError(null); setFilters(current => ({ ...current, [key]: value })); };
   const refresh = () => { setPages({ source: query, trail: [null] }); setGeneration(value => value + 1); };
-  const open = row => { setProperty(row?.property_id || ''); setModal(row || 'create'); };
-  const updated = () => { refresh(); store?.invalidateRelated('units', 'properties', 'contracts'); };
+  const open = async row => {
+    if (!isAllowed()) return;
+    editRequest.current?.abort(); setActionError(null);
+    if (!row) { setOpening(false); setModal('create'); return; }
+    const controller = new AbortController(); editRequest.current = controller; setOpening(true);
+    try {
+      const full = await api.get(`/units/${encodeURIComponent(row.id)}`, { signal: controller.signal });
+      if (full?.id !== row.id) throw new Error('Die Einheit konnte nicht geprüft werden.');
+      if (!controller.signal.aborted && alive.current && isAllowed()) setModal(full);
+    } catch (error) { if (!controller.signal.aborted && alive.current) setActionError(error); }
+    finally { if (!controller.signal.aborted && alive.current) setOpening(false); }
+  };
+  const updated = () => { if (alive.current) { refresh(); store?.invalidateRelated('units', 'properties', 'contracts'); } };
   const save = async payload => {
     requireWrite();
-    if (!property) throw new Error('Bitte eine Immobilie auswählen.');
-    const data = { ...payload, property_id: property };
-    if (modal === 'create') await api.post('/units', data);
-    else await api.put(`/units/${encodeURIComponent(modal.id)}`, data, revisionOptions(modal));
+    if (!alive.current) throw new Error('Die Anmeldung wurde geändert.');
+    if (!payload.property_id) throw new Error('Bitte eine Immobilie auswählen.');
+    if (modal === 'create') await api.post('/units', payload);
+    else await api.put(`/units/${encodeURIComponent(modal.id)}`, payload, { ...revisionOptions(modal), ...revisionOptions(payload) });
   };
   const remove = async row => {
     if (!isAllowed() || !await confirm(`„${row.label}“ wirklich löschen?`) || !isAllowed()) return;
@@ -70,8 +83,10 @@ function Inventory({ principal }) {
     finally { if (!controller.signal.aborted && alive.current) setExporting(false); }
   };
   const fields = [
+    { key: 'property_id', label: 'Immobilie', required: true, type: 'select',
+      render: ({ value, onChange, inputProps }) => <ReferenceChoice kind="properties" label="Immobilie" value={value} onChange={onChange} principal={principal} required disabled={inputProps.disabled} /> },
     { key: 'label', label: 'Bezeichnung', required: true },
-    { key: 'unit_type', label: 'Art', required: true, type: 'select', options: [...Object.entries(types), ...(modal?.unit_type && !Object.hasOwn(types, modal.unit_type) ? [[modal.unit_type, modal.unit_type]] : [])].map(([value, label]) => ({ value, label })) },
+    { key: 'unit_type', label: 'Art', required: true, type: 'select', options: [...Object.entries(types), ...Object.entries(legacyTypes), ...(modal?.unit_type && !Object.hasOwn(types, modal.unit_type) && !Object.hasOwn(legacyTypes, modal.unit_type) ? [[modal.unit_type, modal.unit_type]] : [])].map(([value, label]) => ({ value, label })) },
     { key: 'status', label: 'Gespeicherter Status', type: 'select', default: 'vacant', options: [...Object.entries(statuses), ...(modal?.status && !Object.hasOwn(statuses, modal.status) ? [[modal.status, modal.status]] : [])].map(([value, label]) => ({ value, label })) },
     { key: 'floor', label: 'Etage' }, { key: 'area_sqm', label: 'Fläche (m²)', type: 'number' },
     { key: 'rooms', label: 'Zimmer', type: 'number' }, { key: 'person_count', label: 'Personenzahl', type: 'number', step: 1 },
@@ -102,6 +117,7 @@ function Inventory({ principal }) {
     </section>
     <div className="inventory-actions"><button className="btn btn-secondary" onClick={download} disabled={exporting}>{exporting ? 'Export wird erstellt …' : 'Alle gefilterten Einheiten exportieren'}</button></div>
     {actionError && <div className="panel inventory-error" role="alert">{errorMessage(actionError)}</div>}
+    {opening && <p role="status">Einheit wird geöffnet …</p>}
     {state.loading && <p role="status">Einheiten werden geladen …</p>}
     {failure && <div className="panel inventory-error" role="alert">{errorMessage(failure)} <button className="btn btn-secondary" onClick={refresh}>Erneut laden</button></div>}
     {page && <section aria-label="Gefilterte Einheiten" className="panel inventory-results">
@@ -117,7 +133,7 @@ function Inventory({ principal }) {
       <p className="text-muted">Kennzahlen und Export umfassen alle passenden Einheiten. Die Liste zeigt jeweils eine Seite. Warmmiete erfordert alle drei Monatsbeträge.</p>
     </section>}
     {modal && canWrite && <FormModal key={modal.id || 'create'} title={modal === 'create' ? 'Einheit anlegen' : 'Einheit bearbeiten'} fields={fields} initial={modal === 'create' ? null : modal}
-      onSave={save} onSaved={updated} onClose={() => setModal(null)}><ReferenceChoice kind="properties" label="Immobilie" value={property} onChange={value => setProperty(value)} principal={principal} required /></FormModal>}
+      draftConfig={{ collection: 'units' }} onSave={save} onSaved={updated} onClose={() => setModal(null)} />}
   </div>;
 }
 

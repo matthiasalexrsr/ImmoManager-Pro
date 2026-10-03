@@ -45,7 +45,7 @@ function DocumentsPage({ principal }) {
   const uploadRequest = useRef(null);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; editRequest.current?.abort(); uploadRequest.current?.abort(); }; }, []);
   const [modal, setModal] = useState(null);
-  const { canWrite, isAllowed: grantAllowed, requireWrite } = useWriteAccess('/documents', () => { setModal(null); setUploadedUrl(''); setOcrResult(null); setUploadQueue([]); setDragActive(false); if (fileRef.current) fileRef.current.value = ''; });
+  const { canWrite, isAllowed: grantAllowed, requireWrite } = useWriteAccess('/documents', () => { editRequest.current?.abort(); uploadRequest.current?.abort(); setModal(null); setUploadedUrl(''); setOcrResult(null); setUploadQueue([]); setDragActive(false); if (fileRef.current) fileRef.current.value = ''; });
   const isAllowed = useCallback(() => mounted.current && grantAllowed(), [grantAllowed]);
   const [viewerFile, setViewerFile] = useState(null);
   const [historyDocument, setHistoryDocument] = useState(null);
@@ -184,13 +184,13 @@ function DocumentsPage({ principal }) {
 
   const handleSave = async (data) => {
     requireWrite();
+    if (!mounted.current) throw new Error('Die Anmeldung wurde geändert.');
     if (modal === 'create') {
       await api.post('/documents', data);
     } else {
-      await api.put(`/documents/${modal.id}`, data, revisionOptions(modal));
+      await api.put(`/documents/${modal.id}`, data, { ...revisionOptions(modal), ...revisionOptions(data) });
     }
-    refreshData();
-    if (store) store.invalidateRelated('documents');
+    if (isAllowed()) { refreshData(); store?.invalidateRelated('documents'); }
   };
 
   const handleDelete = async (row) => {

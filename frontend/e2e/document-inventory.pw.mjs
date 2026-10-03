@@ -46,6 +46,7 @@ test('documents: full metadata sources, retained edits, versions and narrow layo
   expect(csv).toContain(`Bestandsdokument ${suffix}-00`); expect(csv).toContain(document.title);
   await page.getByRole('button', { name: `${document.title} bearbeiten` }).click();
   const dialog = page.getByRole('dialog', { name: 'Dokument bearbeiten' });
+  await expect(dialog.getByText('Entwurfsschutz bereit', { exact: true })).toBeVisible();
   await expect(dialog.getByLabel('Beschreibung', { exact: true })).toHaveValue(document.description);
   const updatedTitle = `Geprüftes Dokument ${suffix}`;
   await dialog.getByLabel('Titel', { exact: false }).fill(updatedTitle);
@@ -53,9 +54,12 @@ test('documents: full metadata sources, retained edits, versions and narrow layo
   await page.route(`**${resource}`, route => route.request().method() === 'PUT'
     ? route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ detail: 'Schreibvorgang vorübergehend gesperrt' }) }) : route.continue());
   await dialog.getByRole('button', { name: 'Speichern', exact: true }).click();
-  await expect(dialog.getByRole('alert')).toContainText('Schreibvorgang vorübergehend gesperrt');
+  await expect(dialog.getByRole('alert').filter({ hasText: 'Schreibvorgang vorübergehend gesperrt' })).toBeVisible();
   await expect(dialog.getByLabel('Titel', { exact: false })).toHaveValue(updatedTitle);
   await page.unroute(`**${resource}`);
+  const proof = await page.request.get(resource, { headers });
+  expect(proof.ok()).toBeTruthy(); expect((await proof.json()).title).toBe(document.title);
+  await dialog.getByRole('button', { name: 'Nach Bestandsprüfung weiterbearbeiten', exact: true }).click();
   const savedWait = page.waitForResponse(response => new URL(response.url()).pathname === resource && response.request().method() === 'PUT');
   await dialog.getByRole('button', { name: 'Speichern', exact: true }).click();
   expect((await savedWait).status()).toBe(200);

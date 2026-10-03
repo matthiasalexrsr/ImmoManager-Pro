@@ -18,7 +18,10 @@ const row = (id = 'unit-a', label = 'Gartenwohnung') => ({ id, label, property_i
   updated_at: '2026-10-03T00:00:00.000001Z', edit_etag: 'revision-a' });
 const page = (items, cursor = null) => ({ items, has_more: Boolean(cursor), next_cursor: cursor });
 const summary = { total: 10001, rent_count: 10000, occupied: 9000, vacant: 1001, reserved: 0, multiple_active: 1, average_cold_rent: 710.5 };
-const response = path => path.includes('/summary?') ? summary : path.startsWith('/workflow-references/')
+const draftPath = '/auth/users/me/form-drafts';
+const draftSaved = { revision: 'draft-a', updated_at: '2026-10-03T00:00:00Z', expires_at: '2026-10-10T00:00:00Z' };
+const writes = () => mocks.put.mock.calls.filter(([path]) => path.startsWith('/units/'));
+const response = path => path.startsWith(draftPath) ? { draft: null } : path === '/units/unit-a' ? { ...row(), features: 'Originale Ausstattung' } : path.includes('/summary?') ? summary : path.startsWith('/workflow-references/')
   ? { ...page([{ id: 'property-a', name: 'Lindenhof' }]), selected: new URLSearchParams(path.split('?')[1]).get('selected_id') ? { id: 'property-a', name: 'Lindenhof' } : null }
   : page([row()]);
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
@@ -28,7 +31,8 @@ beforeEach(() => {
   Object.values(mocks).forEach(value => value?.mockReset?.());
   mocks.user = { id: 'owner-a', role: 'eigentuemer', portfolio_access: 'all', portfolio_ids: [] };
   mocks.get.mockImplementation(path => Promise.resolve(response(path)));
-  mocks.post.mockResolvedValue({}); mocks.put.mockResolvedValue({});
+  mocks.post.mockResolvedValue({}); mocks.put.mockImplementation(path => Promise.resolve(path === draftPath ? draftSaved : {}));
+  mocks.del.mockResolvedValue({ discarded: true });
 });
 
 describe('bounded unit inventory', () => {
@@ -97,17 +101,18 @@ describe('bounded unit inventory', () => {
   });
 
   it('keeps a form draft and its original revision after a failed write', async () => {
-    mocks.put.mockRejectedValue(new Error('Änderung konnte nicht gespeichert werden'));
+    mocks.put.mockImplementation(path => path === draftPath ? Promise.resolve(draftSaved) : Promise.reject(new Error('Änderung konnte nicht gespeichert werden')));
     view(); await screen.findByRole('link', { name: 'Gartenwohnung' });
     await userEvent.click(screen.getByRole('button', { name: 'Gartenwohnung bearbeiten' }));
-    const dialog = screen.getByRole('dialog');
+    const dialog = await screen.findByRole('dialog');
+    await within(dialog).findByText('Entwurfsschutz bereit');
     fireEvent.change(within(dialog).getByLabelText('Bezeichnung *'), { target: { value: 'Mein erhaltener Entwurf' } });
     fireEvent.submit(dialog.querySelector('form'));
-    await waitFor(() => expect(mocks.put).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(writes()).toHaveLength(1));
     expect(await within(dialog).findByText('Änderung konnte nicht gespeichert werden')).toBeVisible();
     expect(within(dialog).getByLabelText('Bezeichnung *')).toHaveValue('Mein erhaltener Entwurf');
-    expect(mocks.put.mock.calls[0][1]).toMatchObject({ label: 'Mein erhaltener Entwurf', property_id: 'property-a', cold_rent: 0 });
-    expect(mocks.put.mock.calls[0][2].ifMatch.updatedAt).toBe(row().updated_at);
+    expect(writes()[0][1]).toMatchObject({ label: 'Mein erhaltener Entwurf', property_id: 'property-a', cold_rent: 0, features: 'Originale Ausstattung' });
+    expect(writes()[0][2].ifMatch.updatedAt).toBe(row().updated_at);
   });
 
   it('uses full export filters without the current page cursor', async () => {

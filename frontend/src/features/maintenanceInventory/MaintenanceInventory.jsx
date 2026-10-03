@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../../api';
-import { revisionOptions } from '../../editRevision';
+import { revisionOptions, revisionSource } from '../../editRevision';
 import { useAuth } from '../../contexts/AuthContext';
 import { useDataStore } from '../../contexts/DataStoreContext';
 import { useConfirm } from '../../components/ConfirmDialog';
@@ -21,28 +21,28 @@ const costLabel = value => value == null ? '—' : new Intl.NumberFormat('de-DE'
 const appointmentValue = value => value?.slice(0, 19) || '';
 
 function CaseForm({ initial, principal, onSave, onSaved, onClose }) {
-  const [refs, setRefs] = useState({ property_id: initial?.property_id || '', unit_id: initial?.unit_id || '' });
   const fields = [
+    { key: 'property_id', label: 'Immobilie', required: true, type: 'select', onChange: () => ({ unit_id: '' }),
+      render: ({ value, onChange, inputProps }) => <ReferenceChoice kind="properties" label="Immobilie" value={value} onChange={onChange} principal={principal} required disabled={inputProps.disabled} /> },
+    { key: 'unit_id', label: 'Einheit', type: 'select', onChange: (value, values, row) => ({ property_id: row?.property_id || values.property_id }),
+      render: ({ value, values, onChange, inputProps }) => <ReferenceChoice key={values.property_id} kind="units" label="Einheit" value={value} onChange={onChange} principal={principal} filters={{ property_id: values.property_id }} disabled={inputProps.disabled} /> },
     { key: 'title', label: 'Titel', required: true }, { key: 'description', label: 'Beschreibung', type: 'textarea' },
     { key: 'category', label: 'Kategorie', hint: 'Zum Beispiel Sanitär, Elektrik, Heizung oder Dach.' },
     { key: 'priority', label: 'Priorität', type: 'select', default: 'medium', options: options({ ...priorities, ...(initial?.priority && !Object.hasOwn(priorities, initial.priority) ? { [initial.priority]: initial.priority } : {}) }) },
     { key: 'status', label: 'Status', type: 'select', default: 'open', options: options({ ...statuses, ...(initial?.status && !Object.hasOwn(statuses, initial.status) ? { [initial.status]: initial.status } : {}) }) },
     { key: 'assignee', label: 'Zuständig' }, { key: 'contractor', label: 'Handwerker' }, { key: 'reported_by', label: 'Gemeldet von' },
-    { key: 'due_date', label: 'Fällig am', type: 'date' }, { key: 'appointment_at', label: 'Termin mit Uhrzeit', type: 'datetime-local', step: 1 },
+    { key: 'due_date', label: 'Fällig am', type: 'date' }, { key: 'appointment_at', label: 'Termin mit Uhrzeit', type: 'datetime-local', step: 1,
+      render: ({ value, onChange, inputProps }) => <><label htmlFor={inputProps.id}>Termin mit Uhrzeit</label><input {...inputProps} type="datetime-local" step="1" value={appointmentValue(value)} onChange={event => onChange(event.target.value)} /></> },
     { key: 'estimated_cost', label: 'Geschätzte Kosten (€)', type: 'number' },
   ];
-  const original = initial ? { ...initial, appointment_at: appointmentValue(initial.appointment_at) } : null;
-  return <FormModal title={initial ? 'Wartungsfall bearbeiten' : 'Wartungsfall anlegen'} fields={fields} initial={original} onClose={onClose} onSaved={onSaved}
+  return <FormModal title={initial ? 'Wartungsfall bearbeiten' : 'Wartungsfall anlegen'} fields={fields} initial={initial} onClose={onClose} onSaved={onSaved}
+    draftConfig={{ collection: 'maintenance' }}
     onSave={payload => {
-      if (!refs.property_id) throw new Error('Bitte eine Immobilie auswählen.');
-      const appointment = payload.appointment_at === appointmentValue(initial?.appointment_at) ? initial?.appointment_at : payload.appointment_at;
-      return onSave({ ...payload, ...refs, unit_id: refs.unit_id || null, appointment_at: appointment || null });
-    }}>
-    <ReferenceChoice kind="properties" label="Immobilie" value={refs.property_id} principal={principal} required
-      onChange={value => setRefs({ property_id: value, unit_id: '' })} />
-    <ReferenceChoice key={refs.property_id} kind="units" label="Einheit" value={refs.unit_id} principal={principal} filters={{ property_id: refs.property_id }}
-      onChange={(value, row) => setRefs(current => ({ property_id: row?.property_id || current.property_id, unit_id: value }))} />
-  </FormModal>;
+      if (!payload.property_id) throw new Error('Bitte eine Immobilie auswählen.');
+      const originalAppointment = revisionSource(payload, initial)?.appointment_at;
+      const appointment = payload.appointment_at === appointmentValue(originalAppointment) ? originalAppointment : payload.appointment_at;
+      return onSave({ ...payload, appointment_at: appointment || null });
+    }} />;
 }
 
 function Inventory({ principal }) {
@@ -74,7 +74,7 @@ function Inventory({ principal }) {
   const save = async data => {
     requireWrite(); if (!alive.current) throw new Error('Die Anmeldung wurde geändert.');
     if (modal === 'create') await api.post('/maintenance', data);
-    else await api.put(`/maintenance/${encodeURIComponent(modal.id)}`, data, revisionOptions(modal));
+    else await api.put(`/maintenance/${encodeURIComponent(modal.id)}`, data, { ...revisionOptions(modal), ...revisionOptions(data) });
   };
   const remove = async row => {
     if (!isAllowed() || !await confirm(`„${row.title}“ wirklich löschen?`) || !alive.current || !isAllowed()) return;

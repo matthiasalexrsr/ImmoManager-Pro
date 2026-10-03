@@ -49,6 +49,7 @@ test('units: real full filter/export, bounded reference, failed form retry, and 
 
   await page.getByRole('button', { name: 'Einheit anlegen', exact: true }).click();
   const dialog = page.getByRole('dialog');
+  await expect(dialog.getByText('Entwurfsschutz bereit', { exact: true })).toBeVisible();
   await dialog.getByRole('searchbox', { name: 'Immobilie suchen' }).fill(property.name);
   await dialog.getByRole('button', { name: property.name, exact: true }).click();
   await dialog.getByLabel('Bezeichnung', { exact: false }).fill(`Neue Wohnung ${suffix}`);
@@ -57,10 +58,13 @@ test('units: real full filter/export, bounded reference, failed form retry, and 
   await page.route('**/api/v1/units', route => route.request().method() === 'POST'
     ? route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ detail: 'Speichern vorübergehend nicht möglich' }) }) : route.continue());
   await dialog.getByRole('button', { name: 'Speichern', exact: true }).click();
-  await expect(dialog.getByRole('alert')).toContainText('Speichern vorübergehend nicht möglich');
+  await expect(dialog.getByRole('alert').filter({ hasText: 'Speichern vorübergehend nicht möglich' })).toBeVisible();
   await expect(dialog.getByLabel('Bezeichnung', { exact: false })).toHaveValue(`Neue Wohnung ${suffix}`);
   await expect(dialog).toContainText(`Ausgewählt: ${property.name}`);
   await page.unroute('**/api/v1/units');
+  const proof = await page.request.get(`/api/v1/units/inventory/page?${new URLSearchParams({ search: `Neue Wohnung ${suffix}` })}`, { headers });
+  expect(proof.ok()).toBeTruthy(); expect((await proof.json()).items).toHaveLength(0);
+  await dialog.getByRole('button', { name: 'Nach Bestandsprüfung weiterbearbeiten', exact: true }).click();
   const createdWait = page.waitForResponse(response => new URL(response.url()).pathname === '/api/v1/units' && response.request().method() === 'POST');
   await dialog.getByRole('button', { name: 'Speichern', exact: true }).click();
   expect((await createdWait).status()).toBe(201);

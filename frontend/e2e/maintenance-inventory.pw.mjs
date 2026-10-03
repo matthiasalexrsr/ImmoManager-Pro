@@ -44,6 +44,7 @@ test('maintenance: complete filters/export, retained timed edit, bounded choices
   expect(csv).toContain(`Wartungsfall ${suffix}-00`); expect(csv).toContain(item.title);
   await page.getByRole('button', { name: `${item.title} bearbeiten` }).click();
   const dialog = page.getByRole('dialog', { name: 'Wartungsfall bearbeiten' });
+  await expect(dialog.getByText('Entwurfsschutz bereit', { exact: true })).toBeVisible();
   await expect(dialog.getByLabel('Beschreibung', { exact: true })).toHaveValue(item.description);
   await expect(dialog.getByLabel('Termin mit Uhrzeit')).toHaveValue('2026-11-01T15:30');
   const updatedTitle = `Geprüfter Wartungsfall ${suffix}`;
@@ -53,10 +54,13 @@ test('maintenance: complete filters/export, retained timed edit, bounded choices
   await page.route(`**${resource}`, route => route.request().method() === 'PUT'
     ? route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ detail: 'Schreiben vorübergehend gesperrt' }) }) : route.continue());
   await dialog.getByRole('button', { name: 'Speichern', exact: true }).click();
-  await expect(dialog.getByRole('alert')).toContainText('Schreiben vorübergehend gesperrt');
+  await expect(dialog.getByRole('alert').filter({ hasText: 'Schreiben vorübergehend gesperrt' })).toBeVisible();
   await expect(dialog.getByLabel('Titel', { exact: false })).toHaveValue(updatedTitle);
   await expect(dialog.getByLabel('Termin mit Uhrzeit')).toHaveValue('2026-11-02T16:45');
   await page.unroute(`**${resource}`);
+  const proof = await page.request.get(resource, { headers });
+  expect(proof.ok()).toBeTruthy(); expect((await proof.json()).title).toBe(item.title);
+  await dialog.getByRole('button', { name: 'Nach Bestandsprüfung weiterbearbeiten', exact: true }).click();
   const savedWait = page.waitForResponse(response => new URL(response.url()).pathname === resource && response.request().method() === 'PUT');
   await dialog.getByRole('button', { name: 'Speichern', exact: true }).click();
   expect((await savedWait).status()).toBe(200); await expect(dialog).toHaveCount(0);
@@ -67,6 +71,7 @@ test('maintenance: complete filters/export, retained timed edit, bounded choices
   await expect(table).toContainText(updatedTitle);
   await page.getByRole('button', { name: 'Wartungsfall anlegen', exact: true }).click();
   const form = page.getByRole('dialog', { name: 'Wartungsfall anlegen' });
+  await expect(form.getByText('Entwurfsschutz bereit', { exact: true })).toBeVisible();
   await form.getByLabel('Titel', { exact: false }).fill(`Neuer Auftrag ${suffix}`);
   await form.getByRole('searchbox', { name: 'Immobilie suchen' }).fill(property.name);
   await form.getByRole('button', { name: property.name, exact: true }).click();
