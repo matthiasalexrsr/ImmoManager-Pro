@@ -127,3 +127,13 @@ physical-record helper, retaining real interior blank lines and Unicode values.
 Do not loosen the assertion. Recheck that exact case and the nine actual
 dotenv/loader opaque-value cases; retain the other green cases as distinct prior
 evidence rather than repeat the whole native selection without a new concern.
+
+Final independent composition review found a separate name-selection mismatch:
+runtime Settings accepts lowercase stored names, while recovery._plan selects
+JWT/database/uploads/integration paths before converting names. Normalize known
+dotenv names case-insensitively before any path/key selection. Refuse distinct
+case aliases for the same known setting, without values in the error. Preserve
+historical repeated identical-name dotenv precedence and recovered strict JSON
+precedence. Never rewrite source bytes or import/open app/SQL during planning.
+Add actual pure planner cases for lowercase/mixed names, chosen paths, both
+alias conflicts and recovered JSON overriding a lowercase dotenv source.
