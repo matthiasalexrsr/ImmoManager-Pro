@@ -140,6 +140,12 @@ zurückgeben. Keine fremde Connection oder aktive/verschmutzte scoped Authsessio
 übernehmen, schließen oder zurückrollen. Account-/Sididentityproben schließen
 nur nachweislich neue inaktive Sessions über deren tatsächliche jeweilige Factory.
 SQLiteframe prüft zusätzlich den tatsächlichen DBAPI-in_transaction-Status.
+Bei fehlgeschlagener Operation wird auch die eigene physische DBAPItransaktion
+explizit zurückgerollt: ein verweigerter Connection-Commit kann dessen
+SQLAlchemy-RootTransaction bereits deaktivieren, obwohl DBAPI noch nicht
+committed hat. Der Cleanup darf diesen Rest weder im Pool lassen noch als
+erfolgreichen Read behandeln. Dies bleibt eine Quellenanforderung, kein bereits
+ausgeführter nativer Rollbacknachweis.
 
 Die positiven User-/Resourcegrantzeugen werden nach ihren konkreten
 Portfolio-/Locationparents gesperrt; auth_setup/User sind schon gehalten und
