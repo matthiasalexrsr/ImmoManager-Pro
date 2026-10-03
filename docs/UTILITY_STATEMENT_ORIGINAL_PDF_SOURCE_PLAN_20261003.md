@@ -127,3 +127,75 @@ reviewable Billingrouter integration under newly assigned ownership; then
 explicit archive/receipt with existing document core; then Root's exact subtype
 native/recovery composition and native/archive/layout proofs. This source plan
 alone changes no renderer or published document behavior.
+
+
+## Approved first source/render packet: precise contracts before code
+
+Root approved this first packet after merge `ff4b1a5`; compound document
+publication and central recovery remain outside it. Two own service files:
+`utility_statement_original_source.py` (pure DTO/digest plus lazily imported
+operative source reader), `utility_statement_pdf.py` (deterministic renderer).
+Only statement PDF/download and period ZIP are targeted router integrations.
+
+`UtilityStatementOriginalSource` is a strict extra-forbid DTO with:
+
+- `schema_version="utility-statement-original-source/1"`;
+- `render_profile="utility-statement-pdf-preview/1"`;
+- `statement_original`: exact typed UtilityStatement JSON with status,
+  delivery_status/delivered_at/delivery_channel/updated_at excluded, retaining
+  the actual snapshot_hash, source_statement_id, financial positions and
+  calculation_hash. This matches the existing retained journal original basis;
+- `period_context`: actual retained id/property_id/start_date/end_date and
+  revision_number, labelled `retained_period_reference`, without mutable label
+  or property/unit display names. These dates are retained period context,
+  not a claim that un-hashed labels were frozen at original finalization;
+- `original_party`: the exact matching pure StatementParty JSON or null;
+- `party_binding`: `frozen_at_statement_finalization` when proved, otherwise
+  `historical_party_unproved`, with no invented historical tenant reference;
+- `source_chain`: direct source to oldest source, each statement/period ID,
+  revision, snapshot_hash and source IDs, plus its actual party mode/entry.
+  Actual immutable entire period/source hashes are checked before inclusion;
+- `source_digest`: SHA-256 of UTF-8 json.dumps(all other DTO fields,
+  sort_keys=True, ensure_ascii=False, separators=(",", ":")). Typed JSON/date
+  normalization occurs before hashing. It is distinct from the established
+  whole-period settlement snapshot_hash and binds the exact selected source
+  DTO/render profile. Renderer revalidates the strict DTO and its digest.
+
+The source reader works inside existing billing_disputes.work coherent read
+snapshot and actual actor/scope/exit fences. Native period statements stream by
+ID. Memoize only affected source period hashes within this read; never global
+history. Pure period original hook validates complete actual party family,
+selected parents and correction ancestry with targeted/lazy actual parent maps.
+Every source statement also undergoes actual whole-period hash verification,
+including legacy source periods whose lack of party proof remains explicit.
+Reject cycles, mismatched period source/dates, units/contracts/properties,
+non-increasing revision and missing/malformed proof. Don't compare today's
+Tenant.full_name with the frozen identity or use it for rendering.
+
+Read-only `GET /billing/statements/<id>/original-source` returns the validated
+DTO for a precise source JSON proof. Existing statement PDF GET keeps
+application/pdf and content-disposition, adds private/no-store, source digest,
+existing settlement SHA, renderer profile and content SHA headers. It creates
+no Document, version, receipt, status/delivery write or file-system source.
+The ZIP path validates all requested period originals within one shared read
+snapshot, uses the same renderer and includes the exact source JSON alongside
+each PDF. Source failures abort the complete ZIP, never produce partial success.
+ZIP entries use fixed metadata/order so repeated validated derivation is stable.
+Individual PDF/JSON agree with the ZIP's exact source/content bytes.
+
+Profile1: A4, bundled NotoSans regular/bold, escaped names/labels/positions,
+readable original-party postal block or explicit historical-unproved note,
+period reference/dates/revision, repeated cost headers, cent-formatted original
+amounts/advances/balance, advance evidence and source lineage as needed,
+page numbers and an explicit checked-preview classification. No timestamps or
+live unit labels in renderer output. reportlab invariant mode; no plain-text
+success fallback when PDF rendering is unavailable. Immutable archive/profile
+changes later become separate explicit versions rather than overwrite bytes.
+
+Tests: actual finalization/profile-and-unit-label change, exact JSON/PDF digest
+and reproducible individual/ZIP sources, actual two-step correction and legacy,
+modified financial/party/sibling period data rejected, no Document creation,
+source/role/token revocation before publication, native source ancestry proof,
+Unicode/long positions/multipage cent/readability and actual rendered PNG QA.
+Root coordinates heavy Python/native/visual slots before execution; initial
+planning/static work doesn't start a test/browser process.
