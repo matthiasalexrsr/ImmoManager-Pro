@@ -4,17 +4,16 @@ import importlib.util
 import os
 from datetime import datetime
 from pathlib import Path
-from uuid import uuid4
 
 import pytest
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from sqlalchemy import Column, DateTime, MetaData, String, Table, create_engine, event, inspect, text
-from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
 
 from backend.db.notification_inbox_models import NotificationReadStateORM
 from backend.services.notification_inbox_validation import validate_notification_inbox_database
+from backend.tests.notification_inbox_pg_proposal_support import postgres_proposal_database
 
 PROPOSAL = (Path(__file__).resolve().parents[1] / "db/migrations/proposals"
             / "m2a2b3c4d5e6_personal_notification_reads.py")
@@ -30,52 +29,42 @@ def _proposal():
 
 @pytest.fixture(params=["sqlite", "postgresql"], ids=["sqlite", "postgresql"])
 def proposal_database(request, tmp_path):
-    admin = None
-    schema = None
     if request.param == "postgresql":
-        source = os.getenv("TEST_SERVER_DATABASE_URL")
-        if not source:
-            pytest.fail("M2 PostgreSQL proof requires explicit disposable TEST_SERVER_DATABASE_URL")
-        url = make_url(source)
-        if url.get_backend_name() != "postgresql":
-            pytest.fail("M2 PostgreSQL proof requires a PostgreSQL URL")
-        schema = "notification_inbox_m2_" + uuid4().hex
-        admin = create_engine(url, hide_parameters=True)
-        with admin.begin() as connection:
-            connection.exec_driver_sql(f'CREATE SCHEMA "{schema}"')
-        engine = create_engine(url.update_query_dict({"options": "-csearch_path=" + schema}),
-                               hide_parameters=True)
-    else:
+        with postgres_proposal_database(os.getenv("TEST_SERVER_DATABASE_URL")) as engine:
+            _seed_parents(engine)
+            yield engine
+        return
+    engine = None
+    try:
         engine = create_engine("sqlite:///" + (tmp_path / "native-m2.sqlite").as_posix(),
                                hide_parameters=True)
 
         @event.listens_for(engine, "connect")
         def foreign_keys(connection, record):
             connection.execute("PRAGMA foreign_keys=ON")
-
-    try:
-        metadata = MetaData()
-        users = Table("users", metadata, Column("id", String(), primary_key=True))
-        notices = Table("notifications", metadata, Column("id", String(), primary_key=True),
-                        Column("status", String(), nullable=False), Column("read_at", DateTime()))
-        with engine.begin() as connection:
-            if schema is not None:
-                assert connection.scalar(text("SELECT current_schema()")) == schema
-            metadata.create_all(connection)
-            connection.execute(users.insert(), [{"id": "reader-a"}, {"id": "reader-b"}])
-            connection.execute(notices.insert(), [
-                {"id": "global-read", "status": "read", "read_at": datetime(2026, 10, 2, 12)},
-                {"id": "global-unread", "status": "unread", "read_at": None},
-            ])
+        _seed_parents(engine)
         yield engine
     finally:
-        engine.dispose()
-        if admin is not None:
+        if engine is not None:
+            leaked = engine.pool.checkedout()
             try:
-                with admin.begin() as connection:
-                    connection.exec_driver_sql(f'DROP SCHEMA "{schema}" CASCADE')
+                engine.dispose()
             finally:
-                admin.dispose()
+                assert not leaked, "M2 SQLite fixture retained a checked-out connection"
+
+
+def _seed_parents(engine):
+    metadata = MetaData()
+    users = Table("users", metadata, Column("id", String(), primary_key=True))
+    notices = Table("notifications", metadata, Column("id", String(), primary_key=True),
+                    Column("status", String(), nullable=False), Column("read_at", DateTime()))
+    with engine.begin() as connection:
+        metadata.create_all(connection)
+        connection.execute(users.insert(), [{"id": "reader-a"}, {"id": "reader-b"}])
+        connection.execute(notices.insert(), [
+            {"id": "global-read", "status": "read", "read_at": datetime(2026, 10, 2, 12)},
+            {"id": "global-unread", "status": "unread", "read_at": None},
+        ])
 
 
 def _run(engine, name):
