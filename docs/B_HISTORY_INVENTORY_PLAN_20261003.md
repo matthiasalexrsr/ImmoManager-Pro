@@ -53,3 +53,19 @@ Diese Berechtigung wird übernommen, nicht durch eigene Objektregeln ersetzt.
   Leistungsabnahme; aktuelle Speicherbegrenzung beweist keinen Indexzugriff.
 - Historie wird hier vollständig gelesen. Die atomare Erzeugung allgemeiner
   Feldänderungen aus Paket L ist ein eigenes, weiterhin offenes Schreibpaket.
+
+Unabhängiger Quellenreview präzisiert: Cursorseiten sind laufende Seiten, kein
+festgeschriebener Gesamtstand. SQL-CSV verwendet einen tatsächlichen Snapshot
+mit erneuter aktueller Projektion-/Rechteprüfung; Memory-CSV bleibt pro Batch
+gelockt und live, ohne behaupteten Gesamtsnapshot. Ein UTC-Überlauf an den
+darstellbaren Datumsgrenzen wird als Validierungsfehler gemeldet, nicht gekappt.
+
+Erste native Auswahl: 7 PASS/2 FAIL in32,71 Sekunden, hard180. Die beiden
+HTTP-Fälle erreichten korrekt200/private-no-store, scheiterten aber an einer
+neuen zu engen Headerassertion: CORS ergänzt legitimes `Origin` zu `Vary`.
+Prüfung verlangt weiter ausdrücklich `Authorization` als einzelnes Headerfeld.
+Gezielter Follow-up umfasst diese beiden echten SQL-HTTP/Revoke-Fälle, einen
+echten historischen SQLite-NULL-Zeitfall und zwei UTC-Überläufe: 5 PASS in18,31
+Sekunden, hard90, keine Skips. Damit12 unterschiedliche positive Backendfälle
+komponiert, keine behauptete komplette12er-Grünwiederholung. Beide Prozesse
+normal beendet, keine PostgreSQL-Ausführung oder private Daten in diesen Gates.
