@@ -20,6 +20,7 @@ from .credit_models import CreditReceiptORM  # noqa: F401 — register immutable
 from .datev_models import DatevProfileORM  # noqa: F401 — register DATEV metadata
 from .document_version_models import DocumentVersionORM  # noqa: F401 — register immutable document originals
 from .form_draft_models import FormDraftORM  # noqa: F401 — register private draft metadata
+from .integration_history_models import HISTORY_MODELS
 from .operational_job_models import JOB_MODELS
 from .operational_models import OperationalTickORM  # noqa: F401 — register scheduler metadata
 from .operational_scheduler_models import OperationalSchedulerORM  # noqa: F401 — register durable coordinator
@@ -57,6 +58,23 @@ if DATABASE_URL.startswith("sqlite"):
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
 
+def create_history_tables() -> None:
+    """Explicit fresh setup on the existing engine, also for Memory domain."""
+    from typing import cast
+
+    from sqlalchemy import Table
+
+    from .integration_history_schema import ensure_history_schema, install_history_guards
+
+    with engine.begin() as connection:
+        if engine.dialect.name == "sqlite":
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
+        if ensure_history_schema(connection):
+            return  # Existing complete journals require no startup DDL/repair.
+        Base.metadata.create_all(bind=connection, tables=[cast(Table, model.__table__) for model in HISTORY_MODELS])
+        install_history_guards(connection)
+
+
 def create_tables() -> None:
     """Create all tables (dev/test convenience). Use Alembic for production."""
     if settings.is_production:
@@ -67,6 +85,9 @@ def create_tables() -> None:
 
     require_complete_family(engine, TENANCY_WORKFLOW_MODELS, "tenancy workflow")
     require_complete_family(engine, JOB_MODELS, "operational job")
+    from .integration_history_schema import ensure_history_schema
+    with engine.connect() as connection:
+        ensure_history_schema(connection)
     correspondence_tables = {"contract_correspondence_drafts", "contract_correspondence_commands", "contract_correspondence_events"}
     if present & correspondence_tables and not correspondence_tables <= present:
         raise RuntimeError("Incomplete contract correspondence journal schema; explicit schema recovery is required")
@@ -78,6 +99,7 @@ def create_tables() -> None:
     if present & lifecycle_tables and not lifecycle_tables <= present:
         raise RuntimeError("Incomplete contract lifecycle journal schema; explicit schema recovery is required")
     bootstrap_legacy_access = not inspect(engine).has_table("user_portfolio_access")
+    create_history_tables()
     Base.metadata.create_all(bind=engine)
     from ..services.invoice_payment_schema import ensure_invoice_payment_columns, ensure_invoice_payment_immutability
     from ..services.portfolio_scope import ensure_portfolio_access_schema

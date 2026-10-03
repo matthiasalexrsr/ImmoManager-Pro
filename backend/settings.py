@@ -200,6 +200,11 @@ class Settings(BaseSettings):
 
     # --- Integrations ---
     integration_state_file: str | None = None
+    # Work budgets per artifact/proof/response, never a total history count cap.
+    integration_history_artifact_bytes: int = Field(default=16 * 1024 * 1024, gt=0)
+    integration_history_page_bytes: int = Field(default=32 * 1024 * 1024, gt=0)
+    integration_history_temp_bytes: int = Field(default=512 * 1024 * 1024, gt=0)
+    integration_history_timeout_seconds: float = Field(default=60.0, gt=0, allow_inf_nan=False)
 
     # --- AI / Hugging Face ---
     ai_enabled: bool = True  # Master toggle for AI features
@@ -213,6 +218,21 @@ class Settings(BaseSettings):
 
     # --- Contract wizard runtime behavior ---
     contract_wizard_required: bool = False
+
+    @field_validator("integration_history_artifact_bytes", "integration_history_page_bytes",
+                     "integration_history_temp_bytes", "integration_history_timeout_seconds", mode="before")
+    @classmethod
+    def validate_history_budget_type(cls, value: object, info: ValidationInfo) -> object:
+        if isinstance(value, bool):
+            raise ValueError("Integration history budget must be numeric, not boolean")
+        if info.field_name != "integration_history_timeout_seconds":
+            if isinstance(value, str):
+                raw = value.strip()
+                if not raw.isascii() or not raw.isdecimal():
+                    raise ValueError("Integration history byte budget must be an integer")
+            elif type(value) is not int:
+                raise ValueError("Integration history byte budget must be an integer")
+        return value
 
     @field_validator("bank_discovery_record_max_chars", "bank_discovery_field_max_chars",
                      "bank_discovery_temp_max_bytes", "bank_discovery_timeout_seconds", mode="before")

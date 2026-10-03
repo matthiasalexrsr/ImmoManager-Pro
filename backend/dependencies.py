@@ -104,6 +104,20 @@ else:
         )
     logger.info("Using InMemoryStore — data will NOT be persisted across restarts.")
 
+# This journal remains actual SQL in both domain modes. Its failures must abort
+# startup rather than enter the domain's optional nonpersistent fallback.
+from .db.session import SessionLocal, create_history_tables  # noqa: E402
+from .services.integrations.history_store import configure_history  # noqa: E402
+from .services.integrations.history_types import HistoryLimits  # noqa: E402
+
+create_history_tables()
+configure_history(SessionLocal, limits=HistoryLimits(
+    artifact_bytes=settings.integration_history_artifact_bytes,
+    page_bytes=settings.integration_history_page_bytes,
+    temp_bytes=settings.integration_history_temp_bytes,
+    timeout_seconds=settings.integration_history_timeout_seconds,
+))
+
 # Log active store type for clarity
 logger.info("Active store: %s", type(store).__name__)
 
