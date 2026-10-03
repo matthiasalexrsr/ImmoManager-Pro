@@ -3,6 +3,8 @@
 Stand 03.10.2026, eigener Checkout `work/billing-dispute-ui`, Branch
 `assist/billing-dispute-ui`. Vorcodeplan `c386438` bleibt verbindlich. Dies ist
 ein Quellenhandoff; es wurden noch keine nativen Browserfälle ausgeführt.
+Dieser frühere Stand bleibt nachvollziehbar; die nachfolgende tatsächliche
+Ausführung ist in `PACKAGE_C_DISPUTE_BROWSER_ACCEPTANCE_20261003.md` dokumentiert.
 
 ## Saubere Basis und getrennte Übernahme
 
