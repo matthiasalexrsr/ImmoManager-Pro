@@ -390,6 +390,25 @@ def test_postgres_create_notification_default_is_naive_utc_in_session_zone(postg
                 f"Actual create_notification default in {zone} violated naiveUTC: "
                 f"UTC window {before.isoformat()}..{after.isoformat()}, stored {stored.isoformat()}"
             )
+            with box.probe.connect() as connection:
+                created_update = connection.execute(select(NotificationORM.__table__.c.updated_at).where(
+                    NotificationORM.__table__.c.id == item.id)).scalar_one()
+            assert item.updated_at == created_update and before <= created_update <= after
+            read_before = _utc_clock(box)
+            with _actor(box, "owner"):
+                # The existing global-read path supplies an aware Python UTC
+                # datetime. It remains distinct from the personal read capability.
+                read = SQLAlchemyStore(db).mark_notification_read(item.id)
+            read_after = _utc_clock(box)
+            with box.probe.connect() as connection:
+                saved = connection.execute(select(
+                    NotificationORM.__table__.c.created_at, NotificationORM.__table__.c.read_at,
+                    NotificationORM.__table__.c.updated_at,
+                ).where(NotificationORM.__table__.c.id == item.id)).one()
+            assert saved.created_at == stored
+            assert read.read_at == saved.read_at and read.updated_at == saved.updated_at
+            assert all(value.tzinfo is None and read_before <= value <= read_after
+                       for value in (saved.read_at, saved.updated_at))
         finally:
             db.rollback()
             writer_connection.rollback()

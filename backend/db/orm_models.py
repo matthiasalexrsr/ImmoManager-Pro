@@ -26,7 +26,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from .encrypted_types import EncryptedIBAN, register_account_encryption
-from .time_types import UTCNaiveDateTime
+from .time_types import UTCNaiveDateTime, UTCNaiveNow
 
 
 def _utcnow():
@@ -637,9 +637,11 @@ class NotificationORM(Base):
     entity_type: Mapped[str | None] = mapped_column(Text)
     entity_id: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="unread")
-    read_at: Mapped[datetime | None] = mapped_column(DateTime)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
+    read_at: Mapped[datetime | None] = mapped_column(UTCNaiveDateTime)
+    created_at: Mapped[datetime] = mapped_column(UTCNaiveDateTime, nullable=False, default=UTCNaiveNow())
+    updated_at: Mapped[datetime] = mapped_column(
+        UTCNaiveDateTime, nullable=False, default=UTCNaiveNow(), onupdate=UTCNaiveNow()
+    )
 
     __table_args__ = (
         Index("idx_notifications_status", "status"),

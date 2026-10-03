@@ -3,11 +3,11 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from sqlalchemy import Column, DateTime, MetaData, Table
+from sqlalchemy import Column, DateTime, MetaData, Table, insert, select
 from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.schema import CreateTable
 
-from backend.db.time_types import UTCNaiveDateTime
+from backend.db.time_types import UTCNaiveDateTime, UTCNaiveNow
 
 
 @pytest.mark.parametrize("offset", [-5, 0, 2])
@@ -36,3 +36,19 @@ def test_physical_type_compilation_is_identical(dialect):
 def test_utc_overflow_is_not_capped(value):
     with pytest.raises(ValueError, match="UTC-Zeitpunkt"):
         UTCNaiveDateTime().process_bind_param(value, None)
+
+
+@pytest.mark.parametrize("dialect, expected", [
+    (sqlite.dialect(), "CURRENT_TIMESTAMP"),
+    (postgresql.dialect(), "timezone('UTC', now())"),
+])
+def test_client_sql_default_is_explicit_utc_without_server_ddl(dialect, expected):
+    expression = UTCNaiveNow()
+    assert expected in str(select(expression).compile(dialect=dialect))
+    table = Table("notifications", MetaData(), Column("id", DateTime),
+                  Column("created_at", UTCNaiveDateTime(), default=expression, nullable=False))
+    plain = Table("notifications", MetaData(), Column("id", DateTime),
+                  Column("created_at", DateTime(), nullable=False))
+    assert str(CreateTable(table).compile(dialect=dialect)) == str(CreateTable(plain).compile(dialect=dialect))
+    assert expected in str(insert(table).values(id=None).compile(dialect=dialect))
+    assert table.c.created_at.server_default is None
