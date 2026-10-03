@@ -218,7 +218,7 @@ async function invalidateCurrentToken(attemptedToken) {
   });
 }
 
-function tryRefreshToken(previousAccessToken) {
+function tryRefreshToken(previousAccessToken, previousRefreshToken) {
   if (!refreshInFlight) {
     const rotate = async () => {
       // Another tab may already have rotated while this tab waited for the
@@ -239,7 +239,10 @@ function tryRefreshToken(previousAccessToken) {
             message: 'Die letzte Anmeldeverlängerung ist noch nicht bestätigt. Bitte im ursprünglichen Tab erneut versuchen oder neu anmelden.',
           });
         }
-        if (latest.refresh_token !== tokenStorage.getItem('refresh_token')) {
+        // Compare against the refresh credential that accompanied the failed
+        // request, not the renderer's current Local Storage. Another tab may
+        // have propagated the new refresh key before its new access key.
+        if (latest.refresh_token !== previousRefreshToken) {
           localPair(latest);
           if (latest.access_token !== previousAccessToken) return true;
         }
@@ -344,6 +347,7 @@ function networkError(originalError) {
 
 async function request(path, options = {}) {
   const token = getToken();
+  const refreshToken = tokenStorage.getItem('refresh_token');
   const { signal, responseType = 'json', ...rest } = options;
   const headers = { ...(rest.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }), ...rest.headers };
   if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -360,7 +364,7 @@ async function request(path, options = {}) {
   // On 401, try refreshing the token once
   if (res.status === 401) {
     signal?.throwIfAborted();
-    const refreshed = Boolean(getToken() && getToken() !== token) || await tryRefreshToken(token);
+    const refreshed = Boolean(getToken() && getToken() !== token) || await tryRefreshToken(token, refreshToken);
     signal?.throwIfAborted();
     if (refreshed) {
       headers['Authorization'] = `Bearer ${getToken()}`;
