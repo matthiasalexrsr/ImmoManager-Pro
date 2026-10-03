@@ -85,7 +85,11 @@ function install() {
     const state = path.endsWith('/approve') || path.endsWith('/events') ? 'approved' : path.endsWith('/review') ? 'reviewed' : 'draft';
     const found = row({ id: old.id, data: content, state, actor_id: old.actor_id,
       revision: '22222222-2222-2222-2222-222222222222' });
-    if (path.endsWith('/events')) { found.event = event({ event_revision: payload.expected_event_revision + 1, data: payload }); m.events.unshift(found.event); }
+    if (path.endsWith('/events')) {
+      const eventRevision = payload.expected_event_revision + 1;
+      found.event = event({ id: `event-${eventRevision}`, event_revision: eventRevision, data: payload });
+      m.events.unshift(found.event);
+    }
     m.records.set(found.id, found);
     // Command receipts contain immutable command evidence, not live source flags.
     const { current_contract_etag: _current, source_review_status: _status, ...receipt } = found;
