@@ -91,6 +91,27 @@ def validate_integration_config(integration_id: str, body: IntegrationConfigPayl
         raise HTTPException(status_code=404, detail="Integration nicht gefunden") from exc
 
 
+@router.get("/{integration_id}/parameters")
+def get_integration_parameters(integration_id: str) -> dict:
+    try:
+        return integration_manager.parameter_catalog(integration_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Integration nicht gefunden") from exc
+
+
+@router.post("/{integration_id}/connection-test")
+def test_integration_connection(integration_id: str) -> dict:
+    try:
+        return integration_manager.connection_test(integration_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Integration nicht gefunden") from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Der Verbindungstest verletzt den nebenwirkungsfreien Adaptervertrag.",
+        ) from exc
+
+
 @router.patch("/{integration_id}")
 def toggle_integration(integration_id: str, body: IntegrationTogglePayload) -> dict:
     try:

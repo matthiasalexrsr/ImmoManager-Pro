@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import asdict
 
 from ...config import settings
 from .base import IntegrationProvider
 from .config_store import InMemoryIntegrationConfigStore, JsonFileIntegrationConfigStore
+from .connection_contract import ConnectionProbeResult, local_probe_result, manifest_parameters
 from .history_policy import preserve_config_masks, public_config, request_observation, response_observation
 from .history_store import configured_history
 from .history_types import HistoryActor, HistoryError
@@ -108,6 +110,54 @@ class IntegrationManager:
         if integration_id == "email" and not provider.is_configured(config):
             return {"valid": False, "missing_keys": [], "message": "SMTP-Konfiguration ist unvollständig oder ungültig"}
         return {"valid": True, "missing_keys": [], "message": "Konfiguration ist gültig"}
+
+    def parameter_catalog(self, integration_id: str) -> dict:
+        provider = self._providers.get(integration_id)
+        if provider is None:
+            raise KeyError(integration_id)
+        return {
+            "integration_id": integration_id,
+            "items": [asdict(item) for item in manifest_parameters(provider.manifest)],
+            "persistence": "ddl_pending",
+            "stages": ["discovered", "observed", "mapped", "accepted"],
+        }
+
+    def connection_test(self, integration_id: str) -> dict:
+        """Probe only through an explicit side-effect-free provider contract.
+
+        Current providers do not implement a network probe. In particular this
+        method never routes SMTP through provider.run() and therefore never
+        manufactures or sends a test message.
+        """
+        provider = self._providers.get(integration_id)
+        if provider is None:
+            raise KeyError(integration_id)
+        _, config = self._snapshot(integration_id)
+        validation = self.validate_config(integration_id, config)
+        if not validation["valid"]:
+            return asdict(
+                local_probe_result(
+                    integration_id,
+                    configured=False,
+                    validation=validation,
+                )
+            )
+
+        probe = getattr(provider, "probe_connection", None)
+        if probe is None:
+            return asdict(
+                local_probe_result(
+                    integration_id,
+                    configured=True,
+                    validation=validation,
+                )
+            )
+        result = probe(deepcopy(config))
+        if not isinstance(result, ConnectionProbeResult):
+            raise ValueError("Connection probe must return ConnectionProbeResult")
+        if result.integration_id != integration_id or result.business_action_performed or result.test_message_sent:
+            raise ValueError("Connection probe violated the side-effect-free contract")
+        return asdict(result)
 
     def set_enabled(self, integration_id: str, enabled: bool) -> dict:
         if integration_id not in self._providers:
