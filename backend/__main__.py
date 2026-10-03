@@ -333,6 +333,13 @@ if __name__ == "__main__":
 
         raise SystemExit(image_worker_main(sys.argv[2:]))
 
+    # External operations must not configure/start the GUI or bind its app port.
+    # This entrypoint also makes scheduled operations work in a frozen bundle.
+    if len(sys.argv) > 1 and sys.argv[1] == "--backup-operations":
+        from backend.backup_operations.__main__ import main as backup_operations_main
+
+        raise SystemExit(backup_operations_main(sys.argv[2:]))
+
     # Set up a log file next to the .exe so errors survive a closed console
     _log_fh = _setup_logging_to_file()
     if _log_fh:
