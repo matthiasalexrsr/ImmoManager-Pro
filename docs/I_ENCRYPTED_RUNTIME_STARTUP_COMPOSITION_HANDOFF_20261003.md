@@ -58,3 +58,27 @@ no full app login, SQL, PostgreSQL, provider action, backup/restore or shared
 release acceptance. The next exact B2 browser case exercises actual integrated
 startup and SQLite separately. Genuine authentication/CAS/provider refusal and
 factory reopen after full recovery require their own focused native gates.
+
+## Independent review follow-up and actual lossless restart
+
+The independent review found two real edge cases after the first gate: stored
+lower/mixed-case key names were not recognized, and accepted signer values
+containing boundary quotes/spaces were stripped on restart. `e9ad28e` and
+`d019cb1` normalize existing names for both normal defaults and explicit bundle
+checks, refuse any alias duplicate/conflict before another key is appended,
+and use one shared value decoder plus JSON-quoted serialization where required.
+Unchanged safe existing files retain their exact bytes. No ambient expansion,
+key rotation or plaintext migration was added.
+
+Frozen `d019cb1`: **20 PASS / 26.27 seconds**, **27.35 seconds outer elapsed**,
+hard outer90 seconds and actual CLI children30 seconds, no skips/errors. These
+are the 18 actual runtime-environment cases (including seven alias cases and
+five actual loader/Settings opaque-value roundtrips), plus the fresh signer
+two-process case and the named-keyring two-process restart recheck. The signer
+case compares only hashes and preserves its configuration bytes after removing
+the externally supplied keys. This repeats some earlier cases and is not added
+as 20 completely new distinct cases. Processes closed normally.
+
+The subsequent genuine SQL-authenticated route and fresh full recovered app
+gates are recorded separately in
+`I_ENCRYPTED_RUNTIME_NATIVE_ACCEPTANCE_HANDOFF_20261003.md`.
