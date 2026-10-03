@@ -225,6 +225,84 @@ def test_multiple_valid_keyset_batches_preserve_older_receipt_generation(image):
     assert image.validate().mappings == 7
 
 
+@pytest.mark.parametrize("damage_last_parent", [False, True])
+def test_all_receipt_batches_are_counted_and_late_parent_damage_is_seen(image, damage_last_parent):
+    orders = [{**image.order_row, "terminId": 10000 + number} for number in range(11)]
+    image.history("many-order-run", "list_technical_orders", {}, {"auftraege": orders})
+    for number, source in enumerate(orders):
+        task_id = f"Z-TASK-{number:02}"
+        _insert(image.db, "tasks", {"id": task_id, "property_id": "PROP", "unit_id": "UNIT",
+                                   "title": "Fixture work", "status": "completed"})
+        receipt = {**image.receipt, "id": f"Z-RECEIPT-{number:02}", "source_kind": "technical_order",
+                   "source_history_run_id": "many-order-run",
+                   "external_identity_hash": ExternalIdentity.create("technical_order", termin_id=source["terminId"]).token,
+                   "source_sha256": digest(source), "content_sha256": None, "document_id": None,
+                   "document_version_id": None, "task_id": task_id, "command_key": f"task-command-{number}",
+                   "command_sha256": "d" * 64}
+        _insert(image.db, "teha_import_receipts", receipt)
+    assert image.db.execute("SELECT COUNT(*) FROM teha_import_receipts").fetchone()[0] == 12
+    if damage_last_parent:
+        image.db.execute("UPDATE tasks SET property_id='PROP2',unit_id=NULL WHERE id='Z-TASK-10'")
+    image.seal()
+    if damage_last_parent:
+        with pytest.raises(TehaImageError, match="TARGET_INVALID"):
+            image.validate()
+    else:
+        report = image.validate()
+        assert (report.receipts, report.task_receipts, report.document_receipts) == (12, 11, 1)
+
+
+def _additional_document(image, number):
+    source = {**image.document_row, "reference": f"opaque-{number}"}
+    source_run, content_run = f"source-run-{number}", f"content-run-{number}"
+    image.history(source_run, "list_documents", {"lieg_nr": "L-41"}, {"documents": [source]})
+    identity = ExternalIdentity.create("document", lieg_nr="L-41", reference=source["reference"])
+    manifest = {"type": "TehaDocumentContent", "lieg_nr": "L-41", "reference": source["reference"],
+                "sha256": image.content_sha, "size_bytes": len(image.content), "media_type": "application/pdf"}
+    marker = {"omitted": "document_bytes", "sha256": image.content_sha,
+              "size_bytes": len(image.content), "media_type": "application/pdf"}
+    image.history(content_run, "read_document", {"lieg_nr": "L-41", "reference": source["reference"]},
+                  {"content": marker}, manifest=manifest)
+    receipt = {**image.receipt, "id": f"Z-RECEIPT-{number}", "document_id": f"Z-DOC-{number}",
+               "document_version_id": f"Z-VERSION-{number}", "command_key": f"document-command-{number}",
+               "external_identity_hash": identity.token, "source_sha256": digest(source), "source_history_run_id": source_run}
+    binding = {"portfolio_id": "P", "property_id": "PROP", "unit_id": None, "contract_id": None, "tenant_id": None}
+    extension = build_document_manifest(
+        receipt_id=receipt["id"], actor_id="actor", command_sha256=receipt["command_sha256"], connection_key="C",
+        source_history_run_id=source_run, content_history_run_id=content_run, external_identity_hash=identity.token,
+        source_sha256=receipt["source_sha256"], content_sha256=image.content_sha, mapping_id="MAP", mapping_generation=1,
+        mapping_sha256=receipt["mapping_sha256"], local_binding=binding,
+        mapping_target_binding={"portfolio_id": "P", "property_id": "PROP", "unit_id": None,
+                                "tenant_id": None, "billing_period_id": None},
+        document_type="unknown_provider_classification",
+    )
+    snapshot = {**image.snapshot, "id": receipt["document_id"],
+                "file_url": f"generated/teha/{receipt['document_id']}.pdf", "teha_import": extension}
+    _insert(image.db, "documents", {"id": receipt["document_id"], "property_id": "PROP", "unit_id": None,
+                                   "contract_id": None, "file_url": snapshot["file_url"]})
+    cursor = image.db.execute("SELECT * FROM document_versions WHERE id='VERSION'")
+    version = dict(zip((column[0] for column in cursor.description), cursor.fetchone(), strict=True))
+    cursor.close()
+    _insert(image.db, "document_versions", {**version, "id": receipt["document_version_id"],
+        "document_id": receipt["document_id"], "idempotency_key": "generated-" + receipt["document_id"],
+        "filename": receipt["document_id"] + ".pdf", "metadata_snapshot": canonical(snapshot).decode()})
+    for position, offset in enumerate(range(0, len(image.content), 65536)):
+        _insert(image.db, "document_version_chunks", {"version_id": receipt["document_version_id"], "position": position,
+                                                     "portfolio_id": "P", "data": image.content[offset:offset + 65536]})
+    _insert(image.db, "teha_import_receipts", receipt)
+    return receipt
+
+
+def test_reverse_original_closure_detects_orphan_after_first_keyset_batch(image):
+    _additional_document(image, 2)
+    last = _additional_document(image, 3)
+    assert image.db.execute("SELECT COUNT(*) FROM document_versions").fetchone()[0] == 3
+    image.db.execute("DELETE FROM teha_import_receipts WHERE id=?", (last["id"],))
+    image.seal()
+    with pytest.raises(TehaImageError, match="ORIGINAL_RECEIPT_MISSING"):
+        image.validate()
+
+
 def test_legitimate_live_classification_does_not_rewrite_original(image):
     image.db.execute("UPDATE documents SET document_type='later recategorized'")
     image.seal()
