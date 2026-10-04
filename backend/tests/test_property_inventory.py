@@ -170,7 +170,15 @@ def test_full_scoped_10002_inventory_no_global_list_or_stock_cap(property_box, m
             page = service.property_inventory_page(box.store, query(search=f"House {number:05d}", page_size=1))
             assert [row.id for row in page.items] == [f"property-{number:05d}"]
         rows = walk(box, page_size=200)
-    assert [row.id for row in rows] == [f"property-{number:05d}" for number in range(10002)]
+        exported = b"".join(csv_chunks(box.store, query(), token=box.tokens["reader-eur"], chunk_size=200))
+    expected = [f"property-{number:05d}" for number in range(10002)]
+    assert [row.id for row in rows] == expected
+    reader = csv.DictReader(io.StringIO(exported.decode("utf-8-sig")), delimiter=";")
+    csv_rows = list(reader)
+    assert len(csv_rows) == 10002 and [row["id"] for row in csv_rows] == expected
+    assert csv_rows[-1]["id"] == "property-10001"
+    assert "hidden" not in {row["id"] for row in csv_rows}
+    assert reader.fieldnames is not None and "_rent_cents" not in reader.fieldnames
 
 
 def test_sql_materialization_bounded_and_dirty_caller_unflushed(property_box):

@@ -14,6 +14,6 @@ def csv_chunks(store, query, *, token=None, chunk_size=100):
     # Root's additive prepare_read/page_position/export_row hooks are required.
     # They preserve the actual raw source position and fresh DTO comparison.
     inventory._scope(query, summary=True)
-    if hasattr(store, "db"):
-        inventory._engine(store)
-    return shared_chunks(store, query, inventory=inventory, fields=FIELDS, token=token, chunk_size=chunk_size)
+    engine = inventory._engine(store) if hasattr(store, "db") else None
+    return shared_chunks(store, query, inventory=inventory, fields=FIELDS, token=token, chunk_size=chunk_size,
+                         read_engine=engine)
