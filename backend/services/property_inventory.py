@@ -12,7 +12,7 @@ from sqlalchemy import and_, case, func, literal, or_, select
 from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.exc import TimeoutError as PoolTimeout
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, scoped_session
 from sqlalchemy.pool import SingletonThreadPool, StaticPool
 
 from ..db.booking_order import bytewise_id
@@ -396,6 +396,11 @@ def _scope(query, *, summary=False):
 
 def _engine(store):
     db = getattr(store, "db", None)
+    if isinstance(db, scoped_session):
+        # The actual request store retains a typed scoped-session registry.
+        # Resolve only its current Session; never remove/reset the registry,
+        # flush its dirty caller or invoke an arbitrary duck factory.
+        db = db()
     if not isinstance(db, Session):
         raise _unavailable()
     bound = db.get_bind()
