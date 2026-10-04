@@ -16,7 +16,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import FileResponse, RedirectResponse
 
-from .config import settings
+from .config import MIN_JWT_SECRET_LENGTH, settings
 from .exceptions import register_exception_handlers
 from .logging_config import setup_logging
 from .middleware import (
@@ -46,9 +46,18 @@ def _validate_startup_config() -> None:
     from .dependencies import store as _active_store
 
     issues: list[str] = []
+    # Logged as critical in production but not blocking (see below).
+    advisories: list[str] = []
 
     if settings.jwt_secret_key == "dev-secret-key-change-in-production":
         issues.append("JWT_SECRET_KEY is using the default value. Set JWT_SECRET_KEY in production!")
+    elif len(settings.jwt_secret_key) < MIN_JWT_SECRET_LENGTH:
+        # Not blocking: IBAN encryption keys derive from this secret, so forcing
+        # a rotation would make already-encrypted IBANs unreadable.
+        advisories.append(
+            f"JWT_SECRET_KEY is shorter than {MIN_JWT_SECRET_LENGTH} characters. "
+            "Rotating it makes stored encrypted IBANs unreadable; plan a re-encryption first."
+        )
 
     if any(origin == "*" for origin in settings.cors_origins):
         issues.append("CORS_ORIGINS contains wildcard '*'. Restrict origins in production.")
@@ -75,6 +84,12 @@ def _validate_startup_config() -> None:
     store_type = type(_active_store).__name__
     if store_type == "InMemoryStore":
         issues.append(f"Active store is {store_type} — data will NOT be persisted.")
+
+    for advisory in advisories:
+        if settings.is_production:
+            logger.critical("PRODUCTION CONFIG WARNING: %s", advisory)
+        else:
+            logger.warning("CONFIG WARNING: %s", advisory)
 
     if settings.is_production and issues:
         for issue in issues:
@@ -332,6 +347,7 @@ def health() -> dict:
         "database_connected": db_ok,
         "contract_wizard_available": CONTRACT_WIZARD_STATUS["available"],
         "contract_wizard_reason": CONTRACT_WIZARD_STATUS["reason"],
+        "developer_tools_enabled": settings.developer_tools_enabled,
     }
 
 

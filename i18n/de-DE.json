@@ -1655,6 +1655,7 @@
     "description": "Anmerkungen und Verbesserungsnotizen für Entwickler",
     "enable": "Entwicklermodus aktivieren",
     "disable": "Entwicklermodus deaktivieren",
+    "unavailable": "In der Produktionsumgebung deaktiviert",
     "shortcut": "Strg+Umschalt+D",
     "addNote": "Notiz hinzufügen",
     "notes": "Notizen",

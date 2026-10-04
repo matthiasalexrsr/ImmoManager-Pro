@@ -176,5 +176,13 @@ class Settings(BaseSettings):
     def is_production(self) -> bool:
         return self.environment == Environment.production
 
+    @property
+    def developer_tools_enabled(self) -> bool:
+        """Diagnostics, autotest and dev notes: on outside production,
+        in production only with DIAGNOSTICS_ALLOW_IN_PRODUCTION=true."""
+        return not self.is_production or self.diagnostics_allow_in_production
+
+
+MIN_JWT_SECRET_LENGTH = 32
 
 settings = Settings()

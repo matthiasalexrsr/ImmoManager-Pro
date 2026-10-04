@@ -95,22 +95,26 @@ i18n/                 # Locale files (de-DE, en-US, es-ES)
 | `BACKUP_DIR` | `<DATA_DIR>/backups` | Backup storage |
 | `SQLITE_PERSISTENT_STORE` | `true` | Use SQLAlchemy persistence for SQLite |
 | `ALLOW_INMEMORY_FALLBACK` | `false` | Fall back to in-memory store on DB failure |
-| `JWT_SECRET_KEY` | `dev-secret-key-change-in-production` | Secret key for JWT token signing; must be overridden in production |
+| `JWT_SECRET_KEY` | `dev-secret-key-change-in-production` | Secret key for JWT token signing; must be overridden in production (startup fails on the default); use at least 32 random characters. Also derives the IBAN encryption key, so changing it makes stored encrypted IBANs unreadable |
 | `ENVIRONMENT` | `development` | `development` or `production` |
 | `CORS_ORIGINS` | `http://localhost:3000,http://localhost:5173` | Allowed CORS origins |
+| `DIAGNOSTICS_ALLOW_IN_PRODUCTION` | `false` | Enable developer tools (diagnostics, autotest, developer notes) in production |
 
 ## Testing
 
 ```bash
+# Install runtime + dev dependencies first
+pip install -r backend/requirements-dev.txt mypy
+
 # Run all backend tests (in-memory store)
 pytest backend/tests -q
 
 # Run against SQL store
 TEST_STORE_BACKEND=sql pytest backend/tests -q
 
-# Backend lint + scoped type-check
+# Backend lint + type-check
 ruff check backend
-mypy backend/app.py backend/domain backend/repositories --ignore-missing-imports
+mypy backend
 
 # Frontend lint + tests + build
 cd frontend && npm ci && npm run lint && npm run test && npm run build

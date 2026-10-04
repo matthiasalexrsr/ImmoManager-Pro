@@ -1020,6 +1020,7 @@
     "description": "Anotaciones y notas de mejora para desarrolladores",
     "enable": "Activar modo desarrollador",
     "disable": "Desactivar modo desarrollador",
+    "unavailable": "Desactivado en producción",
     "shortcut": "Ctrl+Mayús+D",
     "addNote": "Añadir nota",
     "notes": "Notas",

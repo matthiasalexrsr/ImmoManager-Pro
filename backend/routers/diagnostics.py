@@ -31,7 +31,7 @@ def _check_diagnostics_allowed():
     structure. In production, this endpoint is disabled by default to
     prevent information leakage.  Enable via DIAGNOSTICS_ALLOW_IN_PRODUCTION=true.
     """
-    if settings.is_production and not settings.diagnostics_allow_in_production:
+    if not settings.developer_tools_enabled:
         raise HTTPException(
             status_code=403,
             detail="Diagnostics sind in der Produktionsumgebung deaktiviert.",

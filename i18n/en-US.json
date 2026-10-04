@@ -1655,6 +1655,7 @@
     "description": "Annotations and improvement notes for developers",
     "enable": "Enable Developer Mode",
     "disable": "Disable Developer Mode",
+    "unavailable": "Disabled in production",
     "shortcut": "Ctrl+Shift+D",
     "addNote": "Add Note",
     "notes": "Notes",

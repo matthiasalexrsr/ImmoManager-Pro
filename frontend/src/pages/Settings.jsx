@@ -261,6 +261,8 @@ export default function Settings() {
                     <button
                       className={`btn btn-sm ${devMode?.enabled ? 'btn-primary' : 'btn-secondary'}`}
                       onClick={() => devMode?.toggle()}
+                      disabled={!devMode?.available}
+                      title={devMode?.available ? undefined : tr('devMode.unavailable', 'Disabled in production')}
                     >
                       {devMode?.enabled
                         ? tr('devMode.disable', 'Disable Developer Mode')
