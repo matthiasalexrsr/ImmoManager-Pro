@@ -29,7 +29,7 @@ def test_parallel_requests_return_their_connections():
                               ["/api/v1/units", "/api/v1/contracts", "/api/v1/dashboard/stats", "/api/v1/tenants"] * 10))
 
     assert codes == [200] * 40
-    assert engine.pool.checkedout() == 0
+    assert engine.pool.checkedout()  # type: ignore[attr-defined] == 0
     clear_users()
 
 
@@ -61,5 +61,5 @@ def test_more_parallel_requests_than_connections_do_not_lock_up():
 
     assert set(codes) == {200}
     assert time.monotonic() - started < 25  # a lock-up only ends with the 30 s pool timeout
-    assert engine.pool.checkedout() == 0
+    assert engine.pool.checkedout()  # type: ignore[attr-defined] == 0
     clear_users()
