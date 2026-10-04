@@ -148,6 +148,7 @@ class ContractORM(Base):
     deposit_amount: Mapped[float | None] = mapped_column(Numeric(12, 2, asdecimal=False))
     index_rent: Mapped[str | None] = mapped_column(Text)
     service_charge_settlement: Mapped[str | None] = mapped_column(Text)
+    persons: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
@@ -461,6 +462,7 @@ class AllocationKeyORM(Base):
     name: Mapped[str] = mapped_column(Text, nullable=False)
     key_type: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
+    meter_type: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
@@ -495,8 +497,13 @@ class UtilityStatementORM(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     billing_period_id: Mapped[str] = mapped_column(ForeignKey("billing_periods.id", ondelete="CASCADE"), nullable=False)
-    contract_id: Mapped[str] = mapped_column(ForeignKey("contracts.id", ondelete="CASCADE"), nullable=False)
+    # NULL on vacancy rows: the landlord's share for days without a tenancy
+    contract_id: Mapped[str | None] = mapped_column(ForeignKey("contracts.id", ondelete="CASCADE"), nullable=True)
     unit_id: Mapped[str] = mapped_column(ForeignKey("units.id", ondelete="CASCADE"), nullable=False)
+    party: Mapped[str] = mapped_column(Text, nullable=False, default="tenant", server_default="tenant")
+    usage_start: Mapped[date | None] = mapped_column(Date)
+    usage_end: Mapped[date | None] = mapped_column(Date)
+    usage_days: Mapped[int | None] = mapped_column(Integer)
     total_cost: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), nullable=False)
     advance_paid: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), nullable=False)
     balance: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), nullable=False)

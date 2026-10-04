@@ -70,6 +70,12 @@ def _seed_previous_schema(db_path: Path) -> None:
                 VALUES ('k', 'pr', 'Fläche', 'area_sqm', '2025-01-01', '2025-01-01');
             INSERT INTO cost_items (id, billing_period_id, description, amount, allocation_key_id, created_at, updated_at)
                 VALUES ('ci', 'bp', 'Grundsteuer', 400, 'k', '2025-01-01', '2025-01-01');
+            INSERT INTO contracts (id, contract_number, property_id, unit_id, tenant_id, status, start_date,
+                                   created_at, updated_at)
+                VALUES ('c1', 'V-1', 'pr', 'u1', 't1', 'active', '2020-01-01', '2025-01-01', '2025-01-01');
+            INSERT INTO utility_statements (id, billing_period_id, contract_id, unit_id, total_cost, advance_paid,
+                                            balance, status, created_at, updated_at)
+                VALUES ('s1', 'bp', 'c1', 'u1', 400, 1800, -1400, 'draft', '2025-01-01', '2025-01-01');
         """)
 
 
@@ -89,6 +95,14 @@ def test_upgrade_keeps_existing_rows(migrate):
     with sqlite3.connect(db_path) as conn:
         assert conn.execute("SELECT description, is_recoverable FROM cost_items").fetchall() == [("Grundsteuer", 1)]
         assert conn.execute("SELECT archived FROM tenants").fetchall() == [(0,)]
+        # Existing statements survive the table rebuild and count as tenant rows.
+        assert conn.execute("SELECT contract_id, party, balance FROM utility_statements").fetchall() == [
+            ("c1", "tenant", -1400)]
+        # Vacancy rows have no contract.
+        conn.execute("PRAGMA foreign_keys=ON")
+        conn.execute("""INSERT INTO utility_statements (id, billing_period_id, contract_id, unit_id, party, total_cost,
+                        advance_paid, balance, status, created_at, updated_at)
+                        VALUES ('s2', 'bp', NULL, 'u1', 'vacancy', 10, 0, 10, 'draft', '2025-01-01', '2025-01-01')""")
     assert _version(db_path) == migrate.head
 
 

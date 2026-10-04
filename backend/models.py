@@ -108,6 +108,7 @@ class ContractCreate(BaseModel):
     deposit_amount: Optional[float] = None
     index_rent: Optional[str] = None
     service_charge_settlement: Optional[str] = None
+    persons: Optional[int] = Field(default=None, ge=0)  # household size for person-based utility keys
 
     @field_validator("end_date")
     @classmethod
@@ -413,6 +414,7 @@ class ContractPatch(BaseModel):
     deposit_amount: Optional[float] = None
     index_rent: Optional[str] = None
     service_charge_settlement: Optional[str] = None
+    persons: Optional[int] = Field(default=None, ge=0)
 
 
 class AccountPatch(BaseModel):
@@ -641,6 +643,7 @@ class AllocationKeyCreate(BaseModel):
     name: str
     key_type: str  # area_sqm, unit_count, person_count, consumption
     description: Optional[str] = None
+    meter_type: Optional[str] = None  # consumption keys: which meters count (cold_water, heating, …)
 
 
 class AllocationKey(AllocationKeyCreate):
@@ -654,6 +657,7 @@ class AllocationKeyPatch(BaseModel):
     name: Optional[str] = None
     key_type: Optional[str] = None
     description: Optional[str] = None
+    meter_type: Optional[str] = None
 
 
 class CostItemCreate(BaseModel):
@@ -688,10 +692,17 @@ class CostItemPatch(BaseModel):
     gross_amount: Optional[float] = None
 
 
+_STATEMENT_PARTIES = {"tenant", "vacancy"}
+
+
 class UtilityStatementCreate(BaseModel):
     billing_period_id: str
-    contract_id: str
+    contract_id: Optional[str] = None  # None for a vacancy row (the landlord's share)
     unit_id: str
+    party: str = "tenant"  # tenant | vacancy
+    usage_start: Optional[date] = None  # usage period of the party within the billing period
+    usage_end: Optional[date] = None
+    usage_days: Optional[int] = None
     total_cost: float
     advance_paid: float
     balance: float  # positive = tenant owes, negative = refund
@@ -704,6 +715,13 @@ class UtilityStatementCreate(BaseModel):
     delivered_at: Optional[datetime] = None
     delivery_channel: Optional[str] = None  # email | post | portal
     snapshot_hash: Optional[str] = None  # immutable content hash after finalization
+
+    @field_validator("party")
+    @classmethod
+    def validate_party(cls, v: str) -> str:
+        if v not in _STATEMENT_PARTIES:
+            raise ValueError(f"Ungültige Partei. Erlaubt: {', '.join(sorted(_STATEMENT_PARTIES))}")
+        return v
 
 
 class UtilityStatement(UtilityStatementCreate):

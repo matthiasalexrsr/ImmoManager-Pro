@@ -991,6 +991,8 @@ def create_receivables_from_period(period_id: str):
     created_count = 0
     skipped_count = 0
     for stmt in period_statements:
+        if stmt.contract_id is None:  # vacancy: the landlord's share, nobody to bill
+            continue
         if stmt.id in already_billed:
             skipped_count += 1
             continue

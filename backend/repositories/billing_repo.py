@@ -137,7 +137,7 @@ class BillingRepository:
         if not self._billing_periods.exists(data.billing_period_id):
             raise ValidationError("Abrechnungsperiode existiert nicht")
         tr = self._tenant_repo
-        if tr and not tr._contracts.exists(data.contract_id):
+        if tr and data.contract_id is not None and not tr._contracts.exists(data.contract_id):
             raise ValidationError("Vertrag existiert nicht")
         pr = self._portfolio_repo
         if pr and not pr._units.exists(data.unit_id):
@@ -153,7 +153,7 @@ class BillingRepository:
         if not self._billing_periods.exists(data.billing_period_id):
             raise ValidationError("Abrechnungsperiode existiert nicht")
         tr = self._tenant_repo
-        if tr and not tr._contracts.exists(data.contract_id):
+        if tr and data.contract_id is not None and not tr._contracts.exists(data.contract_id):
             raise ValidationError("Vertrag existiert nicht")
         pr = self._portfolio_repo
         if pr and not pr._units.exists(data.unit_id):

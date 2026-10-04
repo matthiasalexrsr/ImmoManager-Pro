@@ -1015,7 +1015,7 @@ class InMemoryStore:
     def create_utility_statement(self, data: UtilityStatementCreate) -> UtilityStatement:
         if data.billing_period_id not in self.billing_periods:
             raise ValidationError("Abrechnungsperiode existiert nicht")
-        if data.contract_id not in self.contracts:
+        if data.contract_id is not None and data.contract_id not in self.contracts:
             raise ValidationError("Vertrag existiert nicht")
         if data.unit_id not in self.units:
             raise ValidationError("Einheit existiert nicht")
@@ -1034,7 +1034,7 @@ class InMemoryStore:
             raise NotFoundError("Betriebskostenabrechnung nicht gefunden")
         if data.billing_period_id not in self.billing_periods:
             raise ValidationError("Abrechnungsperiode existiert nicht")
-        if data.contract_id not in self.contracts:
+        if data.contract_id is not None and data.contract_id not in self.contracts:
             raise ValidationError("Vertrag existiert nicht")
         if data.unit_id not in self.units:
             raise ValidationError("Einheit existiert nicht")
