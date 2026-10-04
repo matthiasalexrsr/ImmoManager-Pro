@@ -20,6 +20,9 @@ from contextvars import ContextVar
 from threading import get_ident
 from typing import cast
 
+from .backup_operations.application import (
+    APPLICATION_IMPORT_LEASE,  # noqa: F401 — direct imports also precede SQL writers
+)
 from .compat.ui_contracts import ensure_ui_contracts
 from .config import settings
 
@@ -49,16 +52,23 @@ _use_sql_store = bool(_database_url) and (
 )
 
 if _use_sql_store:
+    from .db.runtime_schema import RuntimeSchemaError
+
     try:
         from sqlalchemy.orm import Session, scoped_session
 
         from .db.session import SessionLocal, create_tables
         from .repositories import SQLAlchemyStore
 
-        # TODO: Move create_tables() into app.py lifespan to avoid import-time
-        # side effects. Requires conftest.py changes to ensure tables exist before
-        # tests run with SQL backend. See architecture review Phase 3.1.
-        create_tables()
+        if settings.is_production:
+            from .db.runtime_schema import validate_runtime_schema
+
+            # Production schema changes belong to the explicit maintenance
+            # command, including when this module is imported outside lifespan.
+            validate_runtime_schema(SessionLocal.kw["bind"])
+        else:
+            # Preserve existing local-development and isolated test bootstrap.
+            create_tables()
         # FastAPI dispatches sync endpoints into workers and cleanup in ASGI.
         # A thread-only registry cannot remove those worker sessions from ASGI.
         _scoped_session = scoped_session(SessionLocal, scopefunc=session_scope_key)
@@ -72,6 +82,10 @@ if _use_sql_store:
         enable_sql_audit(SessionLocal)
 
         logger.info("SQL backend initialized successfully (dialect=%s)", SessionLocal.kw["bind"].dialect.name)
+    except RuntimeSchemaError:
+        # A damaged/old production schema is never a reason to suggest an
+        # in-memory replacement. Preserve the actionable maintenance message.
+        raise
     except Exception:
         if not settings.allow_inmemory_fallback:
             raise RuntimeError(
@@ -92,6 +106,20 @@ else:
             "Set DATABASE_URL and SQLITE_PERSISTENT_STORE=true for production."
         )
     logger.info("Using InMemoryStore — data will NOT be persisted across restarts.")
+
+# This journal remains actual SQL in both domain modes. Its failures must abort
+# startup rather than enter the domain's optional nonpersistent fallback.
+from .db.session import SessionLocal, create_history_tables  # noqa: E402
+from .services.integrations.history_store import configure_history  # noqa: E402
+from .services.integrations.history_types import HistoryLimits  # noqa: E402
+
+create_history_tables()
+configure_history(SessionLocal, limits=HistoryLimits(
+    artifact_bytes=settings.integration_history_artifact_bytes,
+    page_bytes=settings.integration_history_page_bytes,
+    temp_bytes=settings.integration_history_temp_bytes,
+    timeout_seconds=settings.integration_history_timeout_seconds,
+))
 
 # Log active store type for clarity
 logger.info("Active store: %s", type(store).__name__)

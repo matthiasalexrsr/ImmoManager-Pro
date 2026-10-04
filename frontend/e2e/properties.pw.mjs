@@ -20,6 +20,15 @@ test('property inventory: real creation, weighted occupancy, filters and persist
     expect(response.ok(), `${path}: ${await response.text()}`).toBeTruthy();
     return response.json();
   };
+  const all = async path => {
+    const rows = [];
+    for (let skip = 0; ; skip += 100) {
+      const batch = await api(`${path}?skip=${skip}&limit=100&sort_by=id&sort_order=asc`);
+      expect(Array.isArray(batch)).toBe(true);
+      rows.push(...batch);
+      if (batch.length < 100) return rows;
+    }
+  };
   const suffix = randomUUID().slice(0, 8);
   const portfolio = await api('/portfolios', { name: `Browserbestand ${suffix}` });
   const originalName = `Lindenhof ${suffix}`;
@@ -49,9 +58,9 @@ test('property inventory: real creation, weighted occupancy, filters and persist
   for (let index = 0; index < 9; index += 1) {
     await api('/units', { property_id: largeProperty.id, label: `Wohnung ${index + 1} ${suffix}`, unit_type: 'apartment', status: index ? 'occupied' : 'rented', area_sqm: 45, cold_rent: 650 });
   }
-  const allProperties = await api('/properties');
+  const allProperties = await all('/properties');
   const propertyIds = new Set(allProperties.map(item => item.id));
-  const allUnits = (await api('/units')).filter(unit => propertyIds.has(unit.property_id));
+  const allUnits = (await all('/units')).filter(unit => propertyIds.has(unit.property_id));
   const occupiedCount = allUnits.filter(unit => ['occupied', 'rented'].includes(unit.status)).length;
   await page.reload();
   const summary = page.getByRole('region', { name: 'Bestand im Überblick' });

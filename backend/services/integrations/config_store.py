@@ -1,7 +1,9 @@
-"""Atomic JSON; private local filesystem, cooperating writers, stable sidecar lock."""
+﻿"""Atomic JSON; private local filesystem, cooperating writers, stable sidecar lock."""
 from __future__ import annotations
 
 import errno
+import hashlib
+import hmac
 import json
 import math
 import os
@@ -16,6 +18,7 @@ from pathlib import Path
 from threading import Lock, RLock
 
 _LIMIT = 1024 * 1024
+_JSON_DEPTH = 64
 _REGISTRY_GUARD = Lock()
 _LOCKS: dict[str, RLock] = {}
 
@@ -27,13 +30,15 @@ class ConfigStoreError(RuntimeError):
         self.code = code
         self.published = published
 
-def _checked_state(value: dict) -> dict:
+def _checked_state(value: dict, max_depth: int = _JSON_DEPTH) -> dict:
+    if type(max_depth) is not int or max_depth < 1:
+        raise ConfigStoreError("invalid_json_depth")
     if not isinstance(value, dict):
         raise ConfigStoreError("invalid_state")
     pending = [(value, 0)]
     while pending:
         item, depth = pending.pop()
-        if depth > 64:
+        if depth > max_depth:
             raise ConfigStoreError("state_too_deep")
         if isinstance(item, dict):
             if any(not isinstance(key, str) for key in item):
@@ -52,7 +57,7 @@ def _checked_state(value: dict) -> dict:
         raise ConfigStoreError("invalid_integration_state")
     return value
 
-def _decode(raw: bytes) -> dict:
+def _decode(raw: bytes, max_depth: int = _JSON_DEPTH) -> dict:
     def unique(pairs):
         result = {}
         for key, value in pairs:
@@ -67,12 +72,14 @@ def _decode(raw: bytes) -> dict:
     try:
         value = json.loads(raw.decode("utf-8-sig"), object_pairs_hook=unique,
                            parse_constant=reject_constant)
-        return _checked_state(value)
+        return _checked_state(value, max_depth)
     except (ValueError, UnicodeError, RecursionError):
         raise ConfigStoreError("invalid_json") from None
 
-def _encode(value: dict, maximum: int) -> bytes:
-    _checked_state(value)
+def _encode(value: dict, maximum: int, max_depth: int = _JSON_DEPTH) -> bytes:
+    if type(maximum) is not int or maximum < 1:
+        raise ConfigStoreError("invalid_store_limit")
+    _checked_state(value, max_depth)
     try:
         raw = json.dumps(value, ensure_ascii=False, allow_nan=False,
                          indent=2, sort_keys=True).encode("utf-8")
@@ -121,32 +128,60 @@ class IntegrationConfigStore(ABC):
         ...
 
 class InMemoryIntegrationConfigStore(IntegrationConfigStore):
-    def __init__(self):
+    def __init__(self, *, max_bytes=_LIMIT, max_json_depth=_JSON_DEPTH):
+        if type(max_bytes) is not int or max_bytes < 1:
+            raise ConfigStoreError("invalid_store_limit")
+        if type(max_json_depth) is not int or max_json_depth < 1:
+            raise ConfigStoreError("invalid_json_depth")
         self._state: dict = {}
         self._lock = RLock()
+        self._maximum = max_bytes
+        self._max_depth = max_json_depth
+
+    def _raw(self) -> bytes:
+        return _encode(self._state, self._maximum, self._max_depth)
 
     def load(self) -> dict:
         with self._lock:
             return deepcopy(self._state)
 
+    def load_with_revision(self) -> tuple[dict, str]:
+        with self._lock:
+            raw = self._raw()
+            return deepcopy(self._state), hashlib.sha256(raw).hexdigest()
+
     def save(self, state: dict) -> None:
         with self._lock:
-            self._state = _decode(_encode(state, _LIMIT))
+            self._state = _decode(_encode(state, self._maximum, self._max_depth), self._max_depth)
 
     def update(self, mutate: Callable[[dict], dict]) -> dict:
         with self._lock:
             candidate = mutate(deepcopy(self._state))
-            self._state = _decode(_encode(candidate, _LIMIT))
+            self._state = _decode(_encode(candidate, self._maximum, self._max_depth), self._max_depth)
             return deepcopy(self._state)
 
+    def update_if_revision(self, expected_revision: str, mutate: Callable[[dict], dict]) -> tuple[dict, str]:
+        with self._lock:
+            current = self._raw()
+            if not isinstance(expected_revision, str) or not expected_revision or not hmac.compare_digest(
+                hashlib.sha256(current).hexdigest(), expected_revision
+            ):
+                raise ConfigStoreError("state_revision_conflict")
+            candidate = mutate(deepcopy(self._state))
+            raw = _encode(candidate, self._maximum, self._max_depth)
+            self._state = _decode(raw, self._max_depth)
+            return deepcopy(self._state), hashlib.sha256(raw).hexdigest()
+
 class JsonFileIntegrationConfigStore(IntegrationConfigStore):
-    def __init__(self, file_path: str, *, max_bytes=_LIMIT, lock_timeout=5.0):
-        if type(max_bytes) is not int or not 1 <= max_bytes <= 16 * 1024**2:
+    def __init__(self, file_path: str, *, max_bytes=_LIMIT, lock_timeout=5.0, max_json_depth=_JSON_DEPTH):
+        if type(max_bytes) is not int or max_bytes < 1:
             raise ConfigStoreError("invalid_store_limit")
         if (isinstance(lock_timeout, bool)
                 or not isinstance(lock_timeout, (int, float))
-                or not math.isfinite(lock_timeout) or not 0 < lock_timeout <= 60):
+                or not math.isfinite(lock_timeout) or lock_timeout <= 0):
             raise ConfigStoreError("invalid_lock_timeout")
+        if type(max_json_depth) is not int or max_json_depth < 1:
+            raise ConfigStoreError("invalid_json_depth")
         try:
             requested = Path(file_path).expanduser().absolute()
             if not requested.name:
@@ -157,6 +192,7 @@ class JsonFileIntegrationConfigStore(IntegrationConfigStore):
         self._lock_path = self._path.with_name(f".{self._path.name}.lock")
         self._maximum = max_bytes
         self._timeout = float(lock_timeout)
+        self._max_depth = max_json_depth
         with _REGISTRY_GUARD:
             self._thread_lock = _LOCKS.setdefault(
                 os.path.normcase(str(self._path)), RLock())
@@ -208,18 +244,19 @@ class JsonFileIntegrationConfigStore(IntegrationConfigStore):
             finally:
                 self._thread_lock.release()
 
-    def _load_locked(self) -> dict:
+    def _read_raw_locked(self) -> bytes:
         _regular(self._path)
         descriptor = None
         try:
             flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
             descriptor = os.open(self._path, flags | getattr(os, "O_BINARY", 0))
-            if _verify_handle(self._path, descriptor).st_size > self._maximum:
+            size = _verify_handle(self._path, descriptor).st_size
+            if size > self._maximum:
                 raise ConfigStoreError("state_too_large")
             source = os.fdopen(descriptor, "rb")
             descriptor = None
             with source:
-                raw = source.read(self._maximum + 1)
+                raw = source.read(size + 1)
         except OSError:
             raise ConfigStoreError("state_unreadable") from None
         finally:
@@ -230,11 +267,19 @@ class JsonFileIntegrationConfigStore(IntegrationConfigStore):
                     raise ConfigStoreError("state_read_close_failed") from None
         if len(raw) > self._maximum:
             raise ConfigStoreError("state_too_large")
-        return _decode(raw)
+        return raw
+
+    def _load_locked(self) -> dict:
+        return _decode(self._read_raw_locked(), self._max_depth)
 
     def load(self) -> dict:
         with self._locked():
             return self._load_locked()
+
+    def load_with_revision(self) -> tuple[dict, str]:
+        with self._locked():
+            raw = self._read_raw_locked()
+            return _decode(raw, self._max_depth), hashlib.sha256(raw).hexdigest()
 
     def initialize(self, state: dict | None = None) -> dict:
         """Bootstrap only; never overwrite damaged state."""
@@ -245,9 +290,9 @@ class JsonFileIntegrationConfigStore(IntegrationConfigStore):
         with self._locked():
             if _regular(self._path, missing_ok=True) is not None:
                 return self._load_locked()
-            raw = _encode({} if state is None else state, self._maximum)
+            raw = _encode({} if state is None else state, self._maximum, self._max_depth)
             self._write_locked(raw)
-            return _decode(raw)
+            return _decode(raw, self._max_depth)
 
     def _write_locked(self, raw: bytes) -> None:
         temporary = None
@@ -299,13 +344,26 @@ class JsonFileIntegrationConfigStore(IntegrationConfigStore):
 
     def save(self, state: dict) -> None:
         """Whole-state replacement, not concurrent partial editing."""
-        raw = _encode(state, self._maximum)
+        raw = _encode(state, self._maximum, self._max_depth)
         with self._locked():
             self._load_locked()
             self._write_locked(raw)
 
     def update(self, mutate: Callable[[dict], dict]) -> dict:
         with self._locked():
-            raw = _encode(mutate(deepcopy(self._load_locked())), self._maximum)
+            raw = _encode(mutate(deepcopy(self._load_locked())), self._maximum, self._max_depth)
             self._write_locked(raw)
-            return _decode(raw)
+            return _decode(raw, self._max_depth)
+
+    def update_if_revision(self, expected_revision: str, mutate: Callable[[dict], dict]) -> tuple[dict, str]:
+        with self._locked():
+            current_raw = self._read_raw_locked()
+            current_revision = hashlib.sha256(current_raw).hexdigest()
+            if not isinstance(expected_revision, str) or not expected_revision or not hmac.compare_digest(
+                current_revision, expected_revision
+            ):
+                raise ConfigStoreError("state_revision_conflict")
+            current = _decode(current_raw, self._max_depth)
+            raw = _encode(mutate(deepcopy(current)), self._maximum, self._max_depth)
+            self._write_locked(raw)
+            return _decode(raw, self._max_depth), hashlib.sha256(raw).hexdigest()

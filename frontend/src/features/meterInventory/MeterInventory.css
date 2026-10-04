@@ -1,0 +1,3 @@
+.meter-inventory .meter-readings table { min-width: 660px; }
+.meter-inventory .meter-readings h2 { margin-top: 0; }
+.meter-inventory .inventory-results p { margin-block: .35rem; }

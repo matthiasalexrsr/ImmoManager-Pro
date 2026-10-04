@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 from ..ai.hf_runtime import runtime
 from .base import IntegrationActionResult, IntegrationManifest
@@ -68,15 +68,17 @@ class HuggingFaceProvider:
                 return IntegrationActionResult(success=False, message="Kein Text angegeben")
             from ..ai.document_ai import analyze_document
             result = analyze_document(text)
+            details = asdict(result)
+            # Keep the historical provider key while projecting every result field.
+            details["confidence"] = result.document_type_confidence
             return IntegrationActionResult(
-                success=True,
-                message="Dokumentenanalyse abgeschlossen",
-                details={
-                    "document_type": result.document_type,
-                    "confidence": result.document_type_confidence,
-                    "summary": result.summary,
-                    "entities": result.entities,
-                },
+                success=result.analysis_complete,
+                message=(
+                    "Dokumentenanalyse vollständig abgeschlossen"
+                    if result.analysis_complete
+                    else "Dokumentenanalyse unvollständig; fehlende Abschnitte sind ausgewiesen"
+                ),
+                details=details,
             )
 
         if action == "summarize":
@@ -87,13 +89,13 @@ class HuggingFaceProvider:
             from ..ai.message_ai import summarize_thread
             thread_summary = summarize_thread(messages, subject=subject)
             return IntegrationActionResult(
-                success=True,
-                message="Zusammenfassung erstellt",
-                details={
-                    "summary": thread_summary.summary,
-                    "key_points": thread_summary.key_points,
-                    "action_items": thread_summary.action_items,
-                },
+                success=thread_summary.analysis_complete,
+                message=(
+                    "Zusammenfassung vollständig erstellt"
+                    if thread_summary.analysis_complete
+                    else "Zusammenfassung unvollständig; fehlende Abschnitte sind ausgewiesen"
+                ),
+                details=asdict(thread_summary),
             )
 
         return IntegrationActionResult(

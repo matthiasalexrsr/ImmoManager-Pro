@@ -3,8 +3,10 @@ from fastapi import APIRouter, HTTPException, Query, status
 from ..dependencies import store
 from ..models import Property, PropertyCreate, PropertyPatch
 from ..storage import NotFoundError, ValidationError
+from .property_inventory import router as inventory_router
 
 router = APIRouter(prefix="/properties", tags=["Immobilien"])
+router.include_router(inventory_router)
 
 
 @router.get("", response_model=list[Property])

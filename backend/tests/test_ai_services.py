@@ -150,6 +150,20 @@ class TestDocumentAIWithMockedModels:
         mock_zs = MagicMock()
         mock_zs.return_value = {"labels": ["Rechnung"], "scores": [0.95]}
         mock_zs.model.name_or_path = "test-model"
+        tokenizer = MagicMock()
+        tokenizer.model_max_length = 512
+        tokenizer.num_special_tokens_to_add.side_effect = (
+            lambda pair=False: 3 if pair else 2
+        )
+        tokenizer.encode.side_effect = (
+            lambda value, add_special_tokens=False: list(range(len(value)))
+        )
+        tokenizer.side_effect = lambda value, **kwargs: {
+            "offset_mapping": [
+                (index, index + 1) for index in range(len(value))
+            ]
+        }
+        mock_zs.tokenizer = tokenizer
 
         # Mock summarization pipeline
         mock_summ = MagicMock()
@@ -320,9 +334,14 @@ class TestHuggingFaceProvider:
     def test_run_analyze_with_text(self):
         from backend.services.integrations.huggingface import HuggingFaceProvider
         provider = HuggingFaceProvider()
-        result = provider.run({"action": "analyze", "text": "Rechnungsnr. 123"}, {})
-        assert result.success is True
+        with patch("backend.services.ai.document_ai.runtime") as mock_runtime:
+            mock_runtime.is_available = False
+            result = provider.run({"action": "analyze", "text": "Rechnungsnr. 123"}, {})
+        assert result.success is False
         assert result.details is not None
+        assert result.details["analysis_complete"] is False
+        assert result.details["confidence"] == result.details["document_type_confidence"]
+        assert result.details["coverage"]["classification"]["missing_ranges"]
 
     def test_run_unknown_action(self):
         from backend.services.integrations.huggingface import HuggingFaceProvider
@@ -339,12 +358,17 @@ class TestHuggingFaceProvider:
     def test_run_summarize_with_messages(self):
         from backend.services.integrations.huggingface import HuggingFaceProvider
         provider = HuggingFaceProvider()
-        result = provider.run({
-            "action": "summarize",
-            "messages": [{"sender_name": "A", "body": "Hello"}],
-            "subject": "Test",
-        }, {})
-        assert result.success is True
+        with patch("backend.services.ai.message_ai.runtime") as mock_runtime:
+            mock_runtime.is_available = False
+            result = provider.run({
+                "action": "summarize",
+                "messages": [{"sender_name": "A", "body": "Hello"}],
+                "subject": "Test",
+            }, {})
+        assert result.success is False
+        assert result.details is not None
+        assert result.details["analysis_complete"] is False
+        assert result.details["coverage"]["summarization"]["missing_ranges"]
 
 
 # ---------------------------------------------------------------------------

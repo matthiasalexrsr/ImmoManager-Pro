@@ -79,7 +79,7 @@
   .app-shell { --header-height: 118px; }
   .app-shell.app-layout .sidebar { width: min(320px, calc(100vw - 48px)); transform: translateX(-100%); visibility: hidden; transition: transform var(--transition-slow); }
   .app-shell.mobile-nav-open .sidebar { visibility: visible; transform: translateX(0); }
-  .app-shell.app-layout .main-content { margin-left: 0; width: 100%; }
+  .app-shell.app-layout .main-content { margin-left: 0; width: 100%; transition: none; }
   .app-shell .sidebar-mobile-close { display: inline-flex; margin-left: auto; min-width: 40px; min-height: 40px; }
   .app-shell .sidebar-header { min-height: 86px; padding: 20px 16px; }
   .app-shell .sidebar-nav { padding: 8px 12px; }

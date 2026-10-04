@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import Accounts from '../pages/Accounts';
 import Invoices from '../pages/Invoices';
 import Receivables from '../pages/Receivables';
@@ -11,10 +11,12 @@ import AllocationKeys from '../pages/AllocationKeys';
 import Categories from '../pages/Categories';
 import TaxRates from '../pages/TaxRates';
 import Insurances from '../pages/Insurances';
-import Meters from '../pages/Meters';
 
-const mocks = vi.hoisted(() => ({ lists: {}, invalidateRelated: vi.fn(), confirm: vi.fn(), toast: { error: vi.fn() } }));
-vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ role: 'eigentuemer' }) }));
+const mocks = vi.hoisted(() => ({
+  lists: {}, invalidateRelated: vi.fn(), confirm: vi.fn(), toast: { error: vi.fn() },
+  auth: { role: 'eigentuemer' },
+}));
+vi.mock('../contexts/AuthContext', () => ({ useAuth: () => mocks.auth }));
 vi.mock('../i18n', () => ({ useTranslation: () => ({ t: key => key.split('.').at(-1) }) }));
 vi.mock('../contexts/DataStoreContext', () => ({
   useDataStore: () => ({ invalidateRelated: mocks.invalidateRelated }),
@@ -48,7 +50,6 @@ const cases = [
   ['Categories', Categories, '/categories', ['/portfolios']],
   ['TaxRates', TaxRates, '/tax-rates', []],
   ['Insurances', Insurances, '/insurances', ['/properties', '/units']],
-  ['Meters', Meters, '/meters', ['/units', '/properties', '/meters/readings/all']],
 ];
 let failedPaths;
 let mutationStatus;
@@ -77,6 +78,7 @@ beforeEach(() => {
   mutationStatus = 200;
   mocks.confirm.mockResolvedValue(true);
   mocks.invalidateRelated.mockClear();
+  mocks.auth = { role: 'eigentuemer' };
   mocks.lists = Object.fromEntries(cases.flatMap(([, , path, refs]) => [path, ...refs]).map(path => [path, [row()]]));
   localStorage.clear();
   localStorage.setItem('access_token', 'synthetic-test-token');
@@ -84,7 +86,13 @@ beforeEach(() => {
     const parsed = new URL(url, 'http://localhost');
     const path = parsed.pathname.replace('/api/v1', '');
     const method = options.method || 'GET';
-    requests.push({ path, method, params: parsed.searchParams, signal: options.signal });
+    requests.push({
+      path,
+      method,
+      params: parsed.searchParams,
+      signal: options.signal,
+      body: typeof options.body === 'string' ? JSON.parse(options.body) : options.body ?? null,
+    });
     if (method !== 'GET') return response(mutationStatus >= 400 ? { detail: 'Mutation failed' } : row(), mutationStatus);
     if (failedPaths.has(path)) return response({ detail: `Load failed: ${path}` }, 503);
     const rows = mocks.lists[path] || [];
@@ -213,16 +221,102 @@ describe('complete snapshots and form refreshes', () => {
     expect(requests.filter(r => r.method === 'PUT')).toHaveLength(1);
   });
 
-  it('uses all reading pages for the latest meter value and consumption history', async () => {
-    mocks.lists['/meters/readings/all'] = Array.from({ length: 1001 }, (_, index) => ({
-      id: `reading-${index}`, meter_id: 'row-0', value: String(index),
-      reading_date: new Date(Date.UTC(2020, 0, 1 + index)).toISOString().slice(0, 10),
-    }));
-    render(<Meters />);
-    expect(await screen.findByTestId('last-row')).toHaveTextContent('1000.00');
+});
+
+
+describe('e2 billing dimensions UI', () => {
+  it('shows missing consumption dimensions, blocks save, preserves input, then sends explicit medium and unit', async () => {
+    mocks.lists['/billing/allocation-keys'] = [{
+      ...row(),
+      id: 'key-consumption',
+      name: 'Verbrauch Kaltwasser',
+      key_type: 'consumption',
+      consumption_medium: null,
+      consumption_unit: null,
+    }];
+    render(<AllocationKeys />);
+
+    const rowView = await screen.findByTestId('last-row');
+    expect(rowView).toHaveTextContent('Pflichtangabe fehlt');
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
-    expect(screen.getAllByTestId('row-count')[1]).toHaveTextContent(/^1001$/);
-    expect(screen.getAllByTestId('last-row')[1]).toHaveTextContent('1000.001.00');
-    expect(requests.some(r => r.path === '/meters/row-0/readings')).toBe(false);
+    const dialog = screen.getByRole('dialog');
+
+    expect(within(dialog).getByLabelText('Verbrauchsmedium')).toHaveValue('');
+    expect(within(dialog).getByLabelText('Maßeinheit')).toHaveValue('');
+    fireEvent.submit(dialog.querySelector('form'));
+
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      'Für einen Verbrauchsschlüssel sind Verbrauchsmedium und Maßeinheit erforderlich',
+    );
+    expect(requests.filter(request => request.method === 'PUT')).toHaveLength(0);
+    expect(within(dialog).getByLabelText(/Bezeichnung/)).toHaveValue('Verbrauch Kaltwasser');
+
+    fireEvent.change(within(dialog).getByLabelText('Verbrauchsmedium'), {
+      target: { value: 'cold_water' },
+    });
+    fireEvent.change(within(dialog).getByLabelText('Maßeinheit'), {
+      target: { value: 'm³' },
+    });
+    fireEvent.submit(dialog.querySelector('form'));
+
+    await waitFor(() => expect(requests.filter(request => request.method === 'PUT')).toHaveLength(1));
+    expect(requests.find(request => request.method === 'PUT').body).toMatchObject({
+      key_type: 'consumption',
+      consumption_medium: 'cold_water',
+      consumption_unit: 'm³',
+    });
+  });
+
+  it('keeps unknown historical allocation dimensions visible and editable without rewriting them', async () => {
+    mocks.lists['/billing/allocation-keys'] = [{
+      ...row(),
+      id: 'key-custom',
+      key_type: 'consumption',
+      consumption_medium: 'district_loop_x',
+      consumption_unit: 'therm-custom',
+    }];
+    render(<AllocationKeys />);
+
+    const rowView = await screen.findByTestId('last-row');
+    expect(rowView).toHaveTextContent('Individuell: district_loop_x');
+    expect(rowView).toHaveTextContent('Individuell: therm-custom');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByLabelText('Verbrauchsmedium')).toHaveValue('district_loop_x');
+    expect(within(dialog).getByLabelText('Maßeinheit')).toHaveValue('therm-custom');
+
+    fireEvent.submit(dialog.querySelector('form'));
+    await waitFor(() => expect(requests.filter(request => request.method === 'PUT')).toHaveLength(1));
+    expect(requests.find(request => request.method === 'PUT').body).toMatchObject({
+      consumption_medium: 'district_loop_x',
+      consumption_unit: 'therm-custom',
+    });
+  });
+
+
+
+  it('neutralizes old private allocation data and an open form immediately on actor change', async () => {
+    mocks.lists['/billing/allocation-keys'] = [{
+      ...row(),
+      id: 'actor-a-key',
+      name: 'Privater Schlüssel Actor A',
+    }];
+    const view = render(<AllocationKeys />);
+    expect(await screen.findByText('Privater Schlüssel Actor A')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    fireEvent.change(screen.getByLabelText(/Bezeichnung/), { target: { value: 'Privater Entwurf A' } });
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    const pendingFetch = vi.fn((_url, options = {}) => new Promise((_resolve, reject) => {
+      options.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });
+    }));
+    vi.stubGlobal('fetch', pendingFetch);
+    mocks.auth = { role: 'verwalter' };
+    view.rerender(<AllocationKeys />);
+
+    expect(screen.queryByText('Privater Schlüssel Actor A')).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await waitFor(() => expect(pendingFetch).toHaveBeenCalled());
   });
 });

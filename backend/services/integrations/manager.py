@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
 from copy import deepcopy
 from dataclasses import asdict
 
 from ...config import settings
-from .base import IntegrationProvider, IntegrationRunRecord
-from .config_store import InMemoryIntegrationConfigStore, JsonFileIntegrationConfigStore
+from .base import IntegrationProvider
+from .config_store import (
+    ConfigStoreError,
+    InMemoryIntegrationConfigStore,
+)
+from .connection_contract import ConnectionProbeResult, local_probe_result, manifest_parameters
+from .history_policy import preserve_config_masks, public_config, request_observation, response_observation
+from .history_store import configured_history
+from .history_types import HistoryActor, HistoryError
 from .huggingface import HuggingFaceProvider
 from .providers import (
     ContractWizardProvider,
@@ -17,19 +23,27 @@ from .providers import (
     ListingPortalProvider,
     WhatsAppIntegrationProvider,
 )
+from .runtime_factory import configured_runtime_store
 
 
 class IntegrationManager:
-    def __init__(self, store=None) -> None:
+    def __init__(self, store=None, *, history_store=None, history_actor=None) -> None:
         self._providers: dict[str, IntegrationProvider] = {}
-        self._history: dict[str, list[IntegrationRunRecord]] = defaultdict(list)
         self._store = store or InMemoryIntegrationConfigStore()
+        self._history_store = history_store
+        self._history_actor = history_actor
+
+    def _journal(self):
+        return self._history_store if self._history_store is not None else configured_history()
+
+    def _actor(self):
+        return self._history_actor or HistoryActor.authenticated()
 
     def register(self, provider: IntegrationProvider) -> None:
         integration_id = provider.manifest.integration_id
         self._providers[integration_id] = provider
 
-    def seed_defaults(self) -> None:
+    def seed_defaults(self, *, load_state: bool = True) -> None:
         for provider in (
             EmailIntegrationProvider(),
             WhatsAppIntegrationProvider(),
@@ -39,7 +53,8 @@ class IntegrationManager:
             HuggingFaceProvider(),
         ):
             self.register(provider)
-        self._load_state()
+        if load_state:
+            self._load_state()
 
     def list_integrations(self) -> list[dict]:
         return [self.get_integration(integration_id) for integration_id in sorted(self._providers.keys())]
@@ -65,7 +80,7 @@ class IntegrationManager:
             "planned": manifest.planned,
             "enabled": enabled,
             "configured": configured,
-            "operational": not manifest.planned and enabled and configured and health.get("status") == "ok",
+            "operational": not manifest.planned and enabled and configured and health.get("status") in {"ok", "configured"},
             "capabilities": manifest.capabilities,
             "health": health,
             "config": self._safe_config(manifest, config),
@@ -101,6 +116,54 @@ class IntegrationManager:
             return {"valid": False, "missing_keys": [], "message": "SMTP-Konfiguration ist unvollständig oder ungültig"}
         return {"valid": True, "missing_keys": [], "message": "Konfiguration ist gültig"}
 
+    def parameter_catalog(self, integration_id: str) -> dict:
+        provider = self._providers.get(integration_id)
+        if provider is None:
+            raise KeyError(integration_id)
+        return {
+            "integration_id": integration_id,
+            "items": [asdict(item) for item in manifest_parameters(provider.manifest)],
+            "persistence": "ddl_pending",
+            "stages": ["discovered", "observed", "mapped", "accepted"],
+        }
+
+    def connection_test(self, integration_id: str) -> dict:
+        """Probe only through an explicit side-effect-free provider contract.
+
+        Current providers do not implement a network probe. In particular this
+        method never routes SMTP through provider.run() and therefore never
+        manufactures or sends a test message.
+        """
+        provider = self._providers.get(integration_id)
+        if provider is None:
+            raise KeyError(integration_id)
+        _, config = self._snapshot(integration_id)
+        validation = self.validate_config(integration_id, config)
+        if not validation["valid"]:
+            return asdict(
+                local_probe_result(
+                    integration_id,
+                    configured=False,
+                    validation=validation,
+                )
+            )
+
+        probe = getattr(provider, "probe_connection", None)
+        if probe is None:
+            return asdict(
+                local_probe_result(
+                    integration_id,
+                    configured=True,
+                    validation=validation,
+                )
+            )
+        result = probe(deepcopy(config))
+        if not isinstance(result, ConnectionProbeResult):
+            raise ValueError("Connection probe must return ConnectionProbeResult")
+        if result.integration_id != integration_id or result.business_action_performed or result.test_message_sent:
+            raise ValueError("Connection probe violated the side-effect-free contract")
+        return asdict(result)
+
     def set_enabled(self, integration_id: str, enabled: bool) -> dict:
         if integration_id not in self._providers:
             raise KeyError(integration_id)
@@ -116,11 +179,76 @@ class IntegrationManager:
         updates = deepcopy(config_updates)
         def merge(state):
             current = state.setdefault("config", {}).setdefault(integration_id, {})
-            current.update({key: value for key, value in updates.items()
-                            if not (key in manifest.secret_config_keys and value == "***")})
+            current.update(preserve_config_masks(updates, current, manifest))
             return state
         current = self._store.update(merge)["config"][integration_id]
         return {"id": integration_id, "config": self._safe_config(manifest, current)}
+
+    def connection_state(self, integration_id: str) -> dict:
+        provider = self._providers.get(integration_id)
+        if provider is None:
+            raise KeyError(integration_id)
+        loader = getattr(self._store, "load_with_revision", None)
+        if loader is None:
+            raise ConfigStoreError("state_revision_unsupported")
+        state, revision = loader()
+        config = deepcopy(state.get("config", {}).get(integration_id, {}))
+        enabled = state.get("enabled", {}).get(
+            integration_id, provider.manifest.enabled_by_default
+        )
+        return {
+            "id": integration_id,
+            "enabled": enabled,
+            "config": self._safe_config(provider.manifest, config),
+            "revision": revision,
+        }
+
+    def update_connection_state(
+        self,
+        integration_id: str,
+        *,
+        expected_revision: str,
+        enabled: bool | None = None,
+        config_updates: dict | None = None,
+    ) -> dict:
+        provider = self._providers.get(integration_id)
+        if provider is None:
+            raise KeyError(integration_id)
+        if enabled is None and config_updates is None:
+            raise ValueError("Mindestens enabled oder config muss geändert werden.")
+        if enabled is not None and type(enabled) is not bool:
+            raise ValueError("enabled muss boolesch sein.")
+        if config_updates is not None and not isinstance(config_updates, dict):
+            raise ValueError("Config updates must be a dictionary")
+        updater = getattr(self._store, "update_if_revision", None)
+        if updater is None:
+            raise ConfigStoreError("state_revision_unsupported")
+        manifest = provider.manifest
+        updates = deepcopy(config_updates) if config_updates is not None else None
+
+        def mutate(state):
+            if enabled is not None:
+                state.setdefault("enabled", {})[integration_id] = enabled
+            if updates is not None:
+                current = state.setdefault("config", {}).setdefault(
+                    integration_id, {}
+                )
+                current.update(
+                    preserve_config_masks(updates, current, manifest)
+                )
+            return state
+
+        state, revision = updater(expected_revision, mutate)
+        current = deepcopy(state.get("config", {}).get(integration_id, {}))
+        current_enabled = state.get("enabled", {}).get(
+            integration_id, manifest.enabled_by_default
+        )
+        return {
+            "id": integration_id,
+            "enabled": current_enabled,
+            "config": self._safe_config(manifest, current),
+            "revision": revision,
+        }
 
     def run(self, integration_id: str, payload: dict) -> dict:
         provider = self._providers.get(integration_id)
@@ -128,15 +256,23 @@ class IntegrationManager:
             raise KeyError(integration_id)
 
         enabled, config = self._snapshot(integration_id)
+        actor = self._actor()
+        journal = self._journal()
+        request, schema, known_secrets = request_observation(integration_id, payload, config, provider.manifest)
+        ticket = journal.accept(integration_id, actor, request, schema)
+
+        def finish(result, state):
+            safe, response_schema = response_observation(result, known_secrets, integration_id=integration_id)
+            journal.append(ticket, state, {"response": safe, "schema": response_schema})
+            return {**safe, "run_id": ticket.run_id, "history_status": state, "history_recorded": True}
+
         if not enabled:
             result = {"success": False, "message": "Integration ist deaktiviert"}
-            self._append_history(integration_id, payload, result)
-            return result
+            return finish(result, "rejected")
 
         if provider.manifest.planned:
             result = {"success": False, "message": "Adapter noch nicht implementiert; keine externe Aktion ausgeführt", "details": {"planned": True, "implemented": False}}
-            self._append_history(integration_id, payload, result)
-            return result
+            return finish(result, "rejected")
         validation = self.validate_config(integration_id, config)
         if integration_id != "email" and not validation.get("valid"):
             result = {
@@ -144,56 +280,67 @@ class IntegrationManager:
                 "message": validation.get("message", "Ungültige Konfiguration"),
                 "details": validation,
             }
-            self._append_history(integration_id, payload, result)
-            return result
+            return finish(result, "rejected")
 
-        action = provider.run(payload, config)
+        journal.append(ticket, "execution_started", actor=actor)
+        try:
+            actor.refresh()
+        except Exception:
+            # No provider action has begun. Retain the accepted audit, but
+            # preserve the original scope/auth denial for the HTTP caller.
+            journal.append(ticket, "outcome_uncertain", {"response": {"success": False,
+                "message": "Rechteprüfung vor Anbieteraufruf fehlgeschlagen; keine Aktion gestartet.",
+                "details": {"status": "not_sent", "code": "actor_revoked_before_provider", "retry_automatically": False}}, "schema": {"version": 1}})
+            raise
+        try:
+            action = provider.run(payload, config)
+        except Exception:
+            # Free provider exceptions can contain passwords/payloads. Do not
+            # log or expose them; an effect may have happened before the crash.
+            return finish({"success": False, "message": "Das Anbieterergebnis ist ungewiss. Vor einer Wiederholung prüfen.",
+                "details": {"status": "outcome_unconfirmed", "code": "provider_exception", "retry_automatically": False}}, "outcome_uncertain")
         result = {"success": action.success, "message": action.message, "details": action.details}
-        self._append_history(integration_id, payload, result)
-        return result
+        try:
+            return finish(result, "completed")
+        except HistoryError as error:
+            if error.code != "HISTORY_INPUT_INVALID":
+                raise
+            return finish({"success": False, "message": "Anbieterergebnis konnte nicht vollständig beobachtet werden. Vor einer Wiederholung prüfen.",
+                "details": {"status": "outcome_unconfirmed", "code": "observation_failed", "retry_automatically": False}}, "observation_failed")
 
     def list_history(self, integration_id: str, limit: int = 20) -> list[dict]:
         if integration_id not in self._providers:
             raise KeyError(integration_id)
-        entries = self._history.get(integration_id, [])[-limit:]
-        return [asdict(e) for e in reversed(entries)]
+        return self.history_page(integration_id, limit=limit)["items"]
+
+    def history_page(self, integration_id, **options):
+        if integration_id not in self._providers:
+            raise KeyError(integration_id)
+        return self._journal().page(integration_id, self._actor(), **options)
+
+    def history_detail(self, integration_id, run_id):
+        if integration_id not in self._providers:
+            raise KeyError(integration_id)
+        return self._journal().detail(integration_id, run_id, self._actor())
 
     def clear_history(self, integration_id: str) -> dict:
         if integration_id not in self._providers:
             raise KeyError(integration_id)
-        count = len(self._history.get(integration_id, []))
-        self._history[integration_id] = []
-        return {"id": integration_id, "cleared": count}
+        return self._journal().clear(integration_id, self._actor())
 
     def get_metrics(self) -> dict:
         rows = self.list_integrations()
         total = len(rows)
         enabled = sum(row["enabled"] for row in rows)
         configured = sum(row["configured"] for row in rows)
-        runs_total = sum(len(v) for v in self._history.values())
-        successful = sum(1 for runs in self._history.values() for r in runs if r.success)
-        failed = runs_total - successful
+        history = self._journal().metrics(list(self._providers), self._actor())
         return {
             "total_integrations": total,
             "enabled_integrations": enabled,
             "configured_integrations": configured,
-            "runs_total": runs_total,
-            "runs_successful": successful,
-            "runs_failed": failed,
+            **history,
             "categories": self.list_categories(),
         }
-
-    def _append_history(self, integration_id: str, payload: dict, result: dict) -> None:
-        record = IntegrationRunRecord(
-            integration_id=integration_id,
-            success=bool(result.get("success")),
-            message=result.get("message", ""),
-            payload={} if integration_id == "email" else self._safe_config(self._providers[integration_id].manifest, payload),
-            details=deepcopy(result.get("details")),
-        )
-        self._history[integration_id].append(record)
-        if len(self._history[integration_id]) > 200:
-            self._history[integration_id] = self._history[integration_id][-200:]
 
     def _snapshot(self, key: str) -> tuple[bool, dict]:
         state = self._store.load()
@@ -210,11 +357,7 @@ class IntegrationManager:
 
     @staticmethod
     def _safe_config(manifest, config: dict) -> dict:
-        masked = deepcopy(config)
-        for key in manifest.secret_config_keys:
-            if key in masked and masked[key]:
-                masked[key] = "***"
-        return masked
+        return public_config(config, manifest)
 
     @staticmethod
     def _to_message(*, configured: bool, enabled: bool, health: dict) -> str:
@@ -224,19 +367,12 @@ class IntegrationManager:
         if not configured:
             return "Konfiguration erforderlich"
         if health.get("transport_checked") is False:
-            return "Konfiguriert; SMTP-Transport noch ungeprüft"
+            return "Konfiguriert; Transport noch ungeprüft"
         if health_state in {"ok", "configured"}:
             return "Aktiv"
         return "Aktiv (eingeschränkt)"
 
 
-_config_store = (
-    JsonFileIntegrationConfigStore(settings.integration_state_file)
-    if settings.integration_state_file
-    else InMemoryIntegrationConfigStore()
-)
+_config_store = configured_runtime_store(settings.model_dump(mode="json"))
 integration_manager = IntegrationManager(store=_config_store)
-if isinstance(_config_store, JsonFileIntegrationConfigStore):
-    # Explicit startup bootstrap. Subsequent reads fail on a missing/damaged file.
-    _config_store.initialize()
-integration_manager.seed_defaults()
+integration_manager.seed_defaults(load_state=False)

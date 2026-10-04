@@ -105,6 +105,12 @@ def test_fresh_process_actual_app_start_routes_and_restart_preserve_review_witho
         "ENCRYPTION_INDEX_KEY": base64.urlsafe_b64encode(b"synthetic-index".ljust(32, b"0")).decode("ascii"),
         "INTEGRATION_STATE_FILE": str(tmp_path / "integrations.json"),
     })
+    if backend == "sql":
+        # Production starts an explicitly installed database. Startup itself
+        # must never install or repair schema, including this subprocess gate.
+        installed = subprocess.run([sys.executable, "-m", "alembic", "upgrade", "head"], cwd=ROOT,
+            env=environment, capture_output=True, timeout=90)
+        assert installed.returncode == 0, "Owned outbox startup schema migration failed"
     child = r'''
 import multiprocessing
 import os

@@ -20,6 +20,8 @@ from typing import Any
 from zipfile import ZipFile
 
 from .recovery_archive import CHUNK, RecoveryError, check_zip_budget, decrypt_zip, encrypted_zip
+from .recovery_history import verify_history
+from .recovery_integration_state import verify_archived_integration_state
 from .recovery_validation import (
     rebase_file_references,
     validate_file_references,
@@ -47,10 +49,11 @@ class RecoveryLimits:
     metadata_bytes: int = 16 * 1024**2
     manifest_bytes: int = 64 * 1024**2
     central_directory_bytes: int = 32 * 1024**2
+    integration_json_depth: int = 64
 
     def __post_init__(self):
         for name in ("total_bytes", "file_bytes", "files", "compression_ratio", "metadata_bytes",
-                     "manifest_bytes", "central_directory_bytes"):
+                     "manifest_bytes", "central_directory_bytes", "integration_json_depth"):
             if type(getattr(self, name)) is not int or getattr(self, name) <= 0:
                 raise RecoveryError("Sicherungsgrenzen müssen positive ganze Zahlen sein.")
         if not math.isfinite(self.timeout_seconds) or self.timeout_seconds <= 0:
@@ -150,6 +153,7 @@ def _database_info(path: Path, *, timeout_seconds: float = 300) -> dict:
                                  timeout=min(0.2, timeout_seconds))) as db:
         db.execute("PRAGMA trusted_schema=OFF")
         db.set_progress_handler(lambda: int(time.monotonic() > deadline), 1000)
+        db.execute("BEGIN")  # One unchanged native image for every proof/count.
         if db.execute("PRAGMA integrity_check").fetchall() != [("ok",)]:
             raise RecoveryError("SQLite-Integritaetspruefung fehlgeschlagen.")
         if db.execute("PRAGMA foreign_key_check").fetchone():
@@ -159,8 +163,33 @@ def _database_info(path: Path, *, timeout_seconds: float = 300) -> dict:
         required = {"users", "auth_setup", "portfolios", "bookings", "receivables", "rent_charges", "payments", "payment_reversals"}
         if not required.issubset(tables):
             raise RecoveryError("Unbekanntes oder unvollstaendiges ImmoManager-Datenbankschema.")
+        from ..legacy_sqlite_upgrade.schema import LegacySchemaError, prove_legacy_schema
+        try:
+            legacy_proof = prove_legacy_schema(db)
+        except LegacySchemaError:
+            legacy_proof = None  # Continue the strict existing current-schema path.
         from ..db.auth_models import AuthSetupORM  # noqa: F401 — register installation metadata
+        from ..db.billing_dispute_models import DISPUTE_TABLES
+        from ..db.integration_history_models import TABLES as history_tables
+        from ..db.integration_history_schema import ensure_history_schema
         from ..db.orm_models import Base
+        from .billing_dispute_database import validate_dispute_database
+        from .billing_dispute_validation import DisputeIntegrityError
+        from .billing_statement_parties import StatementPartyIntegrityError
+        from .billing_statement_party_database import validate_statement_party_database
+        from .integrations.history_types import HistoryError
+        try:
+            validate_statement_party_database(db, deadline=deadline)
+        except (StatementPartyIntegrityError, sqlite3.Error):
+            raise RecoveryError("Originalparteien der Abrechnungen sind ungültig. Vollständige unveränderte Sicherung verwenden.") from None
+        try:
+            validate_dispute_database(db, deadline=deadline)
+        except (DisputeIntegrityError, sqlite3.Error):
+            raise RecoveryError("Widerspruchsoriginale sind unvollständig oder ungültig. Vollständige unveränderte Sicherung verwenden.") from None
+        try:
+            ensure_history_schema(db)  # Structural proof; archive keys follow separately.
+        except (HistoryError, sqlite3.Error):
+            raise RecoveryError("Integrationshistorie ist unvollständig oder strukturell ungültig. Vollständige unveränderte Sicherung verwenden.") from None
         # Pre-G03 archives have no managed families. Rotating their signer is
         # still mandatory; do not silently accept a partially missing journal.
         session_tables = {"auth_sessions", "auth_refresh_tokens"}
@@ -170,9 +199,42 @@ def _database_info(path: Path, *, timeout_seconds: float = 300) -> dict:
         if tables & document_version_tables and not document_version_tables.issubset(tables):
             raise RecoveryError("Die Dokumenthistorie ist unvollständig. Vollständige Sicherung mit Originalen verwenden.")
         lifecycle_tables = {"contract_lifecycle_drafts", "contract_lifecycle_commands"}
+        correspondence_tables = {"contract_correspondence_drafts", "contract_correspondence_commands", "contract_correspondence_events"}
+        communication_tables = {"communication_templates", "communication_blocks", "communication_drafts"}
+        from ..db.measurement_history_models import MEASUREMENT_TABLES
+        from .measurement_history_database import validate_measurement_database
+        from .measurement_history_validation import MeasurementIntegrityError
+        measurement_tables = set(MEASUREMENT_TABLES)
+        if tables & communication_tables and not communication_tables.issubset(tables):
+            raise RecoveryError("Das Kommunikationszentrum ist unvollständig. Vollständige Sicherung verwenden.")
+        from .operational_job_validation import TABLES as job_tables
+        from .operational_job_validation import JobIntegrityError, validate_job_journal
+        from .operational_scheduler_validation import validate_scheduler
+        from .tenancy_workflow_validation import TABLES as workflow_tables
+        from .tenancy_workflow_validation import WorkflowIntegrityError, validate_workflow_journal
+        try:
+            validate_measurement_database(db, deadline=deadline)
+        except (MeasurementIntegrityError, sqlite3.Error):
+            raise RecoveryError("Historische Abrechnungsquellen sind unvollständig oder ungültig. Vollständige unveränderte Sicherung verwenden.") from None
+        try:
+            validate_workflow_journal(db, deadline=deadline)
+            validate_job_journal(db, deadline=deadline)
+            validate_scheduler(db, deadline=deadline)
+        except (WorkflowIntegrityError, JobIntegrityError, sqlite3.Error):
+            raise RecoveryError("Mieterwechsel-/Arbeitslistenhistorie ist unvollständig oder ungültig. Vollständige unveränderte Sicherung verwenden.") from None
+        if tables & correspondence_tables and not correspondence_tables.issubset(tables):
+            raise RecoveryError("Die Vertragskorrespondenz ist unvollständig. Vollständige Sicherung mit Originalen verwenden.")
+        from .contract_correspondence_validation import EvidenceError, validate_correspondence_journal
+        try:
+            validate_correspondence_journal(db, deadline=deadline)
+        except (EvidenceError, sqlite3.Error):
+            raise RecoveryError("Die Vertragskorrespondenz ist ungültig. Vollständige unveränderte Sicherung mit Originalen verwenden.") from None
         if tables & lifecycle_tables and not lifecycle_tables.issubset(tables):
             raise RecoveryError("Die Vertragsablaufhistorie ist unvollständig. Vollständige Sicherung verwenden.")
-        for table in Base.metadata.sorted_tables:
+        # Column compatibility does not depend on FK dependency order. Avoid
+        # resolving optional/new-family foreign keys that an older archive (or
+        # a focused recovery process) intentionally has not registered.
+        for table in sorted(Base.metadata.tables.values(), key=lambda item: item.name):
             if table.name in session_tables and not tables & session_tables:
                 continue
             # x1 adds a private journal. An older complete image has no table;
@@ -185,6 +247,26 @@ def _database_info(path: Path, *, timeout_seconds: float = 300) -> dict:
                 continue
             if table.name in lifecycle_tables and not tables & lifecycle_tables:
                 continue
+            if table.name in correspondence_tables and not tables & correspondence_tables:
+                continue
+            if table.name in communication_tables and not tables & communication_tables:
+                continue
+            # Measurement-family completeness and shape are validated above.
+            # Older archives may legitimately predate individual measurement
+            # tables; do not reinterpret an absent legacy table as missing
+            # columns after the family-level fail-closed check has passed.
+            if table.name in measurement_tables and table.name not in tables:
+                continue
+            if table.name in workflow_tables and not tables & workflow_tables:
+                continue
+            if table.name in job_tables and not tables.intersection(job_tables):
+                continue
+            if table.name in MEASUREMENT_TABLES and not tables.intersection(MEASUREMENT_TABLES):
+                continue
+            if table.name in history_tables and not tables.intersection(history_tables):
+                continue
+            if table.name in DISPUTE_TABLES and not tables.intersection(DISPUTE_TABLES):
+                continue
             actual = {column[1] for column in db.execute('PRAGMA table_info("' + table.name.replace('"', '""') + '")')}
             # A verified backup must precede the offline w1 migration. These
             # two additive columns were absent in the supported two-target
@@ -192,14 +274,22 @@ def _database_info(path: Path, *, timeout_seconds: float = 300) -> dict:
             # All other missing columns and incomplete journals remain errors.
             compatible_missing = {"invoices": {"amount_paid"}, "payments": {"invoice_id"}}
             missing = set(table.columns.keys()) - actual
-            if missing - compatible_missing.get(table.name, set()):
-                raise RecoveryError("Das Datenbankschema passt nicht zu dieser Programmversion.")
+            if legacy_proof is not None and legacy_proof.permits_missing(table.name, missing):
+                continue  # Only omissions from this actual complete frozen catalog.
+            incompatible = missing - compatible_missing.get(table.name, set())
+            if incompatible:
+                fields = ", ".join(sorted(incompatible))
+                raise RecoveryError(
+                    f"Das Datenbankschema passt nicht zu dieser Programmversion ({table.name}: {fields})."
+                )
         counts = {}
         for table in sorted(tables - {"sqlite_sequence"}):
             if time.monotonic() > deadline:
                 raise RecoveryError("Datenbankprüfung hat das Zeitlimit überschritten.")
             quoted = '"' + table.replace('"', '""') + '"'
             counts[table] = db.execute("SELECT COUNT(*) FROM " + quoted).fetchone()[0]
+        if legacy_proof is not None:
+            legacy_proof.verify(db)
         return {"schema_sha256": hashlib.sha256(_json_bytes(schema)).hexdigest(), "rows": counts}
 
 
@@ -263,14 +353,18 @@ def create_full_backup(plan: RecoveryPlan, destination: Path, password: str, *,
     destination.parent.mkdir(parents=True, exist_ok=True)
     files, directories = _tree(plan.uploads, limits, deadline=deadline)
     extras = {}
+    integration_proof = None
     if plan.runtime_env is not None:
         extras["original-runtime.env"] = (plan.runtime_env, _fingerprint(plan.runtime_env))
     if plan.integration_state is not None:
         extras["integrations.json"] = (plan.integration_state, _fingerprint(plan.integration_state))
         if extras["integrations.json"][1][0] > min(limits.metadata_bytes, limits.file_bytes):
             raise RecoveryError("Integrationszustand überschreitet die Größengrenze.")
-        if not isinstance(_json(plan.integration_state.read_bytes()), dict):
-            raise RecoveryError("Integrationszustand muss ein JSON-Objekt sein.")
+        integration_proof = verify_archived_integration_state(
+            plan.integration_state, configuration,
+            max_plaintext_bytes=min(limits.metadata_bytes, limits.file_bytes),
+            max_json_depth=limits.integration_json_depth,
+        )
     if any(expected[0] > min(limits.metadata_bytes, limits.file_bytes) for _, expected in extras.values()):
         raise RecoveryError("Runtime-Metadaten überschreiten die Größengrenze.")
     if len(files) + len(directories) + len(extras) + 4 > limits.files:
@@ -294,6 +388,7 @@ def create_full_backup(plan: RecoveryPlan, destination: Path, password: str, *,
             database_info = _database_info(image, timeout_seconds=_remaining(deadline))
             verify_iban_key(image, configuration, deadline=deadline)
             verify_private_drafts(image, configuration, deadline=deadline)
+            verify_history(image, configuration, deadline=deadline)
             reference_report = validate_file_references(image, str(uploads), expected_upload_files=set(files), deadline=deadline)
             manifest = {"format": "immomanager-full", "version": 1,
                         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -307,6 +402,10 @@ def create_full_backup(plan: RecoveryPlan, destination: Path, password: str, *,
                     records["integrations.json"] = _add_bytes(archive, "integrations.json", b"{}", maximum=limits.metadata_bytes)
                 for name, (path, expected) in extras.items():
                     records[name] = _add_file(archive, name, path, expected, limits, deadline=deadline)
+                if integration_proof is not None and (
+                    records["integrations.json"]["sha256"] != integration_proof["state_revision"]
+                ):
+                    raise RecoveryError("Integrationszustand wurde während der Prüfung geändert; Sicherung erneut starten.")
                 for name, expected in files.items():
                     _remaining(deadline)
                     portable = _portable("uploads/" + name)
@@ -485,11 +584,15 @@ def restore_full_backup(source: Path, destination: Path, password: str, *,
             (staged / directory).mkdir(exist_ok=True)
         if _database_info(staged / "database.sqlite3", timeout_seconds=_remaining(deadline)) != manifest["database"]:
             raise RecoveryError("Datenbankschema oder Zeilenanzahlen stimmen nicht mit der Sicherung ueberein.")
-        if not isinstance(_json((staged / "integrations.json").read_bytes()), dict):
-            raise RecoveryError("Integrationszustand ist kein JSON-Objekt.")
         values = _rebased_configuration(_json((staged / "configuration.json").read_bytes()), destination)
+        verify_archived_integration_state(
+            staged / "integrations.json", values,
+            max_plaintext_bytes=min(limits.metadata_bytes, limits.file_bytes),
+            max_json_depth=limits.integration_json_depth,
+        )
         verify_iban_key(staged / "database.sqlite3", values, deadline=deadline)
         verify_private_drafts(staged / "database.sqlite3", values, deadline=deadline)
+        verify_history(staged / "database.sqlite3", values, deadline=deadline)
         upload_files = {name.removeprefix("uploads/") for name in manifest["files"] if name.startswith("uploads/")}
         reference_report = validate_file_references(staged / "database.sqlite3", manifest["original_upload_root"],
                                                    expected_upload_files=upload_files, deadline=deadline)

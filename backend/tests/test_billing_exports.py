@@ -1,5 +1,7 @@
 import datetime
 
+import pytest
+
 from backend.dependencies import store
 from backend.models import (
     AllocationKeyCreate,
@@ -12,6 +14,9 @@ from backend.models import (
     UnitCreate,
 )
 from backend.routers import billing
+from backend.tests.test_billing_disputes import context as context
+from backend.tests.test_billing_disputes import draft_http as draft_http
+from backend.tests.test_utility_statement_draft_preview import generated
 
 
 def _clear_store() -> None:
@@ -76,11 +81,13 @@ def test_export_billing_period_csv_response():
     assert period_id in body
 
 
-def test_download_utility_statement_pdf_or_fallback_text():
-    _clear_store()
-    _, statement_id = _setup_generated_period()
-
-    response = billing.download_utility_statement_pdf(statement_id)
-
-    assert response.media_type in {'application/pdf', 'text/plain'}
-    assert 'statement_' in response.headers.get('content-disposition', '')
+@pytest.mark.parametrize("draft_http", ["memory"], indirect=True)
+def test_download_utility_statement_pdf_generated_authenticated_draft(context):
+    statement = generated(context)
+    active = context["active"]
+    path = "/api/v1/billing/statements/" + statement["id"] + "/pdf"
+    assert active.client.get(path).status_code == 401
+    response = active.client.get(path, headers=context["headers"])
+    assert response.status_code == 200 and response.headers["content-type"] == "application/pdf"
+    assert response.content.startswith(b"%PDF-") and response.headers["x-utility-preview"] == "draft-derivation"
+    assert "statement_" in response.headers["content-disposition"]

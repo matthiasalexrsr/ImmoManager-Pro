@@ -12,8 +12,10 @@ from ..models import (
 )
 from ..storage import NotFoundError, ValidationError
 from ._helpers import apply_sort
+from .meter_inventory import router as inventory_router
 
 router = APIRouter(prefix="/meters", tags=["Zähler"])
+router.include_router(inventory_router)
 
 
 # --- Meters ---
@@ -93,6 +95,8 @@ def list_readings_for_meter(
 
 @router.post("/{meter_id}/readings", response_model=StandaloneMeterReading, status_code=status.HTTP_201_CREATED)
 def create_reading(meter_id: str, payload: StandaloneMeterReadingCreate) -> StandaloneMeterReading:
+    if payload.meter_id != meter_id:
+        raise HTTPException(status_code=400, detail="Die Ablesung muss zum Zähler dieser Adresse gehören.")
     # Ensure meter exists
     try:
         store.get_meter(meter_id)

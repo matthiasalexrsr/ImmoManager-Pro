@@ -1,0 +1,460 @@
+.communication-center {
+  max-width: 1680px;
+  margin: 0 auto;
+}
+
+.communication-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-6);
+  margin-bottom: var(--space-5);
+}
+
+.communication-header h1 {
+  margin: 0.15rem 0 0.35rem;
+  font-size: clamp(1.7rem, 3vw, 2.35rem);
+  color: var(--color-ink);
+}
+
+.communication-header p {
+  max-width: 780px;
+  color: var(--color-text-secondary);
+}
+
+.communication-eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+.communication-header-actions {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.communication-header-actions select {
+  min-width: 210px;
+}
+.communication-alert {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.communication-alert button {
+  border: 0;
+  background: transparent;
+  font-size: 1.2rem;
+  cursor: pointer;
+}
+
+.communication-tabs {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.3rem;
+  margin-bottom: var(--space-4);
+  width: fit-content;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.communication-tabs button {
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: 0.55rem 1rem;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.communication-tabs button.active {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
+.communication-workbench {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.72fr) minmax(430px, 1.5fr) minmax(330px, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+.communication-drafts,
+.communication-editor,
+.communication-preview,
+.communication-library-list,
+.communication-library-editor {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-xs);
+  overflow: hidden;
+}
+
+.communication-panel-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 68px;
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.communication-panel-heading > div {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.communication-panel-heading span {
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.communication-panel-heading strong {
+  color: var(--color-ink);
+  font-size: 1rem;
+}
+
+.communication-draft-list {
+  max-height: 760px;
+  overflow-y: auto;
+  padding: var(--space-2);
+}
+
+.communication-draft-card {
+  width: 100%;
+  display: grid;
+  gap: 0.2rem;
+  text-align: left;
+  padding: 0.8rem 0.9rem;
+  margin-bottom: 0.25rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+}
+.communication-draft-card:hover {
+  background: var(--color-primary-50);
+}
+
+.communication-draft-card.active {
+  border-color: var(--color-primary);
+  background: var(--color-primary-light);
+}
+
+.communication-draft-title {
+  font-weight: 700;
+}
+
+.communication-draft-meta,
+.communication-draft-time {
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
+.communication-empty {
+  padding: var(--space-4);
+  color: var(--color-text-muted);
+}
+
+.communication-form {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  border: 0;
+}
+
+.communication-form label,
+.communication-library-editor label {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.communication-form input,
+.communication-form select,
+.communication-form textarea,
+.communication-library-editor input,
+.communication-library-editor select,
+.communication-library-editor textarea,
+.communication-header-actions select {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 0.65rem 0.75rem;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+}
+.communication-form textarea,
+.communication-library-editor textarea {
+  resize: vertical;
+  line-height: 1.55;
+}
+
+.communication-grid-two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+.communication-token-box {
+  border-top: 1px solid var(--color-border-light);
+  padding: var(--space-4) var(--space-5);
+}
+
+.communication-token-box > span {
+  display: block;
+  margin: 0.2rem 0 0.4rem;
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.communication-token-box > div {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.6rem;
+}
+
+.communication-token-box button {
+  padding: 0.3rem 0.55rem;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-bg);
+  color: var(--color-text-secondary);
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.communication-token-box button:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.communication-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: 0 var(--space-5) var(--space-5);
+}
+.communication-status {
+  padding: 0.28rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.status-draft { background: var(--color-info-light); color: var(--color-info); }
+.status-reviewed { background: var(--color-success-light); color: var(--color-success); }
+.status-queued { background: var(--color-warning-light); color: var(--color-warning); }
+
+.communication-preview {
+  position: sticky;
+  top: calc(var(--header-height) + var(--space-4));
+}
+
+.communication-paper {
+  width: calc(100% - 2rem);
+  min-height: 500px;
+  margin: var(--space-4);
+  padding: 1.5rem 1.35rem 2rem;
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-sm);
+  background: var(--color-surface);
+}
+
+.paper-brand {
+  padding-bottom: 3.8rem;
+  color: var(--color-ink);
+  font-weight: 800;
+  font-size: 1rem;
+}
+
+.paper-recipient {
+  min-height: 4.6rem;
+  max-width: 72%;
+  white-space: pre-wrap;
+  font-size: 0.82rem;
+}
+
+.paper-subject {
+  margin: 1.5rem 0 1rem;
+  font-weight: 750;
+}
+
+.paper-body {
+  white-space: pre-wrap;
+  font-size: 0.82rem;
+  line-height: 1.65;
+}
+
+.communication-preview-placeholder {
+  padding: var(--space-6);
+  color: var(--color-text-secondary);
+}
+.communication-preview-placeholder p {
+  margin: 0.6rem 0 1rem;
+}
+
+.communication-missing,
+.communication-warning {
+  display: grid;
+  gap: 0.2rem;
+  margin: var(--space-4);
+  padding: 0.75rem 0.9rem;
+  border-radius: var(--radius-sm);
+}
+
+.communication-missing {
+  background: var(--color-danger-light);
+  color: var(--color-danger);
+}
+
+.communication-warning {
+  background: var(--color-warning-light);
+  color: var(--color-warning);
+}
+
+.communication-dispatch {
+  display: grid;
+  gap: var(--space-3);
+  margin: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-primary-50);
+}
+
+.communication-dispatch h3 {
+  margin: 0;
+}
+
+.communication-dispatch small {
+  color: var(--color-text-muted);
+  line-height: 1.45;
+}
+
+.communication-checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  font-size: 0.82rem;
+}
+
+.communication-checkbox input {
+  margin-top: 0.2rem;
+}
+.communication-library {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.8fr) minmax(460px, 1.4fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.communication-library-list {
+  padding-bottom: var(--space-2);
+}
+
+.communication-library-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.library-card {
+  display: grid;
+  width: calc(100% - 1rem);
+  margin: 0.5rem;
+  padding: 0.85rem 0.95rem;
+  text-align: left;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.library-card:hover {
+  border-color: var(--color-primary);
+  background: var(--color-primary-50);
+}
+
+.library-card span,
+.library-card small {
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+}
+
+.communication-library-editor {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-5);
+}
+
+.communication-library-editor h2 {
+  margin-bottom: 0.2rem;
+  color: var(--color-ink);
+}
+
+@media (max-width: 1280px) {
+  .communication-workbench {
+    grid-template-columns: minmax(210px, 0.65fr) minmax(430px, 1.35fr);
+  }
+  .communication-preview {
+    grid-column: 1 / -1;
+    position: static;
+  }
+  .communication-paper {
+    max-width: 720px;
+  }
+}
+@media (max-width: 800px) {
+  .communication-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .communication-header-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .communication-workbench,
+  .communication-library {
+    grid-template-columns: 1fr;
+  }
+
+  .communication-grid-two {
+    grid-template-columns: 1fr;
+  }
+
+  .communication-draft-list {
+    max-height: 260px;
+  }
+
+  .communication-paper {
+    min-height: 420px;
+  }
+
+  .communication-tabs {
+    width: 100%;
+    overflow-x: auto;
+  }
+}

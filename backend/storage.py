@@ -110,6 +110,16 @@ def _payment_mutation(method):
     return guarded
 
 
+def _history_reset_mutation(method):
+    """Only the installation reset holds the shared SQL journal to publication."""
+    @wraps(method)
+    def guarded(self, *args, **kwargs):
+        from .services.recovery_history import memory_history_boundary
+        with memory_history_boundary():
+            return method(self, *args, **kwargs)
+    return guarded
+
+
 def _version_mutation(method):
     """Check and change under the same lock as payment-backed memory writes.
 
@@ -122,7 +132,7 @@ def _version_mutation(method):
     @wraps(method)
     def guarded(self, *args, **kwargs):
         from .services.concurrency import guard_memory_revision, memory_mutation_depth, next_updated_at
-        from .services.payments import _memory_lock
+        from .services.measurement_parent_guards import memory_write
         arguments = dict(zip(parameters[1:], args)) | kwargs
         if method.__name__ == "_patch_entity":
             entity_type, entity_id = arguments["entity_type"], arguments["entity_id"]
@@ -135,8 +145,11 @@ def _version_mutation(method):
         if entry is None:
             return method(self, *args, **kwargs)
         table, _ = entry
-        with _memory_lock:
-            collection = getattr(self, table)
+        collection = getattr(self, table)
+        previous = collection.get(entity_id)
+        submitted = arguments.get("patch", arguments.get("data"))
+        changes = submitted.model_dump(exclude_unset=method.__name__ == "_patch_entity") if submitted is not None else None
+        with memory_write(self, table, previous, changes):
             previous = collection.get(entity_id)
             if memory_mutation_depth.get() == 0:
                 guard_memory_revision(table, entity_id, previous)
@@ -159,6 +172,9 @@ class InMemoryStore:
     # results must survive staging/rollback even though they are not business JSON.
     contract_lifecycle_drafts: Dict[str, Any] = field(default_factory=dict)
     contract_lifecycle_commands: Dict[str, Any] = field(default_factory=dict)
+    contract_correspondence_drafts: Dict[str, Any] = field(default_factory=dict)
+    contract_correspondence_commands: Dict[str, Any] = field(default_factory=dict)
+    contract_correspondence_events: Dict[str, Any] = field(default_factory=dict)
     def __getattribute__(self, name):
         value = object.__getattribute__(self, name)
         if isinstance(value, dict) and name in object.__getattribute__(self, "__dataclass_fields__"):
@@ -231,13 +247,20 @@ class InMemoryStore:
         from .services.payments import reverse_memory_payment
         return reverse_memory_payment(self, entity_type, entity_id, payment_id, payload)
 
+    @_history_reset_mutation
     @_payment_mutation
     def clear_all(self) -> None:
         """Clear all entity collections. Used by tests to reset state."""
         from .services.portfolio_scope import require_installation_scope
         require_installation_scope()
+        from .services.recovery_retained import guard_operational_history
+        guard_operational_history(self)
+        from .services.billing_dispute_recovery import guard_partial_transfer
+        guard_partial_transfer(self)
         from .services.contract_lifecycle import guard_destructive_reset as guard_lifecycle
         guard_lifecycle(self)
+        from .services.contract_correspondence import guard_destructive_reset as guard_correspondence
+        guard_correspondence(self)
         from .services.form_drafts import guard_destructive_reset as guard_form_drafts
         guard_form_drafts(self)
         from .services.contract_wizard import guard_destructive_reset
@@ -410,6 +433,7 @@ class InMemoryStore:
     def list_properties(self) -> List[Property]:
         return list(self.properties.values())
 
+    @_payment_mutation
     def create_property(self, data: PropertyCreate) -> Property:
         if data.portfolio_id not in self.portfolios:
             raise ValidationError("Portfolio existiert nicht")
@@ -430,9 +454,13 @@ class InMemoryStore:
         if data.portfolio_id not in self.portfolios:
             raise ValidationError("Portfolio existiert nicht")
         old = self.properties[property_id]
+        from .services.workflow_parent_guards import guard_parent_edit
+        guard_parent_edit(self, "property", old, data.model_dump())
         if old.portfolio_id != data.portfolio_id:
             from .services.contract_lifecycle import guard_delete_link
             guard_delete_link(self, "property", property_id)
+            from .services.contract_correspondence import guard_delete_link as guard_correspondence_link
+            guard_correspondence_link(self, "property", property_id)
         from .services.document_version_guards import guard_edit
         guard_edit(self, "properties", old, data.model_dump())
         property_item = Property(
@@ -477,6 +505,7 @@ class InMemoryStore:
     def list_units(self) -> List[Unit]:
         return list(self.units.values())
 
+    @_payment_mutation
     def create_unit(self, data: UnitCreate) -> Unit:
         if data.property_id not in self.properties:
             raise ValidationError("Immobilie existiert nicht")
@@ -497,9 +526,13 @@ class InMemoryStore:
         if data.property_id not in self.properties:
             raise ValidationError("Immobilie existiert nicht")
         old = self.units[unit_id]
+        from .services.workflow_parent_guards import guard_parent_edit
+        guard_parent_edit(self, "unit", old, data.model_dump())
         if old.property_id != data.property_id:
             from .services.contract_lifecycle import guard_delete_link
             guard_delete_link(self, "unit", unit_id)
+            from .services.contract_correspondence import guard_delete_link as guard_correspondence_link
+            guard_correspondence_link(self, "unit", unit_id)
         from .services.document_version_guards import guard_edit
         guard_edit(self, "units", old, data.model_dump())
         unit = Unit(id=unit_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc), **data.model_dump())
@@ -624,13 +657,15 @@ class InMemoryStore:
         ):
             raise ValidationError("Vertragsnummer existiert bereits")
         old = self.contracts[contract_id]
+        from .services.workflow_parent_guards import guard_parent_edit
+        guard_parent_edit(self, "contract", old, data.model_dump())
         from .services.contract_occupancy import assert_occupancy
         if any(getattr(data, field) != getattr(old, field) for field in
                ("property_id", "unit_id", "start_date", "end_date", "status")):
             assert_occupancy(self, data, exclude_id=contract_id)
         if any(getattr(data, field) != getattr(old, field) for field in ("tenant_id", "property_id", "unit_id")):
             from .services.payment_integrity import guard_memory_delete
-            guard_memory_delete(self, "contract", contract_id)
+            guard_memory_delete(self, "contract", contract_id, deleting=False)
         contract = Contract(
             id=contract_id, created_at=old.created_at,
             updated_at=datetime.now(timezone.utc), **data.model_dump(),
@@ -835,6 +870,7 @@ class InMemoryStore:
     def list_documents(self) -> List[Document]:
         return list(self.documents.values())
 
+    @_payment_mutation
     def create_document(self, data: DocumentCreate) -> Document:
         if data.property_id and data.property_id not in self.properties:
             raise ValidationError("Immobilie existiert nicht")
@@ -902,11 +938,13 @@ class InMemoryStore:
     def update_task(self, task_id: str, data: TaskCreate) -> Task:
         if task_id not in self.tasks:
             raise NotFoundError("Aufgabe nicht gefunden")
+        old = self.tasks[task_id]
+        from .services.tenancy_workflow import guard_task_workflow_edit
+        guard_task_workflow_edit(self, task_id, old, data.model_dump())
         if data.property_id and data.property_id not in self.properties:
             raise ValidationError("Immobilie existiert nicht")
         if data.unit_id and data.unit_id not in self.units:
             raise ValidationError("Einheit existiert nicht")
-        old = self.tasks[task_id]
         task = Task(id=task_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc), **data.model_dump())
         self.tasks[task_id] = task
         return task
@@ -915,6 +953,8 @@ class InMemoryStore:
     def delete_task(self, task_id: str) -> None:
         if task_id not in self.tasks:
             raise NotFoundError("Aufgabe nicht gefunden")
+        from .services.tenancy_workflow import guard_task_workflow_delete
+        guard_task_workflow_delete(self, task_id)
         del self.tasks[task_id]
 
     def list_calendar_events(self) -> List[CalendarEvent]:
@@ -1499,6 +1539,19 @@ class InMemoryStore:
         if entity_type == "rent_adjustment":
             adjustment_data = RentAdjustmentCreate(**{**old.model_dump(include=set(RentAdjustmentCreate.model_fields)), **updates})
             return self.update_rent_adjustment(entity_id, adjustment_data)
+        if entity_type == "task":
+            task_data = TaskCreate(**{**old.model_dump(include=set(TaskCreate.model_fields)), **updates})
+            return self.update_task(entity_id, task_data)
+        if entity_type == "handover_protocol":
+            handover_data = HandoverProtocolCreate(
+                **{**old.model_dump(include=set(HandoverProtocolCreate.model_fields)), **updates}
+            )
+            return self.update_handover_protocol(entity_id, handover_data)
+        if entity_type == "meter_reading":
+            reading_data = MeterReadingCreate(
+                **{**old.model_dump(include=set(MeterReadingCreate.model_fields)), **updates}
+            )
+            return self.update_meter_reading(entity_id, reading_data)
         billing_creates: dict[str, type[PydanticBaseModel]] = {"billing_period": BillingPeriodCreate, "cost_item": CostItemCreate,
             "utility_statement": UtilityStatementCreate, "allocation_key": AllocationKeyCreate}
         if entity_type in billing_creates:
@@ -1646,6 +1699,7 @@ class InMemoryStore:
     def list_handover_protocols(self) -> List[HandoverProtocol]:
         return list(self.handover_protocols.values())
 
+    @_payment_mutation
     def create_handover_protocol(self, data: HandoverProtocolCreate) -> HandoverProtocol:
         if data.contract_id not in self.contracts:
             raise ValidationError("Vertrag nicht gefunden")
@@ -1666,6 +1720,8 @@ class InMemoryStore:
         if proto_id not in self.handover_protocols:
             raise NotFoundError("Übergabeprotokoll nicht gefunden")
         old = self.handover_protocols[proto_id]
+        from .services.tenancy_workflow import guard_handover_edit
+        guard_handover_edit(self, proto_id, old, data.model_dump())
         item = HandoverProtocol(
             id=proto_id, created_at=old.created_at,
             updated_at=datetime.now(timezone.utc), **data.model_dump(),
@@ -1677,7 +1733,9 @@ class InMemoryStore:
     def delete_handover_protocol(self, proto_id: str) -> None:
         if proto_id not in self.handover_protocols:
             raise NotFoundError("Übergabeprotokoll nicht gefunden")
-        # Cascade delete meter readings
+        from .services.tenancy_workflow import guard_handover_delete
+        guard_handover_delete(self, proto_id)
+        # Legacy cascade remains available only for non-finalized, unlinked drafts.
         for mr_id, mr in list(self.meter_readings.items()):
             if mr.handover_id == proto_id:
                 del self.meter_readings[mr_id]
@@ -1687,9 +1745,12 @@ class InMemoryStore:
     def list_meter_readings(self) -> List[MeterReading]:
         return list(self.meter_readings.values())
 
+    @_payment_mutation
     def create_meter_reading(self, data: MeterReadingCreate) -> MeterReading:
         if data.handover_id not in self.handover_protocols:
             raise ValidationError("Übergabeprotokoll nicht gefunden")
+        from .services.tenancy_workflow import guard_meter_create
+        guard_meter_create(self, data.handover_id)
         item = MeterReading(id=_generate_id(), **data.model_dump())
         self.meter_readings[item.id] = item
         return item
@@ -1705,6 +1766,8 @@ class InMemoryStore:
         if reading_id not in self.meter_readings:
             raise NotFoundError("Zählerstand nicht gefunden")
         old = self.meter_readings[reading_id]
+        from .services.tenancy_workflow import guard_meter_edit
+        guard_meter_edit(self, reading_id, old, data.model_dump())
         item = MeterReading(id=reading_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc), **data.model_dump())
         self.meter_readings[reading_id] = item
         return item
@@ -1713,6 +1776,8 @@ class InMemoryStore:
     def delete_meter_reading(self, reading_id: str) -> None:
         if reading_id not in self.meter_readings:
             raise NotFoundError("Zählerstand nicht gefunden")
+        from .services.tenancy_workflow import guard_meter_delete
+        guard_meter_delete(self, reading_id)
         del self.meter_readings[reading_id]
 
     # --- Change History (T18) ---
@@ -1831,6 +1896,7 @@ class InMemoryStore:
     def list_meters(self) -> List[Meter]:
         return list(self.meters.values())
 
+    @_payment_mutation
     def create_meter(self, data: MeterCreate) -> Meter:
         meter = Meter(id=_generate_id(), **data.model_dump())
         self.meters[meter.id] = meter

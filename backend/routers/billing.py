@@ -8,6 +8,7 @@ Status machine for billing periods:
   finalized -> corrected (via revision endpoint)
 """
 
+import hashlib
 import logging
 from decimal import Decimal
 from typing import Annotated
@@ -16,7 +17,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
 
-from ..auth import get_current_user
+from ..auth import get_current_user, require_auth
 from ..dependencies import store
 from ..domain.billing_engine import (
     AdvancePayment,
@@ -41,8 +42,10 @@ from ..models import (
 )
 from ..services import billing_settlement as settlement
 from ..services import credit_ledger
+from ..services.billing_consumption import ConsumptionBasis, consumption_basis
 from ..services.booking_lookup import BookingLookupQuery
 from ..services.booking_query import BookingQueryError
+from ..services.checked_publication import CheckedPublicationRoute
 from ..services.credit_choices import CreditChoiceKind, CreditChoices, credit_choices
 from ..services.credit_types import (
     CreditOffsetCreate,
@@ -51,8 +54,13 @@ from ..services.credit_types import (
     CreditReversal,
     CreditReversalCreate,
 )
+from ..services.measurement_history import legacy_meter_sources, property_units
+from ..services.measurement_history_calculation import HistoricalBasis, historical_basis
+from ..services.measurement_history_validation import MeasurementIntegrityError
 from ..services.payments import FinancialConsistencyError
 from ..storage import NotFoundError, ValidationError
+from .billing_disputes import router as billing_dispute_router
+from .measurement_history import router as measurement_history_router
 
 
 def _assert_period_mutable(period: BillingPeriod) -> None:
@@ -71,6 +79,8 @@ def _billing_call(operation, *args):
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except MeasurementIntegrityError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 def _compute_snapshot_hash(period_id: str) -> str:
@@ -81,6 +91,9 @@ def _compute_snapshot_hash(period_id: str) -> str:
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/billing", tags=["Abrechnung"])
+utility_preview_router = APIRouter(route_class=CheckedPublicationRoute)
+router.include_router(measurement_history_router)
+router.include_router(billing_dispute_router)
 
 
 @router.get("/contracts/{contract_id}/credits")
@@ -117,36 +130,22 @@ def reverse_credit_receipt(receipt_id: str, payload: CreditReversalCreate, user=
     return _billing_call(lambda active, rid, command: credit_ledger.reverse_receipt(active, rid, command, getattr(user, "id", None)), receipt_id, payload)
 
 
-def _build_consumption_by_unit(period, contract_unit_ids: set[str]) -> dict[str, Decimal]:
-    """Aggregate consumption per unit from standalone meters/readings in period."""
-    meters = [
-        m
-        for m in store.list_meters()
-        if m.unit_id in contract_unit_ids and m.is_active is not False
-    ]
-    meter_by_id = {m.id: m for m in meters}
+def _consumption_basis(period, keys, contracts, costs) -> ConsumptionBasis:
+    if not any(key.key_type == "consumption" for key in keys.values()):
+        return ConsumptionBasis()
+    meters, readings = legacy_meter_sources(store, period)
+    return consumption_basis(period, keys.values(), contracts, meters, readings,
+        {cost.allocation_key_id for cost in costs if cost.amount != 0})
 
-    readings_by_meter: dict[str, list] = {}
-    for reading in store.list_standalone_meter_readings():
-        meter = meter_by_id.get(reading.meter_id)
-        if meter is None:
-            continue
-        if not (period.start_date <= reading.reading_date <= period.end_date):
-            continue
-        readings_by_meter.setdefault(reading.meter_id, []).append(reading)
 
-    consumption_by_unit: dict[str, Decimal] = {}
-    for meter_id, readings in readings_by_meter.items():
-        if len(readings) < 2:
-            continue
-        sorted_readings = sorted(readings, key=lambda r: r.reading_date)
-        consumption = Decimal(str(sorted_readings[-1].value)) - Decimal(str(sorted_readings[0].value))
-        if consumption <= 0:
-            continue
-        unit_id = meter_by_id[meter_id].unit_id
-        consumption_by_unit[unit_id] = consumption_by_unit.get(unit_id, Decimal("0")) + consumption
-
-    return consumption_by_unit
+def _historical_basis(period, keys, contracts, costs):
+    try:
+        return historical_basis(store, period, keys, contracts, property_units(store, period.property_id),
+            {cost.allocation_key_id for cost in costs if cost.amount != 0})
+    except MeasurementIntegrityError as error:
+        result = HistoricalBasis(managed_keys=set(keys))
+        result.block("HISTORICAL_SOURCE_CORRUPT", str(error), period.id)
+        return result
 
 
 # ---------------------------------------------------------------------------
@@ -414,8 +413,6 @@ def _run_billing_period_preflight(period_id: str) -> BillingPreflightResult:
     used_key_ids = {ci.allocation_key_id for ci in cost_items}
     allocation_keys = {k.id: k for k in store.list_allocation_keys() if k.id in used_key_ids}
 
-    if not contracts_in_period:
-        add_issue("blocker", "NO_ACTIVE_CONTRACTS", "Keine gültigen Verträge im Abrechnungszeitraum gefunden (Entwürfe und stornierte Verträge sind ausgeschlossen)")
     if not all_cost_items:
         add_issue("blocker", "NO_COST_ITEMS", "Keine Kostenpositionen für diese Periode vorhanden")
 
@@ -436,7 +433,13 @@ def _run_billing_period_preflight(period_id: str) -> BillingPreflightResult:
     missing_person_count_unit_ids: list[str] = []
 
     requires_area = any(k.key_type == "area_sqm" for k in allocation_keys.values())
-    requires_person_count = any(k.key_type == "person_count" for k in allocation_keys.values())
+    history = _historical_basis(period, allocation_keys, contracts_in_period, cost_items)
+    blockers.extend(history.blockers)
+    owner_only = (not contracts_in_period and bool(history.managed_keys)
+        and set(allocation_keys) == history.managed_keys and not history.blockers and bool(history.weights))
+    if not contracts_in_period and not owner_only:
+        add_issue("blocker", "NO_ACTIVE_CONTRACTS", "Keine gültigen Mietverträge oder vollständig belegte historische Leerstandsgrundlage vorhanden.")
+    requires_person_count = any(k.key_type == "person_count" and k.id not in history.managed_keys for k in allocation_keys.values())
     requires_consumption = any(k.key_type == "consumption" for k in allocation_keys.values())
 
     vacant_days = settlement.property_vacancy(store, period, contracts_in_period)
@@ -445,7 +448,7 @@ def _run_billing_period_preflight(period_id: str) -> BillingPreflightResult:
         missing_owner_area = [uid for uid in vacant_units if requires_area and not (store.get_unit(uid).area_sqm or 0) > 0]
         if missing_owner_area:
             add_issue("blocker", "MISSING_OWNER_AREA", "Für den Eigentümeranteil fehlen Flächen leerstehender Einheiten", ", ".join(sorted(missing_owner_area)))
-        unsupported = [k.name for k in allocation_keys.values() if k.key_type in {"person_count", "consumption"}]
+        unsupported = [k.name for k in allocation_keys.values() if k.key_type in {"person_count", "consumption"} and k.id not in history.managed_keys]
         if unsupported:
             add_issue("blocker", "VACANCY_ALLOCATION_BASIS_MISSING",
                 "Leerstand kann bei Personen-/Verbrauchsschlüsseln ohne datierte Bewohner- bzw. Verbrauchsanteile des Eigentümers nicht zuverlässig aufgeteilt werden",
@@ -468,7 +471,7 @@ def _run_billing_period_preflight(period_id: str) -> BillingPreflightResult:
 
         if requires_area and (unit.area_sqm is None or unit.area_sqm <= 0):
             area_missing_unit_ids.append(unit.id)
-        _pc = unit.person_count if getattr(unit, "person_count", None) else unit.rooms
+        _pc = unit.person_count
         if requires_person_count and (_pc is None or _pc <= 0):
             missing_person_count_unit_ids.append(unit.id)
 
@@ -482,9 +485,11 @@ def _run_billing_period_preflight(period_id: str) -> BillingPreflightResult:
 
     consumption_units_with_data = set()
     if requires_consumption:
-        contract_unit_ids = {c.unit_id for c in contracts_in_period}
-        consumption_by_unit = _build_consumption_by_unit(period, contract_unit_ids)
-        consumption_units_with_data = {uid for uid, val in consumption_by_unit.items() if val > 0}
+        basis = _consumption_basis(period, {kid: key for kid, key in allocation_keys.items() if kid not in history.managed_keys}, contracts_in_period, cost_items)
+        blockers.extend(basis.blockers)
+        consumption_units_with_data = {uid for weights in basis.weights.values() for uid in weights}
+        consumption_units_with_data.update(uid for kid, weights in history.weights.items()
+            if allocation_keys[kid].key_type == "consumption" for uid, _contract_id in weights)
 
     if missing_unit_contract_ids:
         add_issue(
@@ -504,7 +509,7 @@ def _run_billing_period_preflight(period_id: str) -> BillingPreflightResult:
         add_issue(
             "blocker",
             "MISSING_PERSON_COUNT",
-            "person_count (oder rooms als Fallback) fehlt oder ist 0 für person_count-Verteilung",
+            "Tatsächliche Bewohnerzahl (person_count) fehlt oder ist 0. Bewohnerzahl prüfen und an der Einheit ergänzen; Zimmer sind keine Personen.",
             ", ".join(sorted(set(missing_person_count_unit_ids))),
         )
     if requires_consumption and not consumption_units_with_data and contracts_in_period:
@@ -695,12 +700,6 @@ def _build_utility_statements(period: BillingPeriod) -> tuple[list[UtilityStatem
     if settlement.overlapping_contract_ids(contracts_in_period, period):
         raise HTTPException(status_code=400, detail="Überschneidende Vertragszeiträume derselben Einheit müssen vor der Abrechnung geklärt werden.")
 
-    if not contracts_in_period:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Keine gültigen Verträge im Abrechnungszeitraum gefunden (Entwürfe und stornierte Verträge sind ausgeschlossen)",
-        )
-
     preflight = _run_billing_period_preflight(period_id)
     if preflight.has_blockers:
         raise HTTPException(status_code=400, detail="Abrechnung blockiert: " + "; ".join(i.message for i in preflight.blockers))
@@ -719,12 +718,16 @@ def _build_utility_statements(period: BillingPeriod) -> tuple[list[UtilityStatem
 
     if used_key_ids - set(allocation_keys):
         raise HTTPException(status_code=400, detail="Verteilerschlüssel fehlen.")
-    unit_cache = {u.id: u for u in store.list_units() if u.property_id == period.property_id}
+    unit_cache = {u.id: u for u in property_units(store, period.property_id)}
     vacant_days = settlement.property_vacancy(store, period, contracts_in_period)
     period_days = (period.end_date - period.start_date).days + 1
 
-    contract_unit_ids = {c.unit_id for c in contracts_in_period}
-    consumption_by_unit = _build_consumption_by_unit(period, contract_unit_ids)
+    history = _historical_basis(period, allocation_keys, contracts_in_period, cost_items)
+    if history.blockers:
+        raise HTTPException(status_code=400, detail="; ".join(issue.message for issue in history.blockers))
+    basis = _consumption_basis(period, {kid: key for kid, key in allocation_keys.items() if kid not in history.managed_keys}, contracts_in_period, cost_items)
+    if basis.blockers:
+        raise HTTPException(status_code=400, detail="Abrechnung blockiert: " + "; ".join(i.message for i in basis.blockers))
 
     # Register unit shares for each allocation key
     for contract in contracts_in_period:
@@ -733,19 +736,23 @@ def _build_utility_statements(period: BillingPeriod) -> tuple[list[UtilityStatem
             continue
 
         for key_id, key in allocation_keys.items():
+            if key_id in history.managed_keys:
+                engine.add_unit_share(key_id, UnitShare(unit_id=unit.id, contract_id=contract.id,
+                    share_value=history.weights[key_id].get((unit.id, contract.id), Decimal(0))))
+                continue
             if key.key_type == "area_sqm":
                 share_value = Decimal(str(unit.area_sqm or 0))
             elif key.key_type == "unit_count":
                 share_value = Decimal("1")
             elif key.key_type == "person_count":
-                _pc = unit.person_count if getattr(unit, "person_count", None) else unit.rooms
+                _pc = unit.person_count
                 share_value = Decimal(str(_pc or 0))
             elif key.key_type == "consumption":
-                share_value = consumption_by_unit.get(unit.id, Decimal("0"))
+                share_value = basis.weights[key_id][unit.id]
             else:
                 raise HTTPException(status_code=400, detail=f"Nicht unterstützter Verteilerschlüssel: {key.key_type}")
 
-            if share_value <= Decimal("0"):
+            if share_value < Decimal("0") or (share_value == 0 and key.key_type != "consumption"):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=(
@@ -781,9 +788,12 @@ def _build_utility_statements(period: BillingPeriod) -> tuple[list[UtilityStatem
         owner_id = f"owner:{unit_id}"
         owner_ids.add(owner_id)
         for key_id, key in allocation_keys.items():
-            base = Decimal(str(unit.area_sqm)) if key.key_type == "area_sqm" else Decimal("1")
-            engine.add_unit_share(key_id, UnitShare(unit_id=unit_id, contract_id=owner_id,
-                share_value=base * vacant / period_days))
+            if key_id in history.managed_keys:
+                share = history.weights[key_id].get((unit_id, owner_id), Decimal(0))
+            else:
+                base = Decimal(str(unit.area_sqm)) if key.key_type == "area_sqm" else Decimal("1")
+                share = base * vacant / period_days
+            engine.add_unit_share(key_id, UnitShare(unit_id=unit_id, contract_id=owner_id, share_value=share))
 
     # Add cost entries
     for ci in cost_items:
@@ -818,6 +828,10 @@ def _build_utility_statements(period: BillingPeriod) -> tuple[list[UtilityStatem
         "tenant_cost_total": float(sum((stmt.total_cost for stmt in generated if stmt.contract_id not in owner_ids), Decimal("0"))),
         "vacant_unit_days": {uid: days for uid, days in vacant_days.items() if days},
         "line_items": owner_lines, "policy": "property_units_occupied_days"}
+    if history.managed_keys:
+        owner["historical_sources"] = [{key: row[key] for key in ("id", "content_hash")} for row in history.sources]
+        if not contracts_in_period and history.managed_keys == set(allocation_keys) and not history.blockers:
+            owner["historically_confirmed_vacancy"] = True
     statements = [UtilityStatement(id=str(uuid4()), billing_period_id=period_id,
         contract_id=stmt.contract_id, unit_id=stmt.unit_id, total_cost=float(stmt.total_cost),
         advance_paid=float(stmt.advance_paid), balance=float(stmt.balance),
@@ -874,45 +888,19 @@ def export_billing_period(period_id: str, export_format: str = Query("csv", alia
     )
 
 
-@router.get("/periods/{period_id}/export-zip")
-def export_billing_period_zip(period_id: str):
-    """Export all statement PDFs for a billing period as a ZIP archive."""
-    import io
-    import zipfile
-
+@utility_preview_router.get("/periods/{period_id}/export-zip")
+def export_billing_period_zip(period_id: str, user=Depends(require_auth)):
+    """Checked derived PDFs and exact selected-source JSON, in one read snapshot."""
     from starlette.responses import Response as RawResponse
 
-    try:
-        store.get_billing_period(period_id)
-    except FinancialConsistencyError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except NotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-
-    period_statements = [
-        s for s in store.list_utility_statements() if s.billing_period_id == period_id
-    ]
-    if not period_statements:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Keine Einzelabrechnungen zum Exportieren vorhanden",
-        )
-
-    zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        for stmt in period_statements:
-            pdf_response = download_utility_statement_pdf(stmt.id)
-            ext = "pdf" if pdf_response.media_type == "application/pdf" else "txt"
-            filename = f"statement_{stmt.id}.{ext}"
-            zf.writestr(filename, pdf_response.body)
-
-    return RawResponse(
-        content=zip_buffer.getvalue(),
-        media_type="application/zip",
-        headers={
-            "Content-Disposition": f'attachment; filename="billing_period_{period_id}.zip"',
-        },
-    )
+    def prepare(active, identifier, actor_id):
+        from ..services.utility_statement_pdf import prepare_period_zip
+        return prepare_period_zip(active, identifier, actor_id)
+    content = _utility_source_call(prepare, period_id, user.id)
+    return RawResponse(content, media_type="application/zip", headers={
+        "Content-Disposition": f'attachment; filename="billing_period_{period_id}.zip"',
+        "Cache-Control": "private, no-store", "Vary": "Authorization", "X-Content-SHA256": hashlib.sha256(content).hexdigest(),
+    })
 
 
 @router.post("/statements/{statement_id}/mark-delivered", response_model=UtilityStatement)
@@ -1024,99 +1012,53 @@ def import_cost_item_from_ocr(
     }
 
 
-def download_utility_statement_pdf(statement_id: str):
-    """Generate a PDF for a single utility statement (or text fallback)."""
+def _utility_source_call(operation, *args):
+    from ..services.utility_statement_original_source import UtilityPreviewEmptyError
+    try:
+        return operation(store, *args)
+    except NotFoundError as error:
+        raise HTTPException(404, "Die Abrechnungsquelle ist nicht verfügbar.") from error
+    except UtilityPreviewEmptyError as error:
+        raise HTTPException(400, "Keine generierten Einzelabrechnungen für die Vorschau vorhanden.") from error
+    except ValueError as error:
+        raise HTTPException(409, "Die ursprüngliche Abrechnungsquelle ist beschädigt oder nicht eindeutig finalisiert.") from error
+    except ImportError as error:
+        raise HTTPException(503, "Der PDF-Renderer ist nicht verfügbar.") from error
+
+
+def download_utility_statement_pdf(statement_id: str, actor_id: str | None = None):
+    """Read-only checked PDF derivation, with actual source and content digests."""
     from starlette.responses import Response as RawResponse
 
-    try:
-        stmt = store.get_utility_statement(statement_id)
-    except FinancialConsistencyError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except NotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-
-    # Try to build a real PDF with reportlab
-    try:
-        import io
-
-        from reportlab.lib.pagesizes import A4
-        from reportlab.lib.styles import getSampleStyleSheet
-        from reportlab.lib.units import mm
-        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
-        buffer = io.BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=20*mm, rightMargin=20*mm,
-                                topMargin=25*mm, bottomMargin=18*mm)
-        styles = getSampleStyleSheet()
-        story = []
-
-        story.append(Paragraph("Betriebskostenabrechnung", styles["Title"]))
-        story.append(Spacer(1, 12))
-
-        # Try to resolve names
-        unit_label = stmt.unit_id
-        try:
-            unit = store.get_unit(stmt.unit_id)
-            unit_label = unit.label or stmt.unit_id
-        except Exception:
-            logger.debug("Could not resolve unit label for %s", stmt.unit_id, exc_info=True)
-
-        story.append(Paragraph(f"Einheit: {unit_label}", styles["Normal"]))
-        story.append(Paragraph(f"Vertrag: {stmt.contract_id}", styles["Normal"]))
-        story.append(Paragraph(f"Revision: {stmt.revision}", styles["Normal"]))
-        story.append(Spacer(1, 12))
-
-        # Line items table
-        if stmt.line_items:
-            rows = [["Kostenart", "Anteil (€)"]]
-            for li in stmt.line_items:
-                rows.append([
-                    li.get("description", "—"),
-                    f"{li.get('allocated_amount', 0):.2f} €",
-                ])
-            rows.append(["Gesamtkosten", f"{stmt.total_cost:.2f} €"])
-            rows.append(["Vorauszahlungen", f"{stmt.advance_paid:.2f} €"])
-            rows.append(["Saldo", f"{stmt.balance:.2f} €"])
-
-            t = Table(rows)
-            t.setStyle(TableStyle([
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("ALIGN", (1, 0), (1, -1), "RIGHT"),
-                ("LINEBELOW", (0, 0), (-1, 0), 0.5, (0, 0, 0)),
-                ("LINEABOVE", (0, -3), (-1, -3), 0.5, (0, 0, 0)),
-            ]))
-            story.append(t)
-        else:
-            story.append(Paragraph(f"Gesamtkosten: {stmt.total_cost:.2f} €", styles["Normal"]))
-            story.append(Paragraph(f"Vorauszahlungen: {stmt.advance_paid:.2f} €", styles["Normal"]))
-            story.append(Paragraph(f"Saldo: {stmt.balance:.2f} €", styles["Normal"]))
-
-        doc.build(story)
-        return RawResponse(
-            content=buffer.getvalue(),
-            media_type="application/pdf",
-            headers={"Content-Disposition": f'attachment; filename="statement_{statement_id}.pdf"'},
-        )
-    except ImportError:
-        # Fallback: plain text
-        lines = [
-            "Betriebskostenabrechnung",
-            f"Statement ID: {stmt.id}",
-            f"Einheit: {stmt.unit_id}",
-            f"Vertrag: {stmt.contract_id}",
-            f"Gesamtkosten: {stmt.total_cost:.2f} €",
-            f"Vorauszahlung: {stmt.advance_paid:.2f} €",
-            f"Saldo: {stmt.balance:.2f} €",
-            f"Status: {stmt.status}",
-            f"Revision: {stmt.revision}",
-        ]
-        return RawResponse(
-            content="\n".join(lines).encode("utf-8"),
-            media_type="text/plain",
-            headers={"Content-Disposition": f'attachment; filename="statement_{statement_id}.txt"'},
-        )
+    from ..services.portfolio_scope import current_scope
+    captured = current_scope()
+    actor_id = actor_id or (captured.user_id if captured else None)
+    if actor_id is None:
+        raise HTTPException(401, "Authentifizierung erforderlich.")
+    def prepare(active, identifier, actor_id):
+        from ..services.utility_statement_pdf import prepare_pdf_preview
+        return prepare_pdf_preview(active, identifier, actor_id)
+    content, source = _utility_source_call(prepare, statement_id, actor_id)
+    draft = source.schema_version == "utility-statement-draft-source/1"
+    return RawResponse(content, media_type="application/pdf", headers={
+        "Content-Disposition": f'attachment; filename="statement_{statement_id}.pdf"',
+        "Cache-Control": "private, no-store", "Vary": "Authorization", "X-Content-SHA256": hashlib.sha256(content).hexdigest(),
+        "X-Utility-Source-SHA256": source.source_digest, **({} if draft else {"X-Utility-Original-SHA256": source.statement_original["snapshot_hash"]}),
+        "X-Utility-Render-Profile": source.render_profile, "X-Utility-Preview": "draft-derivation" if draft else "checked-derivation",
+    })
 
 
-@router.get("/statements/{statement_id}/pdf")
-def get_utility_statement_pdf(statement_id: str):
+@utility_preview_router.get("/statements/{statement_id}/original-source")
+def get_utility_statement_original_source(statement_id: str, user=Depends(require_auth)):
+    from ..services.utility_statement_original_source import original_source_preview
+    source = _utility_source_call(original_source_preview, statement_id, user.id)
+    return JSONResponse(source.model_dump(mode="json"), headers={"Cache-Control": "private, no-store", "Vary": "Authorization"})
+
+
+@utility_preview_router.get("/statements/{statement_id}/pdf")
+def get_utility_statement_pdf(statement_id: str, user=Depends(require_auth)):
     """Download a PDF for a single utility statement."""
-    return download_utility_statement_pdf(statement_id)
+    return download_utility_statement_pdf(statement_id, user.id)
+
+
+router.include_router(utility_preview_router)

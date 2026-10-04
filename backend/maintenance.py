@@ -3,6 +3,7 @@
 import argparse
 import json
 import socket
+import sys
 from pathlib import Path
 from typing import Any, cast
 
@@ -14,12 +15,17 @@ def _listener_running(port: int) -> bool:
 
 
 def main(argv: list[str] | None = None) -> int:
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    if arguments and arguments[0] == "legacy-sqlite":
+        # Delegate before updater, launcher configuration or application imports.
+        from .legacy_sqlite_upgrade.__main__ import main as legacy_main
+        return legacy_main(arguments[1:])
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--offline", action="store_true", help="Confirm that the application was stopped")
     parser.add_argument("--data-dir", required=True, type=Path, help="Existing application data directory")
     parser.add_argument("--port", type=int, default=8000, help="Port previously used by the application")
     parser.add_argument("--target-version", default=None)
-    args = parser.parse_args(argv)
+    args = parser.parse_args(arguments)
     if not args.offline:
         parser.error("--offline ist erforderlich; zuerst die Anwendung stoppen")
     if not 1 <= args.port <= 65535:

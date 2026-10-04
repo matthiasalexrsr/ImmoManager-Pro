@@ -35,6 +35,7 @@ const NAV_SECTIONS = [
     ['/deposits', 'navigation.main.deposits', DepositIcon],
     ['/rent-adjustments', 'navigation.main.rentAdjustments', RentIcon],
     ['/handover-protocols', 'navigation.main.handoverProtocols', DocumentIcon],
+    ['/tenancy-workflows', 'navigation.main.tenancyWorkflows', TaskIcon],
   ] },
   { labelKey: 'navigation.sections.vacancy', items: [
     ['/leads', 'navigation.main.leads', TenantIcon],
@@ -44,6 +45,7 @@ const NAV_SECTIONS = [
   { labelKey: 'navigation.sections.finance', items: [
     ['/accounts', 'finance.accounts.title', AccountIcon],
     ['/bookings', 'finance.bookings.title', BookingIcon],
+    ['/financial-workspace', 'navigation.main.financialWorkspace', ChartIcon],
     ['/datev', 'pages.datev.title', DocumentIcon],
     ['/annual-tax', 'finance.tax', DocumentIcon],
     ['/invoices', 'finance.invoices.title', InvoiceIcon],
@@ -58,6 +60,7 @@ const NAV_SECTIONS = [
     ['/tasks', 'navigation.main.tasks', TaskIcon],
     ['/documents', 'navigation.main.documents', DocumentIcon],
     ['/meters', 'navigation.main.meters', MeterIcon],
+    ['/communication-center', 'navigation.main.communicationCenter', MessageIcon],
     ['/messages', 'navigation.main.messages', MessageIcon],
     ['/outbox', 'pages.outbox.title', MessageIcon],
   ] },

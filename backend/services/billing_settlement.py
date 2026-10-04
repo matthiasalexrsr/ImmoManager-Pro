@@ -10,6 +10,7 @@ Credits remain available; this ledger never claims that a refund was paid.
 import hashlib
 import json
 from calendar import monthrange
+from collections.abc import Mapping
 from contextlib import contextmanager
 from copy import deepcopy
 from datetime import date, datetime, timezone
@@ -20,11 +21,13 @@ from uuid import uuid4
 from sqlalchemy import Table, inspect, select, text
 
 from ..models import BillingPeriod, BillingSettlement, CostItem, Receivable, UtilityStatement
-from ..storage import ValidationError
+from ..storage import NotFoundError, ValidationError
+from .billing_originals import IMMUTABLE as IMMUTABLE
+from .billing_originals import snapshot_hash as snapshot_hash
+from .billing_statement_document_contexts import ReviewedIssuer
 from .payments import FinancialConsistencyError, _memory_lock
 from .rent_ledger import CENT, charge_total, contract_ledger_inputs, month_date
 
-IMMUTABLE = {"finalized", "delivered", "disputed", "corrected"}
 ELIGIBLE_CONTRACT_STATUSES = {"active", "terminated", "expired"}
 _COLLECTIONS = ("billing_periods", "cost_items", "utility_statements", "receivables", "billing_settlements")
 
@@ -156,6 +159,8 @@ def atomic_billing(store, period_id: str):
                 if not db.connection().connection.driver_connection.in_transaction:
                     db.execute(text("BEGIN IMMEDIATE"))
             root = _root_period(store, period_id)
+            from .measurement_history import lock_measurement_property
+            lock_measurement_property(store, root.property_id)
             db.execute(select(BillingPeriodORM).where(BillingPeriodORM.id == root.id).with_for_update()
                 .execution_options(populate_existing=True)).scalar_one()
             from .credit_ledger import lock_contract
@@ -179,6 +184,19 @@ def _types(collection: str):
 
 def _write(store, collection: str, model):
     """Internal writes only, within atomic_billing. Public CRUD cannot bypass guards."""
+    if collection == "billing_periods":
+        from .billing_statement_document_contexts import DocumentContextIntegrityError, protect_period_document_contexts
+        from .billing_statement_parties import StatementPartyIntegrityError, protect_period_original
+        try:
+            existing = store.get_billing_period(model.id)
+        except NotFoundError:
+            pass
+        else:
+            try:
+                protect_period_original(existing, model)
+                protect_period_document_contexts(existing, model)
+            except (StatementPartyIntegrityError, DocumentContextIntegrityError) as error:
+                raise FinancialConsistencyError(str(error)) from error
     if hasattr(store, "db"):
         orm_type, read_type = _types(collection)
         row = store.db.get(orm_type, model.id)
@@ -294,6 +312,8 @@ def replace_statements(store, period_id: str, build) -> list[UtilityStatement]:
         assert_mutable(period)
         models, owner = build(period)
         calculation = calculation_hash(store, period)
+        if not models and owner.get("historically_confirmed_vacancy"):
+            owner["calculation_hash"] = calculation
         previous = {s.contract_id: s for s in store.list_utility_statements()
                     if s.billing_period_id == period.source_period_id} if period.source_period_id else {}
         for old in [s for s in store.list_utility_statements() if s.billing_period_id == period_id]:
@@ -312,14 +332,6 @@ def replace_statements(store, period_id: str, build) -> list[UtilityStatement]:
         return results
 
 
-def snapshot_hash(statements: list, owner_cost_share=None) -> str:
-    payload = [{key: value for key, value in s.model_dump(mode="json").items()
-        if key not in {"status", "snapshot_hash", "delivery_status", "delivered_at", "delivery_channel", "updated_at"}}
-        for s in sorted(statements, key=lambda s: s.id)]
-    return hashlib.sha256(json.dumps({"statements": payload, "owner_cost_share": owner_cost_share},
-        sort_keys=True, ensure_ascii=False).encode()).hexdigest()
-
-
 def calculation_hash(store, period) -> str:
     """Detect changed allocation inputs between generation and final confirmation."""
     costs = sorted((c for c in store.list_cost_items() if c.billing_period_id == period.id), key=lambda c: c.id)
@@ -329,19 +341,34 @@ def calculation_hash(store, period) -> str:
     payload = {"period": period.model_dump(mode="json", include={"property_id", "start_date", "end_date", "source_period_id", "revision_number"}),
         "costs": [c.model_dump(mode="json") for c in costs],
         "keys": [k.model_dump(mode="json") for k in sorted(store.list_allocation_keys(), key=lambda k: k.id) if k.id in used_keys],
-        "contracts": [{f: c.model_dump(mode="json")[f] for f in ("id", "unit_id", "start_date", "end_date", "status")} for c in contracts],
+        "contracts": [{f: c.model_dump(mode="json")[f] for f in ("id", "unit_id", "tenant_id", "start_date", "end_date", "status")} for c in contracts],
         "units": [{f: u.model_dump(mode="json").get(f) for f in ("id", "area_sqm", "rooms", "person_count")} for u in units],
         "advances": [actual_paid_advances(store, c, period)[1] for c in contracts],
         "meters": [m.model_dump(mode="json") for m in sorted(store.list_meters(), key=lambda m: m.id) if m.unit_id in {u.id for u in units}],
         "readings": [r.model_dump(mode="json") for r in sorted(store.list_standalone_meter_readings(), key=lambda r: r.id)
                      if period.start_date <= r.reading_date <= period.end_date]}
+    from .measurement_history import period_sources
+    historical = period_sources(store, period)
+    if historical:
+        payload["historical_sources"] = [{key: row[key] for key in ("id", "content_hash")} for row in historical]
     return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 
-def finalize_period(store, period_id: str, preflight) -> BillingPeriod:
+def finalize_period(store, period_id: str, preflight, *,
+                    reviewed_issuers: Mapping[str, ReviewedIssuer] | None = None,
+                    actor_id: str | None = None) -> BillingPeriod:
+    from .billing_statement_document_context_storage import capture_actor, capture_finalization_context
+    from .billing_statement_document_contexts import DocumentContextIntegrityError
+
     with atomic_billing(store, period_id):
+        try:
+            actor_id = capture_actor(actor_id)
+        except DocumentContextIntegrityError as error:
+            raise FinancialConsistencyError(str(error)) from error
         period = store.get_billing_period(period_id)
         if period.status in {"finalized", "delivered"}:
+            if reviewed_issuers:
+                raise FinancialConsistencyError("Finalisierte Originale können keine neue Ausstellerprüfung erhalten; eine neue Korrekturfassung verwenden.")
             return period
         assert_mutable(period)
         if period.status not in {"draft", "review"}:
@@ -350,7 +377,10 @@ def finalize_period(store, period_id: str, preflight) -> BillingPeriod:
             raise ValidationError("Finalisierung blockiert: Preflight enthält Blocker.")
         statements = [s for s in store.list_utility_statements() if s.billing_period_id == period_id]
         contracts = eligible_contracts(store, period)
-        if not statements or {s.contract_id for s in statements} != {c.id for c in contracts}:
+        owner = period.owner_cost_share
+        owner_only = (not contracts and owner is not None and owner.get("historically_confirmed_vacancy")
+            and owner.get("historical_sources") and owner.get("calculation_hash") == calculation_hash(store, period))
+        if (not statements and not owner_only) or {s.contract_id for s in statements} != {c.id for c in contracts}:
             raise ValidationError("Einzelabrechnungen fehlen; bitte vollständig neu erzeugen.")
         costs = sum((Decimal(str(c.amount)) for c in store.list_cost_items()
                      if c.billing_period_id == period_id), Decimal("0")).quantize(CENT)
@@ -366,6 +396,15 @@ def finalize_period(store, period_id: str, preflight) -> BillingPeriod:
                 raise FinancialConsistencyError("Bezahlte Vorauszahlungen wurden geändert; Einzelabrechnungen erneut erzeugen.")
             if (Decimal(str(stmt.total_cost)) - actual).quantize(CENT) != Decimal(str(stmt.balance)):
                 raise FinancialConsistencyError("Einzelabrechnung enthält einen inkonsistenten Saldo.")
+        from .billing_statement_parties import StatementPartyIntegrityError
+        from .billing_statement_party_storage import freeze
+        try:
+            owner = freeze(store, period, statements, actor_id=actor_id)
+            transient = period.model_copy(update={"owner_cost_share": owner})
+            owner = capture_finalization_context(store, transient, statements,
+                reviewed_issuers=reviewed_issuers, actor_id=actor_id)
+        except (StatementPartyIntegrityError, DocumentContextIntegrityError) as error:
+            raise FinancialConsistencyError(str(error)) from error
         digest = snapshot_hash(statements, owner)
         for stmt in statements:
             _write(store, "utility_statements", stmt.model_copy(update={"status": "finalized", "snapshot_hash": digest}))
@@ -374,7 +413,7 @@ def finalize_period(store, period_id: str, preflight) -> BillingPeriod:
             if source.status not in {"finalized", "delivered", "disputed"}:
                 raise FinancialConsistencyError("Ursprüngliche Abrechnung ist nicht mehr korrigierbar.")
             _write(store, "billing_periods", source.model_copy(update={"status": "corrected"}))
-        return _write(store, "billing_periods", period.model_copy(update={"status": "finalized"}))
+        return _write(store, "billing_periods", period.model_copy(update={"status": "finalized", "owner_cost_share": owner}))
 
 
 def create_revision(store, period_id: str, notes: str) -> dict:
@@ -414,11 +453,10 @@ def mark_delivered(store, statement_id: str, channel: str) -> UtilityStatement:
 
 
 def dispute_period(store, period_id: str) -> BillingPeriod:
-    with atomic_billing(store, period_id):
-        period = store.get_billing_period(period_id)
-        if period.status not in {"finalized", "delivered"}:
-            raise ValidationError("Widerspruch nur für finalisierte oder zugestellte Perioden möglich.")
-        return _write(store, "billing_periods", period.model_copy(update={"status": "disputed"}))
+    period = store.get_billing_period(period_id)
+    if period.status not in {"finalized", "delivered"}:
+        raise ValidationError("Widerspruch nur für finalisierte oder zugestellte Perioden möglich.")
+    raise ValidationError("Bitte die konkrete Einzelabrechnung mit Grund, Eingangsdatum und Originalanlagen im Widerspruchsjournal prüfen und bestätigen.")
 
 
 def _statement_chain(store, statement) -> list:

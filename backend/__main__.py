@@ -57,6 +57,8 @@ def _sqlite_url(db_path):
 
 def _load_env_file(path):
     """Load a simple KEY=VALUE file without overriding existing env vars."""
+    from .runtime_environment import runtime_value
+
     if not os.path.isfile(path):
         return
     try:
@@ -67,7 +69,7 @@ def _load_env_file(path):
                     continue
                 key, value = line.split("=", 1)
                 key = key.strip()
-                value = value.strip().strip('"').strip("'")
+                value = runtime_value(value)
                 if key and key not in os.environ:
                     os.environ[key] = value
     except OSError:
@@ -146,6 +148,42 @@ def _port_available(host, port):
         return False
 
 
+def _initialize_integrations(settings, runtime):
+    from pathlib import Path
+
+    from backend.runtime_environment import RuntimeConfigurationError, persist_selected_values
+    from backend.services.iban_encryption import IBANEncryptionError, keyring_from_configuration
+    from backend.services.integrations.config_store import ConfigStoreError
+    from backend.services.integrations.runtime_factory import configured_runtime_store, initialize_new
+
+    values = settings.model_dump(mode="json")
+    if not settings.data_dir or Path(settings.data_dir).resolve() != runtime.data_dir.resolve():
+        raise ConfigStoreError("selected_installation_configuration_mismatch")
+    try:
+        ring = keyring_from_configuration(values)
+    except IBANEncryptionError:
+        raise ConfigStoreError("encryption_key_unavailable") from None
+    if not ring.active_key_id or ring.active_key_id not in ring.keys:
+        raise ConfigStoreError("encryption_key_unavailable")
+    selected = configured_runtime_store(values)
+    try:
+        selected.load()
+    except ConfigStoreError as error:
+        if error.code != "state_missing":
+            raise
+    # Existing ciphertext must authenticate before retaining an external key;
+    # an absent file must only be published after all keys are durable.
+    bundle = {name.upper(): values[name] for name in (
+        "encryption_key", "encryption_keyring", "encryption_active_key_id",
+        "encryption_index_key", "encryption_legacy_jwt_keys", "jwt_secret_key",
+    )}
+    try:
+        persist_selected_values(runtime.data_dir / ".env", bundle)
+    except RuntimeConfigurationError:
+        raise ConfigStoreError("runtime_key_configuration_unavailable") from None
+    initialize_new(values, expected_missing=True)
+
+
 def _setup_logging_to_file():
     """Write a startup log next to the .exe so errors survive a closed console."""
     if not IS_FROZEN:
@@ -215,9 +253,29 @@ def main():
     parser.add_argument("--host", default="127.0.0.1", help="Bind address (default: 127.0.0.1)")
     parser.add_argument("--port", type=int, default=8000, help="Port (default: 8000)")
     parser.add_argument("--seed", action="store_true", help="Load demo data on startup")
+    parser.add_argument(
+        "--initialize-integrations", action="store_true",
+        help="Explicitly initialize encrypted integration state for a new installation; existing state is never replaced",
+    )
     parser.add_argument("--no-browser", action="store_true", help="Don't auto-open browser")
     parser.add_argument("--data-dir", default=None, help="Persistent data directory for SQLite, uploads, backups, and logs")
     args = parser.parse_args()
+
+    # Select the installation before any configuration, app or background
+    # writer. Read-only env loading preserves existing launcher precedence.
+    from pathlib import Path
+
+    from backend.backup_operations.runtime import ManagedRuntime
+    _load_env_file(os.path.join(_exe_dir(), ".env"))
+    selected = args.data_dir or os.environ.get("DATA_DIR")
+    if not selected:
+        selected = _default_windows_data_dir() if IS_FROZEN or os.name == "nt" else _exe_dir()
+    with ManagedRuntime(Path(selected).expanduser().absolute(), app_root=Path(_exe_dir()),
+                        host=args.host, port=args.port) as runtime:
+        _run(args, runtime)
+
+
+def _run(args, runtime):
 
     # When running as frozen .exe, set working directory and sys.path
     base_dir = _get_base_dir()
@@ -228,6 +286,8 @@ def main():
             sys.path.insert(0, base_dir)
 
     data_dir = _configure_runtime_environment(args.data_dir)
+    if os.environ.get("DATA_DIR") and os.path.realpath(os.environ["DATA_DIR"]) != os.path.realpath(runtime.data_dir):
+        raise RuntimeError("Ausgewählter Datenordner und geladene DATA_DIR-Konfiguration unterscheiden sich. Startkonfiguration korrigieren.")
 
     print("ImmoManager Pro v1.0.0")
     print(f"Python {sys.version}")
@@ -243,6 +303,20 @@ def main():
         print("Starten Sie die App mit --port 9000 oder beenden Sie den anderen Prozess.")
         sys.exit(1)
 
+    # This runs inside the actual ManagedRuntime lifetime, after durable field
+    # keys and installation selection, and before app/SQL/background imports.
+    from backend.config import settings
+    runtime.bind_configuration(settings)
+    if args.initialize_integrations:
+        from backend.services.integrations.config_store import ConfigStoreError
+        from backend.services.integrations.runtime_factory import runtime_state_instruction
+        try:
+            _initialize_integrations(settings, runtime)
+        except ConfigStoreError as error:
+            print(f"FEHLER: Integrationsablage konnte nicht initialisiert werden ({error.code}).")
+            print(runtime_state_instruction(error.code))
+            raise SystemExit(1) from None
+
     # Import the app early so import errors are visible before uvicorn starts
     print("Lade Anwendung...")
     try:
@@ -254,7 +328,6 @@ def main():
         sys.exit(1)
 
     print("Anwendung geladen.")
-
     # Seed demo data if requested
     if args.seed:
         print("Lade Demo-Daten...")
@@ -286,12 +359,10 @@ def main():
     print("Druecke Strg+C zum Beenden.\n")
 
     try:
-        import uvicorn
-
         # Use the imported app object directly instead of string-based import.
         # String-based import ("backend.app:app") can fail in PyInstaller bundles
         # because uvicorn's module loader doesn't find frozen modules.
-        uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+        runtime.run(app, log_level="info")
     except KeyboardInterrupt:
         print("\nServer beendet.")
     except Exception as exc:
@@ -315,6 +386,13 @@ if __name__ == "__main__":
 
         raise SystemExit(image_worker_main(sys.argv[2:]))
 
+    # External operations must not configure/start the GUI or bind its app port.
+    # This entrypoint also makes scheduled operations work in a frozen bundle.
+    if len(sys.argv) > 1 and sys.argv[1] == "--backup-operations":
+        from backend.backup_operations.__main__ import main as backup_operations_main
+
+        raise SystemExit(backup_operations_main(sys.argv[2:]))
+
     # Set up a log file next to the .exe so errors survive a closed console
     _log_fh = _setup_logging_to_file()
     if _log_fh:
@@ -330,11 +408,13 @@ if __name__ == "__main__":
         # Clean exit (code 0 or None) should close the console normally.
         if exc.code:
             _pause_console()
+        raise
     except BaseException as exc:
         print(f"\nUnerwarteter Fehler:\n{exc}")
         import traceback
         traceback.print_exc()
         _pause_console()
+        raise SystemExit(1) from None
     finally:
         if _log_fh:
             try:

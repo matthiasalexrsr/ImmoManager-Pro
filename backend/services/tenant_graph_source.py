@@ -8,6 +8,7 @@ from sqlalchemy import or_, select
 from .. import models as m
 from ..db.credit_models import CreditReceiptORM
 from ..db.orm_models import (
+    BillingPeriodORM,
     BookingORM,
     ContractORM,
     HandoverProtocolORM,
@@ -16,6 +17,7 @@ from ..db.orm_models import (
     PaymentReversalORM,
     ReceivableORM,
     RentChargeORM,
+    UtilityStatementORM,
 )
 from .payments import Payment, PaymentReversal
 
@@ -44,6 +46,14 @@ class TenantGraphSource:
 
     def list_contracts(self):
         return self._collection("contract", ContractORM.tenant_id == self.tenant_id)
+
+    def list_utility_statements(self):
+        from .billing_statement_party_storage import subject_expressions
+        tenant, _portfolio, _property, block = subject_expressions(UtilityStatementORM, BillingPeriodORM)
+        query = (select(UtilityStatementORM).join(BillingPeriodORM, UtilityStatementORM.billing_period_id == BillingPeriodORM.id)
+                 .where(UtilityStatementORM.contract_id.in_(self.contract_ids), or_(tenant == self.tenant_id, block.as_string().is_(None)))
+                 .execution_options(yield_per=500))
+        return [m.UtilityStatement.model_validate(row, from_attributes=True) for row in self.db.scalars(query)]
 
     def list_bookings(self):
         referenced = select(PaymentORM.booking_id).where(self.payment_filter)

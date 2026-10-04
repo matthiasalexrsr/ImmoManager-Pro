@@ -84,7 +84,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose, onS
     setValues(current => {
       const next = replace ? initialValues(fields, initial) : { ...current };
       if (!replace) fields.forEach(field => {
-        if (!(field.key in next) || field.type === 'hidden') next[field.key] = original.current?.[field.key] ?? field.default ?? '';
+        if (!(field.key in next) || field.type === 'hidden' && !field.render) next[field.key] = original.current?.[field.key] ?? field.default ?? '';
       });
       return Object.keys(next).length === Object.keys(current).length
         && Object.keys(next).every(key => Object.is(next[key], current[key])) ? current : next;
@@ -163,12 +163,12 @@ export default function FormModal({ title, fields, initial, onSave, onClose, onS
     }
   };
 
-  const changeField = (field, value) => setValues(current => ({
-    ...current, [field.key]: value, ...field.onChange?.(value, current),
+  const changeField = (field, value, detail) => setValues(current => ({
+    ...current, [field.key]: value, ...field.onChange?.(value, current, detail),
   }));
 
   const renderField = field => {
-    if (field.type === 'hidden') return <input type="hidden" key={field.key} name={field.key} value={values[field.key] ?? ''} />;
+    if (field.type === 'hidden' && !field.render) return <input type="hidden" key={field.key} name={field.key} value={values[field.key] ?? ''} />;
     const inputId = `form-field-${field.key}-${instanceId}`;
     const hint = field.hint ?? field.helpText;
     const detail = Array.isArray(error?.details) && error.details.find(item => Array.isArray(item?.loc) && item.loc.at(-1) === field.key);
@@ -178,9 +178,11 @@ export default function FormModal({ title, fields, initial, onSave, onClose, onS
       'aria-invalid': fieldError ? true : undefined,
       'aria-describedby': [hint && `${inputId}-hint`, fieldError && `${inputId}-error`].filter(Boolean).join(' ') || undefined,
     };
-    return <div key={field.key} className={`form-group shared-form-field ${['textarea', 'multiselect'].includes(field.type) ? 'shared-form-field-wide' : ''}`}>
-      <label htmlFor={inputId}>{field.label}{field.required && ' *'}</label>
-      {['select', 'multiselect'].includes(field.type) ? <select {...common}
+    return <div key={field.key} className={`form-group shared-form-field ${field.render || ['textarea', 'multiselect'].includes(field.type) ? 'shared-form-field-wide' : ''}`}>
+      {!field.render && <label htmlFor={inputId}>{field.label}{field.required && ' *'}</label>}
+      {field.render ? field.render({ value: values[field.key] ?? '', values,
+        onChange: (value, detail) => changeField(field, value, detail), inputProps: common })
+        : ['select', 'multiselect'].includes(field.type) ? <select {...common}
         value={field.type === 'multiselect' ? values[field.key] || [] : values[field.key] ?? ''}
         multiple={field.type === 'multiselect'}
         onChange={event => changeField(field, field.type === 'multiselect' ? [...event.target.selectedOptions].map(option => option.value) : event.target.value)}>

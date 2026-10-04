@@ -2,10 +2,11 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import SearchBar from '../components/SearchBar';
 
-const mocks = vi.hoisted(() => ({ get: vi.fn(), navigate: vi.fn(), t: key => key }));
+const mocks = vi.hoisted(() => ({ get: vi.fn(), navigate: vi.fn(), t: key => key, user: null }));
 vi.mock('../api', () => ({ api: { get: mocks.get } }));
 vi.mock('../i18n', () => ({ useTranslation: () => ({ t: mocks.t }) }));
 vi.mock('react-router-dom', () => ({ useNavigate: () => mocks.navigate }));
+vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ user: mocks.user }) }));
 
 const property = (name, id) => ({ entity_type: 'property', display: name, detail: 'Berlin', url: `/properties/${id}` });
 const advance = () => act(async () => { await vi.advanceTimersByTimeAsync(350); });
@@ -21,6 +22,7 @@ describe('Global search', () => {
     vi.useFakeTimers();
     mocks.get.mockReset().mockResolvedValue({ results: [] });
     mocks.navigate.mockReset();
+    mocks.user = null;
   });
   afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
 
@@ -107,7 +109,7 @@ describe('Global search', () => {
     expect(alert).toHaveTextContent('Search unavailable');
     fireEvent.click(within(alert).getByRole('button', { name: 'ui.buttons.retry' }));
     await advance();
-    expect(mocks.get.mock.calls.map(([path]) => path)).toEqual(['/search?q=same%20query', '/search?q=same%20query']);
+    expect(mocks.get.mock.calls.map(([path]) => path)).toEqual(['/search/page?q=same%20query', '/search/page?q=same%20query']);
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'Recovered answer Berlin' })).toBeInTheDocument();
   });
@@ -177,5 +179,62 @@ describe('Global search', () => {
     expect(signal.aborted).toBe(true);
     await act(async () => { pending.resolve({ results: [property('Late result', 'late')] }); });
     expect(mocks.navigate).not.toHaveBeenCalled();
+  });
+
+  it('traverses all result pages and keeps a failed cursor available for retry', async () => {
+    mocks.get.mockResolvedValueOnce({ results: [property('First page', 'first')], has_more: true, next_after: 'signed+cursor' })
+      .mockRejectedValueOnce(new Error('Page unavailable'))
+      .mockResolvedValueOnce({ results: [property('Second page', 'second')], has_more: false, next_after: null })
+      .mockResolvedValueOnce({ results: [property('First page refreshed', 'first')], has_more: true, next_after: 'signed+cursor' });
+    render(<SearchBar />);
+    change('complete');
+    await advance();
+    const nextButton = screen.getByRole('button', { name: 'Weitere Treffer' });
+    nextButton.focus();
+    fireEvent.click(nextButton);
+    expect(screen.getByRole('combobox')).toHaveFocus();
+    expect(screen.queryByText('First page')).not.toBeInTheDocument();
+    await advance();
+    expect(screen.getByRole('alert')).toHaveTextContent('Page unavailable');
+    expect(screen.queryByText('search.global.noResults')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'ui.buttons.retry' }));
+    await advance();
+    expect(screen.getByRole('option', { name: 'Second page Berlin' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Weitere Treffer' })).toBeDisabled();
+    expect(mocks.get.mock.calls[1][0]).toBe('/search/page?q=complete&after=signed%2Bcursor');
+    expect(mocks.get.mock.calls[2][0]).toBe(mocks.get.mock.calls[1][0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Vorherige Treffer' }));
+    await advance();
+    expect(screen.getByRole('option', { name: 'First page refreshed Berlin' })).toBeInTheDocument();
+  });
+
+  it('ignores late pages after a query or object scope changes', async () => {
+    const late = deferred();
+    mocks.user = { id: 'actor', role: 'verwalter', portfolio_ids: ['one'] };
+    mocks.get.mockResolvedValueOnce({ results: [property('Private first', 'first')], has_more: true, next_after: 'old-page' })
+      .mockReturnValueOnce(late.promise).mockResolvedValueOnce({ results: [property('New query', 'new')] });
+    const control = render(<SearchBar />);
+    change('private');
+    await advance();
+    fireEvent.click(screen.getByRole('button', { name: 'Weitere Treffer' }));
+    await advance();
+    change('new query');
+    await advance();
+    await act(async () => late.resolve({ results: [property('Old private page', 'old')] }));
+    expect(screen.queryByText('Old private page')).not.toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'New query Berlin' })).toBeInTheDocument();
+    mocks.user = { ...mocks.user, portfolio_ids: ['two'] };
+    control.rerender(<SearchBar />);
+    expect(screen.queryByText('New query')).not.toBeInTheDocument();
+    expect(screen.getByRole('combobox')).toHaveValue('');
+  });
+
+  it('reports malformed page replies as a retryable failure', async () => {
+    mocks.get.mockResolvedValueOnce({ results: [], has_more: true, next_after: null });
+    render(<SearchBar />);
+    change('malformed');
+    await advance();
+    expect(screen.getByRole('alert')).toHaveTextContent('Die Suchantwort ist unvollständig');
+    expect(screen.queryByText('search.global.noResults')).not.toBeInTheDocument();
   });
 });

@@ -133,7 +133,7 @@ def reset_writer_race(box, monkeypatch):
     assert box.engine is not None
     writer_ready, release_writer, reset_lock_attempt, reset_progress = Event(), Event(), Event(), Event()
     reset_thread = local()
-    reset_dml = []
+    reset_dml, reset_locks, reset_errors = [], [], []
     original_record = lifecycle._record
 
     def hold_writer(*args, **kwargs):
@@ -148,7 +148,11 @@ def reset_writer_race(box, monkeypatch):
         if not getattr(reset_thread, "active", False):
             return
         sql = statement.lstrip().upper()
-        if sql.startswith("BEGIN IMMEDIATE") or sql.startswith('LOCK TABLE "PROPERTIES" IN EXCLUSIVE MODE'):
+        if sql.startswith("LOCK TABLE "):
+            reset_locks.append(statement)
+        if (sql.startswith("BEGIN IMMEDIATE")
+                or sql.startswith('LOCK TABLE "PROPERTIES" IN EXCLUSIVE MODE')
+                or sql.startswith('LOCK TABLE "OPERATIONAL_LOCK" IN EXCLUSIVE MODE NOWAIT')):
             reset_lock_attempt.set()
             reset_progress.set()
         if sql.startswith(("INSERT ", "UPDATE ", "DELETE ")):
@@ -156,8 +160,13 @@ def reset_writer_race(box, monkeypatch):
 
     def reset():
         reset_thread.active = True
-        with Session(box.engine) as db, pytest.raises(ValidationError):
-            SQLAlchemyStore(db).clear_all()
+        with Session(box.engine) as db:
+            try:
+                SQLAlchemyStore(db).clear_all()
+            except ValidationError as error:
+                reset_errors.append(str(error))
+                return
+        pytest.fail("Reset unexpectedly completed instead of refusing retained concurrent history")
 
     monkeypatch.setattr(lifecycle, "_record", hold_writer)
     event.listen(box.engine, "before_cursor_execute", capture)
@@ -173,11 +182,12 @@ def reset_writer_race(box, monkeypatch):
                     # Preserve the real worker exception instead of masking a
                     # schema/auth/guard failure as a missing Event signal.
                     resetting.result(0)
-                    pytest.fail("Reset finished without its native writer barrier")
+                    pytest.fail(f"Reset finished without its native writer barrier; locks={reset_locks!r}; errors={reset_errors!r}")
             finally:
                 release_writer.set()
             row, _ = writing.result(20)
             resetting.result(20)
+        assert reset_errors
         assert reset_dml == []
         assert lifecycle.get_draft(box.store, box.contract.id, row["id"], "actor")["state"] == "draft"
         assert box.store.get_contract(box.contract.id).end_date == date(2026, 12, 31)

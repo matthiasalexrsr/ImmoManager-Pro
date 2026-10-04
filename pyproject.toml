@@ -53,6 +53,7 @@ include = ["backend*", "scripts*"]
 
 [tool.setuptools.package-data]
 scripts = ["windows_ocr_tools.lock.json"]
+"backend.legacy_sqlite_upgrade" = ["release126_profiles.json"]
 
 [tool.ruff]
 line-length = 120

@@ -88,7 +88,7 @@ def runtime(_):
 launcher._configure_runtime_environment = runtime
 launcher._port_available = lambda *args: False
 fixture = sys.argv[1]
-sys.argv = ['immomanager','--no-browser']
+sys.argv = ['immomanager','--no-browser','--data-dir',sys.argv[2]]
 try:
     launcher.main()
 except SystemExit as error:
@@ -97,7 +97,7 @@ else:
     raise AssertionError('occupied port must still fail')
 assert 'backend.config' not in sys.modules
 """
-    result = subprocess.run([sys.executable, "-c", script, MESSAGE], env=env,
+    result = subprocess.run([sys.executable, "-c", script, MESSAGE, str(tmp_path)], env=env,
                             cwd=Path(__file__).resolve().parents[2], capture_output=True, timeout=15)
     assert result.returncode == 0, result.stderr.decode("cp1252", errors="backslashreplace")
     assert "\\u2192" in result.stdout.decode("cp1252")

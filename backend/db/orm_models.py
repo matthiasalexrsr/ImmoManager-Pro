@@ -26,6 +26,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from .encrypted_types import EncryptedIBAN, register_account_encryption
+from .time_types import UTCNaiveDateTime, UTCNaiveNow
 
 
 def _utcnow():
@@ -528,6 +529,8 @@ class AllocationKeyORM(Base):
     name: Mapped[str] = mapped_column(Text, nullable=False)
     key_type: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
+    consumption_medium: Mapped[str | None] = mapped_column(Text)
+    consumption_unit: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
@@ -634,9 +637,11 @@ class NotificationORM(Base):
     entity_type: Mapped[str | None] = mapped_column(Text)
     entity_id: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="unread")
-    read_at: Mapped[datetime | None] = mapped_column(DateTime)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
+    read_at: Mapped[datetime | None] = mapped_column(UTCNaiveDateTime)
+    created_at: Mapped[datetime] = mapped_column(UTCNaiveDateTime, nullable=False, default=UTCNaiveNow())
+    updated_at: Mapped[datetime] = mapped_column(
+        UTCNaiveDateTime, nullable=False, default=UTCNaiveNow(), onupdate=UTCNaiveNow()
+    )
 
     __table_args__ = (
         Index("idx_notifications_status", "status"),
@@ -762,7 +767,7 @@ class ChangeHistoryORM(Base):
     old_value: Mapped[str | None] = mapped_column(Text)
     new_value: Mapped[str | None] = mapped_column(Text)
     changed_by: Mapped[str | None] = mapped_column(String(36))
-    changed_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    changed_at: Mapped[datetime] = mapped_column(UTCNaiveDateTime(), default=_utcnow)
     reason: Mapped[str | None] = mapped_column(Text)
 
 
@@ -874,6 +879,7 @@ class MeterORM(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     unit_id: Mapped[str] = mapped_column(String(36), ForeignKey("units.id"))
     meter_type: Mapped[str] = mapped_column(String(30))
+    measurement_unit: Mapped[str | None] = mapped_column(Text)
     serial_number: Mapped[str | None] = mapped_column(String(100))
     location: Mapped[str | None] = mapped_column(String(200))
     installation_date: Mapped[date | None] = mapped_column(Date)

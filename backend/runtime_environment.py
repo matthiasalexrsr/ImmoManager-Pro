@@ -4,6 +4,7 @@ This module deliberately imports no application settings during launcher setup.
 """
 import errno
 import importlib
+import io
 import os
 import re
 import stat
@@ -16,10 +17,41 @@ from uuid import uuid4
 
 _guard = threading.Lock()
 _locks: dict[str, Any] = {}
+_VALUE_MARKER = " # immomanager-runtime-value:v1"
 
 
 class RuntimeConfigurationError(RuntimeError):
     pass
+
+
+def runtime_value(raw):
+    """Decode marked dotenv values; retain literal legacy simply quoted paths."""
+    value = raw.strip()
+    if value.endswith(_VALUE_MARKER):
+        from dotenv import dotenv_values
+
+        decoded = dotenv_values(stream=io.StringIO("VALUE=" + value), interpolate=False).get("VALUE")
+        if not isinstance(decoded, str):
+            raise RuntimeConfigurationError("Ungültige kodierte Runtime-Konfiguration.")
+        return decoded
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+        return value[1:-1]
+    return value
+
+
+def _serialized_value(value):
+    if value != value.strip() or any(char in value for char in "'\"\\#$") or any(ord(char) < 32 for char in value):
+        escapes = {"\\": "\\\\", '"': '\\"', "\a": "\\a", "\b": "\\b", "\f": "\\f",
+                   "\n": "\\n", "\r": "\\r", "\t": "\\t", "\v": "\\v"}
+        return '"' + "".join(escapes.get(char, char) for char in value) + '"' + _VALUE_MARKER
+    return value
+
+
+def _physical_records(content):
+    lines = content.split("\n")
+    if lines[-1] == "":
+        lines.pop()  # Final newline sentinel is not a new blank record.
+    return lines
 
 
 def _regular(path, missing_ok=False):
@@ -85,8 +117,8 @@ def persist_default(config_file, key, proposed, *, persist_existing=False):
         with _locked(path):
             info = _regular(path, missing_ok=True)
             existing = path.read_text(encoding="utf-8") if info else ""
-            matches = [line.partition("=")[2].strip().strip('"').strip("'")
-                       for line in existing.splitlines() if line.startswith(key + "=")]
+            matches = [runtime_value(line.partition("=")[2])
+                       for line in _physical_records(existing) if line.partition("=")[0].strip().upper() == key]
             if len(matches) > 1:
                 raise RuntimeConfigurationError("Doppelte Runtime-Schlüssel. Konfigurationsdatei lokal bereinigen.")
             if matches and matches[0] == proposed:
@@ -95,8 +127,8 @@ def persist_default(config_file, key, proposed, *, persist_existing=False):
             if matches and matches[0] and matches[0] != "dev-secret-key-change-in-production" and (not persist_existing or not current):
                 os.environ[key] = matches[0]
                 return matches[0]
-            lines = [line for line in existing.splitlines() if not line.startswith(key + "=")]
-            lines.append(key + "=" + proposed)
+            lines = [line for line in _physical_records(existing) if line.partition("=")[0].strip().upper() != key]
+            lines.append(key + "=" + _serialized_value(proposed))
             # The exclusive file has a verified private ACL before secret bytes.
             from scripts.private_server_backup import protected_new_file
             with protected_new_file(temporary) as output:
@@ -113,6 +145,55 @@ def persist_default(config_file, key, proposed, *, persist_existing=False):
             return proposed
     except (OSError, ValueError) as exc:
         raise RuntimeConfigurationError("Runtime-Konfiguration konnte nicht dauerhaft gespeichert werden. Freien Speicher und Dateirechte prüfen, dann erneut starten.") from exc
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def persist_selected_values(config_file, values):
+    """Atomically retain an explicit key bundle; refuse rotation/conflicting keys."""
+    if not isinstance(values, dict) or not values:
+        raise RuntimeConfigurationError("Keine ausdrückliche Schlüsselkonfiguration ausgewählt.")
+    for key, value in values.items():
+        if (not isinstance(key, str) or not re.fullmatch(r"[A-Z][A-Z0-9_]*", key)
+                or not isinstance(value, str) or any(char in value for char in "\0\r\n")):
+            raise RuntimeConfigurationError("Ungültige ausgewählte Schlüsselkonfiguration.")
+    path = Path(config_file).absolute()
+    temporary = path.with_name(path.name + "." + uuid4().hex + ".tmp")
+    try:
+        with _locked(path):
+            info = _regular(path, missing_ok=True)
+            existing = path.read_text(encoding="utf-8") if info else ""
+            lines = _physical_records(existing)
+            missing = []
+            # Prove the whole bundle before creating a temporary secret file.
+            for key, value in values.items():
+                matches = [runtime_value(line.partition("=")[2])
+                           for line in lines if line.partition("=")[0].strip().upper() == key]
+                if len(matches) > 1 or (matches and matches[0] != value):
+                    raise RuntimeConfigurationError(
+                        "Ausgewählte und gespeicherte Schlüssel unterscheiden sich. "
+                        "Konfiguration lokal prüfen; Erstinitialisierung ersetzt keine bestehenden Schlüssel."
+                    )
+                if not matches:
+                    missing.append(key + "=" + _serialized_value(value))
+            if not missing:
+                return
+            from scripts.private_server_backup import protected_new_file
+            with protected_new_file(temporary) as output:
+                output.write(("\n".join([*lines, *missing]) + "\n").encode("utf-8"))
+            if info:
+                current_info = _regular(path)
+                if (current_info.st_dev, current_info.st_ino, current_info.st_mtime_ns, current_info.st_size) != (
+                        info.st_dev, info.st_ino, info.st_mtime_ns, info.st_size):
+                    raise RuntimeConfigurationError("Runtime-Konfiguration wurde verändert. Erneut prüfen.")
+            elif os.path.lexists(path):
+                raise RuntimeConfigurationError("Runtime-Konfiguration wurde parallel angelegt. Erneut prüfen.")
+            os.replace(temporary, path)
+    except (OSError, ValueError):
+        raise RuntimeConfigurationError(
+            "Schlüsselkonfiguration konnte nicht dauerhaft gespeichert werden. "
+            "Freien Speicher und Dateirechte prüfen; keine Integrationsdatei anlegen."
+        ) from None
     finally:
         temporary.unlink(missing_ok=True)
 

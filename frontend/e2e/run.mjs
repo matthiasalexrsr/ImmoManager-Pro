@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { once } from 'node:events';
 import { existsSync } from 'node:fs';
@@ -18,7 +18,9 @@ const backendLog = join(dataDir, 'backend.log');
 const defaultPython = join(projectDir, '.venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python');
 const python = process.env.IMMO_E2E_PYTHON || (existsSync(defaultPython) ? defaultPython : 'python');
 const freshInstallation = process.argv.includes('--fresh-install');
-const playwrightArgs = process.argv.slice(2).filter(arg => arg !== '--fresh-install');
+const dashboardFixture = process.argv.includes('--dashboard-fixture');
+const historyFixture = process.argv.includes('--history-fixture');
+const playwrightArgs = process.argv.slice(2).filter(arg => !['--fresh-install', '--dashboard-fixture', '--history-fixture'].includes(arg));
 let backend;
 let backendStopped;
 let backendError;
@@ -91,11 +93,21 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
 
 try {
   if (!process.env.npm_execpath) throw new Error('Start this runner through npm run test:e2e.');
+  if (freshInstallation && (dashboardFixture || historyFixture)) throw new Error('The inventory fixtures require the isolated demo account.');
   await run(process.execPath, [process.env.npm_execpath, 'run', 'build'], { cwd: frontendDir });
   const port = await freePort();
   const url = `http://127.0.0.1:${port}`;
+  // Read only the Settings class metadata, never the user's resolved values.
+  // A case-insensitive inherited setting must not redirect this owned fixture
+  // to another installation, database, keyring or operational scheduler.
+  const settingNames = new Set(JSON.parse(execFileSync(python, [
+    '-c', 'import json; from backend.settings import Settings; print(json.dumps(list(Settings.model_fields)))',
+  ], { cwd: projectDir, encoding: 'utf8', windowsHide: true, timeout: 10_000 }))
+    .map(name => name.toLowerCase()));
+  const inheritedEnvironment = Object.fromEntries(Object.entries(process.env)
+    .filter(([name]) => !settingNames.has(name.toLowerCase())));
   const backendEnv = {
-    ...process.env,
+    ...inheritedEnvironment,
     PYTHONUTF8: '1',
     PYTHONUNBUFFERED: '1',
     ENVIRONMENT: 'development',
@@ -109,6 +121,9 @@ try {
     // The server accepts canonical, padded base64url for 32-byte keys.
     ENCRYPTION_KEY: `${randomBytes(32).toString('base64url')}=`,
     ENCRYPTION_INDEX_KEY: `${randomBytes(32).toString('base64url')}=`,
+    ENCRYPTION_KEYRING: '',
+    ENCRYPTION_ACTIVE_KEY_ID: 'default',
+    ENCRYPTION_LEGACY_JWT_KEYS: '[]',
     SQLITE_PERSISTENT_STORE: 'true',
     ALLOW_INMEMORY_FALLBACK: 'false',
     AUTO_SEED_DEMO_DATA: 'false',
@@ -122,7 +137,7 @@ try {
   // Migrate the owned empty database before app import/create_all. This exercises
   // the same schema chain as a fresh installation without touching user data.
   await run(python, ['-m', 'alembic', 'upgrade', 'head'], { env: backendEnv });
-  backend = start(python, ['-m', 'backend', ...(freshInstallation ? [] : ['--seed']), '--no-browser', '--host', '127.0.0.1', '--port', String(port), '--data-dir', dataDir], {
+  backend = start(python, ['-m', 'backend', ...(freshInstallation ? [] : ['--seed']), '--initialize-integrations', '--no-browser', '--host', '127.0.0.1', '--port', String(port), '--data-dir', dataDir], {
     stdio: ['ignore', 'pipe', 'pipe'],
     env: backendEnv,
   });
@@ -134,9 +149,17 @@ try {
   backend.stderr.on('data', chunk => { log += chunk.toString(); });
   backend.on('error', error => { backendError = error; log += `\n${error.stack}\n`; });
   await waitForBackend(url);
+  // Opt-in B2 test support writes only this runner's already migrated temporary
+  // SQL database. Other suites and the product startup have no new seed path.
+  const dashboardManifest = join(dataDir, 'dashboard-fixture.json');
+  if (dashboardFixture) await run(python, ['-m', 'frontend.e2e.dashboard_seed', dashboardManifest], { env: backendEnv });
+  const historyManifest = join(dataDir, 'history-fixture.json');
+  if (historyFixture) await run(python, ['-m', 'frontend.e2e.history_seed', historyManifest], { env: backendEnv });
   await run(process.execPath, [require.resolve('@playwright/test/cli'), 'test', '--config', 'e2e/playwright.config.mjs', ...playwrightArgs], {
     cwd: frontendDir,
-    env: { ...process.env, IMMO_E2E_URL: url, IMMO_E2E_MODE: freshInstallation ? 'setup' : 'demo' },
+    env: { ...process.env, IMMO_E2E_URL: url, IMMO_E2E_MODE: freshInstallation ? 'setup' : 'demo',
+      ...(dashboardFixture ? { IMMO_E2E_DASHBOARD_FIXTURE: dashboardManifest } : {}),
+      ...(historyFixture ? { IMMO_E2E_HISTORY_FIXTURE: historyManifest } : {}) },
   });
 } catch (error) {
   console.error(error.message);

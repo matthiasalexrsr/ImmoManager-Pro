@@ -1,0 +1,23 @@
+.unit-workspace { max-width: 1200px; margin-inline: auto; overflow-wrap: anywhere; }
+.unit-workspace-header, .unit-workspace-actions, .unit-workspace-contract-heading,
+.unit-workspace-insurances li { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.unit-workspace-header { margin-bottom: 1.5rem; }
+.unit-workspace-header > div { min-width: 0; }
+.unit-workspace-header p { margin-top: .35rem; }
+.unit-workspace-actions { justify-content: flex-start; gap: .5rem; }
+.unit-workspace-section { padding: 1.25rem; margin-bottom: 1rem; }
+.unit-workspace-section h2 { font-size: 1.1rem; margin-bottom: .75rem; }
+.unit-workspace-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr)); gap: 1rem; margin-block: 1rem; }
+.unit-workspace-facts > div { min-width: 0; }
+.unit-workspace-facts dt { color: var(--text-secondary); font-size: .85rem; }
+.unit-workspace-facts dd { margin: .25rem 0 0; font-weight: 500; }
+.unit-workspace-contract { border-top: 1px solid var(--border-color); padding-top: 1rem; }
+.unit-workspace-contract-heading h3 { margin: 0; font-size: 1rem; }
+.unit-workspace-pager { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; justify-content: flex-end; margin-top: 1rem; }
+.unit-workspace-insurances { list-style: none; padding: 0; }
+.unit-workspace-insurances li { padding-block: .75rem; border-top: 1px solid var(--border-color); }
+.unit-workspace > [role="alert"] { padding: 1.25rem; }
+@media (max-width: 480px) {
+  .unit-workspace-section { padding: 1rem; }
+  .unit-workspace-pager { justify-content: flex-start; }
+}

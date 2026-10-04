@@ -1,0 +1,258 @@
+"""Encrypted durable integration state using the existing stable field keyring.
+
+The outer file remains a small JSON object so the existing full-backup container
+can copy it opaquely. Provider configuration, secrets and unknown discovery
+fields are all inside the authenticated ciphertext.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import hmac
+from collections.abc import Callable, Mapping
+from copy import deepcopy
+from pathlib import Path
+from typing import Any
+
+from ..iban_encryption import IBANEncryptionError, keyring_from_configuration
+from .config_store import (
+    _JSON_DEPTH,
+    _LIMIT,
+    ConfigStoreError,
+    JsonFileIntegrationConfigStore,
+    _decode,
+    _encode,
+    _regular,
+)
+from .history_crypto import decrypt, encrypt, ring_for
+from .history_types import HistoryError
+
+FORMAT = "immomanager/integration-state-encrypted/v1"
+IDENTITY = {"kind": "integration_config_state", "version": 1}
+
+
+def _envelope_limit(plaintext_limit: int) -> int:
+    # AES-GCM adds a nonce/tag and base64 expands to 4/3. The version/key-id
+    # header and JSON framing are tiny; keep explicit margin without reducing
+    # the historical plaintext budget.
+    return ((plaintext_limit + 64 + 2) // 3) * 4 + 4096
+
+
+class EncryptedJsonIntegrationConfigStore(JsonFileIntegrationConfigStore):
+    """Atomic encrypted state file; no plaintext fallback on normal reads."""
+
+    def __init__(
+        self,
+        file_path: str,
+        *,
+        max_plaintext_bytes: int = _LIMIT,
+        lock_timeout: float = 5.0,
+        max_json_depth: int = _JSON_DEPTH,
+        keyring: Any = None,
+    ):
+        if type(max_plaintext_bytes) is not int or max_plaintext_bytes < 1:
+            raise ConfigStoreError("invalid_store_limit")
+        envelope_limit = _envelope_limit(max_plaintext_bytes)
+        # Reuse the reviewed file-lock/replace implementation without reducing
+        # its historical plaintext allowance. The subclass's outer envelope is
+        # larger only because authenticated encryption/base64 add bytes.
+        super().__init__(
+            file_path,
+            max_bytes=envelope_limit,
+            lock_timeout=lock_timeout,
+            max_json_depth=max_json_depth,
+        )
+        self._maximum = envelope_limit
+        self._plaintext_maximum = max_plaintext_bytes
+        self._keyring = keyring
+
+    def _ring(self):
+        try:
+            return ring_for(self._keyring)
+        except HistoryError:
+            raise ConfigStoreError("encryption_key_unavailable") from None
+
+    def _encrypted_raw(self, state: dict) -> bytes:
+        plain = _encode(state, self._plaintext_maximum, self._max_depth)
+        try:
+            token = encrypt(plain, IDENTITY, self._ring())
+        except HistoryError:
+            raise ConfigStoreError("encryption_failed") from None
+        envelope = {"format": FORMAT, "ciphertext": token}
+        return _encode(envelope, self._maximum, self._max_depth)
+
+    def _decrypt_envelope(self, envelope: dict) -> dict:
+        if set(envelope) != {"format", "ciphertext"}:
+            if "format" in envelope or "ciphertext" in envelope:
+                raise ConfigStoreError("encrypted_state_invalid")
+            raise ConfigStoreError("plaintext_state_requires_migration")
+        if envelope.get("format") != FORMAT or not isinstance(envelope.get("ciphertext"), str):
+            raise ConfigStoreError("encrypted_state_invalid")
+        try:
+            plain = decrypt(envelope["ciphertext"], IDENTITY, self._ring())
+        except HistoryError:
+            raise ConfigStoreError("encrypted_state_unreadable") from None
+        if len(plain) > self._plaintext_maximum:
+            raise ConfigStoreError("state_too_large")
+        return _decode(plain, self._max_depth)
+
+    def _load_decrypted_locked(self) -> dict:
+        return self._decrypt_envelope(super()._load_locked())
+
+    def load(self) -> dict:
+        with self._locked():
+            return self._load_decrypted_locked()
+
+    def initialize(self, state: dict | None = None) -> dict:
+        """Create only a missing encrypted file; never auto-convert plaintext."""
+        try:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            raise ConfigStoreError("state_io_failed") from None
+        with self._locked():
+            if _regular(self._path, missing_ok=True) is not None:
+                return self._load_decrypted_locked()
+            selected = {} if state is None else deepcopy(state)
+            raw = self._encrypted_raw(selected)
+            self._write_locked(raw)
+            return _decode(_encode(selected, self._plaintext_maximum, self._max_depth), self._max_depth)
+
+    def save(self, state: dict) -> None:
+        """Whole-state replacement after proving the previous encrypted file."""
+        raw = self._encrypted_raw(state)
+        with self._locked():
+            self._load_decrypted_locked()
+            self._write_locked(raw)
+
+    def update(self, mutate: Callable[[dict], dict]) -> dict:
+        with self._locked():
+            current = self._load_decrypted_locked()
+            candidate = mutate(deepcopy(current))
+            # Validate the full candidate before encryption/publication.
+            checked = _decode(_encode(candidate, self._plaintext_maximum, self._max_depth), self._max_depth)
+            self._write_locked(self._encrypted_raw(checked))
+            return deepcopy(checked)
+
+
+    def load_with_revision(self) -> tuple[dict, str]:
+        with self._locked():
+            raw = self._read_raw_locked()
+            state = self._decrypt_envelope(_decode(raw, self._max_depth))
+            return state, hashlib.sha256(raw).hexdigest()
+
+    def update_if_revision(
+        self, expected_revision: str, mutate: Callable[[dict], dict]
+    ) -> tuple[dict, str]:
+        with self._locked():
+            current_raw = self._read_raw_locked()
+            current_revision = hashlib.sha256(current_raw).hexdigest()
+            if (
+                not isinstance(expected_revision, str)
+                or not expected_revision
+                or not hmac.compare_digest(current_revision, expected_revision)
+            ):
+                raise ConfigStoreError("state_revision_conflict")
+            current = self._decrypt_envelope(_decode(current_raw, self._max_depth))
+            candidate = mutate(deepcopy(current))
+            checked = _decode(
+                _encode(candidate, self._plaintext_maximum, self._max_depth),
+                self._max_depth,
+            )
+            raw = self._encrypted_raw(checked)
+            self._write_locked(raw)
+            return deepcopy(checked), hashlib.sha256(raw).hexdigest()
+
+    def migrate_legacy_plaintext(
+        self, *, expected_revision: str,
+        before_publish: Callable[[str], None] | None = None,
+    ) -> dict:
+        """Explicit SHA-CAS conversion; never called by normal startup.
+
+        The maintenance owner may durably record the encrypted candidate SHA
+        before replacement. Callback failure prevents publication. The callback
+        receives no configuration values and must not call this store again.
+        """
+        with self._locked():
+            original_raw = self._read_raw_locked()
+            self._check_migration_revision(original_raw, expected_revision)
+            current = _decode(original_raw, self._max_depth)
+            if "format" in current or "ciphertext" in current:
+                return self._decrypt_envelope(current)
+            checked = _decode(_encode(current, self._plaintext_maximum, self._max_depth), self._max_depth)
+            if len(original_raw) > self._plaintext_maximum:
+                raise ConfigStoreError("state_too_large")
+            candidate = self._encrypted_raw(checked)
+            if before_publish is not None:
+                before_publish(hashlib.sha256(candidate).hexdigest())
+            self._write_locked(candidate)
+            return deepcopy(checked)
+
+    def restore_legacy_plaintext(
+        self, original_raw: bytes, *, expected_revision: str,
+        before_publish: Callable[[str], None] | None = None,
+    ) -> None:
+        """Checked maintenance return of exact archived bytes, without data loss."""
+        if not isinstance(original_raw, bytes):
+            raise ConfigStoreError("invalid_state")
+        if len(original_raw) > self._plaintext_maximum:
+            raise ConfigStoreError("state_too_large")
+        original = _decode(original_raw, self._max_depth)
+        if "format" in original or "ciphertext" in original:
+            raise ConfigStoreError("legacy_return_source_invalid")
+        canonical = _encode(original, self._plaintext_maximum, self._max_depth)
+        with self._locked():
+            current_raw = self._read_raw_locked()
+            self._check_migration_revision(current_raw, expected_revision)
+            current = self._decrypt_envelope(_decode(current_raw, self._max_depth))
+            if not hmac.compare_digest(
+                hashlib.sha256(_encode(current, self._plaintext_maximum, self._max_depth)).digest(),
+                hashlib.sha256(canonical).digest(),
+            ):
+                raise ConfigStoreError("legacy_return_payload_changed")
+            if before_publish is not None:
+                before_publish(hashlib.sha256(original_raw).hexdigest())
+            self._write_locked(original_raw)
+
+    def verify_legacy_revision(
+        self, *, expected_revision: str, before_verified: Callable[[str], None],
+    ) -> None:
+        """Linearizable checked no-op return; no publication or secret output."""
+        with self._locked():
+            raw = self._read_raw_locked()
+            self._check_migration_revision(raw, expected_revision)
+            state = _decode(raw, self._max_depth)
+            if len(raw) > self._plaintext_maximum or "format" in state or "ciphertext" in state:
+                raise ConfigStoreError("legacy_return_source_invalid")
+            before_verified(hashlib.sha256(raw).hexdigest())
+
+    @staticmethod
+    def _check_migration_revision(raw: bytes, expected: str) -> None:
+        if not isinstance(expected, str) or not expected or not hmac.compare_digest(
+            hashlib.sha256(raw).hexdigest(), expected,
+        ):
+            raise ConfigStoreError("state_revision_conflict")
+
+    @property
+    def path(self) -> Path:
+        return self._path
+
+def build_encrypted_integration_store(
+    file_path: str,
+    explicit_configuration: Mapping,
+    *,
+    max_plaintext_bytes: int = _LIMIT,
+    lock_timeout: float = 5.0,
+    max_json_depth: int = _JSON_DEPTH,
+) -> EncryptedJsonIntegrationConfigStore:
+    """Construction hook only; no initialization, migration, auth or provider I/O."""
+    try:
+        keyring = keyring_from_configuration(explicit_configuration)
+    except IBANEncryptionError:
+        raise ConfigStoreError("encryption_key_unavailable") from None
+    return EncryptedJsonIntegrationConfigStore(
+        file_path,
+        max_plaintext_bytes=max_plaintext_bytes,
+        lock_timeout=lock_timeout,
+        max_json_depth=max_json_depth,
+        keyring=keyring,
+    )

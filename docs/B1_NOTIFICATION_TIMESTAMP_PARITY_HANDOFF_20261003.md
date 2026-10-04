@@ -1,0 +1,58 @@
+# B1-Notificationcursor: Produkt und tatsächliche Nachweise
+
+03.10.2026. Eigene Branch `assist/dashboard-notification-timestamps`, Rootbasis `e9321b3`, Checkout `work/dashboard-notification-timestamps`. Plan `f50b982`, Produkt/eigene Regressionen `2186106`, ausschließlich Fixture-Registrierung `418cd42`. Alle beschriebenen abschließenden Gates liefen seriell auf clean `418cd42`; danach wird nur dieser Nachweis committed. Kein Root-/UI-/Auth-/Model-/Storage-/DDL-/Recoveryedit.
+
+## Ergebnis und Quellgrenze
+
+Der tatsächliche SQLite-Cursorfehler ist korrigiert. Der nativen SQL-default-Zeile fehlt die Fraction, während ein gebundenes datetime stets `.000000` enthält. Die bisherige lexikalische DateTime-`WHERE`-Klausel überspringt deshalb weitere native Zeilen derselben Sekunde; gemischte Formen sortieren zusätzlich getrennt statt nach ihrem gemeinsamen ID-Tiebreak. Root/UI haben das unabhängig mit 13 POSTs und den fehlenden fünf mittleren Meldungen beobachtet.
+
+`backend/services/dashboard_summary.py:180–186` ergänzt ausschließlich für SQLite-Notifications einen CAST/CASE-Vergleichsschlüssel: 19-stellige Sekunden erhalten `.000000`, vorhandene Fraction bleibt unverändert. WHERE und ORDER verwenden dieselbe Expression (`:195–197`); der schon signiert/geprüfte datetime-Cursor wird für diesen SQLvergleich als String mit Leerzeichen und sechs Fractionstellen gebunden. Projektion und externer Cursor bleiben echte vorhandene Datumswerte; PostgreSQL verwendet laut unverändertem Quellzweig weiterhin DateTime, ausdrücklich noch kein erfolgreicher neuer PG-Runtimenachweis. `.000001`, byteweise Unicode-ID-Gleichstände und NULL-last werden bewahrt. Keine gespeicherten Werteumschreibungen, neuen Cursors/DDL oder Authannahmen.
+
+Produktblob während und nach sämtlichen Gates: `bd79e6970ea2ab8c453149f7679359e1848e15ae`. Die exakte unveränderte historische Quelle wird über `git show e9321b3:backend/services/dashboard_summary.py` unter eigener Modulidentität geladen; SHA256 `669d2c7a27d2009f9436553d37510350dc8926ca4fc96e99962443e8833ea3e6`. Keine temporäre Überschreibung der Produktdatei. Die Baselinevariable wird nur für die beiden ausdrücklich historischen Nodes gesetzt, anschließend aus der eigenen Child-Umgebung entfernt.
+
+Die CASE-Sortierung ist eine fachliche Korrektur, keine Großbestandsabnahme. Ein einfacher zukünftiger created_at-Index deckt diesen Ausdruck nicht unmittelbar ab; heute gibt es ohnehin nur Status-/Typindizes. Sichtbarkeit/Statusfilter und `LIMIT preview_limit+1` bleiben erhalten. Ein Ausdrucksindex verlangt eigene zentrale DDL-/Kapazitätsabstimmung. Andere externe Timestamp-/Timezone-Textformate sind hier kein neu akzeptierter Importvertrag.
+
+## Exakte durchgeführte Gates
+
+Bundled `.venv` Python, `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1`, ambient `TEST_STORE_BACKEND=memory`; conftest erzeugt eine eigene temporäre SQL-DB, kein Installations-DATABASE_URL. Jede native Auswahl läuft in einem eigenen Child mit hartem `subprocess.run(..., timeout=...)`, keine Server/Browser. Direkte interne Summaryaufrufe beweisen echte Query-/Cursorkorrektheit; sie ersetzen keine HTTPauthority-/Browserabnahme.
+
+1. Erster historischer Lauf am clean `2186106`: **1 erwarteter Assertion-FAIL + 1 Fixture-ERROR**, 4,57 s pytest / 5,76 s Wrapper, normal Exit1. Der erste Node zeigt tatsächlich, dass von 13 nativen CURRENT_TIMESTAMP-Zeilen nur die erste Fünferseite erreicht wird. Vor dem zweiten Produktaufruf fehlt im Standalonefixture das `document_versions`-FKziel, nachdem der erste Sourceimport die Workflowmodelle registriert hat. Kein zusätzlicher zweiter Produktnachweis aus diesem ERROR. Korrektur `418cd42` importiert ausschließlich das vorhandene actual `document_version_models` vor `create_all`, ohne Produkt-/Assertionänderung.
+2. Abschließende historische Baseline am clean `418cd42`, hart 45 s: **2 tatsächliche erwartete Assertion-FAIL, 0 ERROR, 0 SKIP**, 4,90 s pytest / 6,09 s Wrapper, normal Exit1. Exakte Nodes in `test_dashboard_notification_timestamps.py`: `test_sqlite_native_current_timestamp_rows_are_all_reached`, `test_sqlite_mixed_zero_fractions_and_one_microsecond_keep_id_ties`. Der zweite Node zeigt zusätzlich verlorene native Zeilen/falschen ID-Tiebreak bei gemischter Darstellung. Der erste Versuch wird nicht als zusätzlicher Nachweis summiert.
+3. Korrigierte Quelle, hart 60 s: **3 tatsächliche SQLite PASS, 0 SKIP**, 6,36 s pytest / 7,44 s Wrapper, normal Exit0. Dieselben beiden Nodes plus `test_sqlite_legacy_null_notification_dates_remain_last_and_reachable[legacy-null-schema]`. Tatsächliche einheitliche CURRENT_TIMESTAMP-INSERTs, unabhängig über eine neue Verbindung gelesene rohe Werte, SQLAlchemy-gebundene `.000000` und exakt `.000001`, byteweise Unicode-IDs, mehrere NULLseiten. Die NULL-Regression nutzt ausschließlich eine eigene synthetische nullable Legacytabelle; aktuelle NOT-NULL-Metadaten bleiben unverändert. Alle original gespeicherten Werte sind vor/nach den Seiten identisch.
+4. Bestehende unveränderte Regressionen, hart 60 s: **2 tatsächliche PASS, 0 SKIP**, 9,53 s pytest / 11,22 s Wrapper, Sitzung5633 normal Exit0. Exakt `test_dashboard_summary.py::test_contract_window_and_notification_keysets_cover_boundaries_and_equal_times[memory]` und `[sqlite]`. Bestehende Vertragsfenster und 102-Notification-Gleichstände bleiben vollständig erreichbar; Tests unverändert.
+5. Freigegebener einzelner PostgreSQL-Nachlauf, hart 90 s: **1 Infrastruktur-ERROR vor Schemaanlage/Produkt, 0 PASS, 0 SKIP**, 6,28 s pytest / 7,87 s Wrapper, normal Exit1. Exakt `test_dashboard_summary_postgres.py::test_postgres_contract_window_and_equal_time_notification_keysets`; explizite dedizierte URL `postgresql://immo_ci@127.0.0.1:58112/immo_ci`. `Connection refused` bei erstem admin-Verbindungsaufbau (`test_housing_confirmation_postgres.py:52`), daher kein neues Schema, kein tatsächlicher PG-Produktaufruf und keine PG-Abnahme. Kein Publiceingriff/Dienststart/Restart. Erneuter einzelner Lauf erst nach Root-Infrastruktur-/Slotfreigabe; bestehende Fixture verwendet eigenes `housing_confirmation_<UUID>` und reguläre finale Schließung/Löschung nur dieses Schemas.
+
+Ruff auf beiden Produkt-/Testdateien PASS; `git diff --check` PASS. Alle Child-/Testsitzungen normal abgeschlossen, keine eigenen Native-/Server-/Browserprozesse bleiben. Produktquellen wurden zwischen den Gatephasen nicht editiert; der Fixturefix geschah ausschließlich nach dem ersten abgeschlossenen Lauf und vor neuer Freigabe/Frozen-HEAD.
+
+## Übergabe an Root/UI
+
+Übernahmereihenfolge: `f50b982`, `2186106`, `418cd42`, dieser separate Handoffcommit. Akzeptierter positiver Backendnachweis sind **fünf tatsächliche Fälle** (drei neue SQLite, zwei vorhandene Memory/SQLite), außerdem zwei historische Assertion-Gegenproben. PG bleibt ausdrücklich infrastrukturell offen. Keine zusätzliche Registry/Auth/Recovery-/Migrationskomposition nötig.
+
+Root koordiniert den einzelnen PG-Nachlauf und nach eigenem Durabilitygate den einzelnen tatsächlichen B2-Browserfall. Die vorangegangene Browserfehlermeldung ist der echte unabhängige Trigger, keine bereits bestandene Browserabnahme dieses Fixes. Keine allgemeine B1/B2-/A–L-/Großbestandsfreigabe aus diesem kleinen Paket.
+
+## Tatsächliche Root-Nachläufe
+
+Rootquelle `984615b`, 03.10.2026: nach rein lesendem Inventar hat Root den
+originalen ausschließlich synthetischen16.15-Testcluster mit ausdrücklichem
+`-D .../postgres-test-1615-20261002/cluster -h 127.0.0.1 -p 58112` gestartet.
+Der echte Postmaster4060/Sitzung57031 führte seine eigene WAL-Wiederherstellung
+durch und meldete Bereitschaft; keine PID-Datei wurde manuell gelöscht, kein
+5432-Start, Windowsdienst oder privater Server geändert.
+
+Exakt der vorher infrastrukturell blockierte unveränderte PG-Fall:
+**1 PASS / 8,57 Sekunden**, **11,03 Sekunden outer**, harter90-Sekunden-Rahmen,
+keine Skips. Tatsächlich eigenes `housing_confirmation_<UUID>`-Schema,
+DateTime-PostgreSQLzweig, Vertragsfenster und Benachrichtigungs-/Taskseiten.
+Das aktuelle JUnit wurde zusätzlich mit dem tatsächlichen
+`verified_case_count`-Releasevalidator geprüft: genau eine ausgeführte explizite
+PG-Identität, keine übersprungenen/fehlgeschlagenen Fälle. Beleg Root
+`artifacts/B1_TIMESTAMP_PG_ROOT_20261003.xml`. Eigene Verbindungen/UUIDschema
+wurden von der Fixture geschlossen/entfernt; public blieb unberührt.
+
+Danach genau den selbst gestarteten Cluster über seinen pg_ctl mit -m fast,
+-w und30-Sekunden-Wartebudget geordnet beendet. Postmaster4060 meldete
+abgeschlossenen Shutdown, Sitzung57031 endete Exit0. Keine Testserverreste.
+Der tatsächliche10.001er-Browsernachlauf auf `599bfb0` bestand separat mit
+allen13 IDs jeder der drei Familien; Einzelheiten/Bilder in
+`B2_DASHBOARD_NATIVE_DIAGNOSIS_20261003.md`. Damit ist dieser konkrete Fehler
+auch in PG und Browser geprüft; dies ist weiterhin keine Gesamtfreigabe.

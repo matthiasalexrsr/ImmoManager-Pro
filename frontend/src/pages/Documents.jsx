@@ -1,10 +1,13 @@
 import useWriteAccess from '../hooks/useWriteAccess';
 import { revisionOptions } from '../editRevision';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useAuth } from '../contexts/AuthContext';
+import { principalKey, errorMessage } from '../features/unitInventory/read';
+import DocumentInventoryList from '../features/documentInventory/DocumentInventoryList';
+import { useDocumentInventory } from '../features/documentInventory/useDocumentInventory';
+import DocumentInventoryForm from '../features/documentInventory/DocumentInventoryForm';
 import { api } from '../api';
-import { useEntities, useDataStore } from '../contexts/DataStoreContext';
-import DataTable from '../components/DataTable';
-import FormModal from '../components/FormModal';
+import { useDataStore } from '../contexts/DataStoreContext';
 import FileViewer from '../components/FileViewer';
 import DocumentVersionHistory from '../components/DocumentVersionHistory';
 import { PlusIcon } from '../components/Icons';
@@ -31,17 +34,19 @@ function guessDocType(filename) {
   return 'Sonstiges';
 }
 
-export default function Documents() {
+function DocumentsPage({ principal }) {
   const { t } = useTranslation();
   const confirm = useConfirm();
   const store = useDataStore();
-  const { items: properties } = useEntities('properties', '/properties');
-  const { items: units } = useEntities('units', '/units');
-  const { items: contracts } = useEntities('contracts', '/contracts');
-  const [documents, setDocuments] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const listing = useDocumentInventory(principal);
+  const [readError, setReadError] = useState(null);
+  const editRequest = useRef(null);
+  const mounted = useRef(true);
+  const uploadRequest = useRef(null);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; editRequest.current?.abort(); uploadRequest.current?.abort(); }; }, []);
   const [modal, setModal] = useState(null);
-  const { canWrite, isAllowed, requireWrite } = useWriteAccess('/documents', () => { setModal(null); setUploadedUrl(''); setOcrResult(null); setUploadQueue([]); setDragActive(false); if (fileRef.current) fileRef.current.value = ''; });
+  const { canWrite, isAllowed: grantAllowed, requireWrite } = useWriteAccess('/documents', () => { editRequest.current?.abort(); uploadRequest.current?.abort(); setModal(null); setUploadedUrl(''); setOcrResult(null); setUploadQueue([]); setDragActive(false); if (fileRef.current) fileRef.current.value = ''; });
+  const isAllowed = useCallback(() => mounted.current && grantAllowed(), [grantAllowed]);
   const [viewerFile, setViewerFile] = useState(null);
   const [historyDocument, setHistoryDocument] = useState(null);
   const [uploadedUrl, setUploadedUrl] = useState('');
@@ -52,7 +57,6 @@ export default function Documents() {
   const [ocrBusy, setOcrBusy] = useState(false);
   const ocrInFlight = useRef(false);
   const uploadInFlight = useRef(false);
-  const [filter, setFilter] = useState('all');
   const fileRef = useRef(null);
 
   const DOC_TYPES = useMemo(() => [
@@ -69,71 +73,21 @@ export default function Documents() {
     { value: 'Übergabeprotokoll', label: t('pages.documents.docTypes.uebergabeprotokoll') || 'Übergabeprotokoll' },
     { value: 'Handwerkerrechnung', label: t('pages.documents.docTypes.handwerkerrechnung') || 'Handwerkerrechnung' },
     { value: 'Steuerbescheid', label: t('pages.documents.docTypes.steuerbescheid') || 'Steuerbescheid' },
+    { value: 'housing_confirmation', label: 'Wohnungsgeberbestätigung' },
     { value: 'Sonstiges', label: t('pages.documents.docTypes.sonstiges') || 'Sonstiges' },
   ], [t]);
 
-  const refreshData = () => {
-    setLoading(true);
-    api.get('/documents').catch(() => [])
-      .then(data => setDocuments(Array.isArray(data) ? data : []))
-      .finally(() => setLoading(false));
+  const refreshData = listing.refresh;
+  const editDocument = async row => {
+    editRequest.current?.abort();
+    const controller = new AbortController(); editRequest.current = controller;
+    setReadError(null);
+    try {
+      const current = await api.get(`/documents/${encodeURIComponent(row.id)}`, { signal: controller.signal });
+      if (!current || current.id !== row.id) throw new Error('Die Antwort gehört nicht zum ausgewählten Dokument.');
+      if (!controller.signal.aborted && isAllowed()) setModal(current);
+    } catch (error) { if (!controller.signal.aborted) setReadError(error); }
   };
-
-  useEffect(() => {
-    let cancelled = false;
-    api.get('/documents').catch(() => [])
-      .then(data => { if (!cancelled) setDocuments(Array.isArray(data) ? data : []); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
-
-  // Lookup maps
-  const propMap = Object.fromEntries(properties.map(p => [p.id, p.name]));
-  const unitMap = Object.fromEntries(units.map(u => [u.id, u.label]));
-  const contractMap = Object.fromEntries(contracts.map(c => [c.id, c.contract_number]));
-
-  const enriched = documents.map(doc => ({
-    ...doc,
-    property_name: propMap[doc.property_id] || '—',
-    unit_label: unitMap[doc.unit_id] || '—',
-    contract_label: contractMap[doc.contract_id] || '—',
-    has_file: !!doc.file_url,
-  }));
-
-  const filtered = useMemo(() => {
-    if (filter === 'all') return enriched;
-    if (filter === 'no_assignment') return enriched.filter(d => !d.property_id && !d.unit_id && !d.contract_id);
-    if (filter === 'ocr_open') return enriched.filter(d => d.ocr_status === 'processing' || (!d.ocr_status && d.file_url));
-    return enriched;
-  }, [enriched, filter]);
-
-  // Summary stats
-  const withFile = enriched.filter(d => d.file_url).length;
-  const noAssignment = enriched.filter(d => !d.property_id && !d.unit_id && !d.contract_id).length;
-  const ocrCompleted = enriched.filter(d => d.ocr_status === 'completed').length;
-
-  const columns = [
-    { key: 'title', label: t('pages.documents.columns.title') || 'Titel', filterType: 'text' },
-    { key: 'document_type', label: t('pages.documents.columns.type') || 'Typ', filterType: 'select' },
-    { key: 'property_name', label: 'Immobilie', filterType: 'text' },
-    { key: 'unit_label', label: 'Einheit', filterType: 'text' },
-    { key: 'contract_label', label: 'Vertrag', filterType: 'text' },
-    { key: 'document_date', label: t('pages.documents.columns.date') || 'Datum', type: 'date', filterType: 'dateRange' },
-    { key: 'tags', label: t('pages.documents.columns.tags') || 'Tags', filterType: 'text' },
-    { key: 'has_file', label: t('pages.documents.columns.file') || 'Datei',
-      render: v => v ? (t('pages.documents.columns.filePresent') || '✓ Vorhanden') : '—' },
-    { key: 'ocr_status', label: t('pages.documents.columns.ocr') || 'OCR', render: v => {
-      if (v === 'completed') return t('pages.documents.ocr.completed') || '✓ Erkannt';
-      if (v === 'processing') return t('pages.documents.ocr.processing') || '⏳ Läuft...';
-      if (v === 'failed') return t('pages.documents.ocr.failed') || '✗ Fehler';
-      return '—';
-    }},
-    { key: 'version_history', label: t('pages.documents.versions.openHistory'),
-      render: (_value, row) => <button type="button" className="btn btn-secondary btn-sm"
-        onClick={event => { event.stopPropagation(); setHistoryDocument(row); }}>
-        {t('pages.documents.versions.openHistory')}
-      </button> },
-  ];
 
   const analyzeUploaded = useCallback(async (fileUrl, filename) => {
     if (!isAllowed() || ocrInFlight.current) return;
@@ -165,10 +119,12 @@ export default function Documents() {
       const formData = new FormData();
       formData.append('file', file);
       const token = localStorage.getItem('access_token');
+      const controller = new AbortController(); uploadRequest.current = controller;
       const res = await fetch(`${BASE}/files/upload?folder=documents`, {
         method: 'POST',
         body: formData,
         headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
       });
       if (!res.ok) throw new Error(t('pages.documents.upload.failed') || 'Upload fehlgeschlagen');
       const data = await res.json();
@@ -219,14 +175,8 @@ export default function Documents() {
 
   const fields = [
     { key: 'title', label: t('pages.documents.form.title') || 'Titel', required: true },
-    { key: 'document_type', label: t('pages.documents.form.docType') || 'Dokumententyp', type: 'select', options: DOC_TYPES },
+    { key: 'document_type', label: t('pages.documents.form.docType') || 'Dokumententyp', type: 'select', options: modal?.document_type && !DOC_TYPES.some(option => option.value === modal.document_type) ? [...DOC_TYPES, { value: modal.document_type, label: modal.document_type }] : DOC_TYPES },
     { key: 'document_date', label: t('pages.documents.form.date') || 'Datum', type: 'date' },
-    { key: 'property_id', label: t('pages.documents.form.property') || 'Immobilie', type: 'select',
-      options: [{ value: '', label: t('pages.documents.form.noneOption') || '— Keine —' }, ...properties.map(p => ({ value: p.id, label: p.name }))] },
-    { key: 'unit_id', label: t('pages.documents.form.unit') || 'Einheit', type: 'select',
-      options: [{ value: '', label: t('pages.documents.form.noneOption') || '— Keine —' }, ...units.map(u => ({ value: u.id, label: u.label }))] },
-    { key: 'contract_id', label: t('pages.documents.form.contract') || 'Vertrag', type: 'select',
-      options: [{ value: '', label: t('pages.documents.form.noContract') || '— Kein —' }, ...contracts.map(c => ({ value: c.id, label: c.contract_number }))] },
     { key: 'description', label: t('pages.documents.form.description') || 'Beschreibung', type: 'textarea' },
     { key: 'tags', label: t('pages.documents.form.tags') || 'Tags', placeholder: t('pages.documents.form.tagsPlaceholder') || 'kommagetrennt' },
     { key: 'file_url', type: 'hidden', required: true, default: uploadedUrl },
@@ -234,64 +184,35 @@ export default function Documents() {
 
   const handleSave = async (data) => {
     requireWrite();
+    if (!mounted.current) throw new Error('Die Anmeldung wurde geändert.');
     if (modal === 'create') {
       await api.post('/documents', data);
     } else {
-      await api.put(`/documents/${modal.id}`, data);
+      await api.put(`/documents/${modal.id}`, data, { ...revisionOptions(modal), ...revisionOptions(data) });
     }
-    refreshData();
-    if (store) store.invalidateRelated('documents');
+    if (isAllowed()) { refreshData(); store?.invalidateRelated('documents'); }
   };
 
   const handleDelete = async (row) => {
     if (!isAllowed()) return;
     if (!await confirm(`"${row.title}" ${t('modals.confirmDelete.body')}`)) return;
     if (!isAllowed()) return;
-    await api.del(`/documents/${row.id}`, revisionOptions(row));
-    refreshData();
-    if (store) store.invalidateRelated('documents');
+    try {
+      await api.del(`/documents/${row.id}`, revisionOptions(row));
+      refreshData();
+      if (store) store.invalidateRelated('documents');
+    } catch (error) { setReadError(error); }
   };
 
-  if (loading) return <div className="page-loading">Lade Dokumente...</div>;
-
   return (
-    <div className="page documents-page">
+    <div className="page documents-page unit-inventory">
       <h1 className="page-title">{t('pages.documents.title') || 'Dokumente'}</h1>
 
-      {/* Summary cards */}
-      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '120px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{enriched.length}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Gesamt</div>
-        </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '120px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{withFile}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Mit Datei</div>
-        </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '120px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{ocrCompleted}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>OCR erkannt</div>
-        </div>
-        {noAssignment > 0 && (
-          <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '120px', textAlign: 'center' }}>
-            <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--warning)' }}>{noAssignment}</div>
-            <div className="text-muted" style={{ fontSize: '0.8rem' }}>Ohne Zuordnung</div>
-          </div>
-        )}
-      </div>
-
-      {/* Filter tabs */}
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
-        {[
-          { key: 'all', label: 'Alle' },
-          { key: 'no_assignment', label: 'Ohne Zuordnung' },
-          { key: 'ocr_open', label: 'OCR offen' },
-        ].map(f => (
-          <button key={f.key} className={`btn btn-sm ${filter === f.key ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setFilter(f.key)}>
-            {f.label}
-          </button>
-        ))}
-      </div>
+      {readError && <div className="panel inventory-error" role="alert">{errorMessage(readError)}</div>}
+      <DocumentInventoryList listing={listing} principal={principal} types={DOC_TYPES}
+        onAdd={canWrite ? () => setModal('create') : undefined}
+        onEdit={canWrite ? editDocument : undefined} onDelete={canWrite ? handleDelete : undefined}
+        onView={row => setViewerFile(row.file_url)} onHistory={setHistoryDocument} />
 
       {/* Upload zone */}
       {canWrite && <div style={{ marginBottom: '1rem' }}>
@@ -301,6 +222,8 @@ export default function Documents() {
           onDragLeave={() => setDragActive(false)}
           onDrop={handleDrop}
           onClick={() => fileRef.current?.click()}
+          role="button" tabIndex={0} aria-disabled={uploading || ocrBusy}
+          onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); fileRef.current?.click(); } }}
         >
           <input
             ref={fileRef}
@@ -364,18 +287,10 @@ export default function Documents() {
         </div>
       )}
 
-      <DataTable
-        title={t('pages.documents.title') || 'Dokumente'}
-        columns={columns}
-        data={filtered}
-        onAdd={canWrite ? () => setModal('create') : undefined}
-        onEdit={canWrite ? row => setModal(row) : undefined}
-        onDelete={canWrite ? handleDelete : undefined}
-        onRowClick={row => row.file_url && setViewerFile(row.file_url)}
-      />
-
       {modal && canWrite && (
-        <FormModal
+        <DocumentInventoryForm
+          key={modal.id || 'create'} principal={principal}
+          uploadedUrl={uploadedUrl} onFileChange={uploadFile} uploading={uploading || ocrBusy}
           title={modal === 'create' ? 'Dokument erstellen' : 'Dokument bearbeiten'}
           fields={fields}
           initial={modal === 'create' ? null : modal}
@@ -388,4 +303,9 @@ export default function Documents() {
         onClose={() => setHistoryDocument(null)} />}
     </div>
   );
+}
+
+export default function Documents() {
+  const principal = principalKey(useAuth()?.user);
+  return <DocumentsPage key={principal} principal={principal} />;
 }

@@ -219,6 +219,10 @@ _EXPLICIT_THIRD_PARTY = [
 # Collect bundled data files from project
 # ---------------------------------------------------------------------------
 backend_data = list(collected_datas)
+backend_data.append((
+    os.path.join(ROOT, 'backend', 'legacy_sqlite_upgrade', 'release126_profiles.json'),
+    'backend/legacy_sqlite_upgrade',
+))
 
 # Include i18n locale files
 i18n_dir = os.path.join(ROOT, 'i18n')

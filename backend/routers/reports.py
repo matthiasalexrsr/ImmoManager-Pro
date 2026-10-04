@@ -1,15 +1,25 @@
 import csv
 import io
 from datetime import date
+from decimal import Decimal
+from types import SimpleNamespace
+from typing import Annotated, Any
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Body, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from ..dependencies import store
-from ..services import report_service
+from ..services import financial_cash, report_service
 
 router = APIRouter(prefix="/reports", tags=["Berichte"])
+
+
+def _cash_source_url(filters):
+    """Provenance must retain exactly the report's basis and object selection."""
+    values = {key: value for key, value in filters.items() if value is not None and value != []}
+    return "/api/v1/reports/cash/sources?" + urlencode(values, doseq=True)
 
 
 def _csv_response(rows: list[dict], filename: str) -> StreamingResponse:
@@ -60,19 +70,28 @@ def get_summary(format: str | None = Query(None, alias="format")):
 
 
 @router.get("/finance")
-def get_finance_report(format: str | None = Query(None, alias="format")):
-    data = report_service.compute_finance(
-        bookings=store.list_bookings(),
-        categories=store.list_categories(),
-    )
+def get_finance_report(format: Annotated[str | None, Query(alias="format")] = None,
+                       date_from: date | None = None, date_to: date | None = None,
+                       portfolio_id: str | None = None, property_id: str | None = None, unit_id: str | None = None):
+    source = financial_cash.report(store, financial_cash.CashFilters(date_from=date_from, date_to=date_to,
+        portfolio_id=portfolio_id, property_ids=[property_id] if property_id else [], unit_id=unit_id, basis="recorded_bookings"))
+    data: dict[str, Any] = {"totalsByCategory": [{"categoryId": row["category_id"], "categoryName": row["name"],
+        "categoryType": row["category_type"], "total": float(row["net"]), "exactTotal": row["net"]}
+        for row in source["categories"] if row["category_id"]],
+        "uncategorizedTotal": float(next((row["net"] for row in source["categories"] if row["category_id"] is None), "0.00")),
+        "exactUncategorizedTotal": next((row["net"] for row in source["categories"] if row["category_id"] is None), "0.00"),
+        "bookingsTotal": float(source["net"]), "exactTotal": source["net"], "currency": source["currency"],
+        "basis": source["basis"], "source_hash": source["source_hash"], "source_count": source["source_count"],
+        "excluded_count": source["excluded_count"], "source_filters": source["filters"],
+        "source_url": _cash_source_url(source["filters"])}
 
     if format == "csv":
         rows = [
-            {"Kategorie": t["categoryName"], "Typ": t["categoryType"], "Betrag": t["total"]}
+            {"Kategorie": t["categoryName"], "Typ": t["categoryType"], "Betrag": t["exactTotal"]}
             for t in data["totalsByCategory"]
         ]
         if data["uncategorizedTotal"]:
-            rows.append({"Kategorie": "Unkategorisiert", "Typ": "-", "Betrag": data["uncategorizedTotal"]})
+            rows.append({"Kategorie": "Unkategorisiert", "Typ": "-", "Betrag": data["exactUncategorizedTotal"]})
         return _csv_response(rows, "finanzbericht.csv")
 
     return data
@@ -118,14 +137,22 @@ def get_receivables_aging(format: str | None = Query(None, alias="format")):
 
 
 @router.get("/cashflow")
-def get_cashflow_report(format: str | None = Query(None, alias="format")):
-    data = report_service.compute_cashflow(bookings=store.list_bookings())
+def get_cashflow_report(format: Annotated[str | None, Query(alias="format")] = None,
+                        date_from: date | None = None, date_to: date | None = None,
+                        portfolio_id: str | None = None, property_id: str | None = None, unit_id: str | None = None):
+    source = financial_cash.report(store, financial_cash.CashFilters(date_from=date_from, date_to=date_to,
+        portfolio_id=portfolio_id, property_ids=[property_id] if property_id else [], unit_id=unit_id, basis="recorded_bookings"))
+    data = {"incomeTotal": float(source["income"]), "expenseTotal": float(source["expense"]), "netTotal": float(source["net"]),
+        "exactIncome": source["income"], "exactExpense": source["expense"], "exactNet": source["net"],
+        "currency": source["currency"], "basis": source["basis"], "source_hash": source["source_hash"],
+        "source_count": source["source_count"], "excluded_count": source["excluded_count"],
+        "source_filters": source["filters"], "source_url": _cash_source_url(source["filters"])}
 
     if format == "csv":
         rows = [{
-            "Einnahmen": data["incomeTotal"],
-            "Ausgaben": data["expenseTotal"],
-            "Netto": data["netTotal"],
+            "Einnahmen": data["exactIncome"],
+            "Ausgaben": data["exactExpense"],
+            "Netto": data["exactNet"],
         }]
         return _csv_response(rows, "cashflow.csv")
 
@@ -250,7 +277,7 @@ def import_bookings(
     page_size = min(100, capacity()[0])
     error_page = legacy_call(preview_import, store, job["id"], page_size=page_size, errors_only=True, scope=selected_scope)
     errors = [{"row": row["ordinal"], "error": row["error_message"]} for row in error_page["items"]]
-    receipts = {"items": [], "has_more": False, "next_after": None}
+    receipts: dict[str, Any] = {"items": [], "has_more": False, "next_after": None}
     if not job["error_count"] and job["state"] in {"ready", "committed"}:
         job = legacy_call(commit_import, store, job["id"], BankConfirm(revision=job["revision"], preview_hash=job["preview_hash"]), scope=selected_scope)
         receipts = legacy_call(import_receipts, store, job["id"], page_size=page_size, scope=selected_scope)
@@ -268,18 +295,24 @@ def import_bookings(
 
 @router.get("/liquidity-forecast", response_model=None)
 def liquidity_forecast(
-    months: int = Query(12, ge=1, le=60),
-    property_id: str | None = Query(None),
+    months: Annotated[int, Query(ge=1)] = 12,
+    property_id: str | None = None,
+    portfolio_id: str | None = None,
+    unit_id: str | None = None,
+    as_of: date | None = None,
+    starting_balance: str | None = None,
 ):
-    """T28: Liquidity forecast for 3/6/12 months based on historical data."""
-    bookings = store.list_bookings()
-    if property_id:
-        bookings = [b for b in bookings if b.property_id == property_id]
-
-    return report_service.compute_liquidity_forecast(
-        bookings=bookings,
-        months=months,
-    )
+    """Historical scenario; separate from future contractual obligations."""
+    filters = financial_cash.CashFilters(portfolio_id=portfolio_id, property_ids=[property_id] if property_id else [],
+        unit_id=unit_id, basis="recorded_bookings", as_of=as_of or date.today())
+    try:
+        with financial_cash.sources(store, filters) as rows:
+            data = report_service.compute_liquidity_forecast(bookings=(SimpleNamespace(booking_date=date.fromisoformat(row["booking_date"]),
+                amount=Decimal(row["amount"])) for row in rows if row["included"]), months=months,
+                today=filters.as_of, starting_balance=starting_balance)
+        return data | {"source_basis": filters.basis, "filters": filters.model_dump(mode="json")}
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from None
 
 
 @router.get("/pdf/{report_name}", response_model=None)

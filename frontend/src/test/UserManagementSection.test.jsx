@@ -25,6 +25,7 @@ function translate(key, params = {}) {
   for (const [name, replacement] of Object.entries(params)) value = value.replaceAll(`{{${name}}}`, replacement);
   return value;
 }
+let createdAccountSequence = 0;
 const fixtures = [
   { id: 'owner', username: 'own', full_name: 'Olivia Eigentümer', email: 'olivia@example.com', role: 'eigentuemer', is_active: true },
   { id: 'owner2', username: 'second', full_name: 'Sven Eigentümer', email: 'sven@example.com', role: 'eigentuemer', is_active: true },
@@ -45,12 +46,13 @@ function fillCreate(password = 'lange geheime passphrase') {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  createdAccountSequence = 0;
   records = fixtures.map(row => ({ ...row }));
   mocks.locale = 'de-DE'; mocks.t = translate; setRole('eigentuemer');
   mocks.saveError = null; mocks.retrySave.mockResolvedValue(undefined);
   mocks.get.mockResolvedValue({ version: '1.0' });
   mocks.getAll.mockImplementation(async path => path === '/portfolios' ? [{ id: 'a', name: 'Portfolio A' }, { id: 'b', name: 'Portfolio B' }] : records);
-  mocks.post.mockImplementation(async (_path, payload) => ({ id: 'new-account', ...payload, is_active: true, portfolio_access_origin: 'owner_assignment' }));
+  mocks.post.mockImplementation(async (_path, payload) => ({ id: `new-account-${++createdAccountSequence}`, ...payload, is_active: true, portfolio_access_origin: 'owner_assignment' }));
   mocks.patch.mockImplementation(async (path, payload) => ({ ...records.find(row => row.id === path.split('/').at(-1)), ...payload }));
 });
 

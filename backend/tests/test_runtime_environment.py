@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from backend.runtime_environment import RuntimeConfigurationError, persist_default
+from backend.runtime_environment import RuntimeConfigurationError, persist_default, persist_selected_values
 
 ROOT = Path(__file__).resolve().parents[2]
 KEY = "ENCRYPTION_KEY"
@@ -84,3 +84,113 @@ def test_ambiguous_keys_require_repair_before_start(tmp_path, monkeypatch):
         persist_default(target, KEY, "synthetic-proposal")
     assert KEY not in os.environ
     assert target.read_text(encoding="utf-8") == content
+
+
+def test_explicit_key_bundle_refuses_any_conflict_before_appending_other_keys(tmp_path):
+    target = tmp_path / ".env"
+    original = b"# Keep the original\nENCRYPTION_KEY=existing-stable-key\n"
+    target.write_bytes(original)
+    with pytest.raises(RuntimeConfigurationError, match="Erstinitialisierung ersetzt keine"):
+        persist_selected_values(target, {"ENCRYPTION_INDEX_KEY": "new-index", "ENCRYPTION_KEY": "different-key"})
+    assert target.read_bytes() == original
+    assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_explicit_key_bundle_failed_atomic_publication_keeps_every_original_value(tmp_path, monkeypatch):
+    target = tmp_path / ".env"
+    original = b"# Existing runtime\nEXISTING=preserved\n"
+    target.write_bytes(original)
+    monkeypatch.setattr("backend.runtime_environment.os.replace", lambda *_: (_ for _ in ()).throw(PermissionError()))
+    with pytest.raises(RuntimeConfigurationError, match="dauerhaft gespeichert"):
+        persist_selected_values(target, {"ENCRYPTION_KEY": "synthetic-selected-key", "ENCRYPTION_INDEX_KEY": "synthetic-index"})
+    assert target.read_bytes() == original
+    assert not list(tmp_path.glob("*.tmp"))
+
+
+@pytest.mark.parametrize("stored_key", ["encryption_key", "EnCrYpTiOn_KeY"])
+def test_explicit_bundle_preserves_case_insensitive_matching_original(tmp_path, stored_key):
+    target = tmp_path / ".env"
+    original = f"# Preserved spelling\n{stored_key}=synthetic-stable-key\n".encode()
+    target.write_bytes(original)
+    persist_selected_values(target, {KEY: "synthetic-stable-key"})
+    assert target.read_bytes() == original
+    assert not list(tmp_path.glob("*.tmp"))
+
+
+@pytest.mark.parametrize("stored_key", ["encryption_key", "EnCrYpTiOn_KeY"])
+def test_explicit_bundle_rejects_case_insensitive_conflict_before_any_append(tmp_path, stored_key):
+    target = tmp_path / ".env"
+    original = f"{stored_key}=synthetic-existing-key\n".encode()
+    target.write_bytes(original)
+    with pytest.raises(RuntimeConfigurationError, match="Erstinitialisierung ersetzt keine"):
+        persist_selected_values(target, {"ENCRYPTION_INDEX_KEY": "new-index", KEY: "different-key"})
+    assert target.read_bytes() == original
+    assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_explicit_bundle_rejects_mixed_case_duplicate_even_with_equal_values(tmp_path):
+    target = tmp_path / ".env"
+    original = b"encryption_key=same-key\nENCRYPTION_KEY=same-key\n"
+    target.write_bytes(original)
+    with pytest.raises(RuntimeConfigurationError, match="Erstinitialisierung ersetzt keine"):
+        persist_selected_values(target, {"ENCRYPTION_INDEX_KEY": "new-index", KEY: "same-key"})
+    assert target.read_bytes() == original
+    assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_normal_default_preserves_case_insensitive_saved_key(tmp_path, monkeypatch):
+    monkeypatch.delenv(KEY, raising=False)
+    target = tmp_path / ".env"
+    original = b"encryption_key=synthetic-stable-key\n"
+    target.write_bytes(original)
+    assert persist_default(target, KEY, "synthetic-replacement") == "synthetic-stable-key"
+    assert os.environ[KEY] == "synthetic-stable-key"
+    assert target.read_bytes() == original
+
+
+def test_normal_default_refuses_mixed_case_duplicate_before_using_key(tmp_path, monkeypatch):
+    monkeypatch.delenv(KEY, raising=False)
+    target = tmp_path / ".env"
+    original = b"encryption_key=same-key\nENCRYPTION_KEY=same-key\n"
+    target.write_bytes(original)
+    with pytest.raises(RuntimeConfigurationError, match="Doppelte"):
+        persist_default(target, KEY, "synthetic-replacement")
+    assert KEY not in os.environ
+    assert target.read_bytes() == original
+
+
+@pytest.mark.parametrize("value", ["synthetic-signer-ending'", '"synthetic-signer"',
+    " leading and trailing signer ", r"synthetic\\signer\path", "synthetic-signer-é\tquoted'",
+    "synthetic # signer", "synthetic\v\f\a\bcontrol", "synthetic\x1c\x85\u2028\u2029separator",
+    "synthetic-${NEVER_EXPAND}"])
+def test_selected_bundle_actual_loader_and_settings_roundtrip(tmp_path, monkeypatch, value):
+    from dotenv import dotenv_values
+
+    from backend.__main__ import _load_env_file
+    from backend.settings import Settings
+
+    for name in list(os.environ):
+        if name.lower() == "jwt_secret_key":
+            monkeypatch.delenv(name)
+    target = tmp_path / ".env"
+    persist_selected_values(target, {"JWT_SECRET_KEY": value})
+    original = target.read_bytes()
+    assert dotenv_values(target, interpolate=False)["JWT_SECRET_KEY"] == value
+    _load_env_file(target)
+    assert os.environ["JWT_SECRET_KEY"] == value
+    assert Settings(_env_file=None).jwt_secret_key == value
+    persist_selected_values(target, {"JWT_SECRET_KEY": value})
+    assert target.read_bytes() == original
+    monkeypatch.delenv("JWT_SECRET_KEY")
+
+
+@pytest.mark.parametrize("quoted", ['"C:\\new\\temp"', "'C:\\new\\temp'"])
+def test_legacy_simply_quoted_windows_paths_remain_literal(tmp_path, monkeypatch, quoted):
+    from backend.__main__ import _load_env_file
+
+    monkeypatch.delenv("DATA_DIR", raising=False)
+    target = tmp_path / ".env"
+    target.write_text("DATA_DIR=" + quoted + "\n", encoding="utf-8")
+    _load_env_file(target)
+    assert os.environ["DATA_DIR"] == r"C:\new\temp"
+    monkeypatch.delenv("DATA_DIR")

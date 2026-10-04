@@ -1,108 +1,229 @@
-"""AI-powered message thread analysis: summarization and action item extraction."""
+"""AI-powered message thread analysis with explicit full-source coverage."""
 
 from __future__ import annotations
 
+import hashlib
 import logging
-from typing import Optional
+from typing import Any, Optional
 
-from .hf_runtime import runtime
-from .schemas import ThreadSummaryResult
+from .hf_runtime import SectionPlan, TextSection, plan_text_sections, runtime, section_fits_plan
+from .schemas import AnalysisCoverage, MissingRange, SourceRange, ThreadSummaryResult
 
 logger = logging.getLogger(__name__)
 
 
+def _model_id(pipe: Any) -> str:
+    model = getattr(pipe, "model", None)
+    value = getattr(model, "name_or_path", None)
+    return value if isinstance(value, str) and value else runtime.config.summarization_model
+
+
+def _range(section: TextSection) -> SourceRange:
+    return SourceRange(section.index, section.start_offset, section.end_offset)
+
+
+def _failure(section: TextSection, exc: BaseException) -> MissingRange:
+    return MissingRange(
+        section.index,
+        section.start_offset,
+        section.end_offset,
+        "pipeline_error",
+        type(exc).__name__,
+    )
+
+
+def _coverage(
+    text: str,
+    plan: SectionPlan,
+    model: str | None,
+    covered: list[SourceRange],
+    missing: list[MissingRange],
+) -> AnalysisCoverage:
+    return AnalysisCoverage(
+        capability="summarization",
+        source_length=len(text),
+        source_sha256=hashlib.sha256(text.encode('utf-8')).hexdigest(),
+        complete=not missing and len(covered) == len(plan.sections),
+        budget_kind=plan.budget_kind,
+        section_budget=plan.section_budget,
+        section_overlap=plan.section_overlap,
+        model=model,
+        covered_ranges=covered,
+        missing_ranges=missing,
+    )
+
+
+def _unavailable_coverage(text: str) -> AnalysisCoverage:
+    return AnalysisCoverage(
+        capability="summarization",
+        source_length=len(text),
+        source_sha256=hashlib.sha256(text.encode('utf-8')).hexdigest(),
+        complete=not text,
+        budget_kind="unavailable",
+        section_budget=0,
+        covered_ranges=[],
+        missing_ranges=(
+            [MissingRange(0, 0, len(text), "pipeline_unavailable", "PipelineUnavailable")]
+            if text
+            else []
+        ),
+    )
+
+
+def _conversation_text(messages: list[dict], subject: str) -> str:
+    parts: list[str] = []
+    if subject:
+        parts.append(f"Betreff: {subject}")
+    for message in messages:
+        sender = message.get("sender_name", "Unbekannt")
+        body = message.get("body", "")
+        parts.append(f"{sender}: {body}")
+    return "\n".join(parts)
+
+
 def summarize_thread(messages: list[dict], subject: str = "") -> ThreadSummaryResult:
-    """Summarize a message thread using HF summarization model.
-
-    Args:
-        messages: List of dicts with 'sender_name' and 'body' keys.
-        subject: Thread subject for context.
-
-    Returns:
-        ThreadSummaryResult with summary, key points, and action items.
-    """
+    """Summarize all message source text without silently dropping later messages."""
     if not messages:
         return ThreadSummaryResult(summary="Keine Nachrichten vorhanden.")
 
-    # Build conversation text
-    conversation_parts = []
-    if subject:
-        conversation_parts.append(f"Betreff: {subject}")
-    for msg in messages:
-        sender = msg.get("sender_name", "Unbekannt")
-        body = msg.get("body", "")
-        conversation_parts.append(f"{sender}: {body}")
-
-    full_text = "\n".join(conversation_parts)
-
-    # Try AI summarization first
+    full_text = _conversation_text(messages, subject)
     if runtime.is_available:
         result = _ai_summarize(full_text)
         if result is not None:
             return result
 
-    # Fallback: extractive summary (first and last messages)
-    return _extractive_fallback(messages, subject)
+    fallback = _extractive_fallback(messages, subject)
+    fallback.analysis_complete = False
+    fallback.coverage["summarization"] = _unavailable_coverage(full_text)
+    return fallback
 
 
 def _ai_summarize(text: str) -> Optional[ThreadSummaryResult]:
-    """Use HF summarization pipeline."""
     pipe = runtime.get_pipeline("summarization")
     if pipe is None:
         return None
 
-    try:
-        truncated = text[: runtime.config.max_input_length]
+    model_id = _model_id(pipe)
+    plan = plan_text_sections(text, pipe, runtime.config.max_input_length)
+    covered: list[SourceRange] = []
+    missing: list[MissingRange] = []
+    section_results: list[dict[str, Any]] = []
+    summaries: list[str] = []
 
-        # Skip if text is too short for summarization
-        if len(truncated.split()) < 20:
-            return None
+    for section in plan.sections:
+        fits = section_fits_plan(section, pipe, plan)
+        if plan.budget_kind.startswith("tokens") and fits is not True:
+            missing.append(
+                MissingRange(
+                    section.index,
+                    section.start_offset,
+                    section.end_offset,
+                    (
+                        "section_token_budget_exceeded"
+                        if fits is False
+                        else "section_token_budget_unverified"
+                    ),
+                    "TokenBudgetVerificationFailed",
+                )
+            )
+            continue
+        try:
+            word_count = len(section.text.split())
+            raw = pipe(
+                section.text,
+                max_length=200,
+                min_length=30 if word_count >= 20 else 1,
+                do_sample=False,
+            )
+            if (
+                not isinstance(raw, (list, tuple))
+                or not raw
+                or not isinstance(raw[0], dict)
+                or not isinstance(raw[0].get("summary_text"), str)
+            ):
+                raise ValueError("summarization output shape")
+            summary = raw[0]["summary_text"]
+            covered.append(_range(section))
+            section_results.append(
+                {
+                    "section_index": section.index,
+                    "start_offset": section.start_offset,
+                    "end_offset": section.end_offset,
+                    "summary_text": summary,
+                    "method": "model",
+                    "model": model_id,
+                }
+            )
+            summaries.append(summary)
+        except Exception as exc:
+            logger.warning(
+                "Thread summarization section failed error_type=%s",
+                type(exc).__name__,
+            )
+            missing.append(_failure(section, exc))
 
-        result = pipe(truncated, max_length=200, min_length=30, do_sample=False)
-        summary_text = result[0]["summary_text"]
+    coverage = _coverage(text, plan, model_id, covered, missing)
+    if summaries:
+        summary_text = "\n\n".join(summaries)
+    else:
+        summary_text = text if len(text) <= 300 else text[:300]
 
-        # Extract action items with zero-shot classification
-        action_items = _extract_action_items(text)
-
-        model_id = getattr(pipe.model, "name_or_path", None) or runtime.config.summarization_model
-        return ThreadSummaryResult(
-            summary=summary_text,
-            key_points=_extract_key_points(text),
-            action_items=action_items,
-            ai_model=model_id,
-        )
-    except Exception:
-        logger.warning("Thread summarization failed", exc_info=True)
-        return None
+    return ThreadSummaryResult(
+        summary=summary_text,
+        key_points=_extract_key_points(text),
+        action_items=_extract_action_items(text),
+        ai_model=model_id,
+        analysis_complete=coverage.complete,
+        coverage={"summarization": coverage},
+        summary_sections=section_results,
+    )
 
 
 def _extract_key_points(text: str) -> list[str]:
-    """Extract key sentences as bullet points (heuristic)."""
-    sentences = [s.strip() for s in text.replace("\n", ". ").split(". ") if len(s.strip()) > 20]
-    # Return up to 5 representative sentences
+    """Representative sentences; this is intentionally a compact view."""
+    sentences = [
+        sentence.strip()
+        for sentence in text.replace("\n", ". ").split(". ")
+        if len(sentence.strip()) > 20
+    ]
     if len(sentences) <= 5:
         return sentences
     step = max(1, len(sentences) // 5)
-    return [sentences[i] for i in range(0, len(sentences), step)][:5]
+    return [sentences[index] for index in range(0, len(sentences), step)][:5]
 
 
 def _extract_action_items(text: str) -> list[str]:
-    """Detect action items using keyword heuristics."""
+    """Return every detected action sentence; no fixed first-N truncation."""
     action_keywords = [
-        "bitte", "muss", "soll", "bis zum", "deadline", "erledigen",
-        "dringend", "termin", "vereinbaren", "überweisen", "reparieren",
-        "beauftragen", "prüfen", "klären",
+        "bitte",
+        "muss",
+        "soll",
+        "bis zum",
+        "deadline",
+        "erledigen",
+        "dringend",
+        "termin",
+        "vereinbaren",
+        "überweisen",
+        "reparieren",
+        "beauftragen",
+        "prüfen",
+        "klären",
     ]
-    sentences = [s.strip() for s in text.replace("\n", ". ").split(". ") if s.strip()]
-    items = []
-    for sentence in sentences:
-        if any(kw in sentence.lower() for kw in action_keywords):
-            items.append(sentence)
-    return items[:10]
+    sentences = [
+        sentence.strip()
+        for sentence in text.replace("\n", ". ").split(". ")
+        if sentence.strip()
+    ]
+    return [
+        sentence
+        for sentence in sentences
+        if any(keyword in sentence.lower() for keyword in action_keywords)
+    ]
 
 
 def _extractive_fallback(messages: list[dict], subject: str) -> ThreadSummaryResult:
-    """Simple extractive summary when AI is not available."""
+    """Compact fallback when no summarization pipeline is available."""
     parts = []
     if subject:
         parts.append(f"Betreff: {subject}")
@@ -111,7 +232,6 @@ def _extractive_fallback(messages: list[dict], subject: str) -> ThreadSummaryRes
         body = messages[0].get("body", "")
         parts.append(body[:300])
     else:
-        # First and last message
         first = messages[0]
         last = messages[-1]
         parts.append(f"{first.get('sender_name', '?')}: {first.get('body', '')[:150]}")
@@ -123,6 +243,6 @@ def _extractive_fallback(messages: list[dict], subject: str) -> ThreadSummaryRes
         summary="\n".join(parts),
         key_points=[],
         action_items=_extract_action_items(
-            "\n".join(m.get("body", "") for m in messages)
+            "\n".join(message.get("body", "") for message in messages)
         ),
     )

@@ -5,6 +5,7 @@ import json
 from contextlib import nullcontext
 from typing import Any, NoReturn, cast
 
+from fastapi import HTTPException
 from pydantic import BaseModel
 
 from .. import models as m
@@ -153,6 +154,10 @@ def _graph(store: Any, tenant_id: str) -> dict:
     data: dict[str, Any] = {"tenant": tenant, "contracts": contracts}
     for name, model, optional in _CONTRACT_COLLECTIONS:
         data[name] = _select(_read(store, f"list_{name}", model), "contract_id", ids, optional)
+    from .billing_statement_parties import party
+    snapshot = getattr(store, "store", store)
+    data["utility_statements"] = [row for row in data["utility_statements"]
+        if (original := party(row, snapshot.get_billing_period(row["billing_period_id"]))) is None or original.tenant_id == tenant_id]
 
     data["billing_settlements"] = _select(
         _rows(_settlements(store), m.BillingSettlement), "contract_id", ids,
@@ -263,7 +268,7 @@ def _graph(store: Any, tenant_id: str) -> dict:
                     redactions.append({"collection": name, "id": row["id"], "field": field})
                 row.pop(field)
 
-    return {
+    graph = {
         "schema_version": "tenant-data-graph/1",
         "scope": {
             "selection": "explicit_tenant_contract_relationships",
@@ -278,6 +283,9 @@ def _graph(store: Any, tenant_id: str) -> dict:
         },
         **data,
     }
+    from .tenant_retained_graph import append_retained_graph
+    snapshot = getattr(store, "store", store)
+    return append_retained_graph(snapshot, graph)
 
 
 def tenant_data_graph(store: Any, tenant_id: str) -> dict:
@@ -289,7 +297,7 @@ def tenant_data_graph(store: Any, tenant_id: str) -> dict:
             _fail("Export requires a clean read session")
         with db.no_autoflush if db is not None else nullcontext():
             return _graph(store, tenant_id)
-    except (TenantExportError, TenantNotFoundError):
+    except (TenantExportError, TenantNotFoundError, HTTPException):
         raise
     except Exception as exc:
         raise TenantExportError("Tenant graph export failed; no partial export") from exc

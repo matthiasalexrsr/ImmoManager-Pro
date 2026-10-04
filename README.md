@@ -29,7 +29,24 @@ The starter checks Python 3.11+, creates `.venv` when needed, verifies backend d
 - Backups: `%LOCALAPPDATA%\ImmoManagerPro\backups`
 - Logs: `%LOCALAPPDATA%\ImmoManagerPro\logs`
 
-On a new installation, open the local login page and create your owner account.
+Production startup checks an explicitly installed database and performs no
+automatic schema changes. For a fresh, empty default data directory, the first
+starter run prepares the runtime and dependencies and stops with a database
+maintenance message. Install that empty database explicitly, then start again:
+
+```powershell
+$env:DATABASE_URL = "sqlite:///" + ((Join-Path $env:LOCALAPPDATA "ImmoManagerPro/immo_manager.db") -replace '\\', '/')
+.\.venv\Scripts\python.exe -m alembic upgrade head
+Remove-Item Env:DATABASE_URL
+.\start.bat
+```
+
+Use the selected database path if you use a custom data directory. This fresh
+installation command is not an instruction to stamp or rebuild an existing,
+unversioned database. For existing data, preserve a complete backup and verify
+the migration and restore in a separate copy before switching installations.
+
+After installation, open the local login page and create your owner account.
 This one-time setup is available only on localhost. Further accounts require owner
 approval through the administration API; public registration closes permanently.
 Authenticator enrollment and login codes are available in personal settings.
@@ -86,7 +103,7 @@ encrypted offline archive for full local recovery.
 ```bash
 # Backend
 python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r backend/requirements-dev.txt
 uvicorn backend.app:app --reload
 
 # Frontend
@@ -170,9 +187,10 @@ separate workflow.
 Vacancy and non-recoverable costs are shown as owner shares. Missing person or
 consumption data for vacancy blocks the affected calculation.
 
-SQLite installations automatically receive the additive payment schema upgrade
-on startup. For databases managed by Alembic, run `alembic upgrade head` before
-starting the updated application.
+Development/test SQLite installations retain their additive bootstrap helper.
+Production installations require explicit schema maintenance while stopped;
+ordinary starts verify the Alembic revision and required tables/columns without
+changing them. Follow [the private-server procedure](docs/PRIVATE_SERVER.md).
 
 ## Validation commands
 

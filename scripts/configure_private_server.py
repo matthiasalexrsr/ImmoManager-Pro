@@ -51,6 +51,8 @@ def configure(path: Path, origin: str, port: int = 8080) -> Path:
                f"ENCRYPTION_INDEX_KEY={base64.urlsafe_b64encode(secrets.token_bytes(32)).decode('ascii')}\n")
     content += "".join(f"{key}={value}\n" for key, value in OCR_DEFAULTS.items())
     content += "CONTRACT_WORKSPACE_PAGE_MAX_SIZE=500\nCONTRACT_WORKSPACE_SEARCH_MAX_CHARS=200\n"
+    content += "CONTRACT_CORRESPONDENCE_PAGE_MAX_SIZE=100\n"
+    content += "OPERATIONAL_SCHEDULER_ACTOR_ID=\n"
     path = path.absolute()
     path.parent.mkdir(parents=True, exist_ok=True)
     if os.path.lexists(path):

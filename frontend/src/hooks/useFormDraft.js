@@ -6,6 +6,7 @@ import { authMayWrite } from '../utils/writeAccess';
 
 const endpoint = '/auth/users/me/form-drafts';
 const signature = value => JSON.stringify(value);
+const httpStatus = error => Number.isInteger(error?.statusCode) ? error.statusCode : null;
 // Computed table/card rows can retain id+updated_at while losing the API's
 // non-enumerable symbol. Their original timestamp remains authoritative; only
 // the explicit editor collection is added, never a fresh server revision.
@@ -27,7 +28,7 @@ export default function useFormDraft({ config, fields, values, original, editRev
   const identity = { collection: config?.collection, entity_id: original.current?.id || null, form_key: config?.formKey || 'crud', owner_id: auth?.user?.id };
   const identitySignature = enabled ? signature([identity, userSignature]) : '';
   const schema = signature(safeFields(fields).map(field => [field.key, field.type || 'text']).sort((a, b) => a[0].localeCompare(b[0])));
-  const [state, setState] = useState({ status: 'disabled', draft: null, error: null });
+  const [state, setState] = useState({ status: 'disabled', draft: null, error: null, errorStatus: null });
   const current = useRef(null);
   const lifecycle = useRef(null);
   const listener = useRef(onRestore);
@@ -37,7 +38,10 @@ export default function useFormDraft({ config, fields, values, original, editRev
     listener.current = onRestore;
   });
   const active = useCallback(session => lifecycle.current === session && session.key === current.current?.key && !session.closed, []);
-  const publish = useCallback((session, next) => { if (active(session)) setState(previous => ({ ...previous, ...next })); }, [active]);
+  const publish = useCallback((session, next) => {
+    if (active(session)) setState(previous => ({ ...previous,
+      ...(Object.hasOwn(next, 'error') && next.error === null ? { errorStatus: null } : {}), ...next }));
+  }, [active]);
 
   const load = useCallback(async () => {
     const input = current.current;
@@ -60,13 +64,13 @@ export default function useFormDraft({ config, fields, values, original, editRev
     } catch (error) {
       if (!active(session) || controller.signal.aborted || error.name === 'AbortError') return;
       session.loaded = false;
-      publish(session, { status: 'error', error: error.message || text.current('formDraft.failed') });
+      publish(session, { status: 'error', error: error.message || text.current('formDraft.failed'), errorStatus: httpStatus(error) });
     }
   }, [active, publish]);
 
   useEffect(() => {
     clearTimeout(timer.current);
-    if (!enabled) { lifecycle.current = null; setState({ status: 'disabled', draft: null, error: null }); return; }
+    if (!enabled) { lifecycle.current = null; setState({ status: 'disabled', draft: null, error: null, errorStatus: null }); return; }
     const session = { key: identitySignature, revision: null, blocked: true, loaded: false, closed: false,
       inFlight: null, pending: null, baseline: signature(pick(current.current.original.current, current.current.fields)), last: null, submitted: false };
     lifecycle.current = session;
@@ -105,7 +109,7 @@ export default function useFormDraft({ config, fields, values, original, editRev
       } catch (error) {
         if (!active(session)) return false;
         if (error.code === 'DRAFT_CONFLICT' || error.statusCode === 409) session.blocked = true;
-        publish(session, { status: error.statusCode === 409 ? 'conflict' : 'error', error: error.message || text.current('formDraft.failed') });
+        publish(session, { status: error.statusCode === 409 ? 'conflict' : 'error', error: error.message || text.current('formDraft.failed'), errorStatus: httpStatus(error) });
         return false;
       } finally { session.inFlight = null; }
     })();
@@ -141,7 +145,7 @@ export default function useFormDraft({ config, fields, values, original, editRev
       publish(session, { status: 'ready', draft: null, error: null });
       return true;
     } catch (error) {
-      if (active(session)) publish(session, { status: error.statusCode === 409 ? 'conflict' : 'error', error: error.message || text.current('formDraft.failed') });
+      if (active(session)) publish(session, { status: error.statusCode === 409 ? 'conflict' : 'error', error: error.message || text.current('formDraft.failed'), errorStatus: httpStatus(error) });
       return false;
     }
   }, [active, publish]);
@@ -158,11 +162,11 @@ export default function useFormDraft({ config, fields, values, original, editRev
       const keys = safeFields(current.current.fields).map(field => field.key);
       if (!draft.values || !draft.original_values || Object.keys(draft.values).some(key => !keys.includes(key))) throw new Error(text.current('formDraft.invalidResponse'));
       listener.current?.(draft);
-      session.pending = null; session.blocked = false; session.submitted = false;
+      session.pending = null; session.blocked = false; session.submitted = Boolean(draft.submission_pending);
       session.last = null; session.baseline = signature(draft.original_values);
       publish(session, { status: 'restored', draft, error: null });
       return true;
-    } catch (error) { publish(session, { status: 'error', error: error.message || text.current('formDraft.failed') }); return false; }
+    } catch (error) { publish(session, { status: 'error', error: error.message || text.current('formDraft.failed'), errorStatus: httpStatus(error) }); return false; }
   }, [active, load, publish]);
 
   const prepareSubmit = useCallback(() => save({ force: true, submitting: true }), [save]);
@@ -170,7 +174,7 @@ export default function useFormDraft({ config, fields, values, original, editRev
     const session = lifecycle.current;
     if (!active(session) || !session.submitted) return;
     if (error.statusCode && error.statusCode < 500) await save({ force: true, submitting: false });
-    else publish(session, { status: 'uncertain', error: text.current('formDraft.uncertain') });
+    else publish(session, { status: 'uncertain', error: text.current('formDraft.uncertain'), errorStatus: httpStatus(error) });
   }, [active, publish, save]);
   const resume = useCallback(async () => {
     const session = lifecycle.current;
@@ -179,6 +183,7 @@ export default function useFormDraft({ config, fields, values, original, editRev
   }, [active, save]);
   return { enabled, ...state, status: enabled && state.status === 'disabled' ? 'loading' : state.status,
     schemaMatches: !state.draft || state.draft.schema === schema,
-    restore, discard, retry: () => lifecycle.current?.loaded && !lifecycle.current?.blocked ? save({ force: true }) : load(),
+    restore, discard, retry: () => lifecycle.current?.loaded && !lifecycle.current?.blocked
+      ? save({ force: true, submitting: Boolean(lifecycle.current.submitted) }) : load(),
     inspect: load, flush: save, prepareSubmit, failedSubmit, resume, complete: discard };
 }

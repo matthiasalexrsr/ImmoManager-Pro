@@ -6,6 +6,7 @@ import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import BillingSettlementSummary from '../components/BillingSettlementSummary';
 import BillingOwnerShare from '../components/BillingOwnerShare';
+import BillingDisputeWorkspace from '../features/billingDisputes/BillingDisputeWorkspace';
 import { parseSettlementPosting } from '../utils/billingSettlements';
 import useWriteAccess from '../hooks/useWriteAccess';
 import './Statements.css';
@@ -39,7 +40,7 @@ function useToast() {
   return { show, Toast };
 }
 
-/** Reuse the accessible form dialog for correction and dispute reasons. */
+/** Reuse the accessible form dialog for correction reasons. */
 function PromptModal({ title, required = false, onConfirm, onCancel }) {
   const fields = useMemo(() => [
     { key: 'reason', label: title, type: 'textarea', required },
@@ -203,7 +204,6 @@ export default function Statements() {
   const [markingDelivered, setMarkingDelivered] = useState(false);
   const [ocrDraft, setOcrDraft] = useState(null);
   const [ocrUploading, setOcrUploading] = useState(false);
-  const [disputing, setDisputing] = useState(false);
   const [promptModal, setPromptModal] = useState(null);
   const { canWrite, isAllowed, requireWrite } = useWriteAccess('/billing', () => { setModal(null); setCostModal(null); setPromptModal(null); setOcrDraft(null); });
 
@@ -499,35 +499,6 @@ export default function Statements() {
     });
   };
 
-  const handleDispute = () => {
-    if (!isAllowed()) return;
-    if (!selectedPeriod) return;
-    setPromptModal({
-      title: t('pages.statements.disputeReason') || 'Grund für Widerspruch:',
-      required: true,
-      onConfirm: async (reason) => {
-        requireWrite();
-        setDisputing(true);
-        let saved = false;
-        try {
-          const updated = await api.post(
-            `/billing/periods/${selectedPeriod.id}/dispute?reason=${encodeURIComponent(reason)}`,
-            {}
-          );
-          saved = true;
-          setPromptModal(null);
-          if (selectedPeriodRef.current === selectedPeriod.id) setSelectedPeriod(updated);
-          await refreshData();
-        } catch (err) {
-          if (!saved) throw err;
-          toast.show(err.message || 'Widerspruch konnte nicht eingelegt werden');
-        } finally {
-          setDisputing(false);
-        }
-      },
-    });
-  };
-
   const handleOcrUpload = async (e) => {
     if (!isAllowed()) { e.target.value = ''; return; }
     const file = e.target.files?.[0];
@@ -781,16 +752,6 @@ export default function Statements() {
                 {exporting ? t('pages.statements.exporting') : t('pages.statements.zipExport')}
               </button>
             )}
-            {canWrite && (isFinalized || isDelivered) && (
-              <button
-                className="btn btn-sm btn-secondary"
-                onClick={handleDispute}
-                disabled={disputing}
-                style={{ color: 'var(--color-warning, #c57600)' }}
-              >
-                {disputing ? t('pages.statements.submitting') : t('pages.statements.dispute')}
-              </button>
-            )}
           </div>
         </div>
 
@@ -817,6 +778,9 @@ export default function Statements() {
           refreshKey={periodStmts.map(statement => statement.id).join(',')} />
 
         <BillingSettlementSummary period={selectedPeriod} contracts={contractMap} refreshKey={settlementRefresh} />
+
+        {['finalized', 'delivered', 'disputed', 'corrected'].includes(selectedPeriod.status) &&
+          <BillingDisputeWorkspace periodId={selectedPeriod.id} propertyId={selectedPeriod.property_id} />}
 
         <div className="card" style={{ marginBottom: '1rem' }}>
           <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

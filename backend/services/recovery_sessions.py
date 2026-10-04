@@ -49,6 +49,41 @@ def invalidate_and_inspect(connection, original_configuration, *, deadline):
         raise SessionRestoreError("restore_session_schema_incomplete: kompatible vollständige Sicherung erforderlich")
     # Validate every immutable original before revoking one family or creating
     # a new signing configuration. Both missing legacy tables remain compatible.
+    from .billing_statement_parties import StatementPartyIntegrityError
+    from .billing_statement_party_database import validate_statement_party_database
+    try:
+        validate_statement_party_database(connection, deadline=deadline)
+    except StatementPartyIntegrityError:
+        raise SessionRestoreError("restore_statement_party_original_invalid: vollständige unveränderte Sicherung verwenden; Sicherheitsabschluss nicht ausgeführt") from None
+    from .billing_dispute_database import validate_dispute_database
+    from .billing_dispute_validation import DisputeIntegrityError
+    try:
+        validate_dispute_database(connection, deadline=deadline)
+    except DisputeIntegrityError:
+        raise SessionRestoreError("restore_dispute_history_invalid: vollständige unveränderte Sicherung verwenden; Sicherheitsabschluss nicht ausgeführt") from None
+    from .measurement_history_database import validate_measurement_database
+    from .measurement_history_validation import MeasurementIntegrityError
+    try:
+        validate_measurement_database(connection, deadline=deadline)
+    except MeasurementIntegrityError:
+        raise SessionRestoreError("restore_measurement_history_invalid: vollständige unveränderte Sicherung verwenden; Sicherheitsabschluss nicht ausgeführt") from None
+    from .operational_job_validation import JobIntegrityError, reset_restored_job_claims, validate_job_journal
+    from .operational_scheduler_validation import reset_scheduler_claims, validate_scheduler
+    from .tenancy_workflow_validation import WorkflowIntegrityError, validate_workflow_journal
+    try:
+        validate_workflow_journal(connection, deadline=deadline)
+    except WorkflowIntegrityError:
+        raise SessionRestoreError("restore_tenancy_workflow_invalid: vollständige unveränderte Sicherung verwenden; Sicherheitsabschluss nicht ausgeführt") from None
+    try:
+        validate_job_journal(connection, deadline=deadline)
+        validate_scheduler(connection, deadline=deadline)
+    except JobIntegrityError:
+        raise SessionRestoreError("restore_operational_jobs_invalid: vollständige unveränderte Sicherung verwenden; Sicherheitsabschluss nicht ausgeführt") from None
+    from .contract_correspondence_validation import EvidenceError, validate_correspondence_journal
+    try:
+        validate_correspondence_journal(connection, deadline=deadline)
+    except EvidenceError:
+        raise SessionRestoreError("restore_contract_correspondence_invalid: vollständige unveränderte Sicherung mit Originalen verwenden; Sicherheitsabschluss nicht ausgeführt") from None
     from .contract_lifecycle_validation import JournalValidationError, validate_lifecycle_journal
     from .document_version_validation import verify_document_versions
     from .recovery_archive import RecoveryError
@@ -60,6 +95,12 @@ def invalidate_and_inspect(connection, original_configuration, *, deadline):
         verify_document_versions(connection, deadline=deadline)
     except RecoveryError:
         raise SessionRestoreError("restore_document_versions_invalid: unveränderte vollständige Sicherung verwenden; Sicherheitsabschluss nicht ausgeführt") from None
+    from .integrations.history_types import HistoryError
+    from .recovery_history import normalize_restored_history, validate_configured_history
+    try:
+        validate_configured_history(connection, original_configuration, deadline=deadline)
+    except (HistoryError, ValueError):
+        raise SessionRestoreError("restore_integration_history_invalid: unveränderte vollständige Sicherung und gesicherte Schlüssel-/Budgetkonfiguration verwenden; Sicherheitsabschluss nicht ausgeführt") from None
     legacy = False
     if "accounts" in tables:
         keyring = None
@@ -98,6 +139,11 @@ def invalidate_and_inspect(connection, original_configuration, *, deadline):
         finally:
             rows.close()
             connection.execution_options(stream_results=False)
+    # All families have passed read-only proof. Claim reset and session revocation
+    # share this outer offline transaction, including every later caller failure.
+    normalize_restored_history(connection, original_configuration, deadline=deadline)
+    reset_restored_job_claims(connection, deadline=deadline)
+    reset_scheduler_claims(connection, deadline=deadline)
     count = invalidate_restored_sessions(connection) if security_tables else 0
     if type(count) is not int or count < 0:
         raise SessionRestoreError("restore_session_count_invalid: Sicherheitsabschluss nicht bestätigt")

@@ -6,6 +6,7 @@ import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
+import PageLoadState from '../components/PageLoadState';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 
@@ -81,9 +82,10 @@ export default function Listings() {
   const { t } = useTranslation();
   const confirm = useConfirm();
   const store = useDataStore();
-  const { items: units } = useEntities('units', '/units');
+  const { items: units, loading: unitsLoading, error: unitsError, reload: reloadUnits } = useEntities('units', '/units');
   const [listings, setListings] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [modal, setModal] = useState(null);
   const { canWrite, isAllowed, requireWrite } = useWriteAccess('/listings', () => setModal(null));
   const [deleteError, setDeleteError] = useState(null);
@@ -93,16 +95,18 @@ export default function Listings() {
 
   const refreshData = () => {
     setLoading(true);
-    api.get('/listings').catch(() => [])
+    setError(null);
+    api.get('/listings')
       .then(l => setListings(l || []))
+      .catch(setError)
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     let cancelled = false;
-    api.get('/listings').catch(err => { console.warn('[Listings] listings:', err.message); return []; })
+    api.get('/listings')
       .then(data => { if (!cancelled) setListings(data || []); })
-      .catch(e => { if (!cancelled) console.warn('[Listings] load failed:', e.message); })
+      .catch(e => { if (!cancelled) setError(e); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, []);
@@ -192,7 +196,15 @@ export default function Listings() {
     }
   };
 
-  if (loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  const sourceError = error || unitsError;
+  const sourceLoading = loading || unitsLoading;
+  const retryLoad = () => {
+    reloadUnits?.();
+    refreshData();
+  };
+  if (sourceLoading || sourceError) {
+    return <PageLoadState loading={sourceLoading} error={sourceError} onRetry={retryLoad} />;
+  }
 
   return (
     <div className="page">

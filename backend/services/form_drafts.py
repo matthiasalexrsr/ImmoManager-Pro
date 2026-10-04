@@ -84,18 +84,30 @@ def scope_hash(actor):
 
 
 def _policy(identity):
+    if identity.collection == "billing/disputes":
+        from ..db.billing_dispute_models import BillingDisputeCaseORM
+        from .billing_dispute_drafts import DisputeDraftValues, validate_identity
+        try:
+            validate_identity(identity)
+        except HTTPException as error:
+            raise DraftError(error.status_code, "DRAFT_IDENTITY_INVALID", error.detail) from None
+        return DisputeDraftValues, BillingDisputeCaseORM.__table__
     name = POLICIES.get(identity.collection)
     if name is None:
         raise DraftError(422, "DRAFT_FORM_UNSUPPORTED", "Dieses Formular unterstützt keine automatische Entwurfssicherung.")
     return getattr(models, name + "Create"), Base.metadata.tables[COLLECTIONS[identity.collection]]
 
 
-def _fresh(actor, identity):
+def _fresh(actor, identity, *, discard=False):
     if actor is None:
         raise DraftError(401, "DRAFT_AUTH_REQUIRED", "Bitte erneut anmelden.")
     if identity.owner_id is not None and identity.owner_id != actor.user_id:
         raise DraftError(403, "DRAFT_IDENTITY_CHANGED", "Das Formular gehört zu einer anderen Anmeldung. Bitte erneut öffnen.")
     refresh_scope(actor)
+    if discard:
+        # A fresh active principal may discard only its own CAS-addressed
+        # ciphertext, even after loss of the old resource/write grants.
+        return
     if not may_write_resource(actor.role, identity.collection.split("/")[0]):
         raise DraftError(403, "DRAFT_WRITE_DENIED", "Ihre aktuelle Rolle darf dieses Formular nicht bearbeiten.")
     if not actor.unrestricted and not actor.portfolio_ids:
@@ -119,7 +131,7 @@ def _payload(identity, actor, request):
     model, _ = _policy(identity)
     allowed = set(model.model_fields) - FORBIDDEN_KEYS
     _safe_values(request.values, allowed)
-    snapshot_fields = set(getattr(models, POLICIES[identity.collection]).model_fields) - FORBIDDEN_KEYS - {"id", "created_at", "updated_at"}
+    snapshot_fields = allowed if identity.collection == "billing/disputes" else set(getattr(models, POLICIES[identity.collection]).model_fields) - FORBIDDEN_KEYS - {"id", "created_at", "updated_at"}
     _safe_values(request.original_values, snapshot_fields)
     revision = request.edit_revision
     if identity.entity_id:
@@ -157,6 +169,13 @@ def _visible(store, table, identifier, actor):
 
 
 def _resources(store, identity, actor, value):
+    if identity.collection == "billing/disputes":
+        from .billing_dispute_drafts import validate_resources
+        try:
+            validate_resources(store, identity, value)
+        except HTTPException as error:
+            raise DraftError(error.status_code, "DRAFT_REFERENCE_INVALID", error.detail) from None
+        return
     _, table = _policy(identity)
     if identity.entity_id and not _visible(store, table, identity.entity_id, actor):
         raise DraftError(404, "DRAFT_RESOURCE_UNAVAILABLE", "Der zugehörige Datensatz ist nicht mehr zugänglich.")
@@ -245,13 +264,20 @@ def _delete(store, key, user_id, revision):
     return True
 
 
+def _decoded(row, key):
+    try:
+        value = json.loads(form_draft_crypto.decrypt(row["payload"], key.encode("ascii")))
+        if not isinstance(value, dict) or not isinstance(value.get("submission_pending", False), bool):
+            raise ValueError()
+        return value
+    except (form_draft_crypto.DraftCryptoError, IBANEncryptionError, ValueError, UnicodeError):
+        raise DraftError(503, "DRAFT_ENCRYPTION_UNAVAILABLE", "Der gespeicherte Entwurf kann nicht sicher gelesen werden. Vollständige stabile Verschlüsselungsschlüssel wiederherstellen; der Entwurf wurde nicht überschrieben.") from None
+
+
 def _read(row, key, actor):
     if row["scope_hash"] != scope_hash(actor):
         raise DraftError(403, "DRAFT_SCOPE_CHANGED", "Ihre Portfolio-/Rollenberechtigungen haben sich geändert. Der frühere Entwurf darf nicht wiederhergestellt werden.")
-    try:
-        return json.loads(form_draft_crypto.decrypt(row["payload"], key.encode("ascii")))
-    except (form_draft_crypto.DraftCryptoError, IBANEncryptionError, ValueError, UnicodeError):
-        raise DraftError(503, "DRAFT_ENCRYPTION_UNAVAILABLE", "Der gespeicherte Entwurf kann nicht sicher gelesen werden. Vollständige stabile Verschlüsselungsschlüssel wiederherstellen; der Entwurf wurde nicht überschrieben.") from None
+    return _decoded(row, key)
 
 
 def _conflict():
@@ -261,22 +287,28 @@ def _conflict():
 def form_draft(store, identity: DraftIdentity, actor, *, write: DraftWrite | None = None, remove_revision=None):
     _policy(identity)
     limits()
-    _fresh(actor, identity)
+    _fresh(actor, identity, discard=remove_revision is not None)
     key = identity_key(identity, actor)
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     with _locked(store, actor):
-        _fresh(actor, identity)
+        _fresh(actor, identity, discard=remove_revision is not None)
         row = _record(store, key, actor.user_id)
-        if row and row["expires_at"] <= now:
-            _delete(store, key, actor.user_id, row["revision"])
-            row = None
         if remove_revision is not None:
             # Own discarded ciphertext needs no decryption or old grants. No
             # foreign principal can address this key; stale CAS never deletes.
             if row and not _delete(store, key, actor.user_id, remove_revision):
                 raise _conflict()
-            _fresh(actor, identity)
+            _fresh(actor, identity, discard=True)
             return {"discarded": row is not None}
+        deferred = False
+        if row and row["expires_at"] <= now:
+            # An unknown business outcome is not an ordinary abandoned edit.
+            # Inspect only its authenticated flag; grant checks still precede
+            # any private response, and unusable ciphertext is never erased.
+            deferred = _decoded(row, key).get("submission_pending", False)
+            if not deferred:
+                _delete(store, key, actor.user_id, row["revision"])
+                row = None
         if write is None:
             if row is None:
                 return {"draft": None}
@@ -284,7 +316,8 @@ def form_draft(store, identity: DraftIdentity, actor, *, write: DraftWrite | Non
             _resources(store, identity, actor, value)
             _fresh(actor, identity)
             return {"draft": {"revision": row["revision"], "updated_at": row["updated_at"].isoformat() + "Z",
-                "expires_at": row["expires_at"].isoformat() + "Z", **value}}
+                "expires_at": row["expires_at"].isoformat() + "Z", **value,
+                **({"expiry_deferred": True} if deferred else {})}}
         if row and row["revision"] != write.expected_revision or not row and write.expected_revision is not None:
             raise _conflict()
         data = _payload(identity, actor, write)

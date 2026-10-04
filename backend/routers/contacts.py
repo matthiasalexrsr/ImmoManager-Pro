@@ -4,10 +4,12 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
 from ..models import Contact, ContactCreate, ContactPatch
+from ..services.contact_list import contact_list
 from ..storage import NotFoundError, ValidationError
-from ._helpers import apply_sort
+from .contact_inventory import router as inventory_router
 
 router = APIRouter(prefix="/contacts", tags=["Kontakte"])
+router.include_router(inventory_router)
 
 
 @router.get("", response_model=list[Contact])
@@ -18,11 +20,9 @@ def list_contacts(
     sort_order: str = Query("asc"),
     contact_type: str | None = Query(None),
 ) -> list[Contact]:
-    results = store.list_contacts()
-    if isinstance(contact_type, str) and contact_type:
-        results = [c for c in results if c.contact_type == contact_type]
-    results = apply_sort(results, sort_by, sort_order)
-    return results[skip : skip + limit]
+    return contact_list(store, skip=skip, limit=limit,
+                        contact_type=contact_type if isinstance(contact_type, str) else None,
+                        sort_by=sort_by, descending=sort_order == "desc")
 
 
 @router.post("", response_model=Contact, status_code=status.HTTP_201_CREATED)

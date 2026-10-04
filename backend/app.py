@@ -17,7 +17,14 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.responses import RedirectResponse
 
+from .backup_operations.application import (
+    APPLICATION_IMPORT_LEASE,  # noqa: F401 — before configuration and all writers
+)
+
+# The installation lease must precede auth/configuration imports.
+# isort: split
 from .auth import require_auth, require_role
+from .backup_operations.runtime import application_startup_fence
 from .config import settings
 from .exceptions import register_exception_handlers
 from .logging_config import setup_logging
@@ -99,9 +106,11 @@ def _validate_startup_config() -> None:
 # ─── Lifespan ────────────────────────────────────────────────────────────────
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def _application_lifespan(app: FastAPI):
     """Startup / shutdown lifecycle."""
     logger.info("ImmoManager Pro %s starting up", settings.app_version)
+    # Reject an unsafe production auto-migration flag before it can change SQL.
+    _validate_startup_config()
     ensure_runtime_dirs()
 
     # Auto-migrate if enabled
@@ -114,9 +123,6 @@ async def lifespan(app: FastAPI):
             logger.info("Database migrations applied successfully")
         except Exception:
             logger.exception("Auto-migration failed")
-
-    # Check core configuration before starting third-party lifecycle hooks.
-    _validate_startup_config()
 
     # Load plugins
     if settings.plugin_dirs:
@@ -153,6 +159,7 @@ async def lifespan(app: FastAPI):
         interval_seconds=settings.operational_scheduler_interval_seconds,
         max_items=settings.operational_scheduler_max_items,
         lookback_days=settings.operational_scheduler_lookback_days,
+        actor_id=settings.operational_scheduler_actor_id,
     )
     scheduler.start()
     cleanup_task = asyncio.create_task(_periodic_auth_cleanup())
@@ -169,6 +176,13 @@ async def lifespan(app: FastAPI):
             stop_plugins(app, get_plugins())
             cleanup_session()
         logger.info("ImmoManager Pro shutting down")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    with application_startup_fence(settings):
+        async with _application_lifespan(app):
+            yield
 
 
 # ─── App ─────────────────────────────────────────────────────────────────────

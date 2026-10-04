@@ -159,3 +159,19 @@ it('preserves number/null and dependent field semantics when serializing the dra
   expect(save).toHaveBeenCalledWith({ booking: 'b1', amount: 50, empty: null, contract: 0 });
   expect(within(screen.getByRole('dialog')).queryByLabelText('contract')).not.toBeInTheDocument();
 });
+
+it('keeps custom renderer values, selection details and dependent updates in the ordinary payload', async () => {
+  const save = vi.fn();
+  const customFields = [
+    { key: 'unit_id', label: 'Einheit', type: 'select', onChange: (value, values, row) => ({ property_id: row.property_id, note: values.note }),
+      render: ({ value, values, onChange, inputProps }) => <><input {...inputProps} value={value} readOnly aria-label="Ausgewählte Einheit" /><button type="button" onClick={() => onChange('u2', { property_id: 'p2' })}>Spätere Einheit aus {values.property_id}</button></> },
+    { key: 'property_id', type: 'hidden' }, { key: 'note', label: 'Notiz' },
+  ];
+  render(<FormModal {...defaults} fields={customFields} initial={{ unit_id: 'u1', property_id: 'p1', note: 'Erhalten' }} onSave={save} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Spätere Einheit aus p1' }));
+  expect(screen.getByRole('button', { name: 'Spätere Einheit aus p2' })).toBeVisible();
+  expect(screen.getByLabelText('Ausgewählte Einheit')).toHaveValue('u2');
+  fireEvent.submit(form());
+  await act(async () => {});
+  expect(save).toHaveBeenCalledWith({ unit_id: 'u2', property_id: 'p2', note: 'Erhalten' });
+});

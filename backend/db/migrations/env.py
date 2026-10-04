@@ -12,7 +12,12 @@ from sqlalchemy import engine_from_config, pool
 from backend.db.access_models import UserAccessORM  # noqa: F401 — register access metadata
 from backend.db.auth_models import AuthSetupORM  # noqa: F401 — register auth metadata
 from backend.db.bank_import_models import BankImportORM  # noqa: F401 — register retained bank import provenance
+from backend.db.billing_dispute_models import DISPUTE_MODELS  # noqa: F401 — register retained dispute originals
 from backend.db.booking_indexes import BOOKING_INDEXES  # noqa: F401 — register scaled booking indexes
+from backend.db.communication_center_models import CommunicationDraftORM  # noqa: F401 — register communication metadata
+from backend.db.contract_correspondence_models import (
+    CorrespondenceDraftORM,  # noqa: F401 — register retained correspondence
+)
 from backend.db.contract_lifecycle_models import (
     ContractLifecycleDraftORM,  # noqa: F401 — register retained lifecycle evidence
 )
@@ -21,12 +26,17 @@ from backend.db.credit_models import CreditReceiptORM  # noqa: F401 — register
 from backend.db.datev_models import DatevProfileORM  # noqa: F401 — register DATEV metadata
 from backend.db.document_version_models import DocumentVersionORM  # noqa: F401 — register immutable document originals
 from backend.db.form_draft_models import FormDraftORM  # noqa: F401 — register private draft metadata
+from backend.db.integration_history_models import HISTORY_MODELS  # noqa: F401 — register independent private journal
+from backend.db.measurement_history_models import MEASUREMENT_MODELS  # noqa: F401 — register historical sources
+from backend.db.operational_job_models import OperationalJobORM  # noqa: F401 — register resumable jobs
 from backend.db.operational_models import OperationalTickORM  # noqa: F401 — register scheduler metadata
+from backend.db.operational_scheduler_models import OperationalSchedulerORM  # noqa: F401 — register durable coordinator
 from backend.db.orm_models import Base
 from backend.db.outbox_models import OutboxMessageORM  # noqa: F401 — register durable SMTP metadata
 from backend.db.rent_batch_models import RentBatchORM  # noqa: F401 — register durable rental metadata
 from backend.db.session_models import AuthSessionORM  # noqa: F401 — register account security metadata
 from backend.db.tax_models import AnnualTaxProfileORM  # noqa: F401 — register retained annual evidence
+from backend.db.tenancy_workflow_models import TenancyChangeORM  # noqa: F401 — register frozen workflows
 
 config = context.config
 
