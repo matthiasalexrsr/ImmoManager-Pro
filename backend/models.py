@@ -59,6 +59,13 @@ class UnitCreate(BaseModel):
     features: Optional[str] = None
     person_count: Optional[int] = None
 
+    @field_validator("area_sqm")
+    @classmethod
+    def validate_area(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None and v <= 0:
+            raise ValueError("Fläche muss größer als 0 m² sein")
+        return v
+
 
 class Unit(UnitCreate):
     id: str = Field(..., min_length=1)
@@ -172,6 +179,13 @@ class BookingCreate(BaseModel):
     status: str = "open"
     payment_text: Optional[str] = None
     receipt_url: Optional[str] = None
+
+    @field_validator("amount")
+    @classmethod
+    def validate_amount(cls, v: Optional[float]) -> Optional[float]:
+        if v == 0:
+            raise ValueError("Betrag darf nicht 0 sein")
+        return v
 
 
 class Booking(BookingCreate):
@@ -381,6 +395,13 @@ class UnitPatch(BaseModel):
     features: Optional[str] = None
     person_count: Optional[int] = None
 
+    @field_validator("area_sqm")
+    @classmethod
+    def validate_area(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None and v <= 0:
+            raise ValueError("Fläche muss größer als 0 m² sein")
+        return v
+
 
 class TenantPatch(BaseModel):
     full_name: Optional[str] = None
@@ -446,6 +467,13 @@ class BookingPatch(BaseModel):
     status: Optional[str] = None
     payment_text: Optional[str] = None
     receipt_url: Optional[str] = None
+
+    @field_validator("amount")
+    @classmethod
+    def validate_amount(cls, v: Optional[float]) -> Optional[float]:
+        if v == 0:
+            raise ValueError("Betrag darf nicht 0 sein")
+        return v
 
 
 class ReceivablePatch(BaseModel):

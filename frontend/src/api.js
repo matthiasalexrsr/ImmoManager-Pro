@@ -75,6 +75,16 @@ async function tryRefreshToken() {
 // ---------------------------------------------------------------------------
 
 /**
+ * FastAPI validation errors are a list of {loc, msg}: show the messages, not the JSON.
+ */
+function validationMessage(detail) {
+  const messages = Array.isArray(detail)
+    ? detail.map(item => String(item?.msg ?? '').replace(/^Value error, /, '')).filter(Boolean)
+    : [];
+  return messages.length ? messages.join('; ') : JSON.stringify(detail);
+}
+
+/**
  * Parse standardized error response from backend.
  * Expected format: { error: { code, message, details, request_id } }
  *
@@ -88,7 +98,7 @@ function parseApiError(body, statusCode) {
     err.details = body.error.details;
     err.requestId = body.error.request_id;
   } else if (body?.detail) {
-    err = new Error(typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail));
+    err = new Error(typeof body.detail === 'string' ? body.detail : validationMessage(body.detail));
   } else {
     err = new Error('Ein Fehler ist aufgetreten');
   }

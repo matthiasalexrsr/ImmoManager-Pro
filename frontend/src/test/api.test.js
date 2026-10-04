@@ -123,6 +123,25 @@ describe('api.list', () => {
   });
 });
 
+describe('validation errors', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    mockFetch.mockReset();
+  });
+
+  it('shows the messages of a validation error instead of its JSON', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 422,
+      json: async () => ({ detail: [{ type: 'value_error', loc: ['body', 'amount'], msg: 'Value error, Betrag darf nicht 0 sein' }] }),
+      headers: new Headers(),
+    });
+
+    const { api } = await import('../api.js');
+    await expect(api.post('/bookings', { amount: 0 })).rejects.toThrow(/^Betrag darf nicht 0 sein$/);
+  });
+});
+
 describe('isLoggedIn', () => {
   beforeEach(() => {
     vi.resetModules();
