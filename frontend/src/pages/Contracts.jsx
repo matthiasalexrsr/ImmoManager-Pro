@@ -32,14 +32,14 @@ export default function Contracts() {
 
   const refreshData = () => {
     setLoading(true);
-    api.get('/contracts').catch(() => [])
+    api.list('/contracts').catch(() => [])
       .then(data => setContracts(Array.isArray(data) ? data : []))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     let cancelled = false;
-    api.get('/contracts').catch(() => [])
+    api.list('/contracts').catch(() => [])
       .then(data => { if (!cancelled) setContracts(Array.isArray(data) ? data : []); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };

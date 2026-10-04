@@ -20,7 +20,7 @@ export default function UsersSection({ currentUser }) {
   const roleLabel = (role) => u(`roles.${role}`);
 
   const load = useCallback(() => {
-    api.get('/auth/users')
+    api.list('/auth/users')
       .then((data) => { setUsers(data); setLoadError(false); })
       .catch(() => setLoadError(true));
   }, []);

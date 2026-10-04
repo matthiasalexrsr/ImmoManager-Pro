@@ -4,7 +4,7 @@ import UsersSection from '../pages/settings/UsersSection';
 import { api } from '../api';
 
 vi.mock('../api', () => ({
-  api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), del: vi.fn() },
+  api: { list: vi.fn(), post: vi.fn(), patch: vi.fn(), del: vi.fn() },
 }));
 const t = (key) => key;
 vi.mock('../i18n', () => ({ useTranslation: () => ({ t }) }));
@@ -22,7 +22,7 @@ const row = async (username) => (await screen.findByText(username)).closest('tr'
 describe('UsersSection', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    api.get.mockResolvedValue([owner, staff, reader]);
+    api.list.mockResolvedValue([owner, staff, reader]);
   });
 
   it('lets an owner manage others but not deactivate or delete themselves', async () => {
@@ -37,7 +37,7 @@ describe('UsersSection', () => {
 
   it('limits a manager to read-only accounts', async () => {
     const manager = { ...staff, id: 'm1', username: 'manager', role: 'verwalter' };
-    api.get.mockResolvedValue([owner, manager, reader]);
+    api.list.mockResolvedValue([owner, manager, reader]);
     render(<UsersSection currentUser={manager} />);
     expect(within(await row('owner')).queryByText('pages.settings.users.edit')).not.toBeInTheDocument();
     const readerRow = await row('reader');
@@ -77,7 +77,7 @@ describe('UsersSection', () => {
   });
 
   it('shows an error when the list cannot be loaded', async () => {
-    api.get.mockRejectedValue(new Error('403'));
+    api.list.mockRejectedValue(new Error('403'));
     render(<UsersSection currentUser={owner} />);
     expect(await screen.findByText('pages.settings.users.loadError')).toBeInTheDocument();
   });

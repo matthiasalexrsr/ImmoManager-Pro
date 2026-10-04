@@ -61,14 +61,14 @@ export default function Tasks() {
 
   const refreshData = () => {
     setLoading(true);
-    api.get('/tasks').catch(() => [])
+    api.list('/tasks').catch(() => [])
       .then(data => setTasks(Array.isArray(data) ? data : []))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     let cancelled = false;
-    api.get('/tasks').catch(err => { console.warn('[Tasks] load:', err.message); return []; })
+    api.list('/tasks').catch(err => { console.warn('[Tasks] load:', err.message); return []; })
       .then(data => { if (!cancelled) setTasks(Array.isArray(data) ? data : []); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };

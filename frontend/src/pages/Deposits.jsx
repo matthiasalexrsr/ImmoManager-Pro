@@ -19,7 +19,7 @@ export default function Deposits() {
   const [deleteError, setDeleteError] = useState(null);
 
   const refreshData = () => {
-    api.get('/deposits').catch(err => { console.warn('[Deposits] deposits:', err.message); return []; })
+    api.list('/deposits').catch(err => { console.warn('[Deposits] deposits:', err.message); return []; })
       .then(data => setDeposits(data || []))
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
@@ -27,7 +27,7 @@ export default function Deposits() {
 
   useEffect(() => {
     let cancelled = false;
-    api.get('/deposits').catch(err => { console.warn('[Deposits] deposits:', err.message); return []; })
+    api.list('/deposits').catch(err => { console.warn('[Deposits] deposits:', err.message); return []; })
       .then(data => { if (!cancelled) setDeposits(data || []); })
       .catch(e => { if (!cancelled) setError(e.message); })
       .finally(() => { if (!cancelled) setLoading(false); });

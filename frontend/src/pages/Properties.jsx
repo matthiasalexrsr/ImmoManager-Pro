@@ -27,14 +27,14 @@ export default function Properties() {
 
   const refreshData = () => {
     setLoading(true);
-    api.get('/properties').catch(() => [])
+    api.list('/properties').catch(() => [])
       .then(data => setProperties(Array.isArray(data) ? data : []))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     let cancelled = false;
-    api.get('/properties').catch(err => { console.warn('[Properties] load:', err.message); return []; })
+    api.list('/properties').catch(err => { console.warn('[Properties] load:', err.message); return []; })
       .then(data => { if (!cancelled) setProperties(Array.isArray(data) ? data : []); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };

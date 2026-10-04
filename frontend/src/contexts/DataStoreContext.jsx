@@ -86,7 +86,7 @@ export function DataStoreProvider({ children }) {
     notify(entityKey);
 
     try {
-      const data = await api.get(endpoint);
+      const data = await api.list(endpoint);
       cacheRef.current[entityKey] = {
         data: Array.isArray(data) ? data : [],
         loading: false,

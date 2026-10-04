@@ -16,7 +16,7 @@ export default function NotificationTemplates() {
 
   const refreshData = () => {
     setLoading(true);
-    api.get('/notifications/templates')
+    api.list('/notifications/templates')
       .then(data => setTemplates(data || []))
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
@@ -24,7 +24,7 @@ export default function NotificationTemplates() {
 
   useEffect(() => {
     let cancelled = false;
-    api.get('/notifications/templates')
+    api.list('/notifications/templates')
       .then(data => {
         if (!cancelled) setTemplates(data || []);
       })

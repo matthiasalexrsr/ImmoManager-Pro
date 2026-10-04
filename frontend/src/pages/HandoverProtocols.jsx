@@ -51,7 +51,7 @@ export default function HandoverProtocols() {
 
   const refreshData = () => {
     setLoading(true);
-    api.get('/handover-protocols').catch(err => { console.warn('[HandoverProtocols] protocols:', err.message); return []; })
+    api.list('/handover-protocols').catch(err => { console.warn('[HandoverProtocols] protocols:', err.message); return []; })
       .then(p => setProtocols(p || []))
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
@@ -59,7 +59,7 @@ export default function HandoverProtocols() {
 
   useEffect(() => {
     let cancelled = false;
-    api.get('/handover-protocols').catch(err => { console.warn('[HandoverProtocols] protocols:', err.message); return []; })
+    api.list('/handover-protocols').catch(err => { console.warn('[HandoverProtocols] protocols:', err.message); return []; })
       .then(data => { if (!cancelled) setProtocols(data || []); })
       .catch(e => { if (!cancelled) setError(e.message); })
       .finally(() => { if (!cancelled) setLoading(false); });

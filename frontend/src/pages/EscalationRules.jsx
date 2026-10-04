@@ -18,7 +18,7 @@ export default function EscalationRules() {
 
   const loadData = () => {
     setLoading(true);
-    api.get('/escalation/rules')
+    api.list('/escalation/rules')
       .then(data => setRules(data || []))
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));

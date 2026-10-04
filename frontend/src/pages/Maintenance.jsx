@@ -35,14 +35,14 @@ export default function Maintenance() {
 
   const refreshData = () => {
     setLoading(true);
-    api.get('/maintenance').catch(() => [])
+    api.list('/maintenance').catch(() => [])
       .then(data => setItems(Array.isArray(data) ? data : []))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     let cancelled = false;
-    api.get('/maintenance').catch(() => [])
+    api.list('/maintenance').catch(() => [])
       .then(data => { if (!cancelled) setItems(Array.isArray(data) ? data : []); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };

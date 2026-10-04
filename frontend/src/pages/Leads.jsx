@@ -48,9 +48,9 @@ export default function Leads() {
   const refreshData = () => {
     setLoading(true);
     Promise.all([
-      api.get('/leads').catch(err => { console.warn('[Leads]', err.message); return []; }),
-      api.get('/units').catch(() => []),
-      api.get('/listings').catch(() => []),
+      api.list('/leads').catch(err => { console.warn('[Leads]', err.message); return []; }),
+      api.list('/units').catch(() => []),
+      api.list('/listings').catch(() => []),
     ]).then(([l, u, li]) => {
       setLeads(l || []);
       setUnits(u || []);
@@ -61,8 +61,8 @@ export default function Leads() {
   useEffect(() => {
     let cancelled = false;
     Promise.all([
-      api.get('/leads').catch(err => { console.warn('[Leads]', err.message); return []; }),
-      api.get('/units').catch(err => { console.warn('[Leads] units:', err.message); return []; }),
+      api.list('/leads').catch(err => { console.warn('[Leads]', err.message); return []; }),
+      api.list('/units').catch(err => { console.warn('[Leads] units:', err.message); return []; }),
     ]).then(([l, u]) => {
       if (cancelled) return;
       setLeads(l || []);

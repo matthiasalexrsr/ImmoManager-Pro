@@ -25,10 +25,10 @@ export default function PropertyDetail() {
   useEffect(() => {
     Promise.all([
       api.get(`/properties/${id}`).catch(() => null),
-      api.get(`/units?property_id=${id}`).catch(() => []),
-      api.get(`/contracts?property_id=${id}`).catch(() => []),
-      api.get(`/documents?property_id=${id}`).catch(() => []),
-      api.get(`/maintenance?property_id=${id}`).catch(() => []),
+      api.list(`/units?property_id=${id}`).catch(() => []),
+      api.list(`/contracts?property_id=${id}`).catch(() => []),
+      api.list(`/documents?property_id=${id}`).catch(() => []),
+      api.list(`/maintenance?property_id=${id}`).catch(() => []),
     ]).then(([prop, propUnits, propContracts, propDocs, propMaint]) => {
       setProperty(prop);
       setUnits(propUnits || []);

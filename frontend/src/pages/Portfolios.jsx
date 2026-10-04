@@ -72,9 +72,9 @@ export default function Portfolios() {
   const refreshData = () => {
     setLoading(true);
     Promise.all([
-      api.get('/portfolios').catch(() => []),
-      api.get('/properties').catch(() => []),
-      api.get('/units').catch(() => []),
+      api.list('/portfolios').catch(() => []),
+      api.list('/properties').catch(() => []),
+      api.list('/units').catch(() => []),
     ]).then(([p, props, u]) => {
       setPortfolios(Array.isArray(p) ? p : []);
       setProperties(Array.isArray(props) ? props : []);
@@ -85,9 +85,9 @@ export default function Portfolios() {
   useEffect(() => {
     let cancelled = false;
     Promise.all([
-      api.get('/portfolios').catch(() => []),
-      api.get('/properties').catch(() => []),
-      api.get('/units').catch(() => []),
+      api.list('/portfolios').catch(() => []),
+      api.list('/properties').catch(() => []),
+      api.list('/units').catch(() => []),
     ]).then(([p, props, u]) => {
       if (cancelled) return;
       setPortfolios(Array.isArray(p) ? p : []);

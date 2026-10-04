@@ -3,7 +3,7 @@ import { render, screen, fireEvent, within } from '@testing-library/react';
 import Statements from '../pages/Statements';
 import { api } from '../api';
 
-vi.mock('../api', () => ({ api: { get: vi.fn(), post: vi.fn(), put: vi.fn() } }));
+vi.mock('../api', () => ({ api: { get: vi.fn(), list: vi.fn(), post: vi.fn(), put: vi.fn() } }));
 const t = (key) => key;
 vi.mock('../i18n', () => ({ useTranslation: () => ({ t, locale: 'de-DE' }) }));
 
@@ -39,6 +39,7 @@ describe('Statements detail', () => {
     vi.clearAllMocks();
     api.get.mockImplementation((path) => Promise.resolve(
       path.endsWith('/preflight') ? { has_blockers: false, blockers: [], warnings: [], metrics: {} } : DATA[path] ?? []));
+    api.list.mockImplementation((path) => Promise.resolve(DATA[path] ?? []));
   });
 
   it('shows usage periods and the vacancy row without a PDF button', async () => {

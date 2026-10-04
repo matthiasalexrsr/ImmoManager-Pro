@@ -235,14 +235,14 @@ export default function Statements() {
   const loadData = () => {
     setLoadError(null);
     Promise.all([
-      api.get('/billing/periods'),
-      api.get('/billing/cost-items'),
-      api.get('/billing/statements'),
-      api.get('/properties'),
-      api.get('/units'),
-      api.get('/billing/allocation-keys'),
-      api.get('/contracts'),
-      api.get('/tenants'),
+      api.list('/billing/periods'),
+      api.list('/billing/cost-items'),
+      api.list('/billing/statements'),
+      api.list('/properties'),
+      api.list('/units'),
+      api.list('/billing/allocation-keys'),
+      api.list('/contracts'),
+      api.list('/tenants'),
     ]).then(([bp, ci, us, props, u, ak, ctr, tn]) => {
       setPeriods(bp || []);
       setCostItems(ci || []);
@@ -446,7 +446,7 @@ export default function Statements() {
           );
           await loadData();
           if (res?.new_period_id) {
-            const allPeriods = await api.get('/billing/periods').catch(() => []);
+            const allPeriods = await api.list('/billing/periods').catch(() => []);
             const newPeriod = (allPeriods || []).find(p => p.id === res.new_period_id);
             if (newPeriod) handleSelectPeriod(newPeriod);
           }

@@ -72,6 +72,57 @@ describe('API client', () => {
   });
 });
 
+describe('api.list', () => {
+  const rows = (from, count) => Array.from({ length: count }, (_, i) => ({ id: `r${from + i}` }));
+  const respond = (body) => ({ ok: true, status: 200, json: async () => body, headers: new Headers() });
+
+  beforeEach(() => {
+    vi.resetModules();
+    mockFetch.mockReset();
+    localStorageMock.clear();
+  });
+
+  it('loads every page instead of stopping at the server default of 100 rows', async () => {
+    // Regression: lists showed 100 of 1060 bookings because pages called the API without paging.
+    mockFetch.mockResolvedValueOnce(respond(rows(0, 1000))).mockResolvedValueOnce(respond(rows(1000, 60)));
+
+    const { api } = await import('../api.js');
+    const result = await api.list('/bookings');
+
+    expect(result).toHaveLength(1060);
+    expect(mockFetch.mock.calls.map(([url]) => url)).toEqual([
+      '/api/v1/bookings?skip=0&limit=1000',
+      '/api/v1/bookings?skip=1000&limit=1000',
+    ]);
+  });
+
+  it('keeps filters and replaces paging parameters', async () => {
+    mockFetch.mockResolvedValueOnce(respond(rows(0, 3)));
+
+    const { api } = await import('../api.js');
+    await api.list('/tenants?include_archived=true&limit=10');
+
+    expect(mockFetch.mock.calls[0][0]).toBe('/api/v1/tenants?include_archived=true&limit=1000&skip=0');
+  });
+
+  it('stops when an endpoint ignores skip and repeats the same rows', async () => {
+    mockFetch.mockResolvedValue(respond(rows(0, 1000)));
+
+    const { api } = await import('../api.js');
+    const result = await api.list('/integrations');
+
+    expect(result).toHaveLength(1000);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('passes non-list responses through', async () => {
+    mockFetch.mockResolvedValueOnce(respond({ items: [] }));
+
+    const { api } = await import('../api.js');
+    expect(await api.list('/reports/summary')).toEqual({ items: [] });
+  });
+});
+
 describe('isLoggedIn', () => {
   beforeEach(() => {
     vi.resetModules();

@@ -26,14 +26,14 @@ export default function Bookings() {
 
   const refreshData = () => {
     setLoading(true);
-    api.get('/bookings').catch(() => [])
+    api.list('/bookings').catch(() => [])
       .then(data => setBookings(Array.isArray(data) ? data : []))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     let cancelled = false;
-    api.get('/bookings').catch(err => { console.warn('[Bookings] load:', err.message); return []; })
+    api.list('/bookings').catch(err => { console.warn('[Bookings] load:', err.message); return []; })
       .then(data => { if (!cancelled) setBookings(Array.isArray(data) ? data : []); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };

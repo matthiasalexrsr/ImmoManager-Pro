@@ -59,14 +59,14 @@ export default function Invoices() {
 
   const refreshData = () => {
     setLoading(true);
-    api.get('/invoices').catch(() => [])
+    api.list('/invoices').catch(() => [])
       .then(inv => setInvoices(Array.isArray(inv) ? inv : []))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     let cancelled = false;
-    api.get('/invoices').catch(err => { console.warn('[Invoices] invoices:', err.message); return []; })
+    api.list('/invoices').catch(err => { console.warn('[Invoices] invoices:', err.message); return []; })
       .then(data => { if (!cancelled) setInvoices(Array.isArray(data) ? data : []); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };

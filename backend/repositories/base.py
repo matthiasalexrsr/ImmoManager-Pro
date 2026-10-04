@@ -11,6 +11,8 @@ from typing import Any
 from uuid import uuid4
 
 from pydantic import BaseModel as PydanticBaseModel
+from sqlalchemy import inspect as sa_inspect
+from sqlalchemy import literal_column
 from sqlalchemy.orm import Session
 
 from ..db.orm_models import Base
@@ -155,8 +157,25 @@ class BaseRepository:
         if order_by and hasattr(self.orm_class, order_by):
             col = getattr(self.orm_class, order_by)
             query = query.order_by(col.desc() if order_desc else col.asc())
+        query = query.order_by(*self._unique_order())
         query = query.offset(skip).limit(limit)
         return [self._to_pydantic(o) for o in query.all()]
+
+    def _unique_order(self) -> list[Any]:
+        """Final sort keys that make every row's position unique.
+
+        Without them OFFSET/LIMIT pages may overlap or skip rows, so a client
+        that loads a list page by page would miss entries. SQLite keeps its
+        insertion order through rowid; other databases sort by creation time
+        and primary key.
+        """
+        if self.db.get_bind().dialect.name == "sqlite":
+            return [literal_column("rowid")]
+        keys: list[Any] = []
+        if hasattr(self.orm_class, "created_at"):
+            keys.append(getattr(self.orm_class, "created_at"))
+        keys.extend(sa_inspect(self.orm_class).primary_key)
+        return keys
 
     @safe_db_operation("count")
     def count(self, filters: dict[str, Any] | None = None) -> int:

@@ -48,14 +48,14 @@ export default function Budgets() {
   const [deleteError, setDeleteError] = useState(null);
 
   const refreshData = () => {
-    api.get('/budgets').catch(err => { console.warn('[Budgets]', err.message); return []; })
+    api.list('/budgets').catch(err => { console.warn('[Budgets]', err.message); return []; })
       .then(b => setBudgets(b || []))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     let cancelled = false;
-    api.get('/budgets').catch(err => { console.warn('[Budgets]', err.message); return []; })
+    api.list('/budgets').catch(err => { console.warn('[Budgets]', err.message); return []; })
       .then(data => { if (!cancelled) setBudgets(data || []); })
       .catch(e => { if (!cancelled) console.warn('[Budgets] load failed:', e.message); })
       .finally(() => { if (!cancelled) setLoading(false); });

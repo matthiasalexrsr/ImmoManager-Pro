@@ -69,7 +69,7 @@ export default function Meters() {
     const unitMap = Object.fromEntries(units.map(x => [x.id, x]));
     const propMap = Object.fromEntries(properties.map(x => [x.id, x]));
 
-    api.get('/meters').catch(() => []).then(m => {
+    api.list('/meters').catch(() => []).then(m => {
       const enriched = (m || []).map(meter => {
         const unit = unitMap[meter.unit_id];
         const prop = unit?.property_id ? propMap[unit.property_id] : null;
@@ -83,7 +83,7 @@ export default function Meters() {
         };
       });
 
-      api.get('/meters/readings/all').then(allReadings => {
+      api.list('/meters/readings/all').then(allReadings => {
         const readingsByMeter = {};
         (allReadings || []).forEach(r => {
           if (!readingsByMeter[r.meter_id]) readingsByMeter[r.meter_id] = [];
@@ -110,7 +110,7 @@ export default function Meters() {
 
   const handleSelectMeter = (meter) => {
     setSelectedMeter(meter);
-    api.get(`/meters/${meter.id}/readings`).then(r => {
+    api.list(`/meters/${meter.id}/readings`).then(r => {
       const sorted = (r || []).sort((a, b) =>
         (a.reading_date || '').localeCompare(b.reading_date || '')
       );

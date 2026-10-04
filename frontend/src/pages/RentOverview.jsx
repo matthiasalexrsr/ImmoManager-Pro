@@ -38,11 +38,11 @@ export default function RentOverview() {
   const refreshData = () => {
     setLoading(true);
     Promise.all([
-      api.get('/rent-charges').catch(() => []),
-      api.get('/receivables').catch(() => []),
-      api.get('/contracts').catch(() => []),
-      api.get('/tenants').catch(() => []),
-      api.get('/units').catch(() => []),
+      api.list('/rent-charges').catch(() => []),
+      api.list('/receivables').catch(() => []),
+      api.list('/contracts').catch(() => []),
+      api.list('/tenants').catch(() => []),
+      api.list('/units').catch(() => []),
     ]).then(([chargesList, recList, contracts, tenants, units]) => {
       const contractMap = Object.fromEntries((contracts || []).map(c => [c.id, c]));
       const tenantMap = Object.fromEntries((tenants || []).map(t => [t.id, t]));
@@ -87,11 +87,11 @@ export default function RentOverview() {
   useEffect(() => {
     let cancelled = false;
     Promise.all([
-      api.get('/rent-charges').catch(() => []),
-      api.get('/receivables').catch(() => []),
-      api.get('/contracts').catch(() => []),
-      api.get('/tenants').catch(() => []),
-      api.get('/units').catch(() => []),
+      api.list('/rent-charges').catch(() => []),
+      api.list('/receivables').catch(() => []),
+      api.list('/contracts').catch(() => []),
+      api.list('/tenants').catch(() => []),
+      api.list('/units').catch(() => []),
     ]).then(([chargesList, recList, contracts, tenants, units]) => {
       if (cancelled) return;
       const contractMap = Object.fromEntries((contracts || []).map(c => [c.id, c]));

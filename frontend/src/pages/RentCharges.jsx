@@ -22,7 +22,7 @@ export default function RentCharges() {
 
   const refreshData = () => {
     setLoading(true);
-    api.get('/rent-charges').catch(() => [])
+    api.list('/rent-charges').catch(() => [])
       .then(ch => setCharges(ch || []))
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
@@ -30,7 +30,7 @@ export default function RentCharges() {
 
   useEffect(() => {
     let cancelled = false;
-    api.get('/rent-charges').catch(err => { console.warn('[RentCharges] charges:', err.message); return []; })
+    api.list('/rent-charges').catch(err => { console.warn('[RentCharges] charges:', err.message); return []; })
       .then(data => { if (!cancelled) setCharges(data || []); })
       .catch(e => { if (!cancelled) setError(e.message); })
       .finally(() => { if (!cancelled) setLoading(false); });

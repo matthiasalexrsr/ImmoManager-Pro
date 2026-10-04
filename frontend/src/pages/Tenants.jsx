@@ -24,7 +24,7 @@ export default function Tenants() {
 
   const refreshData = () => {
     setLoading(true);
-    api.get('/tenants?include_archived=true')
+    api.list('/tenants?include_archived=true')
       .then(data => setTenants(data || []))
       .catch(() => setTenants([]))
       .finally(() => setLoading(false));
@@ -32,7 +32,7 @@ export default function Tenants() {
 
   useEffect(() => {
     let cancelled = false;
-    api.get('/tenants?include_archived=true')
+    api.list('/tenants?include_archived=true')
       .then(data => { if (!cancelled) setTenants(data || []); })
       .catch(() => { if (!cancelled) setTenants([]); })
       .finally(() => { if (!cancelled) setLoading(false); });

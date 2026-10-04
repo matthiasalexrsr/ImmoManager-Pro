@@ -21,14 +21,14 @@ export default function Accounts() {
 
   const refreshData = () => {
     setLoading(true);
-    api.get('/accounts').catch(() => [])
+    api.list('/accounts').catch(() => [])
       .then(data => setAccounts(Array.isArray(data) ? data : []))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     let cancelled = false;
-    api.get('/accounts').catch(err => { console.warn('[Accounts] load:', err.message); return []; })
+    api.list('/accounts').catch(err => { console.warn('[Accounts] load:', err.message); return []; })
       .then(data => { if (!cancelled) setAccounts(Array.isArray(data) ? data : []); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };

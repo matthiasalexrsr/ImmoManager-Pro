@@ -25,14 +25,14 @@ export default function Units() {
 
   const refreshData = () => {
     setLoading(true);
-    api.get('/units').catch(() => [])
+    api.list('/units').catch(() => [])
       .then(data => setUnits(Array.isArray(data) ? data : []))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     let cancelled = false;
-    api.get('/units').catch(() => [])
+    api.list('/units').catch(() => [])
       .then(data => { if (!cancelled) setUnits(Array.isArray(data) ? data : []); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };

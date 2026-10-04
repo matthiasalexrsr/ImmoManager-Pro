@@ -90,14 +90,14 @@ export default function Listings() {
 
   const refreshData = () => {
     setLoading(true);
-    api.get('/listings').catch(() => [])
+    api.list('/listings').catch(() => [])
       .then(l => setListings(l || []))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     let cancelled = false;
-    api.get('/listings').catch(err => { console.warn('[Listings] listings:', err.message); return []; })
+    api.list('/listings').catch(err => { console.warn('[Listings] listings:', err.message); return []; })
       .then(data => { if (!cancelled) setListings(data || []); })
       .catch(e => { if (!cancelled) console.warn('[Listings] load failed:', e.message); })
       .finally(() => { if (!cancelled) setLoading(false); });

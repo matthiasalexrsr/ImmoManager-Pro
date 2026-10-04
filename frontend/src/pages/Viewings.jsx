@@ -149,14 +149,14 @@ export default function Viewings() {
 
   const refreshData = () => {
     setLoading(true);
-    api.get('/viewings').catch(err => { console.warn('[Viewings]', err.message); return []; })
+    api.list('/viewings').catch(err => { console.warn('[Viewings]', err.message); return []; })
       .then(v => setViewings(v || []))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     let cancelled = false;
-    api.get('/viewings').catch(err => { console.warn('[Viewings]', err.message); return []; })
+    api.list('/viewings').catch(err => { console.warn('[Viewings]', err.message); return []; })
       .then(data => { if (!cancelled) setViewings(data || []); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };

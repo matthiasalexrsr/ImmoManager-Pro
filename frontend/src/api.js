@@ -165,11 +165,52 @@ async function request(path, options = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// Complete lists — list endpoints return at most `limit` rows (default 100)
+// ---------------------------------------------------------------------------
+
+const LIST_PAGE_SIZE = 1000; // the largest page the server accepts
+const LIST_MAX_PAGES = 500;
+
+function pagePath(path, skip) {
+  const [base, query = ''] = path.split('?');
+  const params = new URLSearchParams(query);
+  params.set('skip', String(skip));
+  params.set('limit', String(LIST_PAGE_SIZE));
+  return `${base}?${params}`;
+}
+
+/**
+ * Load every row of a collection, page by page, until a short page arrives.
+ * Rows already seen (same id) end the loop, so an endpoint that ignores
+ * skip cannot make it spin.
+ */
+async function requestList(path, { signal } = {}) {
+  const rows = [];
+  const seen = new Set();
+  for (let page = 0; page < LIST_MAX_PAGES; page += 1) {
+    const data = await request(pagePath(path, page * LIST_PAGE_SIZE), { signal });
+    if (!Array.isArray(data)) return page === 0 ? data : rows;
+    let added = 0;
+    for (const row of data) {
+      if (row?.id != null) {
+        if (seen.has(row.id)) continue;
+        seen.add(row.id);
+      }
+      rows.push(row);
+      added += 1;
+    }
+    if (data.length < LIST_PAGE_SIZE || added === 0) break;
+  }
+  return rows;
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
 export const api = {
   get: (path, { signal } = {}) => request(path, { signal }),
+  list: (path, { signal } = {}) => requestList(path, { signal }),
   post: (path, data, { signal } = {}) => request(path, { method: 'POST', body: JSON.stringify(data), signal }),
   put: (path, data, { signal } = {}) => request(path, { method: 'PUT', body: JSON.stringify(data), signal }),
   patch: (path, data, { signal } = {}) => request(path, { method: 'PATCH', body: JSON.stringify(data), signal }),

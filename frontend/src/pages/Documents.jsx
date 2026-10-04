@@ -64,14 +64,14 @@ export default function Documents() {
 
   const refreshData = () => {
     setLoading(true);
-    api.get('/documents').catch(() => [])
+    api.list('/documents').catch(() => [])
       .then(data => setDocuments(Array.isArray(data) ? data : []))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     let cancelled = false;
-    api.get('/documents').catch(() => [])
+    api.list('/documents').catch(() => [])
       .then(data => { if (!cancelled) setDocuments(Array.isArray(data) ? data : []); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };

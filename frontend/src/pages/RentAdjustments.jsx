@@ -34,14 +34,14 @@ export default function RentAdjustments() {
 
   const refreshData = () => {
     setLoading(true);
-    api.get('/rent-adjustments').catch(err => { console.warn('[RentAdj]', err.message); return []; })
+    api.list('/rent-adjustments').catch(err => { console.warn('[RentAdj]', err.message); return []; })
       .then(adj => setAdjustments(adj || []))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     let cancelled = false;
-    api.get('/rent-adjustments').catch(err => { console.warn('[RentAdjustments] adjustments:', err.message); return []; })
+    api.list('/rent-adjustments').catch(err => { console.warn('[RentAdjustments] adjustments:', err.message); return []; })
       .then(data => { if (!cancelled) setAdjustments(data || []); })
       .catch(e => { if (!cancelled) console.warn('[RentAdjustments] load failed:', e.message); })
       .finally(() => { if (!cancelled) setLoading(false); });

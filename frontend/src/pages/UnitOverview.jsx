@@ -20,8 +20,8 @@ export default function UnitOverview() {
       setUnit(u);
       return Promise.all([
         u.property_id ? api.get(`/properties/${u.property_id}`).catch(() => null) : null,
-        api.get(`/contracts`).catch(err => { console.warn('[UnitOverview] contracts:', err.message); return []; }),
-        api.get(`/insurances?unit_id=${id}`).catch(err => { console.warn('[UnitOverview] insurances:', err.message); return []; }),
+        api.list(`/contracts`).catch(err => { console.warn('[UnitOverview] contracts:', err.message); return []; }),
+        api.list(`/insurances?unit_id=${id}`).catch(err => { console.warn('[UnitOverview] insurances:', err.message); return []; }),
       ]);
     }).then(([p, c, ins]) => {
       setProperty(p);

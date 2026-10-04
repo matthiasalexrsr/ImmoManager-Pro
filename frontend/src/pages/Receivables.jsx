@@ -20,7 +20,7 @@ export default function Receivables() {
 
   const refreshData = () => {
     setLoading(true);
-    api.get('/receivables').catch(() => [])
+    api.list('/receivables').catch(() => [])
       .then(recs => setReceivables(recs || []))
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
@@ -28,7 +28,7 @@ export default function Receivables() {
 
   useEffect(() => {
     let cancelled = false;
-    api.get('/receivables').catch(err => { console.warn('[Receivables] receivables:', err.message); return []; })
+    api.list('/receivables').catch(err => { console.warn('[Receivables] receivables:', err.message); return []; })
       .then(data => { if (!cancelled) setReceivables(data || []); })
       .catch(e => { if (!cancelled) setError(e.message); })
       .finally(() => { if (!cancelled) setLoading(false); });

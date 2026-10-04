@@ -36,8 +36,8 @@ export default function Calendar() {
 
   const refreshData = () => {
     Promise.all([
-      api.get('/calendar').catch(err => { console.warn('[Calendar]', err.message); return []; }),
-      api.get('/properties').catch(() => []),
+      api.list('/calendar').catch(err => { console.warn('[Calendar]', err.message); return []; }),
+      api.list('/properties').catch(() => []),
     ]).then(([ev, props]) => {
       setEvents(ev || []);
       setProperties(props || []);
@@ -47,8 +47,8 @@ export default function Calendar() {
   useEffect(() => {
     let cancelled = false;
     Promise.all([
-      api.get('/calendar').catch(err => { console.warn('[Calendar]', err.message); return []; }),
-      api.get('/properties').catch(err => { console.warn('[Calendar] properties:', err.message); return []; }),
+      api.list('/calendar').catch(err => { console.warn('[Calendar]', err.message); return []; }),
+      api.list('/properties').catch(err => { console.warn('[Calendar] properties:', err.message); return []; }),
     ]).then(([first, second]) => {
       if (cancelled) return;
       setEvents(first || []);

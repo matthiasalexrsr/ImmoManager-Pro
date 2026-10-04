@@ -48,7 +48,7 @@ export default function AllocationKeys() {
   const [deleteError, setDeleteError] = useState(null);
 
   const refreshData = () => {
-    api.get('/billing/allocation-keys').catch(err => { console.warn('[AllocationKeys] keys:', err.message); return []; })
+    api.list('/billing/allocation-keys').catch(err => { console.warn('[AllocationKeys] keys:', err.message); return []; })
       .then(k => setKeys(k || []))
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
@@ -56,7 +56,7 @@ export default function AllocationKeys() {
 
   useEffect(() => {
     let cancelled = false;
-    api.get('/billing/allocation-keys').catch(err => { console.warn('[AllocationKeys] keys:', err.message); return []; })
+    api.list('/billing/allocation-keys').catch(err => { console.warn('[AllocationKeys] keys:', err.message); return []; })
       .then(data => { if (!cancelled) setKeys(data || []); })
       .catch(e => { if (!cancelled) setError(e.message); })
       .finally(() => { if (!cancelled) setLoading(false); });
