@@ -15,8 +15,8 @@ createRoot(document.getElementById('root')).render(
   <StrictMode>
     <ErrorBoundary>
       <I18nProvider>
-        <PreferencesProvider>
-          <AuthProvider>
+        <AuthProvider>
+          <PreferencesProvider>
             <DataStoreProvider>
               <DevModeProvider>
                 <ToastProvider>
@@ -26,8 +26,8 @@ createRoot(document.getElementById('root')).render(
                 </ToastProvider>
               </DevModeProvider>
             </DataStoreProvider>
-          </AuthProvider>
-        </PreferencesProvider>
+          </PreferencesProvider>
+        </AuthProvider>
       </I18nProvider>
     </ErrorBoundary>
   </StrictMode>,

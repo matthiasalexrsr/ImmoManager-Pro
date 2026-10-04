@@ -1,6 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { api } from '../api';
+import { useAuth } from './AuthContext';
 
 const PreferencesContext = createContext(null);
 
@@ -31,8 +32,12 @@ export function PreferencesProvider({ children }) {
     document.documentElement.setAttribute('data-theme', theme);
   }, [prefs.theme]);
 
-  // Load preferences from server
+  // Load preferences from server once a user is signed in. Requesting them while
+  // signed out returns 401, which makes the API client redirect to /login: on the
+  // login page itself that is an endless reload loop.
+  const userId = useAuth()?.user?.id;
   useEffect(() => {
+    if (!userId) return;
     api.get('/auth/users/me/preferences')
       .then(data => {
         if (data) {
@@ -41,8 +46,8 @@ export function PreferencesProvider({ children }) {
           localStorage.setItem('user_preferences', JSON.stringify(merged));
         }
       })
-      .catch(err => console.warn('[Preferences]', err.message)); // Not logged in or no preferences
-  }, []);
+      .catch(err => console.warn('[Preferences]', err.message));
+  }, [userId]);
 
   const updatePrefs = useCallback((updates) => {
     setPrefs(prev => {

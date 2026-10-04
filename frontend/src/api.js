@@ -143,7 +143,8 @@ async function request(path, options = {}) {
     if (res.status === 401) {
       localStorage.removeItem('access_token');
       localStorage.removeItem('refresh_token');
-      window.location.href = '/login';
+      // Never redirect from the login page to itself: that reloads it forever.
+      if (window.location.pathname !== '/login') window.location.href = '/login';
       throw new Error('Nicht authentifiziert');
     }
   }
