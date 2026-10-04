@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
 from ..models import Unit, UnitCreate, UnitPatch
+from ..services.deletion_guard import ensure_deletable
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/units", tags=["Einheiten"])
@@ -64,6 +65,7 @@ def patch_unit(unit_id: str, payload: UnitPatch) -> Unit:
 @router.delete("/{unit_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_unit(unit_id: str) -> None:
     try:
+        ensure_deletable(store, "unit", unit_id)
         store.delete_unit(unit_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

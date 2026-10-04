@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
 from ..models import Property, PropertyCreate, PropertyPatch
+from ..services.deletion_guard import ensure_deletable
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/properties", tags=["Immobilien"])
@@ -64,6 +65,7 @@ def patch_property(property_id: str, payload: PropertyPatch) -> Property:
 @router.delete("/{property_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_property(property_id: str) -> None:
     try:
+        ensure_deletable(store, "property", property_id)
         store.delete_property(property_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

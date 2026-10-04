@@ -103,7 +103,7 @@ def _create_tenant(client, headers, name="Max Mustermann"):
 
 
 class TestPropertyManagementFlow:
-    """Create portfolio -> property -> unit -> update unit -> delete property -> verify cascade."""
+    """Create portfolio -> property -> unit -> update unit -> delete (children first)."""
 
     def test_full_property_lifecycle(self, client, auth_headers):
         # Step 1: Create a portfolio
@@ -134,18 +134,21 @@ class TestPropertyManagementFlow:
         assert patched["cold_rent"] == 850.0
         assert patched["status"] == "occupied"
 
-        # Step 5: Delete the property (should cascade-delete the unit)
+        # Step 5: Deleting the property is refused while the unit still exists
+        del_resp = client.delete(
+            f"/api/v1/properties/{property_id}",
+            headers=auth_headers,
+        )
+        assert del_resp.status_code == 409
+        assert client.get(f"/api/v1/units/{unit_id}", headers=auth_headers).status_code == 200
+
+        # Step 6: Delete the unit first, then the property
+        assert client.delete(f"/api/v1/units/{unit_id}", headers=auth_headers).status_code == 204
         del_resp = client.delete(
             f"/api/v1/properties/{property_id}",
             headers=auth_headers,
         )
         assert del_resp.status_code == 204
-
-        # Step 6: Verify the unit was cascade-deleted
-        units_resp = client.get("/api/v1/units", headers=auth_headers)
-        assert units_resp.status_code == 200
-        remaining_units = units_resp.json()
-        assert len(remaining_units) == 0
 
         # Verify the property is gone too
         get_resp = client.get(

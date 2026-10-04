@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from ..dependencies import store
 from ..domain.lease_engine import ChargeConfig, LeaseEngine, PaymentLine
 from ..models import Contract, ContractCreate, ContractPatch
+from ..services.deletion_guard import ensure_deletable
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/contracts", tags=["Verträge"])
@@ -98,6 +99,7 @@ def patch_contract(contract_id: str, payload: ContractPatch) -> Contract:
 @router.delete("/{contract_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_contract(contract_id: str) -> None:
     try:
+        ensure_deletable(store, "contract", contract_id)
         store.delete_contract(contract_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

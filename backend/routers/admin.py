@@ -14,6 +14,7 @@ from ..config import settings
 from ..dependencies import store
 from ..plugins import get_plugins
 from ..services.data_snapshot import SnapshotError, export_snapshot, import_snapshot
+from ..services.deletion_guard import ensure_deletable
 
 # Re-export the CONTRACT_WIZARD_STATUS lazily to avoid circular imports.
 _CONTRACT_WIZARD_STATUS = None
@@ -256,12 +257,19 @@ def bulk_delete(entity_type: str, payload: dict):
     if not delete_fn:
         raise HTTPException(400, f"Unbekannter Entitätstyp: {entity_type}")
 
+    guarded = {"portfolios": "portfolio", "properties": "property", "units": "unit",
+               "tenants": "tenant", "contracts": "contract", "accounts": "account"}
+
     deleted = 0
     errors = []
     for eid in ids:
         try:
+            if entity_type in guarded:
+                ensure_deletable(store, guarded[entity_type], eid)
             delete_fn(eid)
             deleted += 1
+        except HTTPException as e:
+            errors.append({"id": eid, "error": e.detail})
         except Exception as e:
             errors.append({"id": eid, "error": str(e)})
 

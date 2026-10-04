@@ -6,10 +6,12 @@ import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
+import { useToast } from '../components/Toast';
 
 export default function Accounts() {
   const { t } = useTranslation();
   const confirm = useConfirm();
+  const toast = useToast();
   const store = useDataStore();
   const { items: portfolios } = useEntities('portfolios', '/portfolios');
 
@@ -89,7 +91,12 @@ export default function Accounts() {
 
   const handleDelete = async (row) => {
     if (!await confirm(`"${row.name || row.id}" ${t('modals.confirmDelete.body')}`)) return;
-    await api.del(`/accounts/${row.id}`);
+    try {
+      await api.del(`/accounts/${row.id}`);
+    } catch (err) {
+      toast.error(err.message);
+      return;
+    }
     refreshData();
     if (store) store.invalidateRelated('accounts', 'portfolios', 'bookings');
   };

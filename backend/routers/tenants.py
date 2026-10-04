@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
 from ..models import Tenant, TenantCreate, TenantPatch
+from ..services.deletion_guard import ensure_deletable
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/tenants", tags=["Mieter"])
@@ -88,6 +89,7 @@ def patch_tenant(tenant_id: str, payload: TenantPatch) -> Tenant:
 @router.delete("/{tenant_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_tenant(tenant_id: str) -> None:
     try:
+        ensure_deletable(store, "tenant", tenant_id)
         store.delete_tenant(tenant_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

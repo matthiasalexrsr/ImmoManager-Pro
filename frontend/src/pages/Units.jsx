@@ -7,11 +7,13 @@ import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
+import { useToast } from '../components/Toast';
 
 export default function Units() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const confirm = useConfirm();
+  const toast = useToast();
   const store = useDataStore();
   const { items: properties } = useEntities('properties', '/properties');
   const { items: contracts } = useEntities('contracts', '/contracts');
@@ -148,7 +150,12 @@ export default function Units() {
 
   const handleDelete = async (row) => {
     if (!await confirm(`"${row.label}" ${t('modals.confirmDelete.body')}`)) return;
-    await api.del(`/units/${row.id}`);
+    try {
+      await api.del(`/units/${row.id}`);
+    } catch (err) {
+      toast.error(err.message);
+      return;
+    }
     refreshData();
     if (store) store.invalidateRelated('units', 'properties', 'contracts');
   };

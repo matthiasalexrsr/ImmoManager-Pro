@@ -6,6 +6,7 @@ import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
+import { useToast } from '../components/Toast';
 
 const RENT_MODEL_LABELS = { index: 'Indexmiete', stepped: 'Staffelmiete', fixed: 'Festmiete' };
 
@@ -19,6 +20,7 @@ function remainingDays(endDate) {
 export default function Contracts() {
   const { t } = useTranslation();
   const confirm = useConfirm();
+  const toast = useToast();
   const store = useDataStore();
   const { items: properties } = useEntities('properties', '/properties');
   const { items: units } = useEntities('units', '/units');
@@ -143,7 +145,12 @@ export default function Contracts() {
 
   const handleDelete = async (row) => {
     if (!await confirm(`"${row.contract_number}" ${t('modals.confirmDelete.body')}`)) return;
-    await api.del(`/contracts/${row.id}`);
+    try {
+      await api.del(`/contracts/${row.id}`);
+    } catch (err) {
+      toast.error(err.message);
+      return;
+    }
     refreshData();
     if (store) store.invalidateRelated('contracts', 'properties', 'units', 'tenants', 'deposits', 'receivables', 'rent_adjustments');
   };

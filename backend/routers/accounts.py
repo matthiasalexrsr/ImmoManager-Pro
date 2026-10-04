@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
 from ..models import Account, AccountCreate, AccountPatch
+from ..services.deletion_guard import ensure_deletable
 from ..storage import NotFoundError, ValidationError
 from ._helpers import apply_sort
 
@@ -62,6 +63,7 @@ def patch_account(account_id: str, payload: AccountPatch) -> Account:
 @router.delete("/{account_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_account(account_id: str) -> None:
     try:
+        ensure_deletable(store, "account", account_id)
         store.delete_account(account_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

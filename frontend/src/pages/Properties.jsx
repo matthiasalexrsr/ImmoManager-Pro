@@ -7,11 +7,13 @@ import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
+import { useToast } from '../components/Toast';
 
 export default function Properties() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const confirm = useConfirm();
+  const toast = useToast();
   const store = useDataStore();
 
   const { items: portfolios } = useEntities('portfolios', '/portfolios');
@@ -169,7 +171,12 @@ export default function Properties() {
 
   const handleDelete = async (row) => {
     if (!await confirm(`"${row.name}" ${t('modals.confirmDelete.body')}`)) return;
-    await api.del(`/properties/${row.id}`);
+    try {
+      await api.del(`/properties/${row.id}`);
+    } catch (err) {
+      toast.error(err.message);
+      return;
+    }
     refreshData();
     if (store) store.invalidateRelated('properties', 'portfolios', 'units', 'contracts');
   };
