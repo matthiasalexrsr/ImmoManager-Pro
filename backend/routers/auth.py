@@ -22,6 +22,7 @@ from ..auth import (
     require_auth,
     require_role,
     revoke_token,
+    set_user_password,
     update_user,
     verify_totp,
 )
@@ -31,6 +32,7 @@ from ..models import (
     RefreshRequest,
     TokenResponse,
     UserCreate,
+    UserPasswordReset,
     UserPatch,
     UserRead,
 )
@@ -292,6 +294,29 @@ def create_user(
     )
 
 
+def _load_target(user_id: str) -> dict:
+    target = get_user_by_id(user_id)
+    if target is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Benutzer nicht gefunden")
+    return target
+
+
+def _require_may_manage(actor: UserRead, target: dict) -> None:
+    """Managers may only administer read-only accounts; owners may administer everyone."""
+    if actor.role != "eigentuemer" and target["role"] != "readonly":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Nur Eigentümer dürfen Konten mit Schreibrechten verwalten",
+        )
+
+
+def _is_last_active_owner(target: dict) -> bool:
+    if target["role"] != "eigentuemer" or not target["is_active"]:
+        return False
+    owners = [u for u in list_users() if u.role == "eigentuemer" and u.is_active]
+    return len(owners) <= 1
+
+
 @router.patch("/users/{user_id}", response_model=UserRead)
 def patch_user(
     user_id: str,
@@ -299,16 +324,41 @@ def patch_user(
     user: UserRead = Depends(require_role("eigentuemer", "verwalter")),
 ) -> UserRead:
     """Update a user (admin only)."""
-    changes = payload.model_dump(exclude_unset=True)
-
+    changes = {k: v for k, v in payload.model_dump(exclude_unset=True).items() if v is not None}
     # Only owners may change user roles.
     if "role" in changes and user.role != "eigentuemer":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Nur Eigentümer dürfen Rollen ändern",
         )
+    target = _load_target(user_id)
+    _require_may_manage(user, target)
+
+    demotes = changes.get("role", target["role"]) != target["role"]
+    deactivates = changes.get("is_active") is False and target["is_active"]
+    if user_id == user.id and (demotes or deactivates):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Eigene Rolle und eigener Kontostatus können nicht geändert werden",
+        )
+    if (demotes or deactivates) and _is_last_active_owner(target):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Mindestens ein aktiver Eigentümer muss erhalten bleiben",
+        )
 
     return update_user(user_id, changes)
+
+
+@router.post("/users/{user_id}/password", response_model=UserRead)
+def reset_user_password(
+    user_id: str,
+    payload: UserPasswordReset,
+    user: UserRead = Depends(require_role("eigentuemer", "verwalter")),
+) -> UserRead:
+    """Set a new password for an account (admin only)."""
+    _require_may_manage(user, _load_target(user_id))
+    return set_user_password(user_id, payload.password)
 
 
 @router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -321,6 +371,11 @@ def remove_user(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Eigenes Konto kann nicht gelöscht werden",
+        )
+    if _is_last_active_owner(_load_target(user_id)):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Mindestens ein aktiver Eigentümer muss erhalten bleiben",
         )
     delete_user(user_id)
 

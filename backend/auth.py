@@ -473,6 +473,10 @@ class UserStore(ABC):
         ...
 
     @abstractmethod
+    def set_password_hash(self, user_id: str, hashed_password: str) -> Optional[dict]:
+        ...
+
+    @abstractmethod
     def delete(self, user_id: str) -> Optional[dict]:
         ...
 
@@ -509,6 +513,14 @@ class InMemoryUserStore(UserStore):
         for key, value in updates.items():
             if value is not None and key not in ("id", "hashed_password", "created_at"):
                 user[key] = value
+        user["updated_at"] = datetime.now(timezone.utc)
+        return user
+
+    def set_password_hash(self, user_id: str, hashed_password: str) -> Optional[dict]:
+        user = self._by_id.get(user_id)
+        if user is None:
+            return None
+        user["hashed_password"] = hashed_password
         user["updated_at"] = datetime.now(timezone.utc)
         return user
 
@@ -605,6 +617,24 @@ class SQLUserStore(UserStore):
             for key, value in updates.items():
                 if value is not None and key not in ("id", "hashed_password", "created_at"):
                     setattr(obj, key, value)
+            obj.updated_at = datetime.now(timezone.utc)
+            session.commit()
+            session.refresh(obj)
+            return self._to_dict(obj)
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            self._finalize_session(session)
+
+    def set_password_hash(self, user_id: str, hashed_password: str) -> Optional[dict]:
+        from .db.orm_models import UserORM
+        session = self._session_factory()
+        try:
+            obj = session.get(UserORM, user_id)
+            if obj is None:
+                return None
+            obj.hashed_password = hashed_password
             obj.updated_at = datetime.now(timezone.utc)
             session.commit()
             session.refresh(obj)
@@ -750,6 +780,21 @@ def update_user(user_id: str, updates: dict) -> UserRead:
     user = _user_store.update(user_id, updates)
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Benutzer nicht gefunden")
+    return _to_user_read(user)
+
+
+def set_user_password(user_id: str, password: str) -> UserRead:
+    """Set a new password for an existing account (admin reset)."""
+    pw_errors = validate_password_strength(password)
+    if pw_errors:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Passwort zu schwach: {'; '.join(pw_errors)}",
+        )
+    user = _user_store.set_password_hash(user_id, hash_password(password))
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Benutzer nicht gefunden")
+    clear_login_attempts(user["username"])
     return _to_user_read(user)
 
 

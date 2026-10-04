@@ -8,6 +8,7 @@ import { api } from '../api';
 import UpdateSection from './settings/UpdateSection';
 import AutotestSection from './settings/AutotestSection';
 import BackupSection from './settings/BackupSection';
+import UsersSection from './settings/UsersSection';
 
 export default function Settings() {
   const { prefs, toggleTheme, toggleSidebar, updatePrefs } = usePreferences();
@@ -32,6 +33,7 @@ export default function Settings() {
     { key: 'personal', label: t('pages.settings.tabPersonal') || 'Persönlich' },
     { key: 'workflow', label: t('pages.settings.tabWorkflow') || 'Arbeitsweise' },
     { key: 'system', label: t('pages.settings.tabSystem') || 'System' },
+    ...(isAdmin ? [{ key: 'users', label: t('pages.settings.users.tab') }] : []),
     ...(isAdmin ? [{ key: 'dev', label: t('pages.settings.tabDev') || 'Entwicklung' }] : []),
   ];
 
@@ -222,6 +224,8 @@ export default function Settings() {
             </div>
           </>
         )}
+
+        {settingsTab === 'users' && isAdmin && <UsersSection currentUser={auth?.user} />}
 
         {/* System tab: Backup, Updates, About */}
         {settingsTab === 'system' && (

@@ -880,6 +880,24 @@ class UserPatch(BaseModel):
     role: Optional[str] = None
     is_active: Optional[bool] = None
 
+    @field_validator("email")
+    @classmethod
+    def validate_user_email(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and "@" not in v:
+            raise ValueError("Ungültige E-Mail-Adresse")
+        return v
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in _VALID_ROLES:
+            raise ValueError(f"Ungültige Rolle. Erlaubt: {', '.join(sorted(_VALID_ROLES))}")
+        return v
+
+
+class UserPasswordReset(BaseModel):
+    password: str = Field(..., min_length=6)
+
 
 class TokenResponse(BaseModel):
     access_token: str
