@@ -159,3 +159,21 @@ class TestBillingEngineEdgeCases:
         engine.add_cost(CostEntry(description="Water", amount=Decimal("750.50"), allocation_key_id="k1"))
         stmts = engine.generate()
         assert stmts[0].total_cost == Decimal("750.50")
+
+
+class TestShareValuePrecision:
+    def test_fractional_consumption_shares_are_not_rounded(self) -> None:
+        """Regression: share values were rounded to cents (0.004 m³ -> 0.00)."""
+        shares = {"u1": "0.004", "u2": "0.006", "u3": "1.235", "u4": "1.245"}
+        engine = BillingEngine()
+        for unit_id, value in shares.items():
+            engine.add_unit_share("water", UnitShare(unit_id=unit_id, contract_id=f"c-{unit_id}",
+                                                     share_value=Decimal(value)))
+        engine.add_cost(CostEntry(description="Wasser", amount=Decimal("1000.00"), allocation_key_id="water"))
+
+        charged = {s.unit_id: s.total_cost for s in engine.generate()}
+
+        assert charged["u1"] == Decimal("1.61")
+        assert charged["u2"] == Decimal("2.41")
+        assert charged["u3"] == Decimal("495.98")
+        assert sum(charged.values()) == Decimal("1000.00")

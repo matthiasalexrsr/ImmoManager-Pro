@@ -25,8 +25,10 @@ class UnitShare:
     share_value: Decimal
 
     def __post_init__(self) -> None:
-        normalized = _money(self.share_value)
-        if normalized < Decimal("0.00"):
+        # Shares are not money: keep full precision (e.g. water in m³ with three
+        # decimals). Rounding them to cents would shift costs between units.
+        normalized = Decimal(str(self.share_value))
+        if normalized < Decimal("0"):
             raise ValueError("share_value must be >= 0")
         object.__setattr__(self, "share_value", normalized)
 
@@ -118,7 +120,7 @@ class BillingEngine:
         for cost in self._costs:
             shares = self._shares.get(cost.allocation_key_id, [])
             total_share = sum(s.share_value for s in shares)
-            if total_share == Decimal("0.00"):
+            if total_share == Decimal("0"):
                 continue
 
             allocated_sum = Decimal("0.00")

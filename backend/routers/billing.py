@@ -380,6 +380,7 @@ def _run_billing_period_preflight(period_id: str) -> BillingPreflightResult:
     non_positive_cost_ids: list[str] = []
     missing_advance_contract_ids: list[str] = []
     missing_person_count_unit_ids: list[str] = []
+    rooms_fallback_unit_ids: list[str] = []
 
     requires_area = any(k.key_type == "area_sqm" for k in allocation_keys.values())
     requires_person_count = any(k.key_type == "person_count" for k in allocation_keys.values())
@@ -399,6 +400,8 @@ def _run_billing_period_preflight(period_id: str) -> BillingPreflightResult:
         _pc = unit.person_count if getattr(unit, "person_count", None) else unit.rooms
         if requires_person_count and (_pc is None or _pc <= 0):
             missing_person_count_unit_ids.append(unit.id)
+        elif requires_person_count and not getattr(unit, "person_count", None):
+            rooms_fallback_unit_ids.append(unit.id)
 
         monthly_advance = float((unit.service_charge_advance or 0) + (unit.heating_advance or 0))
         if monthly_advance <= 0:
@@ -448,6 +451,13 @@ def _run_billing_period_preflight(period_id: str) -> BillingPreflightResult:
             "Kostenpositionen mit <= 0 Betrag gefunden",
             ", ".join(non_positive_cost_ids),
         )
+    if rooms_fallback_unit_ids:
+        add_issue(
+            "warning",
+            "PERSON_COUNT_FROM_ROOMS",
+            "Personenzahl fehlt; für die Personen-Verteilung wird die Zimmerzahl verwendet",
+            ", ".join(sorted(set(rooms_fallback_unit_ids))),
+        )
     if missing_advance_contract_ids:
         add_issue(
             "warning",
@@ -464,6 +474,7 @@ def _run_billing_period_preflight(period_id: str) -> BillingPreflightResult:
         "units_missing": len(missing_unit_contract_ids),
         "area_missing_units": len(set(area_missing_unit_ids)),
         "person_count_missing_units": len(set(missing_person_count_unit_ids)),
+        "person_count_from_rooms_units": len(set(rooms_fallback_unit_ids)),
         "consumption_units_with_data": len(consumption_units_with_data),
         "contracts_without_advance": len(missing_advance_contract_ids),
         "non_positive_cost_items": len(non_positive_cost_ids),
