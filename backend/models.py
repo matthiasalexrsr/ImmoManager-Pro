@@ -187,6 +187,7 @@ class ReceivableCreate(BaseModel):
     dunning_level: Optional[str] = None
     status: str = "open"
     statement_id: Optional[str] = None  # link back to source UtilityStatement
+    description: Optional[str] = None
 
 
 class Receivable(ReceivableCreate):

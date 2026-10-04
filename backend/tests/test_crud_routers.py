@@ -2352,14 +2352,16 @@ class TestGenerateUtilityStatements:
         billing.generate_utility_statements(self.bp.id)
         assert len(_list_utility_statements()) == 2  # Still 2, not 4
 
-    def test_generate_excludes_inactive_contracts(self) -> None:
+    def test_generate_bills_ended_contracts_for_their_days_but_not_drafts(self) -> None:
+        """Regression: only 'active' contracts were billed, so a tenant who moved out got no statement."""
         unit3 = store.create_unit(UnitCreate(property_id=self.prop.id, label="3", unit_type="Wohnung",
                                              area_sqm=50))
         terminated = store.create_contract(
             ContractCreate(
                 contract_number="V-3", property_id=self.prop.id,
                 unit_id=unit3.id, tenant_id=self.tenant1.id,
-                start_date=datetime.date(2024, 1, 1), status="terminated",
+                start_date=datetime.date(2023, 1, 1), end_date=datetime.date(2024, 6, 30),
+                status="terminated",
             )
         )
         draft = store.create_contract(
@@ -2376,10 +2378,32 @@ class TestGenerateUtilityStatements:
             )
         )
         stmts = billing.generate_utility_statements(self.bp.id)
-        statement_contract_ids = {s.contract_id for s in stmts}
-        assert terminated.id not in statement_contract_ids
-        assert draft.id not in statement_contract_ids
-        assert statement_contract_ids == {self.contract1.id, self.contract2.id}
+        by_contract = {s.contract_id: s for s in stmts}
+        assert draft.id not in by_contract
+        assert set(by_contract) == {self.contract1.id, self.contract2.id, terminated.id, None}
+        moved_out = by_contract[terminated.id]
+        assert (moved_out.usage_start, moved_out.usage_end, moved_out.usage_days) == (
+            datetime.date(2024, 1, 1), datetime.date(2024, 6, 30), 182)
+        vacancy = by_contract[None]
+        assert vacancy.party == "vacancy" and vacancy.usage_days == 184 and vacancy.advance_paid == 0
+        # 50 m² of 150 m² is 333.33 €, split by days between the tenant and the landlord
+        assert moved_out.total_cost + vacancy.total_cost == pytest.approx(333.33, abs=0.01)
+        assert sum(s.total_cost for s in stmts) == pytest.approx(1000.0)
+
+    def test_generate_rejects_terminated_contract_without_end_date(self) -> None:
+        unit3 = store.create_unit(UnitCreate(property_id=self.prop.id, label="3", unit_type="Wohnung",
+                                             area_sqm=50))
+        store.create_contract(ContractCreate(
+            contract_number="V-3", property_id=self.prop.id, unit_id=unit3.id, tenant_id=self.tenant1.id,
+            start_date=datetime.date(2023, 1, 1), status="terminated"))
+        store.create_cost_item(CostItemCreate(billing_period_id=self.bp.id, description="Wasser",
+                                              amount=1000.0, allocation_key_id=self.ak_area.id))
+
+        with pytest.raises(HTTPException) as exc_info:
+            billing.generate_utility_statements(self.bp.id)
+
+        assert exc_info.value.status_code == 400
+        assert "ohne Enddatum" in exc_info.value.detail
 
     def test_generate_no_contracts_400(self) -> None:
         # Remove all contracts
