@@ -350,3 +350,21 @@ def test_vacant_unit_with_statement_rows_cannot_be_deleted(koeln):
 
     assert resp.status_code == 409
     assert "1 Nebenkostenabrechnung" in resp.json()["error"]["message"]
+
+
+def test_statement_pdf_names_tenant_periods_and_shares(koeln):
+    stmts = billing.generate_utility_statements(koeln["period"].id)
+    ben = next(s for s in stmts if s.contract_id == koeln["ben"].id)
+    vacancy = next(s for s in stmts if s.party == "vacancy")
+
+    document = billing._statement_document(ben)
+    facts = dict(document["facts"])
+
+    assert facts["Mieter"] == "Mieter B-003"
+    assert facts["Abrechnungszeitraum"] == "01.01.2025 – 31.12.2025"
+    assert facts["Nutzungszeitraum"] == "01.11.2025 – 31.12.2025 (61 Tage)"
+    tax = next(row for row in document["rows"] if row[0] == "Grundsteuer")
+    assert tax == ["Grundsteuer", "4.000,00 €", "area_sqm: 100 von 495 m² · 61/365 Tage", "135,05 €"]  # 4000 × 100/495 × 61/365
+    assert document["totals"][-1] == ("Guthaben", "343,65 €")
+    assert dict(billing._statement_document(vacancy)["facts"])["Mieter"] == "Leerstand (Eigentümer)"
+    assert billing.download_utility_statement_pdf(ben.id).media_type in {"application/pdf", "text/plain"}

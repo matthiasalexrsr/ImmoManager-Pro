@@ -76,13 +76,33 @@ function getCostColumns(t) {
     { key: 'amount', label: t('pages.statements.colAmount') || 'Betrag (€)', type: 'number', align: 'right',
       render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
     { key: 'allocation_key_name', label: t('pages.statements.colAllocationKey') || 'Verteilerschlüssel' },
+    { key: 'is_recoverable', label: t('pages.statements.colRecoverable') || 'Umlagefähig',
+      render: v => (v === false
+        ? <span className="text-muted">{t('pages.statements.notRecoverable') || 'nein (trägt der Eigentümer)'}</span>
+        : (t('pages.statements.recoverable') || 'ja')) },
   ];
+}
+
+/** dd.mm.yyyy from an ISO date string. */
+function formatDate(iso) {
+  if (!iso) return '—';
+  const [y, m, d] = String(iso).slice(0, 10).split('-');
+  return `${d}.${m}.${y}`;
 }
 
 function getStmtColumns(t, onError) {
   return [
     { key: 'unit_label', label: t('pages.statements.colUnit') || 'Einheit' },
-    { key: 'tenant_name', label: 'Mieter' },
+    { key: 'tenant_name', label: t('pages.statements.colParty') || 'Mieter',
+      render: (v, row) => (row.party === 'vacancy'
+        ? <span className="text-muted">{t('pages.statements.vacancyParty') || 'Leerstand (Eigentümer)'}</span>
+        : v) },
+    { key: 'usage_start', label: t('pages.statements.colUsage') || 'Nutzungszeitraum',
+      render: (_, row) => (row.usage_start
+        ? `${formatDate(row.usage_start)} – ${formatDate(row.usage_end)}`
+        : '—') },
+    { key: 'usage_days', label: t('pages.statements.colDays') || 'Tage', type: 'number', align: 'right',
+      render: v => (v != null ? v : '—') },
     { key: 'total_cost', label: t('pages.statements.colShare') || 'Anteil (€)', type: 'number', align: 'right',
       render: v => `${Number(v || 0).toFixed(2)} €` },
     { key: 'advance_paid', label: t('pages.statements.colAdvancePaid') || 'Vorauszahlung (€)', type: 'number', align: 'right',
@@ -96,7 +116,7 @@ function getStmtColumns(t, onError) {
       render: v => v ? <StatusBadge status={v} /> : <span className="text-muted">—</span> },
     { key: 'status', label: t('ui.form.status') || 'Status', type: 'status' },
     { key: 'pdf_action', label: '',
-      render: (_, row) => (
+      render: (_, row) => row.party !== 'vacancy' && (
         <button
           className="btn btn-sm btn-secondary"
           title={t('pages.statements.pdfDownload') || 'PDF herunterladen'}
@@ -208,7 +228,7 @@ export default function Statements() {
   const [ocrDraft, setOcrDraft] = useState(null);
   const [ocrUploading, setOcrUploading] = useState(false);
   const [disputing, setDisputing] = useState(false);
-  const [, setPromptModal] = useState(null);
+  const [promptModal, setPromptModal] = useState(null);
 
   const loadData = () => {
     setLoadError(null);
@@ -279,6 +299,11 @@ export default function Statements() {
     { key: 'amount', label: t('pages.statements.formAmount') || 'Betrag (€)', type: 'number', required: true },
     { key: 'allocation_key_id', label: t('pages.statements.formAllocationKey') || 'Verteilerschlüssel', type: 'select', required: true,
       options: allocationKeys.map(k => ({ value: k.id, label: `${k.name} (${k.key_type})` })) },
+    { key: 'is_recoverable', label: t('pages.statements.formRecoverable') || 'Umlagefähig', type: 'select', required: true,
+      default: 'true', options: [
+        { value: 'true', label: t('pages.statements.recoverableYes') || 'Ja – wird auf die Mieter verteilt' },
+        { value: 'false', label: t('pages.statements.recoverableNo') || 'Nein – trägt der Eigentümer' },
+      ]},
   ];
 
   const handleSave = async (data) => {
@@ -294,6 +319,8 @@ export default function Statements() {
             description: cost.description,
             amount: 0,
             allocation_key_id: cost.allocation_key_id,
+            is_recoverable: cost.is_recoverable !== false,
+            cost_category: cost.cost_category,
           }).catch(() => { toast.show('Kostenposition konnte nicht kopiert werden'); });
         }
       }
@@ -303,7 +330,8 @@ export default function Statements() {
     loadData();
   };
 
-  const handleSaveCost = async (data) => {
+  const handleSaveCost = async (form) => {
+    const data = { ...form, is_recoverable: form.is_recoverable !== 'false' };
     if (costModal === 'create') {
       await api.post('/billing/cost-items', data);
     } else {
@@ -393,7 +421,8 @@ export default function Statements() {
     setCreatingReceivables(true);
     try {
       const res = await api.post(`/billing/periods/${selectedPeriod.id}/create-receivables`, {});
-      toast.show(`Forderungen erzeugt: ${res?.created_receivables ?? 0}`, 'success');
+      const skipped = res?.skipped_existing ? ` (${res.skipped_existing} bereits vorhanden)` : '';
+      toast.show(`Forderungen erzeugt: ${res?.created_receivables ?? 0}${skipped}`, 'success');
     } catch (err) {
       toast.show(err.message || 'Forderungen konnten nicht erzeugt werden');
     } finally {
@@ -614,6 +643,9 @@ export default function Statements() {
         };
       });
     const totalCosts = periodCosts.reduce((s, c) => s + (c.amount || 0), 0);
+    const nonRecoverable = periodCosts.filter(c => c.is_recoverable === false).reduce((s, c) => s + (c.amount || 0), 0);
+    const tenantShare = periodStmts.filter(s => s.party !== 'vacancy').reduce((s, st) => s + (st.total_cost || 0), 0);
+    const vacancyShare = periodStmts.filter(s => s.party === 'vacancy').reduce((s, st) => s + (st.total_cost || 0), 0);
     const editable = isMutable(selectedPeriod.status);
     const isFinalized = selectedPeriod.status === 'finalized';
     const isDelivered = selectedPeriod.status === 'delivered';
@@ -739,14 +771,24 @@ export default function Statements() {
             <div className="stat-label">{t('pages.statements.totalCosts')}</div>
             <div className="stat-value">{totalCosts.toFixed(2)} €</div>
           </div>
-          <div className="stat-card">
-            <div className="stat-label">{t('pages.statements.costItems')}</div>
-            <div className="stat-value">{periodCosts.length}</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-label">{t('pages.statements.individualStatements')}</div>
-            <div className="stat-value">{periodStmts.length}</div>
-          </div>
+          {periodStmts.length > 0 && (
+            <div className="stat-card">
+              <div className="stat-label">{t('pages.statements.tenantShare') || 'Auf Mieter verteilt'}</div>
+              <div className="stat-value">{tenantShare.toFixed(2)} €</div>
+            </div>
+          )}
+          {periodStmts.length > 0 && (
+            <div className="stat-card">
+              <div className="stat-label">{t('pages.statements.vacancyShare') || 'Leerstand (Eigentümer)'}</div>
+              <div className="stat-value">{vacancyShare.toFixed(2)} €</div>
+            </div>
+          )}
+          {nonRecoverable > 0 && (
+            <div className="stat-card">
+              <div className="stat-label">{t('pages.statements.nonRecoverableShare') || 'Nicht umlagefähig'}</div>
+              <div className="stat-value">{nonRecoverable.toFixed(2)} €</div>
+            </div>
+          )}
           <div className="stat-card">
             <div className="stat-label">{t('ui.form.status') || 'Status'}</div>
             <div className="stat-value"><StatusBadge status={selectedPeriod.status} /></div>
@@ -945,7 +987,7 @@ export default function Statements() {
 
         {periodStmts.length > 0 && (
           <DataTable
-            title="Einzelabrechnungen pro Einheit"
+            title={t('pages.statements.statementsTitle') || 'Einzelabrechnungen je Nutzungszeitraum'}
             columns={STMT_COLUMNS}
             data={periodStmts}
           />
@@ -955,9 +997,20 @@ export default function Statements() {
           <FormModal
             title={costModal === 'create' ? 'Kostenposition hinzufügen' : 'Kostenposition bearbeiten'}
             fields={costFields}
-            initial={costModal === 'create' ? { billing_period_id: selectedPeriod.id } : costModal}
+            initial={costModal === 'create'
+              ? { billing_period_id: selectedPeriod.id }
+              : { ...costModal, is_recoverable: costModal.is_recoverable === false ? 'false' : 'true' }}
             onSave={handleSaveCost}
             onClose={() => setCostModal(null)}
+          />
+        )}
+
+        {promptModal && (
+          <PromptModal
+            title={promptModal.title}
+            defaultValue=""
+            onConfirm={promptModal.onConfirm}
+            onCancel={() => setPromptModal(null)}
           />
         )}
       </div>

@@ -889,6 +889,75 @@ def import_cost_item_from_ocr(
     }
 
 
+def _eur(value: Any) -> str:
+    """1234.5 -> '1.234,50 €'."""
+    return f"{float(value or 0):,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def _num(value: Any) -> str:
+    text = f"{float(value or 0):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return text[:-3] if text.endswith(",00") else text
+
+
+def _statement_document(stmt: Any) -> dict:
+    """Everything a statement shows, resolved to names: shared by PDF and text."""
+    def lookup(getter: str, entity_id: Any) -> Any:
+        try:
+            return getattr(store, getter)(entity_id) if entity_id else None
+        except Exception:
+            logger.debug("Could not resolve %s %s for statement %s", getter, entity_id, stmt.id, exc_info=True)
+            return None
+
+    period = lookup("get_billing_period", stmt.billing_period_id)
+    unit = lookup("get_unit", stmt.unit_id)
+    prop = lookup("get_property", period.property_id) if period else None
+    contract = lookup("get_contract", stmt.contract_id)
+    tenant = lookup("get_tenant", contract.tenant_id) if contract else None
+    party = "Leerstand (Eigentümer)" if stmt.party == "vacancy" else (tenant.full_name if tenant else "—")
+
+    def day(value: Any) -> str:
+        return value.strftime("%d.%m.%Y") if value else "—"
+
+    rows = []
+    for li in stmt.line_items or []:
+        share = ""
+        if li.get("basis") is not None and li.get("total_basis") is not None:
+            unit_name = li.get("basis_unit") or ""
+            share = f"{li.get('key_name') or li.get('key_type') or ''}: {_num(li['basis'])} von {_num(li['total_basis'])} {unit_name}".strip()
+            if li.get("days") is not None:
+                share += f" · {li['days']}/{li['period_days']} Tage"
+        rows.append([
+            li.get("description", "—"),
+            _eur(li["total_amount"]) if li.get("total_amount") is not None else "",
+            share,
+            _eur(li.get("allocated_amount", 0)),
+        ])
+
+    usage = "—"
+    if stmt.usage_start and stmt.usage_end:
+        usage = f"{day(stmt.usage_start)} – {day(stmt.usage_end)}"
+        if stmt.usage_days:
+            usage += f" ({stmt.usage_days} Tage)"
+    return {
+        "title": f"Betriebskostenabrechnung {period.label}" if period else "Betriebskostenabrechnung",
+        "facts": [
+            ("Objekt", ", ".join(x for x in [prop.name if prop else None, getattr(prop, "address_line", None),
+                                             getattr(prop, "city", None)] if x) or "—"),
+            ("Einheit", unit.label if unit else stmt.unit_id),
+            ("Mieter", party),
+            ("Vertrag", contract.contract_number if contract else "—"),
+            ("Abrechnungszeitraum", f"{day(period.start_date)} – {day(period.end_date)}" if period else "—"),
+            ("Nutzungszeitraum", usage),
+        ],
+        "rows": rows,
+        "totals": [
+            ("Ihr Kostenanteil", _eur(stmt.total_cost)),
+            ("Vorauszahlungen", _eur(stmt.advance_paid)),
+            ("Nachzahlung" if stmt.balance > 0 else "Guthaben", _eur(abs(stmt.balance))),
+        ],
+    }
+
+
 def download_utility_statement_pdf(statement_id: str):
     """Generate a PDF for a single utility statement (or text fallback)."""
     from starlette.responses import Response as RawResponse
@@ -898,7 +967,7 @@ def download_utility_statement_pdf(statement_id: str):
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
-    # Try to build a real PDF with reportlab
+    document = _statement_document(stmt)
     try:
         import io
 
@@ -906,52 +975,38 @@ def download_utility_statement_pdf(statement_id: str):
         from reportlab.lib.styles import getSampleStyleSheet
         from reportlab.lib.units import mm
         from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
         buffer = io.BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=20*mm, rightMargin=20*mm,
-                                topMargin=25*mm, bottomMargin=18*mm)
+        doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=18*mm, rightMargin=18*mm,
+                                topMargin=22*mm, bottomMargin=18*mm)
         styles = getSampleStyleSheet()
-        story = []
+        small = styles["BodyText"].clone("small", fontSize=8, leading=10)
+        story: list[Any] = [Paragraph(document["title"], styles["Title"]), Spacer(1, 6)]
 
-        story.append(Paragraph("Betriebskostenabrechnung", styles["Title"]))
-        story.append(Spacer(1, 12))
+        facts = Table([[label, value] for label, value in document["facts"]], colWidths=[45*mm, 129*mm])
+        facts.setStyle(TableStyle([("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"), ("FONTSIZE", (0, 0), (-1, -1), 9)]))
+        story += [facts, Spacer(1, 10)]
 
-        # Try to resolve names
-        unit_label = stmt.unit_id
-        try:
-            unit = store.get_unit(stmt.unit_id)
-            unit_label = unit.label or stmt.unit_id
-        except Exception:
-            logger.debug("Could not resolve unit label for %s", stmt.unit_id, exc_info=True)
+        rows = [["Kostenart", "Gesamtkosten", "Verteilung und Ihr Anteil", "Ihr Betrag"]]
+        rows += [[cell if i != 2 else Paragraph(cell, small) for i, cell in enumerate(row)] for row in document["rows"]]
+        lines = Table(rows, colWidths=[38*mm, 27*mm, 82*mm, 27*mm], repeatRows=1)
+        lines.setStyle(TableStyle([
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 9),
+            ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+            ("ALIGN", (3, 0), (3, -1), "RIGHT"),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LINEBELOW", (0, 0), (-1, 0), 0.5, (0, 0, 0)),
+        ]))
+        story += [lines, Spacer(1, 10)]
 
-        story.append(Paragraph(f"Einheit: {unit_label}", styles["Normal"]))
-        story.append(Paragraph(f"Vertrag: {stmt.contract_id}", styles["Normal"]))
-        story.append(Paragraph(f"Revision: {stmt.revision}", styles["Normal"]))
-        story.append(Spacer(1, 12))
-
-        # Line items table
-        if stmt.line_items:
-            rows = [["Kostenart", "Anteil (€)"]]
-            for li in stmt.line_items:
-                rows.append([
-                    li.get("description", "—"),
-                    f"{li.get('allocated_amount', 0):.2f} €",
-                ])
-            rows.append(["Gesamtkosten", f"{stmt.total_cost:.2f} €"])
-            rows.append(["Vorauszahlungen", f"{stmt.advance_paid:.2f} €"])
-            rows.append(["Saldo", f"{stmt.balance:.2f} €"])
-
-            t = Table(rows)
-            t.setStyle(TableStyle([
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("ALIGN", (1, 0), (1, -1), "RIGHT"),
-                ("LINEBELOW", (0, 0), (-1, 0), 0.5, (0, 0, 0)),
-                ("LINEABOVE", (0, -3), (-1, -3), 0.5, (0, 0, 0)),
-            ]))
-            story.append(t)
-        else:
-            story.append(Paragraph(f"Gesamtkosten: {stmt.total_cost:.2f} €", styles["Normal"]))
-            story.append(Paragraph(f"Vorauszahlungen: {stmt.advance_paid:.2f} €", styles["Normal"]))
-            story.append(Paragraph(f"Saldo: {stmt.balance:.2f} €", styles["Normal"]))
+        totals = Table([[label, value] for label, value in document["totals"]], colWidths=[147*mm, 27*mm])
+        totals.setStyle(TableStyle([
+            ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+            ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+            ("LINEABOVE", (0, -1), (-1, -1), 0.5, (0, 0, 0)),
+        ]))
+        story.append(totals)
 
         doc.build(story)
         return RawResponse(
@@ -960,20 +1015,12 @@ def download_utility_statement_pdf(statement_id: str):
             headers={"Content-Disposition": f'attachment; filename="statement_{statement_id}.pdf"'},
         )
     except ImportError:
-        # Fallback: plain text
-        lines = [
-            "Betriebskostenabrechnung",
-            f"Statement ID: {stmt.id}",
-            f"Einheit: {stmt.unit_id}",
-            f"Vertrag: {stmt.contract_id}",
-            f"Gesamtkosten: {stmt.total_cost:.2f} €",
-            f"Vorauszahlung: {stmt.advance_paid:.2f} €",
-            f"Saldo: {stmt.balance:.2f} €",
-            f"Status: {stmt.status}",
-            f"Revision: {stmt.revision}",
-        ]
+        text = [document["title"], ""]
+        text += [f"{label}: {value}" for label, value in document["facts"]]
+        text += [""] + [" | ".join(cell for cell in row if cell) for row in document["rows"]]
+        text += [""] + [f"{label}: {value}" for label, value in document["totals"]]
         return RawResponse(
-            content="\n".join(lines).encode("utf-8"),
+            content="\n".join(text).encode("utf-8"),
             media_type="text/plain",
             headers={"Content-Disposition": f'attachment; filename="statement_{statement_id}.txt"'},
         )

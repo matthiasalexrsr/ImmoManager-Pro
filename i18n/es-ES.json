@@ -432,7 +432,11 @@
       "deposit": "Fianza",
       "indexRent": "Alquiler indexado/escalonado",
       "serviceChargeSettlement": "Liquidación de gastos comunes",
-      "status": "Estado"
+      "status": "Estado",
+      "form": {
+        "persons": "Personas en el hogar",
+        "personsHint": "para el reparto por personas"
+      }
     },
     "contractActions": {
       "activate": "Activar contrato",
@@ -1144,7 +1148,21 @@
       "receivablesFailed": "No se pudieron crear las cuentas por cobrar",
       "exportFailed": "Error en la exportación",
       "disputeFailed": "No se pudo presentar la disputa",
-      "preflightBlockers": "Bloqueadores de preflight presentes"
+      "preflightBlockers": "Bloqueadores de preflight presentes",
+      "colParty": "Inquilino",
+      "vacancyParty": "Vacío (propietario)",
+      "colUsage": "Periodo de uso",
+      "colDays": "Días",
+      "colRecoverable": "Repercutible",
+      "notRecoverable": "no (a cargo del propietario)",
+      "recoverable": "sí",
+      "formRecoverable": "Repercutible",
+      "recoverableYes": "Sí – se reparte entre los inquilinos",
+      "recoverableNo": "No – a cargo del propietario",
+      "tenantShare": "Repartido a inquilinos",
+      "vacancyShare": "Vacío (propietario)",
+      "nonRecoverableShare": "No repercutible",
+      "statementsTitle": "Liquidaciones por periodo de uso"
     },
     "dashboard": {
       "quickAccess": "Acceso rápido",

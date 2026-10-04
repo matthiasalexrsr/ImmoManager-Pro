@@ -15,9 +15,23 @@ const KEY_TYPE_OPTIONS = [
 
 const KEY_TYPE_LABELS = Object.fromEntries(KEY_TYPE_OPTIONS.map(o => [o.value, o.label]));
 
+// Consumption keys must say which meters count: water m³ and heat units do not add up.
+const METER_TYPE_OPTIONS = [
+  { value: 'cold_water', label: 'Kaltwasser' },
+  { value: 'hot_water', label: 'Warmwasser' },
+  { value: 'heating', label: 'Heizung' },
+  { value: 'electricity', label: 'Strom' },
+  { value: 'gas', label: 'Gas' },
+];
+
+const METER_TYPE_LABELS = Object.fromEntries(METER_TYPE_OPTIONS.map(o => [o.value, o.label]));
+
 const COLUMNS = [
   { key: 'name', label: 'Bezeichnung', filterType: 'text' },
-  { key: 'key_type', label: 'Schlüsseltyp', render: v => KEY_TYPE_LABELS[v] || v },
+  { key: 'key_type', label: 'Schlüsseltyp',
+    render: (v, row) => (v === 'consumption' && row.meter_type
+      ? `${KEY_TYPE_LABELS[v]} (${METER_TYPE_LABELS[row.meter_type] || row.meter_type})`
+      : (KEY_TYPE_LABELS[v] || v)) },
   { key: 'property_label', label: 'Immobilie' },
   { key: 'description', label: 'Beschreibung' },
 ];
@@ -57,6 +71,7 @@ export default function AllocationKeys() {
     { key: 'property_id', label: 'Immobilie', type: 'select', required: true,
       options: properties.map(p => ({ value: p.id, label: p.name })) },
     { key: 'key_type', label: 'Schlüsseltyp', type: 'select', required: true, options: KEY_TYPE_OPTIONS },
+    { key: 'meter_type', label: 'Zählerart (nur bei Verbrauch)', type: 'select', options: METER_TYPE_OPTIONS },
     { key: 'description', label: 'Beschreibung', type: 'textarea' },
   ];
 

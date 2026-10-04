@@ -432,7 +432,11 @@
       "deposit": "Kaution",
       "indexRent": "Index-/Staffelmiete",
       "serviceChargeSettlement": "Betriebskostenabrechnung",
-      "status": "Status"
+      "status": "Status",
+      "form": {
+        "persons": "Personen im Haushalt",
+        "personsHint": "für die Umlage nach Personen"
+      }
     },
     "contractActions": {
       "activate": "Vertrag aktivieren",
@@ -1335,7 +1339,21 @@
       "receivablesFailed": "Forderungen konnten nicht erzeugt werden",
       "exportFailed": "Export fehlgeschlagen",
       "disputeFailed": "Widerspruch konnte nicht eingelegt werden",
-      "preflightBlockers": "Preflight-Blocker vorhanden"
+      "preflightBlockers": "Preflight-Blocker vorhanden",
+      "colParty": "Mieter",
+      "vacancyParty": "Leerstand (Eigentümer)",
+      "colUsage": "Nutzungszeitraum",
+      "colDays": "Tage",
+      "colRecoverable": "Umlagefähig",
+      "notRecoverable": "nein (trägt der Eigentümer)",
+      "recoverable": "ja",
+      "formRecoverable": "Umlagefähig",
+      "recoverableYes": "Ja – wird auf die Mieter verteilt",
+      "recoverableNo": "Nein – trägt der Eigentümer",
+      "tenantShare": "Auf Mieter verteilt",
+      "vacancyShare": "Leerstand (Eigentümer)",
+      "nonRecoverableShare": "Nicht umlagefähig",
+      "statementsTitle": "Einzelabrechnungen je Nutzungszeitraum"
     },
     "invoices": {
       "markPaidConfirm": "als bezahlt markieren?"

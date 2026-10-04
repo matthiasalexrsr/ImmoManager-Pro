@@ -432,7 +432,11 @@
       "deposit": "Deposit",
       "indexRent": "Index/Graduated Rent",
       "serviceChargeSettlement": "Service Charge Settlement",
-      "status": "Status"
+      "status": "Status",
+      "form": {
+        "persons": "Persons in household",
+        "personsHint": "for person-based allocation"
+      }
     },
     "contractActions": {
       "activate": "Activate Contract",
@@ -1335,7 +1339,21 @@
       "receivablesFailed": "Could not create receivables",
       "exportFailed": "Export failed",
       "disputeFailed": "Could not file dispute",
-      "preflightBlockers": "Preflight blockers present"
+      "preflightBlockers": "Preflight blockers present",
+      "colParty": "Tenant",
+      "vacancyParty": "Vacancy (owner)",
+      "colUsage": "Usage period",
+      "colDays": "Days",
+      "colRecoverable": "Recoverable",
+      "notRecoverable": "no (borne by the owner)",
+      "recoverable": "yes",
+      "formRecoverable": "Recoverable",
+      "recoverableYes": "Yes – shared among the tenants",
+      "recoverableNo": "No – borne by the owner",
+      "tenantShare": "Charged to tenants",
+      "vacancyShare": "Vacancy (owner)",
+      "nonRecoverableShare": "Not recoverable",
+      "statementsTitle": "Statements per usage period"
     },
     "invoices": {
       "markPaidConfirm": "mark as paid?"

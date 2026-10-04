@@ -115,6 +115,8 @@ export default function Contracts() {
     { key: 'start_date', label: t('tenantsContracts.contracts.form.startDate') || 'Vertragsbeginn', type: 'date', required: true },
     { key: 'end_date', label: t('tenantsContracts.contracts.form.endDate') || 'Vertragsende', type: 'date' },
     { key: 'deposit_amount', label: t('tenantsContracts.contracts.form.deposit') || 'Kaution (€)', type: 'number' },
+    { key: 'persons', label: t('tenantsContracts.contracts.form.persons') || 'Personen im Haushalt', type: 'number',
+      placeholder: t('tenantsContracts.contracts.form.personsHint') || 'für die Umlage nach Personen' },
     { key: 'index_rent', label: t('tenantsContracts.contracts.form.indexRent') || 'Mietanpassung', type: 'select', options: [
       { value: 'index', label: t('tenantsContracts.contracts.indexRent.index') || 'Indexmiete' },
       { value: 'stepped', label: t('tenantsContracts.contracts.indexRent.stepped') || 'Staffelmiete' },
