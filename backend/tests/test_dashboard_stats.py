@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 
 from backend.dependencies import store
 from backend.models import (
@@ -62,7 +62,7 @@ def test_dashboard_stats_include_operational_workflow_counts() -> None:
     store.create_receivable(
         ReceivableCreate(
             contract_id=contract.id,
-            due_date=date(2026, 2, 1),
+            due_date=date.today() + timedelta(days=30),
             amount_due=900,
             status="open",
         ),
@@ -157,7 +157,7 @@ def test_dashboard_stats_include_operational_workflow_counts() -> None:
     assert stats["invoice_count"] == 1
     assert stats["open_invoices"] == 1
     assert stats["receivable_count"] == 2
-    assert stats["open_receivables"] == 1
+    assert stats["open_receivables"] == 2  # unpaid, overdue or not
     assert stats["overdue_receivables"] == 1
     assert stats["dunning_receivables"] == 1
     assert stats["document_count"] == 1

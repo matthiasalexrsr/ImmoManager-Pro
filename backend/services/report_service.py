@@ -12,6 +12,7 @@ from datetime import date, timedelta
 from typing import Any
 
 from ..domain.occupancy import unit_statuses_on
+from ..domain.receivables import is_open_credit, is_overdue_debt, is_unpaid_debt
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -39,13 +40,12 @@ def compute_summary(
     bookings: list,
     invoices: list,
     maintenance_cases: list,
+    today: date | None = None,
 ) -> dict[str, Any]:
-    open_receivables = sum(
-        r.amount_due for r in receivables if r.status in {"open", "overdue"}
-    )
-    overdue_receivables = sum(
-        r.amount_due for r in receivables if r.status == "overdue"
-    )
+    today = today or date.today()
+    open_receivables = sum(r.amount_due for r in receivables if is_unpaid_debt(r))
+    overdue_receivables = sum(r.amount_due for r in receivables if is_overdue_debt(r, today))
+    open_credits = -sum(r.amount_due for r in receivables if is_open_credit(r))
     total_bookings = sum(b.amount for b in bookings)
     total_invoices = sum(inv.gross_amount for inv in invoices)
     open_maintenance = sum(
@@ -62,6 +62,7 @@ def compute_summary(
             "invoicesTotal": total_invoices,
             "openReceivables": open_receivables,
             "overdueReceivables": overdue_receivables,
+            "openCredits": open_credits,
         },
         "maintenance": {
             "openCases": open_maintenance,
@@ -130,7 +131,7 @@ def compute_receivables_aging(
     open_total = 0.0
 
     for r in receivables:
-        if r.status not in {"open", "overdue"}:
+        if not is_unpaid_debt(r):
             continue
         open_total += r.amount_due
         days = (today - r.due_date).days
@@ -145,7 +146,8 @@ def compute_receivables_aging(
         else:
             buckets["days90plus"] += r.amount_due
 
-    return {"openTotal": open_total, "buckets": buckets}
+    open_credits = -sum(r.amount_due for r in receivables if is_open_credit(r))
+    return {"openTotal": open_total, "buckets": buckets, "openCredits": open_credits}
 
 
 def compute_cashflow(*, bookings: list) -> dict[str, Any]:

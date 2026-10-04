@@ -5,13 +5,14 @@ from datetime import date, timedelta
 from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
+from ..domain.receivables import is_unpaid_debt
 from ..models import (
     EscalationRule,
     EscalationRuleCreate,
     EscalationRulePatch,
     NotificationCreate,
 )
-from ..services.notifier import OPEN_WORK_STATUSES, Notifier, day, eur, is_unpaid_debt, receivable_debtor
+from ..services.notifier import OPEN_WORK_STATUSES, Notifier, day, eur, receivable_debtor
 from ..storage import NotFoundError
 
 router = APIRouter(prefix="/escalation", tags=["Eskalation"])

@@ -46,14 +46,6 @@ function statusFor(progress, hasWarning = false) {
   return 'ready';
 }
 
-function sumAgingBuckets(aging) {
-  const buckets = aging?.buckets || {};
-  return asNumber(buckets.days1to30)
-    + asNumber(buckets.days31to60)
-    + asNumber(buckets.days61to90)
-    + asNumber(buckets.days90plus);
-}
-
 function withComputedProgress(item) {
   const progress = progressFor(item.steps);
   return {
@@ -92,7 +84,7 @@ function buildNextStep(processSteps, attentionItems) {
   };
 }
 
-export function buildDashboardWorkflow({ stats = {}, aging = null, expiring = null, notifications = [] } = {}) {
+export function buildDashboardWorkflow({ stats = {}, expiring = null, notifications = [] } = {}) {
   const portfolios = asNumber(stats.portfolios);
   const properties = asNumber(stats.properties);
   const units = asNumber(stats.units);
@@ -101,9 +93,10 @@ export function buildDashboardWorkflow({ stats = {}, aging = null, expiring = nu
   const activeContracts = asNumber(stats.contractsActive);
   const accounts = asNumber(stats.accounts);
   const rentCharges = asNumber(stats.rentCharges);
-  const openReceivables = asNumber(stats.openReceivables || aging?.openTotal);
+  // Counts of receivables; the aging report holds euros and must not be added to them.
+  const openReceivables = asNumber(stats.openReceivables);
   const paidReceivables = asNumber(stats.paidReceivables);
-  const overdueReceivables = asNumber(stats.overdueReceivables) + sumAgingBuckets(aging);
+  const overdueReceivables = asNumber(stats.overdueReceivables);
   const dunningReceivables = asNumber(stats.dunningReceivables);
   const openInvoices = asNumber(stats.openInvoices);
   const documents = asNumber(stats.documents);

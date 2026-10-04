@@ -5,15 +5,8 @@ from typing import Any, Optional
 
 from ..models import Notification, NotificationCreate
 
-# A receivable is unpaid until it is paid or cancelled; "overdue" is set by hand or by dunning.
-UNPAID_RECEIVABLE_STATUSES = frozenset({"open", "overdue", "partial"})
 # Tasks and maintenance cases still need work while they are open or in progress.
 OPEN_WORK_STATUSES = frozenset({"open", "in_progress"})
-
-
-def is_unpaid_debt(receivable: Any) -> bool:
-    """An unpaid amount the tenant owes; credits (negative amounts) are owed to the tenant."""
-    return receivable.status in UNPAID_RECEIVABLE_STATUSES and (receivable.amount_due or 0) > 0
 
 
 def eur(value: Any) -> str:

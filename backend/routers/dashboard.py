@@ -10,6 +10,7 @@ from fastapi import APIRouter
 
 from ..dependencies import store
 from ..domain.occupancy import billable_contracts, unit_statuses_on
+from ..domain.receivables import is_overdue_debt, is_unpaid_debt
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
@@ -184,9 +185,9 @@ def get_dashboard_stats() -> dict:
         "open_invoices": _count_items(invoices, {"status": "open"}),
         "paid_invoices": _count_items(invoices, {"status": "paid"}),
         "receivable_count": _count_items(receivables),
-        "open_receivables": _count_items(receivables, {"status": "open"}),
+        "open_receivables": sum(1 for r in receivables if is_unpaid_debt(r)),
         "paid_receivables": _count_items(receivables, {"status": "paid"}),
-        "overdue_receivables": _count_items(receivables, {"status": "overdue"}),
+        "overdue_receivables": sum(1 for r in receivables if is_overdue_debt(r, today)),
         "dunning_receivables": _count_dunning_receivables(receivables),
         "document_count": _count_items(documents),
         "active_contracts_missing_documents": _count_missing_contract_documents(

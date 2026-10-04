@@ -51,6 +51,7 @@ def get_summary(format: str | None = Query(None, alias="format")):
             "Rechnungen Gesamt": f["invoicesTotal"],
             "Offene Forderungen": f["openReceivables"],
             "Überfällige Forderungen": f["overdueReceivables"],
+            "Offene Guthaben (Mieter)": f["openCredits"],
             "Offene Wartungsfälle": data["maintenance"]["openCases"],
         }]
         return _csv_response(rows, "zusammenfassung.csv")
@@ -109,6 +110,7 @@ def get_receivables_aging(format: str | None = Query(None, alias="format")):
             "61-90 Tage": b["days61to90"],
             "90+ Tage": b["days90plus"],
             "Gesamt": data["openTotal"],
+            "Offene Guthaben (Mieter)": data["openCredits"],
         }]
         return _csv_response(rows, "forderungsalter.csv")
 

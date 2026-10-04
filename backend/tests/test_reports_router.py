@@ -251,6 +251,41 @@ def test_reports_receivables_aging() -> None:
     assert report["buckets"]["days90plus"] == 500.0
 
 
+def test_credits_are_not_netted_against_receivables() -> None:
+    """Regression: refunds from utility statements lowered open and overdue receivables."""
+    from backend.routers.dashboard import get_dashboard_stats
+
+    store.clear_all()
+    portfolio = store.create_portfolio(PortfolioCreate(name="Portfolio"))
+    property_item = store.create_property(
+        PropertyCreate(portfolio_id=portfolio.id, name="Objekt", property_type="Wohnung")
+    )
+    unit = store.create_unit(UnitCreate(property_id=property_item.id, label="1", unit_type="Wohnung"))
+    tenant = store.create_tenant(TenantCreate(full_name="Mieter"))
+    contract = store.create_contract(ContractCreate(
+        contract_number="C-500", property_id=property_item.id, unit_id=unit.id, tenant_id=tenant.id,
+        start_date=datetime.date(2024, 1, 1),
+    ))
+    today = datetime.date.today()
+    for days_ago, amount, status in [(40, 900.0, "open"), (10, 300.0, "overdue"), (-5, 200.0, "open"),
+                                     (20, -206.32, "open"), (3, 50.0, "paid")]:
+        store.create_receivable(ReceivableCreate(
+            contract_id=contract.id, due_date=today - datetime.timedelta(days=days_ago),
+            amount_due=amount, status=status,
+        ))
+
+    summary = reports.get_summary()["finance"]
+    aging = reports.get_receivables_aging()
+    stats = get_dashboard_stats()
+
+    assert (summary["openReceivables"], summary["overdueReceivables"], summary["openCredits"]) == (
+        1400.0, 1200.0, 206.32)
+    assert (aging["openTotal"], aging["openCredits"]) == (1400.0, 206.32)
+    assert aging["buckets"]["days1to30"] == 300.0
+    # a receivable past its due date is overdue even if nobody set the status
+    assert (stats["open_receivables"], stats["overdue_receivables"]) == (3, 2)
+
+
 def test_reports_cashflow() -> None:
     store.clear_all()
 
