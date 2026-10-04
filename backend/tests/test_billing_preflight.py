@@ -188,5 +188,5 @@ def test_preflight_warns_when_rooms_stand_in_for_person_count():
 
     assert result.has_blockers is False
     warning = next(i for i in result.warnings if i.code == 'PERSON_COUNT_FROM_ROOMS')
-    assert unit.id in warning.context
+    assert warning.context is not None and unit.id in warning.context
     assert result.metrics['person_count_from_rooms_units'] == 1
