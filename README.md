@@ -141,6 +141,7 @@ All endpoints are under `/api/v1`. Full interactive docs at `/docs`.
 - Local Windows builds use the PyInstaller spec and SQLite by default.
 - External portal integrations are modeled through adapter interfaces/placeholders until real credentials are provided.
 - Production mode (`ENVIRONMENT=production`) fails startup for unsafe defaults such as wildcard CORS, demo seeding, in-memory fallback, or default JWT secrets.
+- Schema updates: run `alembic upgrade head` (Docker entrypoint, `scripts/update.sh` and the in-app updater do this). Databases created by the app itself without Alembic (desktop installs) are adopted automatically on their first upgrade.
 
 ## License
 

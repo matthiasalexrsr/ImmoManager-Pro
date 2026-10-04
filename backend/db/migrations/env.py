@@ -7,7 +7,7 @@ import os
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import engine_from_config, inspect, pool
 
 from backend.db.orm_models import Base
 
@@ -22,6 +22,19 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
+
+# Databases created by Base.metadata.create_all() (desktop installs) have the
+# schema but no alembic_version table, so `upgrade head` would try to create
+# every table again. They are adopted at the last revision before the guarded
+# schema-sync migration, which then adds whatever their version lacks.
+ADOPT_UNVERSIONED_AT = "f6a1b2c3d4e5"
+
+
+def _adopt_unversioned_database(connection) -> None:
+    inspector = inspect(connection)
+    if inspector.has_table("alembic_version") or not inspector.has_table("portfolios"):
+        return
+    context.get_context().stamp(context.script, ADOPT_UNVERSIONED_AT)
 
 
 def run_migrations_offline() -> None:
@@ -52,6 +65,7 @@ def run_migrations_online() -> None:
         )
 
         with context.begin_transaction():
+            _adopt_unversioned_database(connection)
             context.run_migrations()
 
 
