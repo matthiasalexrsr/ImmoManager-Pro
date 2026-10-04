@@ -666,7 +666,7 @@ export default function Statements() {
           <div className="detail-title">
             <h1>{selectedPeriod.label || t('pages.statements.defaultLabel') || 'Abrechnung'}</h1>
             <span className="text-muted">
-              {propMap[selectedPeriod.property_id]?.name || '—'} · {selectedPeriod.start_date} – {selectedPeriod.end_date}
+              {propMap[selectedPeriod.property_id]?.name || '—'} · {formatDate(selectedPeriod.start_date)} – {formatDate(selectedPeriod.end_date)}
             </span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>

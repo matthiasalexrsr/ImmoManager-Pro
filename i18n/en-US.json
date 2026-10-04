@@ -125,7 +125,8 @@
       "enterAmount": "Enter Amount",
       "search": "Search",
       "none": "— None —",
-      "status": "Status"
+      "status": "Status",
+      "cancel": "Cancel"
     },
     "table": {
       "adjustColumns": "Adjust Columns",
@@ -187,6 +188,58 @@
     "booking": {
       "booked": "Booked",
       "matched": "Matched"
+    },
+    "badge": {
+      "active": "Active",
+      "inactive": "Inactive",
+      "archived": "Archived",
+      "draft": "Draft",
+      "open": "Open",
+      "closed": "Closed",
+      "pending": "Pending",
+      "new": "New",
+      "scheduled": "Scheduled",
+      "completed": "Completed",
+      "done": "Done",
+      "in_progress": "In progress",
+      "cancelled": "Cancelled",
+      "paused": "Paused",
+      "vacant": "Vacant",
+      "occupied": "Let",
+      "reserved": "Reserved",
+      "renovation": "Renovation",
+      "terminated": "Terminated",
+      "expired": "Expired",
+      "signed": "Signed",
+      "review": "In review",
+      "finalized": "Finalized",
+      "delivered": "Delivered",
+      "corrected": "Corrected",
+      "disputed": "Disputed",
+      "paid": "Paid",
+      "partial": "Partly paid",
+      "overdue": "Overdue",
+      "held": "Held",
+      "partially_returned": "Partly returned",
+      "returned": "Returned",
+      "unread": "Unread",
+      "read": "Read",
+      "applied": "Applied",
+      "rejected": "Rejected",
+      "accepted": "Accepted",
+      "matched": "Matched",
+      "booked": "Booked",
+      "contacted": "Contacted",
+      "offer_sent": "Offer sent",
+      "viewing_scheduled": "Viewing scheduled",
+      "no_show": "No-show",
+      "warning": "Warning",
+      "info": "Info",
+      "critical": "Critical",
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "urgent": "Urgent"
     }
   },
   "onboarding": {
@@ -1477,7 +1530,13 @@
       "tenantShare": "Charged to tenants",
       "vacancyShare": "Vacancy (owner)",
       "nonRecoverableShare": "Not recoverable",
-      "statementsTitle": "Statements per usage period"
+      "statementsTitle": "Statements per usage period",
+      "stepCreate": "Create",
+      "stepCosts": "Costs",
+      "stepPreflight": "Check",
+      "stepGenerate": "Generate",
+      "stepFinalize": "Finalize",
+      "stepDeliver": "Deliver"
     },
     "invoices": {
       "markPaidConfirm": "mark as paid?"

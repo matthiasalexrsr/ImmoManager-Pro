@@ -6,7 +6,7 @@ import path from 'node:path';
 // never falls back: a missing text shows up as "pages.settings.tabSystem" in the UI.
 const SRC = path.resolve(__dirname, '..');
 const LOCALES = ['de-DE', 'en-US', 'es-ES'];
-const KEY = /\bt\(\s*(['"])([A-Za-z0-9_.-]+)\1/g;
+const KEY = /\b(?:t|tr)\(\s*(['"])([A-Za-z0-9_.-]+)\1/g;  // tr: local helpers and aliases of t
 
 function sourceFiles(dir) {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap(entry => {

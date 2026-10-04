@@ -125,7 +125,8 @@
       "enterAmount": "Betrag eingeben",
       "search": "Suchen",
       "none": "— Keine —",
-      "status": "Status"
+      "status": "Status",
+      "cancel": "Abbrechen"
     },
     "table": {
       "adjustColumns": "Spalten anpassen",
@@ -187,6 +188,58 @@
     "booking": {
       "booked": "Gebucht",
       "matched": "Zugeordnet"
+    },
+    "badge": {
+      "active": "Aktiv",
+      "inactive": "Inaktiv",
+      "archived": "Archiviert",
+      "draft": "Entwurf",
+      "open": "Offen",
+      "closed": "Geschlossen",
+      "pending": "Ausstehend",
+      "new": "Neu",
+      "scheduled": "Geplant",
+      "completed": "Erledigt",
+      "done": "Erledigt",
+      "in_progress": "In Bearbeitung",
+      "cancelled": "Storniert",
+      "paused": "Pausiert",
+      "vacant": "Leer",
+      "occupied": "Vermietet",
+      "reserved": "Reserviert",
+      "renovation": "Renovierung",
+      "terminated": "Gekündigt",
+      "expired": "Ausgelaufen",
+      "signed": "Unterschrieben",
+      "review": "In Prüfung",
+      "finalized": "Abgeschlossen",
+      "delivered": "Zugestellt",
+      "corrected": "Korrigiert",
+      "disputed": "Widersprochen",
+      "paid": "Bezahlt",
+      "partial": "Teilbezahlt",
+      "overdue": "Überfällig",
+      "held": "Verwahrt",
+      "partially_returned": "Teilweise zurückgezahlt",
+      "returned": "Zurückgezahlt",
+      "unread": "Ungelesen",
+      "read": "Gelesen",
+      "applied": "Angewendet",
+      "rejected": "Abgelehnt",
+      "accepted": "Angenommen",
+      "matched": "Zugeordnet",
+      "booked": "Gebucht",
+      "contacted": "Kontaktiert",
+      "offer_sent": "Angebot gesendet",
+      "viewing_scheduled": "Besichtigung geplant",
+      "no_show": "Nicht erschienen",
+      "warning": "Warnung",
+      "info": "Info",
+      "critical": "Kritisch",
+      "low": "Niedrig",
+      "medium": "Mittel",
+      "high": "Hoch",
+      "urgent": "Dringend"
     }
   },
   "onboarding": {
@@ -1477,7 +1530,13 @@
       "tenantShare": "Auf Mieter verteilt",
       "vacancyShare": "Leerstand (Eigentümer)",
       "nonRecoverableShare": "Nicht umlagefähig",
-      "statementsTitle": "Einzelabrechnungen je Nutzungszeitraum"
+      "statementsTitle": "Einzelabrechnungen je Nutzungszeitraum",
+      "stepCreate": "Erstellen",
+      "stepCosts": "Kosten",
+      "stepPreflight": "Prüfung",
+      "stepGenerate": "Generieren",
+      "stepFinalize": "Finalisieren",
+      "stepDeliver": "Zustellen"
     },
     "invoices": {
       "markPaidConfirm": "als bezahlt markieren?"

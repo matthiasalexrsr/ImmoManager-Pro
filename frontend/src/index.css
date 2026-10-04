@@ -414,6 +414,7 @@ a:hover {
 
 .main-content {
   flex: 1;
+  min-width: 0; /* a wide table must scroll inside its card, not widen the page */
   margin-left: var(--sidebar-width);
   padding: 0;
   min-height: 100vh;
@@ -2355,6 +2356,7 @@ a:hover {
 
 .detail-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 1rem;
   margin-bottom: 1.5rem;
@@ -2363,7 +2365,8 @@ a:hover {
 }
 
 .detail-title {
-  flex: 1;
+  flex: 1 1 260px;
+  min-width: 0;
 }
 
 .detail-title h1 {
