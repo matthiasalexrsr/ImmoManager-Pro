@@ -5,6 +5,7 @@ import io
 
 from fastapi import HTTPException
 from sqlalchemy import select
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from ..auth import decode_token
@@ -46,14 +47,16 @@ def public_rows(inventory, rows):
     return (project(row) for row in rows) if project is not None else rows
 
 
-def csv_chunks(store, query, *, inventory, fields, token=None, chunk_size=100):
+def csv_chunks(store, query, *, inventory, fields, token=None, chunk_size=100, read_engine=None):
     if type(chunk_size) is not int or chunk_size < 1:
         raise ValueError("Positive transfer batch required")
     if query.cursor is not None:
         raise HTTPException(422, "Der vollständige Export benötigt Filter, keinen Seitencursor.")
     scope = current_scope()
     check_access(scope, token)
-    engine = store.db.get_bind() if hasattr(store, "db") else None
+    if read_engine is not None and not isinstance(read_engine, Engine):
+        raise TypeError("Inventory read engine must be an actual Engine")
+    engine = read_engine if read_engine is not None else (store.db.get_bind() if hasattr(store, "db") else None)
 
     def generate():
         if engine is None:
