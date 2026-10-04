@@ -39,7 +39,8 @@
       "allocationKeys": "Allocation Keys",
       "escalationRules": "Escalation Rules",
       "handoverProtocols": "Handover Protocols",
-      "history": "Change Log"
+      "history": "Change Log",
+      "contractWizard": "Lease Wizard"
     },
     "sections": {
       "overview": "Overview",
@@ -100,7 +101,8 @@
       "confirm": "Confirm",
       "next": "Next",
       "back": "Back",
-      "done": "Done"
+      "done": "Done",
+      "clear": "Clear search"
     },
     "commonActions": {
       "viewDetails": "View Details",
@@ -121,7 +123,9 @@
       "selectDate": "Select Date",
       "selectTime": "Select Time",
       "enterAmount": "Enter Amount",
-      "search": "Search"
+      "search": "Search",
+      "none": "— None —",
+      "status": "Status"
     },
     "table": {
       "adjustColumns": "Adjust Columns",
@@ -133,7 +137,10 @@
       "nextPage": "Next Page",
       "previousPage": "Previous Page",
       "noResults": "No Results",
-      "loading": "Loading..."
+      "loading": "Loading...",
+      "firstPage": "First page",
+      "lastPage": "Last page",
+      "pagination": "Pagination"
     },
     "filterChips": {
       "active": "Active",
@@ -174,7 +181,12 @@
       "expiring": "Expiring",
       "terminated": "Terminated",
       "ended": "Ended",
-      "inReview": "In Review"
+      "inReview": "In Review",
+      "expired": "Expired"
+    },
+    "booking": {
+      "booked": "Booked",
+      "matched": "Matched"
     }
   },
   "onboarding": {
@@ -291,6 +303,40 @@
       "create": "Create Portfolio",
       "edit": "Edit Portfolio",
       "archive": "Archive Portfolio"
+    },
+    "properties": {
+      "form": {
+        "address": "Street",
+        "city": "City",
+        "country": "Country",
+        "livingArea": "Living area (m²)",
+        "marketValue": "Market value (€)",
+        "name": "Property",
+        "ownershipShare": "Ownership share (%)",
+        "plotArea": "Plot area (m²)",
+        "postalCode": "Postal code",
+        "purchaseDate": "Purchase date",
+        "purchasePrice": "Purchase price (€)",
+        "type": "Type",
+        "usableArea": "Usable area (m²)",
+        "valuationDate": "Valuation date",
+        "yearBuilt": "Year built"
+      },
+      "sections": {
+        "address": "Address",
+        "areas": "Areas",
+        "basic": "Master data",
+        "valuation": "Purchase & valuation"
+      },
+      "status": {
+        "inactive": "Inactive"
+      },
+      "title": "Properties",
+      "types": {
+        "commercial": "Commercial",
+        "mixed": "Mixed use",
+        "residential": "Residential"
+      }
     }
   },
   "properties": {
@@ -371,7 +417,13 @@
       "serviceCharge": "Service Charge Advance",
       "warmRent": "Gross Rent",
       "status": "Status",
-      "tenant": "Tenant"
+      "tenant": "Tenant",
+      "columns": {
+        "area": "Area (m²)",
+        "coldRent": "Net rent (€)",
+        "label": "Unit",
+        "type": "Type"
+      }
     },
     "types": {
       "apartment": "Apartment",
@@ -381,7 +433,8 @@
       "parking": "Parking Space",
       "garage": "Garage",
       "basement": "Basement",
-      "other": "Other"
+      "other": "Other",
+      "commercial": "Commercial"
     },
     "form": {
       "property": "Property",
@@ -404,7 +457,15 @@
         "vacant": "Vacant",
         "reserved": "Reserved",
         "renovation": "Under Renovation"
-      }
+      },
+      "heatingAdvance": "Heating advance (€)",
+      "personCount": "Persons",
+      "serviceChargeAdvance": "Service charge advance (€)"
+    },
+    "status": {
+      "occupied": "Let",
+      "reserved": "Reserved",
+      "vacant": "Vacant"
     }
   },
   "tenantsContracts": {
@@ -435,7 +496,23 @@
       "status": "Status",
       "form": {
         "persons": "Persons in household",
-        "personsHint": "for person-based allocation"
+        "personsHint": "for person-based allocation",
+        "contractNumber": "Contract no.",
+        "deposit": "Deposit (€)",
+        "endDate": "End",
+        "indexRent": "Rent adjustment",
+        "noticePeriod": "Notice period",
+        "serviceChargeSettlement": "Service charge settlement",
+        "startDate": "Start"
+      },
+      "indexRentTypes": {
+        "fixed": "Fixed rent",
+        "index": "Index-linked rent",
+        "stepped": "Stepped rent"
+      },
+      "settlement": {
+        "annual": "Annual",
+        "monthly": "Monthly"
       }
     },
     "contractActions": {
@@ -471,7 +548,21 @@
       "type": "Account Type",
       "openingBalance": "Opening Balance",
       "balance": "Balance",
-      "lastSync": "Last Sync"
+      "lastSync": "Last Sync",
+      "form": {
+        "accountType": "Account type",
+        "balance": "Balance (€)",
+        "bank": "Bank",
+        "name": "Account name",
+        "openingBalance": "Opening balance (€)",
+        "type": "Type"
+      },
+      "types": {
+        "checking": "Checking account",
+        "deposit": "Deposit account",
+        "rent": "Rent account",
+        "savings": "Savings account"
+      }
     },
     "accountTypes": {
       "bank": "Bank Account",
@@ -489,7 +580,15 @@
       "tenant": "Tenant",
       "paymentText": "Payment Reference",
       "receipt": "Receipt",
-      "status": "Status"
+      "status": "Status",
+      "form": {
+        "amount": "Amount (€)",
+        "bookingDate": "Booking date",
+        "category": "Category",
+        "date": "Date",
+        "paymentText": "Booking text",
+        "receiptUrl": "Receipt URL"
+      }
     },
     "categories": {
       "rentIncome": "Rent Income",
@@ -817,7 +916,8 @@
       "title": "Are you sure you want to delete?",
       "body": "This action cannot be undone.",
       "delete": "Delete",
-      "cancel": "Cancel"
+      "cancel": "Cancel",
+      "confirm": "Confirm"
     },
     "confirmArchive": {
       "title": "Archive?",
@@ -1152,7 +1252,15 @@
       "actionCreated": "Created",
       "actionUpdated": "Updated",
       "actionPatched": "Modified",
-      "actionDeleted": "Deleted"
+      "actionDeleted": "Deleted",
+      "analysisTab": "Analysis",
+      "auditChanged": "Changed",
+      "auditCreated": "Created",
+      "auditDeleted": "Deleted",
+      "auditLoadError": "Could not load the audit log",
+      "auditUpdated": "Updated",
+      "noActivity": "No activity",
+      "workTab": "Work"
     },
     "settings": {
       "title": "Settings",
@@ -1236,7 +1344,12 @@
         }
       },
       "skippedExisting": "already present, skipped",
-      "nothingNew": "No new records – everything was already present."
+      "nothingNew": "No new records – everything was already present.",
+      "tabDev": "Development",
+      "tabPersonal": "Personal",
+      "tabSystem": "System",
+      "tabWorkflow": "Workflow",
+      "versionError": "Could not load the version information"
     },
     "messages": {
       "title": "Messages",
@@ -1245,7 +1358,18 @@
       "noMessages": "No messages",
       "type": "Type",
       "noContent": "No content",
-      "selectMessage": "Select a message to view details"
+      "selectMessage": "Select a message to view details",
+      "conversations": "Conversations",
+      "messagesCount": "Messages",
+      "newConversation": "New conversation",
+      "noConversations": "No conversations",
+      "noThreadMessages": "No messages in this thread yet",
+      "notifications": "Notifications",
+      "participants": "Participants",
+      "selectOrCreateConversation": "Select a conversation or start a new one",
+      "send": "Send",
+      "subject": "Subject",
+      "writePlaceholder": "Write a message..."
     },
     "statements": {
       "revisionReason": "Reason for correction (optional):",
@@ -1366,7 +1490,9 @@
       "paid": "Paid",
       "open": "Open",
       "overdue": "Overdue",
-      "title": "Rent Overview"
+      "title": "Rent Overview",
+      "charges": "Rent charges",
+      "receivables": "Receivables"
     },
     "meters": {
       "title": "Meters",
@@ -1681,7 +1807,8 @@
         "contactPerson": "Contact Person",
         "phone": "Phone",
         "notes": "Notes",
-        "status": "Status"
+        "status": "Status",
+        "contactPhone": "Phone"
       },
       "types": {
         "building": "Building Insurance",
@@ -1701,6 +1828,30 @@
         "expired": "Expired",
         "cancelled": "Cancelled"
       }
+    },
+    "propertyDetail": {
+      "allUnits": "All {{count}} units",
+      "annualRent": "Annual rent (net)",
+      "avgPerSqm": "Average €/m²",
+      "docTitle": "Title",
+      "dueDate": "Due",
+      "financeOverview": "Financial overview",
+      "heating": "Heating",
+      "maintenanceTitle": "Maintenance & repairs",
+      "monthlyColdRent": "Monthly net rent",
+      "noAddress": "No address",
+      "noDocuments": "No documents",
+      "noUnits": "No units",
+      "other": "Other",
+      "priority": "Priority",
+      "propertyDetails": "Property details",
+      "recentDocuments": "Recent documents",
+      "rentByUnit": "Rent by unit",
+      "serviceCharge": "Service charges",
+      "total": "Total",
+      "totalArea": "Total area",
+      "totalColdRent": "Total net rent",
+      "unitsOverview": "Units overview"
     }
   },
   "sidebar": {
@@ -1755,5 +1906,8 @@
     "fileNotFound": "File not found",
     "fileTypeNotAllowed": "File type not allowed",
     "uploadFailed": "Upload failed"
+  },
+  "contractWizard": {
+    "description": "Create a legally sound lease agreement step by step."
   }
 }

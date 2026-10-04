@@ -176,7 +176,7 @@ export default function PropertyDetail() {
                 )}
                 {units.length > 8 && (
                   <button className="panel-link" onClick={() => setTab('units')}>
-                    {t('pages.propertyDetail.allUnits') || `Alle ${units.length} Einheiten`} <ArrowRightIcon size={14} />
+                    {t('pages.propertyDetail.allUnits', { count: units.length })} <ArrowRightIcon size={14} />
                   </button>
                 )}
               </div>

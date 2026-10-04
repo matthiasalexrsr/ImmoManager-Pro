@@ -118,9 +118,9 @@ export default function Contracts() {
     { key: 'persons', label: t('tenantsContracts.contracts.form.persons') || 'Personen im Haushalt', type: 'number',
       placeholder: t('tenantsContracts.contracts.form.personsHint') || 'für die Umlage nach Personen' },
     { key: 'index_rent', label: t('tenantsContracts.contracts.form.indexRent') || 'Mietanpassung', type: 'select', options: [
-      { value: 'index', label: t('tenantsContracts.contracts.indexRent.index') || 'Indexmiete' },
-      { value: 'stepped', label: t('tenantsContracts.contracts.indexRent.stepped') || 'Staffelmiete' },
-      { value: 'fixed', label: t('tenantsContracts.contracts.indexRent.fixed') || 'Festmiete' },
+      { value: 'index', label: t('tenantsContracts.contracts.indexRentTypes.index') || 'Indexmiete' },
+      { value: 'stepped', label: t('tenantsContracts.contracts.indexRentTypes.stepped') || 'Staffelmiete' },
+      { value: 'fixed', label: t('tenantsContracts.contracts.indexRentTypes.fixed') || 'Festmiete' },
     ]},
     { key: 'service_charge_settlement', label: t('tenantsContracts.contracts.form.serviceChargeSettlement') || 'NK-Abrechnung', type: 'select', options: [
       { value: 'annual', label: t('tenantsContracts.contracts.settlement.annual') || 'Jährlich' },
@@ -128,9 +128,9 @@ export default function Contracts() {
     ]},
     { key: 'notice_period', label: t('tenantsContracts.contracts.form.noticePeriod') || 'Kündigungsfrist', placeholder: 'z.B. 3 Monate' },
     { key: 'status', label: t('ui.form.status') || 'Status', type: 'select', default: 'active', options: [
-      { value: 'active', label: t('tenantsContracts.contracts.status.active') || 'Aktiv' },
-      { value: 'terminated', label: t('tenantsContracts.contracts.status.terminated') || 'Gekündigt' },
-      { value: 'expired', label: t('tenantsContracts.contracts.status.expired') || 'Ausgelaufen' },
+      { value: 'active', label: t('status.general.active') || 'Aktiv' },
+      { value: 'terminated', label: t('status.contract.terminated') || 'Gekündigt' },
+      { value: 'expired', label: t('status.contract.expired') || 'Ausgelaufen' },
       { value: 'draft', label: t('ui.filterChips.draft') || 'Entwurf' },
     ]},
   ];

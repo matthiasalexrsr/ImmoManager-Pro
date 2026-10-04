@@ -81,7 +81,7 @@ export default function RentCharges() {
     { key: 'amount_paid', label: 'Bereits bezahlt (EUR)', ...numberDefaults },
     { key: 'status', label: 'Status', type: 'select', default: 'open', options: [
       { value: 'open', label: t('status.payment.open') },
-      { value: 'partial', label: t('status.payment.partial') || 'Teilweise bezahlt' },
+      { value: 'partial', label: t('status.payment.partiallyPaid') || 'Teilweise bezahlt' },
       { value: 'paid', label: t('status.payment.paid') },
       { value: 'overdue', label: t('status.payment.overdue') },
     ]},

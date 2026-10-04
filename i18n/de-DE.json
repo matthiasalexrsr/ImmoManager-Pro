@@ -39,7 +39,8 @@
       "allocationKeys": "Verteilerschlüssel",
       "escalationRules": "Eskalationsregeln",
       "handoverProtocols": "Übergabeprotokolle",
-      "history": "Änderungsprotokoll"
+      "history": "Änderungsprotokoll",
+      "contractWizard": "Mietvertrag-Wizard"
     },
     "sections": {
       "overview": "Übersicht",
@@ -100,7 +101,8 @@
       "confirm": "Bestätigen",
       "next": "Weiter",
       "back": "Zurück",
-      "done": "Fertig"
+      "done": "Fertig",
+      "clear": "Suche leeren"
     },
     "commonActions": {
       "viewDetails": "Details anzeigen",
@@ -121,7 +123,9 @@
       "selectDate": "Datum auswählen",
       "selectTime": "Zeit auswählen",
       "enterAmount": "Betrag eingeben",
-      "search": "Suchen"
+      "search": "Suchen",
+      "none": "— Keine —",
+      "status": "Status"
     },
     "table": {
       "adjustColumns": "Spalten anpassen",
@@ -133,7 +137,10 @@
       "nextPage": "Nächste Seite",
       "previousPage": "Vorherige Seite",
       "noResults": "Keine Ergebnisse",
-      "loading": "Laden…"
+      "loading": "Laden…",
+      "firstPage": "Erste Seite",
+      "lastPage": "Letzte Seite",
+      "pagination": "Seitennavigation"
     },
     "filterChips": {
       "active": "Aktiv",
@@ -174,7 +181,12 @@
       "expiring": "Auslaufend",
       "terminated": "Gekündigt",
       "ended": "Beendet",
-      "inReview": "In Prüfung"
+      "inReview": "In Prüfung",
+      "expired": "Ausgelaufen"
+    },
+    "booking": {
+      "booked": "Gebucht",
+      "matched": "Zugeordnet"
     }
   },
   "onboarding": {
@@ -291,6 +303,40 @@
       "create": "Portfolio erstellen",
       "edit": "Portfolio bearbeiten",
       "archive": "Portfolio archivieren"
+    },
+    "properties": {
+      "form": {
+        "address": "Straße",
+        "city": "Stadt",
+        "country": "Land",
+        "livingArea": "Wohnfläche (m²)",
+        "marketValue": "Marktwert (€)",
+        "name": "Immobilie",
+        "ownershipShare": "Eigentumsanteil (%)",
+        "plotArea": "Grundstücksfläche (m²)",
+        "postalCode": "PLZ",
+        "purchaseDate": "Kaufdatum",
+        "purchasePrice": "Kaufpreis (€)",
+        "type": "Typ",
+        "usableArea": "Nutzfläche (m²)",
+        "valuationDate": "Bewertungsdatum",
+        "yearBuilt": "Baujahr"
+      },
+      "sections": {
+        "address": "Adresse",
+        "areas": "Flächen",
+        "basic": "Stammdaten",
+        "valuation": "Kauf & Bewertung"
+      },
+      "status": {
+        "inactive": "Inaktiv"
+      },
+      "title": "Immobilien",
+      "types": {
+        "commercial": "Gewerbe",
+        "mixed": "Gemischt",
+        "residential": "Wohngebäude"
+      }
     }
   },
   "properties": {
@@ -371,7 +417,13 @@
       "serviceCharge": "Nebenkosten-VZ",
       "warmRent": "Warmmiete",
       "status": "Status",
-      "tenant": "Mieter"
+      "tenant": "Mieter",
+      "columns": {
+        "area": "Fläche (m²)",
+        "coldRent": "Kaltmiete (€)",
+        "label": "Einheit",
+        "type": "Typ"
+      }
     },
     "types": {
       "apartment": "Wohnung",
@@ -381,7 +433,8 @@
       "parking": "Stellplatz",
       "garage": "Garage",
       "basement": "Keller",
-      "other": "Sonstiges"
+      "other": "Sonstiges",
+      "commercial": "Gewerbe"
     },
     "form": {
       "property": "Immobilie",
@@ -404,7 +457,15 @@
         "vacant": "Leerstand",
         "reserved": "Reserviert",
         "renovation": "In Renovierung"
-      }
+      },
+      "heatingAdvance": "Heizkosten-Vorauszahlung (€)",
+      "personCount": "Personen",
+      "serviceChargeAdvance": "NK-Vorauszahlung (€)"
+    },
+    "status": {
+      "occupied": "Vermietet",
+      "reserved": "Reserviert",
+      "vacant": "Leer"
     }
   },
   "tenantsContracts": {
@@ -435,7 +496,23 @@
       "status": "Status",
       "form": {
         "persons": "Personen im Haushalt",
-        "personsHint": "für die Umlage nach Personen"
+        "personsHint": "für die Umlage nach Personen",
+        "contractNumber": "Vertragsnr.",
+        "deposit": "Kaution (€)",
+        "endDate": "Ende",
+        "indexRent": "Mietanpassung",
+        "noticePeriod": "Kündigungsfrist",
+        "serviceChargeSettlement": "NK-Abrechnung",
+        "startDate": "Beginn"
+      },
+      "indexRentTypes": {
+        "fixed": "Festmiete",
+        "index": "Indexmiete",
+        "stepped": "Staffelmiete"
+      },
+      "settlement": {
+        "annual": "Jährlich",
+        "monthly": "Monatlich"
       }
     },
     "contractActions": {
@@ -471,7 +548,21 @@
       "type": "Kontotyp",
       "openingBalance": "Anfangssaldo",
       "balance": "Saldo",
-      "lastSync": "Letzte Synchronisation"
+      "lastSync": "Letzte Synchronisation",
+      "form": {
+        "accountType": "Kontotyp",
+        "balance": "Saldo (€)",
+        "bank": "Bank",
+        "name": "Kontoname",
+        "openingBalance": "Anfangssaldo (€)",
+        "type": "Typ"
+      },
+      "types": {
+        "checking": "Girokonto",
+        "deposit": "Kautionskonto",
+        "rent": "Mietkonto",
+        "savings": "Sparkonto"
+      }
     },
     "accountTypes": {
       "bank": "Bankkonto",
@@ -489,7 +580,15 @@
       "tenant": "Mieter",
       "paymentText": "Zahlungstext",
       "receipt": "Beleg",
-      "status": "Status"
+      "status": "Status",
+      "form": {
+        "amount": "Betrag (€)",
+        "bookingDate": "Buchungsdatum",
+        "category": "Kategorie",
+        "date": "Datum",
+        "paymentText": "Buchungstext",
+        "receiptUrl": "Beleg-URL"
+      }
     },
     "categories": {
       "rentIncome": "Mieteinnahmen",
@@ -817,7 +916,8 @@
       "title": "Wirklich löschen?",
       "body": "Diese Aktion kann nicht rückgängig gemacht werden.",
       "delete": "Löschen",
-      "cancel": "Abbrechen"
+      "cancel": "Abbrechen",
+      "confirm": "Bestätigen"
     },
     "confirmArchive": {
       "title": "Archivieren?",
@@ -1152,7 +1252,15 @@
       "actionCreated": "Erstellt",
       "actionUpdated": "Aktualisiert",
       "actionPatched": "Geändert",
-      "actionDeleted": "Gelöscht"
+      "actionDeleted": "Gelöscht",
+      "analysisTab": "Analyse",
+      "auditChanged": "Geändert",
+      "auditCreated": "Erstellt",
+      "auditDeleted": "Gelöscht",
+      "auditLoadError": "Audit-Log konnte nicht geladen werden",
+      "auditUpdated": "Aktualisiert",
+      "noActivity": "Keine Aktivitäten",
+      "workTab": "Arbeit"
     },
     "settings": {
       "title": "Einstellungen",
@@ -1236,7 +1344,12 @@
         }
       },
       "skippedExisting": "bereits vorhanden, übersprungen",
-      "nothingNew": "Keine neuen Datensätze – alles war bereits vorhanden."
+      "nothingNew": "Keine neuen Datensätze – alles war bereits vorhanden.",
+      "tabDev": "Entwicklung",
+      "tabPersonal": "Persönlich",
+      "tabSystem": "System",
+      "tabWorkflow": "Arbeitsweise",
+      "versionError": "Versionsinformationen konnten nicht geladen werden"
     },
     "messages": {
       "title": "Nachrichten",
@@ -1245,7 +1358,18 @@
       "noMessages": "Keine Nachrichten",
       "type": "Typ",
       "noContent": "Kein Inhalt",
-      "selectMessage": "Nachricht auswählen, um Details anzuzeigen"
+      "selectMessage": "Nachricht auswählen, um Details anzuzeigen",
+      "conversations": "Konversationen",
+      "messagesCount": "Nachrichten",
+      "newConversation": "Neue Konversation",
+      "noConversations": "Keine Konversationen",
+      "noThreadMessages": "Noch keine Nachrichten in diesem Thread",
+      "notifications": "Benachrichtigungen",
+      "participants": "Teilnehmer",
+      "selectOrCreateConversation": "Konversation auswählen oder neue erstellen",
+      "send": "Senden",
+      "subject": "Betreff",
+      "writePlaceholder": "Nachricht schreiben..."
     },
     "statements": {
       "revisionReason": "Grund für Korrektur (optional):",
@@ -1366,7 +1490,9 @@
       "paid": "Bezahlt",
       "open": "Offen",
       "overdue": "Überfällig",
-      "title": "Mietübersicht"
+      "title": "Mietübersicht",
+      "charges": "Sollstellungen",
+      "receivables": "Forderungen"
     },
     "meters": {
       "title": "Zähler",
@@ -1681,7 +1807,8 @@
         "contactPerson": "Ansprechpartner",
         "phone": "Telefon",
         "notes": "Notizen",
-        "status": "Status"
+        "status": "Status",
+        "contactPhone": "Telefon"
       },
       "types": {
         "building": "Gebäudeversicherung",
@@ -1701,6 +1828,30 @@
         "expired": "Abgelaufen",
         "cancelled": "Gekündigt"
       }
+    },
+    "propertyDetail": {
+      "allUnits": "Alle {{count}} Einheiten",
+      "annualRent": "Jahresmiete (Kalt)",
+      "avgPerSqm": "Durchschnitt €/m²",
+      "docTitle": "Titel",
+      "dueDate": "Fällig",
+      "financeOverview": "Finanzübersicht",
+      "heating": "Heizung",
+      "maintenanceTitle": "Wartung & Instandhaltung",
+      "monthlyColdRent": "Monatliche Kaltmiete",
+      "noAddress": "Keine Adresse",
+      "noDocuments": "Keine Dokumente",
+      "noUnits": "Keine Einheiten",
+      "other": "Sonstig",
+      "priority": "Priorität",
+      "propertyDetails": "Immobiliendetails",
+      "recentDocuments": "Letzte Dokumente",
+      "rentByUnit": "Mietübersicht nach Einheit",
+      "serviceCharge": "NK",
+      "total": "Gesamt",
+      "totalArea": "Gesamtfläche",
+      "totalColdRent": "Kaltmiete gesamt",
+      "unitsOverview": "Einheiten-Übersicht"
     }
   },
   "sidebar": {
@@ -1755,5 +1906,8 @@
     "fileNotFound": "Datei nicht gefunden",
     "fileTypeNotAllowed": "Dateityp nicht erlaubt",
     "uploadFailed": "Upload fehlgeschlagen"
+  },
+  "contractWizard": {
+    "description": "Erstellen Sie Schritt für Schritt einen rechtssicheren Mietvertrag."
   }
 }

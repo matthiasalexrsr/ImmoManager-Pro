@@ -141,7 +141,7 @@ export default function Properties() {
       { value: 'mixed', label: t('portfolio.properties.types.mixed') || 'Gemischt' },
     ]},
     { section: sStamm, key: 'status', label: t('ui.form.status') || 'Status', type: 'select', default: 'active', options: [
-      { value: 'active', label: t('tenantsContracts.contracts.status.active') || 'Aktiv' },
+      { value: 'active', label: t('status.general.active') || 'Aktiv' },
       { value: 'inactive', label: t('portfolio.properties.status.inactive') || 'Inaktiv' },
     ]},
     { section: sAddr, key: 'address_line', label: t('portfolio.properties.form.address') || 'Straße' },

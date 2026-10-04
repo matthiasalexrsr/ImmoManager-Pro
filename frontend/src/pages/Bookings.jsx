@@ -112,8 +112,8 @@ export default function Bookings() {
     { key: 'receipt_url', label: t('finance.bookings.form.receiptUrl') || 'Beleg-URL', placeholder: '/belege/beleg.pdf' },
     { key: 'status', label: t('ui.form.status') || 'Status', type: 'select', default: 'open', options: [
       { value: 'open', label: t('ui.filterChips.open') || 'Offen' },
-      { value: 'matched', label: t('finance.bookings.status.matched') || 'Zugeordnet' },
-      { value: 'booked', label: t('finance.bookings.status.booked') || 'Gebucht' },
+      { value: 'matched', label: t('status.booking.matched') || 'Zugeordnet' },
+      { value: 'booked', label: t('status.booking.booked') || 'Gebucht' },
     ]},
   ];
 
