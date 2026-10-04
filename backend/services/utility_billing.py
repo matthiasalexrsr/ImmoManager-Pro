@@ -247,7 +247,7 @@ class _PersonProblems:
     def report(self, result: PeriodBilling, label) -> None:
         if self.missing:
             result.blocker("MISSING_PERSON_COUNT",
-                           "person_count (oder rooms als Fallback) fehlt oder ist 0 für person_count-Verteilung",
+                           "Personenzahl fehlt für die Personen-Verteilung (bei Gewerbe ggf. 0 eintragen)",
                            ", ".join(sorted(label(u) for u in self.missing)))
         if self.from_rooms:
             result.warn("PERSON_COUNT_FROM_ROOMS",
@@ -255,9 +255,20 @@ class _PersonProblems:
                         ", ".join(sorted(label(u) for u in self.from_rooms)))
 
 
+# Unit types nobody lives in. They take no part in the person key.
+_NO_RESIDENTS = ("stellplatz", "garage", "parking", "carport", "keller", "basement")
+
+
+def _has_residents(unit: Any) -> bool:
+    unit_type = (unit.unit_type or "").lower()
+    return not any(marker in unit_type for marker in _NO_RESIDENTS)
+
+
 def _unit_persons(unit: Any, problems: _PersonProblems) -> Optional[Decimal]:
-    if unit.person_count:
+    if unit.person_count is not None:  # an entered 0 is a real answer
         return Decimal(unit.person_count)
+    if not _has_residents(unit):
+        return Decimal("0")
     if unit.rooms:
         problems.from_rooms.add(unit.id)
         return _decimal(unit.rooms)
@@ -279,7 +290,7 @@ def _time_shares(key, units, segments, contract_by_id, area_missing: set[str], p
                     basis = Decimal(contract.persons)
                 else:
                     unit_value = _unit_persons(unit, persons)
-                    if segment.is_vacancy:
+                    if segment.is_vacancy and _has_residents(unit):
                         # The landlord pays for an empty flat as if one person lived there.
                         basis = max(Decimal("1"), unit_value or Decimal("0"))
                     else:

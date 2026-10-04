@@ -38,9 +38,9 @@ def _property(name: str):
     return store.create_property(PropertyCreate(portfolio_id=pf.id, name=name, property_type="residential"))
 
 
-def _unit(prop, label, area, advance=(0, 0), persons=None, rooms=None):
+def _unit(prop, label, area, advance=(0, 0), persons=None, rooms=None, unit_type="residential"):
     return store.create_unit(UnitCreate(
-        property_id=prop.id, label=label, unit_type="residential", area_sqm=area, rooms=rooms,
+        property_id=prop.id, label=label, unit_type=unit_type, area_sqm=area, rooms=rooms,
         service_charge_advance=advance[0], heating_advance=advance[1], person_count=persons))
 
 
@@ -202,6 +202,41 @@ def test_empty_flat_counts_as_one_person_for_the_landlord():
     rows = {s.party: s.total_cost for s in billing.generate_utility_statements(period.id)}
 
     assert rows == {"tenant": 300.0, "vacancy": 100.0}
+
+
+def test_garages_take_no_part_in_the_person_key():
+    """Regression: a garage without a person count blocked the whole statement (stress test)."""
+    prop = _property("H")
+    flat = _unit(prop, "WE 01", 60, persons=2)
+    garage = _unit(prop, "Garage 1", 15, unit_type="Stellplatz")
+    _unit(prop, "Garage 2", 15, unit_type="parking")  # empty
+    _lease(prop, flat, "C-1", date(2020, 1, 1))
+    _lease(prop, garage, "C-2", date(2020, 1, 1))
+    period = _period(prop, [("Müll", 600, "person_count"), ("Allgemeinstrom", 300, "unit_count")])
+
+    assert not billing.get_billing_period_preflight(period.id).has_blockers
+    totals = {(s.unit_id, s.party): s.total_cost for s in billing.generate_utility_statements(period.id)}
+
+    assert totals[(flat.id, "tenant")] == 700.0  # all of the waste, a third of the electricity
+    assert totals[(garage.id, "tenant")] == 100.0
+
+
+def test_shop_needs_an_entered_person_count_and_zero_counts():
+    prop = _property("H")
+    flat = _unit(prop, "WE 01", 60, persons=2)
+    shop = _unit(prop, "Laden", 120, unit_type="Gewerbe")
+    _lease(prop, flat, "C-1", date(2020, 1, 1))
+    _lease(prop, shop, "C-2", date(2020, 1, 1))
+    period = _period(prop, [("Müll", 600, "person_count")])
+
+    blocker = next(b for b in billing.get_billing_period_preflight(period.id).blockers
+                   if b.code == "MISSING_PERSON_COUNT")
+    assert blocker.context == "Laden" and "Gewerbe" in blocker.message
+
+    store.update_unit(shop.id, UnitCreate(**{**shop.model_dump(include=set(UnitCreate.model_fields)), "person_count": 0}))
+    totals = {s.unit_id: s.total_cost for s in billing.generate_utility_statements(period.id)}
+
+    assert (totals[flat.id], totals[shop.id]) == (600.0, 0.0)
 
 
 def _consumption_case(intermediate: bool):
