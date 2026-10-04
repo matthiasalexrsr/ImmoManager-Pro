@@ -1308,7 +1308,9 @@
           "techniker": "Técnico",
           "readonly": "Solo lectura"
         }
-      }
+      },
+      "skippedExisting": "ya existentes, omitidos",
+      "nothingNew": "No hay registros nuevos: todo ya existía."
     },
     "messages": {
       "title": "Mensajes",

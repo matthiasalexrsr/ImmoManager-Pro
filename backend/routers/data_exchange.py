@@ -1,8 +1,6 @@
-"""Data export and import router for full system backup/restore.
+"""Data export and import (Settings → Datensicherung).
 
-Delegates to admin._export_store_data / _import_store_data for full entity
-coverage and dependency-aware ordering. This ensures export/import parity
-between /data/export and /admin/export endpoints.
+Uses the same lossless snapshot format as /admin/export and /admin/import.
 """
 
 import json
@@ -12,6 +10,9 @@ from io import BytesIO
 
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
+
+from ..dependencies import store
+from ..services.data_snapshot import SnapshotError, export_snapshot, import_snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -27,13 +28,8 @@ def _json_serial(obj):
 
 @router.get("/export")
 def export_all_data() -> StreamingResponse:
-    """Export all data as a single JSON file.
-
-    Uses the canonical export function from admin module for full entity
-    coverage and consistent round-trip behaviour.
-    """
-    from .admin import _export_store_data
-    data = _export_store_data()
+    """Export all business data as a single JSON file."""
+    data = export_snapshot(store)
 
     json_bytes = json.dumps(data, default=_json_serial, indent=2, ensure_ascii=False).encode("utf-8")
     return StreamingResponse(
@@ -44,26 +40,22 @@ def export_all_data() -> StreamingResponse:
 
 
 @router.post("/import", status_code=status.HTTP_200_OK)
-async def import_data(file: UploadFile = File(...)) -> dict:
-    """Import data from a JSON export file.
+def import_data(file: UploadFile = File(...)) -> dict:
+    """Merge a JSON export into the data.
 
-    Delegates to the canonical admin import function for full entity coverage
-    and dependency-aware ordering. Creates new records (does not overwrite).
+    Records keep their IDs; records that already exist are skipped, so
+    importing the same file twice changes nothing. The file is validated
+    completely first: on any problem nothing is written.
     """
     try:
-        content = await file.read()
-        data = json.loads(content.decode("utf-8"))
-    except Exception as exc:
+        data = json.loads(file.file.read().decode("utf-8"))
+    except ValueError as exc:
         raise HTTPException(status_code=400, detail=f"Ungültige JSON-Datei: {exc}") from exc
 
-    if not isinstance(data, dict):
-        raise HTTPException(status_code=400, detail="JSON muss ein Objekt sein")
-
-    from .admin import _import_store_data
     try:
-        result = _import_store_data(data, replace_existing=False)
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Import error: {exc}") from exc
+        result = import_snapshot(store, data, replace=False)
+    except SnapshotError as exc:
+        raise HTTPException(status_code=400, detail=f"Import abgebrochen – {exc}") from exc
 
-    logger.info("Data imported via /data/import: %s", result.get("imported"))
+    logger.info("Data imported via /data/import: %s", result["imported"])
     return result

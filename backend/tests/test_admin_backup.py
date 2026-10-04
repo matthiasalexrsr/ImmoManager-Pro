@@ -5,25 +5,28 @@ import sqlite3
 import pytest
 from fastapi import HTTPException
 
+from backend.dependencies import store
 from backend.models import PortfolioCreate
-from backend.routers import admin as legacy_admin
 from backend.routers import admin_runtime as admin
+from backend.services.data_snapshot import clear_business_data
 
 
 def _reset_store() -> None:
-    legacy_admin._clear_store_data()
+    clear_business_data(store)
 
 
 def test_create_backup_uses_active_store_snapshot(tmp_path, monkeypatch):
     monkeypatch.setattr(admin, "_BACKUP_DIR", tmp_path)
     _reset_store()
     try:
-        legacy_admin.store.create_portfolio(PortfolioCreate(name="Test Portfolio"))
+        store.create_portfolio(PortfolioCreate(name="Test Portfolio"))
 
         result = admin.create_backup()
 
         backup_path = tmp_path / result["backup"]
-        assert result["backup"].endswith(".json")
+        # SQLite gets a complete database copy, other stores a JSON snapshot.
+        expected = ".db" if admin._live_sqlite_path() is not None else ".json"
+        assert result["backup"].endswith(expected)
         assert backup_path.exists()
         assert result["size_bytes"] > 0
     finally:
@@ -32,18 +35,19 @@ def test_create_backup_uses_active_store_snapshot(tmp_path, monkeypatch):
 
 def test_restore_json_backup_replaces_store_data(tmp_path, monkeypatch):
     monkeypatch.setattr(admin, "_BACKUP_DIR", tmp_path)
+    monkeypatch.setattr(admin, "_live_sqlite_path", lambda: None)
     _reset_store()
     try:
-        legacy_admin.store.create_portfolio(PortfolioCreate(name="Original"))
+        store.create_portfolio(PortfolioCreate(name="Original"))
         backup = admin.create_backup()
 
         _reset_store()
-        legacy_admin.store.create_portfolio(PortfolioCreate(name="Different"))
+        store.create_portfolio(PortfolioCreate(name="Different"))
 
         restored = admin.restore_backup(backup["backup"])
 
         assert restored["restored_from"] == backup["backup"]
-        names = [p.name for p in legacy_admin.store.list_portfolios()]
+        names = [p.name for p in store.list_portfolios()]
         assert names == ["Original"]
     finally:
         _reset_store()
@@ -83,7 +87,7 @@ def test_sqlite_restore_wins_over_live_wal(tmp_path, monkeypatch):
     live.commit()
 
     monkeypatch.setattr(admin, "_BACKUP_DIR", backup_dir)
-    monkeypatch.setattr(admin.settings, "database_url", f"sqlite:///{db_path}")
+    monkeypatch.setattr(admin, "_live_sqlite_path", lambda: db_path)
     result = admin.restore_backup("backup_old.db")
 
     assert live.execute("SELECT COUNT(*) FROM t").fetchone()[0] == 100
@@ -103,7 +107,7 @@ def test_sqlite_restore_rejects_non_database_file(tmp_path, monkeypatch):
     backup_dir.mkdir()
     (backup_dir / "backup_bad.db").write_text("not a database", encoding="utf-8")
     monkeypatch.setattr(admin, "_BACKUP_DIR", backup_dir)
-    monkeypatch.setattr(admin.settings, "database_url", f"sqlite:///{tmp_path / 'live.db'}")
+    monkeypatch.setattr(admin, "_live_sqlite_path", lambda: tmp_path / "live.db")
     with pytest.raises(HTTPException) as exc:
         admin.restore_backup("backup_bad.db")
     assert exc.value.status_code == 400

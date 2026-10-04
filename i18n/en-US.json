@@ -1230,7 +1230,9 @@
           "techniker": "Technician",
           "readonly": "Read only"
         }
-      }
+      },
+      "skippedExisting": "already present, skipped",
+      "nothingNew": "No new records – everything was already present."
     },
     "messages": {
       "title": "Messages",

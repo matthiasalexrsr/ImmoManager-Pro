@@ -1230,7 +1230,9 @@
           "techniker": "Techniker",
           "readonly": "Nur Lesen"
         }
-      }
+      },
+      "skippedExisting": "bereits vorhanden, übersprungen",
+      "nothingNew": "Keine neuen Datensätze – alles war bereits vorhanden."
     },
     "messages": {
       "title": "Nachrichten",

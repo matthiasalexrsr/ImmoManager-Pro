@@ -69,10 +69,10 @@ export default function BackupSection() {
         body: formData,
         headers: { Authorization: `Bearer ${token}` },
       });
-      const data = await res.json();
-      setImportResult(data);
+      const data = await res.json().catch(() => ({}));
+      setImportResult(res.ok ? data : { error: data?.error?.message || t('toasts.error.generic') });
     } catch (err) {
-      setImportResult({ errors: { general: [err.message] } });
+      setImportResult({ error: err.message });
     } finally {
       setImportLoading(false);
       if (fileRef.current) fileRef.current.value = '';
@@ -143,10 +143,14 @@ export default function BackupSection() {
               {importResult.imported && Object.entries(importResult.imported).map(([k, v]) => (
                 <span key={k} className="text-muted">{k}: {v} {t('pages.settings.imported')}</span>
               ))}
-              {importResult.errors && Object.keys(importResult.errors).length > 0 && (
-                <span style={{ color: 'var(--danger)' }}>
-                  {t('pages.settings.errorsIn')} {Object.keys(importResult.errors).join(', ')}
-                </span>
+              {importResult.skipped_existing && Object.entries(importResult.skipped_existing).map(([k, v]) => (
+                <span key={`skipped-${k}`} className="text-muted">{k}: {v} {t('pages.settings.skippedExisting')}</span>
+              ))}
+              {importResult.imported && Object.keys(importResult.imported).length === 0 && (
+                <span className="text-muted">{t('pages.settings.nothingNew')}</span>
+              )}
+              {importResult.error && (
+                <span role="alert" style={{ color: 'var(--danger)' }}>{importResult.error}</span>
               )}
             </div>
           </div>

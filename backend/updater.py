@@ -299,9 +299,10 @@ def _create_pre_update_backup() -> str | None:
 
     try:
 
-        # Use the same export logic as admin.py
-        from .routers.admin import _export_store_data
-        data = _export_store_data()
+        # Same lossless snapshot as /admin/export
+        from .dependencies import store
+        from .services.data_snapshot import export_snapshot
+        data = export_snapshot(store)
         data["_meta"] = {
             "type": "pre_update_backup",
             "version": settings.app_version,
