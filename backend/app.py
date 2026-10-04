@@ -53,11 +53,10 @@ def _validate_startup_config() -> None:
     if settings.jwt_secret_key == "dev-secret-key-change-in-production":
         issues.append("JWT_SECRET_KEY is using the default value. Set JWT_SECRET_KEY in production!")
     elif len(settings.jwt_secret_key) < MIN_JWT_SECRET_LENGTH:
-        # Not blocking: IBAN encryption keys derive from this secret, so forcing
-        # a rotation would make already-encrypted IBANs unreadable.
+        # Not blocking, so existing installations keep starting after an update.
         advisories.append(
             f"JWT_SECRET_KEY is shorter than {MIN_JWT_SECRET_LENGTH} characters. "
-            "Rotating it makes stored encrypted IBANs unreadable; plan a re-encryption first."
+            "Generate a longer random secret; changing it signs all users out."
         )
 
     if any(origin == "*" for origin in settings.cors_origins):

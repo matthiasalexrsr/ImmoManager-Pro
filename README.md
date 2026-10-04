@@ -95,7 +95,7 @@ i18n/                 # Locale files (de-DE, en-US, es-ES)
 | `BACKUP_DIR` | `<DATA_DIR>/backups` | Backup storage |
 | `SQLITE_PERSISTENT_STORE` | `true` | Use SQLAlchemy persistence for SQLite |
 | `ALLOW_INMEMORY_FALLBACK` | `false` | Fall back to in-memory store on DB failure |
-| `JWT_SECRET_KEY` | `dev-secret-key-change-in-production` | Secret key for JWT token signing; must be overridden in production (startup fails on the default); use at least 32 random characters. Also derives the IBAN encryption key, so changing it makes stored encrypted IBANs unreadable |
+| `JWT_SECRET_KEY` | `dev-secret-key-change-in-production` | Secret key for JWT token signing; must be overridden in production (startup fails on the default); use at least 32 random characters (shorter ones are reported at startup). Changing it signs all users out |
 | `ENVIRONMENT` | `development` | `development` or `production` |
 | `CORS_ORIGINS` | `http://localhost:3000,http://localhost:5173` | Allowed CORS origins |
 | `ALLOW_SELF_REGISTRATION` | `false` | Allow public sign-up after initial setup; self-registered accounts are always read-only. The first account on a fresh install is always created as owner, further accounts are created by an admin under *Settings → Users* (or `POST /api/v1/auth/users`) |

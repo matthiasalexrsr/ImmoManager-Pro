@@ -34,7 +34,7 @@ def test_long_random_jwt_secret_is_accepted(monkeypatch):
 
 
 def test_short_jwt_secret_is_critical_but_not_blocking_in_production(monkeypatch, production):
-    # Blocking would force a key rotation, which makes encrypted IBANs unreadable.
+    # Not blocking, so existing installations with a short secret keep starting after an update.
     monkeypatch.setattr(settings, "jwt_secret_key", "short-secret")
     criticals = []
     monkeypatch.setattr(app_module.logger, "critical", lambda fmt, msg: criticals.append(msg))
