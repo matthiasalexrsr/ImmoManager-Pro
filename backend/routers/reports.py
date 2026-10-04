@@ -322,14 +322,22 @@ def liquidity_forecast(
     months: int = Query(12, ge=1, le=60),
     property_id: str | None = Query(None),
 ):
-    """T28: Liquidity forecast for 3/6/12 months based on historical data."""
+    """T28: Liquidity forecast for 3/6/12 months based on historical data.
+
+    Opening balances belong to accounts, not to properties, so a forecast for
+    one property starts from its bookings alone.
+    """
     bookings = store.list_bookings()
+    opening_balance = 0.0
     if property_id:
         bookings = [b for b in bookings if b.property_id == property_id]
+    else:
+        opening_balance = sum(a.opening_balance or 0.0 for a in store.list_accounts())
 
     return report_service.compute_liquidity_forecast(
         bookings=bookings,
         months=months,
+        opening_balance=opening_balance,
     )
 
 

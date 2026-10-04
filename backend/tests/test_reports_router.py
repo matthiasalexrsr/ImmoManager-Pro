@@ -286,6 +286,31 @@ def test_credits_are_not_netted_against_receivables() -> None:
     assert (stats["open_receivables"], stats["overdue_receivables"]) == (3, 2)
 
 
+def test_account_balance_and_liquidity_start_from_the_opening_balance() -> None:
+    """Regression: account balances stayed at what was typed in (0 €) and the forecast ignored opening balances."""
+    from backend.models import AccountCreate as _AccountCreate
+    from backend.routers import accounts
+
+    store.clear_all()
+    portfolio = store.create_portfolio(PortfolioCreate(name="Portfolio"))
+    rent = store.create_account(_AccountCreate(portfolio_id=portfolio.id, name="Mietkonto", account_type="bank",
+                                               opening_balance=10000.0))
+    store.create_account(_AccountCreate(portfolio_id=portfolio.id, name="Rücklage", account_type="bank",
+                                        opening_balance=2500.0, balance=99.0))
+    today = datetime.date.today()
+    for days_ago, amount in [(40, 640.0), (10, 640.0), (5, -230.5)]:
+        store.create_booking(BookingCreate(account_id=rent.id, amount=amount,
+                                           booking_date=today - datetime.timedelta(days=days_ago)))
+
+    balances = {a.name: a.balance for a in accounts.list_accounts(
+        skip=0, limit=100, portfolio_id=None, account_type=None, sort_by=None, sort_order="asc")}
+    forecast = reports.liquidity_forecast(months=3, property_id=None)
+
+    assert balances == {"Mietkonto": 11049.5, "Rücklage": 2500.0}
+    assert accounts.get_account(rent.id).balance == 11049.5
+    assert forecast["current_balance"] == 13549.5
+
+
 def test_reports_cashflow() -> None:
     store.clear_all()
 

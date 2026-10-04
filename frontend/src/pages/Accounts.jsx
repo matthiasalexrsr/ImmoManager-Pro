@@ -75,8 +75,8 @@ export default function Accounts() {
       { value: 'Sparkonto', label: t('finance.accounts.types.savings') || 'Sparkonto' },
       { value: 'Kautionskonto', label: t('finance.accounts.types.deposit') || 'Kautionskonto' },
     ]},
+    // The balance follows from the opening balance and the bookings.
     { key: 'opening_balance', label: t('finance.accounts.form.openingBalance') || 'Anfangssaldo (€)', type: 'number', default: 0 },
-    { key: 'balance', label: t('finance.accounts.form.currentBalance') || 'Aktueller Saldo (€)', type: 'number', default: 0 },
   ];
 
   const handleSave = async (data) => {

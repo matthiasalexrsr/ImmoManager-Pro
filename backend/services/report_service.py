@@ -215,8 +215,12 @@ def compute_liquidity_forecast(
     bookings: list,
     months: int = 12,
     today: date | None = None,
+    opening_balance: float = 0.0,
 ) -> dict[str, Any]:
-    """Project balance forward using calendar-aware month arithmetic."""
+    """Project balance forward using calendar-aware month arithmetic.
+
+    The current balance is the accounts' opening balance plus all bookings.
+    """
     today = today or date.today()
     cutoff = today - timedelta(days=365)
     recent = [b for b in bookings if b.booking_date >= cutoff]
@@ -233,7 +237,7 @@ def compute_liquidity_forecast(
     n_months = max(len(monthly_income), 1)
     avg_income = sum(monthly_income.values()) / n_months
     avg_expense = sum(monthly_expense.values()) / n_months
-    current_balance = sum(b.amount for b in bookings)
+    current_balance = opening_balance + sum(b.amount for b in bookings)
 
     forecast = []
     balance = current_balance
