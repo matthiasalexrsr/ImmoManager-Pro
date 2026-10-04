@@ -47,6 +47,7 @@ describe('Statements detail', () => {
 
     expect(within(vacancyRow).getByText('01.07.2025 – 31.08.2025')).toBeInTheDocument();
     expect(within(vacancyRow).queryByText('PDF')).not.toBeInTheDocument();
+    expect(within(vacancyRow).queryByText('301.72 €', { selector: 'span' })).not.toBeInTheDocument();  // no balance
     expect(within(screen.getByText('Lukas Becker').closest('tr')).getByText('PDF')).toBeInTheDocument();
     expect(screen.getByText('pages.statements.notRecoverable')).toBeInTheDocument();
   });

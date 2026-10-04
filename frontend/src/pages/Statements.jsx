@@ -108,7 +108,9 @@ function getStmtColumns(t, onError) {
     { key: 'advance_paid', label: t('pages.statements.colAdvancePaid') || 'Vorauszahlung (€)', type: 'number', align: 'right',
       render: v => `${Number(v || 0).toFixed(2)} €` },
     { key: 'balance', label: t('pages.statements.colBalance') || 'Saldo (€)', type: 'number', align: 'right',
-      render: (v) => {
+      render: (v, row) => {
+        // A vacancy row is the landlord's cost, not a balance anybody owes.
+        if (row.party === 'vacancy') return <span className="text-muted">—</span>;
         const cls = v > 0 ? 'text-red' : v < 0 ? 'text-green' : '';
         return <span className={cls}>{Number(v || 0).toFixed(2)} €</span>;
       }},
