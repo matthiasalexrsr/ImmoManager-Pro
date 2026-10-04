@@ -1418,3 +1418,11 @@ class EntityPhotoPatch(BaseModel):
     caption: Optional[str] = None
     is_primary: Optional[bool] = None
     sort_order: Optional[int] = None
+
+
+# Apply UI field extensions here, at the end of the module, so every importer
+# (storage, repositories, routers) binds the extended classes regardless of
+# import order. Otherwise the in-memory store silently drops these fields.
+from .compat.ui_contracts import ensure_ui_contracts  # noqa: E402
+
+ensure_ui_contracts()
