@@ -33,7 +33,7 @@ export function PreferencesProvider({ children }) {
 
   // Load preferences from server
   useEffect(() => {
-    api.get('/users/me/preferences')
+    api.get('/auth/users/me/preferences')
       .then(data => {
         if (data) {
           const merged = { ...DEFAULT_PREFS, ...data };
@@ -49,7 +49,7 @@ export function PreferencesProvider({ children }) {
       const next = { ...prev, ...updates };
       localStorage.setItem('user_preferences', JSON.stringify(next));
       // Persist to server (fire and forget)
-      api.put('/users/me/preferences', next).catch(err => console.warn('[Preferences]', err.message));
+      api.put('/auth/users/me/preferences', next).catch(err => console.warn('[Preferences]', err.message));
       return next;
     });
   }, []);
@@ -59,7 +59,7 @@ export function PreferencesProvider({ children }) {
       const nextTheme = prev.theme === 'light' ? 'dark' : 'light';
       const next = { ...prev, theme: nextTheme };
       localStorage.setItem('user_preferences', JSON.stringify(next));
-      api.put('/users/me/preferences', next).catch(err => console.warn('[Preferences]', err.message));
+      api.put('/auth/users/me/preferences', next).catch(err => console.warn('[Preferences]', err.message));
       return next;
     });
   }, []);
@@ -68,7 +68,7 @@ export function PreferencesProvider({ children }) {
     setPrefs(prev => {
       const next = { ...prev, sidebar_collapsed: !prev.sidebar_collapsed };
       localStorage.setItem('user_preferences', JSON.stringify(next));
-      api.put('/users/me/preferences', next).catch(err => console.warn('[Preferences]', err.message));
+      api.put('/auth/users/me/preferences', next).catch(err => console.warn('[Preferences]', err.message));
       return next;
     });
   }, []);
