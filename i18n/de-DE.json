@@ -216,7 +216,8 @@
       "email": "E-Mail-Adresse",
       "password": "Passwort",
       "confirmPassword": "Passwort bestätigen",
-      "submit": "Konto erstellen"
+      "submit": "Konto erstellen",
+      "initialSetup": "Ersteinrichtung: Dieses Konto wird als Eigentümer-Konto angelegt."
     },
     "twoFactor": {
       "title": "Zwei-Faktor-Authentifizierung",

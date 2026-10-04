@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { login, register } from '../api';
+import { getRegistrationStatus, login, register } from '../api';
 import { useTranslation } from '../i18n';
 
 export default function Login() {
@@ -12,7 +12,19 @@ export default function Login() {
   const [fullName, setFullName] = useState('');
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [registration, setRegistration] = useState({ open: false, initial_setup: false });
   const navigate = useNavigate();
+
+  useEffect(() => {
+    let cancelled = false;
+    getRegistrationStatus().then((status) => {
+      if (cancelled) return;
+      setRegistration(status);
+      // On a fresh install the first account is the owner: start in sign-up mode.
+      if (status.initial_setup) setIsRegister(true);
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -41,6 +53,9 @@ export default function Login() {
         </div>
         <form onSubmit={handleSubmit}>
           {error && <div className="alert-error">{error}</div>}
+          {isRegister && registration.initial_setup && (
+            <div className="alert-info">{t('auth.register.initialSetup')}</div>
+          )}
           <div className="form-group">
             <label>{t('auth.login.email')}</label>
             <input type="text" value={username} onChange={e => setUsername(e.target.value)} required autoFocus />
@@ -66,11 +81,13 @@ export default function Login() {
             {loading ? `${t('ui.table.loading')}` : (isRegister ? t('auth.register.submit') : t('auth.login.submit'))}
           </button>
         </form>
-        <p className="login-toggle">
-          <button onClick={() => { setIsRegister(!isRegister); setError(null); }} className="link-btn">
-            {isRegister ? t('auth.login.submit') : t('auth.register.title')}
-          </button>
-        </p>
+        {registration.open && !registration.initial_setup && (
+          <p className="login-toggle">
+            <button onClick={() => { setIsRegister(!isRegister); setError(null); }} className="link-btn">
+              {isRegister ? t('auth.login.submit') : t('auth.register.title')}
+            </button>
+          </p>
+        )}
       </div>
     </div>
   );

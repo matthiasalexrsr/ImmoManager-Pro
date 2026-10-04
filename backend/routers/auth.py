@@ -1,6 +1,7 @@
 """Authentication router: login, register, refresh, user management."""
 
 import logging
+import threading
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
@@ -14,6 +15,7 @@ from ..auth import (
     generate_totp_secret,
     get_totp_uri,
     get_user_by_id,
+    has_users,
     list_users,
     record_registration_attempt,
     register_user,
@@ -23,6 +25,7 @@ from ..auth import (
     update_user,
     verify_totp,
 )
+from ..config import settings
 from ..models import (
     LoginRequest,
     RefreshRequest,
@@ -35,7 +38,18 @@ from ..models import (
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
-_ALLOWED_SELF_REGISTER_ROLES = {"readonly", "techniker"}
+# Serialises the "first account becomes owner" check against concurrent sign-ups.
+_registration_lock = threading.Lock()
+
+
+@router.get("/registration-status")
+def registration_status() -> dict:
+    """Public: tells the login page whether sign-up is possible."""
+    initial_setup = not has_users()
+    return {
+        "initial_setup": initial_setup,
+        "open": initial_setup or settings.allow_self_registration,
+    }
 
 
 _DEFAULT_PREFERENCES = {
@@ -53,22 +67,36 @@ _DEFAULT_PREFERENCES = {
 
 @router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
 def register(payload: UserCreate, request: Request) -> UserRead:
-    """Register a new user. Self-registration is restricted to readonly/techniker roles."""
+    """Register a new account.
+
+    The first account ever created becomes the owner (initial setup).
+    Afterwards sign-up is closed unless ALLOW_SELF_REGISTRATION is enabled,
+    and self-registered accounts are always read-only.
+    """
     client_ip = request.client.host if request.client else "unknown"
     if check_register_rate_limit(client_ip):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Zu viele Registrierungsversuche. Bitte versuchen Sie es später erneut.",
         )
-    role = payload.role if payload.role in _ALLOWED_SELF_REGISTER_ROLES else "readonly"
     record_registration_attempt(client_ip)
-    return register_user(
-        username=payload.username,
-        email=payload.email,
-        full_name=payload.full_name,
-        password=payload.password,
-        role=role,
-    )
+    with _registration_lock:
+        if not has_users():
+            role = "eigentuemer"
+        elif settings.allow_self_registration:
+            role = "readonly"
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Selbstregistrierung ist deaktiviert. Bitte wenden Sie sich an den Eigentümer.",
+            )
+        return register_user(
+            username=payload.username,
+            email=payload.email,
+            full_name=payload.full_name,
+            password=payload.password,
+            role=role,
+        )
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -242,6 +270,26 @@ def get_users(
     """List all users (admin only)."""
     users = list_users()
     return users[skip : skip + limit]
+
+
+@router.post("/users", response_model=UserRead, status_code=status.HTTP_201_CREATED)
+def create_user(
+    payload: UserCreate,
+    user: UserRead = Depends(require_role("eigentuemer", "verwalter")),
+) -> UserRead:
+    """Create an account (admin only). Only owners may assign roles other than read-only."""
+    if payload.role != "readonly" and user.role != "eigentuemer":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Nur Eigentümer dürfen Rollen vergeben",
+        )
+    return register_user(
+        username=payload.username,
+        email=payload.email,
+        full_name=payload.full_name,
+        password=payload.password,
+        role=payload.role,
+    )
 
 
 @router.patch("/users/{user_id}", response_model=UserRead)

@@ -216,7 +216,8 @@
       "email": "Correo electrónico",
       "password": "Contraseña",
       "confirmPassword": "Confirmar contraseña",
-      "submit": "Crear cuenta"
+      "submit": "Crear cuenta",
+      "initialSetup": "Configuración inicial: esta cuenta se creará como cuenta de propietario."
     },
     "twoFactor": {
       "title": "Autenticación de dos factores",

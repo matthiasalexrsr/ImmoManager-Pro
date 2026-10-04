@@ -134,6 +134,12 @@ class Settings(BaseSettings):
     # Defaults to False; must be explicitly enabled (e.g. for demo images).
     auto_seed_demo_data: bool = False
 
+    # --- Accounts ---
+    # The very first account is always created as owner (initial setup).
+    # Afterwards, public self-registration stays closed unless enabled here;
+    # self-registered accounts are always read-only.
+    allow_self_registration: bool = False
+
     # --- File upload limits ---
     max_upload_size_bytes: int = 50 * 1024 * 1024  # 50 MB
 

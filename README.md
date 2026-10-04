@@ -98,6 +98,7 @@ i18n/                 # Locale files (de-DE, en-US, es-ES)
 | `JWT_SECRET_KEY` | `dev-secret-key-change-in-production` | Secret key for JWT token signing; must be overridden in production (startup fails on the default); use at least 32 random characters. Also derives the IBAN encryption key, so changing it makes stored encrypted IBANs unreadable |
 | `ENVIRONMENT` | `development` | `development` or `production` |
 | `CORS_ORIGINS` | `http://localhost:3000,http://localhost:5173` | Allowed CORS origins |
+| `ALLOW_SELF_REGISTRATION` | `false` | Allow public sign-up after initial setup; self-registered accounts are always read-only. The first account on a fresh install is always created as owner, further accounts are created by the owner (`POST /api/v1/auth/users`) |
 | `DIAGNOSTICS_ALLOW_IN_PRODUCTION` | `false` | Enable developer tools (diagnostics, autotest, developer notes) in production |
 
 ## Testing

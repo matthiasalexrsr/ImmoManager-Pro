@@ -196,6 +196,16 @@ export async function login(username, password) {
   return data;
 }
 
+export async function getRegistrationStatus() {
+  try {
+    const res = await fetch(`${BASE}/auth/registration-status`);
+    if (!res.ok) return { open: false, initial_setup: false };
+    return await res.json();
+  } catch {
+    return { open: false, initial_setup: false };
+  }
+}
+
 export async function register(username, email, full_name, password) {
   let res;
   try {

@@ -735,6 +735,11 @@ def get_user_by_id(user_id: str) -> Optional[dict]:
     return _user_store.get_by_id(user_id)
 
 
+def has_users() -> bool:
+    """True once at least one account exists."""
+    return bool(_user_store.list_all())
+
+
 def list_users() -> list[UserRead]:
     """List all users."""
     return [_to_user_read(u) for u in _user_store.list_all()]
@@ -761,6 +766,7 @@ def clear_users() -> None:
     _login_attempts.clear()
     _token_blacklist.clear()
     _blacklist_expiry.clear()
+    _register_limiter._attempts.clear()
 
 
 async def get_current_user(
