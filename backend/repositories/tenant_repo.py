@@ -14,6 +14,7 @@ from ..db.orm_models import (
     TenantORM,
     ViewingAppointmentORM,
 )
+from ..domain.lease_engine import find_unit_overlap, unit_overlap_message
 from ..models import (
     Contract,
     ContractCreate,
@@ -100,6 +101,9 @@ class TenantRepository:
         existing = self.db.query(ContractORM).filter(ContractORM.contract_number == data.contract_number).first()
         if existing:
             raise ValidationError("Vertragsnummer existiert bereits")
+        clash = find_unit_overlap(data, self._contracts.filter_by(unit_id=data.unit_id))
+        if clash:
+            raise ValidationError(unit_overlap_message(clash))
         result = self._contracts.create(data)
         self._commit()
         return result
@@ -128,6 +132,9 @@ class TenantRepository:
         )
         if existing:
             raise ValidationError("Vertragsnummer existiert bereits")
+        clash = find_unit_overlap(data, self._contracts.filter_by(unit_id=data.unit_id), exclude_id=contract_id)
+        if clash:
+            raise ValidationError(unit_overlap_message(clash))
         result = self._contracts.update(contract_id, data)
         self._commit()
         return result

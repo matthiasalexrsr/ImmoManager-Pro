@@ -985,9 +985,15 @@ def create_receivables_from_period(period_id: str):
     period_statements = [
         s for s in store.list_utility_statements() if s.billing_period_id == period_id
     ]
+    # Calling this twice must not bill the tenants twice.
+    already_billed = {r.statement_id for r in store.list_receivables() if r.statement_id}
 
     created_count = 0
+    skipped_count = 0
     for stmt in period_statements:
+        if stmt.id in already_billed:
+            skipped_count += 1
+            continue
         if stmt.balance > 0:
             # Nachzahlung -> Forderung
             store.create_receivable(
@@ -1013,7 +1019,7 @@ def create_receivables_from_period(period_id: str):
             )
             created_count += 1
 
-    return {"period_id": period_id, "created_receivables": created_count}
+    return {"period_id": period_id, "created_receivables": created_count, "skipped_existing": skipped_count}
 
 
 @router.post("/periods/{period_id}/revisions")

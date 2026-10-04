@@ -3,12 +3,56 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
-from typing import TYPE_CHECKING, Iterable, List, Optional
+from typing import TYPE_CHECKING, Iterable, List, Optional, Protocol
 
 CENTS = Decimal("0.01")
 
 if TYPE_CHECKING:
     from .dunning_engine import DunningCampaign, DunningPolicy
+
+
+# Contracts that hold a unit: a terminated contract does so until its end date,
+# drafts and expired contracts do not.
+OCCUPYING_CONTRACT_STATUSES = frozenset({"active", "terminated"})
+
+
+class Tenancy(Protocol):
+    unit_id: str
+    status: str
+    start_date: date
+    end_date: Optional[date]
+
+
+class StoredTenancy(Tenancy, Protocol):
+    id: str
+    contract_number: str
+
+
+def find_unit_overlap(
+    candidate: Tenancy, contracts: Iterable[StoredTenancy], exclude_id: Optional[str] = None
+) -> Optional[StoredTenancy]:
+    """Return a contract that occupies the candidate's unit during its term, if any."""
+    if candidate.status not in OCCUPYING_CONTRACT_STATUSES:
+        return None
+    start, end = candidate.start_date, candidate.end_date or date.max
+    for other in contracts:
+        if (
+            other.id == exclude_id
+            or other.unit_id != candidate.unit_id
+            or other.status not in OCCUPYING_CONTRACT_STATUSES
+        ):
+            continue
+        if other.start_date <= end and start <= (other.end_date or date.max):
+            return other
+    return None
+
+
+def unit_overlap_message(contract: StoredTenancy) -> str:
+    until = f"bis {contract.end_date:%d.%m.%Y}" if contract.end_date else "unbefristet"
+    return (
+        f"Die Einheit ist in diesem Zeitraum bereits vermietet "
+        f"(Vertrag {contract.contract_number}, ab {contract.start_date:%d.%m.%Y}, {until})"
+    )
 
 
 def _money(value: Decimal | float | int | str) -> Decimal:

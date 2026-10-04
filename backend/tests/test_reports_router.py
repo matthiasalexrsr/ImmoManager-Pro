@@ -315,11 +315,12 @@ def test_reports_contracts_expiring() -> None:
             end_date=today + datetime.timedelta(days=30),
         )
     )
+    other_unit = store.create_unit(UnitCreate(property_id=property_item.id, label="5.2", unit_type="Wohnung"))
     store.create_contract(
         ContractCreate(
             contract_number="C-501",
             property_id=property_item.id,
-            unit_id=unit.id,
+            unit_id=other_unit.id,
             tenant_id=tenant.id,
             start_date=today - datetime.timedelta(days=400),
             end_date=today + datetime.timedelta(days=150),

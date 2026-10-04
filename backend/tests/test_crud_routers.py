@@ -620,14 +620,17 @@ class TestContracts:
         )
         self.tenant = store.create_tenant(TenantCreate(full_name="Mieter"))
 
-    def _make_payload(self, number: str = "C-1") -> ContractCreate:
+    def _make_payload(self, number: str = "C-1", unit_id: str | None = None) -> ContractCreate:
         return ContractCreate(
             contract_number=number,
             property_id=self.prop.id,
-            unit_id=self.unit.id,
+            unit_id=unit_id or self.unit.id,
             tenant_id=self.tenant.id,
             start_date=datetime.date(2025, 1, 1),
         )
+
+    def _second_unit(self) -> str:
+        return store.create_unit(UnitCreate(property_id=self.prop.id, label="2", unit_type="Wohnung")).id
 
     def test_create_contract(self) -> None:
         c = contracts.create_contract(self._make_payload())
@@ -643,7 +646,7 @@ class TestContracts:
             ContractCreate(
                 contract_number="C-2",
                 property_id=self.prop.id,
-                unit_id=self.unit.id,
+                unit_id=self._second_unit(),
                 tenant_id=t2.id,
                 start_date=datetime.date(2025, 2, 1),
             )
@@ -653,7 +656,7 @@ class TestContracts:
 
     def test_list_contracts_pagination(self) -> None:
         contracts.create_contract(self._make_payload("C-1"))
-        contracts.create_contract(self._make_payload("C-2"))
+        contracts.create_contract(self._make_payload("C-2", unit_id=self._second_unit()))
         assert len(_list_contracts(skip=0, limit=1)) == 1
 
     def test_get_contract(self) -> None:
@@ -2350,10 +2353,12 @@ class TestGenerateUtilityStatements:
         assert len(_list_utility_statements()) == 2  # Still 2, not 4
 
     def test_generate_excludes_inactive_contracts(self) -> None:
+        unit3 = store.create_unit(UnitCreate(property_id=self.prop.id, label="3", unit_type="Wohnung",
+                                             area_sqm=50))
         terminated = store.create_contract(
             ContractCreate(
                 contract_number="V-3", property_id=self.prop.id,
-                unit_id=self.unit1.id, tenant_id=self.tenant1.id,
+                unit_id=unit3.id, tenant_id=self.tenant1.id,
                 start_date=datetime.date(2024, 1, 1), status="terminated",
             )
         )

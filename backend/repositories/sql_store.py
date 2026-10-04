@@ -190,6 +190,10 @@ class SQLAlchemyStore:
     def _patch_entity(self, entity_type: str, entity_id: str, patch: PydanticBaseModel):
         """Apply a partial update using the entity type string to resolve the repository."""
         repo = self._resolve_repo(entity_type)
+        # Validate the merged record before writing: an invalid value must not
+        # be committed (it would break every later read of the table).
+        current = repo.get(entity_id)
+        repo.read_class.model_validate({**current.model_dump(), **patch.model_dump(exclude_unset=True)})
         result = repo.patch(entity_id, patch)
         self._commit()
         return result

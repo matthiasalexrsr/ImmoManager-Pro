@@ -90,10 +90,18 @@ def update_contract(contract_id: str, payload: ContractCreate) -> Contract:
 
 @router.patch("/{contract_id}", response_model=Contract)
 def patch_contract(contract_id: str, payload: ContractPatch) -> Contract:
+    # A patch gets the same checks as a full update (status, dates, unit and
+    # property, unique number, no second tenancy of the unit).
     try:
-        return store._patch_entity("contract", contract_id, payload)
-    except NotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        current = store.get_contract(contract_id)
+        merged = ContractCreate.model_validate({
+            **current.model_dump(include=set(ContractCreate.model_fields)),
+            **payload.model_dump(exclude_unset=True),
+        })
+        return store.update_contract(contract_id, merged)
+    except (NotFoundError, ValidationError) as exc:
+        status_code = status.HTTP_404_NOT_FOUND if isinstance(exc, NotFoundError) else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
 
 
 @router.delete("/{contract_id}", status_code=status.HTTP_204_NO_CONTENT)

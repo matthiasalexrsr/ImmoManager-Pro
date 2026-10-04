@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel as PydanticBaseModel
 
+from .domain.lease_engine import find_unit_overlap, unit_overlap_message
 from .models import (
     Account,
     AccountCreate,
@@ -435,6 +436,9 @@ class InMemoryStore:
             raise ValidationError("Einheit gehört nicht zur Immobilie")
         if any(contract.contract_number == data.contract_number for contract in self.contracts.values()):
             raise ValidationError("Vertragsnummer existiert bereits")
+        clash = find_unit_overlap(data, self.contracts.values())
+        if clash:
+            raise ValidationError(unit_overlap_message(clash))
         contract = Contract(id=_generate_id(), **data.model_dump())
         self.contracts[contract.id] = contract
         return contract
@@ -461,6 +465,9 @@ class InMemoryStore:
             for contract in self.contracts.values()
         ):
             raise ValidationError("Vertragsnummer existiert bereits")
+        clash = find_unit_overlap(data, self.contracts.values(), exclude_id=contract_id)
+        if clash:
+            raise ValidationError(unit_overlap_message(clash))
         old = self.contracts[contract_id]
         contract = Contract(
             id=contract_id, created_at=old.created_at,
@@ -1205,7 +1212,11 @@ class InMemoryStore:
             raise NotFoundError(not_found_msg)
         old = collection[entity_id]
         updates = patch.model_dump(exclude_unset=True)
-        updated = old.model_copy(update={**updates, "updated_at": datetime.now(timezone.utc)})
+        # Validate the merged record before storing it: an invalid value must
+        # not be written (it would break every later read of the collection).
+        updated = type(old).model_validate(
+            {**old.model_dump(), **updates, "updated_at": datetime.now(timezone.utc)}
+        )
         collection[entity_id] = updated
         return updated
 
