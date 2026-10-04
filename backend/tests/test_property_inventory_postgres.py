@@ -6,19 +6,30 @@ from time import monotonic
 import pytest
 from sqlalchemy import text
 
+from backend.db.orm_models import PortfolioORM
 from backend.services import property_inventory as service
+from backend.services.portfolio_scope import scope_context
 from backend.tests.notification_inbox_pg_proposal_support import (
-    NODE_SECONDS, _close, _engine, dedicated_url, postgres_proposal_database,
+    NODE_SECONDS,
+    _close,
+    _engine,
+    dedicated_url,
+    postgres_proposal_database,
 )
 from backend.tests.property_inventory_support import actor, install_accounts, make_box, native_metadata
 from backend.tests.test_property_inventory import (
-    query, rent_seed,
+    query,
+    rent_seed,
+)
+from backend.tests.test_property_inventory import (
     test_contract_date_parents_fanout_and_manual_status_are_distinct as prove_contracts,
+)
+from backend.tests.test_property_inventory import (
     test_currency_exact_rent_and_null_cursor_parity as prove_currency,
+)
+from backend.tests.test_property_inventory import (
     test_known_missing_invalid_and_true_empty_rent_are_separate as prove_source_states,
 )
-from backend.db.orm_models import PortfolioORM
-from backend.services.portfolio_scope import scope_context
 
 
 @pytest.fixture

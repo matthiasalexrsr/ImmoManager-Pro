@@ -12,7 +12,8 @@ from backend.db.orm_models import PropertyORM
 from backend.services import property_inventory as service
 from backend.services.property_inventory_export import csv_chunks
 from backend.services.property_inventory_types import PropertyInventoryQuery as Query
-from backend.tests.property_inventory_support import actor, properties, property_box as property_box, put, units
+from backend.tests.property_inventory_support import actor, properties, put, units
+from backend.tests.property_inventory_support import property_box as property_box
 
 DAY = date(2026, 10, 4)
 

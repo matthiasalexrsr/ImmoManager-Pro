@@ -5,7 +5,11 @@ from decimal import Decimal
 import pytest
 
 from backend.services.property_inventory_money import (
-    ExactCentAccumulator, cent_text, currency_label, money_text, source_cents,
+    ExactCentAccumulator,
+    cent_text,
+    currency_label,
+    money_text,
+    source_cents,
 )
 
 

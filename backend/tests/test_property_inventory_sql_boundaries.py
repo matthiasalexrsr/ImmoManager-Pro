@@ -10,7 +10,8 @@ from backend.models import PropertyCreate
 from backend.repositories.sql_store import SQLAlchemyStore
 from backend.services import property_inventory as service
 from backend.services.property_inventory_money import ExactCentSum, install_exact_sum
-from backend.tests.property_inventory_support import actor, properties, property_box as property_box, sqlite_engine
+from backend.tests.property_inventory_support import actor, properties, sqlite_engine
+from backend.tests.property_inventory_support import property_box as property_box
 from backend.tests.test_property_inventory import query
 
 
