@@ -283,7 +283,7 @@ def main() -> int:
                                    ownership=ownership)
             assert result["portless"] and result["source_inventory_verified"]
             assert result["upload_files"] > 0 and result["sessions_revoked"] == active_count
-            assert probe_project != source.project and not probe_receipt.exists()
+            assert isinstance(probe_project, str) and probe_project != source.project and not probe_receipt.exists()
             assert source.request("/health")["database_connected"] is True
             source.request("/api/v1/auth/me", token=old_sessions["later_revoke_access"])
             remaining = subprocess.run(["docker", "ps", "-aq", "--filter", "label=com.docker.compose.project=" + probe_project],

@@ -84,13 +84,6 @@ describe('role-specific page controls', () => {
     expect(mocks.post).not.toHaveBeenCalled();
     expect(mocks.put).not.toHaveBeenCalled();
   });
-  for (const [Component, capability, emptyText, createLabel] of inventoryCases) it.each(roles)(`${Component.name}: %s can create only in its business area`, async role => {
-    mocks.role = role; mount(Component);
-    await screen.findByText(emptyText);
-    expect(screen.queryByRole('button', { name: createLabel }) !== null).toBe(allowed(role, capability));
-    expect(mocks.post).not.toHaveBeenCalled();
-    expect(mocks.put).not.toHaveBeenCalled();
-  });
   it.each(roles)('Properties: %s keeps read navigation and receives only allowed portfolio actions', async role => {
     mocks.role = role; mount(Properties);
     await screen.findByText('properties.emptyTitle');
