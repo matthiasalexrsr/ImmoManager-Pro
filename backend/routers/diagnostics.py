@@ -380,7 +380,7 @@ def test_entity_counts(store):
 def test_duplicate_contract_numbers(store):
     """Contract numbers should be unique."""
     contracts = _safe_list(store, "list_contracts")
-    seen = {}
+    seen: dict[str, object] = {}
     issues = []
     for c in contracts:
         num = getattr(c, "contract_number", None)

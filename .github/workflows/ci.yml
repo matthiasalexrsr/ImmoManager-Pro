@@ -62,7 +62,7 @@ jobs:
         run: ruff check backend
       - name: Type check (mypy)
         if: matrix.store-backend == 'memory'
-        run: mypy backend/app.py backend/domain backend/repositories --ignore-missing-imports
+        run: mypy backend
       - name: Security audit (pip-audit)
         if: matrix.store-backend == 'memory'
         run: pip-audit -r requirements.txt --strict --desc

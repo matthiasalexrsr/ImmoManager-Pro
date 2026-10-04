@@ -11,7 +11,7 @@ import logging
 import secrets
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Any, Callable, Optional
 from uuid import uuid4
 
 from fastapi import Depends, HTTPException, status
@@ -115,7 +115,7 @@ _MAX_BLACKLIST_SIZE = 10_000
 _MAX_LOGIN_ATTEMPT_KEYS = 10_000
 
 # DB-backed session factory for auth security state (set by enable_sql_auth_state)
-_auth_session_factory = None
+_auth_session_factory: Callable[[], Any] | None = None
 
 # Number of PBKDF2 iterations (OWASP recommended minimum for SHA-256)
 _PBKDF2_ITERATIONS = 600_000
@@ -149,10 +149,17 @@ def check_login_rate_limit(username: str) -> bool:
     return len(recent) >= MAX_LOGIN_ATTEMPTS
 
 
+def _new_auth_session() -> Any:
+    """Open a session for DB-backed auth state; only valid once enabled."""
+    if _auth_session_factory is None:
+        raise RuntimeError("SQL auth state is not enabled")
+    return _auth_session_factory()
+
+
 def _check_login_rate_limit_db(username: str) -> bool:
     """DB-backed rate limit check."""
     from .db.orm_models import LoginAttemptORM
-    session = _auth_session_factory()
+    session = _new_auth_session()
     try:
         cutoff = datetime.now(timezone.utc) - timedelta(minutes=LOCKOUT_DURATION_MINUTES)
         count = session.query(LoginAttemptORM).filter(
@@ -199,7 +206,7 @@ def _evict_oldest_login_attempts() -> None:
 def _record_login_attempt_db(username: str, *, success: bool) -> None:
     """Persist a login attempt to the database."""
     from .db.orm_models import LoginAttemptORM
-    session = _auth_session_factory()
+    session = _new_auth_session()
     try:
         session.add(LoginAttemptORM(username=username, success=success))
         session.commit()
@@ -215,7 +222,7 @@ def clear_login_attempts(username: str) -> None:
     _login_attempts.pop(username, None)
     if _auth_session_factory is not None:
         from .db.orm_models import LoginAttemptORM
-        session = _auth_session_factory()
+        session = _new_auth_session()
         try:
             session.query(LoginAttemptORM).filter(
                 LoginAttemptORM.username == username,
@@ -339,7 +346,7 @@ def revoke_token(token: str) -> None:
 def _revoke_token_db(token: str, expires_at: datetime) -> None:
     """Persist token revocation to the database."""
     from .db.orm_models import RevokedTokenORM
-    session = _auth_session_factory()
+    session = _new_auth_session()
     try:
         jti = _token_jti(token)
         exists = session.query(RevokedTokenORM).filter(
@@ -368,7 +375,7 @@ def is_token_revoked(token: str) -> bool:
 def _is_token_revoked_db(token: str) -> bool:
     """Check DB for revoked token."""
     from .db.orm_models import RevokedTokenORM
-    session = _auth_session_factory()
+    session = _new_auth_session()
     try:
         jti = _token_jti(token)
         found = session.query(RevokedTokenORM).filter(
@@ -408,7 +415,7 @@ def _cleanup_blacklist() -> None:
 def _cleanup_blacklist_db() -> None:
     """Remove expired revoked tokens from the database."""
     from .db.orm_models import RevokedTokenORM
-    session = _auth_session_factory()
+    session = _new_auth_session()
     try:
         session.query(RevokedTokenORM).filter(
             RevokedTokenORM.expires_at < datetime.now(timezone.utc)

@@ -6,6 +6,7 @@ import platform
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
@@ -167,7 +168,7 @@ def _import_store_data(data: dict, *, replace_existing: bool) -> dict:
     )
 
     # Import order follows dependency chain (parents before children).
-    entity_configs = [
+    entity_configs: list[tuple[str, Any, Any]] = [
         ("portfolios", PortfolioCreate, store.create_portfolio),
         ("properties", PropertyCreate, store.create_property),
         ("units", UnitCreate, store.create_unit),

@@ -18,6 +18,7 @@ request ID, user ID, exception type, and traceback where applicable.
 import logging
 import traceback
 from enum import Enum
+from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -80,7 +81,7 @@ def _error_response(
     details: list | None = None,
 ) -> JSONResponse:
     """Build a standardized error JSON response."""
-    body = {
+    body: dict[str, dict[str, Any]] = {
         "error": {
             "code": code.value,
             "message": message,

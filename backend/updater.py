@@ -27,6 +27,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import httpx
 
@@ -476,7 +477,7 @@ def apply_update(target_version: str | None = None) -> dict:
 
     Returns a result dict with status, messages, and whether restart is needed.
     """
-    result = {
+    result: dict[str, Any] = {
         "success": False,
         "message": "",
         "steps": [],

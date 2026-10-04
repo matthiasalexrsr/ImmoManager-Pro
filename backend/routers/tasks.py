@@ -110,7 +110,7 @@ def generate_recurring_tasks(
         if has_open_child:
             continue
 
-        rrule = _parse_rrule(template.recurrence_rule)
+        rrule = _parse_rrule(template.recurrence_rule or "")
         base_date = template.due_date or date.today()
         next_date = _next_due_date(base_date, rrule)
 

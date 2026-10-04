@@ -1,7 +1,7 @@
 from dataclasses import asdict
 from datetime import date
 from decimal import Decimal
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel
@@ -198,7 +198,7 @@ def create_dunning_campaign(
     return _serialise(asdict(campaign))
 
 
-def _serialise(obj: object) -> object:
+def _serialise(obj: Any) -> Any:
     """Recursively convert Decimal and date objects for JSON output."""
     if isinstance(obj, dict):
         return {key: _serialise(value) for key, value in obj.items()}
