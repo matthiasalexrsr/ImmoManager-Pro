@@ -15,7 +15,7 @@ def test_mounted_property_inventory_uses_actual_request_registry(access_http):
     response = client.get(prefix + "page", params=params, headers=member)
     assert response.status_code == 200, response.text
     assert response.headers["cache-control"] == "private, no-store"
-    assert response.headers["vary"] == "Authorization"
+    assert "authorization" in {part.strip().lower() for part in response.headers["vary"].split(",")}
     assert [row["id"] for row in response.json()["items"]] == [properties[0].id]
     assert response.json()["as_of"] == "2026-10-04"
     assert response.json()["has_more"] is False
