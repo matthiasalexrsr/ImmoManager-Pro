@@ -814,7 +814,7 @@ def clear_users() -> None:
     _register_limiter._attempts.clear()
 
 
-async def get_current_user(
+def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
 ) -> Optional[UserRead]:
     """FastAPI dependency: extract and validate the current user from JWT.
@@ -822,6 +822,10 @@ async def get_current_user(
     Returns None if no token is provided (allows unauthenticated access
     to endpoints that don't require auth). Endpoints requiring auth
     should use `require_auth` instead.
+
+    Synchronous on purpose: it reads users and revoked tokens from the
+    database, and FastAPI runs sync dependencies in the threadpool. On the
+    event loop a wait for a free connection would stop the whole server.
     """
     if credentials is None:
         return None
@@ -845,7 +849,7 @@ async def get_current_user(
     return UserRead(**{k: v for k, v in user.items() if k != "hashed_password"})
 
 
-async def require_auth(
+def require_auth(
     user: Optional[UserRead] = Depends(get_current_user),
 ) -> UserRead:
     """FastAPI dependency: require authenticated user."""
@@ -860,7 +864,7 @@ async def require_auth(
 
 def require_role(*roles: str):
     """FastAPI dependency factory: require user to have one of the given roles."""
-    async def check_role(user: UserRead = Depends(require_auth)) -> UserRead:
+    def check_role(user: UserRead = Depends(require_auth)) -> UserRead:
         if user.role not in roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

@@ -11,12 +11,13 @@ import time
 from uuid import uuid4
 
 from fastapi import Request, Response
+from starlette.concurrency import run_in_threadpool
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
 from .audit import log_action
 from .config import settings
-from .dependencies import cleanup_session
+from .dependencies import begin_request_scope, end_request_scope
 from .logging_config import request_id_var
 
 logger = logging.getLogger(__name__)
@@ -127,6 +128,9 @@ class DBSessionMiddleware(BaseHTTPMiddleware):
     """
 
     async def dispatch(self, request: Request, call_next):
+        # The scope travels with the request into the worker thread of a sync
+        # endpoint (context variables are copied), so this removes its session.
+        token = begin_request_scope()
         try:
             response = await call_next(request)
             if response.status_code >= 500:
@@ -142,7 +146,7 @@ class DBSessionMiddleware(BaseHTTPMiddleware):
             )
             raise
         finally:
-            cleanup_session()
+            end_request_scope(token)
 
 
 # ─── Audit Middleware ────────────────────────────────────────────────────────
@@ -182,8 +186,9 @@ class AuditMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         # Pre-resolve user identity for audit attribution
+        # Token checks and the audit entry use the database: never on the event loop.
         if request.method in _WRITE_METHODS and request.url.path not in _SKIP_PATHS:
-            uid, uname = self._extract_user_from_token(request)
+            uid, uname = await run_in_threadpool(self._extract_user_from_token, request)
             request.state.audit_user_id = uid
             request.state.audit_username = uname
 
@@ -200,7 +205,8 @@ class AuditMiddleware(BaseHTTPMiddleware):
                 username = getattr(request.state, "audit_username", None)
 
                 try:
-                    log_action(
+                    await run_in_threadpool(
+                        log_action,
                         action=action,
                         entity_type=entity_type,
                         entity_id=entity_id,
@@ -244,7 +250,7 @@ class RBACWriteGuardMiddleware(BaseHTTPMiddleware):
             and request.url.path.startswith("/api/v1/")
             and not any(request.url.path.startswith(p) for p in _RBAC_SKIP_PATHS)
         ):
-            role = self._get_user_role(request)
+            role = await run_in_threadpool(self._get_user_role, request)
             if role == "readonly":
                 logger.warning(
                     "RBAC blocked: readonly user attempted %s %s",

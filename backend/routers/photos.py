@@ -5,6 +5,7 @@ import uuid
 from io import BytesIO
 
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
+from starlette.concurrency import run_in_threadpool
 
 from ..dependencies import store
 from ..models import EntityPhoto, EntityPhotoCreate, EntityPhotoPatch
@@ -48,7 +49,7 @@ async def upload_photo(
         caption=caption,
         is_primary=is_primary,
     )
-    return store.create_entity_photo(data)
+    return await run_in_threadpool(store.create_entity_photo, data)
 
 
 @router.patch("/{photo_id}", response_model=EntityPhoto)
