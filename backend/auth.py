@@ -14,9 +14,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Optional
 from uuid import uuid4
 
+import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError, jwt
+from jwt import PyJWTError as JWTError
 from sqlalchemy.exc import SQLAlchemyError
 
 from .config import settings
