@@ -79,7 +79,7 @@ def get_finance_report(format: str | None = Query(None, alias="format")):
 
 @router.get("/occupancy")
 def get_occupancy_report(format: str | None = Query(None, alias="format")):
-    data = report_service.compute_occupancy(units=store.list_units())
+    data = report_service.compute_occupancy(units=store.list_units(), contracts=store.list_contracts())
 
     if format == "csv":
         rate = data["occupancyRate"]

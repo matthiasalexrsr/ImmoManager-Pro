@@ -9,7 +9,7 @@ from datetime import date, timedelta
 from fastapi import APIRouter
 
 from ..dependencies import store
-from ..domain.occupancy import billable_contracts
+from ..domain.occupancy import billable_contracts, unit_statuses_on
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
@@ -148,6 +148,7 @@ def get_dashboard_stats() -> dict:
     """
     today = date.today()
     contracts = store.list_contracts()
+    unit_statuses = list(unit_statuses_on(today, store.list_units(), contracts).values())
     invoices = store.list_invoices()
     receivables = store.list_receivables()
     documents = store.list_documents()
@@ -174,9 +175,9 @@ def get_dashboard_stats() -> dict:
         "tenant_count": store.count_entities("tenant"),
         "contract_count": _count_items(contracts),
         "account_count": store.count_entities("account"),
-        "vacant_units": store.count_entities("unit", {"status": "vacant"}),
-        "occupied_units": store.count_entities("unit", {"status": "occupied"}),
-        "reserved_units": store.count_entities("unit", {"status": "reserved"}),
+        "vacant_units": unit_statuses.count("vacant"),
+        "occupied_units": unit_statuses.count("occupied"),
+        "reserved_units": unit_statuses.count("reserved"),
         "active_contracts": _count_items(contracts, {"status": "active"}),
         "open_maintenance": store.count_entities("maintenance", {"status": "open"}),
         "invoice_count": _count_items(invoices),

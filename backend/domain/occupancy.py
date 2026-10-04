@@ -13,6 +13,8 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Callable, Iterable, Optional, Protocol, TypeVar
 
+from .lease_engine import OCCUPYING_CONTRACT_STATUSES
+
 # Every contract except a draft is billed for the days it covers; whether it
 # still runs is decided by its dates, not by its status.
 NON_BILLABLE_STATUSES = frozenset({"draft"})
@@ -25,6 +27,11 @@ class Tenancy(Protocol):
     status: str
     start_date: date
     end_date: Optional[date]
+
+
+class StoredUnit(Protocol):
+    id: str
+    status: str
 
 
 T = TypeVar("T", bound=Tenancy)
@@ -93,6 +100,33 @@ def unit_segments(unit_id: str, contracts: Iterable[Tenancy], start: date, end: 
     if cursor <= end:
         segments.append(Segment(unit_id, cursor, end))
     return segments
+
+
+def unit_status_on(day: date, stored_status: Optional[str], contracts: Iterable[Tenancy]) -> str:
+    """A unit's status on *day*, read from its contracts.
+
+    The unit is occupied while an active or terminated contract covers the day.
+    Without one, a stored "occupied" is outdated as soon as the unit has
+    contracts at all: the tenant has moved out or the next one is not in yet.
+    Other stored statuses (vacant, reserved, renovation) stay as entered, and
+    so does everything for units without contracts, such as owner-occupied ones.
+    """
+    tenancies = [c for c in contracts if c.status not in NON_BILLABLE_STATUSES]
+    if any(
+        c.status in OCCUPYING_CONTRACT_STATUSES and c.start_date <= day and (c.end_date is None or day <= c.end_date)
+        for c in tenancies
+    ):
+        return "occupied"
+    status = stored_status or "vacant"
+    return "vacant" if status == "occupied" and tenancies else status
+
+
+def unit_statuses_on(day: date, units: Iterable[StoredUnit], contracts: Iterable[Tenancy]) -> dict[str, str]:
+    """unit_status_on for many units at once, keyed by unit id."""
+    by_unit: dict[str, list[Tenancy]] = {}
+    for contract in contracts:
+        by_unit.setdefault(contract.unit_id, []).append(contract)
+    return {unit.id: unit_status_on(day, unit.status, by_unit.get(unit.id, [])) for unit in units}
 
 
 def prorate_monthly(amount_for_month: Callable[[date], Decimal], start: date, end: date) -> Decimal:

@@ -11,6 +11,8 @@ from collections import defaultdict
 from datetime import date, timedelta
 from typing import Any
 
+from ..domain.occupancy import unit_statuses_on
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -100,9 +102,10 @@ def compute_finance(
     }
 
 
-def compute_occupancy(*, units: list) -> dict[str, Any]:
+def compute_occupancy(*, units: list, contracts: list, today: date | None = None) -> dict[str, Any]:
+    statuses = unit_statuses_on(today or date.today(), units, contracts)
     total = len(units)
-    rented = sum(1 for u in units if u.status == "occupied")
+    rented = sum(1 for status in statuses.values() if status == "occupied")
     rate = (rented / total) if total else 0.0
     return {
         "totalUnits": total,

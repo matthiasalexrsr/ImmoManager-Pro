@@ -13,6 +13,7 @@ from backend.domain.occupancy import (
     billable_contracts,
     prorate_monthly,
     unit_segments,
+    unit_status_on,
 )
 
 Y2025 = (date(2025, 1, 1), date(2025, 12, 31))
@@ -120,3 +121,21 @@ def test_prorate_monthly_asks_for_each_month():
     prorate_monthly(amount, date(2025, 11, 20), date(2026, 1, 5))
 
     assert seen == [date(2025, 11, 1), date(2025, 12, 1), date(2026, 1, 1)]
+
+
+TODAY = date(2026, 10, 4)
+
+
+@pytest.mark.parametrize("stored, contracts, expected", [
+    ("vacant", [C("a", date(2026, 9, 1))], "occupied"),  # moved in, status never changed
+    ("occupied", [C("a", date(2021, 3, 1), date(2026, 6, 30), status="terminated")], "vacant"),  # moved out
+    ("occupied", [C("a", date(2026, 11, 1))], "vacant"),  # next tenant not in yet
+    ("reserved", [C("a", date(2026, 11, 1))], "reserved"),
+    ("renovation", [C("a", date(2020, 1, 1), date(2026, 3, 31), status="terminated")], "renovation"),
+    ("occupied", [], "occupied"),  # no contracts at all, e.g. the owner lives there
+    ("occupied", [C("a", date(2026, 1, 1), status="draft")], "occupied"),  # drafts do not count
+    ("vacant", [C("a", date(2026, 1, 1), date(2026, 12, 31), status="expired")], "vacant"),
+])
+def test_unit_status_follows_the_contracts(stored, contracts, expected):
+    """Regression: dashboard and occupancy report counted the stored flag, which nobody updates."""
+    assert unit_status_on(TODAY, stored, contracts) == expected
