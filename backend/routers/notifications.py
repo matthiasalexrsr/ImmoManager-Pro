@@ -20,6 +20,7 @@ from ..models import (
     NotificationTemplateCreate,
     NotificationTemplatePatch,
 )
+from ..services.notifier import OPEN_WORK_STATUSES, Notifier, day, eur, is_unpaid_debt, receivable_debtor
 from ..storage import NotFoundError, ValidationError
 
 logger = logging.getLogger(__name__)
@@ -93,36 +94,28 @@ def delete_notification_template(template_id: str) -> None:
 def generate_overdue_payment_notifications(
     as_of: date | None = Query(None),
 ) -> list[Notification]:
-    """Generate notifications for overdue receivables."""
+    """Notify once about every unpaid receivable past its due date."""
     check_date = as_of or date.today()
+    notifier = Notifier(store)
     created: list[Notification] = []
 
     for receivable in store.list_receivables():
-        if receivable.status == "open" and receivable.due_date < check_date:
-            tenant_name = "Unbekannt"
-            try:
-                contract = store.get_contract(receivable.contract_id)
-                try:
-                    tenant = store.get_tenant(contract.tenant_id)
-                    tenant_name = tenant.full_name
-                except Exception:
-                    logger.debug("Could not resolve tenant for contract %s", receivable.contract_id, exc_info=True)
-            except Exception:
-                logger.debug("Could not resolve contract %s for receivable %s", receivable.contract_id, receivable.id, exc_info=True)
-
-            notification = store.create_notification(
-                NotificationCreate(
-                    notification_type="overdue_payment",
-                    title=f"Überfällige Zahlung: {tenant_name}",
-                    content=(
-                        f"Forderung über {receivable.amount_due:.2f} EUR fällig am"
-                        f" {receivable.due_date} ist überfällig."
-                    ),
-                    severity="warning",
-                    entity_type="receivable",
-                    entity_id=receivable.id,
-                )
-            )
+        if not (is_unpaid_debt(receivable) and receivable.due_date < check_date):
+            continue
+        tenant_name, contract_number = receivable_debtor(store, receivable)
+        purpose = f" ({receivable.description})" if receivable.description else ""
+        notification = notifier.notify(NotificationCreate(
+            notification_type="overdue_payment",
+            title=f"Überfällige Zahlung: {tenant_name}",
+            content=(
+                f"Forderung über {eur(receivable.amount_due)}{purpose} aus Vertrag {contract_number}"
+                f" war am {day(receivable.due_date)} fällig und ist noch offen."
+            ),
+            severity="warning",
+            entity_type="receivable",
+            entity_id=receivable.id,
+        ))
+        if notification:
             created.append(notification)
 
     return created
@@ -133,11 +126,12 @@ def generate_expiring_contract_notifications(
     days_ahead: int = Query(90, ge=1, le=365),
     as_of: date | None = Query(None),
 ) -> list[Notification]:
-    """Generate notifications for contracts expiring within the given window."""
+    """Notify once about every contract ending within the given window."""
     from datetime import timedelta
 
     check_date = as_of or date.today()
     horizon = check_date + timedelta(days=days_ahead)
+    notifier = Notifier(store)
     created: list[Notification] = []
 
     for contract in store.list_contracts():
@@ -153,17 +147,19 @@ def generate_expiring_contract_notifications(
             except Exception:
                 logger.debug("Could not resolve tenant for contract %s", contract.id, exc_info=True)
 
-            notification = store.create_notification(
-                NotificationCreate(
-                    notification_type="contract_expiry",
-                    title=f"Vertragsende: {contract.contract_number}",
-                    content=f"Vertrag {contract.contract_number} (Mieter: {tenant_name}) endet am {contract.end_date}.",
-                    severity="info",
-                    entity_type="contract",
-                    entity_id=contract.id,
-                )
-            )
-            created.append(notification)
+            notification = notifier.notify(NotificationCreate(
+                notification_type="contract_expiry",
+                title=f"Vertragsende: {contract.contract_number}",
+                content=(
+                    f"Vertrag {contract.contract_number} (Mieter: {tenant_name})"
+                    f" endet am {day(contract.end_date)}."
+                ),
+                severity="info",
+                entity_type="contract",
+                entity_id=contract.id,
+            ))
+            if notification:
+                created.append(notification)
 
     return created
 
@@ -172,27 +168,27 @@ def generate_expiring_contract_notifications(
 def generate_due_task_notifications(
     as_of: date | None = Query(None),
 ) -> list[Notification]:
-    """Generate notifications for overdue or due-today tasks."""
+    """Notify once about every unfinished task that is due today or overdue."""
     check_date = as_of or date.today()
+    notifier = Notifier(store)
     created: list[Notification] = []
 
     for task in store.list_tasks():
         if (
-            task.status == "open"
+            task.status in OPEN_WORK_STATUSES
             and task.due_date is not None
             and task.due_date <= check_date
         ):
-            notification = store.create_notification(
-                NotificationCreate(
-                    notification_type="task_due",
-                    title=f"Aufgabe fällig: {task.title}",
-                    content=f"Aufgabe '{task.title}' ist fällig seit {task.due_date}.",
-                    severity="warning" if task.due_date < check_date else "info",
-                    entity_type="task",
-                    entity_id=task.id,
-                )
-            )
-            created.append(notification)
+            notification = notifier.notify(NotificationCreate(
+                notification_type="task_due",
+                title=f"Aufgabe fällig: {task.title}",
+                content=f"Aufgabe „{task.title}“ ist seit {day(task.due_date)} fällig.",
+                severity="warning" if task.due_date < check_date else "info",
+                entity_type="task",
+                entity_id=task.id,
+            ))
+            if notification:
+                created.append(notification)
 
     return created
 
