@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict
 
-from fastapi import Body, FastAPI, Request, Response
+from fastapi import Body, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -371,13 +371,36 @@ def _resolve_frontend_dir() -> Path | None:
 
 _FRONTEND_DIR = _resolve_frontend_dir()
 
-if _FRONTEND_DIR is not None:
-    _frontend_dir = _FRONTEND_DIR
-    app.mount("/assets", StaticFiles(directory=_frontend_dir / "assets"), name="frontend-assets")
+def _spa_file(frontend_root: Path, full_path: str) -> Path | None:
+    """Resolve a request path to a file inside the built frontend, or None.
 
-    @app.get("/{full_path:path}")
+    The path parameter is URL-decoded, so it may contain '..' segments or be
+    absolute; anything resolving outside the frontend directory is refused.
+    """
+    if not full_path:
+        return None
+    candidate = (frontend_root / full_path).resolve()
+    if candidate.is_relative_to(frontend_root) and candidate.is_file():
+        return candidate
+    return None
+
+
+def _mount_spa(target: FastAPI, frontend_dir: Path) -> None:
+    """Serve the built frontend; must be registered after all other routes."""
+    frontend_root = frontend_dir.resolve()
+    if (frontend_root / "assets").is_dir():
+        target.mount("/assets", StaticFiles(directory=frontend_root / "assets"), name="frontend-assets")
+
+    @target.get("/{full_path:path}", include_in_schema=False)
     async def serve_spa(full_path: str):
-        file_path = _frontend_dir / full_path
-        if full_path and file_path.is_file():
+        # Unknown API routes must stay JSON 404s instead of returning the SPA shell.
+        if full_path == "api" or full_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="Not Found")
+        file_path = _spa_file(frontend_root, full_path)
+        if file_path is not None:
             return FileResponse(file_path)
-        return FileResponse(_frontend_dir / "index.html")
+        return FileResponse(frontend_root / "index.html")
+
+
+if _FRONTEND_DIR is not None:
+    _mount_spa(app, _FRONTEND_DIR)
