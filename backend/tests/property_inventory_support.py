@@ -9,8 +9,11 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 
 from backend import auth
+from backend.db.contract_correspondence_models import CORRESPONDENCE_MODELS
+from backend.db.contract_lifecycle_models import LIFECYCLE_MODELS
 from backend.db.document_version_models import DocumentVersionORM
 from backend.db.orm_models import Base, ContractORM, MaintenanceCaseORM, PortfolioORM, PropertyORM, TenantORM, UnitORM
+from backend.db.tenancy_workflow_models import TENANCY_WORKFLOW_MODELS
 from backend.models import Contract, MaintenanceCase, Portfolio, Property, Tenant, Unit
 from backend.repositories.sql_store import SQLAlchemyStore
 from backend.services import auth_sessions
@@ -27,8 +30,10 @@ MODELS = {
 
 
 def native_metadata(engine):
-    # Explicit needed metadata registration, not a fake revision/factory claim.
-    assert DocumentVersionORM.__tablename__ in Base.metadata.tables
+    # Real property-parent guards must be registered before the first create_all.
+    # Otherwise a later lazy service import makes these cases order-dependent.
+    for model in (DocumentVersionORM, *LIFECYCLE_MODELS, *CORRESPONDENCE_MODELS, *TENANCY_WORKFLOW_MODELS):
+        assert model.__tablename__ in Base.metadata.tables
     Base.metadata.create_all(engine)
 
 
