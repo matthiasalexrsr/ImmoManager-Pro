@@ -1,5 +1,6 @@
 """Tests for the BillingEngine domain logic."""
 
+from datetime import date
 from decimal import Decimal
 
 import pytest
@@ -9,6 +10,7 @@ from backend.domain.billing_engine import (
     BillingEngine,
     CostEntry,
     UnitShare,
+    allocate_cents,
 )
 
 
@@ -177,3 +179,68 @@ class TestShareValuePrecision:
         assert charged["u2"] == Decimal("2.41")
         assert charged["u3"] == Decimal("495.98")
         assert sum(charged.values()) == Decimal("1000.00")
+
+
+class TestPartiesAndRounding:
+    def test_vacancy_party_gets_its_share_but_no_advance(self) -> None:
+        engine = BillingEngine()
+        engine.add_unit_share("k", UnitShare(unit_id="u1", contract_id="c1", share_value=Decimal("181")))
+        engine.add_unit_share("k", UnitShare(unit_id="u1", contract_id=None, share_value=Decimal("62")))
+        engine.add_cost(CostEntry(description="Grundsteuer", amount=Decimal("243"), allocation_key_id="k"))
+        engine.add_advance(AdvancePayment(unit_id="u1", contract_id="c1", total_advance=Decimal("100")))
+
+        by_party = {s.contract_id: s for s in engine.generate()}
+
+        assert by_party["c1"].total_cost == Decimal("181.00")
+        assert by_party[None].total_cost == Decimal("62.00")
+        assert by_party[None].is_vacancy and by_party[None].advance_paid == Decimal("0.00")
+        assert by_party[None].balance == Decimal("62.00")
+
+    def test_usage_dates_keep_two_vacancies_of_one_unit_apart(self) -> None:
+        engine = BillingEngine()
+        for start, end, days in [(date(2025, 1, 1), date(2025, 2, 28), 59), (date(2025, 11, 1), date(2025, 12, 31), 61)]:
+            engine.add_unit_share("k", UnitShare("u1", None, Decimal(days), usage_start=start, usage_end=end))
+        engine.add_cost(CostEntry(description="Strom", amount=Decimal("120"), allocation_key_id="k"))
+
+        stmts = engine.generate()
+
+        assert [(s.usage_start, s.total_cost) for s in stmts] == [
+            (date(2025, 1, 1), Decimal("59.00")), (date(2025, 11, 1), Decimal("61.00")),
+        ]
+
+    def test_lines_carry_key_and_shares(self) -> None:
+        engine = BillingEngine()
+        engine.add_unit_share("area", UnitShare("u1", "c1", Decimal("60")))
+        engine.add_unit_share("area", UnitShare("u2", "c2", Decimal("40")))
+        engine.add_cost(CostEntry(description="Wasser", amount=Decimal("1000"), allocation_key_id="area", cost_id="ci-1"))
+
+        line = next(s for s in engine.generate() if s.unit_id == "u1").line_items[0]
+
+        assert (line.cost_id, line.allocation_key_id, line.total_amount) == ("ci-1", "area", Decimal("1000.00"))
+        assert (line.share_value, line.total_share) == (Decimal("60"), Decimal("100"))
+
+
+class TestAllocateCents:
+    def test_parts_add_up_and_stay_within_a_cent(self) -> None:
+        weights = [Decimal("1")] * 7
+        parts = allocate_cents(Decimal("100.00"), weights)
+
+        assert sum(parts) == Decimal("100.00")
+        assert all(abs(part - Decimal("100") / 7) < Decimal("0.01") for part in parts)
+
+    def test_order_does_not_decide_who_pays_more(self) -> None:
+        """The old method gave the whole rounding difference to the last party."""
+        weights = [Decimal("33.33"), Decimal("33.33"), Decimal("33.34")]
+        forward = allocate_cents(Decimal("100"), weights)
+        backward = allocate_cents(Decimal("100"), list(reversed(weights)))
+
+        assert forward == list(reversed(backward))
+
+    def test_negative_amounts_and_zero_weights(self) -> None:
+        assert allocate_cents(Decimal("-10.00"), [Decimal("1"), Decimal("0"), Decimal("2")]) == [
+            Decimal("-3.33"), Decimal("0.00"), Decimal("-6.67"),
+        ]
+
+    def test_weights_must_not_be_zero(self) -> None:
+        with pytest.raises(ValueError):
+            allocate_cents(Decimal("1"), [Decimal("0")])
