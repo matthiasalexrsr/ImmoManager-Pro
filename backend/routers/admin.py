@@ -3,7 +3,6 @@
 import json
 import logging
 import platform
-import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -34,7 +33,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
-_BACKUP_DIR = Path("backups")
 
 
 def _safe_list(method_name: str) -> list[dict]:
@@ -336,66 +334,9 @@ def list_plugins():
 
 # ─── Backup / Restore ───────────────────────────────────────────────────────
 
-@router.post("/backup", response_model=None)
-def create_backup():
-    """Create a backup of the currently active store backend."""
-    _BACKUP_DIR.mkdir(exist_ok=True)
+# Backup routes (/backup, /backups, /restore) live in admin_runtime.py,
+# which is registered first and therefore owns these paths.
 
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    backup_name = f"backup_{timestamp}.json"
-    backup_path = _BACKUP_DIR / backup_name
-    payload = _export_store_data()
-    backup_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-
-    logger.info("Backup created: %s", backup_name)
-    return {"backup": backup_name, "size_bytes": backup_path.stat().st_size}
-
-
-@router.get("/backups")
-def list_backups():
-    """List available database backups."""
-    _BACKUP_DIR.mkdir(exist_ok=True)
-    backups = []
-    for f in sorted(_BACKUP_DIR.glob("backup_*.*"), reverse=True):
-        backups.append({
-            "name": f.name,
-            "size_bytes": f.stat().st_size,
-            "created_at": datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
-        })
-    return backups
-
-
-@router.post("/restore/{backup_name}", response_model=None)
-def restore_backup(backup_name: str):
-    """Restore data from a backup file."""
-    backup_path = _BACKUP_DIR / backup_name
-    if not backup_path.exists():
-        raise HTTPException(404, f"Backup not found: {backup_name}")
-
-    if backup_path.suffix == ".json":
-        try:
-            data = json.loads(backup_path.read_text(encoding="utf-8"))
-            return {
-                "restored_from": backup_name,
-                **_import_store_data(data, replace_existing=True),
-            }
-        except Exception as exc:
-            raise HTTPException(400, f"Invalid JSON backup: {exc}") from exc
-
-    if "sqlite" not in settings.database_url:
-        raise HTTPException(400, "Binary DB restore is only supported for SQLite databases")
-
-    db_path = settings.database_url.replace("sqlite:///", "")
-    # Create a safety backup before restoring
-    safety = _BACKUP_DIR / f"pre_restore_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.db"
-    if Path(db_path).exists():
-        shutil.copy2(db_path, safety)
-    shutil.copy2(backup_path, db_path)
-    logger.info("Database restored from %s", backup_name)
-    return {"restored_from": backup_name, "safety_backup": safety.name}
-
-
-# ─── Integrity Check ────────────────────────────────────────────────────────
 
 @router.get("/integrity-check")
 def integrity_check():

@@ -2,7 +2,6 @@
 
 import json
 import logging
-import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -10,6 +9,7 @@ from fastapi import APIRouter, HTTPException
 
 from ..config import settings
 from ..paths import get_backup_dir, get_data_dir, get_uploads_dir
+from ..services.sqlite_backup import copy_database, is_sqlite_database, sqlite_path_from_url
 from . import admin as legacy_admin
 
 logger = logging.getLogger(__name__)
@@ -90,13 +90,17 @@ def restore_backup(backup_name: str):
         except Exception as exc:
             raise HTTPException(400, f"Invalid JSON backup: {exc}") from exc
 
-    if "sqlite" not in settings.database_url:
+    db_path = sqlite_path_from_url(settings.database_url)
+    if db_path is None:
         raise HTTPException(400, "Binary DB restore is only supported for SQLite databases")
+    if not is_sqlite_database(backup_path):
+        raise HTTPException(400, f"Not a SQLite database: {backup_name}")
 
-    db_path = settings.database_url.replace("sqlite:///", "")
+    # Online backup API, not file copies: the live database runs in WAL mode
+    # and stays open, so a file copy would be overridden by the old WAL.
     safety = _BACKUP_DIR / f"pre_restore_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.db"
-    if Path(db_path).exists():
-        shutil.copy2(db_path, safety)
-    shutil.copy2(backup_path, db_path)
+    if db_path.exists():
+        copy_database(db_path, safety)
+    copy_database(backup_path, db_path)
     logger.info("Database restored from %s", backup_name)
     return {"restored_from": backup_name, "safety_backup": safety.name}

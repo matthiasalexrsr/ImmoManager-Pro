@@ -10,7 +10,6 @@ Usage:
 """
 
 import os
-import shutil
 import sqlite3
 import subprocess
 import sys
@@ -56,22 +55,23 @@ def _db_path() -> Path:
     return ROOT / "immo_manager.db"
 
 
-def run_backup():
-    """Create a timestamped backup of the database."""
+def run_backup() -> bool:
+    """Create a timestamped backup of the database. Returns False on failure."""
     backup_dir = _backup_dir()
     db_path = _db_path()
     backup_dir.mkdir(parents=True, exist_ok=True)
 
     if not db_path.exists():
-        print(f"Datenbank nicht gefunden: {db_path}")
-        print("Versuche API-basiertes Backup...")
-        _api_backup()
-        return
+        print(f"FEHLER: Datenbank nicht gefunden: {db_path}")
+        return False
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_file = backup_dir / f"backup_{timestamp}.db"
+    # SQLite online backup API: consistent even while the server is running
+    # in WAL mode. A plain file copy would miss commits still in the -wal file,
+    # so there is deliberately no file-copy fallback.
     try:
-        source = sqlite3.connect(f"file:{db_path.as_posix()}?mode=ro", uri=True)
+        source = sqlite3.connect(str(db_path))
         try:
             target = sqlite3.connect(str(backup_file))
             try:
@@ -80,22 +80,13 @@ def run_backup():
                 target.close()
         finally:
             source.close()
-    except sqlite3.Error:
-        shutil.copy2(db_path, backup_file)
+    except sqlite3.Error as exc:
+        backup_file.unlink(missing_ok=True)
+        print(f"FEHLER: Backup fehlgeschlagen: {exc}")
+        return False
     size_mb = backup_file.stat().st_size / (1024 * 1024)
     print(f"Backup erstellt: {backup_file} ({size_mb:.1f} MB)")
-
-
-def _api_backup():
-    """Try to create backup via the admin API."""
-    try:
-        import urllib.request
-        req = urllib.request.Request("http://127.0.0.1:8000/api/v1/admin/backup", method="POST")
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            data = resp.read().decode()
-            print(f"API-Backup: {data}")
-    except Exception as exc:
-        print(f"API-Backup fehlgeschlagen: {exc}")
+    return True
 
 
 def cleanup():
@@ -170,7 +161,9 @@ def main():
         print(f"Unbekannter Befehl: {cmd}")
         sys.exit(1)
 
-    commands[cmd]()
+    # Non-zero exit code so Windows Task Scheduler records failed runs.
+    if commands[cmd]() is False:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
