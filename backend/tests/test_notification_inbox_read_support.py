@@ -4,7 +4,6 @@ import pytest
 
 from backend.services.notification_inbox_read_support import notification_read_subject_hint
 
-
 ALIASES = {"portfolio": "portfolios", "property": "properties", "unit": "units",
            "task": "tasks", "contract": "contracts", "thread": "message_threads"}
 
