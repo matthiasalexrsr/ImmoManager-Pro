@@ -23,7 +23,7 @@ def _extend_model(name: str, fields: dict[str, tuple[Any, Any]]) -> None:
     if not missing:
         return
 
-    extended = create_model(
+    extended = create_model(  # type: ignore[call-overload]
         name,
         __base__=model_cls,
         __module__=model_cls.__module__,

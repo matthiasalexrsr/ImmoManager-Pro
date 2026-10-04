@@ -612,7 +612,7 @@ def dsgvo_anonymize_tenant(tenant_id: str):
     from ..models import TenantPatch
 
     anonymized_name = f"Anonymisiert-{tenant_id[:8]}"
-    patch_fields = {}
+    patch_fields: dict[str, Any] = {}
 
     # Anonymize all personal fields that exist on the model
     for field in ["first_name", "last_name", "name"]:

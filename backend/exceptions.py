@@ -57,7 +57,7 @@ class ServiceUnavailableError(Exception):
 
 def _request_context(request: Request) -> dict:
     """Extract detailed context from a request for logging."""
-    ctx = {
+    ctx: dict[str, Any] = {
         "method": request.method,
         "path": request.url.path,
         "request_id": request_id_var.get() or "-",

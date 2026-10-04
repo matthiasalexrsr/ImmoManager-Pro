@@ -8,6 +8,7 @@ skip/limit and filter params must always be passed explicitly.
 """
 
 import datetime
+from typing import Any
 
 import pytest
 from fastapi import HTTPException
@@ -1829,7 +1830,7 @@ class TestViewings:
         self.dt = datetime.datetime(2025, 6, 15, 14, 0)
 
     def _make(self, **overrides):
-        data = dict(lead_id=self.lead.id, unit_id=self.unit.id, scheduled_at=self.dt)
+        data: dict[str, Any] = dict(lead_id=self.lead.id, unit_id=self.unit.id, scheduled_at=self.dt)
         data.update(overrides)
         return ViewingAppointmentCreate(**data)
 

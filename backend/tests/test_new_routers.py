@@ -7,6 +7,7 @@ skip/limit and filter params must always be passed explicitly.
 """
 
 from datetime import date
+from typing import Any
 
 import pytest
 from fastapi import HTTPException
@@ -211,7 +212,7 @@ class TestRentAdjustments:
         self.prop_id, self.unit_id, self.tenant_id, self.contract_id = _create_contract_chain()
 
     def _make_payload(self, **overrides):
-        defaults = dict(
+        defaults: dict[str, Any] = dict(
             contract_id=self.contract_id,
             adjustment_type="index",
             effective_date=date(2024, 6, 1),
@@ -306,7 +307,7 @@ class TestHandoverProtocols:
         self.prop_id, self.unit_id, self.tenant_id, self.contract_id = _create_contract_chain()
 
     def _make_payload(self, **overrides):
-        defaults = dict(
+        defaults: dict[str, Any] = dict(
             contract_id=self.contract_id,
             unit_id=self.unit_id,
             protocol_type="move_in",
@@ -416,7 +417,7 @@ class TestMeterReadings:
         self.protocol_id = hp.id
 
     def _make_reading(self, **overrides):
-        defaults = dict(
+        defaults: dict[str, Any] = dict(
             handover_id=self.protocol_id,
             meter_type="electricity",
             reading_value=12345.0,
@@ -499,7 +500,7 @@ class TestBudgets:
         self.prop_id, self.unit_id, self.tenant_id, self.contract_id = _create_contract_chain()
 
     def _make_payload(self, **overrides):
-        defaults = dict(
+        defaults: dict[str, Any] = dict(
             property_id=self.prop_id,
             year=2024,
             category="maintenance",
@@ -638,7 +639,7 @@ class TestEscalation:
         _clear_store()
 
     def _make_rule(self, **overrides):
-        defaults = dict(
+        defaults: dict[str, Any] = dict(
             name="Overdue Task Rule",
             entity_type="task",
             condition_field="due_date",

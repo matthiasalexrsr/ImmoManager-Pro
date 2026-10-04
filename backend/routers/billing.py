@@ -12,6 +12,7 @@ import hashlib
 import json
 import logging
 from decimal import Decimal
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, status
 
@@ -455,7 +456,7 @@ def _run_billing_period_preflight(period_id: str) -> BillingPreflightResult:
             ", ".join(missing_advance_contract_ids),
         )
 
-    metrics = {
+    metrics: dict[str, float | int | str | bool] = {
         "contracts_in_period": len(contracts_in_period),
         "cost_items": len(cost_items),
         "allocation_keys_used": len(used_key_ids),
@@ -581,7 +582,7 @@ def finalize_billing_period(period_id: str) -> BillingPeriod:
     )
 
     for stmt in period_statements:
-        patch_data = {}
+        patch_data: dict[str, Any] = {}
         if stmt.status != "finalized":
             patch_data["status"] = "finalized"
         if not stmt.snapshot_hash:

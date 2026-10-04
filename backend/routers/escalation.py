@@ -93,36 +93,36 @@ def run_escalation(as_of: date | None = Query(None)):
                 generated.append(notif.id)
 
         elif rule.entity_type == "maintenance":
-            items = [m for m in store.list_maintenance_cases()
+            cases = [m for m in store.list_maintenance_cases()
                      if m.status == "open" and m.due_date and m.due_date <= cutoff]
-            for item in items:
+            for case in cases:
                 notif = store.create_notification(NotificationCreate(
                     notification_type="escalation",
-                    title=f"Eskalation: {item.title}",
+                    title=f"Eskalation: {case.title}",
                     content=(
-                        f"Instandhaltungsfall '{item.title}' ist seit"
+                        f"Instandhaltungsfall '{case.title}' ist seit"
                         f" {rule.days_overdue} Tagen überfällig. Regel: {rule.name}"
                     ),
                     severity=rule.notification_severity,
                     entity_type="maintenance",
-                    entity_id=item.id,
+                    entity_id=case.id,
                 ))
                 generated.append(notif.id)
 
         elif rule.entity_type == "receivable":
-            items = [r for r in store.list_receivables()
+            receivables = [r for r in store.list_receivables()
                      if r.status == "open" and r.due_date <= cutoff]
-            for item in items:
+            for receivable in receivables:
                 notif = store.create_notification(NotificationCreate(
                     notification_type="escalation",
                     title="Eskalation: Überfällige Forderung",
                     content=(
-                        f"Forderung {item.id} ist seit {rule.days_overdue} Tagen überfällig."
-                        f" Betrag: {item.amount_due:.2f}€. Regel: {rule.name}"
+                        f"Forderung {receivable.id} ist seit {rule.days_overdue} Tagen überfällig."
+                        f" Betrag: {receivable.amount_due:.2f}€. Regel: {rule.name}"
                     ),
                     severity=rule.notification_severity,
                     entity_type="receivable",
-                    entity_id=item.id,
+                    entity_id=receivable.id,
                 ))
                 generated.append(notif.id)
 

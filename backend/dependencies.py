@@ -53,7 +53,7 @@ if _use_sql_store:
         # Use scoped_session for thread-safe, request-scoped sessions.
         # Each thread gets its own session, preventing cross-request state mixing.
         _scoped_session = scoped_session(SessionLocal)
-        store = SQLAlchemyStore(_scoped_session)  # type: ignore[assignment]
+        store = SQLAlchemyStore(_scoped_session)  # type: ignore[assignment, arg-type]
 
         # Enable SQL-backed user and audit storage for configured SQL store.
         from .audit import enable_sql_audit

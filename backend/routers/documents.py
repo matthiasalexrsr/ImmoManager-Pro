@@ -76,7 +76,7 @@ async def import_document(
     payload = DocumentCreate(
         title=title,
         document_type=document_type,
-        document_date=document_date,
+        document_date=document_date,  # type: ignore[arg-type]  # pydantic parses ISO date strings
         tags=tags,
         description=description,
         property_id=property_id,
