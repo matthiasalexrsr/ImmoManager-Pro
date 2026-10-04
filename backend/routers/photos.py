@@ -2,12 +2,14 @@
 
 import logging
 import uuid
+from io import BytesIO
 
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
 
 from ..dependencies import store
 from ..models import EntityPhoto, EntityPhotoCreate, EntityPhotoPatch
 from ..services.file_storage import get_file_storage
+from ..services.upload_policy import IMAGE_EXTENSIONS, read_limited, require_allowed_extension
 from ..storage import NotFoundError
 
 logger = logging.getLogger(__name__)
@@ -33,9 +35,10 @@ async def upload_photo(
 ) -> EntityPhoto:
     """Upload a photo file and create an EntityPhoto record."""
     storage = get_file_storage()
-    ext = (file.filename or "photo.jpg").rsplit(".", 1)[-1].lower()
+    ext = require_allowed_extension(file.filename, IMAGE_EXTENSIONS)
+    contents = await read_limited(file)
     key = f"photos/{entity_type}/{entity_id}/{uuid.uuid4().hex}.{ext}"
-    storage.save(key, file.file, content_type=file.content_type or "image/jpeg")
+    storage.save(key, BytesIO(contents), content_type=file.content_type or "image/jpeg")
     file_url = storage.get_url(key)
 
     data = EntityPhotoCreate(

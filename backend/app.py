@@ -29,6 +29,7 @@ from .middleware import (
 from .paths import ensure_runtime_dirs, get_uploads_dir
 from .plugins import get_plugins, load_plugins
 from .routing import build_api_v1, get_i18n_router
+from .services.upload_policy import UploadStaticFiles
 
 # Initialize logging first
 setup_logging()
@@ -210,7 +211,7 @@ app.include_router(get_i18n_router())
 
 _UPLOADS_DIR = get_uploads_dir()
 _UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=_UPLOADS_DIR), name="uploads")
+app.mount("/uploads", UploadStaticFiles(directory=_UPLOADS_DIR), name="uploads")
 
 
 # ─── Contract Wizard ─────────────────────────────────────────────────────────

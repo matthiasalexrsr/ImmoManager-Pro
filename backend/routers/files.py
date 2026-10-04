@@ -12,11 +12,11 @@ from urllib.parse import unquote, urlparse
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 
-from ..config import settings
 from ..services.ai.document_ai import analyze_document
 from ..services.file_storage import get_file_storage
 from ..services.ocr_service import extract_text_from_bytes
 from ..services.task_queue import get_queue
+from ..services.upload_policy import DOCUMENT_EXTENSIONS, read_limited, require_allowed_extension
 
 logger = logging.getLogger(__name__)
 
@@ -142,14 +142,8 @@ async def upload_file(
 ) -> dict:
     """Upload a file and return URLs. Triggers OCR for eligible files."""
     # Enforce file size limit by reading up to the limit + 1 byte
-    max_size = settings.max_upload_size_bytes
-    contents = await file.read(max_size + 1)
-    if len(contents) > max_size:
-        raise HTTPException(
-            status_code=413,
-            detail=f"Datei überschreitet das Limit von {max_size // (1024 * 1024)} MB",
-        )
-
+    require_allowed_extension(file.filename, DOCUMENT_EXTENSIONS)
+    contents = await read_limited(file)
     _validate_upload(file)
 
     storage = get_file_storage()

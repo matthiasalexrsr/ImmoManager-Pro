@@ -1,4 +1,5 @@
 import uuid
+from io import BytesIO
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel
@@ -7,6 +8,7 @@ from ..dependencies import store
 from ..models import Document, DocumentCreate, DocumentPatch
 from ..routers.files import _perform_ocr, analyze_file, process_ocr
 from ..services.file_storage import get_file_storage
+from ..services.upload_policy import DOCUMENT_EXTENSIONS, read_limited, require_allowed_extension
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/documents", tags=["Dokumente"])
@@ -60,16 +62,15 @@ async def import_document(
 ) -> Document:
     """Import a document in one step: upload + OCR + metadata persistence."""
     storage = get_file_storage()
-    ext = (file.filename or "file").rsplit(".", 1)[-1].lower()
+    ext = require_allowed_extension(file.filename, DOCUMENT_EXTENSIONS)
+    contents = await read_limited(file)
     key = f"documents/{uuid.uuid4().hex}_{(file.filename or 'file').replace(' ', '_')}"
-    storage.save(key, file.file, content_type=file.content_type or "application/octet-stream")
+    storage.save(key, BytesIO(contents), content_type=file.content_type or "application/octet-stream")
     file_url = storage.get_url(key)
 
     if ext in {"pdf", "png", "jpg", "jpeg", "tiff", "tif", "bmp"}:
         ocr_text = _perform_ocr(storage, key, ext)
         if ocr_text:
-            from io import BytesIO
-
             ocr_key = f"{key.rsplit('.', 1)[0]}_ocr.txt"
             storage.save(ocr_key, BytesIO(ocr_text.encode("utf-8")), content_type="text/plain")
 
