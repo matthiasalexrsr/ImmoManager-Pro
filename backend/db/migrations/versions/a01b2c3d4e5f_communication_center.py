@@ -1,14 +1,14 @@
-"""Communication center templates, blocks and reviewed drafts.
+﻿"""Communication center templates, blocks and reviewed drafts.
 
 Revision ID: a01b2c3d4e5f
-Revises: h2a2b3c4d5e6
+Revises: k2a2b3c4d5e6
 """
 
 import sqlalchemy as sa
 from alembic import op
 
 revision = "a01b2c3d4e5f"
-down_revision = "h2a2b3c4d5e6"
+down_revision = "k2a2b3c4d5e6"
 branch_labels = None
 depends_on = None
 
@@ -110,3 +110,4 @@ def downgrade() -> None:
     op.drop_table("communication_blocks")
     op.drop_index("idx_communication_templates_category", table_name="communication_templates")
     op.drop_table("communication_templates")
+
