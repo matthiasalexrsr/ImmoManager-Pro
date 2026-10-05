@@ -82,6 +82,9 @@ if _use_sql_store:
         # never share state and every request returns its connection.
         _scoped_session = scoped_session(SessionLocal, scopefunc=_session_scope)
         store = SQLAlchemyStore(_scoped_session)  # type: ignore[assignment, arg-type]
+        from .concurrency import track_database_changes
+
+        track_database_changes()
 
         # Enable SQL-backed user and audit storage for configured SQL store.
         from .audit import enable_sql_audit

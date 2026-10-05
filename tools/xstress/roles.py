@@ -10,8 +10,11 @@ import statistics
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import date
 
 from .core import PASSWORD, Client, Findings, Server, setup_users
+
+SPARE_YEAR = date.today().year + 2     # test contracts in the future, but not implausibly far
 
 # action -> roles that should be allowed to do it
 MATRIX = {
@@ -81,8 +84,10 @@ def _prepare(users: dict[str, Client]) -> dict:
         tenant2 = v.ok("POST", "/tenants", {"full_name": f"Vertragstest {username}"})
         spare = v.ok("POST", "/contracts", {"contract_number": f"DEL-{username}", "property_id": free["property_id"],
                                             "unit_id": free["id"], "tenant_id": tenant2["id"],
-                                            "start_date": f"20{40 + list(users).index(username)}-01-01",
-                                            "end_date": f"20{40 + list(users).index(username)}-12-31", "status": "draft"})
+                                            # one month each, two years ahead (the app refuses more than 5)
+                                            "start_date": f"{SPARE_YEAR}-{2 + list(users).index(username):02d}-01",
+                                            "end_date": f"{SPARE_YEAR}-{2 + list(users).index(username):02d}-28",
+                                            "status": "draft"})
         refs["spare_contracts"][username] = spare["id"] if spare else "x"
         target = active[list(users).index(username) % len(active)]
         periods = v.ok("GET", f"/contracts/{target['id']}/rent-periods") or [{"cold_rent": 500}]
@@ -204,7 +209,7 @@ def concurrency(users: dict[str, Client], f: Findings) -> None:
     unit = next((u for u in v.all("/units") if u["status"] == "vacant"), None)
     if unit:
         body = {"contract_number": "DOPPELKLICK-1", "property_id": unit["property_id"], "unit_id": unit["id"],
-                "tenant_id": tenant["id"], "start_date": "2035-01-01", "status": "draft"}
+                "tenant_id": tenant["id"], "start_date": f"{SPARE_YEAR + 1}-01-01", "status": "draft"}
         with ThreadPoolExecutor(3) as pool:
             list(pool.map(lambda _: v.call("POST", "/contracts", body, expect=(201, 400, 409), area="Gleichzeitig"), range(3)))
         count = sum(1 for x in v.all("/contracts") if x["contract_number"] == "DOPPELKLICK-1")

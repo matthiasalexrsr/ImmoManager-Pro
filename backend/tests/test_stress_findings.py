@@ -353,3 +353,43 @@ def test_cached_reads_answer_like_the_store(client, world):
         sorted(p.id for p in store.list_contract_rent_periods())
     assert cached.list_contract_rent_periods("gibt-es-nicht") == []
     assert [c.id for c in cached.list_contracts()] == [c.id for c in store.list_contracts()]
+
+
+def test_a_shared_report_result_never_hides_a_change(client, world):
+    """Results are shared between people asking at the same moment, but every change shows at once."""
+    from backend.models import InvoiceCreate
+
+    owner = world["owner"]
+
+    def kinds():
+        return [item["kind"] for item in client.get("/api/v1/review", headers=owner).json()["items"]]
+
+    before = kinds()
+    assert kinds() == before
+    client.post("/api/v1/invoices", headers=owner, json={
+        "supplier": "X", "invoice_date": "2026-01-10", "net_amount": -100, "vat_rate": 19, "vat_amount": -19,
+        "gross_amount": -119})
+    assert kinds().count("invoice_negative") == before.count("invoice_negative") + 1
+    # a change made without a request (a job, an import) shows as well
+    store.create_invoice(InvoiceCreate(supplier="Y", invoice_date="2026-01-11", net_amount=-50, vat_amount=0,
+                                       gross_amount=-50))
+    assert kinds().count("invoice_negative") == before.count("invoice_negative") + 2
+
+
+def test_a_shared_result_is_kept_only_while_nothing_changed(monkeypatch):
+    from backend import concurrency
+
+    monkeypatch.setattr(concurrency, "_tracking", True)
+    calls = []
+
+    @concurrency.one_at_a_time
+    def report(year=2026):
+        calls.append(year)
+        return {"year": year}
+
+    assert report(year=2026) == report(year=2026) == {"year": 2026}
+    assert calls == [2026]
+    report(year=2025)
+    concurrency.note_change()
+    report(year=2026)
+    assert calls == [2026, 2025, 2026]

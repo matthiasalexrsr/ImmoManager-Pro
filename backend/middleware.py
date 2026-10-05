@@ -259,7 +259,15 @@ class RBACWriteGuardMiddleware(BaseHTTPMiddleware):
                     content={"detail": f"Die Rolle „{label}“ darf hier nichts ändern"},
                 )
 
-        return await call_next(request)
+        if request.method not in _RBAC_WRITE_METHODS:
+            return await call_next(request)
+        from .concurrency import note_change
+
+        note_change()       # shared report results are stale from now on (backend.concurrency)
+        try:
+            return await call_next(request)
+        finally:
+            note_change()
 
     @staticmethod
     def _get_user_role(request: Request) -> str | None:

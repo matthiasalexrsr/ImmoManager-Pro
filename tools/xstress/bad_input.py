@@ -225,7 +225,8 @@ def run(server: Server, f: Findings) -> None:
                     got = result.get(key)
                     if isinstance(sent, float) and isinstance(got, (int, float)) and abs(got - sent) > 1e-9:
                         f.add("HINWEIS", area, f"„{name}“: {key} gespeichert als {got} statt {sent}")
-                    if isinstance(sent, str) and isinstance(got, str) and sent.strip() and got != sent and key != "id":
+                    if isinstance(sent, str) and isinstance(got, str) and sent.strip() and got != sent \
+                            and key not in ("id", "payment_method"):     # payment methods are stored as codes
                         f.add("HINWEIS", area, f"„{name}“: Text {key} verändert gespeichert")
             if not accepted and isinstance(result, dict):
                 # the UI shows the "msg" parts; English default texts are not understandable for users
