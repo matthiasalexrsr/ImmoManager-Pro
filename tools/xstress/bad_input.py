@@ -197,7 +197,11 @@ def run(server: Server, f: Findings) -> None:
         portfolio = c.all("/portfolios")[0]["id"]
         booking = c.ok("POST", "/bookings", {"account_id": refs["account"], "tenant_id": refs["contract"]["tenant_id"],
                                              "booking_date": "2026-05-03", "amount": 120.0, "payment_text": "Test"})
+        def review_count() -> int:
+            return (c.ok("GET", "/review", area="Prüfliste") or {}).get("count", 0)
+
         for area, name, method, path, body, expectation in cases(refs):
+            flagged_before = review_count() if expectation == "warn" else 0
             path = path.replace("{booking}", booking["id"] if booking else "x").replace("{meter}", refs["meter"] or "x")
             if isinstance(body, dict):
                 body = {k: (v.replace("{portfolio}", portfolio).replace("{meter}", refs["meter"] or "x")
@@ -210,8 +214,8 @@ def run(server: Server, f: Findings) -> None:
                 f.add("LÜCKE", area, f"„{name}“ wird angenommen", result if isinstance(result, dict) else None)
             elif expectation == "warn" and accepted:
                 warned = isinstance(result, dict) and (result.get("warnings") or result.get("warning"))
-                if not warned:
-                    f.add("HINWEIS", area, f"„{name}“ wird ohne Hinweis angenommen")
+                if not warned and review_count() <= flagged_before:
+                    f.add("HINWEIS", area, f"„{name}“ wird ohne Hinweis (auch nicht in der Prüfliste) angenommen")
             elif expectation == "accept" and not accepted:
                 f.add("FALSCH", area, f"„{name}“ wird abgelehnt ({status})", result)
             if accepted and method == "POST" and isinstance(result, dict) and isinstance(body, dict):

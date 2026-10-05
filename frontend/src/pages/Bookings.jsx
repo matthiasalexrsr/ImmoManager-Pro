@@ -7,12 +7,14 @@ import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useToast } from '../components/Toast';
+import { useCanWrite } from '../contexts/AuthContext';
 import { formatMoney } from '../utils/format';
 
 export default function Bookings() {
   const { t } = useTranslation();
   const confirm = useConfirm();
   const toast = useToast();
+  const canWrite = useCanWrite();
   const store = useDataStore();
   const { items: contracts } = useEntities('contracts', '/contracts');
   const { items: accounts } = useEntities('accounts', '/accounts');
@@ -126,7 +128,7 @@ export default function Bookings() {
           <span className="cell-inline" title={row.allocation_detail}>
             <span>{v}</span>
             {row.unassigned !== 0 && <span className="badge badge-yellow">offen {formatMoney(row.unassigned)}</span>}
-            <button className="btn btn-sm btn-ghost btn-link" onClick={() => openSplit(row)}>Aufteilen</button>
+            {canWrite && <button className="btn btn-sm btn-ghost btn-link" onClick={() => openSplit(row)}>Aufteilen</button>}
           </span>
         )
         : v) },

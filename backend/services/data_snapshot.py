@@ -177,6 +177,16 @@ def prepare_import(store: Any, data: Any, *, replace: bool) -> PreparedImport:
     """Validate a snapshot against the store; raises SnapshotError without writing."""
     if not isinstance(data, dict):
         raise SnapshotError(["Die Datei enthält kein JSON-Objekt"])
+    if "format" in data and data["format"] != SNAPSHOT_FORMAT:
+        raise SnapshotError([f"Die Datei stammt nicht aus ImmoManager Pro (Format „{data['format']}“)"])
+    version = data.get("format_version")
+    if isinstance(version, int) and version > SNAPSHOT_FORMAT_VERSION:
+        raise SnapshotError([f"Die Datei stammt aus einer neueren Version (Format {version}); bitte zuerst "
+                             "ImmoManager Pro aktualisieren"])
+    known = {spec.key for spec in entity_specs()} | {a for aliases in _KEY_ALIASES.values() for a in aliases}
+    if not replace and not known & set(data):
+        # merging nothing would report success for a file that holds no ImmoManager data at all
+        raise SnapshotError(["Die Datei enthält keine ImmoManager-Daten"])
     if replace and data.get("format") != SNAPSHOT_FORMAT:
         raise SnapshotError([
             "Die Datei stammt aus einer älteren Version und ist unvollständig "

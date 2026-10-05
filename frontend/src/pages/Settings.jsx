@@ -20,9 +20,14 @@ export default function Settings() {
   const [versionInfo, setVersionInfo] = useState(null);
   const [settingsTab, setSettingsTab] = useState('personal');
 
+  // Only admins may read /admin/version. Load once: the error toast re-renders the page, and
+  // with toast/t as dependencies a refused request turned into an endless request loop.
   useEffect(() => {
-    api.get('/admin/version').then(setVersionInfo).catch(() => { toast.error(t('pages.settings.versionError') || 'Versionsinformationen konnten nicht geladen werden'); });
-  }, [toast, t]);
+    if (!isAdmin) return;
+    api.get('/admin/version').then(setVersionInfo).catch(() => {
+      toast.error(t('pages.settings.versionError') || 'Versionsinformationen konnten nicht geladen werden');
+    });
+  }, [isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const tr = (key, fallback) => {
     const result = t(key);
@@ -239,7 +244,7 @@ export default function Settings() {
                 <div className="settings-row">
                   <label>Version</label>
                   <div className="settings-control">
-                    <span className="text-muted">{versionInfo?.version || '...'}</span>
+                    <span className="text-muted">{versionInfo?.version || (isAdmin ? '…' : '—')}</span>
                   </div>
                 </div>
                 <div className="settings-row">

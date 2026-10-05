@@ -235,30 +235,28 @@ _RBAC_SKIP_PATHS = {
 
 
 class RBACWriteGuardMiddleware(BaseHTTPMiddleware):
-    """Blocks write operations from users with the 'readonly' role.
+    """Blocks writes a role may not make (see backend.permissions).
 
-    Readonly users can access GET/HEAD/OPTIONS endpoints, but any
-    POST/PUT/PATCH/DELETE on protected API routes is rejected with 403.
-
-    This acts as a defence-in-depth layer — individual endpoints can
-    apply finer-grained role checks via require_role().
+    Reading stays open to every signed-in user. Requests without a valid token pass
+    through: the endpoints answer them with 401. Endpoints can add finer checks.
     """
 
     async def dispatch(self, request: Request, call_next):
+        path = request.url.path
         if (
             request.method in _RBAC_WRITE_METHODS
-            and request.url.path.startswith("/api/v1/")
-            and not any(request.url.path.startswith(p) for p in _RBAC_SKIP_PATHS)
+            and path.startswith("/api/v1/")
+            and not any(path.startswith(p) for p in _RBAC_SKIP_PATHS)
         ):
+            from .permissions import ROLE_LABELS, may_write
+
             role = await run_in_threadpool(self._get_user_role, request)
-            if role == "readonly":
-                logger.warning(
-                    "RBAC blocked: readonly user attempted %s %s",
-                    request.method, request.url.path,
-                )
+            if role is not None and not may_write(role, path[len("/api/v1"):]):
+                logger.warning("RBAC blocked: %s attempted %s %s", role, request.method, path)
+                label = ROLE_LABELS.get(role, role)
                 return JSONResponse(
                     status_code=403,
-                    content={"detail": "Lesezugriff-Rolle hat keine Schreibberechtigung"},
+                    content={"detail": f"Die Rolle „{label}“ darf hier nichts ändern"},
                 )
 
         return await call_next(request)

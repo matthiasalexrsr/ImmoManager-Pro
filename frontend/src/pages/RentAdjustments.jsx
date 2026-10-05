@@ -7,6 +7,7 @@ import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useToast } from '../components/Toast';
+import { useCanWrite } from '../contexts/AuthContext';
 import { formatMoney, formatPercent } from '../utils/format';
 
 const COLUMNS = [
@@ -28,6 +29,7 @@ export default function RentAdjustments() {
   const { t } = useTranslation();
   const confirm = useConfirm();
   const toast = useToast();
+  const canWrite = useCanWrite();
   const store = useDataStore();
   const { items: contracts } = useEntities('contracts', '/contracts');
   const [adjustments, setAdjustments] = useState([]);
@@ -64,7 +66,7 @@ export default function RentAdjustments() {
     }
   };
 
-  const columns = [...COLUMNS, { key: 'actions', label: '', render: (_, row) => (row.status === 'applied'
+  const columns = [...COLUMNS, { key: 'actions', label: '', render: (_, row) => !canWrite ? null : (row.status === 'applied'
     ? <button className="btn btn-sm btn-secondary" onClick={() => runAction(row, 'revert')}>Zurücknehmen</button>
     : row.status !== 'rejected' && (
       <button className="btn btn-sm btn-primary" onClick={() => runAction(row, 'apply')}>Anwenden</button>)) }];

@@ -220,6 +220,7 @@ export default function Invoices() {
         onDelete={handleDelete}
         rowActions={row => (row.status === 'open' || row.status === 'overdue' ? [{
           label: 'Als bezahlt markieren',
+          write: true,
           icon: <CheckCircleIcon size={15} />,
           onClick: async () => {
             if (await confirm(`"${row.supplier}" ${t('pages.invoices.markPaidConfirm') || 'als bezahlt markieren?'}`)) markPaid(row);

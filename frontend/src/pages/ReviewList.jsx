@@ -9,6 +9,11 @@ const KIND_LABELS = {
   adjustment_not_applied: 'Mietanpassung nicht angewendet',
   unassigned_payment: 'Zahlung ohne Vertrag',
   payment_without_tenant: 'Zahlung ohne Mieter',
+  deposit_too_high: 'Kaution zu hoch',
+  increase_over_cap: 'Kappungsgrenze',
+  adjustment_mid_month: 'Anpassung nicht zum 1.',
+  statement_period_too_long: 'Abrechnungszeitraum',
+  invoice_due_before_date: 'Fälligkeit vor Datum',
 };
 
 /** Rents and payments that need a decision, each with a link to where it is fixed. */

@@ -78,31 +78,45 @@ def allocate_unassigned(store: Any) -> dict:
     return {"allocated": done, "unassigned": unclear}
 
 
-def _credited(store: Any, tenant_id: str) -> list[tuple[Any, str, Decimal]]:
-    """(booking, contract id, amount) for a tenant's payments.
+def credited_by_tenant(store: Any, tenant_ids: Iterable[str] | None = None) -> dict[str, list[tuple[Any, str, Decimal]]]:
+    """(booking, contract id, amount) per tenant, reading bookings and allocations once.
 
     Stored allocations count as they are; a booking without any (imported, or
     created before allocations existed) is credited by the same rules on the fly.
     """
-    bookings = [b for b in store.list_bookings() if b.tenant_id == tenant_id]
+    wanted = set(tenant_ids) if tenant_ids is not None else None
+    bookings = [b for b in store.list_bookings() if b.tenant_id and (wanted is None or b.tenant_id in wanted)]
+    booking_ids = {b.id for b in bookings}
     stored: dict[str, list[Any]] = defaultdict(list)
     for allocation in store.list_payment_allocations():
-        stored[allocation.booking_id].append(allocation)
-    credited = []
+        if allocation.booking_id in booking_ids:
+            stored[allocation.booking_id].append(allocation)
+    credited: dict[str, list[tuple[Any, str, Decimal]]] = defaultdict(list)
+    candidates: dict[tuple[str, date], list[ContractCandidate]] = {}
     for booking in bookings:
         if stored[booking.id]:
-            credited += [(booking, a.contract_id, _money(a.amount)) for a in stored[booking.id]]
-        else:
-            pairs = suggest_allocation(_money(booking.amount), booking.booking_date, booking.unit_id,
-                                       _candidates(store, tenant_id, booking.booking_date))
-            credited += [(booking, contract_id, amount) for contract_id, amount in pairs]
+            credited[booking.tenant_id] += [(booking, a.contract_id, _money(a.amount)) for a in stored[booking.id]]
+            continue
+        key = (booking.tenant_id, booking.booking_date)
+        if key not in candidates:
+            candidates[key] = _candidates(store, booking.tenant_id, booking.booking_date)
+        pairs = suggest_allocation(_money(booking.amount), booking.booking_date, booking.unit_id, candidates[key])
+        credited[booking.tenant_id] += [(booking, contract_id, amount) for contract_id, amount in pairs]
     return credited
 
 
-def contract_payments(store: Any, contract: Any) -> list[PaymentLine]:
+def _credited(store: Any, tenant_id: str) -> list[tuple[Any, str, Decimal]]:
+    """(booking, contract id, amount) for one tenant's payments."""
+    return credited_by_tenant(store, [tenant_id]).get(tenant_id, [])
+
+
+def contract_payments(store: Any, contract: Any,
+                      credited: list[tuple[Any, str, Decimal]] | None = None) -> list[PaymentLine]:
     """Payments credited to a contract; returns reduce the latest earlier payments."""
+    if credited is None:
+        credited = _credited(store, contract.tenant_id)
     entries = sorted(((booking.booking_date, amount) for booking, contract_id, amount
-                      in _credited(store, contract.tenant_id) if contract_id == contract.id),
+                      in credited if contract_id == contract.id),
                      key=lambda entry: entry[0])
     lines: list[list[Any]] = []
     for day, amount in entries:
@@ -122,21 +136,23 @@ def contract_payments(store: Any, contract: Any) -> list[PaymentLine]:
 def tenant_account(store: Any, tenant_id: str, as_of: date) -> dict:
     """Per contract what was due, what was paid and the balance; plus unassigned payments."""
     contracts = [c for c in store.list_contracts() if c.tenant_id == tenant_id]
+    credited = _credited(store, tenant_id)
     rows = []
     for contract in contracts:
         receivables = LeaseEngine.build_monthly_receivables(
             contract_start=contract.start_date, contract_end=contract.end_date,
             rent_steps=rent_steps(store, contract), until_including=as_of)
-        balance = LeaseEngine.calculate_balance(receivables, contract_payments(store, contract))
+        balance = LeaseEngine.calculate_balance(receivables, contract_payments(store, contract, credited))
         rows.append({"contract_id": contract.id, "contract_number": contract.contract_number,
                      "expected": float(balance.expected_total), "paid": float(balance.paid_total),
                      "outstanding": float(balance.outstanding_total), "overpaid": float(balance.overpaid_total)})
     allocated: dict[str, Decimal] = defaultdict(Decimal)
-    for booking, _, amount in _credited(store, tenant_id):
+    for booking, _, amount in credited:
         allocated[booking.id] += amount
+    own_bookings = [b for b in store.list_bookings() if b.tenant_id == tenant_id]
     unassigned = []
-    for booking in store.list_bookings():
-        if booking.tenant_id != tenant_id or booking.booking_date > as_of:
+    for booking in own_bookings:
+        if booking.booking_date > as_of:
             continue
         rest = _money(booking.amount) - allocated[booking.id]
         if rest:
@@ -144,6 +160,5 @@ def tenant_account(store: Any, tenant_id: str, as_of: date) -> dict:
                                "amount": float(booking.amount), "unassigned": float(rest),
                                "payment_text": booking.payment_text})
     return {"tenant_id": tenant_id, "as_of": as_of.isoformat(), "contracts": rows,
-            "paid_total": float(sum((_money(b.amount) for b in store.list_bookings()
-                                     if b.tenant_id == tenant_id and b.booking_date <= as_of), Decimal("0"))),
+            "paid_total": float(sum((_money(b.amount) for b in own_bookings if b.booking_date <= as_of), Decimal("0"))),
             "unassigned": unassigned}

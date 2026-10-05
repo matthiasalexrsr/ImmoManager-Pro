@@ -246,7 +246,8 @@ class Simulation:
             imported = [x["bookingId"] for x in result.get("details", {}).get("imported", [])]
             for booking_id, (_, t, amount) in zip(imported, rows):
                 if self.rnd.random() < 0.1:
-                    continue        # stays open for the review list
+                    self.ledger.book(amount)    # stays open for the review list
+                    continue
                 if b.ok("PATCH", f"/bookings/{booking_id}", {"tenant_id": t.tenant.id, "status": "booked",
                                                              "property_id": self.w.property_of(t.unit).id},
                         area="Zuordnung"):

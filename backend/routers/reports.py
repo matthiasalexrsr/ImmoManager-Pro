@@ -3,7 +3,7 @@ import io
 from datetime import date
 
 from fastapi import APIRouter, Body, HTTPException, Query
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from ..dependencies import store
@@ -12,8 +12,8 @@ from ..services import report_service
 router = APIRouter(prefix="/reports", tags=["Berichte"])
 
 
-def _csv_response(rows: list[dict], filename: str) -> StreamingResponse:
-    """Build a CSV StreamingResponse from a list of dicts."""
+def _csv_response(rows: list[dict], filename: str) -> Response:
+    """Build a CSV download from a list of dicts (in one piece: line-wise streaming was slow)."""
     if not rows:
         output = io.StringIO("")
     else:
@@ -21,9 +21,8 @@ def _csv_response(rows: list[dict], filename: str) -> StreamingResponse:
         writer = csv.DictWriter(output, fieldnames=rows[0].keys(), delimiter=";")
         writer.writeheader()
         writer.writerows(rows)
-    output.seek(0)
-    return StreamingResponse(
-        output,
+    return Response(
+        output.getvalue(),
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
@@ -184,7 +183,7 @@ def get_maintenance_costs_report(format: str | None = Query(None, alias="format"
 def datev_export(
     start_date: date | None = Query(None),
     end_date: date | None = Query(None),
-) -> StreamingResponse:
+) -> Response:
     """Export bookings in DATEV-compliant CSV format (Buchungsstapel).
 
     DATEV Buchungsstapel format uses semicolons, German number formatting,
@@ -247,9 +246,8 @@ def datev_export(
             booking.payment_text or "",
         ])
 
-    output.seek(0)
-    return StreamingResponse(
-        output,
+    return Response(
+        output.getvalue(),
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": 'attachment; filename="EXTF_Buchungsstapel.csv"'},
     )
@@ -417,17 +415,15 @@ def export_report_pdf(report_name: str):
             c.drawString(50, y, line[:100])  # Truncate long lines
             y -= 12
         c.save()
-        buf.seek(0)
-        return StreamingResponse(
-            buf,
+        return Response(
+            buf.getvalue(),
             media_type="application/pdf",
             headers={"Content-Disposition": f"attachment; filename={report_name}.pdf"},
         )
     except ImportError:
         # Fallback: return as plain text with PDF-like header
-        buf = io.BytesIO(text_content.encode("utf-8"))
-        return StreamingResponse(
-            buf,
+        return Response(
+            text_content.encode("utf-8"),
             media_type="text/plain",
             headers={"Content-Disposition": f"attachment; filename={report_name}.txt",
                      "X-PDF-Fallback": "reportlab not installed"},

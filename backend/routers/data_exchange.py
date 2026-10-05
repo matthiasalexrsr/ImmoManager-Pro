@@ -6,10 +6,9 @@ Uses the same lossless snapshot format as /admin/export and /admin/import.
 import json
 import logging
 from datetime import date, datetime
-from io import BytesIO
 
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response
 
 from ..dependencies import store
 from ..services.data_snapshot import SnapshotError, export_snapshot, import_snapshot
@@ -27,13 +26,13 @@ def _json_serial(obj):
 
 
 @router.get("/export")
-def export_all_data() -> StreamingResponse:
+def export_all_data() -> Response:
     """Export all business data as a single JSON file."""
     data = export_snapshot(store)
 
     json_bytes = json.dumps(data, default=_json_serial, indent=2, ensure_ascii=False).encode("utf-8")
-    return StreamingResponse(
-        BytesIO(json_bytes),
+    return Response(
+        json_bytes,
         media_type="application/json",
         headers={"Content-Disposition": "attachment; filename=immomanager_export.json"},
     )

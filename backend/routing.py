@@ -3,7 +3,10 @@
 Extracted from app.py. Assembles the v1 API router with all domain routers.
 """
 
-from fastapi import APIRouter, Depends
+import json
+
+from fastapi import APIRouter, Depends, Request
+from starlette.concurrency import run_in_threadpool
 
 from .auth import require_auth, require_role
 from .routers import (
@@ -67,7 +70,7 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(auth.router)
 
     # Protected routes
-    _auth_dep = [Depends(require_auth)]
+    _auth_dep = [Depends(require_auth), Depends(plausibility_guard)]
     _admin_dep = [Depends(require_role("eigentuemer", "verwalter"))]
     api_v1.include_router(admin_runtime.router, dependencies=_admin_dep)
     api_v1.include_router(admin.router, dependencies=_admin_dep)
@@ -123,3 +126,19 @@ def build_api_v1() -> APIRouter:
 def get_i18n_router() -> APIRouter:
     """Return the i18n router (not versioned, public)."""
     return i18n.router
+
+
+async def plausibility_guard(request: Request) -> None:
+    """Check what users enter before the endpoint stores it (backend.services.plausibility)."""
+    if request.method not in ("POST", "PUT", "PATCH") or "json" not in request.headers.get("content-type", ""):
+        return
+    try:
+        body = json.loads(await request.body() or b"null")
+    except ValueError:
+        return          # the endpoint answers malformed JSON itself
+    from .dependencies import store
+    from .services.plausibility import check
+
+    path = request.url.path.removeprefix("/api/v1")
+    await run_in_threadpool(check, request.method, path, body, store)
+

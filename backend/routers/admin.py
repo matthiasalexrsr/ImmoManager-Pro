@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 
 from ..config import settings
 from ..dependencies import store
@@ -313,7 +313,6 @@ def dsgvo_export_tenant_data(tenant_id: str):
     charges and adjustments, utility statements, documents, handover
     protocols and message threads with their messages.
     """
-    from io import BytesIO
 
     try:
         tenant = store.get_tenant(tenant_id)
@@ -331,8 +330,8 @@ def dsgvo_export_tenant_data(tenant_id: str):
     }
 
     content = json.dumps(export, ensure_ascii=False, indent=2, default=str)
-    return StreamingResponse(
-        BytesIO(content.encode("utf-8")),
+    return Response(
+        content.encode("utf-8"),
         media_type="application/json",
         headers={
             "Content-Disposition": f'attachment; filename="dsgvo_export_tenant_{tenant_id}.json"',

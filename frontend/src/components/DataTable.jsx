@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useTranslation } from '../i18n';
+import { useCanWrite } from '../contexts/AuthContext';
 import { PlusIcon, EditIcon, TrashIcon } from './Icons';
 import StatusBadge from './StatusBadge';
 import { formatDate, formatMoney, plainLabel } from '../utils/format';
@@ -39,8 +40,15 @@ function cellClass(col) {
   ].filter(Boolean).join(' ') || undefined;
 }
 
-export default function DataTable({ columns, data, onEdit, onDelete, title, onAdd, onRowClick, rowActions }) {
+export default function DataTable({ columns, data, onEdit: editHandler, onDelete: deleteHandler, title,
+  onAdd: addHandler, onRowClick, rowActions: rowActionsFor, writeArea }) {
   const { t } = useTranslation();
+  // Roles that may not change this list do not get New/Edit/Delete (the server would refuse anyway).
+  const canWrite = useCanWrite(writeArea);
+  const onAdd = canWrite ? addHandler : undefined;
+  const onEdit = canWrite ? editHandler : undefined;
+  const onDelete = canWrite ? deleteHandler : undefined;
+  const rowActions = rowActionsFor && (row => rowActionsFor(row).filter(a => canWrite || !a.write));
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState(null);
   const [sortDir, setSortDir] = useState('asc');

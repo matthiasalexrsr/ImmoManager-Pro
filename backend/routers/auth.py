@@ -175,6 +175,14 @@ def get_me(user: UserRead = Depends(require_auth)) -> UserRead:
     return user
 
 
+@router.get("/me/permissions")
+def get_my_permissions(user: UserRead = Depends(require_auth)) -> dict:
+    """What the signed-in user may change: `write` is null for everything, else path prefixes."""
+    from ..permissions import write_areas
+
+    return {"role": user.role, "write": write_areas(user.role)}
+
+
 def _get_preferences_session():
     """Return a DB session for preferences, or None if SQL is unavailable."""
     try:
