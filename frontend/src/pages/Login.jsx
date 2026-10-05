@@ -57,8 +57,9 @@ export default function Login() {
             <div className="alert-info">{t('auth.register.initialSetup')}</div>
           )}
           <div className="form-group">
-            <label>{t('auth.login.email')}</label>
-            <input type="text" value={username} onChange={e => setUsername(e.target.value)} required autoFocus />
+            <label>{isRegister ? t('auth.login.username') : t('auth.login.userOrEmail')}</label>
+            <input type="text" value={username} onChange={e => setUsername(e.target.value)} required autoFocus
+              autoComplete="username" />
           </div>
           {isRegister && (
             <>

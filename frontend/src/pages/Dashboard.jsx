@@ -14,7 +14,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend, LineChart, Line, CartesianGrid,
 } from 'recharts';
-import { formatDate, formatDateTime } from '../utils/format';
+import { formatDate, formatDateTime, formatMoneyCompact } from '../utils/format';
 
 const CHART_COLORS = ['#2563eb', '#16a34a', '#d97706', '#dc2626', '#8b5cf6', '#0891b2'];
 const PIE_COLORS = ['#16a34a', '#d97706', '#e2e8f0']; // occupied, reserved, vacant
@@ -78,7 +78,7 @@ export default function Dashboard() {
       safeFetch('/dashboard/stats', {}),
       safeFetch('/tasks?status=open&limit=5', []),
       safeFetch('/notifications?status=unread&limit=5', []),
-      safeFetch('/reports/cashflow', null),
+      safeFetch('/reports/cashflow?months=12', null),
       safeFetch('/reports/receivables-aging', null),
       safeFetch('/reports/maintenance-costs', null),
       safeFetch('/reports/liquidity-forecast?months=6', null),
@@ -304,25 +304,25 @@ export default function Dashboard() {
                   <PieChart>
                     <Pie data={occupancyData} dataKey="value" nameKey="name"
                       cx="50%" cy="50%" innerRadius={50} outerRadius={80}
-                      paddingAngle={2} label={({ name, value }) => `${name}: ${value}`}>
+                      paddingAngle={2}>
                       {occupancyData.map((_, i) => (
                         <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
                       ))}
                     </Pie>
                     <Tooltip formatter={v => v} />
-                    <Legend />
+                    <Legend formatter={(name, entry) => `${name}: ${entry?.payload?.value ?? ''}`} />
                   </PieChart>
                 </ResponsiveContainer>
               ) : <p className="chart-empty">{t('pages.dashboard.noUnits')}</p>}
             </ChartPanel>
 
-            <ChartPanel title={t('pages.dashboard.cashflow')}>
+            <ChartPanel title={t('pages.dashboard.cashflow12')}>
               {cashflowData.length > 0 ? (
                 <ResponsiveContainer width="100%" height={220}>
                   <BarChart data={cashflowData}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                    <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
+                    <YAxis tick={{ fontSize: 11 }} tickFormatter={v => formatMoneyCompact(v)} width={72} />
                     <Tooltip formatter={v => fmt(v)} />
                     <Bar dataKey="value" radius={[4, 4, 0, 0]}>
                       {cashflowData.map((entry, i) => (
@@ -340,7 +340,7 @@ export default function Dashboard() {
                   <BarChart data={agingData}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
+                    <YAxis tick={{ fontSize: 11 }} tickFormatter={v => formatMoneyCompact(v)} width={72} />
                     <Tooltip formatter={v => fmt(v)} />
                     <Bar dataKey="value" fill="#d97706" radius={[4, 4, 0, 0]} />
                   </BarChart>
@@ -357,7 +357,7 @@ export default function Dashboard() {
                   <LineChart data={forecastData}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
+                    <YAxis tick={{ fontSize: 11 }} tickFormatter={v => formatMoneyCompact(v)} width={72} />
                     <Tooltip formatter={v => fmt(v)} />
                     <Legend />
                     <Line type="monotone" dataKey={forecastBalanceLabel} stroke="#2563eb" strokeWidth={2} dot={false} />
@@ -373,7 +373,7 @@ export default function Dashboard() {
                 <ResponsiveContainer width="100%" height={220}>
                   <BarChart data={maintData} layout="vertical">
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={v => `${v.toFixed(0)} \u20AC`} />
+                    <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={v => formatMoneyCompact(v)} />
                     <YAxis type="category" dataKey="category" tick={{ fontSize: 11 }} width={100} />
                     <Tooltip formatter={v => fmt(v)} />
                     <Bar dataKey="estimatedCost" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
@@ -387,13 +387,13 @@ export default function Dashboard() {
                 <ResponsiveContainer width="100%" height={220}>
                   <PieChart>
                     <Pie data={financeData} dataKey="value" nameKey="name"
-                      cx="50%" cy="50%" outerRadius={80}
-                      label={({ name }) => name}>
+                      cx="50%" cy="45%" outerRadius={70}>
                       {financeData.map((_, i) => (
                         <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
                       ))}
                     </Pie>
                     <Tooltip formatter={v => fmt(v)} />
+                    <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />
                   </PieChart>
                 </ResponsiveContainer>
               ) : <p className="chart-empty">{t('pages.dashboard.noFinanceData')}</p>}

@@ -1,6 +1,7 @@
 import csv
 import io
-from datetime import date
+from datetime import date, timedelta
+from typing import Annotated
 
 from fastapi import APIRouter, Body, HTTPException, Query
 from fastapi.responses import Response
@@ -129,8 +130,17 @@ def get_receivables_aging(format: str | None = Query(None, alias="format")):
 
 @router.get("/cashflow")
 @one_at_a_time
-def get_cashflow_report(format: str | None = Query(None, alias="format")):
-    data = report_service.compute_cashflow(bookings=_all_bookings())
+def get_cashflow_report(format: str | None = Query(None, alias="format"),
+                        months: Annotated[int | None, Query(ge=1, le=120)] = None):
+    """Income, expenses and net; all bookings, or the last `months` calendar months (this one included)."""
+    bookings = _all_bookings()
+    if months:
+        today = date.today()
+        first = today.replace(day=1)
+        for _ in range(months - 1):
+            first = (first - timedelta(days=1)).replace(day=1)
+        bookings = [b for b in bookings if first <= b.booking_date <= today]
+    data = report_service.compute_cashflow(bookings=bookings)
 
     if format == "csv":
         rows = [{

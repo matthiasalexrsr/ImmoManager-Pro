@@ -26,6 +26,19 @@ export function formatMoney(v, { blank = '—', currency = 'EUR' } = {}) {
     .format(Number(v));
 }
 
+/** Short amounts for chart axes: 426 €, 45.000 €, 1,5 Mio. € */
+export function formatMoneyCompact(v, { blank = '' } = {}) {
+  if (isBlank(v)) return blank;
+  const n = Number(v);
+  if (Math.abs(n) < 100000) {
+    return formatter('money:whole', () => new Intl.NumberFormat(locale, {
+      style: 'currency', currency: 'EUR', maximumFractionDigits: 0,
+    })).format(n);
+  }
+  return `${formatter('compact', () => new Intl.NumberFormat(locale, { notation: 'compact', maximumFractionDigits: 1 }))
+    .format(n)} €`;
+}
+
 export function formatNumber(v, digits = 0, { blank = '—' } = {}) {
   if (isBlank(v)) return blank;
   return formatter(`num:${digits}`, () => new Intl.NumberFormat(locale, {

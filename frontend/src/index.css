@@ -1460,6 +1460,14 @@ table.data-table tbody tr:last-child td {
   overflow: hidden;
 }
 
+.panel-header {
+  padding: 0.9rem 1.25rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+  border-bottom: 1px solid var(--color-border-light);
+  color: var(--color-text);
+}
+
 .panel h3 {
   padding: 1rem 1.25rem;
   font-weight: 600;
@@ -3545,5 +3553,122 @@ table.data-table tbody tr:last-child td {
 @media (max-width: 768px) {
   .viewings-layout {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* --- Tutorial (guided tour) and test version badge --- */
+.top-bar-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.top-bar-icon-btn:hover {
+  background: var(--color-primary-50);
+  border-color: var(--color-primary-light);
+  color: var(--color-primary);
+}
+.testversion-badge {
+  flex-shrink: 0;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  background: var(--color-warning-light);
+  color: #92400e;
+  border: 1px solid #fcd34d;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.tour-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+}
+.tour-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+}
+.tour-spotlight {
+  position: fixed;
+  border-radius: var(--radius);
+  box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.55), 0 0 0 3px var(--color-primary);
+  transition: top 0.25s ease, left 0.25s ease, width 0.25s ease, height 0.25s ease;
+  pointer-events: none;
+}
+.tour-card {
+  position: fixed;
+  background: var(--color-surface);
+  color: var(--color-text);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: 1.25rem 1.35rem 1rem;
+  max-width: calc(100vw - 32px);
+  outline: none;
+}
+.tour-card-center {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(460px, calc(100vw - 32px));
+}
+.tour-card-dock {
+  left: 16px;
+  right: 16px;
+  bottom: 16px;
+  max-width: 560px;
+  margin: 0 auto;
+}
+.tour-kicker {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-primary);
+  margin-bottom: 0.35rem;
+}
+.tour-title {
+  font-size: 1.1rem;
+  margin: 0 0 0.5rem;
+  line-height: 1.35;
+}
+.tour-body {
+  margin: 0 0 0.9rem;
+  line-height: 1.55;
+  color: var(--color-text-secondary);
+  font-size: 0.92rem;
+}
+.tour-progress {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--color-border);
+  overflow: hidden;
+  margin-bottom: 0.9rem;
+}
+.tour-progress span {
+  display: block;
+  height: 100%;
+  background: var(--color-primary);
+  transition: width 0.25s ease;
+}
+.tour-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.tour-spacer {
+  flex: 1;
+}
+@media (max-width: 700px) {
+  .testversion-badge {
+    display: none;
   }
 }

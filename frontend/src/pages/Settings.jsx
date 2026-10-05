@@ -4,6 +4,7 @@ import { usePreferences } from '../contexts/PreferencesContext';
 import { useDevMode } from '../contexts/DevModeContext';
 import { useTranslation } from '../i18n';
 import { useToast } from '../components/Toast';
+import { useTutorial } from '../components/Tutorial';
 import { api } from '../api';
 import UpdateSection from './settings/UpdateSection';
 import AutotestSection from './settings/AutotestSection';
@@ -15,6 +16,7 @@ export default function Settings() {
   const auth = useAuth();
   const devMode = useDevMode();
   const { t, locale, setLocale } = useTranslation();
+  const { start: startTour } = useTutorial();
   const toast = useToast();
   const isAdmin = auth?.isAdmin;
   const [versionInfo, setVersionInfo] = useState(null);
@@ -84,6 +86,12 @@ export default function Settings() {
                     <button className="btn btn-sm btn-secondary" onClick={toggleSidebar}>
                       {prefs.sidebar_collapsed ? t('pages.settings.show') : t('pages.settings.hide')}
                     </button>
+                  </div>
+                </div>
+                <div className="settings-row">
+                  <label>Tutorial</label>
+                  <div className="settings-control">
+                    <button className="btn btn-sm btn-secondary" onClick={() => startTour(0)}>Tour starten</button>
                   </div>
                 </div>
                 <div className="settings-row">

@@ -267,7 +267,9 @@
       "password": "Passwort",
       "rememberMe": "Angemeldet bleiben",
       "forgotPassword": "Passwort vergessen?",
-      "submit": "Anmelden"
+      "submit": "Anmelden",
+      "userOrEmail": "Benutzername oder E-Mail",
+      "username": "Benutzername"
     },
     "forgotPassword": {
       "title": "Passwort zurücksetzen",
@@ -1314,7 +1316,8 @@
       "auditLoadError": "Audit-Log konnte nicht geladen werden",
       "auditUpdated": "Aktualisiert",
       "noActivity": "Keine Aktivitäten",
-      "workTab": "Arbeit"
+      "workTab": "Arbeit",
+      "cashflow12": "Cashflow (letzte 12 Monate)"
     },
     "settings": {
       "title": "Einstellungen",

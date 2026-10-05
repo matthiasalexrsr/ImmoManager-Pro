@@ -134,6 +134,11 @@ class Settings(BaseSettings):
     # Defaults to False; must be explicitly enabled (e.g. for demo images).
     auto_seed_demo_data: bool = False
 
+    # --- Test version ---
+    # Package sent to testers: realistic data set (15 properties) and master logins on
+    # the first start (backend.testversion); the UI shows a "Testversion" badge.
+    immo_testversion: bool = False
+
     # --- Accounts ---
     # The very first account is always created as owner (initial setup).
     # Afterwards, public self-registration stays closed unless enabled here;

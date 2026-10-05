@@ -745,7 +745,7 @@ def authenticate_user(username: str, password: str) -> Optional[dict]:
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=f"Zu viele Anmeldeversuche. Bitte warten Sie {LOCKOUT_DURATION_MINUTES} Minuten.",
         )
-    user = _user_store.get_by_username(username)
+    user = _find_login(username)
     if user is None:
         record_failed_login(username)
         return None
@@ -758,6 +758,20 @@ def authenticate_user(username: str, password: str) -> Optional[dict]:
     # Success: clear attempts
     clear_login_attempts(username)
     return user
+
+
+def _find_login(name: str) -> Optional[dict]:
+    """The user signing in: by username, or by e-mail address (any case)."""
+    user = _user_store.get_by_username(name)
+    if user is None and "@" in name:
+        wanted = name.strip().lower()
+        matches = [u for u in _user_store.list_all() if (u.get("email") or "").strip().lower() == wanted]
+        user = matches[0] if len(matches) == 1 else None      # an address used twice signs in no one
+    return user
+
+
+def get_user_by_username(username: str) -> Optional[dict]:
+    return _user_store.get_by_username(username)
 
 
 def get_user_by_id(user_id: str) -> Optional[dict]:

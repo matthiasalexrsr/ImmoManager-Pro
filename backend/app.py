@@ -361,6 +361,7 @@ def health() -> dict:
         "contract_wizard_available": CONTRACT_WIZARD_STATUS["available"],
         "contract_wizard_reason": CONTRACT_WIZARD_STATUS["reason"],
         "developer_tools_enabled": settings.developer_tools_enabled,
+        "testversion": settings.immo_testversion,
     }
 
 

@@ -267,7 +267,9 @@
       "password": "Contraseña",
       "rememberMe": "Mantener sesión iniciada",
       "forgotPassword": "¿Olvidó su contraseña?",
-      "submit": "Iniciar sesión"
+      "submit": "Iniciar sesión",
+      "userOrEmail": "Usuario o correo electrónico",
+      "username": "Nombre de usuario"
     },
     "forgotPassword": {
       "title": "Restablecer contraseña",
@@ -1384,7 +1386,8 @@
       "auditLoadError": "No se pudo cargar el registro de auditoría",
       "auditUpdated": "Actualizado",
       "noActivity": "Sin actividad",
-      "workTab": "Trabajo"
+      "workTab": "Trabajo",
+      "cashflow12": "Flujo de caja (últimos 12 meses)"
     },
     "invoices": {
       "markPaidConfirm": "¿marcar como pagada?"

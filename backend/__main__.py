@@ -93,14 +93,24 @@ def _persist_env_default(config_file, key, value):
     return value
 
 
-def _configure_runtime_environment(data_dir_arg=None):
+def _is_testversion():
+    return os.environ.get("IMMO_TESTVERSION", "").strip().lower() in ("1", "true", "yes", "ja")
+
+
+def _configure_runtime_environment(data_dir_arg=None, testversion=False):
     """Prepare safe local runtime defaults before importing backend.app."""
     project_env = os.path.join(_exe_dir(), ".env")
     _load_env_file(project_env)
+    if testversion:
+        os.environ["IMMO_TESTVERSION"] = "true"
 
     data_dir = data_dir_arg or os.environ.get("DATA_DIR")
     if not data_dir and (IS_FROZEN or os.name == "nt"):
         data_dir = _default_windows_data_dir()
+        if _is_testversion():
+            data_dir += "-Testversion"      # never mixed with real data of an installed version
+    if not data_dir and _is_testversion():
+        data_dir = os.path.join(os.path.expanduser("~"), ".immomanager-testversion")
 
     if not data_dir:
         return None
@@ -209,6 +219,8 @@ def main():
     parser.add_argument("--host", default="127.0.0.1", help="Bind address (default: 127.0.0.1)")
     parser.add_argument("--port", type=int, default=8000, help="Port (default: 8000)")
     parser.add_argument("--seed", action="store_true", help="Load demo data on startup")
+    parser.add_argument("--testversion", action="store_true",
+                        help="Test version: realistic data set and master logins on the first start")
     parser.add_argument("--no-browser", action="store_true", help="Don't auto-open browser")
     parser.add_argument("--data-dir", default=None, help="Persistent data directory for SQLite, uploads, backups, and logs")
     args = parser.parse_args()
@@ -221,7 +233,8 @@ def main():
         if base_dir not in sys.path:
             sys.path.insert(0, base_dir)
 
-    data_dir = _configure_runtime_environment(args.data_dir)
+    data_dir = _configure_runtime_environment(args.data_dir, testversion=args.testversion)
+    testversion = _is_testversion()
 
     print("ImmoManager Pro v1.0.0")
     print(f"Python {sys.version}")
@@ -248,6 +261,23 @@ def main():
         sys.exit(1)
 
     print("Anwendung geladen.")
+
+    if testversion:
+        try:
+            from backend.testversion import seed_testversion
+            from backend.testversion.dataset import MASTERS, PASSWORD
+
+            if seed_testversion(app):
+                print()
+            print("TESTVERSION – alle Daten sind frei erfunden.")
+            print("Anmelden mit:")
+            for username, email, _name, _role in MASTERS:
+                print(f"  {email}  (oder {username})  Passwort: {PASSWORD}")
+            print()
+        except Exception as exc:
+            print(f"FEHLER beim Anlegen der Testdaten:\n{exc}")
+            import traceback
+            traceback.print_exc()
 
     # Seed demo data if requested
     if args.seed:

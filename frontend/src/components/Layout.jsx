@@ -5,6 +5,7 @@ import { useTranslation } from '../i18n';
 import { usePreferences } from '../contexts/PreferencesContext';
 import SearchBar from './SearchBar';
 import NotificationBell from './NotificationBell';
+import { TutorialProvider, useTutorial } from './Tutorial';
 import {
   DashboardIcon, PortfolioIcon, PropertyIcon, UnitIcon,
   TenantIcon, ContractIcon, AccountIcon, BookingIcon,
@@ -12,7 +13,7 @@ import {
   SunIcon, MoonIcon, LogoutIcon, ChevronLeftIcon, ChevronRightIcon,
   RentIcon, MeterIcon, ContactIcon, StatementIcon, MessageIcon, SettingsIcon,
   CategoryIcon, DepositIcon, InsuranceIcon, IntegrationIcon,
-  CalendarIcon, ChartIcon, SearchIcon, MenuIcon, CloseIcon,
+  CalendarIcon, ChartIcon, SearchIcon, MenuIcon, CloseIcon, HelpIcon,
 } from './Icons';
 
 const NAV_SECTIONS = [
@@ -113,7 +114,37 @@ function findActiveNavItem(pathname) {
     : pathname === item.to || pathname.startsWith(`${item.to}/`));
 }
 
+/** "Testversion" in the top bar when the server runs the test package (fictitious data). */
+function TestVersionBadge() {
+  const [testversion, setTestversion] = useState(false);
+  useEffect(() => {
+    fetch('/health').then(r => (r.ok ? r.json() : null)).then(h => setTestversion(!!h?.testversion)).catch(() => {});
+  }, []);
+  if (!testversion) return null;
+  return (
+    <span className="testversion-badge" title="Testversion: alle Daten sind frei erfunden">Testversion</span>
+  );
+}
+
+function TutorialButton() {
+  const { start } = useTutorial();
+  return (
+    <button className="top-bar-icon-btn" onClick={() => start(0)} title="Tutorial: Tour durch die wichtigsten Funktionen"
+      aria-label="Tutorial starten" data-tour="tutorial-button">
+      <HelpIcon size={18} />
+    </button>
+  );
+}
+
 export default function Layout() {
+  return (
+    <TutorialProvider>
+      <LayoutFrame />
+    </TutorialProvider>
+  );
+}
+
+function LayoutFrame() {
   const navigate = useNavigate();
   const location = useLocation();
   const { t, locale, setLocale } = useTranslation();
@@ -255,7 +286,9 @@ export default function Layout() {
             </button>
             <div className="top-bar-page-title">{currentPageTitle}</div>
           </div>
+          <TestVersionBadge />
           <SearchBar />
+          <TutorialButton />
           <NotificationBell />
         </div>
         <div className="main-content-body">
