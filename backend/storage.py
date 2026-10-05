@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from pydantic import BaseModel as PydanticBaseModel
@@ -26,6 +26,8 @@ from .models import (
     ContactCreate,
     Contract,
     ContractCreate,
+    ContractRentPeriod,
+    ContractRentPeriodCreate,
     CostItem,
     CostItemCreate,
     Deposit,
@@ -130,6 +132,7 @@ class InMemoryStore:
     notification_templates: Dict[str, NotificationTemplate] = field(default_factory=dict)
     tax_rates: Dict[str, TaxRate] = field(default_factory=dict)
     rent_adjustments: Dict[str, RentAdjustment] = field(default_factory=dict)
+    contract_rent_periods: Dict[str, ContractRentPeriod] = field(default_factory=dict)
     handover_protocols: Dict[str, HandoverProtocol] = field(default_factory=dict)
     meter_readings: Dict[str, MeterReading] = field(default_factory=dict)
     change_history: Dict[str, ChangeHistoryEntry] = field(default_factory=dict)
@@ -1187,6 +1190,7 @@ class InMemoryStore:
         "notification_template": ("notification_templates", "Benachrichtigungsvorlage nicht gefunden"),
         "tax_rate": ("tax_rates", "Steuersatz nicht gefunden"),
         "rent_adjustment": ("rent_adjustments", "Mietanpassung nicht gefunden"),
+        "contract_rent_period": ("contract_rent_periods", "Mietstand nicht gefunden"),
         "handover_protocol": ("handover_protocols", "Übergabeprotokoll nicht gefunden"),
         "meter_reading": ("meter_readings", "Zählerstand nicht gefunden"),
         "budget": ("budgets", "Budget nicht gefunden"),
@@ -1249,6 +1253,9 @@ class InMemoryStore:
         return results[skip : skip + limit]
 
     def _delete_contract(self, contract_id: str) -> None:
+        for period_id, period in list(self.contract_rent_periods.items()):
+            if period.contract_id == contract_id:
+                del self.contract_rent_periods[period_id]
         for receivable_id, receivable in list(self.receivables.items()):
             if receivable.contract_id == contract_id:
                 del self.receivables[receivable_id]
@@ -1333,7 +1340,51 @@ class InMemoryStore:
     def delete_rent_adjustment(self, adj_id: str) -> None:
         if adj_id not in self.rent_adjustments:
             raise NotFoundError("Mietanpassung nicht gefunden")
+        for period_id, period in list(self.contract_rent_periods.items()):
+            if period.rent_adjustment_id == adj_id:
+                del self.contract_rent_periods[period_id]
         del self.rent_adjustments[adj_id]
+
+    # --- Contract rent periods (rent history) ---
+    def list_contract_rent_periods(self, contract_id: Optional[str] = None) -> List[ContractRentPeriod]:
+        periods = [p for p in self.contract_rent_periods.values() if contract_id is None or p.contract_id == contract_id]
+        return sorted(periods, key=lambda p: (p.contract_id, p.valid_from))
+
+    def _check_rent_period(self, data: ContractRentPeriodCreate, exclude_id: Optional[str] = None) -> None:
+        contract = self.contracts.get(data.contract_id)
+        if contract is None:
+            raise ValidationError("Vertrag existiert nicht")
+        if data.rent_adjustment_id and data.rent_adjustment_id not in self.rent_adjustments:
+            raise ValidationError("Mietanpassung existiert nicht")
+        if data.valid_from < contract.start_date:
+            raise ValidationError("Ein Mietstand kann nicht vor Vertragsbeginn gelten")
+        if any(p.id != exclude_id and p.contract_id == data.contract_id and p.valid_from == data.valid_from
+               for p in self.contract_rent_periods.values()):
+            raise ValidationError("Für dieses Datum gibt es schon einen Mietstand")
+
+    def create_contract_rent_period(self, data: ContractRentPeriodCreate) -> ContractRentPeriod:
+        self._check_rent_period(data)
+        item = ContractRentPeriod(id=_generate_id(), **data.model_dump())
+        self.contract_rent_periods[item.id] = item
+        return item
+
+    def get_contract_rent_period(self, period_id: str) -> ContractRentPeriod:
+        try:
+            return self.contract_rent_periods[period_id]
+        except KeyError as exc:
+            raise NotFoundError("Mietstand nicht gefunden") from exc
+
+    def update_contract_rent_period(self, period_id: str, data: ContractRentPeriodCreate) -> ContractRentPeriod:
+        old = self.get_contract_rent_period(period_id)
+        self._check_rent_period(data, exclude_id=period_id)
+        item = ContractRentPeriod(id=period_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc),
+                                  **data.model_dump())
+        self.contract_rent_periods[period_id] = item
+        return item
+
+    def delete_contract_rent_period(self, period_id: str) -> None:
+        self.get_contract_rent_period(period_id)
+        del self.contract_rent_periods[period_id]
 
     # --- Handover Protocols (T16) ---
     def list_handover_protocols(self) -> List[HandoverProtocol]:

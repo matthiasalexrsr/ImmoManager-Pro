@@ -17,6 +17,8 @@ function remainingDays(endDate) {
   return Math.ceil((end - today) / (1000 * 60 * 60 * 24));
 }
 
+const RENT_SOURCE_LABELS = { contract_start: 'Vertragsbeginn', adjustment: 'Mietanpassung', manual: 'Manuell' };
+
 export default function Contracts() {
   const { t } = useTranslation();
   const confirm = useConfirm();
@@ -29,6 +31,21 @@ export default function Contracts() {
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
   const [filter, setFilter] = useState('all');
+  const [rents, setRents] = useState({});
+  const [history, setHistory] = useState(null);
+
+  // The rent lives on the contract (rent history); the unit only holds the default for new contracts.
+  useEffect(() => {
+    api.get('/contracts/current-rents').then(r => setRents(r || {})).catch(() => setRents({}));
+  }, [contracts]);
+
+  const openHistory = async (row) => {
+    try {
+      setHistory({ contract: row, periods: await api.get(`/contracts/${row.id}/rent-periods`) });
+    } catch (err) {
+      toast.error(err.message);
+    }
+  };
 
   const refreshData = () => {
     setLoading(true);
@@ -57,7 +74,7 @@ export default function Contracts() {
       property_name: propMap[c.property_id] || '—',
       unit_label: unit?.label || '—',
       tenant_name: tenantMap[c.tenant_id] || '—',
-      cold_rent: unit?.cold_rent,
+      cold_rent: rents[c.id]?.cold_rent ?? unit?.cold_rent,
       rent_model: c.index_rent,
       remaining_days: remaining,
     };
@@ -102,6 +119,8 @@ export default function Contracts() {
       render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
     { key: 'status', label: t('ui.form.status') || 'Status', type: 'status', filterType: 'select',
       render: v => <StatusBadge status={v} /> },
+    { key: 'rent_history', label: '',
+      render: (_, row) => <button className="btn btn-sm btn-secondary" onClick={() => openHistory(row)}>Mietverlauf</button> },
   ];
 
   const fields = [
@@ -202,6 +221,36 @@ export default function Contracts() {
           </button>
         ))}
       </div>
+
+      {history && (
+        <div className="modal-overlay" onClick={() => setHistory(null)} role="presentation">
+          <div className="modal" role="dialog" aria-modal="true" aria-label="Mietverlauf" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Mietverlauf {history.contract.contract_number}</h2>
+              <button onClick={() => setHistory(null)} className="btn-close" aria-label="Schließen">✕</button>
+            </div>
+            <div className="modal-body">
+              <table className="data-table">
+                <thead><tr><th>Gültig ab</th><th>Kaltmiete</th><th>NK-Vorausz.</th><th>Heizkosten</th><th>Herkunft</th></tr></thead>
+                <tbody>
+                  {history.periods.map(p => (
+                    <tr key={p.id}>
+                      <td>{p.valid_from.split('-').reverse().join('.')}</td>
+                      <td>{Number(p.cold_rent).toFixed(2)} €</td>
+                      <td>{Number(p.service_charge_advance).toFixed(2)} €</td>
+                      <td>{Number(p.heating_advance).toFixed(2)} €</td>
+                      <td>{RENT_SOURCE_LABELS[p.source] || p.source}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="text-muted" style={{ marginTop: '0.75rem' }}>
+                Mieterhöhungen kommen über „Mietanpassungen → Anwenden“ in den Verlauf. Die Miete an der Einheit gilt nur für neue Verträge.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       <DataTable
         title={t('tenantsContracts.contracts.title') || 'Verträge'}

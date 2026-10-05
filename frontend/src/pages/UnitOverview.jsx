@@ -65,8 +65,8 @@ export default function UnitOverview() {
               <dt>{t('pages.unitOverview.rooms') || 'Zimmer'}</dt><dd>{unit.rooms ?? '—'}</dd>
               <dt>{t('pages.unitOverview.personCount') || 'Personenzahl'}</dt><dd>{unit.person_count ?? '—'}</dd>
               <dt>{t('pages.unitOverview.features') || 'Ausstattung'}</dt><dd>{unit.features || '—'}</dd>
-              <dt>{t('pages.unitOverview.baseRent') || 'Kaltmiete'}</dt><dd>{unit.base_rent ? `${Number(unit.base_rent).toFixed(2)} €` : '—'}</dd>
-              <dt>{t('pages.unitOverview.serviceCharge') || 'Nebenkosten'}</dt><dd>{unit.service_charge ? `${Number(unit.service_charge).toFixed(2)} €` : '—'}</dd>
+              <dt>{t('pages.unitOverview.baseRent') || 'Kaltmiete'}</dt><dd>{unit.cold_rent != null ? `${Number(unit.cold_rent).toFixed(2)} €` : '—'}</dd>
+              <dt>{t('pages.unitOverview.serviceCharge') || 'Nebenkosten'}</dt><dd>{unit.service_charge_advance != null ? `${Number(unit.service_charge_advance).toFixed(2)} €` : '—'}</dd>
               <dt>{t('pages.unitOverview.heatingAdvance') || 'Heizkosten'}</dt><dd>{unit.heating_advance ? `${Number(unit.heating_advance).toFixed(2)} €` : '—'}</dd>
             </dl>
           </div>

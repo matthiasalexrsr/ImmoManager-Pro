@@ -106,6 +106,28 @@ def test_upgrade_keeps_existing_rows(migrate):
     assert _version(db_path) == migrate.head
 
 
+def test_upgrade_gives_every_contract_its_rent_history(migrate):
+    """Rents lived only on the unit; contracts get periods from start and applied adjustments."""
+    db_path = migrate(PREVIOUS_HEAD)
+    _seed_previous_schema(db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript("""
+            UPDATE units SET cold_rent = 820, service_charge_advance = 190, heating_advance = 100;
+            INSERT INTO rent_adjustments (id, contract_id, adjustment_type, effective_date, previous_rent, new_rent,
+                                          status, created_at, updated_at)
+                VALUES ('ra', 'c1', 'index', '2025-01-01', 780, 820, 'applied', '2025-01-01', '2025-01-01');
+        """)
+
+    migrate()
+    migrate()  # running again adds nothing
+
+    with sqlite3.connect(db_path) as conn:
+        rows = conn.execute("SELECT valid_from, cold_rent, service_charge_advance, heating_advance, source, "
+                            "rent_adjustment_id FROM contract_rent_periods ORDER BY valid_from").fetchall()
+    assert rows == [("2020-01-01", 780, 190, 100, "contract_start", None),
+                    ("2025-01-01", 820, 190, 100, "adjustment", "ra")]
+
+
 def test_database_created_without_migrations_is_adopted(migrate):
     """create_all() databases (desktop installs) have no alembic_version; upgrading them used to fail."""
     db_path = migrate(PREVIOUS_HEAD)

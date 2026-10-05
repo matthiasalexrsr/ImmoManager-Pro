@@ -607,6 +607,24 @@ class RentAdjustmentORM(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
 
+class ContractRentPeriodORM(Base):
+    __tablename__ = "contract_rent_periods"
+    __table_args__ = (
+        UniqueConstraint("contract_id", "valid_from", name="uq_contract_rent_periods_contract_date"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    contract_id: Mapped[str] = mapped_column(String(36), ForeignKey("contracts.id"), index=True)
+    valid_from: Mapped[date] = mapped_column(Date)
+    cold_rent: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), default=0.0)
+    service_charge_advance: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), default=0.0)
+    heating_advance: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), default=0.0)
+    source: Mapped[str] = mapped_column(String(20), default="manual")
+    rent_adjustment_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rent_adjustments.id"))
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
 class HandoverProtocolORM(Base):
     __tablename__ = "handover_protocols"
     id: Mapped[str] = mapped_column(String(36), primary_key=True)

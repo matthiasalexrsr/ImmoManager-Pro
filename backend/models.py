@@ -1041,6 +1041,37 @@ class RentAdjustment(RentAdjustmentCreate):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+# Where a contract's rent came from: the start of the contract, an applied rent
+# adjustment, or a manual correction.
+RENT_PERIOD_SOURCES = {"contract_start", "adjustment", "manual"}
+
+
+class ContractRentPeriodCreate(BaseModel):
+    """The rent of a contract from a date on, until the next period starts."""
+
+    contract_id: str
+    valid_from: date
+    cold_rent: float = Field(default=0.0, ge=0)
+    service_charge_advance: float = Field(default=0.0, ge=0)
+    heating_advance: float = Field(default=0.0, ge=0)
+    source: str = "manual"
+    rent_adjustment_id: Optional[str] = None
+    notes: Optional[str] = None
+
+    @field_validator("source")
+    @classmethod
+    def validate_source(cls, v: str) -> str:
+        if v not in RENT_PERIOD_SOURCES:
+            raise ValueError(f"Ungültige Herkunft: {v}")
+        return v
+
+
+class ContractRentPeriod(ContractRentPeriodCreate):
+    id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class RentAdjustmentPatch(BaseModel):
     contract_id: Optional[str] = None
     adjustment_type: Optional[str] = None

@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from ..db.orm_models import (
     ContractORM,
+    ContractRentPeriodORM,
     DepositORM,
     HandoverProtocolORM,
     LeadORM,
@@ -18,6 +19,8 @@ from ..domain.lease_engine import find_unit_overlap, unit_overlap_message
 from ..models import (
     Contract,
     ContractCreate,
+    ContractRentPeriod,
+    ContractRentPeriodCreate,
     Deposit,
     DepositCreate,
     HandoverProtocol,
@@ -51,6 +54,7 @@ class TenantRepository:
         self._leads = BaseRepository(db, LeadORM, Lead, "Interessent nicht gefunden")
         self._deposits = BaseRepository(db, DepositORM, Deposit, "Kaution nicht gefunden")
         self._rent_adjustments = BaseRepository(db, RentAdjustmentORM, RentAdjustment, "Mietanpassung nicht gefunden")
+        self._rent_periods = BaseRepository(db, ContractRentPeriodORM, ContractRentPeriod, "Mietstand nicht gefunden")
         self._meter_readings = BaseRepository(db, MeterReadingORM, MeterReading, "Zählerstand nicht gefunden")
         # Cross-domain references (set by SQLAlchemyStore facade)
         self._portfolio_repo = portfolio_repo
@@ -140,6 +144,8 @@ class TenantRepository:
         return result
 
     def delete_contract(self, contract_id: str) -> None:
+        for period in self.list_contract_rent_periods(contract_id):
+            self._rent_periods.delete(period.id)
         self._contracts.delete(contract_id)
         self._commit()
 
@@ -270,7 +276,48 @@ class TenantRepository:
         return result
 
     def delete_rent_adjustment(self, adj_id: str) -> None:
+        for period in self.list_contract_rent_periods():
+            if period.rent_adjustment_id == adj_id:
+                self._rent_periods.delete(period.id)
         self._rent_adjustments.delete(adj_id)
+        self._commit()
+
+    # --- Contract rent periods (rent history) ---
+    def list_contract_rent_periods(self, contract_id: str | None = None) -> list[ContractRentPeriod]:
+        periods = (self._rent_periods.filter_by(contract_id=contract_id) if contract_id
+                   else self._rent_periods.list_all())
+        return sorted(periods, key=lambda p: (p.contract_id, p.valid_from))
+
+    def _check_rent_period(self, data: ContractRentPeriodCreate, exclude_id: str | None = None) -> None:
+        if not self._contracts.exists(data.contract_id):
+            raise ValidationError("Vertrag existiert nicht")
+        contract = self._contracts.get(data.contract_id)
+        if data.rent_adjustment_id and not self._rent_adjustments.exists(data.rent_adjustment_id):
+            raise ValidationError("Mietanpassung existiert nicht")
+        if data.valid_from < contract.start_date:
+            raise ValidationError("Ein Mietstand kann nicht vor Vertragsbeginn gelten")
+        if any(p.id != exclude_id and p.valid_from == data.valid_from
+               for p in self.list_contract_rent_periods(data.contract_id)):
+            raise ValidationError("Für dieses Datum gibt es schon einen Mietstand")
+
+    def create_contract_rent_period(self, data: ContractRentPeriodCreate) -> ContractRentPeriod:
+        self._check_rent_period(data)
+        result = self._rent_periods.create(data)
+        self._commit()
+        return result
+
+    def get_contract_rent_period(self, period_id: str) -> ContractRentPeriod:
+        return self._rent_periods.get(period_id)
+
+    def update_contract_rent_period(self, period_id: str, data: ContractRentPeriodCreate) -> ContractRentPeriod:
+        self._rent_periods.get(period_id)
+        self._check_rent_period(data, exclude_id=period_id)
+        result = self._rent_periods.update(period_id, data)
+        self._commit()
+        return result
+
+    def delete_contract_rent_period(self, period_id: str) -> None:
+        self._rent_periods.delete(period_id)
         self._commit()
 
     # --- Leads ---

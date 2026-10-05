@@ -127,9 +127,9 @@ export default function Units() {
     { key: 'rooms', label: t('units.form.rooms') || 'Zimmer', type: 'number' },
     { key: 'person_count', label: t('units.form.personCount') || 'Personenzahl', type: 'number', placeholder: 'Bewohneranzahl für NK-Abrechnung' },
     { key: 'floor', label: t('units.form.floor') || 'Etage' },
-    { key: 'cold_rent', label: t('units.list.columns.coldRent') || 'Kaltmiete (€)', type: 'number' },
-    { key: 'service_charge_advance', label: t('units.form.serviceChargeAdvance') || 'NK-Vorauszahlung (€)', type: 'number' },
-    { key: 'heating_advance', label: t('units.form.heatingAdvance') || 'Heizkosten-Vorauszahlung (€)', type: 'number' },
+    { key: 'cold_rent', label: t('units.list.columns.coldRent') || 'Kaltmiete (€)', type: 'number', placeholder: 'Vorgabe für neue Verträge; laufende Mieten über Mietanpassungen' },
+    { key: 'service_charge_advance', label: t('units.form.serviceChargeAdvance') || 'NK-Vorauszahlung (€)', type: 'number', placeholder: 'Vorgabe für neue Verträge; laufende Mieten über Mietanpassungen' },
+    { key: 'heating_advance', label: t('units.form.heatingAdvance') || 'Heizkosten-Vorauszahlung (€)', type: 'number', placeholder: 'Vorgabe für neue Verträge; laufende Mieten über Mietanpassungen' },
     { key: 'features', label: t('units.form.features') || 'Ausstattung', type: 'textarea', placeholder: 'z.B. Balkon, Einbauküche, Keller' },
     { key: 'status', label: t('ui.form.status') || 'Status', type: 'select', default: 'vacant', options: [
       { value: 'vacant', label: t('units.status.vacant') || 'Leer' },

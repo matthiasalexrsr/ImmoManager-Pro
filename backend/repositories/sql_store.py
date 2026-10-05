@@ -29,6 +29,8 @@ from ..models import (
     ContactCreate,
     Contract,
     ContractCreate,
+    ContractRentPeriod,
+    ContractRentPeriodCreate,
     CostItem,
     CostItemCreate,
     Deposit,
@@ -149,6 +151,7 @@ class SQLAlchemyStore:
         "lead": ("tenant", "_leads"),
         "deposit": ("tenant", "_deposits"),
         "rent_adjustment": ("tenant", "_rent_adjustments"),
+        "contract_rent_period": ("tenant", "_rent_periods"),
         "meter_reading": ("tenant", "_meter_readings"),
         "booking": ("finance", "_bookings"),
         "receivable": ("finance", "_receivables"),
@@ -661,6 +664,22 @@ class SQLAlchemyStore:
 
     def delete_rent_adjustment(self, adj_id: str) -> None:
         self.tenant.delete_rent_adjustment(adj_id)
+
+    # --- Contract rent periods ---
+    def list_contract_rent_periods(self, contract_id: str | None = None) -> list[ContractRentPeriod]:
+        return self.tenant.list_contract_rent_periods(contract_id)
+
+    def create_contract_rent_period(self, data: ContractRentPeriodCreate) -> ContractRentPeriod:
+        return self.tenant.create_contract_rent_period(data)
+
+    def get_contract_rent_period(self, period_id: str) -> ContractRentPeriod:
+        return self.tenant.get_contract_rent_period(period_id)
+
+    def update_contract_rent_period(self, period_id: str, data: ContractRentPeriodCreate) -> ContractRentPeriod:
+        return self.tenant.update_contract_rent_period(period_id, data)
+
+    def delete_contract_rent_period(self, period_id: str) -> None:
+        self.tenant.delete_contract_rent_period(period_id)
 
     # --- Handover Protocols ---
     def list_handover_protocols(self) -> list[HandoverProtocol]:

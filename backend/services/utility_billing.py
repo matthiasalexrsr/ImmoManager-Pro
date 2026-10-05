@@ -18,6 +18,7 @@ import calendar
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
+from functools import partial
 from typing import Any, Optional
 
 from ..domain.billing_engine import AdvancePayment, BillingEngine, CostEntry, UnitShare
@@ -30,6 +31,7 @@ from ..domain.occupancy import (
     unit_segments,
 )
 from ..models import UtilityStatementCreate
+from .rent_history import charge_for
 
 READING_TOLERANCE_DAYS = 7
 DEADLINE_WARNING_DAYS = 60
@@ -73,12 +75,11 @@ class _Share:
     basis: Decimal  # m², persons, units or consumption of the segment
 
 
-def prepayment_for_month(contract: Any, unit: Any, month: date) -> Decimal:
-    """Agreed monthly advance (service charges and heating) of a contract in a month.
-
-    Taken from the unit until contracts get a rent history of their own.
-    """
-    return Decimal(str(unit.service_charge_advance or 0)) + Decimal(str(unit.heating_advance or 0))
+def prepayment_for_month(store: Any, contract: Any, month: date) -> Decimal:
+    """Agreed monthly advance (service charges and heating) of a contract in a month,
+    from the contract's rent history."""
+    charge = charge_for(store, contract, month)
+    return charge.service_charge_advance + charge.heating_advance if charge else Decimal("0")
 
 
 def statement_deadline(period_end: date) -> date:
@@ -161,7 +162,7 @@ def compute_period_billing(store: Any, period: Any, today: Optional[date] = None
                            ", ".join(sorted(label(u) for u in area_missing)))
         person_problems.report(result, label)
 
-    advances = _advances(result, segments or {}, unit_by_id, contract_by_id)
+    advances = _advances(store, result, segments or {}, contract_by_id)
 
     deadline = statement_deadline(end)
     if today > deadline:
@@ -386,17 +387,16 @@ def _consumption_shares(result, store, key, units, segments, start, end, period_
     return shares
 
 
-def _advances(result, segments, unit_by_id, contract_by_id) -> dict[str, tuple[str, Decimal]]:
+def _advances(store, result, segments, contract_by_id) -> dict[str, tuple[str, Decimal]]:
     """Agreed advances per contract over its usage period: contract id -> (unit id, amount)."""
     advances: dict[str, tuple[str, Decimal]] = {}
     without = []
     for unit_id, unit_segs in segments.items():
-        unit = unit_by_id[unit_id]
         for segment in unit_segs:
             if segment.contract_id is None:
                 continue
             contract = contract_by_id[segment.contract_id]
-            total = prorate_monthly(lambda month: prepayment_for_month(contract, unit, month), segment.start, segment.end)
+            total = prorate_monthly(partial(prepayment_for_month, store, contract), segment.start, segment.end)
             advances[segment.contract_id] = (unit_id, total)
             if total == 0:
                 without.append(contract.contract_number)

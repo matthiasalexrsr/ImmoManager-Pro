@@ -6,6 +6,7 @@ import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
+import { useToast } from '../components/Toast';
 
 const COLUMNS = [
   { key: 'contract_number', label: 'Vertrag', filterType: 'text' },
@@ -25,6 +26,7 @@ const COLUMNS = [
 export default function RentAdjustments() {
   const { t } = useTranslation();
   const confirm = useConfirm();
+  const toast = useToast();
   const store = useDataStore();
   const { items: contracts } = useEntities('contracts', '/contracts');
   const [adjustments, setAdjustments] = useState([]);
@@ -47,6 +49,24 @@ export default function RentAdjustments() {
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, []);
+
+  // Applying writes the new rent into the contract's rent history from its effective date.
+  const runAction = async (row, action) => {
+    try {
+      const res = await api.post(`/rent-adjustments/${row.id}/${action}`, {});
+      (res?.warnings || []).forEach(w => toast.warning(w));
+      toast.success(action === 'apply' ? 'Mietanpassung angewendet' : 'Mietanpassung zurückgenommen');
+      refreshData();
+      if (store) store.invalidateRelated('rent_adjustments', 'contracts');
+    } catch (err) {
+      toast.error(err.message);
+    }
+  };
+
+  const columns = [...COLUMNS, { key: 'actions', label: '', render: (_, row) => (row.status === 'applied'
+    ? <button className="btn btn-sm btn-secondary" onClick={() => runAction(row, 'revert')}>Zurücknehmen</button>
+    : row.status !== 'rejected' && (
+      <button className="btn btn-sm btn-primary" onClick={() => runAction(row, 'apply')}>Anwenden</button>)) }];
 
   const contractMap = Object.fromEntries(contracts.map(c => [c.id, c]));
   const enriched = adjustments.map(a => ({
@@ -109,7 +129,7 @@ export default function RentAdjustments() {
       )}
       <DataTable
         title="Mietanpassungen"
-        columns={COLUMNS}
+        columns={columns}
         data={enriched}
         onAdd={() => setModal('create')}
         onEdit={row => setModal(row)}
