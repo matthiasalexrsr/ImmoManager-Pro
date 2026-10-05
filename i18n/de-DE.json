@@ -1403,7 +1403,8 @@
       "tabPersonal": "Persönlich",
       "tabSystem": "System",
       "tabWorkflow": "Arbeitsweise",
-      "versionError": "Versionsinformationen konnten nicht geladen werden"
+      "versionError": "Versionsinformationen konnten nicht geladen werden",
+      "chooseImportFile": "JSON-Datei wählen …"
     },
     "messages": {
       "title": "Nachrichten",

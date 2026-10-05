@@ -132,8 +132,13 @@ export default function BackupSection() {
               accept=".json"
               onChange={handleImport}
               disabled={importLoading}
-              style={{ fontSize: '0.85rem' }}
+              className="sr-only"
+              id="settings-import-file"
             />
+            <button type="button" className="btn btn-sm btn-secondary" disabled={importLoading}
+                    onClick={() => fileRef.current?.click()}>
+              {t('pages.settings.chooseImportFile')}
+            </button>
           </div>
         </div>
         {importResult && (

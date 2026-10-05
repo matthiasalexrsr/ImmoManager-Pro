@@ -1,6 +1,19 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from '../i18n';
 import { CloseIcon } from './Icons';
+import { codeLabel } from '../utils/codeLabels';
+
+const isBooleanSelect = f => f.type === 'select' && f.options?.length === 2
+  && f.options.every(o => o.value === 'true' || o.value === 'false');
+
+// Selects hold strings: true/false and numbers come back as 'true'/'false'/'12'.
+const toFieldValue = (f, v) => (f.type === 'select' && (typeof v === 'boolean' || typeof v === 'number') ? String(v) : v);
+
+// Long forms get two columns; free text and explicitly wide fields span both.
+const WIDE_FORM_FIELDS = 8;
+const spansRow = f => f.full || f.type === 'textarea';
+// In two columns, full-width fields (notes, descriptions) go last so the pairs above stay aligned.
+const ordered = list => [...list.filter(f => !spansRow(f)), ...list.filter(spansRow)];
 
 export default function FormModal({ title, fields, initial, onSave, onClose }) {
   const { t } = useTranslation();
@@ -12,7 +25,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
   useEffect(() => {
     const init = {};
     fields.forEach(f => {
-      init[f.key] = initial?.[f.key] ?? f.default ?? '';
+      init[f.key] = toFieldValue(f, initial?.[f.key] ?? f.default ?? '');
     });
     setValues(init);
   }, [initial, fields]);
@@ -69,6 +82,8 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
           }
         } else if (v === '') {
           v = f.required ? v : null;
+        } else if (isBooleanSelect(f)) {
+          v = v === 'true';
         }
         cleaned[f.key] = v;
       });
@@ -81,10 +96,13 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
     }
   };
 
+  const wide = fields.filter(f => f.type !== 'hidden').length >= WIDE_FORM_FIELDS;
+  const arrange = wide ? ordered : list => list;
+
   return (
     <div className="modal-overlay" onClick={onClose} role="presentation">
       <div
-        className="modal"
+        className={`modal${wide ? ' modal-wide' : ''}`}
         ref={modalRef}
         onClick={e => e.stopPropagation()}
         role="dialog"
@@ -107,17 +125,21 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
                 }
                 const inputId = `form-field-${f.key}`;
                 return (
-                  <div key={f.key} className="form-group">
+                  <div key={f.key} className={`form-group${spansRow(f) ? ' form-group-full' : ''}`}>
                     <label htmlFor={inputId}>{f.label}{f.required && ' *'}</label>
                     {f.type === 'select' ? (
                       <select
                         id={inputId}
-                        value={values[f.key] || ''}
+                        value={values[f.key] ?? ''}
                         onChange={e => setValues({ ...values, [f.key]: e.target.value })}
                         required={f.required}
                       >
                         <option value="">{t('ui.form.pleaseSelect')}</option>
                         {f.options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        {/* A stored value the list does not offer (imported, older data) stays selectable instead of being lost. */}
+                        {values[f.key] !== '' && values[f.key] != null && !f.options?.some(o => String(o.value) === String(values[f.key])) && (
+                          <option value={values[f.key]}>{codeLabel(String(values[f.key]))}</option>
+                        )}
                       </select>
                     ) : f.type === 'textarea' ? (
                       <textarea
@@ -138,6 +160,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
                         placeholder={f.placeholder}
                       />
                     )}
+                    {f.hint && <small className="form-hint">{f.hint}</small>}
                   </div>
                 );
               };
@@ -158,10 +181,10 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
                 section.label ? (
                   <fieldset key={i} className="form-section">
                     <legend className="form-section-label">{section.label}</legend>
-                    {section.fields.map(renderField)}
+                    <div className={wide ? 'form-grid' : undefined}>{arrange(section.fields).map(renderField)}</div>
                   </fieldset>
                 ) : (
-                  <div key={i}>{section.fields.map(renderField)}</div>
+                  <div key={i} className={wide ? 'form-grid' : undefined}>{arrange(section.fields).map(renderField)}</div>
                 )
               ));
             })()}

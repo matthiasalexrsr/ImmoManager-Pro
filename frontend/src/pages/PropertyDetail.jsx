@@ -5,7 +5,8 @@ import { useTranslation } from '../i18n';
 import DataTable from '../components/DataTable';
 import StatusBadge from '../components/StatusBadge';
 import { ArrowRightIcon } from '../components/Icons';
-import { formatArea, formatMoney } from '../utils/format';
+import { formatArea, formatMoney, plainLabel } from '../utils/format';
+import { codeLabel } from '../utils/codeLabels';
 
 function fmt(v) {
   return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(v || 0);
@@ -153,12 +154,12 @@ export default function PropertyDetail() {
             <div className="panel">
               <div className="panel-header">{t('pages.propertyDetail.propertyDetails') || 'Immobiliendetails'}</div>
               <div className="panel-body">
-                <div className="detail-field"><span>{t('portfolio.properties.form.type') || 'Typ'}:</span> {property.property_type || '—'}</div>
+                <div className="detail-field"><span>{t('portfolio.properties.form.type') || 'Typ'}:</span> {codeLabel(property.property_type) || '—'}</div>
                 <div className="detail-field"><span>{t('portfolio.properties.form.yearBuilt') || 'Baujahr'}:</span> {property.year_built || '—'}</div>
-                <div className="detail-field"><span>{t('portfolio.properties.form.livingArea') || 'Wohnfläche'}:</span> {property.living_area_sqm ? `${property.living_area_sqm} m²` : '—'}</div>
-                <div className="detail-field"><span>{t('portfolio.properties.form.plotArea') || 'Grundstück'}:</span> {property.plot_area_sqm ? `${property.plot_area_sqm} m²` : '—'}</div>
-                <div className="detail-field"><span>{t('portfolio.properties.form.purchasePrice') || 'Kaufpreis'}:</span> {property.purchase_price ? fmt(property.purchase_price) : '—'}</div>
-                <div className="detail-field"><span>{t('portfolio.properties.form.marketValue') || 'Marktwert'}:</span> {property.market_value ? fmt(property.market_value) : '—'}</div>
+                <div className="detail-field"><span>{plainLabel(t('portfolio.properties.form.livingArea') || 'Wohnfläche')}:</span> {formatArea(property.living_area_sqm)}</div>
+                <div className="detail-field"><span>{plainLabel(t('portfolio.properties.form.plotArea') || 'Grundstück')}:</span> {formatArea(property.plot_area_sqm)}</div>
+                <div className="detail-field"><span>{plainLabel(t('portfolio.properties.form.purchasePrice') || 'Kaufpreis')}:</span> {property.purchase_price ? fmt(property.purchase_price) : '—'}</div>
+                <div className="detail-field"><span>{plainLabel(t('portfolio.properties.form.marketValue') || 'Marktwert')}:</span> {property.market_value ? fmt(property.market_value) : '—'}</div>
               </div>
             </div>
             <div className="panel">
@@ -169,7 +170,7 @@ export default function PropertyDetail() {
                     {units.slice(0, 8).map(u => (
                       <li key={u.id}>
                         <span className="activity-title">{u.label}</span>
-                        <span className="text-muted">{u.unit_type} · {u.area_sqm || '—'} m²</span>
+                        <span className="text-muted">{codeLabel(u.unit_type)} · {formatArea(u.area_sqm)}</span>
                         <StatusBadge status={u.status} />
                       </li>
                     ))}
@@ -190,7 +191,7 @@ export default function PropertyDetail() {
                     {documents.slice(0, 5).map(d => (
                       <li key={d.id}>
                         <span className="activity-title">{d.title}</span>
-                        <span className="text-muted">{d.document_type || t('pages.propertyDetail.other') || 'Sonstig'}</span>
+                        <span className="text-muted">{codeLabel(d.document_type) || t('pages.propertyDetail.other') || 'Sonstig'}</span>
                       </li>
                     ))}
                   </ul>
@@ -239,7 +240,7 @@ export default function PropertyDetail() {
                     {units.map(u => (
                       <tr key={u.id}>
                         <td>{u.label}</td>
-                        <td>{u.unit_type}</td>
+                        <td>{codeLabel(u.unit_type)}</td>
                         <td style={{ textAlign: 'right' }}>{fmt(u.cold_rent)}</td>
                         <td style={{ textAlign: 'right' }}>{fmt(u.service_charge_advance)}</td>
                         <td style={{ textAlign: 'right' }}>{fmt(u.heating_advance)}</td>

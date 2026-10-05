@@ -36,23 +36,25 @@ function PromptModal({ title, defaultValue, onConfirm, onCancel }) {
   const [value, setValue] = useState(defaultValue || '');
   return (
     <div className="modal-overlay" onClick={onCancel}>
-      <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '450px' }}>
+      <div className="modal" role="dialog" aria-modal="true" aria-label={title} onClick={e => e.stopPropagation()} style={{ maxWidth: '450px' }}>
         <div className="modal-header">
           <h3>{title}</h3>
-          <button className="btn btn-sm" onClick={onCancel}>&times;</button>
+          <button className="btn-close" onClick={onCancel} aria-label="Schließen">&times;</button>
         </div>
         <div className="modal-body">
-          <input
-            className="form-input"
-            value={value}
-            onChange={e => setValue(e.target.value)}
-            autoFocus
-            style={{ width: '100%' }}
-          />
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <input
+              value={value}
+              onChange={e => setValue(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') onConfirm(value); }}
+              aria-label={title}
+              autoFocus
+            />
+          </div>
         </div>
-        <div className="modal-footer" style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', padding: '0.75rem 1rem' }}>
-          <button className="btn btn-sm btn-secondary" onClick={onCancel}>Abbrechen</button>
-          <button className="btn btn-sm btn-primary" onClick={() => onConfirm(value)}>OK</button>
+        <div className="modal-footer">
+          <button className="btn btn-secondary" onClick={onCancel}>Abbrechen</button>
+          <button className="btn btn-primary" onClick={() => onConfirm(value)}>OK</button>
         </div>
       </div>
     </div>
@@ -274,7 +276,7 @@ export default function Statements() {
     return {
       ...bp,
       property_name: propMap[bp.property_id]?.name || '—',
-      period_label: `${bp.start_date || '?'} – ${bp.end_date || '?'}`,
+      period_label: `${formatDate(bp.start_date)} – ${formatDate(bp.end_date)}`,
       total_costs: totalCosts,
       cost_item_count: costs.length,
       units_count: stmts.length,
@@ -334,7 +336,7 @@ export default function Statements() {
   };
 
   const handleSaveCost = async (form) => {
-    const data = { ...form, is_recoverable: form.is_recoverable !== 'false' };
+    const data = { ...form, is_recoverable: form.is_recoverable !== 'false' && form.is_recoverable !== false };
     if (costModal === 'create') {
       await api.post('/billing/cost-items', data);
     } else {
@@ -927,10 +929,10 @@ export default function Statements() {
         {/* OCR Import Preview Dialog */}
         {ocrDraft && (
           <div className="modal-overlay" onClick={() => setOcrDraft(null)}>
-            <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+            <div className="modal" role="dialog" aria-modal="true" aria-label="OCR-Ergebnis prüfen" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px' }}>
               <div className="modal-header">
                 <h3>OCR-Ergebnis prüfen</h3>
-                <button className="btn btn-sm" onClick={() => setOcrDraft(null)}>&times;</button>
+                <button className="btn-close" onClick={() => setOcrDraft(null)} aria-label="Schließen">&times;</button>
               </div>
               <div className="modal-body" style={{ display: 'grid', gap: '0.75rem' }}>
                 {ocrDraft.ocr_fields && (
@@ -960,7 +962,7 @@ export default function Statements() {
                         )}
                         {ocrDraft.ocr_fields.invoice_date && (
                           <tr><td style={{ padding: '4px 8px', fontWeight: 500 }}>Datum</td>
-                            <td style={{ padding: '4px 8px' }}>{ocrDraft.ocr_fields.invoice_date}</td>
+                            <td style={{ padding: '4px 8px' }}>{formatDate(ocrDraft.ocr_fields.invoice_date)}</td>
                             <td></td></tr>
                         )}
                       </tbody>

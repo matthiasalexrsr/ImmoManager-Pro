@@ -141,7 +141,7 @@ export default function Contracts() {
     { key: 'end_date', label: t('tenantsContracts.contracts.form.endDate') || 'Vertragsende', type: 'date' },
     { key: 'deposit_amount', label: t('tenantsContracts.contracts.form.deposit') || 'Kaution (€)', type: 'number' },
     { key: 'persons', label: t('tenantsContracts.contracts.form.persons') || 'Personen im Haushalt', type: 'number',
-      placeholder: t('tenantsContracts.contracts.form.personsHint') || 'für die Umlage nach Personen' },
+      hint: t('tenantsContracts.contracts.form.personsHint') || 'für die Umlage nach Personen' },
     { key: 'index_rent', label: t('tenantsContracts.contracts.form.indexRent') || 'Mietanpassung', type: 'select', options: [
       { value: 'index', label: t('tenantsContracts.contracts.indexRentTypes.index') || 'Indexmiete' },
       { value: 'stepped', label: t('tenantsContracts.contracts.indexRentTypes.stepped') || 'Staffelmiete' },
@@ -230,7 +230,7 @@ export default function Contracts() {
 
       {history && (
         <div className="modal-overlay" onClick={() => setHistory(null)} role="presentation">
-          <div className="modal" role="dialog" aria-modal="true" aria-label="Mietverlauf" onClick={e => e.stopPropagation()}>
+          <div className="modal modal-wide" role="dialog" aria-modal="true" aria-label="Mietverlauf" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Mietverlauf {history.contract.contract_number}</h2>
               <button onClick={() => setHistory(null)} className="btn-close" aria-label="Schließen">✕</button>

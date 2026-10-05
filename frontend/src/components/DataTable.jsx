@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback } from 'react';
 import { useTranslation } from '../i18n';
 import { PlusIcon, EditIcon, TrashIcon } from './Icons';
 import StatusBadge from './StatusBadge';
-import { formatDate, formatMoney } from '../utils/format';
+import { formatDate, formatMoney, plainLabel } from '../utils/format';
 import { codeLabel } from '../utils/codeLabels';
 
 const PAGE_SIZES = [10, 25, 50, 100];
@@ -31,8 +31,6 @@ function cellContent(col, row) {
   return <span className="cell-text" title={text.length > 30 ? text : undefined}>{text}</span>;
 }
 
-// Cells show the unit themselves (1.234,56 €, 62 m²); the header does not repeat it.
-const headerLabel = label => (typeof label === 'string' ? label.replace(/\s*\((€|m²)\)$/, '') : label);
 
 function cellClass(col) {
   return [
@@ -267,7 +265,7 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
                   onClick={() => col.sortable !== false && handleSort(col.key)}
                 >
                   <span className="th-content">
-                    {headerLabel(col.label)}
+                    {plainLabel(col.label)}
                     {col.sortable !== false && (
                       <span className="sort-indicator">
                         {sortKey === col.key ? (sortDir === 'asc' ? ' \u25B2' : ' \u25BC') : ''}

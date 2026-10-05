@@ -57,8 +57,22 @@ export default function ContractWizard() {
 
         const style = doc.createElement('style');
         style.textContent = `
-          body { background: transparent !important; margin: 0; padding: 0; }
+          body, input, select, textarea, button { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif !important; }
+          body { background: transparent !important; margin: 0; padding: 0; color: #111827; }
+          h1, h2, h3, h4, label { font-family: inherit !important; }
           .container { max-width: 100% !important; padding: 0 !important; margin: 0 !important; }
+          /* Same look as the rest of the app: teal accents, app buttons and inputs. */
+          .progressbar li.active::before { background-color: #0d9488 !important; border-color: #0d9488 !important; color: #fff !important; }
+          .progressbar li.active ~ li::before { background-color: #fff !important; border-color: #d1d5db !important; color: #6b7280 !important; }
+          .progressbar li.active { color: #0d9488 !important; }
+          .navigation button.next, .navigation #download { background-color: #0d9488 !important; }
+          .navigation button.next:hover, .navigation #download:hover { background-color: #0f766e !important; }
+          .add-person, #add-staffel {
+            margin-top: 0.75rem; padding: 0.45rem 0.9rem; font-size: 0.875rem; font-weight: 500; cursor: pointer;
+            color: #0d9488; background: #f0fdfa; border: 1px solid #99f6e4; border-radius: 6px;
+          }
+          .add-person:hover, #add-staffel:hover { background: #ccfbf1; }
+          input:focus, select:focus, textarea:focus { border-color: #0d9488 !important; box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.15) !important; outline: none; }
         `;
         doc.head.appendChild(style);
       } catch {

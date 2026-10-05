@@ -1403,7 +1403,8 @@
       "tabPersonal": "Personal",
       "tabSystem": "System",
       "tabWorkflow": "Workflow",
-      "versionError": "Could not load the version information"
+      "versionError": "Could not load the version information",
+      "chooseImportFile": "Choose JSON file …"
     },
     "messages": {
       "title": "Messages",

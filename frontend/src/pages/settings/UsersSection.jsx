@@ -102,7 +102,7 @@ export default function UsersSection({ currentUser }) {
   };
 
   return (
-    <div className="panel">
+    <div className="panel settings-panel-full">
       <div className="panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span>{u('title')}</span>
         <button className="btn btn-sm btn-primary" onClick={() => setModal({ kind: 'create' })}>{u('add')}</button>
@@ -112,8 +112,8 @@ export default function UsersSection({ currentUser }) {
         {loadError && <div className="alert-error" role="alert">{u('loadError')}</div>}
         {users && users.length === 0 && <p className="text-muted">{u('empty')}</p>}
         {users && users.length > 0 && (
-          <div style={{ overflowX: 'auto' }}>
-            <table>
+          <div className="table-scroll">
+            <table className="data-table">
               <thead>
                 <tr>
                   <th>{u('username')}</th>
@@ -135,7 +135,7 @@ export default function UsersSection({ currentUser }) {
                       <td>{user.email}</td>
                       <td>{roleLabel(user.role)}</td>
                       <td>
-                        <span className={`badge ${user.is_active ? 'paid' : 'overdue'}`}>
+                        <span className={`badge ${user.is_active ? 'badge-green' : 'badge-gray'}`}>
                           {user.is_active ? u('active') : u('inactive')}
                         </span>
                       </td>

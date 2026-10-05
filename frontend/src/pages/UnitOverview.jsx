@@ -5,6 +5,7 @@ import { api } from '../api';
 import StatusBadge from '../components/StatusBadge';
 import PhotoDropZone from '../components/PhotoDropZone';
 import { formatDate, formatMoney } from '../utils/format';
+import { codeLabel } from '../utils/codeLabels';
 
 export default function UnitOverview() {
   const { t } = useTranslation();
@@ -60,7 +61,7 @@ export default function UnitOverview() {
           <div className="panel-body">
             <dl className="overview-dl">
               <dt>{t('pages.unitOverview.unitNumber') || 'Einheitsnr.'}</dt><dd>{unit.unit_number || '—'}</dd>
-              <dt>{t('pages.unitOverview.type') || 'Typ'}</dt><dd>{unit.unit_type || '—'}</dd>
+              <dt>{t('pages.unitOverview.type') || 'Typ'}</dt><dd>{codeLabel(unit.unit_type) || '—'}</dd>
               <dt>{t('pages.unitOverview.floor') || 'Etage'}</dt><dd>{unit.floor ?? '—'}</dd>
               <dt>{t('pages.unitOverview.area') || 'Fläche'}</dt><dd>{unit.area_sqm ? `${unit.area_sqm} m²` : '—'}</dd>
               <dt>{t('pages.unitOverview.rooms') || 'Zimmer'}</dt><dd>{unit.rooms ?? '—'}</dd>
@@ -80,8 +81,8 @@ export default function UnitOverview() {
               <dl className="overview-dl">
                 <dt>{t('pages.unitOverview.contract') || 'Vertrag'}</dt><dd>{activeContract.contract_number}</dd>
                 <dt>{t('pages.unitOverview.tenant') || 'Mieter'}</dt><dd>{tenant?.full_name || '—'}</dd>
-                <dt>{t('pages.unitOverview.start') || 'Beginn'}</dt><dd>{activeContract.start_date || '—'}</dd>
-                <dt>{t('pages.unitOverview.end') || 'Ende'}</dt><dd>{activeContract.end_date || t('pages.unitOverview.indefinite') || 'Unbefristet'}</dd>
+                <dt>{t('pages.unitOverview.start') || 'Beginn'}</dt><dd>{formatDate(activeContract.start_date)}</dd>
+                <dt>{t('pages.unitOverview.end') || 'Ende'}</dt><dd>{activeContract.end_date ? formatDate(activeContract.end_date) : t('pages.unitOverview.indefinite') || 'Unbefristet'}</dd>
                 <dt>{t('pages.unitOverview.deposit') || 'Kaution'}</dt><dd>{activeContract.deposit_amount ? `${formatMoney(activeContract.deposit_amount)}` : '—'}</dd>
               </dl>
             ) : (

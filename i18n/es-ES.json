@@ -1501,7 +1501,8 @@
       "tabPersonal": "Personal",
       "tabSystem": "Sistema",
       "tabWorkflow": "Forma de trabajo",
-      "versionError": "No se pudo cargar la información de la versión"
+      "versionError": "No se pudo cargar la información de la versión",
+      "chooseImportFile": "Elegir archivo JSON …"
     },
     "messages": {
       "title": "Mensajes",

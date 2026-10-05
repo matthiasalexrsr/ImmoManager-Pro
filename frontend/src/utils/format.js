@@ -81,3 +81,8 @@ export function formatMonth(v, { blank = '—' } = {}) {
   const m = /^(\d{4})-(\d{2})/.exec(String(v));
   return m ? `${m[2]}/${m[1]}` : String(v);
 }
+
+// "Kaltmiete (€)" → "Kaltmiete": where the value shows its unit itself.
+export function plainLabel(label) {
+  return typeof label === 'string' ? label.replace(/\s*\((€|m²|EUR)\)\s*$/, '') : label;
+}
