@@ -111,6 +111,12 @@ def run_checks(sim: Simulation, as_of: date) -> None:
     sim.f.phase = previous
 
 
+def counts(client: Client) -> dict:
+    """Number of records per entity (enough to see whether an import wrote anything)."""
+    entities = client.ok("GET", "/data/export", area="Speichern") or {}
+    return {k: len(v) for k, v in entities.items() if isinstance(v, list)}
+
+
 def fingerprint(client: Client) -> dict:
     """Everything that must survive a restart, an export/import or a backup/restore."""
     entities = client.ok("GET", "/data/export", area="Speichern") or {}

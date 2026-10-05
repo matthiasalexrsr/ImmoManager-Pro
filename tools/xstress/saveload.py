@@ -17,7 +17,7 @@ import time
 import httpx
 
 from .core import REPO, Client, Findings, Server, setup_users
-from .invariants import compare, fingerprint
+from .invariants import compare, counts, fingerprint
 
 
 def relogin(users: dict[str, Client]) -> None:
@@ -110,7 +110,7 @@ def export_import(server: Server, users: dict[str, Client], f: Findings) -> None
 def bad_files(client: Client, f: Findings, raw: bytes) -> None:
     """Broken or foreign files must be refused as a whole; nothing may be half-imported."""
     data = json.loads(raw)
-    before = fingerprint(client)["counts"]
+    before = counts(client)
     first_contract = (data.get("contracts") or [{}])[0]
     cases = {
         "abgeschnitten": raw[: len(raw) // 2],
@@ -128,7 +128,7 @@ def bad_files(client: Client, f: Findings, raw: bytes) -> None:
                                    expect=tuple(range(200, 500)), area="Import")
         if status and status < 400:
             f.add("LÜCKE", "Import", f"Datei „{name}“ wird ohne Fehlermeldung angenommen", body)
-        after = fingerprint(client)["counts"]
+        after = counts(client)
         f.check(after == before, "KRITISCH", "Import", f"Fehlerhafte Datei „{name}“ hat Daten teilweise importiert",
                 {k: (before.get(k), v) for k, v in after.items() if before.get(k) != v})
 
