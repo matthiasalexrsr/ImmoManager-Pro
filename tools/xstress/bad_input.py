@@ -82,8 +82,10 @@ def cases(r: dict) -> list[tuple[str, str, str, str, dict, str]]:
         ("Mieter", "Name nur Leerzeichen", "POST", "/tenants", {"full_name": "   "}, "reject"),
         ("Mieter", "E-Mail ohne @", "POST", "/tenants", {"full_name": "Test", "email": "kein-email"}, "reject"),
         ("Mieter", "Telefon „abc“", "POST", "/tenants", {"full_name": "Test", "phone": "abc"}, "warn"),
-        ("Mieter", "unbekannte Zahlungsart „sepa“", "POST", "/tenants",
-         {"full_name": "Test", "payment_method": "sepa", "sepa_mandate": "DE00123"}, "reject"),
+        ("Mieter", "unbekannte Zahlungsart", "POST", "/tenants",
+         {"full_name": "Test", "payment_method": "bitcoin", "sepa_mandate": "DE00123"}, "reject"),
+        ("Mieter", "Zahlungsart „SEPA“ statt Code", "POST", "/tenants",
+         {"full_name": "Test", "payment_method": "SEPA", "sepa_mandate": "MANDAT-1"}, "accept"),
         ("Mieter", "Skript im Namen", "POST", "/tenants", {"full_name": "<img src=x onerror=alert(1)>"}, "warn"),
         ("Mieter", "Emoji und Rechts-nach-links-Schrift", "POST", "/tenants", {"full_name": "Ayşe 🏠 محمد"}, "accept"),
         # bookings

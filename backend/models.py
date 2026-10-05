@@ -73,6 +73,25 @@ class Unit(UnitCreate):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+# Payment methods: the codes the app uses, and spellings of other systems and imports
+PAYMENT_METHODS = {"bank_transfer", "sepa_direct_debit", "cash"}
+PAYMENT_METHOD_ALIASES = {
+    "transfer": "bank_transfer", "überweisung": "bank_transfer", "ueberweisung": "bank_transfer",
+    "dauerauftrag": "bank_transfer", "sepa": "sepa_direct_debit", "lastschrift": "sepa_direct_debit",
+    "sepa-lastschrift": "sepa_direct_debit", "direct_debit": "sepa_direct_debit", "bar": "cash",
+    "barzahlung": "cash",
+}
+
+
+def normalize_payment_method(value: Optional[str]) -> Optional[str]:
+    if not isinstance(value, str):
+        return value
+    key = value.strip().lower()
+    if not key:
+        return None
+    return key if key in PAYMENT_METHODS else PAYMENT_METHOD_ALIASES.get(key, value)
+
+
 class TenantCreate(BaseModel):
     full_name: str
     email: Optional[str] = None
@@ -85,6 +104,11 @@ class TenantCreate(BaseModel):
     sepa_mandate: Optional[str] = None
     notes: Optional[str] = None
     archived: bool = False
+
+    @field_validator("payment_method")
+    @classmethod
+    def normalize_payment_method(cls, v: Optional[str]) -> Optional[str]:
+        return normalize_payment_method(v)
 
     @field_validator("email")
     @classmethod
@@ -415,6 +439,11 @@ class TenantPatch(BaseModel):
     sepa_mandate: Optional[str] = None
     notes: Optional[str] = None
     archived: Optional[bool] = None
+
+    @field_validator("payment_method")
+    @classmethod
+    def normalize_payment_method(cls, v: Optional[str]) -> Optional[str]:
+        return normalize_payment_method(v)
 
     @field_validator("email")
     @classmethod

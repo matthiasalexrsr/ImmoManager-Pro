@@ -14,13 +14,13 @@ import re
 from datetime import date, datetime, timezone
 from typing import Any, Callable, Optional
 
+from ..models import PAYMENT_METHODS, normalize_payment_method
 from ..storage import NotFoundError, ValidationError
 
 PROPERTY_TYPES = {"residential", "commercial", "mixed", "condominium", "single_family", "multi_family", "office",
                   "land", "parking", "other"}
 KEY_TYPES = {"area_sqm", "unit_count", "person_count", "consumption"}
 PRIORITIES = {"low", "medium", "high", "urgent"}
-PAYMENT_METHODS = {"bank_transfer", "sepa_direct_debit", "cash"}
 MARKUP = re.compile(r"<\s*/?\s*[a-zA-Z][^>]*>")
 CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
@@ -160,7 +160,11 @@ def tenant(data: dict, store: Any) -> None:
     _text(data, "full_name", "Der Name", required=True)
     _max_length(data, "full_name", "Der Name")
     _no_markup(data, "full_name", "Der Name")
-    _one_of(data, "payment_method", PAYMENT_METHODS, "Die Zahlungsart")
+    method = data.get("payment_method")
+    if _touched(data, "payment_method") and isinstance(method, str) and method.strip() \
+            and normalize_payment_method(method) not in PAYMENT_METHODS:
+        raise ValidationError(f"Die Zahlungsart „{method}“ ist unbekannt. Erlaubt: Überweisung (bank_transfer), "
+                              "SEPA-Lastschrift (sepa_direct_debit), Bar (cash)")
     phone = data.get("phone")
     if _touched(data, "phone") and isinstance(phone, str) and phone.strip() and not re.search(r"\d", phone):
         raise ValidationError("Die Telefonnummer enthält keine Ziffern")

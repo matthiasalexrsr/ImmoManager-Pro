@@ -247,7 +247,7 @@ def test_framework_errors_are_german(client, world):
     ("/contracts", {"contract_number": "V-9", "start_date": "2200-01-01"}),
     ("/contracts", {"contract_number": "V-9", "start_date": "2026-01-01", "end_date": "2300-01-01"}),
     ("/units", {"label": "WE 9", "area_sqm": 30, "rooms": 25}),
-    ("/tenants", {"full_name": "Test", "payment_method": "sepa"}),
+    ("/tenants", {"full_name": "Test", "payment_method": "bitcoin"}),
     ("/tenants", {"full_name": "<img src=x onerror=alert(1)>"}),
 ])
 def test_more_implausible_input_is_refused(client, world, path, body):
@@ -266,6 +266,17 @@ def test_a_storeroom_with_one_room_and_names_with_angles_in_words_pass(client, w
         "rooms": 1}).status_code == 201
     assert client.post("/api/v1/tenants", headers=owner, json={
         "full_name": "Meier & Söhne (Zins < 3 %)", "payment_method": "sepa_direct_debit"}).status_code == 201
+
+
+@pytest.mark.parametrize("given, stored", [("transfer", "bank_transfer"), ("SEPA", "sepa_direct_debit"),
+                                           ("Überweisung", "bank_transfer"), ("bar", "cash"), ("cash", "cash")])
+def test_common_spellings_of_a_payment_method_are_understood(client, world, given, stored):
+    """Imports and other systems write "transfer" or "SEPA"; the app stores its own codes."""
+    resp = client.post("/api/v1/tenants", headers=world["owner"], json={"full_name": "Test", "payment_method": given})
+    assert resp.status_code == 201 and resp.json()["payment_method"] == stored
+    patched = client.patch(f"/api/v1/tenants/{resp.json()['id']}", headers=world["owner"],
+                           json={"payment_method": "Lastschrift"})
+    assert patched.json()["payment_method"] == "sepa_direct_debit"
 
 
 def test_saving_over_someone_elses_newer_change_is_refused(client, world):
