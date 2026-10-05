@@ -8,6 +8,7 @@ from datetime import date, timedelta
 
 from fastapi import APIRouter
 
+from ..concurrency import one_at_a_time
 from ..dependencies import store
 from ..domain.occupancy import billable_contracts, unit_statuses_on
 from ..domain.receivables import is_overdue_debt, is_unpaid_debt
@@ -141,6 +142,7 @@ def _billing_preflight_summary(
 
 
 @router.get("/stats")
+@one_at_a_time
 def get_dashboard_stats() -> dict:
     """Return aggregated entity counts for the dashboard.
 

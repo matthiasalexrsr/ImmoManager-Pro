@@ -10,6 +10,7 @@ from datetime import date, datetime
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
 from fastapi.responses import Response
 
+from ..concurrency import one_at_a_time
 from ..dependencies import store
 from ..services.data_snapshot import SnapshotError, export_snapshot, import_snapshot
 
@@ -26,6 +27,7 @@ def _json_serial(obj):
 
 
 @router.get("/export")
+@one_at_a_time
 def export_all_data() -> Response:
     """Export all business data as a single JSON file."""
     data = export_snapshot(store)

@@ -6,6 +6,7 @@ from fastapi import APIRouter, Body, HTTPException, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
+from ..concurrency import one_at_a_time
 from ..dependencies import store
 from ..services import report_service
 
@@ -29,6 +30,7 @@ def _csv_response(rows: list[dict], filename: str) -> Response:
 
 
 @router.get("/summary")
+@one_at_a_time
 def get_summary(format: str | None = Query(None, alias="format")):
     data = report_service.compute_summary(
         properties=store.list_properties(),
@@ -59,6 +61,7 @@ def get_summary(format: str | None = Query(None, alias="format")):
 
 
 @router.get("/finance")
+@one_at_a_time
 def get_finance_report(format: str | None = Query(None, alias="format")):
     data = report_service.compute_finance(
         bookings=store.list_bookings(),
@@ -78,6 +81,7 @@ def get_finance_report(format: str | None = Query(None, alias="format")):
 
 
 @router.get("/occupancy")
+@one_at_a_time
 def get_occupancy_report(format: str | None = Query(None, alias="format")):
     data = report_service.compute_occupancy(units=store.list_units(), contracts=store.list_contracts())
 
@@ -95,6 +99,7 @@ def get_occupancy_report(format: str | None = Query(None, alias="format")):
 
 
 @router.get("/receivables-aging")
+@one_at_a_time
 def get_receivables_aging(format: str | None = Query(None, alias="format")):
     data = report_service.compute_receivables_aging(
         receivables=store.list_receivables(),
@@ -117,6 +122,7 @@ def get_receivables_aging(format: str | None = Query(None, alias="format")):
 
 
 @router.get("/cashflow")
+@one_at_a_time
 def get_cashflow_report(format: str | None = Query(None, alias="format")):
     data = report_service.compute_cashflow(bookings=store.list_bookings())
 
@@ -180,6 +186,7 @@ def get_maintenance_costs_report(format: str | None = Query(None, alias="format"
 # ---------------------------------------------------------------------------
 
 @router.get("/datev-export")
+@one_at_a_time
 def datev_export(
     start_date: date | None = Query(None),
     end_date: date | None = Query(None),
@@ -316,6 +323,7 @@ def import_bookings(
 
 
 @router.get("/liquidity-forecast", response_model=None)
+@one_at_a_time
 def liquidity_forecast(
     months: int = Query(12, ge=1, le=60),
     property_id: str | None = Query(None),
@@ -340,6 +348,7 @@ def liquidity_forecast(
 
 
 @router.get("/pdf/{report_name}", response_model=None)
+@one_at_a_time
 def export_report_pdf(report_name: str):
     """T8: Export a report as PDF.
 

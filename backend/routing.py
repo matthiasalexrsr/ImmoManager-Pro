@@ -5,7 +5,7 @@ Extracted from app.py. Assembles the v1 API router with all domain routers.
 
 import json
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from starlette.concurrency import run_in_threadpool
 
 from .auth import require_auth, require_role
@@ -137,8 +137,12 @@ async def plausibility_guard(request: Request) -> None:
     except ValueError:
         return          # the endpoint answers malformed JSON itself
     from .dependencies import store
-    from .services.plausibility import check
+    from .services.plausibility import StaleRecordError, check, check_not_stale
 
     path = request.url.path.removeprefix("/api/v1")
+    try:
+        await run_in_threadpool(check_not_stale, request.method, path, body, store)
+    except StaleRecordError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     await run_in_threadpool(check, request.method, path, body, store)
 

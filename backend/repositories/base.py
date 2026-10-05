@@ -67,10 +67,20 @@ class BaseRepository:
             )
             raise
 
+    def _read(self, query: Any) -> list[Any]:
+        """Run a query for whole rows and return read models.
+
+        Reads plain column values instead of building ORM objects first: for long
+        lists (thousands of bookings) that is several times faster.
+        """
+        columns = list(self.orm_class.__table__.columns)
+        keys = [c.key for c in columns]
+        validate = self.read_class.model_validate
+        return [validate(dict(zip(keys, row))) for row in query.with_entities(*columns).all()]
+
     @safe_db_operation("list_all")
     def list_all(self) -> list[Any]:
-        objs = self.db.query(self.orm_class).all()
-        return [self._to_pydantic(o) for o in objs]
+        return self._read(self.db.query(self.orm_class))
 
     @safe_db_operation("get")
     def get(self, entity_id: str) -> Any:
@@ -159,7 +169,7 @@ class BaseRepository:
             query = query.order_by(col.desc() if order_desc else col.asc())
         query = query.order_by(*self._unique_order())
         query = query.offset(skip).limit(limit)
-        return [self._to_pydantic(o) for o in query.all()]
+        return self._read(query)
 
     def _unique_order(self) -> list[Any]:
         """Final sort keys that make every row's position unique.
@@ -194,8 +204,8 @@ class BaseRepository:
         rows: list[Any] = []
         for start in range(0, len(values), 500):
             chunk = values[start:start + 500]
-            rows += self.db.query(self.orm_class).filter(getattr(self.orm_class, column).in_(chunk)).all()
-        return [self._to_pydantic(o) for o in rows]
+            rows += self._read(self.db.query(self.orm_class).filter(getattr(self.orm_class, column).in_(chunk)))
+        return rows
 
     @safe_db_operation("filter_by")
     def filter_by(self, **kwargs) -> list[Any]:
@@ -204,4 +214,4 @@ class BaseRepository:
         for key, value in kwargs.items():
             if value is not None:
                 query = query.filter(getattr(self.orm_class, key) == value)
-        return [self._to_pydantic(o) for o in query.all()]
+        return self._read(query)

@@ -87,6 +87,8 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
         }
         cleaned[f.key] = v;
       });
+      // the state the record was opened in: the server refuses to save over someone else's newer change
+      if (initial?.id && initial?.updated_at) cleaned.updated_at = initial.updated_at;
       await onSave(cleaned);
       onClose();
     } catch (err) {

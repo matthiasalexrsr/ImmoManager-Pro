@@ -239,6 +239,18 @@ def test_shop_needs_an_entered_person_count_and_zero_counts():
     assert (totals[flat.id], totals[shop.id]) == (600.0, 0.0)
 
 
+def test_a_key_with_no_shares_names_its_costs_and_a_way_out():
+    """Shops only: persons add up to 0, so the waste cannot be divided by persons."""
+    prop = _property("Gewerbehof")
+    shop = _unit(prop, "Laden", 120, unit_type="Gewerbe", persons=0)
+    _lease(prop, shop, "C-1", date(2020, 1, 1))
+    period = _period(prop, [("Müll", 600, "person_count")])
+
+    blocker = next(b for b in billing.get_billing_period_preflight(period.id).blockers if b.code == "ZERO_TOTAL_SHARE")
+
+    assert "Müll" in (blocker.context or "") and "anderen Schlüssel" in blocker.message
+
+
 def _consumption_case(intermediate: bool):
     prop = _property("H")
     we06, other = _unit(prop, "WE 06", 60, (100, 0)), _unit(prop, "WE 01", 60, (100, 0))

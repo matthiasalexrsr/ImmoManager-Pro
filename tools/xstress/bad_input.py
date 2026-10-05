@@ -82,8 +82,8 @@ def cases(r: dict) -> list[tuple[str, str, str, str, dict, str]]:
         ("Mieter", "Name nur Leerzeichen", "POST", "/tenants", {"full_name": "   "}, "reject"),
         ("Mieter", "E-Mail ohne @", "POST", "/tenants", {"full_name": "Test", "email": "kein-email"}, "reject"),
         ("Mieter", "Telefon „abc“", "POST", "/tenants", {"full_name": "Test", "phone": "abc"}, "warn"),
-        ("Mieter", "SEPA-Mandat mit ungültiger IBAN", "POST", "/tenants",
-         {"full_name": "Test", "payment_method": "sepa", "sepa_mandate": "DE00123"}, "warn"),
+        ("Mieter", "unbekannte Zahlungsart „sepa“", "POST", "/tenants",
+         {"full_name": "Test", "payment_method": "sepa", "sepa_mandate": "DE00123"}, "reject"),
         ("Mieter", "Skript im Namen", "POST", "/tenants", {"full_name": "<img src=x onerror=alert(1)>"}, "warn"),
         ("Mieter", "Emoji und Rechts-nach-links-Schrift", "POST", "/tenants", {"full_name": "Ayşe 🏠 محمد"}, "accept"),
         # bookings
@@ -154,7 +154,7 @@ def cases(r: dict) -> list[tuple[str, str, str, str, dict, str]]:
         ("Konto", "IBAN mit falscher Prüfziffer", "POST", "/accounts",
          {"portfolio_id": "{portfolio}", "name": "T", "account_type": "bank", "iban": "DE00370400440532013000"}, "warn"),
         ("Konto", "unbekannte Kontoart", "POST", "/accounts",
-         {"portfolio_id": "{portfolio}", "name": "T", "account_type": "bitcoin"}, "warn"),   # free text by design
+         {"portfolio_id": "{portfolio}", "name": "T", "account_type": "bitcoin"}, "accept"),   # free text by design
         # meters
         ("Zähler", "negativer Zählerstand", "POST", "/meters/{meter}/readings",
          {"meter_id": "{meter}", "reading_date": "2026-06-30", "value": -5}, "reject"),

@@ -14,6 +14,8 @@ const KIND_LABELS = {
   adjustment_mid_month: 'Anpassung nicht zum 1.',
   statement_period_too_long: 'Abrechnungszeitraum',
   invoice_due_before_date: 'Fälligkeit vor Datum',
+  rent_decrease: 'Mietsenkung',
+  invoice_negative: 'Negativer Rechnungsbetrag',
 };
 
 /** Rents and payments that need a decision, each with a link to where it is fixed. */

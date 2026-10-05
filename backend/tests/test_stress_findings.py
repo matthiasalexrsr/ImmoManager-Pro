@@ -241,3 +241,104 @@ def test_framework_errors_are_german(client, world):
     assert client.get("/api/v1/gibt-es-nicht", headers=world["owner"]).json()["error"]["message"] == "Nicht gefunden"
     resp = client.put("/api/v1/review", headers=world["owner"], json={})
     assert resp.status_code == 405 and resp.json()["error"]["message"] == "Diese Aktion ist hier nicht möglich"
+
+
+@pytest.mark.parametrize("path, body", [
+    ("/contracts", {"contract_number": "V-9", "start_date": "2200-01-01"}),
+    ("/contracts", {"contract_number": "V-9", "start_date": "2026-01-01", "end_date": "2300-01-01"}),
+    ("/units", {"label": "WE 9", "area_sqm": 30, "rooms": 25}),
+    ("/tenants", {"full_name": "Test", "payment_method": "sepa"}),
+    ("/tenants", {"full_name": "<img src=x onerror=alert(1)>"}),
+])
+def test_more_implausible_input_is_refused(client, world, path, body):
+    """Second full run: a contract starting in 2200, 25 rooms on 30 m², an unknown payment method, HTML in a name."""
+    refs = {"/contracts": {"property_id": world["prop"]["id"], "unit_id": world["unit"]["id"],
+                           "tenant_id": world["tenant"]["id"]},
+            "/units": {"property_id": world["prop"]["id"], "unit_type": "Wohnung"}}
+    resp = client.post(f"/api/v1{path}", headers=world["owner"], json={**refs.get(path, {}), **body})
+    assert resp.status_code == 400, resp.text
+
+
+def test_a_storeroom_with_one_room_and_names_with_angles_in_words_pass(client, world):
+    owner = world["owner"]
+    assert client.post("/api/v1/units", headers=owner, json={
+        "property_id": world["prop"]["id"], "label": "Abstellraum", "unit_type": "Abstellraum", "area_sqm": 3,
+        "rooms": 1}).status_code == 201
+    assert client.post("/api/v1/tenants", headers=owner, json={
+        "full_name": "Meier & Söhne (Zins < 3 %)", "payment_method": "sepa_direct_debit"}).status_code == 201
+
+
+def test_saving_over_someone_elses_newer_change_is_refused(client, world):
+    """Two forms open the same tenant; the second save must not silently overwrite the first one."""
+    owner, manager = world["owner"], _as("verwalter")
+    url = f"/api/v1/tenants/{world['tenant']['id']}"
+    opened = client.get(url, headers=owner).json()
+
+    first = client.put(url, headers=manager, json={"full_name": "Anna Muster", "notes": "Stand A",
+                                                   "updated_at": opened["updated_at"]})
+    assert first.status_code == 200, first.text
+    second = client.put(url, headers=owner, json={"full_name": "Anna Muster", "notes": "Stand B",
+                                                  "updated_at": opened["updated_at"]})
+
+    assert second.status_code == 409 and "inzwischen geändert" in second.text
+    assert client.get(url, headers=owner).json()["notes"] == "Stand A"
+    # with the fresh state it saves; a client that sends no state keeps "the last one wins"
+    fresh = client.get(url, headers=owner).json()["updated_at"]
+    assert client.put(url, headers=owner, json={"full_name": "Anna Muster", "notes": "Stand B",
+                                                "updated_at": fresh}).status_code == 200
+    assert client.patch(url, headers=owner, json={"notes": "Stand C"}).status_code == 200
+
+
+def test_review_list_flags_a_rent_decrease_and_a_negative_invoice(client, world):
+    owner = world["owner"]
+    client.post("/api/v1/rent-adjustments", headers=owner, json={
+        "contract_id": world["contract"]["id"], "adjustment_type": "index", "effective_date": "2027-01-01",
+        "previous_rent": 600, "new_rent": 300})
+    client.post("/api/v1/invoices", headers=owner, json={
+        "supplier": "X", "invoice_date": "2026-01-10", "net_amount": -100, "vat_rate": 19, "vat_amount": -19,
+        "gross_amount": -119})
+
+    kinds = {item["kind"] for item in client.get("/api/v1/review", headers=owner).json()["items"]}
+
+    assert {"rent_decrease", "invoice_negative"} <= kinds
+
+
+def test_long_calculations_run_one_after_the_other():
+    """Reports read whole tables; side by side in threads they slowed each other down tenfold."""
+    import threading
+    import time
+
+    from backend.concurrency import one_at_a_time
+
+    running, overlaps = [], []
+
+    @one_at_a_time
+    def report():
+        running.append(1)
+        overlaps.append(len(running))
+        time.sleep(0.02)
+        running.pop()
+
+    threads = [threading.Thread(target=report) for _ in range(5)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert overlaps == [1] * 5
+
+
+def test_cached_reads_answer_like_the_store(client, world):
+    from backend.services.read_cache import CachedReads
+
+    contract = world["contract"]
+    client.post(f"/api/v1/contracts/{contract['id']}/rent-periods", headers=world["owner"], json={
+        "contract_id": contract["id"], "valid_from": "2025-01-01", "cold_rent": 650, "service_charge_advance": 0,
+        "heating_advance": 0})
+    cached = CachedReads(store)
+
+    assert cached.list_contract_rent_periods(contract["id"]) == store.list_contract_rent_periods(contract["id"])
+    assert sorted(p.id for p in cached.list_contract_rent_periods()) == \
+        sorted(p.id for p in store.list_contract_rent_periods())
+    assert cached.list_contract_rent_periods("gibt-es-nicht") == []
+    assert [c.id for c in cached.list_contracts()] == [c.id for c in store.list_contracts()]

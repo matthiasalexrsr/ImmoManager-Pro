@@ -363,6 +363,7 @@ class Simulation:
                                                                    "key_type": key_type}, area="NK-Abrechnung")
                     keys[key_type] = key["id"] if key else None
                 total = Decimal("0")
+                by_persons = []
                 for description, amount in self.costs[prop.id][year].items():
                     key_type = dict((d, k) for d, k, _ in RECOVERABLE).get(description, "area_sqm")
                     item = v.ok("POST", "/billing/cost-items", {
@@ -370,12 +371,21 @@ class Simulation:
                         "allocation_key_id": keys[key_type], "is_recoverable": True}, area="NK-Abrechnung")
                     if item:
                         total += amount
+                        if key_type == "person_count":
+                            by_persons.append(item["id"])
                 v.call("GET", f"/billing/periods/{period['id']}/preflight", area="NK-Abrechnung")
                 status, generated = v.call("POST", f"/billing/periods/{period['id']}/generate", {},
                                            expect=(200, 201, 400, 409, 422), area="NK-Abrechnung")
                 if status == 400:
                     # what a manager does: fill in the missing areas and person counts, then try again
                     self.complete_units(prop)
+                    status, generated = v.call("POST", f"/billing/periods/{period['id']}/generate", {},
+                                               expect=(200, 201, 400, 409, 422), area="NK-Abrechnung")
+                if status == 400 and "zusammen 0" in str(generated) and by_persons:
+                    # nobody lives here (shops only): the manager distributes those costs by area instead
+                    for item_id in by_persons:
+                        v.call("PATCH", f"/billing/cost-items/{item_id}", {"allocation_key_id": keys["area_sqm"]},
+                               area="NK-Abrechnung")
                     status, generated = v.call("POST", f"/billing/periods/{period['id']}/generate", {},
                                                expect=(200, 201, 400, 409, 422), area="NK-Abrechnung")
                 if status not in (200, 201):

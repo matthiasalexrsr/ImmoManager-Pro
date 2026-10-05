@@ -155,15 +155,21 @@ def concurrency(users: dict[str, Client], f: Findings) -> None:
     after = o.ok("GET", f"/tenants/{tenant['id']}", area="Gleichzeitig") or {}
     f.check(after.get("phone") == "+49 30 111111" and after.get("email") == "neu@stress.test", "FALSCH", "Gleichzeitig",
             "Gleichzeitige Änderungen verschiedener Felder: eine Änderung ging verloren", after)
-    # the same field: the later one wins without warning (no conflict detection)
+    # the same record from two forms: both opened it, the manager saves first; the owner's form
+    # sends the state it was opened with (as the app's forms do) and must not overwrite silently
     v.call("PUT", f"/tenants/{tenant['id']}", {**{k: after.get(k) for k in ("full_name", "email", "phone")},
-                                                "notes": "Stand A"}, area="Gleichzeitig")
+                                                "notes": "Stand A", "updated_at": after.get("updated_at")},
+           area="Gleichzeitig")
     stale = dict(after, notes="Stand B, auf altem Stand bearbeitet")
-    status, _ = o.call("PUT", f"/tenants/{tenant['id']}", {k: stale.get(k) for k in ("full_name", "email", "phone", "notes")},
+    status, _ = o.call("PUT", f"/tenants/{tenant['id']}",
+                       {k: stale.get(k) for k in ("full_name", "email", "phone", "notes", "updated_at")},
                        expect=(200, 409, 412), area="Gleichzeitig")
     if status == 200:
-        f.add("HINWEIS", "Gleichzeitig", "Keine Konflikterkennung: wer zuletzt speichert, überschreibt die Änderung des "
-                                         "anderen ohne Rückfrage")
+        f.add("LÜCKE", "Gleichzeitig", "Keine Konflikterkennung: wer zuletzt speichert, überschreibt die Änderung des "
+                                       "anderen ohne Rückfrage")
+    kept = o.ok("GET", f"/tenants/{tenant['id']}", area="Gleichzeitig") or {}
+    f.check(kept.get("notes") == "Stand A", "FALSCH", "Gleichzeitig",
+            "Nach abgelehnter veralteter Änderung steht nicht mehr die Änderung des ersten Benutzers", kept)
     # many payments at once for one tenant: every one credited exactly once
     contract = next(x for x in v.all("/contracts") if x["status"] == "active")
     account = v.all("/accounts")[0]["id"]

@@ -10,6 +10,7 @@ from ..domain.occupancy import NON_BILLABLE_STATUSES
 from ..domain.payment_allocation import ContractCandidate, suggest_allocation
 from ..models import PaymentAllocationCreate
 from ..storage import ValidationError
+from .read_cache import CachedReads
 from .rent_history import charge_for, rent_steps
 
 
@@ -78,11 +79,13 @@ def allocate_unassigned(store: Any) -> dict:
     return {"allocated": done, "unassigned": unclear}
 
 
-def credited_by_tenant(store: Any, tenant_ids: Iterable[str] | None = None) -> dict[str, list[tuple[Any, str, Decimal]]]:
+def credited_by_tenant(store: Any, tenant_ids: Iterable[str] | None = None,
+                       bookings: list[Any] | None = None) -> dict[str, list[tuple[Any, str, Decimal]]]:
     """(booking, contract id, amount) per tenant, reading bookings and allocations once.
 
     Stored allocations count as they are; a booking without any (imported, or
     created before allocations existed) is credited by the same rules on the fly.
+    `bookings` are all bookings when the caller has read them already.
     """
     wanted = set(tenant_ids) if tenant_ids is not None else None
     if wanted is not None and len(wanted) == 1:
@@ -91,7 +94,8 @@ def credited_by_tenant(store: Any, tenant_ids: Iterable[str] | None = None) -> d
         booking_ids = {b.id for b in bookings}
         allocations = store.list_payment_allocations(booking_ids=booking_ids) if booking_ids else []
     else:
-        bookings = [b for b in store.list_bookings() if b.tenant_id and (wanted is None or b.tenant_id in wanted)]
+        bookings = [b for b in (store.list_bookings() if bookings is None else bookings)
+                    if b.tenant_id and (wanted is None or b.tenant_id in wanted)]
         booking_ids = {b.id for b in bookings}
         allocations = store.list_payment_allocations()
     stored: dict[str, list[Any]] = defaultdict(list)
@@ -142,6 +146,7 @@ def contract_payments(store: Any, contract: Any,
 
 def tenant_account(store: Any, tenant_id: str, as_of: date) -> dict:
     """Per contract what was due, what was paid and the balance; plus unassigned payments."""
+    store = CachedReads(store)
     contracts = [c for c in store.list_contracts() if c.tenant_id == tenant_id]
     credited = _credited(store, tenant_id)
     rows = []

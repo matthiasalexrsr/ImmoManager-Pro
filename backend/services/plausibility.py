@@ -11,7 +11,7 @@ A failed check raises storage.ValidationError: 400 with a German message.
 from __future__ import annotations
 
 import re
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Any, Callable, Optional
 
 from ..storage import NotFoundError, ValidationError
@@ -20,6 +20,8 @@ PROPERTY_TYPES = {"residential", "commercial", "mixed", "condominium", "single_f
                   "land", "parking", "other"}
 KEY_TYPES = {"area_sqm", "unit_count", "person_count", "consumption"}
 PRIORITIES = {"low", "medium", "high", "urgent"}
+PAYMENT_METHODS = {"bank_transfer", "sepa_direct_debit", "cash"}
+MARKUP = re.compile(r"<\s*/?\s*[a-zA-Z][^>]*>")
 CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
 
@@ -75,6 +77,13 @@ def _at_most(data: dict, keys: dict[str, tuple[str, float]]) -> None:
             raise ValidationError(f"{label} {value:,.0f} ist nicht plausibel (höchstens {limit:,.0f})".replace(",", "."))
 
 
+def _no_markup(data: dict, key: str, label: str) -> None:
+    """Names are printed in letters, PDFs and e-mails: no HTML tags (a pasted script, a broken copy)."""
+    value = data.get(key)
+    if _touched(data, key) and isinstance(value, str) and MARKUP.search(value):
+        raise ValidationError(f"{label} enthält HTML-Code (< >); bitte nur den Text eintragen")
+
+
 def _max_length(data: dict, key: str, label: str, limit: int = 200) -> None:
     value = data.get(key)
     if _touched(data, key) and isinstance(value, str) and len(value) > limit:
@@ -87,6 +96,10 @@ def iban_valid(iban: str) -> bool:
         return False
     digits = "".join(str(int(ch, 36)) for ch in compact[4:] + compact[:4])
     return int(digits) % 97 == 1
+
+
+def _positive(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0
 
 
 def _number(data: dict, keys: dict[str, str]) -> None:
@@ -135,11 +148,19 @@ def unit(data: dict, store: Any) -> None:
     _not_negative(data, {"cold_rent": "Die Kaltmiete", "service_charge_advance": "Die NK-Vorauszahlung",
                          "heating_advance": "Die Heizkosten-Vorauszahlung", "person_count": "Die Personenzahl",
                          "rooms": "Die Zimmerzahl"})
+    _no_markup(data, "label", "Die Bezeichnung")
+    rooms: Any = data.get("rooms")
+    area: Any = data.get("area_sqm")
+    if (_touched(data, "rooms") or _touched(data, "area_sqm")) and _positive(rooms) and _positive(area) \
+            and float(rooms) > 1 and float(area) / float(rooms) < 5:     # one room may be a tiny storeroom
+        raise ValidationError(f"{rooms:g} Zimmer auf {area:g} m² sind nicht plausibel (weniger als 5 m² je Zimmer)")
 
 
 def tenant(data: dict, store: Any) -> None:
     _text(data, "full_name", "Der Name", required=True)
     _max_length(data, "full_name", "Der Name")
+    _no_markup(data, "full_name", "Der Name")
+    _one_of(data, "payment_method", PAYMENT_METHODS, "Die Zahlungsart")
     phone = data.get("phone")
     if _touched(data, "phone") and isinstance(phone, str) and phone.strip() and not re.search(r"\d", phone):
         raise ValidationError("Die Telefonnummer enthält keine Ziffern")
@@ -149,6 +170,7 @@ def tenant(data: dict, store: Any) -> None:
 
 def property_(data: dict, store: Any) -> None:
     _text(data, "name", "Der Name", required=True)
+    _no_markup(data, "name", "Der Name")
     _one_of(data, "property_type", PROPERTY_TYPES, "Der Objekttyp")
     year = data.get("year_built") if _touched(data, "year_built") else None
     if isinstance(year, int) and not 1000 <= year <= date.today().year + 5:
@@ -172,6 +194,15 @@ def booking(data: dict, store: Any) -> None:
     unit_obj = _get(store.get_unit, data.get("unit_id"))
     if unit_obj and data.get("property_id") and unit_obj.property_id != data["property_id"]:
         raise ValidationError("Die Einheit gehört nicht zur gewählten Immobilie")
+
+
+def contract(data: dict, store: Any) -> None:
+    start = _day(data.get("start_date")) if _touched(data, "start_date") else None
+    if start and not 1900 <= start.year <= date.today().year + 5:
+        raise ValidationError(f"Vertragsbeginn {start:%d.%m.%Y} ist nicht plausibel")
+    end = _day(data.get("end_date")) if _touched(data, "end_date") else None
+    if end and end.year > date.today().year + 100:
+        raise ValidationError(f"Vertragsende {end:%d.%m.%Y} ist nicht plausibel; ohne Ende bitte leer lassen")
 
 
 def rent_adjustment(data: dict, store: Any) -> None:
@@ -258,6 +289,7 @@ def rent_period(data: dict, store: Any) -> None:
 RULES: list[tuple[re.Pattern, Callable, Optional[str]]] = [
     (re.compile(r"^/units(?:/(?P<id>[^/]+))?$"), unit, "get_unit"),
     (re.compile(r"^/tenants(?:/(?P<id>[^/]+))?$"), tenant, "get_tenant"),
+    (re.compile(r"^/contracts(?:/(?P<id>[^/]+))?$"), contract, "get_contract"),
     (re.compile(r"^/properties(?:/(?P<id>[^/]+))?$"), property_, "get_property"),
     (re.compile(r"^/bookings(?:/(?P<id>[^/]+))?$"), booking, "get_booking"),
     (re.compile(r"^/rent-adjustments(?:/(?P<id>[^/]+))?$"), rent_adjustment, "get_rent_adjustment"),
@@ -269,6 +301,59 @@ RULES: list[tuple[re.Pattern, Callable, Optional[str]]] = [
     (re.compile(r"^/accounts(?:/(?P<id>[^/]+))?$"), account, "get_account"),
     (re.compile(r"^/contracts/[^/]+/rent-periods$"), rent_period, None),
 ]
+
+
+# --- someone else saved in between ----------------------------------------------------------------
+
+class StaleRecordError(Exception):
+    """The record changed after the user opened it (answered with 409)."""
+
+
+# collection path -> getter; a form sends back the `updated_at` it was opened with
+STORED = {"/portfolios": "get_portfolio", "/accounts": "get_account", "/categories": "get_category",
+          "/properties": "get_property", "/units": "get_unit", "/tenants": "get_tenant", "/contracts": "get_contract",
+          "/bookings": "get_booking", "/receivables": "get_receivable", "/invoices": "get_invoice",
+          "/maintenance": "get_maintenance_case", "/documents": "get_document", "/tasks": "get_task",
+          "/calendar": "get_calendar_event", "/listings": "get_listing", "/leads": "get_lead",
+          "/viewings": "get_viewing_appointment", "/billing/periods": "get_billing_period",
+          "/billing/allocation-keys": "get_allocation_key", "/billing/cost-items": "get_cost_item",
+          "/deposits": "get_deposit", "/notifications/templates": "get_notification_template",
+          "/tax-rates": "get_tax_rate", "/rent-adjustments": "get_rent_adjustment",
+          "/handover-protocols": "get_handover_protocol", "/budgets": "get_budget",
+          "/escalation/rules": "get_escalation_rule", "/insurances": "get_insurance", "/contacts": "get_contact",
+          "/meters": "get_meter", "/rent-charges": "get_rent_charge"}
+_RECORD_PATH = re.compile(r"^(?P<collection>/.+)/(?P<id>[^/]+)$")
+
+
+def _moment(value: Any) -> Optional[datetime]:
+    if isinstance(value, str):
+        try:
+            value = datetime.fromisoformat(value)
+        except ValueError:
+            return None
+    if not isinstance(value, datetime):
+        return None
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+
+def check_not_stale(method: str, path: str, body: Any, store: Any) -> None:
+    """Refuse to save over a change someone else made after this user opened the record.
+
+    Only when the client says which state it edited (`updated_at` in the body); clients
+    that do not send it keep "the last one wins".
+    """
+    if method not in ("PUT", "PATCH") or not isinstance(body, dict) or not body.get("updated_at"):
+        return
+    match = _RECORD_PATH.match(path)
+    getter = STORED.get(match["collection"]) if match else None
+    if not match or not getter or not hasattr(store, getter):
+        return
+    current = _get(getattr(store, getter), match["id"])
+    seen, stored = _moment(body["updated_at"]), _moment(getattr(current, "updated_at", None))
+    if seen and stored and abs((stored - seen).total_seconds()) > 0.001:
+        raise StaleRecordError(f"Der Datensatz wurde inzwischen geändert (zuletzt am "
+                               f"{stored.astimezone():%d.%m.%Y um %H:%M:%S}). Bitte neu laden und die Änderung "
+                               "noch einmal eintragen, damit nichts überschrieben wird.")
 
 
 def check(method: str, path: str, body: Any, store: Any) -> None:

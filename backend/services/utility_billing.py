@@ -156,7 +156,12 @@ def compute_period_billing(store: Any, period: Any, today: Optional[date] = None
             else:
                 shares[key.id] = _time_shares(key, units, segments, contract_by_id, area_missing, person_problems)
             if shares[key.id] and sum((s.value for s in shares[key.id]), Decimal("0")) == 0:
-                result.blocker("ZERO_TOTAL_SHARE", "Die Anteile des Verteilerschlüssels ergeben zusammen 0", key.name)
+                # e.g. persons in a building of shops only: nothing to divide by
+                items = ", ".join(ci.description for ci in recoverable if ci.allocation_key_id == key.id)
+                result.blocker("ZERO_TOTAL_SHARE",
+                               "Die Anteile des Verteilerschlüssels ergeben zusammen 0; bitte diese Kosten nach "
+                               "einem anderen Schlüssel verteilen (z. B. Fläche oder Einheiten)",
+                               f"{key.name}: {items}" if items else key.name)
         if area_missing:
             result.blocker("MISSING_AREA", "Fläche fehlt oder ist 0 für area_sqm-Verteilung",
                            ", ".join(sorted(label(u) for u in area_missing)))
