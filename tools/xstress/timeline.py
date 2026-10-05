@@ -39,6 +39,7 @@ class Simulation:
         self.billed: set[tuple[str, int]] = set()
         self.meters: dict[str, str] = {}      # unit id -> meter id
         self.meter_values: dict[str, float] = {}
+        self.read_meters: set[str] = set()     # meters with at least one reading stored in the app
         self.pending_adjustments: list[tuple[str, Tenancy, tuple]] = []
         self.csv_bookings: list[tuple[str, Tenancy, Decimal]] = []
         self.arrears_until: dict[int, date] = {}
@@ -110,6 +111,8 @@ class Simulation:
                                                 "sepa_mandate": t.tenant.iban if t.behaviour == "sepa_return" else None},
                            area="Einzug")
             t.tenant.id = created["id"] if created else None
+        if t.deposit:
+            t.deposit = round(cold * 3, 2)       # three cold rents at the start (§ 551 BGB)
         notice_known = t.end is not None and add_months(t.end, -3) < self.w.start
         contract = v.ok("POST", "/contracts", {
             "contract_number": t.number, "property_id": prop.id, "unit_id": t.unit.id, "tenant_id": t.tenant.id,
@@ -442,10 +445,14 @@ class Simulation:
                     "meter_id": meter_id, "reading_date": month_end(month).isoformat(), "value": value,
                     "recorded_by": "hausmeister"}, expect=(200, 201, 400, 422), area="Zähler")
                 if value < self.meter_values[unit_id]:
-                    self.f.check(status in (400, 422), "LÜCKE", "Zähler",
-                                 "Zählerstand kleiner als im Vorjahr ohne Rückfrage angenommen")
+                    # only a reading the app knows can be compared: the first one has nothing before it
+                    if unit_id in self.read_meters:
+                        self.f.check(status in (400, 422), "LÜCKE", "Zähler",
+                                     "Zählerstand kleiner als im Vorjahr ohne Rückfrage angenommen")
                 else:
                     self.meter_values[unit_id] = value
+                if status in (200, 201):
+                    self.read_meters.add(unit_id)
 
     # --- the month -------------------------------------------------------------------------------------
     def month(self, month: date) -> None:

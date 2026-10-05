@@ -8,7 +8,7 @@
  *  - Event-based refresh so all mounted components update together
  *  - Configurable TTL to avoid stale data
  */
-import { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
+import { createContext, useContext, useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { api } from '../api';
 
 const DataStoreContext = createContext(null);
@@ -175,11 +175,14 @@ export function DataStoreProvider({ children }) {
     return result;
   }, [invalidate]);
 
+  // Stable value: useEntities subscribes in an effect that depends on it.
+  const value = useMemo(() => ({
+    subscribe, getCache, ensureLoaded, invalidate,
+    invalidateAll, invalidateRelated, mutate, fetchEntity,
+  }), [subscribe, getCache, ensureLoaded, invalidate, invalidateAll, invalidateRelated, mutate, fetchEntity]);
+
   return (
-    <DataStoreContext.Provider value={{
-      subscribe, getCache, ensureLoaded, invalidate,
-      invalidateAll, invalidateRelated, mutate, fetchEntity,
-    }}>
+    <DataStoreContext.Provider value={value}>
       {children}
     </DataStoreContext.Provider>
   );

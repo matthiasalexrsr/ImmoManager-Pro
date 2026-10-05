@@ -175,3 +175,25 @@ def test_review_list_flags_implausible_entries(client, world):
 
     assert {"deposit_too_high", "increase_over_cap", "adjustment_mid_month", "statement_period_too_long",
             "invoice_due_before_date"} <= kinds
+
+
+@pytest.mark.parametrize("body, text", [
+    ({"cold_rent": "1.200,50"}, "cold_rent: Bitte eine gültige Zahl angeben"),
+    ({"area_sqm": 0}, "Fläche muss größer als 0 m² sein"),
+    ({"person_count": 2.5}, "person_count: Bitte eine ganze Zahl angeben"),
+])
+def test_input_errors_read_as_german_sentences(client, world, body, text):
+    """Regression: the UI showed pydantic's English texts (e.g. 'Input should be a valid number')."""
+    resp = client.post("/api/v1/units", headers=world["owner"],
+                       json={"property_id": world["prop"]["id"], "label": "WE 2", "unit_type": "Wohnung", **body})
+    assert resp.status_code == 422
+    assert resp.json()["detail"][0]["msg"] == text
+
+
+def test_missing_and_malformed_dates_are_explained(client, world):
+    resp = client.post("/api/v1/contracts", headers=world["owner"], json={
+        "contract_number": "V-9", "property_id": world["prop"]["id"], "unit_id": world["unit"]["id"],
+        "tenant_id": world["tenant"]["id"], "start_date": "01.02.2026"})
+    assert resp.json()["detail"][0]["msg"] == "start_date: Bitte ein gültiges Datum angeben (JJJJ-MM-TT)"
+    resp = client.post("/api/v1/tenants", headers=world["owner"], json={})
+    assert resp.json()["detail"][0]["msg"] == "Pflichtangabe fehlt: full_name"

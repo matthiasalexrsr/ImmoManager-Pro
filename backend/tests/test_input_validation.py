@@ -41,5 +41,5 @@ def test_zero_area_and_zero_amount_are_validation_errors(client):
 
     assert [r.status_code for r in attempts] == [422] * 4
     messages = [r.json()["detail"][0]["msg"] for r in attempts]
-    assert messages == ["Value error, Fläche muss größer als 0 m² sein"] * 2 + ["Value error, Betrag darf nicht 0 sein"] * 2
+    assert messages == ["Fläche muss größer als 0 m² sein"] * 2 + ["Betrag darf nicht 0 sein"] * 2
     assert client.get(f"/api/v1/units/{unit['id']}").json()["area_sqm"] == 50
