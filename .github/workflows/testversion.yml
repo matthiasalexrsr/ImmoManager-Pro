@@ -1,0 +1,108 @@
+name: Testversion (Windows)
+
+# Builds the Windows test package: ImmoManager-Pro.exe with the realistic data set and the
+# master logins (backend/testversion), tries it once, and offers it as a ZIP artifact.
+# A new package: change packaging/testversion/VERSION, or run the workflow by hand.
+on:
+  push:
+    paths:
+      - 'packaging/testversion/**'
+      - '.github/workflows/testversion.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Windows-Paket bauen und probestarten
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.19.0'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install backend and PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt "pyinstaller>=6.0.0"
+
+      - name: Build ImmoManager-Pro.exe
+        run: python -m PyInstaller immomanager.spec --noconfirm
+
+      - name: Assemble package
+        id: package
+        shell: pwsh
+        run: |
+          $stamp = Get-Date -Format 'yyyy-MM-dd'
+          $name = "ImmoManager-Pro-Testversion-$stamp"
+          $root = Join-Path $env:RUNNER_TEMP $name
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          Copy-Item -Recurse dist/ImmoManager-Pro (Join-Path $root 'ImmoManager-Pro')
+          Copy-Item packaging/testversion/testversion.env (Join-Path $root 'ImmoManager-Pro/.env')
+          Copy-Item 'packaging/testversion/LIES MICH - Testversion.txt' $root
+          Copy-Item 'packaging/testversion/LIES MICH - Testversion.txt' (Join-Path $root 'ImmoManager-Pro')
+          $zip = Join-Path $env:RUNNER_TEMP "$name.zip"
+          7z a -tzip -mx=7 $zip "$root/*" | Out-Null
+          "zip=$zip" >> $env:GITHUB_OUTPUT
+          "name=$name" >> $env:GITHUB_OUTPUT
+          "root=$root" >> $env:GITHUB_OUTPUT
+          Write-Host ("Paket: {0:N1} MB" -f ((Get-Item $zip).Length / 1MB))
+
+      - name: Try the package (first start, test data, sign-in)
+        shell: pwsh
+        run: |
+          # unpack the ZIP as a tester would, and start the program from there
+          $try = Join-Path $env:RUNNER_TEMP 'probestart'
+          7z x '${{ steps.package.outputs.zip }}' "-o$try" | Out-Null
+          $exe = Join-Path $try 'ImmoManager-Pro/ImmoManager-Pro.exe'
+          $log = Join-Path $env:RUNNER_TEMP 'probestart.log'
+          $proc = Start-Process -FilePath $exe -ArgumentList '--no-browser', '--port', '8765' `
+            -WorkingDirectory (Split-Path $exe) -RedirectStandardOutput $log -RedirectStandardError "$log.err" -PassThru
+          $ready = $false
+          for ($i = 0; $i -lt 120; $i++) {
+            Start-Sleep -Seconds 5
+            try {
+              $health = Invoke-RestMethod -Uri 'http://127.0.0.1:8765/health' -TimeoutSec 5
+              if ($health.status -eq 'ok') { $ready = $true; break }
+            } catch { }
+            if ($proc.HasExited) { break }
+          }
+          Get-Content $log -Tail 25
+          if (-not $ready) { Get-Content "$log.err" -Tail 40; throw 'Die Testversion ist nicht gestartet.' }
+          if (-not $health.testversion) { throw 'Die .env-Datei der Testversion wurde nicht gelesen.' }
+          $body = @{ username = 'linda_reiser@web.de'; password = 'Immo-Test-2026' } | ConvertTo-Json
+          $token = (Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:8765/api/v1/auth/login' `
+            -ContentType 'application/json' -Body $body).access_token
+          $headers = @{ Authorization = "Bearer $token" }
+          $properties = Invoke-RestMethod -Uri 'http://127.0.0.1:8765/api/v1/properties?limit=1000' -Headers $headers
+          $documents = Invoke-RestMethod -Uri 'http://127.0.0.1:8765/api/v1/documents?limit=1' -Headers $headers
+          $pdf = Invoke-WebRequest -Uri ('http://127.0.0.1:8765' + $documents[0].file_url) -Headers $headers
+          $page = Invoke-WebRequest -Uri 'http://127.0.0.1:8765/' -UseBasicParsing
+          Stop-Process -Id $proc.Id -Force
+          Write-Host "Objekte: $($properties.Count), Dokument: $($pdf.StatusCode), Oberflaeche: $($page.StatusCode)"
+          if ($properties.Count -ne 15) { throw "Erwartet 15 Objekte, gefunden $($properties.Count)" }
+          if ($pdf.StatusCode -ne 200 -or $page.Content -notmatch 'id="root"') { throw 'Dokument oder Oberflaeche fehlt' }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.name }}
+          path: ${{ steps.package.outputs.zip }}
+          retention-days: 30
+          compression-level: 0

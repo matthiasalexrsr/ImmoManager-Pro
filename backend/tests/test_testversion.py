@@ -106,3 +106,16 @@ def test_builder_plans_the_stories_for_the_tester():
     assert all(t.start < builder.start for t in builder.tenancies if t.start.year < 2023)
     future = [t for t in builder.tenancies if t.start > TODAY]
     assert len(future) == 1                    # the successor who signed already
+
+
+def test_uploads_are_stored_where_the_app_serves_them(tmp_path, monkeypatch):
+    """The Windows program changes into its install folder: a relative "uploads" folder put
+    uploaded documents there, while /uploads served the data folder (404 on every document)."""
+    from backend.paths import get_uploads_dir
+    from backend.services.file_storage import LocalStorage
+
+    monkeypatch.chdir(tmp_path)
+    storage = LocalStorage()
+
+    assert storage.base_dir == get_uploads_dir()
+    assert not (tmp_path / "uploads").exists()

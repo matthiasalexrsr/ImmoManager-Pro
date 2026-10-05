@@ -44,6 +44,22 @@ Backups can be created manually or scheduled via Windows Task Scheduler:
 .\.venv\Scripts\python.exe scripts\backup_scheduler.py schedule
 ```
 
+### Test version (data set and tutorial)
+
+A version for testers with a realistic, fictitious data set: 15 properties, 93 units and
+three years of history, built through the app's API on the first start
+(`backend/testversion`). Master logins: `linda_reiser@web.de` and `mat.thias@online.de`,
+plus four staff users for the roles; start password `Immo-Test-2026`. A guided tour
+(question mark in the top bar) shows the main functions.
+
+```bash
+python -m backend --testversion            # own data folder, data set on the first start
+```
+
+The Windows package (`ImmoManager-Pro.exe` with `.env` and instructions, as ZIP) is built by
+the workflow "Testversion (Windows)": change `packaging/testversion/VERSION` or start it by
+hand; the ZIP is attached to the run as an artifact.
+
 ### Development
 
 ```bash

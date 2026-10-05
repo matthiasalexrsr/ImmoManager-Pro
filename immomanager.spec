@@ -89,6 +89,9 @@ _THIRD_PARTY_PACKAGES = [
 ]
 
 collected_hiddenimports = []
+# All backend modules (services, routers, the test version …): imports inside functions are
+# easy to miss, and a module missing from the bundle fails only when it is first used.
+collected_hiddenimports += collect_submodules('backend', filter=lambda name: '.tests' not in name)
 for pkg in _THIRD_PARTY_PACKAGES:
     try:
         mods = collect_submodules(pkg)
@@ -223,6 +226,11 @@ if os.path.isdir(i18n_dir):
         src = os.path.join(i18n_dir, f)
         if os.path.isfile(src):
             backend_data.append((src, 'i18n'))
+
+# Version number (backend.config reads it from pyproject.toml when the package metadata is missing)
+pyproject = os.path.join(ROOT, 'pyproject.toml')
+if os.path.isfile(pyproject):
+    backend_data.append((pyproject, '.'))
 
 # Include alembic config and migrations
 alembic_ini = os.path.join(ROOT, 'alembic.ini')
