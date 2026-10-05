@@ -202,3 +202,42 @@ def test_missing_and_malformed_dates_are_explained(client, world):
     assert resp.json()["detail"][0]["msg"] == "start_date: Bitte ein gültiges Datum angeben (JJJJ-MM-TT)"
     resp = client.post("/api/v1/tenants", headers=world["owner"], json={})
     assert resp.json()["detail"][0]["msg"] == "Pflichtangabe fehlt: full_name"
+
+
+@pytest.mark.parametrize("path, body", [
+    ("/accounts", {"name": "Konto 2", "account_type": "bank", "iban": "DE00370400440532013000"}),
+    ("/properties", {"name": "T", "property_type": "residential", "postal_code": "ABCDE", "country": "DE"}),
+    ("/tenants", {"full_name": "Test", "phone": "abc"}),
+    ("/units", {"label": "WE 3", "unit_type": "Wohnung", "cold_rent": 1e12}),
+    ("/units", {"label": "Ä" * 300, "unit_type": "Wohnung"}),
+    ("/bookings", {"booking_date": "2025-01-02", "amount": 1e12}),
+])
+def test_typos_with_too_many_digits_or_wrong_format_are_refused(client, world, path, body):
+    refs = {"/accounts": {"portfolio_id": world["pf"]["id"]}, "/properties": {"portfolio_id": world["pf"]["id"]},
+            "/units": {"property_id": world["prop"]["id"]}, "/bookings": {"account_id": world["account"]["id"]}}
+    resp = client.post(f"/api/v1{path}", headers=world["owner"], json={**refs.get(path, {}), **body})
+    assert resp.status_code == 400, resp.text
+
+
+def test_a_valid_iban_with_spaces_and_a_foreign_postcode_pass(client, world):
+    owner = world["owner"]
+    assert client.post("/api/v1/accounts", headers=owner, json={
+        "portfolio_id": world["pf"]["id"], "name": "Konto 2", "account_type": "bank",
+        "iban": "DE89 3704 0044 0532 0130 00"}).status_code == 201
+    assert client.post("/api/v1/properties", headers=owner, json={
+        "portfolio_id": world["pf"]["id"], "name": "Wien", "property_type": "residential", "postal_code": "1010",
+        "country": "AT"}).status_code == 201
+
+
+def test_a_manual_rent_period_starts_on_the_first(client, world):
+    """A change in mid-month would only be charged from the following month."""
+    url = f"/api/v1/contracts/{world['contract']['id']}/rent-periods"
+    body = {"contract_id": world["contract"]["id"], "cold_rent": 650, "service_charge_advance": 0, "heating_advance": 0}
+    assert client.post(url, headers=world["owner"], json={**body, "valid_from": "2025-03-15"}).status_code == 400
+    assert client.post(url, headers=world["owner"], json={**body, "valid_from": "2025-03-01"}).status_code == 201
+
+
+def test_framework_errors_are_german(client, world):
+    assert client.get("/api/v1/gibt-es-nicht", headers=world["owner"]).json()["error"]["message"] == "Nicht gefunden"
+    resp = client.put("/api/v1/review", headers=world["owner"], json={})
+    assert resp.status_code == 405 and resp.json()["error"]["message"] == "Diese Aktion ist hier nicht möglich"

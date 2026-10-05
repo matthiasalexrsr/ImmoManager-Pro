@@ -154,7 +154,7 @@ def cases(r: dict) -> list[tuple[str, str, str, str, dict, str]]:
         ("Konto", "IBAN mit falscher Prüfziffer", "POST", "/accounts",
          {"portfolio_id": "{portfolio}", "name": "T", "account_type": "bank", "iban": "DE00370400440532013000"}, "warn"),
         ("Konto", "unbekannte Kontoart", "POST", "/accounts",
-         {"portfolio_id": "{portfolio}", "name": "T", "account_type": "bitcoin"}, "reject"),
+         {"portfolio_id": "{portfolio}", "name": "T", "account_type": "bitcoin"}, "warn"),   # free text by design
         # meters
         ("Zähler", "negativer Zählerstand", "POST", "/meters/{meter}/readings",
          {"meter_id": "{meter}", "reading_date": "2026-06-30", "value": -5}, "reject"),

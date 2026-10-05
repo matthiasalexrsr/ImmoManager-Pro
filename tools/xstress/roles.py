@@ -148,9 +148,10 @@ def concurrency(users: dict[str, Client], f: Findings) -> None:
     tenants = v.all("/tenants")
     tenant = tenants[0]
     # two people change different fields of the same tenant at the same moment
+    # (both may edit tenants: manager and owner)
     with ThreadPoolExecutor(2) as pool:
         pool.submit(v.call, "PATCH", f"/tenants/{tenant['id']}", {"phone": "+49 30 111111"}, area="Gleichzeitig")
-        pool.submit(b.call, "PATCH", f"/tenants/{tenant['id']}", {"email": "neu@stress.test"}, area="Gleichzeitig")
+        pool.submit(o.call, "PATCH", f"/tenants/{tenant['id']}", {"email": "neu@stress.test"}, area="Gleichzeitig")
     after = o.ok("GET", f"/tenants/{tenant['id']}", area="Gleichzeitig") or {}
     f.check(after.get("phone") == "+49 30 111111" and after.get("email") == "neu@stress.test", "FALSCH", "Gleichzeitig",
             "Gleichzeitige Änderungen verschiedener Felder: eine Änderung ging verloren", after)
@@ -158,7 +159,7 @@ def concurrency(users: dict[str, Client], f: Findings) -> None:
     v.call("PUT", f"/tenants/{tenant['id']}", {**{k: after.get(k) for k in ("full_name", "email", "phone")},
                                                 "notes": "Stand A"}, area="Gleichzeitig")
     stale = dict(after, notes="Stand B, auf altem Stand bearbeitet")
-    status, _ = b.call("PUT", f"/tenants/{tenant['id']}", {k: stale.get(k) for k in ("full_name", "email", "phone", "notes")},
+    status, _ = o.call("PUT", f"/tenants/{tenant['id']}", {k: stale.get(k) for k in ("full_name", "email", "phone", "notes")},
                        expect=(200, 409, 412), area="Gleichzeitig")
     if status == 200:
         f.add("HINWEIS", "Gleichzeitig", "Keine Konflikterkennung: wer zuletzt speichert, überschreibt die Änderung des "

@@ -27,6 +27,13 @@ RECOVERABLE = [  # description, key type, share of yearly costs per m² (approx.
 ]
 
 
+def german_iban(bank_code: int, account: int) -> str:
+    """A German IBAN with correct check digits (ISO 13616, mod 97)."""
+    bban = f"{bank_code:08d}{account:010d}"
+    check = 98 - int(bban + "131400") % 97          # "DE" = 13 14, then "00"
+    return f"DE{check:02d}{bban}"
+
+
 class Simulation:
     def __init__(self, world: World, users: dict[str, Client], findings: Findings, seed: int):
         self.w, self.u, self.f = world, users, findings
@@ -61,7 +68,7 @@ class Simulation:
             created = o.ok("POST", "/portfolios", {"name": pf.name, "owner_name": pf.owner}, area="Aufbau")
             pf.id = created["id"]
             account = o.ok("POST", "/accounts", {"portfolio_id": pf.id, "name": f"Mietkonto {pf.owner}",
-                                                 "bank_name": "Sparkasse", "iban": f"DE89370400440532{n:06d}",
+                                                 "bank_name": "Sparkasse", "iban": german_iban(37040044, 532013000 + n),
                                                  "account_type": "bank", "opening_balance": 25000}, area="Aufbau")
             pf.account_id = account["id"]
             cash = o.ok("POST", "/accounts", {"portfolio_id": pf.id, "name": f"Barkasse {pf.owner}",

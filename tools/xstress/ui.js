@@ -44,7 +44,8 @@ const RAW_KEY = /\b(?:pages|ui|status|navigation|tenantsContracts|finance|portfo
     const text = await page.locator('body').innerText().catch(() => '');
     const raw = [...new Set(text.match(RAW_KEY) || [])];
     if (raw.length) issues.push({ page: current, kind: 'i18n', detail: raw.slice(0, 5).join(', ') });
-    const editButtons = await page.locator('.action-cell button, .table-header .btn-primary').count();
+    // only changing buttons: New, Edit, Delete (viewing a rent history is fine for read-only users)
+    const editButtons = await page.locator('.action-cell button[aria-label="Bearbeiten"], .action-cell button[aria-label="Löschen"], .table-header .btn-primary').count();
     for (const [url, count] of refused) issues.push({ page: current, kind: 'http 403', detail: `${url} (${count}×)` });
     pages.push({ page: current, ms, editButtons, requests });
   }

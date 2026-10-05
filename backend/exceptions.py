@@ -20,10 +20,11 @@ import traceback
 from enum import Enum
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError as PydanticValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .logging_config import request_id_var
 from .storage import NotFoundError, ValidationError
@@ -93,6 +94,11 @@ def _error_response(
         body["error"]["details"] = details
     return JSONResponse(status_code=status_code, content=body)
 
+
+# Default texts of the framework, as users read them
+_STANDARD_TEXTS = {"Not Found": "Nicht gefunden", "Method Not Allowed": "Diese Aktion ist hier nicht möglich",
+                   "Not authenticated": "Bitte anmelden", "Unauthorized": "Bitte anmelden",
+                   "Forbidden": "Keine Berechtigung", "Internal Server Error": "Interner Fehler"}
 
 _FIELD_TEXT = {
     "float_parsing": "Bitte eine gültige Zahl angeben", "float_type": "Bitte eine gültige Zahl angeben",
@@ -211,8 +217,9 @@ def register_exception_handlers(app: FastAPI) -> None:
     except ImportError:
         pass  # error_helpers not available — skip handler
 
-    @app.exception_handler(HTTPException)
-    async def http_exception_handler(request: Request, exc: HTTPException):
+    # Starlette's own exceptions too: unknown routes (404) and wrong methods (405)
+    @app.exception_handler(StarletteHTTPException)
+    async def http_exception_handler(request: Request, exc: StarletteHTTPException):
         code = ErrorCode.INTERNAL_ERROR
         if exc.status_code == 401:
             code = ErrorCode.AUTH_FAILED
@@ -227,6 +234,9 @@ def register_exception_handlers(app: FastAPI) -> None:
         elif exc.status_code in (400, 422):
             code = ErrorCode.VALIDATION_ERROR
         msg = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+        msg = _STANDARD_TEXTS.get(msg, msg)
+        if exc.status_code == 405:
+            code = ErrorCode.VALIDATION_ERROR
         ctx = _request_context(request)
         log_level = logging.WARNING if exc.status_code < 500 else logging.ERROR
         logger.log(

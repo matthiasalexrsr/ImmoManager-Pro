@@ -66,6 +66,29 @@ def _not_negative(data: dict, keys: dict[str, str]) -> None:
             raise ValidationError(f"{label} darf nicht negativ sein")
 
 
+def _at_most(data: dict, keys: dict[str, tuple[str, float]]) -> None:
+    """Upper bounds against typos with too many digits (1 Billion € rent, 10 Mio. m²)."""
+    for key, (label, limit) in keys.items():
+        value = data.get(key)
+        if _touched(data, key) and isinstance(value, (int, float)) and not isinstance(value, bool) \
+                and abs(value) > limit:
+            raise ValidationError(f"{label} {value:,.0f} ist nicht plausibel (höchstens {limit:,.0f})".replace(",", "."))
+
+
+def _max_length(data: dict, key: str, label: str, limit: int = 200) -> None:
+    value = data.get(key)
+    if _touched(data, key) and isinstance(value, str) and len(value) > limit:
+        raise ValidationError(f"{label} ist zu lang (höchstens {limit} Zeichen)")
+
+
+def iban_valid(iban: str) -> bool:
+    compact = re.sub(r"\s+", "", iban).upper()
+    if not re.fullmatch(r"[A-Z]{2}\d{2}[A-Z0-9]{11,30}", compact):
+        return False
+    digits = "".join(str(int(ch, 36)) for ch in compact[4:] + compact[:4])
+    return int(digits) % 97 == 1
+
+
 def _number(data: dict, keys: dict[str, str]) -> None:
     for key, label in keys.items():
         if _touched(data, key) and isinstance(data.get(key), bool):
@@ -104,6 +127,11 @@ def _get(getter: Callable[[str], Any], entity_id: Any) -> Any:
 
 def unit(data: dict, store: Any) -> None:
     _text(data, "label", "Die Bezeichnung", required=True)
+    _max_length(data, "label", "Die Bezeichnung")
+    _at_most(data, {"area_sqm": ("Die Fläche", 100_000), "cold_rent": ("Die Kaltmiete", 10_000_000),
+                    "service_charge_advance": ("Die NK-Vorauszahlung", 1_000_000),
+                    "heating_advance": ("Die Heizkosten-Vorauszahlung", 1_000_000), "rooms": ("Die Zimmerzahl", 500),
+                    "person_count": ("Die Personenzahl", 1_000)})
     _not_negative(data, {"cold_rent": "Die Kaltmiete", "service_charge_advance": "Die NK-Vorauszahlung",
                          "heating_advance": "Die Heizkosten-Vorauszahlung", "person_count": "Die Personenzahl",
                          "rooms": "Die Zimmerzahl"})
@@ -111,6 +139,10 @@ def unit(data: dict, store: Any) -> None:
 
 def tenant(data: dict, store: Any) -> None:
     _text(data, "full_name", "Der Name", required=True)
+    _max_length(data, "full_name", "Der Name")
+    phone = data.get("phone")
+    if _touched(data, "phone") and isinstance(phone, str) and phone.strip() and not re.search(r"\d", phone):
+        raise ValidationError("Die Telefonnummer enthält keine Ziffern")
     for key, label in [("address_line", "Die Straße"), ("city", "Der Ort"), ("notes", "Die Notiz")]:
         _text(data, key, label)
 
@@ -121,6 +153,11 @@ def property_(data: dict, store: Any) -> None:
     year = data.get("year_built") if _touched(data, "year_built") else None
     if isinstance(year, int) and not 1000 <= year <= date.today().year + 5:
         raise ValidationError(f"Baujahr {year} ist nicht plausibel")
+    _max_length(data, "name", "Der Name")
+    code, country = data.get("postal_code"), (data.get("country") or "DE").strip().upper()
+    if _touched(data, "postal_code") and isinstance(code, str) and code.strip() and country in ("DE", "DEU", "DEUTSCHLAND") \
+            and not re.fullmatch(r"\d{5}", code.strip()):
+        raise ValidationError(f"Postleitzahl „{code}“: in Deutschland fünf Ziffern")
     _not_negative(data, {"living_area_sqm": "Die Wohnfläche", "usable_area_sqm": "Die Nutzfläche",
                          "plot_area_sqm": "Die Grundstücksfläche", "purchase_price": "Der Kaufpreis",
                          "market_value": "Der Marktwert"})
@@ -128,6 +165,7 @@ def property_(data: dict, store: Any) -> None:
 
 def booking(data: dict, store: Any) -> None:
     _number(data, {"amount": "Der Betrag"})
+    _at_most(data, {"amount": ("Der Betrag", 1_000_000_000)})
     day = _day(data.get("booking_date")) if _touched(data, "booking_date") else None
     if day and not 1950 <= day.year <= date.today().year + 10:
         raise ValidationError(f"Buchungsdatum {day:%d.%m.%Y} ist nicht plausibel")
@@ -199,6 +237,23 @@ def meter_reading(data: dict, store: Any) -> None:
                                   "anlegen.")
 
 
+def account(data: dict, store: Any) -> None:
+    _text(data, "name", "Der Name", required=True)
+    iban = data.get("iban")
+    if _touched(data, "iban") and isinstance(iban, str) and iban.strip() and not iban_valid(iban):
+        raise ValidationError("Die IBAN ist ungültig (Prüfziffer oder Länge stimmt nicht)")
+
+
+def rent_period(data: dict, store: Any) -> None:
+    _not_negative(data, {"cold_rent": "Die Kaltmiete", "service_charge_advance": "Die NK-Vorauszahlung",
+                         "heating_advance": "Die Heizkosten-Vorauszahlung"})
+    _at_most(data, {"cold_rent": ("Die Kaltmiete", 10_000_000)})
+    day = _day(data.get("valid_from"))
+    if day and day.day != 1:
+        # rent is charged per calendar month; a change in the middle would only count from the next month
+        raise ValidationError("Ein Mietstand gilt ab dem 1. eines Monats")
+
+
 # path pattern (relative to /api/v1) -> (rule, getter of the stored record for changes)
 RULES: list[tuple[re.Pattern, Callable, Optional[str]]] = [
     (re.compile(r"^/units(?:/(?P<id>[^/]+))?$"), unit, "get_unit"),
@@ -211,6 +266,8 @@ RULES: list[tuple[re.Pattern, Callable, Optional[str]]] = [
     (re.compile(r"^/tasks(?:/(?P<id>[^/]+))?$"), task, "get_task"),
     (re.compile(r"^/billing/allocation-keys(?:/(?P<id>[^/]+))?$"), allocation_key, "get_allocation_key"),
     (re.compile(r"^/meters/(?P<meter>[^/]+)/readings$"), meter_reading, None),
+    (re.compile(r"^/accounts(?:/(?P<id>[^/]+))?$"), account, "get_account"),
+    (re.compile(r"^/contracts/[^/]+/rent-periods$"), rent_period, None),
 ]
 
 
