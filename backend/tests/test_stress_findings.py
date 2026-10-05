@@ -357,6 +357,8 @@ def test_cached_reads_answer_like_the_store(client, world):
 
 def test_a_shared_report_result_never_hides_a_change(client, world):
     """Results are shared between people asking at the same moment, but every change shows at once."""
+    from datetime import date
+
     from backend.models import InvoiceCreate
 
     owner = world["owner"]
@@ -371,7 +373,7 @@ def test_a_shared_report_result_never_hides_a_change(client, world):
         "gross_amount": -119})
     assert kinds().count("invoice_negative") == before.count("invoice_negative") + 1
     # a change made without a request (a job, an import) shows as well
-    store.create_invoice(InvoiceCreate(supplier="Y", invoice_date="2026-01-11", net_amount=-50, vat_amount=0,
+    store.create_invoice(InvoiceCreate(supplier="Y", invoice_date=date(2026, 1, 11), net_amount=-50, vat_amount=0,
                                        gross_amount=-50))
     assert kinds().count("invoice_negative") == before.count("invoice_negative") + 2
 
