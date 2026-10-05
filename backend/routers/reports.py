@@ -9,8 +9,14 @@ from pydantic import BaseModel, Field
 from ..concurrency import one_at_a_time
 from ..dependencies import store
 from ..services import report_service
+from ..services.read_cache import CachedReads
 
 router = APIRouter(prefix="/reports", tags=["Berichte"])
+
+
+def _all_bookings() -> list:
+    """All bookings, from memory while none changed (backend.concurrency)."""
+    return CachedReads(store).list_bookings()
 
 
 def _csv_response(rows: list[dict], filename: str) -> Response:
@@ -37,7 +43,7 @@ def get_summary(format: str | None = Query(None, alias="format")):
         units=store.list_units(),
         contracts=store.list_contracts(),
         receivables=store.list_receivables(),
-        bookings=store.list_bookings(),
+        bookings=_all_bookings(),
         invoices=store.list_invoices(),
         maintenance_cases=store.list_maintenance_cases(),
     )
@@ -64,7 +70,7 @@ def get_summary(format: str | None = Query(None, alias="format")):
 @one_at_a_time
 def get_finance_report(format: str | None = Query(None, alias="format")):
     data = report_service.compute_finance(
-        bookings=store.list_bookings(),
+        bookings=_all_bookings(),
         categories=store.list_categories(),
     )
 
@@ -124,7 +130,7 @@ def get_receivables_aging(format: str | None = Query(None, alias="format")):
 @router.get("/cashflow")
 @one_at_a_time
 def get_cashflow_report(format: str | None = Query(None, alias="format")):
-    data = report_service.compute_cashflow(bookings=store.list_bookings())
+    data = report_service.compute_cashflow(bookings=_all_bookings())
 
     if format == "csv":
         rows = [{
@@ -196,7 +202,7 @@ def datev_export(
     DATEV Buchungsstapel format uses semicolons, German number formatting,
     and specific column headers recognized by DATEV accounting software.
     """
-    bookings = store.list_bookings()
+    bookings = _all_bookings()
 
     if start_date:
         bookings = [b for b in bookings if b.booking_date >= start_date]
@@ -333,7 +339,7 @@ def liquidity_forecast(
     Opening balances belong to accounts, not to properties, so a forecast for
     one property starts from its bookings alone.
     """
-    bookings = store.list_bookings()
+    bookings = _all_bookings()
     opening_balance = 0.0
     if property_id:
         bookings = [b for b in bookings if b.property_id == property_id]

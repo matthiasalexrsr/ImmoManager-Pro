@@ -2,7 +2,8 @@
 
 The review list, accounts and reports look up the contracts and the rent history
 of every contract again and again (once per contract, once per payment). This
-view reads both once and answers the repeated questions from memory. Use it only
+view reads both once and answers the repeated questions from memory; all bookings
+come from memory as long as no booking changed. Use it only
 for reading within one calculation; everything else goes to the store itself.
 """
 
@@ -10,6 +11,8 @@ from __future__ import annotations
 
 from collections import defaultdict
 from typing import Any
+
+from ..concurrency import whole_table
 
 
 class CachedReads:
@@ -25,6 +28,12 @@ class CachedReads:
         if self._contracts is None:
             self._contracts = self._store.list_contracts()
         return list(self._contracts)
+
+    def list_bookings(self, tenant_id: str | None = None) -> list[Any]:
+        """All bookings from memory while none changed (backend.concurrency); one tenant's from the store."""
+        if tenant_id is not None:
+            return self._store.list_bookings(tenant_id=tenant_id)
+        return whole_table("bookings", self._store.list_bookings)
 
     def list_contract_rent_periods(self, contract_id: str | None = None) -> list[Any]:
         if self._periods is None:

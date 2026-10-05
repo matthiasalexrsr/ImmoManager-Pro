@@ -261,13 +261,13 @@ class RBACWriteGuardMiddleware(BaseHTTPMiddleware):
 
         if request.method not in _RBAC_WRITE_METHODS:
             return await call_next(request)
-        from .concurrency import note_change
+        from .concurrency import note_write
 
-        note_change()       # shared report results are stale from now on (backend.concurrency)
+        note_write()        # shared report results are stale from now on (backend.concurrency)
         try:
             return await call_next(request)
         finally:
-            note_change()
+            note_write()
 
     @staticmethod
     def _get_user_role(request: Request) -> str | None:

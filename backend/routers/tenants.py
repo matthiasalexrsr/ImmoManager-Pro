@@ -2,6 +2,7 @@ from datetime import date
 
 from fastapi import APIRouter, HTTPException, Query, status
 
+from ..concurrency import one_at_a_time
 from ..dependencies import store
 from ..models import Tenant, TenantCreate, TenantPatch
 from ..services.deletion_guard import ensure_deletable
@@ -66,6 +67,7 @@ def create_tenant(payload: TenantCreate) -> Tenant:
 
 
 @router.get("/{tenant_id}/account")
+@one_at_a_time
 def get_tenant_account(tenant_id: str, as_of: date | None = Query(None)) -> dict:
     """Per contract: due, paid and balance; plus payments not credited to any contract."""
     try:

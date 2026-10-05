@@ -6,11 +6,13 @@ from typing import Any, Optional
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel
 
+from ..concurrency import one_at_a_time
 from ..dependencies import store
 from ..domain.lease_engine import LeaseEngine, PaymentLine, RentStep
 from ..models import Contract, ContractCreate, ContractPatch, ContractRentPeriod, ContractRentPeriodCreate
 from ..services.deletion_guard import ensure_deletable
 from ..services.payment_allocations import contract_payments
+from ..services.read_cache import CachedReads
 from ..services.rent_history import charge_for, follow_contract_start, rent_steps, start_rent_history
 from ..storage import NotFoundError, ValidationError
 
@@ -76,12 +78,14 @@ def create_contract(payload: ContractCreate) -> Contract:
 
 
 @router.get("/current-rents")
+@one_at_a_time
 def current_rents(as_of: Optional[date] = Query(None)) -> dict[str, dict]:
     """The rent each contract owes on a day (today by default), from its rent history."""
     day = as_of or date.today()
+    reads = CachedReads(store)      # all rent histories in one query instead of one per contract
     rents = {}
-    for contract in store.list_contracts():
-        charge = charge_for(store, contract, day)
+    for contract in reads.list_contracts():
+        charge = charge_for(reads, contract, day)
         if charge is not None:
             rents[contract.id] = {"cold_rent": float(charge.cold_rent),
                                   "service_charge_advance": float(charge.service_charge_advance),

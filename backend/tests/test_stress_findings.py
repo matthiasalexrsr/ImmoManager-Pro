@@ -395,3 +395,48 @@ def test_a_shared_result_is_kept_only_while_nothing_changed(monkeypatch):
     concurrency.note_change()
     report(year=2026)
     assert calls == [2026, 2025, 2026]
+
+
+def test_reports_see_every_new_changed_or_deleted_booking(client, world):
+    """Bookings are kept in memory for reports until one changes – by request or directly in the store."""
+    from datetime import date
+
+    from backend.models import BookingCreate
+
+    owner = world["owner"]
+
+    def total():
+        return client.get("/api/v1/reports/summary", headers=owner).json()["finance"]["bookingsTotal"]
+
+    base = total()
+    booking = client.post("/api/v1/bookings", headers=owner, json={
+        "account_id": world["account"]["id"], "booking_date": "2026-01-05", "amount": 100}).json()
+    assert total() == base + 100
+    client.patch(f"/api/v1/bookings/{booking['id']}", headers=owner, json={"amount": 150})
+    assert total() == base + 150
+    client.patch(f"/api/v1/tenants/{world['tenant']['id']}", headers=owner, json={"notes": "nur Mieter"})
+    assert total() == base + 150
+    store.create_booking(BookingCreate(account_id=world["account"]["id"], booking_date=date(2026, 1, 6), amount=7))
+    assert total() == base + 157
+    client.delete(f"/api/v1/bookings/{booking['id']}", headers=owner)
+    assert total() == base + 7
+
+
+def test_a_change_of_other_tables_keeps_the_bookings_in_memory(monkeypatch):
+    from backend import concurrency
+
+    monkeypatch.setattr(concurrency, "_tracking", True)
+    loads = []
+
+    def load():
+        loads.append(1)
+        return ["b1"]
+
+    assert concurrency.whole_table("bookings_test", load) == ["b1"]
+    concurrency._note_tables({"tenants"})
+    assert concurrency.whole_table("bookings_test", load) == ["b1"] and len(loads) == 1
+    concurrency._note_tables({"bookings_test"})
+    concurrency.whole_table("bookings_test", load)
+    concurrency.note_change()          # a restored backup: everything is read again
+    concurrency.whole_table("bookings_test", load)
+    assert len(loads) == 3

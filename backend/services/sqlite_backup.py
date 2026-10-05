@@ -29,6 +29,9 @@ def copy_database(source: Path, target: Path) -> None:
             dst.close()
     finally:
         src.close()
+    from ..concurrency import note_change
+
+    note_change()      # written past the sessions: nothing read before is valid
 
 
 def is_sqlite_database(path: Path) -> bool:
