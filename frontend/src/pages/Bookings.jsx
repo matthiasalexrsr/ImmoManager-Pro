@@ -6,11 +6,14 @@ import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
+import { useToast } from '../components/Toast';
 
 export default function Bookings() {
   const { t } = useTranslation();
   const confirm = useConfirm();
+  const toast = useToast();
   const store = useDataStore();
+  const { items: contracts } = useEntities('contracts', '/contracts');
   const { items: accounts } = useEntities('accounts', '/accounts');
   const { items: categories } = useEntities('categories', '/categories');
   const { items: properties } = useEntities('properties', '/properties');
@@ -21,11 +24,17 @@ export default function Bookings() {
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
   const [filter, setFilter] = useState('all');
+  const [allocations, setAllocations] = useState([]);
+  const [split, setSplit] = useState(null);
 
   const noneOpt = t('ui.form.none') || '— Keine —';
 
+  // Which contract a tenant payment pays (a transfer may pay flat and garage together).
+  const loadAllocations = () => api.get('/bookings/allocations').then(a => setAllocations(a || [])).catch(() => setAllocations([]));
+
   const refreshData = () => {
     setLoading(true);
+    loadAllocations();
     api.list('/bookings').catch(() => [])
       .then(data => setBookings(Array.isArray(data) ? data : []))
       .finally(() => setLoading(false));
@@ -33,6 +42,7 @@ export default function Bookings() {
 
   useEffect(() => {
     let cancelled = false;
+    loadAllocations();
     api.list('/bookings').catch(err => { console.warn('[Bookings] load:', err.message); return []; })
       .then(data => { if (!cancelled) setBookings(Array.isArray(data) ? data : []); })
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -45,10 +55,23 @@ export default function Bookings() {
   const propertyMap = Object.fromEntries(properties.map(p => [p.id, p.name]));
   const unitMap = Object.fromEntries(units.map(u => [u.id, u.label]));
   const tenantMap = Object.fromEntries(tenants.map(tn => [tn.id, tn.full_name]));
+  const contractNumber = Object.fromEntries(contracts.map(c => [c.id, c.contract_number]));
+  const allocationsByBooking = {};
+  allocations.forEach(a => { (allocationsByBooking[a.booking_id] ||= []).push(a); });
+
+  const allocationInfo = (b) => {
+    if (!b.tenant_id) return { label: '—', unassigned: 0 };
+    const own = allocationsByBooking[b.id] || [];
+    const rest = Math.round((Number(b.amount) - own.reduce((s, a) => s + Number(a.amount), 0)) * 100) / 100;
+    const parts = own.map(a => `${contractNumber[a.contract_id] || '?'}: ${Number(a.amount).toFixed(2)} €`);
+    if (rest) parts.push(`nicht zugeordnet: ${rest.toFixed(2)} €`);
+    return { label: parts.join(' · '), unassigned: rest };
+  };
 
   // Enriched data
   const enriched = bookings.map(b => ({
     ...b,
+    ...(info => ({ allocation_label: info.label, unassigned: info.unassigned }))(allocationInfo(b)),
     account_name: accountMap[b.account_id] || '—',
     category_name: categoryMap[b.category_id] || '—',
     property_name: propertyMap[b.property_id] || '—',
@@ -61,6 +84,7 @@ export default function Bookings() {
   const filtered = useMemo(() => {
     switch (filter) {
       case 'open': return enriched.filter(b => b.status === 'open');
+      case 'unassigned': return enriched.filter(b => b.unassigned);
       case 'no_category': return enriched.filter(b => !b.category_id);
       case 'no_receipt': return enriched.filter(b => !b.receipt_url);
       case 'income': return enriched.filter(b => Number(b.amount) > 0);
@@ -90,6 +114,10 @@ export default function Bookings() {
     { key: 'property_name', label: t('portfolio.properties.form.name') || 'Immobilie', filterType: 'text' },
     { key: 'unit_label', label: t('units.list.columns.label') || 'Einheit', filterType: 'text', hidden: true },
     { key: 'tenant_name', label: t('tenantsContracts.tenants.title') || 'Mieter', filterType: 'text', hidden: true },
+    { key: 'allocation_label', label: 'Vertrag', filterType: 'text',
+      render: (v, row) => (row.tenant_id
+        ? <span>{v} <button className="btn btn-sm btn-secondary" onClick={() => openSplit(row)}>Aufteilen</button></span>
+        : v) },
     { key: 'has_receipt', label: 'Beleg', filterType: 'text' },
     { key: 'status', label: t('ui.form.status') || 'Status', type: 'status', filterType: 'select',
       render: v => <StatusBadge status={v} /> },
@@ -125,6 +153,27 @@ export default function Bookings() {
     }
     refreshData();
     if (store) store.invalidateRelated('bookings', 'accounts', 'categories');
+  };
+
+  const openSplit = (row) => {
+    const own = allocationsByBooking[row.id] || [];
+    const tenantContracts = contracts.filter(c => c.tenant_id === row.tenant_id);
+    setSplit({ booking: row, values: Object.fromEntries(tenantContracts.map(c => [c.id,
+      String(own.find(a => a.contract_id === c.id)?.amount ?? '')])) });
+  };
+
+  const saveSplit = async () => {
+    const items = Object.entries(split.values)
+      .filter(([, v]) => v !== '' && Number(v) !== 0)
+      .map(([contract_id, v]) => ({ contract_id, amount: Number(v) }));
+    try {
+      await api.put(`/bookings/${split.booking.id}/allocations`, items);
+      setSplit(null);
+      loadAllocations();
+      toast.success('Zuordnung gespeichert');
+    } catch (err) {
+      toast.error(err.message);
+    }
   };
 
   const handleDelete = async (row) => {
@@ -169,6 +218,7 @@ export default function Bookings() {
         {[
           { key: 'all', label: 'Alle' },
           { key: 'open', label: 'Offen' },
+          { key: 'unassigned', label: 'Nicht zugeordnet' },
           { key: 'no_category', label: 'Ohne Kategorie' },
           { key: 'no_receipt', label: 'Ohne Beleg' },
           { key: 'income', label: 'Einnahmen' },
@@ -190,6 +240,32 @@ export default function Bookings() {
         onEdit={row => setModal(row)}
         onDelete={handleDelete}
       />
+
+      {split && (
+        <div className="modal-overlay" onClick={() => setSplit(null)} role="presentation">
+          <div className="modal" role="dialog" aria-modal="true" aria-label="Zahlung aufteilen" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Zahlung aufteilen ({Number(split.booking.amount).toFixed(2)} €)</h2>
+              <button onClick={() => setSplit(null)} className="btn-close" aria-label="Schließen">✕</button>
+            </div>
+            <div className="modal-body">
+              {Object.keys(split.values).length === 0 && <p className="text-muted">Der Mieter hat keine Verträge.</p>}
+              {Object.entries(split.values).map(([contractId, value]) => (
+                <div key={contractId} className="form-group">
+                  <label htmlFor={`split-${contractId}`}>Vertrag {contractNumber[contractId]} (€)</label>
+                  <input id={`split-${contractId}`} type="number" step="0.01" value={value}
+                    onChange={e => setSplit(s => ({ ...s, values: { ...s.values, [contractId]: e.target.value } }))} />
+                </div>
+              ))}
+              <p className="text-muted">Was keinem Vertrag zugeordnet wird, bleibt „nicht zugeordnet“.</p>
+              <div className="modal-footer">
+                <button className="btn btn-secondary" onClick={() => setSplit(null)}>Abbrechen</button>
+                <button className="btn btn-primary" onClick={saveSplit}>Speichern</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {modal && (
         <FormModal

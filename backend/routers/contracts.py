@@ -10,6 +10,7 @@ from ..dependencies import store
 from ..domain.lease_engine import LeaseEngine, PaymentLine, RentStep
 from ..models import Contract, ContractCreate, ContractPatch, ContractRentPeriod, ContractRentPeriodCreate
 from ..services.deletion_guard import ensure_deletable
+from ..services.payment_allocations import contract_payments
 from ..services.rent_history import charge_for, follow_contract_start, rent_steps, start_rent_history
 from ..storage import NotFoundError, ValidationError
 
@@ -135,19 +136,9 @@ def delete_contract(contract_id: str) -> None:
 
 
 def _build_charge_and_payments(contract: Contract) -> tuple[list[RentStep], list[PaymentLine]]:
-    """The contract's rent history and the tenant's payment bookings."""
+    """The contract's rent history and the payments credited to it."""
     steps = rent_steps(store, contract)
-    # Filter bookings by tenant, scoped to this contract's property when possible
-    payments = [
-        PaymentLine(
-            booking_date=booking.booking_date,
-            amount=Decimal(str(booking.amount)),
-        )
-        for booking in store.list_bookings()
-        if booking.tenant_id == contract.tenant_id
-        and (not booking.property_id or booking.property_id == contract.property_id)
-        and booking.amount > 0
-    ]
+    payments = contract_payments(store, contract)
     return steps, payments
 
 

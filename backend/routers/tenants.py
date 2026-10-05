@@ -1,8 +1,11 @@
+from datetime import date
+
 from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
 from ..models import Tenant, TenantCreate, TenantPatch
 from ..services.deletion_guard import ensure_deletable
+from ..services.payment_allocations import tenant_account
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/tenants", tags=["Mieter"])
@@ -60,6 +63,16 @@ def create_tenant(payload: TenantCreate) -> Tenant:
         return store.create_tenant(payload)
     except ValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.get("/{tenant_id}/account")
+def get_tenant_account(tenant_id: str, as_of: date | None = Query(None)) -> dict:
+    """Per contract: due, paid and balance; plus payments not credited to any contract."""
+    try:
+        store.get_tenant(tenant_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return tenant_account(store, tenant_id, as_of or date.today())
 
 
 @router.get("/{tenant_id}", response_model=Tenant)

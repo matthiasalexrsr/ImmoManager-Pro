@@ -148,6 +148,19 @@ async def lifespan(app: FastAPI):
         except Exception:
             logger.exception("Auto-seed failed (non-fatal)")
 
+    # Credit existing tenant payments to their contracts (after the payment
+    # allocation migration, or bookings imported without allocations).
+    try:
+        from .dependencies import cleanup_session, store
+        from .services.payment_allocations import allocate_unassigned
+        result = allocate_unassigned(store)
+        if result["allocated"] or result["unassigned"]:
+            logger.info("Payment allocation: %d bookings allocated, %d need a decision",
+                        result["allocated"], len(result["unassigned"]))
+        cleanup_session()
+    except Exception:
+        logger.exception("Allocating existing payments failed (non-fatal)")
+
     # Start periodic cleanup of auth in-memory stores
     async def _periodic_auth_cleanup():
         from .auth import _cleanup_blacklist, _register_limiter

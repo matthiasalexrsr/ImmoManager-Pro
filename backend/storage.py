@@ -64,6 +64,8 @@ from .models import (
     NotificationCreate,
     NotificationTemplate,
     NotificationTemplateCreate,
+    PaymentAllocation,
+    PaymentAllocationCreate,
     Portfolio,
     PortfolioCreate,
     Property,
@@ -133,6 +135,7 @@ class InMemoryStore:
     tax_rates: Dict[str, TaxRate] = field(default_factory=dict)
     rent_adjustments: Dict[str, RentAdjustment] = field(default_factory=dict)
     contract_rent_periods: Dict[str, ContractRentPeriod] = field(default_factory=dict)
+    payment_allocations: Dict[str, PaymentAllocation] = field(default_factory=dict)
     handover_protocols: Dict[str, HandoverProtocol] = field(default_factory=dict)
     meter_readings: Dict[str, MeterReading] = field(default_factory=dict)
     change_history: Dict[str, ChangeHistoryEntry] = field(default_factory=dict)
@@ -529,7 +532,30 @@ class InMemoryStore:
     def delete_booking(self, booking_id: str) -> None:
         if booking_id not in self.bookings:
             raise NotFoundError("Buchung nicht gefunden")
+        for allocation in self.list_payment_allocations(booking_id=booking_id):
+            del self.payment_allocations[allocation.id]
         del self.bookings[booking_id]
+
+    # --- Payment allocations (which contract a payment pays) ---
+    def list_payment_allocations(self, booking_id: Optional[str] = None,
+                                 contract_id: Optional[str] = None) -> List[PaymentAllocation]:
+        return [a for a in self.payment_allocations.values()
+                if (booking_id is None or a.booking_id == booking_id)
+                and (contract_id is None or a.contract_id == contract_id)]
+
+    def create_payment_allocation(self, data: PaymentAllocationCreate) -> PaymentAllocation:
+        if data.booking_id not in self.bookings:
+            raise ValidationError("Buchung existiert nicht")
+        if data.contract_id not in self.contracts:
+            raise ValidationError("Vertrag existiert nicht")
+        item = PaymentAllocation(id=_generate_id(), **data.model_dump())
+        self.payment_allocations[item.id] = item
+        return item
+
+    def delete_payment_allocation(self, allocation_id: str) -> None:
+        if allocation_id not in self.payment_allocations:
+            raise NotFoundError("Zahlungszuordnung nicht gefunden")
+        del self.payment_allocations[allocation_id]
 
     def list_receivables(self) -> List[Receivable]:
         return list(self.receivables.values())
@@ -1191,6 +1217,7 @@ class InMemoryStore:
         "tax_rate": ("tax_rates", "Steuersatz nicht gefunden"),
         "rent_adjustment": ("rent_adjustments", "Mietanpassung nicht gefunden"),
         "contract_rent_period": ("contract_rent_periods", "Mietstand nicht gefunden"),
+        "payment_allocation": ("payment_allocations", "Zahlungszuordnung nicht gefunden"),
         "handover_protocol": ("handover_protocols", "Übergabeprotokoll nicht gefunden"),
         "meter_reading": ("meter_readings", "Zählerstand nicht gefunden"),
         "budget": ("budgets", "Budget nicht gefunden"),

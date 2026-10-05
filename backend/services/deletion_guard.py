@@ -50,6 +50,7 @@ _DEPENDENTS: dict[str, tuple[str, list[tuple[str, str, tuple[str, str]]]]] = {
         ("list_rent_charges", "contract_id", ("Sollstellung", "Sollstellungen")),
         ("list_handover_protocols", "contract_id", ("Übergabeprotokoll", "Übergabeprotokolle")),
         ("list_documents", "contract_id", ("Dokument", "Dokumente")),
+        ("list_payment_allocations", "contract_id", ("Zahlungszuordnung", "Zahlungszuordnungen")),
     ]),
     "account": ("Konto", [
         ("list_bookings", "account_id", ("Buchung", "Buchungen")),

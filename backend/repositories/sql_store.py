@@ -67,6 +67,8 @@ from ..models import (
     NotificationCreate,
     NotificationTemplate,
     NotificationTemplateCreate,
+    PaymentAllocation,
+    PaymentAllocationCreate,
     Portfolio,
     PortfolioCreate,
     Property,
@@ -154,6 +156,7 @@ class SQLAlchemyStore:
         "contract_rent_period": ("tenant", "_rent_periods"),
         "meter_reading": ("tenant", "_meter_readings"),
         "booking": ("finance", "_bookings"),
+        "payment_allocation": ("finance", "_allocations"),
         "receivable": ("finance", "_receivables"),
         "invoice": ("finance", "_invoices"),
         "tax_rate": ("finance", "_tax_rates"),
@@ -664,6 +667,17 @@ class SQLAlchemyStore:
 
     def delete_rent_adjustment(self, adj_id: str) -> None:
         self.tenant.delete_rent_adjustment(adj_id)
+
+    # --- Payment allocations ---
+    def list_payment_allocations(self, booking_id: str | None = None,
+                                 contract_id: str | None = None) -> list[PaymentAllocation]:
+        return self.finance.list_payment_allocations(booking_id, contract_id)
+
+    def create_payment_allocation(self, data: PaymentAllocationCreate) -> PaymentAllocation:
+        return self.finance.create_payment_allocation(data)
+
+    def delete_payment_allocation(self, allocation_id: str) -> None:
+        self.finance.delete_payment_allocation(allocation_id)
 
     # --- Contract rent periods ---
     def list_contract_rent_periods(self, contract_id: str | None = None) -> list[ContractRentPeriod]:

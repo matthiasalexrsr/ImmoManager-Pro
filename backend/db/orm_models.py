@@ -625,6 +625,17 @@ class ContractRentPeriodORM(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
 
+class PaymentAllocationORM(Base):
+    __tablename__ = "payment_allocations"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    booking_id: Mapped[str] = mapped_column(String(36), ForeignKey("bookings.id"), index=True)
+    contract_id: Mapped[str] = mapped_column(String(36), ForeignKey("contracts.id"), index=True)
+    amount: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False))
+    source: Mapped[str] = mapped_column(String(10), default="manual")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
 class HandoverProtocolORM(Base):
     __tablename__ = "handover_protocols"
     id: Mapped[str] = mapped_column(String(36), primary_key=True)

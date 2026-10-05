@@ -11,6 +11,7 @@ from ..db.orm_models import (
     InsuranceORM,
     InvoiceORM,
     MeterORM,
+    PaymentAllocationORM,
     ReceivableORM,
     RentChargeORM,
     StandaloneMeterReadingORM,
@@ -29,6 +30,8 @@ from ..models import (
     InvoiceCreate,
     Meter,
     MeterCreate,
+    PaymentAllocation,
+    PaymentAllocationCreate,
     Receivable,
     ReceivableCreate,
     RentCharge,
@@ -50,6 +53,7 @@ class FinanceRepository:
     def __init__(self, db: Session, portfolio_repo=None, tenant_repo=None):
         self.db = db
         self._bookings = BaseRepository(db, BookingORM, Booking, "Buchung nicht gefunden")
+        self._allocations = BaseRepository(db, PaymentAllocationORM, PaymentAllocation, "Zahlungszuordnung nicht gefunden")
         self._receivables = BaseRepository(db, ReceivableORM, Receivable, "Forderung nicht gefunden")
         self._invoices = BaseRepository(db, InvoiceORM, Invoice, "Rechnung nicht gefunden")
         self._tax_rates = BaseRepository(db, TaxRateORM, TaxRate, "Steuersatz nicht gefunden")
@@ -108,7 +112,28 @@ class FinanceRepository:
         return result
 
     def delete_booking(self, booking_id: str) -> None:
+        for allocation in self._allocations.filter_by(booking_id=booking_id):
+            self._allocations.delete(allocation.id)
         self._bookings.delete(booking_id)
+        self._commit()
+
+    # --- Payment allocations ---
+    def list_payment_allocations(self, booking_id: str | None = None,
+                                 contract_id: str | None = None) -> list[PaymentAllocation]:
+        return self._allocations.filter_by(booking_id=booking_id, contract_id=contract_id)
+
+    def create_payment_allocation(self, data: PaymentAllocationCreate) -> PaymentAllocation:
+        tr = self._tenant_repo
+        if not self._bookings.exists(data.booking_id):
+            raise ValidationError("Buchung existiert nicht")
+        if tr and not tr._contracts.exists(data.contract_id):
+            raise ValidationError("Vertrag existiert nicht")
+        result = self._allocations.create(data)
+        self._commit()
+        return result
+
+    def delete_payment_allocation(self, allocation_id: str) -> None:
+        self._allocations.delete(allocation_id)
         self._commit()
 
     # --- Receivables ---

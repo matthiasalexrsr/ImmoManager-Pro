@@ -1072,6 +1072,35 @@ class ContractRentPeriod(ContractRentPeriodCreate):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+class PaymentAllocationCreate(BaseModel):
+    """Part of a booking credited to one contract (a transfer may pay flat and garage at once)."""
+
+    booking_id: str
+    contract_id: str
+    amount: float
+    source: str = "manual"  # auto: suggested by the rules, manual: set by a user
+
+    @field_validator("amount")
+    @classmethod
+    def validate_amount(cls, v: float) -> float:
+        if v == 0:
+            raise ValueError("Betrag darf nicht 0 sein")
+        return v
+
+    @field_validator("source")
+    @classmethod
+    def validate_source(cls, v: str) -> str:
+        if v not in {"auto", "manual"}:
+            raise ValueError(f"Ungültige Herkunft: {v}")
+        return v
+
+
+class PaymentAllocation(PaymentAllocationCreate):
+    id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class RentAdjustmentPatch(BaseModel):
     contract_id: Optional[str] = None
     adjustment_type: Optional[str] = None
