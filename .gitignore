@@ -33,3 +33,6 @@ dev_notes.log
 dev_notes.json
 diagnostics.log
 .coverage
+
+# Extreme stress test results (python -m tools.xstress.run)
+stress-results/
