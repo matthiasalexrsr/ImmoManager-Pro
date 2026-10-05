@@ -19,11 +19,12 @@ from __future__ import annotations
 
 import re
 
+# one's own notifications (mark read, dismiss) – not the templates, not generating new ones
 PERSONAL = ("/auth/users/me/preferences", "/auth/2fa", "/auth/logout", "/auth/refresh", "/auth/login",
-            "/notifications")
+            r"^/notifications/(?!templates$|templates/|generate/)[^/]+(/read)?$")
 OFFICE = ("/tasks", "/documents", "/files", "/photos", "/messages", "/calendar", "/dev-notes")
 BOOKKEEPING = ("/bookings", "/accounts", "/categories", "/invoices", "/receivables", "/rent-charges", "/deposits",
-               "/budgets", "/tax-rates", "/reports", "/billing/cost-items", "/escalation/run",
+               "/budgets", "/tax-rates", "/reports", "/billing/cost-items", "/escalation/run", "/notifications/generate",
                r"^/contracts/[^/]+/dunning-campaign$")
 TECHNICAL = ("/maintenance", "/meters", "/handover-protocols")
 OWNER_ONLY = ("/admin/restore", "/admin/import", "/data/import", "/admin/bulk-delete", "/updates/apply",
