@@ -6,6 +6,8 @@ import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
+import { CheckCircleIcon } from '../components/Icons';
+import { formatDate, formatMoney, formatPercent } from '../utils/format';
 
 const STATUS_OPTIONS = [
   { value: 'open', label: 'Offen' },
@@ -24,24 +26,24 @@ const COLUMNS = [
   { key: 'invoice_number', label: 'Rechnungs-Nr.', filterType: 'text' },
   { key: 'supplier', label: 'Lieferant', filterType: 'text' },
   { key: 'property_name', label: 'Immobilie', filterType: 'text' },
-  { key: 'category', label: 'Kategorie', filterType: 'select',
+  { key: 'category', hidden: true, label: 'Kategorie', filterType: 'select',
     render: v => CATEGORY_LABELS[v] || v || '—' },
-  { key: 'invoice_date', label: 'Rechnungsdatum', type: 'date', filterType: 'dateRange' },
+  { key: 'invoice_date', label: 'Datum', type: 'date', filterType: 'dateRange' },
   { key: 'due_date', label: 'Fällig am', type: 'date', filterType: 'dateRange',
     render: (v, row) => {
       if (!v) return '—';
       const due = new Date(v);
       const today = new Date();
       const overdue = row.status !== 'paid' && row.status !== 'cancelled' && due < today;
-      return <span style={{ color: overdue ? 'var(--danger)' : 'inherit', fontWeight: overdue ? 600 : 400 }}>{v}</span>;
+      return <span style={{ color: overdue ? 'var(--danger)' : 'inherit', fontWeight: overdue ? 600 : 400 }}>{formatDate(v)}</span>;
     }},
-  { key: 'net_amount', label: 'Netto (€)', type: 'number', align: 'right',
-    render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
-  { key: 'vat_display', label: 'MwSt', align: 'right',
-    render: (_, row) => row.vat_rate != null ? `${Number(row.vat_rate).toFixed(1)}% (${Number(row.vat_amount || 0).toFixed(2)} €)` : '—' },
+  { key: 'net_amount', hidden: true, label: 'Netto (€)', type: 'number', align: 'right',
+    render: v => formatMoney(v) },
+  { key: 'vat_display', hidden: true, label: 'MwSt', align: 'right',
+    render: (_, row) => row.vat_rate != null ? `${formatMoney(row.vat_amount || 0)} (${formatPercent(row.vat_rate)})` : '—' },
   { key: 'gross_amount', label: 'Brutto (€)', type: 'number', align: 'right', filterType: 'numberRange',
-    render: v => v != null ? <strong>{Number(v).toFixed(2)} €</strong> : '—' },
-  { key: 'payment_reference', label: 'Zahlungsreferenz' },
+    render: v => v != null ? <strong>{formatMoney(v)}</strong> : '—' },
+  { key: 'payment_reference', hidden: true, label: 'Zahlungsreferenz' },
   { key: 'status', label: 'Status', type: 'status', filterType: 'select',
     render: v => <StatusBadge status={v} /> },
 ];
@@ -168,31 +170,31 @@ export default function Invoices() {
       <h1 className="page-title">Rechnungen</h1>
 
       {/* Summary cards */}
-      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{enriched.length}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Gesamt</div>
+      <div className="kpi-row">
+        <div className="kpi">
+          <div className="kpi-value">{enriched.length}</div>
+          <div className="kpi-label">Gesamt</div>
         </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--warning)' }}>{totalOpen.toFixed(2)} €</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Offen</div>
+        <div className="kpi">
+          <div className="kpi-value" style={{ color: 'var(--warning)' }}>{formatMoney(totalOpen)}</div>
+          <div className="kpi-label">Offen</div>
         </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--danger)' }}>{totalOverdue.toFixed(2)} €</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Überfällig</div>
+        <div className="kpi">
+          <div className="kpi-value" style={{ color: 'var(--danger)' }}>{formatMoney(totalOverdue)}</div>
+          <div className="kpi-label">Überfällig</div>
         </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--success)' }}>{totalPaid.toFixed(2)} €</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Bezahlt</div>
+        <div className="kpi">
+          <div className="kpi-value" style={{ color: 'var(--success)' }}>{formatMoney(totalPaid)}</div>
+          <div className="kpi-label">Bezahlt</div>
         </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{totalVat.toFixed(2)} €</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>MwSt gesamt</div>
+        <div className="kpi">
+          <div className="kpi-value">{formatMoney(totalVat)}</div>
+          <div className="kpi-label">MwSt gesamt</div>
         </div>
       </div>
 
       {/* Filter tabs */}
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+      <div className="filter-chips">
         {[
           { key: 'all', label: 'Alle' },
           { key: 'unpaid', label: 'Unbezahlt' },
@@ -211,24 +213,18 @@ export default function Invoices() {
 
       <DataTable
         title="Rechnungen"
-        columns={[...COLUMNS, {
-          key: '_actions', label: '', sortable: false,
-          render: (_, row) => (row.status === 'open' || row.status === 'overdue') ? (
-            <button
-              className="btn btn-sm btn-secondary"
-              onClick={async (e) => {
-                e.stopPropagation();
-                if (await confirm(`"${row.supplier}" ${t('pages.invoices.markPaidConfirm') || 'als bezahlt markieren?'}`)) markPaid(row);
-              }}
-            >
-              ✓ Bezahlt
-            </button>
-          ) : null,
-        }]}
+        columns={COLUMNS}
         data={filtered}
         onAdd={() => setModal('create')}
         onEdit={row => setModal(row)}
         onDelete={handleDelete}
+        rowActions={row => (row.status === 'open' || row.status === 'overdue' ? [{
+          label: 'Als bezahlt markieren',
+          icon: <CheckCircleIcon size={15} />,
+          onClick: async () => {
+            if (await confirm(`"${row.supplier}" ${t('pages.invoices.markPaidConfirm') || 'als bezahlt markieren?'}`)) markPaid(row);
+          },
+        }] : [])}
       />
 
       {modal && (

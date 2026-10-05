@@ -1,10 +1,47 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useTranslation } from '../i18n';
 import { PlusIcon, EditIcon, TrashIcon } from './Icons';
+import StatusBadge from './StatusBadge';
+import { formatDate, formatMoney } from '../utils/format';
+import { codeLabel } from '../utils/codeLabels';
 
 const PAGE_SIZES = [10, 25, 50, 100];
+const NUMERIC_TYPES = new Set(['number', 'currency']);
 
-export default function DataTable({ columns, data, onEdit, onDelete, title, onAdd, onRowClick }) {
+// Cells keep to one line; long plain text is cut with an ellipsis and shown in full on hover.
+function cellContent(col, row) {
+  const value = row[col.key];
+  if (col.render) return col.render(value, row);
+  if (value == null || value === '') return '\u2014';
+  if (col.type === 'currency') return formatMoney(value);
+  if (col.type === 'date') return formatDate(value);
+  if (col.type === 'status') return <StatusBadge status={value} />;
+  const text = String(codeLabel(value));
+  if (col.subKey) {
+    // Two lines on purpose: the main value and its context (unit above, property below).
+    const sub = row[col.subKey];
+    const hasMain = text !== '\u2014';
+    return (
+      <span className="cell-stack">
+        <span className="cell-text">{hasMain ? text : (sub || text)}</span>
+        {hasMain && sub && sub !== '\u2014' && <span className="cell-text td-sub">{sub}</span>}
+      </span>
+    );
+  }
+  return <span className="cell-text" title={text.length > 30 ? text : undefined}>{text}</span>;
+}
+
+// Cells show the unit themselves (1.234,56 €, 62 m²); the header does not repeat it.
+const headerLabel = label => (typeof label === 'string' ? label.replace(/\s*\((€|m²)\)$/, '') : label);
+
+function cellClass(col) {
+  return [
+    col.align === 'right' || (col.align == null && NUMERIC_TYPES.has(col.type)) ? 'text-right td-num' : '',
+    col.wrap ? 'td-wrap' : '',
+  ].filter(Boolean).join(' ') || undefined;
+}
+
+export default function DataTable({ columns, data, onEdit, onDelete, title, onAdd, onRowClick, rowActions }) {
   const { t } = useTranslation();
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState(null);
@@ -12,8 +49,9 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(25);
   const [columnFilters, setColumnFilters] = useState({});
-  const [hiddenCols, setHiddenCols] = useState({});
+  const [hiddenCols, setHiddenCols] = useState(() => Object.fromEntries(columns.filter(c => c.hidden).map(c => [c.key, true])));
   const [showColMenu, setShowColMenu] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
 
   const setFilter = useCallback((key, value) => {
     setColumnFilters(prev => ({ ...prev, [key]: value }));
@@ -155,7 +193,11 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
     return v !== '' && v != null;
   });
 
-  const colSpan = visibleColumns.length + (onEdit || onDelete ? 1 : 0);
+  const hasActions = Boolean(onEdit || onDelete || rowActions);
+  const colSpan = visibleColumns.length + (hasActions ? 1 : 0);
+  const hasColumnFilters = columns.some(c => c.filterType);
+  const activeFilterCount = Object.values(columnFilters).filter(v =>
+    Array.isArray(v) ? v.some(x => x !== '') : v !== '' && v != null).length;
 
   return (
     <div className="data-table-wrapper">
@@ -170,9 +212,16 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
             className="search-input"
           />
           <div className="table-btn-group">
+            {hasColumnFilters && (
+              <button onClick={() => setShowFilters(v => !v)} aria-pressed={showFilters || hasActiveFilters}
+                      className={`btn btn-sm ${showFilters || hasActiveFilters ? 'btn-primary-soft' : 'btn-secondary'}`}>
+                {t('ui.buttons.filter')}{activeFilterCount ? ` (${activeFilterCount})` : ''}
+              </button>
+            )}
             {hasActiveFilters && (
-              <button onClick={() => { setColumnFilters({}); setPage(0); }} className="btn btn-sm btn-secondary">
-                {t('ui.buttons.filter')} ✕
+              <button onClick={() => { setColumnFilters({}); setPage(0); }} className="btn btn-sm btn-ghost"
+                      title={t('comp.dataTable.clearFilter')}>
+                ✕
               </button>
             )}
             <div className="col-menu-wrapper">
@@ -214,11 +263,11 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
               {visibleColumns.map(col => (
                 <th
                   key={col.key}
-                  className={col.sortable !== false ? 'sortable-th' : ''}
+                  className={[col.sortable !== false ? 'sortable-th' : '', cellClass(col)].filter(Boolean).join(' ') || undefined}
                   onClick={() => col.sortable !== false && handleSort(col.key)}
                 >
                   <span className="th-content">
-                    {col.label}
+                    {headerLabel(col.label)}
                     {col.sortable !== false && (
                       <span className="sort-indicator">
                         {sortKey === col.key ? (sortDir === 'asc' ? ' \u25B2' : ' \u25BC') : ''}
@@ -227,10 +276,10 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
                   </span>
                 </th>
               ))}
-              {(onEdit || onDelete) && <th className="th-actions">{t('ui.buttons.edit')}</th>}
+              {hasActions && <th className="th-actions"><span className="sr-only">{t('ui.buttons.edit')}</span></th>}
             </tr>
             {/* Column filter row */}
-            {columns.some(c => c.filterType) && (
+            {hasColumnFilters && (showFilters || hasActiveFilters) && (
               <tr className="filter-row">
                 {visibleColumns.map(col => (
                   <th key={`f-${col.key}`} className="filter-cell">
@@ -242,7 +291,7 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
                       >
                         <option value="">—</option>
                         {(selectOptions[col.key] || []).map(v => (
-                          <option key={v} value={v}>{v}</option>
+                          <option key={v} value={v}>{codeLabel(v)}</option>
                         ))}
                       </select>
                     ) : col.filterType === 'dateRange' ? (
@@ -302,7 +351,7 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
                     ) : null}
                   </th>
                 ))}
-                {(onEdit || onDelete) && <th />}
+                {hasActions && <th />}
               </tr>
             )}
           </thead>
@@ -313,12 +362,18 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
               pageData.map(row => (
                 <tr key={row.id} onClick={() => onRowClick?.(row)} className={onRowClick ? 'clickable-row' : ''} style={onRowClick ? { cursor: 'pointer' } : undefined}>
                   {visibleColumns.map(col => (
-                    <td key={col.key} className={col.align === 'right' ? 'text-right' : ''}>
-                      {col.render ? col.render(row[col.key], row) : (row[col.key] ?? '\u2014')}
+                    <td key={col.key} className={cellClass(col)}>
+                      {cellContent(col, row)}
                     </td>
                   ))}
-                  {(onEdit || onDelete) && (
+                  {hasActions && (
                     <td className="action-cell" onClick={e => e.stopPropagation()}>
+                      {rowActions?.(row).map(action => (
+                        <button key={action.label} onClick={() => action.onClick(row)} className="btn btn-sm btn-ghost"
+                                aria-label={action.label} title={action.label}>
+                          {action.icon}
+                        </button>
+                      ))}
                       {onEdit && (
                         <button onClick={() => onEdit(row)} className="btn btn-sm btn-ghost" aria-label={t('ui.buttons.edit')} title={t('ui.buttons.edit')}>
                           <EditIcon size={15} />

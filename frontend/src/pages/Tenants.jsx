@@ -91,17 +91,22 @@ export default function Tenants() {
 
   const columns = [
     { key: 'full_name', label: 'Name', filterType: 'text',
-      render: (v, row) => <span>{v} <Link className="btn btn-sm btn-secondary" to={`/tenants/${row.id}/account`}>Konto</Link></span> },
-    { key: 'property_name', label: 'Immobilie', filterType: 'text' },
-    { key: 'unit_label', label: 'Einheit', filterType: 'text' },
+      render: (v, row) => (
+        <span className="cell-inline">
+          <span className="cell-text">{v}</span>
+          <Link className="btn btn-sm btn-ghost btn-link" to={`/tenants/${row.id}/account`}>Konto</Link>
+        </span>
+      ) },
+    { key: 'property_name', hidden: true, label: 'Immobilie', filterType: 'text' },
+    { key: 'unit_label', subKey: 'property_name', label: 'Einheit', filterType: 'text' },
     { key: 'contract_status', label: 'Vertragsstatus', filterType: 'select',
       render: v => <StatusBadge status={v === 'kein Vertrag' ? 'warning' : v} /> },
     { key: 'email', label: 'E-Mail', filterType: 'text' },
     { key: 'phone', label: 'Telefon' },
-    { key: 'city', label: 'Stadt', filterType: 'text' },
-    { key: 'payment_label', label: 'Zahlungsart', filterType: 'select' },
-    { key: 'has_sepa', label: 'SEPA', filterType: 'select' },
-    { key: 'status_label', label: 'Archiv',
+    { key: 'city', hidden: true, label: 'Stadt', filterType: 'text' },
+    { key: 'payment_label', hidden: true, label: 'Zahlungsart', filterType: 'select' },
+    { key: 'has_sepa', hidden: true, label: 'SEPA', filterType: 'select' },
+    { key: 'status_label', hidden: true, label: 'Archiv',
       render: (_, row) => row.archived
         ? <span className="badge badge-gray">Archiviert</span>
         : <span className="badge badge-green">Aktiv</span> },
@@ -173,33 +178,33 @@ export default function Tenants() {
       )}
 
       {/* Summary cards */}
-      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--success)' }}>{activeTenants.length}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Aktiv</div>
+      <div className="kpi-row">
+        <div className="kpi">
+          <div className="kpi-value" style={{ color: 'var(--success)' }}>{activeTenants.length}</div>
+          <div className="kpi-label">Aktiv</div>
         </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{archivedCount}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Archiviert</div>
+        <div className="kpi">
+          <div className="kpi-value">{archivedCount}</div>
+          <div className="kpi-label">Archiviert</div>
         </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{withContract}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Mit Vertrag</div>
+        <div className="kpi">
+          <div className="kpi-value">{withContract}</div>
+          <div className="kpi-label">Mit Vertrag</div>
         </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{withSepa}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Mit SEPA</div>
+        <div className="kpi">
+          <div className="kpi-value">{withSepa}</div>
+          <div className="kpi-label">Mit SEPA</div>
         </div>
         {noEmail > 0 && (
-          <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-            <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--warning)' }}>{noEmail}</div>
-            <div className="text-muted" style={{ fontSize: '0.8rem' }}>Ohne E-Mail</div>
+          <div className="kpi">
+            <div className="kpi-value" style={{ color: 'var(--warning)' }}>{noEmail}</div>
+            <div className="kpi-label">Ohne E-Mail</div>
           </div>
         )}
       </div>
 
       {/* Filter tabs */}
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+      <div className="filter-chips">
         {[
           { key: 'active', label: 'Aktiv' },
           { key: 'all', label: 'Alle' },

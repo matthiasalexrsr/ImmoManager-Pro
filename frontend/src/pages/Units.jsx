@@ -8,6 +8,7 @@ import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useToast } from '../components/Toast';
+import { formatArea, formatMoney, formatPercent } from '../utils/format';
 
 export default function Units() {
   const { t } = useTranslation();
@@ -92,21 +93,21 @@ export default function Units() {
   const vacantCount = enriched.filter(u => u.status === 'vacant').length;
   const coldRents = enriched.filter(u => u.cold_rent != null && Number(u.cold_rent) > 0).map(u => Number(u.cold_rent));
   const avgColdRent = coldRents.length > 0 ? coldRents.reduce((s, v) => s + v, 0) / coldRents.length : 0;
-  const occupancyRate = totalCount > 0 ? ((occupiedCount / totalCount) * 100).toFixed(1) : '0.0';
+  const occupancyRate = totalCount > 0 ? Math.round((occupiedCount / totalCount) * 100) : 0;
 
   const columns = [
     { key: 'label', label: t('units.list.columns.label') || 'Bezeichnung', filterType: 'text' },
     { key: 'property_name', label: 'Immobilie', filterType: 'text' },
     { key: 'unit_type', label: t('units.list.columns.type') || 'Typ', filterType: 'select' },
-    { key: 'rooms', label: t('units.form.rooms') || 'Zimmer', type: 'number', align: 'right' },
-    { key: 'floor', label: t('units.form.floor') || 'Etage' },
+    { key: 'rooms', hidden: true, label: t('units.form.rooms') || 'Zimmer', type: 'number', align: 'right' },
+    { key: 'floor', hidden: true, label: t('units.form.floor') || 'Etage' },
     { key: 'area_sqm', label: t('units.list.columns.area') || 'Fläche (m²)', type: 'number', align: 'right', filterType: 'numberRange',
-      render: v => v != null ? `${Number(v).toLocaleString('de-DE')} m²` : '—' },
+      render: v => formatArea(v) },
     { key: 'cold_rent', label: t('units.list.columns.coldRent') || 'Kaltmiete (€)', type: 'number', align: 'right', filterType: 'numberRange',
-      render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
-    { key: 'warm_rent', label: 'Warmmiete (€)', type: 'number', align: 'right',
-      render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
-    { key: 'person_count', label: t('units.form.personCount') || 'Personen', type: 'number', align: 'right' },
+      render: v => formatMoney(v) },
+    { key: 'warm_rent', hidden: true, label: 'Warmmiete (€)', type: 'number', align: 'right',
+      render: v => formatMoney(v) },
+    { key: 'person_count', hidden: true, label: t('units.form.personCount') || 'Personen', type: 'number', align: 'right' },
     { key: 'tenant_name', label: 'Mieter', filterType: 'text' },
     { key: 'status', label: t('ui.form.status') || 'Status', type: 'status', filterType: 'select',
       render: v => <StatusBadge status={v} /> },
@@ -167,31 +168,31 @@ export default function Units() {
       <h1 className="page-title">{t('units.list.title') || 'Einheiten'}</h1>
 
       {/* Summary cards */}
-      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{totalCount}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Gesamt</div>
+      <div className="kpi-row">
+        <div className="kpi">
+          <div className="kpi-value">{totalCount}</div>
+          <div className="kpi-label">Gesamt</div>
         </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--success)' }}>{occupiedCount}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Vermietet</div>
+        <div className="kpi">
+          <div className="kpi-value" style={{ color: 'var(--success)' }}>{occupiedCount}</div>
+          <div className="kpi-label">Vermietet</div>
         </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--warning)' }}>{vacantCount}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Leer</div>
+        <div className="kpi">
+          <div className="kpi-value" style={{ color: 'var(--warning)' }}>{vacantCount}</div>
+          <div className="kpi-label">Leer</div>
         </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{avgColdRent.toFixed(2)} €</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Ø Kaltmiete</div>
+        <div className="kpi">
+          <div className="kpi-value">{formatMoney(avgColdRent)}</div>
+          <div className="kpi-label">Ø Kaltmiete</div>
         </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: Number(occupancyRate) >= 80 ? 'var(--success)' : 'var(--warning)' }}>{occupancyRate}%</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Vermietungsquote</div>
+        <div className="kpi">
+          <div className="kpi-value" style={{ color: Number(occupancyRate) >= 80 ? 'var(--success)' : 'var(--warning)' }}>{formatPercent(occupancyRate)}</div>
+          <div className="kpi-label">Vermietungsquote</div>
         </div>
       </div>
 
       {/* Filter tabs */}
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+      <div className="filter-chips">
         {[
           { key: 'all', label: 'Alle' },
           { key: 'occupied', label: 'Vermietet' },

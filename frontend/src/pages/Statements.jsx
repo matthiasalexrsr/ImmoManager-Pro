@@ -4,6 +4,7 @@ import { useTranslation } from '../i18n';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
+import { formatMoney } from '../utils/format';
 
 /** Inline toast-style notification hook. */
 function useToast() {
@@ -63,7 +64,7 @@ function getColumns(t) {
     { key: 'property_name', label: t('pages.statements.colProperty') || 'Immobilie', filterType: 'text' },
     { key: 'period_label', label: t('pages.statements.colPeriod') || 'Abrechnungszeitraum', filterType: 'text' },
     { key: 'total_costs', label: t('pages.statements.colTotalCosts') || 'Gesamtkosten (€)', type: 'number', align: 'right',
-      render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
+      render: v => formatMoney(v) },
     { key: 'cost_item_count', label: 'Kostenpositionen', type: 'number' },
     { key: 'units_count', label: t('pages.statements.colUnits') || 'Einzelabrechnungen', type: 'number' },
     { key: 'status', label: t('ui.form.status') || 'Status', type: 'status', filterType: 'select' },
@@ -74,7 +75,7 @@ function getCostColumns(t) {
   return [
     { key: 'description', label: t('pages.statements.colCostType') || 'Kostenart', filterType: 'text' },
     { key: 'amount', label: t('pages.statements.colAmount') || 'Betrag (€)', type: 'number', align: 'right',
-      render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
+      render: v => formatMoney(v) },
     { key: 'allocation_key_name', label: t('pages.statements.colAllocationKey') || 'Verteilerschlüssel' },
     { key: 'is_recoverable', label: t('pages.statements.colRecoverable') || 'Umlagefähig',
       render: v => (v === false
@@ -104,15 +105,15 @@ function getStmtColumns(t, onError) {
     { key: 'usage_days', label: t('pages.statements.colDays') || 'Tage', type: 'number', align: 'right',
       render: v => (v != null ? v : '—') },
     { key: 'total_cost', label: t('pages.statements.colShare') || 'Anteil (€)', type: 'number', align: 'right',
-      render: v => `${Number(v || 0).toFixed(2)} €` },
+      render: v => formatMoney(v || 0) },
     { key: 'advance_paid', label: t('pages.statements.colAdvancePaid') || 'Vorauszahlung (€)', type: 'number', align: 'right',
-      render: v => `${Number(v || 0).toFixed(2)} €` },
+      render: v => formatMoney(v || 0) },
     { key: 'balance', label: t('pages.statements.colBalance') || 'Saldo (€)', type: 'number', align: 'right',
       render: (v, row) => {
         // A vacancy row is the landlord's cost, not a balance anybody owes.
         if (row.party === 'vacancy') return <span className="text-muted">—</span>;
         const cls = v > 0 ? 'text-red' : v < 0 ? 'text-green' : '';
-        return <span className={cls}>{Number(v || 0).toFixed(2)} €</span>;
+        return <span className={cls}>{formatMoney(v || 0)}</span>;
       }},
     { key: 'delivery_status', label: t('pages.statements.colDelivery') || 'Zustellung',
       render: v => v ? <StatusBadge status={v} /> : <span className="text-muted">—</span> },
@@ -296,7 +297,7 @@ export default function Statements() {
 
   const costFields = [
     { key: 'billing_period_id', label: t('pages.statements.formPeriod') || 'Abrechnungsperiode', type: 'select', required: true,
-      options: periods.map(p => ({ value: p.id, label: p.label || `${p.start_date} – ${p.end_date}` })) },
+      options: periods.map(p => ({ value: p.id, label: p.label || `${formatDate(p.start_date)} – ${formatDate(p.end_date)}` })) },
     { key: 'description', label: t('pages.statements.formCostType') || 'Kostenart', required: true, placeholder: 'z.B. Wasser, Heizung, Müll' },
     { key: 'amount', label: t('pages.statements.formAmount') || 'Betrag (€)', type: 'number', required: true },
     { key: 'allocation_key_id', label: t('pages.statements.formAllocationKey') || 'Verteilerschlüssel', type: 'select', required: true,
@@ -771,24 +772,24 @@ export default function Statements() {
         <div className="stats-grid" style={{ marginBottom: '1rem' }}>
           <div className="stat-card">
             <div className="stat-label">{t('pages.statements.totalCosts')}</div>
-            <div className="stat-value">{totalCosts.toFixed(2)} €</div>
+            <div className="stat-value">{formatMoney(totalCosts)}</div>
           </div>
           {periodStmts.length > 0 && (
             <div className="stat-card">
               <div className="stat-label">{t('pages.statements.tenantShare') || 'Auf Mieter verteilt'}</div>
-              <div className="stat-value">{tenantShare.toFixed(2)} €</div>
+              <div className="stat-value">{formatMoney(tenantShare)}</div>
             </div>
           )}
           {periodStmts.length > 0 && (
             <div className="stat-card">
               <div className="stat-label">{t('pages.statements.vacancyShare') || 'Leerstand (Eigentümer)'}</div>
-              <div className="stat-value">{vacancyShare.toFixed(2)} €</div>
+              <div className="stat-value">{formatMoney(vacancyShare)}</div>
             </div>
           )}
           {nonRecoverable > 0 && (
             <div className="stat-card">
               <div className="stat-label">{t('pages.statements.nonRecoverableShare') || 'Nicht umlagefähig'}</div>
-              <div className="stat-value">{nonRecoverable.toFixed(2)} €</div>
+              <div className="stat-value">{formatMoney(nonRecoverable)}</div>
             </div>
           )}
           <div className="stat-card">
@@ -944,7 +945,7 @@ export default function Statements() {
                         )}
                         {ocrDraft.ocr_fields.total_amount != null && (
                           <tr><td style={{ padding: '4px 8px', fontWeight: 500 }}>Betrag</td>
-                            <td style={{ padding: '4px 8px' }}>{ocrDraft.ocr_fields.total_amount.toFixed(2)} &euro;</td>
+                            <td style={{ padding: '4px 8px' }}>{formatMoney(ocrDraft.ocr_fields.total_amount)}</td>
                             <td style={{ padding: '4px 8px', color: '#888' }}>{Math.round((ocrDraft.confidence?.amount || 0) * 100)}%</td></tr>
                         )}
                         {ocrDraft.ocr_fields.cost_category && (

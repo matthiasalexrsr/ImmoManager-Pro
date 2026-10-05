@@ -7,6 +7,8 @@ import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useToast } from '../components/Toast';
+import { RentIcon } from '../components/Icons';
+import { formatDate, formatMoney } from '../utils/format';
 
 const RENT_MODEL_LABELS = { index: 'Indexmiete', stepped: 'Staffelmiete', fixed: 'Festmiete' };
 
@@ -98,29 +100,33 @@ export default function Contracts() {
 
   const columns = [
     { key: 'contract_number', label: t('tenantsContracts.contracts.form.contractNumber') || 'Vertragsnr.', filterType: 'text' },
-    { key: 'property_name', label: 'Immobilie', filterType: 'text' },
-    { key: 'unit_label', label: 'Einheit', filterType: 'text' },
+    { key: 'property_name', hidden: true, label: 'Immobilie', filterType: 'text' },
+    { key: 'unit_label', subKey: 'property_name', label: 'Einheit', filterType: 'text' },
     { key: 'tenant_name', label: 'Mieter', filterType: 'text' },
     { key: 'cold_rent', label: 'Kaltmiete (€)', type: 'number', align: 'right',
-      render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
+      render: v => formatMoney(v) },
     { key: 'start_date', label: t('tenantsContracts.contracts.form.startDate') || 'Beginn', type: 'date', filterType: 'dateRange' },
-    { key: 'end_date', label: t('tenantsContracts.contracts.form.endDate') || 'Ende', type: 'date', filterType: 'dateRange' },
-    { key: 'remaining_days', label: 'Restlaufzeit', type: 'number', align: 'right',
+    { key: 'end_date', label: t('tenantsContracts.contracts.form.endDate') || 'Ende', type: 'date', filterType: 'dateRange',
+      render: (v, row) => {
+        if (!v) return <span className="text-muted">unbefristet</span>;
+        const soon = row.status === 'active' && row.remaining_days != null && row.remaining_days <= 90;
+        return <span style={soon ? { color: 'var(--warning)', fontWeight: 600 } : undefined}
+                     title={soon ? `noch ${row.remaining_days} Tage` : undefined}>{formatDate(v)}</span>;
+      }},
+    { key: 'remaining_days', hidden: true, label: 'Restlaufzeit', type: 'number', align: 'right',
       render: (v) => {
         if (v == null) return <span className="text-muted">unbefristet</span>;
         if (v < 0) return <span style={{ color: 'var(--danger)', fontWeight: 600 }}>abgelaufen</span>;
         const color = v <= 30 ? 'var(--danger)' : v <= 90 ? 'var(--warning)' : 'inherit';
         return <span style={{ color, fontWeight: v <= 90 ? 600 : 400 }}>{v} Tage</span>;
       }},
-    { key: 'rent_model', label: 'Mietmodell', filterType: 'select',
+    { key: 'rent_model', hidden: true, label: 'Mietmodell', filterType: 'select',
       render: v => RENT_MODEL_LABELS[v] || v || '—' },
-    { key: 'notice_period', label: 'Kündigungsfrist' },
-    { key: 'deposit_amount', label: t('tenantsContracts.contracts.form.deposit') || 'Kaution (€)', type: 'number', align: 'right',
-      render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
+    { key: 'notice_period', hidden: true, label: 'Kündigungsfrist' },
+    { key: 'deposit_amount', hidden: true, label: t('tenantsContracts.contracts.form.deposit') || 'Kaution (€)', type: 'number', align: 'right',
+      render: v => formatMoney(v) },
     { key: 'status', label: t('ui.form.status') || 'Status', type: 'status', filterType: 'select',
       render: v => <StatusBadge status={v} /> },
-    { key: 'rent_history', label: '',
-      render: (_, row) => <button className="btn btn-sm btn-secondary" onClick={() => openHistory(row)}>Mietverlauf</button> },
   ];
 
   const fields = [
@@ -183,31 +189,31 @@ export default function Contracts() {
       <h1 className="page-title">{t('tenantsContracts.contracts.title') || 'Verträge'}</h1>
 
       {/* Summary cards */}
-      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{enriched.length}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Gesamt</div>
+      <div className="kpi-row">
+        <div className="kpi">
+          <div className="kpi-value">{enriched.length}</div>
+          <div className="kpi-label">Gesamt</div>
         </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--success)' }}>{totalActive}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Aktiv</div>
+        <div className="kpi">
+          <div className="kpi-value" style={{ color: 'var(--success)' }}>{totalActive}</div>
+          <div className="kpi-label">Aktiv</div>
         </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--warning)' }}>{endingSoon}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Endet &lt; 90 Tage</div>
+        <div className="kpi">
+          <div className="kpi-value" style={{ color: 'var(--warning)' }}>{endingSoon}</div>
+          <div className="kpi-label">Endet &lt; 90 Tage</div>
         </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--danger)' }}>{terminated}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Gekündigt</div>
+        <div className="kpi">
+          <div className="kpi-value" style={{ color: 'var(--danger)' }}>{terminated}</div>
+          <div className="kpi-label">Gekündigt</div>
         </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: noDeposit > 0 ? 'var(--danger)' : 'inherit' }}>{noDeposit}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Ohne Kaution</div>
+        <div className="kpi">
+          <div className="kpi-value" style={{ color: noDeposit > 0 ? 'var(--danger)' : 'inherit' }}>{noDeposit}</div>
+          <div className="kpi-label">Ohne Kaution</div>
         </div>
       </div>
 
       {/* Filter tabs */}
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+      <div className="filter-chips">
         {[
           { key: 'all', label: 'Alle' },
           { key: 'active', label: 'Aktiv' },
@@ -231,14 +237,14 @@ export default function Contracts() {
             </div>
             <div className="modal-body">
               <table className="data-table">
-                <thead><tr><th>Gültig ab</th><th>Kaltmiete</th><th>NK-Vorausz.</th><th>Heizkosten</th><th>Herkunft</th></tr></thead>
+                <thead><tr><th>Gültig ab</th><th className="text-right">Kaltmiete</th><th className="text-right">NK-Vorausz.</th><th className="text-right">Heizkosten</th><th>Herkunft</th></tr></thead>
                 <tbody>
                   {history.periods.map(p => (
                     <tr key={p.id}>
-                      <td>{p.valid_from.split('-').reverse().join('.')}</td>
-                      <td>{Number(p.cold_rent).toFixed(2)} €</td>
-                      <td>{Number(p.service_charge_advance).toFixed(2)} €</td>
-                      <td>{Number(p.heating_advance).toFixed(2)} €</td>
+                      <td>{formatDate(p.valid_from)}</td>
+                      <td className="text-right td-num">{formatMoney(p.cold_rent)}</td>
+                      <td className="text-right td-num">{formatMoney(p.service_charge_advance)}</td>
+                      <td className="text-right td-num">{formatMoney(p.heating_advance)}</td>
                       <td>{RENT_SOURCE_LABELS[p.source] || p.source}</td>
                     </tr>
                   ))}
@@ -259,6 +265,7 @@ export default function Contracts() {
         onAdd={() => setModal('create')}
         onEdit={row => setModal(row)}
         onDelete={handleDelete}
+        rowActions={() => [{ label: 'Mietverlauf', icon: <RentIcon size={15} />, onClick: openHistory }]}
       />
 
       {modal && (

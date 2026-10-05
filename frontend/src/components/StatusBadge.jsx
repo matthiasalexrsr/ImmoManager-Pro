@@ -10,7 +10,9 @@ const COLORS = {
   unread: 'badge-blue', read: 'badge-gray', new: 'badge-green', scheduled: 'badge-blue',
   finalized: 'badge-green', delivered: 'badge-green', paid: 'badge-green', review: 'badge-blue',
   reserved: 'badge-blue', partial: 'badge-yellow', pending: 'badge-yellow', disputed: 'badge-red',
-  critical: 'badge-red',
+  critical: 'badge-red', urgent: 'badge-red', high: 'badge-yellow', medium: 'badge-blue', normal: 'badge-blue',
+  low: 'badge-gray', booked: 'badge-gray', cancelled: 'badge-gray', inactive: 'badge-gray', applied: 'badge-green',
+  rejected: 'badge-red', archived: 'badge-gray', sent: 'badge-green', failed: 'badge-red',
 };
 
 export default function StatusBadge({ status }) {

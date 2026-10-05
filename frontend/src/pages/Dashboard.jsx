@@ -14,6 +14,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend, LineChart, Line, CartesianGrid,
 } from 'recharts';
+import { formatDate, formatDateTime } from '../utils/format';
 
 const CHART_COLORS = ['#2563eb', '#16a34a', '#d97706', '#dc2626', '#8b5cf6', '#0891b2'];
 const PIE_COLORS = ['#16a34a', '#d97706', '#e2e8f0']; // occupied, reserved, vacant
@@ -244,7 +245,7 @@ export default function Dashboard() {
                   {tasks.map(tk => (
                     <li key={tk.id}>
                       <span className="activity-title">{tk.title}</span>
-                      {tk.due_date && <span className="activity-date">{tk.due_date}</span>}
+                      {tk.due_date && <span className="activity-date">{formatDate(tk.due_date)}</span>}
                       <StatusBadge status={tk.priority} />
                     </li>
                   ))}
@@ -455,7 +456,7 @@ function RecentAuditLog() {
               <td style={{ padding: '4px 8px' }}>{e.entity_type?.replace(/_/g, ' ')}</td>
               <td style={{ padding: '4px 8px' }}>{e.username || '—'}</td>
               <td style={{ padding: '4px 8px', color: 'var(--text-secondary)' }}>
-                {e.timestamp ? new Date(e.timestamp).toLocaleString('de-DE') : '—'}
+                {formatDateTime(e.timestamp)}
               </td>
             </tr>
           ))}

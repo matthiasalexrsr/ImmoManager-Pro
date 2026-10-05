@@ -5,6 +5,7 @@ import { useTranslation } from '../i18n';
 import DataTable from '../components/DataTable';
 import StatusBadge from '../components/StatusBadge';
 import { ArrowRightIcon } from '../components/Icons';
+import { formatArea, formatMoney } from '../utils/format';
 
 function fmt(v) {
   return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(v || 0);
@@ -65,7 +66,7 @@ export default function PropertyDetail() {
     { key: 'label', label: t('units.list.columns.label') || 'Bezeichnung', filterType: 'text' },
     { key: 'unit_type', label: t('units.list.columns.type') || 'Typ', filterType: 'select' },
     { key: 'area_sqm', label: t('units.list.columns.area') || 'Fläche (m²)', type: 'number', align: 'right',
-      render: v => v != null ? `${Number(v).toLocaleString('de-DE')} m²` : '—' },
+      render: v => formatArea(v) },
     { key: 'cold_rent', label: t('units.list.columns.coldRent') || 'Kaltmiete (€)', type: 'number', align: 'right',
       render: v => v != null ? fmt(v) : '—' },
     { key: 'status', label: t('ui.form.status') || 'Status', type: 'status', filterType: 'select' },
@@ -107,11 +108,11 @@ export default function PropertyDetail() {
         </div>
         <div className="stat-card">
           <div className="stat-label">€/m²</div>
-          <div className="stat-value">{rentPerSqm.toFixed(2)} €</div>
+          <div className="stat-value">{formatMoney(rentPerSqm)}</div>
         </div>
         <div className="stat-card">
           <div className="stat-label">{t('pages.propertyDetail.totalArea') || 'Gesamtfläche'}</div>
-          <div className="stat-value">{totalArea.toLocaleString('de-DE')} m²</div>
+          <div className="stat-value">{formatArea(totalArea)}</div>
         </div>
         <div className="stat-card">
           <div className="stat-label">{unitLabel}</div>
@@ -218,7 +219,7 @@ export default function PropertyDetail() {
                 </div>
                 <div className="stat-card">
                   <div className="stat-label">{t('pages.propertyDetail.avgPerSqm') || 'Durchschnitt €/m²'}</div>
-                  <div className="stat-value">{rentPerSqm.toFixed(2)} €</div>
+                  <div className="stat-value">{formatMoney(rentPerSqm)}</div>
                 </div>
               </div>
               <div style={{ marginTop: '1rem' }}>

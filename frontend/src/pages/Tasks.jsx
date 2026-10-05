@@ -6,6 +6,7 @@ import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
+import { formatDate } from '../utils/format';
 
 function parseRecurrence(rule) {
   if (!rule) return '—';
@@ -108,21 +109,21 @@ export default function Tasks() {
 
   const columns = [
     { key: 'title', label: t('pages.tasks.columns.title') || 'Titel', filterType: 'text' },
-    { key: 'property_name', label: t('portfolio.properties.form.name') || 'Immobilie', filterType: 'text' },
-    { key: 'unit_label', label: t('units.list.columns.label') || 'Einheit', filterType: 'text' },
+    { key: 'property_name', hidden: true, label: t('portfolio.properties.form.name') || 'Immobilie', filterType: 'text' },
+    { key: 'unit_label', subKey: 'property_name', label: t('units.list.columns.label') || 'Einheit', filterType: 'text' },
     { key: 'assignee', label: t('pages.tasks.columns.assignee') || 'Zuständig', filterType: 'text' },
     { key: 'due_date', label: t('pages.tasks.columns.dueDate') || 'Fällig am', type: 'date', filterType: 'dateRange',
       render: (v, row) => {
         if (!v) return '—';
-        const display = new Date(v).toLocaleDateString('de-DE');
+        const display = formatDate(v);
         if (isOverdue(v, row.status)) {
           return <span style={{ color: 'var(--danger)', fontWeight: 700 }}>{display}</span>;
         }
         return display;
       }},
-    { key: 'is_overdue', label: 'Überfällig',
+    { key: 'is_overdue', hidden: true, label: 'Überfällig',
       render: v => v ? <StatusBadge status="danger" label="Überfällig" /> : '—' },
-    { key: 'recurrence_label', label: t('pages.tasks.form.recurrence') || 'Wiederholung', filterType: 'text' },
+    { key: 'recurrence_label', hidden: true, label: t('pages.tasks.form.recurrence') || 'Wiederholung', filterType: 'text' },
     { key: 'priority', label: t('pages.tasks.columns.priority') || 'Priorität', type: 'status', filterType: 'select' },
     { key: 'status', label: t('pages.tasks.columns.status') || 'Status', type: 'status', filterType: 'select',
       render: v => <StatusBadge status={v} /> },
@@ -175,31 +176,31 @@ export default function Tasks() {
       <h1 className="page-title">{t('pages.tasks.title') || 'Aufgaben'}</h1>
 
       {/* Summary cards */}
-      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{totalCount}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Gesamt</div>
+      <div className="kpi-row">
+        <div className="kpi">
+          <div className="kpi-value">{totalCount}</div>
+          <div className="kpi-label">Gesamt</div>
         </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--info)' }}>{openCount}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Offen</div>
+        <div className="kpi">
+          <div className="kpi-value" style={{ color: 'var(--info)' }}>{openCount}</div>
+          <div className="kpi-label">Offen</div>
         </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: overdueCount > 0 ? 'var(--danger)' : undefined }}>{overdueCount}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Überfällig</div>
+        <div className="kpi">
+          <div className="kpi-value" style={{ color: overdueCount > 0 ? 'var(--danger)' : undefined }}>{overdueCount}</div>
+          <div className="kpi-label">Überfällig</div>
         </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--warning)' }}>{inProgressCount}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>In Bearbeitung</div>
+        <div className="kpi">
+          <div className="kpi-value" style={{ color: 'var(--warning)' }}>{inProgressCount}</div>
+          <div className="kpi-label">In Bearbeitung</div>
         </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{recurringCount}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Wiederkehrend</div>
+        <div className="kpi">
+          <div className="kpi-value">{recurringCount}</div>
+          <div className="kpi-label">Wiederkehrend</div>
         </div>
       </div>
 
       {/* Filter tabs */}
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+      <div className="filter-chips">
         {[
           { key: 'all', label: 'Alle' },
           { key: 'open', label: 'Offen' },

@@ -6,8 +6,9 @@ import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
+import { formatMoney, formatMonth } from '../utils/format';
 
-const money = value => value != null ? `${Number(value).toFixed(2)} EUR` : '-';
+const money = value => formatMoney(value);
 
 export default function RentCharges() {
   const { t } = useTranslation();
@@ -56,8 +57,8 @@ export default function RentCharges() {
   });
 
   const COLUMNS = [
-    { key: 'contract_label', label: t('tenantsContracts.contracts.title'), filterType: 'text' },
-    { key: 'month', label: 'Monat', filterType: 'text' },
+    { key: 'contract_label', label: 'Vertrag', filterType: 'text' },
+    { key: 'month', label: 'Monat', filterType: 'text', render: v => formatMonth(v) },
     { key: 'cold_rent', label: 'Kaltmiete', type: 'number', align: 'right', render: money },
     { key: 'service_charge', label: 'Betriebskosten', type: 'number', align: 'right', render: money },
     { key: 'heating_charge', label: 'Heizkosten', type: 'number', align: 'right', render: money },

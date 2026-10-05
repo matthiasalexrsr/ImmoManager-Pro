@@ -221,29 +221,29 @@ export default function Documents() {
       <h1 className="page-title">{t('pages.documents.title') || 'Dokumente'}</h1>
 
       {/* Summary cards */}
-      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '120px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{enriched.length}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Gesamt</div>
+      <div className="kpi-row">
+        <div className="kpi">
+          <div className="kpi-value">{enriched.length}</div>
+          <div className="kpi-label">Gesamt</div>
         </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '120px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{withFile}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Mit Datei</div>
+        <div className="kpi">
+          <div className="kpi-value">{withFile}</div>
+          <div className="kpi-label">Mit Datei</div>
         </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '120px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{ocrCompleted}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>OCR erkannt</div>
+        <div className="kpi">
+          <div className="kpi-value">{ocrCompleted}</div>
+          <div className="kpi-label">OCR erkannt</div>
         </div>
         {noAssignment > 0 && (
-          <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '120px', textAlign: 'center' }}>
-            <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--warning)' }}>{noAssignment}</div>
-            <div className="text-muted" style={{ fontSize: '0.8rem' }}>Ohne Zuordnung</div>
+          <div className="kpi">
+            <div className="kpi-value" style={{ color: 'var(--warning)' }}>{noAssignment}</div>
+            <div className="kpi-label">Ohne Zuordnung</div>
           </div>
         )}
       </div>
 
       {/* Filter tabs */}
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+      <div className="filter-chips">
         {[
           { key: 'all', label: 'Alle' },
           { key: 'no_assignment', label: 'Ohne Zuordnung' },

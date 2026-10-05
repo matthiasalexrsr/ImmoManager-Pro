@@ -7,6 +7,7 @@ import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useToast } from '../components/Toast';
+import { formatMoney } from '../utils/format';
 
 export default function Bookings() {
   const { t } = useTranslation();
@@ -59,19 +60,24 @@ export default function Bookings() {
   const allocationsByBooking = {};
   allocations.forEach(a => { (allocationsByBooking[a.booking_id] ||= []).push(a); });
 
+  // Short label for the list (contract numbers), the amounts per contract as tooltip.
   const allocationInfo = (b) => {
-    if (!b.tenant_id) return { label: '—', unassigned: 0 };
+    if (!b.tenant_id) return { label: '—', detail: '', unassigned: 0 };
     const own = allocationsByBooking[b.id] || [];
     const rest = Math.round((Number(b.amount) - own.reduce((s, a) => s + Number(a.amount), 0)) * 100) / 100;
-    const parts = own.map(a => `${contractNumber[a.contract_id] || '?'}: ${Number(a.amount).toFixed(2)} €`);
-    if (rest) parts.push(`nicht zugeordnet: ${rest.toFixed(2)} €`);
-    return { label: parts.join(' · '), unassigned: rest };
+    const parts = own.map(a => `${contractNumber[a.contract_id] || '?'}: ${formatMoney(a.amount)}`);
+    if (rest) parts.push(`nicht zugeordnet: ${formatMoney(rest)}`);
+    return {
+      label: own.map(a => contractNumber[a.contract_id] || '?').join(' + ') || '—',
+      detail: parts.join('\n'),
+      unassigned: rest,
+    };
   };
 
   // Enriched data
   const enriched = bookings.map(b => ({
     ...b,
-    ...(info => ({ allocation_label: info.label, unassigned: info.unassigned }))(allocationInfo(b)),
+    ...(info => ({ allocation_label: info.label, allocation_detail: info.detail, unassigned: info.unassigned }))(allocationInfo(b)),
     account_name: accountMap[b.account_id] || '—',
     category_name: categoryMap[b.category_id] || '—',
     property_name: propertyMap[b.property_id] || '—',
@@ -102,13 +108,13 @@ export default function Bookings() {
 
   const columns = [
     { key: 'booking_date', label: t('finance.bookings.form.date') || 'Datum', type: 'date', filterType: 'dateRange' },
-    { key: 'account_name', label: t('finance.accounts.form.name') || 'Konto', filterType: 'text' },
+    { key: 'account_name', hidden: true, label: t('finance.accounts.form.name') || 'Konto', filterType: 'text' },
     { key: 'category_name', label: t('finance.bookings.form.category') || 'Kategorie', filterType: 'text' },
     { key: 'amount', label: t('finance.bookings.form.amount') || 'Betrag (€)', type: 'number', align: 'right', filterType: 'numberRange',
       render: v => {
         const n = Number(v);
         const cls = n < 0 ? 'text-red' : 'text-green';
-        return <span className={cls}>{n.toFixed(2)} €</span>;
+        return <span className={cls}>{formatMoney(n)}</span>;
       }},
     { key: 'payment_text', label: t('finance.bookings.form.paymentText') || 'Buchungstext', filterType: 'text' },
     { key: 'property_name', label: t('portfolio.properties.form.name') || 'Immobilie', filterType: 'text' },
@@ -116,9 +122,15 @@ export default function Bookings() {
     { key: 'tenant_name', label: t('tenantsContracts.tenants.title') || 'Mieter', filterType: 'text', hidden: true },
     { key: 'allocation_label', label: 'Vertrag', filterType: 'text',
       render: (v, row) => (row.tenant_id
-        ? <span>{v} <button className="btn btn-sm btn-secondary" onClick={() => openSplit(row)}>Aufteilen</button></span>
+        ? (
+          <span className="cell-inline" title={row.allocation_detail}>
+            <span>{v}</span>
+            {row.unassigned !== 0 && <span className="badge badge-yellow">offen {formatMoney(row.unassigned)}</span>}
+            <button className="btn btn-sm btn-ghost btn-link" onClick={() => openSplit(row)}>Aufteilen</button>
+          </span>
+        )
         : v) },
-    { key: 'has_receipt', label: 'Beleg', filterType: 'text' },
+    { key: 'has_receipt', hidden: true, label: 'Beleg', filterType: 'text' },
     { key: 'status', label: t('ui.form.status') || 'Status', type: 'status', filterType: 'select',
       render: v => <StatusBadge status={v} /> },
   ];
@@ -190,31 +202,31 @@ export default function Bookings() {
       <h1 className="page-title">{t('finance.bookings.title') || 'Buchungen'}</h1>
 
       {/* Summary cards */}
-      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{totalCount}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Gesamt</div>
+      <div className="kpi-row">
+        <div className="kpi">
+          <div className="kpi-value">{totalCount}</div>
+          <div className="kpi-label">Gesamt</div>
         </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--success)' }}>{totalIncome.toFixed(2)} €</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Einnahmen</div>
+        <div className="kpi">
+          <div className="kpi-value" style={{ color: 'var(--success)' }}>{formatMoney(totalIncome)}</div>
+          <div className="kpi-label">Einnahmen</div>
         </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--danger)' }}>{totalExpense.toFixed(2)} €</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Ausgaben</div>
+        <div className="kpi">
+          <div className="kpi-value" style={{ color: 'var(--danger)' }}>{formatMoney(totalExpense)}</div>
+          <div className="kpi-label">Ausgaben</div>
         </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: noCategory > 0 ? 'var(--warning)' : undefined }}>{noCategory}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Ohne Kategorie</div>
+        <div className="kpi">
+          <div className="kpi-value" style={{ color: noCategory > 0 ? 'var(--warning)' : undefined }}>{noCategory}</div>
+          <div className="kpi-label">Ohne Kategorie</div>
         </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: noReceipt > 0 ? 'var(--warning)' : undefined }}>{noReceipt}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Ohne Beleg</div>
+        <div className="kpi">
+          <div className="kpi-value" style={{ color: noReceipt > 0 ? 'var(--warning)' : undefined }}>{noReceipt}</div>
+          <div className="kpi-label">Ohne Beleg</div>
         </div>
       </div>
 
       {/* Filter tabs */}
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+      <div className="filter-chips">
         {[
           { key: 'all', label: 'Alle' },
           { key: 'open', label: 'Offen' },
@@ -245,7 +257,7 @@ export default function Bookings() {
         <div className="modal-overlay" onClick={() => setSplit(null)} role="presentation">
           <div className="modal" role="dialog" aria-modal="true" aria-label="Zahlung aufteilen" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>Zahlung aufteilen ({Number(split.booking.amount).toFixed(2)} €)</h2>
+              <h2>Zahlung aufteilen ({formatMoney(split.booking.amount)})</h2>
               <button onClick={() => setSplit(null)} className="btn-close" aria-label="Schließen">✕</button>
             </div>
             <div className="modal-body">

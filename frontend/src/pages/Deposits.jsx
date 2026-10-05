@@ -6,6 +6,7 @@ import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
+import { formatMoney } from '../utils/format';
 
 export default function Deposits() {
   const { t } = useTranslation();
@@ -44,13 +45,13 @@ export default function Deposits() {
   const COLUMNS = [
     { key: 'contract_label', label: 'Vertrag', filterType: 'text' },
     { key: 'amount', label: 'Betrag (€)', type: 'number', align: 'right',
-      render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
+      render: v => formatMoney(v) },
     { key: 'status', label: 'Status', type: 'status', filterType: 'select',
       render: v => <StatusBadge status={v} /> },
     { key: 'held_date', label: 'Hinterlegt am', type: 'date' },
     { key: 'return_date', label: 'Rückgabe', type: 'date' },
     { key: 'deductions', label: 'Abzüge (€)', type: 'number', align: 'right',
-      render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
+      render: v => formatMoney(v) },
   ];
 
   const fields = [

@@ -24,7 +24,6 @@ const CONDITION_OPTIONS = [
 ];
 
 const TYPE_LABELS = Object.fromEntries(TYPE_OPTIONS.map(o => [o.value, o.label]));
-const STATUS_LABELS = Object.fromEntries(STATUS_OPTIONS.map(o => [o.value, o.label]));
 const CONDITION_LABELS = Object.fromEntries(CONDITION_OPTIONS.map(o => [o.value, o.label]));
 
 const COLUMNS = [
@@ -33,7 +32,7 @@ const COLUMNS = [
   { key: 'unit_label', label: 'Einheit' },
   { key: 'contract_label', label: 'Vertrag' },
   { key: 'overall_condition', label: 'Zustand', render: v => CONDITION_LABELS[v] || v || '—' },
-  { key: 'status', label: 'Status', render: v => STATUS_LABELS[v] || v },
+  { key: 'status', label: 'Status', type: 'status' },
   { key: 'key_count', label: 'Schlüssel', align: 'right' },
 ];
 

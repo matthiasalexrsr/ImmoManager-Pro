@@ -4,6 +4,7 @@ import { useTranslation } from '../i18n';
 import { api } from '../api';
 import StatusBadge from '../components/StatusBadge';
 import PhotoDropZone from '../components/PhotoDropZone';
+import { formatDate, formatMoney } from '../utils/format';
 
 export default function UnitOverview() {
   const { t } = useTranslation();
@@ -65,9 +66,9 @@ export default function UnitOverview() {
               <dt>{t('pages.unitOverview.rooms') || 'Zimmer'}</dt><dd>{unit.rooms ?? '—'}</dd>
               <dt>{t('pages.unitOverview.personCount') || 'Personenzahl'}</dt><dd>{unit.person_count ?? '—'}</dd>
               <dt>{t('pages.unitOverview.features') || 'Ausstattung'}</dt><dd>{unit.features || '—'}</dd>
-              <dt>{t('pages.unitOverview.baseRent') || 'Kaltmiete'}</dt><dd>{unit.cold_rent != null ? `${Number(unit.cold_rent).toFixed(2)} €` : '—'}</dd>
-              <dt>{t('pages.unitOverview.serviceCharge') || 'Nebenkosten'}</dt><dd>{unit.service_charge_advance != null ? `${Number(unit.service_charge_advance).toFixed(2)} €` : '—'}</dd>
-              <dt>{t('pages.unitOverview.heatingAdvance') || 'Heizkosten'}</dt><dd>{unit.heating_advance ? `${Number(unit.heating_advance).toFixed(2)} €` : '—'}</dd>
+              <dt>{t('pages.unitOverview.baseRent') || 'Kaltmiete'}</dt><dd>{unit.cold_rent != null ? `${formatMoney(unit.cold_rent)}` : '—'}</dd>
+              <dt>{t('pages.unitOverview.serviceCharge') || 'Nebenkosten'}</dt><dd>{unit.service_charge_advance != null ? `${formatMoney(unit.service_charge_advance)}` : '—'}</dd>
+              <dt>{t('pages.unitOverview.heatingAdvance') || 'Heizkosten'}</dt><dd>{unit.heating_advance ? `${formatMoney(unit.heating_advance)}` : '—'}</dd>
             </dl>
           </div>
         </div>
@@ -81,7 +82,7 @@ export default function UnitOverview() {
                 <dt>{t('pages.unitOverview.tenant') || 'Mieter'}</dt><dd>{tenant?.full_name || '—'}</dd>
                 <dt>{t('pages.unitOverview.start') || 'Beginn'}</dt><dd>{activeContract.start_date || '—'}</dd>
                 <dt>{t('pages.unitOverview.end') || 'Ende'}</dt><dd>{activeContract.end_date || t('pages.unitOverview.indefinite') || 'Unbefristet'}</dd>
-                <dt>{t('pages.unitOverview.deposit') || 'Kaution'}</dt><dd>{activeContract.deposit_amount ? `${Number(activeContract.deposit_amount).toFixed(2)} €` : '—'}</dd>
+                <dt>{t('pages.unitOverview.deposit') || 'Kaution'}</dt><dd>{activeContract.deposit_amount ? `${formatMoney(activeContract.deposit_amount)}` : '—'}</dd>
               </dl>
             ) : (
               <p className="empty-text">{t('pages.unitOverview.notRented') || 'Nicht vermietet'}</p>
@@ -98,7 +99,7 @@ export default function UnitOverview() {
               <ul className="overview-list">
                 {contracts.map(c => (
                   <li key={c.id}>
-                    <span>{c.contract_number} ({c.start_date} — {c.end_date || '∞'})</span>
+                    <span>{c.contract_number} ({formatDate(c.start_date)} – {c.end_date ? formatDate(c.end_date) : 'unbefristet'})</span>
                     <StatusBadge status={c.status} />
                   </li>
                 ))}

@@ -1,6 +1,7 @@
 import { useEntities } from '../contexts/DataStoreContext';
 import CrudPage from './CrudPage';
 import { useTranslation } from '../i18n';
+import { formatMoney } from '../utils/format';
 
 export default function Insurances() {
   const { t } = useTranslation();
@@ -10,7 +11,7 @@ export default function Insurances() {
     { key: 'insurance_type', label: t('pages.insurances.columns.type') || 'Art', filterType: 'select' },
     { key: 'policy_number', label: t('pages.insurances.columns.policyNumber') || 'Policennr.', filterType: 'text' },
     { key: 'premium_amount', label: t('pages.insurances.columns.premium') || 'Prämie (€)', type: 'number', align: 'right',
-      render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
+      render: v => formatMoney(v) },
     { key: 'premium_interval', label: t('pages.insurances.columns.interval') || 'Intervall' },
     { key: 'end_date', label: t('pages.insurances.columns.endDate') || 'Ablauf', type: 'date', filterType: 'dateRange' },
     { key: 'status', label: t('pages.insurances.columns.status') || 'Status', type: 'status', filterType: 'select' },

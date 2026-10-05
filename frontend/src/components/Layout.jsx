@@ -259,6 +259,8 @@ export default function Layout() {
           <NotificationBell />
         </div>
         <div className="main-content-body">
+          {/* Every page gets a heading; hidden by CSS when the page brings its own h1. */}
+          <h1 className="page-title page-title-auto">{currentPageTitle}</h1>
           <Outlet />
         </div>
       </main>

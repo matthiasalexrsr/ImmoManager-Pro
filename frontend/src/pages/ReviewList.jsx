@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { useToast } from '../components/Toast';
-import StatusBadge from '../components/StatusBadge';
 
 const KIND_LABELS = {
   unit_rent_differs: 'Miete Einheit ≠ Vertrag',
@@ -29,9 +28,10 @@ export default function ReviewList() {
   return (
     <div className="page">
       <h1 className="page-title">Prüfliste</h1>
-      <p className="text-muted">Mieten und Zahlungen, die eine Entscheidung brauchen.</p>
-      <div style={{ display: 'flex', gap: '0.5rem', margin: '1rem 0', flexWrap: 'wrap' }}>
-        {[['all', `Alle (${items.length})`], ...Object.entries(KIND_LABELS).map(([k, l]) => [k, `${l} (${counts[k] || 0})`])]
+      <p className="page-subtitle">Mieten und Zahlungen, die eine Entscheidung brauchen.</p>
+      <div className="filter-chips">
+        {[['all', `Alle (${items.length})`],
+          ...Object.entries(KIND_LABELS).filter(([k]) => counts[k] || kind === k).map(([k, l]) => [k, `${l} (${counts[k] || 0})`])]
           .map(([k, label]) => (
             <button key={k} className={`btn btn-sm ${kind === k ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setKind(k)}>{label}</button>
           ))}
@@ -39,17 +39,23 @@ export default function ReviewList() {
       {shown.length === 0
         ? <p className="text-muted">Nichts zu prüfen.</p>
         : (
-          <div className="card">
+          <div className="data-table-wrapper">
             <div className="table-scroll">
-              <table className="data-table">
-                <thead><tr><th>Art</th><th>Was</th><th>Details</th><th></th></tr></thead>
+              <table>
+                <thead><tr><th>Art</th><th>Hinweis</th><th /></tr></thead>
                 <tbody>
                   {shown.map(item => (
                     <tr key={`${item.kind}-${item.entity_id}`}>
-                      <td><StatusBadge status={item.severity} /> {KIND_LABELS[item.kind] || item.kind}</td>
-                      <td>{item.title}</td>
-                      <td className="text-muted">{item.detail}</td>
-                      <td><Link className="btn btn-sm btn-secondary" to={item.link}>Öffnen</Link></td>
+                      <td>
+                        <span className={`badge ${item.severity === 'warning' ? 'badge-yellow' : 'badge-blue'}`}>
+                          {KIND_LABELS[item.kind] || item.kind}
+                        </span>
+                      </td>
+                      <td className="td-wrap td-stacked">
+                        <div className="td-title">{item.title}</div>
+                        <div className="td-sub">{item.detail}</div>
+                      </td>
+                      <td className="text-right"><Link className="btn btn-sm btn-secondary" to={item.link}>Öffnen</Link></td>
                     </tr>
                   ))}
                 </tbody>

@@ -100,8 +100,8 @@ export default function ContractWizard() {
 
   return (
     <div className="page" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <h2 style={{ margin: '0 0 12px 0' }}>{title}</h2>
-      <p className="text-muted" style={{ margin: '0 0 16px 0' }}>
+      <h1 className="page-title">{title}</h1>
+      <p className="page-subtitle">
         {t('contractWizard.description') !== 'contractWizard.description'
           ? t('contractWizard.description')
           : 'Erstellen Sie Schritt für Schritt einen rechtssicheren Mietvertrag.'}

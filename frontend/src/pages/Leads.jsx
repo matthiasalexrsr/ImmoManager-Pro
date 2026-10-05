@@ -5,6 +5,7 @@ import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
+import { formatDate } from '../utils/format';
 
 const PRIORITY_COLORS = { 1: 'var(--danger)', 2: 'var(--warning)', 3: 'var(--info)' };
 
@@ -31,7 +32,7 @@ const COLUMNS = [
     render: v => <StatusBadge status={v} /> },
   { key: 'unit_label', label: 'Einheit', filterType: 'text' },
   { key: 'created_at', label: 'Erstellt', type: 'date',
-    render: v => v ? new Date(v).toLocaleDateString('de-DE') : '—' },
+    render: v => formatDate(v) },
 ];
 
 export default function Leads() {
@@ -178,22 +179,22 @@ export default function Leads() {
       )}
 
       {/* Summary stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '0.75rem', marginBottom: '1.5rem' }}>
-        <div className="panel" style={{ padding: '0.75rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--primary)' }}>{leads.length}</div>
-          <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Gesamt</div>
+      <div className="kpi-row">
+        <div className="kpi">
+          <div className="kpi-value">{leads.length}</div>
+          <div className="kpi-label">Gesamt</div>
         </div>
         {Object.entries(statusCounts).map(([status, count]) => (
-          <div key={status} className="panel" style={{ padding: '0.75rem', textAlign: 'center' }}>
-            <div style={{ fontSize: '1.25rem', fontWeight: 700 }}>{count}</div>
-            <div style={{ fontSize: '0.8rem' }}><StatusBadge status={status} /></div>
+          <div key={status} className="kpi">
+            <div className="kpi-value">{count}</div>
+            <div className="kpi-label"><StatusBadge status={status} /></div>
           </div>
         ))}
       </div>
 
       {/* Group-by controls */}
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', alignItems: 'center' }}>
-        <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Gruppieren nach:</span>
+      <div className="toolbar">
+        <span className="toolbar-label">Gruppieren nach:</span>
         {[
           { value: 'none', label: 'Keine' },
           { value: 'unit', label: 'Einheit' },

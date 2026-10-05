@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../api';
 import { useToast } from '../components/Toast';
+import { formatDate as day, formatMoney } from '../utils/format';
 
-const eur = v => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(v || 0);
-const day = iso => (iso ? iso.slice(0, 10).split('-').reverse().join('.') : '—');
+const eur = v => formatMoney(v || 0);
 
 /** Per contract what was due, what was paid and the balance, plus payments not credited to any contract. */
 export default function TenantAccount() {
@@ -33,7 +33,7 @@ export default function TenantAccount() {
   return (
     <div className="page">
       <h1 className="page-title">Mieterkonto {tenant?.full_name || ''}</h1>
-      <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap' }}>
+      <div className="toolbar">
         <label htmlFor="as-of">Stichtag</label>
         <input id="as-of" type="date" value={asOf} onChange={e => setAsOf(e.target.value)} />
         <Link to="/tenants" className="btn btn-sm btn-secondary">Zurück zu den Mietern</Link>
@@ -53,15 +53,15 @@ export default function TenantAccount() {
         <div className="card-header"><strong>Verträge</strong></div>
         <div className="table-scroll">
           <table className="data-table">
-            <thead><tr><th>Vertrag</th><th>Soll</th><th>Gezahlt</th><th>Offen</th><th>Überzahlt</th></tr></thead>
+            <thead><tr><th>Vertrag</th><th className="text-right">Soll</th><th className="text-right">Gezahlt</th><th className="text-right">Offen</th><th className="text-right">Überzahlt</th></tr></thead>
             <tbody>
               {account.contracts.map(c => (
                 <tr key={c.contract_id}>
                   <td>{c.contract_number}</td>
-                  <td>{eur(c.expected)}</td>
-                  <td>{eur(c.paid)}</td>
-                  <td className={c.outstanding > 0 ? 'text-red' : ''}>{eur(c.outstanding)}</td>
-                  <td className={c.overpaid > 0 ? 'text-green' : ''}>{eur(c.overpaid)}</td>
+                  <td className="text-right td-num">{eur(c.expected)}</td>
+                  <td className="text-right td-num">{eur(c.paid)}</td>
+                  <td className={`text-right td-num ${c.outstanding > 0 ? 'text-red' : ''}`}>{eur(c.outstanding)}</td>
+                  <td className={`text-right td-num ${c.overpaid > 0 ? 'text-green' : ''}`}>{eur(c.overpaid)}</td>
                 </tr>
               ))}
               {account.contracts.length === 0 && <tr><td colSpan={5} className="table-empty">Keine Verträge</td></tr>}
@@ -77,14 +77,14 @@ export default function TenantAccount() {
           : (
             <div className="table-scroll">
               <table className="data-table">
-                <thead><tr><th>Datum</th><th>Buchungstext</th><th>Betrag</th><th>Davon ohne Vertrag</th></tr></thead>
+                <thead><tr><th>Datum</th><th>Buchungstext</th><th className="text-right">Betrag</th><th className="text-right">Davon ohne Vertrag</th></tr></thead>
                 <tbody>
                   {account.unassigned.map(b => (
                     <tr key={b.booking_id}>
                       <td>{day(b.booking_date)}</td>
-                      <td>{b.payment_text || '—'}</td>
-                      <td>{eur(b.amount)}</td>
-                      <td>{eur(b.unassigned)}</td>
+                      <td className="td-wrap">{b.payment_text || '—'}</td>
+                      <td className="text-right td-num">{eur(b.amount)}</td>
+                      <td className="text-right td-num">{eur(b.unassigned)}</td>
                     </tr>
                   ))}
                 </tbody>

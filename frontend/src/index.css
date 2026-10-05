@@ -498,6 +498,20 @@ a:hover {
   margin-bottom: 1.5rem;
 }
 
+.main-content-body:has(h1:not(.page-title-auto)) > .page-title-auto {
+  display: none;
+}
+
+.page-title:has(+ .page-subtitle) {
+  margin-bottom: 0.25rem;
+}
+
+.page-subtitle {
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+  margin-bottom: 1.25rem;
+}
+
 .page-loading {
   display: flex;
   align-items: center;
@@ -587,6 +601,15 @@ a:hover {
   border-color: var(--color-text-muted);
 }
 
+.btn-primary-soft {
+  background: var(--color-primary-50);
+  color: var(--color-primary);
+  border-color: var(--color-primary-light);
+}
+.btn-primary-soft:hover:not(:disabled) {
+  background: var(--color-primary-light);
+}
+
 .btn-ghost {
   background: transparent;
   color: var(--color-text-secondary);
@@ -646,6 +669,16 @@ a:hover {
   padding: 1.25rem;
 }
 
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem 1.25rem;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 1rem;
+}
+
 /* =============================================================
    DATA TABLE
    ============================================================= */
@@ -699,21 +732,25 @@ a:hover {
 
 .table-scroll {
   overflow-x: auto;
+  position: relative; /* keeps absolutely positioned cell content (screen reader text) inside the scroll box */
 }
 
-.data-table-wrapper table {
+.data-table-wrapper table,
+table.data-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.875rem;
 }
 
-.data-table-wrapper thead {
+.data-table-wrapper thead,
+table.data-table thead {
   background: var(--color-bg);
 }
 
-.data-table-wrapper th {
+.data-table-wrapper th,
+table.data-table th {
   text-align: left;
-  padding: 0.7rem 1rem;
+  padding: 0.7rem 0.75rem;
   font-weight: 600;
   color: var(--color-text-secondary);
   font-size: 0.75rem;
@@ -723,22 +760,132 @@ a:hover {
   white-space: nowrap;
 }
 
-.data-table-wrapper td {
-  padding: 0.7rem 1rem;
+.data-table-wrapper td,
+table.data-table td {
+  padding: 0.7rem 0.75rem;
   border-bottom: 1px solid var(--color-border-light);
   color: var(--color-text);
   vertical-align: middle;
+  white-space: nowrap;
 }
 
-.data-table-wrapper tbody tr {
-  transition: background var(--transition);
+/* Long free text (descriptions, notes) may wrap, but keeps a readable width. */
+.data-table-wrapper td.td-wrap,
+table.data-table td.td-wrap {
+  white-space: normal;
+  min-width: 14rem;
+  max-width: 28rem;
 }
 
-.data-table-wrapper tbody tr:hover {
+.data-table-wrapper th:first-child,
+.data-table-wrapper td:first-child {
+  padding-left: 1.25rem;
+}
+.data-table-wrapper th:last-child,
+.data-table-wrapper td:last-child {
+  padding-right: 1.25rem;
+}
+
+.data-table-wrapper .td-num,
+table.data-table .td-num {
+  font-variant-numeric: tabular-nums;
+}
+
+.data-table-wrapper td.td-stacked,
+table.data-table td.td-stacked {
+  max-width: 48rem;
+  line-height: 1.4;
+}
+.td-title {
+  font-weight: 500;
+}
+.td-sub {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  margin-top: 0.1rem;
+}
+
+/* A row of controls above page content (date, links). */
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+.toolbar label,
+.toolbar-label {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+.toolbar input {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: 0.875rem;
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+/* Quick filter buttons above a list. */
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.data-table-wrapper td.table-empty,
+table.data-table td.table-empty {
+  text-align: center;
+  padding: 2.5rem 1rem;
+  color: var(--color-text-muted);
+  white-space: normal;
+}
+
+.cell-stack {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.35;
+}
+
+.cell-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.btn-link {
+  color: var(--color-primary);
+  padding: 0.15rem 0.4rem;
+}
+.btn-link:hover:not(:disabled) {
+  color: var(--color-primary-hover);
   background: var(--color-primary-50);
 }
 
-.data-table-wrapper tbody tr:last-child td {
+.cell-text {
+  display: inline-block;
+  max-width: 22rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+
+.data-table-wrapper tbody tr,
+table.data-table tbody tr {
+  transition: background var(--transition);
+}
+
+.data-table-wrapper tbody tr:hover,
+table.data-table tbody tr:hover {
+  background: var(--color-primary-50);
+}
+
+.data-table-wrapper tbody tr:last-child td,
+table.data-table tbody tr:last-child td {
   border-bottom: none;
 }
 
@@ -1143,7 +1290,7 @@ a:hover {
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
   gap: 1rem;
   margin-bottom: 2rem;
 }
@@ -1203,6 +1350,8 @@ a:hover {
   color: var(--color-text);
   line-height: 1.2;
   letter-spacing: -0.02em;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .stat-label {
@@ -1210,6 +1359,62 @@ a:hover {
   color: var(--color-text-secondary);
   font-weight: 500;
   margin-top: 0.15rem;
+}
+
+/* Cards with label and value only (no icon): stacked, aligned left. */
+.stat-card:not(:has(.stat-icon)) {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0.2rem;
+  cursor: default;
+  min-width: 0;
+}
+.stat-card:not(:has(.stat-icon)):hover {
+  transform: none;
+}
+.stat-card:not(:has(.stat-icon)) .stat-value {
+  font-size: 1.3rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Key figures above a list: compact cards in a row. */
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11.5rem, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.kpi {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-xs);
+  padding: 0.8rem 1rem;
+  min-width: 0;
+}
+
+.kpi-value {
+  font-size: 1.3rem;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text);
+}
+
+.kpi-label {
+  margin-top: 0.15rem;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .dashboard-panels {
@@ -1798,6 +2003,11 @@ a:hover {
   gap: 2px;
 }
 
+.filter-date-range {
+  flex-direction: column;
+  min-width: 8.5rem;
+}
+
 .filter-date {
   min-width: 0;
   flex: 1;
@@ -1897,6 +2107,7 @@ a:hover {
 /* Table button group */
 .table-btn-group {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.35rem;
 }
@@ -2339,6 +2550,9 @@ a:hover {
   .table-actions {
     flex-direction: column;
     align-items: stretch;
+  }
+  .kpi-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .table-footer {
     flex-direction: column;
@@ -3273,4 +3487,29 @@ a:hover {
 .dev-mode-active .sidebar {
   top: 36px;
   height: calc(100vh - 36px);
+}
+
+/* Text for screen readers only. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Viewings: month calendar beside the list of appointments, stacked on small screens. */
+.viewings-layout {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 1.5rem;
+}
+@media (max-width: 768px) {
+  .viewings-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

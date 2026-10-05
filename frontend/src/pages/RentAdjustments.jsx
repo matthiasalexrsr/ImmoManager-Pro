@@ -7,6 +7,7 @@ import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useToast } from '../components/Toast';
+import { formatMoney, formatPercent } from '../utils/format';
 
 const COLUMNS = [
   { key: 'contract_number', label: 'Vertrag', filterType: 'text' },
@@ -14,11 +15,11 @@ const COLUMNS = [
     render: v => v === 'index' ? 'Indexmiete' : v === 'stepped' ? 'Staffelmiete' : v || '—' },
   { key: 'effective_date', label: 'Wirksamkeit', type: 'date', filterType: 'dateRange' },
   { key: 'previous_rent', label: 'Bisherige Miete (€)', type: 'number', align: 'right',
-    render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
+    render: v => formatMoney(v) },
   { key: 'new_rent', label: 'Neue Miete (€)', type: 'number', align: 'right',
-    render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
+    render: v => formatMoney(v) },
   { key: 'increase_percent', label: 'Erhöhung (%)', type: 'number', align: 'right',
-    render: v => v != null ? `${Number(v).toFixed(1)} %` : '—' },
+    render: v => formatPercent(v) },
   { key: 'status', label: 'Status', type: 'status', filterType: 'select',
     render: v => <StatusBadge status={v} /> },
 ];

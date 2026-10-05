@@ -6,6 +6,7 @@ import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
+import { formatMoney } from '../utils/format';
 
 export default function Receivables() {
   const { t } = useTranslation();
@@ -45,7 +46,7 @@ export default function Receivables() {
   const COLUMNS = [
     { key: 'contract_label', label: t('tenantsContracts.contracts.title'), filterType: 'text' },
     { key: 'amount_due', label: t('finance.bookings.amount'), type: 'number', align: 'right',
-      render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
+      render: v => formatMoney(v) },
     { key: 'due_date', label: t('finance.receivables.dueDate'), type: 'date', filterType: 'dateRange' },
     { key: 'status', label: 'Status', type: 'status', filterType: 'select',
       render: v => <StatusBadge status={v} /> },

@@ -52,9 +52,9 @@ export default function NotificationTemplates() {
   const fields = [
     { key: 'name', label: 'Name', required: true },
     { key: 'notification_type', label: 'Typ', required: true, type: 'select', options: [
-      { value: 'overdue_payment', label: 'Ueberfaellige Zahlung' },
+      { value: 'overdue_payment', label: 'Überfällige Zahlung' },
       { value: 'contract_expiry', label: 'Vertragsende' },
-      { value: 'task_due', label: 'Aufgabe faellig' },
+      { value: 'task_due', label: 'Aufgabe fällig' },
       { value: 'escalation', label: 'Eskalation' },
       { value: 'general', label: 'Allgemein' },
     ]},

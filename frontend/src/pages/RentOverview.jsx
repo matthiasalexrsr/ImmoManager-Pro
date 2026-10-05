@@ -1,19 +1,17 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
 import DataTable from '../components/DataTable';
-import StatusBadge from '../components/StatusBadge';
 import { useTranslation } from '../i18n';
 import FormModal from '../components/FormModal';
+import { formatMoney, formatMonth } from '../utils/format';
 
-function fmt(v) {
-  return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(v || 0);
-}
+const fmt = v => formatMoney(v || 0);
 
 const COLUMNS = [
   { key: 'contract_number', label: 'Vertrag', filterType: 'text' },
   { key: 'tenant_name', label: 'Mieter', filterType: 'text' },
   { key: 'unit_label', label: 'Einheit', filterType: 'text' },
-  { key: 'month', label: 'Monat', filterType: 'text' },
+  { key: 'month', label: 'Monat', filterType: 'text', render: v => formatMonth(v) },
   { key: 'total_due', label: 'Forderung (€)', type: 'number', align: 'right',
     render: v => v != null ? fmt(v) : '—' },
   { key: 'amount_paid', label: 'Bezahlt (€)', type: 'number', align: 'right',
@@ -176,6 +174,7 @@ export default function RentOverview() {
 
   return (
     <div className="page">
+      <h1 className="page-title">{t('pages.rentOverview.title')}</h1>
       <div className="stats-grid" style={{ marginBottom: '1rem' }}>
         <div className="stat-card">
           <div className="stat-label">{t('pages.rentOverview.totalReceivables')}</div>
@@ -191,7 +190,7 @@ export default function RentOverview() {
         </div>
         <div className="stat-card">
           <div className="stat-label">{t('pages.rentOverview.overdue')}</div>
-          <div className="stat-value">{overdueCount} <StatusBadge status="overdue" /></div>
+          <div className={`stat-value ${overdueCount ? 'text-red' : ''}`}>{overdueCount}</div>
         </div>
       </div>
 

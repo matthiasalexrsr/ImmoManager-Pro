@@ -8,6 +8,7 @@ import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useToast } from '../components/Toast';
+import { formatMoney, formatArea } from '../utils/format';
 
 export default function Properties() {
   const { t } = useTranslation();
@@ -108,7 +109,7 @@ export default function Properties() {
     { key: 'portfolio_name', label: 'Portfolio', filterType: 'text' },
     { key: 'property_type', label: t('portfolio.properties.form.type') || 'Typ', filterType: 'select' },
     { key: 'city', label: t('portfolio.properties.form.city') || 'Stadt', filterType: 'text' },
-    { key: 'postal_code', label: t('portfolio.properties.form.postalCode') || 'PLZ', filterType: 'text' },
+    { key: 'postal_code', hidden: true, label: t('portfolio.properties.form.postalCode') || 'PLZ', filterType: 'text' },
     { key: 'unit_count', label: 'Einheiten', type: 'number', align: 'right' },
     { key: 'occupancy_rate', label: 'Vermietung', type: 'number', align: 'right',
       render: v => {
@@ -116,12 +117,12 @@ export default function Properties() {
         return <span style={{ color, fontWeight: 600 }}>{v}%</span>;
       }},
     { key: 'total_rent', label: 'Kaltmiete (€)', type: 'number', align: 'right',
-      render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
-    { key: 'open_maintenance', label: 'Offene Wartung', type: 'number', align: 'right',
+      render: v => formatMoney(v) },
+    { key: 'open_maintenance', hidden: true, label: 'Offene Wartung', type: 'number', align: 'right',
       render: v => v > 0 ? <span style={{ color: 'var(--warning)', fontWeight: 600 }}>{v}</span> : '0' },
-    { key: 'year_built', label: t('portfolio.properties.form.yearBuilt') || 'Baujahr', type: 'number' },
-    { key: 'living_area_sqm', label: t('portfolio.properties.form.livingArea') || 'Wohnfläche (m²)', type: 'number', align: 'right',
-      render: v => v != null ? `${Number(v).toLocaleString('de-DE')} m²` : '—' },
+    { key: 'year_built', hidden: true, label: t('portfolio.properties.form.yearBuilt') || 'Baujahr', type: 'number' },
+    { key: 'living_area_sqm', hidden: true, label: t('portfolio.properties.form.livingArea') || 'Wohnfläche (m²)', type: 'number', align: 'right',
+      render: v => formatArea(v) },
     { key: 'status', label: t('ui.form.status') || 'Status', type: 'status', filterType: 'select',
       render: v => <StatusBadge status={v} /> },
   ];
@@ -188,27 +189,27 @@ export default function Properties() {
       <h1 className="page-title">{t('portfolio.properties.title') || 'Immobilien'}</h1>
 
       {/* Summary cards */}
-      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{totalCount}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Gesamt</div>
+      <div className="kpi-row">
+        <div className="kpi">
+          <div className="kpi-value">{totalCount}</div>
+          <div className="kpi-label">Gesamt</div>
         </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--success)' }}>{activeCount}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Aktiv</div>
+        <div className="kpi">
+          <div className="kpi-value" style={{ color: 'var(--success)' }}>{activeCount}</div>
+          <div className="kpi-label">Aktiv</div>
         </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--warning)' }}>{vacancyCount}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Mit Leerstand</div>
+        <div className="kpi">
+          <div className="kpi-value" style={{ color: 'var(--warning)' }}>{vacancyCount}</div>
+          <div className="kpi-label">Mit Leerstand</div>
         </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: avgOccupancy >= 80 ? 'var(--success)' : 'var(--warning)' }}>{avgOccupancy}%</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>&Oslash; Vermietungsquote</div>
+        <div className="kpi">
+          <div className="kpi-value" style={{ color: avgOccupancy >= 80 ? 'var(--success)' : 'var(--warning)' }}>{avgOccupancy}%</div>
+          <div className="kpi-label">&Oslash; Vermietungsquote</div>
         </div>
       </div>
 
       {/* Filter tabs */}
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+      <div className="filter-chips">
         {[
           { key: 'all', label: 'Alle' },
           { key: 'active', label: 'Aktiv' },

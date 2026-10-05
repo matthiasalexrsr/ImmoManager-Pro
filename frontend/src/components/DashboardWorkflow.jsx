@@ -61,21 +61,21 @@ function ProcessJourney({ steps, nextStep, t }) {
             {translate(
               t,
               'pages.dashboard.process.subtitle',
-              'Objekt -> Einheit -> Mieter -> Vertrag -> Sollstellung -> Zahlung -> Mahnung',
+              'Objekt → Einheit → Mieter → Vertrag → Sollstellung → Zahlung → Mahnung',
             )}
           </p>
         </div>
         {nextStep ? (
           <Link to={nextStep.to} className={`process-next-action process-next-${nextStep.tone}`}>
             <span>
-              <small>{translate(t, 'pages.dashboard.process.nextLabel', 'Naechster Schritt')}</small>
+              <small>{translate(t, 'pages.dashboard.process.nextLabel', 'Nächster Schritt')}</small>
               <strong>{translate(t, nextStep.labelKey, nextStep.labelFallback)}</strong>
             </span>
             <ArrowRightIcon size={16} />
           </Link>
         ) : (
           <div className="process-next-complete">
-            <small>{translate(t, 'pages.dashboard.process.nextLabel', 'Naechster Schritt')}</small>
+            <small>{translate(t, 'pages.dashboard.process.nextLabel', 'Nächster Schritt')}</small>
             <strong>{translate(t, 'pages.dashboard.process.complete', 'Alles bereit')}</strong>
           </div>
         )}
@@ -108,7 +108,7 @@ function WorkflowCard({ item, t }) {
   const statusLabel = translate(
     t,
     `pages.dashboard.workflow.status.${item.status}`,
-    item.status === 'complete' ? 'Bereit' : item.status === 'attention' ? 'Pruefen' : item.status === 'blocked' ? 'Starten' : 'Aktiv',
+    item.status === 'complete' ? 'Bereit' : item.status === 'attention' ? 'Prüfen' : item.status === 'blocked' ? 'Starten' : 'Aktiv',
   );
 
   return (
@@ -155,13 +155,13 @@ function AttentionPanel({ items, t }) {
       <div className="workflow-section-header compact">
         <div>
           <h2 id="attention-heading">{translate(t, 'pages.dashboard.attention.title', 'Heute wichtig')}</h2>
-          <p>{translate(t, 'pages.dashboard.attention.subtitle', 'Die naechsten operativen Blocker in Reihenfolge der Dringlichkeit.')}</p>
+          <p>{translate(t, 'pages.dashboard.attention.subtitle', 'Die nächsten operativen Blocker in Reihenfolge der Dringlichkeit.')}</p>
         </div>
       </div>
       {items.length === 0 ? (
         <div className="attention-empty">
           <strong>{translate(t, 'pages.dashboard.attention.emptyTitle', 'Alles im gruenen Bereich')}</strong>
-          <span>{translate(t, 'pages.dashboard.attention.emptyText', 'Keine akuten Rueckstaende aus den aktuellen Dashboard-Daten.')}</span>
+          <span>{translate(t, 'pages.dashboard.attention.emptyText', 'Keine akuten Rückstände aus den aktuellen Dashboard-Daten.')}</span>
         </div>
       ) : (
         <div className="attention-list">
@@ -196,7 +196,7 @@ export default function DashboardWorkflow({ stats, aging, expiring, notification
         <div className="workflow-section-header">
           <div>
             <h2 id="workflow-heading">{translate(t, 'pages.dashboard.workflow.title', 'Arbeitszentrale')}</h2>
-            <p>{translate(t, 'pages.dashboard.workflow.subtitle', 'Gefuehrte Prozesssicht ueber Bestand, Vermietung, Finanzen, Abrechnung und Betrieb.')}</p>
+            <p>{translate(t, 'pages.dashboard.workflow.subtitle', 'Geführte Prozesssicht über Bestand, Vermietung, Finanzen, Abrechnung und Betrieb.')}</p>
           </div>
           <Link to="/settings" className="workflow-secondary-link">
             {translate(t, 'pages.dashboard.workflow.configure', 'Arbeitsweise anpassen')}
