@@ -256,8 +256,9 @@ class _PersonProblems:
                         ", ".join(sorted(label(u) for u in self.from_rooms)))
 
 
-# Unit types nobody lives in. They take no part in the person key.
-_NO_RESIDENTS = ("stellplatz", "garage", "parking", "carport", "keller", "basement")
+# Unit types nobody lives in. They take no part in the person key, and without an area
+# they take no part in the area key either (a parking space has no living area).
+_NO_RESIDENTS = ("stellplatz", "garage", "parking", "carport", "keller", "basement", "storage", "lager", "abstell")
 
 
 def _has_residents(unit: Any) -> bool:
@@ -283,7 +284,7 @@ def _time_shares(key, units, segments, contract_by_id, area_missing: set[str], p
             basis: Optional[Decimal]
             if key.key_type == "area_sqm":
                 basis = _decimal(unit.area_sqm) if unit.area_sqm and unit.area_sqm > 0 else None
-                if basis is None:
+                if basis is None and _has_residents(unit):
                     area_missing.add(unit.id)
             elif key.key_type == "person_count":
                 contract = contract_by_id.get(segment.contract_id) if segment.contract_id else None

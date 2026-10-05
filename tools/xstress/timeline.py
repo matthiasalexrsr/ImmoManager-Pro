@@ -366,8 +366,15 @@ class Simulation:
                 v.call("GET", f"/billing/periods/{period['id']}/preflight", area="NK-Abrechnung")
                 status, generated = v.call("POST", f"/billing/periods/{period['id']}/generate", {},
                                            expect=(200, 201, 400, 409, 422), area="NK-Abrechnung")
+                if status == 400:
+                    # what a manager does: fill in the missing areas and person counts, then try again
+                    self.complete_units(prop)
+                    status, generated = v.call("POST", f"/billing/periods/{period['id']}/generate", {},
+                                               expect=(200, 201, 400, 409, 422), area="NK-Abrechnung")
                 if status not in (200, 201):
-                    self.f.add("HINWEIS", "NK-Abrechnung", f"{prop.name} {year}: Erzeugen abgelehnt ({status})", generated)
+                    self.f.add("FALSCH", "NK-Abrechnung",
+                               f"{prop.name} {year}: Erzeugen auch nach Ergänzen der Stammdaten abgelehnt ({status})",
+                               generated)
                     continue
                 statements = [s for s in (v.ok("GET", f"/billing/statements?billing_period_id={period['id']}",
                                                 area="NK-Abrechnung") or []) if s.get("billing_period_id") == period["id"]]
@@ -405,6 +412,19 @@ class Simulation:
                                 "service_charge_advance": new[2], "heating_advance": current[2],
                                 "notes": f"Anpassung Vorauszahlung nach NK {year}"}, area="Mietverlauf"):
                             t.steps.append(new)
+
+    def complete_units(self, prop) -> None:
+        v = self.u["verwalter"]
+        for unit in prop.units:
+            patch = {}
+            if unit.area is None and unit.kind in ("flat", "commercial"):
+                unit.area = 45.0 if unit.kind == "flat" else 80.0
+                patch["area_sqm"] = unit.area
+            if unit.persons is None and unit.kind in ("flat", "commercial"):
+                unit.persons = 2 if unit.kind == "flat" else 0     # a shop: 0 persons, entered on purpose
+                patch["person_count"] = unit.persons
+            if patch:
+                v.call("PATCH", f"/units/{unit.id}", patch, area="Stammdaten")
 
     # --- the technician ------------------------------------------------------------------------------
     def caretaking(self, month: date) -> None:

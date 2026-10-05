@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 from uuid import uuid4
 
 from pydantic import BaseModel as PydanticBaseModel
@@ -487,7 +487,9 @@ class InMemoryStore:
             raise NotFoundError("Vertrag nicht gefunden")
         self._delete_contract(contract_id)
 
-    def list_bookings(self) -> List[Booking]:
+    def list_bookings(self, tenant_id: Optional[str] = None) -> List[Booking]:
+        if tenant_id is not None:
+            return [b for b in self.bookings.values() if b.tenant_id == tenant_id]
         return list(self.bookings.values())
 
     def create_booking(self, data: BookingCreate) -> Booking:
@@ -537,11 +539,13 @@ class InMemoryStore:
         del self.bookings[booking_id]
 
     # --- Payment allocations (which contract a payment pays) ---
-    def list_payment_allocations(self, booking_id: Optional[str] = None,
-                                 contract_id: Optional[str] = None) -> List[PaymentAllocation]:
+    def list_payment_allocations(self, booking_id: Optional[str] = None, contract_id: Optional[str] = None,
+                                 booking_ids: Optional[Iterable[str]] = None) -> List[PaymentAllocation]:
+        wanted = set(booking_ids) if booking_ids is not None else None
         return [a for a in self.payment_allocations.values()
                 if (booking_id is None or a.booking_id == booking_id)
-                and (contract_id is None or a.contract_id == contract_id)]
+                and (contract_id is None or a.contract_id == contract_id)
+                and (wanted is None or a.booking_id in wanted)]
 
     def create_payment_allocation(self, data: PaymentAllocationCreate) -> PaymentAllocation:
         if data.booking_id not in self.bookings:

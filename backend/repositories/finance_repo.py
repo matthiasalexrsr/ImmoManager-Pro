@@ -1,6 +1,7 @@
 """Finance domain repository — bookings, invoices, receivables, tax, budgets, meters."""
 
 import logging
+from collections.abc import Iterable
 
 from sqlalchemy.orm import Session
 
@@ -71,7 +72,9 @@ class FinanceRepository:
         self.db.commit()
 
     # --- Bookings ---
-    def list_bookings(self) -> list[Booking]:
+    def list_bookings(self, tenant_id: str | None = None) -> list[Booking]:
+        if tenant_id is not None:
+            return self._bookings.filter_by(tenant_id=tenant_id)
         return self._bookings.list_all()
 
     def create_booking(self, data: BookingCreate) -> Booking:
@@ -118,8 +121,10 @@ class FinanceRepository:
         self._commit()
 
     # --- Payment allocations ---
-    def list_payment_allocations(self, booking_id: str | None = None,
-                                 contract_id: str | None = None) -> list[PaymentAllocation]:
+    def list_payment_allocations(self, booking_id: str | None = None, contract_id: str | None = None,
+                                 booking_ids: Iterable[str] | None = None) -> list[PaymentAllocation]:
+        if booking_ids is not None:
+            return self._allocations.filter_in("booking_id", booking_ids)
         return self._allocations.filter_by(booking_id=booking_id, contract_id=contract_id)
 
     def create_payment_allocation(self, data: PaymentAllocationCreate) -> PaymentAllocation:

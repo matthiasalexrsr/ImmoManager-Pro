@@ -5,6 +5,7 @@ maintaining the same public API for backward compatibility with routers and test
 """
 
 import logging
+from collections.abc import Iterable
 
 from pydantic import BaseModel as PydanticBaseModel
 from sqlalchemy.orm import Session
@@ -346,8 +347,8 @@ class SQLAlchemyStore:
         self.tenant.delete_contract(contract_id)
 
     # --- Bookings ---
-    def list_bookings(self) -> list[Booking]:
-        return self.finance.list_bookings()
+    def list_bookings(self, tenant_id: str | None = None) -> list[Booking]:
+        return self.finance.list_bookings(tenant_id)
 
     def create_booking(self, data: BookingCreate) -> Booking:
         return self.finance.create_booking(data)
@@ -669,9 +670,9 @@ class SQLAlchemyStore:
         self.tenant.delete_rent_adjustment(adj_id)
 
     # --- Payment allocations ---
-    def list_payment_allocations(self, booking_id: str | None = None,
-                                 contract_id: str | None = None) -> list[PaymentAllocation]:
-        return self.finance.list_payment_allocations(booking_id, contract_id)
+    def list_payment_allocations(self, booking_id: str | None = None, contract_id: str | None = None,
+                                 booking_ids: Iterable[str] | None = None) -> list[PaymentAllocation]:
+        return self.finance.list_payment_allocations(booking_id, contract_id, booking_ids)
 
     def create_payment_allocation(self, data: PaymentAllocationCreate) -> PaymentAllocation:
         return self.finance.create_payment_allocation(data)

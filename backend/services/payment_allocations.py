@@ -85,10 +85,17 @@ def credited_by_tenant(store: Any, tenant_ids: Iterable[str] | None = None) -> d
     created before allocations existed) is credited by the same rules on the fly.
     """
     wanted = set(tenant_ids) if tenant_ids is not None else None
-    bookings = [b for b in store.list_bookings() if b.tenant_id and (wanted is None or b.tenant_id in wanted)]
-    booking_ids = {b.id for b in bookings}
+    if wanted is not None and len(wanted) == 1:
+        # one tenant (account page, settlement): read only their bookings and allocations
+        bookings = store.list_bookings(tenant_id=next(iter(wanted)))
+        booking_ids = {b.id for b in bookings}
+        allocations = store.list_payment_allocations(booking_ids=booking_ids) if booking_ids else []
+    else:
+        bookings = [b for b in store.list_bookings() if b.tenant_id and (wanted is None or b.tenant_id in wanted)]
+        booking_ids = {b.id for b in bookings}
+        allocations = store.list_payment_allocations()
     stored: dict[str, list[Any]] = defaultdict(list)
-    for allocation in store.list_payment_allocations():
+    for allocation in allocations:
         if allocation.booking_id in booking_ids:
             stored[allocation.booking_id].append(allocation)
     credited: dict[str, list[tuple[Any, str, Decimal]]] = defaultdict(list)
@@ -149,7 +156,7 @@ def tenant_account(store: Any, tenant_id: str, as_of: date) -> dict:
     allocated: dict[str, Decimal] = defaultdict(Decimal)
     for booking, _, amount in credited:
         allocated[booking.id] += amount
-    own_bookings = [b for b in store.list_bookings() if b.tenant_id == tenant_id]
+    own_bookings = store.list_bookings(tenant_id=tenant_id)
     unassigned = []
     for booking in own_bookings:
         if booking.booking_date > as_of:

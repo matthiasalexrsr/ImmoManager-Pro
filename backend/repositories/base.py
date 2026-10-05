@@ -187,6 +187,16 @@ class BaseRepository:
                     query = query.filter(getattr(self.orm_class, key) == value)
         return query.count()
 
+    @safe_db_operation("filter_in")
+    def filter_in(self, column: str, values: Any) -> list[Any]:
+        """Entities whose column is one of the given values (chunked for SQLite's variable limit)."""
+        values = list(values)
+        rows: list[Any] = []
+        for start in range(0, len(values), 500):
+            chunk = values[start:start + 500]
+            rows += self.db.query(self.orm_class).filter(getattr(self.orm_class, column).in_(chunk)).all()
+        return [self._to_pydantic(o) for o in rows]
+
     @safe_db_operation("filter_by")
     def filter_by(self, **kwargs) -> list[Any]:
         """Filter entities by column values. None values are skipped."""

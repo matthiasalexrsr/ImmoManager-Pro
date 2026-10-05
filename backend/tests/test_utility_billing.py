@@ -403,3 +403,30 @@ def test_statement_pdf_names_tenant_periods_and_shares(koeln):
     assert document["totals"][-1] == ("Guthaben", "343,65 €")
     assert dict(billing._statement_document(vacancy)["facts"])["Mieter"] == "Leerstand (Eigentümer)"
     assert billing.download_utility_statement_pdf(ben.id).media_type in {"application/pdf", "text/plain"}
+
+
+def test_parking_and_storage_without_area_take_no_part_in_the_area_key():
+    """Regression (extreme stress test): a parking space without an area blocked the whole statement."""
+    prop = _property("H")
+    flat = _unit(prop, "WE 01", 60, persons=2)
+    spot = _unit(prop, "Stellplatz 1", None, unit_type="parking")
+    cellar = _unit(prop, "Keller 1", None, unit_type="storage")
+    _lease(prop, flat, "C-1", date(2020, 1, 1))
+    _lease(prop, spot, "C-2", date(2020, 1, 1))
+    _lease(prop, cellar, "C-3", date(2020, 1, 1))
+    period = _period(prop, [("Grundsteuer", 600, "area_sqm"), ("Müll", 300, "person_count")])
+
+    assert not billing.get_billing_period_preflight(period.id).has_blockers
+    totals = {s.unit_id: s.total_cost for s in billing.generate_utility_statements(period.id)}
+
+    assert totals[flat.id] == 900.0
+    assert totals.get(spot.id, 0.0) == 0.0 and totals.get(cellar.id, 0.0) == 0.0
+
+
+def test_a_flat_without_area_still_blocks_the_area_key():
+    prop = _property("H")
+    flat = _unit(prop, "WE 01", None, persons=2)
+    _lease(prop, flat, "C-1", date(2020, 1, 1))
+    period = _period(prop, [("Grundsteuer", 600, "area_sqm")])
+
+    assert billing.get_billing_period_preflight(period.id).has_blockers
