@@ -393,7 +393,8 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    # not needed by the desktop program (SQLite; images without AVIF): keeps the package small enough to e-mail
+    excludes=['psycopg2', 'psycopg2_binary', 'PIL.AvifImagePlugin', 'PIL._avif'],
     noarchive=False,
 )
 

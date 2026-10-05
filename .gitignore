@@ -36,3 +36,4 @@ diagnostics.log
 
 # Extreme stress test results (python -m tools.xstress.run)
 stress-results/
+dist-testversion/

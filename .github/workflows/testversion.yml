@@ -59,11 +59,14 @@ jobs:
           Copy-Item 'packaging/testversion/LIES MICH - Testversion.txt' $root
           Copy-Item 'packaging/testversion/LIES MICH - Testversion.txt' (Join-Path $root 'ImmoManager-Pro')
           $zip = Join-Path $env:RUNNER_TEMP "$name.zip"
-          7z a -tzip -mx=7 $zip "$root/*" | Out-Null
+          7z a -tzip -mx=9 $zip "$root/*" | Out-Null
+          # smaller copy for e-mail (Windows 11 opens .7z with a double click)
+          7z a -t7z -mx=9 (Join-Path $env:RUNNER_TEMP "$name.7z") "$root/*" | Out-Null
           "zip=$zip" >> $env:GITHUB_OUTPUT
           "name=$name" >> $env:GITHUB_OUTPUT
           "root=$root" >> $env:GITHUB_OUTPUT
           Write-Host ("Paket: {0:N1} MB" -f ((Get-Item $zip).Length / 1MB))
+          Write-Host ("7z: {0:N1} MB" -f ((Get-Item (Join-Path $env:RUNNER_TEMP "$name.7z")).Length / 1MB))
 
       - name: Try the package (first start, test data, sign-in)
         shell: pwsh
@@ -103,6 +106,8 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.package.outputs.name }}
-          path: ${{ steps.package.outputs.zip }}
+          path: |
+            ${{ steps.package.outputs.zip }}
+            ${{ runner.temp }}/${{ steps.package.outputs.name }}.7z
           retention-days: 30
           compression-level: 0
