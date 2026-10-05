@@ -40,7 +40,8 @@
       "escalationRules": "Escalation Rules",
       "handoverProtocols": "Handover Protocols",
       "history": "Change Log",
-      "contractWizard": "Lease Wizard"
+      "contractWizard": "Lease Wizard",
+      "review": "Review list"
     },
     "sections": {
       "overview": "Overview",

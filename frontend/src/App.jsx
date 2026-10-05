@@ -41,6 +41,8 @@ const Budgets = lazy(() => import('./pages/Budgets'));
 const TaxRates = lazy(() => import('./pages/TaxRates'));
 const ContractWizard = lazy(() => import('./pages/ContractWizard'));
 const Receivables = lazy(() => import('./pages/Receivables'));
+const TenantAccount = lazy(() => import('./pages/TenantAccount'));
+const ReviewList = lazy(() => import('./pages/ReviewList'));
 const RentCharges = lazy(() => import('./pages/RentCharges'));
 const EscalationRules = lazy(() => import('./pages/EscalationRules'));
 const NotificationTemplates = lazy(() => import('./pages/NotificationTemplates'));
@@ -112,6 +114,8 @@ export default function App() {
           <Route path="units" element={<Units />} />
           <Route path="units/:id" element={<UnitOverview />} />
           <Route path="tenants" element={<Tenants />} />
+          <Route path="tenants/:id/account" element={<TenantAccount />} />
+          <Route path="review" element={<ReviewList />} />
           <Route path="contracts" element={<Contracts />} />
           <Route path="accounts" element={<Accounts />} />
           <Route path="bookings" element={<Bookings />} />

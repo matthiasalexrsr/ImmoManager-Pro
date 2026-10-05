@@ -47,6 +47,7 @@ from .routers import (
     rent_adjustments,
     rent_charges,
     reports,
+    review,
     search,
     tasks,
     tasks_status,
@@ -80,6 +81,7 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(contracts.router, dependencies=_auth_dep)
     api_v1.include_router(accounts.router, dependencies=_auth_dep)
     api_v1.include_router(bookings.router, dependencies=_auth_dep)
+    api_v1.include_router(review.router, dependencies=_auth_dep)
     api_v1.include_router(receivables.router, dependencies=_auth_dep)
     api_v1.include_router(invoices.router, dependencies=_auth_dep)
     api_v1.include_router(maintenance.router, dependencies=_auth_dep)

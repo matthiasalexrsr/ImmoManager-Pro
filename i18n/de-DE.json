@@ -40,7 +40,8 @@
       "escalationRules": "Eskalationsregeln",
       "handoverProtocols": "Übergabeprotokolle",
       "history": "Änderungsprotokoll",
-      "contractWizard": "Mietvertrag-Wizard"
+      "contractWizard": "Mietvertrag-Wizard",
+      "review": "Prüfliste"
     },
     "sections": {
       "overview": "Übersicht",

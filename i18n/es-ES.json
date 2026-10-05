@@ -40,7 +40,8 @@
       "escalationRules": "Reglas de escalamiento",
       "handoverProtocols": "Protocolos de entrega",
       "history": "Registro de cambios",
-      "contractWizard": "Asistente de contrato"
+      "contractWizard": "Asistente de contrato",
+      "review": "Lista de revisión"
     },
     "sections": {
       "overview": "Resumen",

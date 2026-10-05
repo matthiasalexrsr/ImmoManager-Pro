@@ -136,3 +136,46 @@ def test_existing_payments_are_allocated_once(client, yilmaz):
 
     assert (first["allocated"], first["unassigned"], second["allocated"]) == (9, [], 0)
     assert len(store.list_payment_allocations()) == 18
+
+
+def test_review_list_names_rents_and_payments_to_check(client, yilmaz):
+    flat = yilmaz["Whg 1.OG"]
+    client.patch(f"/api/v1/units/{flat['unit_id']}", json={"cold_rent": 1250})  # changed on the unit only
+    client.post("/api/v1/rent-adjustments", json={"contract_id": flat["id"], "adjustment_type": "index",
+                                                   "effective_date": "2025-01-01", "previous_rent": 1200,
+                                                   "new_rent": 1230})
+    client.post("/api/v1/bookings", json={"account_id": yilmaz["account"]["id"], "tenant_id": yilmaz["tenant"]["id"],
+                                           "booking_date": "2025-09-20", "amount": 2000, "payment_text": "Nachzahlung"})
+    client.post("/api/v1/bookings", json={"account_id": yilmaz["account"]["id"], "booking_date": "2025-09-21",
+                                           "amount": 612, "payment_text": "Überweisung ohne Verwendungszweck"})
+
+    other = client.post("/api/v1/rent-adjustments", json={"contract_id": yilmaz["Garage"]["id"],
+                                                           "adjustment_type": "index", "effective_date": "2025-01-01",
+                                                           "previous_rent": 90, "new_rent": 95}).json()
+    client.post(f"/api/v1/rent-adjustments/{other['id']}/apply")  # raised properly: nothing to review
+
+    review = client.get("/api/v1/review").json()
+    kinds = sorted(item["kind"] for item in review["items"])
+
+    assert kinds == ["adjustment_not_applied", "payment_without_tenant", "unassigned_payment", "unit_rent_differs"]
+    unassigned = next(i for i in review["items"] if i["kind"] == "unassigned_payment")
+    assert "davon 430,00 € ohne Vertrag" in unassigned["detail"]
+    assert unassigned["link"] == f"/tenants/{yilmaz['tenant']['id']}/account"
+
+
+def test_review_list_flags_histories_the_migration_took_from_an_edited_unit(client, yilmaz):
+    from datetime import timedelta
+
+    if not hasattr(store, "contract_rent_periods"):
+        pytest.skip("record timestamps can only be set in the memory store")
+    garage = store.get_contract(yilmaz["Garage"]["id"])
+    period = store.list_contract_rent_periods(garage.id)[0]
+    # Written by the migration long after the contract began; the unit was edited during the tenancy.
+    store.contract_rent_periods[period.id] = period.model_copy(
+        update={"created_at": garage.created_at + timedelta(days=400)})
+    unit = store.get_unit(garage.unit_id)
+    store.units[unit.id] = unit.model_copy(update={"updated_at": garage.created_at + timedelta(days=200)})
+
+    kinds = [item["kind"] for item in client.get("/api/v1/review").json()["items"]]
+
+    assert kinds.count("history_taken_over") == 1

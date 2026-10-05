@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
@@ -89,7 +90,8 @@ export default function Tenants() {
   const noEmail = activeTenants.filter(t => !t.email).length;
 
   const columns = [
-    { key: 'full_name', label: 'Name', filterType: 'text' },
+    { key: 'full_name', label: 'Name', filterType: 'text',
+      render: (v, row) => <span>{v} <Link className="btn btn-sm btn-secondary" to={`/tenants/${row.id}/account`}>Konto</Link></span> },
     { key: 'property_name', label: 'Immobilie', filterType: 'text' },
     { key: 'unit_label', label: 'Einheit', filterType: 'text' },
     { key: 'contract_status', label: 'Vertragsstatus', filterType: 'select',
