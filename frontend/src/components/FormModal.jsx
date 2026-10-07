@@ -17,18 +17,31 @@ const ordered = list => [...list.filter(f => !spansRow(f)), ...list.filter(spans
 
 export default function FormModal({ title, fields, initial, onSave, onClose }) {
   const { t } = useTranslation();
-  const [values, setValues] = useState({});
+  // Inline prefill objects are recreated by several callers; that is not a new form.
+  const initialKey = initial?.id != null ? `record:${initial.id}` : `prefill:${JSON.stringify(initial ?? null)}`;
+  const [values, setValues] = useState(() => Object.fromEntries(fields.map(f =>
+    [f.key, toFieldValue(f, initial?.[f.key] ?? f.default ?? '')])));
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
   const modalRef = useRef(null);
+  const sessionRef = useRef({ key: initialKey, id: initial?.id, updatedAt: initial?.updated_at });
 
   useEffect(() => {
-    const init = {};
-    fields.forEach(f => {
-      init[f.key] = toFieldValue(f, initial?.[f.key] ?? f.default ?? '');
+    const changedRecord = sessionRef.current.key !== initialKey;
+    if (changedRecord) {
+      sessionRef.current = { key: initialKey, id: initial?.id, updatedAt: initial?.updated_at };
+      setError(null);
+    }
+    setValues(current => {
+      const addedFields = fields.filter(f => !Object.prototype.hasOwnProperty.call(current, f.key));
+      if (!changedRecord && addedFields.length === 0) return current;
+      const next = changedRecord ? {} : { ...current };
+      (changedRecord ? fields : addedFields).forEach(f => {
+        next[f.key] = toFieldValue(f, initial?.[f.key] ?? f.default ?? '');
+      });
+      return next;
     });
-    setValues(init);
-  }, [initial, fields]);
+  }, [initialKey, initial, fields]);
 
   // Escape key to close
   useEffect(() => {
@@ -48,7 +61,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
     const focusable = modal.querySelectorAll(
       'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
     );
-    if (focusable.length > 0) focusable[0].focus();
+    if (focusable.length > 0 && !modal.contains(document.activeElement)) focusable[0].focus();
 
     const trapFocus = (e) => {
       if (e.key !== 'Tab' || focusable.length === 0) return;
@@ -88,7 +101,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
         cleaned[f.key] = v;
       });
       // the state the record was opened in: the server refuses to save over someone else's newer change
-      if (initial?.id && initial?.updated_at) cleaned.updated_at = initial.updated_at;
+      if (sessionRef.current.id && sessionRef.current.updatedAt) cleaned.updated_at = sessionRef.current.updatedAt;
       await onSave(cleaned);
       onClose();
     } catch (err) {
