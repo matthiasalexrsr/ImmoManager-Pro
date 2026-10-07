@@ -141,7 +141,7 @@ class Page:
 
 # ── SQL ──
 
-_ORM_BY_TABLE = {mapper.local_table.name: mapper.class_ for mapper in Base.registry.mappers}
+_ORM_BY_TABLE = {getattr(mapper.local_table, "name", None): mapper.class_ for mapper in Base.registry.mappers}
 
 
 def _sql_lower(db) -> Callable[[Any], Any]:
@@ -154,12 +154,12 @@ def _sql_lower(db) -> Callable[[Any], Any]:
 
 
 def _sql_match(db, model, spec: SearchType, needle: str):
-    parts = []
+    parts: list[Any] = []
     for index, field in enumerate(spec.fields):
         if index:
             parts.append(literal(" "))
         parts.append(func.coalesce(getattr(model, field), ""))
-    haystack = parts[0]
+    haystack: Any = parts[0]
     for part in parts[1:]:
         haystack = haystack.op("||")(part)
     return _sql_lower(db)(haystack).like(f"%{escape_like(needle)}%", escape="\\")
