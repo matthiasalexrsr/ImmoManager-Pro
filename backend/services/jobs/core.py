@@ -27,7 +27,7 @@ from datetime import datetime, timedelta
 from typing import Any, Protocol
 from uuid import uuid4
 
-from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy import Table, and_, func, or_, select, update
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
@@ -38,8 +38,8 @@ from .schedule import utcnow
 
 logger = logging.getLogger(__name__)
 
-RUNS = JobRunORM.__table__
-OCCURRENCES = JobOccurrenceORM.__table__
+RUNS: Table = JobRunORM.__table__  # type: ignore[assignment]
+OCCURRENCES: Table = JobOccurrenceORM.__table__  # type: ignore[assignment]
 DEFAULT_LEASE_SECONDS = 120
 
 
