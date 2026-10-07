@@ -23,7 +23,8 @@ describe('TenantAccount', () => {
     </MemoryRouter>);
 
     expect(await screen.findByText('MV-Garage')).toBeInTheDocument();
-    expect(screen.getByText('Mieterkonto Familie Yilmaz')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Mieterkonto Familie Yilmaz' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Familie Yilmaz' })).toHaveAttribute('href', '/tenants/t1/account');
     expect(screen.getByText('Nachzahlung')).toBeInTheDocument();
     expect(screen.getByText(/15\.700,00/)).toBeInTheDocument();  // open in total
   });

@@ -2,6 +2,14 @@
 
 All notable changes to ImmoManager Pro will be documented in this file.
 
+## Unreleased — 2026-10-07
+
+- Open a tenant information card from names throughout the tenant, contract, unit and financial views, with contacts, current/historical contracts, individual rents and direct account/edit/document actions.
+- View, search, filter, preview and download each tenant's documents, including historical contracts and direct tenant assignments before a contract exists. Add single or multiple files directly to a tenant.
+- Export the complete filtered tenant document list, independently of the visible page. Keep uploads and pending responses associated with their original tenant when navigating.
+- Preserve form edits while asynchronous choices refresh, refresh archived-tenant choices after changes, and improve narrow-screen controls and modal keyboard navigation.
+- Add migration `6e2f8a4c9b71`, API/regression coverage and a repeatable browser acceptance script. See [implementation and validation notes](PARTY_WORKSPACE.md).
+
 ## [1.2.0] - 2026-02-11
 
 ### Added

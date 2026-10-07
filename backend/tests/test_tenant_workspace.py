@@ -11,8 +11,16 @@ from sqlalchemy.pool import StaticPool
 
 from backend.db.orm_models import Base, DocumentORM
 from backend.models import (
-    ContractCreate, ContractRentPeriodCreate, DocumentCreate, DocumentPatch,
-    PortfolioCreate, PropertyCreate, TenantCreate, TenantDocumentPage, TenantOverview, UnitCreate,
+    ContractCreate,
+    ContractRentPeriodCreate,
+    DocumentCreate,
+    DocumentPatch,
+    PortfolioCreate,
+    PropertyCreate,
+    TenantCreate,
+    TenantDocumentPage,
+    TenantOverview,
+    UnitCreate,
 )
 from backend.repositories.sql_store import SQLAlchemyStore
 from backend.storage import InMemoryStore, NotFoundError, ValidationError

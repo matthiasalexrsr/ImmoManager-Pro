@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { api } from '../api';
 import { useToast } from '../components/Toast';
 import { formatDate as day, formatMoney } from '../utils/format';
+import { PartyLink, usePartyWorkspace } from '../features/partyWorkspace/PartyWorkspace';
 
 const eur = v => formatMoney(v || 0);
 
@@ -10,17 +11,29 @@ const eur = v => formatMoney(v || 0);
 export default function TenantAccount() {
   const { id } = useParams();
   const toast = useToast();
+  const party = usePartyWorkspace();
   const [tenant, setTenant] = useState(null);
   const [account, setAccount] = useState(null);
   const [asOf, setAsOf] = useState(() => new Date().toISOString().slice(0, 10));
+  const [error, setError] = useState(null);
+  const [revision, setRevision] = useState(0);
 
   useEffect(() => {
-    api.get(`/tenants/${id}`).then(setTenant).catch(err => toast.error(err.message));
-  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+    let cancelled = false;
+    const controller = new AbortController();
+    const options = { signal: controller.signal };
+    setAccount(null); setTenant(null); setError(null);
+    if (!asOf) { setError('Bitte einen gültigen Stichtag wählen.'); return; }
+    Promise.all([
+      api.get(`/tenants/${encodeURIComponent(id)}`, options),
+      api.get(`/tenants/${encodeURIComponent(id)}/account?as_of=${asOf}`, options),
+    ]).then(([person, result]) => {
+      if (!cancelled) { setTenant(person); setAccount(result); }
+    }).catch(err => { if (!cancelled) { setError(err.message); toast.error(err.message); } });
+    return () => { cancelled = true; controller.abort(); };
+  }, [id, asOf, revision]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    api.get(`/tenants/${id}/account?as_of=${asOf}`).then(setAccount).catch(err => toast.error(err.message));
-  }, [id, asOf]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (error) return <div className="page"><div role="alert" className="alert alert-error">{error}</div><input aria-label="Stichtag" type="date" value={asOf} onChange={e => setAsOf(e.target.value)} /><button className="btn btn-secondary" onClick={() => setRevision(value => value + 1)}>Erneut laden</button></div>;
 
   if (!account) return <div className="page-loading">Lade Mieterkonto...</div>;
 
@@ -32,11 +45,12 @@ export default function TenantAccount() {
 
   return (
     <div className="page">
-      <h1 className="page-title">Mieterkonto {tenant?.full_name || ''}</h1>
+      <h1 className="page-title">Mieterkonto <PartyLink tenantId={id}>{tenant?.full_name || ''}</PartyLink></h1>
       <div className="toolbar">
         <label htmlFor="as-of">Stichtag</label>
         <input id="as-of" type="date" value={asOf} onChange={e => setAsOf(e.target.value)} />
         <Link to="/tenants" className="btn btn-sm btn-secondary">Zurück zu den Mietern</Link>
+        {party && <button className="btn btn-sm btn-secondary" onClick={() => party.openParty(id, { tab: 'documents' })}>Dokumente der Partei</button>}
       </div>
 
       <div className="stats-grid" style={{ marginBottom: '1rem' }}>

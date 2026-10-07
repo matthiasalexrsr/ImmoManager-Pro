@@ -6,6 +6,7 @@ import { usePreferences } from '../contexts/PreferencesContext';
 import SearchBar from './SearchBar';
 import NotificationBell from './NotificationBell';
 import { TutorialProvider, useTutorial } from './Tutorial';
+import { PartyWorkspaceProvider } from '../features/partyWorkspace/PartyWorkspace';
 import {
   DashboardIcon, PortfolioIcon, PropertyIcon, UnitIcon,
   TenantIcon, ContractIcon, AccountIcon, BookingIcon,
@@ -139,7 +140,7 @@ function TutorialButton() {
 export default function Layout() {
   return (
     <TutorialProvider>
-      <LayoutFrame />
+      <PartyWorkspaceProvider><LayoutFrame /></PartyWorkspaceProvider>
     </TutorialProvider>
   );
 }

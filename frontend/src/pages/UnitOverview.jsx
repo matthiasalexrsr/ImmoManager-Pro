@@ -6,6 +6,7 @@ import StatusBadge from '../components/StatusBadge';
 import PhotoDropZone from '../components/PhotoDropZone';
 import { formatDate, formatMoney } from '../utils/format';
 import { codeLabel } from '../utils/codeLabels';
+import { PartyLink } from '../features/partyWorkspace/PartyWorkspace';
 
 export default function UnitOverview() {
   const { t } = useTranslation();
@@ -16,28 +17,35 @@ export default function UnitOverview() {
   const [tenant, setTenant] = useState(null);
   const [insurances, setInsurances] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [revision, setRevision] = useState(0);
 
   useEffect(() => {
-    api.get(`/units/${id}`).then(u => {
-      setUnit(u);
-      return Promise.all([
-        u.property_id ? api.get(`/properties/${u.property_id}`).catch(() => null) : null,
-        api.list(`/contracts`).catch(err => { console.warn('[UnitOverview] contracts:', err.message); return []; }),
-        api.list(`/insurances?unit_id=${id}`).catch(err => { console.warn('[UnitOverview] insurances:', err.message); return []; }),
+    let cancelled = false;
+    const controller = new AbortController();
+    const options = { signal: controller.signal };
+    setLoading(true);
+    setError(null);
+    setTenant(null);
+    (async () => {
+      const u = await api.get(`/units/${encodeURIComponent(id)}`, options);
+      const [p, c, ins] = await Promise.all([
+        u.property_id ? api.get(`/properties/${encodeURIComponent(u.property_id)}`, options) : null,
+        api.list(`/contracts?unit_id=${encodeURIComponent(id)}`, options),
+        api.list(`/insurances?unit_id=${encodeURIComponent(id)}`, options),
       ]);
-    }).then(([p, c, ins]) => {
-      setProperty(p);
-      const unitContracts = (Array.isArray(c) ? c : []).filter(ct => ct.unit_id === id);
-      setContracts(unitContracts);
+      const unitContracts = c.filter(ct => ct.unit_id === id);
       const active = unitContracts.find(ct => ct.status === 'active');
-      if (active?.tenant_id) {
-        api.get(`/tenants/${active.tenant_id}`).then(setTenant).catch(() => null);
-      }
-      setInsurances(Array.isArray(ins) ? ins : []);
-    }).catch(() => null).finally(() => setLoading(false));
-  }, [id]);
+      const person = active?.tenant_id ? await api.get(`/tenants/${encodeURIComponent(active.tenant_id)}`, options) : null;
+      if (cancelled) return;
+      setUnit(u); setProperty(p); setContracts(unitContracts); setTenant(person); setInsurances(ins);
+    })().catch(err => { if (!cancelled) setError(err.message); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; controller.abort(); };
+  }, [id, revision]);
 
   if (loading) return <div className="page-loading">{t('pages.loading') || 'Laden...'}</div>;
+  if (error) return <div className="page"><div role="alert" className="alert alert-error">{error}</div><button className="btn btn-secondary" onClick={() => setRevision(value => value + 1)}>Erneut laden</button></div>;
   if (!unit) return <div className="page"><p>{t('pages.unitOverview.notFound') || 'Einheit nicht gefunden'}</p></div>;
 
   const activeContract = contracts.find(c => c.status === 'active');
@@ -80,7 +88,7 @@ export default function UnitOverview() {
             {activeContract ? (
               <dl className="overview-dl">
                 <dt>{t('pages.unitOverview.contract') || 'Vertrag'}</dt><dd>{activeContract.contract_number}</dd>
-                <dt>{t('pages.unitOverview.tenant') || 'Mieter'}</dt><dd>{tenant?.full_name || '—'}</dd>
+                <dt>{t('pages.unitOverview.tenant') || 'Mieter'}</dt><dd><PartyLink tenantId={tenant?.id}>{tenant?.full_name || '—'}</PartyLink></dd>
                 <dt>{t('pages.unitOverview.start') || 'Beginn'}</dt><dd>{formatDate(activeContract.start_date)}</dd>
                 <dt>{t('pages.unitOverview.end') || 'Ende'}</dt><dd>{activeContract.end_date ? formatDate(activeContract.end_date) : t('pages.unitOverview.indefinite') || 'Unbefristet'}</dd>
                 <dt>{t('pages.unitOverview.deposit') || 'Kaution'}</dt><dd>{activeContract.deposit_amount ? `${formatMoney(activeContract.deposit_amount)}` : '—'}</dd>

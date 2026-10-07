@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
@@ -7,12 +7,18 @@ import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
+import { PartyLink, usePartyWorkspace } from '../features/partyWorkspace/PartyWorkspace';
+import { useCanWrite } from '../contexts/AuthContext';
+import { DocumentIcon } from '../components/Icons';
 
 const PAYMENT_LABELS = { bank_transfer: 'Überweisung', sepa_direct_debit: 'SEPA-Lastschrift', cash: 'Bar' };
 
 export default function Tenants() {
   const { t } = useTranslation();
   const confirm = useConfirm();
+  const { openParty } = usePartyWorkspace();
+  const canWrite = useCanWrite('/tenants');
+  const [searchParams, setSearchParams] = useSearchParams();
   const store = useDataStore();
   const { items: contracts } = useEntities('contracts', '/contracts');
   const { items: properties } = useEntities('properties', '/properties');
@@ -22,27 +28,45 @@ export default function Tenants() {
   const [modal, setModal] = useState(null);
   const [error, setError] = useState(null);
   const [filter, setFilter] = useState('active');
+  const [revision, setRevision] = useState(0);
 
-  const refreshData = () => {
-    setLoading(true);
-    api.list('/tenants?include_archived=true')
-      .then(data => setTenants(data || []))
-      .catch(() => setTenants([]))
-      .finally(() => setLoading(false));
-  };
+  const refreshData = () => setRevision(value => value + 1);
 
   useEffect(() => {
     let cancelled = false;
-    api.list('/tenants?include_archived=true')
+    const controller = new AbortController();
+    setLoading(true);
+    setError(null);
+    api.list('/tenants?include_archived=true', { signal: controller.signal })
       .then(data => { if (!cancelled) setTenants(data || []); })
-      .catch(() => { if (!cancelled) setTenants([]); })
+      .catch(err => { if (!cancelled) setError(err.message || 'Mieter konnten nicht geladen werden.'); })
       .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
+    return () => { cancelled = true; controller.abort(); };
+  }, [revision]);
+
+  const editId = searchParams.get('edit');
+  useEffect(() => {
+    if (!editId || !canWrite) return;
+    let cancelled = false;
+    const controller = new AbortController();
+    api.get(`/tenants/${encodeURIComponent(editId)}`, { signal: controller.signal })
+      .then(data => { if (!cancelled) setModal(data); })
+      .catch(err => { if (!cancelled) setError(err.message); });
+    return () => { cancelled = true; controller.abort(); };
+  }, [editId, canWrite]);
+
+  const closeModal = () => {
+    setModal(null);
+    if (editId) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('edit');
+      setSearchParams(next, { replace: true });
+    }
+  };
 
   const afterMutation = () => {
     refreshData();
-    if (store) store.invalidateRelated('tenants', 'contracts');
+    if (store) store.invalidateRelated('tenants', 'tenants_all', 'contracts');
   };
 
   // Build lookup maps
@@ -93,8 +117,8 @@ export default function Tenants() {
     { key: 'full_name', label: 'Name', filterType: 'text',
       render: (v, row) => (
         <span className="cell-inline">
-          <span className="cell-text">{v}</span>
-          <Link className="btn btn-sm btn-ghost btn-link" to={`/tenants/${row.id}/account`}>Konto</Link>
+          <PartyLink tenantId={row.id}>{v}</PartyLink>
+          <Link className="btn btn-sm btn-ghost btn-link" to={`/tenants/${encodeURIComponent(row.id)}/account`}>Konto</Link>
         </span>
       ) },
     { key: 'property_name', hidden: true, label: 'Immobilie', filterType: 'text' },
@@ -165,14 +189,16 @@ export default function Tenants() {
   };
 
   if (loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  if (error && !tenants.length) return <div className="page"><h1 className="page-title">Mieter</h1><div className="alert alert-error" role="alert">{error}</div><button className="btn btn-secondary" onClick={refreshData}>Erneut laden</button></div>;
 
   return (
     <div className="page">
       <h1 className="page-title">Mieter</h1>
 
       {error && (
-        <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
+        <div className="alert alert-error" role="alert" style={{ marginBottom: '1rem' }}>
           {error}
+          <button className="btn btn-sm btn-secondary" onClick={refreshData}>Erneut laden</button>
           <button onClick={() => setError(null)} style={{ marginLeft: '1rem', cursor: 'pointer' }}>✕</button>
         </div>
       )}
@@ -226,23 +252,11 @@ export default function Tenants() {
         onAdd={() => setModal('create')}
         onEdit={row => setModal(row)}
         onDelete={handleDelete}
+        rowActions={row => [
+          { label: 'Dokumente der Partei', icon: <DocumentIcon size={16} />, onClick: () => openParty(row.id, { tab: 'documents' }) },
+          { label: row.archived ? 'Wiederherstellen' : 'Archivieren', icon: <span aria-hidden="true">{row.archived ? '↩' : '📦'}</span>, write: true, onClick: handleArchiveToggle },
+        ]}
       />
-
-      {/* Inline archive/unarchive actions per visible tenant */}
-      {filtered.length > 0 && (
-        <div style={{ marginTop: '0.5rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-          {filtered.map(tn => (
-            <button
-              key={tn.id}
-              className="btn btn-sm btn-secondary"
-              onClick={() => handleArchiveToggle(tn)}
-              title={tn.archived ? 'Wiederherstellen' : 'Archivieren'}
-            >
-              {tn.archived ? '↩' : '📦'} {tn.full_name}
-            </button>
-          ))}
-        </div>
-      )}
 
       {modal && (
         <FormModal
@@ -250,7 +264,7 @@ export default function Tenants() {
           fields={fields}
           initial={modal === 'create' ? null : modal}
           onSave={handleSave}
-          onClose={() => setModal(null)}
+          onClose={closeModal}
         />
       )}
     </div>
