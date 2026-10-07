@@ -15,6 +15,7 @@ from backend.app import app
 from backend.auth import clear_users, create_access_token, register_user
 from backend.db.document_version_models import install_guards
 from backend.dependencies import store
+from backend.models import PropertyCreate
 from backend.paths import get_uploads_dir
 from backend.services import document_versions as archive
 from backend.services import housing_confirmation as service
@@ -101,6 +102,14 @@ def test_source_suggests_but_never_fills_in_the_actual_move_in(client, lease):
     assert body["suggestions"]["resident_names"] == ["Mia Muster"]
     assert body["suggestions"]["contract_start_date_for_reference"] == "2024-01-01"
     assert body["suggestions"]["apartment_address"] == "Bautzner Straße 61\n01099 Dresden"
+    prop = store.get_property(lease["property"].id)
+    fields = prop.model_dump(include=set(PropertyCreate.model_fields))
+    store.update_property(prop.id, PropertyCreate(**{**fields, "country": "DE"}))
+    assert client.get(_base(lease["contract"].id) + "/source").json()["suggestions"]["apartment_address"] == (
+        "Bautzner Straße 61\n01099 Dresden")
+    store.update_property(prop.id, PropertyCreate(**{**fields, "country": "Österreich"}))
+    assert client.get(_base(lease["contract"].id) + "/source").json()["suggestions"]["apartment_address"].endswith(
+        "\nÖsterreich")
     assert body["policy"]["contract_start_is_not_actual_move_in"] is True
     assert body["source"]["wizard"] is None and body["source_etags"]["wizard_revision"] is None
 

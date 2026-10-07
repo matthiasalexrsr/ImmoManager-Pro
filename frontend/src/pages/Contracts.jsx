@@ -9,6 +9,8 @@ import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useToast } from '../components/Toast';
 import { RentIcon } from '../components/Icons';
+import { FileCheck } from 'lucide-react';
+import HousingConfirmationDialog from '../features/housingConfirmation/HousingConfirmationDialog';
 import { formatDate, formatMoney } from '../utils/format';
 
 const RENT_MODEL_LABELS = { index: 'Indexmiete', stepped: 'Staffelmiete', fixed: 'Festmiete' };
@@ -39,6 +41,7 @@ export default function Contracts() {
   const [filter, setFilter] = useState('all');
   const [rents, setRents] = useState({});
   const [history, setHistory] = useState(null);
+  const [housing, setHousing] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const loadRef = useRef(null);
 
@@ -297,8 +300,13 @@ export default function Contracts() {
         onAdd={() => setModal('create')}
         onEdit={row => setModal(row)}
         onDelete={handleDelete}
-        rowActions={() => [{ label: 'Mietverlauf', icon: <RentIcon size={15} />, onClick: openHistory }]}
+        rowActions={() => [
+          { label: 'Mietverlauf', icon: <RentIcon size={15} />, onClick: openHistory },
+          { label: 'Wohnungsgeberbestätigung', icon: <FileCheck size={15} aria-hidden="true" />, onClick: row => setHousing(row.id) },
+        ]}
       />
+
+      {housing && <HousingConfirmationDialog contractId={housing} onClose={() => setHousing(null)} />}
 
       {modal && (
         <FormModal

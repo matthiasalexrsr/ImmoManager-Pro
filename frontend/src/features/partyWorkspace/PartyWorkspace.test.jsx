@@ -6,7 +6,10 @@ import { useCanWrite } from '../../contexts/AuthContext';
 import { PartyWorkspaceProvider, PartyLink } from './PartyWorkspace';
 
 vi.mock('../../api', () => ({ api: { get: vi.fn() } }));
-vi.mock('../../contexts/AuthContext', () => ({ useCanWrite: vi.fn(() => true) }));
+vi.mock('../../contexts/AuthContext', () => ({
+  useCanWrite: vi.fn(() => true),
+  useAuth: vi.fn(() => ({ user: { id: 'u1', role: 'verwalter' }, write: null })),
+}));
 
 const tenant = { id: 't1', full_name: 'Anna Müller', archived: false, email: 'anna@example.com', phone: '+49 1234', address_line: 'Lindenstraße 8', postal_code: '10115', city: 'Berlin', country: 'DE', notes: 'Bitte per E-Mail kontaktieren.' };
 const contracts = [
@@ -34,7 +37,33 @@ afterEach(() => {
   else delete navigator.clipboard;
 });
 
+const housingSource = contractId => ({
+  contract_id: contractId, policy: {},
+  source_etags: { portfolio: '"p"', contract: '"c"', property: '"pr"', unit: '"u"', tenant: '"t"', wizard_revision: null },
+  source: { contract: { id: contractId, contract_number: 'MV-20', start_date: '2020-01-01' }, property: { name: 'Alte Villa' },
+    unit: { label: 'EG' }, tenant: { full_name: 'Anna Müller' } },
+  suggestions: { resident_names: ['Anna Müller'], actual_move_in_date: null },
+});
+
 describe('party workspace', () => {
+  it('opens the housing confirmation of exactly the chosen contract on top of the panel', async () => {
+    api.get.mockImplementation(path => Promise.resolve(path.includes('/overview') ? overview
+      : path.includes('/housing-confirmations/source') ? housingSource('c2')
+        : path.includes('/housing-confirmations') ? { items: [], has_more: false, next_cursor: null } : response()));
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: 'Anna Müller' }));
+    const panel = await screen.findByRole('dialog', { name: 'Anna Müller' });
+    const card = within(panel).getByText('MV-20').closest('article');
+    fireEvent.click(within(card).getByRole('button', { name: /Wohnungsgeberbestätigung/ }));
+
+    expect(await screen.findByText('MV-20 · Alte Villa · EG')).toBeInTheDocument();
+    expect(api.get).toHaveBeenCalledWith('/contracts/c2/housing-confirmations/source', expect.anything());
+    expect(panel).toHaveAttribute('inert');
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByText('MV-20 · Alte Villa · EG')).toBeNull());
+    expect(screen.getByRole('dialog', { name: 'Anna Müller' })).not.toHaveAttribute('inert');
+  });
+
   it('keeps party account links usable without a provider or router', () => {
     render(<PartyLink tenantId="t1">Anna Müller</PartyLink>);
     expect(screen.getByRole('link', { name: 'Anna Müller' })).toHaveAttribute('href', '/tenants/t1/account');
@@ -126,7 +155,8 @@ describe('party workspace', () => {
     const close = within(dialog).getByRole('button', { name: 'Schließen' });
     expect(close).toHaveFocus();
     fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
-    expect(within(dialog).getAllByRole('button', { name: 'Dokumente zu diesem Vertrag' }).at(-1)).toHaveFocus();
+    // the last contract card's last action
+    expect(within(dialog).getAllByRole('button', { name: 'Wohnungsgeberbestätigung' }).at(-1)).toHaveFocus();
     fireEvent.keyDown(document, { key: 'Tab' });
     expect(close).toHaveFocus();
     const overviewTab = screen.getByRole('tab', { name: 'Übersicht' });

@@ -144,7 +144,7 @@ async function request(path, options = {}) {
   const generation = sessionGeneration;
   requireCurrentSession(generation);
   const token = getToken();
-  const { signal, ...rest } = options;
+  const { signal, responseType, ...rest } = options;
   const headers = { 'Content-Type': 'application/json', ...rest.headers };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
@@ -166,7 +166,7 @@ async function request(path, options = {}) {
     if (refreshed) {
       headers['Authorization'] = `Bearer ${getToken()}`;
       try {
-        res = await fetch(`${BASE}${path}`, { credentials: 'include', ...options, headers });
+        res = await fetch(`${BASE}${path}`, { credentials: 'include', ...rest, signal, headers });
       } catch (err) {
         if (err.name === 'AbortError') throw err;
         throw networkError(err);
@@ -185,6 +185,13 @@ async function request(path, options = {}) {
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw parseApiError(body, res.status);
+  }
+
+  if (responseType === 'blob') {
+    // Generated or protected files (PDF): the same session checks as JSON, also after reading.
+    const blob = await res.blob();
+    requireCurrentSession(generation);
+    return blob;
   }
 
   // Safe JSON parsing for success responses
@@ -250,6 +257,10 @@ export const api = {
   put: (path, data, { signal } = {}) => request(path, { method: 'PUT', body: JSON.stringify(data), signal }),
   patch: (path, data, { signal } = {}) => request(path, { method: 'PATCH', body: JSON.stringify(data), signal }),
   del: (path, { signal } = {}) => request(path, { method: 'DELETE', signal }),
+  getBlob: (path, { signal } = {}) => request(path, { signal, responseType: 'blob' }),
+  postBlob: (path, data, { signal } = {}) => request(path, {
+    method: 'POST', body: JSON.stringify(data), signal, responseType: 'blob',
+  }),
 };
 
 export async function login(username, password) {

@@ -400,7 +400,7 @@ export default function DataTable({ columns, data, onEdit: editHandler, onDelete
                   {hasActions && (
                     <td className="action-cell" onClick={e => e.stopPropagation()}>
                       {rowActions?.(row).map(action => (
-                        <button key={action.label} onClick={() => action.onClick(row)} className="btn btn-sm btn-ghost"
+                        <button key={action.label} onClick={event => action.onClick(row, event)} className="btn btn-sm btn-ghost"
                                 aria-label={action.label} title={action.label}>
                           {action.icon}
                         </button>

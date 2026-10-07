@@ -58,6 +58,7 @@ from .housing_confirmation_validation import (
 DOC_TYPE = "housing_confirmation"
 VIRTUAL_PREFIX = "housing-confirmations/"
 CURSOR_LIFETIME = 3600
+DOMESTIC = {"de", "deu", "deutschland", "germany"}
 
 
 def write_areas(contract_id: str) -> tuple[str, str]:
@@ -102,8 +103,9 @@ def _address(prop) -> str | None:
     city = " ".join(value for value in (prop.postal_code, prop.city) if value)
     if city:
         lines.append(city)
-    if getattr(prop, "country", None):
-        lines.append(prop.country)
+    country = (getattr(prop, "country", None) or "").strip()
+    if country and country.casefold() not in DOMESTIC:      # a German address needs no country line
+        lines.append(country)
     return "\n".join(lines) or None
 
 
