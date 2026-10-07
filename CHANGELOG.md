@@ -4,6 +4,13 @@ All notable changes to ImmoManager Pro will be documented in this file.
 
 ## Unreleased — 2026-10-07
 
+- Rebuild navigation, the dashboard and portfolio/party lists around a calmer workspace with clear actions, compact summaries and accessible controls; preserve existing domain workflows.
+- Render PDF pages locally with PDF.js, page navigation, zoom, text access and clear recovery states; bundle workers, fonts and other resources without a CDN.
+- Require active sessions for upload/PDF/OCR access, coordinate protected file loading and confirmed logout, and preserve retryable sessions after temporary network failures. Object-level read permissions remain a separate gap.
+- Connect property and unit dossiers with direct navigation and document previews; distinguish loading errors from empty records and label master-data rents as planned rents.
+- Open review items at the exact booking, preserve the review return path, show receipts in the shared viewer, and prevent stale save responses from closing a newly opened editing form.
+- Fix contact/name/company and property address/postal-code search against the actual models. Full large-dataset search pagination remains a separate task.
+- Record authenticated vermieter1 and native WISO sample observations, distinguish observed features from unverified workflows, and prioritize further improvements in [the competitive review](docs/COMPETITIVE_REVIEW_20261007.md).
 - Remove date-filter truncation on large lists; improve booking indexes, cache expiry and pending-job cancellation.
 - Add reliable task completion/reopening, recurrence validation and explicit conflict/retry handling; retain archived parties in historical contracts.
 - Add configurable SMTP with a non-sending connection check, validated integration actions, atomic configuration persistence and a durable paginated execution journal.

@@ -86,3 +86,9 @@ Aufruf des Abschlusslaufs: `python -m pytest backend/tests/test_upload_auth.py b
 Der erste Teststart hatte einen falschen Testimport (`jose` statt des vorhandenen `jwt`/PyJWT) und brach vor Sammlung ab; dies wurde ausschließlich im neuen Test korrigiert und zählt nicht als RED-Nachweis. Die oben aufgeführten RED-/GREEN-Läufe erfolgten danach. Laufprotokolle liegen in `.superpowers/sdd/COMPETITIVE_20261007/upload-auth-*.log`.
 
 Die Frontend-Sessionvorbereitung einschließlich sichtbarer Logout-/Retryfehler wird im getrennten Integrationspaket umgesetzt. Erfolgreiche Browserabmeldung setzt eine erfolgreiche Serverantwort voraus, weil JavaScript das HttpOnly-Cookie bei Netzfehlern nicht selbst löschen kann. Reale HTTP-/Browserabnahme und unabhängige Backend-Gegenproben sind an den Integrator übergeben; dieses Backendprotokoll behauptet deren Abschluss nicht. Produktionsdateien, vorhandene Uploadreferenzen und Daten wurden nicht migriert oder umbenannt.
+
+## Grenze bei mehreren Diensten auf einem Host
+
+Hostgebundene Cookies sind im Browser nicht zusätzlich an eine Portnummer gebunden. `SameSite=Strict` ändert diese Eigenschaft nicht. Für den privaten Server soll die Anwendung deshalb einen eigenen HTTPS-Hostnamen hinter dem vorhandenen Reverse Proxy erhalten, wenn andere Dienste unter demselben Servernamen betrieben werden. Gegenseitig nicht vertrauenswürdige Dienste dürfen keine sicherheitsrelevanten Cookies unter einem gemeinsamen Hostnamen verwenden. Das ist eine Grenze des Cookievertrags, kein hier nachgewiesener Datenabfluss. [RFC 6265, Abschnitt 8.5](https://www.rfc-editor.org/rfc/rfc6265.html#section-8.5).
+
+Der JavaScript-Helfer gibt keine Bearer-Header an fremde Dateiquellen weiter. Diese Zusicherung bedeutet ausdrücklich keine Portisolation von automatisch durch den Browser gesendeten Cookies.
