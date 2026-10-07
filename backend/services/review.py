@@ -18,6 +18,7 @@
 from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
+from urllib.parse import quote
 
 from ..domain.lease_engine import OCCUPYING_CONTRACT_STATUSES, charge_on
 from .payment_allocations import _money, credited_by_tenant
@@ -160,7 +161,8 @@ def review_items(store: Any, today: date) -> list[dict]:
                 "title": f"Zahlung von {tenants.get(booking.tenant_id, '—')} nicht (ganz) zugeordnet",
                 "detail": f"{_day(booking.booking_date)}: {_eur(booking.amount)}, davon {_eur(rest)} ohne Vertrag"
                           + (f" – „{booking.payment_text}“" if booking.payment_text else ""),
-                "entity_type": "booking", "entity_id": booking.id, "link": f"/tenants/{booking.tenant_id}/account"})
+                "entity_type": "booking", "entity_id": booking.id,
+                "link": f"/bookings?booking_id={quote(booking.id, safe='')}"})
 
     for booking in bookings:
         if booking.amount > 0 and not booking.tenant_id and not booking.category_id and booking.booking_date <= today:
@@ -169,5 +171,6 @@ def review_items(store: Any, today: date) -> list[dict]:
                 "title": "Zahlungseingang ohne Mieter und Kategorie",
                 "detail": f"{_day(booking.booking_date)}: {_eur(booking.amount)}"
                           + (f" – „{booking.payment_text}“" if booking.payment_text else ""),
-                "entity_type": "booking", "entity_id": booking.id, "link": "/bookings"})
+                "entity_type": "booking", "entity_id": booking.id,
+                "link": f"/bookings?booking_id={quote(booking.id, safe='')}"})
     return items

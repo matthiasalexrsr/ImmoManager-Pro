@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
-import { useToast } from '../components/Toast';
 
 const KIND_LABELS = {
   unit_rent_differs: 'Miete Einheit ≠ Vertrag',
@@ -20,14 +19,32 @@ const KIND_LABELS = {
 
 /** Rents and payments that need a decision, each with a link to where it is fixed. */
 export default function ReviewList() {
-  const toast = useToast();
   const [items, setItems] = useState(null);
   const [kind, setKind] = useState('all');
+  const [error, setError] = useState(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    api.get('/review').then(r => setItems(r?.items || [])).catch(err => { toast.error(err.message); setItems([]); });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    const controller = new AbortController();
+    setItems(null);
+    setError(null);
+    api.get('/review', { signal: controller.signal })
+      .then(result => {
+        if (controller.signal.aborted) return;
+        if (!Array.isArray(result?.items)) throw new Error('Die Prüfliste konnte nicht gelesen werden.');
+        setItems(result.items);
+      })
+      .catch(err => { if (!controller.signal.aborted) setError(err.message || 'Die Prüfliste konnte nicht geladen werden.'); });
+    return () => controller.abort();
+  }, [attempt]);
 
+  if (error) return <div className="page">
+    <h1 className="page-title">Prüfliste</h1>
+    <div className="alert alert-error" role="alert">
+      <p>Die Prüfliste konnte nicht geladen werden.</p><p>{error}</p>
+      <button type="button" className="btn btn-secondary" onClick={() => setAttempt(value => value + 1)}>Erneut laden</button>
+    </div>
+  </div>;
   if (!items) return <div className="page-loading">Lade Prüfliste...</div>;
   const counts = items.reduce((c, i) => ({ ...c, [i.kind]: (c[i.kind] || 0) + 1 }), {});
   const shown = kind === 'all' ? items : items.filter(i => i.kind === kind);

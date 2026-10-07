@@ -1,23 +1,35 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import { PartyLink } from '../features/partyWorkspace/PartyWorkspace';
 import FormModal from '../components/FormModal';
+import FileViewer from '../components/FileViewer';
+import { resolveFileUrl } from '../features/partyWorkspace/files';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useToast } from '../components/Toast';
 import { useCanWrite } from '../contexts/AuthContext';
-import { formatMoney } from '../utils/format';
+import { formatDate, formatMoney } from '../utils/format';
+import './bookingReview.css';
 
 export default function Bookings() {
+  const [params] = useSearchParams();
+  const bookingId = params.get('booking_id');
+  // A navigation starts a new editing/viewing session; old requests cannot own it.
+  return <BookingsWorkspace key={bookingId === null ? 'list' : `booking:${bookingId}`} bookingId={bookingId} />;
+}
+
+function BookingsWorkspace({ bookingId }) {
   const { t } = useTranslation();
   const confirm = useConfirm();
   const toast = useToast();
   const canWrite = useCanWrite();
   const store = useDataStore();
-  const { items: contracts } = useEntities('contracts', '/contracts');
+  const contractSource = useEntities('contracts', '/contracts');
+  const { items: contracts } = contractSource;
   const { items: accounts } = useEntities('accounts', '/accounts');
   const { items: categories } = useEntities('categories', '/categories');
   const { items: properties } = useEntities('properties', '/properties');
@@ -26,32 +38,92 @@ export default function Bookings() {
 
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
+  const [refreshVersion, setRefreshVersion] = useState(0);
   const [modal, setModal] = useState(null);
   const [filter, setFilter] = useState('all');
   const [allocations, setAllocations] = useState([]);
+  const [allocationStatus, setAllocationStatus] = useState('loading');
+  const [allocationError, setAllocationError] = useState(null);
+  const [allocationAttempt, setAllocationAttempt] = useState(0);
   const [split, setSplit] = useState(null);
+  const [splitError, setSplitError] = useState(null);
+  const [splitSaving, setSplitSaving] = useState(false);
+  const [selected, setSelected] = useState(null);
+  const [selectedLoading, setSelectedLoading] = useState(bookingId !== null);
+  const [selectedError, setSelectedError] = useState(null);
+  const [selectedAttempt, setSelectedAttempt] = useState(0);
+  const [viewer, setViewer] = useState(null);
+  const mounted = useRef(false);
+  const splitRequest = useRef(null);
+  const splitSession = useRef(null);
 
   const noneOpt = t('ui.form.none') || '— Keine —';
-
-  // Which contract a tenant payment pays (a transfer may pay flat and garage together).
-  const loadAllocations = () => api.get('/bookings/allocations').then(a => setAllocations(a || [])).catch(() => setAllocations([]));
-
-  const refreshData = () => {
-    setLoading(true);
-    loadAllocations();
-    api.list('/bookings').catch(() => [])
-      .then(data => setBookings(Array.isArray(data) ? data : []))
-      .finally(() => setLoading(false));
-  };
+  const allocationReady = allocationStatus === 'ready';
+  const canSplit = canWrite && allocationReady && !contractSource.loading && !contractSource.error;
 
   useEffect(() => {
-    let cancelled = false;
-    loadAllocations();
-    api.list('/bookings').catch(err => { console.warn('[Bookings] load:', err.message); return []; })
-      .then(data => { if (!cancelled) setBookings(Array.isArray(data) ? data : []); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+    mounted.current = true;
+    return () => { mounted.current = false; };
   }, []);
+
+  const refreshData = () => setRefreshVersion(value => value + 1);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true);
+    setLoadError(null);
+    api.list('/bookings', { signal: controller.signal })
+      .then(data => {
+        if (controller.signal.aborted) return;
+        if (!Array.isArray(data)) throw new Error('Die Buchungen konnten nicht gelesen werden.');
+        setBookings(data);
+      })
+      .catch(err => { if (!controller.signal.aborted) setLoadError(err.message || 'Buchungen konnten nicht geladen werden.'); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [refreshVersion]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setAllocationStatus('loading');
+    setAllocationError(null);
+    api.get('/bookings/allocations', { signal: controller.signal })
+      .then(data => {
+        if (controller.signal.aborted) return;
+        if (!Array.isArray(data)) throw new Error('Die Zuordnungen konnten nicht gelesen werden.');
+        setAllocations(data);
+        setAllocationStatus('ready');
+      })
+      .catch(err => {
+        if (controller.signal.aborted) return;
+        setAllocationError(err.message || 'Zuordnungen konnten nicht geladen werden.');
+        setAllocationStatus('error');
+      });
+    return () => controller.abort();
+  }, [refreshVersion, allocationAttempt]);
+
+  useEffect(() => {
+    if (bookingId === null) return;
+    const controller = new AbortController();
+    setSelected(null);
+    setSelectedError(null);
+    if (!bookingId.trim()) {
+      setSelectedError('Die Buchungs-ID ist ungültig.');
+      setSelectedLoading(false);
+      return () => controller.abort();
+    }
+    setSelectedLoading(true);
+    api.get(`/bookings/${encodeURIComponent(bookingId)}`, { signal: controller.signal })
+      .then(data => {
+        if (controller.signal.aborted) return;
+        if (!data || data.id !== bookingId) throw new Error('Die Antwort gehört nicht zur ausgewählten Buchung.');
+        setSelected(data);
+      })
+      .catch(err => { if (!controller.signal.aborted) setSelectedError(err.message || 'Die ausgewählte Buchung konnte nicht geladen werden.'); })
+      .finally(() => { if (!controller.signal.aborted) setSelectedLoading(false); });
+    return () => controller.abort();
+  }, [bookingId, refreshVersion, selectedAttempt]);
 
   // Lookup maps
   const accountMap = Object.fromEntries(accounts.map(a => [a.id, a.name]));
@@ -66,6 +138,10 @@ export default function Bookings() {
   // Short label for the list (contract numbers), the amounts per contract as tooltip.
   const allocationInfo = (b) => {
     if (!b.tenant_id) return { label: '—', detail: '', unassigned: 0 };
+    if (!allocationReady) return {
+      label: allocationStatus === 'loading' ? 'Zuordnung wird geladen …' : 'Zuordnung nicht verfügbar',
+      detail: '', unassigned: null,
+    };
     const own = allocationsByBooking[b.id] || [];
     const rest = Math.round((Number(b.amount) - own.reduce((s, a) => s + Number(a.amount), 0)) * 100) / 100;
     const parts = own.map(a => `${contractNumber[a.contract_id] || '?'}: ${formatMoney(a.amount)}`);
@@ -86,7 +162,7 @@ export default function Bookings() {
     property_name: propertyMap[b.property_id] || '—',
     unit_label: unitMap[b.unit_id] || '—',
     tenant_name: tenantMap[b.tenant_id] || '—',
-    has_receipt: b.receipt_url ? '✓ Vorhanden' : '—',
+    has_receipt: resolveFileUrl(b.receipt_url) ? 'Vorhanden' : b.receipt_url?.trim() ? 'Ungültig' : 'Fehlt',
   }));
 
   // Filtered data
@@ -95,7 +171,7 @@ export default function Bookings() {
       case 'open': return enriched.filter(b => b.status === 'open');
       case 'unassigned': return enriched.filter(b => b.unassigned);
       case 'no_category': return enriched.filter(b => !b.category_id);
-      case 'no_receipt': return enriched.filter(b => !b.receipt_url);
+      case 'no_receipt': return enriched.filter(b => !resolveFileUrl(b.receipt_url));
       case 'income': return enriched.filter(b => Number(b.amount) > 0);
       case 'expense': return enriched.filter(b => Number(b.amount) < 0);
       default: return enriched;
@@ -107,7 +183,12 @@ export default function Bookings() {
   const totalIncome = enriched.filter(b => Number(b.amount) > 0).reduce((s, b) => s + Number(b.amount), 0);
   const totalExpense = enriched.filter(b => Number(b.amount) < 0).reduce((s, b) => s + Math.abs(Number(b.amount)), 0);
   const noCategory = enriched.filter(b => !b.category_id).length;
-  const noReceipt = enriched.filter(b => !b.receipt_url).length;
+  const noReceipt = enriched.filter(b => !resolveFileUrl(b.receipt_url)).length;
+
+  const receiptAction = row => resolveFileUrl(row.receipt_url)
+    ? <button type="button" className="btn btn-sm btn-secondary" onClick={() => setViewer({ fileUrl: row.receipt_url, title: `Beleg: ${row.payment_text || formatDate(row.booking_date)}` })}>Beleg öffnen</button>
+    : <span className="text-muted">{row.receipt_url?.trim() ? 'Belegadresse ist ungültig.' : 'Kein Beleg hinterlegt.'}</span>;
+  const selectedAllocation = selected ? allocationInfo(selected) : null;
 
   const columns = [
     { key: 'booking_date', label: t('finance.bookings.form.date') || 'Datum', type: 'date', filterType: 'dateRange' },
@@ -129,12 +210,12 @@ export default function Bookings() {
         ? (
           <span className="cell-inline" title={row.allocation_detail}>
             <span>{v}</span>
-            {row.unassigned !== 0 && <span className="badge badge-yellow">offen {formatMoney(row.unassigned)}</span>}
-            {canWrite && <button className="btn btn-sm btn-ghost btn-link" onClick={() => openSplit(row)}>Aufteilen</button>}
+            {row.unassigned !== null && row.unassigned !== 0 && <span className="badge badge-yellow">offen {formatMoney(row.unassigned)}</span>}
+            {canSplit && <button className="btn btn-sm btn-ghost btn-link" onClick={() => openSplit(row)}>Aufteilen</button>}
           </span>
         )
         : v) },
-    { key: 'has_receipt', hidden: true, label: 'Beleg', filterType: 'text' },
+    { key: 'has_receipt', label: 'Beleg', filterType: 'text', render: (_value, row) => receiptAction(row) },
     { key: 'status', label: t('ui.form.status') || 'Status', type: 'status', filterType: 'select',
       render: v => <StatusBadge status={v} /> },
   ];
@@ -153,7 +234,7 @@ export default function Bookings() {
     { key: 'booking_date', label: t('finance.bookings.form.bookingDate') || 'Buchungsdatum', type: 'date', required: true },
     { key: 'amount', label: t('finance.bookings.form.amount') || 'Betrag (€)', type: 'number', required: true },
     { key: 'payment_text', label: t('finance.bookings.form.paymentText') || 'Buchungstext' },
-    { key: 'receipt_url', label: t('finance.bookings.form.receiptUrl') || 'Beleg-URL', placeholder: '/belege/beleg.pdf' },
+    { key: 'receipt_url', label: t('finance.bookings.form.receiptUrl') || 'Beleg-URL', placeholder: '/uploads/beleg.pdf' },
     { key: 'status', label: t('ui.form.status') || 'Status', type: 'select', default: 'open', options: [
       { value: 'open', label: t('ui.filterChips.open') || 'Offen' },
       { value: 'matched', label: t('status.booking.matched') || 'Zugeordnet' },
@@ -162,49 +243,117 @@ export default function Bookings() {
   ];
 
   const handleSave = async (data) => {
+    if (!canWrite) return;
     if (modal === 'create') {
       await api.post('/bookings', data);
     } else {
-      await api.put(`/bookings/${modal.id}`, data);
+      await api.put(`/bookings/${encodeURIComponent(modal.id)}`, data);
     }
-    refreshData();
     if (store) store.invalidateRelated('bookings', 'accounts', 'categories');
+    if (mounted.current) refreshData();
   };
 
   const openSplit = (row) => {
+    if (!canSplit) return;
+    splitSession.current = {};
+    setSplitError(null);
     const own = allocationsByBooking[row.id] || [];
     const tenantContracts = contracts.filter(c => c.tenant_id === row.tenant_id);
     setSplit({ booking: row, values: Object.fromEntries(tenantContracts.map(c => [c.id,
       String(own.find(a => a.contract_id === c.id)?.amount ?? '')])) });
   };
 
+  const closeSplit = () => {
+    splitSession.current = null;
+    setSplit(null);
+  };
+
   const saveSplit = async () => {
+    if (!canSplit || splitRequest.current) return;
+    const request = { session: splitSession.current };
+    splitRequest.current = request;
+    setSplitSaving(true);
+    setSplitError(null);
     const items = Object.entries(split.values)
       .filter(([, v]) => v !== '' && Number(v) !== 0)
       .map(([contract_id, v]) => ({ contract_id, amount: Number(v) }));
     try {
-      await api.put(`/bookings/${split.booking.id}/allocations`, items);
-      setSplit(null);
-      loadAllocations();
+      await api.put(`/bookings/${encodeURIComponent(split.booking.id)}/allocations`, items);
+      if (store) store.invalidateRelated('bookings');
+      if (!mounted.current) return;
+      if (splitSession.current === request.session) closeSplit();
+      refreshData();
       toast.success('Zuordnung gespeichert');
     } catch (err) {
-      toast.error(err.message);
+      if (mounted.current && splitSession.current === request.session) setSplitError(err.message || 'Die Zuordnung konnte nicht gespeichert werden.');
+    } finally {
+      if (splitRequest.current === request) splitRequest.current = null;
+      if (mounted.current) setSplitSaving(false);
     }
   };
 
   const handleDelete = async (row) => {
+    if (!canWrite) return;
     if (!await confirm(`"${row.payment_text || row.id}" ${t('modals.confirmDelete.body')}`)) return;
-    await api.del(`/bookings/${row.id}`);
-    refreshData();
-    if (store) store.invalidateRelated('bookings', 'accounts', 'categories');
+    try {
+      await api.del(`/bookings/${encodeURIComponent(row.id)}`);
+      if (store) store.invalidateRelated('bookings', 'accounts', 'categories');
+      if (mounted.current) refreshData();
+    } catch (err) {
+      if (mounted.current) toast.error(err.message);
+    }
   };
-
-  if (loading) return <div className="page-loading">Lade Buchungen...</div>;
 
   return (
     <div className="page">
       <h1 className="page-title">{t('finance.bookings.title') || 'Buchungen'}</h1>
 
+      {bookingId !== null && <section className="booking-selection" aria-label="Ausgewählte Buchung">
+        <header className="booking-selection-header">
+          <h2>Ausgewählte Buchung</h2>
+          <Link className="btn btn-sm btn-secondary" to="/review">Zur Prüfliste</Link>
+        </header>
+        {selectedLoading && <p role="status">Die ausgewählte Buchung wird geladen …</p>}
+        {selectedError && <div className="alert alert-error" role="alert">
+          <p>Die ausgewählte Buchung konnte nicht geöffnet werden.</p><p>{selectedError}</p>
+          <button type="button" className="btn btn-secondary" onClick={() => setSelectedAttempt(value => value + 1)}>Erneut laden</button>
+        </div>}
+        {selected && <>
+          <h3>{selected.payment_text || 'Ohne Buchungstext'}</h3>
+          <dl className="booking-selection-details">
+            <div><dt>Datum</dt><dd>{formatDate(selected.booking_date)}</dd></div>
+            <div><dt>Betrag</dt><dd>{formatMoney(selected.amount)}</dd></div>
+            <div><dt>Konto</dt><dd>{accountMap[selected.account_id] || selected.account_id}</dd></div>
+            <div><dt>Immobilie</dt><dd>{propertyMap[selected.property_id] || selected.property_id || 'Nicht zugeordnet'}</dd></div>
+            <div><dt>Einheit</dt><dd>{unitMap[selected.unit_id] || selected.unit_id || 'Nicht zugeordnet'}</dd></div>
+            <div><dt>Mieter</dt><dd>{selected.tenant_id ? tenantMap[selected.tenant_id] || selected.tenant_id : 'Noch nicht zugeordnet'}</dd></div>
+            <div><dt>Kategorie</dt><dd>{categoryMap[selected.category_id] || 'Noch nicht zugeordnet'}</dd></div>
+            <div><dt>Vertrag</dt><dd title={selectedAllocation.detail}>{selectedAllocation.label}</dd></div>
+          </dl>
+          {selectedAllocation.unassigned !== null && selectedAllocation.unassigned !== 0 && <p>Noch keinem Vertrag zugeordnet: {formatMoney(selectedAllocation.unassigned)}</p>}
+          <div className="booking-selection-actions">
+            {receiptAction(selected)}
+            {canWrite && <button type="button" className="btn btn-sm btn-primary" onClick={() => setModal(selected)}>Bearbeiten</button>}
+            {selected.tenant_id && canSplit && <button type="button" className="btn btn-sm btn-secondary" onClick={() => openSplit(selected)}>Aufteilen</button>}
+          </div>
+        </>}
+      </section>}
+
+      {allocationError && <div className="alert alert-error booking-load-error" role="alert">
+        <p>Zahlungszuordnungen konnten nicht geladen werden. Der Zuordnungsstand ist unbekannt.</p><p>{allocationError}</p>
+        <button type="button" className="btn btn-secondary" onClick={() => setAllocationAttempt(value => value + 1)}>Erneut laden</button>
+      </div>}
+      {contractSource.error && <div className="alert alert-error booking-load-error" role="alert">
+        <p>Verträge konnten nicht geladen werden. Die Aufteilung ist vorübergehend nicht verfügbar.</p>
+        <button type="button" className="btn btn-secondary" onClick={contractSource.reload}>Verträge erneut laden</button>
+      </div>}
+      {loading && <p role="status">Lade Buchungen...</p>}
+      {loadError && <div className="alert alert-error booking-load-error" role="alert">
+        <p>Buchungen konnten nicht geladen werden.</p><p>{loadError}</p>
+        <button type="button" className="btn btn-secondary" onClick={refreshData}>Erneut laden</button>
+      </div>}
+
+      {!loading && !loadError && <>
       {/* Summary cards */}
       <div className="kpi-row">
         <div className="kpi">
@@ -225,7 +374,7 @@ export default function Bookings() {
         </div>
         <div className="kpi">
           <div className="kpi-value" style={{ color: noReceipt > 0 ? 'var(--warning)' : undefined }}>{noReceipt}</div>
-          <div className="kpi-label">Ohne Beleg</div>
+          <div className="kpi-label">Ohne nutzbaren Beleg</div>
         </div>
       </div>
 
@@ -244,39 +393,43 @@ export default function Bookings() {
             key={f.key}
             className={`btn btn-sm ${filter === f.key ? 'btn-primary' : 'btn-secondary'}`}
             onClick={() => setFilter(f.key)}
+            disabled={f.key === 'unassigned' && !allocationReady}
           >{f.label}</button>
         ))}
       </div>
 
-      <DataTable
+      {filter === 'unassigned' && !allocationReady ? <p>Der Zuordnungsstand ist derzeit nicht verfügbar.</p> : <DataTable
         title={t('finance.bookings.title') || 'Buchungen'}
         columns={columns}
         data={filtered}
         onAdd={() => setModal('create')}
         onEdit={row => setModal(row)}
         onDelete={handleDelete}
-      />
+      />}
+      </>}
 
       {split && (
-        <div className="modal-overlay" onClick={() => setSplit(null)} role="presentation">
+        <div className="modal-overlay" onClick={closeSplit} role="presentation">
           <div className="modal" role="dialog" aria-modal="true" aria-label="Zahlung aufteilen" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Zahlung aufteilen ({formatMoney(split.booking.amount)})</h2>
-              <button onClick={() => setSplit(null)} className="btn-close" aria-label="Schließen">✕</button>
+              <button onClick={closeSplit} className="btn-close" aria-label="Schließen">✕</button>
             </div>
             <div className="modal-body">
+              {splitError && <div className="alert alert-error" role="alert">{splitError}</div>}
               {Object.keys(split.values).length === 0 && <p className="text-muted">Der Mieter hat keine Verträge.</p>}
               {Object.entries(split.values).map(([contractId, value]) => (
                 <div key={contractId} className="form-group">
                   <label htmlFor={`split-${contractId}`}>Vertrag {contractNumber[contractId]} (€)</label>
                   <input id={`split-${contractId}`} type="number" step="0.01" value={value}
+                    disabled={splitSaving && splitRequest.current?.session === splitSession.current}
                     onChange={e => setSplit(s => ({ ...s, values: { ...s.values, [contractId]: e.target.value } }))} />
                 </div>
               ))}
               <p className="text-muted">Was keinem Vertrag zugeordnet wird, bleibt „nicht zugeordnet“.</p>
               <div className="modal-footer">
-                <button className="btn btn-secondary" onClick={() => setSplit(null)}>Abbrechen</button>
-                <button className="btn btn-primary" onClick={saveSplit}>Speichern</button>
+                <button className="btn btn-secondary" onClick={closeSplit}>Abbrechen</button>
+                <button className="btn btn-primary" onClick={saveSplit} disabled={splitSaving || !canSplit}>{splitSaving ? 'Speichert …' : 'Speichern'}</button>
               </div>
             </div>
           </div>
@@ -292,6 +445,7 @@ export default function Bookings() {
           onClose={() => setModal(null)}
         />
       )}
+      {viewer && <FileViewer fileUrl={viewer.fileUrl} title={viewer.title} onClose={() => setViewer(null)} />}
     </div>
   );
 }

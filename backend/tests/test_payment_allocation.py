@@ -144,10 +144,10 @@ def test_review_list_names_rents_and_payments_to_check(client, yilmaz):
     client.post("/api/v1/rent-adjustments", json={"contract_id": flat["id"], "adjustment_type": "index",
                                                    "effective_date": "2025-01-01", "previous_rent": 1200,
                                                    "new_rent": 1230})
-    client.post("/api/v1/bookings", json={"account_id": yilmaz["account"]["id"], "tenant_id": yilmaz["tenant"]["id"],
-                                           "booking_date": "2025-09-20", "amount": 2000, "payment_text": "Nachzahlung"})
-    client.post("/api/v1/bookings", json={"account_id": yilmaz["account"]["id"], "booking_date": "2025-09-21",
-                                           "amount": 612, "payment_text": "Überweisung ohne Verwendungszweck"})
+    excess = client.post("/api/v1/bookings", json={"account_id": yilmaz["account"]["id"], "tenant_id": yilmaz["tenant"]["id"],
+                                           "booking_date": "2025-09-20", "amount": 2000, "payment_text": "Nachzahlung"}).json()
+    unknown = client.post("/api/v1/bookings", json={"account_id": yilmaz["account"]["id"], "booking_date": "2025-09-21",
+                                           "amount": 612, "payment_text": "Überweisung ohne Verwendungszweck"}).json()
 
     other = client.post("/api/v1/rent-adjustments", json={"contract_id": yilmaz["Garage"]["id"],
                                                            "adjustment_type": "index", "effective_date": "2025-01-01",
@@ -160,7 +160,11 @@ def test_review_list_names_rents_and_payments_to_check(client, yilmaz):
     assert kinds == ["adjustment_not_applied", "payment_without_tenant", "unassigned_payment", "unit_rent_differs"]
     unassigned = next(i for i in review["items"] if i["kind"] == "unassigned_payment")
     assert "davon 430,00 € ohne Vertrag" in unassigned["detail"]
-    assert unassigned["link"] == f"/tenants/{yilmaz['tenant']['id']}/account"
+    assert unassigned["link"] == f"/bookings?booking_id={excess['id']}"
+    without_tenant = next(i for i in review["items"] if i["kind"] == "payment_without_tenant")
+    assert without_tenant["link"] == f"/bookings?booking_id={unknown['id']}"
+    for item in (unassigned, without_tenant):
+        assert client.get(f"/api/v1/bookings/{item['entity_id']}").json()["id"] == item["entity_id"]
 
 
 def test_review_list_flags_histories_the_migration_took_from_an_edited_unit(client, yilmaz):
