@@ -43,6 +43,19 @@ _scope: ContextVar[AccessScope | None] = ContextVar("immo_portfolio_scope", defa
 _guarding: ContextVar[bool] = ContextVar("immo_scope_guarding", default=False)
 # installation definitions: everyone reads them, only all-access accounts change them
 GLOBAL_READ = frozenset({"tax_rates", "notification_templates", "escalation_rules"})
+# a shared address book: every account reads it; changing a record needs its binding (or all access)
+SHARED_READ = frozenset({"contacts"})
+_owning: ContextVar[bool] = ContextVar("immo_scope_owning", default=False)
+
+
+@contextmanager
+def owning() -> Iterator[None]:
+    """Visibility checks for a change: shared-read records count only where bound."""
+    token = _owning.set(True)
+    try:
+        yield
+    finally:
+        _owning.reset(token)
 INTERNAL = frozenset({
     "users",
     "user_preferences",
@@ -212,7 +225,7 @@ def _criterion(table, scope, seen=(), relations=None):
     name = table.name
     if name in INTERNAL:
         return None
-    if name in GLOBAL_READ:
+    if name in GLOBAL_READ or (name in SHARED_READ and not _owning.get()):
         return true()
     if name in seen:
         return false()
@@ -335,7 +348,8 @@ def _scope_queries(state):
                 statement = statement.options(with_loader_criteria(mapper.class_, criterion, include_aliases=True))
     if state.is_update or state.is_delete:
         table = statement.table
-        criterion = scoped_clause(table, scope=scope)
+        with owning():
+            criterion = scoped_clause(table, scope=scope)
         if criterion is not None:
             statement = statement.where(criterion)
         if state.is_update:
@@ -400,7 +414,15 @@ def _scope_select_tree(statement, scope):
 
     if not isinstance(statement, Select):
         return statement
-    return cloned_traverse(statement, {}, {"select": scope_select})
+    # loader options (e.g. of an object being refreshed) cannot be cloned: set them aside
+    options = statement._with_options
+    if options:
+        statement = statement._generate()
+        statement._with_options = ()
+    bounded = cloned_traverse(statement, {}, {"select": scope_select})
+    if options:
+        bounded._with_options = options
+    return bounded
 
 
 BOUNDED = "immo_portfolio_bounded"
@@ -415,6 +437,11 @@ def _sql_visible(db, table, entity_id):
 
 
 def guard_sql_write(db, table, values, *, entity_id=None, creating=False):
+    with owning():
+        _guard_sql_write(db, table, values, entity_id=entity_id, creating=creating)
+
+
+def _guard_sql_write(db, table, values, *, entity_id=None, creating=False):
     scope = current_scope()
     if scope is None or scope.unrestricted or table.name in INTERNAL:
         return
@@ -592,7 +619,7 @@ def memory_visible(store, collection, item, *, scope=None, seen=()):
     if scope is None or scope.unrestricted:
         return True
     name = COLLECTION_TABLES.get(collection, collection)
-    if name in GLOBAL_READ:
+    if name in GLOBAL_READ or (name in SHARED_READ and not _owning.get() and not seen):
         return True
     if name in seen:
         return False
@@ -661,6 +688,10 @@ class ScopedCollection(MutableMapping):
         return sum(1 for _ in self)
 
     def __setitem__(self, key, item):
+        with owning():
+            self._set(key, item)
+
+    def _set(self, key, item):
         scope = current_scope()
         if scope is None or scope.unrestricted:
             self.raw[key] = item
@@ -715,7 +746,9 @@ class ScopedCollection(MutableMapping):
         self.raw[key] = item
 
     def __delitem__(self, key):
-        self[key]
+        with owning():
+            if not memory_visible(self.store, self.name, self.raw[key]):
+                raise HTTPException(404, "Datensatz nicht gefunden")
         if self.name in GLOBAL_READ:
             require_installation_scope()
         del self.raw[key]

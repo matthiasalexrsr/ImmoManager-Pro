@@ -15,10 +15,10 @@ Stand 7. Oktober 2026, Branch `claude/dreamy-gauss-nmaxhn`. Umsetzung des Pakets
 
 Ein Datensatz ist sichtbar, wenn alle Elterndatensätze, auf die er verweist, sichtbar sind, bis hinunter zum Portfolio. Die Eltern ergeben sich aus den Fremdschlüsseln, den Textverweisen (`contract_id`, `property_id`, …) und `entity_type/entity_id`. Mieter werden über ihre Verträge sichtbar.
 
-Datensätze **ohne** Elternverweis (zum Beispiel Kontakte):
+Datensätze **ohne** Elternverweis:
 
-- Legt ein eingeschränktes Konto sie an, werden sie in derselben Transaktion an dessen Portfolios gebunden (`resource_portfolio_grants`).
-- Ältere, ungebundene Datensätze gehören der Installation und sind nur mit Vollzugriff sichtbar.
+- **Kontakte** sind ein gemeinsames Adressbuch: Alle angemeldeten Konten lesen sie. Ändern und löschen darf ein eingeschränktes Konto nur Kontakte, die an eines seiner Portfolios gebunden sind (weil es sie selbst angelegt hat). Ältere Kontakte ohne Bindung ändern nur Konten mit Vollzugriff.
+- Andere Datensätze ohne Elternverweis werden beim Anlegen durch ein eingeschränktes Konto in derselben Transaktion an dessen Portfolios gebunden (`resource_portfolio_grants`). Ältere, ungebundene gehören der Installation und sind nur mit Vollzugriff sichtbar.
 
 Globale Definitionen (Steuersätze, Benachrichtigungsvorlagen, Eskalationsregeln) sind für alle lesbar und nur mit Vollzugriff änderbar.
 
@@ -43,6 +43,7 @@ Ohne Vollzugriff gesperrt (403): Verwaltung der ganzen Installation (`/admin`, `
 3. Zählungen über Unterabfragen zeigten auf dem Dashboard die Zahlen aller Portfolios.
 4. Die semantische Suche ergänzte Treffer aus dem globalen Index. Einen Neuaufbau konnte jedes Konto auslösen.
 5. Die Wiederherstellung einer Datenbanksicherung von vor dem Update hätte alle Mitarbeiterkonten ausgesperrt.
+6. Eine Änderung (PATCH) durch ein eingeschränktes Konto scheiterte auf SQL, weil das Nachladen des Datensatzes Ladeoptionen trägt, die sich nicht kopieren ließen. Ein Test für normales Arbeiten im eigenen Portfolio fehlte; er ist ergänzt.
 
 ## Nachweise
 
@@ -60,7 +61,6 @@ Ohne Vollzugriff gesperrt (403): Verwaltung der ganzen Installation (`/admin`, `
 ## Bewusst offen
 
 - **Snapshot-Export/-Import (JSON)** überträgt weder Konten noch die Bindungen ungebundener Datensätze. Nach einem Import sind solche Datensätze für eingeschränkte Konten unsichtbar, bis sie neu zugewiesen werden. Das ist sicher, aber unvollständig.
-- **Kontakte** ohne Bindung (Bestand vor dem Update) sehen nur Konten mit Vollzugriff. Ob Handwerkerkontakte installationsweit lesbar sein sollen, ist eine fachliche Entscheidung.
 - **Hintergrundjobs** (Mahnläufe, Benachrichtigungen) laufen ohne Konto als Installation. Ihre Ergebnisse werden beim Lesen gefiltert.
 - **Navigation:** Seiten der Installationsverwaltung bleiben in der Navigation eingeschränkter Konten sichtbar und melden beim Öffnen „benötigt Zugriff auf alle Portfolios“.
 - Die Prüfung ist eine Anwendungsgrenze, keine Row-Level-Security der Datenbank. Eigene Engine-Verbindungen außerhalb der Session müssen `scoped_clause()` ausdrücklich verwenden. Heute gibt es keine solchen Lesepfade für Fachdaten.

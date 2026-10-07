@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 from backend import auth
 from backend.app import app
 from backend.dependencies import store
-from backend.models import AccountCreate, BookingCreate
+from backend.models import AccountCreate, BookingCreate, ContactCreate
 from backend.services.file_storage import get_file_storage
 
 
@@ -117,7 +117,7 @@ def test_writes_cannot_reach_into_another_portfolio(client, estate):
     assert store.get_document(south["document"].id)
 
 
-def test_records_without_parent_belong_to_the_portfolios_of_their_author(client, estate):
+def test_contacts_are_a_shared_address_book_changed_only_by_their_portfolios(client, estate):
     north, south = estate["north"], estate["south"]
     nora = _bearer(_staff("nora", north["portfolio"]))
     sven = _bearer(_staff("sven", south["portfolio"]))
@@ -126,11 +126,24 @@ def test_records_without_parent_belong_to_the_portfolios_of_their_author(client,
     assert created.status_code in (200, 201), created.text
     contact = created.json()["id"]
 
-    assert contact in _ids(client.get("/api/v1/contacts", headers=nora))
-    assert contact not in _ids(client.get("/api/v1/contacts", headers=sven))
-    assert client.get(f"/api/v1/contacts/{contact}", headers=sven).status_code == 404
+    # everyone reads the address book ...
+    for reader in (nora, sven):
+        assert contact in _ids(client.get("/api/v1/contacts", headers=reader))
+    assert client.get(f"/api/v1/contacts/{contact}", headers=sven).status_code == 200
+    # ... but only the portfolios it belongs to (or full access) change it
+    refused = client.patch(f"/api/v1/contacts/{contact}", headers=sven, json={"company_name": "Übernommen"})
+    assert refused.status_code in (403, 404)
+    assert client.delete(f"/api/v1/contacts/{contact}", headers=sven).status_code in (403, 404)
+    assert client.patch(f"/api/v1/contacts/{contact}", headers=nora,
+                        json={"company_name": "Heizung Nord KG"}).status_code == 200
     owner = _bearer(_staff("owner", role="eigentuemer", mode="all"))
-    assert contact in _ids(client.get("/api/v1/contacts", headers=owner))
+    assert client.get(f"/api/v1/contacts/{contact}", headers=owner).json()["company_name"] == "Heizung Nord KG"
+    # contacts from before the update (no binding): readable by all, changed only with full access
+    old = store.create_contact(ContactCreate(contact_type="supplier", company_name="Altkontakt"))
+    assert old.id in _ids(client.get("/api/v1/contacts", headers=sven))
+    assert client.patch(f"/api/v1/contacts/{old.id}", headers=sven,
+                        json={"company_name": "X"}).status_code in (403, 404)
+    assert client.patch(f"/api/v1/contacts/{old.id}", headers=owner, json={"company_name": "Y"}).status_code == 200
 
 
 def test_a_changed_assignment_applies_to_the_token_already_issued(client, estate):
@@ -336,3 +349,19 @@ def test_no_read_endpoint_opens_a_record_of_another_portfolio_by_its_id(client, 
                     opened.append(f"{route.path} [{key}]")
     assert not opened, opened
     assert tried > 100
+
+
+def test_a_restricted_account_works_normally_inside_its_portfolios(client, estate):
+    north = estate["north"]
+    staff = _bearer(_staff("staff", north["portfolio"]))
+    renamed = client.patch(f"/api/v1/properties/{north['property'].id}", headers=staff, json={"name": "Nordhaus"})
+    assert renamed.status_code == 200, renamed.text
+    unit = client.post("/api/v1/units", headers=staff,
+                       json={"property_id": north["property"].id, "label": "WE 9", "unit_type": "residential"})
+    assert unit.status_code in (200, 201), unit.text
+    tenant = client.patch(f"/api/v1/tenants/{north['tenant'].id}", headers=staff, json={"phone": "+49 351 123"})
+    assert tenant.status_code == 200, tenant.text
+    note = client.patch(f"/api/v1/contracts/{north['contract'].id}", headers=staff, json={"notes": "geprüft"})
+    assert note.status_code == 200, note.text
+    assert client.delete(f"/api/v1/units/{unit.json()['id']}", headers=staff).status_code in (200, 204)
+    assert store.get_property(north["property"].id).name == "Nordhaus"
