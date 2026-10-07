@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { logout } from '../api';
+import './Shell.css';
 import { useTranslation } from '../i18n';
 import { usePreferences } from '../contexts/PreferencesContext';
 import SearchBar from './SearchBar';
@@ -145,167 +146,150 @@ export default function Layout() {
   );
 }
 
+const PRIMARY_PATHS = ['/', '/properties', '/tenants', '/bookings', '/tasks', '/documents'];
+const PRIMARY_ITEMS = PRIMARY_PATHS.map(path => NAV_SECTIONS.flatMap(section => section.items).find(item => item.to === path));
+const GROUPS = NAV_SECTIONS.slice(1).map(section => ({ ...section, items: section.items.filter(item => !PRIMARY_PATHS.includes(item.to)) }));
+const SHELL_TEXT = {
+  de: { navigation: 'Hauptnavigation', open: 'Navigation öffnen', close: 'Navigation schließen', workspace: 'Arbeitsplatz', areas: 'Verwaltungsbereiche', expand: 'Navigation erweitern', collapse: 'Navigation einklappen', theme: 'Darstellung wechseln', logout: 'Abmelden' },
+  en: { navigation: 'Main navigation', open: 'Open navigation', close: 'Close navigation', workspace: 'Workspace', areas: 'Management', expand: 'Expand navigation', collapse: 'Collapse navigation', theme: 'Change theme', logout: 'Sign out' },
+  es: { navigation: 'Navegación principal', open: 'Abrir navegación', close: 'Cerrar navegación', workspace: 'Área de trabajo', areas: 'Administración', expand: 'Ampliar navegación', collapse: 'Contraer navegación', theme: 'Cambiar tema', logout: 'Cerrar sesión' },
+};
+
 function LayoutFrame() {
   const navigate = useNavigate();
   const location = useLocation();
   const { t, locale, setLocale } = useTranslation();
   const { prefs, toggleTheme, toggleSidebar } = usePreferences();
+  const words = SHELL_TEXT[locale?.slice(0, 2)] || SHELL_TEXT.de;
+  const [mobile, setMobile] = useState(() => window.matchMedia?.('(max-width: 768px)').matches || false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [groupsOpen, setGroupsOpen] = useState({});
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState(null);
+  const sidebarRef = useRef(null);
+  const closeRef = useRef(null);
+  const menuRef = useRef(null);
+  const collapsed = prefs.sidebar_collapsed && !mobile;
+  const tr = (key, fallback) => { const result = t(key); return !result || result === key ? fallback : result; };
+  const activeItem = findActiveNavItem(location.pathname);
+  const activeSection = NAV_SECTIONS.find(section => section.items.includes(activeItem));
+  const activeGroup = GROUPS.find(section => section.items.some(item => item.to === activeItem?.to))?.labelKey;
+  const currentPageTitle = activeItem ? tr(activeItem.labelKey, activeItem.fallback) : tr('navigation.main.dashboard', 'Dashboard');
+
+  useEffect(() => {
+    if (activeGroup) setGroupsOpen(current => ({ ...current, [activeGroup]: true }));
+  }, [activeGroup, location.pathname]);
+
+  useEffect(() => {
+    const query = window.matchMedia?.('(max-width: 768px)');
+    if (!query) return;
+    const update = event => { setMobile(event.matches); if (!event.matches) setMobileNavOpen(false); };
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
+
+  useEffect(() => { setMobileNavOpen(false); }, [location.pathname]);
+
+  useEffect(() => {
+    if (!mobileNavOpen) return;
+    const returnFocus = document.activeElement;
+    const menuButton = menuRef.current;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    closeRef.current?.focus();
+    const keydown = event => {
+      if (event.key === 'Escape') { event.preventDefault(); setMobileNavOpen(false); }
+      if (event.key !== 'Tab') return;
+      const controls = [...sidebarRef.current.querySelectorAll(':is(a[href], button:not(:disabled), input, select, [tabindex="0"])')]
+        .filter(element => getComputedStyle(element).display !== 'none' && getComputedStyle(element).visibility !== 'hidden');
+      const first = controls[0];
+      const last = controls.at(-1);
+      if (event.shiftKey && (document.activeElement === first || !sidebarRef.current.contains(document.activeElement))) {
+        event.preventDefault(); last?.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !sidebarRef.current.contains(document.activeElement))) {
+        event.preventDefault(); first?.focus();
+      }
+    };
+    window.addEventListener('keydown', keydown);
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener('keydown', keydown);
+      if (returnFocus?.isConnected) returnFocus.focus();
+      else menuButton?.focus();
+    };
+  }, [mobileNavOpen]);
+
   const handleLogout = async () => {
     if (loggingOut) return;
-    setLoggingOut(true);
-    setLogoutError(null);
+    setLoggingOut(true); setLogoutError(null);
     try { await logout(); navigate('/login'); }
     catch (error) { setLogoutError(error.message); }
     finally { setLoggingOut(false); }
   };
-  const collapsed = prefs.sidebar_collapsed;
-
-  const tr = (key, fallback) => {
-    const result = t(key);
-    return result === key ? fallback : result;
+  const toggleGroup = key => {
+    if (collapsed) {
+      toggleSidebar();
+      setGroupsOpen(current => ({ ...current, [key]: true }));
+    } else setGroupsOpen(current => ({ ...current, [key]: !current[key] }));
+  };
+  const navItem = item => {
+    const label = tr(item.labelKey, item.fallback);
+    return <NavLink key={item.to} to={item.to} end={item.to === '/'}
+      className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+      aria-label={label} title={collapsed ? label : undefined} onClick={() => setMobileNavOpen(false)}>
+      <span className="icon-wrapper"><item.icon size={19} /></span>
+      <span className="nav-label">{label}</span>
+    </NavLink>;
   };
 
-  const activeItem = findActiveNavItem(location.pathname);
-  const currentPageTitle = activeItem
-    ? tr(activeItem.labelKey, activeItem.fallback)
-    : tr('navigation.main.dashboard', 'Dashboard');
-
-  useEffect(() => {
-    if (!mobileNavOpen) {
-      return undefined;
-    }
-
-    const { body } = document;
-    const originalOverflow = body.style.overflow;
-    body.style.overflow = 'hidden';
-
-    const onKeyDown = (event) => {
-      if (event.key === 'Escape') {
-        setMobileNavOpen(false);
-      }
-    };
-
-    window.addEventListener('keydown', onKeyDown);
-    return () => {
-      body.style.overflow = originalOverflow;
-      window.removeEventListener('keydown', onKeyDown);
-    };
-  }, [mobileNavOpen]);
-
   return (
-    <div className={`app-layout ${collapsed ? 'sidebar-collapsed' : ''} ${mobileNavOpen ? 'mobile-nav-open' : ''}`}>
-      <aside className="sidebar" aria-label={tr('navigation.main.dashboard', 'Navigation')}>
+    <div className={`app-layout workspace-shell ${collapsed ? 'sidebar-collapsed' : ''} ${mobileNavOpen ? 'mobile-nav-open' : ''}`}>
+      <aside ref={sidebarRef} className="sidebar" role={mobileNavOpen ? 'dialog' : undefined}
+        aria-modal={mobileNavOpen ? true : undefined} aria-label={words.navigation} inert={mobile && !mobileNavOpen ? true : undefined}>
         <div className="sidebar-header">
-          <div className="sidebar-logo">IM</div>
-          {!collapsed && (
-            <div className="sidebar-brand">
-              <span className="sidebar-brand-name">ImmoManager</span>
-              <span className="sidebar-brand-sub">Pro</span>
-            </div>
-          )}
-          <button
-            className="sidebar-mobile-close"
-            onClick={() => setMobileNavOpen(false)}
-            aria-label={tr('ui.form.cancel', 'Close navigation')}
-          >
-            <CloseIcon size={16} />
-          </button>
+          <div className="sidebar-logo" aria-hidden="true">IM</div>
+          <div className="sidebar-brand"><span className="sidebar-brand-name">ImmoManager</span><span className="sidebar-brand-sub">PRO · {words.workspace}</span></div>
+          {mobile && <button ref={closeRef} type="button" className="sidebar-mobile-close" onClick={() => setMobileNavOpen(false)} aria-label={words.close}><CloseIcon size={20} /></button>}
         </div>
-        <nav className="sidebar-nav" id="primary-navigation">
-          {NAV_SECTIONS.map((section, si) => (
-            <div key={si}>
-              {!collapsed && (
-                <div className="sidebar-section-label">
-                  {tr(section.labelKey, section.fallback)}
-                </div>
-              )}
-              {section.items.map((item) => {
-                if (item.externalApp) {
-                  return (
-                    <a key={item.href} href={item.href} className="nav-link">
-                      <span className="icon-wrapper">
-                        <item.icon size={18} />
-                      </span>
-                      {!collapsed && <span>{tr(item.labelKey, item.fallback)}</span>}
-                    </a>
-                  );
-                }
-
-                return (
-                  <NavLink
-                    key={item.to}
-                    to={item.to}
-                    end={item.to === '/'}
-                    className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-                    title={collapsed ? tr(item.labelKey, item.fallback) : undefined}
-                    onClick={() => setMobileNavOpen(false)}
-                  >
-                    <span className="icon-wrapper">
-                      <item.icon size={18} />
-                    </span>
-                    {!collapsed && <span>{tr(item.labelKey, item.fallback)}</span>}
-                  </NavLink>
-                );
-              })}
-            </div>
-          ))}
+        <nav className="sidebar-nav" id="primary-navigation" aria-label={words.navigation}>
+          <div className="nav-primary">{PRIMARY_ITEMS.map(navItem)}</div>
+          <div className="sidebar-section-label">{words.areas}</div>
+          {GROUPS.map((section, index) => {
+            const open = !collapsed && Boolean(groupsOpen[section.labelKey]);
+            const label = tr(section.labelKey, section.fallback);
+            const GroupIcon = section.labelKey.endsWith('configuration') ? SettingsIcon : section.items[0].icon;
+            return <div className="nav-group" key={section.labelKey}>
+              <button type="button" className={`nav-group-toggle ${activeSection?.labelKey === section.labelKey ? 'has-current' : ''}`}
+                aria-label={label} title={collapsed ? label : undefined} aria-expanded={open} aria-controls={`nav-group-${index}`}
+                onClick={() => toggleGroup(section.labelKey)}>
+                <span className="icon-wrapper"><GroupIcon size={19} /></span><span className="nav-label">{label}</span>
+                <ChevronRightIcon size={14} className="nav-group-chevron" />
+              </button>
+              {open && <div className="nav-group-items" id={`nav-group-${index}`}>{section.items.map(navItem)}</div>}
+            </div>;
+          })}
         </nav>
         <div className="sidebar-footer">
           <div className="sidebar-controls">
-            <button onClick={toggleSidebar} className="sidebar-control-btn" title={collapsed ? t('sidebar.expand') : t('sidebar.collapse')}>
-              {collapsed ? <ChevronRightIcon size={16} /> : <ChevronLeftIcon size={16} />}
-            </button>
-            <button onClick={toggleTheme} className="sidebar-control-btn" title={t('sidebar.toggleTheme')}>
-              {prefs.theme === 'dark' ? <SunIcon size={16} /> : <MoonIcon size={16} />}
-            </button>
-            <div className="locale-switcher">
-              {LOCALES.map(loc => (
-                <button
-                  key={loc.code}
-                  className={`locale-btn ${locale === loc.code ? 'active' : ''}`}
-                  onClick={() => setLocale(loc.code)}
-                >
-                  {loc.label}
-                </button>
-              ))}
-            </div>
+            {!mobile && <button type="button" onClick={toggleSidebar} className="sidebar-control-btn sidebar-collapse-toggle" aria-label={collapsed ? words.expand : words.collapse} title={collapsed ? words.expand : words.collapse}>{collapsed ? <ChevronRightIcon size={17} /> : <ChevronLeftIcon size={17} />}</button>}
+            <button type="button" onClick={toggleTheme} className="sidebar-control-btn" aria-label={words.theme} title={words.theme}>{prefs.theme === 'dark' ? <SunIcon size={17} /> : <MoonIcon size={17} />}</button>
+            <div className="locale-switcher">{LOCALES.map(loc => <button type="button" key={loc.code} className={`locale-btn ${locale === loc.code ? 'active' : ''}`} aria-pressed={locale === loc.code} onClick={() => setLocale(loc.code)}>{loc.label}</button>)}</div>
           </div>
-          <button
-            onClick={handleLogout}
-            disabled={loggingOut}
-            className="btn-logout"
-          >
-            <LogoutIcon size={16} />
-            {!collapsed && <span>{t('accountMenu.logout')}</span>}
-          </button>
-          {logoutError && <p className="alert-error" role="alert">{logoutError}</p>}
+          <button type="button" onClick={handleLogout} disabled={loggingOut} className="btn-logout" aria-label={tr('accountMenu.logout', words.logout)} title={collapsed ? tr('accountMenu.logout', words.logout) : undefined}><LogoutIcon size={18} /><span>{tr('accountMenu.logout', words.logout)}</span></button>
+          {logoutError && <p className="shell-logout-error" role="alert">{logoutError}</p>}
         </div>
       </aside>
-      {mobileNavOpen && <button className="mobile-nav-backdrop" onClick={() => setMobileNavOpen(false)} aria-label={tr('ui.form.cancel', 'Close navigation')} />}
-      <main className="main-content">
+      {mobileNavOpen && <button type="button" className="mobile-nav-backdrop" tabIndex={-1} onClick={() => setMobileNavOpen(false)} aria-label={words.close} />}
+      <main className="main-content" inert={mobileNavOpen ? true : undefined}>
         <div className="top-bar">
           <div className="top-bar-left">
-            <button
-              className="top-bar-mobile-toggle"
-              onClick={() => setMobileNavOpen(prev => !prev)}
-              aria-controls="primary-navigation"
-              aria-expanded={mobileNavOpen}
-              aria-label={mobileNavOpen ? tr('ui.form.cancel', 'Close navigation') : tr('sidebar.expand', 'Open navigation')}
-            >
-              {mobileNavOpen ? <CloseIcon size={18} /> : <MenuIcon size={18} />}
-            </button>
-            <div className="top-bar-page-title">{currentPageTitle}</div>
+            {mobile && <button ref={menuRef} type="button" className="top-bar-mobile-toggle" onClick={() => setMobileNavOpen(true)} aria-controls="primary-navigation" aria-expanded={mobileNavOpen} aria-label={words.open}><MenuIcon size={20} /></button>}
+            <div className="top-bar-page-title"><span className="shell-context">{activeSection ? tr(activeSection.labelKey, activeSection.fallback) : words.workspace}</span><span className="shell-context-divider" aria-hidden="true">/</span><span>{currentPageTitle}</span></div>
           </div>
-          <TestVersionBadge />
           <SearchBar />
-          <TutorialButton />
-          <NotificationBell />
+          <div className="top-bar-utilities"><TestVersionBadge /><TutorialButton /><NotificationBell /></div>
         </div>
         <div className="main-content-body">
-          {/* Every page gets a heading; hidden by CSS when the page brings its own h1. */}
           <h1 className="page-title page-title-auto">{currentPageTitle}</h1>
           <Outlet />
         </div>
