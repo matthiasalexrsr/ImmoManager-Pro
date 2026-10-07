@@ -10,6 +10,7 @@ import { useConfirm } from '../components/ConfirmDialog';
 import { useTranslation } from '../i18n';
 import { PartyLink, usePartyWorkspace } from '../features/partyWorkspace/PartyWorkspace';
 import { useCanWrite } from '../contexts/AuthContext';
+import { documentTypeLabel } from '../utils/documentType';
 
 const BASE = (import.meta.env.VITE_API_URL || '/api/v1');
 
@@ -170,7 +171,7 @@ function DocumentsWorkspace() {
 
   const columns = [
     { key: 'title', label: t('pages.documents.columns.title') || 'Titel', filterType: 'text' },
-    { key: 'document_type', label: t('pages.documents.columns.type') || 'Typ', filterType: 'select' },
+    { key: 'document_type', label: t('pages.documents.columns.type') || 'Typ', filterType: 'select', render: documentTypeLabel },
     { key: 'party_name', label: 'Mieter / Partei', filterType: 'text', render: (value, row) => <PartyLink tenantId={row.party_id}>{value}</PartyLink> },
     { key: 'property_name', label: 'Immobilie', filterType: 'text' },
     { key: 'unit_label', label: 'Einheit', filterType: 'text' },
@@ -392,7 +393,7 @@ function DocumentsWorkspace() {
         <label htmlFor="party-document-type">Dokumententyp</label>
         <select id="party-document-type" value={docType} onChange={event => { setDocType(event.target.value); setSkip(0); }}>
           <option value="">Alle Typen</option>
-          {(overview?.document_types || []).map(type => <option key={type} value={type}>{type}</option>)}
+          {(overview?.document_types || []).map(type => <option key={type} value={type}>{documentTypeLabel(type)}</option>)}
         </select>
         </div>
       </div>}

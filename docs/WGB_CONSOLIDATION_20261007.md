@@ -171,3 +171,26 @@ Historische Belege im Quellcheckout, heute nur gelesen:
 5. **Danach Abnahme auf isolierter Datenkopie:** vorhandene Feature-/Foundationregressionen, SQLite und echtes PostgreSQL für Atomarität/gleiche Keys, beschädigte Originale und Recovery, tatsächliche Browserfolge Vertrag → mehrere Personen/abweichender Eigentümer → PDFvorschau → bewusste Freigabe → Lost-Reply-Retry → Korrektur → unverändertes früheres Original; 320/360/1440 px und langes Mehrseiten-PDF. Diese Schritte wurden im Inventar ausdrücklich noch nicht ausgeführt.
 
 **Konkrete Liefergrenze:** Wiederverwendung ist gut möglich und fachlich weit vorbereitet. Der Aufwand liegt primär in der Konsolidierung des fehlenden Original-/Rechte-/Schemasystems, nicht im Neuerfinden der Wohnungsgeberbestätigung. Eine Aussage „nur noch Button einbauen“ wäre durch den aktiven Bestand nicht gedeckt.
+
+## Umsetzungsstand im aktiven Zweig
+
+Stand 7. Oktober 2026, Branch `claude/dreamy-gauss-nmaxhn` (PR #37). Die drei Schritte aus Abschnitt 8 der Übergabe sind umgesetzt; was davon abweicht oder offen bleibt, steht unten ausdrücklich.
+
+| Schritt | Umgesetzt |
+| --- | --- |
+| 1 Originalarchiv | `backend/db/document_version_models.py`, Migration `e5f1a7c3b9d2` hinter `d7a2f9c4e681` (keine historische Vorgängerkette), Trigger gegen UPDATE/DELETE für SQLite und PostgreSQL, Downgrade verweigert bei vorhandenen Originalen. `persist_version_bytes`, Manifestprüfung und `verified_blocks` aus der historischen Fassung. Snapshotformat 3 mit Originalen; Import, Restore und binäres SQLite-Backup werden vor dem Anwenden geprüft (`verify_archived_originals`). Gewöhnliche Uploads werden nicht nachträglich zu Originalen erklärt. |
+| 2 Fachmodul | Fünf Backenddateien aus `f588c7fc`, Typen/Validierung/Render unverändert. Dokument wird innerhalb derselben Transaktion eingefügt (nicht über `create_document()`). Accountschutz `auth.locked_account`: echter Lock im `InMemoryUserStore`, `FOR SHARE` auf der Benutzerzeile in PostgreSQL, bis zum Commit. Rechte über aktuelles `may_write` für `/contracts/{id}/housing-confirmations` **und** `/documents`, ohne Rollenfallback. Wizardquelle ausdrücklich `None` (keine Abfrage von `ContractDraftORM`). Eigener HMAC-Cursor; Download aus verifizierten Archivbytes über den virtuellen Pfad `/uploads/housing-confirmations/<id>.pdf`, ohne DATEV-/Backup-Pakete. |
+| 3 Oberfläche | Sechs Frontenddateien übernommen und an `--color-*` angepasst; Einstieg je Vertragszeile und je Vertragskarte der Parteiakte (Parteiakte inert, Fokusrückgabe). `api.getBlob/postBlob` mit Sitzungsprüfung nach dem Bloblesen. PDF im Dialog über `PdfPreview` mit SHA-256-geprüften Bytes statt neuem Fenster. StrictMode-Fehler in `useHousingConfirmationCommand.js` korrigiert. Nach der Freigabe werden Dokumentcache und Parteiübersicht neu geladen; Typ `housing_confirmation` wird als „Wohnungsgeberbestätigung“ angezeigt. |
+
+Geprüft (diese Sitzung, nicht historisch):
+
+- Backend Memory und SQL-Store, dazu echtes PostgreSQL 16: Unveränderlichkeit, Downgrade, paralleler gleicher Schlüssel (ein Original), Rechteentzug wartet bis Commit, Replay/abweichender Befehl unter gleichem Schlüssel, veraltete Quelle, Korrektur mit bytegleichem erstem Original, halbe Archivtabellen im Backup.
+- Portiert: `test_housing_confirmation_pdf_layout.py` (unverändert), `HousingConfirmationApiContract.test.js` (Fensteröffnung durch Prüfung der Vorschaubytes ersetzt).
+- Browser: `scripts/housing_confirmation_browser_qa.py` gegen eine frische Testversion, 19/19 Prüfungen: 45 Personen über 3 PDF-Seiten, verlorene Erfolgsantwort mit unverändertem Retry (genau ein Original), Korrektur, Dokumentliste, Parteiakte, Leserolle ohne Formular, 320/360/1440 px ohne seitliches Scrollen.
+
+Bewusst nicht portiert oder offen:
+
+- `test_document_version_recovery.py` hängt an `full_recovery`, `recovery_archive` und `recovery_sessions`, die es hier nicht gibt. Seine Fälle sind gegen die heutigen Wege (Snapshot, SQLite-Backup) nachgebildet; ein Vollbackup mit Uploads und Schlüsseln bleibt offen (Übergabe §9, P1 L).
+- Historische Einstiege über `ContractLifecycle`/`TenancyChangeFile` existieren hier nicht; der Einstieg sitzt an Vertragszeile und Vertragskarte.
+- Objekt-/Portfolio-Leserechte fehlen weiterhin; jeder aktive angemeldete Benutzer darf Bestätigungen lesen (Übergabe §9, P0/P1).
+- Das lokale Aktualisierungsskript `artifacts/hardening-20261007/finalize_preview.py` ist auf `d7a2f9c4e681` festgelegt und muss vor dem nächsten Vorschau-Update auf `e5f1a7c3b9d2` angepasst werden.

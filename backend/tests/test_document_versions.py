@@ -316,3 +316,15 @@ def test_the_verifier_finds_a_moved_document(owner, tmp_path):
         connection.execute("UPDATE documents SET file_url = '/uploads/other.pdf'")
         with pytest.raises(ArchiveIntegrityError):
             verify_document_versions(connection)
+
+
+@pytest.mark.skipif(SQL, reason="builds its own database files (accounts in memory)")
+@pytest.mark.parametrize("remaining", ["document_versions", "document_version_chunks"])
+def test_a_backup_with_only_half_of_the_archive_is_refused(owner, tmp_path, remaining):
+    path = tmp_path / "half.db"
+    _sqlite_with_archive(path, owner.id)
+    gone = ({"document_versions", "document_version_chunks"} - {remaining}).pop()
+    with sqlite3.connect(path) as connection:
+        connection.execute(f"DROP TABLE {gone}")
+    with pytest.raises(ArchiveIntegrityError):
+        verify_archived_originals(path)

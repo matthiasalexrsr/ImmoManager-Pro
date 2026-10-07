@@ -48,7 +48,7 @@ function formatDate(value, locale) {
  * Private state (form, preview, history) belongs to one contract, user, role and set of
  * write areas: when any of them changes it is discarded, and so is a pending retry.
  */
-export default function HousingConfirmationDialog({ contractId, onClose, service = housingConfirmationService }) {
+export default function HousingConfirmationDialog({ contractId, onClose, onPublished, service = housingConfirmationService }) {
   const auth = useAuth();
   const user = auth?.user;
   const write = auth?.write ?? null;
@@ -234,6 +234,7 @@ export default function HousingConfirmationDialog({ contractId, onClose, service
           correctionOf: null, saved: true, error: null,
           history: [record, ...current.history.filter(item => item.id !== record.id)],
         } : current);
+        onPublished?.(record);   // a new document: lists and counts elsewhere are stale
       },
     });
   };

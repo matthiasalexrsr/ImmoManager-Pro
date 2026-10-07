@@ -306,7 +306,7 @@ export default function Contracts() {
         ]}
       />
 
-      {housing && <HousingConfirmationDialog contractId={housing} onClose={() => setHousing(null)} />}
+      {housing && <HousingConfirmationDialog contractId={housing} onClose={() => setHousing(null)} onPublished={() => store?.invalidateRelated('documents')} />}
 
       {modal && (
         <FormModal

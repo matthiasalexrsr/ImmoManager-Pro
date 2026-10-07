@@ -6,6 +6,7 @@ import { useCanWrite } from '../../contexts/AuthContext';
 import { formatDate } from '../../utils/format';
 import { downloadFile, resolveFileUrl } from './files';
 import { usePartyText } from './text';
+import { documentTypeLabel } from '../../utils/documentType';
 
 const PAGE_SIZE = 25;
 const initialState = path => ({ path, items: [], total: 0, next: 0, hasMore: false, loading: true, loadingMore: false, error: null, failedPage: false });
@@ -95,7 +96,7 @@ function DocumentCard({ document, contracts, onPreview, view }) {
     <li className={`party-document-card party-document-${view}`}>
       <div className="party-file-icon" aria-hidden="true"><FileText size={22} /></div>
       <div className="party-document-main">
-        <div className="party-document-meta"><span className="party-tag">{document.document_type || text.unknownType}</span><time dateTime={document.document_date || document.created_at}>{formatDate(document.document_date || document.created_at, { blank: text.noDate })}</time></div>
+        <div className="party-document-meta"><span className="party-tag">{documentTypeLabel(document.document_type) || text.unknownType}</span><time dateTime={document.document_date || document.created_at}>{formatDate(document.document_date || document.created_at, { blank: text.noDate })}</time></div>
         <button type="button" className="party-document-title" onClick={() => onPreview(document)} disabled={!safeUrl}>{document.title || text.unknownType}</button>
         {document.description && <p className="party-document-description">{document.description}</p>}
         {document.contract_id && <p className="party-document-contract">{text.contract}: {contract?.contract_number || document.contract_number || document.contract_id}{contract?.unit_label && ` · ${contract.unit_label}`}</p>}
@@ -135,7 +136,7 @@ export default function PartyDocuments({ tenantId, overview, onPreview, contract
       <div className="party-document-tools">
         <label className="party-search"><span className="party-sr-only">{text.search}</span><Search size={17} aria-hidden="true" /><input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder={text.searchPlaceholder} /></label>
         <div className="party-document-filters">
-          <label><span>{text.type}</span><select value={type} onChange={event => setType(event.target.value)}><option value="">{text.allTypes}</option>{types.map(value => <option key={value} value={value}>{value}</option>)}</select></label>
+          <label><span>{text.type}</span><select value={type} onChange={event => setType(event.target.value)}><option value="">{text.allTypes}</option>{types.map(value => <option key={value} value={value}>{documentTypeLabel(value)}</option>)}</select></label>
           <label><span>{text.contract}</span><select value={contractFilter} onChange={event => onContractFilter(event.target.value)}><option value="">{text.allContracts}</option>{contracts.map(contract => <option key={contract.id} value={contract.id}>{contract.contract_number}{contract.unit_label ? ` · ${contract.unit_label}` : ''}</option>)}</select></label>
         </div>
       </div>

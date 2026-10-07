@@ -79,7 +79,8 @@ describe('HousingConfirmationDialog', () => {
 
   it('reviews, shows the PDF, and publishes only with all three confirmations', async () => {
     const api = service();
-    render(<HousingConfirmationDialog contractId="contract-1" service={api} onClose={vi.fn()} />);
+    const onPublished = vi.fn();
+    render(<HousingConfirmationDialog contractId="contract-1" service={api} onClose={vi.fn()} onPublished={onPublished} />);
     await fillForm();
 
     fireEvent.click(screen.getByRole('button', { name: 'Vorschau prüfen' }));
@@ -100,6 +101,7 @@ describe('HousingConfirmationDialog', () => {
     expect(await screen.findByText(/als unveränderliches Original gespeichert/)).toBeInTheDocument();
     expect(api.preparePublish.mock.calls[0][0].preview.review_hash).toBe('a'.repeat(64));
     expect(screen.getByRole('button', { name: 'Korrektur erstellen' })).toBeInTheDocument();
+    expect(onPublished).toHaveBeenCalledWith(stored);   // document lists and counts get refreshed
   });
 
   it('a changed input discards the reviewed preview', async () => {

@@ -188,3 +188,72 @@ def test_parallel_publications_of_one_confirmation_store_one_original(postgres):
         assert connection.exec_driver_sql(
             "SELECT count(*) FROM documents WHERE document_type = 'housing_confirmation'").scalar() == 1
         assert verify_document_versions(connection) == 1
+
+
+def _housing_command(engine, owner, contract_id, key, **changes):
+    from backend.services import housing_confirmation as housing
+    from backend.services.housing_confirmation_types import PreviewRequest, SaveRequest
+
+    etags = housing.source(_store(engine), contract_id, owner.id)["source_etags"]
+    data = {"housing_provider_name": "Linda Reiser", "housing_provider_address": "Prießnitzstraße 4\n01099 Dresden",
+            "owner_same_as_provider": True, "owner_name": None, "move_in_date": "2026-02-03",
+            "issue_date": "2026-10-07", "apartment_address": "Bautzner Straße 61\n01099 Dresden",
+            "apartment_label": "WE 3", "issuer_name": "Linda Reiser", "issuer_role": "housing_provider",
+            "residents": ["Mia Muster"], **changes.pop("data", {})}
+    preview = PreviewRequest.model_validate({"data": data, "source_etags": etags, **changes})
+    review = housing.preview(_store(engine), contract_id, preview, owner.id)
+    return SaveRequest.model_validate({**preview.model_dump(mode="json"), "idempotency_key": key,
+                                       "review_hash": review["review_hash"], "confirmed_actual_move_in": True,
+                                       "confirmed_authority": True, "confirmed_residents": True})
+
+
+def _publish_housing(engine, contract_id, command, actor_id):
+    from backend.services import housing_confirmation as housing
+
+    target = _store(engine)
+    try:
+        return housing.publish(target, contract_id, command, actor_id)
+    finally:
+        target.db.close()
+
+
+def test_confirmation_replay_conflict_stale_source_and_correction_on_postgres(postgres):
+    """The single-request rules of the confirmation, on PostgreSQL row locks and triggers."""
+    from backend.services import housing_confirmation as housing
+
+    engine, _ = postgres
+    owner = auth.register_user("owner", "owner@example.com", "Owner", "Secret123", "eigentuemer")
+    lease = lease_with_document(_store(engine))
+    contract_id = lease["contract"].id
+
+    first_command = _housing_command(engine, owner, contract_id, "first")
+    first = _publish_housing(engine, contract_id, first_command, owner.id)
+    # the answer was lost: the same command again names the same original
+    assert _publish_housing(engine, contract_id, first_command, owner.id)["version_id"] == first["version_id"]
+    # another command under the same key is refused, not stored
+    other = _housing_command(engine, owner, contract_id, "first", data={"residents": ["Jemand Anderes"]})
+    with pytest.raises(HTTPException) as conflict:
+        _publish_housing(engine, contract_id, other, owner.id)
+    assert conflict.value.status_code == 409
+
+    # the contract changes after the review: nothing is written
+    stale = _housing_command(engine, owner, contract_id, "stale")
+    with engine.begin() as connection:
+        connection.exec_driver_sql("UPDATE contracts SET updated_at = now() + interval '1 second' WHERE id = %s",
+                                   (contract_id,))
+    with pytest.raises(HTTPException) as gone:
+        _publish_housing(engine, contract_id, stale, owner.id)
+    assert gone.value.status_code == 412
+
+    first_bytes = housing.read_original(_store(engine), contract_id, first["document_id"], owner.id)[0]
+    correction = _housing_command(engine, owner, contract_id, "correction",
+                                  data={"residents": ["Mia Muster", "Nachgetragene Person"]},
+                                  correction_of={"document_id": first["document_id"],
+                                                 "version_id": first["version_id"]})
+    second = _publish_housing(engine, contract_id, correction, owner.id)
+
+    assert second["document_id"] != first["document_id"]
+    assert housing.read_original(_store(engine), contract_id, first["document_id"], owner.id)[0] == first_bytes
+    with engine.connect() as connection:
+        assert connection.exec_driver_sql("SELECT count(*) FROM document_versions").scalar() == 2
+        assert verify_document_versions(connection) == 2

@@ -4,6 +4,8 @@ All notable changes to ImmoManager Pro will be documented in this file.
 
 ## Unreleased — 2026-10-07
 
+- Issue the Wohnungsgeberbestätigung from each contract row and each contract card in the party record: suggested but never pre-filled move-in date and residents, a reviewed PDF preview in the dialog, three explicit confirmations, release as an immutable original, retry of the exact command after a lost answer, and corrections as new originals. The document list and party record refresh after a release and name the type in plain words.
+- Store generated originals immutably (migration `e5f1a7c3b9d2` after `d7a2f9c4e681`): version manifests and 64 KiB blocks, verified on every read; database triggers refuse changes; a destructive downgrade is refused. Snapshots (format 3) carry the originals; imports, restores and SQLite backups are proven before they are applied. See [the integration status](docs/WGB_CONSOLIDATION_20261007.md#umsetzungsstand-im-aktiven-zweig).
 - Rebuild navigation, the dashboard and portfolio/party lists around a calmer workspace with clear actions, compact summaries and accessible controls; preserve existing domain workflows.
 - Render PDF pages locally with PDF.js, page navigation, zoom, text access and clear recovery states; bundle workers, fonts and other resources without a CDN.
 - Require active sessions for upload/PDF/OCR access, coordinate protected file loading and confirmed logout, and preserve retryable sessions after temporary network failures. Object-level read permissions remain a separate gap.
