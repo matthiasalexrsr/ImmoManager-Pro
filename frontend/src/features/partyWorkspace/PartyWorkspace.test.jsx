@@ -17,6 +17,7 @@ const overview = { tenant, contracts, document_count: 26, document_types: ['Miet
 const doc = { id: 'd1', tenant_id: 't1', contract_id: 'c1', title: 'Mietvertrag Anna', document_type: 'Mietvertrag', document_date: '2024-01-01', created_at: '2024-01-01T00:00:00Z', description: 'Unterzeichneter Vertrag', file_url: '/uploads/lease.pdf' };
 const response = (items = [doc], extra = {}) => ({ items, total: items.length, skip: 0, limit: 25, has_more: false, ...extra });
 const deferred = () => { let resolve; let reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
+const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
 
 function mount() {
   return render(<MemoryRouter><PartyWorkspaceProvider><PartyLink tenantId="t1">Anna Müller</PartyLink><PartyLink tenantId="t2">Ben Weber</PartyLink><Link to="/elsewhere">Andere Seite</Link></PartyWorkspaceProvider></MemoryRouter>);
@@ -26,7 +27,12 @@ beforeEach(() => {
   useCanWrite.mockReturnValue(true);
   api.get.mockImplementation(path => Promise.resolve(path.includes('/overview') ? overview : path.includes('/ocr-text') ? { has_ocr: false } : response()));
 });
-afterEach(() => { cleanup(); vi.clearAllMocks(); });
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+  if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard);
+  else delete navigator.clipboard;
+});
 
 describe('party workspace', () => {
   it('keeps party account links usable without a provider or router', () => {
@@ -98,8 +104,10 @@ describe('party workspace', () => {
     mount();
     fireEvent.click(screen.getByRole('button', { name: 'Anna Müller' }));
     await screen.findByRole('dialog', { name: 'Anna Müller' });
-    fireEvent.click(screen.getByRole('button', { name: 'Kopieren: Adresse' }));
-    await screen.findByRole('button', { name: 'Kopiert: Adresse' });
+    // The clipboard is an already-resolved external promise: flush its React
+    // update directly rather than polling a transient label under suite load.
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Kopieren: Adresse' })); });
+    expect(screen.getByRole('button', { name: 'Kopiert: Adresse' })).toBeInTheDocument();
     expect(writeText).toHaveBeenCalledWith('Lindenstraße 8\n10115 Berlin\nDE');
     api.get.mockRejectedValue(new Error('Verbindung unterbrochen'));
     fireEvent.click(screen.getByRole('tab', { name: /Dokumente/ }));
