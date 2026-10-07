@@ -1,10 +1,11 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useId } from 'react';
 import { useTranslation } from '../i18n';
 import { useCanWrite } from '../contexts/AuthContext';
 import { PlusIcon, EditIcon, TrashIcon } from './Icons';
 import StatusBadge from './StatusBadge';
 import { formatDate, formatMoney, plainLabel } from '../utils/format';
 import { codeLabel } from '../utils/codeLabels';
+import './DataTable.css';
 
 const PAGE_SIZES = [10, 25, 50, 100];
 const NUMERIC_TYPES = new Set(['number', 'currency']);
@@ -41,8 +42,9 @@ function cellClass(col) {
 }
 
 export default function DataTable({ columns, data, onEdit: editHandler, onDelete: deleteHandler, title,
-  onAdd: addHandler, onRowClick, rowActions: rowActionsFor, writeArea, serverPaged = false, loadExportData }) {
+  onAdd: addHandler, onRowClick, rowActions: rowActionsFor, writeArea, serverPaged = false, loadExportData, hideTitle = false }) {
   const { t } = useTranslation();
+  const titleId = useId();
   // Roles that may not change this list do not get New/Edit/Delete (the server would refuse anyway).
   const canWrite = useCanWrite(writeArea);
   const onAdd = canWrite ? addHandler : undefined;
@@ -225,12 +227,13 @@ export default function DataTable({ columns, data, onEdit: editHandler, onDelete
     Array.isArray(v) ? v.some(x => x !== '') : v !== '' && v != null).length;
 
   return (
-    <div className="data-table-wrapper">
+    <div className={`data-table-wrapper data-table-workspace${hideTitle ? ' table-title-hidden' : ''}`}>
       <div className="table-header">
-        <h2>{title}</h2>
+        <h2 id={titleId} className={hideTitle ? 'sr-only' : undefined}>{title}</h2>
         <div className="table-actions">
           {!serverPaged && <input
             type="text"
+            aria-label={`${title || 'Tabelle'} durchsuchen`}
             placeholder={`${t('ui.form.search')}...`}
             value={search}
             onChange={e => { setSearch(e.target.value); setPage(0); }}
@@ -250,7 +253,7 @@ export default function DataTable({ columns, data, onEdit: editHandler, onDelete
               </button>
             )}
             <div className="col-menu-wrapper">
-              <button onClick={() => setShowColMenu(!showColMenu)} className="btn btn-sm btn-secondary">
+              <button onClick={() => setShowColMenu(!showColMenu)} aria-expanded={showColMenu} className="btn btn-sm btn-secondary">
                 {t('ui.table.adjustColumns')}
               </button>
               {showColMenu && (
@@ -285,7 +288,7 @@ export default function DataTable({ columns, data, onEdit: editHandler, onDelete
       {exportError && <p className="error-message" role="alert">{exportError}</p>}
 
       <div className="table-scroll">
-        <table className="data-table">
+        <table className="data-table" aria-labelledby={title ? titleId : undefined}>
           <thead>
             <tr>
               {visibleColumns.map(col => (
@@ -293,15 +296,15 @@ export default function DataTable({ columns, data, onEdit: editHandler, onDelete
                   key={col.key}
                   className={[!serverPaged && col.sortable !== false ? 'sortable-th' : '', cellClass(col)].filter(Boolean).join(' ') || undefined}
                   onClick={!serverPaged && col.sortable !== false ? () => handleSort(col.key) : undefined}
+                  aria-sort={!serverPaged && col.sortable !== false ? (sortKey === col.key ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}
                 >
+                  {!serverPaged && col.sortable !== false ? <button type="button" className="table-sort-button">
+                    {plainLabel(col.label)}
+                    <span className="sort-indicator" aria-hidden="true">{sortKey === col.key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'}</span>
+                  </button> :
                   <span className="th-content">
                     {plainLabel(col.label)}
-                    {!serverPaged && col.sortable !== false && (
-                      <span className="sort-indicator">
-                        {sortKey === col.key ? (sortDir === 'asc' ? ' \u25B2' : ' \u25BC') : ''}
-                      </span>
-                    )}
-                  </span>
+                  </span>}
                 </th>
               ))}
               {hasActions && <th className="th-actions"><span className="sr-only">{t('ui.buttons.edit')}</span></th>}
@@ -429,6 +432,7 @@ export default function DataTable({ columns, data, onEdit: editHandler, onDelete
         </div>
         <div className="table-footer-controls">
           <select
+            aria-label="Zeilen pro Seite"
             value={pageSize}
             onChange={e => { setPageSize(Number(e.target.value)); setPage(0); }}
             className="page-size-select"

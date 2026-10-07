@@ -9,7 +9,9 @@ import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 import { PartyLink, usePartyWorkspace } from '../features/partyWorkspace/PartyWorkspace';
 import { useCanWrite } from '../contexts/AuthContext';
-import { DocumentIcon } from '../components/Icons';
+import { DocumentIcon, PlusIcon } from '../components/Icons';
+import { Archive, ArchiveRestore } from 'lucide-react';
+import './ListWorkspace.css';
 
 const PAYMENT_LABELS = { bank_transfer: 'Überweisung', sepa_direct_debit: 'SEPA-Lastschrift', cash: 'Bar' };
 
@@ -20,9 +22,13 @@ export default function Tenants() {
   const canWrite = useCanWrite('/tenants');
   const [searchParams, setSearchParams] = useSearchParams();
   const store = useDataStore();
-  const { items: contracts } = useEntities('contracts', '/contracts');
-  const { items: properties } = useEntities('properties', '/properties');
-  const { items: units } = useEntities('units', '/units');
+  const contractSource = useEntities('contracts', '/contracts');
+  const propertySource = useEntities('properties', '/properties');
+  const unitSource = useEntities('units', '/units');
+  const { items: contracts } = contractSource;
+  const { items: properties } = propertySource;
+  const { items: units } = unitSource;
+  const relatedSources = [contractSource, propertySource, unitSource];
   const [tenants, setTenants] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
@@ -116,15 +122,17 @@ export default function Tenants() {
   const columns = [
     { key: 'full_name', label: 'Name', filterType: 'text',
       render: (v, row) => (
-        <span className="cell-inline">
-          <PartyLink tenantId={row.id}>{v}</PartyLink>
-          <Link className="btn btn-sm btn-ghost btn-link" to={`/tenants/${encodeURIComponent(row.id)}/account`}>Konto</Link>
+        <span className="list-identity">
+          <span className="list-avatar" aria-hidden="true">{String(v || '?').trim().split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join('').toUpperCase()}</span>
+          <span className="list-identity-copy"><PartyLink tenantId={row.id}>{v}</PartyLink>
+            <Link className="list-secondary-link" to={`/tenants/${encodeURIComponent(row.id)}/account`}>Mietkonto öffnen <span aria-hidden="true">↗</span></Link>
+          </span>
         </span>
       ) },
     { key: 'property_name', hidden: true, label: 'Immobilie', filterType: 'text' },
     { key: 'unit_label', subKey: 'property_name', label: 'Einheit', filterType: 'text' },
     { key: 'contract_status', label: 'Vertragsstatus', filterType: 'select',
-      render: v => <StatusBadge status={v === 'kein Vertrag' ? 'warning' : v} /> },
+      render: v => v === 'kein Vertrag' ? <span className="badge badge-gray">Kein aktiver Vertrag</span> : <StatusBadge status={v} /> },
     { key: 'email', label: 'E-Mail', filterType: 'text' },
     { key: 'phone', label: 'Telefon' },
     { key: 'city', hidden: true, label: 'Stadt', filterType: 'text' },
@@ -188,26 +196,31 @@ export default function Tenants() {
     }
   };
 
-  if (loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  if (loading || relatedSources.some(source => source.loading)) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  const relatedError = relatedSources.find(source => source.error)?.error;
+  if (relatedError) return <div className="page list-workspace"><h1 className="page-title">Mieter</h1><div className="alert alert-error" role="alert">{relatedError}</div><button className="btn btn-secondary" onClick={() => relatedSources.filter(source => source.error).forEach(source => source.reload())}>Erneut laden</button></div>;
   if (error && !tenants.length) return <div className="page"><h1 className="page-title">Mieter</h1><div className="alert alert-error" role="alert">{error}</div><button className="btn btn-secondary" onClick={refreshData}>Erneut laden</button></div>;
 
   return (
-    <div className="page">
-      <h1 className="page-title">Mieter</h1>
+    <div className="page list-workspace">
+      <header className="list-page-header">
+        <div><p className="list-eyebrow">PARTEIEN</p><h1 className="page-title">Mieter</h1><p className="list-description">Alle Parteien mit ihren Kontakten, Mietkonten und Dokumenten.</p></div>
+        {canWrite && <button className="btn btn-primary" onClick={() => setModal('create')}><PlusIcon size={18} /> Partei anlegen</button>}
+      </header>
 
       {error && (
         <div className="alert alert-error" role="alert" style={{ marginBottom: '1rem' }}>
           {error}
           <button className="btn btn-sm btn-secondary" onClick={refreshData}>Erneut laden</button>
-          <button onClick={() => setError(null)} style={{ marginLeft: '1rem', cursor: 'pointer' }}>✕</button>
+          <button aria-label="Fehlermeldung schließen" onClick={() => setError(null)} style={{ marginLeft: '1rem', cursor: 'pointer' }}>✕</button>
         </div>
       )}
 
       {/* Summary cards */}
-      <div className="kpi-row">
+      <div className="kpi-row list-summary" aria-label="Parteienübersicht">
         <div className="kpi">
-          <div className="kpi-value" style={{ color: 'var(--success)' }}>{activeTenants.length}</div>
-          <div className="kpi-label">Aktiv</div>
+          <div className="kpi-value">{activeTenants.length}</div>
+          <div className="kpi-label">Aktive Parteien</div>
         </div>
         <div className="kpi">
           <div className="kpi-value">{archivedCount}</div>
@@ -223,14 +236,14 @@ export default function Tenants() {
         </div>
         {noEmail > 0 && (
           <div className="kpi">
-            <div className="kpi-value" style={{ color: 'var(--warning)' }}>{noEmail}</div>
+            <div className="kpi-value">{noEmail}</div>
             <div className="kpi-label">Ohne E-Mail</div>
           </div>
         )}
       </div>
 
       {/* Filter tabs */}
-      <div className="filter-chips">
+      <div className="filter-chips list-view-filters" role="group" aria-label="Parteien filtern">
         {[
           { key: 'active', label: 'Aktiv' },
           { key: 'all', label: 'Alle' },
@@ -239,22 +252,22 @@ export default function Tenants() {
           { key: 'no_sepa', label: 'Ohne SEPA' },
           { key: 'no_email', label: 'Ohne E-Mail' },
         ].map(f => (
-          <button key={f.key} className={`btn btn-sm ${filter === f.key ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setFilter(f.key)}>
+          <button key={f.key} aria-pressed={filter === f.key} className={`btn btn-sm ${filter === f.key ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setFilter(f.key)}>
             {f.label}
           </button>
         ))}
       </div>
 
       <DataTable
+        hideTitle
         title={`Mieter (${filtered.length})`}
         columns={columns}
         data={filtered}
-        onAdd={() => setModal('create')}
         onEdit={row => setModal(row)}
         onDelete={handleDelete}
         rowActions={row => [
           { label: 'Dokumente der Partei', icon: <DocumentIcon size={16} />, onClick: () => openParty(row.id, { tab: 'documents' }) },
-          { label: row.archived ? 'Wiederherstellen' : 'Archivieren', icon: <span aria-hidden="true">{row.archived ? '↩' : '📦'}</span>, write: true, onClick: handleArchiveToggle },
+          { label: row.archived ? 'Wiederherstellen' : 'Archivieren', icon: row.archived ? <ArchiveRestore size={16} aria-hidden="true" /> : <Archive size={16} aria-hidden="true" />, write: true, onClick: handleArchiveToggle },
         ]}
       />
 
