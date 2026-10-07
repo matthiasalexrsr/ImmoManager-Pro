@@ -87,3 +87,24 @@ def test_a_withdrawn_assignment_stops_a_write_before_its_commit(postgres):  # no
         bound = connection.exec_driver_sql(
             "SELECT portfolio_id FROM resource_portfolio_grants WHERE resource_id = %s", (created.id,)).scalars().all()
     assert bound == [north["portfolio"].id]
+
+
+def test_global_search_on_postgres(postgres):  # noqa: F811
+    from backend.services import global_search
+
+    engine, _ = postgres
+    seed = _store(engine)
+    north = lease_with_document(seed, number="N-100%")
+    south = lease_with_document(seed, number="S-100%")
+    seed.db.close()
+    staff = auth.register_user("staff", "s@example.com", "Staff", "Secret123", "verwalter",
+                               portfolio_access="selected", portfolio_ids=[north["portfolio"].id])
+
+    reader = _store(engine)
+    for spec in global_search.SEARCH_TYPES:  # every type, numeric columns included, runs on PostgreSQL
+        global_search.search_page(reader, spec, "1", limit=5)
+    with scope_context(_scope(staff)):
+        page = global_search.search_page(reader, global_search.get_type("contract"), "100%", limit=5)
+    assert [hit["id"] for hit in page.items] == [north["contract"].id] and page.total == 1
+    assert south["contract"].id not in {hit["id"] for hit in page.items}
+    reader.db.close()

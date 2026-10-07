@@ -47,5 +47,6 @@ Stand 7. Oktober 2026, Branch `claude/global-search-pagination` (Basis `claude/d
 
 - `LIKE '%…%'` nutzt keinen B-Baum-Index: Jede Abfrage liest die Tabelle des Typs (bei 10.000 Zeilen in SQLite im Millisekundenbereich). Für sehr große Bestände auf PostgreSQL wäre ein `pg_trgm`-GIN-Index auf den Suchausdruck der nächste Schritt.
 - Groß-/Kleinschreibung: Auf SQLite registriert der Dienst eine Python-Funktion `immo_lower`, damit Umlaute wie im Speicher-Store gefaltet werden (SQLites eigenes `lower()` kennt nur ASCII). Auf PostgreSQL gilt `lower()` der Datenbank-Locale; Sonderfälle wie `ẞ`/`İ` können von Python abweichen.
+- PostgreSQL 16 geprüft: alle 16 Typen laufen (auch Betragsspalten), Portfoliogrenze und `%`-Escaping halten (`test_portfolio_scope_postgres.py`).
 - Die semantische Umsortierung gilt nur für die Übersicht; „Weitere laden“ liefert Schlüsselworttreffer in `id`-Reihenfolge.
 - Die Übersicht stellt je Typ zwei Abfragen (Seite und Zählung), bei 16 Typen also 32.
