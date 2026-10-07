@@ -5,7 +5,7 @@ import FileViewer from '../../components/FileViewer';
 
 vi.mock('../../api', () => ({ api: { get: vi.fn() } }));
 const pdfSources = vi.hoisted(() => []);
-vi.mock('pdfjs-dist', () => ({ GlobalWorkerOptions: {}, getDocument: options => {
+vi.mock('pdfjs-dist/legacy/build/pdf.mjs', () => ({ GlobalWorkerOptions: {}, getDocument: options => {
   pdfSources.push(options.url);
   return { promise: new Promise(() => {}), destroy: async () => {} };
 } }));

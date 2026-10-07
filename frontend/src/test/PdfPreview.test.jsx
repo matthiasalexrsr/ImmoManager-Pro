@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import FileViewer from '../components/FileViewer';
 
 const engine = vi.hoisted(() => ({ getDocument: vi.fn(), GlobalWorkerOptions: {} }));
-vi.mock('pdfjs-dist', () => engine);
+vi.mock('pdfjs-dist/legacy/build/pdf.mjs', () => engine);
 vi.mock('../api', () => ({ api: { get: vi.fn().mockResolvedValue({ has_ocr: false }) } }));
 
 const deferred = () => {

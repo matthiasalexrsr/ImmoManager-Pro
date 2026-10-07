@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+// The legacy build: the modern one needs very recent browser APIs (Map.getOrInsertComputed,
+// missing before Chrome 145 and in current Safari) and showed nothing there.
+import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import { usePartyText } from '../features/partyWorkspace/text';
 import { isOwnUploadUrl, prepareUploadAccess } from '../utils/uploadAccess';
 
@@ -49,7 +51,7 @@ export default function PdfPreview({ url, title }) {
     (async () => {
       try {
         await prepareUploadAccess(url, { signal: controller.signal });
-        const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist');
+        const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist/legacy/build/pdf.mjs');
         if (!active) return;
         GlobalWorkerOptions.workerSrc = workerUrl;
         const base = new URL(import.meta.env.PDFJS_ASSET_PATH, window.location.href).href;

@@ -7,7 +7,7 @@ import UnitOverview from '../pages/UnitOverview';
 import { api } from '../api';
 
 const pdfSources = vi.hoisted(() => []);
-vi.mock('pdfjs-dist', () => ({ GlobalWorkerOptions: {}, getDocument: options => {
+vi.mock('pdfjs-dist/legacy/build/pdf.mjs', () => ({ GlobalWorkerOptions: {}, getDocument: options => {
   pdfSources.push(options.url);
   return { promise: new Promise(() => {}), destroy: async () => {} };
 } }));

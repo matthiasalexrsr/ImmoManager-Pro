@@ -6,7 +6,7 @@ import { downloadFile } from '../features/partyWorkspace/files';
 
 vi.mock('../api', () => ({ api: { get: vi.fn() } }));
 const engine = vi.hoisted(() => ({ getDocument: vi.fn(), GlobalWorkerOptions: {} }));
-vi.mock('pdfjs-dist', () => engine);
+vi.mock('pdfjs-dist/legacy/build/pdf.mjs', () => engine);
 const deferred = () => { let resolve; let reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 beforeEach(() => {
   vi.resetAllMocks();
