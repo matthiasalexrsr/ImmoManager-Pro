@@ -21,7 +21,6 @@ from backend.routers import bookings, contracts, invoices, maintenance
 from backend.services.task_queue import SyncQueue, ThreadPoolQueue
 from backend.storage import InMemoryStore
 
-
 ENTITIES = [
     ("booking", "bookings", BookingORM, Booking, bookings, "list_bookings", "booking_date",
      {"account_id": "account", "amount": 1}),

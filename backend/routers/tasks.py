@@ -6,7 +6,8 @@ from pydantic import BaseModel
 
 from ..dependencies import store
 from ..models import Task, TaskCreate, TaskPatch
-from ..services.task_recurrence import next_due_date as _next_due_date, parse_rrule as _parse_rrule
+from ..services.task_recurrence import next_due_date as _next_due_date
+from ..services.task_recurrence import parse_rrule as _parse_rrule
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/tasks", tags=["Aufgaben"])

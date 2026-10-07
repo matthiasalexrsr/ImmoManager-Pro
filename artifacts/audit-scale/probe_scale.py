@@ -5,8 +5,8 @@ sqlite3 (real storage format); API assertions are checked against independent SQ
 """
 from __future__ import annotations
 
-import ctypes
 import argparse
+import ctypes
 import json
 import os
 import platform
@@ -16,13 +16,13 @@ import subprocess
 import sys
 import threading
 import time
-from uuid import uuid4
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from uuid import uuid4
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
-from tools.xstress.core import PASSWORD, Findings, Server, setup_users
+from tools.xstress.core import Findings, Server, setup_users  # noqa: E402 -- standalone probe bootstraps repo path
 
 
 class ProbeServer(Server):

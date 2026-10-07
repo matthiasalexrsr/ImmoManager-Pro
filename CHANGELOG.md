@@ -4,6 +4,11 @@ All notable changes to ImmoManager Pro will be documented in this file.
 
 ## Unreleased — 2026-10-07
 
+- Remove date-filter truncation on large lists; improve booking indexes, cache expiry and pending-job cancellation.
+- Add reliable task completion/reopening, recurrence validation and explicit conflict/retry handling; retain archived parties in historical contracts.
+- Add configurable SMTP with a non-sending connection check, validated integration actions, atomic configuration persistence and a durable paginated execution journal.
+- Correct legacy PostgreSQL floating monetary columns through migration `d7a2f9c4e681`; preserve existing values and document the non-destructive downgrade behavior.
+- Harden isolated Windows stress testing and verify million-row pagination, ten-user writes, local SMTP and narrow-screen behavior. See [hardening validation and remaining limits](docs/HARDENING_20261007_VALIDATION.md).
 - Open a tenant information card from names throughout the tenant, contract, unit and financial views, with contacts, current/historical contracts, individual rents and direct account/edit/document actions.
 - View, search, filter, preview and download each tenant's documents, including historical contracts and direct tenant assignments before a contract exists. Add single or multiple files directly to a tenant.
 - Export the complete filtered tenant document list, independently of the visible page. Keep uploads and pending responses associated with their original tenant when navigating.
