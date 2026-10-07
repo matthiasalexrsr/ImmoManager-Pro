@@ -62,11 +62,15 @@ def test_upload_size_limit_applies_to_photos(client, headers, monkeypatch):
 
 @pytest.fixture
 def uploads_client(tmp_path):
+    clear_users()
+    user = register_user("reader", "reader@example.com", "Reader", "Secret123", "readonly")
     (tmp_path / "old.html").write_text("<script>steal()</script>", encoding="utf-8")
     (tmp_path / "photo.png").write_bytes(b"\x89PNG")
     static = FastAPI()
     static.mount("/uploads", UploadStaticFiles(directory=tmp_path), name="uploads")
-    return TestClient(static)
+    with TestClient(static, headers={"Authorization": f"Bearer {create_access_token(user.id)}"}) as client:
+        yield client
+    clear_users()
 
 
 def test_previously_stored_html_is_served_as_sandboxed_download(uploads_client):

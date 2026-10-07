@@ -3,7 +3,7 @@
 import logging
 import threading
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 
 from ..auth import (
     authenticate_user,
@@ -27,6 +27,7 @@ from ..auth import (
     verify_totp,
 )
 from ..config import settings
+from ..services.upload_access import clear_upload_access_cookie, set_upload_access_cookie
 from ..models import (
     LoginRequest,
     RefreshRequest,
@@ -102,7 +103,7 @@ def register(payload: UserCreate, request: Request) -> UserRead:
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(payload: LoginRequest) -> TokenResponse:
+def login(payload: LoginRequest, request: Request = None, response: Response = None) -> TokenResponse:
     """Authenticate and receive JWT tokens. Enforces TOTP when enabled."""
     user = authenticate_user(payload.username, payload.password)
     if user is None:
@@ -123,14 +124,17 @@ def login(payload: LoginRequest) -> TokenResponse:
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Ungültiger Zwei-Faktor-Code",
             )
-    return TokenResponse(
+    tokens = TokenResponse(
         access_token=create_access_token(user["id"]),
         refresh_token=create_refresh_token(user["id"]),
     )
+    if request is not None and response is not None:
+        set_upload_access_cookie(response, request, tokens.access_token)
+    return tokens
 
 
 @router.post("/refresh", response_model=TokenResponse)
-def refresh(payload: RefreshRequest) -> TokenResponse:
+def refresh(payload: RefreshRequest, request: Request = None, response: Response = None) -> TokenResponse:
     """Refresh access token using a refresh token.
 
     Implements token rotation: the old refresh token is revoked on use,
@@ -151,14 +155,17 @@ def refresh(payload: RefreshRequest) -> TokenResponse:
         )
     # Rotate: revoke the old refresh token so it cannot be reused
     revoke_token(payload.refresh_token)
-    return TokenResponse(
+    tokens = TokenResponse(
         access_token=create_access_token(user["id"]),
         refresh_token=create_refresh_token(user["id"]),
     )
+    if request is not None and response is not None:
+        set_upload_access_cookie(response, request, tokens.access_token)
+    return tokens
 
 
 @router.post("/logout")
-def logout(payload: dict) -> dict:
+def logout(payload: dict, request: Request = None, response: Response = None) -> dict:
     """Logout by revoking the provided access and/or refresh tokens."""
     access_token = payload.get("access_token")
     refresh_token = payload.get("refresh_token")
@@ -166,12 +173,21 @@ def logout(payload: dict) -> dict:
         revoke_token(access_token)
     if refresh_token:
         revoke_token(refresh_token)
+    if request is not None and response is not None:
+        clear_upload_access_cookie(response, request)
     return {"detail": "Erfolgreich abgemeldet"}
 
 
 @router.get("/me", response_model=UserRead)
-def get_me(user: UserRead = Depends(require_auth)) -> UserRead:
+def get_me(
+    user: UserRead = Depends(require_auth),
+    request: Request = None,
+    response: Response = None,
+) -> UserRead:
     """Get current authenticated user's profile."""
+    if request is not None and response is not None:
+        token = request.headers["authorization"].partition(" ")[2]
+        set_upload_access_cookie(response, request, token)
     return user
 
 

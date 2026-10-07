@@ -8,10 +8,15 @@ are not safe to display inline are served as downloads.
 
 from fastapi import HTTPException, UploadFile, status
 from fastapi.staticfiles import StaticFiles
-from starlette.responses import Response
-from starlette.types import Scope
+from starlette.concurrency import run_in_threadpool
+from starlette.datastructures import MutableHeaders
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.requests import Request
+from starlette.responses import JSONResponse, Response
+from starlette.types import Message, Receive, Scope, Send
 
 from ..config import settings
+from .upload_access import require_upload_access
 
 IMAGE_EXTENSIONS = frozenset({"png", "jpg", "jpeg", "gif", "webp", "bmp", "tif", "tiff", "heic", "heif"})
 DOCUMENT_EXTENSIONS = IMAGE_EXTENSIONS | frozenset(
@@ -50,11 +55,40 @@ async def read_limited(file: UploadFile) -> bytes:
 
 
 class UploadStaticFiles(StaticFiles):
-    """StaticFiles for user uploads: never lets stored files act as web pages."""
+    """Private uploads with native ranges and no executable stored web pages."""
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        response_started = False
+
+        async def private_send(message: Message) -> None:
+            nonlocal response_started
+            if message["type"] == "http.response.start":
+                response_started = True
+                # FileResponse creates its own 400/416 Range-error responses.
+                # Apply privacy headers here so those cannot bypass the policy.
+                headers = MutableHeaders(scope=message)
+                headers["Cache-Control"] = "private, no-store"
+                headers.add_vary_header("Cookie, Authorization")
+                headers["X-Content-Type-Options"] = "nosniff"
+            await send(message)
+
+        try:
+            await super().__call__(scope, receive, private_send)
+        except Exception:
+            if scope["type"] == "http" and not response_started:
+                response = JSONResponse({"detail": "Interner Serverfehler"}, status_code=500)
+                await response(scope, receive, private_send)
+            # Preserve server error logging and TestClient exception reporting.
+            raise
 
     async def get_response(self, path: str, scope: Scope) -> Response:
-        response = await super().get_response(path, scope)
-        response.headers["X-Content-Type-Options"] = "nosniff"
+        try:
+            if scope["method"] not in ("GET", "HEAD"):
+                raise HTTPException(status_code=status.HTTP_405_METHOD_NOT_ALLOWED)
+            await run_in_threadpool(require_upload_access, Request(scope))
+            response = await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            return JSONResponse({"detail": exc.detail}, status_code=exc.status_code, headers=exc.headers)
         if file_extension(path) not in INLINE_SAFE_EXTENSIONS:
             response.headers["Content-Disposition"] = "attachment"
             response.headers["Content-Security-Policy"] = "sandbox"
