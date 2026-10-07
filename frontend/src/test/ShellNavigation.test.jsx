@@ -18,6 +18,7 @@ beforeEach(() => {
   vi.clearAllMocks(); mobile = false;
   settings.prefs = { theme: 'light', sidebar_collapsed: false };
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }));
+  vi.stubGlobal('scrollTo', vi.fn());
   vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: mobile, addEventListener: (_type, callback) => { mediaListener = callback; }, removeEventListener: vi.fn() })));
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
@@ -85,4 +86,22 @@ it('closes the mobile drawer after navigation or a desktop resize', () => {
   act(() => mediaListener({ matches: false }));
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   expect(document.body.style.overflow).toBe('');
+});
+
+it('scrolls to the page start only after a pathname change, preserving initial, query and hash positions', () => {
+  render(<MemoryRouter initialEntries={['/tenants?filter=all#list']}>
+    <Link to="/tenants?filter=archived#list">Filter ändern</Link>
+    <Link to="/tenants?filter=archived#last">Sprungmarke ändern</Link>
+    <Layout />
+  </MemoryRouter>);
+  expect(window.scrollTo).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('link', { name: 'Filter ändern' }));
+  fireEvent.click(screen.getByRole('link', { name: 'Sprungmarke ändern' }));
+  expect(window.scrollTo).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('link', { name: 'Dashboard' }));
+  expect(window.scrollTo).toHaveBeenCalledExactlyOnceWith(0, 0);
+  fireEvent.click(screen.getByRole('link', { name: 'Dashboard' }));
+  expect(window.scrollTo).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole('link', { name: 'Immobilien' }));
+  expect(window.scrollTo).toHaveBeenCalledTimes(2);
 });

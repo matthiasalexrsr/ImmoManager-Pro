@@ -169,6 +169,7 @@ function LayoutFrame() {
   const sidebarRef = useRef(null);
   const closeRef = useRef(null);
   const menuRef = useRef(null);
+  const previousPathRef = useRef(location.pathname);
   const collapsed = prefs.sidebar_collapsed && !mobile;
   const tr = (key, fallback) => { const result = t(key); return !result || result === key ? fallback : result; };
   const activeItem = findActiveNavItem(location.pathname);
@@ -188,7 +189,12 @@ function LayoutFrame() {
     return () => query.removeEventListener('change', update);
   }, []);
 
-  useEffect(() => { setMobileNavOpen(false); }, [location.pathname]);
+  useEffect(() => {
+    setMobileNavOpen(false);
+    if (previousPathRef.current === location.pathname) return;
+    previousPathRef.current = location.pathname;
+    window.scrollTo(0, 0);
+  }, [location.pathname]);
 
   useEffect(() => {
     if (!mobileNavOpen) return;
