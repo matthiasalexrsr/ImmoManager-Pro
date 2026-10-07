@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
@@ -27,20 +27,20 @@ export default function Contracts() {
   const confirm = useConfirm();
   const toast = useToast();
   const store = useDataStore();
-  const { items: properties } = useEntities('properties', '/properties');
-  const { items: units } = useEntities('units', '/units');
-  const { items: tenants } = useEntities('tenants', '/tenants');
+  const propertyState = useEntities('properties', '/properties');
+  const unitState = useEntities('units', '/units');
+  const tenantState = useEntities('tenantsWithArchived', '/tenants?include_archived=true');
+  const properties = propertyState.items;
+  const units = unitState.items;
+  const tenants = tenantState.items;
   const [contracts, setContracts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
   const [filter, setFilter] = useState('all');
   const [rents, setRents] = useState({});
   const [history, setHistory] = useState(null);
-
-  // The rent lives on the contract (rent history); the unit only holds the default for new contracts.
-  useEffect(() => {
-    api.get('/contracts/current-rents').then(r => setRents(r || {})).catch(() => setRents({}));
-  }, [contracts]);
+  const [loadError, setLoadError] = useState(null);
+  const loadRef = useRef(null);
 
   const openHistory = async (row) => {
     try {
@@ -50,20 +50,37 @@ export default function Contracts() {
     }
   };
 
-  const refreshData = () => {
+  const refreshData = useCallback(async () => {
+    loadRef.current?.abort();
+    const request = new AbortController();
+    loadRef.current = request;
     setLoading(true);
-    api.list('/contracts').catch(() => [])
-      .then(data => setContracts(Array.isArray(data) ? data : []))
-      .finally(() => setLoading(false));
-  };
+    setLoadError(null);
+    const results = await Promise.allSettled([
+      api.list('/contracts', { signal: request.signal }),
+      api.get('/contracts/current-rents', { signal: request.signal }),
+    ]);
+    if (request.signal.aborted) return;
+    const errors = [];
+    if (results[0].status === 'fulfilled' && Array.isArray(results[0].value)) {
+      setContracts(results[0].value);
+    } else {
+      errors.push(results[0].reason?.message || 'Der Server hat keine gültige Vertragsliste geliefert');
+    }
+    // Keep the last successfully loaded rents if the refresh fails.
+    if (results[1].status === 'fulfilled' && results[1].value && typeof results[1].value === 'object' && !Array.isArray(results[1].value)) {
+      setRents(results[1].value);
+    } else {
+      errors.push(results[1].reason?.message || 'Die Vertragsmieten konnten nicht geladen werden');
+    }
+    setLoadError(errors.length ? errors.join(' · ') : null);
+    setLoading(false);
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    api.list('/contracts').catch(() => [])
-      .then(data => { if (!cancelled) setContracts(Array.isArray(data) ? data : []); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
+    refreshData();
+    return () => loadRef.current?.abort();
+  }, [refreshData]);
 
   const propMap = Object.fromEntries(properties.map(p => [p.id, p.name]));
   const unitMap = Object.fromEntries(units.map(u => [u.id, u]));
@@ -77,7 +94,7 @@ export default function Contracts() {
       property_name: propMap[c.property_id] || '—',
       unit_label: unit?.label || '—',
       tenant_name: tenantMap[c.tenant_id] || '—',
-      cold_rent: rents[c.id]?.cold_rent ?? unit?.cold_rent,
+      cold_rent: rents[c.id]?.cold_rent,
       rent_model: c.index_rent,
       remaining_days: remaining,
     };
@@ -104,7 +121,7 @@ export default function Contracts() {
     { key: 'property_name', hidden: true, label: 'Immobilie', filterType: 'text' },
     { key: 'unit_label', subKey: 'property_name', label: 'Einheit', filterType: 'text' },
     { key: 'tenant_name', label: 'Mieter', filterType: 'text',
-      render: (v, row) => row.tenant_id && v !== '—' ? <PartyLink tenantId={row.tenant_id}>{v}</PartyLink> : v },
+      render: (v, row) => row.tenant_id ? <PartyLink tenantId={row.tenant_id}>{v === '—' ? 'Partei öffnen' : v}</PartyLink> : v },
     { key: 'cold_rent', label: 'Kaltmiete (€)', type: 'number', align: 'right',
       render: v => formatMoney(v) },
     { key: 'start_date', label: t('tenantsContracts.contracts.form.startDate') || 'Beginn', type: 'date', filterType: 'dateRange' },
@@ -138,7 +155,8 @@ export default function Contracts() {
     { key: 'unit_id', label: t('units.list.columns.label') || 'Einheit', required: true, type: 'select',
       options: units.map(u => ({ value: u.id, label: u.label })) },
     { key: 'tenant_id', label: t('tenantsContracts.tenants.title') || 'Mieter', required: true, type: 'select',
-      options: tenants.map(tn => ({ value: tn.id, label: tn.full_name })) },
+      options: tenants.filter(tn => !tn.archived || (modal !== 'create' && tn.id === modal?.tenant_id))
+        .map(tn => ({ value: tn.id, label: `${tn.full_name}${tn.archived ? ' (archiviert)' : ''}` })) },
     { key: 'start_date', label: t('tenantsContracts.contracts.form.startDate') || 'Vertragsbeginn', type: 'date', required: true },
     { key: 'end_date', label: t('tenantsContracts.contracts.form.endDate') || 'Vertragsende', type: 'date' },
     { key: 'deposit_amount', label: t('tenantsContracts.contracts.form.deposit') || 'Kaution (€)', type: 'number' },
@@ -169,7 +187,7 @@ export default function Contracts() {
       await api.put(`/contracts/${modal.id}`, data);
     }
     refreshData();
-    if (store) store.invalidateRelated('contracts', 'properties', 'units', 'tenants', 'deposits', 'receivables', 'rent_adjustments');
+    if (store) store.invalidateRelated('contracts', 'properties', 'units', 'tenants', 'tenantsWithArchived', 'deposits', 'receivables', 'rent_adjustments');
   };
 
   const handleDelete = async (row) => {
@@ -181,14 +199,26 @@ export default function Contracts() {
       return;
     }
     refreshData();
-    if (store) store.invalidateRelated('contracts', 'properties', 'units', 'tenants', 'deposits', 'receivables', 'rent_adjustments');
+    if (store) store.invalidateRelated('contracts', 'properties', 'units', 'tenants', 'tenantsWithArchived', 'deposits', 'receivables', 'rent_adjustments');
   };
 
-  if (loading) return <div className="page-loading">Lade Verträge...</div>;
+  const lookupErrors = [propertyState.error, unitState.error, tenantState.error].filter(Boolean);
+  const retry = () => {
+    refreshData();
+    if (propertyState.error) propertyState.reload();
+    if (unitState.error) unitState.reload();
+    if (tenantState.error) tenantState.reload();
+  };
+  if (loading && contracts.length === 0 && !loadError) return <div className="page-loading">Lade Verträge...</div>;
 
   return (
     <div className="page">
       <h1 className="page-title">{t('tenantsContracts.contracts.title') || 'Verträge'}</h1>
+      {(loadError || lookupErrors.length > 0) && <div className="alert-error" role="alert">
+        {[loadError, ...lookupErrors].filter(Boolean).join(' · ')}{' '}
+        <button className="btn btn-secondary btn-sm" onClick={retry} disabled={loading}>Erneut laden</button>
+      </div>}
+      {loading && contracts.length > 0 && <p role="status">Verträge werden aktualisiert…</p>}
 
       {/* Summary cards */}
       <div className="kpi-row">

@@ -139,6 +139,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
                   return <input type="hidden" key={f.key} name={f.key} value={values[f.key] || ''} />;
                 }
                 const inputId = `form-field-${f.key}`;
+                const options = typeof f.options === 'function' ? f.options(values) : f.options;
                 return (
                   <div key={f.key} className={`form-group${spansRow(f) ? ' form-group-full' : ''}`}>
                     <label htmlFor={inputId}>{f.label}{f.required && ' *'}</label>
@@ -146,13 +147,14 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
                       <select
                         id={inputId}
                         value={values[f.key] ?? ''}
-                        onChange={e => setValues({ ...values, [f.key]: e.target.value })}
+                        onChange={e => setValues(current => ({ ...current, [f.key]: e.target.value,
+                          ...Object.fromEntries((f.clearOnChange || []).map(key => [key, ''])) }))}
                         required={f.required}
                       >
                         <option value="">{t('ui.form.pleaseSelect')}</option>
-                        {f.options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        {options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                         {/* A stored value the list does not offer (imported, older data) stays selectable instead of being lost. */}
-                        {values[f.key] !== '' && values[f.key] != null && !f.options?.some(o => String(o.value) === String(values[f.key])) && (
+                        {values[f.key] !== '' && values[f.key] != null && !options?.some(o => String(o.value) === String(values[f.key])) && (
                           <option value={values[f.key]}>{codeLabel(String(values[f.key]))}</option>
                         )}
                       </select>
