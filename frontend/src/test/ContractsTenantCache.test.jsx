@@ -73,7 +73,7 @@ describe('contract tenant cache across page mutations', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Archivieren' }));
       await waitFor(() => expect(screen.queryByRole('button', { name: 'Bisherige Partei' })).not.toBeInTheDocument());
     } else {
-      fireEvent.click(screen.getByRole('button', { name: mutation === 'create' ? 'Neu' : 'Bearbeiten' }));
+      fireEvent.click(screen.getByRole('button', { name: mutation === 'create' ? 'Partei anlegen' : 'Bearbeiten' }));
       fireEvent.change(screen.getByLabelText('Vollständiger Name *'), { target: { value: 'Neue Partei' } });
       fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
       await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
