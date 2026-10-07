@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MemoryRouter } from 'react-router-dom';
+import { Link, MemoryRouter } from 'react-router-dom';
 import Documents from '../pages/Documents';
 import { api } from '../api';
 
@@ -60,7 +60,9 @@ const documentRequests = () => api.get.mock.calls
   .map(([path]) => new URL(path, 'http://example.test'));
 
 function mount(url = '/documents?tenant_id=t1') {
-  return render(<MemoryRouter initialEntries={[url]}><Documents /></MemoryRouter>);
+  return render(<MemoryRouter initialEntries={[url]}>
+    <Link to="/documents?tenant_id=t2">Zu Ben wechseln</Link><Documents />
+  </MemoryRouter>);
 }
 
 beforeEach(() => {
@@ -218,6 +220,54 @@ describe('party documents page', () => {
     expect(screen.getByText('Brief für Ben')).toBeInTheDocument();
     expect(screen.queryByText('Direkter Brief')).not.toBeInTheDocument();
     expect(screen.getByText(/Dokumente von Ben Weber/)).toBeInTheDocument();
+  });
+
+  it('keeps a new party upload busy when a previous party upload finishes after navigation', async () => {
+    const annaUpload = deferred();
+    const benUpload = deferred();
+    fetch.mockReturnValueOnce(annaUpload.promise).mockReturnValueOnce(benUpload.promise);
+    mount();
+    await screen.findByText('Direkter Brief');
+    fireEvent.change(screen.getByLabelText('Dokumentdateien wählen'), { target: { files: [new File(['anna'], 'Anna.docx')] } });
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    expect(screen.getByLabelText('Dokumentdateien wählen')).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('link', { name: 'Zu Ben wechseln' }));
+    await waitFor(() => expect(screen.getByLabelText('Mieter / Partei')).toHaveValue('t2'));
+    expect(screen.getByLabelText('Dokumentdateien wählen')).toBeEnabled();
+    fireEvent.change(screen.getByLabelText('Dokumentdateien wählen'), { target: { files: [new File(['ben'], 'Ben.docx')] } });
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    await act(async () => annaUpload.resolve({ ok: true, json: async () => ({ file_url: '/uploads/anna.docx' }) }));
+    expect(screen.getByLabelText('Dokumentdateien wählen')).toBeDisabled();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByText(/\/uploads\/anna\.docx/)).not.toBeInTheDocument();
+
+    await act(async () => benUpload.resolve({ ok: true, json: async () => ({ file_url: '/uploads/ben.docx' }) }));
+    const dialog = await screen.findByRole('dialog', { name: 'Dokument erstellen' });
+    await waitFor(() => expect(within(dialog).getByLabelText('Mieter / Partei')).toHaveValue('t2'));
+    expect(within(dialog).getByLabelText(/Titel/)).toHaveValue('Ben');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/documents', expect.objectContaining({ tenant_id: 't2', title: 'Ben', file_url: '/uploads/ben.docx' })));
+  });
+
+  it('discards the previous party import queue and stops its remaining files after navigation', async () => {
+    const firstImport = deferred();
+    fetch.mockReturnValueOnce(firstImport.promise);
+    mount();
+    await screen.findByText('Direkter Brief');
+    fireEvent.change(screen.getByLabelText('Dokumentdateien wählen'), { target: { files: [new File(['a'], 'Anna-eins.docx'), new File(['b'], 'Anna-zwei.docx')] } });
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    expect(screen.getByText(/Anna-eins\.docx/)).toBeInTheDocument();
+    expect(fetch.mock.calls[0][1].body.get('tenant_id')).toBe('t1');
+    fireEvent.click(screen.getByRole('link', { name: 'Zu Ben wechseln' }));
+    await waitFor(() => expect(screen.getByLabelText('Mieter / Partei')).toHaveValue('t2'));
+    expect(screen.queryByText(/Anna-eins\.docx/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Anna-zwei\.docx/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Dokumentdateien wählen')).toBeEnabled();
+    await act(async () => firstImport.resolve({ ok: true, json: async () => ({ id: 'saved-for-anna' }) }));
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/Anna-eins\.docx/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Dokumentdateien wählen')).toBeEnabled();
   });
 
   it('opens the preview from the keyboard-accessible document action', async () => {
