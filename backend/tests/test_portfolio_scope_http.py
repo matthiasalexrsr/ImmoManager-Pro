@@ -297,3 +297,42 @@ def test_semantic_hits_from_the_shared_index_are_checked_against_the_account(cli
     owner = _bearer(_staff("owner", role="eigentuemer", mode="all"))
     assert south["property"].id in client.get("/api/v1/search", params={"q": "Bautzner"}, headers=owner).text
     assert client.post("/api/v1/search/reindex", headers=staff).status_code == 403
+
+
+def test_no_read_endpoint_opens_a_record_of_another_portfolio_by_its_id(client, estate):
+    """Every GET with path parameters, called with the other portfolio's IDs: nothing of it comes back."""
+    import re
+
+    from fastapi.routing import APIRoute
+
+    from backend.models import PropertyCreate
+    from backend.services.portfolio_http import INSTALLATION_PREFIXES
+
+    south = estate["south"]
+    store.update_property(south["property"].id, PropertyCreate(
+        portfolio_id=south["portfolio"].id, name=f"{MARK} Haus", property_type="residential", city=MARK))
+    staff = _bearer(_staff("staff", estate["north"]["portfolio"]))
+    keys = ("portfolio", "property", "unit", "tenant", "contract", "document", "booking", "account")
+    ids = {south[key].id for key in keys}
+
+    opened, tried = [], 0
+    for route in app.routes:
+        if not isinstance(route, APIRoute) or "GET" not in route.methods or "{" not in route.path:
+            continue
+        if not route.path.startswith("/api/v1/") or route.path.startswith(INSTALLATION_PREFIXES):
+            continue
+        params = re.findall(r"{(\w+)(?::[^}]*)?}", route.path)
+        for key in keys:
+            path = route.path
+            for name in params:
+                path = re.sub(r"{" + name + r"(?::[^}]*)?}", south[key].id, path)
+            response = client.get(path, headers=staff)
+            tried += 1
+            if response.status_code >= 500:
+                opened.append(f"{route.path} [{key}]: {response.status_code}")
+            elif response.status_code < 300:
+                others = [i for i in ids if i in response.text and i != south[key].id]
+                if MARK in response.text or others:
+                    opened.append(f"{route.path} [{key}]")
+    assert not opened, opened
+    assert tried > 100
