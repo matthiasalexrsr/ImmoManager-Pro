@@ -284,7 +284,7 @@ def test_document_originals_downgrade_refuses_to_destroy_evidence(migrate):
     with pytest.raises(RuntimeError, match="Document originals exist"):
         migrate.downgrade(ARCHIVE_PARENT)
     assert {"document_versions", "document_version_chunks"} <= set(_schema(db_path))
-    assert _version(db_path) == migrate.head
+    assert _version(db_path) == "e5f1a7c3b9d2"     # the archive revision stays applied
 
 
 def test_document_originals_downgrade_without_originals(migrate):
@@ -293,3 +293,49 @@ def test_document_originals_downgrade_without_originals(migrate):
     assert not {"document_versions", "document_version_chunks"} & set(_schema(db_path))
     migrate()
     assert {"document_versions", "document_version_chunks"} <= set(_schema(db_path))
+
+
+ACCESS_PARENT = "e5f1a7c3b9d2"
+
+
+def _seed_users(db_path: Path) -> None:
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript("""
+            INSERT INTO users (id, username, email, full_name, hashed_password, role, is_active, totp_enabled,
+                               created_at, updated_at)
+                VALUES ('owner', 'owner', 'o@example.com', 'Owner', 'x', 'eigentuemer', 1, 0,
+                        '2025-01-01', '2025-01-01'),
+                       ('staff', 'staff', 's@example.com', 'Staff', 'x', 'verwalter', 1, 0,
+                        '2025-01-01', '2025-01-01');
+        """)
+
+
+def test_portfolio_access_upgrade_keeps_what_every_account_could_see(migrate):
+    db_path = migrate(ACCESS_PARENT)
+    _seed_previous_schema(db_path)
+    _seed_users(db_path)
+    migrate()
+    with sqlite3.connect(db_path) as conn:
+        rows = dict(conn.execute("SELECT user_id, mode || '/' || origin FROM user_portfolio_access"))
+    assert rows == {"owner": "all/legacy_all", "staff": "all/legacy_all"}
+
+
+def test_portfolio_access_downgrade_refuses_to_widen_access(migrate):
+    db_path = migrate(ACCESS_PARENT)
+    _seed_previous_schema(db_path)
+    _seed_users(db_path)
+    migrate()
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("UPDATE user_portfolio_access SET mode = 'selected' WHERE user_id = 'staff'")
+    with pytest.raises(RuntimeError, match="Restricted accounts exist"):
+        migrate.downgrade(ACCESS_PARENT)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("UPDATE user_portfolio_access SET mode = 'all' WHERE user_id = 'staff'")
+        conn.execute("INSERT INTO user_portfolio_grants (user_id, portfolio_id) VALUES ('staff', 'pf')")
+    with pytest.raises(RuntimeError, match="Portfolio grants exist"):
+        migrate.downgrade(ACCESS_PARENT)
+    assert _version(db_path) == migrate.head
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("DELETE FROM user_portfolio_grants")
+    migrate.downgrade(ACCESS_PARENT)
+    assert "user_portfolio_access" not in _schema(db_path)

@@ -1,5 +1,5 @@
 from datetime import date, datetime, timezone
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -953,6 +953,9 @@ class UserCreate(BaseModel):
     full_name: str
     password: str = Field(..., min_length=6)
     role: str = "readonly"  # eigentuemer, verwalter, buchhaltung, techniker, readonly
+    # which portfolios the account sees; a new account sees none until the owner assigns them
+    portfolio_access: Literal["all", "selected"] = "selected"
+    portfolio_ids: list[str] = Field(default_factory=list)
 
     @field_validator("email")
     @classmethod
@@ -976,6 +979,9 @@ class UserRead(BaseModel):
     full_name: str
     role: str
     is_active: bool = True
+    portfolio_access: Literal["all", "selected"] = "all"
+    portfolio_ids: list[str] = Field(default_factory=list)
+    portfolio_access_origin: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -985,6 +991,8 @@ class UserPatch(BaseModel):
     full_name: Optional[str] = None
     role: Optional[str] = None
     is_active: Optional[bool] = None
+    portfolio_access: Optional[Literal["all", "selected"]] = None
+    portfolio_ids: Optional[list[str]] = None
 
     @field_validator("email")
     @classmethod

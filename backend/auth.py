@@ -455,6 +455,18 @@ def decode_token(token: str) -> TokenPayload:
 # ---------------------------------------------------------------------------
 
 
+ACCESS_FIELDS = ("portfolio_access", "portfolio_ids", "portfolio_access_origin")
+
+
+def normalize_access(role: str, mode: str | None, ids) -> dict:
+    """Portfolio access as stored: owners always see everything; "all" carries no list."""
+    if role == "eigentuemer" or mode == "all":
+        return {"portfolio_access": "all", "portfolio_ids": []}
+    if mode != "selected":
+        raise ValueError(f"unknown portfolio access {mode!r}")
+    return {"portfolio_access": "selected", "portfolio_ids": sorted(set(ids or ()))}
+
+
 class UserStore(ABC):
     """Abstract interface for user persistence."""
 
@@ -521,7 +533,7 @@ class InMemoryUserStore(UserStore):
                 return None
             for key, value in updates.items():
                 if value is not None and key not in ("id", "hashed_password", "created_at"):
-                    user[key] = value
+                    user[key] = list(value) if key == "portfolio_ids" else value
             user["updated_at"] = datetime.now(timezone.utc)
             return user
 
@@ -573,7 +585,63 @@ class SQLUserStore(UserStore):
 
         session.close()
 
-    def _to_dict(self, orm_obj) -> dict:
+    def _to_dict(self, orm_obj, session=None, access=None) -> dict:
+        data = self._account(orm_obj)
+        if access is None:
+            access = self._access(session or self._session_of(orm_obj), [orm_obj.id])
+        data.update(self._access_of(orm_obj, access))
+        return data
+
+    @staticmethod
+    def _session_of(orm_obj):
+        from sqlalchemy.orm import object_session
+
+        return object_session(orm_obj)
+
+    @staticmethod
+    def _access(session, user_ids) -> dict:
+        """{user_id: (mode, origin, [portfolio ids])} for the given accounts, in two queries."""
+        from sqlalchemy import select
+
+        from .db.access_models import UserAccessORM, UserPortfolioORM
+        rows = {row.user_id: (row.mode, row.origin, []) for row in
+                session.scalars(select(UserAccessORM).where(UserAccessORM.user_id.in_(user_ids)))}
+        for user_id, portfolio_id in session.execute(
+                select(UserPortfolioORM.user_id, UserPortfolioORM.portfolio_id)
+                .where(UserPortfolioORM.user_id.in_(user_ids))):
+            if user_id in rows:
+                rows[user_id][2].append(portfolio_id)
+        return rows
+
+    @staticmethod
+    def _access_of(orm_obj, access: dict) -> dict:
+        row = access.get(orm_obj.id)
+        if orm_obj.role == "eigentuemer":
+            return {"portfolio_access": "all", "portfolio_ids": [],
+                    "portfolio_access_origin": row[1] if row else "owner"}
+        if row is None:          # fail closed: no row is no assignment yet
+            return {"portfolio_access": "selected", "portfolio_ids": [], "portfolio_access_origin": "unassigned"}
+        mode, origin, ids = row
+        return {"portfolio_access": mode, "portfolio_ids": sorted(ids) if mode == "selected" else [],
+                "portfolio_access_origin": origin}
+
+    @staticmethod
+    def _write_access(session, user_id: str, values: dict) -> None:
+        from sqlalchemy import delete
+
+        from .db.access_models import UserAccessORM, UserPortfolioORM
+        row = session.get(UserAccessORM, user_id)
+        if row is None:
+            row = UserAccessORM(user_id=user_id)
+            session.add(row)
+        row.mode = values["portfolio_access"]
+        row.origin = values.get("portfolio_access_origin") or "owner_assignment"
+        row.updated_at = datetime.now(timezone.utc)
+        session.execute(delete(UserPortfolioORM).where(UserPortfolioORM.user_id == user_id))
+        session.add_all(UserPortfolioORM(user_id=user_id, portfolio_id=pid) for pid in values["portfolio_ids"])
+
+    @staticmethod
+    def _account(orm_obj) -> dict:
         return {
             "id": orm_obj.id,
             "username": orm_obj.username,
@@ -610,8 +678,11 @@ class SQLUserStore(UserStore):
         from .db.orm_models import UserORM
         session = self._session_factory()
         try:
-            obj = UserORM(**user_data)
+            obj = UserORM(**{k: v for k, v in user_data.items() if k not in ACCESS_FIELDS})
             session.add(obj)
+            session.flush()
+            if "portfolio_access" in user_data:
+                self._write_access(session, obj.id, user_data)
             session.commit()
         except Exception:
             session.rollback()
@@ -627,8 +698,10 @@ class SQLUserStore(UserStore):
             if obj is None:
                 return None
             for key, value in updates.items():
-                if value is not None and key not in ("id", "hashed_password", "created_at"):
+                if value is not None and key not in ("id", "hashed_password", "created_at", *ACCESS_FIELDS):
                     setattr(obj, key, value)
+            if "portfolio_access" in updates:
+                self._write_access(session, user_id, updates)
             obj.updated_at = datetime.now(timezone.utc)
             session.commit()
             session.refresh(obj)
@@ -678,7 +751,9 @@ class SQLUserStore(UserStore):
         from .db.orm_models import UserORM
         session = self._session_factory()
         try:
-            return [self._to_dict(obj) for obj in session.query(UserORM).all()]
+            users = session.query(UserORM).all()
+            access = self._access(session, [obj.id for obj in users])
+            return [self._to_dict(obj, access=access) for obj in users]
         finally:
             self._finalize_session(session)
 
@@ -719,8 +794,13 @@ def _to_user_read(user_data: dict) -> UserRead:
 # ---------------------------------------------------------------------------
 
 
-def register_user(username: str, email: str, full_name: str, password: str, role: str = "readonly") -> UserRead:
-    """Register a new user with password policy enforcement (T21)."""
+def register_user(username: str, email: str, full_name: str, password: str, role: str = "readonly", *,
+                  portfolio_access: str = "all", portfolio_ids=None) -> UserRead:
+    """Register a new user with password policy enforcement (T21).
+
+    Called from code (setup, test data) the account sees everything; the account
+    administration passes the owner's explicit portfolio assignment.
+    """
     if _user_store.get_by_username(username) is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Benutzername existiert bereits")
     # T21: Validate password strength
@@ -744,6 +824,8 @@ def register_user(username: str, email: str, full_name: str, password: str, role
         "totp_enabled": False,
         "created_at": now,
         "updated_at": now,
+        **normalize_access(role, portfolio_access, portfolio_ids),
+        "portfolio_access_origin": "owner_assignment",
     }
     _user_store.create(user_data)
     return _to_user_read(user_data)
@@ -809,7 +891,7 @@ def locked_account(user_id: str, db=None) -> Iterator[Optional[dict]]:
 
         from .db.orm_models import UserORM
         row = db.scalar(select(UserORM).where(UserORM.id == user_id).with_for_update(read=True))
-        yield store._to_dict(row) if row is not None else None
+        yield store._to_dict(row, db) if row is not None else None
         return
     lock = getattr(store, "lock", None)
     if lock is None:

@@ -17,6 +17,7 @@ from ..auth import (
     get_user_by_id,
     has_users,
     list_users,
+    normalize_access,
     record_registration_attempt,
     register_user,
     require_auth,
@@ -27,6 +28,7 @@ from ..auth import (
     verify_totp,
 )
 from ..config import settings
+from ..dependencies import store
 from ..models import (
     LoginRequest,
     RefreshRequest,
@@ -323,13 +325,31 @@ def create_user(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Nur Eigentümer dürfen Rollen vergeben",
         )
+    granted = "portfolio_access" in payload.model_fields_set or "portfolio_ids" in payload.model_fields_set
+    if granted and user.role != "eigentuemer":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Nur Eigentümer dürfen Portfolios zuweisen")
+    _require_portfolios(payload.portfolio_access, payload.portfolio_ids)
     return register_user(
         username=payload.username,
         email=payload.email,
         full_name=payload.full_name,
         password=payload.password,
         role=payload.role,
+        portfolio_access=payload.portfolio_access,
+        portfolio_ids=payload.portfolio_ids,
     )
+
+
+def _require_portfolios(mode: str | None, ids: list[str] | None) -> None:
+    """A selected assignment names portfolios that exist."""
+    if mode != "selected":
+        return
+    known = {portfolio.id for portfolio in store.list_portfolios()}
+    unknown = sorted(set(ids or ()) - known)
+    if unknown:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail="Unbekannte Portfolios: " + ", ".join(unknown))
 
 
 def _load_target(user_id: str) -> dict:
@@ -371,6 +391,19 @@ def patch_user(
         )
     target = _load_target(user_id)
     _require_may_manage(user, target)
+    if {"portfolio_access", "portfolio_ids"} & changes.keys():
+        if user.role != "eigentuemer":
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                                detail="Nur Eigentümer dürfen Portfolios zuweisen")
+        if "portfolio_access" not in changes:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                                detail="Portfolios werden zusammen mit der Zugriffsart geändert")
+        _require_portfolios(changes["portfolio_access"], changes.get("portfolio_ids"))
+        changes.update(normalize_access(changes.get("role", target["role"]), changes["portfolio_access"],
+                                        changes.get("portfolio_ids")),
+                       portfolio_access_origin="owner_assignment")
+    elif changes.get("role") == "eigentuemer":
+        changes.update(normalize_access("eigentuemer", "all", None), portfolio_access_origin="owner")
 
     demotes = changes.get("role", target["role"]) != target["role"]
     deactivates = changes.get("is_active") is False and target["is_active"]

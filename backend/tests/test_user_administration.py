@@ -117,7 +117,7 @@ def test_sql_store_sets_password_hash_but_update_ignores_it():
     from backend.db.orm_models import Base, UserORM
 
     engine = create_engine("sqlite://")
-    Base.metadata.create_all(engine, tables=[Base.metadata.tables[UserORM.__tablename__]])
+    Base.metadata.create_all(engine)      # accounts with their portfolio access tables
     store = SQLUserStore(sessionmaker(bind=engine))
     now = datetime.now(timezone.utc)
     store.create({
