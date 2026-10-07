@@ -77,5 +77,5 @@ def ensure_access_schema(engine) -> None:
         before = set(inspect(connection).get_table_names())
         for model in (UserAccessORM, UserPortfolioORM, ResourcePortfolioORM, UploadAccessORM):
             cast(Table, model.__table__).create(connection, checkfirst=True)
-        if "user_portfolio_access" not in before:
+        if "users" in before and "user_portfolio_access" not in before:
             adopt_legacy_access(connection)
