@@ -21,7 +21,7 @@ def _rebuild_search_index() -> None:
     entries: list[IndexEntry] = []
 
     for p in store.list_properties():
-        text = " ".join(filter(None, [p.name, getattr(p, "street", None), getattr(p, "city", None)]))
+        text = " ".join(filter(None, [p.name, p.address_line, p.postal_code, p.city]))
         entries.append(IndexEntry("property", p.id, p.name, getattr(p, "city", "") or "", f"/properties/{p.id}", text))
 
     for t in store.list_tenants():
@@ -53,6 +53,11 @@ def reindex_search() -> dict:
 
 _MAX_RESULTS_PER_TYPE = 10  # Cap per entity type to limit scan overhead
 _MAX_TOTAL_RESULTS = 50  # Stop scanning once we have enough results
+
+
+def _contact_display(contact) -> str:
+    name = " ".join(part.strip() for part in [contact.first_name, contact.last_name] if part and part.strip())
+    return name or (contact.company_name or "").strip() or (contact.email or "").strip() or "Kontakt"
 
 
 def _search_entities(entity_list, query, entity_type, fields, url, display_fn, detail_fn, results):
@@ -89,7 +94,7 @@ def global_search(
     # ILIKE/text-search queries in a dedicated SearchService.
     _search_entities(
         store.list_properties(), query, "property",
-        ["name", "street", "city"],
+        ["name", "address_line", "postal_code", "city"],
         lambda p: f"/properties/{p.id}",
         lambda p: p.name,
         lambda p: getattr(p, "city", "") or "",
@@ -170,8 +175,8 @@ def global_search(
 
     # Entity types that may not exist in all store backends
     for entity_type, list_fn, fields, url, display_fn, detail_fn in [
-        ("contact", store.list_contacts, ["name", "email", "company"], "/contacts",
-         lambda x: getattr(x, "name", "") or str(x.id)[:8], lambda x: getattr(x, "company", "") or ""),
+        ("contact", store.list_contacts, ["first_name", "last_name", "company_name", "email"], "/contacts",
+         _contact_display, lambda x: x.company_name or ""),
         ("deposit", store.list_deposits, ["notes"], "/deposits",
          lambda x: f"Kaution {str(x.id)[:8]}", lambda x: getattr(x, "status", "") or ""),
         ("category", store.list_categories, ["name", "description"], "/categories",
