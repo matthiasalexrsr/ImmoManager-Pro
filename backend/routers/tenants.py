@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from ..concurrency import one_at_a_time
 from ..dependencies import store
-from ..models import Tenant, TenantCreate, TenantPatch
+from ..models import Tenant, TenantCreate, TenantDocumentPage, TenantOverview, TenantPatch
 from ..services.deletion_guard import ensure_deletable
 from ..services.payment_allocations import tenant_account
 from ..storage import NotFoundError, ValidationError
@@ -75,6 +75,34 @@ def get_tenant_account(tenant_id: str, as_of: date | None = Query(None)) -> dict
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return tenant_account(store, tenant_id, as_of or date.today())
+
+
+@router.get("/{tenant_id}/overview", response_model=TenantOverview)
+def get_tenant_overview(tenant_id: str) -> dict:
+    """Tenant details, all contracts and complete document counts and type choices."""
+    try:
+        return store.get_tenant_overview(tenant_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.get("/{tenant_id}/documents", response_model=TenantDocumentPage)
+def list_tenant_documents(
+    tenant_id: str,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(25, ge=1, le=1000),
+    q: str | None = Query(None),
+    document_type: str | None = Query(None),
+    contract_id: str | None = Query(None),
+) -> dict:
+    """Newest documents owned directly, or inherited from contracts without an explicit owner."""
+    try:
+        return store.list_tenant_documents(
+            tenant_id, skip=skip, limit=limit, q=q, document_type=document_type, contract_id=contract_id,
+        )
+    except (NotFoundError, ValidationError) as exc:
+        status_code = status.HTTP_404_NOT_FOUND if isinstance(exc, NotFoundError) else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
 
 
 @router.get("/{tenant_id}", response_model=Tenant)

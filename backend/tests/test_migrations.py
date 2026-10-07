@@ -28,6 +28,7 @@ def migrate(tmp_path, monkeypatch):
         command.upgrade(config, revision)
         return db_path
 
+    run.downgrade = lambda revision: command.downgrade(config, revision)  # type: ignore[attr-defined]
     run.head = ScriptDirectory.from_config(config).get_current_head()  # type: ignore[attr-defined]
     run.db_path = db_path  # type: ignore[attr-defined]
     return run
@@ -153,3 +154,59 @@ def test_database_created_by_create_all_upgrades_cleanly(migrate):
 
     assert _version(migrate.db_path) == migrate.head
     assert _missing_from(_schema(migrate.db_path)) == {}
+
+
+def test_document_tenant_upgrade_keeps_legacy_null_links(migrate):
+    db_path = migrate("a1d6c3f8e2b4")
+    _seed_previous_schema(db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript("""
+            INSERT INTO documents (id, contract_id, title, file_url, created_at, updated_at)
+                VALUES ('legacy', 'c1', 'Alter Mietvertrag', '/legacy.pdf', '2025-01-01', '2025-01-01');
+            INSERT INTO documents (id, title, file_url, created_at, updated_at)
+                VALUES ('general', 'Allgemein', '/general.pdf', '2025-01-01', '2025-01-01');
+            INSERT INTO invoices (id, supplier, invoice_date, net_amount, vat_amount, gross_amount, status,
+                                  source_document_id, created_at, updated_at)
+                VALUES ('invoice', 'Firma', '2025-01-01', 100, 19, 119, 'open', 'general', '2025-01-01', '2025-01-01');
+        """)
+    migrate()
+    migrate()
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute("SELECT id, tenant_id, contract_id FROM documents ORDER BY id").fetchall() == [
+            ("general", None, None), ("legacy", None, "c1"),
+        ]
+        assert any(row[2] == "tenants" and row[3] == "tenant_id" and row[6] == "SET NULL"
+                   for row in conn.execute("PRAGMA foreign_key_list(documents)"))
+        assert "idx_documents_tenant" in {row[1] for row in conn.execute("PRAGMA index_list(documents)")}
+        assert conn.execute("SELECT source_document_id FROM invoices WHERE id='invoice'").fetchone() == ("general",)
+        conn.execute("PRAGMA foreign_keys=ON")
+        conn.execute("UPDATE documents SET tenant_id='t1' WHERE id='general'")
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute("UPDATE documents SET tenant_id='missing' WHERE id='general'")
+    assert _version(db_path) == migrate.head
+
+
+def test_document_tenant_downgrade_refuses_to_lose_associations(migrate):
+    db_path = migrate()
+    _seed_previous_schema(db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("""INSERT INTO documents (id, tenant_id, title, file_url, created_at, updated_at)
+                        VALUES ('direct', 't1', 'Antrag', '/direct.pdf', '2025-01-01', '2025-01-01')""")
+    with pytest.raises(RuntimeError, match="tenant-linked documents exist"):
+        migrate.downgrade("a1d6c3f8e2b4")
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute("SELECT tenant_id FROM documents WHERE id='direct'").fetchone() == ("t1",)
+        assert "idx_documents_tenant" in {row[1] for row in conn.execute("PRAGMA index_list(documents)")}
+    assert _version(db_path) == migrate.head
+
+
+def test_document_tenant_downgrade_keeps_unassigned_documents(migrate):
+    db_path = migrate()
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("""INSERT INTO documents (id, title, file_url, created_at, updated_at)
+                        VALUES ('legacy', 'Alt', '/legacy.pdf', '2025-01-01', '2025-01-01')""")
+    migrate.downgrade("a1d6c3f8e2b4")
+    assert "tenant_id" not in _schema(db_path)["documents"]
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute("SELECT id, title FROM documents").fetchall() == [("legacy", "Alt")]
+    assert _version(db_path) == "a1d6c3f8e2b4"

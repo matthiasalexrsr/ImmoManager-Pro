@@ -11,8 +11,10 @@ from ..db.orm_models import (
     HandoverProtocolORM,
     LeadORM,
     MeterReadingORM,
+    PropertyORM,
     RentAdjustmentORM,
     TenantORM,
+    UnitORM,
     ViewingAppointmentORM,
 )
 from ..domain.lease_engine import find_unit_overlap, unit_overlap_message
@@ -87,6 +89,29 @@ class TenantRepository:
     # --- Contracts ---
     def list_contracts(self) -> list[Contract]:
         return self._contracts.list_all()
+
+    def tenant_contract_overviews(self, tenant_id: str) -> list[dict]:
+        from ..services.rent_history import overview_rent
+
+        rows = self.db.query(ContractORM, PropertyORM.name, UnitORM.label).outerjoin(
+            PropertyORM, ContractORM.property_id == PropertyORM.id,
+        ).outerjoin(UnitORM, ContractORM.unit_id == UnitORM.id).filter(
+            ContractORM.tenant_id == tenant_id,
+        ).order_by(ContractORM.start_date.desc(), ContractORM.id.desc()).all()
+        periods = self._rent_periods._read(self.db.query(ContractRentPeriodORM).join(
+            ContractORM, ContractRentPeriodORM.contract_id == ContractORM.id,
+        ).filter(ContractORM.tenant_id == tenant_id))
+        periods_by_contract: dict[str, list] = {}
+        for period in periods:
+            periods_by_contract.setdefault(period.contract_id, []).append(period)
+        enriched = []
+        for contract_orm, property_name, unit_label in rows:
+            contract = self._contracts._to_pydantic(contract_orm)
+            enriched.append({
+                **contract.model_dump(), "property_name": property_name, "unit_label": unit_label,
+                "current_rent": overview_rent(contract, periods_by_contract.get(contract.id, [])),
+            })
+        return enriched
 
     def create_contract(self, data: ContractCreate) -> Contract:
         pr = self._portfolio_repo

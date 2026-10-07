@@ -60,21 +60,13 @@ async def import_document(
     property_id: str | None = Form(None),
     unit_id: str | None = Form(None),
     contract_id: str | None = Form(None),
+    tenant_id: str | None = Form(None),
 ) -> Document:
     """Import a document in one step: upload + OCR + metadata persistence."""
     storage = get_file_storage()
     ext = require_allowed_extension(file.filename, DOCUMENT_EXTENSIONS)
-    contents = await read_limited(file)
     key = f"documents/{uuid.uuid4().hex}_{(file.filename or 'file').replace(' ', '_')}"
-    storage.save(key, BytesIO(contents), content_type=file.content_type or "application/octet-stream")
     file_url = storage.get_url(key)
-
-    if ext in {"pdf", "png", "jpg", "jpeg", "tiff", "tif", "bmp"}:
-        ocr_text = _perform_ocr(storage, key, ext)
-        if ocr_text:
-            ocr_key = f"{key.rsplit('.', 1)[0]}_ocr.txt"
-            storage.save(ocr_key, BytesIO(ocr_text.encode("utf-8")), content_type="text/plain")
-
     payload = DocumentCreate(
         title=title,
         document_type=document_type,
@@ -84,9 +76,18 @@ async def import_document(
         property_id=property_id,
         unit_id=unit_id,
         contract_id=contract_id,
+        tenant_id=tenant_id,
         file_url=file_url,
     )
     try:
+        await run_in_threadpool(store.validate_document_associations, payload)
+        contents = await read_limited(file)
+        storage.save(key, BytesIO(contents), content_type=file.content_type or "application/octet-stream")
+        if ext in {"pdf", "png", "jpg", "jpeg", "tiff", "tif", "bmp"}:
+            ocr_text = _perform_ocr(storage, key, ext)
+            if ocr_text:
+                ocr_key = f"{key.rsplit('.', 1)[0]}_ocr.txt"
+                storage.save(ocr_key, BytesIO(ocr_text.encode("utf-8")), content_type="text/plain")
         return await run_in_threadpool(store.create_document, payload)
     except ValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -142,8 +143,9 @@ def update_document(document_id: str, payload: DocumentCreate) -> Document:
 def patch_document(document_id: str, payload: DocumentPatch) -> Document:
     try:
         return store._patch_entity("document", document_id, payload)
-    except NotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except (NotFoundError, ValidationError) as exc:
+        status_code = status.HTTP_404_NOT_FOUND if isinstance(exc, NotFoundError) else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
 
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)

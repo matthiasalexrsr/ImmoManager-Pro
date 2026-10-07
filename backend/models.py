@@ -280,6 +280,7 @@ class DocumentCreate(BaseModel):
     property_id: Optional[str] = None
     unit_id: Optional[str] = None
     contract_id: Optional[str] = None
+    tenant_id: Optional[str] = None
     title: str
     document_type: Optional[str] = None
     document_date: Optional[date] = None
@@ -298,6 +299,34 @@ class Document(DocumentCreate):
     ai_analyzed_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class TenantContractRent(BaseModel):
+    cold_rent: float
+    service_charge: float
+    heating_charge: float
+    valid_from: date
+
+
+class TenantContractOverview(Contract):
+    property_name: Optional[str] = None
+    unit_label: Optional[str] = None
+    current_rent: Optional[TenantContractRent] = None
+
+
+class TenantOverview(BaseModel):
+    tenant: Tenant
+    contracts: list[TenantContractOverview]
+    document_count: int
+    document_types: list[str]
+
+
+class TenantDocumentPage(BaseModel):
+    items: list[Document]
+    total: int
+    skip: int
+    limit: int
+    has_more: bool
 
 
 class TaskCreate(BaseModel):
@@ -547,6 +576,7 @@ class DocumentPatch(BaseModel):
     property_id: Optional[str] = None
     unit_id: Optional[str] = None
     contract_id: Optional[str] = None
+    tenant_id: Optional[str] = None
     title: Optional[str] = None
     document_type: Optional[str] = None
     document_date: Optional[date] = None

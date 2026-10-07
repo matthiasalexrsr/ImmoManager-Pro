@@ -41,6 +41,7 @@ _DEPENDENTS: dict[str, tuple[str, list[tuple[str, str, tuple[str, str]]]]] = {
     "tenant": ("Mieter", [
         ("list_contracts", "tenant_id", ("Vertrag", "Verträge")),
         ("list_bookings", "tenant_id", ("Buchung", "Buchungen")),
+        ("list_documents", "tenant_id", ("Dokument", "Dokumente")),
     ]),
     "contract": ("Vertrag", [
         ("list_receivables", "contract_id", ("Forderung", "Forderungen")),

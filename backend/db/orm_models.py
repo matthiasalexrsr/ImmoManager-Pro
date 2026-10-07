@@ -293,12 +293,14 @@ class DocumentORM(Base):
     __table_args__ = (
         Index("idx_documents_property", "property_id"),
         Index("idx_documents_contract", "contract_id"),
+        Index("idx_documents_tenant", "tenant_id"),
     )
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     property_id: Mapped[str | None] = mapped_column(ForeignKey("properties.id", ondelete="SET NULL"))
     unit_id: Mapped[str | None] = mapped_column(ForeignKey("units.id", ondelete="SET NULL"))
     contract_id: Mapped[str | None] = mapped_column(ForeignKey("contracts.id", ondelete="SET NULL"))
+    tenant_id: Mapped[str | None] = mapped_column(ForeignKey("tenants.id", ondelete="SET NULL"))
     title: Mapped[str] = mapped_column(Text, nullable=False)
     document_type: Mapped[str | None] = mapped_column(Text)
     document_date: Mapped[date | None] = mapped_column(Date)

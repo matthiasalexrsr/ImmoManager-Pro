@@ -664,13 +664,28 @@ class InMemoryStore:
     def list_documents(self) -> List[Document]:
         return list(self.documents.values())
 
-    def create_document(self, data: DocumentCreate) -> Document:
+    def validate_document_associations(self, data: DocumentCreate) -> None:
         if data.property_id and data.property_id not in self.properties:
             raise ValidationError("Immobilie existiert nicht")
         if data.unit_id and data.unit_id not in self.units:
             raise ValidationError("Einheit existiert nicht")
+        if data.tenant_id and data.tenant_id not in self.tenants:
+            raise ValidationError("Mieter existiert nicht")
         if data.contract_id and data.contract_id not in self.contracts:
             raise ValidationError("Vertrag existiert nicht")
+        if data.unit_id and data.property_id and self.units[data.unit_id].property_id != data.property_id:
+            raise ValidationError("Einheit gehört nicht zur Immobilie")
+        if data.contract_id:
+            contract = self.contracts[data.contract_id]
+            if data.tenant_id and contract.tenant_id != data.tenant_id:
+                raise ValidationError("Vertrag gehört nicht zum Mieter")
+            if data.property_id and contract.property_id != data.property_id:
+                raise ValidationError("Vertrag gehört nicht zur Immobilie")
+            if data.unit_id and contract.unit_id != data.unit_id:
+                raise ValidationError("Vertrag gehört nicht zur Einheit")
+
+    def create_document(self, data: DocumentCreate) -> Document:
+        self.validate_document_associations(data)
         document = Document(id=_generate_id(), **data.model_dump())
         self.documents[document.id] = document
         return document
@@ -684,12 +699,7 @@ class InMemoryStore:
     def update_document(self, document_id: str, data: DocumentCreate) -> Document:
         if document_id not in self.documents:
             raise NotFoundError("Dokument nicht gefunden")
-        if data.property_id and data.property_id not in self.properties:
-            raise ValidationError("Immobilie existiert nicht")
-        if data.unit_id and data.unit_id not in self.units:
-            raise ValidationError("Einheit existiert nicht")
-        if data.contract_id and data.contract_id not in self.contracts:
-            raise ValidationError("Vertrag existiert nicht")
+        self.validate_document_associations(data)
         old = self.documents[document_id]
         document = Document(
             id=document_id, created_at=old.created_at,
@@ -702,6 +712,67 @@ class InMemoryStore:
         if document_id not in self.documents:
             raise NotFoundError("Dokument nicht gefunden")
         del self.documents[document_id]
+
+    def _tenant_documents(self, tenant_id: str) -> list[Document]:
+        contract_ids = {contract.id for contract in self.contracts.values() if contract.tenant_id == tenant_id}
+        return [document for document in self.documents.values()
+                if document.tenant_id == tenant_id
+                or (document.tenant_id is None and document.contract_id in contract_ids)]
+
+    def get_tenant_overview(self, tenant_id: str) -> dict:
+        from .services.rent_history import overview_rent
+
+        tenant = self.get_tenant(tenant_id)
+        contracts = sorted(
+            (contract for contract in self.contracts.values() if contract.tenant_id == tenant_id),
+            key=lambda contract: (contract.start_date, contract.id), reverse=True,
+        )
+        periods_by_contract: dict[str, list] = {}
+        for period in self.contract_rent_periods.values():
+            periods_by_contract.setdefault(period.contract_id, []).append(period)
+        enriched = []
+        for contract in contracts:
+            property_ = self.properties.get(contract.property_id)
+            unit = self.units.get(contract.unit_id)
+            enriched.append({
+                **contract.model_dump(),
+                "property_name": property_.name if property_ else None,
+                "unit_label": unit.label if unit else None,
+                "current_rent": overview_rent(contract, periods_by_contract.get(contract.id, [])),
+            })
+        documents = self._tenant_documents(tenant_id)
+        return {
+            "tenant": tenant, "contracts": enriched, "document_count": len(documents),
+            "document_types": sorted({document.document_type for document in documents if document.document_type}),
+        }
+
+    def list_tenant_documents(
+        self, tenant_id: str, skip: int = 0, limit: int = 25, q: str | None = None,
+        document_type: str | None = None, contract_id: str | None = None,
+    ) -> dict:
+        self.get_tenant(tenant_id)
+        if contract_id:
+            contract = self.contracts.get(contract_id)
+            if contract is None or contract.tenant_id != tenant_id:
+                raise ValidationError("Vertrag gehört nicht zum Mieter")
+        documents = self._tenant_documents(tenant_id)
+        if contract_id:
+            documents = [document for document in documents if document.contract_id == contract_id]
+        if document_type:
+            documents = [document for document in documents if document.document_type == document_type]
+        search = (q or "").strip().casefold()
+        if search:
+            documents = [document for document in documents if any(
+                search in (getattr(document, field) or "").casefold()
+                for field in ("title", "document_type", "tags", "description")
+            )]
+        documents.sort(key=lambda document: (
+            document.created_at.replace(tzinfo=timezone.utc) if document.created_at.tzinfo is None
+            else document.created_at.astimezone(timezone.utc), document.id,
+        ), reverse=True)
+        total = len(documents)
+        return {"items": documents[skip:skip + limit], "total": total, "skip": skip, "limit": limit,
+                "has_more": skip + limit < total}
 
     def list_tasks(self) -> List[Task]:
         return list(self.tasks.values())
@@ -1252,6 +1323,8 @@ class InMemoryStore:
         updated = type(old).model_validate(
             {**old.model_dump(), **updates, "updated_at": datetime.now(timezone.utc)}
         )
+        if entity_type == "document":
+            self.validate_document_associations(updated)
         collection[entity_id] = updated
         return updated
 

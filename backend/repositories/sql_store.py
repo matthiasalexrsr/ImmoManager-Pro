@@ -200,7 +200,9 @@ class SQLAlchemyStore:
         # Validate the merged record before writing: an invalid value must not
         # be committed (it would break every later read of the table).
         current = repo.get(entity_id)
-        repo.read_class.model_validate({**current.model_dump(), **patch.model_dump(exclude_unset=True)})
+        merged = repo.read_class.model_validate({**current.model_dump(), **patch.model_dump(exclude_unset=True)})
+        if entity_type == "document":
+            self.document.validate_document_associations(merged)
         result = repo.patch(entity_id, patch)
         self._commit()
         return result
@@ -416,6 +418,25 @@ class SQLAlchemyStore:
 
     def create_document(self, data: DocumentCreate) -> Document:
         return self.document.create_document(data)
+
+    def validate_document_associations(self, data: DocumentCreate) -> None:
+        self.document.validate_document_associations(data)
+
+    def get_tenant_overview(self, tenant_id: str) -> dict:
+        tenant = self.get_tenant(tenant_id)
+        return {
+            "tenant": tenant, "contracts": self.tenant.tenant_contract_overviews(tenant_id),
+            **self.document.tenant_document_summary(tenant_id),
+        }
+
+    def list_tenant_documents(
+        self, tenant_id: str, skip: int = 0, limit: int = 25, q: str | None = None,
+        document_type: str | None = None, contract_id: str | None = None,
+    ) -> dict:
+        self.get_tenant(tenant_id)
+        return self.document.list_tenant_documents(
+            tenant_id, skip=skip, limit=limit, q=q, document_type=document_type, contract_id=contract_id,
+        )
 
     def get_document(self, document_id: str) -> Document:
         return self.document.get_document(document_id)

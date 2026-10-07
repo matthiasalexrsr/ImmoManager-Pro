@@ -46,6 +46,27 @@ def charge_for(store: Any, contract: Any, day: date) -> Optional[ChargeConfig]:
     return charge_on(rent_steps(store, contract), max(day, contract.start_date))
 
 
+def overview_rent(contract: Any, periods: list[ContractRentPeriod], day: date | None = None) -> dict | None:
+    """Display the stored rent at today, or at the end of a historical contract.
+
+    Missing history stays unknown: a unit's current defaults cannot establish
+    what a previous tenant paid. Callers can load every contract's periods once.
+    """
+    effective_day = max(day or date.today(), contract.start_date)
+    if contract.end_date:
+        effective_day = min(effective_day, contract.end_date)
+    applicable = [period for period in periods if period.valid_from <= effective_day]
+    if not applicable:
+        return None
+    period = max(applicable, key=lambda value: (value.valid_from, value.id))
+    return {
+        "cold_rent": period.cold_rent,
+        "service_charge": period.service_charge_advance,
+        "heating_charge": period.heating_advance,
+        "valid_from": period.valid_from,
+    }
+
+
 def start_rent_history(store: Any, contract: Any) -> None:
     """Give a new contract its first rent period, taken from its unit."""
     if store.list_contract_rent_periods(contract.id):
