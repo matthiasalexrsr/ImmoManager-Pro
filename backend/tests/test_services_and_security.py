@@ -371,13 +371,13 @@ class TestEmailService:
         assert cfg.is_configured is True
 
     def test_send_email_not_configured_does_not_raise(self):
-        # Default config is not configured, should just log and return True
+        # Logging a request does not mean SMTP accepted a delivery.
         result = send_email(
             to="test@example.com",
             subject="Test",
             body_html="<p>Hello</p>",
         )
-        assert result is True
+        assert result is False
 
     def test_send_email_with_body_text(self):
         result = send_email(
@@ -386,4 +386,4 @@ class TestEmailService:
             body_html="<p>Hello</p>",
             body_text="Hello",
         )
-        assert result is True
+        assert result is False
