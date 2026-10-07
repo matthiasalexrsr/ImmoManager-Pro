@@ -944,7 +944,9 @@
       "placeholder": "Suche nach Immobilien, Einheiten, Mietern, Verträgen, Buchungen…",
       "recent": "Letzte Suchanfragen",
       "results": "Treffer",
-      "noResults": "Keine Treffer gefunden."
+      "noResults": "Keine Treffer gefunden.",
+      "shownOf": "{{shown}} von {{total}}",
+      "loadMore": "Weitere laden"
     }
   },
   "notifications": {

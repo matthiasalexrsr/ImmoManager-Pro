@@ -944,7 +944,9 @@
       "placeholder": "Buscar inmuebles, unidades, inquilinos, contratos, asientos contables…",
       "recent": "Búsquedas recientes",
       "results": "Resultados",
-      "noResults": "No se encontraron resultados."
+      "noResults": "No se encontraron resultados.",
+      "shownOf": "{{shown}} de {{total}}",
+      "loadMore": "Cargar más"
     }
   },
   "notifications": {

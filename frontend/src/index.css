@@ -1348,6 +1348,27 @@ table.data-table tbody tr:last-child td {
   margin-top: 0.25rem;
 }
 
+.search-bar-group-count {
+  text-transform: none;
+  font-weight: 400;
+}
+
+.search-bar-load-more {
+  display: block;
+  width: 100%;
+  padding: 0.4rem 1.25rem;
+  border: none;
+  background: none;
+  color: var(--color-primary, inherit);
+  font-size: 0.8rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.search-bar-load-more:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
 .search-bar-group-header:first-child {
   border-top: none;
   margin-top: 0;

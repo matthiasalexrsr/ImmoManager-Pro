@@ -944,7 +944,9 @@
       "placeholder": "Search for properties, units, tenants, contracts, bookings...",
       "recent": "Recent Searches",
       "results": "Results",
-      "noResults": "No results found."
+      "noResults": "No results found.",
+      "shownOf": "{{shown}} of {{total}}",
+      "loadMore": "Load more"
     }
   },
   "notifications": {
