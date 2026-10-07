@@ -1,214 +1,57 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { buildDashboardWorkflow } from '../utils/dashboardWorkflow';
+import { ArrowRightIcon, PortfolioIcon, ContractIcon, AccountIcon, StatementIcon, MaintenanceIcon } from './Icons';
 import './DashboardWorkflow.css';
-import {
-  AccountIcon,
-  ArrowRightIcon,
-  ContractIcon,
-  DocumentIcon,
-  InvoiceIcon,
-  MaintenanceIcon,
-  PortfolioIcon,
-  PropertyIcon,
-  StatementIcon,
-  TenantIcon,
-  UnitIcon,
-} from './Icons';
 
-const ICONS = {
-  account: AccountIcon,
-  billing: StatementIcon,
-  charge: AccountIcon,
-  contract: ContractIcon,
-  document: DocumentIcon,
-  dunning: InvoiceIcon,
-  finance: AccountIcon,
-  invoice: InvoiceIcon,
-  maintenance: MaintenanceIcon,
-  operations: MaintenanceIcon,
-  payment: AccountIcon,
-  portfolio: PortfolioIcon,
-  property: PropertyIcon,
-  rental: ContractIcon,
-  tenant: TenantIcon,
-  unit: UnitIcon,
-};
-
-function interpolate(fallback, params) {
-  let value = fallback || '';
-  if (!params) return value;
-  Object.entries(params).forEach(([key, replacement]) => {
-    value = value.replace(`{{${key}}}`, replacement ?? '');
-  });
-  return value;
-}
+const ICONS = { portfolio: PortfolioIcon, rental: ContractIcon, finance: AccountIcon, billing: StatementIcon, operations: MaintenanceIcon };
+const AREA_NAMES = { portfolio: 'Bestand', rental: 'Vermietung', finance: 'Finanzen', billing: 'Abrechnung', operations: 'Betrieb' };
+const TONE_ORDER = { critical: 0, warning: 1, info: 2 };
 
 function translate(t, key, fallback, params) {
-  if (!key) return interpolate(fallback, params);
   const value = t(key, params);
-  return value === key ? interpolate(fallback, params) : value;
+  if (value && value !== key) return value;
+  return Object.entries(params || {}).reduce((result, [name, replacement]) => result.replace(`{{${name}}}`, replacement), fallback || '');
 }
 
-function ProcessJourney({ steps, nextStep, t }) {
-  return (
-    <div className="process-journey" aria-labelledby="process-journey-heading">
-      <div className="process-journey-header">
-        <div>
-          <h3 id="process-journey-heading">
-            {translate(t, 'pages.dashboard.process.title', 'Kernprozess')}
-          </h3>
-          <p>
-            {translate(
-              t,
-              'pages.dashboard.process.subtitle',
-              'Objekt → Einheit → Mieter → Vertrag → Sollstellung → Zahlung → Mahnung',
-            )}
-          </p>
-        </div>
-        {nextStep ? (
-          <Link to={nextStep.to} className={`process-next-action process-next-${nextStep.tone}`}>
-            <span>
-              <small>{translate(t, 'pages.dashboard.process.nextLabel', 'Nächster Schritt')}</small>
-              <strong>{translate(t, nextStep.labelKey, nextStep.labelFallback)}</strong>
-            </span>
-            <ArrowRightIcon size={16} />
-          </Link>
-        ) : (
-          <div className="process-next-complete">
-            <small>{translate(t, 'pages.dashboard.process.nextLabel', 'Nächster Schritt')}</small>
-            <strong>{translate(t, 'pages.dashboard.process.complete', 'Alles bereit')}</strong>
-          </div>
-        )}
-      </div>
-      <div className="process-steps" role="list">
-        {steps.map(step => {
-          const Icon = ICONS[step.id] || PortfolioIcon;
-          const isCurrent = step.status === 'active' || step.status === 'attention';
-          return (
-            <Link
-              key={step.id}
-              to={step.to}
-              role="listitem"
-              className={`process-step process-step-${step.status}`}
-              aria-current={isCurrent ? 'step' : undefined}
-            >
-              <span className="process-step-icon"><Icon size={18} /></span>
-              <span className="process-step-label">{translate(t, step.labelKey, step.fallback)}</span>
-              <strong>{step.count}</strong>
-            </Link>
-          );
-        })}
-      </div>
-    </div>
-  );
+function areaStep(step, stats, t) {
+  // The former checklist labels described its done flag, not these open counts.
+  const key = step.labelKey.split('.').pop();
+  if (key === 'receivablesClear') return { label: 'Offene Forderungen', count: stats.openReceivables };
+  if (key === 'tasksClear') return { label: 'Offene Aufgaben', count: stats.openTasks };
+  if (key === 'maintenanceClear') return stats.overdueMaintenance > 0
+    ? { label: 'Überfällige Instandhaltung', count: stats.overdueMaintenance }
+    : { label: 'Offene Instandhaltung', count: stats.openMaintenance };
+  if (key === 'documents' && stats.missingContractDocuments > 0) return { label: 'Fehlende Vertragsdokumente', count: stats.missingContractDocuments };
+  if (key === 'invoices') return { label: 'Offene Rechnungen', count: stats.openInvoices };
+  if (key === 'statements') return { label: 'Abrechnungen', count: stats.utilityStatements };
+  return { label: translate(t, step.labelKey, step.fallback), count: step.count };
 }
 
-function WorkflowCard({ item, t }) {
-  const Icon = ICONS[item.icon] || PortfolioIcon;
-  const statusLabel = translate(
-    t,
-    `pages.dashboard.workflow.status.${item.status}`,
-    item.status === 'complete' ? 'Bereit' : item.status === 'attention' ? 'Prüfen' : item.status === 'blocked' ? 'Starten' : 'Aktiv',
-  );
+export default function DashboardWorkflow({ stats, expiring, notifications, t, section = 'attention', statsReady = true, complete = true }) {
+  const [expanded, setExpanded] = useState(false);
+  const { workflows, attentionItems, processSteps } = buildDashboardWorkflow({ stats, expiring, notifications });
+  if (section === 'areas') return <section className="dashboard-work-areas" aria-labelledby="dashboard-areas-heading">
+    <div className="dashboard-section-heading"><div><h2 id="dashboard-areas-heading">Verwaltungsbereiche</h2><p>Die passenden Werkzeuge für jeden Arbeitsschritt.</p></div></div>
+    <div className="dashboard-area-list">{workflows.map(item => {
+      const Icon = ICONS[item.id] || PortfolioIcon;
+      return <details className="dashboard-area" key={item.id}>
+        <summary><span className="dashboard-area-icon"><Icon size={18} /></span><strong>{AREA_NAMES[item.id]}</strong>{statsReady && <span className="dashboard-area-metric">{translate(t, item.metricKey, item.metricFallback, { count: item.metricCount })}</span>}<span className="dashboard-area-chevron" aria-hidden="true">⌄</span></summary>
+        <div className="dashboard-area-content"><p>{translate(t, item.descriptionKey, item.descriptionFallback)}</p><div className="dashboard-area-links">{item.steps.map(step => {
+          const display = areaStep(step, stats, t);
+          return <Link key={step.labelKey} to={step.to} aria-label={statsReady ? `${display.label} ${display.count}` : display.label}><span>{display.label}</span>{statsReady && <strong>{display.count}</strong>}</Link>;
+        })}</div><Link className="dashboard-area-action" to={item.actionTo}>Bereich öffnen <ArrowRightIcon size={14} /></Link></div>
+      </details>;
+    })}</div>
+    <details className="dashboard-setup"><summary>Einrichtung im Überblick</summary><p>Vorhandene Grundlagen und direkte Einstiege in Ihre Verwaltung.</p><ol>{processSteps.map(step => <li key={step.id}><Link to={step.to}><span>{translate(t, step.labelKey, step.fallback)}</span>{statsReady && <strong>{step.count}</strong>}<ArrowRightIcon size={13} /></Link></li>)}</ol></details>
+  </section>;
 
-  return (
-    <article className={`workflow-card workflow-card-${item.status}`}>
-      <div className="workflow-card-header">
-        <span className="workflow-icon"><Icon size={20} /></span>
-        <span className={`workflow-status workflow-status-${item.status}`}>{statusLabel}</span>
-      </div>
-      <h3>{translate(t, item.titleKey, item.titleFallback)}</h3>
-      <p>{translate(t, item.descriptionKey, item.descriptionFallback)}</p>
-      <div className="workflow-progress" aria-label={translate(t, 'pages.dashboard.workflow.progress', 'Fortschritt')}>
-        <div className="workflow-progress-track">
-          <span style={{ width: `${item.progress}%` }} />
-        </div>
-        <strong>{item.progress}%</strong>
-      </div>
-      <div className="workflow-metric">
-        {translate(t, item.metricKey, item.metricFallback, { count: item.metricCount })}
-      </div>
-      <div className="workflow-steps">
-        {item.steps.map(step => (
-          <Link
-            key={step.labelKey}
-            to={step.to}
-            className={`workflow-step ${step.done ? 'done' : ''}`}
-          >
-            <span className="workflow-step-dot" />
-            <span>{translate(t, step.labelKey, step.fallback)}</span>
-            <strong>{step.count}</strong>
-          </Link>
-        ))}
-      </div>
-      <Link to={item.actionTo} className="workflow-action">
-        <span>{translate(t, item.actionKey, item.actionFallback)}</span>
-        <ArrowRightIcon size={15} />
-      </Link>
-    </article>
-  );
-}
-
-function AttentionPanel({ items, t }) {
-  return (
-    <aside className="attention-panel" aria-labelledby="attention-heading">
-      <div className="workflow-section-header compact">
-        <div>
-          <h2 id="attention-heading">{translate(t, 'pages.dashboard.attention.title', 'Heute wichtig')}</h2>
-          <p>{translate(t, 'pages.dashboard.attention.subtitle', 'Die nächsten operativen Blocker in Reihenfolge der Dringlichkeit.')}</p>
-        </div>
-      </div>
-      {items.length === 0 ? (
-        <div className="attention-empty">
-          <strong>{translate(t, 'pages.dashboard.attention.emptyTitle', 'Alles im gruenen Bereich')}</strong>
-          <span>{translate(t, 'pages.dashboard.attention.emptyText', 'Keine akuten Rückstände aus den aktuellen Dashboard-Daten.')}</span>
-        </div>
-      ) : (
-        <div className="attention-list">
-          {items.map(item => {
-            const Icon = ICONS[item.icon] || DocumentIcon;
-            return (
-              <Link key={item.id} to={item.to} className={`attention-item attention-${item.tone}`}>
-                <span className="attention-icon"><Icon size={18} /></span>
-                <span className="attention-title">{translate(t, item.titleKey, item.titleFallback)}</span>
-                <strong>{item.value}</strong>
-                <ArrowRightIcon size={14} />
-              </Link>
-            );
-          })}
-        </div>
-      )}
-    </aside>
-  );
-}
-
-export default function DashboardWorkflow({ stats, aging, expiring, notifications, t }) {
-  const {
-    workflows,
-    attentionItems,
-    processSteps,
-    nextStep,
-  } = buildDashboardWorkflow({ stats, aging, expiring, notifications });
-
-  return (
-    <section className="workflow-cockpit" aria-labelledby="workflow-heading">
-      <div className="workflow-main">
-        <div className="workflow-section-header">
-          <div>
-            <h2 id="workflow-heading">{translate(t, 'pages.dashboard.workflow.title', 'Arbeitszentrale')}</h2>
-            <p>{translate(t, 'pages.dashboard.workflow.subtitle', 'Geführte Prozesssicht über Bestand, Vermietung, Finanzen, Abrechnung und Betrieb.')}</p>
-          </div>
-          <Link to="/settings" className="workflow-secondary-link">
-            {translate(t, 'pages.dashboard.workflow.configure', 'Arbeitsweise anpassen')}
-            <ArrowRightIcon size={14} />
-          </Link>
-        </div>
-        <ProcessJourney steps={processSteps} nextStep={nextStep} t={t} />
-        <div className="workflow-card-grid">
-          {workflows.map(item => <WorkflowCard key={item.id} item={item} t={t} />)}
-        </div>
-      </div>
-      <AttentionPanel items={attentionItems} t={t} />
-    </section>
-  );
+  const items = [...attentionItems].sort((left, right) => TONE_ORDER[left.tone] - TONE_ORDER[right.tone]);
+  const shown = expanded ? items : items.slice(0, 4);
+  return <section className="dashboard-attention" aria-labelledby="dashboard-attention-heading">
+    <div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">Im Fokus</p><h2 id="dashboard-attention-heading">Handlungsbedarf</h2><p>Offene Vorgänge nach ihrer Dringlichkeit.</p></div><Link to="/review" className="dashboard-review-link">Prüfliste <ArrowRightIcon size={14} /></Link></div>
+    {!complete && <p className="dashboard-attention-incomplete" role="status">Die Übersicht ist noch unvollständig. Ladezustände und Wiederholung finden Sie beim jeweiligen Bereich.</p>}
+    {shown.length ? <ul className="dashboard-attention-list">{shown.map(item => <li key={item.id}><Link to={item.to} className={`dashboard-attention-item tone-${item.tone}`}><span className="dashboard-attention-dot" aria-hidden="true" /><span>{translate(t, item.titleKey, item.titleFallback)}</span><strong>{item.value}</strong><ArrowRightIcon size={15} /></Link></li>)}</ul> : complete ? <div className="dashboard-attention-empty"><strong>Keine offenen Hinweise aus den geladenen Daten.</strong><p>Ihre Aufgaben und kommenden Vertragsfristen finden Sie darunter.</p></div> : null}
+    {items.length > 4 && <button type="button" className="dashboard-attention-more" aria-expanded={expanded} onClick={() => setExpanded(value => !value)}>{expanded ? 'Weniger anzeigen' : `Alle ${items.length} Hinweise anzeigen`}</button>}
+  </section>;
 }

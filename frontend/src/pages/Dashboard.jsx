@@ -1,97 +1,139 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
-import { useToast } from '../components/Toast';
 import StatusBadge from '../components/StatusBadge';
 import DashboardWorkflow from '../components/DashboardWorkflow';
-import {
-  PortfolioIcon, PropertyIcon, UnitIcon, TenantIcon,
-  ContractIcon, AccountIcon, MaintenanceIcon, ChartIcon,
-  ArrowRightIcon,
-} from '../components/Icons';
+import { ArrowRightIcon } from '../components/Icons';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend, LineChart, Line, CartesianGrid,
 } from 'recharts';
-import { formatDate, formatDateTime, formatMoneyCompact } from '../utils/format';
+import { formatDate, formatDateTime, formatMoney, formatMoneyCompact, formatNumber } from '../utils/format';
+import './dashboard.css';
 
-const CHART_COLORS = ['#2563eb', '#16a34a', '#d97706', '#dc2626', '#8b5cf6', '#0891b2'];
-const PIE_COLORS = ['#16a34a', '#d97706', '#e2e8f0']; // occupied, reserved, vacant
+const CHART_COLORS = ['var(--color-primary)', 'var(--color-success)', 'var(--color-warning)', 'var(--color-danger)', '#8b5cf6', '#0891b2'];
+const PIE_COLORS = ['var(--color-primary)', 'var(--color-warning)', 'var(--color-border)'];
+const FALLBACKS = {
+  'pages.dashboard.occupancyChart': 'Belegung',
+  'pages.dashboard.cashflow12': 'Zahlungsfluss · 12 Monate',
+  'pages.dashboard.receivablesAging': 'Alter offener Forderungen',
+  'analyticsLabels.forecast': 'Liquiditätsprognose',
+  'pages.dashboard.maintenanceCosts': 'Instandhaltungskosten',
+  'pages.dashboard.financeByCategory': 'Finanzen nach Kategorie',
+  'pages.dashboard.occupied': 'Vermietet', 'pages.dashboard.reserved': 'Reserviert',
+  'pages.dashboard.vacant': 'Frei', 'pages.dashboard.income': 'Einnahmen',
+  'pages.dashboard.expenses': 'Ausgaben', 'pages.dashboard.net': 'Netto',
+  'pages.dashboard.balance': 'Saldo', 'pages.dashboard.agingCurrent': 'Aktuell',
+  'pages.dashboard.aging1to30': '1–30 Tage', 'pages.dashboard.aging31to60': '31–60 Tage',
+  'pages.dashboard.aging61to90': '61–90 Tage', 'pages.dashboard.aging90plus': '90+ Tage',
+  'pages.dashboard.noUnits': 'Noch keine Einheiten vorhanden.',
+  'pages.dashboard.noBookings': 'Keine Buchungen vorhanden.',
+  'pages.dashboard.noReceivables': 'Keine offenen Forderungen.',
+  'pages.dashboard.noForecast': 'Keine Prognosedaten verfügbar.',
+  'pages.dashboard.noMaintenanceCosts': 'Keine Instandhaltungskosten vorhanden.',
+  'pages.dashboard.noFinanceData': 'Keine Finanzdaten vorhanden.',
+};
+const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+const numeric = value => (typeof value === 'number' || (typeof value === 'string' && value.trim() !== '')) && Number.isFinite(Number(value));
+const validStats = value => record(value) && ['property_count', 'unit_count', 'occupied_units', 'active_contracts'].every(key => numeric(value[key]) && Number(value[key]) >= 0);
+const validCashflow = value => record(value) && ['incomeTotal', 'expenseTotal', 'netTotal'].every(key => numeric(value[key]));
+const validAging = value => record(value) && numeric(value.openTotal) && record(value.buckets) && ['current', 'days1to30', 'days31to60', 'days61to90', 'days90plus'].every(key => numeric(value.buckets[key]));
+const validContracts = value => record(value) && Array.isArray(value.contracts);
+const validMaintenance = value => record(value) && Array.isArray(value.categories);
+const validForecast = value => record(value) && Array.isArray(value.forecast);
+const validFinance = value => record(value) && Array.isArray(value.totalsByCategory);
+const validAudit = value => Array.isArray(value) || (record(value) && Array.isArray(value.items));
+const asArray = value => Array.isArray(value) ? value : [];
+const fmt = value => formatMoney(value);
 
-function StatCard({ icon, label, value, to, color }) {
-  const Ico = icon;
-  return (
-    <Link to={to} className={`stat-card ${color || ''}`}>
-      <div className="stat-icon">
-        <Ico size={22} />
-      </div>
-      <div className="stat-info">
-        <div className="stat-value">{value ?? '\u2014'}</div>
-        <div className="stat-label">{label}</div>
-      </div>
-    </Link>
-  );
+function useDashboardSource(path, validate, enabled = true) {
+  const [state, setState] = useState({ status: 'idle', data: null });
+  const [revision, setRevision] = useState(0);
+  const retry = useCallback(() => setRevision(value => value + 1), []);
+  useEffect(() => {
+    if (!enabled) return undefined;
+    const request = new AbortController();
+    async function load() {
+      setState({ status: 'loading', data: null });
+      try {
+        const data = await api.get(path, { signal: request.signal });
+        if (!validate(data)) throw new Error('Ungültige Dashboarddaten');
+        if (!request.signal.aborted) setState({ status: 'success', data });
+      } catch {
+        if (!request.signal.aborted) setState({ status: 'error', data: null });
+      }
+    }
+    load();
+    return () => request.abort();
+  }, [path, validate, enabled, revision]);
+  return { ...state, retry };
 }
 
-function ChartPanel({ title, children }) {
-  return (
-    <div className="panel chart-panel">
-      <div className="panel-header">{title}</div>
-      <div className="panel-body chart-body">{children}</div>
+function SourceState({ source, label, singular = false }) {
+  if (source.status === 'success') return null;
+  if (source.status === 'error') return (
+    <div className="dashboard-source-error" role="alert">
+      <span>{label} {singular ? 'konnte' : 'konnten'} nicht geladen werden.</span>
+      <button type="button" onClick={source.retry}>Erneut versuchen</button>
     </div>
   );
+  return <p className="dashboard-source-loading" role="status">{label} {singular ? 'wird' : 'werden'} geladen…</p>;
 }
 
-function fmt(v) {
-  return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(v);
+function ChartPanel({ title, source, label, singular = false, children }) {
+  return <section className="dashboard-card dashboard-chart" aria-label={title}>
+    <div className="dashboard-card-heading"><h2>{title}</h2></div>
+    <SourceState source={source} label={label} singular={singular} />
+    {source.status === 'success' && <div className="dashboard-chart-body">{children}</div>}
+  </section>;
 }
 
-function asArray(value) {
-  return Array.isArray(value) ? value : [];
+function Inventory({ source, stats }) {
+  const known = source.status === 'success';
+  const occupancy = known && stats.units > 0 ? Math.round(stats.unitsOccupied / stats.units * 100) : null;
+  const metrics = [
+    { label: 'Immobilien', value: stats.properties, detail: `${formatNumber(stats.portfolios)} Portfolios`, to: '/properties' },
+    { label: 'Einheiten', value: stats.units, detail: `${formatNumber(stats.unitsOccupied)} vermietet · ${formatNumber(stats.unitsReserved)} reserviert`, to: '/units' },
+    { label: 'Aktive Verträge', value: stats.contractsActive, detail: `${formatNumber(stats.tenants)} Parteien im Bestand`, to: '/contracts' },
+    { label: 'Belegung', value: occupancy === null ? '—' : `${occupancy} %`, detail: stats.units > 0 ? `${formatNumber(Math.max(0, stats.units - stats.unitsOccupied - stats.unitsReserved))} freie Einheiten` : 'Noch keine Einheiten', to: '/units' },
+  ];
+  return <section className="dashboard-inventory" aria-label="Bestand im Überblick">
+    <div className="dashboard-metrics">{metrics.map(metric => <Link key={metric.label} to={metric.to} className="dashboard-metric">
+      <span>{metric.label}</span><strong>{known ? (typeof metric.value === 'number' ? formatNumber(metric.value) : metric.value) : '—'}</strong>
+      <small>{known ? metric.detail : 'Noch nicht verfügbar'}</small>
+    </Link>)}</div>
+    <SourceState source={source} label="Bestandsdaten" />
+  </section>;
 }
 
-export default function Dashboard() {
-  const { t } = useTranslation();
-  const [stats, setStats] = useState({});
-  const [tasks, setTasks] = useState([]);
-  const [notifications, setNotifications] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [cashflow, setCashflow] = useState(null);
-  const [aging, setAging] = useState(null);
-  const [maintCosts, setMaintCosts] = useState(null);
-  const [forecast, setForecast] = useState(null);
-  const [expiring, setExpiring] = useState(null);
-  const [financeReport, setFinanceReport] = useState(null);
-  const [dashView, setDashView] = useState('work');
-  const [auditOpen, setAuditOpen] = useState(false);
+function FinanceOverview({ cashflow, aging, stats, known }) {
+  return <section className="dashboard-card dashboard-finance" aria-labelledby="dashboard-finance-heading">
+    <div className="dashboard-card-heading"><h2 id="dashboard-finance-heading">Finanzen im Überblick</h2><span>Letzte 12 Monate</span></div>
+    <SourceState source={cashflow} label="Zahlungsübersicht" singular />
+    {cashflow.status === 'success' && <>
+      <p className="dashboard-finance-label">Einnahmen abzüglich Ausgaben</p>
+      <strong className={`dashboard-finance-total ${Number(cashflow.data.netTotal) < 0 ? 'is-negative' : ''}`}>{formatMoney(cashflow.data.netTotal)}</strong>
+      <dl className="dashboard-finance-breakdown"><div><dt>Einnahmen</dt><dd>{formatMoney(cashflow.data.incomeTotal)}</dd></div><div><dt>Ausgaben</dt><dd>{formatMoney(cashflow.data.expenseTotal)}</dd></div></dl>
+    </>}
+    <div className="dashboard-finance-open"><SourceState source={aging} label="Forderungsübersicht" singular />
+      {aging.status === 'success' && <Link to="/receivables"><span>Offene Forderungen <small>Aktueller Bestand · alle Fälligkeiten</small></span><strong>{formatMoney(aging.data.openTotal)}</strong><ArrowRightIcon size={16} /></Link>}
+    </div>
+    <div className="dashboard-card-footer"><Link to="/bookings">Buchungen ansehen <ArrowRightIcon size={14} /></Link><Link to="/accounts">{known ? `${formatNumber(stats.accounts)} Konten` : 'Konten'}</Link></div>
+  </section>;
+}
 
-  useEffect(() => {
-    let cancelled = false;
-    const safeFetch = (path, fallback) =>
-      api.get(path).catch(err => {
-        console.warn(`[Dashboard] Failed to load ${path}:`, err.message);
-        return fallback;
-      });
+function ActivityCard({ title, source, sourceLabel, empty, to, linkLabel, children, subtitle }) {
+  return <section className="dashboard-card dashboard-activity" aria-label={title}>
+    <div className="dashboard-card-heading"><h2>{title}</h2>{subtitle && <span>{subtitle}</span>}</div>
+    <SourceState source={source} label={sourceLabel} />
+    {source.status === 'success' && (children || <p className="dashboard-empty">{empty}</p>)}
+    <div className="dashboard-card-footer"><Link to={to}>{linkLabel} <ArrowRightIcon size={14} /></Link></div>
+  </section>;
+}
 
-    Promise.all([
-      safeFetch('/dashboard/stats', {}),
-      safeFetch('/tasks?status=open&limit=5', []),
-      safeFetch('/notifications?status=unread&limit=5', []),
-      safeFetch('/reports/cashflow?months=12', null),
-      safeFetch('/reports/receivables-aging', null),
-      safeFetch('/reports/maintenance-costs', null),
-      safeFetch('/reports/liquidity-forecast?months=6', null),
-      safeFetch('/reports/contracts-expiring?days=90', null),
-      safeFetch('/reports/finance', null),
-    ]).then(([
-      dashStats,
-      openTasks, notifs,
-      cf, ag, mc, fc, exp, fin,
-    ]) => {
-      if (cancelled) return;
-      const s = dashStats || {};
-      setStats({
+function normalizeStats(s) {
+  return {
         portfolios: s.portfolio_count || 0,
         properties: s.property_count || 0,
         units: s.unit_count || 0,
@@ -132,24 +174,39 @@ export default function Dashboard() {
         utilityStatements: s.utility_statement_count || 0,
         draftUtilityStatements: s.draft_utility_statements || 0,
         finalizedUtilityStatements: s.finalized_utility_statements || 0,
-      });
-      setTasks(asArray(openTasks));
-      setNotifications(asArray(notifs));
-      setCashflow(cf);
-      setAging(ag);
-      setMaintCosts(mc);
-      setForecast(fc);
-      setExpiring(exp);
-      setFinanceReport(fin);
-    }).finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
+      };
+}
 
-  if (loading) return <div className="page-loading">{t('pages.loading')}</div>;
-
-  const occupancyRate = stats.units > 0
-    ? Math.round((stats.unitsOccupied / stats.units) * 100)
-    : 0;
+export default function Dashboard() {
+  const { t: translate, locale } = useTranslation();
+  const t = (key, params) => {
+    const value = translate(key, params);
+    return !value || value === key ? (FALLBACKS[key] || key) : value;
+  };
+  const [dashView, setDashView] = useState('work');
+  const [auditOpen, setAuditOpen] = useState(false);
+  const inventory = useDashboardSource('/dashboard/stats', validStats);
+  const taskSource = useDashboardSource('/tasks?status=open&limit=5', Array.isArray);
+  const notificationSource = useDashboardSource('/notifications?status=unread&limit=5', Array.isArray);
+  const cashflowSource = useDashboardSource('/reports/cashflow?months=12', validCashflow);
+  const agingSource = useDashboardSource('/reports/receivables-aging', validAging);
+  const expiringSource = useDashboardSource('/reports/contracts-expiring?days=90', validContracts);
+  const maintenanceSource = useDashboardSource('/reports/maintenance-costs', validMaintenance, dashView === 'analysis');
+  const forecastSource = useDashboardSource('/reports/liquidity-forecast?months=6', validForecast, dashView === 'analysis');
+  const financeSource = useDashboardSource('/reports/finance', validFinance, dashView === 'analysis');
+  const stats = inventory.status === 'success' ? normalizeStats(inventory.data) : {};
+  const tasks = asArray(taskSource.data);
+  const notifications = asArray(notificationSource.data);
+  const cashflow = cashflowSource.data;
+  const aging = agingSource.data;
+  const expiring = expiringSource.data;
+  const maintCosts = maintenanceSource.data;
+  const forecast = forecastSource.data;
+  const financeReport = financeSource.data;
+  const now = new Date();
+  const dateLabel = new Intl.DateTimeFormat(locale || 'de-DE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(now);
+  const isoDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const workflowProps = { stats, expiring, notifications, t, statsReady: inventory.status === 'success', complete: [inventory, expiringSource, notificationSource].every(source => source.status === 'success') };
 
   // Occupancy pie data
   const occupancyData = stats.units > 0 ? [
@@ -190,115 +247,41 @@ export default function Dashboard() {
 
   // Finance by category (top 8)
   const financeData = financeReport?.totalsByCategory?.slice(0, 8).map(c => ({
-    name: c.categoryName.length > 15 ? c.categoryName.slice(0, 15) + '...' : c.categoryName,
+    name: String(c.categoryName || 'Ohne Kategorie'),
     value: Math.abs(c.total),
   })) || [];
 
-  return (
-    <div className="page">
-      <h1 className="page-title">{t('pages.dashboard.title')}</h1>
 
-      {/* Dashboard mode toggle */}
-      <div className="tab-bar" style={{ marginBottom: '1.25rem' }}>
-        <button
-          className={`detail-tab ${dashView === 'work' ? 'active' : ''}`}
-          onClick={() => setDashView('work')}
-        >
-          {t('pages.dashboard.workTab') || 'Arbeit'}
-        </button>
-        <button
-          className={`detail-tab ${dashView === 'analysis' ? 'active' : ''}`}
-          onClick={() => setDashView('analysis')}
-        >
-          {t('pages.dashboard.analysisTab') || 'Analyse'}
-        </button>
+  return <div className="page dashboard-page">
+    <header className="dashboard-header">
+      <div><p className="dashboard-eyebrow">Ihr Arbeitsstart</p><h1>Verwaltungsübersicht</h1><p>Offene Vorgänge, Termine und Ihr Bestand an einem Ort.</p></div>
+      <div className="dashboard-header-side"><time dateTime={isoDate}>{dateLabel}</time><Link to="/tasks" className="btn btn-primary">Aufgaben öffnen <ArrowRightIcon size={15} /></Link></div>
+    </header>
+    <div className="dashboard-view-switch" aria-label="Dashboardansichten">
+      <button type="button" aria-pressed={dashView === 'work'} onClick={() => setDashView('work')}>Arbeit</button>
+      <button type="button" aria-pressed={dashView === 'analysis'} onClick={() => setDashView('analysis')}>Analyse</button>
+    </div>
+    <Inventory source={inventory} stats={stats} />
+    {dashView === 'work' && <>
+      <div className="dashboard-start-grid"><DashboardWorkflow {...workflowProps} section="attention" /><FinanceOverview cashflow={cashflowSource} aging={agingSource} stats={stats} known={inventory.status === 'success'} /></div>
+      <div className="dashboard-activity-grid">
+        <ActivityCard title="Offene Aufgaben" source={taskSource} sourceLabel="Aufgaben" empty="Keine offenen Aufgaben." to="/tasks" linkLabel="Alle Aufgaben" subtitle="Bis zu fünf offene Einträge">
+          {tasks.length > 0 && <ul className="dashboard-item-list">{tasks.map(task => <li key={task.id}><div><strong>{task.title}</strong><small>{task.due_date ? `Fällig am ${formatDate(task.due_date)}` : 'Ohne Fälligkeitsdatum'}</small></div><StatusBadge status={task.priority} /></li>)}</ul>}
+        </ActivityCard>
+        <ActivityCard title="Vertragsfristen" source={expiringSource} sourceLabel="Vertragsfristen" empty="Keine Vertragsenddaten in diesem Zeitraum." to="/contracts" linkLabel="Verträge öffnen" subtitle="Enddatum in den nächsten 90 Tagen">
+          {expiring?.contracts.length > 0 && <ul className="dashboard-item-list">{expiring.contracts.slice(0, 5).map(contract => <li key={contract.contractId}><div><strong>{contract.contractNumber}</strong><small>{formatDate(contract.endDate)}</small></div><span className="dashboard-date-note">{contract.daysRemaining} Tage</span></li>)}</ul>}
+        </ActivityCard>
+        <ActivityCard title="Ungelesene Hinweise" source={notificationSource} sourceLabel="Hinweise" empty="Keine ungelesenen Hinweise." to="/messages" linkLabel="Alle Hinweise" subtitle="Bis zu fünf Einträge">
+          {notifications.length > 0 && <ul className="dashboard-item-list">{notifications.map(item => <li key={item.id}><strong>{item.title}</strong><StatusBadge status={item.severity} /></li>)}</ul>}
+        </ActivityCard>
       </div>
-
-      {/* KPI Cards — always visible */}
-      <div className="stats-grid">
-        <StatCard icon={PortfolioIcon} label={t('pages.dashboard.portfolios')} value={stats.portfolios} to="/portfolios" />
-        <StatCard icon={PropertyIcon} label={t('pages.dashboard.properties')} value={stats.properties} to="/properties" />
-        <StatCard icon={UnitIcon} label={t('pages.dashboard.units')} value={`${stats.unitsOccupied}/${stats.units}`} to="/units" color="stat-highlight" />
-        <StatCard icon={TenantIcon} label={t('pages.dashboard.tenants')} value={stats.tenants} to="/tenants" />
-        <StatCard icon={ContractIcon} label={t('pages.dashboard.activeContracts')} value={stats.contractsActive} to="/contracts" />
-        <StatCard icon={AccountIcon} label={t('pages.dashboard.accounts')} value={stats.accounts} to="/accounts" />
-        <StatCard icon={MaintenanceIcon} label={t('pages.dashboard.openMaintenance')} value={stats.openMaintenance} to="/maintenance" color={stats.openMaintenance > 0 ? 'stat-warning' : ''} />
-        <StatCard icon={ChartIcon} label={t('pages.dashboard.occupancy')} value={`${occupancyRate}%`} to="/units" color="stat-highlight" />
-      </div>
-
-      {dashView === 'work' && (
-        <>
-          <DashboardWorkflow
-            stats={stats}
-            aging={aging}
-            expiring={expiring}
-            notifications={notifications}
-            t={t}
-          />
-
-          {/* Activity Panels */}
-          <div className="dashboard-panels">
-            <div className="panel">
-              <h3>{t('pages.dashboard.openTasks')}</h3>
-              {tasks.length === 0 ? <p className="empty-text">{t('pages.dashboard.noOpenTasks')}</p> : (
-                <ul className="activity-list">
-                  {tasks.map(tk => (
-                    <li key={tk.id}>
-                      <span className="activity-title">{tk.title}</span>
-                      {tk.due_date && <span className="activity-date">{formatDate(tk.due_date)}</span>}
-                      <StatusBadge status={tk.priority} />
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <Link to="/tasks" className="panel-link">
-                {t('tasks.list.title')} <ArrowRightIcon size={14} />
-              </Link>
-            </div>
-
-            <div className="panel">
-              <h3>{t('dashboard.widgets.contractTerms')}</h3>
-              {!expiring?.contracts?.length ? <p className="empty-text">{t('emptyStates.generic.title')}</p> : (
-                <ul className="activity-list">
-                  {expiring.contracts.slice(0, 5).map(c => (
-                    <li key={c.contractId}>
-                      <span className="activity-title">{c.contractNumber}</span>
-                      <span className="activity-date">{c.endDate}</span>
-                      <StatusBadge status={c.daysRemaining <= 30 ? 'overdue' : 'warning'} />
-                      <span className="text-muted" style={{ fontSize: '0.75rem' }}>
-                        {c.daysRemaining} {t('pages.dashboard.days')}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <Link to="/contracts" className="panel-link">
-                {t('tenantsContracts.contracts.title')} <ArrowRightIcon size={14} />
-              </Link>
-            </div>
-
-            <div className="panel">
-              <h3>{t('pages.dashboard.notifications')}</h3>
-              {notifications.length === 0 ? <p className="empty-text">{t('pages.dashboard.noNotifications')}</p> : (
-                <ul className="activity-list">
-                  {notifications.map(n => (
-                    <li key={n.id}>
-                      <span className="activity-title">{n.title}</span>
-                      <StatusBadge status={n.severity} />
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </div>
-        </>
-      )}
-
+      <DashboardWorkflow {...workflowProps} section="areas" />
+    </>}
       {dashView === 'analysis' && (
         <>
           {/* Charts Row 1 */}
           <div className="dashboard-charts">
-            <ChartPanel title={t('pages.dashboard.occupancyChart')}>
+            <ChartPanel title={t('pages.dashboard.occupancyChart')} source={inventory} label="Bestandsdaten">
               {occupancyData.length > 0 ? (
                 <ResponsiveContainer width="100%" height={220}>
                   <PieChart>
@@ -316,7 +299,7 @@ export default function Dashboard() {
               ) : <p className="chart-empty">{t('pages.dashboard.noUnits')}</p>}
             </ChartPanel>
 
-            <ChartPanel title={t('pages.dashboard.cashflow12')}>
+            <ChartPanel title={t('pages.dashboard.cashflow12')} source={cashflowSource} label="Zahlungsübersicht" singular>
               {cashflowData.length > 0 ? (
                 <ResponsiveContainer width="100%" height={220}>
                   <BarChart data={cashflowData}>
@@ -334,7 +317,7 @@ export default function Dashboard() {
               ) : <p className="chart-empty">{t('pages.dashboard.noBookings')}</p>}
             </ChartPanel>
 
-            <ChartPanel title={t('pages.dashboard.receivablesAging')}>
+            <ChartPanel title={t('pages.dashboard.receivablesAging')} source={agingSource} label="Forderungsübersicht" singular>
               {agingData.some(d => d.value > 0) ? (
                 <ResponsiveContainer width="100%" height={220}>
                   <BarChart data={agingData}>
@@ -351,7 +334,7 @@ export default function Dashboard() {
 
           {/* Charts Row 2 */}
           <div className="dashboard-charts">
-            <ChartPanel title={t('analyticsLabels.forecast')}>
+            <ChartPanel title={t('analyticsLabels.forecast')} source={forecastSource} label="Liquiditätsprognose" singular>
               {forecastData.length > 0 ? (
                 <ResponsiveContainer width="100%" height={220}>
                   <LineChart data={forecastData}>
@@ -368,7 +351,7 @@ export default function Dashboard() {
               ) : <p className="chart-empty">{t('pages.dashboard.noForecast')}</p>}
             </ChartPanel>
 
-            <ChartPanel title={t('pages.dashboard.maintenanceCosts')}>
+            <ChartPanel title={t('pages.dashboard.maintenanceCosts')} source={maintenanceSource} label="Instandhaltungskosten">
               {maintData.length > 0 ? (
                 <ResponsiveContainer width="100%" height={220}>
                   <BarChart data={maintData} layout="vertical">
@@ -382,7 +365,7 @@ export default function Dashboard() {
               ) : <p className="chart-empty">{t('pages.dashboard.noMaintenanceCosts')}</p>}
             </ChartPanel>
 
-            <ChartPanel title={t('pages.dashboard.financeByCategory')}>
+            <ChartPanel title={t('pages.dashboard.financeByCategory')} source={financeSource} label="Finanzbericht" singular>
               {financeData.length > 0 ? (
                 <ResponsiveContainer width="100%" height={220}>
                   <PieChart>
@@ -402,66 +385,20 @@ export default function Dashboard() {
         </>
       )}
 
-      {/* Recent Audit Log — collapsible */}
-      <div className="panel" style={{ marginTop: '1.5rem' }}>
-        <div
-          className="panel-header"
-          style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-          onClick={() => setAuditOpen(prev => !prev)}
-        >
-          <span>{t('pages.dashboard.recentActivity') || 'Letzte Aktivitäten'}</span>
-          <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>{auditOpen ? '▲' : '▼'}</span>
-        </div>
-        {auditOpen && <RecentAuditLog />}
-      </div>
-    </div>
-  );
+
+    <section className="dashboard-audit">
+      <button type="button" className="dashboard-audit-toggle" aria-expanded={auditOpen} aria-controls="dashboard-audit-content" onClick={() => setAuditOpen(value => !value)}><span>Letzte Aktivitäten</span><span aria-hidden="true">{auditOpen ? '−' : '+'}</span></button>
+      {auditOpen && <div id="dashboard-audit-content"><RecentAuditLog /></div>}
+    </section>
+  </div>;
 }
 
 function RecentAuditLog() {
-  const { t } = useTranslation();
-  const [entries, setEntries] = useState([]);
-  const toast = useToast();
-  useEffect(() => {
-    api.get('/audit?limit=10').then(data => setEntries(Array.isArray(data) ? data : data?.items || [])).catch(() => { toast.error(t('pages.dashboard.auditLoadError') || 'Audit-Log konnte nicht geladen werden'); });
-  }, [toast, t]);
-
-  const actionLabels = {
-    create: t('pages.dashboard.auditCreated') || 'Erstellt',
-    update: t('pages.dashboard.auditUpdated') || 'Aktualisiert',
-    patch: t('pages.dashboard.auditChanged') || 'Geändert',
-    delete: t('pages.dashboard.auditDeleted') || 'Gelöscht',
-  };
-
-  if (entries.length === 0) return <div className="panel-body"><p className="empty-text">{t('pages.dashboard.noActivity') || 'Keine Aktivitäten'}</p></div>;
-
-  return (
-    <div className="panel-body">
-      <table style={{ width: '100%', fontSize: '0.85rem', borderCollapse: 'collapse' }}>
-        <thead>
-          <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-            <th style={{ textAlign: 'left', padding: '4px 8px' }}>{t('pages.dashboard.auditAction') || 'Aktion'}</th>
-            <th style={{ textAlign: 'left', padding: '4px 8px' }}>{t('pages.dashboard.auditArea') || 'Bereich'}</th>
-            <th style={{ textAlign: 'left', padding: '4px 8px' }}>{t('pages.dashboard.auditUser') || 'Benutzer'}</th>
-            <th style={{ textAlign: 'left', padding: '4px 8px' }}>{t('pages.dashboard.auditTime') || 'Zeitpunkt'}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {entries.map((e, i) => (
-            <tr key={i} style={{ borderBottom: '1px solid var(--border-color)' }}>
-              <td style={{ padding: '4px 8px' }}>
-                <StatusBadge status={e.action === 'delete' ? 'cancelled' : e.action === 'create' ? 'active' : 'warning'} />
-                {' '}{actionLabels[e.action] || e.action}
-              </td>
-              <td style={{ padding: '4px 8px' }}>{e.entity_type?.replace(/_/g, ' ')}</td>
-              <td style={{ padding: '4px 8px' }}>{e.username || '—'}</td>
-              <td style={{ padding: '4px 8px', color: 'var(--text-secondary)' }}>
-                {formatDateTime(e.timestamp)}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
+  const source = useDashboardSource('/audit?limit=10', validAudit);
+  const entries = Array.isArray(source.data) ? source.data : source.data?.items || [];
+  const labels = { create: 'Erstellt', update: 'Aktualisiert', patch: 'Geändert', delete: 'Gelöscht' };
+  return <>
+    <SourceState source={source} label="Aktivitäten" />
+    {source.status === 'success' && (entries.length ? <div className="dashboard-audit-scroll"><table><thead><tr><th>Aktion</th><th>Bereich</th><th>Benutzer</th><th>Zeitpunkt</th></tr></thead><tbody>{entries.map((entry, index) => <tr key={entry.id || index}><td>{labels[entry.action] || entry.action}</td><td>{entry.entity_type?.replace(/_/g, ' ')}</td><td>{entry.username || '—'}</td><td>{formatDateTime(entry.timestamp)}</td></tr>)}</tbody></table></div> : <p className="dashboard-empty">Keine Aktivitäten vorhanden.</p>)}
+  </>;
 }
