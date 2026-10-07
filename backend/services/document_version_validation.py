@@ -71,7 +71,10 @@ def validate_manifest_identity(row: Any, snapshot: Mapping) -> None:
 
 
 def validate_feature_snapshot(row: Any, snapshot: Mapping) -> None:
-    """Checks of a feature that stores its proof in the manifest (none registered yet)."""
+    """Checks of a feature that stores its proof in the manifest (the Wohnungsgeberbestätigung)."""
+    from .housing_confirmation_validation import validate_housing_confirmation_snapshot
+
+    validate_housing_confirmation_snapshot(row, snapshot)
 
 
 def _fail() -> NoReturn:

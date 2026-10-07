@@ -37,7 +37,7 @@ def clear_upload_access_cookie(response: Response, request: Request) -> None:
     response.headers["Cache-Control"] = "private, no-store"
 
 
-def require_upload_access(request: Request) -> None:
+def require_upload_access(request: Request):
     """Only the read-only upload mount calls this; APIs still require Bearer."""
     authorization = request.headers.get("authorization")
     if authorization is not None:
@@ -54,4 +54,4 @@ def require_upload_access(request: Request) -> None:
         )
     # Reuse signature, lifetime, token type, revocation and active-user checks.
     # Callers run this synchronous database work outside the event loop.
-    get_current_user(HTTPAuthorizationCredentials(scheme="Bearer", credentials=token))
+    return get_current_user(HTTPAuthorizationCredentials(scheme="Bearer", credentials=token))

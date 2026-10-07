@@ -33,6 +33,7 @@ from .routers import (
     files,
     handover_protocols,
     history,
+    housing_confirmations,
     i18n,
     insurances,
     integrations,
@@ -81,6 +82,7 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(properties.router, dependencies=_auth_dep)
     api_v1.include_router(units.router, dependencies=_auth_dep)
     api_v1.include_router(tenants.router, dependencies=_auth_dep)
+    api_v1.include_router(housing_confirmations.router, dependencies=_auth_dep)
     api_v1.include_router(contracts.router, dependencies=_auth_dep)
     api_v1.include_router(accounts.router, dependencies=_auth_dep)
     api_v1.include_router(bookings.router, dependencies=_auth_dep)

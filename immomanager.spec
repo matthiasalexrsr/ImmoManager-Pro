@@ -246,6 +246,12 @@ if os.path.isdir(migrations_dir):
             rel = os.path.relpath(dirpath, ROOT)
             backend_data.append((src, rel))
 
+# Fonts of generated PDFs (Wohnungsgeberbestätigung): bundled, never the system's
+fonts_dir = os.path.join(ROOT, 'backend', 'assets', 'fonts')
+if os.path.isdir(fonts_dir):
+    for f in os.listdir(fonts_dir):
+        backend_data.append((os.path.join(fonts_dir, f), os.path.join('backend', 'assets', 'fonts')))
+
 # Include Mietvertrag wizard package assets/templates/static
 if os.path.isdir(WIZARD_ROOT):
     for dirpath, dirnames, filenames in os.walk(WIZARD_ROOT):
