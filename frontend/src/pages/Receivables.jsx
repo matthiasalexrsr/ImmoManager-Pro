@@ -3,6 +3,7 @@ import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
+import { PartyLink } from '../features/partyWorkspace/PartyWorkspace';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
@@ -13,6 +14,7 @@ export default function Receivables() {
   const confirm = useConfirm();
   const store = useDataStore();
   const { items: contracts } = useEntities('contracts', '/contracts');
+  const { items: tenants } = useEntities('tenants', '/tenants');
   const [receivables, setReceivables] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -37,14 +39,19 @@ export default function Receivables() {
   }, []);
 
   const contractMap = Object.fromEntries(contracts.map(c => [c.id, c]));
+  const tenantMap = Object.fromEntries(tenants.map(tn => [tn.id, tn.full_name]));
 
   const enriched = receivables.map(r => ({
     ...r,
     contract_label: contractMap[r.contract_id]?.contract_number || '—',
+    tenant_id: contractMap[r.contract_id]?.tenant_id || null,
+    tenant_name: tenantMap[contractMap[r.contract_id]?.tenant_id] || '—',
   }));
 
   const COLUMNS = [
     { key: 'contract_label', label: t('tenantsContracts.contracts.title'), filterType: 'text' },
+    { key: 'tenant_name', label: 'Mieter', filterType: 'text',
+      render: (v, row) => row.tenant_id && v !== '—' ? <PartyLink tenantId={row.tenant_id}>{v}</PartyLink> : v },
     { key: 'amount_due', label: t('finance.bookings.amount'), type: 'number', align: 'right',
       render: v => formatMoney(v) },
     { key: 'due_date', label: t('finance.receivables.dueDate'), type: 'date', filterType: 'dateRange' },

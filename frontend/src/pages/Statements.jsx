@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import DataTable from '../components/DataTable';
+import { PartyLink } from '../features/partyWorkspace/PartyWorkspace';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { formatMoney } from '../utils/format';
@@ -99,7 +100,7 @@ function getStmtColumns(t, onError) {
     { key: 'tenant_name', label: t('pages.statements.colParty') || 'Mieter',
       render: (v, row) => (row.party === 'vacancy'
         ? <span className="text-muted">{t('pages.statements.vacancyParty') || 'Leerstand (Eigentümer)'}</span>
-        : v) },
+        : row.tenant_id && v !== '—' ? <PartyLink tenantId={row.tenant_id}>{v}</PartyLink> : v) },
     { key: 'usage_start', label: t('pages.statements.colUsage') || 'Nutzungszeitraum',
       render: (_, row) => (row.usage_start
         ? `${formatDate(row.usage_start)} – ${formatDate(row.usage_end)}`
@@ -644,6 +645,7 @@ export default function Statements() {
         return {
           ...s,
           unit_label: unitMap[s.unit_id]?.label || '—',
+          tenant_id: contract?.tenant_id || null,
           tenant_name: contract ? (tenantMap[contract.tenant_id] || '—') : '—',
         };
       });

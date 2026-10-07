@@ -3,6 +3,7 @@ import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
+import { PartyLink } from '../features/partyWorkspace/PartyWorkspace';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
@@ -102,7 +103,8 @@ export default function Contracts() {
     { key: 'contract_number', label: t('tenantsContracts.contracts.form.contractNumber') || 'Vertragsnr.', filterType: 'text' },
     { key: 'property_name', hidden: true, label: 'Immobilie', filterType: 'text' },
     { key: 'unit_label', subKey: 'property_name', label: 'Einheit', filterType: 'text' },
-    { key: 'tenant_name', label: 'Mieter', filterType: 'text' },
+    { key: 'tenant_name', label: 'Mieter', filterType: 'text',
+      render: (v, row) => row.tenant_id && v !== '—' ? <PartyLink tenantId={row.tenant_id}>{v}</PartyLink> : v },
     { key: 'cold_rent', label: 'Kaltmiete (€)', type: 'number', align: 'right',
       render: v => formatMoney(v) },
     { key: 'start_date', label: t('tenantsContracts.contracts.form.startDate') || 'Beginn', type: 'date', filterType: 'dateRange' },

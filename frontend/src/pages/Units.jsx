@@ -4,6 +4,7 @@ import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
+import { PartyLink } from '../features/partyWorkspace/PartyWorkspace';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
@@ -42,12 +43,12 @@ export default function Units() {
   const propMap = Object.fromEntries(properties.map(p => [p.id, p.name]));
   const tenantMap = Object.fromEntries(tenants.map(tn => [tn.id, tn.full_name]));
 
-  // Build a map of unit_id -> tenant name for active contracts
+  // Preserve the tenant ID together with the name for active contracts.
   const unitTenantMap = useMemo(() => {
     const map = {};
     contracts.forEach(c => {
       if (c.status === 'active' && c.unit_id && c.tenant_id) {
-        map[c.unit_id] = tenantMap[c.tenant_id] || '—';
+        map[c.unit_id] = { id: c.tenant_id, name: tenantMap[c.tenant_id] || '—' };
       }
     });
     return map;
@@ -71,7 +72,8 @@ export default function Units() {
       ...u,
       property_name: propMap[u.property_id] || '—',
       warm_rent: warmRent,
-      tenant_name: unitTenantMap[u.id] || '—',
+      tenant_id: unitTenantMap[u.id]?.id || null,
+      tenant_name: unitTenantMap[u.id]?.name || '—',
       vacant_since: u.status === 'vacant' ? (u.created_at || '—') : null,
     };
   });
@@ -108,7 +110,8 @@ export default function Units() {
     { key: 'warm_rent', hidden: true, label: 'Warmmiete (€)', type: 'number', align: 'right',
       render: v => formatMoney(v) },
     { key: 'person_count', hidden: true, label: t('units.form.personCount') || 'Personen', type: 'number', align: 'right' },
-    { key: 'tenant_name', label: 'Mieter', filterType: 'text' },
+    { key: 'tenant_name', label: 'Mieter', filterType: 'text',
+      render: (v, row) => row.tenant_id && v !== '—' ? <PartyLink tenantId={row.tenant_id}>{v}</PartyLink> : v },
     { key: 'status', label: t('ui.form.status') || 'Status', type: 'status', filterType: 'select',
       render: v => <StatusBadge status={v} /> },
   ];

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
 import DataTable from '../components/DataTable';
+import { PartyLink } from '../features/partyWorkspace/PartyWorkspace';
 import { useTranslation } from '../i18n';
 import FormModal from '../components/FormModal';
 import { formatMoney, formatMonth } from '../utils/format';
@@ -9,7 +10,8 @@ const fmt = v => formatMoney(v || 0);
 
 const COLUMNS = [
   { key: 'contract_number', label: 'Vertrag', filterType: 'text' },
-  { key: 'tenant_name', label: 'Mieter', filterType: 'text' },
+  { key: 'tenant_name', label: 'Mieter', filterType: 'text',
+    render: (v, row) => row.tenant_id && v !== '—' ? <PartyLink tenantId={row.tenant_id}>{v}</PartyLink> : v },
   { key: 'unit_label', label: 'Einheit', filterType: 'text' },
   { key: 'month', label: 'Monat', filterType: 'text', render: v => formatMonth(v) },
   { key: 'total_due', label: 'Forderung (€)', type: 'number', align: 'right',
@@ -54,6 +56,7 @@ export default function RentOverview() {
         return {
           ...r, _type: 'charge',
           contract_number: contract.contract_number || '—',
+          tenant_id: contract.tenant_id || null,
           tenant_name: tenant.full_name || '—',
           unit_label: unit.label || '—',
           total_due: totalDue,
@@ -68,6 +71,7 @@ export default function RentOverview() {
         return {
           ...r, _type: 'receivable',
           contract_number: contract.contract_number || '—',
+          tenant_id: contract.tenant_id || null,
           tenant_name: tenant.full_name || '—',
           unit_label: unit.label || '—',
           month: r.due_date?.slice(0, 7) || '—',
@@ -104,6 +108,7 @@ export default function RentOverview() {
         return {
           ...r, _type: 'charge',
           contract_number: contract.contract_number || '—',
+          tenant_id: contract.tenant_id || null,
           tenant_name: tenant.full_name || '—',
           unit_label: unit.label || '—',
           total_due: totalDue,
@@ -118,6 +123,7 @@ export default function RentOverview() {
         return {
           ...r, _type: 'receivable',
           contract_number: contract.contract_number || '—',
+          tenant_id: contract.tenant_id || null,
           tenant_name: tenant.full_name || '—',
           unit_label: unit.label || '—',
           month: r.due_date?.slice(0, 7) || '—',

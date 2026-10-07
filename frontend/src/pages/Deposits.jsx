@@ -3,6 +3,7 @@ import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
+import { PartyLink } from '../features/partyWorkspace/PartyWorkspace';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
@@ -13,6 +14,7 @@ export default function Deposits() {
   const confirm = useConfirm();
   const store = useDataStore();
   const { items: contracts } = useEntities('contracts', '/contracts');
+  const { items: tenants } = useEntities('tenants', '/tenants');
   const [deposits, setDeposits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -36,14 +38,19 @@ export default function Deposits() {
   }, []);
 
   const contractMap = Object.fromEntries(contracts.map(c => [c.id, c]));
+  const tenantMap = Object.fromEntries(tenants.map(tn => [tn.id, tn.full_name]));
 
   const enriched = deposits.map(d => ({
     ...d,
     contract_label: contractMap[d.contract_id]?.contract_number || '—',
+    tenant_id: contractMap[d.contract_id]?.tenant_id || null,
+    tenant_name: tenantMap[contractMap[d.contract_id]?.tenant_id] || '—',
   }));
 
   const COLUMNS = [
     { key: 'contract_label', label: 'Vertrag', filterType: 'text' },
+    { key: 'tenant_name', label: 'Mieter', filterType: 'text',
+      render: (v, row) => row.tenant_id && v !== '—' ? <PartyLink tenantId={row.tenant_id}>{v}</PartyLink> : v },
     { key: 'amount', label: 'Betrag (€)', type: 'number', align: 'right',
       render: v => formatMoney(v) },
     { key: 'status', label: 'Status', type: 'status', filterType: 'select',

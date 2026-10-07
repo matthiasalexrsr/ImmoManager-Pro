@@ -3,6 +3,7 @@ import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
+import { PartyLink } from '../features/partyWorkspace/PartyWorkspace';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
@@ -15,6 +16,7 @@ export default function RentCharges() {
   const confirm = useConfirm();
   const store = useDataStore();
   const { items: contracts } = useEntities('contracts', '/contracts');
+  const { items: tenants } = useEntities('tenants', '/tenants');
   const [charges, setCharges] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -39,6 +41,7 @@ export default function RentCharges() {
   }, []);
 
   const contractMap = Object.fromEntries(contracts.map(c => [c.id, c]));
+  const tenantMap = Object.fromEntries(tenants.map(tn => [tn.id, tn.full_name]));
 
   const enriched = charges.map(c => {
     const totalDue = (
@@ -51,6 +54,8 @@ export default function RentCharges() {
     return {
       ...c,
       contract_label: contractMap[c.contract_id]?.contract_number || '-',
+      tenant_id: contractMap[c.contract_id]?.tenant_id || null,
+      tenant_name: tenantMap[contractMap[c.contract_id]?.tenant_id] || '—',
       total_due: totalDue,
       remaining: Math.max(0, totalDue - paid),
     };
@@ -58,6 +63,8 @@ export default function RentCharges() {
 
   const COLUMNS = [
     { key: 'contract_label', label: 'Vertrag', filterType: 'text' },
+    { key: 'tenant_name', label: 'Mieter', filterType: 'text',
+      render: (v, row) => row.tenant_id && v !== '—' ? <PartyLink tenantId={row.tenant_id}>{v}</PartyLink> : v },
     { key: 'month', label: 'Monat', filterType: 'text', render: v => formatMonth(v) },
     { key: 'cold_rent', label: 'Kaltmiete', type: 'number', align: 'right', render: money },
     { key: 'service_charge', label: 'Betriebskosten', type: 'number', align: 'right', render: money },
