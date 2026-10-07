@@ -6,6 +6,12 @@ import PropertyDetail from '../pages/PropertyDetail';
 import UnitOverview from '../pages/UnitOverview';
 import { api } from '../api';
 
+const pdfSources = vi.hoisted(() => []);
+vi.mock('pdfjs-dist', () => ({ GlobalWorkerOptions: {}, getDocument: options => {
+  pdfSources.push(options.url);
+  return { promise: new Promise(() => {}), destroy: async () => {} };
+} }));
+
 const access = vi.hoisted(() => ({ canWrite: true }));
 vi.mock('../api', () => ({ api: { get: vi.fn(), list: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), del: vi.fn() } }));
 vi.mock('../i18n', () => ({ useTranslation: () => ({ t: () => undefined, locale: 'de-DE' }) }));
@@ -50,6 +56,7 @@ function RoutesUnderTest() {
 const show = (path = '/properties/p1') => render(<MemoryRouter initialEntries={[path]}><RoutesUnderTest /></MemoryRouter>);
 
 beforeEach(() => {
+  pdfSources.length = 0;
   vi.resetAllMocks();
   access.canWrite = true;
   api.get.mockImplementation(path => {
@@ -147,7 +154,8 @@ describe('property dossier actions', () => {
     open.focus();
     await user.keyboard('{Enter}');
     const viewer = screen.getByRole('dialog', { name: 'Energieausweis Alpha' });
-    expect(within(viewer).getByTitle('Energieausweis Alpha')).toHaveAttribute('src', `${window.location.origin}/uploads/alpha.pdf`);
+    expect(within(viewer).getByRole('link', { name: 'Öffnen' })).toHaveAttribute('href', `${window.location.origin}/uploads/alpha.pdf`);
+    await waitFor(() => expect(pdfSources).toContain(`${window.location.origin}/uploads/alpha.pdf`));
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(open).toHaveFocus();

@@ -5,6 +5,12 @@ import Bookings from '../pages/Bookings';
 import ReviewList from '../pages/ReviewList';
 import { api } from '../api';
 
+const pdfSources = vi.hoisted(() => []);
+vi.mock('pdfjs-dist', () => ({ GlobalWorkerOptions: {}, getDocument: options => {
+  pdfSources.push(options.url);
+  return { promise: new Promise(() => {}), destroy: async () => {} };
+} }));
+
 const context = vi.hoisted(() => ({
   canWrite: true,
   entities: {},
@@ -54,6 +60,7 @@ function mount(path = '/bookings?booking_id=target') {
 }
 
 beforeEach(() => {
+  pdfSources.length = 0;
   vi.resetAllMocks();
   localStorage.clear();
   context.canWrite = true;
@@ -105,7 +112,8 @@ describe('Konkreter Buchungsprüffall', () => {
     const selected = await screen.findByRole('region', { name: 'Ausgewählte Buchung' });
     fireEvent.click(await within(selected).findByRole('button', { name: 'Beleg öffnen' }));
     const viewer = await screen.findByRole('dialog', { name: /Überweisung target/ });
-    expect(viewer.querySelector('iframe')).toHaveAttribute('src', expect.stringContaining('/uploads/target.pdf'));
+    expect(within(viewer).getByRole('link', { name: 'Öffnen' })).toHaveAttribute('href', `${window.location.origin}/uploads/target.pdf`);
+    await waitFor(() => expect(pdfSources).toContain(`${window.location.origin}/uploads/target.pdf`));
     fireEvent.click(within(viewer).getByRole('button', { name: 'Schließen' }));
     fireEvent.click(within(selected).getByRole('link', { name: /Zur Prüfliste/ }));
     expect(await screen.findByText('Zahlungseingang prüfen')).toBeInTheDocument();
@@ -142,7 +150,8 @@ describe('Konkreter Buchungsprüffall', () => {
     expect(api.put).not.toHaveBeenCalled();
     fireEvent.click(within(selected).getByRole('button', { name: 'Beleg öffnen' }));
     const viewer = await screen.findByRole('dialog', { name: /Überweisung target/ });
-    expect(viewer.querySelector('iframe')).toHaveAttribute('src', expect.stringContaining('/uploads/target.pdf'));
+    expect(within(viewer).getByRole('link', { name: 'Öffnen' })).toHaveAttribute('href', `${window.location.origin}/uploads/target.pdf`);
+    await waitFor(() => expect(pdfSources).toContain(`${window.location.origin}/uploads/target.pdf`));
     expect(screen.queryByRole('button', { name: 'Bearbeiten' })).not.toBeInTheDocument();
   });
 
