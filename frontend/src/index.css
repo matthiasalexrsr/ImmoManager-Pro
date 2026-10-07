@@ -3260,3 +3260,27 @@ table.data-table tbody tr:last-child td {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
 }
+
+/* Settings → Users: portfolio access of an account */
+.portfolio-access .form-section { margin-top: 12px; }
+.portfolio-access-choice {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 8px 0;
+  cursor: pointer;
+}
+.portfolio-access-choice input { margin-top: 3px; }
+.portfolio-access-choice span { display: flex; flex-direction: column; gap: 2px; }
+.portfolio-access-choice small { color: var(--color-text-secondary, #6b7280); }
+.portfolio-access-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  display: grid;
+  gap: 4px;
+}
+.portfolio-access-list label { display: flex; gap: 10px; align-items: center; padding: 6px 0; cursor: pointer; overflow-wrap: anywhere; }
+.portfolio-access-warning { margin-top: 8px; }

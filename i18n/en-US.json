@@ -1398,6 +1398,25 @@
           "buchhaltung": "Accounting",
           "techniker": "Technician",
           "readonly": "Read only"
+        },
+        "access": {
+          "column": "Portfolios",
+          "button": "Portfolios",
+          "title": "Portfolios for {{name}}",
+          "explanation": "Decides which properties, units, contracts, bookings and documents this account sees and can work on. The role still decides what it may change.",
+          "scope": "Access",
+          "all": "All portfolios",
+          "allHint": "Including future portfolios and administration of the whole installation.",
+          "selected": "Selected portfolios",
+          "selectedHint": "Only data of these portfolios; installation administration, logs and full exports stay locked.",
+          "portfolios": "Portfolios",
+          "noPortfolios": "There are no portfolios yet.",
+          "nothingWarning": "Without a selected portfolio the account sees no data.",
+          "saved": "Portfolio access saved",
+          "summaryAll": "All",
+          "summaryNone": "None – sees nothing",
+          "summaryCount": "{{count}} selected",
+          "managerHint": "New accounts see data only once the owner assigns portfolios to them."
         }
       },
       "skippedExisting": "already present, skipped",

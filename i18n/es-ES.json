@@ -1496,6 +1496,25 @@
           "buchhaltung": "Contabilidad",
           "techniker": "Técnico",
           "readonly": "Solo lectura"
+        },
+        "access": {
+          "column": "Carteras",
+          "button": "Carteras",
+          "title": "Carteras de {{name}}",
+          "explanation": "Define qué inmuebles, unidades, contratos, asientos y documentos ve y puede tratar esta cuenta. El rol sigue decidiendo qué puede modificar.",
+          "scope": "Acceso",
+          "all": "Todas las carteras",
+          "allHint": "Incluidas las carteras futuras y la administración de toda la instalación.",
+          "selected": "Carteras seleccionadas",
+          "selectedHint": "Solo datos de estas carteras; la administración de la instalación, los registros y las exportaciones completas siguen bloqueados.",
+          "portfolios": "Carteras",
+          "noPortfolios": "Todavía no hay carteras.",
+          "nothingWarning": "Sin una cartera seleccionada la cuenta no ve ningún dato.",
+          "saved": "Acceso a carteras guardado",
+          "summaryAll": "Todas",
+          "summaryNone": "Ninguna – no ve nada",
+          "summaryCount": "{{count}} seleccionadas",
+          "managerHint": "Las cuentas nuevas solo ven datos cuando el propietario les asigna carteras."
         }
       },
       "skippedExisting": "ya existentes, omitidos",

@@ -4,6 +4,8 @@ import { useToast } from '../../components/Toast';
 import { useConfirm } from '../../components/ConfirmDialog';
 import FormModal from '../../components/FormModal';
 import { api } from '../../api';
+import PortfolioAccessDialog from './PortfolioAccessDialog';
+import { accessSummary } from './portfolioAccess';
 
 const ROLES = ['eigentuemer', 'verwalter', 'buchhaltung', 'techniker', 'readonly'];
 
@@ -13,7 +15,8 @@ export default function UsersSection({ currentUser }) {
   const confirm = useConfirm();
   const [users, setUsers] = useState(null);
   const [loadError, setLoadError] = useState(false);
-  const [modal, setModal] = useState(null); // { kind: 'create' | 'edit' | 'password', user? }
+  const [modal, setModal] = useState(null); // { kind: 'create' | 'edit' | 'password' | 'access', user? }
+  const [portfolios, setPortfolios] = useState(null);
 
   const isOwner = currentUser?.role === 'eigentuemer';
   const u = (key, params) => t(`pages.settings.users.${key}`, params);
@@ -26,6 +29,12 @@ export default function UsersSection({ currentUser }) {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+  // only owners assign portfolios (and see all of them)
+  useEffect(() => {
+    if (!isOwner) return;
+    api.list('/portfolios').then(setPortfolios).catch(() => setPortfolios([]));
+  }, [isOwner]);
+  const access = (key, params) => u(`access.${key}`, params);
 
   // Managers may only administer read-only accounts (enforced by the backend as well).
   const canManage = (user) => isOwner || user.role === 'readonly';
@@ -63,8 +72,16 @@ export default function UsersSection({ currentUser }) {
   ], [t]);
 
   const handleCreate = async (values) => {
-    await api.post('/auth/users', values);
+    const created = await api.post('/auth/users', values);
     toast.success(u('saved'));
+    load();
+    // a new account sees no portfolio until the owner assigns some: ask right away
+    if (isOwner && created?.id && created.role !== 'eigentuemer') setTimeout(() => setModal({ kind: 'access', user: created }), 0);
+  };
+
+  const handleAccess = async (values) => {
+    await api.patch(`/auth/users/${modal.user.id}`, values);
+    toast.success(access('saved'));
     load();
   };
 
@@ -108,7 +125,7 @@ export default function UsersSection({ currentUser }) {
         <button className="btn btn-sm btn-primary" onClick={() => setModal({ kind: 'create' })}>{u('add')}</button>
       </div>
       <div className="panel-body">
-        {!isOwner && <div className="alert-info">{u('managerHint')}</div>}
+        {!isOwner && <div className="alert-info">{u('managerHint')} {access('managerHint')}</div>}
         {loadError && <div className="alert-error" role="alert">{u('loadError')}</div>}
         {users && users.length === 0 && <p className="text-muted">{u('empty')}</p>}
         {users && users.length > 0 && (
@@ -120,6 +137,7 @@ export default function UsersSection({ currentUser }) {
                   <th>{u('fullName')}</th>
                   <th>{u('email')}</th>
                   <th>{u('role')}</th>
+                  <th>{access('column')}</th>
                   <th>{u('status')}</th>
                   <th>{u('actions')}</th>
                 </tr>
@@ -134,6 +152,10 @@ export default function UsersSection({ currentUser }) {
                       <td>{user.full_name}</td>
                       <td>{user.email}</td>
                       <td>{roleLabel(user.role)}</td>
+                      <td>{(() => {
+                        const summary = accessSummary(user, portfolios, access);
+                        return <span className={summary.tone === 'warning' ? 'badge badge-yellow' : undefined}>{summary.text}</span>;
+                      })()}</td>
                       <td>
                         <span className={`badge ${user.is_active ? 'badge-green' : 'badge-gray'}`}>
                           {user.is_active ? u('active') : u('inactive')}
@@ -144,6 +166,9 @@ export default function UsersSection({ currentUser }) {
                           <>
                             <button className="btn btn-sm btn-secondary" onClick={() => setModal({ kind: 'edit', user })}>{u('edit')}</button>{' '}
                             <button className="btn btn-sm btn-secondary" onClick={() => setModal({ kind: 'password', user })}>{u('resetPassword')}</button>{' '}
+                            {isOwner && user.role !== 'eigentuemer' && (
+                              <button className="btn btn-sm btn-secondary" onClick={() => setModal({ kind: 'access', user })}>{access('button')}</button>
+                            )}{' '}
                             {!self && (
                               <button className="btn btn-sm btn-secondary" onClick={() => toggleActive(user)}>
                                 {user.is_active ? u('deactivate') : u('activate')}
@@ -169,6 +194,9 @@ export default function UsersSection({ currentUser }) {
       )}
       {modal?.kind === 'edit' && (
         <FormModal title={u('edit')} fields={editFields} initial={modal.user} onSave={handleEdit} onClose={() => setModal(null)} />
+      )}
+      {modal?.kind === 'access' && (
+        <PortfolioAccessDialog user={modal.user} portfolios={portfolios || []} onSave={handleAccess} onClose={() => setModal(null)} />
       )}
       {modal?.kind === 'password' && (
         <FormModal

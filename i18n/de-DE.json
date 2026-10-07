@@ -1398,6 +1398,25 @@
           "buchhaltung": "Buchhaltung",
           "techniker": "Techniker",
           "readonly": "Nur Lesen"
+        },
+        "access": {
+          "column": "Portfolios",
+          "button": "Portfolios",
+          "title": "Portfolios für {{name}}",
+          "explanation": "Legt fest, welche Objekte, Einheiten, Verträge, Buchungen und Dokumente dieses Konto sieht und bearbeiten kann. Die Rolle bestimmt weiterhin, was es ändern darf.",
+          "scope": "Zugriff",
+          "all": "Alle Portfolios",
+          "allHint": "Auch künftige Portfolios und die Verwaltung der ganzen Installation.",
+          "selected": "Ausgewählte Portfolios",
+          "selectedHint": "Nur Daten dieser Portfolios; Installationsverwaltung, Protokolle und Gesamtexporte bleiben gesperrt.",
+          "portfolios": "Portfolios",
+          "noPortfolios": "Es gibt noch keine Portfolios.",
+          "nothingWarning": "Ohne ausgewähltes Portfolio sieht das Konto keine Daten.",
+          "saved": "Portfolio-Zugriff gespeichert",
+          "summaryAll": "Alle",
+          "summaryNone": "Keine – sieht nichts",
+          "summaryCount": "{{count}} ausgewählt",
+          "managerHint": "Neue Konten sehen erst Daten, wenn der Eigentümer ihnen Portfolios zuweist."
         }
       },
       "skippedExisting": "bereits vorhanden, übersprungen",
