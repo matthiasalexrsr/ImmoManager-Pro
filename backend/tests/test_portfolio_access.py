@@ -49,7 +49,8 @@ def test_a_new_account_sees_nothing_until_the_owner_assigns_portfolios(client, p
     patched = client.patch(f"/api/v1/auth/users/{created['id']}", headers=headers,
                            json={"portfolio_access": "selected", "portfolio_ids": [north, north]}).json()
     assert patched["portfolio_ids"] == [north] and patched["portfolio_access_origin"] == "owner_assignment"
-    assert auth.get_user_by_id(created["id"])["portfolio_ids"] == [north]
+    stored = auth.get_user_by_id(created["id"])
+    assert stored is not None and stored["portfolio_ids"] == [north]
 
     everything = client.patch(f"/api/v1/auth/users/{created['id']}", headers=headers,
                               json={"portfolio_access": "all", "portfolio_ids": [north]}).json()
@@ -69,7 +70,8 @@ def test_portfolio_assignments_are_validated(client, portfolios):
     without_mode = client.patch(f"/api/v1/auth/users/{staff['id']}", headers=headers,
                                 json={"portfolio_ids": [portfolios[0].id]})
     assert without_mode.status_code == 422
-    assert auth.get_user_by_id(staff["id"])["portfolio_ids"] == [portfolios[1].id]
+    kept = auth.get_user_by_id(staff["id"])
+    assert kept is not None and kept["portfolio_ids"] == [portfolios[1].id]
 
 
 def test_only_owners_assign_portfolios_and_owners_always_see_everything(client, portfolios):

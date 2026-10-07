@@ -29,6 +29,7 @@ from .middleware import (
 from .paths import ensure_runtime_dirs, get_uploads_dir
 from .plugins import get_plugins, load_plugins
 from .routing import build_api_v1, get_i18n_router
+from .services.portfolio_http import PortfolioScopeMiddleware
 from .services.upload_policy import UploadStaticFiles
 
 # Initialize logging first
@@ -214,6 +215,8 @@ app.add_middleware(AcceptLanguageMiddleware)
 app.add_middleware(DBSessionMiddleware)
 app.add_middleware(AuditMiddleware)
 app.add_middleware(RBACWriteGuardMiddleware)
+# outermost: every layer below, the endpoints and the upload mount run inside the request's portfolio scope
+app.add_middleware(PortfolioScopeMiddleware)
 
 
 # ─── API Routers ─────────────────────────────────────────────────────────────

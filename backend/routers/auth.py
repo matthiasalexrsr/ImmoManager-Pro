@@ -348,7 +348,7 @@ def _require_portfolios(mode: str | None, ids: list[str] | None) -> None:
     known = {portfolio.id for portfolio in store.list_portfolios()}
     unknown = sorted(set(ids or ()) - known)
     if unknown:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                             detail="Unbekannte Portfolios: " + ", ".join(unknown))
 
 
@@ -396,7 +396,7 @@ def patch_user(
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                                 detail="Nur Eigentümer dürfen Portfolios zuweisen")
         if "portfolio_access" not in changes:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                                 detail="Portfolios werden zusammen mit der Zugriffsart geändert")
         _require_portfolios(changes["portfolio_access"], changes.get("portfolio_ids"))
         changes.update(normalize_access(changes.get("role", target["role"]), changes["portfolio_access"],

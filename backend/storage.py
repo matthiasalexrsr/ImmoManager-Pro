@@ -107,6 +107,16 @@ def _generate_id() -> str:
 
 @dataclass
 class InMemoryStore:
+    def __getattribute__(self, name):
+        # a restricted request sees each collection through its portfolio boundary
+        value = object.__getattribute__(self, name)
+        if isinstance(value, dict) and name in object.__getattribute__(self, "__dataclass_fields__"):
+            from .services.portfolio_scope import ScopedCollection, current_scope
+            scope = current_scope()
+            if scope is not None and not scope.unrestricted:
+                return ScopedCollection(self, name, value)
+        return value
+
     accounts: Dict[str, Account] = field(default_factory=dict)
     bookings: Dict[str, Booking] = field(default_factory=dict)
     calendar_events: Dict[str, CalendarEvent] = field(default_factory=dict)

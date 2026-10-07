@@ -16,6 +16,7 @@ from starlette.responses import JSONResponse, Response
 from starlette.types import Message, Receive, Scope, Send
 
 from ..config import settings
+from .portfolio_scope import require_file_access
 from .upload_access import require_upload_access
 
 IMAGE_EXTENSIONS = frozenset({"png", "jpg", "jpeg", "gif", "webp", "bmp", "tif", "tiff", "heic", "heif"})
@@ -91,6 +92,8 @@ class UploadStaticFiles(StaticFiles):
             user = await run_in_threadpool(require_upload_access, Request(scope))
             if path.replace("\\", "/").lstrip("/").startswith(ARCHIVED_PREFIX):
                 return await run_in_threadpool(_archived_original, path, user)
+            # a restricted account reads only files of records in its portfolios
+            await run_in_threadpool(require_file_access, path.replace("\\", "/").lstrip("/"))
             response = await super().get_response(path, scope)
         except StarletteHTTPException as exc:
             return JSONResponse({"detail": exc.detail}, status_code=exc.status_code, headers=exc.headers)

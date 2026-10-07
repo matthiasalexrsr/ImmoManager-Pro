@@ -604,7 +604,7 @@ class SQLUserStore(UserStore):
         from sqlalchemy import select
 
         from .db.access_models import UserAccessORM, UserPortfolioORM
-        rows = {row.user_id: (row.mode, row.origin, []) for row in
+        rows: dict[str, tuple[str, str, list[str]]] = {row.user_id: (row.mode, row.origin, []) for row in
                 session.scalars(select(UserAccessORM).where(UserAccessORM.user_id.in_(user_ids)))}
         for user_id, portfolio_id in session.execute(
                 select(UserPortfolioORM.user_id, UserPortfolioORM.portfolio_id)
