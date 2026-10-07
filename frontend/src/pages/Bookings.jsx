@@ -41,6 +41,7 @@ function BookingsWorkspace({ bookingId }) {
   const [loadError, setLoadError] = useState(null);
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [modal, setModal] = useState(null);
+  const modalGeneration = useRef(0);
   const [filter, setFilter] = useState('all');
   const [allocations, setAllocations] = useState([]);
   const [allocationStatus, setAllocationStatus] = useState('loading');
@@ -68,6 +69,9 @@ function BookingsWorkspace({ bookingId }) {
   }, []);
 
   const refreshData = () => setRefreshVersion(value => value + 1);
+  const openModal = initial => setModal({ generation: ++modalGeneration.current, initial });
+  // An old save may finish after cancellation and reopening; only its own session may close.
+  const closeModal = session => setModal(current => current === session ? null : current);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -244,10 +248,10 @@ function BookingsWorkspace({ bookingId }) {
 
   const handleSave = async (data) => {
     if (!canWrite) return;
-    if (modal === 'create') {
+    if (modal.initial === 'create') {
       await api.post('/bookings', data);
     } else {
-      await api.put(`/bookings/${encodeURIComponent(modal.id)}`, data);
+      await api.put(`/bookings/${encodeURIComponent(modal.initial.id)}`, data);
     }
     if (store) store.invalidateRelated('bookings', 'accounts', 'categories');
     if (mounted.current) refreshData();
@@ -327,13 +331,13 @@ function BookingsWorkspace({ bookingId }) {
             <div><dt>Immobilie</dt><dd>{propertyMap[selected.property_id] || selected.property_id || 'Nicht zugeordnet'}</dd></div>
             <div><dt>Einheit</dt><dd>{unitMap[selected.unit_id] || selected.unit_id || 'Nicht zugeordnet'}</dd></div>
             <div><dt>Mieter</dt><dd>{selected.tenant_id ? tenantMap[selected.tenant_id] || selected.tenant_id : 'Noch nicht zugeordnet'}</dd></div>
-            <div><dt>Kategorie</dt><dd>{categoryMap[selected.category_id] || 'Noch nicht zugeordnet'}</dd></div>
+            <div><dt>Kategorie</dt><dd>{categoryMap[selected.category_id] || (selected.category_id ? `Kategorie ${selected.category_id} (Name nicht verfügbar)` : 'Noch nicht zugeordnet')}</dd></div>
             <div><dt>Vertrag</dt><dd title={selectedAllocation.detail}>{selectedAllocation.label}</dd></div>
           </dl>
           {selectedAllocation.unassigned !== null && selectedAllocation.unassigned !== 0 && <p>Noch keinem Vertrag zugeordnet: {formatMoney(selectedAllocation.unassigned)}</p>}
           <div className="booking-selection-actions">
             {receiptAction(selected)}
-            {canWrite && <button type="button" className="btn btn-sm btn-primary" onClick={() => setModal(selected)}>Bearbeiten</button>}
+            {canWrite && <button type="button" className="btn btn-sm btn-primary" onClick={() => openModal(selected)}>Bearbeiten</button>}
             {selected.tenant_id && canSplit && <button type="button" className="btn btn-sm btn-secondary" onClick={() => openSplit(selected)}>Aufteilen</button>}
           </div>
         </>}
@@ -402,8 +406,8 @@ function BookingsWorkspace({ bookingId }) {
         title={t('finance.bookings.title') || 'Buchungen'}
         columns={columns}
         data={filtered}
-        onAdd={() => setModal('create')}
-        onEdit={row => setModal(row)}
+        onAdd={() => openModal('create')}
+        onEdit={openModal}
         onDelete={handleDelete}
       />}
       </>}
@@ -438,11 +442,12 @@ function BookingsWorkspace({ bookingId }) {
 
       {modal && (
         <FormModal
-          title={modal === 'create' ? 'Buchung erstellen' : 'Buchung bearbeiten'}
+          key={modal.generation}
+          title={modal.initial === 'create' ? 'Buchung erstellen' : 'Buchung bearbeiten'}
           fields={fields}
-          initial={modal === 'create' ? null : modal}
+          initial={modal.initial === 'create' ? null : modal.initial}
           onSave={handleSave}
-          onClose={() => setModal(null)}
+          onClose={() => closeModal(modal)}
         />
       )}
       {viewer && <FileViewer fileUrl={viewer.fileUrl} title={viewer.title} onClose={() => setViewer(null)} />}
