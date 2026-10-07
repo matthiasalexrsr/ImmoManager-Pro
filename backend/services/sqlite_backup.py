@@ -79,3 +79,12 @@ def ensure_access_schema(engine) -> None:
             cast(Table, model.__table__).create(connection, checkfirst=True)
         if "users" in before and "user_portfolio_access" not in before:
             adopt_legacy_access(connection)
+
+
+def ensure_job_schema(engine) -> None:
+    """After a restore from a backup older than durable jobs: add the job tables."""
+    from ..db.job_models import JOB_MODELS
+
+    with engine.begin() as connection:
+        for model in JOB_MODELS:
+            cast(Table, model.__table__).create(connection, checkfirst=True)

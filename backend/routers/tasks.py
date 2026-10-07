@@ -6,12 +6,14 @@ from pydantic import BaseModel
 
 from ..dependencies import store
 from ..models import Task, TaskCreate, TaskPatch
+from ..services.jobs import recurring
+from ..services.jobs.schedule import local_today
 from ..services.task_recurrence import next_due_date as _next_due_date
 from ..services.task_recurrence import parse_rrule as _parse_rrule
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/tasks", tags=["Aufgaben"])
-_recurrence_lock = RLock()  # serializes generation in this server process only
+_recurrence_lock = RLock()  # same process; other processes are fenced by the occurrence ledger
 
 
 class RecurrenceError(BaseModel):
@@ -61,6 +63,7 @@ def create_task(payload: TaskCreate) -> Task:
 
 def _generate_recurring_report(as_of: date) -> RecurrenceReport:
     report = RecurrenceReport(created=[], errors=[])
+    ledger = recurring.ledger_for(store)
     with _recurrence_lock:
         all_tasks = store.list_tasks()
         children: dict[str, list[Task]] = {}
@@ -78,16 +81,19 @@ def _generate_recurring_report(as_of: date) -> RecurrenceReport:
                 # COUNT is the established number of children, not the template.
                 if "COUNT" in rrule and len(instances) >= int(rrule["COUNT"]):
                     continue
-                base_date = max([template.due_date or template.created_at.date(),
-                                 *(task.due_date for task in instances if task.due_date)])
+                dues = [task.due_date for task in instances if task.due_date]
+                base_date = recurring.processed_through(store, ledger, template, recurring.Children(
+                    len(instances), max(dues) if dues else None))
                 next_date = _next_due_date(base_date, rrule)
                 if next_date > as_of or ("UNTIL" in rrule and next_date > date.fromisoformat(rrule["UNTIL"])):
                     continue
-                report.created.append(store.create_task(TaskCreate(
-                    title=template.title, description=template.description, assignee=template.assignee,
-                    due_date=next_date, priority=template.priority, property_id=template.property_id,
-                    unit_id=template.unit_id, parent_task_id=template.id,
-                )))
+                payload = recurring.child_payload(template, next_date)
+                recurring.validate_task(store, payload)
+                # the ledger row commits with the child: another process cannot create it twice
+                if not ledger.record(recurring.rule_key(template.id), recurring.rule_version(template),
+                                     next_date.isoformat(), "created"):
+                    continue
+                report.created.append(store.create_task(payload))
             except (ValueError, OverflowError, ValidationError) as exc:
                 report.errors.append(RecurrenceError(task_id=template.id, title=template.title, error=str(exc)))
     return report
@@ -100,16 +106,16 @@ def generate_recurring_report(as_of: date | None = Query(None)) -> RecurrenceRep
 
     COUNT limits children; UNTIL is inclusive. Open children block another child;
     the template itself can remain open. Monthly/yearly dates clamp to day 28.
-    Same-process requests serialize; separate server processes need DB idempotency.
+    Same-process requests serialize; across processes the occurrence ledger dedupes.
     """
-    return _generate_recurring_report(as_of if isinstance(as_of, date) else date.today())
+    return _generate_recurring_report(as_of if isinstance(as_of, date) else local_today())
 
 
 @router.post("/generate-recurring", response_model=list[Task])
 def generate_recurring_tasks(as_of: date | None = Query(None),
                              response: Response = None) -> list[Task]:  # type: ignore[assignment]  # FastAPI injects it
     """Compatible list result; use /generate-recurring/report for per-series errors."""
-    report = _generate_recurring_report(as_of if isinstance(as_of, date) else date.today())
+    report = _generate_recurring_report(as_of if isinstance(as_of, date) else local_today())
     if response is not None:
         response.headers["X-Recurring-Error-Count"] = str(len(report.errors))
     return report.created

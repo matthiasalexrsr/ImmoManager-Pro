@@ -15,6 +15,7 @@ from ..services.sqlite_backup import (
     copy_database,
     ensure_access_schema,
     ensure_archive_schema,
+    ensure_job_schema,
     is_sqlite_database,
     sqlite_path_from_url,
     verify_archived_originals,
@@ -151,6 +152,7 @@ def restore_backup(backup_name: str):
 
     ensure_archive_schema(engine)
     ensure_access_schema(engine)
+    ensure_job_schema(engine)
     logger.info("Database restored from %s", backup_name)
     return {"restored_from": backup_name, "safety_backup": safety.name}
 

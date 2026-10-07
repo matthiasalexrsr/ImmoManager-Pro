@@ -6,6 +6,7 @@ Middleware implementations live in middleware.py; router assembly in routing.py.
 
 import asyncio
 import logging
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict
@@ -175,9 +176,19 @@ async def lifespan(app: FastAPI):
 
     cleanup_task = asyncio.create_task(_periodic_auth_cleanup())
 
+    # Durable installation jobs (recurring tasks, escalation): DB work runs in a thread
+    scheduler_stop = threading.Event()
+    scheduler_task = None
+    if settings.job_scheduler_enabled:
+        from .services.jobs.scheduler import run_forever
+        scheduler_task = asyncio.create_task(run_forever(settings.job_scheduler_interval_seconds, scheduler_stop))
+
     yield
 
     cleanup_task.cancel()
+    scheduler_stop.set()            # a running job stops after its current chunk
+    if scheduler_task is not None:
+        scheduler_task.cancel()
 
     # Shutdown plugins
     for plugin in get_plugins():

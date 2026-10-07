@@ -18,6 +18,9 @@ else:
     os.environ.setdefault("SQLITE_PERSISTENT_STORE", "false")
     os.environ.setdefault("ALLOW_INMEMORY_FALLBACK", "true")
 
+# Scheduled jobs would create tasks/notifications in the middle of unrelated tests.
+os.environ.setdefault("JOB_SCHEDULER_ENABLED", "false")
+
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
