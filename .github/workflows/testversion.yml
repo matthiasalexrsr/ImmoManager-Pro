@@ -98,10 +98,26 @@ jobs:
           $documents = Invoke-RestMethod -Uri 'http://127.0.0.1:8765/api/v1/documents?limit=1' -Headers $headers
           $pdf = Invoke-WebRequest -Uri ('http://127.0.0.1:8765' + $documents[0].file_url) -Headers $headers
           $page = Invoke-WebRequest -Uri 'http://127.0.0.1:8765/' -UseBasicParsing
+          # Wohnungsgeberbestaetigung: the PDF needs the fonts bundled in the package
+          $contract = (Invoke-RestMethod -Uri 'http://127.0.0.1:8765/api/v1/contracts?limit=1' -Headers $headers)[0]
+          $wgb = "http://127.0.0.1:8765/api/v1/contracts/$($contract.id)/housing-confirmations"
+          $source = Invoke-RestMethod -Uri "$wgb/source" -Headers $headers
+          $preview = @{
+            source_etags = $source.source_etags
+            data = @{
+              housing_provider_name = 'Linda Reiser'; housing_provider_address = "Priessnitzstr. 4`n01099 Dresden"
+              owner_same_as_provider = $true; owner_name = $null; move_in_date = '2026-10-01'; issue_date = '2026-10-07'
+              apartment_address = $source.suggestions.apartment_address; apartment_label = $null
+              issuer_name = 'Linda Reiser'; issuer_role = 'housing_provider'; residents = @('Zoë Łukasz Müller')
+            }
+          } | ConvertTo-Json -Depth 5
+          $wgbPdf = Invoke-WebRequest -Method Post -Uri "$wgb/preview-pdf" -Headers $headers -UseBasicParsing `
+            -ContentType 'application/json; charset=utf-8' -Body ([System.Text.Encoding]::UTF8.GetBytes($preview))
           Stop-Process -Id $proc.Id -Force
-          Write-Host "Objekte: $($properties.Count), Dokument: $($pdf.StatusCode), Oberflaeche: $($page.StatusCode)"
+          Write-Host "Objekte: $($properties.Count), Dokument: $($pdf.StatusCode), Oberflaeche: $($page.StatusCode), WGB: $($wgbPdf.RawContentLength) Bytes"
           if ($properties.Count -ne 15) { throw "Erwartet 15 Objekte, gefunden $($properties.Count)" }
           if ($pdf.StatusCode -ne 200 -or $page.Content -notmatch 'id="root"') { throw 'Dokument oder Oberflaeche fehlt' }
+          if ($wgbPdf.StatusCode -ne 200 -or $wgbPdf.Headers['Content-Type'] -notmatch 'application/pdf') { throw 'Wohnungsgeberbestaetigung ohne PDF' }
 
       - uses: actions/upload-artifact@v4
         with:
