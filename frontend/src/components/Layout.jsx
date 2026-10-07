@@ -151,6 +151,16 @@ function LayoutFrame() {
   const { t, locale, setLocale } = useTranslation();
   const { prefs, toggleTheme, toggleSidebar } = usePreferences();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState(null);
+  const handleLogout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    setLogoutError(null);
+    try { await logout(); navigate('/login'); }
+    catch (error) { setLogoutError(error.message); }
+    finally { setLoggingOut(false); }
+  };
   const collapsed = prefs.sidebar_collapsed;
 
   const tr = (key, fallback) => {
@@ -264,12 +274,14 @@ function LayoutFrame() {
             </div>
           </div>
           <button
-            onClick={() => { logout(); navigate('/login'); }}
+            onClick={handleLogout}
+            disabled={loggingOut}
             className="btn-logout"
           >
             <LogoutIcon size={16} />
             {!collapsed && <span>{t('accountMenu.logout')}</span>}
           </button>
+          {logoutError && <p className="alert-error" role="alert">{logoutError}</p>}
         </div>
       </aside>
       {mobileNavOpen && <button className="mobile-nav-backdrop" onClick={() => setMobileNavOpen(false)} aria-label={tr('ui.form.cancel', 'Close navigation')} />}

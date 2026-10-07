@@ -9,7 +9,15 @@
  *   - Safe JSON parsing with fallbacks
  */
 
-const BASE = '/api/v1';
+const BASE = import.meta.env.VITE_API_URL || '/api/v1';
+let refreshInFlight = null;
+let logoutInFlight = null;
+let logoutRequested = false;
+let sessionGeneration = 0;
+
+function requireCurrentSession(generation) {
+  if (logoutRequested || generation !== sessionGeneration) throw new Error('Die Sitzung wurde beendet oder geändert.');
+}
 
 // ---------------------------------------------------------------------------
 // Token helpers
@@ -49,25 +57,33 @@ async function fetchWithRetry(url, options, retriesLeft = MAX_RETRIES) {
 // Token refresh
 // ---------------------------------------------------------------------------
 
-async function tryRefreshToken() {
+function tryRefreshToken() {
+  if (logoutRequested) return Promise.resolve(false);
+  if (refreshInFlight) return refreshInFlight;
   const refreshToken = localStorage.getItem('refresh_token');
-  if (!refreshToken) return false;
-  try {
-    const res = await fetch(`${BASE}/auth/refresh`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh_token: refreshToken }),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      localStorage.setItem('access_token', data.access_token);
-      if (data.refresh_token) localStorage.setItem('refresh_token', data.refresh_token);
-      return true;
+  if (!refreshToken) return Promise.resolve(false);
+  refreshInFlight = (async () => {
+    let res;
+    try {
+      res = await fetch(`${BASE}/auth/refresh`, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+    } catch (err) {
+      throw networkError(err);
     }
-  } catch (err) {
-    console.warn('[API] Token refresh failed:', err.message);
-  }
-  return false;
+    if (res.status === 401 || res.status === 403) return false;
+    if (!res.ok) throw parseApiError(await res.json().catch(() => ({})), res.status);
+    const data = await res.json();
+    if (!data.access_token) throw new Error('Die Sitzung konnte nicht erneuert werden. Bitte erneut versuchen.');
+    if (localStorage.getItem('refresh_token') !== refreshToken) return false;
+    // Logout waits for this result, then revokes these newest tokens.
+    localStorage.setItem('access_token', data.access_token);
+    if (data.refresh_token) localStorage.setItem('refresh_token', data.refresh_token);
+    return true;
+  })().finally(() => { refreshInFlight = null; });
+  return refreshInFlight;
 }
 
 // ---------------------------------------------------------------------------
@@ -125,6 +141,8 @@ function networkError(originalError) {
 // ---------------------------------------------------------------------------
 
 async function request(path, options = {}) {
+  const generation = sessionGeneration;
+  requireCurrentSession(generation);
   const token = getToken();
   const { signal, ...rest } = options;
   const headers = { 'Content-Type': 'application/json', ...rest.headers };
@@ -132,7 +150,7 @@ async function request(path, options = {}) {
 
   let res;
   try {
-    res = await fetchWithRetry(`${BASE}${path}`, { ...rest, headers, signal });
+    res = await fetchWithRetry(`${BASE}${path}`, { credentials: 'include', ...rest, headers, signal });
   } catch (err) {
     if (err.name === 'AbortError') throw err;
     // All retries exhausted — network error
@@ -140,19 +158,23 @@ async function request(path, options = {}) {
   }
 
   // On 401, try refreshing the token once
+  requireCurrentSession(generation);
   if (res.status === 401) {
-    const refreshed = await tryRefreshToken();
+    const refreshed = getToken() && getToken() !== token ? true : await tryRefreshToken();
+    requireCurrentSession(generation);
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
     if (refreshed) {
       headers['Authorization'] = `Bearer ${getToken()}`;
       try {
-        res = await fetch(`${BASE}${path}`, { ...options, headers });
+        res = await fetch(`${BASE}${path}`, { credentials: 'include', ...options, headers });
       } catch (err) {
+        if (err.name === 'AbortError') throw err;
         throw networkError(err);
       }
     }
+    requireCurrentSession(generation);
     if (res.status === 401) {
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('refresh_token');
+      await logout();
       // Never redirect from the login page to itself: that reloads it forever.
       if (window.location.pathname !== '/login') window.location.href = '/login';
       throw new Error('Nicht authentifiziert');
@@ -166,12 +188,15 @@ async function request(path, options = {}) {
   }
 
   // Safe JSON parsing for success responses
+  let data;
   try {
-    return await res.json();
+    data = await res.json();
   } catch {
     console.warn('[API] Failed to parse JSON response for', path);
     return null;
   }
+  requireCurrentSession(generation);
+  return data;
 }
 
 // ---------------------------------------------------------------------------
@@ -228,10 +253,13 @@ export const api = {
 };
 
 export async function login(username, password) {
+  if (logoutInFlight) await logoutInFlight;
+  if (refreshInFlight) await refreshInFlight;
   let res;
   try {
     res = await fetchWithRetry(`${BASE}/auth/login`, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
     });
@@ -245,6 +273,8 @@ export async function login(username, password) {
   const data = await res.json();
   localStorage.setItem('access_token', data.access_token);
   localStorage.setItem('refresh_token', data.refresh_token);
+  logoutRequested = false;
+  sessionGeneration += 1;
   return data;
 }
 
@@ -276,16 +306,19 @@ export async function register(username, email, full_name, password) {
   return res.json();
 }
 
-export async function logout() {
-  const accessToken = localStorage.getItem('access_token');
-  const refreshToken = localStorage.getItem('refresh_token');
-
-  // Revoke tokens server-side before clearing local state.
-  // Fire-and-forget: even if the call fails we still clear local tokens.
-  if (accessToken || refreshToken) {
+export function logout() {
+  if (logoutInFlight) return logoutInFlight;
+  logoutRequested = true;
+  sessionGeneration += 1;
+  logoutInFlight = (async () => {
     try {
-      await fetch(`${BASE}/auth/logout`, {
-        method: 'POST',
+      // A temporary refresh failure must not prevent an explicit logout.
+      if (refreshInFlight) await refreshInFlight.catch(() => {});
+      const accessToken = localStorage.getItem('access_token');
+      const refreshToken = localStorage.getItem('refresh_token');
+      // Always call the server: an HttpOnly upload cookie can outlive local storage.
+      const response = await fetch(`${BASE}/auth/logout`, {
+        method: 'POST', credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
           ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
@@ -295,14 +328,15 @@ export async function logout() {
           refresh_token: refreshToken || undefined,
         }),
       });
-    } catch {
-      // Ignore — we still clear locally
+      if (!response.ok) throw new Error('Die Abmeldung wurde vom Server nicht bestätigt. Bitte erneut versuchen.');
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+    } catch (error) {
+      logoutRequested = false;
+      throw new Error('Die Abmeldung ist fehlgeschlagen. Ihre Sitzung bleibt bestehen. Bitte erneut versuchen.', { cause: error });
     }
-  }
-
-  localStorage.removeItem('access_token');
-  localStorage.removeItem('refresh_token');
-  window.location.href = '/login';
+  })().finally(() => { logoutInFlight = null; });
+  return logoutInFlight;
 }
 
 export function isLoggedIn() {

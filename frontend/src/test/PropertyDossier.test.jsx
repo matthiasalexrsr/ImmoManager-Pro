@@ -60,6 +60,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   access.canWrite = true;
   api.get.mockImplementation(path => {
+    if (path === '/auth/me') return Promise.resolve({ id: 'reader' });
     if (path.startsWith('/properties/')) return Promise.resolve(properties[path.split('/').pop()]);
     if (path.startsWith('/units/')) return Promise.resolve(Object.values(units).flat().find(unit => unit.id === path.split('/').pop()));
     if (path.startsWith('/files/ocr-text?')) return Promise.resolve({ has_ocr: false });

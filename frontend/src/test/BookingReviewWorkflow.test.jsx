@@ -74,6 +74,7 @@ beforeEach(() => {
   };
   api.list.mockResolvedValue([first]);
   api.get.mockImplementation(path => {
+    if (path === '/auth/me') return Promise.resolve({ id: 'reader' });
     if (path === '/bookings/allocations') return Promise.resolve([]);
     if (path === '/bookings/target') return Promise.resolve(target);
     if (path === '/bookings/other') return Promise.resolve(booking('other'));

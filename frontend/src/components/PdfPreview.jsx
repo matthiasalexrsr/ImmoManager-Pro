@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { usePartyText } from '../features/partyWorkspace/text';
+import { isOwnUploadUrl, prepareUploadAccess } from '../utils/uploadAccess';
 
 const MAX_PIXELS = 16_777_216;
 const MAX_DIMENSION = 8192;
@@ -25,6 +26,7 @@ export default function PdfPreview({ url, title }) {
 
   useEffect(() => {
     let active = true;
+    const controller = new AbortController();
     let destroyed = false;
     let task;
     setPdf(null);
@@ -37,6 +39,7 @@ export default function PdfPreview({ url, title }) {
     const fail = kind => {
       if (!active) return;
       active = false;
+      controller.abort();
       setError(kind);
       destroy();
     };
@@ -45,12 +48,13 @@ export default function PdfPreview({ url, title }) {
     // failures use the same retry path as network/parse failures.
     (async () => {
       try {
+        await prepareUploadAccess(url, { signal: controller.signal });
         const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist');
         if (!active) return;
         GlobalWorkerOptions.workerSrc = workerUrl;
         const base = new URL(import.meta.env.PDFJS_ASSET_PATH, window.location.href).href;
         task = getDocument({
-          url, cMapUrl: `${base}cmaps/`, cMapPacked: true,
+          url, withCredentials: isOwnUploadUrl(url), cMapUrl: `${base}cmaps/`, cMapPacked: true,
           standardFontDataUrl: `${base}standard_fonts/`, wasmUrl: `${base}wasm/`, iccUrl: `${base}iccs/`,
           // Load only the required ranges when the source supports byte ranges.
           disableStream: true, disableAutoFetch: true,
@@ -66,7 +70,7 @@ export default function PdfPreview({ url, title }) {
         fail(reason?.name === 'PasswordException' ? 'password' : reason?.name === 'InvalidPDFException' ? 'invalid' : 'load');
       } finally { clearTimeout(timer); }
     })();
-    return () => { active = false; clearTimeout(timer); destroy(); };
+    return () => { active = false; controller.abort(); clearTimeout(timer); destroy(); };
   }, [url, attempt]);
 
   useEffect(() => {

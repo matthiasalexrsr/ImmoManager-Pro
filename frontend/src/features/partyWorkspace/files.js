@@ -1,3 +1,5 @@
+import { isOwnUploadUrl, prepareUploadAccess } from '../../utils/uploadAccess';
+
 const API_BASE = import.meta.env.VITE_API_URL || '/api/v1';
 
 /** File references are either our upload paths or ordinary HTTP(S) URLs. */
@@ -37,7 +39,8 @@ export function fileKind(value) {
 export async function downloadFile(value, filename, { signal } = {}) {
   const url = resolveFileUrl(value);
   if (!url) throw new Error('Die Dateiadresse ist ungültig.');
-  const response = await fetch(url, { signal, credentials: 'same-origin' });
+  await prepareUploadAccess(url, { signal });
+  const response = await fetch(url, { signal, credentials: isOwnUploadUrl(url) ? 'include' : 'same-origin' });
   if (!response.ok) throw new Error(`Download fehlgeschlagen (${response.status})`);
   const blob = await response.blob();
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
