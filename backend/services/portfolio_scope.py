@@ -319,31 +319,20 @@ def _scope_queries(state):
     scope = current_scope()
     if scope is None or scope.unrestricted or _guarding.get():
         return
+    if state.execution_options.get(BOUNDED):
+        return             # built here with its boundary already: bounding it again only multiplies it
     statement = state.statement
-    covered = set()
+    if state.is_select:
+        # Every SELECT in the tree gets the boundary of its own table sources: plain Core
+        # selects through the session, the repositories' column reads, and the inner
+        # selects of counts (query.count()), subqueries and CTEs.
+        statement = _scope_select_tree(statement, scope)
     if state.is_orm_statement:
+        # relationship and eager loads add their tables while compiling: loader criteria cover them
         for mapper in state.all_mappers:
-            covered.add(mapper.local_table)
             criterion = scoped_clause(mapper.class_, scope=scope)
             if criterion is not None:
                 statement = statement.options(with_loader_criteria(mapper.class_, criterion, include_aliases=True))
-    if state.is_select:
-        # Plain table sources: Core selects through the session, and ORM queries that
-        # read table columns instead of entities (the repositories' fast list reads).
-        # Session.execute(Core SELECT) is used by coherent privacy/finance
-        # snapshots. Independent Engine connections use scoped_clause explicitly.
-        for source in statement.get_final_froms():
-            for table, nullable in _core_sources(source):
-                original = table.original if isinstance(table, Alias) else table
-                if getattr(original, "name", None) not in Base.metadata.tables or table in covered:
-                    continue
-                criterion = scoped_clause(Base.metadata.tables[getattr(original, "name")], scope=scope)
-                if criterion is not None and table is not original:
-                    criterion = ClauseAdapter(table).traverse(criterion)
-                if criterion is not None:
-                    if nullable and "id" in table.c:
-                        criterion = or_(table.c.id.is_(None), criterion)
-                    statement = statement.where(criterion)
     if state.is_update or state.is_delete:
         table = statement.table
         criterion = scoped_clause(table, scope=scope)
@@ -385,12 +374,44 @@ def _scope_queries(state):
             return result
 
 
+def _scope_select_tree(statement, scope):
+    from sqlalchemy.sql.selectable import Select
+    from sqlalchemy.sql.visitors import cloned_traverse
+
+    def scope_select(select_):
+        # called bottom-up on the clones: inner selects are already bounded
+        criteria = []
+        for source in select_.get_final_froms():
+            for table, nullable in _core_sources(source):
+                original = table.original if isinstance(table, Alias) else table
+                name = getattr(original, "name", None)
+                if not isinstance(name, str) or name not in Base.metadata.tables or not hasattr(original, "c"):
+                    continue
+                criterion = scoped_clause(Base.metadata.tables[name], scope=scope)
+                if criterion is None:
+                    continue
+                if table is not original:
+                    criterion = ClauseAdapter(table).traverse(criterion)
+                if nullable and "id" in table.c:
+                    criterion = or_(table.c.id.is_(None), criterion)
+                criteria.append(criterion)
+        if criteria:
+            select_._where_criteria += tuple(criteria)
+
+    if not isinstance(statement, Select):
+        return statement
+    return cloned_traverse(statement, {}, {"select": scope_select})
+
+
+BOUNDED = "immo_portfolio_bounded"
+
+
 def _sql_visible(db, table, entity_id):
     criterion = scoped_clause(table)
     query = select(table.c.id).where(table.c.id == entity_id)
     if criterion is not None:
         query = query.where(criterion)
-    return db.scalar(query) is not None
+    return db.scalar(query.execution_options(**{BOUNDED: True})) is not None
 
 
 def guard_sql_write(db, table, values, *, entity_id=None, creating=False):
@@ -502,7 +523,8 @@ def require_file_access(value: str):
                     for k in candidates
                 )
             )
-            if store.db.scalar(select(table.c.id).where(matches, scoped_clause(table, scope=scope)).limit(1)):
+            if store.db.scalar(select(table.c.id).where(matches, scoped_clause(table, scope=scope)).limit(1)
+                               .execution_options(**{BOUNDED: True})):
                 return
             token = _guarding.set(True)
             try:

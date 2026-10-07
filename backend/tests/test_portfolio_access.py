@@ -121,3 +121,28 @@ def test_first_start_after_the_update_keeps_existing_accounts_working(tmp_path, 
         assert "user_portfolio_access" in inspect(conn).get_table_names()
         assert conn.exec_driver_sql("SELECT mode, origin FROM user_portfolio_access").all() == [("all", "legacy_all")]
     engine.dispose()
+
+
+def test_restoring_an_older_backup_keeps_its_accounts_working(tmp_path):
+    """A database file from before portfolio access, put back by the binary restore."""
+    from backend.services.sqlite_backup import ensure_access_schema
+
+    path = tmp_path / "restored.db"
+    with sqlite3.connect(path) as conn:
+        conn.executescript("""
+            CREATE TABLE users (id VARCHAR PRIMARY KEY, username TEXT, email TEXT, full_name TEXT,
+                hashed_password TEXT, role TEXT, is_active BOOLEAN, totp_secret TEXT, totp_enabled BOOLEAN,
+                created_at DATETIME, updated_at DATETIME);
+            CREATE TABLE portfolios (id VARCHAR PRIMARY KEY);
+            INSERT INTO users VALUES ('staff', 'staff', 's@example.com', 'Staff', 'x', 'verwalter', 1, NULL, 0,
+                                      '2025-01-01', '2025-01-01');
+        """)
+    engine = create_engine(f"sqlite:///{path}")
+    ensure_access_schema(engine)
+    with engine.begin() as conn:
+        assert conn.exec_driver_sql("SELECT mode FROM user_portfolio_access").scalar() == "all"
+        conn.exec_driver_sql("UPDATE user_portfolio_access SET mode = 'selected'")
+    ensure_access_schema(engine)        # a backup that already has the tables keeps its assignments
+    with engine.connect() as conn:
+        assert conn.exec_driver_sql("SELECT mode FROM user_portfolio_access").scalar() == "selected"
+    engine.dispose()

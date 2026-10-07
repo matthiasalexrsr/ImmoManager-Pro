@@ -178,3 +178,122 @@ def test_shared_results_are_never_shared_across_portfolio_boundaries(client, est
     assert owner_summary != staff_summary
     # and the other way round: the restricted result is not handed to the owner
     assert south_contract in client.get("/api/v1/contracts/current-rents", headers=owner).json()
+
+
+MARK = "SUEDGEHEIM"
+
+
+def test_no_read_endpoint_shows_anything_of_another_portfolio(client, estate):
+    """Every parameterless GET under /api/v1, as a restricted account: the other portfolio's marker never appears."""
+    from fastapi.routing import APIRoute
+
+    from backend.models import PortfolioCreate, PropertyCreate, TenantCreate
+    from backend.services.portfolio_http import INSTALLATION_PREFIXES
+
+    south = estate["south"]
+    store.update_property(south["property"].id, PropertyCreate(
+        portfolio_id=south["portfolio"].id, name=f"{MARK} Haus", property_type="residential",
+        address_line=f"{MARK}weg 1", postal_code="01099", city=MARK))
+    store.update_tenant(south["tenant"].id, TenantCreate(full_name=f"{MARK} Mieterin", email="geheim@example.com"))
+    store.update_portfolio(south["portfolio"].id, PortfolioCreate(name=f"{MARK} Bestand"))
+    staff = _bearer(_staff("staff", estate["north"]["portfolio"]))
+    owner = _bearer(_staff("owner", role="eigentuemer", mode="all"))
+
+    secrets = [MARK, "geheim@example.com", *(south[key].id for key in
+               ("portfolio", "property", "unit", "tenant", "contract", "document", "booking", "account"))]
+    checked, leaks = [], []
+    for route in app.routes:
+        if not isinstance(route, APIRoute) or "GET" not in route.methods:
+            continue
+        path = route.path
+        if not path.startswith("/api/v1/") or "{" in path or path.startswith(INSTALLATION_PREFIXES):
+            continue
+        response = client.get(path, headers=staff)
+        if response.status_code >= 500:
+            leaks.append(f"{path}: {response.status_code}")
+            continue
+        checked.append(path)
+        shown = [secret for secret in secrets if secret in response.text]
+        if shown:
+            leaks.append(f"{path}: {shown[0]}")
+    assert not leaks, leaks
+    assert len(checked) > 40
+    # the marker is reachable at all: the owner sees it
+    assert MARK in client.get("/api/v1/properties", headers=owner).text
+
+
+def _read_endpoints():
+    from fastapi.routing import APIRoute
+
+    from backend.services.portfolio_http import INSTALLATION_PREFIXES
+
+    return sorted(route.path for route in app.routes
+                  if isinstance(route, APIRoute) and "GET" in route.methods and route.path.startswith("/api/v1/")
+                  and "{" not in route.path and not route.path.startswith(INSTALLATION_PREFIXES)
+                  and not route.path.startswith("/api/v1/auth"))
+
+
+def _answers(client, headers):
+    answers = {}
+    for path in _read_endpoints():
+        response = client.get(path, headers=headers)
+        if response.status_code < 500 and "json" in response.headers.get("content-type", ""):
+            answers[path] = response.json()
+    return answers
+
+
+def test_figures_are_those_of_an_installation_without_the_other_portfolio(client, estate):
+    """Counts, sums and reports, not only records: what a restricted account is shown equals what
+    the owner would see if the other portfolio did not exist at all."""
+    from backend import concurrency
+
+    staff = _bearer(_staff("staff", estate["north"]["portfolio"]))
+    owner = _bearer(_staff("owner", role="eigentuemer", mode="all"))
+    restricted = _answers(client, staff)
+
+    south = estate["south"]
+    store.delete_booking(south["booking"].id)
+    store.delete_document(south["document"].id)
+    store.delete_contract(south["contract"].id)
+    store.delete_account(south["account"].id)
+    store.delete_unit(south["unit"].id)
+    store.delete_property(south["property"].id)
+    store.delete_tenant(south["tenant"].id)
+    store.delete_portfolio(south["portfolio"].id)
+    concurrency.note_change()
+    alone = _answers(client, owner)
+    steady = _answers(client, owner)
+
+    differing = [path for path in restricted
+                 if path in alone and alone[path] == steady[path] and restricted[path] != alone[path]]
+    for path in differing:
+        a, b = restricted[path], alone[path]
+        if isinstance(a, dict):
+            print(path, {k: (a.get(k), b.get(k)) for k in set(a) | set(b) if a.get(k) != b.get(k)})
+    assert not differing, differing
+    assert len(restricted) > 40
+
+
+def test_semantic_hits_from_the_shared_index_are_checked_against_the_account(client, estate, monkeypatch):
+    """The semantic index covers the installation; it must not add another portfolio's records."""
+    from backend.routers import search as search_router
+    from backend.services.ai.schemas import SearchHit
+
+    south = estate["south"]
+
+    class Index:
+        is_available, entry_count = True, 1
+
+        def search(self, query, keyword_hits, top_k=50):
+            extra = SearchHit(entity_type="property", entity_id=south["property"].id, display=f"{MARK} Haus",
+                              detail="", url=f"/properties/{south['property'].id}", combined_score=0.9)
+            return [*keyword_hits, extra]
+
+    monkeypatch.setattr(search_router, "search_index", Index())
+    staff = _bearer(_staff("staff", estate["north"]["portfolio"]))
+    found = client.get("/api/v1/search", params={"q": "Bautzner"}, headers=staff)
+    assert found.status_code == 200
+    assert south["property"].id not in found.text and MARK not in found.text
+    owner = _bearer(_staff("owner", role="eigentuemer", mode="all"))
+    assert south["property"].id in client.get("/api/v1/search", params={"q": "Bautzner"}, headers=owner).text
+    assert client.post("/api/v1/search/reindex", headers=staff).status_code == 403

@@ -13,6 +13,7 @@ from ..services.data_snapshot import SnapshotError, export_snapshot, prepare_imp
 from ..services.document_version_validation import ArchiveIntegrityError
 from ..services.sqlite_backup import (
     copy_database,
+    ensure_access_schema,
     ensure_archive_schema,
     is_sqlite_database,
     sqlite_path_from_url,
@@ -149,6 +150,7 @@ def restore_backup(backup_name: str):
     from ..db.session import engine
 
     ensure_archive_schema(engine)
+    ensure_access_schema(engine)
     logger.info("Database restored from %s", backup_name)
     return {"restored_from": backup_name, "safety_backup": safety.name}
 

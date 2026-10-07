@@ -147,6 +147,10 @@ def work(store, actor_id: str, *, write_areas: Iterable[str] = ()) -> Iterator[U
             yield Unit(SQLAlchemyStore(db), db, check_account(auth.get_user_by_id(actor_id)), None)
             return
         begin_writer(db)
+        from .portfolio_scope import current_scope
+        scope = current_scope()
+        if scope is not None and not scope.unrestricted:
+            db.info["scoped_writer"] = scope      # Core inserts skip before_flush: fence the commit anyway
         with auth.locked_account(actor_id, db) as user:
             yield Unit(SQLAlchemyStore(db), db, check_account(user, write_areas=areas), None)
             db.commit()

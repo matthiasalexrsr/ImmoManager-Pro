@@ -64,3 +64,18 @@ def ensure_archive_schema(engine) -> None:
         for model in DOCUMENT_VERSION_MODELS:
             cast(Table, model.__table__).create(connection, checkfirst=True)
         install_guards(connection)
+
+
+def ensure_access_schema(engine) -> None:
+    """After a restore from a backup older than portfolio access: its accounts keep seeing everything."""
+    from sqlalchemy import inspect
+
+    from ..db.access_models import ResourcePortfolioORM, UploadAccessORM, UserAccessORM, UserPortfolioORM
+    from ..db.session import adopt_legacy_access
+
+    with engine.begin() as connection:
+        before = set(inspect(connection).get_table_names())
+        for model in (UserAccessORM, UserPortfolioORM, ResourcePortfolioORM, UploadAccessORM):
+            cast(Table, model.__table__).create(connection, checkfirst=True)
+        if "user_portfolio_access" not in before:
+            adopt_legacy_access(connection)
