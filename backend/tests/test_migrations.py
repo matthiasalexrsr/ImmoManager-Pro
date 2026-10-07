@@ -210,3 +210,33 @@ def test_document_tenant_downgrade_keeps_unassigned_documents(migrate):
     with sqlite3.connect(db_path) as conn:
         assert conn.execute("SELECT id, title FROM documents").fetchall() == [("legacy", "Alt")]
     assert _version(db_path) == "a1d6c3f8e2b4"
+
+
+def test_document_tenant_downgrade_on_adopted_schema_keeps_invoice_links(migrate):
+    from sqlalchemy import create_engine, event
+    from sqlalchemy.engine import Engine
+
+    def foreign_keys_on(connection, _record):
+        connection.execute("PRAGMA foreign_keys=ON")
+
+    event.listen(Engine, "connect", foreign_keys_on)
+    try:
+        engine = create_engine(f"sqlite:///{migrate.db_path}")
+        Base.metadata.create_all(engine)
+        with engine.begin() as connection:
+            connection.exec_driver_sql("""INSERT INTO documents (id, title, file_url, created_at, updated_at)
+                                          VALUES ('doc', 'Quelle', '/source.pdf', '2025-01-01', '2025-01-01')""")
+            connection.exec_driver_sql("""INSERT INTO invoices
+                (id, supplier, invoice_date, net_amount, vat_amount, vat_rate, gross_amount, status,
+                 source_document_id, created_at, updated_at)
+                VALUES ('invoice', 'Firma', '2025-01-01', 100, 19, 19, 119, 'open', 'doc', '2025-01-01', '2025-01-01')""")
+        engine.dispose()
+        migrate()
+        migrate.downgrade("a1d6c3f8e2b4")
+        with sqlite3.connect(migrate.db_path) as connection:
+            assert connection.execute("SELECT source_document_id FROM invoices").fetchall() == [("doc",)]
+            assert connection.execute("SELECT id FROM documents").fetchall() == [("doc",)]
+            assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
+        assert "tenant_id" not in _schema(migrate.db_path)["documents"]
+    finally:
+        event.remove(Engine, "connect", foreign_keys_on)

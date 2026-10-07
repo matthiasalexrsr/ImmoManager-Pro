@@ -42,8 +42,35 @@ def downgrade() -> None:
         )).scalar_one()
         if assigned:
             raise RuntimeError("Cannot remove document tenant links while tenant-linked documents exist")
-    if "idx_documents_tenant" in {index["name"] for index in inspector.get_indexes("documents")}:
-        op.drop_index("idx_documents_tenant", table_name="documents")
-    if "tenant_id" in existing:
-        # Direct DROP COLUMN preserves documents and incoming invoice links.
+    if "tenant_id" not in existing:
+        return
+    has_index = "idx_documents_tenant" in {index["name"] for index in inspector.get_indexes("documents")}
+    if op.get_bind().dialect.name == "sqlite":
+        tenant_keys = [key for key in inspector.get_foreign_keys("documents")
+                       if key["constrained_columns"] == ["tenant_id"]]
+        # Adopted create_all databases use a table-level FK, which SQLite
+        # cannot remove with DROP COLUMN. Rebuild with FK enforcement disabled
+        # so incoming invoice references survive the old table's removal.
+        # The autocommit block makes both PRAGMAs effective and restores the
+        # connection's setting before Alembic updates its version row.
+        with op.get_context().autocommit_block():
+            connection = op.get_bind()
+            foreign_keys = connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one()
+            connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+            try:
+                if connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one():
+                    raise RuntimeError("Cannot safely rebuild documents with foreign keys enabled")
+                if has_index:
+                    op.drop_index("idx_documents_tenant", table_name="documents")
+                with op.batch_alter_table("documents", naming_convention={
+                    "fk": "fk_%(table_name)s_%(column_0_name)s",
+                }) as batch:
+                    for key in tenant_keys:
+                        batch.drop_constraint(key["name"] or "fk_documents_tenant_id", type_="foreignkey")
+                    batch.drop_column("tenant_id")
+            finally:
+                connection.exec_driver_sql(f"PRAGMA foreign_keys={int(foreign_keys)}")
+    else:
+        if has_index:
+            op.drop_index("idx_documents_tenant", table_name="documents")
         op.drop_column("documents", "tenant_id")
