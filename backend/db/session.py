@@ -5,7 +5,7 @@ Supports PostgreSQL (prod) and SQLite (dev/test) via settings.database_url.
 
 from collections.abc import Generator
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, inspect
 from sqlalchemy.orm import Session, sessionmaker
 
 from ..config import settings
@@ -39,7 +39,13 @@ SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
 def create_tables() -> None:
     """Create all tables (dev/test convenience). Use Alembic for production."""
+    from .document_version_models import ARCHIVE_TABLES, install_guards
+
     Base.metadata.create_all(bind=engine)
+    with engine.begin() as connection:
+        # also for archive tables that existed before (create_all skipped them)
+        if set(ARCHIVE_TABLES) <= set(inspect(connection).get_table_names()):
+            install_guards(connection)
 
 
 def get_db() -> Generator[Session, None, None]:

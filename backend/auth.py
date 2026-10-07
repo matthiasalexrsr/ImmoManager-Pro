@@ -9,9 +9,11 @@ import hashlib
 import hmac
 import logging
 import secrets
+import threading
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Iterator, Optional
 from uuid import uuid4
 
 import jwt
@@ -490,11 +492,16 @@ class UserStore(ABC):
 
 
 class InMemoryUserStore(UserStore):
-    """In-memory user storage for tests and development."""
+    """In-memory user storage for tests and development.
+
+    Changes take `lock`; locked_account() holds it so that an account cannot be
+    deactivated or lose its role while a guarded change is still being written.
+    """
 
     def __init__(self):
         self._by_id: dict[str, dict] = {}
         self._by_username: dict[str, dict] = {}
+        self.lock = threading.RLock()
 
     def get_by_id(self, user_id: str) -> Optional[dict]:
         return self._by_id.get(user_id)
@@ -503,39 +510,44 @@ class InMemoryUserStore(UserStore):
         return self._by_username.get(username)
 
     def create(self, user_data: dict) -> None:
-        self._by_id[user_data["id"]] = user_data
-        self._by_username[user_data["username"]] = user_data
+        with self.lock:
+            self._by_id[user_data["id"]] = user_data
+            self._by_username[user_data["username"]] = user_data
 
     def update(self, user_id: str, updates: dict) -> Optional[dict]:
-        user = self._by_id.get(user_id)
-        if user is None:
-            return None
-        for key, value in updates.items():
-            if value is not None and key not in ("id", "hashed_password", "created_at"):
-                user[key] = value
-        user["updated_at"] = datetime.now(timezone.utc)
-        return user
+        with self.lock:
+            user = self._by_id.get(user_id)
+            if user is None:
+                return None
+            for key, value in updates.items():
+                if value is not None and key not in ("id", "hashed_password", "created_at"):
+                    user[key] = value
+            user["updated_at"] = datetime.now(timezone.utc)
+            return user
 
     def set_password_hash(self, user_id: str, hashed_password: str) -> Optional[dict]:
-        user = self._by_id.get(user_id)
-        if user is None:
-            return None
-        user["hashed_password"] = hashed_password
-        user["updated_at"] = datetime.now(timezone.utc)
-        return user
+        with self.lock:
+            user = self._by_id.get(user_id)
+            if user is None:
+                return None
+            user["hashed_password"] = hashed_password
+            user["updated_at"] = datetime.now(timezone.utc)
+            return user
 
     def delete(self, user_id: str) -> Optional[dict]:
-        user = self._by_id.pop(user_id, None)
-        if user:
-            self._by_username.pop(user["username"], None)
-        return user
+        with self.lock:
+            user = self._by_id.pop(user_id, None)
+            if user:
+                self._by_username.pop(user["username"], None)
+            return user
 
     def list_all(self) -> list[dict]:
         return list(self._by_id.values())
 
     def clear(self) -> None:
-        self._by_id.clear()
-        self._by_username.clear()
+        with self.lock:
+            self._by_id.clear()
+            self._by_username.clear()
 
 
 class SQLUserStore(UserStore):
@@ -777,6 +789,34 @@ def get_user_by_username(username: str) -> Optional[dict]:
 def get_user_by_id(user_id: str) -> Optional[dict]:
     """Get a user by ID."""
     return _user_store.get_by_id(user_id)
+
+
+@contextmanager
+def locked_account(user_id: str, db=None) -> Iterator[Optional[dict]]:
+    """The account as it stands, kept so until the caller's change is written.
+
+    With SQL accounts the row is read with a share lock in the caller's session
+    `db` (on the same database): deactivating the account or changing its role
+    waits until that transaction ends. SQLite has no row locks, so the caller
+    must already hold the write lock (BEGIN IMMEDIATE). In-memory accounts are
+    held with the store's lock for the duration of the block.
+    """
+    store = _user_store
+    if isinstance(store, SQLUserStore):
+        if db is None:
+            raise RuntimeError("SQL accounts need the caller's database session")
+        from sqlalchemy import select
+
+        from .db.orm_models import UserORM
+        row = db.scalar(select(UserORM).where(UserORM.id == user_id).with_for_update(read=True))
+        yield store._to_dict(row) if row is not None else None
+        return
+    lock = getattr(store, "lock", None)
+    if lock is None:
+        raise RuntimeError(f"{type(store).__name__} cannot hold an account")
+    with lock:
+        user = store.get_by_id(user_id)
+        yield dict(user) if user is not None else None
 
 
 def has_users() -> bool:

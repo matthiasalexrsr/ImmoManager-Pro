@@ -9,7 +9,8 @@ intact, and a snapshot is validated completely before anything is written:
   the same file twice changes nothing;
 * replace (restore): the business data is swapped all or nothing.
 
-User accounts, sessions and the audit log are not part of a snapshot.
+User accounts, sessions and the audit log are not part of a snapshot. Archived
+document originals are, with their bytes (see document_original_snapshot).
 """
 
 from __future__ import annotations
@@ -28,9 +29,11 @@ from sqlalchemy import Table, UniqueConstraint, select
 from ..config import settings
 from ..db.orm_models import Base
 from ..storage import InMemoryStore
+from . import document_original_snapshot as originals
 
 SNAPSHOT_FORMAT = "immomanager-snapshot"
-SNAPSHOT_FORMAT_VERSION = 2
+# 3: archived document originals (older versions would drop them, so they refuse the file)
+SNAPSHOT_FORMAT_VERSION = 3
 
 # Keys used by exports written before format 2.
 _KEY_ALIASES = {"viewing_appointments": ("viewings",)}
@@ -95,7 +98,7 @@ class _MemoryBackend:
     def records(self, spec: EntitySpec) -> list[Record]:
         return list(getattr(self._store, spec.key).values())
 
-    def apply(self, plan: Plan, *, replace: bool) -> None:
+    def apply(self, plan: Plan, *, replace: bool, fresh_originals: list | None = None) -> None:
         # Stage complete collections first so a failure leaves the data untouched.
         staged = {}
         for spec, objs in plan:
@@ -106,6 +109,7 @@ class _MemoryBackend:
             target = getattr(self._store, key)
             target.clear()
             target.update(collection)
+        originals.write_memory(self._store, fresh_originals or [])
 
 
 class _SQLBackend:
@@ -116,7 +120,7 @@ class _SQLBackend:
         rows = self._session.execute(select(spec.table)).mappings()
         return [spec.model.model_validate(dict(row)) for row in rows]
 
-    def apply(self, plan: Plan, *, replace: bool) -> None:
+    def apply(self, plan: Plan, *, replace: bool, fresh_originals: list | None = None) -> None:
         session = self._session
         try:
             if replace:
@@ -127,6 +131,7 @@ class _SQLBackend:
                 rows = [{k: v for k, v in obj.model_dump().items() if k in columns} for obj in objs]
                 if rows:
                     session.execute(spec.table.insert(), rows)
+            originals.write_sql(session, fresh_originals or [])
             session.commit()
         except Exception:
             session.rollback()
@@ -152,6 +157,7 @@ def export_snapshot(store: Any) -> dict:
     }
     for spec in entity_specs():
         data[spec.key] = [obj.model_dump(mode="json") for obj in backend.records(spec)]
+    data[originals.SNAPSHOT_KEY] = originals.export(store)
     return data
 
 
@@ -163,11 +169,15 @@ class PreparedImport:
     plan: Plan
     replace: bool
     skipped: dict[str, int] = field(default_factory=dict)
+    fresh_originals: list = field(default_factory=list)
 
     def apply(self) -> dict:
-        self.backend.apply(self.plan, replace=self.replace)
+        self.backend.apply(self.plan, replace=self.replace, fresh_originals=self.fresh_originals)
+        imported = {spec.key: len(objs) for spec, objs in self.plan if objs}
+        if self.fresh_originals:
+            imported[originals.SNAPSHOT_KEY] = len(self.fresh_originals)
         return {
-            "imported": {spec.key: len(objs) for spec, objs in self.plan if objs},
+            "imported": imported,
             "skipped_existing": self.skipped,
             "replace_existing": self.replace,
         }
@@ -184,6 +194,7 @@ def prepare_import(store: Any, data: Any, *, replace: bool) -> PreparedImport:
         raise SnapshotError([f"Die Datei stammt aus einer neueren Version (Format {version}); bitte zuerst "
                              "ImmoManager Pro aktualisieren"])
     known = {spec.key for spec in entity_specs()} | {a for aliases in _KEY_ALIASES.values() for a in aliases}
+    known.add(originals.SNAPSHOT_KEY)
     if not replace and not known & set(data):
         # merging nothing would report success for a file that holds no ImmoManager data at all
         raise SnapshotError(["Die Datei enthält keine ImmoManager-Daten"])
@@ -194,9 +205,14 @@ def prepare_import(store: Any, data: Any, *, replace: bool) -> PreparedImport:
             "Bitte stattdessen importieren"
         ])
 
+    if replace and originals.has_originals(store):
+        raise SnapshotError([originals.RESTORE_REFUSED])
+
     specs = entity_specs()
     backend = _backend(store)
     parsed, problems = _parse(data, specs)
+    incoming, original_problems = originals.parse(data.get(originals.SNAPSHOT_KEY))
+    problems += original_problems
     existing: dict[str, dict[str, Record]] = {}
     if not replace:
         existing = {spec.key: {obj.id: obj for obj in backend.records(spec)} for spec in specs}
@@ -214,9 +230,16 @@ def prepare_import(store: Any, data: Any, *, replace: bool) -> PreparedImport:
 
     problems += _check_references(plan, existing)
     problems += _check_unique(plan, existing)
+    fresh_originals: list = []
+    if incoming:
+        after = {spec.key: {**existing.get(spec.key, {}), **{obj.id: obj for obj in objs}} for spec, objs in plan}
+        fresh_originals, skipped_originals, original_problems = originals.check(store, incoming, after)
+        problems += original_problems
+        if skipped_originals:
+            skipped[originals.SNAPSHOT_KEY] = skipped_originals
     if problems:
         raise SnapshotError(problems)
-    return PreparedImport(backend, plan, replace, skipped)
+    return PreparedImport(backend, plan, replace, skipped, fresh_originals)
 
 
 def import_snapshot(store: Any, data: Any, *, replace: bool) -> dict:

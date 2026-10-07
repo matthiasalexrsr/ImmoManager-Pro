@@ -15,6 +15,7 @@ from ..dependencies import store
 from ..plugins import get_plugins
 from ..services.data_snapshot import SnapshotError, export_snapshot, import_snapshot
 from ..services.deletion_guard import ensure_deletable
+from ..services.document_versions import ensure_no_originals
 
 # Re-export the CONTRACT_WIZARD_STATUS lazily to avoid circular imports.
 _CONTRACT_WIZARD_STATUS = None
@@ -266,6 +267,8 @@ def bulk_delete(entity_type: str, payload: dict):
         try:
             if entity_type in guarded:
                 ensure_deletable(store, guarded[entity_type], eid)
+            if entity_type == "documents":
+                ensure_no_originals(store, "document", eid)
             delete_fn(eid)
             deleted += 1
         except HTTPException as e:

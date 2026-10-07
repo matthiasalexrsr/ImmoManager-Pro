@@ -6,6 +6,7 @@ from ..dependencies import store
 from ..domain.occupancy import unit_statuses_on
 from ..models import Unit, UnitCreate, UnitPatch
 from ..services.deletion_guard import ensure_deletable
+from ..services.document_versions import ensure_binding_kept
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/units", tags=["Einheiten"])
@@ -62,6 +63,7 @@ def get_unit(unit_id: str) -> Unit:
 @router.put("/{unit_id}", response_model=Unit)
 def update_unit(unit_id: str, payload: UnitCreate) -> Unit:
     try:
+        ensure_binding_kept(store, "unit", unit_id, store.get_unit(unit_id), payload.model_dump())
         return _current([store.update_unit(unit_id, payload)])[0]
     except (NotFoundError, ValidationError) as exc:
         status_code = status.HTTP_404_NOT_FOUND if isinstance(exc, NotFoundError) else status.HTTP_400_BAD_REQUEST
@@ -71,6 +73,7 @@ def update_unit(unit_id: str, payload: UnitCreate) -> Unit:
 @router.patch("/{unit_id}", response_model=Unit)
 def patch_unit(unit_id: str, payload: UnitPatch) -> Unit:
     try:
+        ensure_binding_kept(store, "unit", unit_id, store.get_unit(unit_id), payload.model_dump(exclude_unset=True))
         return _current([store._patch_entity("unit", unit_id, payload)])[0]
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

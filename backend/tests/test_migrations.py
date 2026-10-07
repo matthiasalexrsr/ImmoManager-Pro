@@ -235,10 +235,61 @@ def test_document_tenant_downgrade_on_adopted_schema_keeps_invoice_links(migrate
         engine.dispose()
         migrate()
         migrate.downgrade("a1d6c3f8e2b4")
-        with sqlite3.connect(migrate.db_path) as connection:
-            assert connection.execute("SELECT source_document_id FROM invoices").fetchall() == [("doc",)]
-            assert connection.execute("SELECT id FROM documents").fetchall() == [("doc",)]
-            assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
+        with sqlite3.connect(migrate.db_path) as conn:
+            assert conn.execute("SELECT source_document_id FROM invoices").fetchall() == [("doc",)]
+            assert conn.execute("SELECT id FROM documents").fetchall() == [("doc",)]
+            assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
         assert "tenant_id" not in _schema(migrate.db_path)["documents"]
     finally:
         event.remove(Engine, "connect", foreign_keys_on)
+
+
+ARCHIVE_PARENT = "d7a2f9c4e681"
+
+
+def _seed_original(db_path: Path) -> None:
+    _seed_previous_schema(db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript("""
+            INSERT INTO documents (id, property_id, unit_id, contract_id, title, file_url, created_at, updated_at)
+                VALUES ('d1', 'pr', 'u1', 'c1', 'WGB', '/uploads/housing-confirmations/d1.pdf',
+                        '2025-01-01', '2025-01-01');
+            INSERT INTO document_versions (id, document_id, portfolio_id, property_id, unit_id, contract_id,
+                tenant_id, number, actor_id, idempotency_key, request_sha256, operation, comment, filename,
+                media_type, sha256, size_bytes, metadata_snapshot, created_at)
+                VALUES ('v1', 'd1', 'pf', 'pr', 'u1', 'c1', 't1', 1, 'owner', 'k',
+                        'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'archive_original', '',
+                        'd1.pdf', 'application/pdf',
+                        'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 3, '{}', '2025-01-01');
+            INSERT INTO document_version_chunks (version_id, position, portfolio_id, data)
+                VALUES ('v1', 0, 'pf', X'255044');
+        """)
+
+
+def test_document_originals_are_guarded_after_the_upgrade(migrate):
+    db_path = migrate()
+    _seed_original(db_path)
+    with sqlite3.connect(db_path) as conn:
+        triggers = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='trigger'")}
+        assert {"immo_document_versions_update", "immo_document_versions_delete",
+                "immo_document_version_chunks_update", "immo_document_version_chunks_delete"} <= triggers
+        for statement in ("UPDATE document_versions SET comment = 'x'", "DELETE FROM document_version_chunks"):
+            with pytest.raises(sqlite3.IntegrityError, match="immutable"):
+                conn.execute(statement)
+
+
+def test_document_originals_downgrade_refuses_to_destroy_evidence(migrate):
+    db_path = migrate()
+    _seed_original(db_path)
+    with pytest.raises(RuntimeError, match="Document originals exist"):
+        migrate.downgrade(ARCHIVE_PARENT)
+    assert {"document_versions", "document_version_chunks"} <= set(_schema(db_path))
+    assert _version(db_path) == migrate.head
+
+
+def test_document_originals_downgrade_without_originals(migrate):
+    db_path = migrate()
+    migrate.downgrade(ARCHIVE_PARENT)
+    assert not {"document_versions", "document_version_chunks"} & set(_schema(db_path))
+    migrate()
+    assert {"document_versions", "document_version_chunks"} <= set(_schema(db_path))

@@ -11,6 +11,7 @@ from ..dependencies import store
 from ..domain.lease_engine import LeaseEngine, PaymentLine, RentStep
 from ..models import Contract, ContractCreate, ContractPatch, ContractRentPeriod, ContractRentPeriodCreate
 from ..services.deletion_guard import ensure_deletable
+from ..services.document_versions import ensure_binding_kept
 from ..services.payment_allocations import contract_payments
 from ..services.read_cache import CachedReads
 from ..services.rent_history import charge_for, follow_contract_start, rent_steps, start_rent_history
@@ -92,6 +93,7 @@ def get_contract(contract_id: str) -> Contract:
 @router.put("/{contract_id}", response_model=Contract)
 def update_contract(contract_id: str, payload: ContractCreate) -> Contract:
     try:
+        ensure_binding_kept(store, "contract", contract_id, store.get_contract(contract_id), payload.model_dump())
         contract = store.update_contract(contract_id, payload)
         follow_contract_start(store, contract)
         return contract
@@ -110,6 +112,7 @@ def patch_contract(contract_id: str, payload: ContractPatch) -> Contract:
             **current.model_dump(include=set(ContractCreate.model_fields)),
             **payload.model_dump(exclude_unset=True),
         })
+        ensure_binding_kept(store, "contract", contract_id, current, merged.model_dump())
         contract = store.update_contract(contract_id, merged)
         follow_contract_start(store, contract)
         return contract

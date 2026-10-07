@@ -8,6 +8,7 @@ from starlette.concurrency import run_in_threadpool
 from ..dependencies import store
 from ..models import Document, DocumentCreate, DocumentPatch
 from ..routers.files import _perform_ocr, analyze_file, process_ocr
+from ..services.document_versions import ensure_binding_kept, ensure_no_originals
 from ..services.file_storage import get_file_storage
 from ..services.upload_policy import DOCUMENT_EXTENSIONS, read_limited, require_allowed_extension
 from ..storage import NotFoundError, ValidationError
@@ -133,6 +134,7 @@ def get_document(document_id: str) -> Document:
 @router.put("/{document_id}", response_model=Document)
 def update_document(document_id: str, payload: DocumentCreate) -> Document:
     try:
+        ensure_binding_kept(store, "document", document_id, store.get_document(document_id), payload.model_dump())
         return store.update_document(document_id, payload)
     except (NotFoundError, ValidationError) as exc:
         status_code = status.HTTP_404_NOT_FOUND if isinstance(exc, NotFoundError) else status.HTTP_400_BAD_REQUEST
@@ -142,6 +144,8 @@ def update_document(document_id: str, payload: DocumentCreate) -> Document:
 @router.patch("/{document_id}", response_model=Document)
 def patch_document(document_id: str, payload: DocumentPatch) -> Document:
     try:
+        ensure_binding_kept(store, "document", document_id, store.get_document(document_id),
+                            payload.model_dump(exclude_unset=True))
         return store._patch_entity("document", document_id, payload)
     except (NotFoundError, ValidationError) as exc:
         status_code = status.HTTP_404_NOT_FOUND if isinstance(exc, NotFoundError) else status.HTTP_400_BAD_REQUEST
@@ -151,6 +155,7 @@ def patch_document(document_id: str, payload: DocumentPatch) -> Document:
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_document(document_id: str) -> None:
     try:
+        ensure_no_originals(store, "document", document_id)
         store.delete_document(document_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

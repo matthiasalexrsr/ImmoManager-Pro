@@ -10,7 +10,14 @@ from fastapi import APIRouter, HTTPException
 from ..config import settings
 from ..paths import get_backup_dir, get_data_dir, get_uploads_dir
 from ..services.data_snapshot import SnapshotError, export_snapshot, prepare_import
-from ..services.sqlite_backup import copy_database, is_sqlite_database, sqlite_path_from_url
+from ..services.document_version_validation import ArchiveIntegrityError
+from ..services.sqlite_backup import (
+    copy_database,
+    ensure_archive_schema,
+    is_sqlite_database,
+    sqlite_path_from_url,
+    verify_archived_originals,
+)
 from ..storage import InMemoryStore
 from . import admin as legacy_admin
 
@@ -130,10 +137,18 @@ def restore_backup(backup_name: str):
     if not is_sqlite_database(backup_path):
         raise HTTPException(400, f"Not a SQLite database: {backup_name}")
 
+    try:
+        verify_archived_originals(backup_path)
+    except ArchiveIntegrityError as exc:
+        raise HTTPException(400, f"Wiederherstellung abgebrochen – {exc}") from exc
+
     # Online backup API, not file copies: the live database runs in WAL mode
     # and stays open, so a file copy would be overridden by the old WAL.
     safety = _safety_backup(store, db_path)
     copy_database(backup_path, db_path)
+    from ..db.session import engine
+
+    ensure_archive_schema(engine)
     logger.info("Database restored from %s", backup_name)
     return {"restored_from": backup_name, "safety_backup": safety.name}
 
