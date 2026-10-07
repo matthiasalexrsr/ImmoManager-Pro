@@ -4,15 +4,14 @@ from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from http.cookies import SimpleCookie
 
+import jwt
 import pytest
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
-import jwt
 
 from backend import auth
 from backend.routers.auth import router as auth_router
 from backend.services.upload_policy import UploadStaticFiles
-
 
 COOKIE = "immo_upload_access"
 PDF = b"%PDF-1.4\nprivate original bytes\n%%EOF"

@@ -27,7 +27,6 @@ from ..auth import (
     verify_totp,
 )
 from ..config import settings
-from ..services.upload_access import clear_upload_access_cookie, set_upload_access_cookie
 from ..models import (
     LoginRequest,
     RefreshRequest,
@@ -37,6 +36,7 @@ from ..models import (
     UserPatch,
     UserRead,
 )
+from ..services.upload_access import clear_upload_access_cookie, set_upload_access_cookie
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -102,8 +102,14 @@ def register(payload: UserCreate, request: Request) -> UserRead:
         )
 
 
+# FastAPI needs concrete Request/Response annotations for framework injection.
+# None defaults preserve direct Python callers; the guards below handle them.
 @router.post("/login", response_model=TokenResponse)
-def login(payload: LoginRequest, request: Request = None, response: Response = None) -> TokenResponse:
+def login(
+    payload: LoginRequest,
+    request: Request = None,  # type: ignore[assignment]
+    response: Response = None,  # type: ignore[assignment]
+) -> TokenResponse:
     """Authenticate and receive JWT tokens. Enforces TOTP when enabled."""
     user = authenticate_user(payload.username, payload.password)
     if user is None:
@@ -134,7 +140,11 @@ def login(payload: LoginRequest, request: Request = None, response: Response = N
 
 
 @router.post("/refresh", response_model=TokenResponse)
-def refresh(payload: RefreshRequest, request: Request = None, response: Response = None) -> TokenResponse:
+def refresh(
+    payload: RefreshRequest,
+    request: Request = None,  # type: ignore[assignment]
+    response: Response = None,  # type: ignore[assignment]
+) -> TokenResponse:
     """Refresh access token using a refresh token.
 
     Implements token rotation: the old refresh token is revoked on use,
@@ -165,7 +175,11 @@ def refresh(payload: RefreshRequest, request: Request = None, response: Response
 
 
 @router.post("/logout")
-def logout(payload: dict, request: Request = None, response: Response = None) -> dict:
+def logout(
+    payload: dict,
+    request: Request = None,  # type: ignore[assignment]
+    response: Response = None,  # type: ignore[assignment]
+) -> dict:
     """Logout by revoking the provided access and/or refresh tokens."""
     access_token = payload.get("access_token")
     refresh_token = payload.get("refresh_token")
@@ -181,8 +195,8 @@ def logout(payload: dict, request: Request = None, response: Response = None) ->
 @router.get("/me", response_model=UserRead)
 def get_me(
     user: UserRead = Depends(require_auth),
-    request: Request = None,
-    response: Response = None,
+    request: Request = None,  # type: ignore[assignment]
+    response: Response = None,  # type: ignore[assignment]
 ) -> UserRead:
     """Get current authenticated user's profile."""
     if request is not None and response is not None:
