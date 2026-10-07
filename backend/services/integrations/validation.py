@@ -21,11 +21,11 @@ def field_errors(values, fields, *, required=False):
     for field in fields:
         key = field["key"]
         value = values.get(key)
-        if value is None or value == "":
+        kind = field.get("type", "string")
+        if value is None or (kind == "string" and value == ""):
             if required and field.get("required"):
                 errors[key] = "Pflichtfeld fehlt"
             continue
-        kind = field.get("type", "string")
         valid = {"string": isinstance(value, str), "boolean": type(value) is bool,
                  "integer": type(value) is int, "number": type(value) in (int, float),
                  "object": isinstance(value, dict), "array": isinstance(value, list)}.get(kind, False)

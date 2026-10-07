@@ -102,6 +102,67 @@ describe('task hardening', () => {
     expect(screen.getByText('Serienkind')).toBeInTheDocument();
   });
 
+  it('refreshes a conflicted row before a deliberate quick-action retry', async () => {
+    let saved = { ...task };
+    const writes = [];
+    api.list.mockImplementation(async () => [{ ...saved }]);
+    api.patch.mockImplementation(async (_path, data) => {
+      writes.push({ ...data });
+      if (data.updated_at !== saved.updated_at) {
+        throw Object.assign(new Error('Datensatz wurde inzwischen geändert. Bitte neu laden.'), { statusCode: 409 });
+      }
+      saved = { ...saved, ...data, updated_at: '2026-10-07T12:00:00Z' };
+      return { ...saved };
+    });
+    render(<Tasks />);
+    await screen.findByText('Serienkind');
+    saved = { ...saved, title: 'Von anderer Person geändert', updated_at: '2026-10-07T11:00:00Z' };
+    fireEvent.click(screen.getByRole('button', { name: 'Erledigen' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Datensatz wurde inzwischen geändert');
+    fireEvent.click(within(alert).getByRole('button', { name: 'Aufgaben neu laden' }));
+    await screen.findByText('Von anderer Person geändert');
+    expect(saved.status).toBe('open');
+    expect(writes).toEqual([{ status: 'completed', updated_at: task.updated_at }]);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Erledigen' }));
+    await screen.findByRole('button', { name: 'Wiederöffnen' });
+    expect(saved.status).toBe('completed');
+    expect(writes[1]).toEqual({ status: 'completed', updated_at: '2026-10-07T11:00:00Z' });
+  });
+
+  it('preserves an open form draft and its captured revision during conflict refresh', async () => {
+    let saved = { ...task };
+    const writes = [];
+    api.list.mockImplementation(async () => [{ ...saved }]);
+    api.patch.mockImplementation(async (_path, data) => {
+      writes.push({ ...data });
+      throw Object.assign(new Error('Datensatz wurde inzwischen geändert. Bitte neu laden.'), { statusCode: 409 });
+    });
+    render(<Tasks />);
+    await screen.findByText('Serienkind');
+    let rejectAction;
+    api.patch.mockImplementationOnce((_path, data) => {
+      writes.push({ ...data });
+      return new Promise((_resolve, reject) => { rejectAction = reject; });
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Erledigen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Bearbeiten' }));
+    fireEvent.change(screen.getByLabelText('Titel *'), { target: { value: 'Mein ungespeicherter Entwurf' } });
+    saved = { ...saved, title: 'Neuer Serverstand', updated_at: '2026-10-07T11:00:00Z' };
+    rejectAction(Object.assign(new Error('Datensatz wurde inzwischen geändert. Bitte neu laden.'), { statusCode: 409 }));
+    const alert = await screen.findByRole('alert');
+    fireEvent.click(within(alert).getByRole('button', { name: 'Aufgaben neu laden' }));
+    await screen.findByText('Neuer Serverstand');
+    expect(screen.getByLabelText('Titel *')).toHaveValue('Mein ungespeicherter Entwurf');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(writes).toHaveLength(2));
+    expect(writes[1]).toMatchObject({ title: 'Mein ungespeicherter Entwurf', updated_at: task.updated_at });
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByLabelText('Titel *')).toHaveValue('Mein ungespeicherter Entwurf');
+  });
+
   it('shows per-series generation errors alongside successful children', async () => {
     api.post.mockResolvedValue({ created: [{ ...task, id: 'next', title: 'Neue Folge' }],
       errors: [{ task_id: 'bad', title: 'Alte Serie', error: 'INTERVAL muss positiv sein' }] });

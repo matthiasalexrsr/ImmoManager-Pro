@@ -139,6 +139,77 @@ SMTP_CONFIG = {"sender_email": "sender@example.test", "smtp_host": "smtp.example
                "smtp_user": "login", "smtp_password": "secret", "smtp_use_tls": True, "smtp_timeout": 7}
 
 
+@pytest.mark.parametrize("key", ["smtp_use_tls", "smtp_use_ssl", "smtp_port", "smtp_timeout"])
+def test_empty_nontext_config_rejected_without_changing_saved_or_live_state(key):
+    store = InMemoryIntegrationConfigStore()
+    manager = manager_for(EmailIntegrationProvider(), store)
+    manager.update_config("email", SMTP_CONFIG)
+    before_saved = store.load()
+    before_live = manager.get_integration("email")
+
+    with pytest.raises(ValueError, match=key):
+        manager.update_config("email", {key: ""})
+
+    assert store.load() == before_saved
+    assert manager.get_integration("email") == before_live
+
+
+@pytest.mark.parametrize("key", ["smtp_use_tls", "smtp_use_ssl", "smtp_port", "smtp_timeout"])
+def test_loaded_empty_nontext_config_is_invalid_and_cannot_start_smtp(key, smtp):
+    store = InMemoryIntegrationConfigStore()
+    store.save({"enabled": {"email": True}, "config": {"email": {**SMTP_CONFIG, key: ""}}})
+    manager = IntegrationManager(store=store)
+    manager.seed_defaults()
+
+    validation = manager.validate_config("email", {})
+    result = manager.run("email", {"action": "check_connection"})
+
+    assert validation["valid"] is False
+    assert key in validation["errors"]
+    assert manager.get_integration("email")["configured"] is False
+    assert result["success"] is False
+    assert key in result["details"]["errors"]
+    assert smtp == []
+
+
+@pytest.mark.parametrize("provider,payload,key,kind", [
+    (ListingPortalProvider(), {"action": "publish", "listing": ""}, "listing", "object"),
+    (huggingface.HuggingFaceProvider(), {"action": "summarize", "messages": ""}, "messages", "array"),
+])
+def test_empty_nontext_action_input_rejected_before_execution(provider, payload, key, kind, monkeypatch):
+    def unexpected_execution(*args, **kwargs):
+        pytest.fail("Invalid action must not reach its provider")
+
+    monkeypatch.setattr(provider, "run", unexpected_execution)
+    manager = manager_for(provider)
+    if provider.manifest.integration_id == "listing-portals":
+        manager.update_config("listing-portals", {"default_portal": "Immowelt"})
+    manager.set_enabled(provider.manifest.integration_id, True)
+    result = manager.run(provider.manifest.integration_id, payload)
+
+    assert result["success"] is False
+    assert result["details"]["code"] == "invalid_payload"
+    assert result["details"]["errors"][key] == f"Ungültiger Typ: {kind} erwartet"
+
+
+def test_optional_text_clear_null_default_and_masked_secret_roundtrip(smtp):
+    store = InMemoryIntegrationConfigStore()
+    manager = manager_for(EmailIntegrationProvider(), store)
+    manager.update_config("email", {**SMTP_CONFIG, "sender_name": "Old sender", "smtp_use_tls": False})
+    displayed = manager.get_integration("email")["config"]
+    assert displayed["smtp_password"] == "***"
+
+    manager.update_config("email", {**displayed, "sender_name": "", "smtp_use_tls": None})
+    saved = store.load()["config"]["email"]
+    assert saved["sender_name"] == ""
+    assert "smtp_use_tls" not in saved
+    assert saved["smtp_password"] == "secret"
+    assert manager.get_integration("email")["configured"] is True
+    assert manager.run("email", {"action": "check_connection"})["success"] is True
+    assert "tls" in smtp[0].events
+    assert ("login", "login", "secret") in smtp[0].events
+
+
 def test_connection_check_uses_saved_config_and_never_sends(smtp):
     result = EmailIntegrationProvider().run({"action": "check_connection"}, SMTP_CONFIG)
     assert result.success

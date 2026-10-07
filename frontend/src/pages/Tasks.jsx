@@ -82,12 +82,16 @@ export default function Tasks() {
     try {
       const data = await api.list('/tasks', { signal: request.signal });
       if (!Array.isArray(data)) throw new Error('Der Server hat keine gültige Aufgabenliste geliefert');
-      if (!request.signal.aborted) setTasks(data);
+      if (!request.signal.aborted) {
+        setTasks(data);
+        return true;
+      }
     } catch (err) {
       if (!request.signal.aborted) setLoadError(err.message);
     } finally {
       if (!request.signal.aborted) setLoading(false);
     }
+    return false;
   }, []);
 
   useEffect(() => {
@@ -199,7 +203,7 @@ export default function Tasks() {
       setActionError(null);
       toast.success('Aufgabe gelöscht');
     } catch (err) {
-      setActionError(err.message);
+      setActionError(err);
       toast.error(err.message);
       return;
     }
@@ -215,7 +219,7 @@ export default function Tasks() {
     try {
       await action();
     } catch (err) {
-      setActionError(err.message);
+      setActionError(err);
       toast.error(err.message);
     } finally {
       busyRef.current.delete(key);
@@ -243,6 +247,11 @@ export default function Tasks() {
   });
 
   const lookupErrors = [propertyState.error, unitState.error].filter(Boolean);
+  const reloadAfterConflict = async () => {
+    const conflict = actionError;
+    // Refresh only the list; an open form keeps its draft and captured revision.
+    if (await refreshData()) setActionError(current => current === conflict ? null : current);
+  };
   const retry = () => {
     refreshData();
     if (propertyState.error) propertyState.reload();
@@ -257,7 +266,10 @@ export default function Tasks() {
         {[loadError, ...lookupErrors].filter(Boolean).join(' · ')}{' '}
         <button className="btn btn-secondary btn-sm" onClick={retry} disabled={loading}>Erneut laden</button>
       </div>}
-      {actionError && <div className="alert-error" role="alert">{actionError}</div>}
+      {actionError && <div className="alert-error" role="alert">
+        {actionError.message}{' '}
+        {actionError.statusCode === 409 && <button className="btn btn-secondary btn-sm" onClick={reloadAfterConflict} disabled={loading}>Aufgaben neu laden</button>}
+      </div>}
       {recurrenceErrors.length > 0 && <div className="alert-error" role="alert">
         <p>Diese Serien konnten nicht fortgesetzt werden:</p>
         <ul>{recurrenceErrors.map(error => <li key={error.task_id}>{error.title}: {error.error}</li>)}</ul>

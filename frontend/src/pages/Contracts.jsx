@@ -29,7 +29,7 @@ export default function Contracts() {
   const store = useDataStore();
   const propertyState = useEntities('properties', '/properties');
   const unitState = useEntities('units', '/units');
-  const tenantState = useEntities('tenantsWithArchived', '/tenants?include_archived=true');
+  const tenantState = useEntities('tenants_all', '/tenants?include_archived=true');
   const properties = propertyState.items;
   const units = unitState.items;
   const tenants = tenantState.items;
@@ -187,7 +187,7 @@ export default function Contracts() {
       await api.put(`/contracts/${modal.id}`, data);
     }
     refreshData();
-    if (store) store.invalidateRelated('contracts', 'properties', 'units', 'tenants', 'tenantsWithArchived', 'deposits', 'receivables', 'rent_adjustments');
+    if (store) store.invalidateRelated('contracts', 'properties', 'units', 'tenants', 'tenants_all', 'deposits', 'receivables', 'rent_adjustments');
   };
 
   const handleDelete = async (row) => {
@@ -199,7 +199,7 @@ export default function Contracts() {
       return;
     }
     refreshData();
-    if (store) store.invalidateRelated('contracts', 'properties', 'units', 'tenants', 'tenantsWithArchived', 'deposits', 'receivables', 'rent_adjustments');
+    if (store) store.invalidateRelated('contracts', 'properties', 'units', 'tenants', 'tenants_all', 'deposits', 'receivables', 'rent_adjustments');
   };
 
   const lookupErrors = [propertyState.error, unitState.error, tenantState.error].filter(Boolean);
