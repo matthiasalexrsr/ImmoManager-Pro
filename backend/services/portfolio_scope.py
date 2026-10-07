@@ -66,6 +66,8 @@ INTERNAL = frozenset({
     "user_portfolio_grants",
     "resource_portfolio_grants",
     "upload_portfolio_grants",
+    "job_runs",              # installation jobs: run without an account, never bound to a portfolio
+    "job_occurrences",
 })
 RESOURCE_ALIASES = {
     "portfolio": "portfolios",

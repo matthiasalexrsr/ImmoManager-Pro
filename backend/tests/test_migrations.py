@@ -296,6 +296,7 @@ def test_document_originals_downgrade_without_originals(migrate):
 
 
 ACCESS_PARENT = "e5f1a7c3b9d2"
+ACCESS_REVISION = "a7c2e9f4b1d3"
 
 
 def _seed_users(db_path: Path) -> None:
@@ -334,8 +335,43 @@ def test_portfolio_access_downgrade_refuses_to_widen_access(migrate):
         conn.execute("INSERT INTO user_portfolio_grants (user_id, portfolio_id) VALUES ('staff', 'pf')")
     with pytest.raises(RuntimeError, match="Portfolio grants exist"):
         migrate.downgrade(ACCESS_PARENT)
-    assert _version(db_path) == migrate.head
+    assert _version(db_path) == ACCESS_REVISION     # later revisions went down, this one refused
     with sqlite3.connect(db_path) as conn:
         conn.execute("DELETE FROM user_portfolio_grants")
     migrate.downgrade(ACCESS_PARENT)
     assert "user_portfolio_access" not in _schema(db_path)
+
+
+JOBS_REVISION = "b8e3d5f7a2c4"
+
+
+def test_durable_jobs_upgrade_and_downgrade(migrate):
+    db_path = migrate(ACCESS_REVISION)
+    _seed_previous_schema(db_path)
+    migrate(JOBS_REVISION)
+    schema = _schema(db_path)
+    assert {"job_runs", "job_occurrences"} <= set(schema)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("INSERT INTO job_runs (id, kind, idempotency_key, scope, status, payload, attempts, "
+                     "max_attempts, available_at) VALUES ('r1', 'tasks.recurring', 'k1', 'installation', "
+                     "'running', '{}', 1, 5, '2026-10-07')")
+        conn.execute("INSERT INTO job_occurrences (rule_key, rule_version, occurrence_key, status) "
+                     "VALUES ('task:t', 'v1', '2026-10-07', 'created')")
+        with pytest.raises(sqlite3.IntegrityError):    # the dedupe is the primary key
+            conn.execute("INSERT INTO job_occurrences (rule_key, rule_version, occurrence_key, status) "
+                         "VALUES ('task:t', 'v1', '2026-10-07', 'skipped')")
+        with pytest.raises(sqlite3.IntegrityError):    # installation scope only
+            conn.execute("INSERT INTO job_runs (id, kind, idempotency_key, scope, status, payload, attempts, "
+                         "max_attempts, available_at) VALUES ('r2', 'x', 'k2', 'portfolio', 'queued', '{}', "
+                         "0, 5, '2026-10-07')")
+    with pytest.raises(RuntimeError, match="Unfinished jobs exist"):
+        migrate.downgrade(ACCESS_REVISION)
+    assert _version(db_path) == JOBS_REVISION
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("UPDATE job_runs SET status = 'succeeded'")
+    migrate.downgrade(ACCESS_REVISION)
+    assert "job_runs" not in _schema(db_path) and "job_occurrences" not in _schema(db_path)
+    assert _version(db_path) == ACCESS_REVISION
+    migrate()
+    assert {"job_runs", "job_occurrences"} <= set(_schema(db_path))
+

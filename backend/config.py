@@ -7,7 +7,7 @@ import enum
 import importlib.metadata
 import json
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -116,6 +116,13 @@ class Settings(BaseSettings):
 
     # --- Plugins ---
     plugin_dirs: Annotated[list[str], NoDecode] = []
+
+    # --- Scheduled jobs ---
+    # Every process ticks; durable runs and leases keep one worker per job.
+    job_scheduler_enabled: bool = True
+    job_scheduler_interval_seconds: float = 60.0
+    # "latest": only the newest missed occurrence of a series becomes a task; "all": every one
+    recurring_catch_up: Literal["latest", "all"] = "latest"
 
     # --- Auto-migration ---
     auto_migrate: bool = False

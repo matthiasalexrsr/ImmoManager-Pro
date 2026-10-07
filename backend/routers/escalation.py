@@ -73,7 +73,11 @@ def delete_rule(rule_id: str):
 @router.post("/run", response_model=None)
 def run_escalation(as_of: date | None = Query(None)):
     """Execute all active escalation rules and notify once per rule and overdue item."""
-    check_date = as_of or date.today()
+    return execute_escalation(store, as_of or date.today())
+
+
+def execute_escalation(store, check_date: date) -> dict:
+    """Shared by the endpoint and the scheduled job; repeats are suppressed by the Notifier."""
     rules = [r for r in store.list_escalation_rules() if r.is_active]
     notifier = Notifier(store)
     generated = []
