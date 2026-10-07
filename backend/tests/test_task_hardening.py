@@ -1,6 +1,7 @@
 """Task regressions on fresh memory and SQLite stores; never uses the live DB."""
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
+from typing import Any
 
 import pytest
 from fastapi import FastAPI
@@ -20,6 +21,7 @@ from backend.storage import InMemoryStore, ValidationError
 def task_store(request, monkeypatch):
     engine = None
     session = None
+    isolated: Any
     if request.param == "memory":
         isolated = InMemoryStore()
     else:
@@ -133,7 +135,7 @@ def test_same_process_concurrent_generation_creates_one_occurrence(task_store):
 
 def test_task_date_range_is_applied_before_page_beyond_10000(task_store, client):
     # Fast bulk insert into a disposable store to cover the former interim cap.
-    rows = [dict(id=f"task-{i}", title="Synthetic", due_date=date(2026, 1, 1)) for i in range(10001)]
+    rows: list[dict[str, Any]] = [dict(id=f"task-{i}", title="Synthetic", due_date=date(2026, 1, 1)) for i in range(10001)]
     rows += [dict(id=f"match-{i}", title="Match", due_date=date(2026, 2, 15)) for i in range(3)]
     if isinstance(task_store, InMemoryStore):
         from backend.models import Task

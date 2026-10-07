@@ -63,7 +63,7 @@ def _generate_recurring_report(as_of: date) -> RecurrenceReport:
     report = RecurrenceReport(created=[], errors=[])
     with _recurrence_lock:
         all_tasks = store.list_tasks()
-        children = {}
+        children: dict[str, list[Task]] = {}
         for task in all_tasks:
             if task.parent_task_id:
                 children.setdefault(task.parent_task_id, []).append(task)
@@ -106,7 +106,8 @@ def generate_recurring_report(as_of: date | None = Query(None)) -> RecurrenceRep
 
 
 @router.post("/generate-recurring", response_model=list[Task])
-def generate_recurring_tasks(as_of: date | None = Query(None), response: Response = None) -> list[Task]:
+def generate_recurring_tasks(as_of: date | None = Query(None),
+                             response: Response = None) -> list[Task]:  # type: ignore[assignment]  # FastAPI injects it
     """Compatible list result; use /generate-recurring/report for per-series errors."""
     report = _generate_recurring_report(as_of if isinstance(as_of, date) else date.today())
     if response is not None:

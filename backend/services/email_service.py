@@ -101,7 +101,7 @@ def send_email(
 
 def _connect(config: EmailConfig):
     context = ssl.create_default_context()
-    server = None
+    server: smtplib.SMTP | None = None
     try:
         if config.smtp_use_ssl:
             server = smtplib.SMTP_SSL(config.smtp_host, config.smtp_port, timeout=config.smtp_timeout, context=context)

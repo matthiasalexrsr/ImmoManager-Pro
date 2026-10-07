@@ -1,6 +1,7 @@
 """Search must use the actual shared contact and property schema."""
 
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from sqlalchemy import create_engine
@@ -15,6 +16,7 @@ from backend.storage import InMemoryStore
 
 @pytest.fixture(params=["memory", "sql"])
 def search_store(request, monkeypatch):
+    store: Any
     if request.param == "memory":
         store = InMemoryStore()
         monkeypatch.setattr(search, "store", store)
@@ -72,7 +74,7 @@ def test_semantic_property_index_contains_same_address_fields(search_store, monk
         portfolio_id=portfolio.id, name="Am Garten", property_type="residential",
         address_line="Seidenstraße 48", postal_code="64321", city="Darmstadt",
     ))
-    entries = []
+    entries: list = []
     fake_index = SimpleNamespace(is_available=True, clear=entries.clear,
                                  add_entries=entries.extend, rebuild=lambda: True)
     monkeypatch.setattr(search, "search_index", fake_index)

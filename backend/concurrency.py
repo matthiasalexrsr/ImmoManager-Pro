@@ -115,7 +115,8 @@ _table_rows: dict[str, tuple[int, float, list]] = {}
 
 def _expire_cached(now: float) -> None:
     """Release expired values on cache access; caller holds _cache_lock."""
-    for cache in (_results, _table_rows):
+    caches: tuple[dict[Any, tuple], ...] = (_results, _table_rows)
+    for cache in caches:
         for key, entry in list(cache.items()):
             if now - entry[1] >= KEEP_SECONDS:
                 del cache[key]

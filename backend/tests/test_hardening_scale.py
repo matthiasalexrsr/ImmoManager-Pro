@@ -6,11 +6,12 @@ import threading
 import time
 from datetime import date
 from pathlib import Path
+from typing import cast
 
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, insert, text
+from sqlalchemy import Table, create_engine, insert, text
 from sqlalchemy.orm import Session
 
 from backend import concurrency
@@ -20,6 +21,12 @@ from backend.repositories.sql_store import SQLAlchemyStore
 from backend.routers import bookings, contracts, invoices, maintenance
 from backend.services.task_queue import SyncQueue, ThreadPoolQueue
 from backend.storage import InMemoryStore
+
+
+def _status(queue, task_id):
+    result = queue.get_status(task_id)
+    assert result is not None
+    return result
 
 ENTITIES = [
     ("booking", "bookings", BookingORM, Booking, bookings, "list_bookings", "booking_date",
@@ -105,7 +112,7 @@ def test_store_ranges_apply_before_offset_with_open_and_null_bounds(paged_store,
     if isinstance(paged_store, InMemoryStore):
         paged_store.maintenance_cases.update({row.id: row for row in rows})
     else:
-        paged_store.db.execute(insert(MaintenanceCaseORM.__table__), [row.model_dump() for row in rows])
+        paged_store.db.execute(insert(cast(Table, MaintenanceCaseORM.__table__)), [row.model_dump() for row in rows])
         paged_store.db.commit()
     result = paged_store._list_paginated("maintenance", range_filters={"due_date": bounds}, skip=1, limit=2)
     assert [row.id for row in result] == want[1:3]
@@ -165,7 +172,11 @@ def test_concurrent_write_does_not_wait_for_compute_or_publish_stale_cache(cache
 
     read = concurrency.one_at_a_time(load) if kind == "result" else lambda: concurrency.whole_table("dirty", load)
     worker = threading.Thread(target=lambda: answers.append(read()))
-    writer = threading.Thread(target=lambda: (concurrency.note_change(), written.set()))
+    def write():
+        concurrency.note_change()
+        written.set()
+
+    writer = threading.Thread(target=write)
     worker.start()
     try:
         assert started.wait(5)
@@ -280,8 +291,8 @@ def test_cancelled_queued_job_never_runs_and_running_job_cannot_cancel():
         release.set()
         queue._pool.shutdown(wait=True)
     assert effects == []
-    assert queue.get_status(pending.task_id).status == "cancelled"
-    assert queue.get_status(running.task_id).result == "first"
+    assert _status(queue, pending.task_id).status == "cancelled"
+    assert _status(queue, running.task_id).result == "first"
 
 
 @pytest.mark.parametrize("queue_class", [SyncQueue, ThreadPoolQueue])
@@ -292,7 +303,7 @@ def test_job_retention_cleans_terminal_results_without_losing_recent_ids(queue_c
     jobs = [queue.enqueue(lambda i=i: i) for i in range(12000)]
     if isinstance(queue, ThreadPoolQueue):
         queue._pool.shutdown(wait=True)
-    assert all(queue.get_status(job.task_id).result == i for i, job in enumerate(jobs))
+    assert all(_status(queue, job.task_id).result == i for i, job in enumerate(jobs))
     clock[0] = 60
     assert queue.cleanup_results() == 12000
     assert all(queue.get_status(job.task_id) is None for job in jobs)
@@ -314,12 +325,12 @@ def test_retention_never_removes_pending_or_running_work(monkeypatch):
         pending = queue.enqueue(lambda: "later")
         clock[0] = 3600
         assert queue.cleanup_results() == 0
-        assert queue.get_status(running.task_id).status == "running"
-        assert queue.get_status(pending.task_id).status == "pending"
+        assert _status(queue, running.task_id).status == "running"
+        assert _status(queue, pending.task_id).status == "pending"
     finally:
         release.set()
         queue._pool.shutdown(wait=True)
-    assert queue.get_status(pending.task_id).result == "later"
+    assert _status(queue, pending.task_id).result == "later"
     clock[0] += 60
     assert queue.cleanup_results() == 2
 
@@ -332,8 +343,8 @@ def test_thread_job_failures_release_future_and_keep_error():
 
     failed = queue.enqueue(fail)
     queue._pool.shutdown(wait=True)
-    assert queue.get_status(failed.task_id).status == "failed"
-    assert queue.get_status(failed.task_id).error == "synthetic failure"
+    assert _status(queue, failed.task_id).status == "failed"
+    assert _status(queue, failed.task_id).error == "synthetic failure"
     assert queue._futures == {}
 
 
@@ -347,5 +358,5 @@ def test_racing_start_and_cancel_never_runs_an_accepted_cancellation():
                 accepted.append((i, job.task_id))
     finally:
         queue._pool.shutdown(wait=True)
-    assert all(i not in effects and queue.get_status(task_id).status == "cancelled" for i, task_id in accepted)
+    assert all(i not in effects and _status(queue, task_id).status == "cancelled" for i, task_id in accepted)
     assert len(effects) + len(accepted) == 500

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from threading import RLock
+from typing import Any
 
 from ...config import settings
 from ...paths import get_data_dir
@@ -29,7 +30,7 @@ class IntegrationManager:
         self._store = store or InMemoryIntegrationConfigStore()
         self._journal = history_store or IntegrationHistoryStore(getattr(self._store, "history_path", ":memory:"))
         self._lock = RLock()
-        self._state_error = None
+        self._state_error: str | None = None
 
     def register(self, provider: IntegrationProvider) -> None:
         integration_id = provider.manifest.integration_id
@@ -200,6 +201,7 @@ class IntegrationManager:
                 allowed = {"action"} | {field["key"] for field in action_schema.get("inputs", [])}
                 errors.update({key: "Unbekanntes Aktionsfeld" for key in set(payload) - allowed})
                 payload = {**payload, "action": action_id}
+        result: dict[str, Any]
         if errors:
             result = {"success": False, "message": "Ungültige Aktionsangaben: " + ", ".join(errors),
                       "details": {"code": "invalid_payload", "errors": errors}}

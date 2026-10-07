@@ -72,7 +72,7 @@ class EmailIntegrationProvider:
             return IntegrationActionResult(False, "Ungültige Versandangaben", {"code": "invalid_payload", "errors": errors})
 
         sent = send_email(
-            to=recipient,
+            to=str(recipient),
             subject=payload.get("subject", "ImmoManager Pro Test"),
             body_html=payload.get("body", "Dies ist eine Testnachricht."),
             config=transport,

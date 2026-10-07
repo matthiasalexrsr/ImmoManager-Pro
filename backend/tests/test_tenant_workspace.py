@@ -115,7 +115,7 @@ def test_documents_paginate_beyond_100_with_stable_newest_order(workspace_store,
     assert {contract.id for contract in overview.contracts} == {parties["historical"].id, parties["draft"].id}
     assert all(contract.property_name == "Haus A" and contract.unit_label == "WE 1"
                for contract in overview.contracts)
-    loaded = []
+    loaded: list = []
     for skip in range(0, 150, 25):
         page = TenantDocumentPage.model_validate(store.list_tenant_documents(tenant.id, skip=skip, limit=25))
         assert (page.total, page.skip, page.limit) == (138, skip, 25)
@@ -186,13 +186,13 @@ def test_explicit_document_tenant_survives_contract_reassignment(workspace_store
 def test_invalid_document_foreign_keys_rejected_before_mutation(workspace_store, parties, field):
     store = workspace_store
     document = store.create_document(DocumentCreate(title="Alt", file_url="/a.pdf", tenant_id=parties["tenant"].id))
-    invalid = DocumentCreate(title="Neu", file_url="/b.pdf", **{field: "missing"})
+    invalid = DocumentCreate.model_validate({"title": "Neu", "file_url": "/b.pdf", field: "missing"})
     with pytest.raises(ValidationError):
         store.create_document(invalid)
     with pytest.raises(ValidationError):
         store.update_document(document.id, invalid)
     with pytest.raises(ValidationError):
-        store._patch_entity("document", document.id, DocumentPatch(**{field: "missing"}))
+        store._patch_entity("document", document.id, DocumentPatch.model_validate({field: "missing"}))
     assert store.get_document(document.id).title == "Alt"
     assert len(store.list_documents()) == 1
 
