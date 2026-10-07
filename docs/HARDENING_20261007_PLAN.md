@@ -79,6 +79,26 @@ und installierte EXE bleiben während synthetischer Tests unberührt.
 
 ## Zuständigkeiten und Grenzen
 
+### Ergänzung aus dem echten PostgreSQL-Test
+
+Die frische Alembic-Installation erzeugt `bookings.amount` weiterhin als
+`double precision`, obwohl das aktuelle ORM dezimale Beträge deklariert.
+100 gleichzeitig erzeugte Zahlungen zu 11,11 EUR ergeben deshalb in PostgreSQL
+1111,0000000000002 statt einer exakten Dezimalsumme. Alle 100 Zahlungszuordnungen
+waren dagegen vorhanden und ergaben bereits exakt 1111,00 EUR.
+
+Paket 5 ergänzt eine eigene Migration nach dem neuen Buchungsindex. Die
+historisch abweichenden Betragsfelder werden anhand des tatsächlichen Schemas
+geprüft und auf dezimale Speicherung überführt. Vorhandene Werte dürfen dabei
+nicht still gekürzt oder gerundet werden. Frische Installation und Upgrade
+werden gegen einen echten isolierten PostgreSQL-Server geprüft; SQLite bleibt
+kompatibel. Diese Änderung wird gesondert überprüft. Sie ersetzt noch keine
+vollständige Umstellung sämtlicher Python-Finanzrechnungen auf Decimal.
+
+Der erste PostgreSQL-Test bestand alle 200 gleichzeitigen API-Zugriffe mit zehn
+verschiedenen Benutzern und die Schreibsperre der Leserrolle. Die gesamte
+Abnahme bleibt wegen des gefundenen Betragsfehlers bis zur Korrektur offen.
+
 Paket 1 besitzt generische Paginierung, Cache, Jobqueue und seine Migration;
 Paket 2 besitzt Aufgabenrouter, Aufgabenvalidierung und Tasks/Contracts-Oberflächen;
 Paket 3 besitzt Integrationsdienste und deren Oberfläche. Änderungen an
