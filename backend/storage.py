@@ -777,11 +777,25 @@ class InMemoryStore:
     def list_tasks(self) -> List[Task]:
         return list(self.tasks.values())
 
-    def create_task(self, data: TaskCreate) -> Task:
+    def validate_task(self, data: TaskCreate) -> None:
+        from .services.task_recurrence import parse_rrule
+
         if data.property_id and data.property_id not in self.properties:
             raise ValidationError("Immobilie existiert nicht")
-        if data.unit_id and data.unit_id not in self.units:
-            raise ValidationError("Einheit existiert nicht")
+        if data.unit_id:
+            unit = self.units.get(data.unit_id)
+            if unit is None:
+                raise ValidationError("Einheit existiert nicht")
+            if data.property_id and unit.property_id != data.property_id:
+                raise ValidationError("Einheit gehört nicht zur gewählten Immobilie")
+        if data.recurrence_rule:
+            try:
+                parse_rrule(data.recurrence_rule)
+            except ValueError as exc:
+                raise ValidationError(str(exc)) from exc
+
+    def create_task(self, data: TaskCreate) -> Task:
+        self.validate_task(data)
         task = Task(id=_generate_id(), **data.model_dump())
         self.tasks[task.id] = task
         return task
@@ -795,10 +809,7 @@ class InMemoryStore:
     def update_task(self, task_id: str, data: TaskCreate) -> Task:
         if task_id not in self.tasks:
             raise NotFoundError("Aufgabe nicht gefunden")
-        if data.property_id and data.property_id not in self.properties:
-            raise ValidationError("Immobilie existiert nicht")
-        if data.unit_id and data.unit_id not in self.units:
-            raise ValidationError("Einheit existiert nicht")
+        self.validate_task(data)
         old = self.tasks[task_id]
         task = Task(id=task_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc), **data.model_dump())
         self.tasks[task_id] = task
@@ -1325,6 +1336,8 @@ class InMemoryStore:
         )
         if entity_type == "document":
             self.validate_document_associations(updated)
+        if entity_type == "task":
+            self.validate_task(updated)
         collection[entity_id] = updated
         return updated
 
@@ -1336,6 +1349,7 @@ class InMemoryStore:
         filters: dict | None = None,
         order_by: str | None = None,
         order_desc: bool = False,
+        range_filters: dict | None = None,
     ) -> list:
         """Generic paginated list with filtering and sorting for in-memory store."""
         entry = self._ENTITY_TYPE_MAP.get(entity_type)
@@ -1349,6 +1363,14 @@ class InMemoryStore:
                 if value is None:
                     continue
                 results = [r for r in results if getattr(r, key, None) == value]
+        if range_filters:
+            for key, (lower, upper) in range_filters.items():
+                if lower is not None:
+                    results = [r for r in results if getattr(r, key, None) is not None
+                               and getattr(r, key) >= lower]
+                if upper is not None:
+                    results = [r for r in results if getattr(r, key, None) is not None
+                               and getattr(r, key) <= upper]
         if order_by and isinstance(order_by, str):
             results.sort(
                 key=lambda r: (getattr(r, order_by, None) is None, getattr(r, order_by, None)),

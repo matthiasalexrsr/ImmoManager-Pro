@@ -219,6 +219,7 @@ class BookingORM(Base):
     __table_args__ = (
         Index("idx_bookings_account", "account_id"),
         Index("idx_bookings_account_date", "account_id", "booking_date"),
+        Index("idx_bookings_tenant", "tenant_id"),
         CheckConstraint("amount != 0", name="ck_bookings_amount_nonzero"),
     )
 

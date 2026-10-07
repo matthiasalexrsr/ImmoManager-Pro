@@ -14,8 +14,11 @@ Configure via TASK_QUEUE_BACKEND environment variable:
 
 import logging
 import os
+import threading
+import time
 from abc import ABC, abstractmethod
-from concurrent.futures import ThreadPoolExecutor
+from collections import deque
+from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 from uuid import uuid4
@@ -32,6 +35,7 @@ class TaskResult:
         self.result = result
         self.error = error
         self.created_at = datetime.now(timezone.utc)
+        self.finished_at: Optional[datetime] = None
 
 
 class TaskQueue(ABC):
@@ -53,83 +57,128 @@ class TaskQueue(ABC):
         ...
 
 
-class SyncQueue(TaskQueue):
+class _RetainedQueue(TaskQueue):
+    """In-process status is temporary, separate from persisted business history.
+
+    Terminal results are available for an hour by default. Expiry is cleaned on
+    queue operations or explicit cleanup_results(); pending/running work never
+    expires. Callers may choose a longer retention or None to retain indefinitely.
+    There is no lifetime job count limit and no submitted work is dropped.
+    """
+
+    def __init__(self, result_retention_seconds: float | None = 3600):
+        if result_retention_seconds is not None and result_retention_seconds < 0:
+            raise ValueError("Result retention must be non-negative or None")
+        self.result_retention_seconds = result_retention_seconds
+        self._results: dict[str, TaskResult] = {}
+        self._finished: deque[tuple[float, str]] = deque()
+        self._lock = threading.RLock()
+
+    def cleanup_results(self) -> int:
+        """Remove expired terminal statuses, returning the number removed."""
+        with self._lock:
+            now, removed = time.monotonic(), 0
+            while self._finished and self._finished[0][0] <= now:
+                _deadline, task_id = self._finished.popleft()
+                if self._results.pop(task_id, None) is not None:
+                    removed += 1
+            return removed
+
+    def _finish(self, result: TaskResult, status: str, value: Any = None, error: str | None = None) -> None:
+        with self._lock:
+            result.status, result.result, result.error = status, value, error
+            result.finished_at = datetime.now(timezone.utc)
+            if self.result_retention_seconds is not None:
+                self._finished.append((time.monotonic() + self.result_retention_seconds, result.task_id))
+
+    def get_status(self, task_id: str) -> Optional[TaskResult]:
+        with self._lock:
+            self.cleanup_results()
+            return self._results.get(task_id)
+
+
+class SyncQueue(_RetainedQueue):
     """Synchronous task execution (no actual queuing).
 
     Executes tasks immediately in the calling thread.
     Suitable for development and small deployments.
     """
 
-    def __init__(self):
-        self._results: dict[str, TaskResult] = {}
-
     def enqueue(self, func: Callable, *args, **kwargs) -> TaskResult:
         task_id = str(uuid4())
         result = TaskResult(task_id, status="running")
-        self._results[task_id] = result
+        with self._lock:
+            self.cleanup_results()
+            self._results[task_id] = result
 
         try:
             ret = func(*args, **kwargs)
-            result.status = "completed"
-            result.result = ret
+            self._finish(result, "completed", value=ret)
         except Exception as exc:
-            result.status = "failed"
-            result.error = str(exc)
-            logger.exception("Task %s failed: %s", task_id, func.__name__)
+            self._finish(result, "failed", error=str(exc))
+            logger.exception("Task %s failed: %s", task_id, getattr(func, "__name__", type(func).__name__))
 
         return result
 
-    def get_status(self, task_id: str) -> Optional[TaskResult]:
-        return self._results.get(task_id)
-
     def cancel(self, task_id: str) -> bool:
-        result = self._results.get(task_id)
-        if result and result.status == "pending":
-            result.status = "cancelled"
-            return True
+        self.cleanup_results()
         return False
 
 
-class ThreadPoolQueue(TaskQueue):
+class ThreadPoolQueue(_RetainedQueue):
     """Thread-pool-based task queue for in-process background execution.
 
     Runs tasks in a bounded thread pool. No external infrastructure needed.
     Suitable for moderate concurrency in single-process deployments.
     """
 
-    def __init__(self, max_workers: int = 4):
+    def __init__(self, max_workers: int = 4, result_retention_seconds: float | None = 3600):
+        super().__init__(result_retention_seconds=result_retention_seconds)
         self._pool = ThreadPoolExecutor(max_workers=max_workers)
-        self._results: dict[str, TaskResult] = {}
+        self._futures: dict[str, Future] = {}
 
     def enqueue(self, func: Callable, *args, **kwargs) -> TaskResult:
         task_id = str(uuid4())
         result = TaskResult(task_id, status="pending")
-        self._results[task_id] = result
-
         def _run():
-            result.status = "running"
+            with self._lock:
+                if result.status == "cancelled":
+                    return
+                result.status = "running"
             try:
                 ret = func(*args, **kwargs)
-                result.status = "completed"
-                result.result = ret
+                self._finish(result, "completed", value=ret)
             except Exception as exc:
-                result.status = "failed"
-                result.error = str(exc)
-                logger.exception("Task %s failed: %s", task_id, func.__name__)
+                self._finish(result, "failed", error=str(exc))
+                logger.exception("Task %s failed: %s", task_id, getattr(func, "__name__", type(func).__name__))
 
-        self._pool.submit(_run)
+        def _discard_future(_future):
+            with self._lock:
+                self._futures.pop(task_id, None)
+
+        with self._lock:
+            self.cleanup_results()
+            self._results[task_id] = result
+            try:
+                future = self._pool.submit(_run)
+            except Exception:
+                del self._results[task_id]
+                raise
+            self._futures[task_id] = future
+            future.add_done_callback(_discard_future)
         return result
 
-    def get_status(self, task_id: str) -> Optional[TaskResult]:
-        return self._results.get(task_id)
-
     def cancel(self, task_id: str) -> bool:
-        # ThreadPoolExecutor doesn't support cancellation of running tasks
-        result = self._results.get(task_id)
-        if result and result.status == "pending":
-            result.status = "cancelled"
+        with self._lock:
+            self.cleanup_results()
+            result = self._results.get(task_id)
+            future = self._futures.get(task_id)
+            # The executor decides whether work actually started. Merely marking
+            # a pending status cancelled would leave the callable in its queue.
+            if result is None or result.status != "pending" or future is None or not future.cancel():
+                return False
+            self._finish(result, "cancelled")
             return True
-        return False
 
 
 class CeleryQueue(TaskQueue):

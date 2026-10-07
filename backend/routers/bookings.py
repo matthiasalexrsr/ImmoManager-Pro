@@ -24,30 +24,18 @@ def list_bookings(
     date_to: date | None = Query(None),
 ) -> list[Booking]:
     filters = {"account_id": account_id, "tenant_id": tenant_id, "status": status_filter}
-    has_date_filter = isinstance(date_from, date) or isinstance(date_to, date)
-    results = store._list_paginated(
+    return store._list_paginated(
         entity_type="booking",
-        skip=0 if has_date_filter else skip,
-        limit=10000 if has_date_filter else limit,
+        skip=skip,
+        limit=limit,
         filters=filters,
         order_by=sort_by,
         order_desc=(sort_order == "desc"),
+        range_filters={"booking_date": (
+            date_from if isinstance(date_from, date) else None,
+            date_to if isinstance(date_to, date) else None,
+        )},
     )
-    if isinstance(date_from, date):
-        results = [
-            r for r in results
-            if getattr(r, 'booking_date', None)
-            and r.booking_date >= date_from
-        ]
-    if isinstance(date_to, date):
-        results = [
-            r for r in results
-            if getattr(r, 'booking_date', None)
-            and r.booking_date <= date_to
-        ]
-    if has_date_filter:
-        results = results[skip : skip + limit]
-    return results
 
 
 @router.post("", response_model=Booking, status_code=status.HTTP_201_CREATED)

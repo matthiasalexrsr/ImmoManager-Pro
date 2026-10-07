@@ -26,7 +26,9 @@ from typing import Any, Callable, TypeVar
 F = TypeVar("F", bound=Callable[..., Any])
 
 KEEP_SECONDS = 5.0
+MAX_RESULT_ENTRIES = 256     # ephemeral response variants, never a limit on stored data
 _HEAVY = threading.RLock()   # re-entrant: a calculation may call another one
+_cache_lock = threading.RLock()  # writes invalidate without waiting for calculations
 _changes = itertools.count(1)
 _version = 0                 # any change: results are stale
 _everything = 0              # a change of unknown extent: every table is stale
@@ -38,25 +40,34 @@ _tracking = False
 def note_write(*_: Any) -> None:
     """Something changed: computed results are stale (tables are tracked on their own)."""
     global _version
-    _version = next(_changes)
+    with _cache_lock:
+        _version = next(_changes)
+        _results.clear()
 
 
 def note_change(*_: Any) -> None:
     """A change the sessions did not show (a restored backup, raw SQL): everything is stale."""
     global _version, _everything
-    _version = _everything = next(_changes)
+    with _cache_lock:
+        _version = _everything = next(_changes)
+        _results.clear()
+        _table_rows.clear()
 
 
 def _note_tables(names: set[str]) -> None:
     global _version
-    stamp = next(_changes)
-    for name in names:
-        _tables[name] = stamp
-    _version = stamp
+    with _cache_lock:
+        stamp = next(_changes)
+        for name in names:
+            _tables[name] = stamp
+            _table_rows.pop(name, None)
+        _version = stamp
+        _results.clear()
 
 
 def table_version(name: str) -> int:
-    return max(_tables.get(name, 0), _everything)
+    with _cache_lock:
+        return max(_tables.get(name, 0), _everything)
 
 
 def _after_flush(session: Any, _context: Any) -> None:
@@ -100,21 +111,31 @@ def track_database_changes() -> None:
 
 
 _table_rows: dict[str, tuple[int, float, list]] = {}
-_table_lock = threading.Lock()
+
+
+def _expire_cached(now: float) -> None:
+    """Release expired values on cache access; caller holds _cache_lock."""
+    for cache in (_results, _table_rows):
+        for key, entry in list(cache.items()):
+            if now - entry[1] >= KEEP_SECONDS:
+                del cache[key]
 
 
 def whole_table(name: str, load: Callable[[], list]) -> list:
     """All rows of a table for reading, from memory while the table is unchanged."""
     if not _tracking:
         return load()
-    version, now = table_version(name), time.monotonic()
-    with _table_lock:
+    with _cache_lock:
+        version, now = table_version(name), time.monotonic()
+        _expire_cached(now)
         kept = _table_rows.get(name)
-    if kept and kept[0] == version and now - kept[1] < KEEP_SECONDS:
-        return list(kept[2])
+        if kept and kept[0] == version:
+            return list(kept[2])
     rows = load()
-    with _table_lock:
-        _table_rows[name] = (version, now, rows)
+    with _cache_lock:
+        # A write during the load makes these rows unsuitable for sharing.
+        if version == table_version(name):
+            _table_rows[name] = (version, time.monotonic(), rows)
     return list(rows)
 
 
@@ -129,13 +150,20 @@ def one_at_a_time(func: F) -> F:
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         key = (func.__module__, func.__qualname__, repr(args), repr(sorted(kwargs.items())))
         with _HEAVY:
-            version, now = _version, time.monotonic()
-            kept = _results.get(key)
-            if kept and kept[0] == version and now - kept[1] < KEEP_SECONDS:
-                return kept[2]
+            with _cache_lock:
+                version, now = _version, time.monotonic()
+                _expire_cached(now)
+                kept = _results.get(key)
+                if kept and kept[0] == version:
+                    return kept[2]
             result = func(*args, **kwargs)
             if _tracking and isinstance(result, (dict, list)):
-                _results[key] = (version, now, result)
+                with _cache_lock:
+                    if version == _version:
+                        # Keep only recent variants; removed results are recomputed.
+                        if key not in _results and len(_results) >= MAX_RESULT_ENTRIES:
+                            del _results[next(iter(_results))]
+                        _results[key] = (version, time.monotonic(), result)
             return result
 
     return wrapper  # type: ignore[return-value]

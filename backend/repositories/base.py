@@ -149,6 +149,7 @@ class BaseRepository:
         filters: dict[str, Any] | None = None,
         order_by: str | None = None,
         order_desc: bool = False,
+        range_filters: dict[str, tuple[Any | None, Any | None]] | None = None,
     ) -> list[Any]:
         """List entities with DB-level pagination, filtering, and ordering.
 
@@ -158,12 +159,23 @@ class BaseRepository:
             filters: Column-value pairs to filter by (None values are skipped).
             order_by: Column name to order by.
             order_desc: If True, order descending.
+            range_filters: Column names mapped to inclusive (lower, upper)
+                bounds. None leaves that side unbounded; bounded ranges exclude NULL.
         """
         query = self.db.query(self.orm_class)
         if filters:
             for key, value in filters.items():
                 if value is not None and hasattr(self.orm_class, key):
                     query = query.filter(getattr(self.orm_class, key) == value)
+        if range_filters:
+            for key, (lower, upper) in range_filters.items():
+                if not hasattr(self.orm_class, key):
+                    continue
+                column = getattr(self.orm_class, key)
+                if lower is not None:
+                    query = query.filter(column >= lower)
+                if upper is not None:
+                    query = query.filter(column <= upper)
         if order_by and hasattr(self.orm_class, order_by):
             col = getattr(self.orm_class, order_by)
             query = query.order_by(col.desc() if order_desc else col.asc())

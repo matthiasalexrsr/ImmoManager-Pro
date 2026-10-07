@@ -203,6 +203,8 @@ class SQLAlchemyStore:
         merged = repo.read_class.model_validate({**current.model_dump(), **patch.model_dump(exclude_unset=True)})
         if entity_type == "document":
             self.document.validate_document_associations(merged)
+        if entity_type == "task":
+            self.communication.validate_task(merged)
         result = repo.patch(entity_id, patch)
         self._commit()
         return result
@@ -215,12 +217,14 @@ class SQLAlchemyStore:
         filters: dict | None = None,
         order_by: str | None = None,
         order_desc: bool = False,
+        range_filters: dict | None = None,
     ) -> list:
         """Generic paginated list using entity type to resolve the repository."""
         repo = self._resolve_repo(entity_type)
         return repo.list_paginated(
             skip=skip, limit=limit, filters=filters,
             order_by=order_by, order_desc=order_desc,
+            range_filters=range_filters,
         )
 
     def _count(self, entity_type: str, filters: dict | None = None) -> int:

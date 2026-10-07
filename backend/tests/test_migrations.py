@@ -197,7 +197,9 @@ def test_document_tenant_downgrade_refuses_to_lose_associations(migrate):
     with sqlite3.connect(db_path) as conn:
         assert conn.execute("SELECT tenant_id FROM documents WHERE id='direct'").fetchone() == ("t1",)
         assert "idx_documents_tenant" in {row[1] for row in conn.execute("PRAGMA index_list(documents)")}
-    assert _version(db_path) == migrate.head
+    # Later additive migrations can already have been downgraded. The document
+    # revision itself must remain applied when its destructive downgrade refuses.
+    assert _version(db_path) == "6e2f8a4c9b71"
 
 
 def test_document_tenant_downgrade_keeps_unassigned_documents(migrate):
