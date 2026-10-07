@@ -4,7 +4,7 @@
     python -m tools.xstress.run --quick            # 15 units, 1 year: checks that the test itself works
     python -m tools.xstress.run --units 300 --years 5 --seed 7 --out /tmp/xstress
 
-Results: <out>/report.md (readable) and <out>/findings.json.
+Results: <out>/run-<unique>/report.md (readable) and findings.json.
 """
 
 from __future__ import annotations
@@ -12,14 +12,16 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import shutil
+import platform
 import subprocess
+import sys
 import time
+import traceback
 from datetime import date, datetime
 from pathlib import Path
 
 from . import bad_input, roles, saveload
-from .core import PASSWORD, REPO, Findings, Server, setup_users, write_report
+from .core import PASSWORD, REPO, Findings, Server, fresh_directory, setup_users, write_report
 from .invariants import run_checks
 from .timeline import Simulation
 from .world import build_world, month_end
@@ -37,6 +39,7 @@ def ui_pass(server: Server, findings: Findings, out: Path) -> None:
         target = out / f"ui_{username}.json"
         result = subprocess.run(["node", str(HERE / "ui.js"), origin, username, PASSWORD, str(target)],
                                 cwd=REPO / "frontend", capture_output=True, text=True, timeout=900,
+                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                                 env={**os.environ, "NODE_PATH": os.environ.get("XSTRESS_NODE_PATH", "")})
         if result.returncode != 0 or not target.exists():
             findings.add("HINWEIS", "Oberfläche", f"Durchlauf für {username} nicht möglich", result.stderr[-400:])
@@ -54,7 +57,10 @@ def ui_pass(server: Server, findings: Findings, out: Path) -> None:
                              f"Nur-Lesen sieht auf „{p['page']}“ {p['editButtons']} Bearbeiten-/Neu-Knöpfe")
 
 
-def main() -> None:
+def main() -> int:
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--units", type=int, default=120)
     parser.add_argument("--years", type=int, default=5)
@@ -65,17 +71,18 @@ def main() -> None:
     args = parser.parse_args()
     if args.quick:
         args.units, args.years = 15, 1
+    if args.units < 1 or args.years < 1:
+        parser.error("units and years must be positive")
     started = time.time()
-    work = args.out / "server"
-    if work.exists():
-        shutil.rmtree(work)
+    out = fresh_directory(args.out, "run")
     findings = Findings()
-    world = build_world(seed=args.seed, units=args.units, years=args.years)
-    print(f"Welt: {world.start} – {world.end}, {len(world.units)} Einheiten, {len(world.tenancies)} Mietverhältnisse, "
-          f"{len(world.tenants)} Mieter", flush=True)
-    server = Server(work, "main")
-    server.start()
+    server = None
     try:
+        world = build_world(seed=args.seed, units=args.units, years=args.years)
+        print(f"Welt: {world.start} – {world.end}, {len(world.units)} Einheiten, {len(world.tenancies)} Mietverhältnisse, "
+              f"{len(world.tenants)} Mieter", flush=True)
+        server = Server(out / "server", "main")
+        server.start()
         users = setup_users(server, findings)
         sim = Simulation(world, users, findings, args.seed)
         middle_year = world.start.year + args.years // 2
@@ -102,14 +109,26 @@ def main() -> None:
         if "saveload" not in args.skip:
             saveload.checkpoint(server, users, findings, world.portfolios[0].account_id, full=True)
         if "ui" not in args.skip:
-            ui_pass(server, findings, args.out)
+            ui_pass(server, findings, out)
+    except (Exception, KeyboardInterrupt) as exc:
+        findings.add("KRITISCH", "Testlauf", f"Testlauf abgebrochen: {type(exc).__name__}: {exc}")
+        (out / "failure.txt").write_text(traceback.format_exc(), encoding="utf-8")
     finally:
-        server.stop()
-    report = write_report(findings, args.out, {"started": datetime.fromtimestamp(started).isoformat(timespec="minutes"),
-                                               "minutes": (time.time() - started) / 60, "seed": args.seed,
-                                               "units": args.units, "years": args.years})
+        if server is not None:
+            try:
+                server.stop()
+            except Exception as exc:
+                findings.add("KRITISCH", "Prozessabbruch", "Testserver konnte nicht beendet werden", str(exc))
+        report = write_report(findings, out, {"started": datetime.fromtimestamp(started).isoformat(timespec="seconds"),
+                                              "minutes": (time.time() - started) / 60, "seed": args.seed,
+                                              "units": args.units, "years": args.years, "skip": args.skip,
+                                              "platform": platform.platform(), "python": platform.python_version(),
+                                              "cpu": platform.processor(), "logical_cpus": os.cpu_count(),
+                                              "database": "SQLite, local synthetic fixture", "requests": len(findings.timings),
+                                              "limits": "Single host; not proof of PostgreSQL capacity or long-term reliability."})
     print(f"\nBericht: {report}")
+    return int(any(item["severity"] != "HINWEIS" for item in findings.items))
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

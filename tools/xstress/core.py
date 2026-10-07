@@ -14,11 +14,13 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import secrets
 import shutil
-import signal
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from collections import Counter, defaultdict
@@ -27,10 +29,40 @@ from typing import Any
 
 import httpx
 
+from .processes import start_owned, stop_owned
+
 REPO = Path(__file__).resolve().parents[2]
 SEVERITIES = ["KRITISCH", "FALSCH", "LÜCKE", "RECHTE", "LANGSAM", "HINWEIS"]
 SLOW_SECONDS = 2.0
 PASSWORD = "Stress-Test-2026!"
+
+
+def fresh_directory(parent: Path, name: str) -> Path:
+    """Allocate a new owned fixture; existing paths are never reused or deleted."""
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}", name):
+        raise ValueError("Fixture name must be a simple alphanumeric name")
+    parent = parent.resolve()
+    parent.mkdir(parents=True, exist_ok=True)
+    result = Path(tempfile.mkdtemp(prefix=f"{name}-", dir=parent)).resolve()
+    (result / ".xstress-owned.json").write_text(
+        json.dumps({"kind": "synthetic-xstress", "parent": str(parent), "pid": os.getpid()}), encoding="utf-8")
+    return result
+
+
+def isolated_env(directory: Path, *, secret: str, persistent: bool = True) -> dict:
+    """Keep OS runtime essentials, explicitly bind all application state to this fixture."""
+    directory = directory.resolve()
+    return {**os.environ, "PYTHONPATH": str(REPO), "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8",
+            "DATA_DIR": str(directory), "DATABASE_URL": f"sqlite:///{(directory / 'app.db').as_posix()}",
+            "UPLOADS_DIR": str(directory / "uploads"), "BACKUP_DIR": str(directory / "backups"),
+            "INTEGRATION_STATE_FILE": str(directory / "integrations.json"),
+            "LOG_FILE": str(directory / "application.log"), "AI_CACHE_DIR": str(directory / "ai-cache"),
+            "JWT_SECRET_KEY": secret, "ENVIRONMENT": "production", "IMMO_TESTVERSION": "false",
+            "RATE_LIMIT_ENABLED": "false", "AUTO_SEED_DEMO_DATA": "false", "AUTO_MIGRATE": "false",
+            "SQLITE_PERSISTENT_STORE": str(persistent).lower(),
+            "ALLOW_INMEMORY_FALLBACK": str(not persistent).lower(),
+            "PLUGIN_DIRS": "[]", "AI_ENABLED": "false", "TASK_QUEUE_BACKEND": "sync",
+            "CORS_ORIGINS": '["http://localhost:5173"]'}
 
 
 def free_port() -> int:
@@ -43,10 +75,11 @@ class Server:
     """A real app process (uvicorn, SQLite file) that can be stopped, restarted and copied."""
 
     def __init__(self, workdir: Path, name: str = "main", port: int | None = None):
-        self.dir = workdir / name
-        self.dir.mkdir(parents=True, exist_ok=True)
+        self.dir = fresh_directory(workdir, name)
+        self.secret = secrets.token_urlsafe(48)
         self.port = port or free_port()
         self.proc: subprocess.Popen | None = None
+        self.job = None
         self.log = self.dir / "server.log"
 
     @property
@@ -58,37 +91,36 @@ class Server:
         return self.dir / "app.db"
 
     def env(self) -> dict:
-        return {**os.environ,
-                "DATA_DIR": str(self.dir), "DATABASE_URL": f"sqlite:///{self.db_file}",
-                "JWT_SECRET_KEY": "x" * 48, "ENVIRONMENT": "production",
-                "RATE_LIMIT_ENABLED": "false", "AUTO_SEED_DEMO_DATA": "false"}
+        return isolated_env(self.dir, secret=self.secret)
 
     def start(self, timeout: float = 60) -> None:
-        log = open(self.log, "a")
-        self.proc = subprocess.Popen(
-            [sys.executable, "-m", "uvicorn", "backend.app:app", "--app-dir", str(REPO),
-             "--port", str(self.port), "--log-level", "warning"],
-            cwd=self.dir, env=self.env(), stdout=log, stderr=subprocess.STDOUT)
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            try:
-                if httpx.get(f"{self.base}/auth/registration-status", timeout=2).status_code == 200:
-                    return
-            except httpx.HTTPError:
-                pass
-            if self.proc.poll() is not None:
-                raise RuntimeError(f"server {self.dir.name} exited, see {self.log}")
-            time.sleep(0.3)
-        raise RuntimeError(f"server {self.dir.name} did not start, see {self.log}")
+        if self.proc is not None:
+            raise RuntimeError("Server already owns a process; stop it before starting again")
+        try:
+            with self.log.open("a", encoding="utf-8") as log:
+                self.proc, self.job = start_owned(
+                    [sys.executable, "-m", "uvicorn", "backend.app:app", "--app-dir", str(REPO),
+                     "--port", str(self.port), "--log-level", "warning"],
+                    cwd=self.dir, env=self.env(), stdout=log, stderr=subprocess.STDOUT)
+            deadline = time.monotonic() + timeout
+            while time.monotonic() < deadline:
+                if self.proc.poll() is not None:
+                    raise RuntimeError(f"server {self.dir.name} exited, see {self.log}")
+                try:
+                    if httpx.get(f"{self.base}/auth/registration-status", timeout=2).status_code == 200:
+                        return
+                except httpx.HTTPError:
+                    pass
+                time.sleep(0.1)
+            raise RuntimeError(f"server {self.dir.name} did not start, see {self.log}")
+        except BaseException:
+            self.stop(hard=True)
+            raise
 
     def stop(self, hard: bool = False) -> None:
-        if self.proc and self.proc.poll() is None:
-            self.proc.send_signal(signal.SIGKILL if hard else signal.SIGTERM)
-            try:
-                self.proc.wait(timeout=30)
-            except subprocess.TimeoutExpired:
-                self.proc.kill()
-        self.proc = None
+        if self.proc is not None:
+            stop_owned(self.proc, self.job, hard=hard)
+            self.proc, self.job = None, None
 
     def restart(self, hard: bool = False) -> None:
         self.stop(hard=hard)
@@ -96,10 +128,12 @@ class Server:
 
     def clone(self, name: str) -> "Server":
         """A second server on a copy of this one's data (taken while it is stopped)."""
+        if self.proc is not None:
+            raise RuntimeError("Stop the source server before cloning its database")
         other = Server(self.dir.parent, name)
-        if other.dir.exists():
-            shutil.rmtree(other.dir)
-        shutil.copytree(self.dir, other.dir, ignore=shutil.ignore_patterns("server.log"))
+        other.secret = self.secret
+        shutil.copytree(self.dir, other.dir, dirs_exist_ok=True,
+                        ignore=shutil.ignore_patterns("server.log", ".xstress-owned.json"))
         return other
 
 
@@ -110,6 +144,7 @@ class Findings:
         self.phase = "-"
         self.timings: list[tuple[str, str, float]] = []
         self.calls = Counter()
+        self.measurements: dict = {}
 
     def add(self, severity: str, area: str, message: str, detail: Any = None) -> None:
         assert severity in SEVERITIES, severity
@@ -212,10 +247,10 @@ USERS = [  # username, role, full name
 
 
 def setup_users(server: Server, findings: Findings) -> dict[str, Client]:
-    http = httpx.Client(timeout=60)
-    status = http.get(f"{server.base}/auth/registration-status").json()
-    if status.get("initial_setup"):
-        http.post(f"{server.base}/auth/register", json={"username": "owner", "email": "owner@stress.test",
+    with httpx.Client(timeout=60) as http:
+        status = http.get(f"{server.base}/auth/registration-status").json()
+        if status.get("initial_setup"):
+            http.post(f"{server.base}/auth/register", json={"username": "owner", "email": "owner@stress.test",
                                                         "full_name": "Petra Eigner", "password": PASSWORD})
     owner = Client(server, findings, "owner")
     for username, role, name in USERS[1:]:
@@ -228,7 +263,9 @@ def setup_users(server: Server, findings: Findings) -> dict[str, Client]:
 
 def write_report(findings: Findings, out: Path, meta: dict) -> Path:
     out.mkdir(parents=True, exist_ok=True)
-    (out / "findings.json").write_text(json.dumps(findings.items, indent=1, ensure_ascii=False))
+    meta = {**meta, "measurements": findings.measurements}
+    (out / "findings.json").write_text(json.dumps(findings.items, indent=1, ensure_ascii=False), encoding="utf-8")
+    (out / "metadata.json").write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
     grouped = findings.summary()
     slow = defaultdict(list)
     for method, path, seconds in findings.timings:
@@ -239,6 +276,10 @@ def write_report(findings: Findings, out: Path, meta: dict) -> Path:
              f"Seed {meta.get('seed')} · {meta.get('units')} Einheiten · {meta.get('years')} Jahre",
              f"- API-Aufrufe: {len(findings.timings)} ({', '.join(f'{u}: {n}' for u, n in findings.calls.items())})",
              "- Befunde: " + ", ".join(f"{s} {len(grouped.get(s, []))}" for s in SEVERITIES), ""]
+    if meta.get("platform"):
+        lines += [f"- System: {meta['platform']} · Python {meta['python']} · {meta['cpu']} · {meta['logical_cpus']} logische CPUs",
+                  f"- Datenbank: {meta['database']} · übersprungen: {', '.join(meta['skip']) or 'nichts'}",
+                  f"- Messgrenzen: {meta['limits']}", ""]
     for severity in SEVERITIES:
         items = grouped.get(severity, [])
         if not items:
@@ -259,5 +300,5 @@ def write_report(findings: Findings, out: Path, meta: dict) -> Path:
     lines += ["## Langsamste Aufrufe", "", "| Aufruf | max s | Ø s | Anzahl |", "|---|---:|---:|---:|"]
     lines += [f"| {k} | {mx:.2f} | {avg:.2f} | {n} |" for mx, avg, n, k in top]
     path = out / "report.md"
-    path.write_text("\n".join(lines) + "\n")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return path

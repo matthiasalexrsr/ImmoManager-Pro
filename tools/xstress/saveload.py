@@ -8,7 +8,6 @@ copy of the server so the simulation can continue on the original.
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 import sys
 import threading
@@ -39,42 +38,55 @@ def hard_kill(server: Server, users: dict[str, Client], f: Findings, account_id:
     server.start()
     relogin(users)
     clone.start()
-    client = setup_users(clone, f)["buchhaltung"]
-    acknowledged: list[str] = []
     stop = threading.Event()
+    thread, owner, clone_users = None, None, {}
+    try:
+        clone_users = setup_users(clone, f)
+        client = clone_users["buchhaltung"]
+        acknowledged: list[str] = []
 
-    def writer():
-        # raw HTTP: connection errors are expected while the server dies
-        http = httpx.Client(timeout=10)
-        n = 0
-        while not stop.is_set():
-            n += 1
-            try:
-                resp = http.post(f"{clone.base}/bookings", headers={"Authorization": f"Bearer {client.token}"},
-                                 json={"account_id": account_id, "booking_date": "2026-01-15", "amount": 10 + n,
-                                       "payment_text": f"Absturztest {n}"})
-            except httpx.HTTPError:
-                return
-            if resp.status_code in (200, 201):
-                acknowledged.append(resp.json()["id"])
+        def writer():
+            # Raw HTTP: connection errors are expected while the server dies.
+            with httpx.Client(timeout=10) as http:
+                n = 0
+                while not stop.is_set():
+                    n += 1
+                    try:
+                        resp = http.post(f"{clone.base}/bookings", headers={"Authorization": f"Bearer {client.token}"},
+                                         json={"account_id": account_id, "booking_date": "2026-01-15", "amount": 10 + n,
+                                               "payment_text": f"Absturztest {n}"})
+                    except httpx.HTTPError:
+                        return
+                    if resp.status_code in (200, 201):
+                        acknowledged.append(resp.json()["id"])
 
-    thread = threading.Thread(target=writer)
-    thread.start()
-    time.sleep(1.5)
-    clone.stop(hard=True)
-    stop.set()
-    thread.join(timeout=30)
-    clone.start()
-    owner = Client(clone, f, "owner")
-    stored = {b["id"] for b in owner.all("/bookings", area="Absturz")}
-    lost = [i for i in acknowledged if i not in stored]
-    f.check(not lost, "KRITISCH", "Absturz", f"{len(lost)} bestätigte Buchungen nach hartem Absturz verloren")
-    status, check = owner.call("GET", "/admin/integrity-check", area="Absturz")
-    if status == 200 and isinstance(check, dict):
-        problems = {k: v for k, v in check.items() if v and k not in ("status", "ok", "checked_at", "summary")}
-        f.check(check.get("status", "ok") in ("ok", "healthy", True) or not problems, "KRITISCH", "Absturz",
-                "Integritätsprüfung nach Absturz meldet Probleme", check)
-    clone.stop()
+        thread = threading.Thread(target=writer)
+        thread.start()
+        time.sleep(1.5)
+        clone.stop(hard=True)
+        stop.set()
+        thread.join(timeout=30)
+        if thread.is_alive():
+            raise RuntimeError("Crash-test writer did not stop")
+        clone.start()
+        owner = Client(clone, f, "owner")
+        stored = {b["id"] for b in owner.all("/bookings", area="Absturz")}
+        lost = [i for i in acknowledged if i not in stored]
+        f.check(not lost, "KRITISCH", "Absturz", f"{len(lost)} bestätigte Buchungen nach hartem Absturz verloren")
+        status, check = owner.call("GET", "/admin/integrity-check", area="Absturz")
+        if status == 200 and isinstance(check, dict):
+            problems = {k: v for k, v in check.items() if v and k not in ("status", "ok", "checked_at", "summary")}
+            f.check(check.get("status", "ok") in ("ok", "healthy", True) or not problems, "KRITISCH", "Absturz",
+                    "Integritätsprüfung nach Absturz meldet Probleme", check)
+    finally:
+        stop.set()
+        clone.stop(hard=True)
+        if thread is not None:
+            thread.join(timeout=15)
+        for client in clone_users.values():
+            client.http.close()
+        if owner is not None:
+            owner.http.close()
 
 
 def export_import(server: Server, users: dict[str, Client], f: Findings) -> None:
@@ -84,9 +96,6 @@ def export_import(server: Server, users: dict[str, Client], f: Findings) -> None
         return
     before = fingerprint(owner)
     fresh = Server(server.dir.parent, "import")
-    if fresh.dir.exists():
-        shutil.rmtree(fresh.dir)
-        fresh.dir.mkdir(parents=True)
     fresh.start()
     try:
         target = setup_users(fresh, f)["owner"]
@@ -164,7 +173,8 @@ def migration(server: Server, users: dict[str, Client], f: Findings) -> None:
     server.start()
     relogin(users)
     result = subprocess.run([sys.executable, "-m", "alembic", "-c", str(REPO / "alembic.ini"), "upgrade", "head"],
-                            cwd=REPO, env=clone.env(), capture_output=True, text=True, timeout=300)
+                            cwd=REPO, env=clone.env(), capture_output=True, text=True, timeout=300,
+                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     f.check(result.returncode == 0, "KRITISCH", "Migration", "alembic upgrade head schlägt fehl", result.stderr[-600:])
     clone.start()
     try:

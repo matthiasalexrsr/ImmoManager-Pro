@@ -6,7 +6,7 @@ Query() defaults are not resolved when calling functions directly, so
 skip/limit and filter params must always be passed explicitly.
 """
 
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Any
 
 import pytest
@@ -819,7 +819,7 @@ class TestHistory:
         assert len(_list_history(entity_id="p1")) == 1
         assert len(_list_history(entity_id="p2")) == 1
 
-    def test_list_sorted_descending(self) -> None:
+    def test_list_sorted_descending(self, monkeypatch) -> None:
         e1 = store.add_change_history(
             entity_type="property", entity_id="p1",
             field_name="name", old_value="Old", new_value="New",
@@ -828,8 +828,12 @@ class TestHistory:
             entity_type="property", entity_id="p1",
             field_name="status", old_value="active", new_value="archived",
         )
+        # Separate the chronology contract from Windows wall-clock resolution.
+        e1 = e1.model_copy(update={"changed_at": datetime(2026, 1, 1, tzinfo=timezone.utc)})
+        e2 = e2.model_copy(update={"changed_at": datetime(2026, 1, 2, tzinfo=timezone.utc)})
+        monkeypatch.setattr(history.store, "list_change_history", lambda: [e1, e2])
         result = _list_history()
-        # Most recent first (e2 was added after e1)
+        # The explicit later timestamp must come first.
         assert result[0].id == e2.id
         assert result[1].id == e1.id
 

@@ -9,11 +9,11 @@ _backend = os.environ.get("TEST_STORE_BACKEND", "memory")
 if _backend == "sql":
     os.environ.setdefault("SQLITE_PERSISTENT_STORE", "true")
     os.environ.setdefault("ALLOW_INMEMORY_FALLBACK", "false")
-    # Use a temporary file-based SQLite DB so all connections share one DB
-    _tmpdb = os.path.join(tempfile.gettempdir(), "immo_test.db")
-    if os.path.exists(_tmpdb):
-        os.remove(_tmpdb)
-    os.environ.setdefault("DATABASE_URL", f"sqlite:///{_tmpdb}")
+    # Never remove or reset caller-owned databases. Independent test processes
+    # get independent fixtures; retain them for debugging after a failure.
+    if not os.environ.get("DATABASE_URL"):
+        _tmpdir = Path(tempfile.mkdtemp(prefix="immo-tests-"))
+        os.environ["DATABASE_URL"] = f"sqlite:///{(_tmpdir / 'test.db').as_posix()}"
 else:
     os.environ.setdefault("SQLITE_PERSISTENT_STORE", "false")
     os.environ.setdefault("ALLOW_INMEMORY_FALLBACK", "true")

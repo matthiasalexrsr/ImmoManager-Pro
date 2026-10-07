@@ -11,6 +11,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
+from uuid import uuid4
 
 from .core import PASSWORD, Client, Findings, Server, setup_users
 
@@ -214,33 +215,103 @@ def concurrency(users: dict[str, Client], f: Findings) -> None:
             list(pool.map(lambda _: v.call("POST", "/contracts", body, expect=(201, 400, 409), area="Gleichzeitig"), range(3)))
         count = sum(1 for x in v.all("/contracts") if x["contract_number"] == "DOPPELKLICK-1")
         f.check(count == 1, "FALSCH", "Gleichzeitig", f"Doppelklick auf Speichern: {count} Verträge angelegt")
-    # reading under load while others write
-    latencies, errors = [], []
-    stop = time.time() + 30
-    tenants_ids = [t["id"] for t in tenants[:30]]
+    mixed_load(o.server, f, account, [t["id"] for t in tenants[:30]])
 
-    def reader(client):
-        i = 0
-        while time.time() < stop:
-            path = [f"/tenants/{tenants_ids[i % len(tenants_ids)]}/account", "/review", "/reports/summary",
-                    "/contracts/current-rents", "/bookings?limit=200"][i % 5]
+
+def mixed_load(server: Server, f: Findings, account: str, tenant_ids: list[str], *,
+               duration: float = 30, writes_per_writer: int = 20) -> dict:
+    """Ten distinct authenticated sessions: eight readers and two paced writers."""
+    if duration <= 0 or writes_per_writer < 1 or not tenant_ids:
+        raise ValueError("Mixed load needs a positive duration, write count and tenant IDs")
+    marker = f"mixed-{uuid4().hex}"
+    owner = Client(server, f, "owner")
+    clients = []
+    latencies, acknowledgements, errors = [], [], []
+    active = {"read": 0, "write": 0, "overlap": 0}
+    lock = threading.Lock()
+    started = [0.0]
+    barrier = threading.Barrier(10, action=lambda: started.__setitem__(0, time.perf_counter()))
+    try:
+        before = owner.all("/bookings", area="Last")
+        for i in range(10):
+            username = f"load_{marker[-8:]}_{i}"
+            status, _ = owner.call("POST", "/auth/users", {
+                "username": username, "email": f"{username}@stress.test", "full_name": f"Synthetic load user {i}",
+                "password": PASSWORD, "role": "readonly" if i < 8 else "buchhaltung"}, expect=(201,), area="Last")
+            if status != 201:
+                raise RuntimeError(f"Could not create independent load user {i}")
+            clients.append(Client(server, f, username))
+
+        def request(client, method, path, body=None):
+            kind, other = ("read", "write") if method == "GET" else ("write", "read")
+            with lock:
+                active[kind] += 1
+                if active[other]:
+                    active["overlap"] += 1
             t0 = time.perf_counter()
-            status, _ = client.call("GET", path, area="Last", quiet=True)
-            latencies.append(time.perf_counter() - t0)
-            if status is None or status >= 500:
-                errors.append(path)
-            i += 1
+            try:
+                status, content = client.call(method, path, body, area="Last", expect=(200,) if method == "GET" else (201,))
+                with lock:
+                    latencies.append(time.perf_counter() - t0)
+                    if status != (200 if method == "GET" else 201):
+                        errors.append({"method": method, "status": status})
+                return status, content
+            finally:
+                with lock:
+                    active[kind] -= 1
 
-    threads = [threading.Thread(target=reader, args=(c,)) for c in (o, v, b, users["steuerberater"]) for _ in range(2)]
-    for th in threads:
-        th.start()
-    for th in threads:
-        th.join()
-    if latencies:
-        p95 = statistics.quantiles(latencies, n=20)[-1]
-        f.check(p95 < 2.0, "LANGSAM", "Last", f"8 parallele Leser: 95 % der Antworten unter {p95:.2f} s (Ziel < 2 s)")
-        f.add("HINWEIS", "Last", f"{len(latencies)} Lesezugriffe in 30 s, Median {statistics.median(latencies):.2f} s, "
-                                 f"p95 {p95:.2f} s, Fehler {len(errors)}")
+        def worker(i):
+            client = clients[i]
+            barrier.wait(timeout=30)
+            if i < 8:
+                n = 0
+                while time.perf_counter() < started[0] + duration:
+                    path = [f"/tenants/{tenant_ids[n % len(tenant_ids)]}/account", "/review", "/reports/summary",
+                            "/contracts/current-rents", "/bookings?limit=200"][n % 5]
+                    request(client, "GET", path)
+                    n += 1
+            else:
+                for n in range(writes_per_writer):
+                    pause = started[0] + n * duration / writes_per_writer - time.perf_counter()
+                    if pause > 0:
+                        time.sleep(pause)
+                    payload = {"account_id": account, "booking_date": "2026-06-01", "amount": 10 + i + n,
+                               "payment_text": f"{marker}-{i}-{n}"}
+                    status, row = request(client, "POST", "/bookings", payload)
+                    if status == 201 and isinstance(row, dict) and row.get("id"):
+                        with lock:
+                            acknowledgements.append((row["id"], payload))
+                    elif status == 201:
+                        f.add("FALSCH", "Last", "Bestätigte Buchung hat keine ID", row)
+
+        with ThreadPoolExecutor(max_workers=10) as pool:
+            list(pool.map(worker, range(10)))
+        elapsed = time.perf_counter() - started[0]
+        after = owner.all("/bookings", area="Last")
+        stored = {row["id"]: row for row in after}
+        verified = sum(all(stored.get(id_, {}).get(key) == value for key, value in payload.items())
+                       for id_, payload in acknowledgements)
+        expected = 2 * writes_per_writer
+        unique = len({id_ for id_, _ in acknowledgements})
+        f.check(len(acknowledgements) == unique == expected and verified == expected and len(after) - len(before) == expected,
+                "FALSCH", "Last", f"Schreibprüfung: {len(acknowledgements)}/{expected} bestätigt, {unique} eindeutige IDs, "
+                f"{verified} Inhalte korrekt, Bestandszuwachs {len(after) - len(before)}")
+        f.check(not errors, "FALSCH", "Last", f"Unerwartete HTTP-Antworten im Mischbetrieb: {len(errors)}", errors[:5])
+        f.check(active["overlap"] > 0, "FALSCH", "Last", "Keine gemessene Überlappung von Lese- und Schreibzugriffen")
+        p95 = sorted(latencies)[min(len(latencies) - 1, int(len(latencies) * .95))] if latencies else 0
+        f.check(p95 < 2.0, "LANGSAM", "Last", f"10 parallele Benutzer: p95 {p95:.2f} s (Ziel < 2 s)")
+        result = {"clients": 10, "readers": 8, "writers": 2, "duration_seconds": elapsed,
+                  "requests": len(latencies), "acknowledged_writes": len(acknowledgements),
+                  "verified_writes": verified, "errors": len(errors), "overlapping_requests": active["overlap"],
+                  "p95_seconds": p95, "median_seconds": statistics.median(latencies) if latencies else 0}
+        f.measurements["mixed_load"] = result
+        f.add("HINWEIS", "Last", f"10 unabhängige Benutzer (8 Leser, 2 Schreiber): {len(latencies)} Zugriffe in {elapsed:.1f} s, "
+              f"{verified}/{expected} Schreibvorgänge nachgelesen, Überlappungen {active['overlap']}, "
+              f"p95 {p95:.2f} s, Fehler {len(errors)}")
+        return result
+    finally:
+        for client in [owner, *clients]:
+            client.http.close()
 
 
 def run(server: Server, f: Findings) -> None:
