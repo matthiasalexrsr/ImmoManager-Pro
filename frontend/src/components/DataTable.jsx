@@ -41,7 +41,7 @@ function cellClass(col) {
 }
 
 export default function DataTable({ columns, data, onEdit: editHandler, onDelete: deleteHandler, title,
-  onAdd: addHandler, onRowClick, rowActions: rowActionsFor, writeArea }) {
+  onAdd: addHandler, onRowClick, rowActions: rowActionsFor, writeArea, serverPaged = false, loadExportData }) {
   const { t } = useTranslation();
   // Roles that may not change this list do not get New/Edit/Delete (the server would refuse anyway).
   const canWrite = useCanWrite(writeArea);
@@ -58,6 +58,8 @@ export default function DataTable({ columns, data, onEdit: editHandler, onDelete
   const [hiddenCols, setHiddenCols] = useState(() => Object.fromEntries(columns.filter(c => c.hidden).map(c => [c.key, true])));
   const [showColMenu, setShowColMenu] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
 
   const setFilter = useCallback((key, value) => {
     setColumnFilters(prev => ({ ...prev, [key]: value }));
@@ -83,6 +85,7 @@ export default function DataTable({ columns, data, onEdit: editHandler, onDelete
 
   // Filter
   const filtered = useMemo(() => {
+    if (serverPaged) return data;
     let items = data;
 
     if (search) {
@@ -127,11 +130,11 @@ export default function DataTable({ columns, data, onEdit: editHandler, onDelete
       }
     }
     return items;
-  }, [data, search, columnFilters, columns]);
+  }, [data, search, columnFilters, columns, serverPaged]);
 
   // Sort
   const sorted = useMemo(() => {
-    if (!sortKey) return filtered;
+    if (serverPaged || !sortKey) return filtered;
     const col = columns.find(c => c.key === sortKey);
     return [...filtered].sort((a, b) => {
       let va = a[sortKey] ?? '';
@@ -152,35 +155,51 @@ export default function DataTable({ columns, data, onEdit: editHandler, onDelete
       if (va > vb) return sortDir === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [filtered, sortKey, sortDir, columns]);
+  }, [filtered, sortKey, sortDir, columns, serverPaged]);
 
   // Pagination
   const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
   const safePage = Math.min(page, totalPages - 1);
-  const pageData = sorted.slice(safePage * pageSize, (safePage + 1) * pageSize);
+  const pageData = serverPaged ? sorted : sorted.slice(safePage * pageSize, (safePage + 1) * pageSize);
   const startRow = sorted.length === 0 ? 0 : safePage * pageSize + 1;
   const endRow = Math.min((safePage + 1) * pageSize, sorted.length);
 
   // CSV export
-  const exportCsv = useCallback(() => {
-    const headers = visibleColumns.map(c => c.label);
-    const rows = sorted.map(row =>
-      visibleColumns.map(col => {
-        const v = row[col.key];
-        const s = v == null ? '' : String(v);
-        return s.includes(',') || s.includes('"') || s.includes('\n')
-          ? `"${s.replace(/"/g, '""')}"` : s;
-      })
-    );
-    const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${(title || 'export').replace(/\s+/g, '_')}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }, [sorted, visibleColumns, title]);
+  const exportCsv = useCallback(async () => {
+    if (exporting) return;
+    setExporting(true);
+    setExportError('');
+    try {
+      // A server page supplies only the visible slice; its loader owns the
+      // complete selection and enrichment. A failed loader never falls back.
+      const exportData = loadExportData ? await loadExportData() : sorted;
+      if (!Array.isArray(exportData)) throw new Error('Exportdaten konnten nicht geladen werden.');
+      const headers = visibleColumns.map(c => c.label);
+      const rows = exportData.map(row =>
+        visibleColumns.map(col => {
+          const v = row[col.key];
+          const s = v == null ? '' : String(v);
+          return s.includes(',') || s.includes('"') || s.includes('\n')
+            ? `"${s.replace(/"/g, '""')}"` : s;
+        })
+      );
+      const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+      const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      try {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${(title || 'export').replace(/\s+/g, '_')}.csv`;
+        a.click();
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    } catch (error) {
+      setExportError(`CSV-Export fehlgeschlagen. ${error?.message || 'Bitte erneut versuchen.'}`);
+    } finally {
+      setExporting(false);
+    }
+  }, [sorted, visibleColumns, title, loadExportData, exporting]);
 
   // Unique values for select filters
   const selectOptions = useMemo(() => {
@@ -194,14 +213,14 @@ export default function DataTable({ columns, data, onEdit: editHandler, onDelete
     return opts;
   }, [columns, data]);
 
-  const hasActiveFilters = Object.values(columnFilters).some(v => {
+  const hasActiveFilters = !serverPaged && Object.values(columnFilters).some(v => {
     if (Array.isArray(v)) return v.some(x => x !== '');
     return v !== '' && v != null;
   });
 
   const hasActions = Boolean(onEdit || onDelete || rowActions);
   const colSpan = visibleColumns.length + (hasActions ? 1 : 0);
-  const hasColumnFilters = columns.some(c => c.filterType);
+  const hasColumnFilters = !serverPaged && columns.some(c => c.filterType);
   const activeFilterCount = Object.values(columnFilters).filter(v =>
     Array.isArray(v) ? v.some(x => x !== '') : v !== '' && v != null).length;
 
@@ -210,13 +229,13 @@ export default function DataTable({ columns, data, onEdit: editHandler, onDelete
       <div className="table-header">
         <h2>{title}</h2>
         <div className="table-actions">
-          <input
+          {!serverPaged && <input
             type="text"
             placeholder={`${t('ui.form.search')}...`}
             value={search}
             onChange={e => { setSearch(e.target.value); setPage(0); }}
             className="search-input"
-          />
+          />}
           <div className="table-btn-group">
             {hasColumnFilters && (
               <button onClick={() => setShowFilters(v => !v)} aria-pressed={showFilters || hasActiveFilters}
@@ -252,7 +271,8 @@ export default function DataTable({ columns, data, onEdit: editHandler, onDelete
                 </>
               )}
             </div>
-            <button onClick={exportCsv} className="btn btn-sm btn-secondary">CSV</button>
+            <button onClick={exportCsv} disabled={exporting} aria-busy={exporting}
+                    className="btn btn-sm btn-secondary">{exporting ? 'CSV …' : 'CSV'}</button>
             {onAdd && (
               <button onClick={onAdd} className="btn btn-primary">
                 <PlusIcon size={16} /> {t('ui.buttons.new')}
@@ -262,6 +282,8 @@ export default function DataTable({ columns, data, onEdit: editHandler, onDelete
         </div>
       </div>
 
+      {exportError && <p className="error-message" role="alert">{exportError}</p>}
+
       <div className="table-scroll">
         <table className="data-table">
           <thead>
@@ -269,12 +291,12 @@ export default function DataTable({ columns, data, onEdit: editHandler, onDelete
               {visibleColumns.map(col => (
                 <th
                   key={col.key}
-                  className={[col.sortable !== false ? 'sortable-th' : '', cellClass(col)].filter(Boolean).join(' ') || undefined}
-                  onClick={() => col.sortable !== false && handleSort(col.key)}
+                  className={[!serverPaged && col.sortable !== false ? 'sortable-th' : '', cellClass(col)].filter(Boolean).join(' ') || undefined}
+                  onClick={!serverPaged && col.sortable !== false ? () => handleSort(col.key) : undefined}
                 >
                   <span className="th-content">
                     {plainLabel(col.label)}
-                    {col.sortable !== false && (
+                    {!serverPaged && col.sortable !== false && (
                       <span className="sort-indicator">
                         {sortKey === col.key ? (sortDir === 'asc' ? ' \u25B2' : ' \u25BC') : ''}
                       </span>
@@ -399,7 +421,7 @@ export default function DataTable({ columns, data, onEdit: editHandler, onDelete
         </table>
       </div>
 
-      {sorted.length > 0 && (
+      {!serverPaged && sorted.length > 0 && (
       <div className="table-footer">
         <div className="table-footer-info">
           {`${startRow}–${endRow} / ${sorted.length}`}
