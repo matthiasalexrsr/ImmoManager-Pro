@@ -7,6 +7,7 @@ import PhotoDropZone from '../components/PhotoDropZone';
 import { formatDate, formatMoney } from '../utils/format';
 import { codeLabel } from '../utils/codeLabels';
 import { PartyLink } from '../features/partyWorkspace/PartyWorkspace';
+import './propertyDossier.css';
 
 export default function UnitOverview() {
   const { t } = useTranslation();
@@ -51,14 +52,17 @@ export default function UnitOverview() {
   const activeContract = contracts.find(c => c.status === 'active');
 
   return (
-    <div className="page">
+    <div className="page unit-dossier">
       <div className="overview-header">
         <div>
           <h1 className="page-title">{unit.label || `${t('pages.unitOverview.unitLabel') || 'Einheit'} ${unit.unit_number}`}</h1>
-          {property && <p className="text-muted">{property.name} — {property.address_line}</p>}
+          {property && <p className="text-muted"><Link to={`/properties/${encodeURIComponent(unit.property_id)}`}>{property.name}</Link> — {property.address_line}</p>}
           <StatusBadge status={unit.status} />
         </div>
-        <Link to="/units" className="btn btn-secondary">{t('pages.unitOverview.back') || 'Zurück'}</Link>
+        <div className="dossier-navigation">
+          {property && <Link to={`/properties/${encodeURIComponent(unit.property_id)}`} className="btn btn-secondary">← Zur Immobilie</Link>}
+          <Link to="/units" className="btn btn-secondary">Alle Einheiten</Link>
+        </div>
       </div>
 
       <PhotoDropZone entityType="unit" entityId={id} />
@@ -75,10 +79,11 @@ export default function UnitOverview() {
               <dt>{t('pages.unitOverview.rooms') || 'Zimmer'}</dt><dd>{unit.rooms ?? '—'}</dd>
               <dt>{t('pages.unitOverview.personCount') || 'Personenzahl'}</dt><dd>{unit.person_count ?? '—'}</dd>
               <dt>{t('pages.unitOverview.features') || 'Ausstattung'}</dt><dd>{unit.features || '—'}</dd>
-              <dt>{t('pages.unitOverview.baseRent') || 'Kaltmiete'}</dt><dd>{unit.cold_rent != null ? `${formatMoney(unit.cold_rent)}` : '—'}</dd>
-              <dt>{t('pages.unitOverview.serviceCharge') || 'Nebenkosten'}</dt><dd>{unit.service_charge_advance != null ? `${formatMoney(unit.service_charge_advance)}` : '—'}</dd>
-              <dt>{t('pages.unitOverview.heatingAdvance') || 'Heizkosten'}</dt><dd>{unit.heating_advance ? `${formatMoney(unit.heating_advance)}` : '—'}</dd>
+              <dt>Plan-Kaltmiete</dt><dd>{unit.cold_rent != null ? `${formatMoney(unit.cold_rent)}` : '—'}</dd>
+              <dt>Plan-Nebenkosten</dt><dd>{unit.service_charge_advance != null ? `${formatMoney(unit.service_charge_advance)}` : '—'}</dd>
+              <dt>Plan-Heizkosten</dt><dd>{unit.heating_advance ? `${formatMoney(unit.heating_advance)}` : '—'}</dd>
             </dl>
+            <p className="text-muted dossier-rent-note">Planmieten aus den Stammdaten der Einheit. Die vereinbarte Miete steht im Mietvertrag.</p>
           </div>
         </div>
 
