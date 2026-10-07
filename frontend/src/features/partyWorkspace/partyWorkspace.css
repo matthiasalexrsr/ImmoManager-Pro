@@ -49,6 +49,7 @@
 .party-contract-rent { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .8rem; padding-top: .75rem; border-top: 1px solid var(--color-border-light); }
 .party-contract-rent dt { font-size: .7rem; color: var(--color-text-secondary); }
 .party-contract-rent dd { font-size: .9rem; color: var(--color-text); font-weight: 600; overflow-wrap: anywhere; }
+.party-contract-rent + .party-muted { display: block; margin-top: .4rem; }
 .party-rent-missing { font-size: .72rem; }
 .party-contract-docs { display: inline-flex; align-items: center; gap: .4rem; border: none; background: transparent; color: var(--color-primary); font: inherit; font-size: .75rem; font-weight: 500; cursor: pointer; padding: .5rem 0 0; margin-top: .3rem; text-align: left; }
 .party-contract-docs:hover { text-decoration: underline; }
