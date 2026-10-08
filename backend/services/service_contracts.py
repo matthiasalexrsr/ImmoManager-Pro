@@ -160,6 +160,7 @@ def create_contract(store: Any, request: ServiceContractCreateRequest) -> Servic
 
 def update_contract(store: Any, contract_id: str, data: ServiceContractCreate) -> ServiceContract:
     current = store.get_service_contract(contract_id)
+    require_whole_contract(store, contract_id)
     check_contract(store, data)
     tariffs = store.list_service_contract_tariffs(contract_id)
     if tariffs and min(t.valid_from for t in tariffs) < data.start_date:
@@ -183,6 +184,7 @@ def _check_cancellation_date(contract: Any, cancelled_on: date | None, effective
 def cancel_contract(store: Any, contract_id: str, request: CancellationRequest, *,
                     extraordinary: bool = False) -> ServiceContract:
     contract = store.get_service_contract(contract_id)
+    require_whole_contract(store, contract_id)
     if request.cancelled_on < contract.start_date - timedelta(days=3660):
         raise ValidationError("Das Datum der Kündigung ist nicht plausibel")
     base = Terms.of(contract.model_copy(update={"cancelled_on": None, "cancellation_effective": None}))
@@ -198,6 +200,7 @@ def cancel_contract(store: Any, contract_id: str, request: CancellationRequest, 
 
 def withdraw_cancellation(store: Any, contract_id: str) -> ServiceContract:
     contract = store.get_service_contract(contract_id)
+    require_whole_contract(store, contract_id)
     data = ServiceContractCreate.model_validate({
         **contract.model_dump(include=set(ServiceContractCreate.model_fields)),
         "cancelled_on": None, "cancellation_effective": None})
@@ -206,6 +209,7 @@ def withdraw_cancellation(store: Any, contract_id: str) -> ServiceContract:
 
 def delete_contract(store: Any, contract_id: str) -> None:
     store.get_service_contract(contract_id)
+    require_whole_contract(store, contract_id)
     with scope_context(None):    # bills and payments of every portfolio count
         bills = store.list_service_contract_invoices(contract_id)
         payments = store.list_service_contract_payments(contract_id)
@@ -219,6 +223,7 @@ def delete_contract(store: Any, contract_id: str) -> None:
 
 def add_location(store: Any, contract_id: str, location: LocationInput) -> Any:
     store.get_service_contract(contract_id)
+    require_whole_contract(store, contract_id)
     check_location(store, location, store.list_service_contract_locations(contract_id))
     return store.create_service_contract_location(
         ServiceContractLocationCreate(service_contract_id=contract_id, **location.model_dump()))
@@ -228,6 +233,7 @@ def update_location(store: Any, contract_id: str, location_id: str, location: Lo
     current = store.get_service_contract_location(location_id)
     if current.service_contract_id != contract_id:
         raise NotFoundError("Standort nicht gefunden")
+    require_whole_contract(store, contract_id)
     siblings = [s for s in store.list_service_contract_locations(contract_id) if s.id != location_id]
     check_location(store, location, siblings)
     return store.update_service_contract_location(
@@ -238,6 +244,7 @@ def remove_location(store: Any, contract_id: str, location_id: str) -> None:
     current = store.get_service_contract_location(location_id)
     if current.service_contract_id != contract_id:
         raise NotFoundError("Standort nicht gefunden")
+    require_whole_contract(store, contract_id)
     if len(store.list_service_contract_locations(contract_id)) <= 1:
         raise ValidationError("Ein Objektvertrag braucht mindestens einen Standort")
     store.delete_service_contract_location(location_id)
@@ -247,6 +254,7 @@ def remove_location(store: Any, contract_id: str, location_id: str) -> None:
 
 def add_tariff(store: Any, contract_id: str, tariff: TariffInput) -> Any:
     contract = store.get_service_contract(contract_id)
+    require_whole_contract(store, contract_id)
     _check_tariff_in_contract(contract, tariff)
     return store.create_service_contract_tariff(
         ServiceContractTariffCreate(service_contract_id=contract_id, **tariff.model_dump()))
@@ -254,6 +262,7 @@ def add_tariff(store: Any, contract_id: str, tariff: TariffInput) -> Any:
 
 def update_tariff(store: Any, contract_id: str, tariff_id: str, tariff: TariffInput) -> Any:
     contract = store.get_service_contract(contract_id)
+    require_whole_contract(store, contract_id)
     if store.get_service_contract_tariff(tariff_id).service_contract_id != contract_id:
         raise NotFoundError("Tarif nicht gefunden")
     _check_tariff_in_contract(contract, tariff)
@@ -262,6 +271,7 @@ def update_tariff(store: Any, contract_id: str, tariff_id: str, tariff: TariffIn
 
 
 def remove_tariff(store: Any, contract_id: str, tariff_id: str) -> None:
+    require_whole_contract(store, contract_id)
     if store.get_service_contract_tariff(tariff_id).service_contract_id != contract_id:
         raise NotFoundError("Tarif nicht gefunden")
     store.delete_service_contract_tariff(tariff_id)
@@ -549,6 +559,7 @@ def bills_view(store: Any, contract_id: str) -> list[dict]:
 
 def add_bill(store: Any, contract_id: str, request: InvoiceLinkRequest) -> Any:
     store.get_service_contract(contract_id)
+    require_whole_contract(store, contract_id)
     invoice_id = request.invoice_id
     if invoice_id is not None and _try(store.get_invoice, invoice_id) is None:
         raise ValidationError("Rechnung existiert nicht")
@@ -566,6 +577,7 @@ def update_bill(store: Any, contract_id: str, link_id: str, request: InvoiceLink
     current = store.get_service_contract_invoice(link_id)
     if current.service_contract_id != contract_id:
         raise NotFoundError("Rechnungszuordnung nicht gefunden")
+    require_whole_contract(store, contract_id)
     if request.invoice is not None or (request.invoice_id and request.invoice_id != current.invoice_id):
         raise ValidationError("Die Rechnung einer Zuordnung wird nicht ausgetauscht; bitte neu zuordnen")
     if _transfers_by_link(store, {link_id}):
@@ -580,6 +592,7 @@ def remove_bill(store: Any, contract_id: str, link_id: str) -> None:
     current = store.get_service_contract_invoice(link_id)
     if current.service_contract_id != contract_id:
         raise NotFoundError("Rechnungszuordnung nicht gefunden")
+    require_whole_contract(store, contract_id)
     with scope_context(None):
         transferred = _transfers_by_link(store, {link_id})
     if transferred:
@@ -612,6 +625,7 @@ def _is_tenant_money(store: Any, booking: Any) -> bool:
 def add_payment(store: Any, contract_id: str, request: PaymentLinkRequest) -> Any:
     """Allocate (part of) a booking: paid = -booking amount; never more than the booking."""
     store.get_service_contract(contract_id)
+    require_whole_contract(store, contract_id)
     booking = _try(store.get_booking, request.booking_id)
     if booking is None:
         raise ValidationError("Buchung existiert nicht")
@@ -637,6 +651,7 @@ def add_payment(store: Any, contract_id: str, request: PaymentLinkRequest) -> An
 
 
 def remove_payment(store: Any, contract_id: str, payment_id: str) -> None:
+    require_whole_contract(store, contract_id)
     if store.get_service_contract_payment(payment_id).service_contract_id != contract_id:
         raise NotFoundError("Zahlungszuordnung nicht gefunden")
     store.delete_service_contract_payment(payment_id)
@@ -750,6 +765,7 @@ def documents_view(store: Any, contract_id: str) -> list[dict]:
 
 def add_document(store: Any, contract_id: str, document_id: str) -> Any:
     store.get_service_contract(contract_id)
+    require_whole_contract(store, contract_id)
     if _try(store.get_document, document_id) is None:
         raise ValidationError("Dokument existiert nicht")
     return store.create_service_contract_document(
@@ -757,6 +773,7 @@ def add_document(store: Any, contract_id: str, document_id: str) -> Any:
 
 
 def remove_document(store: Any, contract_id: str, link_id: str) -> None:
+    require_whole_contract(store, contract_id)
     if store.get_service_contract_document(link_id).service_contract_id != contract_id:
         raise NotFoundError("Dokumentzuordnung nicht gefunden")
     store.delete_service_contract_document(link_id)

@@ -19,7 +19,7 @@ from backend.repositories import SQLAlchemyStore
 from backend.services.jobs import recurring
 from backend.services.jobs.core import JobContext, JobRunner, LeaseLost, MemoryJobStore, SqlJobStore
 from backend.services.jobs.schedule import BERLIN, DailyAt, local_today
-from backend.services.jobs.scheduler import ESCALATION_KIND, PERIODIC, enqueue_due, tick
+from backend.services.jobs.scheduler import ESCALATION_KIND, PERIODIC, SERVICE_CONTRACT_KIND, enqueue_due, tick
 from backend.services.portfolio_scope import AccessScope, current_scope, scope_context
 from backend.storage import InMemoryStore
 
@@ -396,8 +396,9 @@ def test_the_installation_date_is_the_berlin_date():
 
 def test_the_scheduler_runs_each_periodic_job_once_per_slot(backend):
     template = backend.template(due_date=date(2026, 10, 1), recurrence_rule="FREQ=DAILY")
-    first = tick(backend.jobs, now=datetime(2026, 10, 7, 5, 0))       # 07:00 Berlin: both slots of today due
+    first = tick(backend.jobs, now=datetime(2026, 10, 7, 5, 0))       # 07:00 Berlin: every slot of today due
     assert sorted((run.kind, run.status) for run in first) == [(ESCALATION_KIND, "succeeded"),
+                                                               (SERVICE_CONTRACT_KIND, "succeeded"),
                                                                (recurring.KIND, "succeeded")]
     assert tick(backend.jobs, now=datetime(2026, 10, 7, 5, 30)) == []
     assert backend.children(template.id) == [date(2026, 10, 7)]       # default mode: newest only
