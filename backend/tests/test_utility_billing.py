@@ -372,6 +372,8 @@ def test_correction_keeps_cost_items_not_recoverable():
     unit = _unit(prop, "1", 50)
     _lease(prop, unit, "C-1", date(2020, 1, 1))
     period = _period(prop, [("Grundsteuer", 100, "area_sqm"), ("Dachreparatur", 900, "area_sqm", False)])
+    billing.generate_utility_statements(period.id)
+    billing.finalize_billing_period(period.id)
 
     revision = billing.create_period_revision(period.id)
 

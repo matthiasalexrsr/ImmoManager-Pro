@@ -702,6 +702,10 @@ class BillingPeriodCreate(BaseModel):
     start_date: date
     end_date: date
     status: str = "draft"
+    # Corrections are new versions: they name the version they correct and count up.
+    revision: int = Field(default=1, ge=1)
+    corrects_period_id: Optional[str] = None
+    revision_notes: Optional[str] = None  # why the correction was made
 
     @field_validator("end_date")
     @classmethod
@@ -732,6 +736,9 @@ class AllocationKeyCreate(BaseModel):
     key_type: str  # area_sqm, unit_count, person_count, consumption
     description: Optional[str] = None
     meter_type: Optional[str] = None  # consumption keys: which meters count (cold_water, heating, …)
+    # consumption keys: the unit the key bills in; meters in another unit are converted only
+    # when the factor is exact (MWh -> kWh, l -> m³), otherwise the statement is refused
+    measure_unit: Optional[str] = None
 
 
 class AllocationKey(AllocationKeyCreate):
@@ -746,6 +753,7 @@ class AllocationKeyPatch(BaseModel):
     key_type: Optional[str] = None
     description: Optional[str] = None
     meter_type: Optional[str] = None
+    measure_unit: Optional[str] = None
 
 
 class CostItemCreate(BaseModel):
@@ -803,6 +811,11 @@ class UtilityStatementCreate(BaseModel):
     delivered_at: Optional[datetime] = None
     delivery_channel: Optional[str] = None  # email | post | portal
     snapshot_hash: Optional[str] = None  # immutable content hash after finalization
+    # Advances per stretch of equal monthly advance: [{start, end, days, monthly, amount}]
+    advance_sections: Optional[list[dict]] = None
+    # What the statement shows (names, addresses, rows, totals), frozen at finalization so
+    # later edits of tenants, units or contracts never change the issued version.
+    final_document: Optional[dict] = None
 
     @field_validator("party")
     @classmethod
@@ -834,6 +847,51 @@ class UtilityStatementPatch(BaseModel):
     delivered_at: Optional[datetime] = None
     delivery_channel: Optional[str] = None
     snapshot_hash: Optional[str] = None
+    final_document: Optional[dict] = None
+
+
+# Fields of a statement that may still change after finalization: the delivery
+# workflow, not the content. Everything else is the issued version.
+STATEMENT_WORKFLOW_FIELDS = frozenset({"status", "delivery_status", "delivered_at", "delivery_channel",
+                                       "updated_at"})
+
+OBJECTION_STATUSES = {"open", "correction", "resolved"}
+
+
+class BillingObjectionCreate(BaseModel):
+    """A tenant's objection (Widerspruch) against an issued statement.
+
+    It never changes the issued version; it is answered by a correction, a new
+    version of the period that names the version it corrects.
+    """
+
+    billing_period_id: str
+    statement_id: Optional[str] = None  # None: against the period as a whole
+    received_on: date
+    reason: str = Field(min_length=1)
+    status: str = "open"
+    correction_period_id: Optional[str] = None
+
+    @field_validator("status")
+    @classmethod
+    def validate_objection_status(cls, v: str) -> str:
+        if v not in OBJECTION_STATUSES:
+            raise ValueError(f"Ungültiger Status. Erlaubt: {', '.join(sorted(OBJECTION_STATUSES))}")
+        return v
+
+
+class BillingObjection(BillingObjectionCreate):
+    id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class BillingObjectionRequest(BaseModel):
+    """What the API takes for a new objection; the period comes from the path."""
+
+    statement_id: Optional[str] = None
+    received_on: Optional[date] = None  # default: today
+    reason: str = Field(min_length=1)
 
 
 class BillingPreflightIssue(BaseModel):
@@ -1139,6 +1197,26 @@ class ContractRentPeriod(ContractRentPeriodCreate):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+class ContractOccupancyCreate(BaseModel):
+    """Persons living in the contract's flat from a date on, until the next entry.
+
+    Before the first entry the contract's household size (persons) applies.
+    The person key shares by person-days, so a change splits the tenancy into
+    sections with their own number of persons.
+    """
+
+    contract_id: str
+    valid_from: date
+    persons: int = Field(ge=0)
+    notes: Optional[str] = None
+
+
+class ContractOccupancy(ContractOccupancyCreate):
+    id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class PaymentAllocationCreate(BaseModel):
     """Part of a booking credited to one contract (a transfer may pay flat and garage at once)."""
 
@@ -1407,12 +1485,23 @@ class ContactPatch(BaseModel):
 class MeterCreate(BaseModel):
     unit_id: str
     meter_type: str  # cold_water, hot_water, heating, electricity, gas
+    # Unit of the readings (m³, l, kWh, MWh, HKV, …); unset: the medium's usual unit if it has one.
+    measure_unit: Optional[str] = None
     serial_number: Optional[str] = None
     location: Optional[str] = None
-    installation_date: Optional[date] = None
+    installation_date: Optional[date] = None  # replacement: the new meter's first day (initial reading)
+    removal_date: Optional[date] = None  # replacement: the old meter's last day (final reading)
     next_inspection: Optional[date] = None
     supplier: Optional[str] = None
     is_active: bool = True
+
+    @field_validator("removal_date")
+    @classmethod
+    def validate_removal_after_installation(cls, v: Optional[date], info) -> Optional[date]:
+        installed = info.data.get("installation_date")
+        if v is not None and installed is not None and v < installed:
+            raise ValueError("Ausbaudatum muss nach dem Einbaudatum liegen")
+        return v
 
 
 class Meter(MeterCreate):
@@ -1424,9 +1513,11 @@ class Meter(MeterCreate):
 class MeterPatch(BaseModel):
     unit_id: Optional[str] = None
     meter_type: Optional[str] = None
+    measure_unit: Optional[str] = None
     serial_number: Optional[str] = None
     location: Optional[str] = None
     installation_date: Optional[date] = None
+    removal_date: Optional[date] = None
     next_inspection: Optional[date] = None
     supplier: Optional[str] = None
     is_active: Optional[bool] = None

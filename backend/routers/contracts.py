@@ -9,7 +9,15 @@ from pydantic import BaseModel
 from ..concurrency import one_at_a_time
 from ..dependencies import store
 from ..domain.lease_engine import LeaseEngine, PaymentLine, RentStep
-from ..models import Contract, ContractCreate, ContractPatch, ContractRentPeriod, ContractRentPeriodCreate
+from ..models import (
+    Contract,
+    ContractCreate,
+    ContractOccupancy,
+    ContractOccupancyCreate,
+    ContractPatch,
+    ContractRentPeriod,
+    ContractRentPeriodCreate,
+)
 from ..services.deletion_guard import ensure_deletable
 from ..services.document_versions import ensure_binding_kept
 from ..services.payment_allocations import contract_payments
@@ -223,6 +231,41 @@ def add_rent_period(contract_id: str, payload: ContractRentPeriodCreate) -> Cont
         return store.create_contract_rent_period(payload.model_copy(update={"source": "manual"}))
     except ValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.get("/{contract_id}/occupancies", response_model=list[ContractOccupancy])
+def list_occupancies(contract_id: str) -> list[ContractOccupancy]:
+    """Dated occupants: persons from a date on (before the first entry the contract's persons apply)."""
+    try:
+        store.get_contract(contract_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return store.list_contract_occupancies(contract_id)
+
+
+@router.post("/{contract_id}/occupancies", response_model=ContractOccupancy, status_code=status.HTTP_201_CREATED)
+def add_occupancy(contract_id: str, payload: ContractOccupancyCreate) -> ContractOccupancy:
+    """Record that the household size changes from a date on (birth, move-in, move-out of a person)."""
+    if payload.contract_id != contract_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Vertrag passt nicht zum Pfad")
+    try:
+        store.get_contract(contract_id)
+        return store.create_contract_occupancy(payload)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.delete("/{contract_id}/occupancies/{occupancy_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_occupancy(contract_id: str, occupancy_id: str) -> None:
+    try:
+        occupancy = store.get_contract_occupancy(occupancy_id)
+        if occupancy.contract_id != contract_id:
+            raise NotFoundError("Bewohnerstand nicht gefunden")
+        store.delete_contract_occupancy(occupancy_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 def _serialise(obj: Any) -> Any:

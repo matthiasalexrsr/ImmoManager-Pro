@@ -5,6 +5,7 @@ import logging
 from sqlalchemy.orm import Session
 
 from ..db.orm_models import (
+    ContractOccupancyORM,
     ContractORM,
     ContractRentPeriodORM,
     DepositORM,
@@ -21,6 +22,8 @@ from ..domain.lease_engine import find_unit_overlap, unit_overlap_message
 from ..models import (
     Contract,
     ContractCreate,
+    ContractOccupancy,
+    ContractOccupancyCreate,
     ContractRentPeriod,
     ContractRentPeriodCreate,
     Deposit,
@@ -38,7 +41,7 @@ from ..models import (
     ViewingAppointment,
     ViewingAppointmentCreate,
 )
-from ..storage import NotFoundError, ValidationError
+from ..storage import NotFoundError, ValidationError, check_occupancy_dates
 from .base import BaseRepository
 
 logger = logging.getLogger(__name__)
@@ -57,6 +60,7 @@ class TenantRepository:
         self._deposits = BaseRepository(db, DepositORM, Deposit, "Kaution nicht gefunden")
         self._rent_adjustments = BaseRepository(db, RentAdjustmentORM, RentAdjustment, "Mietanpassung nicht gefunden")
         self._rent_periods = BaseRepository(db, ContractRentPeriodORM, ContractRentPeriod, "Mietstand nicht gefunden")
+        self._occupancies = BaseRepository(db, ContractOccupancyORM, ContractOccupancy, "Bewohnerstand nicht gefunden")
         self._meter_readings = BaseRepository(db, MeterReadingORM, MeterReading, "Zählerstand nicht gefunden")
         # Cross-domain references (set by SQLAlchemyStore facade)
         self._portfolio_repo = portfolio_repo
@@ -171,6 +175,8 @@ class TenantRepository:
     def delete_contract(self, contract_id: str) -> None:
         for period in self.list_contract_rent_periods(contract_id):
             self._rent_periods.delete(period.id)
+        for occupancy in self.list_contract_occupancies(contract_id):
+            self._occupancies.delete(occupancy.id)
         self._contracts.delete(contract_id)
         self._commit()
 
@@ -343,6 +349,29 @@ class TenantRepository:
 
     def delete_contract_rent_period(self, period_id: str) -> None:
         self._rent_periods.delete(period_id)
+        self._commit()
+
+    # --- Contract occupancies (dated occupants) ---
+    def list_contract_occupancies(self, contract_id: str | None = None) -> list[ContractOccupancy]:
+        items = (self._occupancies.filter_by(contract_id=contract_id) if contract_id
+                 else self._occupancies.list_all())
+        return sorted(items, key=lambda o: (o.contract_id, o.valid_from))
+
+    def create_contract_occupancy(self, data: ContractOccupancyCreate) -> ContractOccupancy:
+        if not self._contracts.exists(data.contract_id):
+            raise ValidationError("Vertrag existiert nicht")
+        check_occupancy_dates(self._contracts.get(data.contract_id), data)
+        if any(o.valid_from == data.valid_from for o in self.list_contract_occupancies(data.contract_id)):
+            raise ValidationError("Für dieses Datum gibt es schon einen Bewohnerstand")
+        result = self._occupancies.create(data)
+        self._commit()
+        return result
+
+    def get_contract_occupancy(self, occupancy_id: str) -> ContractOccupancy:
+        return self._occupancies.get(occupancy_id)
+
+    def delete_contract_occupancy(self, occupancy_id: str) -> None:
+        self._occupancies.delete(occupancy_id)
         self._commit()
 
     # --- Leads ---

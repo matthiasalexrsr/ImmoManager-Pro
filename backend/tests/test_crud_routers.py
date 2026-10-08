@@ -2029,11 +2029,19 @@ class TestBillingPeriods:
             BillingPeriodCreate(
                 property_id=self.prop.id, label="BK 2024 Final",
                 start_date=datetime.date(2024, 1, 1), end_date=datetime.date(2024, 12, 31),
-                status="finalized",
             ),
         )
         assert updated.label == "BK 2024 Final"
-        assert updated.status == "finalized"
+        assert updated.status == "draft"
+        # Regression: an edit set 'finalized' without statements, preflight or snapshot hash.
+        with pytest.raises(HTTPException) as exc_info:
+            billing.update_billing_period(bp.id, BillingPeriodCreate(
+                property_id=self.prop.id, label="BK 2024 Final",
+                start_date=datetime.date(2024, 1, 1), end_date=datetime.date(2024, 12, 31),
+                status="finalized",
+            ))
+        assert exc_info.value.status_code == 400
+        assert store.get_billing_period(bp.id).status == "draft"
 
     def test_create_bad_dates_400(self) -> None:
         with pytest.raises((HTTPException, Exception)):
@@ -2076,9 +2084,12 @@ class TestBillingPeriods:
                 start_date=datetime.date(2024, 1, 1), end_date=datetime.date(2024, 12, 31),
             )
         )
-        patched = billing.patch_billing_period(bp.id, BillingPeriodPatch(status="finalized"))
-        assert patched.status == "finalized"
-        assert patched.label == "BK 2024"
+        patched = billing.patch_billing_period(bp.id, BillingPeriodPatch(label="BK 2024 neu"))
+        assert patched.status == "draft"
+        assert patched.label == "BK 2024 neu"
+        with pytest.raises(HTTPException) as exc_info:  # status only through the workflow
+            billing.patch_billing_period(bp.id, BillingPeriodPatch(status="finalized"))
+        assert exc_info.value.status_code == 400
 
 
 # ---------------------------------------------------------------------------

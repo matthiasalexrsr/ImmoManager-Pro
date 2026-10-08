@@ -292,6 +292,8 @@ def _tenant_records(tenant_id: str) -> dict[str, list]:
     def of_contracts(items: list) -> list:
         return [item for item in items if item.contract_id in contract_ids]
 
+    statements = of_contracts(store.list_utility_statements())
+    statement_ids = {s.id for s in statements}
     return {
         "contracts": contracts,
         "bookings": [b for b in store.list_bookings() if b.tenant_id == tenant_id],
@@ -299,7 +301,9 @@ def _tenant_records(tenant_id: str) -> dict[str, list]:
         "receivables": of_contracts(store.list_receivables()),
         "rent_charges": of_contracts(store.list_rent_charges()),
         "rent_adjustments": of_contracts(store.list_rent_adjustments()),
-        "utility_statements": of_contracts(store.list_utility_statements()),
+        "utility_statements": statements,
+        "billing_objections": [o for o in store.list_billing_objections() if o.statement_id in statement_ids],
+        "contract_occupancies": of_contracts(store.list_contract_occupancies()),
         "documents": of_contracts(store.list_documents()),
         "handover_protocols": of_contracts(store.list_handover_protocols()),
         "message_threads": threads,

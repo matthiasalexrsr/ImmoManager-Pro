@@ -7,10 +7,13 @@ from pydantic import BaseModel as PydanticBaseModel
 
 from .domain.lease_engine import find_unit_overlap, unit_overlap_message
 from .models import (
+    STATEMENT_WORKFLOW_FIELDS,
     Account,
     AccountCreate,
     AllocationKey,
     AllocationKeyCreate,
+    BillingObjection,
+    BillingObjectionCreate,
     BillingPeriod,
     BillingPeriodCreate,
     Booking,
@@ -26,6 +29,8 @@ from .models import (
     ContactCreate,
     Contract,
     ContractCreate,
+    ContractOccupancy,
+    ContractOccupancyCreate,
     ContractRentPeriod,
     ContractRentPeriodCreate,
     CostItem,
@@ -101,8 +106,36 @@ class ValidationError(ValueError):
     pass
 
 
+FINAL_STATEMENT_MESSAGE = ("Die Einzelabrechnung ist finalisiert und bleibt unverändert; "
+                           "Änderungen nur über eine Korrektur")
+
+
+def check_final_statement_change(old: Any, new: Any) -> None:
+    """Refuse changing the content of a finalized statement (only its delivery may change)."""
+    if not old.snapshot_hash:
+        return
+    before, after = old.model_dump(), new.model_dump()
+    changed = {key for key in before.keys() | after.keys()
+               if key not in STATEMENT_WORKFLOW_FIELDS and before.get(key) != after.get(key)}
+    if changed:
+        raise ValidationError(FINAL_STATEMENT_MESSAGE)
+
+
+def check_final_statement_delete(statement: Any) -> None:
+    if statement.snapshot_hash:
+        raise ValidationError(FINAL_STATEMENT_MESSAGE)
+
+
 def _generate_id() -> str:
     return str(uuid4())
+
+
+def check_occupancy_dates(contract: Any, data: Any) -> None:
+    """A dated occupancy must fall within the contract's term."""
+    if data.valid_from < contract.start_date:
+        raise ValidationError("Ein Bewohnerstand kann nicht vor Vertragsbeginn gelten")
+    if contract.end_date is not None and data.valid_from > contract.end_date:
+        raise ValidationError("Ein Bewohnerstand kann nicht nach Vertragsende gelten")
 
 
 @dataclass
@@ -145,6 +178,8 @@ class InMemoryStore:
     tax_rates: Dict[str, TaxRate] = field(default_factory=dict)
     rent_adjustments: Dict[str, RentAdjustment] = field(default_factory=dict)
     contract_rent_periods: Dict[str, ContractRentPeriod] = field(default_factory=dict)
+    contract_occupancies: Dict[str, ContractOccupancy] = field(default_factory=dict)
+    billing_objections: Dict[str, BillingObjection] = field(default_factory=dict)
     payment_allocations: Dict[str, PaymentAllocation] = field(default_factory=dict)
     handover_protocols: Dict[str, HandoverProtocol] = field(default_factory=dict)
     meter_readings: Dict[str, MeterReading] = field(default_factory=dict)
@@ -1049,13 +1084,22 @@ class InMemoryStore:
     def delete_billing_period(self, period_id: str) -> None:
         if period_id not in self.billing_periods:
             raise NotFoundError("Abrechnungsperiode nicht gefunden")
-        # Cascade: delete cost items and utility statements
+        if any(us.billing_period_id == period_id and us.snapshot_hash for us in self.utility_statements.values()):
+            raise ValidationError(FINAL_STATEMENT_MESSAGE)
+        # Cascade: delete cost items, utility statements and objections; an
+        # objection answered by this (draft) correction is open again.
         for ci_id, ci in list(self.cost_items.items()):
             if ci.billing_period_id == period_id:
                 del self.cost_items[ci_id]
         for us_id, us in list(self.utility_statements.items()):
             if us.billing_period_id == period_id:
                 del self.utility_statements[us_id]
+        for ob_id, ob in list(self.billing_objections.items()):
+            if ob.billing_period_id == period_id:
+                del self.billing_objections[ob_id]
+            elif ob.correction_period_id == period_id:
+                self.billing_objections[ob_id] = ob.model_copy(update={"correction_period_id": None,
+                                                                       "status": "open"})
         del self.billing_periods[period_id]
 
     # --- Allocation Keys ---
@@ -1168,13 +1212,55 @@ class InMemoryStore:
             id=statement_id, created_at=old.created_at,
             updated_at=datetime.now(timezone.utc), **data.model_dump(),
         )
+        check_final_statement_change(old, statement)
         self.utility_statements[statement_id] = statement
         return statement
 
     def delete_utility_statement(self, statement_id: str) -> None:
         if statement_id not in self.utility_statements:
             raise NotFoundError("Betriebskostenabrechnung nicht gefunden")
+        check_final_statement_delete(self.utility_statements[statement_id])
+        for ob_id, ob in list(self.billing_objections.items()):
+            if ob.statement_id == statement_id:
+                del self.billing_objections[ob_id]
         del self.utility_statements[statement_id]
+
+    # --- Objections (Widerspruch) ---
+
+    def list_billing_objections(self, billing_period_id: Optional[str] = None) -> List[BillingObjection]:
+        items = [o for o in self.billing_objections.values()
+                 if billing_period_id is None or o.billing_period_id == billing_period_id]
+        return sorted(items, key=lambda o: (o.received_on, o.created_at, o.id))
+
+    def _check_objection(self, data: BillingObjectionCreate) -> None:
+        if data.billing_period_id not in self.billing_periods:
+            raise ValidationError("Abrechnungsperiode existiert nicht")
+        if data.statement_id is not None:
+            statement = self.utility_statements.get(data.statement_id)
+            if statement is None or statement.billing_period_id != data.billing_period_id:
+                raise ValidationError("Die Einzelabrechnung gehört nicht zu dieser Abrechnungsperiode")
+        if data.correction_period_id is not None and data.correction_period_id not in self.billing_periods:
+            raise ValidationError("Korrektur existiert nicht")
+
+    def create_billing_objection(self, data: BillingObjectionCreate) -> BillingObjection:
+        self._check_objection(data)
+        item = BillingObjection(id=_generate_id(), **data.model_dump())
+        self.billing_objections[item.id] = item
+        return item
+
+    def get_billing_objection(self, objection_id: str) -> BillingObjection:
+        try:
+            return self.billing_objections[objection_id]
+        except KeyError as exc:
+            raise NotFoundError("Widerspruch nicht gefunden") from exc
+
+    def update_billing_objection(self, objection_id: str, data: BillingObjectionCreate) -> BillingObjection:
+        old = self.get_billing_objection(objection_id)
+        self._check_objection(data)
+        item = BillingObjection(id=objection_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc),
+                                **data.model_dump())
+        self.billing_objections[objection_id] = item
+        return item
 
     # --- Deposits ---
 
@@ -1313,6 +1399,8 @@ class InMemoryStore:
         "tax_rate": ("tax_rates", "Steuersatz nicht gefunden"),
         "rent_adjustment": ("rent_adjustments", "Mietanpassung nicht gefunden"),
         "contract_rent_period": ("contract_rent_periods", "Mietstand nicht gefunden"),
+        "contract_occupancy": ("contract_occupancies", "Bewohnerstand nicht gefunden"),
+        "billing_objection": ("billing_objections", "Widerspruch nicht gefunden"),
         "payment_allocation": ("payment_allocations", "Zahlungszuordnung nicht gefunden"),
         "handover_protocol": ("handover_protocols", "Übergabeprotokoll nicht gefunden"),
         "meter_reading": ("meter_readings", "Zählerstand nicht gefunden"),
@@ -1348,6 +1436,8 @@ class InMemoryStore:
             self.validate_document_associations(updated)
         if entity_type == "task":
             self.validate_task(updated)
+        if entity_type == "utility_statement":
+            check_final_statement_change(old, updated)
         collection[entity_id] = updated
         return updated
 
@@ -1392,6 +1482,9 @@ class InMemoryStore:
         for period_id, period in list(self.contract_rent_periods.items()):
             if period.contract_id == contract_id:
                 del self.contract_rent_periods[period_id]
+        for occupancy_id, occupancy in list(self.contract_occupancies.items()):
+            if occupancy.contract_id == contract_id:
+                del self.contract_occupancies[occupancy_id]
         for receivable_id, receivable in list(self.receivables.items()):
             if receivable.contract_id == contract_id:
                 del self.receivables[receivable_id]
@@ -1521,6 +1614,36 @@ class InMemoryStore:
     def delete_contract_rent_period(self, period_id: str) -> None:
         self.get_contract_rent_period(period_id)
         del self.contract_rent_periods[period_id]
+
+    # --- Contract occupancies (dated occupants) ---
+    def list_contract_occupancies(self, contract_id: Optional[str] = None) -> List[ContractOccupancy]:
+        items = [o for o in self.contract_occupancies.values() if contract_id is None or o.contract_id == contract_id]
+        return sorted(items, key=lambda o: (o.contract_id, o.valid_from))
+
+    def _check_occupancy(self, data: ContractOccupancyCreate, exclude_id: Optional[str] = None) -> None:
+        contract = self.contracts.get(data.contract_id)
+        if contract is None:
+            raise ValidationError("Vertrag existiert nicht")
+        check_occupancy_dates(contract, data)
+        if any(o.id != exclude_id and o.contract_id == data.contract_id and o.valid_from == data.valid_from
+               for o in self.contract_occupancies.values()):
+            raise ValidationError("Für dieses Datum gibt es schon einen Bewohnerstand")
+
+    def create_contract_occupancy(self, data: ContractOccupancyCreate) -> ContractOccupancy:
+        self._check_occupancy(data)
+        item = ContractOccupancy(id=_generate_id(), **data.model_dump())
+        self.contract_occupancies[item.id] = item
+        return item
+
+    def get_contract_occupancy(self, occupancy_id: str) -> ContractOccupancy:
+        try:
+            return self.contract_occupancies[occupancy_id]
+        except KeyError as exc:
+            raise NotFoundError("Bewohnerstand nicht gefunden") from exc
+
+    def delete_contract_occupancy(self, occupancy_id: str) -> None:
+        self.get_contract_occupancy(occupancy_id)
+        del self.contract_occupancies[occupancy_id]
 
     # --- Handover Protocols (T16) ---
     def list_handover_protocols(self) -> List[HandoverProtocol]:

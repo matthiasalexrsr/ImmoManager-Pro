@@ -9,6 +9,10 @@ intact, and a snapshot is validated completely before anything is written:
   the same file twice changes nothing;
 * replace (restore): the business data is swapped all or nothing.
 
+Finalized utility statements are checked against their snapshot hash: a file
+whose issued statements were edited, or a merge that would add statements or
+costs to an issued period, is refused.
+
 User accounts, sessions and the audit log are not part of a snapshot. Archived
 document originals are, with their bytes (see document_original_snapshot).
 """
@@ -30,6 +34,7 @@ from ..config import settings
 from ..db.orm_models import Base
 from ..storage import InMemoryStore
 from . import document_original_snapshot as originals
+from .final_statements import FINAL_STATUSES, final_version_problems
 
 SNAPSHOT_FORMAT = "immomanager-snapshot"
 # 3: archived document originals (older versions would drop them, so they refuse the file)
@@ -230,6 +235,7 @@ def prepare_import(store: Any, data: Any, *, replace: bool) -> PreparedImport:
 
     problems += _check_references(plan, existing)
     problems += _check_unique(plan, existing)
+    problems += _check_final_statements(plan, existing)
     fresh_originals: list = []
     if incoming:
         after = {spec.key: {**existing.get(spec.key, {}), **{obj.id: obj for obj in objs}} for spec, objs in plan}
@@ -322,6 +328,30 @@ def _check_references(plan: Plan, existing: dict[str, dict[str, Record]]) -> lis
                     problems.append(
                         f"{spec.key} {obj.id}: {column} verweist auf fehlenden Datensatz {value}"
                     )
+    return problems
+
+
+def _check_final_statements(plan: Plan, existing: dict[str, dict[str, Record]]) -> list[str]:
+    """Issued statements stay as issued: neither edited in the file nor extended by a merge."""
+    incoming = {spec.key: objs for spec, objs in plan}
+    problems = []
+    existing_periods = existing.get("billing_periods", {})
+    for key in ("utility_statements", "cost_items"):
+        for obj in incoming.get(key, []):
+            period = existing_periods.get(obj.billing_period_id)
+            if period is not None and period.status in FINAL_STATUSES:
+                problems.append(f"{key} {obj.id}: Abrechnungsperiode {period.label} ist finalisiert und "
+                                "bleibt unverändert")
+    # only the periods this file brings or adds to; existing data is not judged here
+    touched = {p.id for p in incoming.get("billing_periods", [])}
+    touched |= {s.billing_period_id for s in incoming.get("utility_statements", [])}
+    periods = {**existing_periods, **{p.id: p for p in incoming.get("billing_periods", [])}}
+    statements: dict[str, list[Record]] = {}
+    for statement in [*existing.get("utility_statements", {}).values(), *incoming.get("utility_statements", [])]:
+        statements.setdefault(statement.billing_period_id, []).append(statement)
+    for period_id in sorted(touched):
+        if period_id in periods:
+            problems += final_version_problems(periods[period_id], statements.get(period_id, []))
     return problems
 
 

@@ -375,3 +375,41 @@ def test_durable_jobs_upgrade_and_downgrade(migrate):
     migrate()
     assert {"job_runs", "job_occurrences"} <= set(_schema(db_path))
 
+
+BILLING_REGRESSION_REVISION = "c3e8a1f5d9b7"
+
+
+def test_billing_regression_upgrade_and_downgrade(migrate):
+    db_path = migrate(JOBS_REVISION)
+    _seed_previous_schema(db_path)
+    migrate(BILLING_REGRESSION_REVISION)
+    schema = _schema(db_path)
+    assert {"contract_occupancies", "billing_objections"} <= set(schema)
+    assert {"measure_unit", "removal_date"} <= schema["meters"]
+    assert {"revision", "corrects_period_id", "revision_notes"} <= schema["billing_periods"]
+    assert {"advance_sections", "final_document"} <= schema["utility_statements"]
+    with sqlite3.connect(db_path) as conn:
+        # existing periods are revision 1 and correct nothing
+        assert conn.execute("SELECT revision, corrects_period_id FROM billing_periods").fetchall() == [(1, None)]
+        conn.execute("INSERT INTO contract_occupancies (id, contract_id, valid_from, persons) "
+                     "VALUES ('o1', 'c1', '2025-07-01', 3)")
+        with pytest.raises(sqlite3.IntegrityError):    # one entry per contract and date
+            conn.execute("INSERT INTO contract_occupancies (id, contract_id, valid_from, persons) "
+                         "VALUES ('o2', 'c1', '2025-07-01', 2)")
+        with pytest.raises(sqlite3.IntegrityError):    # no negative household
+            conn.execute("INSERT INTO contract_occupancies (id, contract_id, valid_from, persons) "
+                         "VALUES ('o3', 'c1', '2025-08-01', -1)")
+    with pytest.raises(RuntimeError, match="dated occupants"):
+        migrate.downgrade(JOBS_REVISION)
+    assert _version(db_path) == BILLING_REGRESSION_REVISION
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("DELETE FROM contract_occupancies")
+    migrate.downgrade(JOBS_REVISION)
+    schema = _schema(db_path)
+    assert "contract_occupancies" not in schema and "billing_objections" not in schema
+    assert "removal_date" not in schema["meters"] and "final_document" not in schema["utility_statements"]
+    with sqlite3.connect(db_path) as conn:   # the rows survive the round trip
+        assert conn.execute("SELECT id, balance FROM utility_statements").fetchall() == [("s1", -1400)]
+    migrate()
+    assert {"contract_occupancies", "billing_objections"} <= set(_schema(db_path))
+

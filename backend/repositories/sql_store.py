@@ -15,6 +15,8 @@ from ..models import (
     AccountCreate,
     AllocationKey,
     AllocationKeyCreate,
+    BillingObjection,
+    BillingObjectionCreate,
     BillingPeriod,
     BillingPeriodCreate,
     Booking,
@@ -30,6 +32,8 @@ from ..models import (
     ContactCreate,
     Contract,
     ContractCreate,
+    ContractOccupancy,
+    ContractOccupancyCreate,
     ContractRentPeriod,
     ContractRentPeriodCreate,
     CostItem,
@@ -95,6 +99,7 @@ from ..models import (
     ViewingAppointment,
     ViewingAppointmentCreate,
 )
+from ..storage import check_final_statement_change
 from .billing_repo import BillingRepository
 from .communication_repo import CommunicationRepository
 from .document_repo import DocumentRepository
@@ -155,6 +160,8 @@ class SQLAlchemyStore:
         "deposit": ("tenant", "_deposits"),
         "rent_adjustment": ("tenant", "_rent_adjustments"),
         "contract_rent_period": ("tenant", "_rent_periods"),
+        "contract_occupancy": ("tenant", "_occupancies"),
+        "billing_objection": ("billing", "_objections"),
         "meter_reading": ("tenant", "_meter_readings"),
         "booking": ("finance", "_bookings"),
         "payment_allocation": ("finance", "_allocations"),
@@ -205,6 +212,8 @@ class SQLAlchemyStore:
             self.document.validate_document_associations(merged)
         if entity_type == "task":
             self.communication.validate_task(merged)
+        if entity_type == "utility_statement":
+            check_final_statement_change(current, merged)
         result = repo.patch(entity_id, patch)
         self._commit()
         return result
@@ -611,6 +620,19 @@ class SQLAlchemyStore:
     def delete_utility_statement(self, statement_id: str) -> None:
         self.billing.delete_utility_statement(statement_id)
 
+    # --- Objections (Widerspruch) ---
+    def list_billing_objections(self, billing_period_id: str | None = None) -> list[BillingObjection]:
+        return self.billing.list_billing_objections(billing_period_id)
+
+    def create_billing_objection(self, data: BillingObjectionCreate) -> BillingObjection:
+        return self.billing.create_billing_objection(data)
+
+    def get_billing_objection(self, objection_id: str) -> BillingObjection:
+        return self.billing.get_billing_objection(objection_id)
+
+    def update_billing_objection(self, objection_id: str, data: BillingObjectionCreate) -> BillingObjection:
+        return self.billing.update_billing_objection(objection_id, data)
+
     # --- Deposits ---
     def list_deposits(self) -> list[Deposit]:
         return self.tenant.list_deposits()
@@ -720,6 +742,19 @@ class SQLAlchemyStore:
 
     def delete_contract_rent_period(self, period_id: str) -> None:
         self.tenant.delete_contract_rent_period(period_id)
+
+    # --- Contract occupancies (dated occupants) ---
+    def list_contract_occupancies(self, contract_id: str | None = None) -> list[ContractOccupancy]:
+        return self.tenant.list_contract_occupancies(contract_id)
+
+    def create_contract_occupancy(self, data: ContractOccupancyCreate) -> ContractOccupancy:
+        return self.tenant.create_contract_occupancy(data)
+
+    def get_contract_occupancy(self, occupancy_id: str) -> ContractOccupancy:
+        return self.tenant.get_contract_occupancy(occupancy_id)
+
+    def delete_contract_occupancy(self, occupancy_id: str) -> None:
+        self.tenant.delete_contract_occupancy(occupancy_id)
 
     # --- Handover Protocols ---
     def list_handover_protocols(self) -> list[HandoverProtocol]:
