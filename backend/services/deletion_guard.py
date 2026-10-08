@@ -56,6 +56,15 @@ _DEPENDENTS: dict[str, tuple[str, list[tuple[str, str, tuple[str, str]]]]] = {
     "account": ("Konto", [
         ("list_bookings", "account_id", ("Buchung", "Buchungen")),
     ]),
+    # a meter read in a handover protocol, and a reading a finalized protocol recorded
+    "meter": ("Zähler", [
+        ("list_meter_readings", "meter_id", ("Zählerstand eines Übergabeprotokolls",
+                                             "Zählerstände von Übergabeprotokollen")),
+    ]),
+    "standalone_reading": ("Ablesung", [
+        ("list_meter_readings", "standalone_reading_id", ("abgeschlossenes Übergabeprotokoll",
+                                                          "abgeschlossene Übergabeprotokolle")),
+    ]),
     # a reversal without its original would count as an income or expense of its own
     "booking": ("Buchung", [
         ("list_bookings", "reverses_booking_id", ("Stornobuchung", "Stornobuchungen")),
@@ -66,6 +75,8 @@ _ALTERNATIVES = {
     "tenant": " Ehemalige Mieter lassen sich stattdessen archivieren.",
     "contract": " Ein beendeter Vertrag lässt sich stattdessen auf „beendet“ setzen.",
     "booking": " Eine stornierte Buchung bleibt mit ihrem Storno stehen; beide zusammen zählen null.",
+    "meter": " Ein ausgebauter Zähler lässt sich stattdessen mit Ausbaudatum deaktivieren.",
+    "standalone_reading": " Ein falscher Stand wird über eine Korrektur des Übergabeprotokolls berichtigt.",
 }
 
 

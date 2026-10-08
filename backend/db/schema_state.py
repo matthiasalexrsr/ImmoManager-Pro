@@ -144,13 +144,17 @@ def initialise_empty(engine: Engine) -> None:
     """Create the current schema in an empty database and record it as the head."""
     from ..compat.ui_contracts import ensure_ui_contracts
     from . import access_models, document_version_models, job_models  # noqa: F401  (register the tables)
+    from .handover_guards import GUARDED_TABLES, install_handover_guards
     from .orm_models import Base
 
     ensure_ui_contracts()
     Base.metadata.create_all(bind=engine)
     with engine.begin() as connection:
-        if set(document_version_models.ARCHIVE_TABLES) <= set(inspect(connection).get_table_names()):
+        tables = set(inspect(connection).get_table_names())
+        if set(document_version_models.ARCHIVE_TABLES) <= tables:
             document_version_models.install_guards(connection)
+        if set(GUARDED_TABLES) <= tables:
+            install_handover_guards(connection)       # also done by create_all's event; idempotent
         MigrationContext.configure(connection).stamp(_script(), "head")
 
 

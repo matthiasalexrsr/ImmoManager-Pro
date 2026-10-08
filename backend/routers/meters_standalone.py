@@ -3,6 +3,7 @@
 from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
+from ..services.deletion_guard import ensure_deletable
 from ..models import (
     Meter,
     MeterCreate,
@@ -71,6 +72,8 @@ def patch_meter(meter_id: str, payload: MeterPatch) -> Meter:
 @router.delete("/{meter_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_meter(meter_id: str) -> None:
     try:
+        store.get_meter(meter_id)
+        ensure_deletable(store, "meter", meter_id)
         store.delete_meter(meter_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -116,6 +119,8 @@ def list_all_readings(
 @router.delete("/readings/{reading_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_reading(reading_id: str) -> None:
     try:
+        store.get_standalone_meter_reading(reading_id)
+        ensure_deletable(store, "standalone_reading", reading_id)
         store.delete_standalone_meter_reading(reading_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

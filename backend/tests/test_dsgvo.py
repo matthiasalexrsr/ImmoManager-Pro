@@ -71,6 +71,8 @@ def test_data_access_export_contains_everything_of_the_tenant_only(client, lars)
     assert counts == {"contracts": 1, "bookings": 1, "deposits": 1, "receivables": 1, "rent_charges": 1,
                       "rent_adjustments": 0, "utility_statements": 0, "billing_objections": 0,
                       "contract_occupancies": 0, "documents": 1, "handover_protocols": 0,
+                      "handover_rooms": 0, "handover_defects": 0, "handover_keys": 0,
+                      "handover_meter_readings": 0, "handover_photos": 0,
                       "message_threads": 1, "messages": 1}
     assert export["tenant"]["full_name"] == "Lars Petersen"
     assert "Nachbarin" not in str(export)
