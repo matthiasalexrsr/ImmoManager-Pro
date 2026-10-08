@@ -18,6 +18,7 @@ Stand 7. Oktober 2026, Branch `claude/durable-jobs-core` (auf `claude/dreamy-gau
 - `job_runs`: ein Lauf je `idempotency_key` (eindeutig). Felder: `kind`, `scope` (nur `installation`, per CHECK), `status` (`queued`/`running`/`succeeded`/`failed`), `payload`, `checkpoint`, `progress`, `attempts`/`max_attempts`, `available_at` (Wartezeit bei Wiederholung), Lease (`lease_owner`, `lease_token`, `lease_expires_at`, `heartbeat_at`), `last_error`.
 - `job_occurrences`: Vorkommensbuch. Der Primärschlüssel ist (`rule_key`, `rule_version`, `occurrence_key`) und dient als Duplikatschutz. `status` ist `created` oder `skipped`.
 - SQLite ohne Alembic: `create_all` legt beide Tabellen an (`backend/db/job_models.py`, über `backend/db/__init__.py` registriert). Eine Wiederherstellung aus einer älteren Sicherung ergänzt sie (`ensure_job_schema`).
+  *Nachtrag 08.10.2026:* `create_all` gilt nur noch für eine leere Datenbank (danach Stempel auf den Head); ältere Datenbanken und wiederhergestellte ältere Sicherungen bringt ausschließlich das explizite Upgrade auf den Stand (`ensure_job_schema` entfällt), siehe `docs/OPERATIONS_BACKUP_SECRETS_20261008.md`.
 - Downgrade wird verweigert, solange Läufe `queued` oder `running` sind. Danach werden beide Tabellen entfernt, das Vorkommensbuch eingeschlossen.
 
 ## Ablauf

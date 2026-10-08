@@ -37,10 +37,13 @@ Useful variants:
 .\start.bat -DataDir D:\ImmoManagerProData
 ```
 
-Backups can be created manually or scheduled via Windows Task Scheduler:
+While the program runs it makes a verified full backup every day (01:30 Europe/Berlin, or
+right after the start when that slot was missed) and a monthly restore probe; see Settings →
+System → "Betrieb". A full backup at any time, or nightly via Windows Task Scheduler while the
+program is closed:
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\backup_scheduler.py run
+.\.venv\Scripts\python.exe -m backend ops backup
 .\.venv\Scripts\python.exe scripts\backup_scheduler.py schedule
 ```
 
@@ -157,7 +160,9 @@ All endpoints are under `/api/v1`. Full interactive docs at `/docs`.
 - Local Windows builds use the PyInstaller spec and SQLite by default.
 - External portal integrations are modeled through adapter interfaces/placeholders until real credentials are provided.
 - Production mode (`ENVIRONMENT=production`) fails startup for unsafe defaults such as wildcard CORS, demo seeding, in-memory fallback, or default JWT secrets.
-- Schema updates: run `alembic upgrade head` (Docker entrypoint, `scripts/update.sh` and the in-app updater do this). Databases created by the app itself without Alembic (desktop installs) are adopted automatically on their first upgrade.
+- Schema updates are explicit: `python -m backend.upgrade` (Windows package: `ImmoManager-Pro.exe upgrade`) takes a verified full backup first, then runs the migrations. The normal start never changes an existing schema: it initialises an empty database and refuses one that is behind the Alembic head. The desktop launcher (`python -m backend`, the `.exe`, `start.bat`), the Docker entrypoint, `scripts/update.sh` and the in-app updater run the explicit step for you. Databases created by older desktop versions without Alembic are adopted by that step.
+- Full backups (database, uploads, configuration, keys), the monthly restore probe, the second backup target and key handling: [docs/OPERATIONS_BACKUP_SECRETS_20261008.md](docs/OPERATIONS_BACKUP_SECRETS_20261008.md).
+- Reproducible installs: `pip install -r requirements.txt -c constraints.txt`, `npm ci`; Docker base images are pinned by digest.
 
 ## License
 
