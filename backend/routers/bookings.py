@@ -7,6 +7,7 @@ from ..dependencies import store
 from ..domain.money import money, money_sum
 from ..models import Booking, BookingCreate, BookingPatch, PaymentAllocation
 from ..services.deletion_guard import ensure_deletable
+from ..services.maintenance_projects import ensure_booking_unallocated
 from ..services.payment_allocations import (
     allocate_unassigned,
     auto_allocate,
@@ -176,6 +177,7 @@ def delete_booking(booking_id: str) -> None:
         store.get_booking(booking_id)
         if store.list_booking_reversals(booking_id):     # indexed; the guard names them
             ensure_deletable(store, "booking", booking_id)
+        ensure_booking_unallocated(store, booking_id)       # it pays an invoice
         store.delete_booking(booking_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

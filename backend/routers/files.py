@@ -21,7 +21,7 @@ from ..services.ocr_service import extract_text_from_bytes
 from ..services.portfolio_scope import register_upload, require_file_access
 from ..services.task_queue import get_queue
 from ..services.upload_policy import (
-    ARCHIVED_PREFIX,
+    ARCHIVED_PREFIXES,
     DOCUMENT_EXTENSIONS,
     read_limited,
     require_allowed_extension,
@@ -232,12 +232,12 @@ def download_file(key: str = Query(...), actor: UserRead = Depends(require_auth)
     if ".." in safe_key or safe_key.startswith("/"):
         raise HTTPException(status_code=400, detail="Ungültiger Dateischlüssel")
 
-    if safe_key.startswith(ARCHIVED_PREFIX):
+    if safe_key.startswith(ARCHIVED_PREFIXES):
         # generated originals: the verified archive, never a same-named file on disk
         from ..dependencies import store
-        from ..services.housing_confirmation import read_pdf_for_key
+        from ..services.upload_policy import read_archived_pdf
 
-        data = read_pdf_for_key(store, safe_key, actor.id)
+        data = read_archived_pdf(store, safe_key, actor.id)
     else:
         require_file_access(safe_key)
         data = storage.get(safe_key)

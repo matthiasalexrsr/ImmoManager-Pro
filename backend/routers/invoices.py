@@ -8,6 +8,7 @@ from ..dependencies import store
 from ..domain.invoice_matching import BookingCandidate, InvoiceMatcher, InvoiceToMatch
 from ..domain.money import money
 from ..models import Invoice, InvoiceCreate, InvoicePatch
+from ..services.maintenance_projects import ensure_invoice_unbound
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/invoices", tags=["Rechnungen"])
@@ -75,6 +76,8 @@ def patch_invoice(invoice_id: str, payload: InvoicePatch) -> Invoice:
 @router.delete("/{invoice_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_invoice(invoice_id: str) -> None:
     try:
+        store.get_invoice(invoice_id)
+        ensure_invoice_unbound(store, invoice_id)        # billed against an order or paid by bookings
         store.delete_invoice(invoice_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

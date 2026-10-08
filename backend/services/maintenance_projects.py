@@ -32,6 +32,7 @@ from typing import Any
 from uuid import uuid4
 
 from fastapi import HTTPException
+from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy.orm import Session
 
 from .. import auth
@@ -275,7 +276,10 @@ def update_case(store: Any, case_id: str, changes: dict, actor_id: str | None) -
     from ..models import MaintenanceCase
 
     with project(store, actor_id, case_id, f"/maintenance/{case_id}") as p:
-        merged = MaintenanceCase.model_validate({**p.case.model_dump(), **changes, "id": case_id})
+        try:
+            merged = MaintenanceCase.model_validate({**p.case.model_dump(), **changes, "id": case_id})
+        except PydanticValidationError as error:
+            raise HTTPException(422, error.errors()[0]["msg"]) from None
         moved = (merged.property_id, merged.unit_id) != (p.case.property_id, p.case.unit_id)
         if moved:
             _check_location(p.unit, merged.property_id, merged.unit_id)

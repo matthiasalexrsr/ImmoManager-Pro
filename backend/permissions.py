@@ -5,7 +5,10 @@ Reading is open to every signed-in user. For writing:
 - verwalter     everything except restoring, importing and bulk deleting data
 - buchhaltung   money: bookings, accounts, invoices, receivables, deposits, budgets,
                 costs of the utility statement, dunning
-- techniker     building: maintenance, meters, handover protocols
+- techniker     building: maintenance, meters, handover protocols; in the project file of a
+                maintenance case: plan, record quotes and change orders, write and finalize
+                protocols, but not award or cancel orders, decide change orders or link invoices
+- (buchhaltung also links invoices to the orders of a maintenance case)
 - readonly      only personal settings
 Everybody who works in the office may also keep tasks, documents, files, photos,
 messages, calendar entries and notifications. Endpoints add finer checks of their own
@@ -23,10 +26,18 @@ import re
 PERSONAL = ("/auth/users/me/preferences", "/auth/2fa", "/auth/logout", "/auth/refresh", "/auth/login",
             r"^/notifications/(?!templates$|templates/|generate/)[^/]+(/read)?$")
 OFFICE = ("/tasks", "/documents", "/files", "/photos", "/messages", "/calendar", "/dev-notes")
+# Project file of a maintenance case: awarding and cancelling orders and deciding change orders
+# commits money; the invoices of an order are bookkeeping. Both are not the technician's.
+MAINTENANCE_DECISIONS = (r"^/maintenance/[^/]+/quotes/[^/]+/(accept|reject)$",
+                         r"^/maintenance/[^/]+/orders/[^/]+/(cancel|complete)$",
+                         r"^/maintenance/[^/]+/change-orders/[^/]+/(approve|reject)$")
+MAINTENANCE_INVOICES = (r"^/maintenance/[^/]+/orders/[^/]+/invoices$", r"^/maintenance/[^/]+/invoice-links/[^/]+$")
 BOOKKEEPING = ("/bookings", "/accounts", "/categories", "/invoices", "/receivables", "/rent-charges", "/deposits",
                "/budgets", "/tax-rates", "/reports", "/billing/cost-items", "/escalation/run", "/notifications/generate",
-               r"^/contracts/[^/]+/dunning-campaign$")
+               r"^/contracts/[^/]+/dunning-campaign$", *MAINTENANCE_INVOICES)
 TECHNICAL = ("/maintenance", "/meters", "/handover-protocols")
+# inside an area the role may write, these paths stay closed to it
+DENIED: dict[str, tuple[str, ...]] = {"techniker": MAINTENANCE_DECISIONS + MAINTENANCE_INVOICES}
 OWNER_ONLY = ("/admin/restore", "/admin/import", "/data/import", "/admin/bulk-delete", "/updates/apply",
               "/updates/restart")
 
@@ -57,6 +68,8 @@ def may_write(role: str | None, path: str) -> bool:
     if role not in WRITE_AREAS:
         return False
     if role != "eigentuemer" and _matches(path, OWNER_ONLY):
+        return False
+    if _matches(path, DENIED.get(role, ())):
         return False
     areas = WRITE_AREAS[role]
     return areas is None or _matches(path, areas)
