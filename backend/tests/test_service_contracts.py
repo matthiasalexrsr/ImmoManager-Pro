@@ -580,7 +580,7 @@ def _run_reminders(jobs, as_of: str):
 
 
 def _reminder_tasks():
-    return sorted((t.title, t.due_date.isoformat()) for t in store.list_tasks())
+    return sorted((t.title, str(t.due_date)) for t in store.list_tasks())
 
 
 def test_deadline_reminders_are_created_once_per_contract_and_deadline(client, estate):
@@ -652,3 +652,37 @@ def test_snapshots_carry_contracts_and_the_origin_of_transferred_costs(client, e
     again = client.post(f"{API}/{contract}/cost-transfers", headers=owner,
                         json={"billing_period_id": period.id, "allocation_key_id": key.id}).json()
     assert again["created"] == []
+
+
+def test_no_service_contract_read_opens_another_portfolio(client, estate):
+    """Every GET under /service-contracts with the other portfolio's contract, bill and location IDs."""
+    import re
+
+    from fastapi.routing import APIRoute
+
+    owner = _owner()
+    south = _create(client, owner, _payload(estate, title="SUEDGEHEIM", contract_number="SUED-1",
+                                            locations=[{"property_id": estate["house_s"].id}]))
+    bill = client.post(f"{API}/{south['id']}/invoices", headers=owner, json={
+        "period_start": "2026-01-01", "period_end": "2026-12-31",
+        "invoice": {"property_id": estate["house_s"].id, "supplier": "SUEDGEHEIM AG", "invoice_date": "2026-05-01",
+                    "net_amount": 10, "gross_amount": 10}}).json()
+    shared = _create(client, owner, _payload(estate, title="Gemeinsam", locations=[
+        {"property_id": estate["house_n"].id}, {"property_id": estate["house_s"].id, "supply_point": "SUEDGEHEIM"}]))
+    hidden_location = next(loc["id"] for loc in shared["locations"] if loc["property_id"] == estate["house_s"].id)
+    staff = _staff("nora", estate["north"])
+    ids = [south["id"], bill["id"], south["tariffs"][0]["id"], south["locations"][0]["id"], hidden_location]
+    opened, tried = [], 0
+    for route in app.routes:
+        if not isinstance(route, APIRoute) or "GET" not in route.methods or not route.path.startswith(API):
+            continue
+        for value in ids:
+            path = re.sub(r"{\w+}", value, route.path)
+            response = client.get(path, headers=staff, params={"date": "2026-06-01"})
+            tried += 1
+            if response.status_code >= 500 or (response.status_code < 300 and (
+                    "SUEDGEHEIM" in response.text or estate["house_s"].id in response.text)):
+                opened.append(f"{path}: {response.status_code}")
+    assert not opened, opened
+    assert tried >= 60
+    assert "SUEDGEHEIM" in client.get(API, headers=owner).text

@@ -320,7 +320,8 @@ def deadlines(contract: Any, tariffs: list[Any], as_of: date, horizon_days: int)
         guarantee = tariff.price_guarantee_until
         if guarantee is None or not as_of <= guarantee <= until or (end is not None and guarantee >= end):
             continue
-        if tariff_at(tariffs, guarantee) is tariff:       # a later tariff already replaced it
+        in_force = tariff_at(tariffs, guarantee)
+        if in_force is not None and in_force.id == tariff.id:       # else a later tariff already replaced it
             found.append(Deadline("price_guarantee", guarantee, contract.id, tariff_id=tariff.id))
     return sorted(found, key=lambda d: (d.day, DEADLINE_KINDS.index(d.kind)))
 

@@ -26,6 +26,7 @@ import calendar
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import date, timedelta
+from typing import Any
 
 RENEWAL_MODES = ("none", "fixed", "indefinite")
 NOTICE_UNITS = ("day", "week", "month")
@@ -113,7 +114,7 @@ class Terms:
     cancellation_effective: date | None = None
 
     @classmethod
-    def of(cls, contract) -> "Terms":
+    def of(cls, contract: Any) -> "Terms":
         return cls(
             start=contract.start_date, end_date=contract.end_date,
             minimum_term_months=contract.minimum_term_months, renewal_mode=contract.renewal_mode,

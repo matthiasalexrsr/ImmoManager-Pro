@@ -468,3 +468,96 @@ def test_booking_reversal_downgrade_of_an_adopted_database_leaves_the_column(mig
     migrate()
     assert _version(migrate.db_path) == migrate.head
 
+
+SERVICE_CONTRACTS_REVISION = "5e8b2d4f7a19"
+SERVICE_CONTRACT_TABLES = {"service_contracts", "service_contract_locations", "service_contract_tariffs",
+                           "service_contract_invoices", "service_contract_payments", "service_contract_documents"}
+
+
+def _seed_service_contract(db_path: Path) -> None:
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript("""
+            INSERT INTO contacts (id, contact_type, company_name, country) VALUES ('sw', 'supplier', 'Stadtwerke', 'DE');
+            INSERT INTO service_contracts (id, contract_type, title, provider_contact_id, start_date)
+                VALUES ('sc', 'electricity', 'Allgemeinstrom', 'sw', '2026-01-01');
+            INSERT INTO service_contract_locations (id, service_contract_id, property_id) VALUES ('loc', 'sc', 'pr');
+            INSERT INTO invoices (id, supplier, invoice_date, net_amount, vat_amount, gross_amount, status, created_at,
+                                  updated_at)
+                VALUES ('inv', 'Stadtwerke', '2027-01-10', 100, 0, 100, 'open', '2027-01-10', '2027-01-10');
+            INSERT INTO service_contract_invoices (id, service_contract_id, invoice_id, period_start, period_end)
+                VALUES ('bill', 'sc', 'inv', '2026-01-01', '2026-12-31');
+        """)
+
+
+def test_service_contracts_upgrade_constraints_and_guarded_downgrade(migrate):
+    db_path = migrate(REVERSALS_REVISION)
+    _seed_previous_schema(db_path)
+    _seed_bookings(db_path)
+    migrate(SERVICE_CONTRACTS_REVISION)
+    schema = _schema(db_path)
+    assert SERVICE_CONTRACT_TABLES <= set(schema) and "service_contract_invoice_id" in schema["cost_items"]
+    with sqlite3.connect(db_path) as conn:   # existing costs have no origin
+        assert conn.execute("SELECT id, service_contract_invoice_id FROM cost_items").fetchall() == [("ci", None)]
+    _seed_service_contract(db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("PRAGMA foreign_keys=ON")
+        defaults = conn.execute("SELECT renewal_mode, notice_to, reminder_days, recoverable, recoverable_percent "
+                                "FROM service_contracts").fetchone()
+        assert defaults == ("none", "term_end", 30, 0, 100)
+        with pytest.raises(sqlite3.IntegrityError):    # a bill belongs to one contract
+            conn.execute("INSERT INTO service_contract_invoices (id, service_contract_id, invoice_id, period_start, "
+                         "period_end) VALUES ('bill2', 'sc', 'inv', '2026-01-01', '2026-12-31')")
+        conn.execute("INSERT INTO service_contract_tariffs (id, service_contract_id, valid_from) "
+                     "VALUES ('t1', 'sc', '2026-01-01')")
+        with pytest.raises(sqlite3.IntegrityError):    # one tariff per contract and day
+            conn.execute("INSERT INTO service_contract_tariffs (id, service_contract_id, valid_from) "
+                         "VALUES ('t2', 'sc', '2026-01-01')")
+        conn.execute("INSERT INTO service_contract_payments (id, service_contract_id, booking_id, amount) "
+                     "VALUES ('p1', 'sc', 'b1', 10)")
+        with pytest.raises(sqlite3.IntegrityError):    # a booking once per contract
+            conn.execute("INSERT INTO service_contract_payments (id, service_contract_id, booking_id, amount) "
+                         "VALUES ('p2', 'sc', 'b1', 5)")
+        conn.execute("UPDATE cost_items SET service_contract_invoice_id = 'bill'")
+        with pytest.raises(sqlite3.IntegrityError):    # a bill reaches a billing period once
+            conn.execute("INSERT INTO cost_items (id, billing_period_id, description, amount, allocation_key_id, "
+                         "is_recoverable, service_contract_invoice_id, created_at, updated_at) VALUES ('ci2', 'bp', "
+                         "'x', 1, 'k', 1, 'bill', '2027-01-10', '2027-01-10')")
+        with pytest.raises(sqlite3.IntegrityError):    # a provider in use stays in the address book
+            conn.execute("DELETE FROM contacts WHERE id = 'sw'")
+    # the older program would drop contracts and the origin of transferred costs
+    with pytest.raises(RuntimeError, match="service contracts"):
+        migrate.downgrade(REVERSALS_REVISION)
+    assert _version(db_path) == SERVICE_CONTRACTS_REVISION
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("PRAGMA foreign_keys=ON")
+        conn.execute("DELETE FROM service_contracts")         # cascades to locations, tariffs, bills, payments
+        assert conn.execute("SELECT COUNT(*) FROM service_contract_locations").fetchone() == (0,)
+        assert conn.execute("SELECT COUNT(*) FROM service_contract_payments").fetchone() == (0,)
+    with pytest.raises(RuntimeError, match="transferred"):
+        migrate.downgrade(REVERSALS_REVISION)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("UPDATE cost_items SET service_contract_invoice_id = NULL")
+    migrate.downgrade(REVERSALS_REVISION)
+    schema = _schema(db_path)
+    assert not SERVICE_CONTRACT_TABLES & set(schema) and "service_contract_invoice_id" not in schema["cost_items"]
+    with sqlite3.connect(db_path) as conn:    # the rows survive the round trip
+        assert conn.execute("SELECT id, amount FROM cost_items").fetchall() == [("ci", 400)]
+    migrate()
+    assert SERVICE_CONTRACT_TABLES <= set(_schema(db_path)) and _version(db_path) == migrate.head
+
+
+def test_service_contracts_on_an_adopted_database(migrate):
+    """create_all() already made the tables, the column and the index: upgrade and downgrade pass."""
+    from sqlalchemy import create_engine
+
+    engine = create_engine(f"sqlite:///{migrate.db_path}")
+    Base.metadata.create_all(engine)
+    engine.dispose()
+    migrate()
+    assert SERVICE_CONTRACT_TABLES <= set(_schema(migrate.db_path))
+    migrate.downgrade(REVERSALS_REVISION)
+    schema = _schema(migrate.db_path)
+    assert not SERVICE_CONTRACT_TABLES & set(schema) and "service_contract_invoice_id" not in schema["cost_items"]
+    migrate()
+    assert _version(migrate.db_path) == migrate.head
+

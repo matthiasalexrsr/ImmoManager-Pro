@@ -185,12 +185,12 @@ def _tariff(id_, valid_from, advance=None, interval=None, day=1, guarantee=None)
 
 def test_tariff_history_lookup_by_date():
     tariffs = [_tariff("b", "2026-04-01"), _tariff("a", "2025-01-01"), _tariff("c", "2027-01-01")]
-    assert tariff_at(tariffs, D("2024-12-31")) is None
-    assert tariff_at(tariffs, D("2025-01-01")).id == "a"
-    assert tariff_at(tariffs, D("2026-03-31")).id == "a"
-    assert tariff_at(tariffs, D("2026-04-01")).id == "b"
-    assert tariff_at(tariffs, D("2026-12-31")).id == "b"
-    assert tariff_at(tariffs, D("2030-01-01")).id == "c"
+    def in_force(day):
+        found = tariff_at(tariffs, D(day))
+        return found.id if found is not None else None
+
+    assert [in_force(day) for day in ("2024-12-31", "2025-01-01", "2026-03-31", "2026-04-01", "2026-12-31",
+                                      "2030-01-01")] == [None, "a", "a", "b", "b", "c"]
 
 
 def test_due_dates_keep_the_day_and_clamp_short_months():
