@@ -2,6 +2,11 @@
 
 All notable changes to ImmoManager Pro will be documented in this file.
 
+## Unreleased — 2026-10-08
+
+- Utility statements (migration `c3e8a1f5d9b7` after `b8e3d5f7a2c4`): a consumption key counts one medium in one unit of measure; meters in another unit are converted only by an exact factor once the key names its billing unit (MWh → kWh), otherwise the statement is refused with a clear message (gas m³ → kWh, heat cost allocator units). A replaced meter counts until its removal date and its successor from its installation date (final + initial reading). Contracts get dated occupants and the person key shares by person-days; advances follow every change of the rent history, a change mid-month by days. Statements show these sections.
+- Issued statements never change: every status from finalized on (also disputed) refuses regeneration and edits, the status changes only through the workflow, the shown document and PDF are frozen at finalization (byte-identical PDFs), the stores refuse content changes, and snapshot imports are checked against the finalized version. Objections are recorded with date and reason; a correction is a new version that names the version it corrects, marks it as corrected when finalized and bills only the difference. See [the billing regression](docs/BILLING_REGRESSION_20261008.md).
+
 ## Unreleased — 2026-10-07
 
 - Run recurring-task generation and escalation as durable installation jobs (migration `b8e3d5f7a2c4` after `a7c2e9f4b1d3`): leased runs with fencing tokens, chunked checkpoints that resume after a restart, safe claiming by several workers (PostgreSQL `SKIP LOCKED`, SQLite conditional update), retries with backoff, and an occurrence ledger that dedupes per series, rule version and Berlin calendar date, also for the manual endpoint across processes. Daily slots are DST-correct; missed task occurrences are caught up in bounded chunks (default: only the newest becomes a task, `RECURRING_CATCH_UP=all` creates each). Jobs run without an account and never cross the portfolio boundary. See [durable jobs](docs/DURABLE_JOBS_20261007.md).
