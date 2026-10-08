@@ -569,6 +569,21 @@
       "settlement": {
         "annual": "Jährlich",
         "monthly": "Monatlich"
+      },
+      "occupants": {
+        "action": "Bewohner",
+        "title": "Bewohner im Zeitverlauf",
+        "close": "Schließen",
+        "intro": "Ab Vertragsbeginn ({{start}}) gelten {{persons}} Personen laut Vertrag. Jede Änderung gilt ab ihrem Datum; die Umlage nach Personen rechnet tagesgenau mit Personentagen.",
+        "unknown": "keine Angabe",
+        "loading": "Lade Bewohner…",
+        "validFrom": "Gültig ab",
+        "persons": "Personen",
+        "notes": "Anlass",
+        "actions": "Aktionen",
+        "empty": "Keine Änderung erfasst",
+        "remove": "Entfernen",
+        "add": "Änderung hinzufügen"
       }
     },
     "contractActions": {
@@ -1562,7 +1577,20 @@
       "stepPreflight": "Prüfung",
       "stepGenerate": "Generieren",
       "stepFinalize": "Finalisieren",
-      "stepDeliver": "Zustellen"
+      "stepDeliver": "Zustellen",
+      "objections": "Widersprüche",
+      "objectionReceived": "Eingang",
+      "objectionStatement": "Einzelabrechnung",
+      "objectionReason": "Grund",
+      "objectionStatus": "Stand",
+      "objectionWholePeriod": "gesamte Abrechnung",
+      "objectionStatusValues": {
+        "open": "offen",
+        "correction": "in Korrektur",
+        "resolved": "durch Korrektur erledigt"
+      },
+      "correctsVersion": "Korrektur Rev. {{revision}} von „{{label}}“ – die korrigierte Fassung bleibt unverändert erhalten",
+      "finalVersionNote": "Finalisierte Fassung: Einzelabrechnungen, PDF und Summen bleiben unverändert; Änderungen nur über „Korrektur starten“"
     },
     "invoices": {
       "markPaidConfirm": "als bezahlt markieren?"
@@ -1595,7 +1623,11 @@
       "electricity": "Strom",
       "gas": "Gas",
       "water": "Wasser",
-      "heating": "Heizung"
+      "heating": "Heizung",
+      "measureUnitHint": "Einheit der Zählerstände; leer: m³ bei Wasser, kWh bei Strom. Heizung und Gas bitte immer angeben",
+      "installationDateHint": "Bei Zählerwechsel: Tag des Anfangsstands des neuen Zählers",
+      "removalDate": "Ausbaudatum (Zählerwechsel)",
+      "removalDateHint": "Tag des Endstands; der Verbrauch zählt bis hier, danach der neue Zähler"
     },
     "propertyOverview": {
       "notFound": "Immobilie nicht gefunden",
@@ -1937,6 +1969,10 @@
       "totalArea": "Gesamtfläche",
       "totalColdRent": "Kaltmiete gesamt",
       "unitsOverview": "Einheiten-Übersicht"
+    },
+    "allocationKeys": {
+      "measureUnit": "Abrechnungseinheit (nur bei Verbrauch)",
+      "measureUnitHint": "Zähler in anderer Einheit werden nur mit exaktem Faktor umgerechnet (MWh → kWh, l → m³); Gas m³ → kWh und Heizkostenverteiler werden nicht umgerechnet"
     }
   },
   "sidebar": {

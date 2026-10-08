@@ -9,8 +9,9 @@ import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useToast } from '../components/Toast';
 import { RentIcon } from '../components/Icons';
-import { FileCheck } from 'lucide-react';
+import { FileCheck, Users } from 'lucide-react';
 import HousingConfirmationDialog from '../features/housingConfirmation/HousingConfirmationDialog';
+import OccupancyDialog from '../features/contracts/OccupancyDialog';
 import { formatDate, formatMoney } from '../utils/format';
 
 const RENT_MODEL_LABELS = { index: 'Indexmiete', stepped: 'Staffelmiete', fixed: 'Festmiete' };
@@ -42,6 +43,7 @@ export default function Contracts() {
   const [rents, setRents] = useState({});
   const [history, setHistory] = useState(null);
   const [housing, setHousing] = useState(null);
+  const [occupants, setOccupants] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const loadRef = useRef(null);
 
@@ -303,8 +305,11 @@ export default function Contracts() {
         rowActions={() => [
           { label: 'Mietverlauf', icon: <RentIcon size={15} />, onClick: openHistory },
           { label: 'Wohnungsgeberbestätigung', icon: <FileCheck size={15} aria-hidden="true" />, onClick: row => setHousing(row.id) },
+          { label: t('tenantsContracts.contracts.occupants.action'), icon: <Users size={15} aria-hidden="true" />, onClick: row => setOccupants(row) },
         ]}
       />
+
+      {occupants && <OccupancyDialog contract={occupants} onClose={() => setOccupants(null)} />}
 
       {housing && <HousingConfirmationDialog contractId={housing} onClose={() => setHousing(null)} onPublished={() => store?.invalidateRelated('documents')} />}
 

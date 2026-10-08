@@ -569,6 +569,21 @@
       "settlement": {
         "annual": "Anual",
         "monthly": "Mensual"
+      },
+      "occupants": {
+        "action": "Ocupantes",
+        "title": "Ocupantes a lo largo del tiempo",
+        "close": "Cerrar",
+        "intro": "Desde el inicio del contrato ({{start}}) cuentan {{persons}} personas según el contrato. Cada cambio rige desde su fecha; el reparto por personas se calcula por días-persona.",
+        "unknown": "sin dato",
+        "loading": "Cargando ocupantes…",
+        "validFrom": "Válido desde",
+        "persons": "Personas",
+        "notes": "Motivo",
+        "actions": "Acciones",
+        "empty": "Ningún cambio registrado",
+        "remove": "Eliminar",
+        "add": "Añadir cambio"
       }
     },
     "contractActions": {
@@ -1326,7 +1341,20 @@
       "stepPreflight": "Comprobación",
       "stepGenerate": "Generar",
       "stepFinalize": "Finalizar",
-      "stepDeliver": "Entregar"
+      "stepDeliver": "Entregar",
+      "objections": "Objeciones",
+      "objectionReceived": "Recibida",
+      "objectionStatement": "Liquidación",
+      "objectionReason": "Motivo",
+      "objectionStatus": "Estado",
+      "objectionWholePeriod": "liquidación completa",
+      "objectionStatusValues": {
+        "open": "abierta",
+        "correction": "en corrección",
+        "resolved": "resuelta por corrección"
+      },
+      "correctsVersion": "Corrección rev. {{revision}} de «{{label}}»: la versión corregida se conserva sin cambios",
+      "finalVersionNote": "Versión finalizada: liquidaciones, PDF y totales no cambian; cambios solo mediante «Iniciar corrección»"
     },
     "dashboard": {
       "quickAccess": "Acceso rápido",
@@ -1564,7 +1592,11 @@
       "electricity": "Electricidad",
       "gas": "Gas",
       "water": "Agua",
-      "heating": "Calefacción"
+      "heating": "Calefacción",
+      "measureUnitHint": "Unidad de las lecturas; vacío: m³ para agua, kWh para electricidad. Indíquela siempre para calefacción y gas",
+      "installationDateHint": "En un cambio de contador: día de la lectura inicial del contador nuevo",
+      "removalDate": "Fecha de retirada (cambio de contador)",
+      "removalDateHint": "Día de la lectura final; el consumo cuenta hasta aquí, después el contador nuevo"
     },
     "propertyOverview": {
       "notFound": "Inmueble no encontrado",
@@ -1915,6 +1947,10 @@
       "totalArea": "Superficie total",
       "totalColdRent": "Alquiler total sin gastos",
       "unitsOverview": "Resumen de unidades"
+    },
+    "allocationKeys": {
+      "measureUnit": "Unidad de facturación (solo consumo)",
+      "measureUnitHint": "Los contadores en otra unidad solo se convierten con un factor exacto (MWh → kWh, l → m³); gas m³ → kWh y repartidores de costes de calefacción no se convierten"
     }
   },
   "comp": {

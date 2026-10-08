@@ -26,11 +26,14 @@ const METER_TYPE_OPTIONS = [
 
 const METER_TYPE_LABELS = Object.fromEntries(METER_TYPE_OPTIONS.map(o => [o.value, o.label]));
 
+// The unit a consumption key bills in; meters in another unit are converted only by an exact factor.
+const MEASURE_UNIT_OPTIONS = ['m³', 'l', 'kWh', 'MWh', 'Wh', 'HKV'].map(value => ({ value, label: value }));
+
 const COLUMNS = [
   { key: 'name', label: 'Bezeichnung', filterType: 'text' },
   { key: 'key_type', label: 'Schlüsseltyp',
     render: (v, row) => (v === 'consumption' && row.meter_type
-      ? `${KEY_TYPE_LABELS[v]} (${METER_TYPE_LABELS[row.meter_type] || row.meter_type})`
+      ? `${KEY_TYPE_LABELS[v]} (${METER_TYPE_LABELS[row.meter_type] || row.meter_type}${row.measure_unit ? `, ${row.measure_unit}` : ''})`
       : (KEY_TYPE_LABELS[v] || v)) },
   { key: 'property_label', label: 'Immobilie' },
   { key: 'description', label: 'Beschreibung' },
@@ -72,6 +75,8 @@ export default function AllocationKeys() {
       options: properties.map(p => ({ value: p.id, label: p.name })) },
     { key: 'key_type', label: 'Schlüsseltyp', type: 'select', required: true, options: KEY_TYPE_OPTIONS },
     { key: 'meter_type', label: 'Zählerart (nur bei Verbrauch)', type: 'select', options: METER_TYPE_OPTIONS },
+    { key: 'measure_unit', label: t('pages.allocationKeys.measureUnit'), type: 'select', options: MEASURE_UNIT_OPTIONS,
+      hint: t('pages.allocationKeys.measureUnitHint') },
     { key: 'description', label: 'Beschreibung', type: 'textarea' },
   ];
 

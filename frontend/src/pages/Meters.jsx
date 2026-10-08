@@ -17,6 +17,9 @@ const METER_TYPE_LABELS = {
   gas: 'Gas',
 };
 
+// Units the utility statement converts only by an exact factor (MWh -> kWh, l -> m³).
+const MEASURE_UNITS = ['m³', 'l', 'kWh', 'MWh', 'Wh', 'HKV'].map(value => ({ value, label: value }));
+
 const METER_COLUMNS = [
   { key: 'serial_number', label: 'Seriennr.', filterType: 'text' },
   { key: 'property_name', hidden: true, label: 'Immobilie', filterType: 'text' },
@@ -25,7 +28,9 @@ const METER_COLUMNS = [
     render: v => METER_TYPE_LABELS[v] || v },
   { key: 'location', hidden: true, label: 'Standort' },
   { key: 'supplier', hidden: true, label: 'Versorger', filterType: 'text' },
+  { key: 'measure_unit', hidden: true, label: 'Einheit der Ablesung' },
   { key: 'installation_date', hidden: true, label: 'Einbaudatum', type: 'date' },
+  { key: 'removal_date', hidden: true, label: 'Ausbaudatum', type: 'date' },
   { key: 'next_inspection', label: 'Nächste Prüfung', type: 'date',
     render: (v) => {
       if (!v || v === '—') return '—';
@@ -133,9 +138,12 @@ export default function Meters() {
       { value: 'electricity', label: 'Strom' },
       { value: 'gas', label: 'Gas' },
     ]},
+    { key: 'measure_unit', label: t('pages.meters.measureUnit'), type: 'select', options: MEASURE_UNITS,
+      hint: t('pages.meters.measureUnitHint') },
     { key: 'serial_number', label: 'Seriennummer' },
     { key: 'location', label: 'Standort' },
-    { key: 'installation_date', label: 'Einbaudatum', type: 'date' },
+    { key: 'installation_date', label: 'Einbaudatum', type: 'date', hint: t('pages.meters.installationDateHint') },
+    { key: 'removal_date', label: t('pages.meters.removalDate'), type: 'date', hint: t('pages.meters.removalDateHint') },
     { key: 'next_inspection', label: 'Nächste Prüfung', type: 'date' },
     { key: 'supplier', label: 'Versorger' },
     { key: 'contract_number', label: 'Vertragsnummer' },

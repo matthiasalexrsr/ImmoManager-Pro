@@ -569,6 +569,21 @@
       "settlement": {
         "annual": "Annual",
         "monthly": "Monthly"
+      },
+      "occupants": {
+        "action": "Occupants",
+        "title": "Occupants over time",
+        "close": "Close",
+        "intro": "From the start of the contract ({{start}}) {{persons}} persons apply as in the contract. Each change applies from its date; the person key is shared by person-days.",
+        "unknown": "not set",
+        "loading": "Loading occupants…",
+        "validFrom": "Valid from",
+        "persons": "Persons",
+        "notes": "Reason",
+        "actions": "Actions",
+        "empty": "No change recorded",
+        "remove": "Remove",
+        "add": "Add change"
       }
     },
     "contractActions": {
@@ -1562,7 +1577,20 @@
       "stepPreflight": "Check",
       "stepGenerate": "Generate",
       "stepFinalize": "Finalize",
-      "stepDeliver": "Deliver"
+      "stepDeliver": "Deliver",
+      "objections": "Objections",
+      "objectionReceived": "Received",
+      "objectionStatement": "Statement",
+      "objectionReason": "Reason",
+      "objectionStatus": "Status",
+      "objectionWholePeriod": "whole statement",
+      "objectionStatusValues": {
+        "open": "open",
+        "correction": "being corrected",
+        "resolved": "resolved by correction"
+      },
+      "correctsVersion": "Correction rev. {{revision}} of “{{label}}” – the corrected version is kept unchanged",
+      "finalVersionNote": "Finalized version: statements, PDFs and totals stay unchanged; changes only via “Start Correction”"
     },
     "invoices": {
       "markPaidConfirm": "mark as paid?"
@@ -1595,7 +1623,11 @@
       "electricity": "Electricity",
       "gas": "Gas",
       "water": "Water",
-      "heating": "Heating"
+      "heating": "Heating",
+      "measureUnitHint": "Unit of the readings; empty: m³ for water, kWh for electricity. Always set it for heating and gas",
+      "installationDateHint": "On a meter replacement: day of the new meter's initial reading",
+      "removalDate": "Removal date (meter replacement)",
+      "removalDateHint": "Day of the final reading; consumption counts up to here, then the new meter"
     },
     "propertyOverview": {
       "notFound": "Property not found",
@@ -1937,6 +1969,10 @@
       "totalArea": "Total area",
       "totalColdRent": "Total net rent",
       "unitsOverview": "Units overview"
+    },
+    "allocationKeys": {
+      "measureUnit": "Billing unit (consumption only)",
+      "measureUnitHint": "Meters in another unit are converted only by an exact factor (MWh → kWh, l → m³); gas m³ → kWh and heat cost allocators are not converted"
     }
   },
   "sidebar": {

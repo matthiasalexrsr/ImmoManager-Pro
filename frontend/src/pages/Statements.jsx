@@ -159,9 +159,12 @@ function isMutable(status) {
   return status === 'draft' || status === 'review';
 }
 
+/** Statuses of an issued version: it is only answered by a correction (a new version). */
+const CORRECTABLE = ['finalized', 'delivered', 'disputed'];
+
 /** Determine the current workflow step (1-6) based on period state. */
 function getWorkflowStep(period, costCount, stmtCount) {
-  if (period.status === 'delivered') return 6;
+  if (['delivered', 'disputed', 'corrected'].includes(period.status)) return 6;
   if (period.status === 'finalized') return 5;
   if (period.status === 'review') return 4;
   // draft status
@@ -235,6 +238,13 @@ export default function Statements() {
   const [ocrUploading, setOcrUploading] = useState(false);
   const [disputing, setDisputing] = useState(false);
   const [promptModal, setPromptModal] = useState(null);
+  const [objections, setObjections] = useState([]);
+
+  const loadObjections = (periodId) => {
+    api.get(`/billing/objections?billing_period_id=${encodeURIComponent(periodId)}`)
+      .then(list => setObjections(Array.isArray(list) ? list : []))
+      .catch(() => setObjections([]));
+  };
 
   const loadData = () => {
     setLoadError(null);
@@ -290,12 +300,7 @@ export default function Statements() {
     { key: 'label', label: t('pages.statements.formLabel') || 'Bezeichnung', required: true, placeholder: 'z.B. NK-Abrechnung 2025' },
     { key: 'start_date', label: t('pages.statements.formStart') || 'Beginn', type: 'date', required: true },
     { key: 'end_date', label: t('pages.statements.formEnd') || 'Ende', type: 'date', required: true },
-    { key: 'status', label: t('ui.form.status') || 'Status', type: 'select', default: 'draft', options: [
-      { value: 'draft', label: t('ui.filterChips.draft') || 'Entwurf' },
-      { value: 'review', label: t('status.contract.inReview') || 'In Prüfung' },
-      { value: 'finalized', label: t('status.general.completed') || 'Abgeschlossen' },
-      { value: 'disputed', label: t('pages.statements.dispute') || 'Widerspruch' },
-    ]},
+    // No status field: the status changes only through the workflow (review, finalize, objection, correction).
   ];
 
   const costFields = [
@@ -476,6 +481,7 @@ export default function Statements() {
             {}
           );
           setSelectedPeriod(updated);
+          loadObjections(selectedPeriod.id);
           await loadData();
         } catch (err) {
           toast.show(err.message || 'Widerspruch konnte nicht eingelegt werden');
@@ -610,6 +616,8 @@ export default function Statements() {
   const handleSelectPeriod = (period) => {
     setSelectedPeriod(period);
     setView('detail');
+    setObjections([]);
+    loadObjections(period.id);
     setPreflight(null);
     setPreflightLoading(true);
     api.get(`/billing/periods/${period.id}/preflight`)
@@ -655,7 +663,9 @@ export default function Statements() {
     const vacancyShare = periodStmts.filter(s => s.party === 'vacancy').reduce((s, st) => s + (st.total_cost || 0), 0);
     const editable = isMutable(selectedPeriod.status);
     const isFinalized = selectedPeriod.status === 'finalized';
-    const isDelivered = selectedPeriod.status === 'delivered';
+    const canCorrect = CORRECTABLE.includes(selectedPeriod.status);
+    const correctedVersion = selectedPeriod.corrects_period_id
+      ? periods.find(p => p.id === selectedPeriod.corrects_period_id) : null;
     const revisionHistory = getRevisionHistory();
     const workflowStep = getWorkflowStep(selectedPeriod, periodCosts.length, periodStmts.length);
 
@@ -737,13 +747,15 @@ export default function Statements() {
               </button>
             )}
 
-            <button
-              className="btn btn-sm btn-secondary"
-              onClick={handleCreateRevision}
-              disabled={creatingRevision}
-            >
-              {creatingRevision ? t('pages.statements.creating') : t('pages.statements.startCorrection')}
-            </button>
+            {canCorrect && (
+              <button
+                className="btn btn-sm btn-secondary"
+                onClick={handleCreateRevision}
+                disabled={creatingRevision}
+              >
+                {creatingRevision ? t('pages.statements.creating') : t('pages.statements.startCorrection')}
+              </button>
+            )}
             <button
               className="btn btn-sm btn-secondary"
               onClick={handleExportPeriod}
@@ -760,7 +772,7 @@ export default function Statements() {
                 {exporting ? t('pages.statements.exporting') : t('pages.statements.zipExport')}
               </button>
             )}
-            {(isFinalized || isDelivered) && (
+            {canCorrect && (
               <button
                 className="btn btn-sm btn-secondary"
                 onClick={handleDispute}
@@ -772,6 +784,16 @@ export default function Statements() {
             )}
           </div>
         </div>
+
+        {(correctedVersion || !editable) && (
+          <p className="text-muted" role="note" style={{ marginBottom: '0.75rem' }}>
+            {correctedVersion && t('pages.statements.correctsVersion', {
+              revision: selectedPeriod.revision, label: correctedVersion.label,
+            })}
+            {correctedVersion && !editable && ' · '}
+            {!editable && t('pages.statements.finalVersionNote')}
+          </p>
+        )}
 
         <div className="stats-grid" style={{ marginBottom: '1rem' }}>
           <div className="stat-card">
@@ -859,6 +881,48 @@ export default function Statements() {
             )}
           </div>
         </div>
+
+        {objections.length > 0 && (
+          <div className="card" style={{ marginBottom: '1rem' }}>
+            <div className="card-header"><strong>{t('pages.statements.objections')}</strong></div>
+            <div className="card-body">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>{t('pages.statements.objectionReceived')}</th>
+                    <th>{t('pages.statements.objectionStatement')}</th>
+                    <th>{t('pages.statements.objectionReason')}</th>
+                    <th>{t('pages.statements.objectionStatus')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {objections.map(o => {
+                    const stmt = statements.find(st => st.id === o.statement_id);
+                    const correction = o.correction_period_id ? periods.find(p => p.id === o.correction_period_id) : null;
+                    return (
+                      <tr key={o.id}>
+                        <td>{formatDate(o.received_on)}</td>
+                        <td>{stmt ? (unitMap[stmt.unit_id]?.label || '—') : t('pages.statements.objectionWholePeriod')}</td>
+                        <td>{o.reason}</td>
+                        <td>
+                          {t(`pages.statements.objectionStatusValues.${o.status}`)}
+                          {correction && (
+                            <>
+                              {' · '}
+                              <button className="btn btn-sm btn-secondary" onClick={() => handleSelectPeriod(correction)}>
+                                {correction.label}
+                              </button>
+                            </>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
         {/* Revision History */}
         {revisionHistory.length > 1 && (
