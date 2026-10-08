@@ -143,14 +143,22 @@ def inspect_sqlite_file(path: Path) -> tuple[SchemaStatus, bool]:
 def initialise_empty(engine: Engine) -> None:
     """Create the current schema in an empty database and record it as the head."""
     from ..compat.ui_contracts import ensure_ui_contracts
-    from . import access_models, document_version_models, job_models  # noqa: F401  (register the tables)
+    from . import (  # noqa: F401  (register the tables)
+        access_models,
+        document_version_models,
+        job_models,
+        maintenance_project_models,
+    )
     from .orm_models import Base
 
     ensure_ui_contracts()
     Base.metadata.create_all(bind=engine)
     with engine.begin() as connection:
-        if set(document_version_models.ARCHIVE_TABLES) <= set(inspect(connection).get_table_names()):
+        tables = set(inspect(connection).get_table_names())
+        if set(document_version_models.ARCHIVE_TABLES) <= tables:
             document_version_models.install_guards(connection)
+        if "maintenance_protocols" in tables:
+            maintenance_project_models.install_protocol_guard(connection)
         MigrationContext.configure(connection).stamp(_script(), "head")
 
 
