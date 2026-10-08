@@ -781,6 +781,8 @@ class CostItemCreate(BaseModel):
     vat_rate: Optional[float] = None
     net_amount: Optional[float] = None
     gross_amount: Optional[float] = None
+    # set by the transfer from a service contract bill (services.service_contracts); kept by corrections
+    service_contract_invoice_id: Optional[str] = None
 
 
 class CostItem(CostItemCreate):

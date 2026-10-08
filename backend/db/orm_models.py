@@ -498,12 +498,17 @@ class CostItemORM(Base):
     vat_rate: Mapped[float | None] = mapped_column(Numeric(12, 2, asdecimal=False))
     net_amount: Mapped[float | None] = mapped_column(Numeric(12, 2, asdecimal=False))
     gross_amount: Mapped[float | None] = mapped_column(Numeric(12, 2, asdecimal=False))
+    # the service contract bill this cost came from (no FK: an SQLite downgrade drops the column in place);
+    # unique per period, so a bill reaches one statement once, also through a correction's copy
+    service_contract_invoice_id: Mapped[str | None] = mapped_column(String(36))
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
     __table_args__ = (
         Index("idx_cost_items_period", "billing_period_id"),
         Index("idx_cost_items_key", "allocation_key_id"),
+        Index("uq_cost_items_service_contract_invoice", "billing_period_id", "service_contract_invoice_id",
+              unique=True),
     )
 
 

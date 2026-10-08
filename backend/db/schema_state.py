@@ -143,7 +143,12 @@ def inspect_sqlite_file(path: Path) -> tuple[SchemaStatus, bool]:
 def initialise_empty(engine: Engine) -> None:
     """Create the current schema in an empty database and record it as the head."""
     from ..compat.ui_contracts import ensure_ui_contracts
-    from . import access_models, document_version_models, job_models  # noqa: F401  (register the tables)
+    from . import (  # noqa: F401  (register the tables)
+        access_models,
+        document_version_models,
+        job_models,
+        service_contract_models,
+    )
     from .orm_models import Base
 
     ensure_ui_contracts()

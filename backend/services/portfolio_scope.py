@@ -10,6 +10,12 @@ Visibility follows the foreign keys: a record is visible when every parent it na
 is visible, down to a portfolio. Records without any parent are visible only through
 an explicit binding (resource_portfolio_grants), written when a restricted account
 creates them; older unbound ones belong to the installation (all-access accounts).
+
+Service contracts (Objektverträge) have no parent of their own: one is visible when
+any of its locations is (a location row is visible when its property, unit and meter
+are). Location rows of other portfolios stay hidden. Changing a contract or anything
+that belongs to it needs every location visible. A reference to a shared-read record
+(a contact as provider) needs that record readable, not owned.
 """
 
 from collections.abc import Iterator, MutableMapping
@@ -46,6 +52,14 @@ GLOBAL_READ = frozenset({"tax_rates", "notification_templates", "escalation_rule
 # a shared address book: every account reads it; changing a record needs its binding (or all access)
 SHARED_READ = frozenset({"contacts"})
 _owning: ContextVar[bool] = ContextVar("immo_scope_owning", default=False)
+# records one operation creates together (memory store); they count as visible parents of each other
+_created_together: ContextVar[frozenset] = ContextVar("immo_scope_created_together", default=frozenset())
+# db.info key: (table, id) of rows the scoped writer inserted in the open transaction
+CREATED = "immo_scope_created"
+SERVICE_CONTRACTS = "service_contracts"
+SERVICE_CONTRACT_LOCATIONS = "service_contract_locations"
+WHOLE_CONTRACT_REQUIRED = ("Dieser Objektvertrag hat Standorte in Portfolios, auf die Sie keinen Zugriff haben. "
+                           "Ändern kann ihn nur ein Konto mit Zugriff auf alle zugehörigen Portfolios.")
 
 
 @contextmanager
@@ -56,6 +70,26 @@ def owning() -> Iterator[None]:
         yield
     finally:
         _owning.reset(token)
+
+
+@contextmanager
+def reading() -> Iterator[None]:
+    """Visibility for a reference to a shared-read record: readable is enough."""
+    token = _owning.set(False)
+    try:
+        yield
+    finally:
+        _owning.reset(token)
+
+
+@contextmanager
+def created_together(records) -> Iterator[None]:
+    """Memory store: (table, id) of records one operation writes together, parents of each other."""
+    token = _created_together.set(_created_together.get() | frozenset(records))
+    try:
+        yield
+    finally:
+        _created_together.reset(token)
 INTERNAL = frozenset({
     "users",
     "user_preferences",
@@ -110,6 +144,7 @@ RESOURCE_ALIASES = {
     "message_thread": "message_threads",
     "message": "messages",
     "listing_photo": "listing_photos",
+    "service_contract": "service_contracts",
 }
 TEXT_PARENTS = {
     "contract_id": "contracts",
@@ -165,6 +200,9 @@ def _parents(table):
             # contract visibility would introduce a cycle. Writes still check it.
             if table.name == "contracts" and parent == "tenants":
                 continue
+            # Likewise a contract's visibility derives from its locations, not the other way round.
+            if table.name == SERVICE_CONTRACT_LOCATIONS and parent == SERVICE_CONTRACTS:
+                continue
             result[column.name] = parent
     return result
 
@@ -194,6 +232,9 @@ def _reachable_scope_tables(table, relations):
                 continue
             if name == "tenants":
                 pending.append("contracts")
+                continue
+            if name == SERVICE_CONTRACTS:
+                pending.append(SERVICE_CONTRACT_LOCATIONS)
                 continue
             pending.extend(_parents(current).values())
             pending.extend(csv_parents(current).values())
@@ -242,6 +283,14 @@ def _criterion(table, scope, seen=(), relations=None):
             select(1).where(contracts.c.tenant_id == table.c.id, contracts.c.id.in_(select(visible_contracts.c.id)))
         ).correlate(table)
         return or_(linked, _binding(table, scope))
+    if name == SERVICE_CONTRACTS:
+        locations = Base.metadata.tables[SERVICE_CONTRACT_LOCATIONS]
+        visible_locations = _visible_ids(locations, scope, (*seen, name), relations)
+        located = exists(
+            select(1).where(locations.c.service_contract_id == table.c.id,
+                            locations.c.id.in_(select(visible_locations.c.id)))
+        ).correlate(table)
+        return or_(located, _binding(table, scope))
     clauses, anchors = [], []
     for field, parent_name in _parents(table).items():
         parent = Base.metadata.tables[parent_name]
@@ -438,12 +487,35 @@ def _sql_visible(db, table, entity_id):
     return db.scalar(query.execution_options(**{BOUNDED: True})) is not None
 
 
-def guard_sql_write(db, table, values, *, entity_id=None, creating=False):
+def guard_sql_write(db, table, values, *, entity_id=None, creating=False, pending=frozenset()):
+    """Refuse a change outside the account's portfolios.
+
+    pending: (table, id) of rows this writer creates in the same transaction; as
+    parents they count as visible (each passes this check itself).
+    """
     with owning():
-        _guard_sql_write(db, table, values, entity_id=entity_id, creating=creating)
+        _guard_sql_write(db, table, values, entity_id=entity_id, creating=creating, pending=pending)
 
 
-def _guard_sql_write(db, table, values, *, entity_id=None, creating=False):
+def _foreign_contract_locations(db, contract_id) -> bool:
+    """Whether the service contract has a location the account cannot see."""
+    locations = Base.metadata.tables[SERVICE_CONTRACT_LOCATIONS]
+    token = _guarding.set(True)
+    try:
+        return db.scalar(select(locations.c.id).where(
+            locations.c.service_contract_id == contract_id, ~scoped_clause(locations)).limit(1)) is not None
+    finally:
+        _guarding.reset(token)
+
+
+def _require_whole_contract_sql(db, contract_id, pending) -> None:
+    if (SERVICE_CONTRACTS, contract_id) in pending:
+        return
+    if _foreign_contract_locations(db, contract_id):
+        raise HTTPException(403, WHOLE_CONTRACT_REQUIRED)
+
+
+def _guard_sql_write(db, table, values, *, entity_id=None, creating=False, pending=frozenset()):
     scope = current_scope()
     if scope is None or scope.unrestricted or table.name in INTERNAL:
         return
@@ -466,6 +538,8 @@ def _guard_sql_write(db, table, values, *, entity_id=None, creating=False):
             raise HTTPException(
                 403, "Ein gemeinsam genutztes Mieterprofil benötigt Zugriff auf alle zugehörigen Portfolios."
             )
+    if entity_id is not None and table.name == SERVICE_CONTRACTS:
+        _require_whole_contract_sql(db, entity_id, pending)
     for field, value in values.items():
         column = table.c.get(field)
         if column is None or value is None:
@@ -473,8 +547,17 @@ def _guard_sql_write(db, table, values, *, entity_id=None, creating=False):
         foreign = next(iter(column.foreign_keys), None)
         parent_name = foreign.target_fullname.split(".")[0] if foreign else TEXT_PARENTS.get(field)
         parent = Base.metadata.tables.get(parent_name or "")
-        if parent is not None and parent_name not in INTERNAL and not _sql_visible(db, parent, value):
+        if parent is None or parent_name in INTERNAL or (parent_name, value) in pending:
+            continue
+        if parent_name in SHARED_READ:
+            with reading():
+                visible = _sql_visible(db, parent, value)
+        else:
+            visible = _sql_visible(db, parent, value)
+        if not visible:
             raise HTTPException(403, "Die Referenz liegt außerhalb Ihrer erlaubten Portfolios.")
+        if parent_name == SERVICE_CONTRACTS:
+            _require_whole_contract_sql(db, value, pending)
     for field, parent_name in csv_parents(table).items():
         for identifier in reference_ids(values.get(field)):
             if not _sql_visible(db, Base.metadata.tables[parent_name], identifier):
@@ -496,18 +579,21 @@ def _scope_native_writes(db, context, instances):
         return
     if any(item.__table__.name not in INTERNAL for item in (*db.new, *db.dirty, *db.deleted)):
         db.info["scoped_writer"] = scope       # business data: fenced at commit (_fence_commit)
+    for item in db.new:
+        if "id" in item.__table__.c and item.id is None:
+            from uuid import uuid4
+
+            item.id = str(uuid4())
+    created = db.info.setdefault(CREATED, set())
+    inserted = {(item.__table__.name, item.id) for item in db.new if "id" in item.__table__.c}
+    pending = frozenset(created | inserted)
     for item in list(db.new) + list(db.dirty) + list(db.deleted):
         table = item.__table__
         if table.name in INTERNAL:
             continue
         values = {column.name: getattr(item, column.name) for column in table.c}
         new = item in db.new
-        if new and "id" in table.c and item.id is None:
-            from uuid import uuid4
-
-            item.id = str(uuid4())
-            values["id"] = item.id
-        guard_sql_write(db, table, values, entity_id=None if new else item.id, creating=new)
+        guard_sql_write(db, table, values, entity_id=None if new else item.id, creating=new, pending=pending)
         if new and "id" in table.c and item.id and table.name not in GLOBAL_READ:
             # Only unanchored records need explicit membership. Keep this in
             # the same transaction as the insert; a failure rolls both back.
@@ -516,6 +602,7 @@ def _scope_native_writes(db, context, instances):
                     ResourcePortfolioORM(resource_type=table.name, resource_id=item.id, portfolio_id=pid)
                     for pid in scope.portfolio_ids
                 )
+    created.update(inserted)
 
 
 def require_file_access(value: str):
@@ -641,6 +728,12 @@ def memory_visible(store, collection, item, *, scope=None, seen=()):
             and memory_visible(store, "contracts", contract, scope=scope, seen=(*seen, name))
             for contract in raw["contracts"].values()
         )
+    if name == SERVICE_CONTRACTS:
+        return binding or any(
+            location.service_contract_id == item.id
+            and memory_visible(store, SERVICE_CONTRACT_LOCATIONS, location, scope=scope, seen=(*seen, name))
+            for location in raw[SERVICE_CONTRACT_LOCATIONS].values()
+        )
     table = Base.metadata.tables.get(name or "")
     if table is None:
         return False
@@ -669,6 +762,16 @@ def memory_visible(store, collection, item, *, scope=None, seen=()):
             return False
         anchors = True
     return anchors or binding
+
+
+def _require_whole_contract_memory(store, contract_id) -> None:
+    if (SERVICE_CONTRACTS, contract_id) in _created_together.get():
+        return
+    raw = object.__getattribute__(store, "__dict__")
+    if any(location.service_contract_id == contract_id
+           and not memory_visible(store, SERVICE_CONTRACT_LOCATIONS, location)
+           for location in raw[SERVICE_CONTRACT_LOCATIONS].values()):
+        raise HTTPException(403, WHOLE_CONTRACT_REQUIRED)
 
 
 class ScopedCollection(MutableMapping):
@@ -716,6 +819,9 @@ class ScopedCollection(MutableMapping):
             raise HTTPException(
                 403, "Ein gemeinsam genutztes Mieterprofil benötigt Zugriff auf alle zugehörigen Portfolios."
             )
+        if self.name == SERVICE_CONTRACTS and key in self.raw:
+            _require_whole_contract_memory(self.store, key)
+        together = _created_together.get()
         table = Base.metadata.tables.get(self.name)
         if table is not None:
             for field, parent_name in csv_parents(table).items():
@@ -729,9 +835,18 @@ class ScopedCollection(MutableMapping):
             foreign = next(iter(column.foreign_keys), None) if column is not None else None
             parent_name = foreign.target_fullname.split(".")[0] if foreign else TEXT_PARENTS.get(field)
             if value is not None and parent_name and parent_name not in INTERNAL:
+                if (parent_name, value) in together:
+                    continue
                 parent = raw.get(parent_name, {}).get(value)
-                if parent is None or not memory_visible(self.store, parent_name, parent):
+                if parent_name in SHARED_READ:
+                    with reading():
+                        visible = parent is not None and memory_visible(self.store, parent_name, parent)
+                else:
+                    visible = parent is not None and memory_visible(self.store, parent_name, parent)
+                if not visible:
                     raise HTTPException(403, "Die Referenz liegt außerhalb Ihrer erlaubten Portfolios.")
+                if parent_name == SERVICE_CONTRACTS:
+                    _require_whole_contract_memory(self.store, value)
         if getattr(item, "entity_id", None) is not None:
             parent_name = RESOURCE_ALIASES.get(item.entity_type)
             parent = raw.get(parent_name, {}).get(item.entity_id)
@@ -740,7 +855,7 @@ class ScopedCollection(MutableMapping):
         for field in ("file_url", "photo_url"):
             if getattr(item, field, None):
                 require_file_access(getattr(item, field))
-        if not memory_visible(self.store, self.name, item):
+        if (self.name, key) not in together and not memory_visible(self.store, self.name, item):
             parents = _parents(table) if table is not None else {}
             if any(getattr(item, field, None) for field in parents) or getattr(item, "entity_id", None):
                 raise HTTPException(403, "Die Referenz liegt außerhalb Ihrer erlaubten Portfolios.")
@@ -749,8 +864,13 @@ class ScopedCollection(MutableMapping):
 
     def __delitem__(self, key):
         with owning():
-            if not memory_visible(self.store, self.name, self.raw[key]):
+            item = self.raw[key]
+            if not memory_visible(self.store, self.name, item):
                 raise HTTPException(404, "Datensatz nicht gefunden")
+            if self.name == SERVICE_CONTRACTS:
+                _require_whole_contract_memory(self.store, key)
+            elif getattr(item, "service_contract_id", None):
+                _require_whole_contract_memory(self.store, item.service_contract_id)
         if self.name in GLOBAL_READ:
             require_installation_scope()
         del self.raw[key]
@@ -786,3 +906,9 @@ def _fence_commit(db):
 @event.listens_for(Session, "after_rollback")
 def _forget_writer(db):
     db.info.pop("scoped_writer", None)
+    db.info.pop(CREATED, None)
+
+
+@event.listens_for(Session, "after_commit")
+def _forget_created(db):
+    db.info.pop(CREATED, None)

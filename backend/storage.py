@@ -97,14 +97,8 @@ from .models import (
     ViewingAppointment,
     ViewingAppointmentCreate,
 )
-
-
-class NotFoundError(KeyError):
-    pass
-
-
-class ValidationError(ValueError):
-    pass
+from .storage_service_contracts import ServiceContractMemoryStore
+from .store_errors import NotFoundError, ValidationError
 
 
 FINAL_STATEMENT_MESSAGE = ("Die Einzelabrechnung ist finalisiert und bleibt unverändert; "
