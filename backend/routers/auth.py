@@ -1,8 +1,9 @@
 """Authentication router: login, register, refresh, user management."""
 
 import logging
+import threading
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 
 from ..auth import (
     authenticate_user,
@@ -14,28 +15,46 @@ from ..auth import (
     generate_totp_secret,
     get_totp_uri,
     get_user_by_id,
+    has_users,
     list_users,
+    normalize_access,
     record_registration_attempt,
     register_user,
     require_auth,
     require_role,
     revoke_token,
+    set_user_password,
     update_user,
     verify_totp,
 )
+from ..config import settings
+from ..dependencies import store
 from ..models import (
     LoginRequest,
     RefreshRequest,
     TokenResponse,
     UserCreate,
+    UserPasswordReset,
     UserPatch,
     UserRead,
 )
+from ..services.upload_access import clear_upload_access_cookie, set_upload_access_cookie
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
-_ALLOWED_SELF_REGISTER_ROLES = {"readonly", "techniker"}
+# Serialises the "first account becomes owner" check against concurrent sign-ups.
+_registration_lock = threading.Lock()
+
+
+@router.get("/registration-status")
+def registration_status() -> dict:
+    """Public: tells the login page whether sign-up is possible."""
+    initial_setup = not has_users()
+    return {
+        "initial_setup": initial_setup,
+        "open": initial_setup or settings.allow_self_registration,
+    }
 
 
 _DEFAULT_PREFERENCES = {
@@ -53,26 +72,46 @@ _DEFAULT_PREFERENCES = {
 
 @router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
 def register(payload: UserCreate, request: Request) -> UserRead:
-    """Register a new user. Self-registration is restricted to readonly/techniker roles."""
+    """Register a new account.
+
+    The first account ever created becomes the owner (initial setup).
+    Afterwards sign-up is closed unless ALLOW_SELF_REGISTRATION is enabled,
+    and self-registered accounts are always read-only.
+    """
     client_ip = request.client.host if request.client else "unknown"
     if check_register_rate_limit(client_ip):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Zu viele Registrierungsversuche. Bitte versuchen Sie es später erneut.",
         )
-    role = payload.role if payload.role in _ALLOWED_SELF_REGISTER_ROLES else "readonly"
     record_registration_attempt(client_ip)
-    return register_user(
-        username=payload.username,
-        email=payload.email,
-        full_name=payload.full_name,
-        password=payload.password,
-        role=role,
-    )
+    with _registration_lock:
+        if not has_users():
+            role = "eigentuemer"
+        elif settings.allow_self_registration:
+            role = "readonly"
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Selbstregistrierung ist deaktiviert. Bitte wenden Sie sich an den Eigentümer.",
+            )
+        return register_user(
+            username=payload.username,
+            email=payload.email,
+            full_name=payload.full_name,
+            password=payload.password,
+            role=role,
+        )
 
 
+# FastAPI needs concrete Request/Response annotations for framework injection.
+# None defaults preserve direct Python callers; the guards below handle them.
 @router.post("/login", response_model=TokenResponse)
-def login(payload: LoginRequest) -> TokenResponse:
+def login(
+    payload: LoginRequest,
+    request: Request = None,  # type: ignore[assignment]
+    response: Response = None,  # type: ignore[assignment]
+) -> TokenResponse:
     """Authenticate and receive JWT tokens. Enforces TOTP when enabled."""
     user = authenticate_user(payload.username, payload.password)
     if user is None:
@@ -93,14 +132,21 @@ def login(payload: LoginRequest) -> TokenResponse:
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Ungültiger Zwei-Faktor-Code",
             )
-    return TokenResponse(
+    tokens = TokenResponse(
         access_token=create_access_token(user["id"]),
         refresh_token=create_refresh_token(user["id"]),
     )
+    if request is not None and response is not None:
+        set_upload_access_cookie(response, request, tokens.access_token)
+    return tokens
 
 
 @router.post("/refresh", response_model=TokenResponse)
-def refresh(payload: RefreshRequest) -> TokenResponse:
+def refresh(
+    payload: RefreshRequest,
+    request: Request = None,  # type: ignore[assignment]
+    response: Response = None,  # type: ignore[assignment]
+) -> TokenResponse:
     """Refresh access token using a refresh token.
 
     Implements token rotation: the old refresh token is revoked on use,
@@ -121,14 +167,21 @@ def refresh(payload: RefreshRequest) -> TokenResponse:
         )
     # Rotate: revoke the old refresh token so it cannot be reused
     revoke_token(payload.refresh_token)
-    return TokenResponse(
+    tokens = TokenResponse(
         access_token=create_access_token(user["id"]),
         refresh_token=create_refresh_token(user["id"]),
     )
+    if request is not None and response is not None:
+        set_upload_access_cookie(response, request, tokens.access_token)
+    return tokens
 
 
 @router.post("/logout")
-def logout(payload: dict) -> dict:
+def logout(
+    payload: dict,
+    request: Request = None,  # type: ignore[assignment]
+    response: Response = None,  # type: ignore[assignment]
+) -> dict:
     """Logout by revoking the provided access and/or refresh tokens."""
     access_token = payload.get("access_token")
     refresh_token = payload.get("refresh_token")
@@ -136,13 +189,30 @@ def logout(payload: dict) -> dict:
         revoke_token(access_token)
     if refresh_token:
         revoke_token(refresh_token)
+    if request is not None and response is not None:
+        clear_upload_access_cookie(response, request)
     return {"detail": "Erfolgreich abgemeldet"}
 
 
 @router.get("/me", response_model=UserRead)
-def get_me(user: UserRead = Depends(require_auth)) -> UserRead:
+def get_me(
+    user: UserRead = Depends(require_auth),
+    request: Request = None,  # type: ignore[assignment]
+    response: Response = None,  # type: ignore[assignment]
+) -> UserRead:
     """Get current authenticated user's profile."""
+    if request is not None and response is not None:
+        token = request.headers["authorization"].partition(" ")[2]
+        set_upload_access_cookie(response, request, token)
     return user
+
+
+@router.get("/me/permissions")
+def get_my_permissions(user: UserRead = Depends(require_auth)) -> dict:
+    """What the signed-in user may change: `write` is null for everything, else path prefixes."""
+    from ..permissions import write_areas
+
+    return {"role": user.role, "write": write_areas(user.role)}
 
 
 def _get_preferences_session():
@@ -244,6 +314,67 @@ def get_users(
     return users[skip : skip + limit]
 
 
+@router.post("/users", response_model=UserRead, status_code=status.HTTP_201_CREATED)
+def create_user(
+    payload: UserCreate,
+    user: UserRead = Depends(require_role("eigentuemer", "verwalter")),
+) -> UserRead:
+    """Create an account (admin only). Only owners may assign roles other than read-only."""
+    if payload.role != "readonly" and user.role != "eigentuemer":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Nur Eigentümer dürfen Rollen vergeben",
+        )
+    granted = "portfolio_access" in payload.model_fields_set or "portfolio_ids" in payload.model_fields_set
+    if granted and user.role != "eigentuemer":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Nur Eigentümer dürfen Portfolios zuweisen")
+    _require_portfolios(payload.portfolio_access, payload.portfolio_ids)
+    return register_user(
+        username=payload.username,
+        email=payload.email,
+        full_name=payload.full_name,
+        password=payload.password,
+        role=payload.role,
+        portfolio_access=payload.portfolio_access,
+        portfolio_ids=payload.portfolio_ids,
+    )
+
+
+def _require_portfolios(mode: str | None, ids: list[str] | None) -> None:
+    """A selected assignment names portfolios that exist."""
+    if mode != "selected":
+        return
+    known = {portfolio.id for portfolio in store.list_portfolios()}
+    unknown = sorted(set(ids or ()) - known)
+    if unknown:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                            detail="Unbekannte Portfolios: " + ", ".join(unknown))
+
+
+def _load_target(user_id: str) -> dict:
+    target = get_user_by_id(user_id)
+    if target is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Benutzer nicht gefunden")
+    return target
+
+
+def _require_may_manage(actor: UserRead, target: dict) -> None:
+    """Managers may only administer read-only accounts; owners may administer everyone."""
+    if actor.role != "eigentuemer" and target["role"] != "readonly":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Nur Eigentümer dürfen Konten mit Schreibrechten verwalten",
+        )
+
+
+def _is_last_active_owner(target: dict) -> bool:
+    if target["role"] != "eigentuemer" or not target["is_active"]:
+        return False
+    owners = [u for u in list_users() if u.role == "eigentuemer" and u.is_active]
+    return len(owners) <= 1
+
+
 @router.patch("/users/{user_id}", response_model=UserRead)
 def patch_user(
     user_id: str,
@@ -251,16 +382,54 @@ def patch_user(
     user: UserRead = Depends(require_role("eigentuemer", "verwalter")),
 ) -> UserRead:
     """Update a user (admin only)."""
-    changes = payload.model_dump(exclude_unset=True)
-
+    changes = {k: v for k, v in payload.model_dump(exclude_unset=True).items() if v is not None}
     # Only owners may change user roles.
     if "role" in changes and user.role != "eigentuemer":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Nur Eigentümer dürfen Rollen ändern",
         )
+    target = _load_target(user_id)
+    _require_may_manage(user, target)
+    if {"portfolio_access", "portfolio_ids"} & changes.keys():
+        if user.role != "eigentuemer":
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                                detail="Nur Eigentümer dürfen Portfolios zuweisen")
+        if "portfolio_access" not in changes:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                                detail="Portfolios werden zusammen mit der Zugriffsart geändert")
+        _require_portfolios(changes["portfolio_access"], changes.get("portfolio_ids"))
+        changes.update(normalize_access(changes.get("role", target["role"]), changes["portfolio_access"],
+                                        changes.get("portfolio_ids")),
+                       portfolio_access_origin="owner_assignment")
+    elif changes.get("role") == "eigentuemer":
+        changes.update(normalize_access("eigentuemer", "all", None), portfolio_access_origin="owner")
+
+    demotes = changes.get("role", target["role"]) != target["role"]
+    deactivates = changes.get("is_active") is False and target["is_active"]
+    if user_id == user.id and (demotes or deactivates):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Eigene Rolle und eigener Kontostatus können nicht geändert werden",
+        )
+    if (demotes or deactivates) and _is_last_active_owner(target):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Mindestens ein aktiver Eigentümer muss erhalten bleiben",
+        )
 
     return update_user(user_id, changes)
+
+
+@router.post("/users/{user_id}/password", response_model=UserRead)
+def reset_user_password(
+    user_id: str,
+    payload: UserPasswordReset,
+    user: UserRead = Depends(require_role("eigentuemer", "verwalter")),
+) -> UserRead:
+    """Set a new password for an account (admin only)."""
+    _require_may_manage(user, _load_target(user_id))
+    return set_user_password(user_id, payload.password)
 
 
 @router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -273,6 +442,11 @@ def remove_user(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Eigenes Konto kann nicht gelöscht werden",
+        )
+    if _is_last_active_owner(_load_target(user_id)):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Mindestens ein aktiver Eigentümer muss erhalten bleiben",
         )
     delete_user(user_id)
 

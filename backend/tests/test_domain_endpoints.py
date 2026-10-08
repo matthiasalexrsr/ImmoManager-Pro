@@ -1,5 +1,7 @@
 import datetime
 
+from fastapi import HTTPException
+
 from backend.dependencies import store
 from backend.models import (
     AccountCreate,
@@ -125,7 +127,7 @@ def test_settlement_not_found() -> None:
     try:
         contracts.get_contract_settlement(contract_id="nonexistent")
         assert False, "Should have raised HTTPException"
-    except Exception as exc:
+    except HTTPException as exc:
         assert "404" in str(exc.status_code)
 
 
@@ -233,7 +235,7 @@ def test_dunning_campaign_not_found() -> None:
     try:
         contracts.create_dunning_campaign(contract_id="nonexistent")
         assert False, "Should have raised HTTPException"
-    except Exception as exc:
+    except HTTPException as exc:
         assert "404" in str(exc.status_code)
 
 
@@ -347,5 +349,5 @@ def test_invoice_match_not_found() -> None:
     try:
         invoices.match_invoice_to_bookings(invoice_id="nonexistent")
         assert False, "Should have raised HTTPException"
-    except Exception as exc:
+    except HTTPException as exc:
         assert "404" in str(exc.status_code)

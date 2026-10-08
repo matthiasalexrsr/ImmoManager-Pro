@@ -23,12 +23,21 @@ trap cleanup EXIT
 
 docker compose "${COMPOSE_FILES[@]}" up -d --build
 
-for _ in {1..60}; do
-  if curl -fsS http://localhost:8000/health >/dev/null; then
-    break
-  fi
-  sleep 2
-done
+# Wait for every service the checks below ask: the app, Prometheus and Grafana start at
+# their own pace, and asking one seconds after its start resets the connection.
+wait_for() {
+  for _ in {1..60}; do
+    if curl -fsS "$1" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 2
+  done
+  echo "Not ready after 120 s: $1" >&2
+  return 1
+}
+wait_for http://localhost:8000/health
+wait_for http://localhost:9090/-/ready
+wait_for http://localhost:3001/api/health
 
 curl -fsS http://localhost:8000/health | tee /tmp/health.json
 curl -fsS -o /tmp/wizard.html -w '%{http_code}' http://localhost:8000/mietvertrag/ >/tmp/wizard_status.txt

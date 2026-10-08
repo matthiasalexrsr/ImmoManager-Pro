@@ -9,14 +9,23 @@ import uuid
 from io import BytesIO
 from urllib.parse import unquote, urlparse
 
-from fastapi import APIRouter, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import Response
+from starlette.concurrency import run_in_threadpool
 
-from ..config import settings
+from ..auth import require_auth
+from ..models import UserRead
 from ..services.ai.document_ai import analyze_document
 from ..services.file_storage import get_file_storage
 from ..services.ocr_service import extract_text_from_bytes
+from ..services.portfolio_scope import register_upload, require_file_access
 from ..services.task_queue import get_queue
+from ..services.upload_policy import (
+    ARCHIVED_PREFIX,
+    DOCUMENT_EXTENSIONS,
+    read_limited,
+    require_allowed_extension,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -142,20 +151,16 @@ async def upload_file(
 ) -> dict:
     """Upload a file and return URLs. Triggers OCR for eligible files."""
     # Enforce file size limit by reading up to the limit + 1 byte
-    max_size = settings.max_upload_size_bytes
-    contents = await file.read(max_size + 1)
-    if len(contents) > max_size:
-        raise HTTPException(
-            status_code=413,
-            detail=f"Datei überschreitet das Limit von {max_size // (1024 * 1024)} MB",
-        )
-
+    require_allowed_extension(file.filename, DOCUMENT_EXTENSIONS)
+    contents = await read_limited(file)
     _validate_upload(file)
 
     storage = get_file_storage()
     safe_folder = _normalize_storage_key(folder) or "documents"
     ext = _safe_extension(file.filename)
     key = f"{safe_folder}/{uuid.uuid4().hex}.{ext}"
+    # a restricted account's draft belongs to its portfolios until a record takes it over
+    await run_in_threadpool(register_upload, key)
     storage.save(key, BytesIO(contents), content_type=file.content_type or "application/octet-stream")
     file_url = storage.get_url(key)
 
@@ -198,6 +203,7 @@ def process_ocr(file_url: str = Query(..., description="Public file URL")) -> di
     if not key:
         raise HTTPException(status_code=400, detail="Ungültige Datei-URL")
 
+    require_file_access(key)
     ext = key.rsplit(".", 1)[-1].lower() if "." in key else ""
     if ext not in SUPPORTED_OCR_EXTENSIONS:
         raise HTTPException(status_code=400, detail="Dateityp nicht für OCR unterstützt")
@@ -215,7 +221,7 @@ def process_ocr(file_url: str = Query(..., description="Public file URL")) -> di
 
 
 @router.get("/download")
-def download_file(key: str = Query(...)) -> Response:
+def download_file(key: str = Query(...), actor: UserRead = Depends(require_auth)) -> Response:
     """Download a file by its storage key."""
     storage = get_file_storage()
     safe_key = _normalize_storage_key(key)
@@ -226,7 +232,15 @@ def download_file(key: str = Query(...)) -> Response:
     if ".." in safe_key or safe_key.startswith("/"):
         raise HTTPException(status_code=400, detail="Ungültiger Dateischlüssel")
 
-    data = storage.get(safe_key)
+    if safe_key.startswith(ARCHIVED_PREFIX):
+        # generated originals: the verified archive, never a same-named file on disk
+        from ..dependencies import store
+        from ..services.housing_confirmation import read_pdf_for_key
+
+        data = read_pdf_for_key(store, safe_key, actor.id)
+    else:
+        require_file_access(safe_key)
+        data = storage.get(safe_key)
     if data is None:
         raise HTTPException(status_code=404, detail="Datei nicht gefunden")
 
@@ -267,6 +281,7 @@ def get_ocr_text(file_url: str = Query(...)) -> dict:
     file_key = _file_url_to_key(file_url)
     if not file_key:
         return {"has_ocr": False, "text": None}
+    require_file_access(file_key)
 
     ocr_key = _ocr_key_from_file_key(file_key)
     if not ocr_key:
@@ -294,6 +309,7 @@ def analyze_file(
     file_key = _file_url_to_key(file_url)
     if not file_key:
         raise HTTPException(status_code=400, detail="Ungültige Datei-URL")
+    require_file_access(file_key)
 
     # Try to get existing OCR text first
     ocr_key = _ocr_key_from_file_key(file_key)

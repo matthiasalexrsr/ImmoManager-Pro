@@ -3,6 +3,7 @@ import { api } from '../api';
 import { useTranslation } from '../i18n';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
+import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 
 export default function EscalationRules() {
@@ -18,7 +19,7 @@ export default function EscalationRules() {
 
   const loadData = () => {
     setLoading(true);
-    api.get('/escalation/rules')
+    api.list('/escalation/rules')
       .then(data => setRules(data || []))
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
@@ -43,8 +44,8 @@ export default function EscalationRules() {
     { key: 'name', label: 'Name', filterType: 'text' },
     { key: 'entity_type', label: 'Entität', filterType: 'select' },
     { key: 'days_overdue', label: 'Tage überfällig', type: 'number' },
-    { key: 'notification_severity', label: 'Schwere', filterType: 'select' },
-    { key: 'is_active', label: 'Aktiv', render: v => v ? '✓' : '—' },
+    { key: 'notification_severity', label: 'Schwere', type: 'status', filterType: 'select' },
+    { key: 'is_active', label: 'Aktiv', render: v => <StatusBadge status={v ? 'active' : 'inactive'} /> },
   ];
 
   const fields = [

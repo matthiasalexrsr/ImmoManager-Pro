@@ -10,6 +10,13 @@ __pycache__/
 
 # Environment / secrets
 .env
+.env.from-backup
+/secrets/
+/data/
+/integrations.json
+/.integrations.json.*.tmp
+/integrations.json.history.sqlite3
+/integrations.json.history.sqlite3-*
 
 # Frontend
 node_modules/
@@ -17,6 +24,7 @@ frontend/node_modules/
 frontend/dist/
 
 # Build artifacts
+artifacts/
 *.egg-info/
 dist/
 build/
@@ -33,3 +41,7 @@ dev_notes.log
 dev_notes.json
 diagnostics.log
 .coverage
+
+# Extreme stress test results (python -m tools.xstress.run)
+stress-results/
+dist-testversion/

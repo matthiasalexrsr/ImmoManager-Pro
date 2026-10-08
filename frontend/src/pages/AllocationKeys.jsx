@@ -15,9 +15,26 @@ const KEY_TYPE_OPTIONS = [
 
 const KEY_TYPE_LABELS = Object.fromEntries(KEY_TYPE_OPTIONS.map(o => [o.value, o.label]));
 
+// Consumption keys must say which meters count: water m³ and heat units do not add up.
+const METER_TYPE_OPTIONS = [
+  { value: 'cold_water', label: 'Kaltwasser' },
+  { value: 'hot_water', label: 'Warmwasser' },
+  { value: 'heating', label: 'Heizung' },
+  { value: 'electricity', label: 'Strom' },
+  { value: 'gas', label: 'Gas' },
+];
+
+const METER_TYPE_LABELS = Object.fromEntries(METER_TYPE_OPTIONS.map(o => [o.value, o.label]));
+
+// The unit a consumption key bills in; meters in another unit are converted only by an exact factor.
+const MEASURE_UNIT_OPTIONS = ['m³', 'l', 'kWh', 'MWh', 'Wh', 'HKV'].map(value => ({ value, label: value }));
+
 const COLUMNS = [
   { key: 'name', label: 'Bezeichnung', filterType: 'text' },
-  { key: 'key_type', label: 'Schlüsseltyp', render: v => KEY_TYPE_LABELS[v] || v },
+  { key: 'key_type', label: 'Schlüsseltyp',
+    render: (v, row) => (v === 'consumption' && row.meter_type
+      ? `${KEY_TYPE_LABELS[v]} (${METER_TYPE_LABELS[row.meter_type] || row.meter_type}${row.measure_unit ? `, ${row.measure_unit}` : ''})`
+      : (KEY_TYPE_LABELS[v] || v)) },
   { key: 'property_label', label: 'Immobilie' },
   { key: 'description', label: 'Beschreibung' },
 ];
@@ -34,7 +51,7 @@ export default function AllocationKeys() {
   const [deleteError, setDeleteError] = useState(null);
 
   const refreshData = () => {
-    api.get('/billing/allocation-keys').catch(err => { console.warn('[AllocationKeys] keys:', err.message); return []; })
+    api.list('/billing/allocation-keys').catch(err => { console.warn('[AllocationKeys] keys:', err.message); return []; })
       .then(k => setKeys(k || []))
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
@@ -42,7 +59,7 @@ export default function AllocationKeys() {
 
   useEffect(() => {
     let cancelled = false;
-    api.get('/billing/allocation-keys').catch(err => { console.warn('[AllocationKeys] keys:', err.message); return []; })
+    api.list('/billing/allocation-keys').catch(err => { console.warn('[AllocationKeys] keys:', err.message); return []; })
       .then(data => { if (!cancelled) setKeys(data || []); })
       .catch(e => { if (!cancelled) setError(e.message); })
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -57,6 +74,9 @@ export default function AllocationKeys() {
     { key: 'property_id', label: 'Immobilie', type: 'select', required: true,
       options: properties.map(p => ({ value: p.id, label: p.name })) },
     { key: 'key_type', label: 'Schlüsseltyp', type: 'select', required: true, options: KEY_TYPE_OPTIONS },
+    { key: 'meter_type', label: 'Zählerart (nur bei Verbrauch)', type: 'select', options: METER_TYPE_OPTIONS },
+    { key: 'measure_unit', label: t('pages.allocationKeys.measureUnit'), type: 'select', options: MEASURE_UNIT_OPTIONS,
+      hint: t('pages.allocationKeys.measureUnitHint') },
     { key: 'description', label: 'Beschreibung', type: 'textarea' },
   ];
 

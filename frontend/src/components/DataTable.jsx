@@ -1,19 +1,67 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useId } from 'react';
 import { useTranslation } from '../i18n';
+import { useCanWrite } from '../contexts/AuthContext';
 import { PlusIcon, EditIcon, TrashIcon } from './Icons';
+import StatusBadge from './StatusBadge';
+import { formatDate, formatMoney, plainLabel } from '../utils/format';
+import { codeLabel } from '../utils/codeLabels';
+import './DataTable.css';
 
 const PAGE_SIZES = [10, 25, 50, 100];
+const NUMERIC_TYPES = new Set(['number', 'currency']);
 
-export default function DataTable({ columns, data, onEdit, onDelete, title, onAdd, onRowClick }) {
+// Cells keep to one line; long plain text is cut with an ellipsis and shown in full on hover.
+function cellContent(col, row) {
+  const value = row[col.key];
+  if (col.render) return col.render(value, row);
+  if (value == null || value === '') return '\u2014';
+  if (col.type === 'currency') return formatMoney(value);
+  if (col.type === 'date') return formatDate(value);
+  if (col.type === 'status') return <StatusBadge status={value} />;
+  const text = String(codeLabel(value));
+  if (col.subKey) {
+    // Two lines on purpose: the main value and its context (unit above, property below).
+    const sub = row[col.subKey];
+    const hasMain = text !== '\u2014';
+    return (
+      <span className="cell-stack">
+        <span className="cell-text">{hasMain ? text : (sub || text)}</span>
+        {hasMain && sub && sub !== '\u2014' && <span className="cell-text td-sub">{sub}</span>}
+      </span>
+    );
+  }
+  return <span className="cell-text" title={text.length > 30 ? text : undefined}>{text}</span>;
+}
+
+
+function cellClass(col) {
+  return [
+    col.align === 'right' || (col.align == null && NUMERIC_TYPES.has(col.type)) ? 'text-right td-num' : '',
+    col.wrap ? 'td-wrap' : '',
+  ].filter(Boolean).join(' ') || undefined;
+}
+
+export default function DataTable({ columns, data, onEdit: editHandler, onDelete: deleteHandler, title,
+  onAdd: addHandler, onRowClick, rowActions: rowActionsFor, writeArea, serverPaged = false, loadExportData, hideTitle = false }) {
   const { t } = useTranslation();
+  const titleId = useId();
+  // Roles that may not change this list do not get New/Edit/Delete (the server would refuse anyway).
+  const canWrite = useCanWrite(writeArea);
+  const onAdd = canWrite ? addHandler : undefined;
+  const onEdit = canWrite ? editHandler : undefined;
+  const onDelete = canWrite ? deleteHandler : undefined;
+  const rowActions = rowActionsFor && (row => rowActionsFor(row).filter(a => canWrite || !a.write));
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState(null);
   const [sortDir, setSortDir] = useState('asc');
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(25);
   const [columnFilters, setColumnFilters] = useState({});
-  const [hiddenCols, setHiddenCols] = useState({});
+  const [hiddenCols, setHiddenCols] = useState(() => Object.fromEntries(columns.filter(c => c.hidden).map(c => [c.key, true])));
   const [showColMenu, setShowColMenu] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
 
   const setFilter = useCallback((key, value) => {
     setColumnFilters(prev => ({ ...prev, [key]: value }));
@@ -39,6 +87,7 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
 
   // Filter
   const filtered = useMemo(() => {
+    if (serverPaged) return data;
     let items = data;
 
     if (search) {
@@ -83,11 +132,11 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
       }
     }
     return items;
-  }, [data, search, columnFilters, columns]);
+  }, [data, search, columnFilters, columns, serverPaged]);
 
   // Sort
   const sorted = useMemo(() => {
-    if (!sortKey) return filtered;
+    if (serverPaged || !sortKey) return filtered;
     const col = columns.find(c => c.key === sortKey);
     return [...filtered].sort((a, b) => {
       let va = a[sortKey] ?? '';
@@ -108,35 +157,51 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
       if (va > vb) return sortDir === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [filtered, sortKey, sortDir, columns]);
+  }, [filtered, sortKey, sortDir, columns, serverPaged]);
 
   // Pagination
   const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
   const safePage = Math.min(page, totalPages - 1);
-  const pageData = sorted.slice(safePage * pageSize, (safePage + 1) * pageSize);
+  const pageData = serverPaged ? sorted : sorted.slice(safePage * pageSize, (safePage + 1) * pageSize);
   const startRow = sorted.length === 0 ? 0 : safePage * pageSize + 1;
   const endRow = Math.min((safePage + 1) * pageSize, sorted.length);
 
   // CSV export
-  const exportCsv = useCallback(() => {
-    const headers = visibleColumns.map(c => c.label);
-    const rows = sorted.map(row =>
-      visibleColumns.map(col => {
-        const v = row[col.key];
-        const s = v == null ? '' : String(v);
-        return s.includes(',') || s.includes('"') || s.includes('\n')
-          ? `"${s.replace(/"/g, '""')}"` : s;
-      })
-    );
-    const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${(title || 'export').replace(/\s+/g, '_')}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }, [sorted, visibleColumns, title]);
+  const exportCsv = useCallback(async () => {
+    if (exporting) return;
+    setExporting(true);
+    setExportError('');
+    try {
+      // A server page supplies only the visible slice; its loader owns the
+      // complete selection and enrichment. A failed loader never falls back.
+      const exportData = loadExportData ? await loadExportData() : sorted;
+      if (!Array.isArray(exportData)) throw new Error('Exportdaten konnten nicht geladen werden.');
+      const headers = visibleColumns.map(c => c.label);
+      const rows = exportData.map(row =>
+        visibleColumns.map(col => {
+          const v = row[col.key];
+          const s = v == null ? '' : String(v);
+          return s.includes(',') || s.includes('"') || s.includes('\n')
+            ? `"${s.replace(/"/g, '""')}"` : s;
+        })
+      );
+      const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+      const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      try {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${(title || 'export').replace(/\s+/g, '_')}.csv`;
+        a.click();
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    } catch (error) {
+      setExportError(`CSV-Export fehlgeschlagen. ${error?.message || 'Bitte erneut versuchen.'}`);
+    } finally {
+      setExporting(false);
+    }
+  }, [sorted, visibleColumns, title, loadExportData, exporting]);
 
   // Unique values for select filters
   const selectOptions = useMemo(() => {
@@ -150,33 +215,45 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
     return opts;
   }, [columns, data]);
 
-  const hasActiveFilters = Object.values(columnFilters).some(v => {
+  const hasActiveFilters = !serverPaged && Object.values(columnFilters).some(v => {
     if (Array.isArray(v)) return v.some(x => x !== '');
     return v !== '' && v != null;
   });
 
-  const colSpan = visibleColumns.length + (onEdit || onDelete ? 1 : 0);
+  const hasActions = Boolean(onEdit || onDelete || rowActions);
+  const colSpan = visibleColumns.length + (hasActions ? 1 : 0);
+  const hasColumnFilters = !serverPaged && columns.some(c => c.filterType);
+  const activeFilterCount = Object.values(columnFilters).filter(v =>
+    Array.isArray(v) ? v.some(x => x !== '') : v !== '' && v != null).length;
 
   return (
-    <div className="data-table-wrapper">
+    <div className={`data-table-wrapper data-table-workspace${hideTitle ? ' table-title-hidden' : ''}`}>
       <div className="table-header">
-        <h2>{title}</h2>
+        <h2 id={titleId} className={hideTitle ? 'sr-only' : undefined}>{title}</h2>
         <div className="table-actions">
-          <input
+          {!serverPaged && <input
             type="text"
+            aria-label={`${title || 'Tabelle'} durchsuchen`}
             placeholder={`${t('ui.form.search')}...`}
             value={search}
             onChange={e => { setSearch(e.target.value); setPage(0); }}
             className="search-input"
-          />
+          />}
           <div className="table-btn-group">
+            {hasColumnFilters && (
+              <button onClick={() => setShowFilters(v => !v)} aria-pressed={showFilters || hasActiveFilters}
+                      className={`btn btn-sm ${showFilters || hasActiveFilters ? 'btn-primary-soft' : 'btn-secondary'}`}>
+                {t('ui.buttons.filter')}{activeFilterCount ? ` (${activeFilterCount})` : ''}
+              </button>
+            )}
             {hasActiveFilters && (
-              <button onClick={() => { setColumnFilters({}); setPage(0); }} className="btn btn-sm btn-secondary">
-                {t('ui.buttons.filter')} ✕
+              <button onClick={() => { setColumnFilters({}); setPage(0); }} className="btn btn-sm btn-ghost"
+                      title={t('comp.dataTable.clearFilter')}>
+                ✕
               </button>
             )}
             <div className="col-menu-wrapper">
-              <button onClick={() => setShowColMenu(!showColMenu)} className="btn btn-sm btn-secondary">
+              <button onClick={() => setShowColMenu(!showColMenu)} aria-expanded={showColMenu} className="btn btn-sm btn-secondary">
                 {t('ui.table.adjustColumns')}
               </button>
               {showColMenu && (
@@ -197,7 +274,8 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
                 </>
               )}
             </div>
-            <button onClick={exportCsv} className="btn btn-sm btn-secondary">CSV</button>
+            <button onClick={exportCsv} disabled={exporting} aria-busy={exporting}
+                    className="btn btn-sm btn-secondary">{exporting ? 'CSV …' : 'CSV'}</button>
             {onAdd && (
               <button onClick={onAdd} className="btn btn-primary">
                 <PlusIcon size={16} /> {t('ui.buttons.new')}
@@ -207,30 +285,32 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
         </div>
       </div>
 
+      {exportError && <p className="error-message" role="alert">{exportError}</p>}
+
       <div className="table-scroll">
-        <table className="data-table">
+        <table className="data-table" aria-labelledby={title ? titleId : undefined}>
           <thead>
             <tr>
               {visibleColumns.map(col => (
                 <th
                   key={col.key}
-                  className={col.sortable !== false ? 'sortable-th' : ''}
-                  onClick={() => col.sortable !== false && handleSort(col.key)}
+                  className={[!serverPaged && col.sortable !== false ? 'sortable-th' : '', cellClass(col)].filter(Boolean).join(' ') || undefined}
+                  onClick={!serverPaged && col.sortable !== false ? () => handleSort(col.key) : undefined}
+                  aria-sort={!serverPaged && col.sortable !== false ? (sortKey === col.key ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}
                 >
+                  {!serverPaged && col.sortable !== false ? <button type="button" className="table-sort-button">
+                    {plainLabel(col.label)}
+                    <span className="sort-indicator" aria-hidden="true">{sortKey === col.key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'}</span>
+                  </button> :
                   <span className="th-content">
-                    {col.label}
-                    {col.sortable !== false && (
-                      <span className="sort-indicator">
-                        {sortKey === col.key ? (sortDir === 'asc' ? ' \u25B2' : ' \u25BC') : ''}
-                      </span>
-                    )}
-                  </span>
+                    {plainLabel(col.label)}
+                  </span>}
                 </th>
               ))}
-              {(onEdit || onDelete) && <th className="th-actions">{t('ui.buttons.edit')}</th>}
+              {hasActions && <th className="th-actions"><span className="sr-only">{t('ui.buttons.edit')}</span></th>}
             </tr>
             {/* Column filter row */}
-            {columns.some(c => c.filterType) && (
+            {hasColumnFilters && (showFilters || hasActiveFilters) && (
               <tr className="filter-row">
                 {visibleColumns.map(col => (
                   <th key={`f-${col.key}`} className="filter-cell">
@@ -242,7 +322,7 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
                       >
                         <option value="">—</option>
                         {(selectOptions[col.key] || []).map(v => (
-                          <option key={v} value={v}>{v}</option>
+                          <option key={v} value={v}>{codeLabel(v)}</option>
                         ))}
                       </select>
                     ) : col.filterType === 'dateRange' ? (
@@ -302,7 +382,7 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
                     ) : null}
                   </th>
                 ))}
-                {(onEdit || onDelete) && <th />}
+                {hasActions && <th />}
               </tr>
             )}
           </thead>
@@ -313,12 +393,18 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
               pageData.map(row => (
                 <tr key={row.id} onClick={() => onRowClick?.(row)} className={onRowClick ? 'clickable-row' : ''} style={onRowClick ? { cursor: 'pointer' } : undefined}>
                   {visibleColumns.map(col => (
-                    <td key={col.key} className={col.align === 'right' ? 'text-right' : ''}>
-                      {col.render ? col.render(row[col.key], row) : (row[col.key] ?? '\u2014')}
+                    <td key={col.key} className={cellClass(col)}>
+                      {cellContent(col, row)}
                     </td>
                   ))}
-                  {(onEdit || onDelete) && (
+                  {hasActions && (
                     <td className="action-cell" onClick={e => e.stopPropagation()}>
+                      {rowActions?.(row).map(action => (
+                        <button key={action.label} onClick={event => action.onClick(row, event)} className="btn btn-sm btn-ghost"
+                                aria-label={action.label} title={action.label}>
+                          {action.icon}
+                        </button>
+                      ))}
                       {onEdit && (
                         <button onClick={() => onEdit(row)} className="btn btn-sm btn-ghost" aria-label={t('ui.buttons.edit')} title={t('ui.buttons.edit')}>
                           <EditIcon size={15} />
@@ -338,7 +424,7 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
         </table>
       </div>
 
-      {sorted.length > 0 && (
+      {!serverPaged && sorted.length > 0 && (
       <div className="table-footer">
         <div className="table-footer-info">
           {`${startRow}–${endRow} / ${sorted.length}`}
@@ -346,6 +432,7 @@ export default function DataTable({ columns, data, onEdit, onDelete, title, onAd
         </div>
         <div className="table-footer-controls">
           <select
+            aria-label="Zeilen pro Seite"
             value={pageSize}
             onChange={e => { setPageSize(Number(e.target.value)); setPage(0); }}
             className="page-size-select"

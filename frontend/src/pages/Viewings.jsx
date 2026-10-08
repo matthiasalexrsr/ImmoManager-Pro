@@ -149,14 +149,14 @@ export default function Viewings() {
 
   const refreshData = () => {
     setLoading(true);
-    api.get('/viewings').catch(err => { console.warn('[Viewings]', err.message); return []; })
+    api.list('/viewings').catch(err => { console.warn('[Viewings]', err.message); return []; })
       .then(v => setViewings(v || []))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     let cancelled = false;
-    api.get('/viewings').catch(err => { console.warn('[Viewings]', err.message); return []; })
+    api.list('/viewings').catch(err => { console.warn('[Viewings]', err.message); return []; })
       .then(data => { if (!cancelled) setViewings(data || []); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -249,9 +249,9 @@ export default function Viewings() {
       )}
 
       {/* View mode toggle */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-        <h2 style={{ margin: 0 }}>Besichtigungen</h2>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '1.25rem' }}>
+        <h1 className="page-title" style={{ margin: 0 }}>Besichtigungen</h1>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
           <button
             className={`btn btn-sm ${viewMode === 'calendar' ? 'btn-primary' : 'btn-secondary'}`}
             onClick={() => setViewMode('calendar')}
@@ -271,7 +271,7 @@ export default function Viewings() {
       </div>
 
       {viewMode === 'calendar' ? (
-        <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '1.5rem' }}>
+        <div className="viewings-layout">
           {/* Calendar sidebar */}
           <div>
             <MiniCalendar

@@ -26,8 +26,24 @@ def list_deposits(
     return results[skip : skip + limit]
 
 
+def _check_amounts(deposit: DepositCreate) -> None:
+    """Reject amounts that cannot be right; kept out of the model so existing records stay readable."""
+    problem = None
+    if deposit.amount <= 0:
+        problem = "Der Kautionsbetrag muss größer als 0 sein"
+    elif deposit.deductions is not None and deposit.deductions < 0:
+        problem = "Abzüge dürfen nicht negativ sein"
+    elif deposit.deductions is not None and deposit.deductions > deposit.amount:
+        problem = "Abzüge dürfen die Kaution nicht übersteigen; weitergehende Ansprüche sind eine eigene Forderung"
+    elif deposit.held_date and deposit.return_date and deposit.return_date < deposit.held_date:
+        problem = "Das Rückgabedatum liegt vor dem Eingangsdatum"
+    if problem:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=problem)
+
+
 @router.post("", response_model=Deposit, status_code=status.HTTP_201_CREATED)
 def create_deposit(payload: DepositCreate) -> Deposit:
+    _check_amounts(payload)
     try:
         return store.create_deposit(payload)
     except ValidationError as exc:
@@ -44,6 +60,7 @@ def get_deposit(deposit_id: str) -> Deposit:
 
 @router.put("/{deposit_id}", response_model=Deposit)
 def update_deposit(deposit_id: str, payload: DepositCreate) -> Deposit:
+    _check_amounts(payload)
     try:
         return store.update_deposit(deposit_id, payload)
     except NotFoundError as exc:
@@ -55,6 +72,12 @@ def update_deposit(deposit_id: str, payload: DepositCreate) -> Deposit:
 @router.patch("/{deposit_id}", response_model=Deposit)
 def patch_deposit(deposit_id: str, payload: DepositPatch) -> Deposit:
     try:
+        current = store.get_deposit(deposit_id)
+        merged = DepositCreate.model_validate({
+            **current.model_dump(include=set(DepositCreate.model_fields)),
+            **payload.model_dump(exclude_unset=True),
+        })
+        _check_amounts(merged)
         return store._patch_entity("deposit", deposit_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

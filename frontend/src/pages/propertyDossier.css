@@ -1,0 +1,74 @@
+.property-dossier .detail-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.property-dossier .detail-overview-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr));
+}
+
+.unit-dossier .overview-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
+}
+
+.unit-dossier .overview-header {
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.unit-dossier .overview-header > div:first-child {
+  flex: 1 1 240px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.unit-dossier .overview-dl {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.unit-dossier .overview-dl dd,
+.property-dossier .detail-field {
+  overflow-wrap: anywhere;
+}
+
+.property-dossier .activity-list li,
+.dossier-navigation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.property-dossier .activity-title {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.dossier-document-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-primary);
+  font: inherit;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.dossier-document-reference {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.dossier-rent-note {
+  font-size: 0.85rem;
+  margin: 0.75rem 0 1rem;
+}
+
+.dossier-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}

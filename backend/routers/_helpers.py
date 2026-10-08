@@ -62,9 +62,9 @@ def apply_date_filter(
                 val = date.fromisoformat(val)
             except (ValueError, TypeError):
                 continue
-        if has_from and val < date_from:
+        if isinstance(date_from, date) and val < date_from:
             continue
-        if has_to and val > date_to:
+        if isinstance(date_to, date) and val > date_to:
             continue
         filtered.append(item)
     return filtered

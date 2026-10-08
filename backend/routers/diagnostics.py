@@ -31,7 +31,7 @@ def _check_diagnostics_allowed():
     structure. In production, this endpoint is disabled by default to
     prevent information leakage.  Enable via DIAGNOSTICS_ALLOW_IN_PRODUCTION=true.
     """
-    if settings.is_production and not settings.diagnostics_allow_in_production:
+    if not settings.developer_tools_enabled:
         raise HTTPException(
             status_code=403,
             detail="Diagnostics sind in der Produktionsumgebung deaktiviert.",
@@ -380,7 +380,7 @@ def test_entity_counts(store):
 def test_duplicate_contract_numbers(store):
     """Contract numbers should be unique."""
     contracts = _safe_list(store, "list_contracts")
-    seen = {}
+    seen: dict[str, object] = {}
     issues = []
     for c in contracts:
         num = getattr(c, "contract_number", None)

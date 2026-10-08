@@ -9,14 +9,17 @@ import hashlib
 import hmac
 import logging
 import secrets
+import threading
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Any, Callable, Iterator, Optional
 from uuid import uuid4
 
+import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError, jwt
+from jwt import PyJWTError as JWTError
 from sqlalchemy.exc import SQLAlchemyError
 
 from .config import settings
@@ -115,7 +118,7 @@ _MAX_BLACKLIST_SIZE = 10_000
 _MAX_LOGIN_ATTEMPT_KEYS = 10_000
 
 # DB-backed session factory for auth security state (set by enable_sql_auth_state)
-_auth_session_factory = None
+_auth_session_factory: Callable[[], Any] | None = None
 
 # Number of PBKDF2 iterations (OWASP recommended minimum for SHA-256)
 _PBKDF2_ITERATIONS = 600_000
@@ -149,10 +152,17 @@ def check_login_rate_limit(username: str) -> bool:
     return len(recent) >= MAX_LOGIN_ATTEMPTS
 
 
+def _new_auth_session() -> Any:
+    """Open a session for DB-backed auth state; only valid once enabled."""
+    if _auth_session_factory is None:
+        raise RuntimeError("SQL auth state is not enabled")
+    return _auth_session_factory()
+
+
 def _check_login_rate_limit_db(username: str) -> bool:
     """DB-backed rate limit check."""
     from .db.orm_models import LoginAttemptORM
-    session = _auth_session_factory()
+    session = _new_auth_session()
     try:
         cutoff = datetime.now(timezone.utc) - timedelta(minutes=LOCKOUT_DURATION_MINUTES)
         count = session.query(LoginAttemptORM).filter(
@@ -199,7 +209,7 @@ def _evict_oldest_login_attempts() -> None:
 def _record_login_attempt_db(username: str, *, success: bool) -> None:
     """Persist a login attempt to the database."""
     from .db.orm_models import LoginAttemptORM
-    session = _auth_session_factory()
+    session = _new_auth_session()
     try:
         session.add(LoginAttemptORM(username=username, success=success))
         session.commit()
@@ -215,7 +225,7 @@ def clear_login_attempts(username: str) -> None:
     _login_attempts.pop(username, None)
     if _auth_session_factory is not None:
         from .db.orm_models import LoginAttemptORM
-        session = _auth_session_factory()
+        session = _new_auth_session()
         try:
             session.query(LoginAttemptORM).filter(
                 LoginAttemptORM.username == username,
@@ -339,7 +349,7 @@ def revoke_token(token: str) -> None:
 def _revoke_token_db(token: str, expires_at: datetime) -> None:
     """Persist token revocation to the database."""
     from .db.orm_models import RevokedTokenORM
-    session = _auth_session_factory()
+    session = _new_auth_session()
     try:
         jti = _token_jti(token)
         exists = session.query(RevokedTokenORM).filter(
@@ -368,7 +378,7 @@ def is_token_revoked(token: str) -> bool:
 def _is_token_revoked_db(token: str) -> bool:
     """Check DB for revoked token."""
     from .db.orm_models import RevokedTokenORM
-    session = _auth_session_factory()
+    session = _new_auth_session()
     try:
         jti = _token_jti(token)
         found = session.query(RevokedTokenORM).filter(
@@ -408,7 +418,7 @@ def _cleanup_blacklist() -> None:
 def _cleanup_blacklist_db() -> None:
     """Remove expired revoked tokens from the database."""
     from .db.orm_models import RevokedTokenORM
-    session = _auth_session_factory()
+    session = _new_auth_session()
     try:
         session.query(RevokedTokenORM).filter(
             RevokedTokenORM.expires_at < datetime.now(timezone.utc)
@@ -445,6 +455,18 @@ def decode_token(token: str) -> TokenPayload:
 # ---------------------------------------------------------------------------
 
 
+ACCESS_FIELDS = ("portfolio_access", "portfolio_ids", "portfolio_access_origin")
+
+
+def normalize_access(role: str, mode: str | None, ids) -> dict:
+    """Portfolio access as stored: owners always see everything; "all" carries no list."""
+    if role == "eigentuemer" or mode == "all":
+        return {"portfolio_access": "all", "portfolio_ids": []}
+    if mode != "selected":
+        raise ValueError(f"unknown portfolio access {mode!r}")
+    return {"portfolio_access": "selected", "portfolio_ids": sorted(set(ids or ()))}
+
+
 class UserStore(ABC):
     """Abstract interface for user persistence."""
 
@@ -465,6 +487,10 @@ class UserStore(ABC):
         ...
 
     @abstractmethod
+    def set_password_hash(self, user_id: str, hashed_password: str) -> Optional[dict]:
+        ...
+
+    @abstractmethod
     def delete(self, user_id: str) -> Optional[dict]:
         ...
 
@@ -478,11 +504,16 @@ class UserStore(ABC):
 
 
 class InMemoryUserStore(UserStore):
-    """In-memory user storage for tests and development."""
+    """In-memory user storage for tests and development.
+
+    Changes take `lock`; locked_account() holds it so that an account cannot be
+    deactivated or lose its role while a guarded change is still being written.
+    """
 
     def __init__(self):
         self._by_id: dict[str, dict] = {}
         self._by_username: dict[str, dict] = {}
+        self.lock = threading.RLock()
 
     def get_by_id(self, user_id: str) -> Optional[dict]:
         return self._by_id.get(user_id)
@@ -491,31 +522,44 @@ class InMemoryUserStore(UserStore):
         return self._by_username.get(username)
 
     def create(self, user_data: dict) -> None:
-        self._by_id[user_data["id"]] = user_data
-        self._by_username[user_data["username"]] = user_data
+        with self.lock:
+            self._by_id[user_data["id"]] = user_data
+            self._by_username[user_data["username"]] = user_data
 
     def update(self, user_id: str, updates: dict) -> Optional[dict]:
-        user = self._by_id.get(user_id)
-        if user is None:
-            return None
-        for key, value in updates.items():
-            if value is not None and key not in ("id", "hashed_password", "created_at"):
-                user[key] = value
-        user["updated_at"] = datetime.now(timezone.utc)
-        return user
+        with self.lock:
+            user = self._by_id.get(user_id)
+            if user is None:
+                return None
+            for key, value in updates.items():
+                if value is not None and key not in ("id", "hashed_password", "created_at"):
+                    user[key] = list(value) if key == "portfolio_ids" else value
+            user["updated_at"] = datetime.now(timezone.utc)
+            return user
+
+    def set_password_hash(self, user_id: str, hashed_password: str) -> Optional[dict]:
+        with self.lock:
+            user = self._by_id.get(user_id)
+            if user is None:
+                return None
+            user["hashed_password"] = hashed_password
+            user["updated_at"] = datetime.now(timezone.utc)
+            return user
 
     def delete(self, user_id: str) -> Optional[dict]:
-        user = self._by_id.pop(user_id, None)
-        if user:
-            self._by_username.pop(user["username"], None)
-        return user
+        with self.lock:
+            user = self._by_id.pop(user_id, None)
+            if user:
+                self._by_username.pop(user["username"], None)
+            return user
 
     def list_all(self) -> list[dict]:
         return list(self._by_id.values())
 
     def clear(self) -> None:
-        self._by_id.clear()
-        self._by_username.clear()
+        with self.lock:
+            self._by_id.clear()
+            self._by_username.clear()
 
 
 class SQLUserStore(UserStore):
@@ -541,7 +585,63 @@ class SQLUserStore(UserStore):
 
         session.close()
 
-    def _to_dict(self, orm_obj) -> dict:
+    def _to_dict(self, orm_obj, session=None, access=None) -> dict:
+        data = self._account(orm_obj)
+        if access is None:
+            access = self._access(session or self._session_of(orm_obj), [orm_obj.id])
+        data.update(self._access_of(orm_obj, access))
+        return data
+
+    @staticmethod
+    def _session_of(orm_obj):
+        from sqlalchemy.orm import object_session
+
+        return object_session(orm_obj)
+
+    @staticmethod
+    def _access(session, user_ids) -> dict:
+        """{user_id: (mode, origin, [portfolio ids])} for the given accounts, in two queries."""
+        from sqlalchemy import select
+
+        from .db.access_models import UserAccessORM, UserPortfolioORM
+        rows: dict[str, tuple[str, str, list[str]]] = {row.user_id: (row.mode, row.origin, []) for row in
+                session.scalars(select(UserAccessORM).where(UserAccessORM.user_id.in_(user_ids)))}
+        for user_id, portfolio_id in session.execute(
+                select(UserPortfolioORM.user_id, UserPortfolioORM.portfolio_id)
+                .where(UserPortfolioORM.user_id.in_(user_ids))):
+            if user_id in rows:
+                rows[user_id][2].append(portfolio_id)
+        return rows
+
+    @staticmethod
+    def _access_of(orm_obj, access: dict) -> dict:
+        row = access.get(orm_obj.id)
+        if orm_obj.role == "eigentuemer":
+            return {"portfolio_access": "all", "portfolio_ids": [],
+                    "portfolio_access_origin": row[1] if row else "owner"}
+        if row is None:          # fail closed: no row is no assignment yet
+            return {"portfolio_access": "selected", "portfolio_ids": [], "portfolio_access_origin": "unassigned"}
+        mode, origin, ids = row
+        return {"portfolio_access": mode, "portfolio_ids": sorted(ids) if mode == "selected" else [],
+                "portfolio_access_origin": origin}
+
+    @staticmethod
+    def _write_access(session, user_id: str, values: dict) -> None:
+        from sqlalchemy import delete
+
+        from .db.access_models import UserAccessORM, UserPortfolioORM
+        row = session.get(UserAccessORM, user_id)
+        if row is None:
+            row = UserAccessORM(user_id=user_id)
+            session.add(row)
+        row.mode = values["portfolio_access"]
+        row.origin = values.get("portfolio_access_origin") or "owner_assignment"
+        row.updated_at = datetime.now(timezone.utc)
+        session.execute(delete(UserPortfolioORM).where(UserPortfolioORM.user_id == user_id))
+        session.add_all(UserPortfolioORM(user_id=user_id, portfolio_id=pid) for pid in values["portfolio_ids"])
+
+    @staticmethod
+    def _account(orm_obj) -> dict:
         return {
             "id": orm_obj.id,
             "username": orm_obj.username,
@@ -578,8 +678,11 @@ class SQLUserStore(UserStore):
         from .db.orm_models import UserORM
         session = self._session_factory()
         try:
-            obj = UserORM(**user_data)
+            obj = UserORM(**{k: v for k, v in user_data.items() if k not in ACCESS_FIELDS})
             session.add(obj)
+            session.flush()
+            if "portfolio_access" in user_data:
+                self._write_access(session, obj.id, user_data)
             session.commit()
         except Exception:
             session.rollback()
@@ -595,8 +698,28 @@ class SQLUserStore(UserStore):
             if obj is None:
                 return None
             for key, value in updates.items():
-                if value is not None and key not in ("id", "hashed_password", "created_at"):
+                if value is not None and key not in ("id", "hashed_password", "created_at", *ACCESS_FIELDS):
                     setattr(obj, key, value)
+            if "portfolio_access" in updates:
+                self._write_access(session, user_id, updates)
+            obj.updated_at = datetime.now(timezone.utc)
+            session.commit()
+            session.refresh(obj)
+            return self._to_dict(obj)
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            self._finalize_session(session)
+
+    def set_password_hash(self, user_id: str, hashed_password: str) -> Optional[dict]:
+        from .db.orm_models import UserORM
+        session = self._session_factory()
+        try:
+            obj = session.get(UserORM, user_id)
+            if obj is None:
+                return None
+            obj.hashed_password = hashed_password
             obj.updated_at = datetime.now(timezone.utc)
             session.commit()
             session.refresh(obj)
@@ -628,7 +751,9 @@ class SQLUserStore(UserStore):
         from .db.orm_models import UserORM
         session = self._session_factory()
         try:
-            return [self._to_dict(obj) for obj in session.query(UserORM).all()]
+            users = session.query(UserORM).all()
+            access = self._access(session, [obj.id for obj in users])
+            return [self._to_dict(obj, access=access) for obj in users]
         finally:
             self._finalize_session(session)
 
@@ -669,8 +794,13 @@ def _to_user_read(user_data: dict) -> UserRead:
 # ---------------------------------------------------------------------------
 
 
-def register_user(username: str, email: str, full_name: str, password: str, role: str = "readonly") -> UserRead:
-    """Register a new user with password policy enforcement (T21)."""
+def register_user(username: str, email: str, full_name: str, password: str, role: str = "readonly", *,
+                  portfolio_access: str = "all", portfolio_ids=None) -> UserRead:
+    """Register a new user with password policy enforcement (T21).
+
+    Called from code (setup, test data) the account sees everything; the account
+    administration passes the owner's explicit portfolio assignment.
+    """
     if _user_store.get_by_username(username) is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Benutzername existiert bereits")
     # T21: Validate password strength
@@ -694,6 +824,8 @@ def register_user(username: str, email: str, full_name: str, password: str, role
         "totp_enabled": False,
         "created_at": now,
         "updated_at": now,
+        **normalize_access(role, portfolio_access, portfolio_ids),
+        "portfolio_access_origin": "owner_assignment",
     }
     _user_store.create(user_data)
     return _to_user_read(user_data)
@@ -707,7 +839,7 @@ def authenticate_user(username: str, password: str) -> Optional[dict]:
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=f"Zu viele Anmeldeversuche. Bitte warten Sie {LOCKOUT_DURATION_MINUTES} Minuten.",
         )
-    user = _user_store.get_by_username(username)
+    user = _find_login(username)
     if user is None:
         record_failed_login(username)
         return None
@@ -722,9 +854,56 @@ def authenticate_user(username: str, password: str) -> Optional[dict]:
     return user
 
 
+def _find_login(name: str) -> Optional[dict]:
+    """The user signing in: by username, or by e-mail address (any case)."""
+    user = _user_store.get_by_username(name)
+    if user is None and "@" in name:
+        wanted = name.strip().lower()
+        matches = [u for u in _user_store.list_all() if (u.get("email") or "").strip().lower() == wanted]
+        user = matches[0] if len(matches) == 1 else None      # an address used twice signs in no one
+    return user
+
+
+def get_user_by_username(username: str) -> Optional[dict]:
+    return _user_store.get_by_username(username)
+
+
 def get_user_by_id(user_id: str) -> Optional[dict]:
     """Get a user by ID."""
     return _user_store.get_by_id(user_id)
+
+
+@contextmanager
+def locked_account(user_id: str, db=None) -> Iterator[Optional[dict]]:
+    """The account as it stands, kept so until the caller's change is written.
+
+    With SQL accounts the row is read with a share lock in the caller's session
+    `db` (on the same database): deactivating the account or changing its role
+    waits until that transaction ends. SQLite has no row locks, so the caller
+    must already hold the write lock (BEGIN IMMEDIATE). In-memory accounts are
+    held with the store's lock for the duration of the block.
+    """
+    store = _user_store
+    if isinstance(store, SQLUserStore):
+        if db is None:
+            raise RuntimeError("SQL accounts need the caller's database session")
+        from sqlalchemy import select
+
+        from .db.orm_models import UserORM
+        row = db.scalar(select(UserORM).where(UserORM.id == user_id).with_for_update(read=True))
+        yield store._to_dict(row, db) if row is not None else None
+        return
+    lock = getattr(store, "lock", None)
+    if lock is None:
+        raise RuntimeError(f"{type(store).__name__} cannot hold an account")
+    with lock:
+        user = store.get_by_id(user_id)
+        yield dict(user) if user is not None else None
+
+
+def has_users() -> bool:
+    """True once at least one account exists."""
+    return bool(_user_store.list_all())
 
 
 def list_users() -> list[UserRead]:
@@ -737,6 +916,21 @@ def update_user(user_id: str, updates: dict) -> UserRead:
     user = _user_store.update(user_id, updates)
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Benutzer nicht gefunden")
+    return _to_user_read(user)
+
+
+def set_user_password(user_id: str, password: str) -> UserRead:
+    """Set a new password for an existing account (admin reset)."""
+    pw_errors = validate_password_strength(password)
+    if pw_errors:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Passwort zu schwach: {'; '.join(pw_errors)}",
+        )
+    user = _user_store.set_password_hash(user_id, hash_password(password))
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Benutzer nicht gefunden")
+    clear_login_attempts(user["username"])
     return _to_user_read(user)
 
 
@@ -753,9 +947,10 @@ def clear_users() -> None:
     _login_attempts.clear()
     _token_blacklist.clear()
     _blacklist_expiry.clear()
+    _register_limiter._attempts.clear()
 
 
-async def get_current_user(
+def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
 ) -> Optional[UserRead]:
     """FastAPI dependency: extract and validate the current user from JWT.
@@ -763,6 +958,10 @@ async def get_current_user(
     Returns None if no token is provided (allows unauthenticated access
     to endpoints that don't require auth). Endpoints requiring auth
     should use `require_auth` instead.
+
+    Synchronous on purpose: it reads users and revoked tokens from the
+    database, and FastAPI runs sync dependencies in the threadpool. On the
+    event loop a wait for a free connection would stop the whole server.
     """
     if credentials is None:
         return None
@@ -786,7 +985,7 @@ async def get_current_user(
     return UserRead(**{k: v for k, v in user.items() if k != "hashed_password"})
 
 
-async def require_auth(
+def require_auth(
     user: Optional[UserRead] = Depends(get_current_user),
 ) -> UserRead:
     """FastAPI dependency: require authenticated user."""
@@ -801,7 +1000,7 @@ async def require_auth(
 
 def require_role(*roles: str):
     """FastAPI dependency factory: require user to have one of the given roles."""
-    async def check_role(user: UserRead = Depends(require_auth)) -> UserRead:
+    def check_role(user: UserRead = Depends(require_auth)) -> UserRead:
         if user.role not in roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

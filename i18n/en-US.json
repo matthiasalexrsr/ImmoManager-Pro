@@ -39,7 +39,9 @@
       "allocationKeys": "Allocation Keys",
       "escalationRules": "Escalation Rules",
       "handoverProtocols": "Handover Protocols",
-      "history": "Change Log"
+      "history": "Change Log",
+      "contractWizard": "Lease Wizard",
+      "review": "Review list"
     },
     "sections": {
       "overview": "Overview",
@@ -100,7 +102,8 @@
       "confirm": "Confirm",
       "next": "Next",
       "back": "Back",
-      "done": "Done"
+      "done": "Done",
+      "clear": "Clear search"
     },
     "commonActions": {
       "viewDetails": "View Details",
@@ -121,7 +124,10 @@
       "selectDate": "Select Date",
       "selectTime": "Select Time",
       "enterAmount": "Enter Amount",
-      "search": "Search"
+      "search": "Search",
+      "none": "— None —",
+      "status": "Status",
+      "cancel": "Cancel"
     },
     "table": {
       "adjustColumns": "Adjust Columns",
@@ -133,7 +139,10 @@
       "nextPage": "Next Page",
       "previousPage": "Previous Page",
       "noResults": "No Results",
-      "loading": "Loading..."
+      "loading": "Loading...",
+      "firstPage": "First page",
+      "lastPage": "Last page",
+      "pagination": "Pagination"
     },
     "filterChips": {
       "active": "Active",
@@ -174,7 +183,64 @@
       "expiring": "Expiring",
       "terminated": "Terminated",
       "ended": "Ended",
-      "inReview": "In Review"
+      "inReview": "In Review",
+      "expired": "Expired"
+    },
+    "booking": {
+      "booked": "Booked",
+      "matched": "Matched"
+    },
+    "badge": {
+      "active": "Active",
+      "inactive": "Inactive",
+      "archived": "Archived",
+      "draft": "Draft",
+      "open": "Open",
+      "closed": "Closed",
+      "pending": "Pending",
+      "new": "New",
+      "scheduled": "Scheduled",
+      "completed": "Completed",
+      "done": "Done",
+      "in_progress": "In progress",
+      "cancelled": "Cancelled",
+      "paused": "Paused",
+      "vacant": "Vacant",
+      "occupied": "Let",
+      "reserved": "Reserved",
+      "renovation": "Renovation",
+      "terminated": "Terminated",
+      "expired": "Expired",
+      "signed": "Signed",
+      "review": "In review",
+      "finalized": "Finalized",
+      "delivered": "Delivered",
+      "corrected": "Corrected",
+      "disputed": "Disputed",
+      "paid": "Paid",
+      "partial": "Partly paid",
+      "overdue": "Overdue",
+      "held": "Held",
+      "partially_returned": "Partly returned",
+      "returned": "Returned",
+      "unread": "Unread",
+      "read": "Read",
+      "applied": "Applied",
+      "rejected": "Rejected",
+      "accepted": "Accepted",
+      "matched": "Matched",
+      "booked": "Booked",
+      "contacted": "Contacted",
+      "offer_sent": "Offer sent",
+      "viewing_scheduled": "Viewing scheduled",
+      "no_show": "No-show",
+      "warning": "Warning",
+      "info": "Info",
+      "critical": "Critical",
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "urgent": "Urgent"
     }
   },
   "onboarding": {
@@ -201,7 +267,9 @@
       "password": "Password",
       "rememberMe": "Remember Me",
       "forgotPassword": "Forgot Password?",
-      "submit": "Log In"
+      "submit": "Log In",
+      "userOrEmail": "Username or email",
+      "username": "Username"
     },
     "forgotPassword": {
       "title": "Reset Password",
@@ -216,7 +284,8 @@
       "email": "Email Address",
       "password": "Password",
       "confirmPassword": "Confirm Password",
-      "submit": "Create Account"
+      "submit": "Create Account",
+      "initialSetup": "Initial setup: this account will be created as the owner account."
     },
     "twoFactor": {
       "title": "Two-Factor Authentication",
@@ -290,6 +359,40 @@
       "create": "Create Portfolio",
       "edit": "Edit Portfolio",
       "archive": "Archive Portfolio"
+    },
+    "properties": {
+      "form": {
+        "address": "Street",
+        "city": "City",
+        "country": "Country",
+        "livingArea": "Living area (m²)",
+        "marketValue": "Market value (€)",
+        "name": "Property",
+        "ownershipShare": "Ownership share (%)",
+        "plotArea": "Plot area (m²)",
+        "postalCode": "Postal code",
+        "purchaseDate": "Purchase date",
+        "purchasePrice": "Purchase price (€)",
+        "type": "Type",
+        "usableArea": "Usable area (m²)",
+        "valuationDate": "Valuation date",
+        "yearBuilt": "Year built"
+      },
+      "sections": {
+        "address": "Address",
+        "areas": "Areas",
+        "basic": "Master data",
+        "valuation": "Purchase & valuation"
+      },
+      "status": {
+        "inactive": "Inactive"
+      },
+      "title": "Properties",
+      "types": {
+        "commercial": "Commercial",
+        "mixed": "Mixed use",
+        "residential": "Residential"
+      }
     }
   },
   "properties": {
@@ -370,7 +473,13 @@
       "serviceCharge": "Service Charge Advance",
       "warmRent": "Gross Rent",
       "status": "Status",
-      "tenant": "Tenant"
+      "tenant": "Tenant",
+      "columns": {
+        "area": "Area (m²)",
+        "coldRent": "Net rent (€)",
+        "label": "Unit",
+        "type": "Type"
+      }
     },
     "types": {
       "apartment": "Apartment",
@@ -380,7 +489,8 @@
       "parking": "Parking Space",
       "garage": "Garage",
       "basement": "Basement",
-      "other": "Other"
+      "other": "Other",
+      "commercial": "Commercial"
     },
     "form": {
       "property": "Property",
@@ -403,7 +513,15 @@
         "vacant": "Vacant",
         "reserved": "Reserved",
         "renovation": "Under Renovation"
-      }
+      },
+      "heatingAdvance": "Heating advance (€)",
+      "personCount": "Persons",
+      "serviceChargeAdvance": "Service charge advance (€)"
+    },
+    "status": {
+      "occupied": "Let",
+      "reserved": "Reserved",
+      "vacant": "Vacant"
     }
   },
   "tenantsContracts": {
@@ -431,7 +549,42 @@
       "deposit": "Deposit",
       "indexRent": "Index/Graduated Rent",
       "serviceChargeSettlement": "Service Charge Settlement",
-      "status": "Status"
+      "status": "Status",
+      "form": {
+        "persons": "Persons in household",
+        "personsHint": "for person-based allocation",
+        "contractNumber": "Contract no.",
+        "deposit": "Deposit (€)",
+        "endDate": "End",
+        "indexRent": "Rent adjustment",
+        "noticePeriod": "Notice period",
+        "serviceChargeSettlement": "Service charge settlement",
+        "startDate": "Start"
+      },
+      "indexRentTypes": {
+        "fixed": "Fixed rent",
+        "index": "Index-linked rent",
+        "stepped": "Stepped rent"
+      },
+      "settlement": {
+        "annual": "Annual",
+        "monthly": "Monthly"
+      },
+      "occupants": {
+        "action": "Occupants",
+        "title": "Occupants over time",
+        "close": "Close",
+        "intro": "From the start of the contract ({{start}}) {{persons}} persons apply as in the contract. Each change applies from its date; the person key is shared by person-days.",
+        "unknown": "not set",
+        "loading": "Loading occupants…",
+        "validFrom": "Valid from",
+        "persons": "Persons",
+        "notes": "Reason",
+        "actions": "Actions",
+        "empty": "No change recorded",
+        "remove": "Remove",
+        "add": "Add change"
+      }
     },
     "contractActions": {
       "activate": "Activate Contract",
@@ -466,7 +619,21 @@
       "type": "Account Type",
       "openingBalance": "Opening Balance",
       "balance": "Balance",
-      "lastSync": "Last Sync"
+      "lastSync": "Last Sync",
+      "form": {
+        "accountType": "Account type",
+        "balance": "Balance (€)",
+        "bank": "Bank",
+        "name": "Account name",
+        "openingBalance": "Opening balance (€)",
+        "type": "Type"
+      },
+      "types": {
+        "checking": "Checking account",
+        "deposit": "Deposit account",
+        "rent": "Rent account",
+        "savings": "Savings account"
+      }
     },
     "accountTypes": {
       "bank": "Bank Account",
@@ -484,7 +651,15 @@
       "tenant": "Tenant",
       "paymentText": "Payment Reference",
       "receipt": "Receipt",
-      "status": "Status"
+      "status": "Status",
+      "form": {
+        "amount": "Amount (€)",
+        "bookingDate": "Booking date",
+        "category": "Category",
+        "date": "Date",
+        "paymentText": "Booking text",
+        "receiptUrl": "Receipt URL"
+      }
     },
     "categories": {
       "rentIncome": "Rent Income",
@@ -748,6 +923,54 @@
       "dbDetails": "DB Details",
       "createBackup": "Create Backup"
     },
+    "operations": {
+      "title": "Operations: full backup & restore probe",
+      "intro": "Full backup = database, attachments, configuration and keys in one verified archive. The restore probe restores the newest archive in isolation, checks it and deletes the copy again.",
+      "lastBackup": "Last full backup",
+      "lastProbe": "Last restore probe",
+      "never": "never",
+      "ok": "succeeded",
+      "failed": "failed",
+      "schedule": "Schedule",
+      "scheduleValue": "Daily at {{time}}, probe monthly on day {{day}} at {{probeTime}} ({{tz}})",
+      "scheduleOff": "Automatic backup switched off (BACKUP_SCHEDULE_ENABLED)",
+      "retention": "Retention",
+      "retentionValue": "{{daily}} daily, {{monthly}} monthly, {{preUpgrade}} before upgrades",
+      "archives": "Archives",
+      "archivesValue": "{{count}} archives, {{size}} in total",
+      "secondTarget": "Second target",
+      "notConfigured": "not configured",
+      "keys": "Keys",
+      "keysValue": "Active key {{key}} · {{sealed}} encrypted · {{plaintext}} unencrypted",
+      "passphraseOn": "Keys in the archive protected by a passphrase",
+      "passphraseOff": "Keys in the archive without passphrase – protect archives like the key itself",
+      "warningsTitle": "Notices",
+      "failures": "Failures",
+      "actions": "Actions",
+      "runBackup": "Full backup now",
+      "runProbe": "Start restore probe",
+      "refresh": "Refresh",
+      "running": "Running …",
+      "backupDone": "Full backup created and verified: {{name}}",
+      "probeDone": "Restore probe passed: {{name}}",
+      "loadError": "Operations overview could not be loaded",
+      "warnings": {
+        "schedule_disabled": "The daily backup is switched off.",
+        "no_second_target": "No second backup target (e.g. network share) configured.",
+        "second_target_failed": "The copy to the second target failed.",
+        "no_backup": "There is no successful full backup yet.",
+        "backup_stale": "The last successful full backup is {{hours}} hours old.",
+        "last_backup_failed": "The last full backup failed.",
+        "no_probe": "There is no passed restore probe yet.",
+        "probe_stale": "The last passed restore probe is {{days}} days old.",
+        "last_probe_failed": "The last restore probe failed.",
+        "keys_unprotected": "The keys are stored in the archive without a passphrase (set BACKUP_PASSPHRASE).",
+        "keys_not_in_backup": "These keys are not in the full backup: {{ids}} – keep them safe separately.",
+        "plaintext_secrets": "{{count}} integration secret(s) still stored unencrypted.",
+        "secrets_error": "Integration secrets cannot be read (key missing?); changes are locked.",
+        "schema_not_current": "The database is not at the current schema version."
+      }
+    },
     "about": {
       "title": "About ImmoManager Pro",
       "type": "Type",
@@ -784,7 +1007,9 @@
       "placeholder": "Search for properties, units, tenants, contracts, bookings...",
       "recent": "Recent Searches",
       "results": "Results",
-      "noResults": "No results found."
+      "noResults": "No results found.",
+      "shownOf": "{{shown}} of {{total}}",
+      "loadMore": "Load more"
     }
   },
   "notifications": {
@@ -812,7 +1037,8 @@
       "title": "Are you sure you want to delete?",
       "body": "This action cannot be undone.",
       "delete": "Delete",
-      "cancel": "Cancel"
+      "cancel": "Cancel",
+      "confirm": "Confirm"
     },
     "confirmArchive": {
       "title": "Archive?",
@@ -1147,7 +1373,16 @@
       "actionCreated": "Created",
       "actionUpdated": "Updated",
       "actionPatched": "Modified",
-      "actionDeleted": "Deleted"
+      "actionDeleted": "Deleted",
+      "analysisTab": "Analysis",
+      "auditChanged": "Changed",
+      "auditCreated": "Created",
+      "auditDeleted": "Deleted",
+      "auditLoadError": "Could not load the audit log",
+      "auditUpdated": "Updated",
+      "noActivity": "No activity",
+      "workTab": "Work",
+      "cashflow12": "Cash flow (last 12 months)"
     },
     "settings": {
       "title": "Settings",
@@ -1192,7 +1427,71 @@
       "ocrLanguages": "OCR Languages",
       "ocrLangs": "German + English",
       "fileStorage": "File Storage",
-      "fileStorageLocal": "Local (uploads/)"
+      "fileStorageLocal": "Local (uploads/)",
+      "users": {
+        "tab": "Users",
+        "title": "User management",
+        "add": "Add user",
+        "edit": "Edit user",
+        "resetPassword": "Reset password",
+        "newPassword": "New password",
+        "username": "Username",
+        "email": "Email",
+        "fullName": "Name",
+        "password": "Password",
+        "role": "Role",
+        "status": "Status",
+        "actions": "Actions",
+        "active": "Active",
+        "inactive": "Deactivated",
+        "activate": "Activate",
+        "deactivate": "Deactivate",
+        "delete": "Delete",
+        "you": "(you)",
+        "empty": "No users yet",
+        "loadError": "Could not load users",
+        "saved": "User saved",
+        "passwordSaved": "Password changed",
+        "deleted": "User deleted",
+        "confirmDelete": "Permanently delete user \"{{name}}\"?",
+        "confirmDeactivate": "Deactivate user \"{{name}}\"? Sign-in is blocked immediately.",
+        "passwordHint": "At least 8 characters with upper- and lowercase letters and a digit.",
+        "managerHint": "As a manager you can only administer read-only users. Roles are assigned by the owner.",
+        "roles": {
+          "eigentuemer": "Owner",
+          "verwalter": "Manager",
+          "buchhaltung": "Accounting",
+          "techniker": "Technician",
+          "readonly": "Read only"
+        },
+        "access": {
+          "column": "Portfolios",
+          "button": "Portfolios",
+          "title": "Portfolios for {{name}}",
+          "explanation": "Decides which properties, units, contracts, bookings and documents this account sees and can work on. The role still decides what it may change.",
+          "scope": "Access",
+          "all": "All portfolios",
+          "allHint": "Including future portfolios and administration of the whole installation.",
+          "selected": "Selected portfolios",
+          "selectedHint": "Only data of these portfolios; installation administration, logs and full exports stay locked.",
+          "portfolios": "Portfolios",
+          "noPortfolios": "There are no portfolios yet.",
+          "nothingWarning": "Without a selected portfolio the account sees no data.",
+          "saved": "Portfolio access saved",
+          "summaryAll": "All",
+          "summaryNone": "None – sees nothing",
+          "summaryCount": "{{count}} selected",
+          "managerHint": "New accounts see data only once the owner assigns portfolios to them."
+        }
+      },
+      "skippedExisting": "already present, skipped",
+      "nothingNew": "No new records – everything was already present.",
+      "tabDev": "Development",
+      "tabPersonal": "Personal",
+      "tabSystem": "System",
+      "tabWorkflow": "Workflow",
+      "versionError": "Could not load the version information",
+      "chooseImportFile": "Choose JSON file …"
     },
     "messages": {
       "title": "Messages",
@@ -1201,7 +1500,18 @@
       "noMessages": "No messages",
       "type": "Type",
       "noContent": "No content",
-      "selectMessage": "Select a message to view details"
+      "selectMessage": "Select a message to view details",
+      "conversations": "Conversations",
+      "messagesCount": "Messages",
+      "newConversation": "New conversation",
+      "noConversations": "No conversations",
+      "noThreadMessages": "No messages in this thread yet",
+      "notifications": "Notifications",
+      "participants": "Participants",
+      "selectOrCreateConversation": "Select a conversation or start a new one",
+      "send": "Send",
+      "subject": "Subject",
+      "writePlaceholder": "Write a message..."
     },
     "statements": {
       "revisionReason": "Reason for correction (optional):",
@@ -1295,7 +1605,40 @@
       "receivablesFailed": "Could not create receivables",
       "exportFailed": "Export failed",
       "disputeFailed": "Could not file dispute",
-      "preflightBlockers": "Preflight blockers present"
+      "preflightBlockers": "Preflight blockers present",
+      "colParty": "Tenant",
+      "vacancyParty": "Vacancy (owner)",
+      "colUsage": "Usage period",
+      "colDays": "Days",
+      "colRecoverable": "Recoverable",
+      "notRecoverable": "no (borne by the owner)",
+      "recoverable": "yes",
+      "formRecoverable": "Recoverable",
+      "recoverableYes": "Yes – shared among the tenants",
+      "recoverableNo": "No – borne by the owner",
+      "tenantShare": "Charged to tenants",
+      "vacancyShare": "Vacancy (owner)",
+      "nonRecoverableShare": "Not recoverable",
+      "statementsTitle": "Statements per usage period",
+      "stepCreate": "Create",
+      "stepCosts": "Costs",
+      "stepPreflight": "Check",
+      "stepGenerate": "Generate",
+      "stepFinalize": "Finalize",
+      "stepDeliver": "Deliver",
+      "objections": "Objections",
+      "objectionReceived": "Received",
+      "objectionStatement": "Statement",
+      "objectionReason": "Reason",
+      "objectionStatus": "Status",
+      "objectionWholePeriod": "whole statement",
+      "objectionStatusValues": {
+        "open": "open",
+        "correction": "being corrected",
+        "resolved": "resolved by correction"
+      },
+      "correctsVersion": "Correction rev. {{revision}} of “{{label}}” – the corrected version is kept unchanged",
+      "finalVersionNote": "Finalized version: statements, PDFs and totals stay unchanged; changes only via “Start Correction”"
     },
     "invoices": {
       "markPaidConfirm": "mark as paid?"
@@ -1308,7 +1651,9 @@
       "paid": "Paid",
       "open": "Open",
       "overdue": "Overdue",
-      "title": "Rent Overview"
+      "title": "Rent Overview",
+      "charges": "Rent charges",
+      "receivables": "Receivables"
     },
     "meters": {
       "title": "Meters",
@@ -1326,7 +1671,11 @@
       "electricity": "Electricity",
       "gas": "Gas",
       "water": "Water",
-      "heating": "Heating"
+      "heating": "Heating",
+      "measureUnitHint": "Unit of the readings; empty: m³ for water, kWh for electricity. Always set it for heating and gas",
+      "installationDateHint": "On a meter replacement: day of the new meter's initial reading",
+      "removalDate": "Removal date (meter replacement)",
+      "removalDateHint": "Day of the final reading; consumption counts up to here, then the new meter"
     },
     "propertyOverview": {
       "notFound": "Property not found",
@@ -1623,7 +1972,8 @@
         "contactPerson": "Contact Person",
         "phone": "Phone",
         "notes": "Notes",
-        "status": "Status"
+        "status": "Status",
+        "contactPhone": "Phone"
       },
       "types": {
         "building": "Building Insurance",
@@ -1643,6 +1993,34 @@
         "expired": "Expired",
         "cancelled": "Cancelled"
       }
+    },
+    "propertyDetail": {
+      "allUnits": "All {{count}} units",
+      "annualRent": "Annual rent (net)",
+      "avgPerSqm": "Average €/m²",
+      "docTitle": "Title",
+      "dueDate": "Due",
+      "financeOverview": "Financial overview",
+      "heating": "Heating",
+      "maintenanceTitle": "Maintenance & repairs",
+      "monthlyColdRent": "Monthly net rent",
+      "noAddress": "No address",
+      "noDocuments": "No documents",
+      "noUnits": "No units",
+      "other": "Other",
+      "priority": "Priority",
+      "propertyDetails": "Property details",
+      "recentDocuments": "Recent documents",
+      "rentByUnit": "Rent by unit",
+      "serviceCharge": "Service charges",
+      "total": "Total",
+      "totalArea": "Total area",
+      "totalColdRent": "Total net rent",
+      "unitsOverview": "Units overview"
+    },
+    "allocationKeys": {
+      "measureUnit": "Billing unit (consumption only)",
+      "measureUnitHint": "Meters in another unit are converted only by an exact factor (MWh → kWh, l → m³); gas m³ → kWh and heat cost allocators are not converted"
     }
   },
   "sidebar": {
@@ -1655,6 +2033,7 @@
     "description": "Annotations and improvement notes for developers",
     "enable": "Enable Developer Mode",
     "disable": "Disable Developer Mode",
+    "unavailable": "Disabled in production",
     "shortcut": "Ctrl+Shift+D",
     "addNote": "Add Note",
     "notes": "Notes",
@@ -1696,5 +2075,8 @@
     "fileNotFound": "File not found",
     "fileTypeNotAllowed": "File type not allowed",
     "uploadFailed": "Upload failed"
+  },
+  "contractWizard": {
+    "description": "Create a legally sound lease agreement step by step."
   }
 }

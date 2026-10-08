@@ -39,6 +39,8 @@ const ENTITY_ROUTES = {
   rent_adjustment: '/rent-adjustments',
 };
 
+const LOAD_MORE_LIMIT = 25;
+
 const ENTITY_LABELS = {
   property: 'Immobilien',
   unit: 'Einheiten',
@@ -77,6 +79,8 @@ export default function SearchBar() {
   const { t } = useTranslation();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
+  const [groups, setGroups] = useState({});
+  const [loadingMore, setLoadingMore] = useState(null);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -105,8 +109,12 @@ export default function SearchBar() {
     const timer = setTimeout(() => {
       setLoading(true);
       api.get(`/search?q=${encodeURIComponent(query)}`)
-        .then(data => { setResults(data.results || []); setActiveIndex(-1); })
-        .catch(() => setResults([]))
+        .then(data => {
+          setResults(data.results || []);
+          setGroups(Object.fromEntries((data.groups || []).map(g => [g.entity_type, g])));
+          setActiveIndex(-1);
+        })
+        .catch(() => { setResults([]); setGroups({}); })
         .finally(() => setLoading(false));
     }, 300);
     return () => clearTimeout(timer);
@@ -114,6 +122,23 @@ export default function SearchBar() {
 
   // Clear results when query is too short
   const currentResults = query.length < 2 ? [] : results;
+
+  // Next keyset page of one type, appended to its group
+  const loadMore = useCallback((type) => {
+    const cursor = groups[type]?.next_cursor;
+    if (!cursor) return;
+    setLoadingMore(type);
+    api.get(`/search?q=${encodeURIComponent(query)}&type=${encodeURIComponent(type)}&limit=${LOAD_MORE_LIMIT}&cursor=${encodeURIComponent(cursor)}`)
+      .then(data => {
+        setResults(prev => {
+          const seen = new Set(prev.map(r => `${r.entity_type}:${r.id}`));
+          return [...prev, ...(data.results || []).filter(r => !seen.has(`${r.entity_type}:${r.id}`))];
+        });
+        setGroups(prev => ({ ...prev, [type]: { ...prev[type], ...(data.groups?.[0] || {}) } }));
+      })
+      .catch(() => {})
+      .finally(() => setLoadingMore(null));
+  }, [groups, query]);
 
   const handleSelect = useCallback((result) => {
     setOpen(false);
@@ -208,7 +233,12 @@ export default function SearchBar() {
             let globalIndex = 0;
             return Object.entries(grouped).map(([type, items]) => (
               <div key={type}>
-                <div className="search-bar-group-header">{ENTITY_LABELS[type] || type}</div>
+                <div className="search-bar-group-header">
+                  {ENTITY_LABELS[type] || type}
+                  {groups[type]?.total > items.length && (
+                    <span className="search-bar-group-count"> · {t('search.global.shownOf', { shown: items.length, total: groups[type].total })}</span>
+                  )}
+                </div>
                 {items.map(r => {
                   const idx = globalIndex++;
                   const EntityIcon = ENTITY_ICON_MAP[r.entity_type];
@@ -233,6 +263,16 @@ export default function SearchBar() {
                     </div>
                   );
                 })}
+                {groups[type]?.next_cursor && (
+                  <button
+                    type="button"
+                    className="search-bar-load-more"
+                    onClick={(e) => { e.stopPropagation(); loadMore(type); }}
+                    disabled={loadingMore === type}
+                  >
+                    {loadingMore === type ? t('ui.table.loading') : t('search.global.loadMore')}
+                  </button>
+                )}
               </div>
             ));
           })()}

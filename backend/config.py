@@ -7,7 +7,7 @@ import enum
 import importlib.metadata
 import json
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -117,8 +117,40 @@ class Settings(BaseSettings):
     # --- Plugins ---
     plugin_dirs: Annotated[list[str], NoDecode] = []
 
+    # --- Scheduled jobs ---
+    # Every process ticks; durable runs and leases keep one worker per job.
+    job_scheduler_enabled: bool = True
+    job_scheduler_interval_seconds: float = 60.0
+    # "latest": only the newest missed occurrence of a series becomes a task; "all": every one
+    recurring_catch_up: Literal["latest", "all"] = "latest"
+
     # --- Auto-migration ---
+    # Ignored since the explicit upgrade (python -m backend.upgrade); kept so old .env files load.
     auto_migrate: bool = False
+
+    # --- Secrets at rest ---
+    # Key file for integration secrets (default: <DATA_DIR>/secrets/keyring.json, created on first use).
+    secret_key_file: str = ""
+    # Alternative: comma-separated base64url 32-byte keys, the first one active (never written to disk).
+    secret_keys: str = ""
+
+    # --- Full backups and restore probes ---
+    # Daily full backup and monthly restore probe as durable jobs (Europe/Berlin).
+    backup_schedule_enabled: bool = True
+    backup_daily_at: str = "01:30"
+    restore_probe_day: int = 1
+    restore_probe_at: str = "03:30"
+    backup_keep_daily: int = 14
+    backup_keep_monthly: int = 6
+    backup_keep_pre_upgrade: int = 3
+    # Second target (e.g. a network share); every copy is verified by SHA-256.
+    backup_second_target: str = ""
+    # Optional: protects the key file and .env inside the archive (scrypt + AES-256-GCM).
+    backup_passphrase: str = ""
+    # PostgreSQL: directory of pg_dump/pg_restore when not on PATH, and an optional admin URL of a
+    # disposable server for full restore probes (a database is created and dropped there).
+    pg_bin_dir: str = ""
+    restore_probe_postgres_url: str = ""
 
     # --- Persistence toggles ---
     # SQLite uses SQLAlchemyStore by default for real data persistence.
@@ -133,6 +165,17 @@ class Settings(BaseSettings):
     # When True, seeds demo data on startup if the database is empty.
     # Defaults to False; must be explicitly enabled (e.g. for demo images).
     auto_seed_demo_data: bool = False
+
+    # --- Test version ---
+    # Package sent to testers: realistic data set (15 properties) and master logins on
+    # the first start (backend.testversion); the UI shows a "Testversion" badge.
+    immo_testversion: bool = False
+
+    # --- Accounts ---
+    # The very first account is always created as owner (initial setup).
+    # Afterwards, public self-registration stays closed unless enabled here;
+    # self-registered accounts are always read-only.
+    allow_self_registration: bool = False
 
     # --- File upload limits ---
     max_upload_size_bytes: int = 50 * 1024 * 1024  # 50 MB
@@ -176,5 +219,13 @@ class Settings(BaseSettings):
     def is_production(self) -> bool:
         return self.environment == Environment.production
 
+    @property
+    def developer_tools_enabled(self) -> bool:
+        """Diagnostics, autotest and dev notes: on outside production,
+        in production only with DIAGNOSTICS_ALLOW_IN_PRODUCTION=true."""
+        return not self.is_production or self.diagnostics_allow_in_production
+
+
+MIN_JWT_SECRET_LENGTH = 32
 
 settings = Settings()

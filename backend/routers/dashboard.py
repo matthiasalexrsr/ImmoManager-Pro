@@ -8,7 +8,11 @@ from datetime import date, timedelta
 
 from fastapi import APIRouter
 
+from ..concurrency import one_at_a_time
 from ..dependencies import store
+from ..domain.money import money
+from ..domain.occupancy import billable_contracts, unit_statuses_on
+from ..domain.receivables import is_overdue_debt, is_unpaid_debt
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
@@ -92,20 +96,6 @@ def _count_maintenance_escalation_candidates(
     return len(candidate_ids)
 
 
-def _contract_overlaps_period(contract, period) -> bool:
-    if _status(contract) != "active":
-        return False
-    if getattr(contract, "property_id", None) != getattr(period, "property_id", None):
-        return False
-    start_date = getattr(contract, "start_date", None)
-    period_start = getattr(period, "start_date", None)
-    period_end = getattr(period, "end_date", None)
-    if not start_date or not period_start or not period_end:
-        return False
-    end_date = getattr(contract, "end_date", None)
-    return start_date <= period_end and (end_date is None or end_date >= period_start)
-
-
 def _billing_preflight_summary(
     billing_periods: list,
     contracts: list,
@@ -130,17 +120,16 @@ def _billing_preflight_summary(
             item for item in cost_items
             if getattr(item, "billing_period_id", None) == getattr(period, "id", None)
         ]
-        contracts_in_period = [
-            contract for contract in contracts
-            if _contract_overlaps_period(contract, period)
-        ]
+        contracts_in_period = billable_contracts(
+            contracts, period.property_id, period.start_date, period.end_date
+        )
 
         has_blocker = not contracts_in_period or not period_costs
         for item in period_costs:
             key_id = getattr(item, "allocation_key_id", None)
             if allocation_key_properties.get(key_id) != getattr(period, "property_id", None):
                 has_blocker = True
-            if float(getattr(item, "amount", 0) or 0) <= 0:
+            if money(getattr(item, "amount", None)) <= 0:
                 warnings += 1
 
         if has_blocker:
@@ -154,6 +143,7 @@ def _billing_preflight_summary(
 
 
 @router.get("/stats")
+@one_at_a_time
 def get_dashboard_stats() -> dict:
     """Return aggregated entity counts for the dashboard.
 
@@ -162,6 +152,7 @@ def get_dashboard_stats() -> dict:
     """
     today = date.today()
     contracts = store.list_contracts()
+    unit_statuses = list(unit_statuses_on(today, store.list_units(), contracts).values())
     invoices = store.list_invoices()
     receivables = store.list_receivables()
     documents = store.list_documents()
@@ -188,18 +179,18 @@ def get_dashboard_stats() -> dict:
         "tenant_count": store.count_entities("tenant"),
         "contract_count": _count_items(contracts),
         "account_count": store.count_entities("account"),
-        "vacant_units": store.count_entities("unit", {"status": "vacant"}),
-        "occupied_units": store.count_entities("unit", {"status": "occupied"}),
-        "reserved_units": store.count_entities("unit", {"status": "reserved"}),
+        "vacant_units": unit_statuses.count("vacant"),
+        "occupied_units": unit_statuses.count("occupied"),
+        "reserved_units": unit_statuses.count("reserved"),
         "active_contracts": _count_items(contracts, {"status": "active"}),
         "open_maintenance": store.count_entities("maintenance", {"status": "open"}),
         "invoice_count": _count_items(invoices),
         "open_invoices": _count_items(invoices, {"status": "open"}),
         "paid_invoices": _count_items(invoices, {"status": "paid"}),
         "receivable_count": _count_items(receivables),
-        "open_receivables": _count_items(receivables, {"status": "open"}),
+        "open_receivables": sum(1 for r in receivables if is_unpaid_debt(r)),
         "paid_receivables": _count_items(receivables, {"status": "paid"}),
-        "overdue_receivables": _count_items(receivables, {"status": "overdue"}),
+        "overdue_receivables": sum(1 for r in receivables if is_overdue_debt(r, today)),
         "dunning_receivables": _count_dunning_receivables(receivables),
         "document_count": _count_items(documents),
         "active_contracts_missing_documents": _count_missing_contract_documents(

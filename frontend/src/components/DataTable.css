@@ -1,0 +1,40 @@
+/* Shared table workspace. Scoped to the component, including inside older pages. */
+.data-table-wrapper.data-table-workspace {
+  min-width: 0;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px #182a3004;
+}
+.data-table-workspace .table-header { padding: 18px 20px; flex-wrap: wrap; gap: 16px; }
+.data-table-workspace .table-header h2:not(.sr-only) { font-size: 16px; letter-spacing: -.015em; }
+.data-table-workspace .table-actions { flex: 1; justify-content: flex-end; flex-wrap: wrap; gap: 12px; min-width: 0; }
+.data-table-workspace.table-title-hidden .table-actions { justify-content: space-between; }
+.data-table-workspace .search-input { width: min(300px, 100%); min-height: 40px; font-size: 14px; }
+.data-table-workspace .table-btn-group { flex-wrap: wrap; gap: 8px; }
+.data-table-workspace .table-btn-group .btn { min-height: 36px; }
+.data-table-workspace table.data-table { font-size: 14px; }
+.data-table-workspace table.data-table th {
+  padding-top: 12px; padding-bottom: 12px; font-size: 12px;
+  text-transform: none; letter-spacing: .01em; background: var(--color-bg);
+}
+.data-table-workspace table.data-table td { padding-top: 16px; padding-bottom: 16px; }
+.data-table-workspace .table-sort-button {
+  display: inline-flex; align-items: center; gap: 6px; background: none; border: 0;
+  color: inherit; font: inherit; font-weight: 600; padding: 3px 0; cursor: pointer; text-align: inherit;
+}
+.data-table-workspace .table-sort-button .sort-indicator { font-size: 13px; opacity: .5; }
+.data-table-workspace th[aria-sort="ascending"] .table-sort-button,
+.data-table-workspace th[aria-sort="descending"] .table-sort-button { color: var(--color-primary); }
+.data-table-workspace .table-sort-button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 4px; border-radius: 2px; }
+.data-table-workspace .table-footer { padding: 14px 20px; gap: 12px; flex-wrap: wrap; }
+.data-table-workspace .table-footer-info { font-size: 13px; color: var(--color-text-secondary); }
+.data-table-workspace .action-cell .btn { width: 32px; height: 32px; border-radius: 7px; }
+.data-table-workspace .action-cell .btn:hover { background: var(--color-primary-light); }
+.data-table-workspace .table-empty { padding: 48px 20px; }
+@media (max-width: 640px) {
+  .data-table-workspace .table-header { padding: 14px; }
+  .data-table-workspace .table-actions { flex-direction: column; align-items: stretch; width: 100%; }
+  .data-table-workspace .search-input { width: 100%; }
+  .data-table-workspace .table-btn-group { width: 100%; justify-content: flex-start; }
+  .data-table-workspace .table-footer { padding: 12px 14px; }
+  .data-table-workspace .table-footer-controls { flex-wrap: wrap; gap: 8px; }
+}

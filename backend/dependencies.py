@@ -14,8 +14,11 @@ Error handling:
   - cleanup_session() is safe to call even if the session is corrupted.
 """
 
+import contextvars
 import logging
+import threading
 from collections.abc import Generator
+from uuid import uuid4
 
 from .compat.ui_contracts import ensure_ui_contracts
 from .config import settings
@@ -32,6 +35,31 @@ store = InMemoryStore()
 # Scoped session factory (set when using SQL backend)
 _scoped_session = None
 
+# A session belongs to one request, not to one thread. FastAPI runs sync
+# endpoints in worker threads while the cleanup middleware runs in the event
+# loop thread: with thread-local sessions every worker kept its session and its
+# connection, and after 15 of them the pool was empty and the server hung.
+# Outside a request (startup, scripts, tests calling routers directly) the
+# thread stays the scope.
+_request_scope: contextvars.ContextVar[str | None] = contextvars.ContextVar("db_request_scope", default=None)
+
+
+def _session_scope() -> object:
+    return _request_scope.get() or threading.get_ident()
+
+
+def begin_request_scope() -> contextvars.Token:
+    """Give the current request its own DB session; pass the token to end_request_scope."""
+    return _request_scope.set(uuid4().hex)
+
+
+def end_request_scope(token: contextvars.Token) -> None:
+    """Close the request's session (its connection goes back to the pool) and leave the scope."""
+    try:
+        cleanup_session()
+    finally:
+        _request_scope.reset(token)
+
 # Use SQLAlchemy store for all databases including SQLite (default).
 # InMemoryStore is only used when sqlite_persistent_store is explicitly False.
 _database_url = settings.database_url
@@ -40,20 +68,24 @@ _use_sql_store = bool(_database_url) and (
 )
 
 if _use_sql_store:
+    from .db.schema_state import SchemaUpgradeRequired
+
     try:
         from sqlalchemy.orm import scoped_session
 
         from .db.session import SessionLocal, create_tables
         from .repositories import SQLAlchemyStore
 
-        # TODO: Move create_tables() into app.py lifespan to avoid import-time
-        # side effects. Requires conftest.py changes to ensure tables exist before
-        # tests run with SQL backend. See architecture review Phase 3.1.
+        # Initialises an empty database; an existing one must already be at the
+        # Alembic head (explicit upgrade: python -m backend.upgrade).
         create_tables()
-        # Use scoped_session for thread-safe, request-scoped sessions.
-        # Each thread gets its own session, preventing cross-request state mixing.
-        _scoped_session = scoped_session(SessionLocal)
-        store = SQLAlchemyStore(_scoped_session)  # type: ignore[assignment]
+        # One session per request (see _session_scope), so concurrent requests
+        # never share state and every request returns its connection.
+        _scoped_session = scoped_session(SessionLocal, scopefunc=_session_scope)
+        store = SQLAlchemyStore(_scoped_session)  # type: ignore[assignment, arg-type]
+        from .concurrency import track_database_changes
+
+        track_database_changes()
 
         # Enable SQL-backed user and audit storage for configured SQL store.
         from .audit import enable_sql_audit
@@ -63,6 +95,10 @@ if _use_sql_store:
         enable_sql_audit(SessionLocal)
 
         logger.info("SQL backend initialized successfully (url=%s...)", _database_url[:30])
+    except SchemaUpgradeRequired as exc:
+        # never hidden behind the in-memory fallback: the data exists, it needs the explicit upgrade
+        logger.critical("Start refused: %s", exc)
+        raise
     except Exception:
         if not settings.allow_inmemory_fallback:
             raise RuntimeError(

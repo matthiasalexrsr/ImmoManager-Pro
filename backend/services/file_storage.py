@@ -52,7 +52,14 @@ class LocalStorage(FileStorage):
     Files are stored under a configurable base directory.
     """
 
-    def __init__(self, base_dir: str = "uploads"):
+    def __init__(self, base_dir: str | Path | None = None):
+        # By default the uploads folder the app serves under /uploads (the data folder): a
+        # relative "uploads" followed the working directory, which the Windows program sets
+        # to its own install folder, so uploaded documents could not be opened there.
+        if base_dir is None:
+            from ..paths import get_uploads_dir
+
+            base_dir = get_uploads_dir()
         self.base_dir = Path(base_dir)
         self.base_dir.mkdir(parents=True, exist_ok=True)
 

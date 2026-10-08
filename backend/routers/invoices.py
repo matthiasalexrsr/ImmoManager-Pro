@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
 from ..domain.invoice_matching import BookingCandidate, InvoiceMatcher, InvoiceToMatch
+from ..domain.money import money
 from ..models import Invoice, InvoiceCreate, InvoicePatch
 from ..storage import NotFoundError, ValidationError
 
@@ -24,30 +25,18 @@ def list_invoices(
     date_to: date | None = Query(None),
 ) -> list[Invoice]:
     filters = {"supplier": supplier, "status": status_filter}
-    has_date_filter = isinstance(date_from, date) or isinstance(date_to, date)
-    results = store._list_paginated(
+    return store._list_paginated(
         entity_type="invoice",
-        skip=0 if has_date_filter else skip,
-        limit=10000 if has_date_filter else limit,
+        skip=skip,
+        limit=limit,
         filters=filters,
         order_by=sort_by,
         order_desc=(sort_order == "desc"),
+        range_filters={"invoice_date": (
+            date_from if isinstance(date_from, date) else None,
+            date_to if isinstance(date_to, date) else None,
+        )},
     )
-    if isinstance(date_from, date):
-        results = [
-            r for r in results
-            if getattr(r, 'invoice_date', None)
-            and r.invoice_date >= date_from
-        ]
-    if isinstance(date_to, date):
-        results = [
-            r for r in results
-            if getattr(r, 'invoice_date', None)
-            and r.invoice_date <= date_to
-        ]
-    if has_date_filter:
-        results = results[skip : skip + limit]
-    return results
 
 
 @router.post("", response_model=Invoice, status_code=status.HTTP_201_CREATED)
@@ -101,19 +90,25 @@ def match_invoice_to_bookings(invoice_id: str) -> dict:
 
     invoice_to_match = InvoiceToMatch(
         invoice_id=invoice.id,
-        gross_amount=Decimal(str(invoice.gross_amount)),
+        gross_amount=money(invoice.gross_amount),
         invoice_date=invoice.invoice_date,
     )
 
-    candidates = [
-        BookingCandidate(
-            booking_id=booking.id,
-            open_amount=Decimal(str(abs(booking.amount))),
-            booking_date=booking.booking_date,
-        )
-        for booking in store.list_bookings()
-        if booking.amount < 0 and booking.status == "open"
-    ]
+    bookings = store.list_bookings()
+    # a reversal pays nothing; a reversed payment pays only what is left of it
+    reversed_by: dict[str, Decimal] = {}
+    for booking in bookings:
+        if booking.reverses_booking_id:
+            reversed_by[booking.reverses_booking_id] = (reversed_by.get(booking.reverses_booking_id, Decimal("0"))
+                                                        + money(booking.amount))
+    candidates = []
+    for booking in bookings:
+        if booking.amount >= 0 or booking.status != "open" or booking.reverses_booking_id:
+            continue
+        open_amount = abs(money(booking.amount) + reversed_by.get(booking.id, Decimal("0")))
+        if open_amount > 0:
+            candidates.append(BookingCandidate(booking_id=booking.id, open_amount=open_amount,
+                                               booking_date=booking.booking_date))
 
     result = InvoiceMatcher.allocate_fifo(invoice_to_match, candidates)
 

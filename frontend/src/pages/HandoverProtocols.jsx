@@ -24,7 +24,6 @@ const CONDITION_OPTIONS = [
 ];
 
 const TYPE_LABELS = Object.fromEntries(TYPE_OPTIONS.map(o => [o.value, o.label]));
-const STATUS_LABELS = Object.fromEntries(STATUS_OPTIONS.map(o => [o.value, o.label]));
 const CONDITION_LABELS = Object.fromEntries(CONDITION_OPTIONS.map(o => [o.value, o.label]));
 
 const COLUMNS = [
@@ -33,7 +32,7 @@ const COLUMNS = [
   { key: 'unit_label', label: 'Einheit' },
   { key: 'contract_label', label: 'Vertrag' },
   { key: 'overall_condition', label: 'Zustand', render: v => CONDITION_LABELS[v] || v || '—' },
-  { key: 'status', label: 'Status', render: v => STATUS_LABELS[v] || v },
+  { key: 'status', label: 'Status', type: 'status' },
   { key: 'key_count', label: 'Schlüssel', align: 'right' },
 ];
 
@@ -51,7 +50,7 @@ export default function HandoverProtocols() {
 
   const refreshData = () => {
     setLoading(true);
-    api.get('/handover-protocols').catch(err => { console.warn('[HandoverProtocols] protocols:', err.message); return []; })
+    api.list('/handover-protocols').catch(err => { console.warn('[HandoverProtocols] protocols:', err.message); return []; })
       .then(p => setProtocols(p || []))
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
@@ -59,7 +58,7 @@ export default function HandoverProtocols() {
 
   useEffect(() => {
     let cancelled = false;
-    api.get('/handover-protocols').catch(err => { console.warn('[HandoverProtocols] protocols:', err.message); return []; })
+    api.list('/handover-protocols').catch(err => { console.warn('[HandoverProtocols] protocols:', err.message); return []; })
       .then(data => { if (!cancelled) setProtocols(data || []); })
       .catch(e => { if (!cancelled) setError(e.message); })
       .finally(() => { if (!cancelled) setLoading(false); });

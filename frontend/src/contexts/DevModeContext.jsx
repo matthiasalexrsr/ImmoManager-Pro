@@ -1,6 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { api } from '../api';
+import { useAuth } from './AuthContext';
 
 const DevModeContext = createContext(null);
 
@@ -9,9 +10,14 @@ export function useDevMode() {
 }
 
 export function DevModeProvider({ children }) {
-  const [enabled, setEnabled] = useState(() => {
+  const isAdmin = useAuth()?.isAdmin;
+  const [requested, setEnabled] = useState(() => {
     return localStorage.getItem('dev_mode') === 'true';
   });
+  // The server blocks developer tools in production (HTTP 403).
+  const [serverBlocked, setServerBlocked] = useState(false);
+  const available = Boolean(isAdmin) && !serverBlocked;
+  const enabled = requested && available;
   const [notes, setNotes] = useState([]);
   const [annotating, setAnnotating] = useState(false);
 
@@ -26,8 +32,8 @@ export function DevModeProvider({ children }) {
 
   // Persist toggle
   useEffect(() => {
-    localStorage.setItem('dev_mode', String(enabled));
-  }, [enabled]);
+    localStorage.setItem('dev_mode', String(requested));
+  }, [requested]);
 
   // Load notes when dev mode is enabled
   useEffect(() => {
@@ -39,6 +45,11 @@ export function DevModeProvider({ children }) {
         if (!cancelled) setNotes(data || []);
       })
       .catch((err) => {
+        if (cancelled) return;
+        if (err.statusCode === 403) {
+          setServerBlocked(true);
+          return;
+        }
         console.warn('[DevMode] Failed to load notes:', err.message);
       });
 
@@ -50,14 +61,14 @@ export function DevModeProvider({ children }) {
   // Keyboard shortcut: Ctrl+Shift+D to toggle dev mode
   useEffect(() => {
     const handler = (e) => {
-      if (e.ctrlKey && e.shiftKey && e.key === 'D') {
+      if (available && e.ctrlKey && e.shiftKey && e.key === 'D') {
         e.preventDefault();
         setEnabled(prev => !prev);
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, []);
+  }, [available]);
 
   const createNote = useCallback(async (noteData) => {
     try {
@@ -112,13 +123,15 @@ export function DevModeProvider({ children }) {
     }
   }, []);
 
-  const toggle = useCallback(() => setEnabled(prev => !prev), []);
+  const toggle = useCallback(() => {
+    if (available) setEnabled(prev => !prev);
+  }, [available]);
   const startAnnotating = useCallback(() => setAnnotating(true), []);
   const stopAnnotating = useCallback(() => setAnnotating(false), []);
 
   return (
     <DevModeContext.Provider value={{
-      enabled, toggle, notes, annotating,
+      enabled, available, toggle, notes, annotating,
       startAnnotating, stopAnnotating,
       fetchNotes, createNote, updateNote, deleteNote, resolveNote, exportLog,
     }}>

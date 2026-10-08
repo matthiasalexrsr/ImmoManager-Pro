@@ -148,6 +148,7 @@ class ContractORM(Base):
     deposit_amount: Mapped[float | None] = mapped_column(Numeric(12, 2, asdecimal=False))
     index_rent: Mapped[str | None] = mapped_column(Text)
     service_charge_settlement: Mapped[str | None] = mapped_column(Text)
+    persons: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
@@ -212,12 +213,16 @@ class BookingORM(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False, default="open")
     payment_text: Mapped[str | None] = mapped_column(Text)
     receipt_url: Mapped[str | None] = mapped_column(Text)
+    # a reversal (Storno) names the booking it cancels (domain.booking_reversal)
+    reverses_booking_id: Mapped[str | None] = mapped_column(ForeignKey("bookings.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
     __table_args__ = (
         Index("idx_bookings_account", "account_id"),
         Index("idx_bookings_account_date", "account_id", "booking_date"),
+        Index("idx_bookings_tenant", "tenant_id"),
+        Index("idx_bookings_reverses", "reverses_booking_id"),
         CheckConstraint("amount != 0", name="ck_bookings_amount_nonzero"),
     )
 
@@ -292,12 +297,14 @@ class DocumentORM(Base):
     __table_args__ = (
         Index("idx_documents_property", "property_id"),
         Index("idx_documents_contract", "contract_id"),
+        Index("idx_documents_tenant", "tenant_id"),
     )
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     property_id: Mapped[str | None] = mapped_column(ForeignKey("properties.id", ondelete="SET NULL"))
     unit_id: Mapped[str | None] = mapped_column(ForeignKey("units.id", ondelete="SET NULL"))
     contract_id: Mapped[str | None] = mapped_column(ForeignKey("contracts.id", ondelete="SET NULL"))
+    tenant_id: Mapped[str | None] = mapped_column(ForeignKey("tenants.id", ondelete="SET NULL"))
     title: Mapped[str] = mapped_column(Text, nullable=False)
     document_type: Mapped[str | None] = mapped_column(Text)
     document_date: Mapped[date | None] = mapped_column(Date)
@@ -447,10 +454,18 @@ class BillingPeriodORM(Base):
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     end_date: Mapped[date] = mapped_column(Date, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="draft")
+    # A correction is a new version: it names the version it corrects (no FK, so an
+    # SQLite downgrade can drop the column without rebuilding referenced tables).
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    corrects_period_id: Mapped[str | None] = mapped_column(String)
+    revision_notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
-    __table_args__ = (Index("idx_billing_periods_property", "property_id"),)
+    __table_args__ = (
+        Index("idx_billing_periods_property", "property_id"),
+        Index("idx_billing_periods_corrects", "corrects_period_id"),
+    )
 
 
 class AllocationKeyORM(Base):
@@ -461,6 +476,8 @@ class AllocationKeyORM(Base):
     name: Mapped[str] = mapped_column(Text, nullable=False)
     key_type: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
+    meter_type: Mapped[str | None] = mapped_column(Text)
+    measure_unit: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
@@ -495,8 +512,13 @@ class UtilityStatementORM(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     billing_period_id: Mapped[str] = mapped_column(ForeignKey("billing_periods.id", ondelete="CASCADE"), nullable=False)
-    contract_id: Mapped[str] = mapped_column(ForeignKey("contracts.id", ondelete="CASCADE"), nullable=False)
+    # NULL on vacancy rows: the landlord's share for days without a tenancy
+    contract_id: Mapped[str | None] = mapped_column(ForeignKey("contracts.id", ondelete="CASCADE"), nullable=True)
     unit_id: Mapped[str] = mapped_column(ForeignKey("units.id", ondelete="CASCADE"), nullable=False)
+    party: Mapped[str] = mapped_column(Text, nullable=False, default="tenant", server_default="tenant")
+    usage_start: Mapped[date | None] = mapped_column(Date)
+    usage_end: Mapped[date | None] = mapped_column(Date)
+    usage_days: Mapped[int | None] = mapped_column(Integer)
     total_cost: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), nullable=False)
     advance_paid: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), nullable=False)
     balance: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), nullable=False)
@@ -509,6 +531,8 @@ class UtilityStatementORM(Base):
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime)
     delivery_channel: Mapped[str | None] = mapped_column(Text)
     snapshot_hash: Mapped[str | None] = mapped_column(String)
+    advance_sections: Mapped[list | None] = mapped_column(JSON)
+    final_document: Mapped[dict | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
@@ -516,6 +540,22 @@ class UtilityStatementORM(Base):
         Index("idx_utility_statements_period", "billing_period_id"),
         Index("idx_utility_statements_contract", "contract_id"),
     )
+
+
+class BillingObjectionORM(Base):
+    """A tenant's objection against an issued statement; answered by a correction."""
+
+    __tablename__ = "billing_objections"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    billing_period_id: Mapped[str] = mapped_column(
+        ForeignKey("billing_periods.id", ondelete="CASCADE"), nullable=False, index=True)
+    statement_id: Mapped[str | None] = mapped_column(ForeignKey("utility_statements.id", ondelete="CASCADE"))
+    received_on: Mapped[date] = mapped_column(Date, nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="open")
+    correction_period_id: Mapped[str | None] = mapped_column(ForeignKey("billing_periods.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
 
 class DepositORM(Base):
@@ -596,6 +636,52 @@ class RentAdjustmentORM(Base):
     index_value: Mapped[float | None] = mapped_column(Numeric(12, 2, asdecimal=False))
     notes: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(20), default="pending")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+class ContractRentPeriodORM(Base):
+    __tablename__ = "contract_rent_periods"
+    __table_args__ = (
+        UniqueConstraint("contract_id", "valid_from", name="uq_contract_rent_periods_contract_date"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    contract_id: Mapped[str] = mapped_column(String(36), ForeignKey("contracts.id"), index=True)
+    valid_from: Mapped[date] = mapped_column(Date)
+    cold_rent: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), default=0.0)
+    service_charge_advance: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), default=0.0)
+    heating_advance: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), default=0.0)
+    source: Mapped[str] = mapped_column(String(20), default="manual")
+    rent_adjustment_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rent_adjustments.id"))
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+class ContractOccupancyORM(Base):
+    """Persons living in a contract's flat from a date on (dated occupants)."""
+
+    __tablename__ = "contract_occupancies"
+    __table_args__ = (
+        UniqueConstraint("contract_id", "valid_from", name="uq_contract_occupancies_contract_date"),
+        CheckConstraint("persons >= 0", name="ck_contract_occupancies_persons"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    contract_id: Mapped[str] = mapped_column(String(36), ForeignKey("contracts.id"), index=True)
+    valid_from: Mapped[date] = mapped_column(Date)
+    persons: Mapped[int] = mapped_column(Integer)
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+class PaymentAllocationORM(Base):
+    __tablename__ = "payment_allocations"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    booking_id: Mapped[str] = mapped_column(String(36), ForeignKey("bookings.id"), index=True)
+    contract_id: Mapped[str] = mapped_column(String(36), ForeignKey("contracts.id"), index=True)
+    amount: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False))
+    source: Mapped[str] = mapped_column(String(10), default="manual")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
@@ -785,9 +871,11 @@ class MeterORM(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     unit_id: Mapped[str] = mapped_column(String(36), ForeignKey("units.id"))
     meter_type: Mapped[str] = mapped_column(String(30))
+    measure_unit: Mapped[str | None] = mapped_column(String(20))
     serial_number: Mapped[str | None] = mapped_column(String(100))
     location: Mapped[str | None] = mapped_column(String(200))
     installation_date: Mapped[date | None] = mapped_column(Date)
+    removal_date: Mapped[date | None] = mapped_column(Date)
     next_inspection: Mapped[date | None] = mapped_column(Date)
     supplier: Mapped[str | None] = mapped_column(String(200))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)

@@ -1,0 +1,29 @@
+.file-viewer-overlay { z-index: 260; }
+.file-viewer-modal { background: var(--color-surface); min-width: 0; max-height: 92dvh; }
+.file-viewer-header { gap: 1rem; flex-wrap: wrap; padding: 1rem 1.25rem; }
+.file-viewer-header h3 { min-width: 0; overflow-wrap: anywhere; flex: 1 1 180px; }
+.file-viewer-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: .5rem; }
+.file-viewer-body { min-height: 0; }
+.file-viewer-error { padding: .75rem 1.25rem; color: var(--color-danger); background: var(--color-danger-light); overflow-wrap: anywhere; }
+.file-viewer-status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.ocr-toolbar { border-color: var(--color-border); }
+.ocr-text { overflow-wrap: anywhere; }
+.pdf-preview { display: flex; flex-direction: column; min-width: 0; height: 100%; }
+.pdf-preview-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; padding-bottom: .75rem; }
+.pdf-preview-page-form { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; min-width: 0; }
+.pdf-preview-page-form label, .pdf-preview-zoom { display: flex; align-items: center; gap: .4rem; }
+.pdf-preview-page-form input { width: 5rem; min-width: 0; }
+.pdf-preview-zoom select { width: auto; max-width: 100%; }
+.pdf-preview-message { padding: .5rem; overflow-wrap: anywhere; }
+.pdf-preview-viewport { flex: 1; min-height: 0; min-width: 0; overflow: auto; padding: .5rem; background: #e7e9ec; }
+.pdf-preview-canvas { display: block; margin: 0 auto; background: #fff; box-shadow: 0 1px 5px #0003; }
+.pdf-preview-text { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; padding: 1rem; background: #fff; color: #20242b; font-family: inherit; }
+@media (max-width: 480px) {
+  .file-viewer-overlay { padding: .5rem; }
+  .file-viewer-modal { width: 100%; height: 94dvh; max-height: 94dvh; }
+  .file-viewer-header { padding: .8rem; gap: .6rem; }
+  .file-viewer-header h3 { flex-basis: 100%; }
+  .file-viewer-actions { justify-content: flex-start; width: 100%; }
+  .file-viewer-actions .btn-close { margin-left: auto; }
+  .file-viewer-body { padding: .5rem; }
+}

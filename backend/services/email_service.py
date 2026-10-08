@@ -1,11 +1,12 @@
 """Email notification service using SMTP.
 
 Sends notification emails using configurable SMTP settings.
-Falls back to logging when SMTP is not configured.
+Reports success only after SMTP accepts the selected recipient.
 """
 
 import logging
 import smtplib
+import ssl
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Optional
@@ -25,6 +26,8 @@ class EmailConfig:
         smtp_use_tls: bool = True,
         from_address: str = "noreply@immomanager.local",
         from_name: str = "ImmoManager Pro",
+        smtp_timeout: float = 10,
+        smtp_use_ssl: bool = False,
     ):
         self.smtp_host = smtp_host
         self.smtp_port = smtp_port
@@ -33,10 +36,12 @@ class EmailConfig:
         self.smtp_use_tls = smtp_use_tls
         self.from_address = from_address
         self.from_name = from_name
+        self.smtp_timeout = smtp_timeout
+        self.smtp_use_ssl = smtp_use_ssl
 
     @property
     def is_configured(self) -> bool:
-        return bool(self.smtp_host and self.smtp_user)
+        return bool(self.smtp_host and self.from_address)
 
 
 # Module-level config instance (configure via set_email_config)
@@ -54,42 +59,92 @@ def send_email(
     subject: str,
     body_html: str,
     body_text: Optional[str] = None,
+    *,
+    config: Optional[EmailConfig] = None,
 ) -> bool:
     """Send an email via SMTP.
 
     Returns True if sent successfully, False otherwise.
-    When SMTP is not configured, logs the email content and returns True.
+    An unconfigured or rejected delivery returns False.
     """
-    if not _config.is_configured:
+    config = config or _config
+    if not config.is_configured:
         logger.info(
             "E-Mail (nicht gesendet, SMTP nicht konfiguriert): An=%s, Betreff=%s",
             to, subject,
         )
-        return True
+        return False
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
-    msg["From"] = f"{_config.from_name} <{_config.from_address}>"
+    msg["From"] = f"{config.from_name} <{config.from_address}>"
     msg["To"] = to
 
     if body_text:
         msg.attach(MIMEText(body_text, "plain", "utf-8"))
     msg.attach(MIMEText(body_html, "html", "utf-8"))
 
+    server = None
     try:
-        if _config.smtp_use_tls:
-            server = smtplib.SMTP(_config.smtp_host, _config.smtp_port)
-            server.starttls()
-        else:
-            server = smtplib.SMTP(_config.smtp_host, _config.smtp_port)
-        server.login(_config.smtp_user, _config.smtp_password)
-        server.send_message(msg)
-        server.quit()
+        server = _connect(config)
+        refused = server.send_message(msg, from_addr=config.from_address, to_addrs=[to])
+        if refused:
+            return False
         logger.info("E-Mail gesendet: An=%s, Betreff=%s", to, subject)
         return True
     except Exception:
-        logger.exception("E-Mail-Versand fehlgeschlagen: An=%s", to)
+        logger.warning("E-Mail-Versand fehlgeschlagen: An=%s", to)
         return False
+    finally:
+        _disconnect(server)
+
+
+def _connect(config: EmailConfig):
+    context = ssl.create_default_context()
+    server: smtplib.SMTP | None = None
+    try:
+        if config.smtp_use_ssl:
+            server = smtplib.SMTP_SSL(config.smtp_host, config.smtp_port, timeout=config.smtp_timeout, context=context)
+        else:
+            server = smtplib.SMTP(config.smtp_host, config.smtp_port, timeout=config.smtp_timeout)
+        server.ehlo()
+        if config.smtp_use_tls and not config.smtp_use_ssl:
+            server.starttls(context=context)
+            server.ehlo()
+        if config.smtp_user:
+            server.login(config.smtp_user, config.smtp_password)
+        return server
+    except Exception:
+        _disconnect(server)
+        raise
+
+
+def _disconnect(server):
+    if server is None:
+        return
+    try:
+        server.quit()
+    except Exception:
+        try:
+            server.close()
+        except Exception:
+            pass
+
+
+def check_email_connection(config: EmailConfig) -> bool:
+    """Authenticate and issue NOOP; never creates or submits an email."""
+    if not config.is_configured:
+        return False
+    server = None
+    try:
+        server = _connect(config)
+        code, _ = server.noop()
+        return code == 250
+    except Exception:
+        logger.warning("SMTP-Verbindungsprüfung fehlgeschlagen")
+        return False
+    finally:
+        _disconnect(server)
 
 
 def send_notification_email(

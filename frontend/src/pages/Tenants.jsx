@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
@@ -6,42 +7,72 @@ import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
+import { PartyLink, usePartyWorkspace } from '../features/partyWorkspace/PartyWorkspace';
+import { useCanWrite } from '../contexts/AuthContext';
+import { DocumentIcon, PlusIcon } from '../components/Icons';
+import { Archive, ArchiveRestore } from 'lucide-react';
+import './ListWorkspace.css';
 
 const PAYMENT_LABELS = { bank_transfer: 'Überweisung', sepa_direct_debit: 'SEPA-Lastschrift', cash: 'Bar' };
 
 export default function Tenants() {
   const { t } = useTranslation();
   const confirm = useConfirm();
+  const { openParty } = usePartyWorkspace();
+  const canWrite = useCanWrite('/tenants');
+  const [searchParams, setSearchParams] = useSearchParams();
   const store = useDataStore();
-  const { items: contracts } = useEntities('contracts', '/contracts');
-  const { items: properties } = useEntities('properties', '/properties');
-  const { items: units } = useEntities('units', '/units');
+  const contractSource = useEntities('contracts', '/contracts');
+  const propertySource = useEntities('properties', '/properties');
+  const unitSource = useEntities('units', '/units');
+  const { items: contracts } = contractSource;
+  const { items: properties } = propertySource;
+  const { items: units } = unitSource;
+  const relatedSources = [contractSource, propertySource, unitSource];
   const [tenants, setTenants] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
   const [error, setError] = useState(null);
   const [filter, setFilter] = useState('active');
+  const [revision, setRevision] = useState(0);
 
-  const refreshData = () => {
-    setLoading(true);
-    api.get('/tenants?include_archived=true')
-      .then(data => setTenants(data || []))
-      .catch(() => setTenants([]))
-      .finally(() => setLoading(false));
-  };
+  const refreshData = () => setRevision(value => value + 1);
 
   useEffect(() => {
     let cancelled = false;
-    api.get('/tenants?include_archived=true')
+    const controller = new AbortController();
+    setLoading(true);
+    setError(null);
+    api.list('/tenants?include_archived=true', { signal: controller.signal })
       .then(data => { if (!cancelled) setTenants(data || []); })
-      .catch(() => { if (!cancelled) setTenants([]); })
+      .catch(err => { if (!cancelled) setError(err.message || 'Mieter konnten nicht geladen werden.'); })
       .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
+    return () => { cancelled = true; controller.abort(); };
+  }, [revision]);
+
+  const editId = searchParams.get('edit');
+  useEffect(() => {
+    if (!editId || !canWrite) return;
+    let cancelled = false;
+    const controller = new AbortController();
+    api.get(`/tenants/${encodeURIComponent(editId)}`, { signal: controller.signal })
+      .then(data => { if (!cancelled) setModal(data); })
+      .catch(err => { if (!cancelled) setError(err.message); });
+    return () => { cancelled = true; controller.abort(); };
+  }, [editId, canWrite]);
+
+  const closeModal = () => {
+    setModal(null);
+    if (editId) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('edit');
+      setSearchParams(next, { replace: true });
+    }
+  };
 
   const afterMutation = () => {
     refreshData();
-    if (store) store.invalidateRelated('tenants', 'contracts');
+    if (store) store.invalidateRelated('tenants', 'tenants_all', 'contracts');
   };
 
   // Build lookup maps
@@ -89,17 +120,25 @@ export default function Tenants() {
   const noEmail = activeTenants.filter(t => !t.email).length;
 
   const columns = [
-    { key: 'full_name', label: 'Name', filterType: 'text' },
-    { key: 'property_name', label: 'Immobilie', filterType: 'text' },
-    { key: 'unit_label', label: 'Einheit', filterType: 'text' },
+    { key: 'full_name', label: 'Name', filterType: 'text',
+      render: (v, row) => (
+        <span className="list-identity">
+          <span className="list-avatar" aria-hidden="true">{String(v || '?').trim().split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join('').toUpperCase()}</span>
+          <span className="list-identity-copy"><PartyLink tenantId={row.id}>{v}</PartyLink>
+            <Link className="list-secondary-link" to={`/tenants/${encodeURIComponent(row.id)}/account`}>Mietkonto öffnen <span aria-hidden="true">↗</span></Link>
+          </span>
+        </span>
+      ) },
+    { key: 'property_name', hidden: true, label: 'Immobilie', filterType: 'text' },
+    { key: 'unit_label', subKey: 'property_name', label: 'Einheit', filterType: 'text' },
     { key: 'contract_status', label: 'Vertragsstatus', filterType: 'select',
-      render: v => <StatusBadge status={v === 'kein Vertrag' ? 'warning' : v} /> },
+      render: v => v === 'kein Vertrag' ? <span className="badge badge-gray">Kein aktiver Vertrag</span> : <StatusBadge status={v} /> },
     { key: 'email', label: 'E-Mail', filterType: 'text' },
     { key: 'phone', label: 'Telefon' },
-    { key: 'city', label: 'Stadt', filterType: 'text' },
-    { key: 'payment_label', label: 'Zahlungsart', filterType: 'select' },
-    { key: 'has_sepa', label: 'SEPA', filterType: 'select' },
-    { key: 'status_label', label: 'Archiv',
+    { key: 'city', hidden: true, label: 'Stadt', filterType: 'text' },
+    { key: 'payment_label', hidden: true, label: 'Zahlungsart', filterType: 'select' },
+    { key: 'has_sepa', hidden: true, label: 'SEPA', filterType: 'select' },
+    { key: 'status_label', hidden: true, label: 'Archiv',
       render: (_, row) => row.archived
         ? <span className="badge badge-gray">Archiviert</span>
         : <span className="badge badge-green">Aktiv</span> },
@@ -157,47 +196,54 @@ export default function Tenants() {
     }
   };
 
-  if (loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  if (loading || relatedSources.some(source => source.loading)) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  const relatedError = relatedSources.find(source => source.error)?.error;
+  if (relatedError) return <div className="page list-workspace"><h1 className="page-title">Mieter</h1><div className="alert alert-error" role="alert">{relatedError}</div><button className="btn btn-secondary" onClick={() => relatedSources.filter(source => source.error).forEach(source => source.reload())}>Erneut laden</button></div>;
+  if (error && !tenants.length) return <div className="page"><h1 className="page-title">Mieter</h1><div className="alert alert-error" role="alert">{error}</div><button className="btn btn-secondary" onClick={refreshData}>Erneut laden</button></div>;
 
   return (
-    <div className="page">
-      <h1 className="page-title">Mieter</h1>
+    <div className="page list-workspace">
+      <header className="list-page-header">
+        <div><p className="list-eyebrow">PARTEIEN</p><h1 className="page-title">Mieter</h1><p className="list-description">Alle Parteien mit ihren Kontakten, Mietkonten und Dokumenten.</p></div>
+        {canWrite && <button className="btn btn-primary" onClick={() => setModal('create')}><PlusIcon size={18} /> Partei anlegen</button>}
+      </header>
 
       {error && (
-        <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
+        <div className="alert alert-error" role="alert" style={{ marginBottom: '1rem' }}>
           {error}
-          <button onClick={() => setError(null)} style={{ marginLeft: '1rem', cursor: 'pointer' }}>✕</button>
+          <button className="btn btn-sm btn-secondary" onClick={refreshData}>Erneut laden</button>
+          <button aria-label="Fehlermeldung schließen" onClick={() => setError(null)} style={{ marginLeft: '1rem', cursor: 'pointer' }}>✕</button>
         </div>
       )}
 
       {/* Summary cards */}
-      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--success)' }}>{activeTenants.length}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Aktiv</div>
+      <div className="kpi-row list-summary" aria-label="Parteienübersicht">
+        <div className="kpi">
+          <div className="kpi-value">{activeTenants.length}</div>
+          <div className="kpi-label">Aktive Parteien</div>
         </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{archivedCount}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Archiviert</div>
+        <div className="kpi">
+          <div className="kpi-value">{archivedCount}</div>
+          <div className="kpi-label">Archiviert</div>
         </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{withContract}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Mit Vertrag</div>
+        <div className="kpi">
+          <div className="kpi-value">{withContract}</div>
+          <div className="kpi-label">Mit Vertrag</div>
         </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{withSepa}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Mit SEPA</div>
+        <div className="kpi">
+          <div className="kpi-value">{withSepa}</div>
+          <div className="kpi-label">Mit SEPA</div>
         </div>
         {noEmail > 0 && (
-          <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-            <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--warning)' }}>{noEmail}</div>
-            <div className="text-muted" style={{ fontSize: '0.8rem' }}>Ohne E-Mail</div>
+          <div className="kpi">
+            <div className="kpi-value">{noEmail}</div>
+            <div className="kpi-label">Ohne E-Mail</div>
           </div>
         )}
       </div>
 
       {/* Filter tabs */}
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+      <div className="filter-chips list-view-filters" role="group" aria-label="Parteien filtern">
         {[
           { key: 'active', label: 'Aktiv' },
           { key: 'all', label: 'Alle' },
@@ -206,36 +252,24 @@ export default function Tenants() {
           { key: 'no_sepa', label: 'Ohne SEPA' },
           { key: 'no_email', label: 'Ohne E-Mail' },
         ].map(f => (
-          <button key={f.key} className={`btn btn-sm ${filter === f.key ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setFilter(f.key)}>
+          <button key={f.key} aria-pressed={filter === f.key} className={`btn btn-sm ${filter === f.key ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setFilter(f.key)}>
             {f.label}
           </button>
         ))}
       </div>
 
       <DataTable
+        hideTitle
         title={`Mieter (${filtered.length})`}
         columns={columns}
         data={filtered}
-        onAdd={() => setModal('create')}
         onEdit={row => setModal(row)}
         onDelete={handleDelete}
+        rowActions={row => [
+          { label: 'Dokumente der Partei', icon: <DocumentIcon size={16} />, onClick: () => openParty(row.id, { tab: 'documents' }) },
+          { label: row.archived ? 'Wiederherstellen' : 'Archivieren', icon: row.archived ? <ArchiveRestore size={16} aria-hidden="true" /> : <Archive size={16} aria-hidden="true" />, write: true, onClick: handleArchiveToggle },
+        ]}
       />
-
-      {/* Inline archive/unarchive actions per visible tenant */}
-      {filtered.length > 0 && (
-        <div style={{ marginTop: '0.5rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-          {filtered.map(tn => (
-            <button
-              key={tn.id}
-              className="btn btn-sm btn-secondary"
-              onClick={() => handleArchiveToggle(tn)}
-              title={tn.archived ? 'Wiederherstellen' : 'Archivieren'}
-            >
-              {tn.archived ? '↩' : '📦'} {tn.full_name}
-            </button>
-          ))}
-        </div>
-      )}
 
       {modal && (
         <FormModal
@@ -243,7 +277,7 @@ export default function Tenants() {
           fields={fields}
           initial={modal === 'create' ? null : modal}
           onSave={handleSave}
-          onClose={() => setModal(null)}
+          onClose={closeModal}
         />
       )}
     </div>

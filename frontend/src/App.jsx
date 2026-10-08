@@ -41,6 +41,8 @@ const Budgets = lazy(() => import('./pages/Budgets'));
 const TaxRates = lazy(() => import('./pages/TaxRates'));
 const ContractWizard = lazy(() => import('./pages/ContractWizard'));
 const Receivables = lazy(() => import('./pages/Receivables'));
+const TenantAccount = lazy(() => import('./pages/TenantAccount'));
+const ReviewList = lazy(() => import('./pages/ReviewList'));
 const RentCharges = lazy(() => import('./pages/RentCharges'));
 const EscalationRules = lazy(() => import('./pages/EscalationRules'));
 const NotificationTemplates = lazy(() => import('./pages/NotificationTemplates'));
@@ -51,28 +53,40 @@ const NotFound = lazy(() => import('./pages/NotFound'));
 
 function ProtectedRoute({ children }) {
   const [status, setStatus] = useState(isLoggedIn() ? 'validating' : 'unauthenticated');
+  const [error, setError] = useState(null);
+  const [attempt, setAttempt] = useState(0);
   const auth = useAuth();
 
   useEffect(() => {
+    let active = true;
     if (!isLoggedIn()) {
       setStatus('unauthenticated');
       auth?.clearUser();
       return;
     }
+    setStatus('validating');
+    setError(null);
     // Validate the session against the backend before rendering
     api.get('/auth/me')
       .then((userData) => {
+        if (!active) return;
         auth?.updateUser(userData);
         setStatus('authenticated');
       })
-      .catch(() => {
-        // Token is invalid/expired and refresh failed — clear tokens
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
-        auth?.clearUser();
-        setStatus('unauthenticated');
+      .catch((failure) => {
+        if (!active) return;
+        if (isLoggedIn()) {
+          setError(failure.message);
+          setStatus('error');
+        } else {
+          auth?.clearUser();
+          setStatus('unauthenticated');
+        }
       });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    return () => { active = false; };
+  }, [attempt]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (status === 'error') return <div className="page"><div role="alert" className="alert-error"><p>Die Anmeldung konnte nicht geprüft werden.</p><p>{error}</p><button type="button" className="btn btn-secondary" onClick={() => setAttempt(value => value + 1)}>Erneut versuchen</button></div></div>;
 
   if (status === 'validating') {
     return (
@@ -112,6 +126,8 @@ export default function App() {
           <Route path="units" element={<Units />} />
           <Route path="units/:id" element={<UnitOverview />} />
           <Route path="tenants" element={<Tenants />} />
+          <Route path="tenants/:id/account" element={<TenantAccount />} />
+          <Route path="review" element={<ReviewList />} />
           <Route path="contracts" element={<Contracts />} />
           <Route path="accounts" element={<Accounts />} />
           <Route path="bookings" element={<Bookings />} />

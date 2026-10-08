@@ -48,6 +48,7 @@ describe('DashboardWorkflow', () => {
         accounts: 1,
         rentCharges: 2,
         openReceivables: 3,
+        overdueReceivables: 1,
       },
       aging: {
         openTotal: 3,
@@ -99,6 +100,17 @@ describe('DashboardWorkflow', () => {
     expect(workflows.find(item => item.id === 'operations').status).toBe('attention');
     expect(nextStep.id).toBe('process-payment');
     expect(nextStep.tone).toBe('attention');
+  });
+
+  it('counts overdue receivables instead of adding their euros', () => {
+    // Regression: the card showed the count plus the overdue amount from the aging report.
+    const { attentionItems } = buildDashboardWorkflow({
+      stats: { openReceivables: 14, overdueReceivables: 12 },
+      aging: { openTotal: 18250, buckets: { current: 1200, days1to30: 3100, days31to60: 0, days61to90: 0, days90plus: 13950 } },
+    });
+
+    expect(attentionItems.find(item => item.id === 'overdue-receivables').value).toBe(12);
+    expect(attentionItems.find(item => item.id === 'open-receivables').value).toBe(14);
   });
 
   it('returns an empty attention queue when no operational blockers exist', () => {

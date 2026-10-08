@@ -3,7 +3,10 @@
 Extracted from app.py. Assembles the v1 API router with all domain routers.
 """
 
-from fastapi import APIRouter, Depends
+import json
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from starlette.concurrency import run_in_threadpool
 
 from .auth import require_auth, require_role
 from .routers import (
@@ -30,6 +33,7 @@ from .routers import (
     files,
     handover_protocols,
     history,
+    housing_confirmations,
     i18n,
     insurances,
     integrations,
@@ -40,6 +44,7 @@ from .routers import (
     messages,
     meters_standalone,
     notifications,
+    operations,
     photos,
     portfolios,
     properties,
@@ -47,6 +52,7 @@ from .routers import (
     rent_adjustments,
     rent_charges,
     reports,
+    review,
     search,
     tasks,
     tasks_status,
@@ -66,8 +72,9 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(auth.router)
 
     # Protected routes
-    _auth_dep = [Depends(require_auth)]
+    _auth_dep = [Depends(require_auth), Depends(plausibility_guard)]
     _admin_dep = [Depends(require_role("eigentuemer", "verwalter"))]
+    api_v1.include_router(operations.router, dependencies=_admin_dep)
     api_v1.include_router(admin_runtime.router, dependencies=_admin_dep)
     api_v1.include_router(admin.router, dependencies=_admin_dep)
     api_v1.include_router(audit.router, dependencies=_auth_dep)
@@ -77,9 +84,11 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(properties.router, dependencies=_auth_dep)
     api_v1.include_router(units.router, dependencies=_auth_dep)
     api_v1.include_router(tenants.router, dependencies=_auth_dep)
+    api_v1.include_router(housing_confirmations.router, dependencies=_auth_dep)
     api_v1.include_router(contracts.router, dependencies=_auth_dep)
     api_v1.include_router(accounts.router, dependencies=_auth_dep)
     api_v1.include_router(bookings.router, dependencies=_auth_dep)
+    api_v1.include_router(review.router, dependencies=_auth_dep)
     api_v1.include_router(receivables.router, dependencies=_auth_dep)
     api_v1.include_router(invoices.router, dependencies=_auth_dep)
     api_v1.include_router(maintenance.router, dependencies=_auth_dep)
@@ -121,3 +130,23 @@ def build_api_v1() -> APIRouter:
 def get_i18n_router() -> APIRouter:
     """Return the i18n router (not versioned, public)."""
     return i18n.router
+
+
+async def plausibility_guard(request: Request) -> None:
+    """Check what users enter before the endpoint stores it (backend.services.plausibility)."""
+    if request.method not in ("POST", "PUT", "PATCH") or "json" not in request.headers.get("content-type", ""):
+        return
+    try:
+        body = json.loads(await request.body() or b"null")
+    except ValueError:
+        return          # the endpoint answers malformed JSON itself
+    from .dependencies import store
+    from .services.plausibility import StaleRecordError, check, check_not_stale
+
+    path = request.url.path.removeprefix("/api/v1")
+    try:
+        await run_in_threadpool(check_not_stale, request.method, path, body, store)
+    except StaleRecordError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    await run_in_threadpool(check, request.method, path, body, store)
+

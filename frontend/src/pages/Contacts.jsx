@@ -50,7 +50,7 @@ export default function Contacts() {
   const [tab, setTab] = useState('all');
 
   const loadData = () => {
-    api.get('/contacts').then(data => {
+    api.list('/contacts').then(data => {
       // Add display_name for each contact
       const enriched = (data || []).map(c => ({
         ...c,

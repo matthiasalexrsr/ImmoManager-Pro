@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from ..db.orm_models import (
     AllocationKeyORM,
+    BillingObjectionORM,
     BillingPeriodORM,
     CostItemORM,
     UtilityStatementORM,
@@ -13,6 +14,8 @@ from ..db.orm_models import (
 from ..models import (
     AllocationKey,
     AllocationKeyCreate,
+    BillingObjection,
+    BillingObjectionCreate,
     BillingPeriod,
     BillingPeriodCreate,
     CostItem,
@@ -20,7 +23,12 @@ from ..models import (
     UtilityStatement,
     UtilityStatementCreate,
 )
-from ..storage import ValidationError
+from ..storage import (
+    FINAL_STATEMENT_MESSAGE,
+    ValidationError,
+    check_final_statement_change,
+    check_final_statement_delete,
+)
 from .base import BaseRepository
 
 logger = logging.getLogger(__name__)
@@ -35,6 +43,7 @@ class BillingRepository:
         self._allocation_keys = BaseRepository(db, AllocationKeyORM, AllocationKey, "Verteilerschlüssel nicht gefunden")
         self._cost_items = BaseRepository(db, CostItemORM, CostItem, "Kostenposition nicht gefunden")
         self._utility_statements = BaseRepository(db, UtilityStatementORM, UtilityStatement, "Betriebskostenabrechnung nicht gefunden")
+        self._objections = BaseRepository(db, BillingObjectionORM, BillingObjection, "Widerspruch nicht gefunden")
         # Cross-domain references
         self._portfolio_repo = portfolio_repo
         self._tenant_repo = tenant_repo
@@ -70,6 +79,16 @@ class BillingRepository:
         return result
 
     def delete_billing_period(self, period_id: str) -> None:
+        statements = self._utility_statements.filter_by(billing_period_id=period_id)
+        if any(s.snapshot_hash for s in statements):
+            raise ValidationError(FINAL_STATEMENT_MESSAGE)
+        # an objection answered by this (draft) correction is open again
+        for objection in self._objections.filter_by(correction_period_id=period_id):
+            orm = self._objections.get_orm(objection.id)
+            orm.correction_period_id = None
+            orm.status = "open"
+        for objection in self._objections.filter_by(billing_period_id=period_id):
+            self._objections.delete(objection.id)
         self._billing_periods.delete(period_id)
         self._commit()
 
@@ -137,7 +156,7 @@ class BillingRepository:
         if not self._billing_periods.exists(data.billing_period_id):
             raise ValidationError("Abrechnungsperiode existiert nicht")
         tr = self._tenant_repo
-        if tr and not tr._contracts.exists(data.contract_id):
+        if tr and data.contract_id is not None and not tr._contracts.exists(data.contract_id):
             raise ValidationError("Vertrag existiert nicht")
         pr = self._portfolio_repo
         if pr and not pr._units.exists(data.unit_id):
@@ -153,15 +172,52 @@ class BillingRepository:
         if not self._billing_periods.exists(data.billing_period_id):
             raise ValidationError("Abrechnungsperiode existiert nicht")
         tr = self._tenant_repo
-        if tr and not tr._contracts.exists(data.contract_id):
+        if tr and data.contract_id is not None and not tr._contracts.exists(data.contract_id):
             raise ValidationError("Vertrag existiert nicht")
         pr = self._portfolio_repo
         if pr and not pr._units.exists(data.unit_id):
             raise ValidationError("Einheit existiert nicht")
+        old = self._utility_statements.get(statement_id)
+        check_final_statement_change(old, UtilityStatement.model_validate({**old.model_dump(), **data.model_dump()}))
         result = self._utility_statements.update(statement_id, data)
         self._commit()
         return result
 
     def delete_utility_statement(self, statement_id: str) -> None:
+        check_final_statement_delete(self._utility_statements.get(statement_id))
+        for objection in self._objections.filter_by(statement_id=statement_id):
+            self._objections.delete(objection.id)
         self._utility_statements.delete(statement_id)
         self._commit()
+
+    # --- Objections (Widerspruch) ---
+    def list_billing_objections(self, billing_period_id: str | None = None) -> list[BillingObjection]:
+        items = (self._objections.filter_by(billing_period_id=billing_period_id) if billing_period_id
+                 else self._objections.list_all())
+        return sorted(items, key=lambda o: (o.received_on, o.created_at, o.id))
+
+    def _check_objection(self, data: BillingObjectionCreate) -> None:
+        if not self._billing_periods.exists(data.billing_period_id):
+            raise ValidationError("Abrechnungsperiode existiert nicht")
+        if data.statement_id is not None:
+            if not self._utility_statements.exists(data.statement_id) or (
+                    self._utility_statements.get(data.statement_id).billing_period_id != data.billing_period_id):
+                raise ValidationError("Die Einzelabrechnung gehört nicht zu dieser Abrechnungsperiode")
+        if data.correction_period_id is not None and not self._billing_periods.exists(data.correction_period_id):
+            raise ValidationError("Korrektur existiert nicht")
+
+    def create_billing_objection(self, data: BillingObjectionCreate) -> BillingObjection:
+        self._check_objection(data)
+        result = self._objections.create(data)
+        self._commit()
+        return result
+
+    def get_billing_objection(self, objection_id: str) -> BillingObjection:
+        return self._objections.get(objection_id)
+
+    def update_billing_objection(self, objection_id: str, data: BillingObjectionCreate) -> BillingObjection:
+        self._objections.get(objection_id)
+        self._check_objection(data)
+        result = self._objections.update(objection_id, data)
+        self._commit()
+        return result

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..ai.hf_runtime import runtime
+from ..ai.hf_runtime import _LOAD_FAILED, runtime
 from .base import IntegrationActionResult, IntegrationManifest
 
 
@@ -32,6 +32,17 @@ class HuggingFaceProvider:
             ],
             required_config_keys=[],
             secret_config_keys=["hf_token"],
+            config_fields=[{"key": "hf_token", "label": "HF-Token (für lokale öffentliche Modelle nicht verwendet)", "type": "string", "secret": True}],
+            actions=[
+                {"id": "health", "label": "Modellstatus abfragen", "inputs": []},
+                {"id": "analyze", "label": "Dokument analysieren", "inputs": [{"key": "text", "label": "Text", "type": "string", "required": True, "multiline": True}]},
+                {"id": "summarize", "label": "Nachrichten zusammenfassen", "inputs": [
+                    {"key": "messages", "label": "Nachrichten (JSON)", "type": "array", "required": True,
+                     "items": {"type": "object", "fields": [{"key": "sender_name", "type": "string"}, {"key": "body", "type": "string", "required": True}]}},
+                    {"key": "subject", "label": "Betreff", "type": "string"},
+                ]},
+            ],
+            default_action="health",
         )
 
     def is_configured(self, config: dict) -> bool:
@@ -42,12 +53,15 @@ class HuggingFaceProvider:
         available = runtime.is_available
         models_loaded = len([
             k for k, v in runtime._pipelines.items()
-            if v is not None and v is not object  # not _LOAD_FAILED
+            if v is not None and v is not _LOAD_FAILED
         ])
+        models_failed = sum(v is _LOAD_FAILED for v in runtime._pipelines.values())
+        models_failed += int(runtime._embedder is _LOAD_FAILED)
         return {
-            "status": "ok" if available else "unavailable",
+            "status": ("degraded" if models_failed else "available") if available else "unavailable",
             "transformers_installed": available,
             "models_loaded": models_loaded,
+            "models_failed": models_failed,
             "device": runtime.config.device,
         }
 
@@ -85,14 +99,14 @@ class HuggingFaceProvider:
             if not messages:
                 return IntegrationActionResult(success=False, message="Keine Nachrichten angegeben")
             from ..ai.message_ai import summarize_thread
-            result = summarize_thread(messages, subject=subject)
+            summary = summarize_thread(messages, subject=subject)
             return IntegrationActionResult(
                 success=True,
                 message="Zusammenfassung erstellt",
                 details={
-                    "summary": result.summary,
-                    "key_points": result.key_points,
-                    "action_items": result.action_items,
+                    "summary": summary.summary,
+                    "key_points": summary.key_points,
+                    "action_items": summary.action_items,
                 },
             )
 

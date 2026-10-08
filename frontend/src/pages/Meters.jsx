@@ -7,6 +7,7 @@ import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
+import { formatDate, formatNumber } from '../utils/format';
 
 const METER_TYPE_LABELS = {
   cold_water: 'Kaltwasser',
@@ -16,15 +17,20 @@ const METER_TYPE_LABELS = {
   gas: 'Gas',
 };
 
+// Units the utility statement converts only by an exact factor (MWh -> kWh, l -> m³).
+const MEASURE_UNITS = ['m³', 'l', 'kWh', 'MWh', 'Wh', 'HKV'].map(value => ({ value, label: value }));
+
 const METER_COLUMNS = [
   { key: 'serial_number', label: 'Seriennr.', filterType: 'text' },
-  { key: 'property_name', label: 'Immobilie', filterType: 'text' },
-  { key: 'unit_label', label: 'Einheit', filterType: 'text' },
+  { key: 'property_name', hidden: true, label: 'Immobilie', filterType: 'text' },
+  { key: 'unit_label', subKey: 'property_name', label: 'Einheit', filterType: 'text' },
   { key: 'meter_type', label: 'Typ', filterType: 'select',
     render: v => METER_TYPE_LABELS[v] || v },
-  { key: 'location', label: 'Standort' },
-  { key: 'supplier', label: 'Versorger', filterType: 'text' },
-  { key: 'installation_date', label: 'Einbaudatum', type: 'date' },
+  { key: 'location', hidden: true, label: 'Standort' },
+  { key: 'supplier', hidden: true, label: 'Versorger', filterType: 'text' },
+  { key: 'measure_unit', hidden: true, label: 'Einheit der Ablesung' },
+  { key: 'installation_date', hidden: true, label: 'Einbaudatum', type: 'date' },
+  { key: 'removal_date', hidden: true, label: 'Ausbaudatum', type: 'date' },
   { key: 'next_inspection', label: 'Nächste Prüfung', type: 'date',
     render: (v) => {
       if (!v || v === '—') return '—';
@@ -32,10 +38,10 @@ const METER_COLUMNS = [
       const now = new Date();
       const diffDays = Math.ceil((d - now) / (1000 * 60 * 60 * 24));
       const color = diffDays < 0 ? 'var(--danger)' : diffDays < 30 ? 'var(--warning)' : 'inherit';
-      return <span style={{ color, fontWeight: diffDays < 30 ? 600 : 'normal' }}>{v}</span>;
+      return <span style={{ color, fontWeight: diffDays < 30 ? 600 : 'normal' }}>{formatDate(v)}</span>;
     }},
   { key: 'last_reading_value', label: 'Letzter Stand', type: 'number', align: 'right',
-    render: v => v != null && v !== '—' ? Number(v).toFixed(2) : '—' },
+    render: v => v !== '—' ? formatNumber(v, 2) : '—' },
   { key: 'last_reading_date', label: 'Letzte Ablesung', type: 'date' },
   { key: 'is_active', label: 'Status',
     render: v => v === false ? <StatusBadge status="inactive" /> : <StatusBadge status="active" /> },
@@ -44,9 +50,9 @@ const METER_COLUMNS = [
 const READING_COLUMNS = [
   { key: 'reading_date', label: 'Datum', type: 'date', filterType: 'dateRange' },
   { key: 'value', label: 'Zählerstand', type: 'number', align: 'right',
-    render: v => v != null ? Number(v).toFixed(2) : '—' },
+    render: v => formatNumber(v, 2) },
   { key: 'consumption', label: 'Verbrauch', type: 'number', align: 'right',
-    render: v => v != null ? v.toFixed(2) : '—' },
+    render: v => formatNumber(v, 2) },
   { key: 'recorded_by', label: 'Erfasst von', filterType: 'text' },
   { key: 'notes', label: 'Notizen' },
 ];
@@ -69,7 +75,7 @@ export default function Meters() {
     const unitMap = Object.fromEntries(units.map(x => [x.id, x]));
     const propMap = Object.fromEntries(properties.map(x => [x.id, x]));
 
-    api.get('/meters').catch(() => []).then(m => {
+    api.list('/meters').catch(() => []).then(m => {
       const enriched = (m || []).map(meter => {
         const unit = unitMap[meter.unit_id];
         const prop = unit?.property_id ? propMap[unit.property_id] : null;
@@ -83,7 +89,7 @@ export default function Meters() {
         };
       });
 
-      api.get('/meters/readings/all').then(allReadings => {
+      api.list('/meters/readings/all').then(allReadings => {
         const readingsByMeter = {};
         (allReadings || []).forEach(r => {
           if (!readingsByMeter[r.meter_id]) readingsByMeter[r.meter_id] = [];
@@ -110,7 +116,7 @@ export default function Meters() {
 
   const handleSelectMeter = (meter) => {
     setSelectedMeter(meter);
-    api.get(`/meters/${meter.id}/readings`).then(r => {
+    api.list(`/meters/${meter.id}/readings`).then(r => {
       const sorted = (r || []).sort((a, b) =>
         (a.reading_date || '').localeCompare(b.reading_date || '')
       );
@@ -132,9 +138,12 @@ export default function Meters() {
       { value: 'electricity', label: 'Strom' },
       { value: 'gas', label: 'Gas' },
     ]},
+    { key: 'measure_unit', label: t('pages.meters.measureUnit'), type: 'select', options: MEASURE_UNITS,
+      hint: t('pages.meters.measureUnitHint') },
     { key: 'serial_number', label: 'Seriennummer' },
     { key: 'location', label: 'Standort' },
-    { key: 'installation_date', label: 'Einbaudatum', type: 'date' },
+    { key: 'installation_date', label: 'Einbaudatum', type: 'date', hint: t('pages.meters.installationDateHint') },
+    { key: 'removal_date', label: t('pages.meters.removalDate'), type: 'date', hint: t('pages.meters.removalDateHint') },
     { key: 'next_inspection', label: 'Nächste Prüfung', type: 'date' },
     { key: 'supplier', label: 'Versorger' },
     { key: 'contract_number', label: 'Vertragsnummer' },
@@ -220,30 +229,30 @@ export default function Meters() {
   return (
     <div className="page">
       {/* Summary Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
-        <div className="panel" style={{ padding: '1rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--primary)' }}>{stats.total}</div>
-          <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Zähler gesamt</div>
+      <div className="kpi-row">
+        <div className="kpi">
+          <div className="kpi-value">{stats.total}</div>
+          <div className="kpi-label">Zähler gesamt</div>
         </div>
-        <div className="panel" style={{ padding: '1rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--success)' }}>{stats.active}</div>
-          <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Aktiv</div>
+        <div className="kpi">
+          <div className="kpi-value" style={{ color: 'var(--success)' }}>{stats.active}</div>
+          <div className="kpi-label">Aktiv</div>
         </div>
-        <div className="panel" style={{ padding: '1rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: stats.dueInspection > 0 ? 'var(--warning)' : 'var(--text-secondary)' }}>{stats.dueInspection}</div>
-          <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Prüfung fällig</div>
+        <div className="kpi">
+          <div className="kpi-value" style={{ color: stats.dueInspection > 0 ? 'var(--warning)' : undefined }}>{stats.dueInspection}</div>
+          <div className="kpi-label">Prüfung fällig</div>
         </div>
         {stats.types.map(([type, count]) => (
-          <div key={type} className="panel" style={{ padding: '1rem', textAlign: 'center' }}>
-            <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{count}</div>
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{METER_TYPE_LABELS[type] || type}</div>
+          <div key={type} className="kpi">
+            <div className="kpi-value">{count}</div>
+            <div className="kpi-label">{METER_TYPE_LABELS[type] || type}</div>
           </div>
         ))}
       </div>
 
       {/* Group-by controls */}
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', alignItems: 'center' }}>
-        <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Gruppieren nach:</span>
+      <div className="toolbar">
+        <span className="toolbar-label">Gruppieren nach:</span>
         {[
           { value: 'none', label: 'Keine' },
           { value: 'property', label: 'Immobilie' },

@@ -1,17 +1,18 @@
-"""Backup scheduler for ImmoManager Pro.
+"""Backup scheduler for ImmoManager Pro (Windows Task Scheduler, also while the program is closed).
 
-Creates automatic backups and can register itself as a Windows Scheduled Task.
+Every run makes a verified full backup (database, uploads, configuration, keys) through
+`python -m backend ops backup`, i.e. the same code as the in-app daily job, including the
+second target and retention (see docs/OPERATIONS_BACKUP_SECRETS_20261008.md).
 
 Usage:
-    python scripts/backup_scheduler.py run          # Run backup now
-    python scripts/backup_scheduler.py schedule      # Create Windows Task (daily 2 AM)
-    python scripts/backup_scheduler.py unschedule    # Remove Windows Task
-    python scripts/backup_scheduler.py cleanup       # Remove backups older than 30 days
+    python scripts/backup_scheduler.py run          # Full backup now
+    python scripts/backup_scheduler.py schedule     # Create Windows Task (daily 02:00)
+    python scripts/backup_scheduler.py unschedule   # Remove Windows Task
+    python scripts/backup_scheduler.py cleanup      # Remove old database-only backups (backup_*.db, 30 days)
+    python scripts/backup_scheduler.py info         # Show paths
 """
 
 import os
-import shutil
-import sqlite3
 import subprocess
 import sys
 from datetime import datetime, timedelta
@@ -19,7 +20,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 TASK_NAME = "ImmoManagerPro-Backup"
-MAX_BACKUPS = 30  # Keep last 30 days
+MAX_BACKUPS = 30  # days for the old database-only copies
 
 
 def _default_data_dir() -> Path:
@@ -31,12 +32,6 @@ def _default_data_dir() -> Path:
     return ROOT
 
 
-def _sqlite_path_from_url(url: str) -> Path | None:
-    if not url.startswith("sqlite:///"):
-        return None
-    return Path(url.removeprefix("sqlite:///"))
-
-
 def _data_dir() -> Path:
     return Path(os.environ.get("DATA_DIR") or _default_data_dir()).expanduser().resolve()
 
@@ -45,61 +40,18 @@ def _backup_dir() -> Path:
     return Path(os.environ.get("BACKUP_DIR") or (_data_dir() / "backups")).expanduser().resolve()
 
 
-def _db_path() -> Path:
-    configured = os.environ.get("DATABASE_URL", "")
-    from_url = _sqlite_path_from_url(configured)
-    if from_url is not None:
-        return from_url.expanduser().resolve()
-    appdata_db = _data_dir() / "immo_manager.db"
-    if appdata_db.exists():
-        return appdata_db
-    return ROOT / "immo_manager.db"
-
-
-def run_backup():
-    """Create a timestamped backup of the database."""
-    backup_dir = _backup_dir()
-    db_path = _db_path()
-    backup_dir.mkdir(parents=True, exist_ok=True)
-
-    if not db_path.exists():
-        print(f"Datenbank nicht gefunden: {db_path}")
-        print("Versuche API-basiertes Backup...")
-        _api_backup()
-        return
-
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_file = backup_dir / f"backup_{timestamp}.db"
-    try:
-        source = sqlite3.connect(f"file:{db_path.as_posix()}?mode=ro", uri=True)
-        try:
-            target = sqlite3.connect(str(backup_file))
-            try:
-                source.backup(target)
-            finally:
-                target.close()
-        finally:
-            source.close()
-    except sqlite3.Error:
-        shutil.copy2(db_path, backup_file)
-    size_mb = backup_file.stat().st_size / (1024 * 1024)
-    print(f"Backup erstellt: {backup_file} ({size_mb:.1f} MB)")
-
-
-def _api_backup():
-    """Try to create backup via the admin API."""
-    try:
-        import urllib.request
-        req = urllib.request.Request("http://127.0.0.1:8000/api/v1/admin/backup", method="POST")
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            data = resp.read().decode()
-            print(f"API-Backup: {data}")
-    except Exception as exc:
-        print(f"API-Backup fehlgeschlagen: {exc}")
+def run_backup() -> bool:
+    """Full backup with the launcher's runtime paths (.env of the data directory). False on failure."""
+    command = [sys.executable, "-m", "backend", "ops", "backup", "--data-dir", str(_data_dir())]
+    result = subprocess.run(command, cwd=ROOT)
+    if result.returncode != 0:
+        print("FEHLER: Vollbackup fehlgeschlagen (Details oben und im Betriebsprotokoll ops-log.jsonl).")
+        return False
+    return True
 
 
 def cleanup():
-    """Remove backups older than MAX_BACKUPS days."""
+    """Remove database-only backups (backup_*.db) older than MAX_BACKUPS days; full backups have their own retention."""
     backup_dir = _backup_dir()
     if not backup_dir.exists():
         print("Kein Backup-Verzeichnis vorhanden.")
@@ -155,8 +107,8 @@ def main():
         sys.exit(1)
 
     def info():
-        print(f"Datenbank: {_db_path()}")
-        print(f"Backups:   {_backup_dir()}")
+        print(f"Daten:     {_data_dir()}")
+        print(f"Backups:   {_backup_dir() / 'full'}")
 
     commands = {
         "run": run_backup,
@@ -170,7 +122,9 @@ def main():
         print(f"Unbekannter Befehl: {cmd}")
         sys.exit(1)
 
-    commands[cmd]()
+    # Non-zero exit code so Windows Task Scheduler records failed runs.
+    if commands[cmd]() is False:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

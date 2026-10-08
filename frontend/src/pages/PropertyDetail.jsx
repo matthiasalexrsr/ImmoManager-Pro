@@ -1,19 +1,37 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import DataTable from '../components/DataTable';
 import StatusBadge from '../components/StatusBadge';
+import FileViewer from '../components/FileViewer';
 import { ArrowRightIcon } from '../components/Icons';
+import { formatArea, formatMoney, plainLabel } from '../utils/format';
+import { codeLabel } from '../utils/codeLabels';
+import { resolveFileUrl } from '../features/partyWorkspace/files';
+import './propertyDossier.css';
 
 function fmt(v) {
   return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(v || 0);
 }
 
+function DocumentReference({ document, onOpen }) {
+  const hasFile = typeof document.file_url === 'string' && document.file_url.trim();
+  if (!resolveFileUrl(document.file_url)) return <span className="dossier-document-reference">
+    <span>{document.title}</span>
+    <small className="text-muted">{hasFile ? 'Ungültiger Dateiverweis' : 'Datei fehlt'}</small>
+  </span>;
+  return <button type="button" className="dossier-document-link" aria-label={`Dokument ansehen: ${document.title}`}
+    onClick={() => onOpen(document)}>{document.title}</button>;
+}
+
 export default function PropertyDetail() {
-  const { t } = useTranslation();
   const { id } = useParams();
-  const navigate = useNavigate();
+  return <PropertyDossier key={id} id={id} />;
+}
+
+function PropertyDossier({ id }) {
+  const { t } = useTranslation();
   const [property, setProperty] = useState(null);
   const [units, setUnits] = useState([]);
   const [contracts, setContracts] = useState([]);
@@ -21,24 +39,44 @@ export default function PropertyDetail() {
   const [maintenance, setMaintenance] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('overview');
+  const [error, setError] = useState(null);
+  const [revision, setRevision] = useState(0);
+  const [viewerFile, setViewerFile] = useState(null);
 
   useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+    const options = { signal: controller.signal };
+    const propertyId = encodeURIComponent(id);
+    setLoading(true);
+    setError(null);
     Promise.all([
-      api.get(`/properties/${id}`).catch(() => null),
-      api.get(`/units?property_id=${id}`).catch(() => []),
-      api.get(`/contracts?property_id=${id}`).catch(() => []),
-      api.get(`/documents?property_id=${id}`).catch(() => []),
-      api.get(`/maintenance?property_id=${id}`).catch(() => []),
+      api.get(`/properties/${propertyId}`, options),
+      api.list(`/units?property_id=${propertyId}`, options),
+      api.list(`/contracts?property_id=${propertyId}`, options),
+      api.list(`/documents?property_id=${propertyId}`, options),
+      api.list(`/maintenance?property_id=${propertyId}`, options),
     ]).then(([prop, propUnits, propContracts, propDocs, propMaint]) => {
+      if (cancelled) return;
+      if (!prop) throw new Error('Immobilie nicht gefunden');
       setProperty(prop);
       setUnits(propUnits || []);
       setContracts(propContracts || []);
       setDocuments(propDocs || []);
       setMaintenance(propMaint || []);
-    }).finally(() => setLoading(false));
-  }, [id]);
+    }).catch(failure => { if (!cancelled) setError(failure.message || 'Immobilienakte konnte nicht geladen werden.'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; controller.abort(); };
+  }, [id, revision]);
 
-  if (loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  if (loading) return <div className="page-loading" role="status">{t('ui.table.loading') || 'Immobilienakte wird geladen…'}</div>;
+  if (error) return <div className="page property-dossier">
+    <div role="alert" className="alert alert-error">{error}</div>
+    <div className="dossier-navigation">
+      <button type="button" className="btn btn-secondary" onClick={() => setRevision(value => value + 1)}>Erneut laden</button>
+      <Link className="btn btn-secondary" to="/properties">Zur Immobilienliste</Link>
+    </div>
+  </div>;
   if (!property) return <div className="page"><div className="alert alert-error">{t('pages.propertyOverview.notFound') || 'Immobilie nicht gefunden'}</div></div>;
 
   const totalArea = units.reduce((s, u) => s + (u.area_sqm || 0), 0);
@@ -62,17 +100,19 @@ export default function PropertyDetail() {
   ];
 
   const UNIT_COLUMNS = [
-    { key: 'label', label: t('units.list.columns.label') || 'Bezeichnung', filterType: 'text' },
+    { key: 'label', label: t('units.list.columns.label') || 'Bezeichnung', filterType: 'text',
+      render: (value, unit) => <Link to={`/units/${encodeURIComponent(unit.id)}`}>{value || unit.unit_number || 'Einheit öffnen'}</Link> },
     { key: 'unit_type', label: t('units.list.columns.type') || 'Typ', filterType: 'select' },
     { key: 'area_sqm', label: t('units.list.columns.area') || 'Fläche (m²)', type: 'number', align: 'right',
-      render: v => v != null ? `${Number(v).toLocaleString('de-DE')} m²` : '—' },
-    { key: 'cold_rent', label: t('units.list.columns.coldRent') || 'Kaltmiete (€)', type: 'number', align: 'right',
+      render: v => formatArea(v) },
+    { key: 'cold_rent', label: 'Plan-Kaltmiete (€)', type: 'number', align: 'right',
       render: v => v != null ? fmt(v) : '—' },
     { key: 'status', label: t('ui.form.status') || 'Status', type: 'status', filterType: 'select' },
   ];
 
   const DOC_COLUMNS = [
-    { key: 'title', label: t('pages.propertyDetail.docTitle') || 'Titel', filterType: 'text' },
+    { key: 'title', label: t('pages.propertyDetail.docTitle') || 'Titel', filterType: 'text', wrap: true,
+      render: (_, document) => <DocumentReference document={document} onOpen={setViewerFile} /> },
     { key: 'document_type', label: t('units.list.columns.type') || 'Typ', filterType: 'select' },
     { key: 'document_date', label: t('finance.bookings.form.date') || 'Datum', type: 'date' },
   ];
@@ -85,11 +125,11 @@ export default function PropertyDetail() {
   ];
 
   return (
-    <div className="page">
+    <div className="page property-dossier">
       <div className="detail-header">
-        <button className="btn btn-sm btn-secondary" onClick={() => navigate('/properties')}>
+        <Link className="btn btn-sm btn-secondary" to="/properties">
           ← {t('pages.propertyOverview.back') || 'Zurück'}
-        </button>
+        </Link>
         <div className="detail-title">
           <h1>{property.name}</h1>
           <span className="text-muted">
@@ -102,16 +142,16 @@ export default function PropertyDetail() {
       {/* KPI Summary */}
       <div className="stats-grid" style={{ marginBottom: '1rem' }}>
         <div className="stat-card">
-          <div className="stat-label">{t('pages.propertyDetail.totalColdRent') || 'Kaltmiete gesamt'}</div>
+          <div className="stat-label">Plan-Kaltmiete gesamt</div>
           <div className="stat-value">{fmt(totalColdRent)}</div>
         </div>
         <div className="stat-card">
-          <div className="stat-label">€/m²</div>
-          <div className="stat-value">{rentPerSqm.toFixed(2)} €</div>
+          <div className="stat-label">Plan-Kaltmiete €/m²</div>
+          <div className="stat-value">{formatMoney(rentPerSqm)}</div>
         </div>
         <div className="stat-card">
           <div className="stat-label">{t('pages.propertyDetail.totalArea') || 'Gesamtfläche'}</div>
-          <div className="stat-value">{totalArea.toLocaleString('de-DE')} m²</div>
+          <div className="stat-value">{formatArea(totalArea)}</div>
         </div>
         <div className="stat-card">
           <div className="stat-label">{unitLabel}</div>
@@ -131,6 +171,7 @@ export default function PropertyDetail() {
           <div className={`stat-value ${openMaintenance > 0 ? 'text-red' : ''}`}>{openMaintenance}</div>
         </div>
       </div>
+      <p className="text-muted dossier-rent-note">Planmieten aus den Stammdaten der Einheiten. Tatsächliche Vertragsmieten und Zahlungseingänge können abweichen.</p>
 
       {/* Tabs */}
       <div className="detail-tabs">
@@ -152,12 +193,12 @@ export default function PropertyDetail() {
             <div className="panel">
               <div className="panel-header">{t('pages.propertyDetail.propertyDetails') || 'Immobiliendetails'}</div>
               <div className="panel-body">
-                <div className="detail-field"><span>{t('portfolio.properties.form.type') || 'Typ'}:</span> {property.property_type || '—'}</div>
+                <div className="detail-field"><span>{t('portfolio.properties.form.type') || 'Typ'}:</span> {codeLabel(property.property_type) || '—'}</div>
                 <div className="detail-field"><span>{t('portfolio.properties.form.yearBuilt') || 'Baujahr'}:</span> {property.year_built || '—'}</div>
-                <div className="detail-field"><span>{t('portfolio.properties.form.livingArea') || 'Wohnfläche'}:</span> {property.living_area_sqm ? `${property.living_area_sqm} m²` : '—'}</div>
-                <div className="detail-field"><span>{t('portfolio.properties.form.plotArea') || 'Grundstück'}:</span> {property.plot_area_sqm ? `${property.plot_area_sqm} m²` : '—'}</div>
-                <div className="detail-field"><span>{t('portfolio.properties.form.purchasePrice') || 'Kaufpreis'}:</span> {property.purchase_price ? fmt(property.purchase_price) : '—'}</div>
-                <div className="detail-field"><span>{t('portfolio.properties.form.marketValue') || 'Marktwert'}:</span> {property.market_value ? fmt(property.market_value) : '—'}</div>
+                <div className="detail-field"><span>{plainLabel(t('portfolio.properties.form.livingArea') || 'Wohnfläche')}:</span> {formatArea(property.living_area_sqm)}</div>
+                <div className="detail-field"><span>{plainLabel(t('portfolio.properties.form.plotArea') || 'Grundstück')}:</span> {formatArea(property.plot_area_sqm)}</div>
+                <div className="detail-field"><span>{plainLabel(t('portfolio.properties.form.purchasePrice') || 'Kaufpreis')}:</span> {property.purchase_price ? fmt(property.purchase_price) : '—'}</div>
+                <div className="detail-field"><span>{plainLabel(t('portfolio.properties.form.marketValue') || 'Marktwert')}:</span> {property.market_value ? fmt(property.market_value) : '—'}</div>
               </div>
             </div>
             <div className="panel">
@@ -167,8 +208,8 @@ export default function PropertyDetail() {
                   <ul className="activity-list">
                     {units.slice(0, 8).map(u => (
                       <li key={u.id}>
-                        <span className="activity-title">{u.label}</span>
-                        <span className="text-muted">{u.unit_type} · {u.area_sqm || '—'} m²</span>
+                        <Link className="activity-title" to={`/units/${encodeURIComponent(u.id)}`}>{u.label || u.unit_number || 'Einheit öffnen'}</Link>
+                        <span className="text-muted">{codeLabel(u.unit_type)} · {formatArea(u.area_sqm)}</span>
                         <StatusBadge status={u.status} />
                       </li>
                     ))}
@@ -176,7 +217,7 @@ export default function PropertyDetail() {
                 )}
                 {units.length > 8 && (
                   <button className="panel-link" onClick={() => setTab('units')}>
-                    {t('pages.propertyDetail.allUnits') || `Alle ${units.length} Einheiten`} <ArrowRightIcon size={14} />
+                    {t('pages.propertyDetail.allUnits', { count: units.length })} <ArrowRightIcon size={14} />
                   </button>
                 )}
               </div>
@@ -188,8 +229,8 @@ export default function PropertyDetail() {
                   <ul className="activity-list">
                     {documents.slice(0, 5).map(d => (
                       <li key={d.id}>
-                        <span className="activity-title">{d.title}</span>
-                        <span className="text-muted">{d.document_type || t('pages.propertyDetail.other') || 'Sonstig'}</span>
+                        <span className="activity-title"><DocumentReference document={d} onOpen={setViewerFile} /></span>
+                        <span className="text-muted">{codeLabel(d.document_type) || t('pages.propertyDetail.other') || 'Sonstig'}</span>
                       </li>
                     ))}
                   </ul>
@@ -209,20 +250,21 @@ export default function PropertyDetail() {
             <div className="panel-body">
               <div className="stats-grid">
                 <div className="stat-card">
-                  <div className="stat-label">{t('pages.propertyDetail.monthlyColdRent') || 'Monatliche Kaltmiete'}</div>
+                  <div className="stat-label">Monatliche Plan-Kaltmiete</div>
                   <div className="stat-value">{fmt(totalColdRent)}</div>
                 </div>
                 <div className="stat-card">
-                  <div className="stat-label">{t('pages.propertyDetail.annualRent') || 'Jahresmiete (Kalt)'}</div>
+                  <div className="stat-label">Jährliche Plan-Kaltmiete</div>
                   <div className="stat-value">{fmt(totalColdRent * 12)}</div>
                 </div>
                 <div className="stat-card">
-                  <div className="stat-label">{t('pages.propertyDetail.avgPerSqm') || 'Durchschnitt €/m²'}</div>
-                  <div className="stat-value">{rentPerSqm.toFixed(2)} €</div>
+                  <div className="stat-label">Plan-Kaltmiete Ø €/m²</div>
+                  <div className="stat-value">{formatMoney(rentPerSqm)}</div>
                 </div>
               </div>
               <div style={{ marginTop: '1rem' }}>
-                <h4>{t('pages.propertyDetail.rentByUnit') || 'Mietübersicht nach Einheit'}</h4>
+                <h4>Planmieten nach Einheit</h4>
+                <div className="dossier-table-scroll" role="region" aria-label="Planmieten nach Einheit" tabIndex={0}>
                 <table className="simple-table">
                   <thead>
                     <tr>
@@ -237,8 +279,8 @@ export default function PropertyDetail() {
                   <tbody>
                     {units.map(u => (
                       <tr key={u.id}>
-                        <td>{u.label}</td>
-                        <td>{u.unit_type}</td>
+                        <td><Link to={`/units/${encodeURIComponent(u.id)}`}>{u.label || u.unit_number || 'Einheit öffnen'}</Link></td>
+                        <td>{codeLabel(u.unit_type)}</td>
                         <td style={{ textAlign: 'right' }}>{fmt(u.cold_rent)}</td>
                         <td style={{ textAlign: 'right' }}>{fmt(u.service_charge_advance)}</td>
                         <td style={{ textAlign: 'right' }}>{fmt(u.heating_advance)}</td>
@@ -258,6 +300,7 @@ export default function PropertyDetail() {
                     </tr>
                   </tbody>
                 </table>
+                </div>
               </div>
             </div>
           </div>
@@ -271,6 +314,7 @@ export default function PropertyDetail() {
           <DataTable title={t('pages.propertyDetail.maintenanceTitle') || 'Wartung & Instandhaltung'} columns={MAINT_COLUMNS} data={maintenance} />
         )}
       </div>
+      {viewerFile && <FileViewer key={viewerFile.id} fileUrl={viewerFile.file_url} title={viewerFile.title} onClose={() => setViewerFile(null)} />}
     </div>
   );
 }

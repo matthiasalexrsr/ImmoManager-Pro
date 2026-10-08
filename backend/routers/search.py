@@ -1,12 +1,19 @@
 """Global search endpoint across all entity types."""
 
+import csv
+import io
 import logging
+import tempfile
+from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import StreamingResponse
 
 from ..dependencies import store
+from ..services import global_search as gs
 from ..services.ai.schemas import SearchHit
 from ..services.ai.semantic_search import IndexEntry, search_index
+from ..services.portfolio_scope import require_installation_scope, resource_visible
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +28,7 @@ def _rebuild_search_index() -> None:
     entries: list[IndexEntry] = []
 
     for p in store.list_properties():
-        text = " ".join(filter(None, [p.name, getattr(p, "street", None), getattr(p, "city", None)]))
+        text = " ".join(filter(None, [p.name, p.address_line, p.postal_code, p.city]))
         entries.append(IndexEntry("property", p.id, p.name, getattr(p, "city", "") or "", f"/properties/{p.id}", text))
 
     for t in store.list_tenants():
@@ -33,7 +40,7 @@ def _rebuild_search_index() -> None:
 
     for d in store.list_documents():
         text = " ".join(filter(None, [d.title, getattr(d, "description", None)]))
-        entries.append(IndexEntry("document", d.id, d.title, getattr(d, "doc_type", "") or "", "/documents", text))
+        entries.append(IndexEntry("document", d.id, d.title, d.document_type or "", "/documents", text))
 
     for m in store.list_maintenance_cases():
         text = " ".join(filter(None, [m.title, getattr(m, "description", None)]))
@@ -46,172 +53,114 @@ def _rebuild_search_index() -> None:
 
 @router.post("/reindex")
 def reindex_search() -> dict:
-    """Rebuild the semantic search index."""
+    """Rebuild the semantic search index (of the whole installation)."""
+    require_installation_scope()
     _rebuild_search_index()
     return {"reindexed": True, "entries": search_index.entry_count, "semantic_available": search_index.is_available}
 
 
-_MAX_RESULTS_PER_TYPE = 10  # Cap per entity type to limit scan overhead
-_MAX_TOTAL_RESULTS = 50  # Stop scanning once we have enough results
-
-
-def _search_entities(entity_list, query, entity_type, fields, url, display_fn, detail_fn, results):
-    """Search a single entity type and append matches to results."""
-    hits = 0
-    for item in entity_list:
-        if len(results) >= _MAX_TOTAL_RESULTS:
-            return
-        searchable = " ".join(filter(None, [getattr(item, f, None) for f in fields])).lower()
-        if query in searchable:
-            results.append({
-                "entity_type": entity_type,
-                "id": item.id,
-                "display": display_fn(item),
-                "detail": detail_fn(item),
-                "url": url(item) if callable(url) else url,
-            })
-            hits += 1
-            if hits >= _MAX_RESULTS_PER_TYPE:
-                return
+def _page_info(entity_type: str, page: gs.Page) -> dict:
+    return {"entity_type": entity_type, "total": page.total, "has_more": page.has_more,
+            "next_cursor": page.next_cursor}
 
 
 @router.get("")
 def global_search(
-    q: str = Query(..., min_length=1, description="Search query"),
-    semantic: bool = Query(True, description="Enable semantic re-ranking"),
+    q: Annotated[str, Query(min_length=1, description="Search query")],
+    semantic: Annotated[bool, Query(description="Enable semantic re-ranking (overview only)")] = True,
+    type: Annotated[str | None, Query(description="One entity type: paged results")] = None,
+    limit: Annotated[int, Query(ge=1, le=gs.MAX_LIMIT, description="Hits per type")] = gs.DEFAULT_LIMIT,
+    cursor: Annotated[str | None, Query(description="next_cursor of the previous page")] = None,
 ):
-    """Search across all major entity types with optional semantic re-ranking."""
-    query = q.lower().strip()
-    results: list[dict] = []
+    """Search all entity types (overview) or page through one type.
 
-    # Define search targets: (list_fn, entity_type, fields, url, display_fn, detail_fn)
-    # NOTE: This still loads all entities per type. For large datasets, move to DB-side
-    # ILIKE/text-search queries in a dedicated SearchService.
-    _search_entities(
-        store.list_properties(), query, "property",
-        ["name", "street", "city"],
-        lambda p: f"/properties/{p.id}",
-        lambda p: p.name,
-        lambda p: getattr(p, "city", "") or "",
-        results,
-    )
-    _search_entities(
-        store.list_tenants(), query, "tenant",
-        ["full_name", "email"],
-        "/tenants",
-        lambda t: t.full_name,
-        lambda t: getattr(t, "email", "") or "",
-        results,
-    )
-    _search_entities(
-        store.list_units(), query, "unit",
-        ["label"],
-        lambda u: f"/units/{u.id}",
-        lambda u: u.label,
-        lambda u: u.unit_type,
-        results,
-    )
-    _search_entities(
-        store.list_contracts(), query, "contract",
-        ["contract_number"],
-        "/contracts",
-        lambda c: c.contract_number,
-        lambda c: c.status,
-        results,
-    )
-    _search_entities(
-        store.list_tasks(), query, "task",
-        ["title", "description"],
-        "/tasks",
-        lambda t: t.title,
-        lambda t: t.status,
-        results,
-    )
-    _search_entities(
-        store.list_invoices(), query, "invoice",
-        ["supplier", "payment_terms"],
-        "/invoices",
-        lambda i: i.supplier,
-        lambda i: str(i.gross_amount),
-        results,
-    )
-    _search_entities(
-        store.list_accounts(), query, "account",
-        ["name", "bank_name", "iban"],
-        "/accounts",
-        lambda a: a.name,
-        lambda a: getattr(a, "account_type", "") or "",
-        results,
-    )
-    _search_entities(
-        store.list_bookings(), query, "booking",
-        ["description", "payment_text"],
-        "/bookings",
-        lambda b: getattr(b, "description", None) or getattr(b, "payment_text", "") or str(b.id)[:8],
-        lambda b: str(getattr(b, "amount", "")),
-        results,
-    )
-    _search_entities(
-        store.list_maintenance_cases(), query, "maintenance",
-        ["title", "description"],
-        "/maintenance",
-        lambda m: m.title,
-        lambda m: m.status,
-        results,
-    )
-    _search_entities(
-        store.list_documents(), query, "document",
-        ["title", "description"],
-        "/documents",
-        lambda d: d.title,
-        lambda d: getattr(d, "doc_type", "") or "",
-        results,
-    )
+    Overview: up to ``limit`` hits per type plus exact ``total``/``has_more`` per type in
+    ``groups``. With ``type``: one keyset page and ``next_cursor``. Sync on purpose:
+    FastAPI runs it in the threadpool, off the event loop.
+    """
+    if not q.strip():
+        raise HTTPException(422, "Suchbegriff fehlt")
+    if cursor and not type:
+        raise HTTPException(400, "Ein Cursor gilt nur zusammen mit type")
+    try:
+        if type:
+            spec = gs.get_type(type)
+            page = gs.search_page(store, spec, q, limit=limit, cursor=cursor)
+            return {"query": q, "count": len(page.items), "results": page.items, "semantic": False,
+                    "groups": [_page_info(type, page)], "total": page.total,
+                    "has_more": page.has_more, "next_cursor": page.next_cursor}
+        results: list[dict] = []
+        groups = []
+        for spec in gs.SEARCH_TYPES:
+            page = gs.search_page(store, spec, q, limit=limit)
+            results.extend(page.items)
+            if page.total:
+                groups.append(_page_info(spec.entity_type, page))
+    except gs.SearchError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
-    # Entity types that may not exist in all store backends
-    for entity_type, list_fn, fields, url, display_fn, detail_fn in [
-        ("contact", store.list_contacts, ["name", "email", "company"], "/contacts",
-         lambda x: getattr(x, "name", "") or str(x.id)[:8], lambda x: getattr(x, "company", "") or ""),
-        ("deposit", store.list_deposits, ["notes"], "/deposits",
-         lambda x: f"Kaution {str(x.id)[:8]}", lambda x: getattr(x, "status", "") or ""),
-        ("category", store.list_categories, ["name", "description"], "/categories",
-         lambda x: x.name, lambda x: getattr(x, "category_type", "") or ""),
-        ("lead", store.list_leads, ["name", "email"], "/leads",
-         lambda x: getattr(x, "name", "") or str(x.id)[:8], lambda x: getattr(x, "status", "") or ""),
-        ("listing", store.list_listings, ["title", "description"], "/listings",
-         lambda x: getattr(x, "title", "") or str(x.id)[:8], lambda x: getattr(x, "status", "") or ""),
-        ("insurance", store.list_insurances, ["provider", "policy_number", "insurance_type"], "/insurances",
-         lambda x: getattr(x, "provider", "") or str(x.id)[:8], lambda x: getattr(x, "insurance_type", "") or ""),
-    ]:
-        try:
-            _search_entities(list_fn(), query, entity_type, fields, url, display_fn, detail_fn, results)
-        except Exception:
-            logger.debug("Search failed for entity type %r", entity_type, exc_info=True)
-
-    # Apply semantic re-ranking if available and requested
     if semantic and search_index.is_available and search_index.entry_count > 0:
         keyword_hits = [
-            SearchHit(
-                entity_type=r["entity_type"],
-                entity_id=r["id"],
-                display=r["display"],
-                detail=r["detail"],
-                url=r["url"],
-            )
+            SearchHit(entity_type=r["entity_type"], entity_id=r["id"], display=r["display"],
+                      detail=r["detail"], url=r["url"])
             for r in results
         ]
-        reranked = search_index.search(q, keyword_hits, top_k=50)
+        reranked = search_index.search(q, keyword_hits, top_k=max(50, len(keyword_hits)))
+        # the index covers the installation: a hit found only there is checked against this account
+        found = {(hit.entity_type, hit.entity_id) for hit in keyword_hits}
+        reranked = [h for h in reranked
+                    if (h.entity_type, h.entity_id) in found or resource_visible(h.entity_type, h.entity_id)]
         reranked_results = [
-            {
-                "entity_type": h.entity_type,
-                "id": h.entity_id,
-                "display": h.display,
-                "detail": h.detail,
-                "url": h.url,
-                "score": h.combined_score,
-            }
+            {"entity_type": h.entity_type, "id": h.entity_id, "display": h.display, "detail": h.detail,
+             "url": h.url, "score": h.combined_score}
             for h in reranked
         ]
-        return {"query": q, "count": len(reranked_results), "results": reranked_results, "semantic": True}
+        return {"query": q, "count": len(reranked_results), "results": reranked_results, "semantic": True,
+                "groups": groups}
 
-    return {"query": q, "count": len(results), "results": results[:50], "semantic": False}
+    return {"query": q, "count": len(results), "results": results, "semantic": False, "groups": groups}
+
+
+_CSV_COLUMNS = ("entity_type", "id", "display", "detail", "url")
+
+
+def _csv_cell(value) -> str:
+    text = "" if value is None else str(value)
+    # spreadsheet formula injection
+    return "'" + text if text[:1] in ("=", "+", "-", "@", "\t", "\r") else text
+
+
+@router.get("/export", response_model=None)
+def export_search(
+    q: Annotated[str, Query(min_length=1)],
+    type: Annotated[str, Query(description="Entity type to export")],
+):
+    """Every hit of one type as CSV (keyset batches, spooled to disk past 1 MiB)."""
+    if not q.strip():
+        raise HTTPException(422, "Suchbegriff fehlt")
+    try:
+        spec = gs.get_type(type)
+    except gs.SearchError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    # read everything here: the request's session and portfolio scope end before a lazy body runs
+    buffer = tempfile.SpooledTemporaryFile(max_size=1 << 20, mode="w+b")
+    text = io.TextIOWrapper(buffer, encoding="utf-8-sig", newline="")
+    writer = csv.writer(text, delimiter=";")
+    writer.writerow(_CSV_COLUMNS)
+    for hit in gs.iter_all(store, spec, q):
+        writer.writerow([_csv_cell(hit[column]) for column in _CSV_COLUMNS])
+    text.flush()
+    text.detach()
+    buffer.seek(0)
+
+    def chunks():
+        try:
+            while chunk := buffer.read(64 * 1024):
+                yield chunk
+        finally:
+            buffer.close()
+
+    return StreamingResponse(chunks(), media_type="text/csv; charset=utf-8",
+                             headers={"Content-Disposition": f'attachment; filename="suche_{spec.entity_type}.csv"'})
+
+

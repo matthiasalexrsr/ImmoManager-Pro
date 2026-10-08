@@ -182,19 +182,9 @@ class AutotestRunner:
         username = f"autotest_admin_{secrets.token_hex(4)}"
         password = "AutoTest1234!"
 
-        # Register
-        client.post("/api/v1/auth/register", json={
-            "username": username,
-            "email": f"{username}@test.local",
-            "full_name": "Autotest Admin",
-            "password": password,
-        })
-
-        # Promote to admin
-        from ...auth import _user_store
-        user = _user_store.get_by_username(username)
-        if user:
-            _user_store.update(user["id"], {"role": "eigentuemer"})
+        # Create the admin in-process: public sign-up is closed after setup.
+        from ...auth import register_user
+        register_user(username, f"{username}@test.local", "Autotest Admin", password, "eigentuemer")
 
         # Login
         resp = client.post("/api/v1/auth/login", json={

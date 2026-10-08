@@ -22,11 +22,11 @@ import json
 import logging
 import os
 import re
-import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import httpx
 
@@ -298,9 +298,10 @@ def _create_pre_update_backup() -> str | None:
 
     try:
 
-        # Use the same export logic as admin.py
-        from .routers.admin import _export_store_data
-        data = _export_store_data()
+        # Same lossless snapshot as /admin/export
+        from .dependencies import store
+        from .services.data_snapshot import export_snapshot
+        data = export_snapshot(store)
         data["_meta"] = {
             "type": "pre_update_backup",
             "version": settings.app_version,
@@ -347,7 +348,10 @@ def _create_db_snapshot() -> str | None:
     snapshot_path = _BACKUP_DIR / snapshot_name
 
     try:
-        shutil.copy2(db_path, snapshot_path)
+        # online backup API: a file copy of the live WAL database would miss commits
+        from .services.full_backup import sqlite_online_copy
+
+        sqlite_online_copy(db_path, snapshot_path)
         logger.info("Database snapshot created: %s", snapshot_name)
         return snapshot_name
     except Exception:
@@ -358,17 +362,18 @@ def _create_db_snapshot() -> str | None:
 # ─── Migration ────────────────────────────────────────────────────────────────
 
 def _run_migrations() -> tuple[bool, str]:
-    """Run Alembic migrations.  Returns (success, message)."""
+    """Explicit upgrade with the updated code, in its own process (full backup first)."""
     try:
-        from alembic import command
-        from alembic.config import Config
-
-        alembic_cfg = Config(str(_PROJECT_ROOT / "alembic.ini"))
-        command.upgrade(alembic_cfg, "head")
-        return True, "Migrationen erfolgreich angewendet"
+        result = subprocess.run([sys.executable, "-m", "backend.upgrade"], cwd=str(_PROJECT_ROOT),
+                                capture_output=True, text=True, timeout=6 * 3600)
     except Exception as exc:
-        logger.exception("Migration failed during update")
-        return False, f"Migration fehlgeschlagen: {exc}"
+        logger.exception("Upgrade could not be started during update")
+        return False, f"Upgrade fehlgeschlagen: {type(exc).__name__}"
+    output = (result.stdout + result.stderr).strip()
+    if result.returncode != 0:
+        logger.error("Explicit upgrade failed during update: %s", output[-2000:])
+        return False, f"Upgrade fehlgeschlagen (Code {result.returncode}): {output[-500:]}"
+    return True, output.splitlines()[-1] if output else "Datenbank ist aktuell"
 
 
 # ─── Frontend Rebuild ─────────────────────────────────────────────────────────
@@ -476,7 +481,7 @@ def apply_update(target_version: str | None = None) -> dict:
 
     Returns a result dict with status, messages, and whether restart is needed.
     """
-    result = {
+    result: dict[str, Any] = {
         "success": False,
         "message": "",
         "steps": [],
@@ -687,7 +692,10 @@ def _restore_db_snapshot(snapshot_name: str) -> bool:
         return False
 
     try:
-        shutil.copy2(snapshot_path, db_path)
+        # page by page into the live file: a file copy would be overridden by its old WAL
+        from .services.sqlite_backup import copy_database
+
+        copy_database(snapshot_path, db_path)
         logger.info("Database restored from snapshot: %s", snapshot_name)
         return True
     except Exception:

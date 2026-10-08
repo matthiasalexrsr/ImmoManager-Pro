@@ -1,14 +1,28 @@
 from dataclasses import asdict
 from datetime import date
 from decimal import Decimal
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel
 
+from ..concurrency import one_at_a_time
 from ..dependencies import store
-from ..domain.lease_engine import ChargeConfig, LeaseEngine, PaymentLine
-from ..models import Contract, ContractCreate, ContractPatch
+from ..domain.lease_engine import LeaseEngine, PaymentLine, RentStep
+from ..models import (
+    Contract,
+    ContractCreate,
+    ContractOccupancy,
+    ContractOccupancyCreate,
+    ContractPatch,
+    ContractRentPeriod,
+    ContractRentPeriodCreate,
+)
+from ..services.deletion_guard import ensure_deletable
+from ..services.document_versions import ensure_binding_kept
+from ..services.payment_allocations import contract_payments
+from ..services.read_cache import CachedReads
+from ..services.rent_history import charge_for, follow_contract_start, rent_steps, start_rent_history
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/contracts", tags=["Verträge"])
@@ -36,38 +50,44 @@ def list_contracts(
     date_to: date | None = Query(None),
 ) -> list[Contract]:
     filters = {"property_id": property_id, "tenant_id": tenant_id, "status": status_filter}
-    has_date_filter = isinstance(date_from, date) or isinstance(date_to, date)
-    results = store._list_paginated(
+    return store._list_paginated(
         entity_type="contract",
-        skip=0 if has_date_filter else skip,
-        limit=10000 if has_date_filter else limit,
+        skip=skip,
+        limit=limit,
         filters=filters,
         order_by=sort_by,
         order_desc=(sort_order == "desc"),
+        range_filters={
+            "start_date": (date_from if isinstance(date_from, date) else None, None),
+            "end_date": (None, date_to if isinstance(date_to, date) else None),
+        },
     )
-    if isinstance(date_from, date):
-        results = [
-            r for r in results
-            if getattr(r, 'start_date', None)
-            and r.start_date >= date_from
-        ]
-    if isinstance(date_to, date):
-        results = [
-            r for r in results
-            if getattr(r, 'end_date', None)
-            and r.end_date <= date_to
-        ]
-    if has_date_filter:
-        results = results[skip : skip + limit]
-    return results
 
 
 @router.post("", response_model=Contract, status_code=status.HTTP_201_CREATED)
 def create_contract(payload: ContractCreate) -> Contract:
     try:
-        return store.create_contract(payload)
+        contract = store.create_contract(payload)
+        start_rent_history(store, contract)
+        return contract
     except ValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.get("/current-rents")
+@one_at_a_time
+def current_rents(as_of: Optional[date] = Query(None)) -> dict[str, dict]:
+    """The rent each contract owes on a day (today by default), from its rent history."""
+    day = as_of or date.today()
+    reads = CachedReads(store)      # all rent histories in one query instead of one per contract
+    rents = {}
+    for contract in reads.list_contracts():
+        charge = charge_for(reads, contract, day)
+        if charge is not None:
+            rents[contract.id] = {"cold_rent": float(charge.cold_rent),
+                                  "service_charge_advance": float(charge.service_charge_advance),
+                                  "heating_advance": float(charge.heating_advance)}
+    return rents
 
 
 @router.get("/{contract_id}", response_model=Contract)
@@ -81,7 +101,10 @@ def get_contract(contract_id: str) -> Contract:
 @router.put("/{contract_id}", response_model=Contract)
 def update_contract(contract_id: str, payload: ContractCreate) -> Contract:
     try:
-        return store.update_contract(contract_id, payload)
+        ensure_binding_kept(store, "contract", contract_id, store.get_contract(contract_id), payload.model_dump())
+        contract = store.update_contract(contract_id, payload)
+        follow_contract_start(store, contract)
+        return contract
     except (NotFoundError, ValidationError) as exc:
         status_code = status.HTTP_404_NOT_FOUND if isinstance(exc, NotFoundError) else status.HTTP_400_BAD_REQUEST
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
@@ -89,46 +112,37 @@ def update_contract(contract_id: str, payload: ContractCreate) -> Contract:
 
 @router.patch("/{contract_id}", response_model=Contract)
 def patch_contract(contract_id: str, payload: ContractPatch) -> Contract:
+    # A patch gets the same checks as a full update (status, dates, unit and
+    # property, unique number, no second tenancy of the unit).
     try:
-        return store._patch_entity("contract", contract_id, payload)
-    except NotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        current = store.get_contract(contract_id)
+        merged = ContractCreate.model_validate({
+            **current.model_dump(include=set(ContractCreate.model_fields)),
+            **payload.model_dump(exclude_unset=True),
+        })
+        ensure_binding_kept(store, "contract", contract_id, current, merged.model_dump())
+        contract = store.update_contract(contract_id, merged)
+        follow_contract_start(store, contract)
+        return contract
+    except (NotFoundError, ValidationError) as exc:
+        status_code = status.HTTP_404_NOT_FOUND if isinstance(exc, NotFoundError) else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
 
 
 @router.delete("/{contract_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_contract(contract_id: str) -> None:
     try:
+        ensure_deletable(store, "contract", contract_id)
         store.delete_contract(contract_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
-def _build_charge_and_payments(contract: Contract) -> tuple[ChargeConfig, list[PaymentLine]]:
-    """Derive ChargeConfig from the unit and collect tenant payment bookings."""
-    try:
-        unit = store.get_unit(contract.unit_id)
-    except (NotFoundError, KeyError):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Einheit zum Vertrag nicht gefunden",
-        )
-    charge = ChargeConfig(
-        cold_rent=Decimal(str(unit.cold_rent or 0)),
-        service_charge_advance=Decimal(str(unit.service_charge_advance or 0)),
-        heating_advance=Decimal(str(unit.heating_advance or 0)),
-    )
-    # Filter bookings by tenant, scoped to this contract's property when possible
-    payments = [
-        PaymentLine(
-            booking_date=booking.booking_date,
-            amount=Decimal(str(booking.amount)),
-        )
-        for booking in store.list_bookings()
-        if booking.tenant_id == contract.tenant_id
-        and (not booking.property_id or booking.property_id == contract.property_id)
-        and booking.amount > 0
-    ]
-    return charge, payments
+def _build_charge_and_payments(contract: Contract, until: date) -> tuple[list[RentStep], list[PaymentLine]]:
+    """The contract's rent history and the payments credited to it up to the reference date."""
+    steps = rent_steps(store, contract)
+    payments = contract_payments(store, contract, until=until)
+    return steps, payments
 
 
 @router.get("/{contract_id}/settlement")
@@ -143,12 +157,12 @@ def get_contract_settlement(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
     today = as_of or date.today()
-    charge, payments = _build_charge_and_payments(contract)
+    steps, payments = _build_charge_and_payments(contract, today)
 
     dashboard = LeaseEngine.build_dashboard(
         contract_start=contract.start_date,
         contract_end=contract.end_date,
-        charge=charge,
+        rent_steps=steps,
         payments=payments,
         today=today,
     )
@@ -173,7 +187,7 @@ def create_dunning_campaign(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
     today = as_of or date.today()
-    charge, payments = _build_charge_and_payments(contract)
+    steps, payments = _build_charge_and_payments(contract, today)
 
     dunning_policy = None
     if policy:
@@ -189,7 +203,7 @@ def create_dunning_campaign(
     campaign = LeaseEngine.build_dunning_campaign(
         contract_start=contract.start_date,
         contract_end=contract.end_date,
-        charge=charge,
+        rent_steps=steps,
         payments=payments,
         today=today,
         policy=dunning_policy,
@@ -198,7 +212,63 @@ def create_dunning_campaign(
     return _serialise(asdict(campaign))
 
 
-def _serialise(obj: object) -> object:
+@router.get("/{contract_id}/rent-periods", response_model=list[ContractRentPeriod])
+def list_rent_periods(contract_id: str) -> list[ContractRentPeriod]:
+    """The contract's rent history, oldest first."""
+    try:
+        store.get_contract(contract_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return store.list_contract_rent_periods(contract_id)
+
+
+@router.post("/{contract_id}/rent-periods", response_model=ContractRentPeriod, status_code=status.HTTP_201_CREATED)
+def add_rent_period(contract_id: str, payload: ContractRentPeriodCreate) -> ContractRentPeriod:
+    """Record a rent change by hand (adjustments go through /rent-adjustments/{id}/apply)."""
+    if payload.contract_id != contract_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Vertrag passt nicht zum Pfad")
+    try:
+        return store.create_contract_rent_period(payload.model_copy(update={"source": "manual"}))
+    except ValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.get("/{contract_id}/occupancies", response_model=list[ContractOccupancy])
+def list_occupancies(contract_id: str) -> list[ContractOccupancy]:
+    """Dated occupants: persons from a date on (before the first entry the contract's persons apply)."""
+    try:
+        store.get_contract(contract_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return store.list_contract_occupancies(contract_id)
+
+
+@router.post("/{contract_id}/occupancies", response_model=ContractOccupancy, status_code=status.HTTP_201_CREATED)
+def add_occupancy(contract_id: str, payload: ContractOccupancyCreate) -> ContractOccupancy:
+    """Record that the household size changes from a date on (birth, move-in, move-out of a person)."""
+    if payload.contract_id != contract_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Vertrag passt nicht zum Pfad")
+    try:
+        store.get_contract(contract_id)
+        return store.create_contract_occupancy(payload)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.delete("/{contract_id}/occupancies/{occupancy_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_occupancy(contract_id: str, occupancy_id: str) -> None:
+    try:
+        occupancy = store.get_contract_occupancy(occupancy_id)
+        if occupancy.contract_id != contract_id:
+            raise NotFoundError("Bewohnerstand nicht gefunden")
+        store.delete_contract_occupancy(occupancy_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+def _serialise(obj: Any) -> Any:
     """Recursively convert Decimal and date objects for JSON output."""
     if isinstance(obj, dict):
         return {key: _serialise(value) for key, value in obj.items()}

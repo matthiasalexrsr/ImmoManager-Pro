@@ -5,6 +5,7 @@ maintaining the same public API for backward compatibility with routers and test
 """
 
 import logging
+from collections.abc import Iterable
 
 from pydantic import BaseModel as PydanticBaseModel
 from sqlalchemy.orm import Session
@@ -14,6 +15,8 @@ from ..models import (
     AccountCreate,
     AllocationKey,
     AllocationKeyCreate,
+    BillingObjection,
+    BillingObjectionCreate,
     BillingPeriod,
     BillingPeriodCreate,
     Booking,
@@ -29,6 +32,10 @@ from ..models import (
     ContactCreate,
     Contract,
     ContractCreate,
+    ContractOccupancy,
+    ContractOccupancyCreate,
+    ContractRentPeriod,
+    ContractRentPeriodCreate,
     CostItem,
     CostItemCreate,
     Deposit,
@@ -65,6 +72,8 @@ from ..models import (
     NotificationCreate,
     NotificationTemplate,
     NotificationTemplateCreate,
+    PaymentAllocation,
+    PaymentAllocationCreate,
     Portfolio,
     PortfolioCreate,
     Property,
@@ -90,6 +99,7 @@ from ..models import (
     ViewingAppointment,
     ViewingAppointmentCreate,
 )
+from ..storage import check_final_statement_change
 from .billing_repo import BillingRepository
 from .communication_repo import CommunicationRepository
 from .document_repo import DocumentRepository
@@ -149,8 +159,12 @@ class SQLAlchemyStore:
         "lead": ("tenant", "_leads"),
         "deposit": ("tenant", "_deposits"),
         "rent_adjustment": ("tenant", "_rent_adjustments"),
+        "contract_rent_period": ("tenant", "_rent_periods"),
+        "contract_occupancy": ("tenant", "_occupancies"),
+        "billing_objection": ("billing", "_objections"),
         "meter_reading": ("tenant", "_meter_readings"),
         "booking": ("finance", "_bookings"),
+        "payment_allocation": ("finance", "_allocations"),
         "receivable": ("finance", "_receivables"),
         "invoice": ("finance", "_invoices"),
         "tax_rate": ("finance", "_tax_rates"),
@@ -190,6 +204,18 @@ class SQLAlchemyStore:
     def _patch_entity(self, entity_type: str, entity_id: str, patch: PydanticBaseModel):
         """Apply a partial update using the entity type string to resolve the repository."""
         repo = self._resolve_repo(entity_type)
+        # Validate the merged record before writing: an invalid value must not
+        # be committed (it would break every later read of the table).
+        current = repo.get(entity_id)
+        merged = repo.read_class.model_validate({**current.model_dump(), **patch.model_dump(exclude_unset=True)})
+        if entity_type == "document":
+            self.document.validate_document_associations(merged)
+        if entity_type == "task":
+            self.communication.validate_task(merged)
+        if entity_type == "utility_statement":
+            check_final_statement_change(current, merged)
+        if entity_type == "booking":
+            self.finance.check_reversal(merged, entity_id, current)
         result = repo.patch(entity_id, patch)
         self._commit()
         return result
@@ -202,12 +228,14 @@ class SQLAlchemyStore:
         filters: dict | None = None,
         order_by: str | None = None,
         order_desc: bool = False,
+        range_filters: dict | None = None,
     ) -> list:
         """Generic paginated list using entity type to resolve the repository."""
         repo = self._resolve_repo(entity_type)
         return repo.list_paginated(
             skip=skip, limit=limit, filters=filters,
             order_by=order_by, order_desc=order_desc,
+            range_filters=range_filters,
         )
 
     def _count(self, entity_type: str, filters: dict | None = None) -> int:
@@ -336,8 +364,8 @@ class SQLAlchemyStore:
         self.tenant.delete_contract(contract_id)
 
     # --- Bookings ---
-    def list_bookings(self) -> list[Booking]:
-        return self.finance.list_bookings()
+    def list_bookings(self, tenant_id: str | None = None) -> list[Booking]:
+        return self.finance.list_bookings(tenant_id)
 
     def create_booking(self, data: BookingCreate) -> Booking:
         return self.finance.create_booking(data)
@@ -350,6 +378,9 @@ class SQLAlchemyStore:
 
     def delete_booking(self, booking_id: str) -> None:
         self.finance.delete_booking(booking_id)
+
+    def list_booking_reversals(self, booking_id: str) -> list[Booking]:
+        return self.finance.list_booking_reversals(booking_id)
 
     # --- Receivables ---
     def list_receivables(self) -> list[Receivable]:
@@ -405,6 +436,25 @@ class SQLAlchemyStore:
 
     def create_document(self, data: DocumentCreate) -> Document:
         return self.document.create_document(data)
+
+    def validate_document_associations(self, data: DocumentCreate) -> None:
+        self.document.validate_document_associations(data)
+
+    def get_tenant_overview(self, tenant_id: str) -> dict:
+        tenant = self.get_tenant(tenant_id)
+        return {
+            "tenant": tenant, "contracts": self.tenant.tenant_contract_overviews(tenant_id),
+            **self.document.tenant_document_summary(tenant_id),
+        }
+
+    def list_tenant_documents(
+        self, tenant_id: str, skip: int = 0, limit: int = 25, q: str | None = None,
+        document_type: str | None = None, contract_id: str | None = None,
+    ) -> dict:
+        self.get_tenant(tenant_id)
+        return self.document.list_tenant_documents(
+            tenant_id, skip=skip, limit=limit, q=q, document_type=document_type, contract_id=contract_id,
+        )
 
     def get_document(self, document_id: str) -> Document:
         return self.document.get_document(document_id)
@@ -575,6 +625,19 @@ class SQLAlchemyStore:
     def delete_utility_statement(self, statement_id: str) -> None:
         self.billing.delete_utility_statement(statement_id)
 
+    # --- Objections (Widerspruch) ---
+    def list_billing_objections(self, billing_period_id: str | None = None) -> list[BillingObjection]:
+        return self.billing.list_billing_objections(billing_period_id)
+
+    def create_billing_objection(self, data: BillingObjectionCreate) -> BillingObjection:
+        return self.billing.create_billing_objection(data)
+
+    def get_billing_objection(self, objection_id: str) -> BillingObjection:
+        return self.billing.get_billing_objection(objection_id)
+
+    def update_billing_objection(self, objection_id: str, data: BillingObjectionCreate) -> BillingObjection:
+        return self.billing.update_billing_objection(objection_id, data)
+
     # --- Deposits ---
     def list_deposits(self) -> list[Deposit]:
         return self.tenant.list_deposits()
@@ -657,6 +720,46 @@ class SQLAlchemyStore:
 
     def delete_rent_adjustment(self, adj_id: str) -> None:
         self.tenant.delete_rent_adjustment(adj_id)
+
+    # --- Payment allocations ---
+    def list_payment_allocations(self, booking_id: str | None = None, contract_id: str | None = None,
+                                 booking_ids: Iterable[str] | None = None) -> list[PaymentAllocation]:
+        return self.finance.list_payment_allocations(booking_id, contract_id, booking_ids)
+
+    def create_payment_allocation(self, data: PaymentAllocationCreate) -> PaymentAllocation:
+        return self.finance.create_payment_allocation(data)
+
+    def delete_payment_allocation(self, allocation_id: str) -> None:
+        self.finance.delete_payment_allocation(allocation_id)
+
+    # --- Contract rent periods ---
+    def list_contract_rent_periods(self, contract_id: str | None = None) -> list[ContractRentPeriod]:
+        return self.tenant.list_contract_rent_periods(contract_id)
+
+    def create_contract_rent_period(self, data: ContractRentPeriodCreate) -> ContractRentPeriod:
+        return self.tenant.create_contract_rent_period(data)
+
+    def get_contract_rent_period(self, period_id: str) -> ContractRentPeriod:
+        return self.tenant.get_contract_rent_period(period_id)
+
+    def update_contract_rent_period(self, period_id: str, data: ContractRentPeriodCreate) -> ContractRentPeriod:
+        return self.tenant.update_contract_rent_period(period_id, data)
+
+    def delete_contract_rent_period(self, period_id: str) -> None:
+        self.tenant.delete_contract_rent_period(period_id)
+
+    # --- Contract occupancies (dated occupants) ---
+    def list_contract_occupancies(self, contract_id: str | None = None) -> list[ContractOccupancy]:
+        return self.tenant.list_contract_occupancies(contract_id)
+
+    def create_contract_occupancy(self, data: ContractOccupancyCreate) -> ContractOccupancy:
+        return self.tenant.create_contract_occupancy(data)
+
+    def get_contract_occupancy(self, occupancy_id: str) -> ContractOccupancy:
+        return self.tenant.get_contract_occupancy(occupancy_id)
+
+    def delete_contract_occupancy(self, occupancy_id: str) -> None:
+        self.tenant.delete_contract_occupancy(occupancy_id)
 
     # --- Handover Protocols ---
     def list_handover_protocols(self) -> list[HandoverProtocol]:

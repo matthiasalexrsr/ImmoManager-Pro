@@ -46,14 +46,6 @@ function statusFor(progress, hasWarning = false) {
   return 'ready';
 }
 
-function sumAgingBuckets(aging) {
-  const buckets = aging?.buckets || {};
-  return asNumber(buckets.days1to30)
-    + asNumber(buckets.days31to60)
-    + asNumber(buckets.days61to90)
-    + asNumber(buckets.days90plus);
-}
-
 function withComputedProgress(item) {
   const progress = progressFor(item.steps);
   return {
@@ -92,7 +84,7 @@ function buildNextStep(processSteps, attentionItems) {
   };
 }
 
-export function buildDashboardWorkflow({ stats = {}, aging = null, expiring = null, notifications = [] } = {}) {
+export function buildDashboardWorkflow({ stats = {}, expiring = null, notifications = [] } = {}) {
   const portfolios = asNumber(stats.portfolios);
   const properties = asNumber(stats.properties);
   const units = asNumber(stats.units);
@@ -101,9 +93,10 @@ export function buildDashboardWorkflow({ stats = {}, aging = null, expiring = nu
   const activeContracts = asNumber(stats.contractsActive);
   const accounts = asNumber(stats.accounts);
   const rentCharges = asNumber(stats.rentCharges);
-  const openReceivables = asNumber(stats.openReceivables || aging?.openTotal);
+  // Counts of receivables; the aging report holds euros and must not be added to them.
+  const openReceivables = asNumber(stats.openReceivables);
   const paidReceivables = asNumber(stats.paidReceivables);
-  const overdueReceivables = asNumber(stats.overdueReceivables) + sumAgingBuckets(aging);
+  const overdueReceivables = asNumber(stats.overdueReceivables);
   const dunningReceivables = asNumber(stats.dunningReceivables);
   const openInvoices = asNumber(stats.openInvoices);
   const documents = asNumber(stats.documents);
@@ -172,7 +165,7 @@ export function buildDashboardWorkflow({ stats = {}, aging = null, expiring = nu
     buildProcessStep(
       'charge',
       'pages.dashboard.process.steps.charge',
-      'Sollstellung',
+      'Soll\u00ADstellung',
       rentCharges > 0 || openReceivables > 0 || paidReceivables > 0,
       rentCharges,
       '/rent-charges',
@@ -206,7 +199,7 @@ export function buildDashboardWorkflow({ stats = {}, aging = null, expiring = nu
         actionKey: overdueReceivables > 0
           ? 'pages.dashboard.process.actions.createDunning'
           : 'pages.dashboard.process.actions.reviewDunning',
-        actionFallback: overdueReceivables > 0 ? 'Mahnung vorbereiten' : 'Mahnstatus pruefen',
+        actionFallback: overdueReceivables > 0 ? 'Mahnung vorbereiten' : 'Mahnstatus prüfen',
       },
     ),
   ];
@@ -225,7 +218,7 @@ export function buildDashboardWorkflow({ stats = {}, aging = null, expiring = nu
         : properties === 0
           ? 'pages.dashboard.workflow.actions.createProperty'
           : 'pages.dashboard.workflow.actions.manageUnits',
-      actionFallback: portfolios === 0 ? 'Portfolio anlegen' : properties === 0 ? 'Immobilie anlegen' : 'Einheiten pruefen',
+      actionFallback: portfolios === 0 ? 'Portfolio anlegen' : properties === 0 ? 'Immobilie anlegen' : 'Einheiten prüfen',
       metricKey: 'pages.dashboard.workflow.metrics.units',
       metricFallback: '{{count}} Einheiten',
       metricCount: units,
@@ -241,14 +234,14 @@ export function buildDashboardWorkflow({ stats = {}, aging = null, expiring = nu
       titleKey: 'pages.dashboard.workflow.rental.title',
       titleFallback: 'Vermietung sichern',
       descriptionKey: 'pages.dashboard.workflow.rental.description',
-      descriptionFallback: 'Mieter, Vertraege und freie Einheiten im Blick behalten.',
+      descriptionFallback: 'Mieter, Verträge und freie Einheiten im Blick behalten.',
       actionTo: tenants === 0 ? '/tenants' : activeContracts === 0 ? '/contract-wizard' : '/contracts',
       actionKey: tenants === 0
         ? 'pages.dashboard.workflow.actions.createTenant'
         : activeContracts === 0
           ? 'pages.dashboard.workflow.actions.createContract'
           : 'pages.dashboard.workflow.actions.reviewContracts',
-      actionFallback: tenants === 0 ? 'Mieter anlegen' : activeContracts === 0 ? 'Vertrag erstellen' : 'Vertraege pruefen',
+      actionFallback: tenants === 0 ? 'Mieter anlegen' : activeContracts === 0 ? 'Vertrag erstellen' : 'Verträge prüfen',
       metricKey: 'pages.dashboard.workflow.metrics.vacancies',
       metricFallback: '{{count}} freie Einheiten',
       metricCount: vacantUnits,
@@ -256,7 +249,7 @@ export function buildDashboardWorkflow({ stats = {}, aging = null, expiring = nu
       steps: [
         buildStep('pages.dashboard.workflow.steps.units', 'Einheiten', units > 0, units, '/units'),
         buildStep('pages.dashboard.workflow.steps.tenants', 'Mieter', tenants > 0, tenants, '/tenants'),
-        buildStep('pages.dashboard.workflow.steps.activeContracts', 'Aktive Vertraege', activeContracts > 0, activeContracts, '/contracts'),
+        buildStep('pages.dashboard.workflow.steps.activeContracts', 'Aktive Verträge', activeContracts > 0, activeContracts, '/contracts'),
       ],
     }),
     withComputedProgress({
@@ -270,7 +263,7 @@ export function buildDashboardWorkflow({ stats = {}, aging = null, expiring = nu
       actionKey: overdueReceivables > 0 || openReceivables > 0
         ? 'pages.dashboard.workflow.actions.reviewReceivables'
         : 'pages.dashboard.workflow.actions.createCharges',
-      actionFallback: overdueReceivables > 0 || openReceivables > 0 ? 'Forderungen pruefen' : 'Sollstellungen oeffnen',
+      actionFallback: overdueReceivables > 0 || openReceivables > 0 ? 'Forderungen prüfen' : 'Sollstellungen öffnen',
       metricKey: 'pages.dashboard.workflow.metrics.openReceivables',
       metricFallback: '{{count}} offene Forderungen',
       metricCount: openReceivables,
@@ -285,9 +278,9 @@ export function buildDashboardWorkflow({ stats = {}, aging = null, expiring = nu
       id: 'billing',
       icon: 'billing',
       titleKey: 'pages.dashboard.workflow.billing.title',
-      titleFallback: 'Abrechnung abschliessen',
+      titleFallback: 'Abrechnung abschließen',
       descriptionKey: 'pages.dashboard.workflow.billing.description',
-      descriptionFallback: 'Verteilerschluessel, Rechnungen und Abrechnungsperioden revisionsfaehig fuehren.',
+      descriptionFallback: 'Verteilerschlüssel, Rechnungen und Abrechnungsperioden revisionsfähig führen.',
       actionTo: allocationKeys === 0 ? '/allocation-keys' : '/statements',
       actionKey: allocationKeys === 0
         ? 'pages.dashboard.workflow.actions.createAllocationKeys'
@@ -295,16 +288,16 @@ export function buildDashboardWorkflow({ stats = {}, aging = null, expiring = nu
           ? 'pages.dashboard.workflow.actions.reviewPreflight'
           : 'pages.dashboard.workflow.actions.openStatements',
       actionFallback: allocationKeys === 0
-        ? 'Schluessel pflegen'
+        ? 'Schlüssel pflegen'
         : billingPreflightBlockers > 0
-          ? 'Preflight pruefen'
-          : 'Abrechnung oeffnen',
+          ? 'Preflight prüfen'
+          : 'Abrechnung öffnen',
       metricKey: 'pages.dashboard.workflow.metrics.openInvoices',
       metricFallback: '{{count}} offene Rechnungen',
       metricCount: openInvoices,
       hasWarning: openInvoices > 0 || billingPreflightBlockers > 0 || billingPreflightWarnings > 0,
       steps: [
-        buildStep('pages.dashboard.workflow.steps.allocationKeys', 'Verteilerschluessel', allocationKeys > 0, allocationKeys, '/allocation-keys'),
+        buildStep('pages.dashboard.workflow.steps.allocationKeys', 'Verteilerschlüssel', allocationKeys > 0, allocationKeys, '/allocation-keys'),
         buildStep('pages.dashboard.workflow.steps.invoices', 'Rechnungen', openInvoices === 0, openInvoices, '/invoices'),
         buildStep(
           'pages.dashboard.workflow.steps.statements',
@@ -321,14 +314,14 @@ export function buildDashboardWorkflow({ stats = {}, aging = null, expiring = nu
       titleKey: 'pages.dashboard.workflow.operations.title',
       titleFallback: 'Betrieb erledigen',
       descriptionKey: 'pages.dashboard.workflow.operations.description',
-      descriptionFallback: 'Dokumente, Aufgaben und Instandhaltung ohne stille Rueckstaende bearbeiten.',
+      descriptionFallback: 'Dokumente, Aufgaben und Instandhaltung ohne stille Rückstände bearbeiten.',
       actionTo: openMaintenance > 0 ? '/maintenance' : openTasks > 0 ? '/tasks' : '/documents',
       actionKey: openMaintenance > 0
         ? 'pages.dashboard.workflow.actions.reviewMaintenance'
         : openTasks > 0
           ? 'pages.dashboard.workflow.actions.reviewTasks'
           : 'pages.dashboard.workflow.actions.reviewDocuments',
-      actionFallback: openMaintenance > 0 ? 'Wartung pruefen' : openTasks > 0 ? 'Aufgaben oeffnen' : 'Dokumente pruefen',
+      actionFallback: openMaintenance > 0 ? 'Wartung prüfen' : openTasks > 0 ? 'Aufgaben öffnen' : 'Dokumente prüfen',
       metricKey: 'pages.dashboard.workflow.metrics.openTasks',
       metricFallback: '{{count}} offene Aufgaben',
       metricCount: openTasks,
@@ -364,7 +357,7 @@ export function buildDashboardWorkflow({ stats = {}, aging = null, expiring = nu
       tone: 'critical',
       icon: 'invoice',
       titleKey: 'pages.dashboard.attention.overdueReceivables',
-      titleFallback: 'Ueberfaellige Forderungen',
+      titleFallback: 'Überfällige Forderungen',
       value: overdueReceivables,
       to: '/receivables',
     },
@@ -409,7 +402,7 @@ export function buildDashboardWorkflow({ stats = {}, aging = null, expiring = nu
       tone: 'warning',
       icon: 'contract',
       titleKey: 'pages.dashboard.attention.expiringContracts',
-      titleFallback: 'Auslaufende Vertraege',
+      titleFallback: 'Auslaufende Verträge',
       value: expiringContracts,
       to: '/contracts',
     },

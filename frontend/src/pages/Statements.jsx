@@ -2,8 +2,10 @@ import { useState, useEffect, useRef } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import DataTable from '../components/DataTable';
+import { PartyLink } from '../features/partyWorkspace/PartyWorkspace';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
+import { formatMoney } from '../utils/format';
 
 /** Inline toast-style notification hook. */
 function useToast() {
@@ -35,23 +37,25 @@ function PromptModal({ title, defaultValue, onConfirm, onCancel }) {
   const [value, setValue] = useState(defaultValue || '');
   return (
     <div className="modal-overlay" onClick={onCancel}>
-      <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '450px' }}>
+      <div className="modal" role="dialog" aria-modal="true" aria-label={title} onClick={e => e.stopPropagation()} style={{ maxWidth: '450px' }}>
         <div className="modal-header">
           <h3>{title}</h3>
-          <button className="btn btn-sm" onClick={onCancel}>&times;</button>
+          <button className="btn-close" onClick={onCancel} aria-label="Schließen">&times;</button>
         </div>
         <div className="modal-body">
-          <input
-            className="form-input"
-            value={value}
-            onChange={e => setValue(e.target.value)}
-            autoFocus
-            style={{ width: '100%' }}
-          />
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <input
+              value={value}
+              onChange={e => setValue(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') onConfirm(value); }}
+              aria-label={title}
+              autoFocus
+            />
+          </div>
         </div>
-        <div className="modal-footer" style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', padding: '0.75rem 1rem' }}>
-          <button className="btn btn-sm btn-secondary" onClick={onCancel}>Abbrechen</button>
-          <button className="btn btn-sm btn-primary" onClick={() => onConfirm(value)}>OK</button>
+        <div className="modal-footer">
+          <button className="btn btn-secondary" onClick={onCancel}>Abbrechen</button>
+          <button className="btn btn-primary" onClick={() => onConfirm(value)}>OK</button>
         </div>
       </div>
     </div>
@@ -63,7 +67,7 @@ function getColumns(t) {
     { key: 'property_name', label: t('pages.statements.colProperty') || 'Immobilie', filterType: 'text' },
     { key: 'period_label', label: t('pages.statements.colPeriod') || 'Abrechnungszeitraum', filterType: 'text' },
     { key: 'total_costs', label: t('pages.statements.colTotalCosts') || 'Gesamtkosten (€)', type: 'number', align: 'right',
-      render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
+      render: v => formatMoney(v) },
     { key: 'cost_item_count', label: 'Kostenpositionen', type: 'number' },
     { key: 'units_count', label: t('pages.statements.colUnits') || 'Einzelabrechnungen', type: 'number' },
     { key: 'status', label: t('ui.form.status') || 'Status', type: 'status', filterType: 'select' },
@@ -74,29 +78,51 @@ function getCostColumns(t) {
   return [
     { key: 'description', label: t('pages.statements.colCostType') || 'Kostenart', filterType: 'text' },
     { key: 'amount', label: t('pages.statements.colAmount') || 'Betrag (€)', type: 'number', align: 'right',
-      render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
+      render: v => formatMoney(v) },
     { key: 'allocation_key_name', label: t('pages.statements.colAllocationKey') || 'Verteilerschlüssel' },
+    { key: 'is_recoverable', label: t('pages.statements.colRecoverable') || 'Umlagefähig',
+      render: v => (v === false
+        ? <span className="text-muted">{t('pages.statements.notRecoverable') || 'nein (trägt der Eigentümer)'}</span>
+        : (t('pages.statements.recoverable') || 'ja')) },
   ];
+}
+
+/** dd.mm.yyyy from an ISO date string. */
+function formatDate(iso) {
+  if (!iso) return '—';
+  const [y, m, d] = String(iso).slice(0, 10).split('-');
+  return `${d}.${m}.${y}`;
 }
 
 function getStmtColumns(t, onError) {
   return [
     { key: 'unit_label', label: t('pages.statements.colUnit') || 'Einheit' },
-    { key: 'tenant_name', label: 'Mieter' },
+    { key: 'tenant_name', label: t('pages.statements.colParty') || 'Mieter',
+      render: (v, row) => (row.party === 'vacancy'
+        ? <span className="text-muted">{t('pages.statements.vacancyParty') || 'Leerstand (Eigentümer)'}</span>
+        : row.tenant_id && v !== '—' ? <PartyLink tenantId={row.tenant_id}>{v}</PartyLink> : v) },
+    { key: 'usage_start', label: t('pages.statements.colUsage') || 'Nutzungszeitraum',
+      render: (_, row) => (row.usage_start
+        ? `${formatDate(row.usage_start)} – ${formatDate(row.usage_end)}`
+        : '—') },
+    { key: 'usage_days', label: t('pages.statements.colDays') || 'Tage', type: 'number', align: 'right',
+      render: v => (v != null ? v : '—') },
     { key: 'total_cost', label: t('pages.statements.colShare') || 'Anteil (€)', type: 'number', align: 'right',
-      render: v => `${Number(v || 0).toFixed(2)} €` },
+      render: v => formatMoney(v || 0) },
     { key: 'advance_paid', label: t('pages.statements.colAdvancePaid') || 'Vorauszahlung (€)', type: 'number', align: 'right',
-      render: v => `${Number(v || 0).toFixed(2)} €` },
+      render: v => formatMoney(v || 0) },
     { key: 'balance', label: t('pages.statements.colBalance') || 'Saldo (€)', type: 'number', align: 'right',
-      render: (v) => {
+      render: (v, row) => {
+        // A vacancy row is the landlord's cost, not a balance anybody owes.
+        if (row.party === 'vacancy') return <span className="text-muted">—</span>;
         const cls = v > 0 ? 'text-red' : v < 0 ? 'text-green' : '';
-        return <span className={cls}>{Number(v || 0).toFixed(2)} €</span>;
+        return <span className={cls}>{formatMoney(v || 0)}</span>;
       }},
     { key: 'delivery_status', label: t('pages.statements.colDelivery') || 'Zustellung',
       render: v => v ? <StatusBadge status={v} /> : <span className="text-muted">—</span> },
     { key: 'status', label: t('ui.form.status') || 'Status', type: 'status' },
     { key: 'pdf_action', label: '',
-      render: (_, row) => (
+      render: (_, row) => row.party !== 'vacancy' && (
         <button
           className="btn btn-sm btn-secondary"
           title={t('pages.statements.pdfDownload') || 'PDF herunterladen'}
@@ -133,9 +159,12 @@ function isMutable(status) {
   return status === 'draft' || status === 'review';
 }
 
+/** Statuses of an issued version: it is only answered by a correction (a new version). */
+const CORRECTABLE = ['finalized', 'delivered', 'disputed'];
+
 /** Determine the current workflow step (1-6) based on period state. */
 function getWorkflowStep(period, costCount, stmtCount) {
-  if (period.status === 'delivered') return 6;
+  if (['delivered', 'disputed', 'corrected'].includes(period.status)) return 6;
   if (period.status === 'finalized') return 5;
   if (period.status === 'review') return 4;
   // draft status
@@ -208,19 +237,26 @@ export default function Statements() {
   const [ocrDraft, setOcrDraft] = useState(null);
   const [ocrUploading, setOcrUploading] = useState(false);
   const [disputing, setDisputing] = useState(false);
-  const [, setPromptModal] = useState(null);
+  const [promptModal, setPromptModal] = useState(null);
+  const [objections, setObjections] = useState([]);
+
+  const loadObjections = (periodId) => {
+    api.get(`/billing/objections?billing_period_id=${encodeURIComponent(periodId)}`)
+      .then(list => setObjections(Array.isArray(list) ? list : []))
+      .catch(() => setObjections([]));
+  };
 
   const loadData = () => {
     setLoadError(null);
     Promise.all([
-      api.get('/billing/periods'),
-      api.get('/billing/cost-items'),
-      api.get('/billing/statements'),
-      api.get('/properties'),
-      api.get('/units'),
-      api.get('/billing/allocation-keys'),
-      api.get('/contracts'),
-      api.get('/tenants'),
+      api.list('/billing/periods'),
+      api.list('/billing/cost-items'),
+      api.list('/billing/statements'),
+      api.list('/properties'),
+      api.list('/units'),
+      api.list('/billing/allocation-keys'),
+      api.list('/contracts'),
+      api.list('/tenants'),
     ]).then(([bp, ci, us, props, u, ak, ctr, tn]) => {
       setPeriods(bp || []);
       setCostItems(ci || []);
@@ -251,7 +287,7 @@ export default function Statements() {
     return {
       ...bp,
       property_name: propMap[bp.property_id]?.name || '—',
-      period_label: `${bp.start_date || '?'} – ${bp.end_date || '?'}`,
+      period_label: `${formatDate(bp.start_date)} – ${formatDate(bp.end_date)}`,
       total_costs: totalCosts,
       cost_item_count: costs.length,
       units_count: stmts.length,
@@ -264,21 +300,21 @@ export default function Statements() {
     { key: 'label', label: t('pages.statements.formLabel') || 'Bezeichnung', required: true, placeholder: 'z.B. NK-Abrechnung 2025' },
     { key: 'start_date', label: t('pages.statements.formStart') || 'Beginn', type: 'date', required: true },
     { key: 'end_date', label: t('pages.statements.formEnd') || 'Ende', type: 'date', required: true },
-    { key: 'status', label: t('ui.form.status') || 'Status', type: 'select', default: 'draft', options: [
-      { value: 'draft', label: t('ui.filterChips.draft') || 'Entwurf' },
-      { value: 'review', label: t('status.contract.inReview') || 'In Prüfung' },
-      { value: 'finalized', label: t('status.general.completed') || 'Abgeschlossen' },
-      { value: 'disputed', label: t('pages.statements.dispute') || 'Widerspruch' },
-    ]},
+    // No status field: the status changes only through the workflow (review, finalize, objection, correction).
   ];
 
   const costFields = [
     { key: 'billing_period_id', label: t('pages.statements.formPeriod') || 'Abrechnungsperiode', type: 'select', required: true,
-      options: periods.map(p => ({ value: p.id, label: p.label || `${p.start_date} – ${p.end_date}` })) },
+      options: periods.map(p => ({ value: p.id, label: p.label || `${formatDate(p.start_date)} – ${formatDate(p.end_date)}` })) },
     { key: 'description', label: t('pages.statements.formCostType') || 'Kostenart', required: true, placeholder: 'z.B. Wasser, Heizung, Müll' },
     { key: 'amount', label: t('pages.statements.formAmount') || 'Betrag (€)', type: 'number', required: true },
     { key: 'allocation_key_id', label: t('pages.statements.formAllocationKey') || 'Verteilerschlüssel', type: 'select', required: true,
       options: allocationKeys.map(k => ({ value: k.id, label: `${k.name} (${k.key_type})` })) },
+    { key: 'is_recoverable', label: t('pages.statements.formRecoverable') || 'Umlagefähig', type: 'select', required: true,
+      default: 'true', options: [
+        { value: 'true', label: t('pages.statements.recoverableYes') || 'Ja – wird auf die Mieter verteilt' },
+        { value: 'false', label: t('pages.statements.recoverableNo') || 'Nein – trägt der Eigentümer' },
+      ]},
   ];
 
   const handleSave = async (data) => {
@@ -294,6 +330,8 @@ export default function Statements() {
             description: cost.description,
             amount: 0,
             allocation_key_id: cost.allocation_key_id,
+            is_recoverable: cost.is_recoverable !== false,
+            cost_category: cost.cost_category,
           }).catch(() => { toast.show('Kostenposition konnte nicht kopiert werden'); });
         }
       }
@@ -303,7 +341,8 @@ export default function Statements() {
     loadData();
   };
 
-  const handleSaveCost = async (data) => {
+  const handleSaveCost = async (form) => {
+    const data = { ...form, is_recoverable: form.is_recoverable !== 'false' && form.is_recoverable !== false };
     if (costModal === 'create') {
       await api.post('/billing/cost-items', data);
     } else {
@@ -393,7 +432,8 @@ export default function Statements() {
     setCreatingReceivables(true);
     try {
       const res = await api.post(`/billing/periods/${selectedPeriod.id}/create-receivables`, {});
-      toast.show(`Forderungen erzeugt: ${res?.created_receivables ?? 0}`, 'success');
+      const skipped = res?.skipped_existing ? ` (${res.skipped_existing} bereits vorhanden)` : '';
+      toast.show(`Forderungen erzeugt: ${res?.created_receivables ?? 0}${skipped}`, 'success');
     } catch (err) {
       toast.show(err.message || 'Forderungen konnten nicht erzeugt werden');
     } finally {
@@ -415,7 +455,7 @@ export default function Statements() {
           );
           await loadData();
           if (res?.new_period_id) {
-            const allPeriods = await api.get('/billing/periods').catch(() => []);
+            const allPeriods = await api.list('/billing/periods').catch(() => []);
             const newPeriod = (allPeriods || []).find(p => p.id === res.new_period_id);
             if (newPeriod) handleSelectPeriod(newPeriod);
           }
@@ -441,6 +481,7 @@ export default function Statements() {
             {}
           );
           setSelectedPeriod(updated);
+          loadObjections(selectedPeriod.id);
           await loadData();
         } catch (err) {
           toast.show(err.message || 'Widerspruch konnte nicht eingelegt werden');
@@ -575,6 +616,8 @@ export default function Statements() {
   const handleSelectPeriod = (period) => {
     setSelectedPeriod(period);
     setView('detail');
+    setObjections([]);
+    loadObjections(period.id);
     setPreflight(null);
     setPreflightLoading(true);
     api.get(`/billing/periods/${period.id}/preflight`)
@@ -610,13 +653,19 @@ export default function Statements() {
         return {
           ...s,
           unit_label: unitMap[s.unit_id]?.label || '—',
+          tenant_id: contract?.tenant_id || null,
           tenant_name: contract ? (tenantMap[contract.tenant_id] || '—') : '—',
         };
       });
     const totalCosts = periodCosts.reduce((s, c) => s + (c.amount || 0), 0);
+    const nonRecoverable = periodCosts.filter(c => c.is_recoverable === false).reduce((s, c) => s + (c.amount || 0), 0);
+    const tenantShare = periodStmts.filter(s => s.party !== 'vacancy').reduce((s, st) => s + (st.total_cost || 0), 0);
+    const vacancyShare = periodStmts.filter(s => s.party === 'vacancy').reduce((s, st) => s + (st.total_cost || 0), 0);
     const editable = isMutable(selectedPeriod.status);
     const isFinalized = selectedPeriod.status === 'finalized';
-    const isDelivered = selectedPeriod.status === 'delivered';
+    const canCorrect = CORRECTABLE.includes(selectedPeriod.status);
+    const correctedVersion = selectedPeriod.corrects_period_id
+      ? periods.find(p => p.id === selectedPeriod.corrects_period_id) : null;
     const revisionHistory = getRevisionHistory();
     const workflowStep = getWorkflowStep(selectedPeriod, periodCosts.length, periodStmts.length);
 
@@ -632,7 +681,7 @@ export default function Statements() {
           <div className="detail-title">
             <h1>{selectedPeriod.label || t('pages.statements.defaultLabel') || 'Abrechnung'}</h1>
             <span className="text-muted">
-              {propMap[selectedPeriod.property_id]?.name || '—'} · {selectedPeriod.start_date} – {selectedPeriod.end_date}
+              {propMap[selectedPeriod.property_id]?.name || '—'} · {formatDate(selectedPeriod.start_date)} – {formatDate(selectedPeriod.end_date)}
             </span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -698,13 +747,15 @@ export default function Statements() {
               </button>
             )}
 
-            <button
-              className="btn btn-sm btn-secondary"
-              onClick={handleCreateRevision}
-              disabled={creatingRevision}
-            >
-              {creatingRevision ? t('pages.statements.creating') : t('pages.statements.startCorrection')}
-            </button>
+            {canCorrect && (
+              <button
+                className="btn btn-sm btn-secondary"
+                onClick={handleCreateRevision}
+                disabled={creatingRevision}
+              >
+                {creatingRevision ? t('pages.statements.creating') : t('pages.statements.startCorrection')}
+              </button>
+            )}
             <button
               className="btn btn-sm btn-secondary"
               onClick={handleExportPeriod}
@@ -721,7 +772,7 @@ export default function Statements() {
                 {exporting ? t('pages.statements.exporting') : t('pages.statements.zipExport')}
               </button>
             )}
-            {(isFinalized || isDelivered) && (
+            {canCorrect && (
               <button
                 className="btn btn-sm btn-secondary"
                 onClick={handleDispute}
@@ -734,19 +785,39 @@ export default function Statements() {
           </div>
         </div>
 
+        {(correctedVersion || !editable) && (
+          <p className="text-muted" role="note" style={{ marginBottom: '0.75rem' }}>
+            {correctedVersion && t('pages.statements.correctsVersion', {
+              revision: selectedPeriod.revision, label: correctedVersion.label,
+            })}
+            {correctedVersion && !editable && ' · '}
+            {!editable && t('pages.statements.finalVersionNote')}
+          </p>
+        )}
+
         <div className="stats-grid" style={{ marginBottom: '1rem' }}>
           <div className="stat-card">
             <div className="stat-label">{t('pages.statements.totalCosts')}</div>
-            <div className="stat-value">{totalCosts.toFixed(2)} €</div>
+            <div className="stat-value">{formatMoney(totalCosts)}</div>
           </div>
-          <div className="stat-card">
-            <div className="stat-label">{t('pages.statements.costItems')}</div>
-            <div className="stat-value">{periodCosts.length}</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-label">{t('pages.statements.individualStatements')}</div>
-            <div className="stat-value">{periodStmts.length}</div>
-          </div>
+          {periodStmts.length > 0 && (
+            <div className="stat-card">
+              <div className="stat-label">{t('pages.statements.tenantShare') || 'Auf Mieter verteilt'}</div>
+              <div className="stat-value">{formatMoney(tenantShare)}</div>
+            </div>
+          )}
+          {periodStmts.length > 0 && (
+            <div className="stat-card">
+              <div className="stat-label">{t('pages.statements.vacancyShare') || 'Leerstand (Eigentümer)'}</div>
+              <div className="stat-value">{formatMoney(vacancyShare)}</div>
+            </div>
+          )}
+          {nonRecoverable > 0 && (
+            <div className="stat-card">
+              <div className="stat-label">{t('pages.statements.nonRecoverableShare') || 'Nicht umlagefähig'}</div>
+              <div className="stat-value">{formatMoney(nonRecoverable)}</div>
+            </div>
+          )}
           <div className="stat-card">
             <div className="stat-label">{t('ui.form.status') || 'Status'}</div>
             <div className="stat-value"><StatusBadge status={selectedPeriod.status} /></div>
@@ -810,6 +881,48 @@ export default function Statements() {
             )}
           </div>
         </div>
+
+        {objections.length > 0 && (
+          <div className="card" style={{ marginBottom: '1rem' }}>
+            <div className="card-header"><strong>{t('pages.statements.objections')}</strong></div>
+            <div className="card-body">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>{t('pages.statements.objectionReceived')}</th>
+                    <th>{t('pages.statements.objectionStatement')}</th>
+                    <th>{t('pages.statements.objectionReason')}</th>
+                    <th>{t('pages.statements.objectionStatus')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {objections.map(o => {
+                    const stmt = statements.find(st => st.id === o.statement_id);
+                    const correction = o.correction_period_id ? periods.find(p => p.id === o.correction_period_id) : null;
+                    return (
+                      <tr key={o.id}>
+                        <td>{formatDate(o.received_on)}</td>
+                        <td>{stmt ? (unitMap[stmt.unit_id]?.label || '—') : t('pages.statements.objectionWholePeriod')}</td>
+                        <td>{o.reason}</td>
+                        <td>
+                          {t(`pages.statements.objectionStatusValues.${o.status}`)}
+                          {correction && (
+                            <>
+                              {' · '}
+                              <button className="btn btn-sm btn-secondary" onClick={() => handleSelectPeriod(correction)}>
+                                {correction.label}
+                              </button>
+                            </>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
         {/* Revision History */}
         {revisionHistory.length > 1 && (
@@ -882,10 +995,10 @@ export default function Statements() {
         {/* OCR Import Preview Dialog */}
         {ocrDraft && (
           <div className="modal-overlay" onClick={() => setOcrDraft(null)}>
-            <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+            <div className="modal" role="dialog" aria-modal="true" aria-label="OCR-Ergebnis prüfen" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px' }}>
               <div className="modal-header">
                 <h3>OCR-Ergebnis prüfen</h3>
-                <button className="btn btn-sm" onClick={() => setOcrDraft(null)}>&times;</button>
+                <button className="btn-close" onClick={() => setOcrDraft(null)} aria-label="Schließen">&times;</button>
               </div>
               <div className="modal-body" style={{ display: 'grid', gap: '0.75rem' }}>
                 {ocrDraft.ocr_fields && (
@@ -900,7 +1013,7 @@ export default function Statements() {
                         )}
                         {ocrDraft.ocr_fields.total_amount != null && (
                           <tr><td style={{ padding: '4px 8px', fontWeight: 500 }}>Betrag</td>
-                            <td style={{ padding: '4px 8px' }}>{ocrDraft.ocr_fields.total_amount.toFixed(2)} &euro;</td>
+                            <td style={{ padding: '4px 8px' }}>{formatMoney(ocrDraft.ocr_fields.total_amount)}</td>
                             <td style={{ padding: '4px 8px', color: '#888' }}>{Math.round((ocrDraft.confidence?.amount || 0) * 100)}%</td></tr>
                         )}
                         {ocrDraft.ocr_fields.cost_category && (
@@ -915,7 +1028,7 @@ export default function Statements() {
                         )}
                         {ocrDraft.ocr_fields.invoice_date && (
                           <tr><td style={{ padding: '4px 8px', fontWeight: 500 }}>Datum</td>
-                            <td style={{ padding: '4px 8px' }}>{ocrDraft.ocr_fields.invoice_date}</td>
+                            <td style={{ padding: '4px 8px' }}>{formatDate(ocrDraft.ocr_fields.invoice_date)}</td>
                             <td></td></tr>
                         )}
                       </tbody>
@@ -945,7 +1058,7 @@ export default function Statements() {
 
         {periodStmts.length > 0 && (
           <DataTable
-            title="Einzelabrechnungen pro Einheit"
+            title={t('pages.statements.statementsTitle') || 'Einzelabrechnungen je Nutzungszeitraum'}
             columns={STMT_COLUMNS}
             data={periodStmts}
           />
@@ -955,9 +1068,20 @@ export default function Statements() {
           <FormModal
             title={costModal === 'create' ? 'Kostenposition hinzufügen' : 'Kostenposition bearbeiten'}
             fields={costFields}
-            initial={costModal === 'create' ? { billing_period_id: selectedPeriod.id } : costModal}
+            initial={costModal === 'create'
+              ? { billing_period_id: selectedPeriod.id }
+              : { ...costModal, is_recoverable: costModal.is_recoverable === false ? 'false' : 'true' }}
             onSave={handleSaveCost}
             onClose={() => setCostModal(null)}
+          />
+        )}
+
+        {promptModal && (
+          <PromptModal
+            title={promptModal.title}
+            defaultValue=""
+            onConfirm={promptModal.onConfirm}
+            onCancel={() => setPromptModal(null)}
           />
         )}
       </div>

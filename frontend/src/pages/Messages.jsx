@@ -24,13 +24,13 @@ export default function Messages() {
   const { items: contracts } = useEntities('contracts', '/contracts');
 
   useEffect(() => {
-    api.get('/contacts').then(c => setContacts(c || [])).catch(() => []);
+    api.list('/contacts').then(c => setContacts(c || [])).catch(() => []);
   }, []);
 
   useEffect(() => {
     Promise.all([
-      api.get('/notifications').catch(() => []),
-      api.get('/messages/threads').catch(() => []),
+      api.list('/notifications').catch(() => []),
+      api.list('/messages/threads').catch(() => []),
     ]).then(([notifs, thr]) => {
       setNotifications(notifs || []);
       setThreads(thr || []);
@@ -44,7 +44,7 @@ export default function Messages() {
 
   const loadThreadMessages = async (thread) => {
     setSelectedThread(thread);
-    const msgs = await api.get(`/messages/threads/${thread.id}/messages`).catch(() => []);
+    const msgs = await api.list(`/messages/threads/${thread.id}/messages`).catch(() => []);
     setThreadMessages(msgs || []);
   };
 
@@ -59,7 +59,7 @@ export default function Messages() {
       });
       setNewMessage('');
       loadThreadMessages(selectedThread);
-      const thr = await api.get('/messages/threads').catch(() => []);
+      const thr = await api.list('/messages/threads').catch(() => []);
       setThreads(thr || []);
     } catch (err) {
       setError(err.message || 'Nachricht konnte nicht gesendet werden');
@@ -68,7 +68,7 @@ export default function Messages() {
 
   const handleCreateThread = async (data) => {
     const thread = await api.post('/messages/threads', data);
-    const thr = await api.get('/messages/threads').catch(() => []);
+    const thr = await api.list('/messages/threads').catch(() => []);
     setThreads(thr || []);
     if (thread) {
       loadThreadMessages(thread);

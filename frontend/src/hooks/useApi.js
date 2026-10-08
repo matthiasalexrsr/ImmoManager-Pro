@@ -26,7 +26,7 @@ export function useList(path, deps = []) {
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
-    api.get(path, { signal: controller.signal })
+    api.list(path, { signal: controller.signal })
       .then(data => {
         if (mountedRef.current) {
           setItems(Array.isArray(data) ? data : []);

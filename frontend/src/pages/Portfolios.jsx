@@ -5,6 +5,7 @@ import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
+import { useToast } from '../components/Toast';
 
 const OWNER_COLORS = {
   'Richard': '#2563eb',
@@ -61,6 +62,7 @@ const FIELDS = [
 export default function Portfolios() {
   const { t } = useTranslation();
   const confirm = useConfirm();
+  const toast = useToast();
   const [portfolios, setPortfolios] = useState([]);
   const [properties, setProperties] = useState([]);
   const [units, setUnits] = useState([]);
@@ -70,9 +72,9 @@ export default function Portfolios() {
   const refreshData = () => {
     setLoading(true);
     Promise.all([
-      api.get('/portfolios').catch(() => []),
-      api.get('/properties').catch(() => []),
-      api.get('/units').catch(() => []),
+      api.list('/portfolios').catch(() => []),
+      api.list('/properties').catch(() => []),
+      api.list('/units').catch(() => []),
     ]).then(([p, props, u]) => {
       setPortfolios(Array.isArray(p) ? p : []);
       setProperties(Array.isArray(props) ? props : []);
@@ -83,9 +85,9 @@ export default function Portfolios() {
   useEffect(() => {
     let cancelled = false;
     Promise.all([
-      api.get('/portfolios').catch(() => []),
-      api.get('/properties').catch(() => []),
-      api.get('/units').catch(() => []),
+      api.list('/portfolios').catch(() => []),
+      api.list('/properties').catch(() => []),
+      api.list('/units').catch(() => []),
     ]).then(([p, props, u]) => {
       if (cancelled) return;
       setPortfolios(Array.isArray(p) ? p : []);
@@ -135,7 +137,12 @@ export default function Portfolios() {
 
   const handleDelete = async (row) => {
     if (!await confirm(`"${row.name}" ${t('modals.confirmDelete.body')}`)) return;
-    await api.del(`/portfolios/${row.id}`);
+    try {
+      await api.del(`/portfolios/${row.id}`);
+    } catch (err) {
+      toast.error(err.message);
+      return;
+    }
     refreshData();
   };
 

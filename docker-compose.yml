@@ -11,14 +11,20 @@ services:
       - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
       - REFRESH_TOKEN_EXPIRE_DAYS=${REFRESH_TOKEN_EXPIRE_DAYS:-7}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
-      - AUTO_MIGRATE=true
+      # Schema changes: the entrypoint runs `python -m backend.upgrade` (full backup first).
+      # Full backups: daily at 01:30 Europe/Berlin into /app/data/backups/full; optional second target
+      # (mount it, e.g. a network share) and passphrase for the archived keys.
+      - BACKUP_SECOND_TARGET=${BACKUP_SECOND_TARGET:-}
+      - BACKUP_PASSPHRASE=${BACKUP_PASSPHRASE:-}
+    volumes:
+      - appdata:/app/data
     depends_on:
       db:
         condition: service_healthy
     restart: unless-stopped
 
   db:
-    image: postgres:16-alpine
+    image: postgres:16.15-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
     environment:
       - POSTGRES_USER=${POSTGRES_USER:-immo}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-immo}
@@ -36,3 +42,4 @@ services:
 
 volumes:
   pgdata:
+  appdata:

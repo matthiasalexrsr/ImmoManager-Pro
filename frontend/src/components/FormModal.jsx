@@ -1,21 +1,47 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from '../i18n';
 import { CloseIcon } from './Icons';
+import { codeLabel } from '../utils/codeLabels';
+
+const isBooleanSelect = f => f.type === 'select' && f.options?.length === 2
+  && f.options.every(o => o.value === 'true' || o.value === 'false');
+
+// Selects hold strings: true/false and numbers come back as 'true'/'false'/'12'.
+const toFieldValue = (f, v) => (f.type === 'select' && (typeof v === 'boolean' || typeof v === 'number') ? String(v) : v);
+
+// Long forms get two columns; free text and explicitly wide fields span both.
+const WIDE_FORM_FIELDS = 8;
+const spansRow = f => f.full || f.type === 'textarea';
+// In two columns, full-width fields (notes, descriptions) go last so the pairs above stay aligned.
+const ordered = list => [...list.filter(f => !spansRow(f)), ...list.filter(spansRow)];
 
 export default function FormModal({ title, fields, initial, onSave, onClose }) {
   const { t } = useTranslation();
-  const [values, setValues] = useState({});
+  // Inline prefill objects are recreated by several callers; that is not a new form.
+  const initialKey = initial?.id != null ? `record:${initial.id}` : `prefill:${JSON.stringify(initial ?? null)}`;
+  const [values, setValues] = useState(() => Object.fromEntries(fields.map(f =>
+    [f.key, toFieldValue(f, initial?.[f.key] ?? f.default ?? '')])));
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
   const modalRef = useRef(null);
+  const sessionRef = useRef({ key: initialKey, id: initial?.id, updatedAt: initial?.updated_at });
 
   useEffect(() => {
-    const init = {};
-    fields.forEach(f => {
-      init[f.key] = initial?.[f.key] ?? f.default ?? '';
+    const changedRecord = sessionRef.current.key !== initialKey;
+    if (changedRecord) {
+      sessionRef.current = { key: initialKey, id: initial?.id, updatedAt: initial?.updated_at };
+      setError(null);
+    }
+    setValues(current => {
+      const addedFields = fields.filter(f => !Object.prototype.hasOwnProperty.call(current, f.key));
+      if (!changedRecord && addedFields.length === 0) return current;
+      const next = changedRecord ? {} : { ...current };
+      (changedRecord ? fields : addedFields).forEach(f => {
+        next[f.key] = toFieldValue(f, initial?.[f.key] ?? f.default ?? '');
+      });
+      return next;
     });
-    setValues(init);
-  }, [initial, fields]);
+  }, [initialKey, initial, fields]);
 
   // Escape key to close
   useEffect(() => {
@@ -35,7 +61,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
     const focusable = modal.querySelectorAll(
       'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
     );
-    if (focusable.length > 0) focusable[0].focus();
+    if (focusable.length > 0 && !modal.contains(document.activeElement)) focusable[0].focus();
 
     const trapFocus = (e) => {
       if (e.key !== 'Tab' || focusable.length === 0) return;
@@ -69,9 +95,13 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
           }
         } else if (v === '') {
           v = f.required ? v : null;
+        } else if (isBooleanSelect(f)) {
+          v = v === 'true';
         }
         cleaned[f.key] = v;
       });
+      // the state the record was opened in: the server refuses to save over someone else's newer change
+      if (sessionRef.current.id && sessionRef.current.updatedAt) cleaned.updated_at = sessionRef.current.updatedAt;
       await onSave(cleaned);
       onClose();
     } catch (err) {
@@ -81,10 +111,13 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
     }
   };
 
+  const wide = fields.filter(f => f.type !== 'hidden').length >= WIDE_FORM_FIELDS;
+  const arrange = wide ? ordered : list => list;
+
   return (
     <div className="modal-overlay" onClick={onClose} role="presentation">
       <div
-        className="modal"
+        className={`modal${wide ? ' modal-wide' : ''}`}
         ref={modalRef}
         onClick={e => e.stopPropagation()}
         role="dialog"
@@ -106,18 +139,24 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
                   return <input type="hidden" key={f.key} name={f.key} value={values[f.key] || ''} />;
                 }
                 const inputId = `form-field-${f.key}`;
+                const options = typeof f.options === 'function' ? f.options(values) : f.options;
                 return (
-                  <div key={f.key} className="form-group">
+                  <div key={f.key} className={`form-group${spansRow(f) ? ' form-group-full' : ''}`}>
                     <label htmlFor={inputId}>{f.label}{f.required && ' *'}</label>
                     {f.type === 'select' ? (
                       <select
                         id={inputId}
-                        value={values[f.key] || ''}
-                        onChange={e => setValues({ ...values, [f.key]: e.target.value })}
+                        value={values[f.key] ?? ''}
+                        onChange={e => setValues(current => ({ ...current, [f.key]: e.target.value,
+                          ...Object.fromEntries((f.clearOnChange || []).map(key => [key, ''])) }))}
                         required={f.required}
                       >
                         <option value="">{t('ui.form.pleaseSelect')}</option>
-                        {f.options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        {options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        {/* A stored value the list does not offer (imported, older data) stays selectable instead of being lost. */}
+                        {values[f.key] !== '' && values[f.key] != null && !options?.some(o => String(o.value) === String(values[f.key])) && (
+                          <option value={values[f.key]}>{codeLabel(String(values[f.key]))}</option>
+                        )}
                       </select>
                     ) : f.type === 'textarea' ? (
                       <textarea
@@ -138,6 +177,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
                         placeholder={f.placeholder}
                       />
                     )}
+                    {f.hint && <small className="form-hint">{f.hint}</small>}
                   </div>
                 );
               };
@@ -158,10 +198,10 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
                 section.label ? (
                   <fieldset key={i} className="form-section">
                     <legend className="form-section-label">{section.label}</legend>
-                    {section.fields.map(renderField)}
+                    <div className={wide ? 'form-grid' : undefined}>{arrange(section.fields).map(renderField)}</div>
                   </fieldset>
                 ) : (
-                  <div key={i}>{section.fields.map(renderField)}</div>
+                  <div key={i} className={wide ? 'form-grid' : undefined}>{arrange(section.fields).map(renderField)}</div>
                 )
               ));
             })()}

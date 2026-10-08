@@ -1,19 +1,19 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
 import DataTable from '../components/DataTable';
-import StatusBadge from '../components/StatusBadge';
+import { PartyLink } from '../features/partyWorkspace/PartyWorkspace';
 import { useTranslation } from '../i18n';
 import FormModal from '../components/FormModal';
+import { formatMoney, formatMonth } from '../utils/format';
 
-function fmt(v) {
-  return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(v || 0);
-}
+const fmt = v => formatMoney(v || 0);
 
 const COLUMNS = [
   { key: 'contract_number', label: 'Vertrag', filterType: 'text' },
-  { key: 'tenant_name', label: 'Mieter', filterType: 'text' },
+  { key: 'tenant_name', label: 'Mieter', filterType: 'text',
+    render: (v, row) => row.tenant_id && v !== '—' ? <PartyLink tenantId={row.tenant_id}>{v}</PartyLink> : v },
   { key: 'unit_label', label: 'Einheit', filterType: 'text' },
-  { key: 'month', label: 'Monat', filterType: 'text' },
+  { key: 'month', label: 'Monat', filterType: 'text', render: v => formatMonth(v) },
   { key: 'total_due', label: 'Forderung (€)', type: 'number', align: 'right',
     render: v => v != null ? fmt(v) : '—' },
   { key: 'amount_paid', label: 'Bezahlt (€)', type: 'number', align: 'right',
@@ -38,11 +38,11 @@ export default function RentOverview() {
   const refreshData = () => {
     setLoading(true);
     Promise.all([
-      api.get('/rent-charges').catch(() => []),
-      api.get('/receivables').catch(() => []),
-      api.get('/contracts').catch(() => []),
-      api.get('/tenants').catch(() => []),
-      api.get('/units').catch(() => []),
+      api.list('/rent-charges').catch(() => []),
+      api.list('/receivables').catch(() => []),
+      api.list('/contracts').catch(() => []),
+      api.list('/tenants').catch(() => []),
+      api.list('/units').catch(() => []),
     ]).then(([chargesList, recList, contracts, tenants, units]) => {
       const contractMap = Object.fromEntries((contracts || []).map(c => [c.id, c]));
       const tenantMap = Object.fromEntries((tenants || []).map(t => [t.id, t]));
@@ -56,6 +56,7 @@ export default function RentOverview() {
         return {
           ...r, _type: 'charge',
           contract_number: contract.contract_number || '—',
+          tenant_id: contract.tenant_id || null,
           tenant_name: tenant.full_name || '—',
           unit_label: unit.label || '—',
           total_due: totalDue,
@@ -70,6 +71,7 @@ export default function RentOverview() {
         return {
           ...r, _type: 'receivable',
           contract_number: contract.contract_number || '—',
+          tenant_id: contract.tenant_id || null,
           tenant_name: tenant.full_name || '—',
           unit_label: unit.label || '—',
           month: r.due_date?.slice(0, 7) || '—',
@@ -87,11 +89,11 @@ export default function RentOverview() {
   useEffect(() => {
     let cancelled = false;
     Promise.all([
-      api.get('/rent-charges').catch(() => []),
-      api.get('/receivables').catch(() => []),
-      api.get('/contracts').catch(() => []),
-      api.get('/tenants').catch(() => []),
-      api.get('/units').catch(() => []),
+      api.list('/rent-charges').catch(() => []),
+      api.list('/receivables').catch(() => []),
+      api.list('/contracts').catch(() => []),
+      api.list('/tenants').catch(() => []),
+      api.list('/units').catch(() => []),
     ]).then(([chargesList, recList, contracts, tenants, units]) => {
       if (cancelled) return;
       const contractMap = Object.fromEntries((contracts || []).map(c => [c.id, c]));
@@ -106,6 +108,7 @@ export default function RentOverview() {
         return {
           ...r, _type: 'charge',
           contract_number: contract.contract_number || '—',
+          tenant_id: contract.tenant_id || null,
           tenant_name: tenant.full_name || '—',
           unit_label: unit.label || '—',
           total_due: totalDue,
@@ -120,6 +123,7 @@ export default function RentOverview() {
         return {
           ...r, _type: 'receivable',
           contract_number: contract.contract_number || '—',
+          tenant_id: contract.tenant_id || null,
           tenant_name: tenant.full_name || '—',
           unit_label: unit.label || '—',
           month: r.due_date?.slice(0, 7) || '—',
@@ -176,6 +180,7 @@ export default function RentOverview() {
 
   return (
     <div className="page">
+      <h1 className="page-title">{t('pages.rentOverview.title')}</h1>
       <div className="stats-grid" style={{ marginBottom: '1rem' }}>
         <div className="stat-card">
           <div className="stat-label">{t('pages.rentOverview.totalReceivables')}</div>
@@ -191,7 +196,7 @@ export default function RentOverview() {
         </div>
         <div className="stat-card">
           <div className="stat-label">{t('pages.rentOverview.overdue')}</div>
-          <div className="stat-value">{overdueCount} <StatusBadge status="overdue" /></div>
+          <div className={`stat-value ${overdueCount ? 'text-red' : ''}`}>{overdueCount}</div>
         </div>
       </div>
 

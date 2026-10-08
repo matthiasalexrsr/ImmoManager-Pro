@@ -11,6 +11,8 @@ from typing import Any
 from uuid import uuid4
 
 from pydantic import BaseModel as PydanticBaseModel
+from sqlalchemy import inspect as sa_inspect
+from sqlalchemy import literal_column
 from sqlalchemy.orm import Session
 
 from ..db.orm_models import Base
@@ -65,10 +67,20 @@ class BaseRepository:
             )
             raise
 
+    def _read(self, query: Any) -> list[Any]:
+        """Run a query for whole rows and return read models.
+
+        Reads plain column values instead of building ORM objects first: for long
+        lists (thousands of bookings) that is several times faster.
+        """
+        columns = list(self.orm_class.__table__.columns)
+        keys = [c.key for c in columns]
+        validate = self.read_class.model_validate
+        return [validate(dict(zip(keys, row))) for row in query.with_entities(*columns).all()]
+
     @safe_db_operation("list_all")
     def list_all(self) -> list[Any]:
-        objs = self.db.query(self.orm_class).all()
-        return [self._to_pydantic(o) for o in objs]
+        return self._read(self.db.query(self.orm_class))
 
     @safe_db_operation("get")
     def get(self, entity_id: str) -> Any:
@@ -137,6 +149,7 @@ class BaseRepository:
         filters: dict[str, Any] | None = None,
         order_by: str | None = None,
         order_desc: bool = False,
+        range_filters: dict[str, tuple[Any | None, Any | None]] | None = None,
     ) -> list[Any]:
         """List entities with DB-level pagination, filtering, and ordering.
 
@@ -146,17 +159,45 @@ class BaseRepository:
             filters: Column-value pairs to filter by (None values are skipped).
             order_by: Column name to order by.
             order_desc: If True, order descending.
+            range_filters: Column names mapped to inclusive (lower, upper)
+                bounds. None leaves that side unbounded; bounded ranges exclude NULL.
         """
         query = self.db.query(self.orm_class)
         if filters:
             for key, value in filters.items():
                 if value is not None and hasattr(self.orm_class, key):
                     query = query.filter(getattr(self.orm_class, key) == value)
+        if range_filters:
+            for key, (lower, upper) in range_filters.items():
+                if not hasattr(self.orm_class, key):
+                    continue
+                column = getattr(self.orm_class, key)
+                if lower is not None:
+                    query = query.filter(column >= lower)
+                if upper is not None:
+                    query = query.filter(column <= upper)
         if order_by and hasattr(self.orm_class, order_by):
             col = getattr(self.orm_class, order_by)
             query = query.order_by(col.desc() if order_desc else col.asc())
+        query = query.order_by(*self._unique_order())
         query = query.offset(skip).limit(limit)
-        return [self._to_pydantic(o) for o in query.all()]
+        return self._read(query)
+
+    def _unique_order(self) -> list[Any]:
+        """Final sort keys that make every row's position unique.
+
+        Without them OFFSET/LIMIT pages may overlap or skip rows, so a client
+        that loads a list page by page would miss entries. SQLite keeps its
+        insertion order through rowid; other databases sort by creation time
+        and primary key.
+        """
+        if self.db.get_bind().dialect.name == "sqlite":
+            return [literal_column("rowid")]
+        keys: list[Any] = []
+        if hasattr(self.orm_class, "created_at"):
+            keys.append(getattr(self.orm_class, "created_at"))
+        keys.extend(sa_inspect(self.orm_class).primary_key)
+        return keys
 
     @safe_db_operation("count")
     def count(self, filters: dict[str, Any] | None = None) -> int:
@@ -168,6 +209,16 @@ class BaseRepository:
                     query = query.filter(getattr(self.orm_class, key) == value)
         return query.count()
 
+    @safe_db_operation("filter_in")
+    def filter_in(self, column: str, values: Any) -> list[Any]:
+        """Entities whose column is one of the given values (chunked for SQLite's variable limit)."""
+        values = list(values)
+        rows: list[Any] = []
+        for start in range(0, len(values), 500):
+            chunk = values[start:start + 500]
+            rows += self._read(self.db.query(self.orm_class).filter(getattr(self.orm_class, column).in_(chunk)))
+        return rows
+
     @safe_db_operation("filter_by")
     def filter_by(self, **kwargs) -> list[Any]:
         """Filter entities by column values. None values are skipped."""
@@ -175,4 +226,4 @@ class BaseRepository:
         for key, value in kwargs.items():
             if value is not None:
                 query = query.filter(getattr(self.orm_class, key) == value)
-        return [self._to_pydantic(o) for o in query.all()]
+        return self._read(query)

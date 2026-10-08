@@ -6,6 +6,7 @@ import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
+import { formatMoney } from '../utils/format';
 
 const PORTAL_TEMPLATES = {
   immoscout24: {
@@ -16,10 +17,10 @@ const PORTAL_TEMPLATES = {
       unit?.area_sqm ? `Wohnfläche: ${unit.area_sqm} m²` : '',
       unit?.rooms ? `Zimmer: ${unit.rooms}` : '',
       unit?.floor ? `Etage: ${unit.floor}` : '',
-      listing.target_rent ? `Kaltmiete: ${Number(listing.target_rent).toFixed(2)} €` : '',
-      listing.service_charge ? `Nebenkosten: ${Number(listing.service_charge).toFixed(2)} €` : '',
+      listing.target_rent ? `Kaltmiete: ${formatMoney(listing.target_rent)}` : '',
+      listing.service_charge ? `Nebenkosten: ${formatMoney(listing.service_charge)}` : '',
       listing.target_rent && listing.service_charge
-        ? `Warmmiete: ${(Number(listing.target_rent) + Number(listing.service_charge)).toFixed(2)} €`
+        ? `Warmmiete: ${formatMoney(Number(listing.target_rent) + Number(listing.service_charge))}`
         : '',
       '',
       listing.available_from ? `Verfügbar ab: ${listing.available_from}` : '',
@@ -39,8 +40,8 @@ const PORTAL_TEMPLATES = {
       '---',
       unit?.area_sqm ? `Fläche: ${unit.area_sqm} m²` : '',
       unit?.rooms ? `Zimmer: ${unit.rooms}` : '',
-      listing.target_rent ? `Miete: ${Number(listing.target_rent).toFixed(2)} € (kalt)` : '',
-      listing.service_charge ? `NK: ${Number(listing.service_charge).toFixed(2)} €` : '',
+      listing.target_rent ? `Miete: ${formatMoney(listing.target_rent)} (kalt)` : '',
+      listing.service_charge ? `NK: ${formatMoney(listing.service_charge)}` : '',
       listing.available_from ? `Ab: ${listing.available_from}` : '',
       '---',
       listing.description || '',
@@ -51,7 +52,7 @@ const PORTAL_TEMPLATES = {
     format: (listing, unit) => [
       listing.title,
       '',
-      listing.target_rent ? `Miete: ${Number(listing.target_rent).toFixed(2)} € kalt` : '',
+      listing.target_rent ? `Miete: ${formatMoney(listing.target_rent)} kalt` : '',
       unit?.area_sqm ? `${unit.area_sqm} m²` : '',
       unit?.rooms ? `${unit.rooms} Zimmer` : '',
       listing.available_from ? `Frei ab ${listing.available_from}` : '',
@@ -69,7 +70,7 @@ const COLUMNS = [
   { key: 'portal', label: 'Portal', filterType: 'select',
     render: v => PORTAL_TEMPLATES[v]?.label || v || '—' },
   { key: 'target_rent', label: 'Zielmiete (€)', type: 'number', align: 'right',
-    render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
+    render: v => formatMoney(v) },
   { key: 'available_from', label: 'Verfügbar ab', type: 'date' },
   { key: 'status', label: 'Status', type: 'status', filterType: 'select',
     render: v => <StatusBadge status={v} /> },
@@ -90,14 +91,14 @@ export default function Listings() {
 
   const refreshData = () => {
     setLoading(true);
-    api.get('/listings').catch(() => [])
+    api.list('/listings').catch(() => [])
       .then(l => setListings(l || []))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     let cancelled = false;
-    api.get('/listings').catch(err => { console.warn('[Listings] listings:', err.message); return []; })
+    api.list('/listings').catch(err => { console.warn('[Listings] listings:', err.message); return []; })
       .then(data => { if (!cancelled) setListings(data || []); })
       .catch(e => { if (!cancelled) console.warn('[Listings] load failed:', e.message); })
       .finally(() => { if (!cancelled) setLoading(false); });
