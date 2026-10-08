@@ -34,7 +34,7 @@ PROJECT = frozenset(pm.PROJECT_TABLES)
 
 @lru_cache(maxsize=1)
 def registry() -> dict[str, tuple[Any, type[BaseModel]]]:
-    from .. import models   # the UI contract fields extend some models at import time
+    from .. import models  # the UI contract fields extend some models at import time
 
     return {
         "maintenance_work_packages": (pm.MaintenanceWorkPackageORM, mm.MaintenanceWorkPackage),

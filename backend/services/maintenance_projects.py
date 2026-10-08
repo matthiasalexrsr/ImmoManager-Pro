@@ -24,7 +24,6 @@ actor (internal callers) skip only the account check.
 from __future__ import annotations
 
 import hashlib
-import json
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
 from datetime import date, datetime, timezone
@@ -50,6 +49,7 @@ from ..domain.project_graph import Edge, cycle_path, schedule_conflicts, topolog
 from ..permissions import may_write
 from ..storage import NotFoundError, ValidationError
 from . import document_versions as archive
+from .maintenance_protocol_validation import SCHEMA_VERSION, content_digest
 from .maintenance_rows import Rows, stamp
 
 CASE_MISSING = "Instandhaltungsfall nicht gefunden"
@@ -70,7 +70,7 @@ WP_TRANSITIONS = {
 }
 WP_LABELS = {"planned": "geplant", "in_progress": "in Arbeit", "done": "erledigt", "cancelled": "entfallen"}
 RESOLVED = ("done", "cancelled")
-PROTOCOL_FORMAT = "maintenance-protocol/1"
+PROTOCOL_FORMAT = SCHEMA_VERSION
 PROTOCOL_DOC_TYPE = "maintenance_protocol"
 PROTOCOL_PREFIX = "maintenance-protocols/"
 PROTOCOL_IMMUTABLE = "Das Protokoll ist abgeschlossen und unveränderlich."
@@ -904,12 +904,8 @@ def delete_protocol(store: Any, case_id: str, protocol_id: str, actor_id: str | 
         p.rows.delete("maintenance_protocols", protocol_id)
 
 
-def canonical(value: Any) -> bytes:
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str).encode()
-
-
 def digest(value: Any) -> str:
-    return hashlib.sha256(canonical(value)).hexdigest()
+    return content_digest(value)
 
 
 PROTOCOL_FIELDS = ("protocol_type", "protocol_date", "title", "participants", "result", "notes",
@@ -1022,7 +1018,7 @@ def finalize_protocol(store: Any, case_id: str, protocol_id: str, payload: mm.Pr
         content = _protocol_content(p.rows, unit.store, p.case, protocol, actor=unit.user,
                                     finalized_at=finalized_at, photo_bytes=photos)
         content_sha256 = digest(content)
-        pdf = render_protocol_pdf(content, photos)
+        pdf = render_protocol_pdf(content, photos, content_sha256=content_sha256)
 
         document_id = str(uuid4())
         kind = {"acceptance": "Abnahmeprotokoll", "inspection": "Begehungsprotokoll",
