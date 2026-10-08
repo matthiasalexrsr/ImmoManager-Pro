@@ -468,3 +468,88 @@ def test_booking_reversal_downgrade_of_an_adopted_database_leaves_the_column(mig
     migrate()
     assert _version(migrate.db_path) == migrate.head
 
+
+PROJECTS_REVISION = "b6d4f1a8c2e7"
+PROJECT_TABLES = {"maintenance_work_packages", "maintenance_dependencies", "maintenance_participants",
+                  "maintenance_quotes", "maintenance_orders", "maintenance_change_orders",
+                  "maintenance_order_invoices", "invoice_payments", "maintenance_protocols",
+                  "maintenance_appointments", "maintenance_case_documents"}
+
+
+def _seed_project(db_path: Path) -> None:
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript("""
+            INSERT INTO maintenance_cases (id, property_id, title, priority, status, created_at, updated_at)
+                VALUES ('mc', 'pr', 'Dachschaden', 'high', 'open', '2026-01-01', '2026-01-01');
+            INSERT INTO maintenance_work_packages (id, case_id, title, kind, status, sort_order, created_at,
+                                                   updated_at)
+                VALUES ('wa', 'mc', 'Gerüst', 'work', 'planned', 0, '2026-01-01', '2026-01-01'),
+                       ('wb', 'mc', 'Dach', 'work', 'planned', 1, '2026-01-01', '2026-01-01');
+            INSERT INTO maintenance_dependencies (id, case_id, predecessor_id, successor_id, created_at)
+                VALUES ('d1', 'mc', 'wa', 'wb', '2026-01-01');
+        """)
+
+
+def test_maintenance_project_upgrade_keeps_cases_and_downgrade_refuses_to_drop_projects(migrate):
+    db_path = migrate(REVERSALS_REVISION)
+    _seed_previous_schema(db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("INSERT INTO maintenance_cases (id, property_id, title, priority, status, created_at, "
+                     "updated_at) VALUES ('old', 'pr', 'Alter Fall', 'low', 'open', '2025-01-01', '2025-01-01')")
+    migrate(PROJECTS_REVISION)
+    schema = _schema(db_path)
+    assert PROJECT_TABLES <= set(schema)
+    assert {"case_id", "predecessor_id", "successor_id"} <= schema["maintenance_dependencies"]
+    _seed_project(db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("PRAGMA foreign_keys=ON")
+        assert conn.execute("SELECT id, title FROM maintenance_cases ORDER BY id").fetchall() == [
+            ("mc", "Dachschaden"), ("old", "Alter Fall")]
+        with pytest.raises(sqlite3.IntegrityError):    # no self-dependency, no duplicate
+            conn.execute("INSERT INTO maintenance_dependencies (id, case_id, predecessor_id, successor_id, "
+                         "created_at) VALUES ('d2', 'mc', 'wa', 'wa', '2026-01-01')")
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute("INSERT INTO maintenance_dependencies (id, case_id, predecessor_id, successor_id, "
+                         "created_at) VALUES ('d3', 'mc', 'wa', 'wb', '2026-01-01')")
+        conn.execute("INSERT INTO documents (id, property_id, title, file_url, created_at, updated_at) "
+                     "VALUES ('doc', 'pr', 'Protokoll', '/uploads/x.pdf', '2026-01-01', '2026-01-01')")
+        conn.execute("INSERT INTO maintenance_protocols (id, case_id, protocol_type, protocol_date, defects, "
+                     "photo_ids, status, document_id, content_sha256, created_at, updated_at) VALUES ('p1', 'mc', "
+                     "'acceptance', '2026-06-01', '[]', '[]', 'final', 'doc', 'abc', '2026-01-01', '2026-01-01')")
+        with pytest.raises(sqlite3.IntegrityError, match="immutable"):
+            conn.execute("UPDATE maintenance_protocols SET notes = 'x' WHERE id = 'p1'")
+        with pytest.raises(sqlite3.IntegrityError):    # a final protocol always names its evidence
+            conn.execute("INSERT INTO maintenance_protocols (id, case_id, protocol_type, protocol_date, defects, "
+                         "photo_ids, status, created_at, updated_at) VALUES ('p2', 'mc', 'acceptance', "
+                         "'2026-06-01', '[]', '[]', 'final', '2026-01-01', '2026-01-01')")
+    with pytest.raises(RuntimeError, match="Maintenance project records exist"):
+        migrate.downgrade(REVERSALS_REVISION)
+    assert _version(db_path) == PROJECTS_REVISION
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("PRAGMA foreign_keys=ON")
+        conn.execute("DELETE FROM maintenance_protocols")
+        conn.execute("DELETE FROM maintenance_cases WHERE id = 'mc'")    # cascades through the project
+        assert conn.execute("SELECT count(*) FROM maintenance_work_packages").fetchone() == (0,)
+        assert conn.execute("SELECT count(*) FROM maintenance_dependencies").fetchone() == (0,)
+    migrate.downgrade(REVERSALS_REVISION)
+    assert not PROJECT_TABLES & set(_schema(db_path))
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute("SELECT id FROM maintenance_cases").fetchall() == [("old",)]
+    migrate()
+    assert PROJECT_TABLES <= set(_schema(db_path)) and _version(db_path) == migrate.head
+
+
+def test_maintenance_project_tables_of_a_create_all_database_are_adopted_with_the_guard(migrate):
+    from sqlalchemy import create_engine
+
+    engine = create_engine(f"sqlite:///{migrate.db_path}")
+    Base.metadata.create_all(engine)
+    engine.dispose()
+    with sqlite3.connect(migrate.db_path) as conn:
+        conn.execute("DROP TRIGGER immo_maintenance_protocols_final")
+    migrate()
+    assert _missing_from(_schema(migrate.db_path)) == {}
+    with sqlite3.connect(migrate.db_path) as conn:
+        triggers = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='trigger'")}
+    assert "immo_maintenance_protocols_final" in triggers
+
