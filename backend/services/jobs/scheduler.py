@@ -15,20 +15,24 @@ import threading
 from dataclasses import dataclass
 from datetime import date, datetime
 
-from .core import JobRun, JobRunner, JobStore, MemoryJobStore, SqlJobStore
+from ...config import settings
+from .core import JobContext, JobRun, JobRunner, JobStore, MemoryJobStore, SqlJobStore
 from .recurring import KIND as RECURRING_KIND
 from .recurring import make_handler as make_recurring_handler
-from .schedule import DailyAt, utcnow
+from .schedule import DailyAt, MonthlyAt, parse_hh_mm, utcnow
 
 logger = logging.getLogger(__name__)
 
 ESCALATION_KIND = "escalation.run"
+BACKUP_KIND = "ops.full_backup"
+PROBE_KIND = "ops.restore_probe"
 
 
 @dataclass(frozen=True)
 class Periodic:
     kind: str
-    schedule: DailyAt
+    schedule: DailyAt | MonthlyAt
+    max_attempts: int = 5
 
     def key(self, slot: date) -> str:
         return f"{self.kind}@{slot.isoformat()}"
@@ -40,6 +44,25 @@ PERIODIC = (
 )
 
 
+def ops_periodic() -> tuple[Periodic, ...]:
+    """Daily full backup and monthly restore probe; only with a persistent (SQL) store."""
+    if not settings.backup_schedule_enabled:
+        return ()
+    from ... import dependencies
+
+    if dependencies._scoped_session is None:
+        return ()
+    return (
+        Periodic(BACKUP_KIND, DailyAt(*parse_hh_mm(settings.backup_daily_at)), max_attempts=3),
+        Periodic(PROBE_KIND, MonthlyAt(settings.restore_probe_day, *parse_hh_mm(settings.restore_probe_at)),
+                 max_attempts=3),
+    )
+
+
+def active_periodic() -> tuple[Periodic, ...]:
+    return PERIODIC + ops_periodic()
+
+
 def escalation_handler(ctx) -> bool:
     from ...routers.escalation import execute_escalation
 
@@ -49,8 +72,27 @@ def escalation_handler(ctx) -> bool:
     return True
 
 
+def backup_handler(ctx: JobContext) -> bool:
+    from ..full_backup import create_full_backup
+
+    event = create_full_backup("scheduled", heartbeat=ctx.heartbeat)
+    with ctx.unit() as unit:
+        unit.save({"done": True}, {key: event.get(key) for key in ("archive", "size", "sha256", "second_target")})
+    return True
+
+
+def probe_handler(ctx: JobContext) -> bool:
+    from ..full_backup import restore_probe
+
+    event = restore_probe(heartbeat=ctx.heartbeat)
+    with ctx.unit() as unit:
+        unit.save({"done": True}, {"archive": event["archive"], "warnings": event["warnings"]})
+    return True
+
+
 def default_handlers() -> dict:
-    return {RECURRING_KIND: make_recurring_handler(), ESCALATION_KIND: escalation_handler}
+    return {RECURRING_KIND: make_recurring_handler(), ESCALATION_KIND: escalation_handler,
+            BACKUP_KIND: backup_handler, PROBE_KIND: probe_handler}
 
 
 _lock = threading.Lock()
@@ -80,13 +122,14 @@ def set_job_store(jobs: JobStore | None) -> None:
 
 
 def enqueue_due(jobs: JobStore, now: datetime | None = None,
-                periodic: tuple[Periodic, ...] = PERIODIC) -> list[JobRun]:
+                periodic: tuple[Periodic, ...] | None = None) -> list[JobRun]:
     moment = now or utcnow()
     runs = []
-    for item in periodic:
+    for item in active_periodic() if periodic is None else periodic:
         slot = item.schedule.latest_due(moment)
         runs.append(jobs.enqueue(item.kind, item.key(slot), {"as_of": slot.isoformat(),
-                                                             "schedule": item.schedule.version}))
+                                                             "schedule": item.schedule.version},
+                                 max_attempts=item.max_attempts))
     return runs
 
 

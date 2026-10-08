@@ -1,22 +1,22 @@
 """Alembic environment configuration.
 
-Configured to use our ORM models for autogenerate support and DATABASE_URL from env.
+Configured to use our ORM models for autogenerate support. The database URL comes from
+the caller (``config.attributes["database_url"]``, set by backend.upgrade), else from
+DATABASE_URL, else from alembic.ini. Operators run ``python -m backend.upgrade``, which
+takes a full backup first; plain ``alembic`` is a developer tool.
 """
 
 import os
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import engine_from_config, inspect, pool
+from sqlalchemy import create_engine, inspect, pool, text
 
 from backend.db.orm_models import Base
 
 config = context.config
 
-# Override sqlalchemy.url from environment if set
-database_url = os.getenv("DATABASE_URL")
-if database_url:
-    config.set_main_option("sqlalchemy.url", database_url)
+database_url = config.attributes.get("database_url") or os.getenv("DATABASE_URL")
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
@@ -30,18 +30,26 @@ target_metadata = Base.metadata
 ADOPT_UNVERSIONED_AT = "f6a1b2c3d4e5"
 
 
+def _url() -> str:
+    url = database_url or config.get_main_option("sqlalchemy.url")
+    assert url, "no database URL"
+    return url
+
+
 def _adopt_unversioned_database(connection) -> None:
     inspector = inspect(connection)
-    if inspector.has_table("alembic_version") or not inspector.has_table("portfolios"):
+    if not inspector.has_table("portfolios"):
+        return
+    if inspector.has_table("alembic_version") and \
+            connection.execute(text("SELECT 1 FROM alembic_version")).first() is not None:
         return
     context.get_context().stamp(context.script, ADOPT_UNVERSIONED_AT)
 
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode."""
-    url = config.get_main_option("sqlalchemy.url")
     context.configure(
-        url=url,
+        url=_url(),
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
@@ -52,12 +60,8 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    """Run migrations in 'online' mode."""
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
+    """Run migrations in 'online' mode: an own connection, no app pragmas, no pool."""
+    connectable = create_engine(_url(), poolclass=pool.NullPool)
 
     with connectable.connect() as connection:
         context.configure(
@@ -67,6 +71,7 @@ def run_migrations_online() -> None:
         with context.begin_transaction():
             _adopt_unversioned_database(connection)
             context.run_migrations()
+    connectable.dispose()
 
 
 if context.is_offline_mode():

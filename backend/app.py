@@ -71,7 +71,9 @@ def _validate_startup_config() -> None:
         issues.append("AUTO_SEED_DEMO_DATA is enabled. Disable demo seeding in production.")
 
     if settings.auto_migrate:
-        issues.append("AUTO_MIGRATE is enabled. Run migrations explicitly via CI/CD in production.")
+        # not blocking: the setting has no effect any more
+        advisories.append("AUTO_MIGRATE is ignored. Schema changes run only through the explicit "
+                          "upgrade (python -m backend.upgrade), which takes a full backup first.")
 
     if settings.allow_inmemory_fallback:
         issues.append("ALLOW_INMEMORY_FALLBACK is enabled. Disable to prevent silent data loss.")
@@ -112,17 +114,8 @@ async def lifespan(app: FastAPI):
     """Startup / shutdown lifecycle."""
     logger.info("ImmoManager Pro %s starting up", settings.app_version)
     ensure_runtime_dirs()
-
-    # Auto-migrate if enabled
-    if settings.auto_migrate:
-        try:
-            from alembic import command
-            from alembic.config import Config
-            alembic_cfg = Config("alembic.ini")
-            command.upgrade(alembic_cfg, "head")
-            logger.info("Database migrations applied successfully")
-        except Exception:
-            logger.exception("Auto-migration failed")
+    # No schema change here: an existing database had to be at the Alembic head when
+    # backend.dependencies was imported (explicit upgrade: python -m backend.upgrade).
 
     # Load plugins
     if settings.plugin_dirs:

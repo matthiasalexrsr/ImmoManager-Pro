@@ -55,8 +55,10 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install ruff pytest-cov mypy pip-audit pdfplumber
+          pip install -r requirements.txt -c constraints.txt
+          pip install ruff==0.15.20 pytest-cov==7.1.0 mypy==2.4.0 pdfplumber==0.11.10 -c constraints.txt
+          # the audit tool stays current on purpose (it judges the pinned set above)
+          pip install pip-audit
       - name: Lint (ruff)
         if: matrix.store-backend == 'memory'
         run: ruff check backend

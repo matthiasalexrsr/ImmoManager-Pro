@@ -68,15 +68,16 @@ _use_sql_store = bool(_database_url) and (
 )
 
 if _use_sql_store:
+    from .db.schema_state import SchemaUpgradeRequired
+
     try:
         from sqlalchemy.orm import scoped_session
 
         from .db.session import SessionLocal, create_tables
         from .repositories import SQLAlchemyStore
 
-        # TODO: Move create_tables() into app.py lifespan to avoid import-time
-        # side effects. Requires conftest.py changes to ensure tables exist before
-        # tests run with SQL backend. See architecture review Phase 3.1.
+        # Initialises an empty database; an existing one must already be at the
+        # Alembic head (explicit upgrade: python -m backend.upgrade).
         create_tables()
         # One session per request (see _session_scope), so concurrent requests
         # never share state and every request returns its connection.
@@ -94,6 +95,10 @@ if _use_sql_store:
         enable_sql_audit(SessionLocal)
 
         logger.info("SQL backend initialized successfully (url=%s...)", _database_url[:30])
+    except SchemaUpgradeRequired as exc:
+        # never hidden behind the in-memory fallback: the data exists, it needs the explicit upgrade
+        logger.critical("Start refused: %s", exc)
+        raise
     except Exception:
         if not settings.allow_inmemory_fallback:
             raise RuntimeError(

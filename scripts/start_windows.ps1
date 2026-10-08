@@ -81,7 +81,7 @@ $stamp = Join-Path $Root ".venv\.immomanager-install-ok"
 $needsInstall = -not (Test-Path $stamp)
 if (-not $needsInstall) {
     $stampTime = (Get-Item $stamp).LastWriteTimeUtc
-    foreach ($file in @("pyproject.toml", "requirements.txt")) {
+    foreach ($file in @("pyproject.toml", "requirements.txt", "constraints.txt")) {
         if ((Get-Item (Join-Path $Root $file)).LastWriteTimeUtc -gt $stampTime) {
             $needsInstall = $true
         }
@@ -90,7 +90,11 @@ if (-not $needsInstall) {
 
 if ($needsInstall) {
     & $VenvPython -m pip install --upgrade pip setuptools wheel
-    & $VenvPython -m pip install -e ".[dev]"
+    # exact versions of the whole dependency tree, then the project itself without resolving again
+    & $VenvPython -m pip install -r requirements.txt -c constraints.txt
+    if ($LASTEXITCODE -eq 0) {
+        & $VenvPython -m pip install -e . --no-deps
+    }
     if ($LASTEXITCODE -ne 0) {
         throw "Backend-Installation fehlgeschlagen."
     }
@@ -132,6 +136,9 @@ Write-Step "ImmoManager Pro starten"
 Write-Host "Daten:   $DataDir"
 Write-Host "Backups: $BackupsDir"
 Write-Host "URL:     http://127.0.0.1:$Port"
+# python -m backend first runs the explicit upgrade step: when the database is behind the
+# program, a verified full backup (backups\full) is made and the migrations run; otherwise
+# nothing changes. If that step fails, the program does not start.
 
 $backendArgs = @("-m", "backend", "--host", "127.0.0.1", "--port", "$Port", "--data-dir", "$DataDir")
 if ($Seed) {

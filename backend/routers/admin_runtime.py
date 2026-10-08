@@ -8,14 +8,11 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 
 from ..config import settings
-from ..paths import get_backup_dir, get_data_dir, get_uploads_dir
+from ..paths import get_backup_dir, get_data_dir, get_uploads_dir, sqlite_url_for_path
 from ..services.data_snapshot import SnapshotError, export_snapshot, prepare_import
 from ..services.document_version_validation import ArchiveIntegrityError
 from ..services.sqlite_backup import (
     copy_database,
-    ensure_access_schema,
-    ensure_archive_schema,
-    ensure_job_schema,
     is_sqlite_database,
     sqlite_path_from_url,
     verify_archived_originals,
@@ -139,6 +136,17 @@ def restore_backup(backup_name: str):
     if not is_sqlite_database(backup_path):
         raise HTTPException(400, f"Not a SQLite database: {backup_name}")
 
+    from ..db.schema_state import NEWER, inspect_sqlite_file, run_migrations
+
+    try:
+        status, application = inspect_sqlite_file(backup_path)
+    except Exception as exc:
+        raise HTTPException(400, f"Wiederherstellung abgebrochen – Sicherung nicht lesbar ({type(exc).__name__})") \
+            from None
+    if status.state == NEWER:
+        raise HTTPException(400, f"Wiederherstellung abgebrochen – {status.describe()}")
+    if not application:
+        raise HTTPException(400, f"Wiederherstellung abgebrochen – keine ImmoManager-Datenbank: {backup_name}")
     try:
         verify_archived_originals(backup_path)
     except ArchiveIntegrityError as exc:
@@ -148,13 +156,19 @@ def restore_backup(backup_name: str):
     # and stays open, so a file copy would be overridden by the old WAL.
     safety = _safety_backup(store, db_path)
     copy_database(backup_path, db_path)
-    from ..db.session import engine
-
-    ensure_archive_schema(engine)
-    ensure_access_schema(engine)
-    ensure_job_schema(engine)
+    result = {"restored_from": backup_name, "safety_backup": safety.name}
+    if status.needs_upgrade:
+        # an explicit action with a safety copy taken: the older backup gets the explicit upgrade
+        try:
+            run_migrations(sqlite_url_for_path(db_path))
+        except Exception:
+            logger.exception("Upgrade of the restored backup %s failed; putting the previous data back", backup_name)
+            copy_database(safety, db_path)
+            raise HTTPException(500, "Wiederherstellung abgebrochen – das Upgrade der älteren Sicherung ist "
+                                     "fehlgeschlagen; der vorherige Stand ist wieder aktiv.") from None
+        result["upgraded_from"] = status.revision or status.state
     logger.info("Database restored from %s", backup_name)
-    return {"restored_from": backup_name, "safety_backup": safety.name}
+    return result
 
 
 def _safety_backup(store, db_path: Path | None) -> Path:

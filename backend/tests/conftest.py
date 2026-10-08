@@ -20,6 +20,12 @@ else:
 
 # Scheduled jobs would create tasks/notifications in the middle of unrelated tests.
 os.environ.setdefault("JOB_SCHEDULER_ENABLED", "false")
+os.environ.setdefault("BACKUP_SCHEDULE_ENABLED", "false")
+
+# Integration settings and the secret key file of this test process, never the checkout's.
+_runtime = Path(tempfile.mkdtemp(prefix="immo-test-runtime-"))
+os.environ.setdefault("INTEGRATION_STATE_FILE", str(_runtime / "integrations.json"))
+os.environ.setdefault("SECRET_KEY_FILE", str(_runtime / "secrets" / "keyring.json"))
 
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:

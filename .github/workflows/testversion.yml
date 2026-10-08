@@ -41,7 +41,7 @@ jobs:
       - name: Install backend and PyInstaller
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt "pyinstaller>=6.0.0"
+          pip install -r requirements.txt -c constraints.txt "pyinstaller>=6.0.0"
 
       - name: Build ImmoManager-Pro.exe
         run: python -m PyInstaller immomanager.spec --noconfirm
@@ -114,6 +114,13 @@ jobs:
           $wgbPdf = Invoke-WebRequest -Method Post -Uri "$wgb/preview-pdf" -Headers $headers -UseBasicParsing `
             -ContentType 'application/json; charset=utf-8' -Body ([System.Text.Encoding]::UTF8.GetBytes($preview))
           Stop-Process -Id $proc.Id -Force
+          # operations from the bundle: explicit upgrade check, verified full backup, isolated restore probe
+          & $exe upgrade --check
+          if ($LASTEXITCODE -ne 0) { throw "upgrade --check meldet Code $LASTEXITCODE" }
+          & $exe ops backup
+          if ($LASTEXITCODE -ne 0) { throw 'Vollbackup aus dem Paket fehlgeschlagen' }
+          & $exe ops probe
+          if ($LASTEXITCODE -ne 0) { throw 'Wiederherstellungsprobe aus dem Paket fehlgeschlagen' }
           Write-Host "Objekte: $($properties.Count), Dokument: $($pdf.StatusCode), Oberflaeche: $($page.StatusCode), WGB: $($wgbPdf.RawContentLength) Bytes"
           if ($properties.Count -ne 15) { throw "Erwartet 15 Objekte, gefunden $($properties.Count)" }
           if ($pdf.StatusCode -ne 200 -or $page.Content -notmatch 'id="root"') { throw 'Dokument oder Oberflaeche fehlt' }
