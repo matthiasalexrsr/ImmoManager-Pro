@@ -20,6 +20,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    event,
     func,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -704,8 +705,18 @@ class HandoverProtocolORM(Base):
     tenant_signature: Mapped[str | None] = mapped_column(Text)
     landlord_signature: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(20), default="draft")
+    # Finalization (migration a4d8e2f6c1b9): the archived PDF original, and the
+    # finalized protocol this one corrects. Once finalized_at is set the protocol
+    # and its parts are immutable (triggers in db/handover_guards.py).
+    correction_of_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("handover_protocols.id"))
+    document_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("documents.id"))
+    finalized_at: Mapped[datetime | None] = mapped_column(DateTime)
+    finalized_by: Mapped[str | None] = mapped_column(String(36))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+    __table_args__ = (Index("idx_handover_protocols_contract", "contract_id"),
+                      Index("idx_handover_protocols_unit", "unit_id"))
 
 
 class MeterReadingORM(Base):
@@ -718,8 +729,106 @@ class MeterReadingORM(Base):
     unit: Mapped[str] = mapped_column(String(10), default="kWh")
     photo_url: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
+    # the unit's meter read at the handover, and the reading the finalization recorded for it
+    meter_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("meters.id"))
+    standalone_reading_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("standalone_meter_readings.id"))
+    position: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+    __table_args__ = (Index("idx_meter_readings_meter", "meter_id"),
+                      Index("idx_meter_readings_standalone", "standalone_reading_id"))
+
+
+class HandoverRoomORM(Base):
+    """A room of a handover protocol and its condition."""
+    __tablename__ = "handover_rooms"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    protocol_id: Mapped[str] = mapped_column(String(36), ForeignKey("handover_protocols.id", ondelete="CASCADE"),
+                                             nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    condition: Mapped[str | None] = mapped_column(String(20))
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow)
+
+    __table_args__ = (Index("idx_handover_rooms_protocol", "protocol_id", "position"),)
+
+
+class HandoverDefectORM(Base):
+    """A defect found at the handover: who answers for it, what was agreed, until when.
+
+    resolved_at and resolution_note are the follow-up: they stay editable after
+    the protocol is finalized, every other column does not.
+    """
+    __tablename__ = "handover_defects"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    protocol_id: Mapped[str] = mapped_column(String(36), ForeignKey("handover_protocols.id", ondelete="CASCADE"),
+                                             nullable=False)
+    room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("handover_rooms.id", ondelete="SET NULL"))
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    responsible: Mapped[str] = mapped_column(String(20), nullable=False, default="open")
+    remedy: Mapped[str | None] = mapped_column(Text)
+    due_date: Mapped[date | None] = mapped_column(Date)
+    resolved_at: Mapped[date | None] = mapped_column(Date)
+    resolution_note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow)
+
+    __table_args__ = (
+        Index("idx_handover_defects_protocol", "protocol_id", "position"),
+        CheckConstraint("responsible IN ('tenant','landlord','open')", name="ck_handover_defects_responsible"),
+    )
+
+
+class HandoverKeyORM(Base):
+    """Keys of one kind: how many were handed over (move-in) or are due back, and how many came back."""
+    __tablename__ = "handover_keys"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    protocol_id: Mapped[str] = mapped_column(String(36), ForeignKey("handover_protocols.id", ondelete="CASCADE"),
+                                             nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    key_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    label: Mapped[str | None] = mapped_column(Text)
+    handed_over: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    returned: Mapped[int | None] = mapped_column(Integer)
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow)
+
+    __table_args__ = (
+        Index("idx_handover_keys_protocol", "protocol_id", "position"),
+        CheckConstraint("handed_over >= 0 AND (returned IS NULL OR returned >= 0)", name="ck_handover_keys_counts"),
+    )
+
+
+class HandoverPhotoORM(Base):
+    """A photo taken at the handover, bound to the protocol (and optionally a room, defect or meter reading).
+
+    The file lives in the upload storage; sha256 fixes its content, the
+    finalized PDF names and embeds it.
+    """
+    __tablename__ = "handover_photos"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    protocol_id: Mapped[str] = mapped_column(String(36), ForeignKey("handover_protocols.id", ondelete="CASCADE"),
+                                             nullable=False)
+    room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("handover_rooms.id", ondelete="SET NULL"))
+    defect_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("handover_defects.id", ondelete="SET NULL"))
+    meter_reading_id: Mapped[str | None] = mapped_column(String(36),
+                                                         ForeignKey("meter_readings.id", ondelete="SET NULL"))
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    file_url: Mapped[str] = mapped_column(Text, nullable=False)
+    caption: Mapped[str | None] = mapped_column(Text)
+    media_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    uploaded_by: Mapped[str | None] = mapped_column(String(36))
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow)
+
+    __table_args__ = (Index("idx_handover_photos_protocol", "protocol_id", "position"),)
 
 
 class BudgetORM(Base):
@@ -987,3 +1096,16 @@ class LoginAttemptORM(Base):
         Index("idx_login_attempts_username", "username"),
         Index("idx_login_attempts_time", "attempted_at"),
     )
+
+
+def _handover_guards_after_create(target, connection, **_):
+    """create_all(): install the triggers of finalized handover protocols once all their tables exist."""
+    from sqlalchemy import inspect
+
+    from .handover_guards import GUARDED_TABLES, install_handover_guards
+
+    if set(GUARDED_TABLES) <= set(inspect(connection).get_table_names()):
+        install_handover_guards(connection)
+
+
+event.listen(Base.metadata, "after_create", _handover_guards_after_create)

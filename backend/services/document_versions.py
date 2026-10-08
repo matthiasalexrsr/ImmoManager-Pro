@@ -99,6 +99,12 @@ class Unit:
         self._undo.append((collection, key, key in collection, collection.get(key)))
         collection[key] = value
 
+    def remove(self, collection: dict, key: Any) -> None:
+        """In memory: remove from a store collection, restored if the unit fails."""
+        assert self.db is None
+        self._undo.append((collection, key, key in collection, collection.get(key)))
+        del collection[key]
+
     def rollback(self) -> None:
         for collection, key, present, value in reversed(self._undo):
             if present:

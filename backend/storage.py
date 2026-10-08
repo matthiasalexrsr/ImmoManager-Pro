@@ -44,8 +44,12 @@ from .models import (
     EntityPhotoCreate,
     EscalationRule,
     EscalationRuleCreate,
+    HandoverDefect,
+    HandoverKey,
+    HandoverPhoto,
     HandoverProtocol,
     HandoverProtocolCreate,
+    HandoverRoom,
     Insurance,
     InsuranceCreate,
     Invoice,
@@ -184,6 +188,10 @@ class InMemoryStore:
     payment_allocations: Dict[str, PaymentAllocation] = field(default_factory=dict)
     handover_protocols: Dict[str, HandoverProtocol] = field(default_factory=dict)
     meter_readings: Dict[str, MeterReading] = field(default_factory=dict)
+    handover_rooms: Dict[str, HandoverRoom] = field(default_factory=dict)
+    handover_defects: Dict[str, HandoverDefect] = field(default_factory=dict)
+    handover_keys: Dict[str, HandoverKey] = field(default_factory=dict)
+    handover_photos: Dict[str, HandoverPhoto] = field(default_factory=dict)
     change_history: Dict[str, ChangeHistoryEntry] = field(default_factory=dict)
     budgets: Dict[str, Budget] = field(default_factory=dict)
     escalation_rules: Dict[str, EscalationRule] = field(default_factory=dict)
@@ -1694,6 +1702,9 @@ class InMemoryStore:
         item = HandoverProtocol(
             id=proto_id, created_at=old.created_at,
             updated_at=datetime.now(timezone.utc), **data.model_dump(),
+            # set by the finalization/correction only: an update keeps them
+            correction_of_id=old.correction_of_id, document_id=old.document_id,
+            finalized_at=old.finalized_at, finalized_by=old.finalized_by,
         )
         self.handover_protocols[proto_id] = item
         return item
@@ -1701,10 +1712,13 @@ class InMemoryStore:
     def delete_handover_protocol(self, proto_id: str) -> None:
         if proto_id not in self.handover_protocols:
             raise NotFoundError("Übergabeprotokoll nicht gefunden")
-        # Cascade delete meter readings
-        for mr_id, mr in list(self.meter_readings.items()):
-            if mr.handover_id == proto_id:
-                del self.meter_readings[mr_id]
+        # Cascade like the SQL foreign keys: meter readings, rooms, defects, keys, photos
+        for collection, column in ((self.meter_readings, "handover_id"), (self.handover_photos, "protocol_id"),
+                                   (self.handover_defects, "protocol_id"), (self.handover_rooms, "protocol_id"),
+                                   (self.handover_keys, "protocol_id")):
+            for part_id, part in list(collection.items()):
+                if getattr(part, column) == proto_id:
+                    del collection[part_id]
         del self.handover_protocols[proto_id]
 
     # --- Meter Readings (T16) ---
@@ -1728,7 +1742,8 @@ class InMemoryStore:
         if reading_id not in self.meter_readings:
             raise NotFoundError("Zählerstand nicht gefunden")
         old = self.meter_readings[reading_id]
-        item = MeterReading(id=reading_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc), **data.model_dump())
+        item = MeterReading(id=reading_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc),
+                            standalone_reading_id=old.standalone_reading_id, **data.model_dump())
         self.meter_readings[reading_id] = item
         return item
 

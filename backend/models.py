@@ -1291,10 +1291,14 @@ class MeterReadingCreate(BaseModel):
     unit: str = "kWh"  # kWh, m³, etc.
     photo_url: Optional[str] = None
     notes: Optional[str] = None
+    meter_id: Optional[str] = None  # the unit's meter; its reading reaches the utility billing at finalization
+    position: Optional[int] = None
 
 
 class MeterReading(MeterReadingCreate):
     id: str = Field(..., min_length=1)
+    # set by the finalization: the meter reading (standalone_meter_readings) this one recorded
+    standalone_reading_id: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -1307,6 +1311,8 @@ class MeterReadingPatch(BaseModel):
     unit: Optional[str] = None
     photo_url: Optional[str] = None
     notes: Optional[str] = None
+    meter_id: Optional[str] = None
+    position: Optional[int] = None
 
 
 class HandoverProtocolCreate(BaseModel):
@@ -1329,6 +1335,70 @@ class HandoverProtocolCreate(BaseModel):
 
 class HandoverProtocol(HandoverProtocolCreate):
     id: str = Field(..., min_length=1)
+    # Set by the service only (services/handover_protocol.py), never by a create/update payload.
+    correction_of_id: Optional[str] = None
+    document_id: Optional[str] = None
+    finalized_at: Optional[datetime] = None
+    finalized_by: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+# Parts of a handover protocol (records of the stores; the API's input DTOs are in
+# services/handover_protocol_types.py).
+
+class HandoverRoom(BaseModel):
+    id: str = Field(..., min_length=1)
+    protocol_id: str
+    position: int = 0
+    name: str
+    condition: Optional[str] = None  # good, fair, poor; None: not assessed
+    notes: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class HandoverDefect(BaseModel):
+    id: str = Field(..., min_length=1)
+    protocol_id: str
+    room_id: Optional[str] = None
+    position: int = 0
+    description: str
+    responsible: Literal["tenant", "landlord", "open"] = "open"
+    remedy: Optional[str] = None
+    due_date: Optional[date] = None
+    resolved_at: Optional[date] = None  # follow-up, editable after finalization
+    resolution_note: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class HandoverKey(BaseModel):
+    id: str = Field(..., min_length=1)
+    protocol_id: str
+    position: int = 0
+    key_type: str
+    label: Optional[str] = None
+    handed_over: int = Field(0, ge=0)
+    returned: Optional[int] = Field(None, ge=0)
+    notes: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class HandoverPhoto(BaseModel):
+    id: str = Field(..., min_length=1)
+    protocol_id: str
+    room_id: Optional[str] = None
+    defect_id: Optional[str] = None
+    meter_reading_id: Optional[str] = None
+    position: int = 0
+    file_url: str
+    caption: Optional[str] = None
+    media_type: str
+    sha256: str = Field(..., pattern=r"^[a-f0-9]{64}$")
+    size_bytes: int = Field(..., ge=1)
+    uploaded_by: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
