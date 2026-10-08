@@ -764,6 +764,19 @@ def memory_visible(store, collection, item, *, scope=None, seen=()):
     return anchors or binding
 
 
+def contract_has_hidden_locations(store, contract_id) -> bool:
+    """Whether the request's account misses some of the service contract's locations."""
+    scope = current_scope()
+    if scope is None or scope.unrestricted:
+        return False
+    if hasattr(store, "db"):
+        return _foreign_contract_locations(store.db, contract_id)
+    raw = object.__getattribute__(store, "__dict__")
+    return any(location.service_contract_id == contract_id
+               and not memory_visible(store, SERVICE_CONTRACT_LOCATIONS, location)
+               for location in raw[SERVICE_CONTRACT_LOCATIONS].values())
+
+
 def _require_whole_contract_memory(store, contract_id) -> None:
     if (SERVICE_CONTRACTS, contract_id) in _created_together.get():
         return

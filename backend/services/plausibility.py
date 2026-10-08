@@ -325,7 +325,7 @@ STORED = {"/portfolios": "get_portfolio", "/accounts": "get_account", "/categori
           "/tax-rates": "get_tax_rate", "/rent-adjustments": "get_rent_adjustment",
           "/handover-protocols": "get_handover_protocol", "/budgets": "get_budget",
           "/escalation/rules": "get_escalation_rule", "/insurances": "get_insurance", "/contacts": "get_contact",
-          "/meters": "get_meter", "/rent-charges": "get_rent_charge"}
+          "/meters": "get_meter", "/rent-charges": "get_rent_charge", "/service-contracts": "get_service_contract"}
 _RECORD_PATH = re.compile(r"^(?P<collection>/.+)/(?P<id>[^/]+)$")
 
 

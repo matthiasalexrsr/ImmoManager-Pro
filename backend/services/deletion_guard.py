@@ -26,6 +26,7 @@ _DEPENDENTS: dict[str, tuple[str, list[tuple[str, str, tuple[str, str]]]]] = {
         ("list_insurances", "property_id", ("Versicherung", "Versicherungen")),
         ("list_budgets", "property_id", ("Budget", "Budgets")),
         ("list_documents", "property_id", ("Dokument", "Dokumente")),
+        ("list_service_contract_locations", "property_id", ("Objektvertragsstandort", "Objektvertragsstandorte")),
     ]),
     "unit": ("Einheit", [
         ("list_contracts", "unit_id", ("Vertrag", "Verträge")),
@@ -37,6 +38,7 @@ _DEPENDENTS: dict[str, tuple[str, list[tuple[str, str, tuple[str, str]]]]] = {
         ("list_documents", "unit_id", ("Dokument", "Dokumente")),
         # Vacancy rows: the landlord's share of a statement, also of a vacant unit
         ("list_utility_statements", "unit_id", ("Nebenkostenabrechnung", "Nebenkostenabrechnungen")),
+        ("list_service_contract_locations", "unit_id", ("Objektvertragsstandort", "Objektvertragsstandorte")),
     ]),
     "tenant": ("Mieter", [
         ("list_contracts", "tenant_id", ("Vertrag", "Verträge")),
@@ -60,12 +62,21 @@ _DEPENDENTS: dict[str, tuple[str, list[tuple[str, str, tuple[str, str]]]]] = {
     "booking": ("Buchung", [
         ("list_bookings", "reverses_booking_id", ("Stornobuchung", "Stornobuchungen")),
     ]),
+    # the provider of a service contract stays in the address book while the contract exists
+    "contact": ("Kontakt", [
+        ("list_service_contracts", "provider_contact_id", ("Objektvertrag", "Objektverträge")),
+    ]),
+    # a bill linked to a service contract may already be part of a utility statement
+    "invoice": ("Rechnung", [
+        ("list_service_contract_invoices", "invoice_id", ("Objektvertragszuordnung", "Objektvertragszuordnungen")),
+    ]),
 }
 
 _ALTERNATIVES = {
     "tenant": " Ehemalige Mieter lassen sich stattdessen archivieren.",
     "contract": " Ein beendeter Vertrag lässt sich stattdessen auf „beendet“ setzen.",
     "booking": " Eine stornierte Buchung bleibt mit ihrem Storno stehen; beide zusammen zählen null.",
+    "invoice": " Die Zuordnung lässt sich im Objektvertrag lösen, solange keine Abrechnung sie enthält.",
 }
 
 

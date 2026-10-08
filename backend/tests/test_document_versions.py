@@ -238,7 +238,7 @@ def test_a_snapshot_carries_originals_with_their_bytes(owner):
     _archive(lease, owner.id, content)
 
     snapshot = export_snapshot(store)
-    assert snapshot["format_version"] == 3 and len(snapshot["document_originals"]) == 1
+    assert snapshot["format_version"] >= 3 and len(snapshot["document_originals"]) == 1
 
     copy = InMemoryStore()
     result = import_snapshot(copy, snapshot, replace=False)

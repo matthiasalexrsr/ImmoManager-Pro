@@ -4,7 +4,8 @@ Reading is open to every signed-in user. For writing:
 - eigentuemer   everything
 - verwalter     everything except restoring, importing and bulk deleting data
 - buchhaltung   money: bookings, accounts, invoices, receivables, deposits, budgets,
-                costs of the utility statement, dunning
+                costs of the utility statement, dunning, bills/payments/cost transfers of
+                service contracts
 - techniker     building: maintenance, meters, handover protocols
 - readonly      only personal settings
 Everybody who works in the office may also keep tasks, documents, files, photos,
@@ -25,7 +26,8 @@ PERSONAL = ("/auth/users/me/preferences", "/auth/2fa", "/auth/logout", "/auth/re
 OFFICE = ("/tasks", "/documents", "/files", "/photos", "/messages", "/calendar", "/dev-notes")
 BOOKKEEPING = ("/bookings", "/accounts", "/categories", "/invoices", "/receivables", "/rent-charges", "/deposits",
                "/budgets", "/tax-rates", "/reports", "/billing/cost-items", "/escalation/run", "/notifications/generate",
-               r"^/contracts/[^/]+/dunning-campaign$")
+               r"^/contracts/[^/]+/dunning-campaign$",
+               r"^/service-contracts/[^/]+/(invoices|payments|cost-transfers)(/[^/]+)?$")
 TECHNICAL = ("/maintenance", "/meters", "/handover-protocols")
 OWNER_ONLY = ("/admin/restore", "/admin/import", "/data/import", "/admin/bulk-delete", "/updates/apply",
               "/updates/restart")

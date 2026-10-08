@@ -54,6 +54,7 @@ from .routers import (
     reports,
     review,
     search,
+    service_contracts,
     tasks,
     tasks_status,
     tax_rates,
@@ -115,6 +116,7 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(rent_charges.router, dependencies=_auth_dep)
     api_v1.include_router(integrations.router, dependencies=_auth_dep)
     api_v1.include_router(insurances.router, dependencies=_auth_dep)
+    api_v1.include_router(service_contracts.router, dependencies=_auth_dep)
     api_v1.include_router(photos.router, dependencies=_auth_dep)
     api_v1.include_router(files.router, dependencies=_auth_dep)
     api_v1.include_router(tasks_status.router, dependencies=_auth_dep)

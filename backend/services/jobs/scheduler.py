@@ -20,6 +20,8 @@ from .core import JobContext, JobRun, JobRunner, JobStore, MemoryJobStore, SqlJo
 from .recurring import KIND as RECURRING_KIND
 from .recurring import make_handler as make_recurring_handler
 from .schedule import DailyAt, MonthlyAt, parse_hh_mm, utcnow
+from .service_contract_deadlines import KIND as SERVICE_CONTRACT_KIND
+from .service_contract_deadlines import make_handler as make_service_contract_handler
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +43,7 @@ class Periodic:
 PERIODIC = (
     Periodic(RECURRING_KIND, DailyAt(5, 0)),
     Periodic(ESCALATION_KIND, DailyAt(6, 15)),
+    Periodic(SERVICE_CONTRACT_KIND, DailyAt(6, 30)),
 )
 
 
@@ -92,6 +95,7 @@ def probe_handler(ctx: JobContext) -> bool:
 
 def default_handlers() -> dict:
     return {RECURRING_KIND: make_recurring_handler(), ESCALATION_KIND: escalation_handler,
+            SERVICE_CONTRACT_KIND: make_service_contract_handler(),
             BACKUP_KIND: backup_handler, PROBE_KIND: probe_handler}
 
 
