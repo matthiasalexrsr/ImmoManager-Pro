@@ -23,9 +23,9 @@ IMAGE_EXTENSIONS = frozenset({"png", "jpg", "jpeg", "gif", "webp", "bmp", "tif",
 DOCUMENT_EXTENSIONS = IMAGE_EXTENSIONS | frozenset(
     {"pdf", "txt", "csv", "rtf", "doc", "docx", "xls", "xlsx", "odt", "ods"}
 )
-# Generated originals (Wohnungsgeberbestätigung) are served from the verified
-# archive, never from a file on disk that happens to have the same name.
-ARCHIVED_PREFIX = "housing-confirmations/"
+# Generated originals (Wohnungsgeberbestätigung, Übergabeprotokoll) are served from
+# the verified archive, never from a file on disk that happens to have the same name.
+ARCHIVED_PREFIXES = ("housing-confirmations/", "handover-protocols/")
 # Browsers render these inline without executing script.
 INLINE_SAFE_EXTENSIONS = frozenset({"pdf", "png", "jpg", "jpeg", "gif", "webp", "bmp"})
 
@@ -90,7 +90,7 @@ class UploadStaticFiles(StaticFiles):
             if scope["method"] not in ("GET", "HEAD"):
                 raise HTTPException(status_code=status.HTTP_405_METHOD_NOT_ALLOWED)
             user = await run_in_threadpool(require_upload_access, Request(scope))
-            if path.replace("\\", "/").lstrip("/").startswith(ARCHIVED_PREFIX):
+            if path.replace("\\", "/").lstrip("/").startswith(ARCHIVED_PREFIXES):
                 return await run_in_threadpool(_archived_original, path, user)
             # a restricted account reads only files of records in its portfolios
             await run_in_threadpool(require_file_access, path.replace("\\", "/").lstrip("/"))
@@ -103,13 +103,23 @@ class UploadStaticFiles(StaticFiles):
         return response
 
 
+def read_archived_pdf(store, key: str, actor_id: str) -> bytes | None:
+    """The verified original behind a virtual upload path, or None if no feature owns the path."""
+    from . import handover_protocol, housing_confirmation
+
+    for reader in (housing_confirmation.read_pdf_for_key, handover_protocol.read_pdf_for_key):
+        content = reader(store, key, actor_id)
+        if content is not None:
+            return content
+    return None
+
+
 def _archived_original(path: str, user) -> Response:
     from ..dependencies import store
-    from .housing_confirmation import read_pdf_for_key
 
     key = path.replace("\\", "/").lstrip("/")
     try:
-        content = read_pdf_for_key(store, key, user.id)
+        content = read_archived_pdf(store, key, user.id)
     except HTTPException as exc:
         return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
     if content is None:

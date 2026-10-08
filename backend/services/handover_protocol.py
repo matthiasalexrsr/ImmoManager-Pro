@@ -122,7 +122,15 @@ REVIEW_FIELDS = {
 
 
 def now() -> datetime:
-    return datetime.now(timezone.utc)
+    """Naive UTC, as stored (a session time zone of PostgreSQL never shifts it)."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _utc(value: datetime | None) -> datetime:
+    """Comparable stamp: records of older code paths carry aware, new ones naive UTC times."""
+    if value is None:
+        return datetime.min
+    return value.astimezone(timezone.utc).replace(tzinfo=None) if value.tzinfo else value
 
 
 def _row(orm_obj: Any) -> dict:
@@ -362,7 +370,7 @@ def _latest(protocols: list[HandoverProtocol]) -> HandoverProtocol | None:
     current = [p for p in protocols if p.id not in superseded]
     for candidates in ([p for p in current if p.finalized_at is not None], current):
         if candidates:
-            return max(candidates, key=lambda p: (p.protocol_date, p.finalized_at or p.created_at, p.id))
+            return max(candidates, key=lambda p: (p.protocol_date, _utc(p.finalized_at or p.created_at), p.id))
     return None
 
 
@@ -454,7 +462,8 @@ def source(store, contract_id: str, protocol_type: str, actor_id: str) -> dict[s
             "suggestion": suggestion,
             "meters": _meter_options(unit, location.id, day),
             "protocols": [_summary(p) for p in sorted(_protocols_where(unit, contract_id=contract.id),
-                                                      key=lambda p: (p.protocol_date, p.created_at), reverse=True)],
+                                                      key=lambda p: (p.protocol_date, _utc(p.created_at)),
+                                                      reverse=True)],
             "related": _related(unit, contract, location),
         }
 
@@ -509,7 +518,7 @@ def _original(unit: archive.Unit, protocol: HandoverProtocol, content: dict[str,
 def _detail(unit: archive.Unit, protocol: HandoverProtocol) -> dict[str, Any]:
     contract, prop, location, tenant, portfolio = _parents(unit, protocol.contract_id)
     content = _content(unit, protocol.id)
-    successors = sorted(_protocols_where(unit, correction_of_id=protocol.id), key=lambda p: p.created_at)
+    successors = sorted(_protocols_where(unit, correction_of_id=protocol.id), key=lambda p: _utc(p.created_at))
     corrected = None
     if protocol.correction_of_id:
         try:
@@ -564,7 +573,7 @@ def create_from_contract(store, payload: CreateRequest, actor_id: str) -> dict[s
                        if p.protocol_type == payload.protocol_type and p.finalized_at is None
                        and p.correction_of_id is None]
         if open_drafts:
-            draft = max(open_drafts, key=lambda p: (p.created_at, p.id))
+            draft = max(open_drafts, key=lambda p: (_utc(p.created_at), p.id))
             return {"created": False, **_detail(unit, draft)}
         suggestion = _suggestion(unit, contract, location, tenant, portfolio, payload.protocol_type)
         day = payload.protocol_date or _boundary(payload.protocol_type, contract) or date.today()
@@ -762,7 +771,7 @@ def patch_photo(store, protocol_id: str, photo_id: str, payload: PhotoPatch, act
         return photo.model_dump(mode="json")
 
 
-def _forget_files(store, file_urls: set[str]) -> None:
+def forget_files(store, file_urls: set[str]) -> None:
     """Delete stored photo files no protocol refers to any more (best effort, after the commit)."""
     from .file_storage import get_file_storage
 
@@ -789,7 +798,7 @@ def delete_photo(store, protocol_id: str, photo_id: str, actor_id: str) -> None:
             raise _not_found("Foto")
         _remove(unit, "photos", photo_id)
         _flush(unit)
-    _forget_files(store, {photo.file_url})
+    forget_files(store, {photo.file_url})
 
 
 def delete_protocol(store, protocol_id: str, actor_id: str) -> None:
@@ -807,7 +816,7 @@ def delete_protocol(store, protocol_id: str, actor_id: str) -> None:
                     _remove(unit, kind, item.id)
             unit.remove(unit.store.handover_protocols, protocol_id)
         _flush(unit)
-    _forget_files(store, files)
+    forget_files(store, files)
 
 
 # ─── Review: completeness, meter readings, PDF ───────────────────────────────
