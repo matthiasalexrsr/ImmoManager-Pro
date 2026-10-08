@@ -7,6 +7,19 @@ from pydantic import BaseModel as PydanticBaseModel
 
 from .domain.booking_reversal import reversal_problem
 from .domain.lease_engine import find_unit_overlap, unit_overlap_message
+from .maintenance_models import (
+    InvoicePayment,
+    MaintenanceAppointment,
+    MaintenanceCaseDocument,
+    MaintenanceChangeOrder,
+    MaintenanceDependency,
+    MaintenanceOrder,
+    MaintenanceOrderInvoice,
+    MaintenanceParticipant,
+    MaintenanceProtocol,
+    MaintenanceQuote,
+    MaintenanceWorkPackage,
+)
 from .models import (
     STATEMENT_WORKFLOW_FIELDS,
     Account,
@@ -195,6 +208,30 @@ class InMemoryStore:
     rent_charges: Dict[str, RentCharge] = field(default_factory=dict)
     insurances: Dict[str, Insurance] = field(default_factory=dict)
     entity_photos: Dict[str, EntityPhoto] = field(default_factory=dict)
+    # project file of a maintenance case (db/maintenance_project_models.py)
+    maintenance_work_packages: Dict[str, MaintenanceWorkPackage] = field(default_factory=dict)
+    maintenance_dependencies: Dict[str, MaintenanceDependency] = field(default_factory=dict)
+    maintenance_participants: Dict[str, MaintenanceParticipant] = field(default_factory=dict)
+    maintenance_quotes: Dict[str, MaintenanceQuote] = field(default_factory=dict)
+    maintenance_orders: Dict[str, MaintenanceOrder] = field(default_factory=dict)
+    maintenance_change_orders: Dict[str, MaintenanceChangeOrder] = field(default_factory=dict)
+    maintenance_order_invoices: Dict[str, MaintenanceOrderInvoice] = field(default_factory=dict)
+    invoice_payments: Dict[str, InvoicePayment] = field(default_factory=dict)
+    maintenance_protocols: Dict[str, MaintenanceProtocol] = field(default_factory=dict)
+    maintenance_appointments: Dict[str, MaintenanceAppointment] = field(default_factory=dict)
+    maintenance_case_documents: Dict[str, MaintenanceCaseDocument] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        # deletes of referenced records take the project rows along, as ON DELETE does in SQL
+        from .services.memory_cascade import CascadingDict, parent_tables
+
+        raw = object.__getattribute__(self, "__dict__")
+        for name in parent_tables():
+            if name in raw and not isinstance(raw[name], CascadingDict):
+                collection = CascadingDict(name)
+                dict.update(collection, raw[name])
+                collection.bind(raw)
+                raw[name] = collection
 
     def clear_all(self) -> None:
         """Clear all entity collections. Used by tests to reset state."""
