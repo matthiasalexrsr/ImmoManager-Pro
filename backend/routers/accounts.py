@@ -1,8 +1,12 @@
+from decimal import Decimal
+
 from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
+from ..domain.money import ZERO, as_number, money
 from ..models import Account, AccountCreate, AccountPatch
 from ..services.deletion_guard import ensure_deletable
+from ..services.finance_ledger import FinanceFilter, booking_totals
 from ..storage import NotFoundError, ValidationError
 from ._helpers import apply_sort
 
@@ -10,12 +14,13 @@ router = APIRouter(prefix="/accounts", tags=["Konten"])
 
 
 def _with_balances(accounts: list[Account]) -> list[Account]:
-    """The balance is the opening balance plus every booking on the account."""
-    moved: dict[str, float] = {}
-    for booking in store.list_bookings():
-        moved[booking.account_id] = moved.get(booking.account_id, 0.0) + booking.amount
+    """The balance is the opening balance plus every booking on the account (summed in exact cents)."""
+    moved: dict[str, Decimal] = {}
+    for row in booking_totals(store, FinanceFilter(), by=("account",)):
+        if row.account_id:
+            moved[row.account_id] = moved.get(row.account_id, ZERO) + row.amount
     return [
-        a.model_copy(update={"balance": round((a.opening_balance or 0.0) + moved.get(a.id, 0.0), 2)})
+        a.model_copy(update={"balance": as_number(money(a.opening_balance) + moved.get(a.id, ZERO))})
         for a in accounts
     ]
 

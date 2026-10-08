@@ -18,6 +18,7 @@ from ..db.orm_models import (
     StandaloneMeterReadingORM,
     TaxRateORM,
 )
+from ..domain.booking_reversal import reversal_problem
 from ..models import (
     Booking,
     BookingCreate,
@@ -90,9 +91,28 @@ class FinanceRepository:
             raise ValidationError("Einheit existiert nicht")
         if data.tenant_id and tr and not tr._tenants.exists(data.tenant_id):
             raise ValidationError("Mieter existiert nicht")
+        if data.reverses_booking_id:
+            self.check_reversal(data)
         result = self._bookings.create(data)
         self._commit()
         return result
+
+    def list_booking_reversals(self, booking_id: str) -> list[Booking]:
+        """The reversals (Stornos) of a booking."""
+        return self._bookings.filter_by(reverses_booking_id=booking_id)
+
+    def check_reversal(self, booking, booking_id: str | None = None, existing=None) -> None:
+        """Reject a booking that breaks the reversal (Storno) rules (domain.booking_reversal)."""
+        link = booking.reverses_booking_id
+        original = None
+        if link and self._bookings.exists(link):
+            original = self._bookings.get(link)
+        siblings = [b for b in self.list_booking_reversals(link) if b.id != booking_id] if link else []
+        reversals = self.list_booking_reversals(booking_id) if booking_id else []
+        problem = reversal_problem(booking, existing=existing, original=original, siblings=siblings,
+                                   reversals=reversals)
+        if problem:
+            raise ValidationError(problem)
 
     def get_booking(self, booking_id: str) -> Booking:
         return self._bookings.get(booking_id)
@@ -110,6 +130,10 @@ class FinanceRepository:
             raise ValidationError("Einheit existiert nicht")
         if data.tenant_id and tr and not tr._tenants.exists(data.tenant_id):
             raise ValidationError("Mieter existiert nicht")
+        old = self._bookings.get(booking_id)
+        if data.reverses_booking_id is None and old.reverses_booking_id:
+            data = data.model_copy(update={"reverses_booking_id": old.reverses_booking_id})  # the link stays
+        self.check_reversal(data, booking_id, old)
         result = self._bookings.update(booking_id, data)
         self._commit()
         return result

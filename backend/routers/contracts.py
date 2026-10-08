@@ -130,10 +130,10 @@ def delete_contract(contract_id: str) -> None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
-def _build_charge_and_payments(contract: Contract) -> tuple[list[RentStep], list[PaymentLine]]:
-    """The contract's rent history and the payments credited to it."""
+def _build_charge_and_payments(contract: Contract, until: date) -> tuple[list[RentStep], list[PaymentLine]]:
+    """The contract's rent history and the payments credited to it up to the reference date."""
     steps = rent_steps(store, contract)
-    payments = contract_payments(store, contract)
+    payments = contract_payments(store, contract, until=until)
     return steps, payments
 
 
@@ -149,7 +149,7 @@ def get_contract_settlement(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
     today = as_of or date.today()
-    steps, payments = _build_charge_and_payments(contract)
+    steps, payments = _build_charge_and_payments(contract, today)
 
     dashboard = LeaseEngine.build_dashboard(
         contract_start=contract.start_date,
@@ -179,7 +179,7 @@ def create_dunning_campaign(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
     today = as_of or date.today()
-    steps, payments = _build_charge_and_payments(contract)
+    steps, payments = _build_charge_and_payments(contract, today)
 
     dunning_policy = None
     if policy:

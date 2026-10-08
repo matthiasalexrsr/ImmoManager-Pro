@@ -205,6 +205,8 @@ class SQLAlchemyStore:
             self.document.validate_document_associations(merged)
         if entity_type == "task":
             self.communication.validate_task(merged)
+        if entity_type == "booking":
+            self.finance.check_reversal(merged, entity_id, current)
         result = repo.patch(entity_id, patch)
         self._commit()
         return result
@@ -367,6 +369,9 @@ class SQLAlchemyStore:
 
     def delete_booking(self, booking_id: str) -> None:
         self.finance.delete_booking(booking_id)
+
+    def list_booking_reversals(self, booking_id: str) -> list[Booking]:
+        return self.finance.list_booking_reversals(booking_id)
 
     # --- Receivables ---
     def list_receivables(self) -> list[Receivable]:

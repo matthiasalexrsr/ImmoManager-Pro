@@ -213,6 +213,8 @@ class BookingORM(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False, default="open")
     payment_text: Mapped[str | None] = mapped_column(Text)
     receipt_url: Mapped[str | None] = mapped_column(Text)
+    # a reversal (Storno) names the booking it cancels (domain.booking_reversal)
+    reverses_booking_id: Mapped[str | None] = mapped_column(ForeignKey("bookings.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
@@ -220,6 +222,7 @@ class BookingORM(Base):
         Index("idx_bookings_account", "account_id"),
         Index("idx_bookings_account_date", "account_id", "booking_date"),
         Index("idx_bookings_tenant", "tenant_id"),
+        Index("idx_bookings_reverses", "reverses_booking_id"),
         CheckConstraint("amount != 0", name="ck_bookings_amount_nonzero"),
     )
 
