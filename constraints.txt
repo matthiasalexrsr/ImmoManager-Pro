@@ -16,7 +16,7 @@ cffi==2.0.0
 charset-normalizer==3.4.9
 click==8.4.2
 colorama==0.4.6
-cryptography==49.0.0
+cryptography==50.0.0
 fastapi==0.135.1
 greenlet==3.5.6
 h11==0.16.0

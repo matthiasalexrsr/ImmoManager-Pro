@@ -16,7 +16,7 @@ psycopg2-binary==2.9.13
 
 # Authentication; cryptography also seals integration secrets at rest (AES-256-GCM)
 PyJWT==2.15.1
-cryptography==49.0.0
+cryptography==50.0.0
 cffi==2.0.0
 
 # Mietvertrag-Wizard
