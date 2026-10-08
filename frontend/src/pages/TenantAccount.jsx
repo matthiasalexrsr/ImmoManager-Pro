@@ -37,11 +37,13 @@ export default function TenantAccount() {
 
   if (!account) return <div className="page-loading">Lade Mieterkonto...</div>;
 
-  const totals = account.contracts.reduce((s, c) => ({
+  // The server adds the totals in exact cents; adding the rounded rows here in floating point
+  // could turn a settled account into "Offen 0,00 €". Older servers send no totals.
+  const totals = account.totals ?? account.contracts.reduce((s, c) => ({
     expected: s.expected + c.expected, paid: s.paid + c.paid,
     balance: s.balance + c.outstanding - c.overpaid,
   }), { expected: 0, paid: 0, balance: 0 });
-  const unassigned = account.unassigned.reduce((s, b) => s + b.unassigned, 0);
+  const unassigned = account.totals?.unassigned ?? account.unassigned.reduce((s, b) => s + b.unassigned, 0);
 
   return (
     <div className="page">

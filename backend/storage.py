@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel as PydanticBaseModel
 
+from .domain.booking_reversal import reversal_problem
 from .domain.lease_engine import find_unit_overlap, unit_overlap_message
 from .models import (
     STATEMENT_WORKFLOW_FIELDS,
@@ -548,9 +549,26 @@ class InMemoryStore:
             raise ValidationError("Einheit existiert nicht")
         if data.tenant_id and data.tenant_id not in self.tenants:
             raise ValidationError("Mieter existiert nicht")
+        if data.reverses_booking_id:
+            self._check_reversal(data)
         booking = Booking(id=_generate_id(), **data.model_dump())
         self.bookings[booking.id] = booking
         return booking
+
+    def list_booking_reversals(self, booking_id: str) -> List[Booking]:
+        """The reversals (Stornos) of a booking."""
+        return [b for b in self.bookings.values() if b.reverses_booking_id == booking_id]
+
+    def _check_reversal(self, booking: Any, booking_id: Optional[str] = None, existing: Any = None) -> None:
+        """Reject a booking that breaks the reversal (Storno) rules (domain.booking_reversal)."""
+        link = booking.reverses_booking_id
+        original = self.bookings.get(link) if link else None
+        siblings = [b for b in self.list_booking_reversals(link) if b.id != booking_id] if link else []
+        reversals = self.list_booking_reversals(booking_id) if booking_id else []
+        problem = reversal_problem(booking, existing=existing, original=original, siblings=siblings,
+                                   reversals=reversals)
+        if problem:
+            raise ValidationError(problem)
 
     def get_booking(self, booking_id: str) -> Booking:
         try:
@@ -572,6 +590,9 @@ class InMemoryStore:
         if data.tenant_id and data.tenant_id not in self.tenants:
             raise ValidationError("Mieter existiert nicht")
         old = self.bookings[booking_id]
+        if data.reverses_booking_id is None and old.reverses_booking_id:
+            data = data.model_copy(update={"reverses_booking_id": old.reverses_booking_id})  # the link stays
+        self._check_reversal(data, booking_id, old)
         booking = Booking(id=booking_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc), **data.model_dump())
         self.bookings[booking_id] = booking
         return booking
@@ -1438,6 +1459,8 @@ class InMemoryStore:
             self.validate_task(updated)
         if entity_type == "utility_statement":
             check_final_statement_change(old, updated)
+        if entity_type == "booking":
+            self._check_reversal(updated, entity_id, old)
         collection[entity_id] = updated
         return updated
 

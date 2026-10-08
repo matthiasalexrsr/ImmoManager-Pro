@@ -55,6 +55,7 @@ function BookingsWorkspace({ bookingId }) {
   const [selectedError, setSelectedError] = useState(null);
   const [selectedAttempt, setSelectedAttempt] = useState(0);
   const [viewer, setViewer] = useState(null);
+  const [reversing, setReversing] = useState(false);
   const mounted = useRef(false);
   const splitRequest = useRef(null);
   const splitSession = useRef(null);
@@ -199,10 +200,11 @@ function BookingsWorkspace({ bookingId }) {
     { key: 'account_name', hidden: true, label: t('finance.accounts.form.name') || 'Konto', filterType: 'text' },
     { key: 'category_name', label: t('finance.bookings.form.category') || 'Kategorie', filterType: 'text' },
     { key: 'amount', label: t('finance.bookings.form.amount') || 'Betrag (€)', type: 'number', align: 'right', filterType: 'numberRange',
-      render: v => {
+      render: (v, row) => {
         const n = Number(v);
         const cls = n < 0 ? 'text-red' : 'text-green';
-        return <span className={cls}>{formatMoney(n)}</span>;
+        return <span className="cell-inline"><span className={cls}>{formatMoney(n)}</span>
+          {row.reverses_booking_id && <span className="badge badge-gray" title="Storno: zählt mit der stornierten Buchung zusammen">Storno</span>}</span>;
       }},
     { key: 'payment_text', label: t('finance.bookings.form.paymentText') || 'Buchungstext', filterType: 'text' },
     { key: 'property_name', label: t('portfolio.properties.form.name') || 'Immobilie', filterType: 'text' },
@@ -296,6 +298,25 @@ function BookingsWorkspace({ bookingId }) {
     }
   };
 
+  // A reversal (Storno) is a linked counter-booking: reports net both, nothing is deleted.
+  const reverseBooking = async (row) => {
+    if (!canWrite || reversing) return;
+    if (!await confirm(`„${row.payment_text || formatDate(row.booking_date)}“ stornieren? Es wird eine Gegenbuchung über den `
+      + 'noch nicht stornierten Betrag angelegt; beide zusammen zählen in allen Auswertungen null.')) return;
+    setReversing(true);
+    try {
+      await api.post(`/bookings/${encodeURIComponent(row.id)}/reverse`, {});
+      if (store) store.invalidateRelated('bookings', 'accounts');
+      if (!mounted.current) return;
+      refreshData();
+      toast.success('Storno gebucht');
+    } catch (err) {
+      if (mounted.current) toast.error(err.message || 'Die Buchung konnte nicht storniert werden.');
+    } finally {
+      if (mounted.current) setReversing(false);
+    }
+  };
+
   const handleDelete = async (row) => {
     if (!canWrite) return;
     if (!await confirm(`"${row.payment_text || row.id}" ${t('modals.confirmDelete.body')}`)) return;
@@ -333,12 +354,17 @@ function BookingsWorkspace({ bookingId }) {
             <div><dt>Mieter</dt><dd>{selected.tenant_id ? tenantMap[selected.tenant_id] || selected.tenant_id : 'Noch nicht zugeordnet'}</dd></div>
             <div><dt>Kategorie</dt><dd>{categoryMap[selected.category_id] || (selected.category_id ? `Kategorie ${selected.category_id} (Name nicht verfügbar)` : 'Noch nicht zugeordnet')}</dd></div>
             <div><dt>Vertrag</dt><dd title={selectedAllocation.detail}>{selectedAllocation.label}</dd></div>
+            {selected.reverses_booking_id && <div><dt>Storno von</dt><dd>
+              <Link to={`/bookings?booking_id=${encodeURIComponent(selected.reverses_booking_id)}`}>Stornierte Buchung öffnen</Link>
+            </dd></div>}
           </dl>
           {selectedAllocation.unassigned !== null && selectedAllocation.unassigned !== 0 && <p>Noch keinem Vertrag zugeordnet: {formatMoney(selectedAllocation.unassigned)}</p>}
           <div className="booking-selection-actions">
             {receiptAction(selected)}
             {canWrite && <button type="button" className="btn btn-sm btn-primary" onClick={() => openModal(selected)}>Bearbeiten</button>}
             {selected.tenant_id && canSplit && <button type="button" className="btn btn-sm btn-secondary" onClick={() => openSplit(selected)}>Aufteilen</button>}
+            {canWrite && !selected.reverses_booking_id && <button type="button" className="btn btn-sm btn-secondary" disabled={reversing}
+              onClick={() => reverseBooking(selected)}>Stornieren</button>}
           </div>
         </>}
       </section>}

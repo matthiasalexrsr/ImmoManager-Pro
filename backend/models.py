@@ -3,6 +3,18 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
+from .domain.money import money
+
+
+def _cent_amount(v: Optional[float]) -> Optional[float]:
+    """Money arrives as cents: rounded half up (domain.money); a zero amount is refused."""
+    if v is None:
+        return v
+    rounded = money(v)
+    if rounded == 0:
+        raise ValueError("Betrag darf nicht 0 sein")
+    return float(rounded)
+
 
 class PortfolioCreate(BaseModel):
     name: str
@@ -203,19 +215,23 @@ class BookingCreate(BaseModel):
     status: str = "open"
     payment_text: Optional[str] = None
     receipt_url: Optional[str] = None
+    reverses_booking_id: Optional[str] = None  # a reversal (Storno): the booking it cancels
 
     @field_validator("amount")
     @classmethod
     def validate_amount(cls, v: Optional[float]) -> Optional[float]:
-        if v == 0:
-            raise ValueError("Betrag darf nicht 0 sein")
-        return v
+        return _cent_amount(v)
 
 
 class Booking(BookingCreate):
     id: str = Field(..., min_length=1)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    @field_validator("amount")
+    @classmethod
+    def validate_amount(cls, v: Optional[float]) -> Optional[float]:
+        return v  # stored rows stay readable as they are; calculations round them (domain.money)
 
 
 class ReceivableCreate(BaseModel):
@@ -529,9 +545,7 @@ class BookingPatch(BaseModel):
     @field_validator("amount")
     @classmethod
     def validate_amount(cls, v: Optional[float]) -> Optional[float]:
-        if v == 0:
-            raise ValueError("Betrag darf nicht 0 sein")
-        return v
+        return _cent_amount(v)
 
 
 class ReceivablePatch(BaseModel):
@@ -1228,9 +1242,9 @@ class PaymentAllocationCreate(BaseModel):
     @field_validator("amount")
     @classmethod
     def validate_amount(cls, v: float) -> float:
-        if v == 0:
-            raise ValueError("Betrag darf nicht 0 sein")
-        return v
+        rounded = _cent_amount(v)
+        assert rounded is not None
+        return rounded
 
     @field_validator("source")
     @classmethod
@@ -1244,6 +1258,11 @@ class PaymentAllocation(PaymentAllocationCreate):
     id: str = Field(..., min_length=1)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    @field_validator("amount")
+    @classmethod
+    def validate_amount(cls, v: float) -> float:
+        return v  # stored rows stay readable as they are
 
 
 class RentAdjustmentPatch(BaseModel):

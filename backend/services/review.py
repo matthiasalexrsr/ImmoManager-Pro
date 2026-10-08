@@ -21,13 +21,14 @@ from typing import Any
 from urllib.parse import quote
 
 from ..domain.lease_engine import OCCUPYING_CONTRACT_STATUSES, charge_on
-from .payment_allocations import _money, credited_by_tenant
+from ..domain.money import money as _money
+from .payment_allocations import credited_by_tenant
 from .read_cache import CachedReads
 from .rent_history import charge_for, rent_steps
 
 
 def _eur(value: Any) -> str:
-    return f"{float(value):,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"{_money(value):,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
 def _day(value: date) -> str:
@@ -59,12 +60,12 @@ def review_items(store: Any, today: date) -> list[dict]:
                           "Gilt die neue Miete auch für den laufenden Vertrag, bitte als Mietanpassung anwenden.",
                 "entity_type": "contract", "entity_id": contract.id, "link": "/rent-adjustments"})
         first = periods[0]
-        if contract.deposit_amount and contract.deposit_amount > 3 * float(first.cold_rent) + 0.005:
+        if contract.deposit_amount and _money(contract.deposit_amount) > 3 * _money(first.cold_rent):
             items.append({
                 "kind": "deposit_too_high", "severity": "warning",
                 "title": f"Kaution von {contract.contract_number} über drei Kaltmieten",
                 "detail": f"Kaution {_eur(contract.deposit_amount)}, erlaubt sind höchstens "
-                          f"{_eur(3 * float(first.cold_rent))} (3 × {_eur(first.cold_rent)}, § 551 BGB).",
+                          f"{_eur(3 * _money(first.cold_rent))} (3 × {_eur(first.cold_rent)}, § 551 BGB).",
                 "entity_type": "contract", "entity_id": contract.id, "link": "/contracts"})
         taken_over = (first.source == "contract_start" and len(periods) == 1
                       and (first.created_at - contract.created_at).days >= 1  # written by the migration
@@ -103,7 +104,7 @@ def review_items(store: Any, today: date) -> list[dict]:
             continue
         earlier = charge_on(rent_steps(store, contract), max(contract.start_date,
                                                              adjustment.effective_date - timedelta(days=3 * 365)))
-        if earlier and adjustment.new_rent > float(earlier.cold_rent) * 1.2 + 0.005:
+        if earlier and earlier.cold_rent > 0 and _money(adjustment.new_rent) > earlier.cold_rent * Decimal("1.2"):
             items.append({
                 "kind": "increase_over_cap", "severity": "warning",
                 "title": f"Mieterhöhung für {number} über der Kappungsgrenze",
@@ -150,11 +151,22 @@ def review_items(store: Any, today: date) -> list[dict]:
     for rows in credited_by_tenant(store, bookings=bookings).values():
         for booking, _, amount in rows:
             credited[booking.id] = credited.get(booking.id, Decimal("0")) + amount
+    # a reversal is decided with the booking it cancels: their rests and amounts add up
+    reversed_amount: dict[str, Decimal] = {}
+    reversed_rest: dict[str, Decimal] = {}
+    known = {b.id for b in bookings}
+    for booking in bookings:
+        if booking.reverses_booking_id in known and booking.booking_date <= today:
+            original = booking.reverses_booking_id
+            reversed_amount[original] = reversed_amount.get(original, Decimal("0")) + _money(booking.amount)
+            reversed_rest[original] = (reversed_rest.get(original, Decimal("0")) + _money(booking.amount)
+                                       - credited.get(booking.id, Decimal("0")))
     # grouped by tenant, in booking order within each tenant
     for booking in sorted((b for b in bookings if b.tenant_id), key=lambda b: b.tenant_id):
-        if booking.booking_date > today:
+        if booking.booking_date > today or booking.reverses_booking_id in known:
             continue
-        rest = _money(booking.amount) - credited.get(booking.id, Decimal("0"))
+        rest = (_money(booking.amount) - credited.get(booking.id, Decimal("0"))
+                + reversed_rest.get(booking.id, Decimal("0")))
         if rest:
             items.append({
                 "kind": "unassigned_payment", "severity": "info",
@@ -165,7 +177,9 @@ def review_items(store: Any, today: date) -> list[dict]:
                 "link": f"/bookings?booking_id={quote(booking.id, safe='')}"})
 
     for booking in bookings:
-        if booking.amount > 0 and not booking.tenant_id and not booking.category_id and booking.booking_date <= today:
+        if (booking.amount > 0 and not booking.tenant_id and not booking.category_id and booking.booking_date <= today
+                and not booking.reverses_booking_id
+                and _money(booking.amount) + reversed_amount.get(booking.id, Decimal("0"))):
             items.append({
                 "kind": "payment_without_tenant", "severity": "info",
                 "title": "Zahlungseingang ohne Mieter und Kategorie",

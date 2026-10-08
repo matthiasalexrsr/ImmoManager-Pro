@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
 from ..domain.invoice_matching import BookingCandidate, InvoiceMatcher, InvoiceToMatch
+from ..domain.money import money
 from ..models import Invoice, InvoiceCreate, InvoicePatch
 from ..storage import NotFoundError, ValidationError
 
@@ -89,19 +90,25 @@ def match_invoice_to_bookings(invoice_id: str) -> dict:
 
     invoice_to_match = InvoiceToMatch(
         invoice_id=invoice.id,
-        gross_amount=Decimal(str(invoice.gross_amount)),
+        gross_amount=money(invoice.gross_amount),
         invoice_date=invoice.invoice_date,
     )
 
-    candidates = [
-        BookingCandidate(
-            booking_id=booking.id,
-            open_amount=Decimal(str(abs(booking.amount))),
-            booking_date=booking.booking_date,
-        )
-        for booking in store.list_bookings()
-        if booking.amount < 0 and booking.status == "open"
-    ]
+    bookings = store.list_bookings()
+    # a reversal pays nothing; a reversed payment pays only what is left of it
+    reversed_by: dict[str, Decimal] = {}
+    for booking in bookings:
+        if booking.reverses_booking_id:
+            reversed_by[booking.reverses_booking_id] = (reversed_by.get(booking.reverses_booking_id, Decimal("0"))
+                                                        + money(booking.amount))
+    candidates = []
+    for booking in bookings:
+        if booking.amount >= 0 or booking.status != "open" or booking.reverses_booking_id:
+            continue
+        open_amount = abs(money(booking.amount) + reversed_by.get(booking.id, Decimal("0")))
+        if open_amount > 0:
+            candidates.append(BookingCandidate(booking_id=booking.id, open_amount=open_amount,
+                                               booking_date=booking.booking_date))
 
     result = InvoiceMatcher.allocate_fifo(invoice_to_match, candidates)
 

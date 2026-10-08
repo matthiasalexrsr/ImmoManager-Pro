@@ -413,3 +413,58 @@ def test_billing_regression_upgrade_and_downgrade(migrate):
     migrate()
     assert {"contract_occupancies", "billing_objections"} <= set(_schema(db_path))
 
+
+REVERSALS_REVISION = "f3b9c1d7e2a5"
+
+
+def _seed_bookings(db_path: Path) -> None:
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript("""
+            INSERT INTO accounts (id, portfolio_id, name, account_type, opening_balance, balance, created_at,
+                                  updated_at) VALUES ('acc', 'pf', 'Konto', 'bank', 0, 0, '2025-01-01', '2025-01-01');
+            INSERT INTO bookings (id, account_id, booking_date, amount, status, created_at, updated_at)
+                VALUES ('b1', 'acc', '2026-02-03', 633.33, 'booked', '2026-02-03', '2026-02-03');
+        """)
+
+
+def test_booking_reversal_upgrade_keeps_bookings_and_downgrade_keeps_links(migrate):
+    db_path = migrate(BILLING_REGRESSION_REVISION)
+    _seed_previous_schema(db_path)
+    _seed_bookings(db_path)
+    migrate(REVERSALS_REVISION)
+    assert "reverses_booking_id" in _schema(db_path)["bookings"]
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute("SELECT id, amount, reverses_booking_id FROM bookings").fetchall() == [
+            ("b1", 633.33, None)]
+        assert "idx_bookings_reverses" in {row[1] for row in conn.execute("PRAGMA index_list(bookings)")}
+        conn.execute("INSERT INTO bookings (id, account_id, booking_date, amount, status, reverses_booking_id, "
+                     "created_at, updated_at) VALUES ('r1', 'acc', '2026-02-10', -633.33, 'booked', 'b1', "
+                     "'2026-02-10', '2026-02-10')")
+    # the older program would count the reversal as an expense of its own
+    with pytest.raises(RuntimeError, match="reversals exist"):
+        migrate.downgrade(BILLING_REGRESSION_REVISION)
+    assert _version(db_path) == REVERSALS_REVISION
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("DELETE FROM bookings WHERE id = 'r1'")
+    migrate.downgrade(BILLING_REGRESSION_REVISION)
+    assert "reverses_booking_id" not in _schema(db_path)["bookings"]
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute("SELECT id FROM bookings").fetchall() == [("b1",)]
+    migrate()
+    assert "reverses_booking_id" in _schema(db_path)["bookings"]
+
+
+def test_booking_reversal_downgrade_of_an_adopted_database_leaves_the_column(migrate):
+    """create_all() writes the reference as a table constraint that SQLite cannot drop."""
+    from sqlalchemy import create_engine
+
+    engine = create_engine(f"sqlite:///{migrate.db_path}")
+    Base.metadata.create_all(engine)
+    engine.dispose()
+    migrate()
+    migrate.downgrade(BILLING_REGRESSION_REVISION)
+    assert _version(migrate.db_path) == BILLING_REGRESSION_REVISION
+    assert "reverses_booking_id" in _schema(migrate.db_path)["bookings"]   # unused, ignored by older versions
+    migrate()
+    assert _version(migrate.db_path) == migrate.head
+

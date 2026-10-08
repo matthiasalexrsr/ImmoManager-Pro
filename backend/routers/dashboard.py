@@ -10,6 +10,7 @@ from fastapi import APIRouter
 
 from ..concurrency import one_at_a_time
 from ..dependencies import store
+from ..domain.money import money
 from ..domain.occupancy import billable_contracts, unit_statuses_on
 from ..domain.receivables import is_overdue_debt, is_unpaid_debt
 
@@ -128,7 +129,7 @@ def _billing_preflight_summary(
             key_id = getattr(item, "allocation_key_id", None)
             if allocation_key_properties.get(key_id) != getattr(period, "property_id", None):
                 has_blocker = True
-            if float(getattr(item, "amount", 0) or 0) <= 0:
+            if money(getattr(item, "amount", None)) <= 0:
                 warnings += 1
 
         if has_blocker:

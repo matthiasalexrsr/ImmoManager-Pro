@@ -1,6 +1,6 @@
 import csv
 import io
-from datetime import date, timedelta
+from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Body, HTTPException, Query
@@ -9,10 +9,29 @@ from pydantic import BaseModel, Field
 
 from ..concurrency import one_at_a_time
 from ..dependencies import store
+from ..domain.money import money
 from ..services import report_service
+from ..services.finance_ledger import Dimensions, FinanceFilter, add_months, month_start
 from ..services.read_cache import CachedReads
 
 router = APIRouter(prefix="/reports", tags=["Berichte"])
+
+# The same filter for every finance report (services.finance_ledger.FinanceFilter). Annotated
+# defaults keep the endpoints callable as plain functions (PDF export, tests).
+Format = Annotated[str | None, Query(alias="format")]
+DateFrom = Annotated[date | None, Query(description="Zeitraum ab diesem Tag (einschließlich)")]
+DateTo = Annotated[date | None, Query(description="Zeitraum bis zu diesem Tag (einschließlich)")]
+PortfolioId = Annotated[str | None, Query(description="Nur dieses Portfolio")]
+PropertyId = Annotated[str | None, Query(description="Nur dieses Objekt")]
+UnitId = Annotated[str | None, Query(description="Nur diese Einheit")]
+
+
+def _filter(date_from: date | None = None, date_to: date | None = None, portfolio_id: str | None = None,
+            property_id: str | None = None, unit_id: str | None = None) -> FinanceFilter:
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(status_code=422, detail="Der Zeitraum beginnt nach seinem Ende")
+    return FinanceFilter(date_from=date_from, date_to=date_to, portfolio_id=portfolio_id or None,
+                         property_id=property_id or None, unit_id=unit_id or None)
 
 
 def _all_bookings() -> list:
@@ -38,16 +57,9 @@ def _csv_response(rows: list[dict], filename: str) -> Response:
 
 @router.get("/summary")
 @one_at_a_time
-def get_summary(format: str | None = Query(None, alias="format")):
-    data = report_service.compute_summary(
-        properties=store.list_properties(),
-        units=store.list_units(),
-        contracts=store.list_contracts(),
-        receivables=store.list_receivables(),
-        bookings=_all_bookings(),
-        invoices=store.list_invoices(),
-        maintenance_cases=store.list_maintenance_cases(),
-    )
+def get_summary(format: Format = None, date_from: DateFrom = None, date_to: DateTo = None,
+                portfolio_id: PortfolioId = None, property_id: PropertyId = None, unit_id: UnitId = None):
+    data = report_service.compute_summary(store, _filter(date_from, date_to, portfolio_id, property_id, unit_id))
 
     if format == "csv":
         f = data["finance"]
@@ -69,11 +81,10 @@ def get_summary(format: str | None = Query(None, alias="format")):
 
 @router.get("/finance")
 @one_at_a_time
-def get_finance_report(format: str | None = Query(None, alias="format")):
-    data = report_service.compute_finance(
-        bookings=_all_bookings(),
-        categories=store.list_categories(),
-    )
+def get_finance_report(format: Format = None, date_from: DateFrom = None, date_to: DateTo = None,
+                       portfolio_id: PortfolioId = None, property_id: PropertyId = None, unit_id: UnitId = None):
+    """Bookings per category; a reversal nets the booking it cancels."""
+    data = report_service.compute_finance(store, _filter(date_from, date_to, portfolio_id, property_id, unit_id))
 
     if format == "csv":
         rows = [
@@ -89,7 +100,7 @@ def get_finance_report(format: str | None = Query(None, alias="format")):
 
 @router.get("/occupancy")
 @one_at_a_time
-def get_occupancy_report(format: str | None = Query(None, alias="format")):
+def get_occupancy_report(format: Format = None):
     data = report_service.compute_occupancy(units=store.list_units(), contracts=store.list_contracts())
 
     if format == "csv":
@@ -107,10 +118,12 @@ def get_occupancy_report(format: str | None = Query(None, alias="format")):
 
 @router.get("/receivables-aging")
 @one_at_a_time
-def get_receivables_aging(format: str | None = Query(None, alias="format")):
+def get_receivables_aging(format: Format = None, date_from: DateFrom = None, date_to: DateTo = None,
+                          portfolio_id: PortfolioId = None, property_id: PropertyId = None,
+                          unit_id: UnitId = None):
+    """Unpaid receivables (due in the period, if given) by days past due; credits apart."""
     data = report_service.compute_receivables_aging(
-        receivables=store.list_receivables(),
-    )
+        store, _filter(date_from, date_to, portfolio_id, property_id, unit_id))
 
     if format == "csv":
         b = data["buckets"]
@@ -130,17 +143,19 @@ def get_receivables_aging(format: str | None = Query(None, alias="format")):
 
 @router.get("/cashflow")
 @one_at_a_time
-def get_cashflow_report(format: str | None = Query(None, alias="format"),
-                        months: Annotated[int | None, Query(ge=1, le=120)] = None):
-    """Income, expenses and net; all bookings, or the last `months` calendar months (this one included)."""
-    bookings = _all_bookings()
-    if months:
+def get_cashflow_report(format: Format = None,
+                        months: Annotated[int | None, Query(ge=1, le=120)] = None,
+                        date_from: DateFrom = None, date_to: DateTo = None, portfolio_id: PortfolioId = None,
+                        property_id: PropertyId = None, unit_id: UnitId = None):
+    """Cash view: payments in and out, in total and per month (months without bookings as zero rows).
+
+    The period is `date_from`/`date_to`, or the last `months` calendar months (this one included,
+    up to today), or every booking.
+    """
+    if months and not (date_from or date_to):
         today = date.today()
-        first = today.replace(day=1)
-        for _ in range(months - 1):
-            first = (first - timedelta(days=1)).replace(day=1)
-        bookings = [b for b in bookings if first <= b.booking_date <= today]
-    data = report_service.compute_cashflow(bookings=bookings)
+        date_from, date_to = add_months(month_start(today), -(months - 1)), today
+    data = report_service.compute_cashflow(store, _filter(date_from, date_to, portfolio_id, property_id, unit_id))
 
     if format == "csv":
         rows = [{
@@ -149,6 +164,31 @@ def get_cashflow_report(format: str | None = Query(None, alias="format"),
             "Netto": data["netTotal"],
         }]
         return _csv_response(rows, "cashflow.csv")
+
+    return data
+
+
+@router.get("/period-result")
+@one_at_a_time
+def get_period_result(format: Format = None, date_from: DateFrom = None, date_to: DateTo = None,
+                      portfolio_id: PortfolioId = None, property_id: PropertyId = None, unit_id: UnitId = None):
+    """Period result in whole calendar months: rent due + other income - costs (default: last 12 months).
+
+    Tenants' payments settle the rent due and are not counted again; the cash view shows them.
+    """
+    data = report_service.compute_period_result(
+        store, _filter(date_from, date_to, portfolio_id, property_id, unit_id))
+
+    if format == "csv":
+        rows = [{
+            "Monat": m["month"],
+            "Sollmiete": m["rent_due"],
+            "Sonstige Erträge": m["other_income"],
+            "Kosten": m["costs"],
+            "Ergebnis": m["result"],
+            "Eingänge ohne Zuordnung": m["unassigned_income"],
+        } for m in data["monthly"]]
+        return _csv_response(rows, "periodenergebnis.csv")
 
     return data
 
@@ -182,10 +222,10 @@ def get_contracts_expiring_report(
 
 
 @router.get("/maintenance-costs")
-def get_maintenance_costs_report(format: str | None = Query(None, alias="format")):
+def get_maintenance_costs_report(format: Format = None, portfolio_id: PortfolioId = None,
+                                 property_id: PropertyId = None, unit_id: UnitId = None):
     data = report_service.compute_maintenance_costs(
-        maintenance_cases=store.list_maintenance_cases(),
-    )
+        store, _filter(portfolio_id=portfolio_id, property_id=property_id, unit_id=unit_id))
 
     if format == "csv":
         rows = [
@@ -204,22 +244,20 @@ def get_maintenance_costs_report(format: str | None = Query(None, alias="format"
 @router.get("/datev-export")
 @one_at_a_time
 def datev_export(
-    start_date: date | None = Query(None),
-    end_date: date | None = Query(None),
+    start_date: Annotated[date | None, Query()] = None,
+    end_date: Annotated[date | None, Query()] = None,
+    portfolio_id: PortfolioId = None,
+    property_id: PropertyId = None,
+    unit_id: UnitId = None,
 ) -> Response:
     """Export bookings in DATEV-compliant CSV format (Buchungsstapel).
 
     DATEV Buchungsstapel format uses semicolons, German number formatting,
     and specific column headers recognized by DATEV accounting software.
+    A reversal is its own line with the opposite Soll/Haben mark.
     """
-    bookings = _all_bookings()
-
-    if start_date:
-        bookings = [b for b in bookings if b.booking_date >= start_date]
-    if end_date:
-        bookings = [b for b in bookings if b.booking_date <= end_date]
-
-    bookings.sort(key=lambda b: b.booking_date)
+    dims = Dimensions(store, _filter(start_date, end_date, portfolio_id, property_id, unit_id))
+    bookings = sorted((b for b in _all_bookings() if dims.booking_matches(b)), key=lambda b: b.booking_date)
 
     # DATEV Buchungsstapel columns (simplified)
     output = io.StringIO()
@@ -242,9 +280,9 @@ def datev_export(
     categories = {cat.id: cat for cat in store.list_categories()}
 
     for booking in bookings:
-        amount = abs(booking.amount)
+        amount = abs(money(booking.amount))
         # S = Soll (debit), H = Haben (credit)
-        soll_haben = "S" if booking.amount >= 0 else "H"
+        soll_haben = "S" if money(booking.amount) >= 0 else "H"
         # Format amount with comma as decimal separator (German)
         amount_str = f"{amount:.2f}".replace(".", ",")
         # DATEV date format: DDMM
@@ -341,26 +379,19 @@ def import_bookings(
 @router.get("/liquidity-forecast", response_model=None)
 @one_at_a_time
 def liquidity_forecast(
-    months: int = Query(12, ge=1, le=60),
-    property_id: str | None = Query(None),
+    months: Annotated[int, Query(ge=1, le=60)] = 12,
+    property_id: PropertyId = None,
+    portfolio_id: PortfolioId = None,
+    unit_id: UnitId = None,
 ):
-    """T28: Liquidity forecast for 3/6/12 months based on historical data.
+    """T28: Liquidity forecast for the next months: the rent the contracts will owe, plus the
+    average other income and costs of the last complete months (months without bookings count).
 
     Opening balances belong to accounts, not to properties, so a forecast for
-    one property starts from its bookings alone.
+    one property or unit starts from its bookings alone.
     """
-    bookings = _all_bookings()
-    opening_balance = 0.0
-    if property_id:
-        bookings = [b for b in bookings if b.property_id == property_id]
-    else:
-        opening_balance = sum(a.opening_balance or 0.0 for a in store.list_accounts())
-
     return report_service.compute_liquidity_forecast(
-        bookings=bookings,
-        months=months,
-        opening_balance=opening_balance,
-    )
+        store, _filter(portfolio_id=portfolio_id, property_id=property_id, unit_id=unit_id), months=months)
 
 
 @router.get("/pdf/{report_name}", response_model=None)
