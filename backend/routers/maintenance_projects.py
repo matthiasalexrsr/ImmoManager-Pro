@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Annotated, Any
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.exc import IntegrityError
 
 from .. import maintenance_models as mm
@@ -183,6 +183,13 @@ def link_invoice(case_id: str, order_id: str, payload: mm.InvoiceLinkCreate, act
     return _call(service.link_invoice, store, case_id, order_id, payload, actor.id)
 
 
+@router.get("/invoice-candidates")
+def invoice_candidates(case_id: str, actor: Actor, q: str | None = Query(None, max_length=200),
+                       skip: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=200)) -> dict:
+    """Invoices of the case's property not yet billed against an order (one page)."""
+    return _call(service.invoice_candidates, store, case_id, q=q, skip=skip, limit=limit)
+
+
 @router.delete("/invoice-links/{link_id}", status_code=status.HTTP_204_NO_CONTENT)
 def unlink_invoice(case_id: str, link_id: str, actor: Actor) -> None:
     _call(service.unlink_invoice, store, case_id, link_id, actor.id)
@@ -239,6 +246,15 @@ payments_router = APIRouter(prefix="/invoices/{invoice_id}/payments", tags=["Rec
 @payments_router.get("")
 def list_invoice_payments(invoice_id: str, actor: Actor) -> dict:
     return _call(service.invoice_payments, store, invoice_id)
+
+
+@payments_router.get("/candidates")
+def payment_candidates(invoice_id: str, actor: Actor, q: str | None = Query(None, max_length=200),
+                       skip: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=200),
+                       all_properties: bool = Query(False)) -> dict:
+    """Outgoing bookings that could pay the invoice, newest first, with their free amount (one page)."""
+    return _call(service.payment_candidates, store, invoice_id, q=q, skip=skip, limit=limit,
+                 all_properties=all_properties)
 
 
 @payments_router.post("", status_code=status.HTTP_201_CREATED)

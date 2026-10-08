@@ -53,7 +53,7 @@ def _strip(cls, value):
 
 class _Record(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    id: str = Field(..., min_length=1)
+    id: str = Field(default=..., min_length=1)
     case_id: str
 
 
@@ -150,7 +150,7 @@ class MaintenanceOrderInvoice(_Record):
 
 class InvoicePayment(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    id: str = Field(..., min_length=1)
+    id: str = Field(default=..., min_length=1)
     invoice_id: str
     booking_id: str
     amount: float
@@ -203,15 +203,15 @@ class _Request(BaseModel):
 
 class StatusTransition(_Request):
     status: Literal["open", "in_progress", "completed", "cancelled"]
-    reason: Optional[str] = Field(None, max_length=2000)
+    reason: Optional[str] = Field(default=None, max_length=2000)
 
     _clean = field_validator("reason")(_strip)
 
 
 class WorkPackageCreate(_Request):
-    title: str = Field(..., min_length=1, max_length=300)
-    description: Optional[str] = Field(None, max_length=10000)
-    phase: Optional[str] = Field(None, max_length=100)
+    title: str = Field(default=..., min_length=1, max_length=300)
+    description: Optional[str] = Field(default=None, max_length=10000)
+    phase: Optional[str] = Field(default=None, max_length=100)
     kind: Literal["work", "milestone"] = "work"
     planned_start: Optional[date] = None
     planned_end: Optional[date] = None
@@ -222,9 +222,9 @@ class WorkPackageCreate(_Request):
 
 
 class WorkPackagePatch(_Request):
-    title: Optional[str] = Field(None, min_length=1, max_length=300)
-    description: Optional[str] = Field(None, max_length=10000)
-    phase: Optional[str] = Field(None, max_length=100)
+    title: Optional[str] = Field(default=None, min_length=1, max_length=300)
+    description: Optional[str] = Field(default=None, max_length=10000)
+    phase: Optional[str] = Field(default=None, max_length=100)
     status: Optional[Literal["planned", "in_progress", "done", "cancelled"]] = None
     planned_start: Optional[date] = None
     planned_end: Optional[date] = None
@@ -235,25 +235,25 @@ class WorkPackagePatch(_Request):
 
 
 class DependencyCreate(_Request):
-    predecessor_id: str = Field(..., min_length=1)
-    successor_id: str = Field(..., min_length=1)
+    predecessor_id: str = Field(default=..., min_length=1)
+    successor_id: str = Field(default=..., min_length=1)
 
 
 class ParticipantCreate(_Request):
-    contact_id: str = Field(..., min_length=1)
+    contact_id: str = Field(default=..., min_length=1)
     role: Literal["contractor", "expert", "other"] = "contractor"
-    trade: Optional[str] = Field(None, max_length=200)
-    notes: Optional[str] = Field(None, max_length=2000)
+    trade: Optional[str] = Field(default=None, max_length=200)
+    notes: Optional[str] = Field(default=None, max_length=2000)
 
     _clean = field_validator("trade", "notes")(_strip)
 
 
 class AppointmentCreate(_Request):
-    title: str = Field(..., min_length=1, max_length=300)
+    title: str = Field(default=..., min_length=1, max_length=300)
     event_date: date
-    event_time: Optional[str] = Field(None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
-    location: Optional[str] = Field(None, max_length=300)
-    description: Optional[str] = Field(None, max_length=5000)
+    event_time: Optional[str] = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    location: Optional[str] = Field(default=None, max_length=300)
+    description: Optional[str] = Field(default=None, max_length=5000)
     kind: Literal["inspection", "execution", "acceptance", "other"] = "other"
     work_package_id: Optional[str] = None
     contact_id: Optional[str] = None
@@ -262,11 +262,11 @@ class AppointmentCreate(_Request):
 
 
 class AppointmentPatch(_Request):
-    title: Optional[str] = Field(None, min_length=1, max_length=300)
+    title: Optional[str] = Field(default=None, min_length=1, max_length=300)
     event_date: Optional[date] = None
-    event_time: Optional[str] = Field(None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
-    location: Optional[str] = Field(None, max_length=300)
-    description: Optional[str] = Field(None, max_length=5000)
+    event_time: Optional[str] = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    location: Optional[str] = Field(default=None, max_length=300)
+    description: Optional[str] = Field(default=None, max_length=5000)
     kind: Optional[Literal["inspection", "execution", "acceptance", "other"]] = None
     work_package_id: Optional[str] = None
     contact_id: Optional[str] = None
@@ -299,13 +299,13 @@ def _payment_amount(cls, value):
 
 
 class QuoteCreate(_Request):
-    supplier_name: Optional[str] = Field(None, max_length=300)
+    supplier_name: Optional[str] = Field(default=None, max_length=300)
     contact_id: Optional[str] = None
     work_package_id: Optional[str] = None
-    quote_number: Optional[str] = Field(None, max_length=100)
+    quote_number: Optional[str] = Field(default=None, max_length=100)
     quote_date: date
     valid_until: Optional[date] = None
-    description: Optional[str] = Field(None, max_length=10000)
+    description: Optional[str] = Field(default=None, max_length=10000)
     net_amount: float
     gross_amount: float
     document_id: Optional[str] = None
@@ -323,13 +323,13 @@ class QuoteCreate(_Request):
 
 
 class QuotePatch(_Request):
-    supplier_name: Optional[str] = Field(None, max_length=300)
+    supplier_name: Optional[str] = Field(default=None, max_length=300)
     contact_id: Optional[str] = None
     work_package_id: Optional[str] = None
-    quote_number: Optional[str] = Field(None, max_length=100)
+    quote_number: Optional[str] = Field(default=None, max_length=100)
     quote_date: Optional[date] = None
     valid_until: Optional[date] = None
-    description: Optional[str] = Field(None, max_length=10000)
+    description: Optional[str] = Field(default=None, max_length=10000)
     net_amount: Optional[float] = None
     gross_amount: Optional[float] = None
     document_id: Optional[str] = None
@@ -339,23 +339,23 @@ class QuotePatch(_Request):
 
 
 class QuoteDecision(_Request):
-    order_number: Optional[str] = Field(None, max_length=100)
+    order_number: Optional[str] = Field(default=None, max_length=100)
     order_date: Optional[date] = None
-    note: Optional[str] = Field(None, max_length=2000)
+    note: Optional[str] = Field(default=None, max_length=2000)
     reject_competing: bool = False
 
     _clean = field_validator("order_number", "note")(_strip)
 
 
 class Decision(_Request):
-    note: Optional[str] = Field(None, max_length=2000)
+    note: Optional[str] = Field(default=None, max_length=2000)
 
     _clean = field_validator("note")(_strip)
 
 
 class ChangeOrderCreate(_Request):
-    title: str = Field(..., min_length=1, max_length=300)
-    reason: Optional[str] = Field(None, max_length=5000)
+    title: str = Field(default=..., min_length=1, max_length=300)
+    reason: Optional[str] = Field(default=None, max_length=5000)
     net_amount: float
     gross_amount: float
     document_id: Optional[str] = None
@@ -371,8 +371,8 @@ class ChangeOrderCreate(_Request):
 
 
 class ChangeOrderPatch(_Request):
-    title: Optional[str] = Field(None, min_length=1, max_length=300)
-    reason: Optional[str] = Field(None, max_length=5000)
+    title: Optional[str] = Field(default=None, min_length=1, max_length=300)
+    reason: Optional[str] = Field(default=None, max_length=5000)
     net_amount: Optional[float] = None
     gross_amount: Optional[float] = None
     document_id: Optional[str] = None
@@ -384,15 +384,15 @@ class ChangeOrderPatch(_Request):
 class InvoiceDraft(_Request):
     """A new invoice of the order; the property is always the case's."""
 
-    supplier: Optional[str] = Field(None, max_length=300)
-    invoice_number: Optional[str] = Field(None, max_length=100)
+    supplier: Optional[str] = Field(default=None, max_length=300)
+    invoice_number: Optional[str] = Field(default=None, max_length=100)
     invoice_date: date
     due_date: Optional[date] = None
     net_amount: float
     vat_rate: float = 19.0
     gross_amount: float
-    payment_terms: Optional[str] = Field(None, max_length=500)
-    notes: Optional[str] = Field(None, max_length=2000)
+    payment_terms: Optional[str] = Field(default=None, max_length=500)
+    notes: Optional[str] = Field(default=None, max_length=2000)
 
     _money = field_validator("net_amount", "gross_amount")(
         _invoice_amount)
@@ -415,16 +415,16 @@ class InvoiceLinkCreate(_Request):
 
 
 class InvoicePaymentCreate(_Request):
-    booking_id: str = Field(..., min_length=1)
+    booking_id: str = Field(default=..., min_length=1)
     amount: float
 
     _money = field_validator("amount")(_payment_amount)
 
 
 class Defect(_Request):
-    title: str = Field(..., min_length=1, max_length=300)
-    description: Optional[str] = Field(None, max_length=5000)
-    location: Optional[str] = Field(None, max_length=300)
+    title: str = Field(default=..., min_length=1, max_length=300)
+    description: Optional[str] = Field(default=None, max_length=5000)
+    location: Optional[str] = Field(default=None, max_length=300)
     severity: Literal["minor", "major", "critical"] = "minor"
     due_date: Optional[date] = None
     photo_ids: list[str] = Field(default_factory=list, max_length=24)
@@ -433,10 +433,10 @@ class Defect(_Request):
 class ProtocolCreate(_Request):
     protocol_type: Literal["acceptance", "inspection", "site_visit"] = "acceptance"
     protocol_date: date
-    title: Optional[str] = Field(None, max_length=300)
-    participants: Optional[str] = Field(None, max_length=2000)
+    title: Optional[str] = Field(default=None, max_length=300)
+    participants: Optional[str] = Field(default=None, max_length=2000)
     result: Optional[Literal["accepted", "accepted_with_defects", "refused"]] = None
-    notes: Optional[str] = Field(None, max_length=20000)
+    notes: Optional[str] = Field(default=None, max_length=20000)
     work_package_id: Optional[str] = None
     order_id: Optional[str] = None
     defects: list[Defect] = Field(default_factory=list, max_length=200)
@@ -446,20 +446,20 @@ class ProtocolCreate(_Request):
 class ProtocolPatch(_Request):
     protocol_type: Optional[Literal["acceptance", "inspection", "site_visit"]] = None
     protocol_date: Optional[date] = None
-    title: Optional[str] = Field(None, max_length=300)
-    participants: Optional[str] = Field(None, max_length=2000)
+    title: Optional[str] = Field(default=None, max_length=300)
+    participants: Optional[str] = Field(default=None, max_length=2000)
     result: Optional[Literal["accepted", "accepted_with_defects", "refused"]] = None
-    notes: Optional[str] = Field(None, max_length=20000)
+    notes: Optional[str] = Field(default=None, max_length=20000)
     work_package_id: Optional[str] = None
     order_id: Optional[str] = None
-    defects: Optional[list[Defect]] = Field(None, max_length=200)
-    photo_ids: Optional[list[str]] = Field(None, max_length=24)
+    defects: Optional[list[Defect]] = Field(default=None, max_length=200)
+    photo_ids: Optional[list[str]] = Field(default=None, max_length=24)
 
 
 class ProtocolFinalize(_Request):
-    idempotency_key: str = Field(..., min_length=8, max_length=100, pattern=r"^[A-Za-z0-9._:-]+$")
+    idempotency_key: str = Field(default=..., min_length=8, max_length=100, pattern=r"^[A-Za-z0-9._:-]+$")
 
 
 class CaseDocumentCreate(_Request):
-    document_id: str = Field(..., min_length=1)
+    document_id: str = Field(default=..., min_length=1)
     role: Literal["damage_photo", "quote", "order", "invoice", "protocol", "report", "other"] = "other"

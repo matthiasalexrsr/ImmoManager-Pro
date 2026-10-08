@@ -186,9 +186,9 @@ def roll_up(budget: float | None, orders: Iterable[OrderFacts], changes: Iterabl
                                    "message": "Die Rechnung ist als bezahlt markiert, aber nicht vollständig "
                                               "durch Buchungen belegt."})
 
-    for order in costs.orders.values():
-        if order.status != "cancelled" and order.invoiced > order.ordered:
-            costs.warnings.append({"code": "invoiced_over_ordered", "order_id": order.order_id,
+    for entry in costs.orders.values():
+        if entry.status != "cancelled" and entry.invoiced > entry.ordered:
+            costs.warnings.append({"code": "invoiced_over_ordered", "order_id": entry.order_id,
                                    "message": "Abgerechnet ist mehr als beauftragt (inkl. genehmigter Nachträge)."})
     if costs.budget is not None:
         if costs.ordered > costs.budget:

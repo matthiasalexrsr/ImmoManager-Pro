@@ -7,7 +7,7 @@ test_maintenance_projects_postgres.py).
 
 import hashlib
 import os
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from io import BytesIO
 
@@ -57,13 +57,13 @@ def test_topological_order_and_schedule_conflicts():
 
 def test_roll_up_counts_every_cent_once():
     """Two invoices, one booking paying both partly, a reversed booking, an over-allocation of an old booking."""
-    t = date(2026, 1, 1)
+    t = datetime(2026, 1, 1)
     costs = roll_up(
         1500, [OrderFacts("o1", "active", Decimal("1190.00")), OrderFacts("o2", "cancelled", Decimal("500.00"))],
         [], [InvoiceFacts("i1", "o1", "open", Decimal("1000.00")), InvoiceFacts("i2", "o1", "open", Decimal("190.00"))],
         [AllocationFacts("a1", "i1", "b1", Decimal("900.00"), t), AllocationFacts("a2", "i2", "b1", Decimal("100.00"), t),
          AllocationFacts("a3", "i2", "b2", Decimal("90.00"), t),
-         AllocationFacts("a0", "other", "b1", Decimal("50.00"), date(2025, 1, 1))],   # older, other project
+         AllocationFacts("a0", "other", "b1", Decimal("50.00"), datetime(2025, 1, 1))],   # older, other project
         {"b1": BookingFacts("b1", Decimal("-1000.00"), Decimal("0")),
          "b2": BookingFacts("b2", Decimal("-90.00"), Decimal("90.00"))})              # fully reversed
     assert (costs.ordered, costs.invoiced) == (Decimal("1190.00"), Decimal("1190.00"))
@@ -425,7 +425,9 @@ def _archived_sha(document_id):
     from backend.services.maintenance_projects import _plain
 
     with _plain(store) as unit:
-        return archive.head(unit, document_id).sha256
+        row = archive.head(unit, document_id)
+        assert row is not None
+        return row.sha256
 
 
 def test_a_changed_final_protocol_is_detected_or_refused(owner, estate, roofer):
@@ -591,3 +593,30 @@ def test_snapshot_export_and_import_keep_the_project_file(owner, estate, roofer)
     assert after["costs"] == before["costs"] and len(after["work_packages"]) == 2
     assert [d["id"] for d in after["dependencies"]] == [d["id"] for d in before["dependencies"]]
     assert import_snapshot(store, restored, replace=False)["imported"] == {}       # nothing twice
+
+
+def test_candidate_lookups_are_paged_and_exclude_what_is_used(owner, estate):
+    case = _case(owner, estate)
+    base = f"{API}/maintenance/{case['id']}"
+    quote = _quote(owner, case["id"], 100, 119, supplier_name="Firma")
+    order = _ok(owner.post(f"{base}/quotes/{quote['id']}/accept", json={}), 201)
+    invoices = [_ok(owner.post(f"{API}/invoices", json={
+        "property_id": estate["property"].id, "supplier": f"Lieferant {i}", "invoice_date": f"2026-05-0{i + 1}",
+        "net_amount": 10, "gross_amount": 11.9}), 201) for i in range(3)]
+    _ok(owner.post(f"{API}/invoices", json={"property_id": _estate("Süd")["property"].id, "supplier": "Fremd",
+                                             "invoice_date": "2026-05-09", "net_amount": 1, "gross_amount": 1.19}), 201)
+    first = _ok(owner.get(f"{base}/invoice-candidates", params={"limit": 2}))
+    assert [i["id"] for i in first["items"]] == [invoices[2]["id"], invoices[1]["id"]] and first["has_more"]
+    rest = _ok(owner.get(f"{base}/invoice-candidates", params={"limit": 2, "skip": 2}))
+    assert [i["id"] for i in rest["items"]] == [invoices[0]["id"]] and not rest["has_more"]
+    _ok(owner.post(f"{base}/orders/{order['id']}/invoices", json={"invoice_id": invoices[0]["id"]}), 201)
+    searched = _ok(owner.get(f"{base}/invoice-candidates", params={"q": "lieferant 1"}))
+    assert [i["id"] for i in searched["items"]] == [invoices[1]["id"]]
+    assert invoices[0]["id"] not in str(_ok(owner.get(f"{base}/invoice-candidates")))
+
+    paying = _booking(estate, -100, payment_text="Firma Abschlag")
+    _booking(estate, 50, payment_text="Gutschrift")                         # income: never a candidate
+    _ok(owner.post(f"{API}/invoices/{invoices[0]['id']}/payments", json={"booking_id": paying.id, "amount": 11.9}),
+        201)
+    candidates = _ok(owner.get(f"{API}/invoices/{invoices[1]['id']}/payments/candidates", params={"q": "firma"}))
+    assert [(b["id"], b["free"]) for b in candidates["items"]] == [(paying.id, 88.1)]

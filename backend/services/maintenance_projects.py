@@ -720,13 +720,14 @@ def link_invoice(store: Any, case_id: str, order_id: str, payload: mm.InvoiceLin
         if payload.invoice is not None:
             draft = payload.invoice
             now = stamp("invoices")
-            invoice = Invoice(
-                id=str(uuid4()), property_id=p.case.property_id, supplier=draft.supplier or order.supplier_name,
-                invoice_date=draft.invoice_date, due_date=draft.due_date, net_amount=draft.net_amount,
-                vat_rate=draft.vat_rate, vat_amount=float(money(draft.gross_amount) - money(draft.net_amount)),
-                gross_amount=draft.gross_amount, payment_terms=draft.payment_terms, status="open",
-                invoice_number=draft.invoice_number, category="instandhaltung", notes=draft.notes,
-                created_at=now, updated_at=now)
+            invoice = Invoice.model_validate({   # the UI contract fields come in at import time
+                "id": str(uuid4()), "property_id": p.case.property_id,
+                "supplier": draft.supplier or order.supplier_name, "invoice_date": draft.invoice_date,
+                "due_date": draft.due_date, "net_amount": draft.net_amount, "vat_rate": draft.vat_rate,
+                "vat_amount": float(money(draft.gross_amount) - money(draft.net_amount)),
+                "gross_amount": draft.gross_amount, "payment_terms": draft.payment_terms, "status": "open",
+                "invoice_number": draft.invoice_number, "category": "instandhaltung", "notes": draft.notes,
+                "created_at": now, "updated_at": now})
             p.rows.add("invoices", invoice)
         else:
             invoice = p.rows.get("invoices", payload.invoice_id)
@@ -809,6 +810,74 @@ def delete_invoice_payment(store: Any, invoice_id: str, payment_id: str, actor_i
         if payment is None or payment.invoice_id != invoice_id:
             raise NotFoundError("Zahlungszuordnung nicht gefunden")
         rows.delete("invoice_payments", payment_id)
+
+
+def _page(found: list, limit: int) -> tuple[list, bool]:
+    return found[:limit], len(found) > limit
+
+
+def _matches(text: str | None, values: tuple) -> bool:
+    return not text or any(text.casefold() in (value or "").casefold() for value in values)
+
+
+def invoice_candidates(store: Any, case_id: str, *, q: str | None = None, skip: int = 0, limit: int = 50) -> dict:
+    """Invoices of the case's property that no order bills yet (newest first, one page)."""
+    from ..db.maintenance_project_models import MaintenanceOrderInvoiceORM
+    from ..db.orm_models import InvoiceORM
+
+    case = store.get_maintenance_case(case_id)
+    q = (q or "").strip() or None
+    if hasattr(store, "db"):
+        from sqlalchemy import exists, or_, select
+
+        query = select(InvoiceORM).where(
+            InvoiceORM.property_id == case.property_id, InvoiceORM.status != "cancelled",
+            ~exists().where(MaintenanceOrderInvoiceORM.invoice_id == InvoiceORM.id))
+        if q:
+            pattern = f"%{q}%"
+            number = InvoiceORM.__table__.c.invoice_number      # a UI contract column
+            query = query.where(or_(InvoiceORM.supplier.ilike(pattern), number.ilike(pattern)))
+        query = query.order_by(InvoiceORM.invoice_date.desc(), InvoiceORM.id).offset(skip).limit(limit + 1)
+        rows = Rows.reading(store)
+        found = [rows._model("invoices", obj) for obj in store.db.scalars(query)]
+    else:
+        linked = {link.invoice_id for link in store.maintenance_order_invoices.values()}
+        found = sorted((i for i in store.invoices.values()
+                        if i.property_id == case.property_id and i.status != "cancelled" and i.id not in linked
+                        and _matches(q, (i.supplier, getattr(i, "invoice_number", None)))),
+                       key=lambda i: (i.invoice_date, i.id), reverse=True)[skip:skip + limit + 1]
+    items, more = _page(found, limit)
+    return {"items": [_dump(item) for item in items], "skip": skip, "limit": limit, "has_more": more}
+
+
+def payment_candidates(store: Any, invoice_id: str, *, q: str | None = None, skip: int = 0, limit: int = 50,
+                       all_properties: bool = False) -> dict:
+    """Outgoing bookings that could pay the invoice, with what is still free of each (one page)."""
+    from ..db.orm_models import BookingORM
+
+    rows = Rows.reading(store)
+    invoice = rows.require("invoices", invoice_id, "Rechnung nicht gefunden")
+    q = (q or "").strip() or None
+    same_place = not all_properties and invoice.property_id
+    if hasattr(store, "db"):
+        from sqlalchemy import or_, select
+
+        query = select(BookingORM).where(BookingORM.amount < 0, BookingORM.reverses_booking_id.is_(None))
+        if same_place:
+            query = query.where(or_(BookingORM.property_id == invoice.property_id, BookingORM.property_id.is_(None)))
+        if q:
+            query = query.where(BookingORM.payment_text.ilike(f"%{q}%"))
+        query = query.order_by(BookingORM.booking_date.desc(), BookingORM.id).offset(skip).limit(limit + 1)
+        found = [rows._model("bookings", obj) for obj in store.db.scalars(query)]
+    else:
+        found = sorted((b for b in store.bookings.values()
+                        if money(b.amount) < 0 and not b.reverses_booking_id
+                        and (not same_place or b.property_id in (None, invoice.property_id))
+                        and _matches(q, (b.payment_text,))),
+                       key=lambda b: (b.booking_date, b.id), reverse=True)[skip:skip + limit + 1]
+    items, more = _page(found, limit)
+    return {"items": [{**_dump(booking), "free": as_number(max(_booking_left(rows, booking), ZERO))}
+                      for booking in items], "skip": skip, "limit": limit, "has_more": more}
 
 
 def ensure_invoice_unbound(store: Any, invoice_id: str) -> None:
@@ -1045,7 +1114,8 @@ def finalize_protocol(store: Any, case_id: str, protocol_id: str, payload: mm.Pr
                    "tenant_id": None}
         request_hash = digest({"operation": "finalize_maintenance_protocol", "protocol_id": protocol_id,
                                "idempotency_key": payload.idempotency_key, "content_sha256": content_sha256})
-        archive.publish_generated_original(unit, document, binding, pdf, request_hash, version_id=str(uuid4()),
+        original = archive.publish_generated_original(unit, document, binding, pdf, request_hash,
+                                                      version_id=str(uuid4()),
                                            metadata_extra={"maintenance_protocol": {
                                                "schema_version": PROTOCOL_FORMAT, "content": content,
                                                "content_sha256": content_sha256, "actor_id": actor_id,
@@ -1053,7 +1123,7 @@ def finalize_protocol(store: Any, case_id: str, protocol_id: str, payload: mm.Pr
         protocol = p.rows.update("maintenance_protocols", protocol_id, status="final", finalized_at=finalized_at,
                                  finalized_by=actor_id, document_id=document_id, content_sha256=content_sha256,
                                  idempotency_key=payload.idempotency_key,
-                                 version_id=archive.head(unit, document_id).id)
+                                 version_id=original.id)
         if (protocol.protocol_type == "acceptance" and protocol.result in ("accepted", "accepted_with_defects")
                 and protocol.order_id):
             order = _order(p, protocol.order_id)
