@@ -95,6 +95,19 @@ export function formatMonth(v, { blank = '—' } = {}) {
   return m ? `${m[2]}/${m[1]}` : String(v);
 }
 
+// 2048 → "2.0 KB" (binary units, as file managers show archive sizes)
+export function formatBytes(value, { blank = '—' } = {}) {
+  if (value == null || Number.isNaN(Number(value))) return blank;
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let size = Number(value);
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024;
+    unit += 1;
+  }
+  return `${size.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
+}
+
 // "Kaltmiete (€)" → "Kaltmiete": where the value shows its unit itself.
 export function plainLabel(label) {
   return typeof label === 'string' ? label.replace(/\s*\((€|m²|EUR)\)\s*$/, '') : label;

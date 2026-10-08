@@ -8,9 +8,6 @@ restored data (the restore silently does nothing, or corrupts pages).
 
 import sqlite3
 from pathlib import Path
-from typing import cast
-
-from sqlalchemy import Table
 
 from .document_version_validation import verify_document_versions
 
@@ -56,35 +53,5 @@ def verify_archived_originals(path: Path) -> int:
         connection.close()
 
 
-def ensure_archive_schema(engine) -> None:
-    """After a restore from a backup older than the archive: add its tables and guards."""
-    from ..db.document_version_models import DOCUMENT_VERSION_MODELS, install_guards
-
-    with engine.begin() as connection:
-        for model in DOCUMENT_VERSION_MODELS:
-            cast(Table, model.__table__).create(connection, checkfirst=True)
-        install_guards(connection)
-
-
-def ensure_access_schema(engine) -> None:
-    """After a restore from a backup older than portfolio access: its accounts keep seeing everything."""
-    from sqlalchemy import inspect
-
-    from ..db.access_models import ResourcePortfolioORM, UploadAccessORM, UserAccessORM, UserPortfolioORM
-    from ..db.session import adopt_legacy_access
-
-    with engine.begin() as connection:
-        before = set(inspect(connection).get_table_names())
-        for model in (UserAccessORM, UserPortfolioORM, ResourcePortfolioORM, UploadAccessORM):
-            cast(Table, model.__table__).create(connection, checkfirst=True)
-        if "users" in before and "user_portfolio_access" not in before:
-            adopt_legacy_access(connection)
-
-
-def ensure_job_schema(engine) -> None:
-    """After a restore from a backup older than durable jobs: add the job tables."""
-    from ..db.job_models import JOB_MODELS
-
-    with engine.begin() as connection:
-        for model in JOB_MODELS:
-            cast(Table, model.__table__).create(connection, checkfirst=True)
+# A restored backup older than the code is brought to the head by the explicit
+# upgrade (backend.db.schema_state.run_migrations), never patched table by table.

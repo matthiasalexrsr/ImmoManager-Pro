@@ -45,7 +45,10 @@ def get_integration(integration_id: str) -> dict:
 
 
 def storage_unavailable():
-    return HTTPException(status_code=503, detail="Integrationsspeicher nicht verfügbar. Es wurde keine Konfigurationsänderung übernommen.")
+    detail = "Integrationsspeicher nicht verfügbar. Es wurde keine Konfigurationsänderung übernommen."
+    # the manager's own lock reason (e.g. a missing key) is safe to show; raw OS errors are not
+    reason = integration_manager.persistence_error
+    return HTTPException(status_code=503, detail=f"{detail} {reason}" if reason else detail)
 
 
 def journal_unavailable():

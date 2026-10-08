@@ -64,6 +64,14 @@ def test_restore_rejects_path_traversal(tmp_path, monkeypatch):
 
 
 def _wal_database(path, rows):
+    """An application database at the head plus a scratch table t."""
+    from sqlalchemy import create_engine
+
+    from backend.db.schema_state import initialise_empty
+
+    engine = create_engine(f"sqlite:///{path}")
+    initialise_empty(engine)
+    engine.dispose()
     conn = sqlite3.connect(path)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA wal_autocheckpoint=0")
@@ -111,3 +119,28 @@ def test_sqlite_restore_rejects_non_database_file(tmp_path, monkeypatch):
     with pytest.raises(HTTPException) as exc:
         admin.restore_backup("backup_bad.db")
     assert exc.value.status_code == 400
+
+
+@pytest.mark.parametrize("kind", ["foreign", "newer"])
+def test_sqlite_restore_refuses_foreign_and_newer_databases(tmp_path, monkeypatch, kind):
+    """Checked before anything is replaced: no safety copy, live file untouched."""
+    backup_dir = tmp_path / "backups"
+    backup_dir.mkdir()
+    path = backup_dir / "backup_x.db"
+    if kind == "foreign":
+        with sqlite3.connect(path) as conn:
+            conn.execute("CREATE TABLE t (x INTEGER)")
+    else:
+        _wal_database(path, 1).close()
+        with sqlite3.connect(path) as conn:
+            conn.execute("UPDATE alembic_version SET version_num = 'ffffffffffff'")
+    live = tmp_path / "live.db"
+    live.write_bytes(b"")
+    monkeypatch.setattr(admin, "_BACKUP_DIR", backup_dir)
+    monkeypatch.setattr(admin, "_live_sqlite_path", lambda: live)
+    with pytest.raises(HTTPException) as exc:
+        admin.restore_backup("backup_x.db")
+    assert exc.value.status_code == 400
+    assert ("keine ImmoManager-Datenbank" if kind == "foreign" else "neueren Programmversion") in exc.value.detail
+    assert sorted(p.name for p in backup_dir.iterdir() if p.suffix == ".db") == ["backup_x.db"]
+    assert live.read_bytes() == b""

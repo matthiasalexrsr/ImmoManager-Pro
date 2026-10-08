@@ -49,7 +49,14 @@ REM Install dependencies
 echo.
 echo Installiere Abhaengigkeiten...
 pip install --upgrade pip setuptools wheel -q
-pip install -e ".[dev]" -q
+REM exact versions of the whole dependency tree (constraints.txt), then the project itself
+pip install -r backend\requirements-dev.txt -c constraints.txt -q
+if !errorlevel! neq 0 (
+    echo FEHLER: Installation fehlgeschlagen.
+    pause
+    exit /b 1
+)
+pip install -e . --no-deps -q
 if !errorlevel! neq 0 (
     echo FEHLER: Installation fehlgeschlagen.
     pause
@@ -71,9 +78,9 @@ if !errorlevel! neq 0 (
 echo.
 echo Installiere Frontend-Abhaengigkeiten...
 cd frontend
-call npm install
+call npm ci
 if !errorlevel! neq 0 (
-    echo FEHLER: npm install fehlgeschlagen.
+    echo FEHLER: npm ci fehlgeschlagen.
     cd ..
     pause
     exit /b 1

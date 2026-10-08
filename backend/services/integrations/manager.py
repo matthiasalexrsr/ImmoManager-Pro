@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from copy import deepcopy
 from threading import RLock
 from typing import Any
 
 from ...config import settings
 from ...paths import get_data_dir
+from ..secret_box import SecretBox, SecretError, default_secret_box, is_sealed, token_key_id
 from .base import IntegrationProvider, IntegrationRunRecord
 from .config_store import InMemoryIntegrationConfigStore, JsonFileIntegrationConfigStore
 from .history_store import IntegrationHistoryStore
@@ -21,9 +23,13 @@ from .providers import (
 )
 from .validation import config_fields, field_errors
 
+logger = logging.getLogger(__name__)
+
 
 class IntegrationManager:
-    def __init__(self, store=None, history_store=None) -> None:
+    """Live configuration is plaintext in memory; with a secret box, secret fields are sealed at rest."""
+
+    def __init__(self, store=None, history_store=None, secret_box: SecretBox | None = None) -> None:
         self._providers: dict[str, IntegrationProvider] = {}
         self._enabled: dict[str, bool] = {}
         self._config: dict[str, dict] = {}
@@ -31,6 +37,7 @@ class IntegrationManager:
         self._journal = history_store or IntegrationHistoryStore(getattr(self._store, "history_path", ":memory:"))
         self._lock = RLock()
         self._state_error: str | None = None
+        self._box = secret_box
 
     def register(self, provider: IntegrationProvider) -> None:
         integration_id = provider.manifest.integration_id
@@ -134,7 +141,7 @@ class IntegrationManager:
             self._ensure_writable()
             candidate = dict(self._enabled)
             candidate[integration_id] = enabled
-            self._store.save({"enabled": candidate, "config": deepcopy(self._config)})
+            self._persist(candidate, self._config)
             self._enabled = candidate
         return self.get_integration(integration_id)
 
@@ -158,17 +165,112 @@ class IntegrationManager:
                 raise ValueError("STARTTLS und direktes TLS können nicht gleichzeitig aktiv sein")
             candidate = deepcopy(self._config)
             candidate[integration_id] = current
-            self._store.save({"enabled": dict(self._enabled), "config": candidate})
+            self._persist(self._enabled, candidate)
             self._config = candidate
         return self.get_integration(integration_id)
+
+    @property
+    def persistence_error(self) -> str | None:
+        return self._state_error
 
     def _ensure_writable(self):
         if self._state_error:
             raise OSError(self._state_error)
 
+    # --- secrets at rest ---------------------------------------------------------------
+    def _secret_keys(self, integration_id: str) -> set[str]:
+        manifest = self._providers[integration_id].manifest
+        return set(manifest.secret_config_keys) | {field["key"] for field in config_fields(manifest) if field.get("secret")}
+
+    @staticmethod
+    def _context(integration_id: str, key: str) -> str:
+        return f"integrations/{integration_id}/{key}"
+
+    def _sealed(self, config: dict[str, dict]) -> dict[str, dict]:
+        """The stored form: secret fields sealed with the active key."""
+        stored = deepcopy(config)
+        if self._box is None:
+            return stored
+        for integration_id, values in stored.items():
+            if integration_id not in self._providers:
+                continue
+            for key in self._secret_keys(integration_id) & set(values):
+                value = values[key]
+                if isinstance(value, str) and value and not is_sealed(value):
+                    values[key] = self._box.seal(value, self._context(integration_id, key))
+        return stored
+
+    def _persist(self, enabled: dict, config: dict) -> None:
+        try:
+            sealed = self._sealed(config)
+        except SecretError as exc:
+            raise OSError(f"Geheimnis konnte nicht verschlüsselt werden: {exc}") from exc
+        except OSError as exc:
+            raise OSError(f"Schlüsseldatei nicht schreibbar: {exc}") from exc
+        self._store.save({"enabled": dict(enabled), "config": sealed})
+
+    def _unsealed(self, integration_id: str, values: dict) -> tuple[dict, int, list[str]]:
+        """Open sealed fields: (values, plaintext secrets found, errors). Unreadable fields are left out."""
+        opened, plaintext, errors = dict(values), 0, []
+        for key in self._secret_keys(integration_id) & set(values):
+            value = values[key]
+            if is_sealed(value):
+                if self._box is None:
+                    opened.pop(key)
+                    errors.append("Verschlüsselte Integrationsgeheimnisse vorhanden, aber keine Schlüsselverwaltung aktiv.")
+                    continue
+                try:
+                    opened[key] = self._box.open(value, self._context(integration_id, key))
+                except SecretError as exc:
+                    opened.pop(key)
+                    errors.append(str(exc))
+            elif isinstance(value, str) and value:
+                plaintext += 1
+        return opened, plaintext, errors
+
+    def secret_status(self) -> dict:
+        """For the operations overview: how secrets are stored, never a value."""
+        status: dict[str, Any] = {"encryption": "aes-256-gcm" if self._box else None, "sealed": 0, "plaintext": 0,
+                                  "key_ids_in_use": [], "error": self._state_error}
+        if self._box is not None:
+            status.update(key_source="env" if self._box.uses_env_keys else "file", key_file=str(self._box.key_file))
+            try:
+                status.update(active_key_id=self._box.active_key_id(), key_ids=self._box.key_ids())
+            except SecretError as exc:
+                status["error"] = str(exc)
+        try:
+            state = self._store.load()
+        except (OSError, ValueError):
+            return status
+        used = set()
+        for integration_id, values in (state.get("config") or {}).items():
+            if integration_id not in self._providers or not isinstance(values, dict):
+                continue
+            for key in self._secret_keys(integration_id) & set(values):
+                value = values[key]
+                if is_sealed(value):
+                    status["sealed"] += 1
+                    try:
+                        used.add(token_key_id(value))
+                    except SecretError:
+                        pass
+                elif isinstance(value, str) and value:
+                    status["plaintext"] += 1
+        status["key_ids_in_use"] = sorted(used)
+        return status
+
+    def reseal(self) -> int:
+        """Store every secret again, sealed with the active key (after a key rotation)."""
+        with self._lock:
+            self._ensure_writable()
+            self._persist(self._enabled, self._config)
+            return sum(1 for integration_id, values in self._config.items() if integration_id in self._providers
+                       for key in self._secret_keys(integration_id) & set(values)
+                       if isinstance(values[key], str) and values[key])
+
     def _candidate_config(self, integration_id, updates):
         current = deepcopy(self._config.get(integration_id, {}))
-        secrets = self._providers[integration_id].manifest.secret_config_keys
+        secrets = self._secret_keys(integration_id)
         for key, value in updates.items():
             if key in secrets and value == "***":
                 continue
@@ -317,16 +419,32 @@ class IntegrationManager:
             for integration_id, value in enabled.items():
                 if integration_id in self._providers and isinstance(value, bool):
                     self._enabled[integration_id] = value
+        plaintext, errors = 0, []
         if isinstance(config, dict):
             for integration_id, value in config.items():
                 if integration_id in self._providers and isinstance(value, dict):
-                    self._config[integration_id] = value
+                    opened, found, problems = self._unsealed(integration_id, value)
+                    self._config[integration_id] = opened
+                    plaintext += found
+                    errors += problems
+        if errors:
+            # writes stay locked: a save would replace the unreadable ciphertext
+            self._state_error = errors[0] + " Änderungen an Integrationen sind gesperrt."
+            logger.error("Integration secrets unreadable: %s", errors[0])
+            return
+        if plaintext and self._box is not None:
+            try:
+                self._persist(self._enabled, self._config)
+                logger.info("Encrypted %d stored integration secret(s) at rest", plaintext)
+            except OSError:
+                logger.warning("Stored integration secrets stay unencrypted until the next save", exc_info=True)
 
     @staticmethod
     def _safe_config(manifest, config: dict) -> dict:
         masked = dict(config)
-        for key in manifest.secret_config_keys:
-            if key in masked and masked[key]:
+        secret = set(manifest.secret_config_keys) | {field["key"] for field in config_fields(manifest) if field.get("secret")}
+        for key, value in masked.items():
+            if (key in secret and value) or is_sealed(value):
                 masked[key] = "***"
         return masked
 
@@ -346,6 +464,10 @@ class IntegrationManager:
         return "Aktiv (eingeschränkt)"
 
 
-_config_store = JsonFileIntegrationConfigStore(settings.integration_state_file or str(get_data_dir() / "integrations.json"))
-integration_manager = IntegrationManager(store=_config_store)
+def integration_state_path() -> str:
+    return settings.integration_state_file or str(get_data_dir() / "integrations.json")
+
+
+_config_store = JsonFileIntegrationConfigStore(integration_state_path())
+integration_manager = IntegrationManager(store=_config_store, secret_box=default_secret_box())
 integration_manager.seed_defaults()

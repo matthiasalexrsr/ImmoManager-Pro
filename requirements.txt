@@ -1,3 +1,5 @@
+# Direct dependencies, exact versions. Transitive ones: constraints.txt
+#   pip install -r requirements.txt -c constraints.txt
 fastapi==0.135.1
 pydantic==2.12.5
 pydantic-settings==2.14.2
@@ -11,11 +13,11 @@ aiosqlite==0.22.1
 
 # Time zones: zoneinfo needs it where the OS has no tz database (Windows)
 tzdata==2026.4
-psycopg2-binary>=2.9.0
+psycopg2-binary==2.9.13
 
-# Authentication
+# Authentication; cryptography also seals integration secrets at rest (AES-256-GCM)
 PyJWT==2.15.1
-cryptography>=44.0.0
+cryptography==49.0.0
 cffi==2.0.0
 
 # Mietvertrag-Wizard

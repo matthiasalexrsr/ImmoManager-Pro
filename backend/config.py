@@ -125,7 +125,32 @@ class Settings(BaseSettings):
     recurring_catch_up: Literal["latest", "all"] = "latest"
 
     # --- Auto-migration ---
+    # Ignored since the explicit upgrade (python -m backend.upgrade); kept so old .env files load.
     auto_migrate: bool = False
+
+    # --- Secrets at rest ---
+    # Key file for integration secrets (default: <DATA_DIR>/secrets/keyring.json, created on first use).
+    secret_key_file: str = ""
+    # Alternative: comma-separated base64url 32-byte keys, the first one active (never written to disk).
+    secret_keys: str = ""
+
+    # --- Full backups and restore probes ---
+    # Daily full backup and monthly restore probe as durable jobs (Europe/Berlin).
+    backup_schedule_enabled: bool = True
+    backup_daily_at: str = "01:30"
+    restore_probe_day: int = 1
+    restore_probe_at: str = "03:30"
+    backup_keep_daily: int = 14
+    backup_keep_monthly: int = 6
+    backup_keep_pre_upgrade: int = 3
+    # Second target (e.g. a network share); every copy is verified by SHA-256.
+    backup_second_target: str = ""
+    # Optional: protects the key file and .env inside the archive (scrypt + AES-256-GCM).
+    backup_passphrase: str = ""
+    # PostgreSQL: directory of pg_dump/pg_restore when not on PATH, and an optional admin URL of a
+    # disposable server for full restore probes (a database is created and dropped there).
+    pg_bin_dir: str = ""
+    restore_probe_postgres_url: str = ""
 
     # --- Persistence toggles ---
     # SQLite uses SQLAlchemyStore by default for real data persistence.

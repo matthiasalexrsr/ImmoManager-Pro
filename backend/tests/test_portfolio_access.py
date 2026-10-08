@@ -101,48 +101,74 @@ def test_accounts_created_in_code_keep_seeing_everything():
     assert user.portfolio_access == "all"
 
 
-def test_first_start_after_the_update_keeps_existing_accounts_working(tmp_path, monkeypatch):
-    """An installation started with create_all (SQLite, no Alembic) must not lock its staff out."""
-    path = tmp_path / "old.db"
+ACCESS_TABLES = ("user_portfolio_grants", "resource_portfolio_grants", "upload_portfolio_grants",
+                 "user_portfolio_access")
+
+
+def _desktop_database_before_portfolio_access(path):
+    """A desktop installation of that time: create_all, no Alembic version, one staff account."""
+    from backend.db.orm_models import Base
+
+    engine = create_engine(f"sqlite:///{path}")
+    Base.metadata.create_all(engine)
+    with engine.begin() as conn:
+        for table in (*ACCESS_TABLES, "job_occurrences", "job_runs"):
+            conn.exec_driver_sql(f"DROP TABLE {table}")
+        conn.exec_driver_sql("INSERT INTO users (id, username, email, full_name, hashed_password, role, is_active, "
+                             "totp_enabled, created_at, updated_at) VALUES ('staff', 'staff', 's@example.com', "
+                             "'Staff', 'x', 'verwalter', 1, 0, '2025-01-01', '2025-01-01')")
+    engine.dispose()
+
+
+def _tables(path):
     with sqlite3.connect(path) as conn:
-        conn.executescript("""
-            CREATE TABLE users (id VARCHAR PRIMARY KEY, username TEXT NOT NULL UNIQUE, email TEXT NOT NULL UNIQUE,
-                full_name TEXT NOT NULL, hashed_password TEXT NOT NULL, role TEXT NOT NULL, is_active BOOLEAN NOT NULL,
-                totp_secret TEXT, totp_enabled BOOLEAN NOT NULL, created_at DATETIME NOT NULL,
-                updated_at DATETIME NOT NULL);
-            INSERT INTO users VALUES ('staff', 'staff', 's@example.com', 'Staff', 'x', 'verwalter', 1, NULL, 0,
-                                      '2025-01-01', '2025-01-01');
-        """)
+        return {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+
+
+def test_first_start_after_the_update_keeps_existing_accounts_working(tmp_path, monkeypatch):
+    """An installation started with create_all (SQLite, no Alembic) must not lock its staff out.
+
+    The normal start refuses it without touching the schema; the explicit upgrade adopts it.
+    """
+    from backend.db.schema_state import SchemaUpgradeRequired, run_migrations
+
+    path = tmp_path / "old.db"
+    _desktop_database_before_portfolio_access(path)
+    before = _tables(path)
     engine = create_engine(f"sqlite:///{path}")
     monkeypatch.setattr(db_session, "engine", engine)
-    db_session.create_tables()
-    db_session.create_tables()           # a second start changes nothing
+    with pytest.raises(SchemaUpgradeRequired, match="ohne Versionsstand"):
+        db_session.create_tables()
+    assert _tables(path) == before                  # no hidden schema change
+    run_migrations(f"sqlite:///{path}")
+    db_session.create_tables()                      # now at the head: starts, changes nothing
     with engine.connect() as conn:
         assert "user_portfolio_access" in inspect(conn).get_table_names()
         assert conn.exec_driver_sql("SELECT mode, origin FROM user_portfolio_access").all() == [("all", "legacy_all")]
     engine.dispose()
 
 
-def test_restoring_an_older_backup_keeps_its_accounts_working(tmp_path):
-    """A database file from before portfolio access, put back by the binary restore."""
-    from backend.services.sqlite_backup import ensure_access_schema
+def test_restoring_an_older_backup_keeps_its_accounts_working(tmp_path, monkeypatch):
+    """A database file from before portfolio access, put back by the binary restore: explicitly upgraded."""
+    from backend.db.schema_state import head_revision, run_migrations
+    from backend.routers import admin_runtime
 
-    path = tmp_path / "restored.db"
-    with sqlite3.connect(path) as conn:
-        conn.executescript("""
-            CREATE TABLE users (id VARCHAR PRIMARY KEY, username TEXT, email TEXT, full_name TEXT,
-                hashed_password TEXT, role TEXT, is_active BOOLEAN, totp_secret TEXT, totp_enabled BOOLEAN,
-                created_at DATETIME, updated_at DATETIME);
-            CREATE TABLE portfolios (id VARCHAR PRIMARY KEY);
-            INSERT INTO users VALUES ('staff', 'staff', 's@example.com', 'Staff', 'x', 'verwalter', 1, NULL, 0,
-                                      '2025-01-01', '2025-01-01');
-        """)
-    engine = create_engine(f"sqlite:///{path}")
-    ensure_access_schema(engine)
-    with engine.begin() as conn:
-        assert conn.exec_driver_sql("SELECT mode FROM user_portfolio_access").scalar() == "all"
-        conn.exec_driver_sql("UPDATE user_portfolio_access SET mode = 'selected'")
-    ensure_access_schema(engine)        # a backup that already has the tables keeps its assignments
-    with engine.connect() as conn:
-        assert conn.exec_driver_sql("SELECT mode FROM user_portfolio_access").scalar() == "selected"
-    engine.dispose()
+    backups = tmp_path / "backups"
+    backups.mkdir()
+    _desktop_database_before_portfolio_access(backups / "backup_old.db")
+    live = tmp_path / "live.db"
+    _desktop_database_before_portfolio_access(live)
+    run_migrations(f"sqlite:///{live}")
+    with sqlite3.connect(live) as conn:
+        conn.execute("UPDATE user_portfolio_access SET mode = 'selected'")
+    monkeypatch.setattr(admin_runtime, "_BACKUP_DIR", backups)
+    monkeypatch.setattr(admin_runtime, "_live_sqlite_path", lambda: live)
+
+    result = admin_runtime.restore_backup("backup_old.db")
+
+    assert result["upgraded_from"] == "unversioned"
+    with sqlite3.connect(live) as conn:
+        assert conn.execute("SELECT mode, origin FROM user_portfolio_access").fetchall() == [("all", "legacy_all")]
+        assert conn.execute("SELECT version_num FROM alembic_version").fetchone()[0] == head_revision()
+    with sqlite3.connect(backups / result["safety_backup"]) as conn:     # the replaced data is kept
+        assert conn.execute("SELECT mode FROM user_portfolio_access").fetchone() == ("selected",)

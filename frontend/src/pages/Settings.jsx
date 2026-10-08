@@ -9,6 +9,7 @@ import { api } from '../api';
 import UpdateSection from './settings/UpdateSection';
 import AutotestSection from './settings/AutotestSection';
 import BackupSection from './settings/BackupSection';
+import OperationsSection from './settings/OperationsSection';
 import UsersSection from './settings/UsersSection';
 
 export default function Settings() {
@@ -244,6 +245,7 @@ export default function Settings() {
         {settingsTab === 'system' && (
           <>
             {isAdmin && <BackupSection />}
+            {isAdmin && <OperationsSection />}
             {isAdmin && <UpdateSection versionInfo={versionInfo} />}
 
             <div className="panel">

@@ -5,11 +5,10 @@ Supports PostgreSQL (prod) and SQLite (dev/test) via settings.database_url.
 
 from collections.abc import Generator
 
-from sqlalchemy import create_engine, event, inspect
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 
 from ..config import settings
-from .orm_models import Base
 
 DATABASE_URL = settings.database_url
 
@@ -38,19 +37,16 @@ SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
 
 def create_tables() -> None:
-    """Create all tables (dev/test convenience). Use Alembic for production."""
-    from .document_version_models import ARCHIVE_TABLES, install_guards
+    """Normal start: initialise an empty database, refuse one that is not at the Alembic head.
 
-    with engine.connect() as connection:
-        before = set(inspect(connection).get_table_names())
-    Base.metadata.create_all(bind=engine)
-    with engine.begin() as connection:
-        if "users" in before and "user_portfolio_access" not in before:
-            # first start after the update: existing accounts keep what they could see
-            adopt_legacy_access(connection)
-        # also for archive tables that existed before (create_all skipped them)
-        if set(ARCHIVE_TABLES) <= set(inspect(connection).get_table_names()):
-            install_guards(connection)
+    The schema of an existing database changes only through the explicit upgrade
+    (python -m backend.upgrade), which takes a full backup first (SchemaUpgradeRequired).
+    Existing accounts of an older database keep their installation-wide access through
+    migration a7c2e9f4b1d3, also when an unversioned desktop database is adopted.
+    """
+    from .schema_state import ensure_current
+
+    ensure_current(engine)
 
 
 def get_db() -> Generator[Session, None, None]:
@@ -60,13 +56,3 @@ def get_db() -> Generator[Session, None, None]:
         yield db
     finally:
         db.close()
-
-
-def adopt_legacy_access(connection) -> None:
-    """Give every account without an access row its previous installation-wide access."""
-    from sqlalchemy import text
-
-    connection.execute(text(
-        "INSERT INTO user_portfolio_access (user_id, mode, origin, updated_at) "
-        "SELECT id, 'all', 'legacy_all', CURRENT_TIMESTAMP FROM users "
-        "WHERE NOT EXISTS (SELECT 1 FROM user_portfolio_access a WHERE a.user_id = users.id)"))
