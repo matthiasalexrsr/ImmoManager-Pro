@@ -468,3 +468,89 @@ def test_booking_reversal_downgrade_of_an_adopted_database_leaves_the_column(mig
     migrate()
     assert _version(migrate.db_path) == migrate.head
 
+
+HANDOVER_REVISION = "a4d8e2f6c1b9"
+HANDOVER_TRIGGERS = {"immo_handover_protocols_update", "immo_handover_protocols_delete"} | {
+    f"immo_{table}_final_{operation}" for table in ("handover_rooms", "handover_keys", "handover_photos",
+                                                    "meter_readings", "handover_defects")
+    for operation in ("update", "delete")}
+
+
+def _triggers(db_path: Path) -> set[str]:
+    with sqlite3.connect(db_path) as conn:
+        return {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'trigger'")}
+
+
+def _seed_handover(db_path: Path) -> None:
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript("""
+            INSERT INTO handover_protocols (id, contract_id, unit_id, protocol_type, protocol_date, tenant_present,
+                                            landlord_present, key_count, damages, status, created_at, updated_at)
+                VALUES ('hp', 'c1', 'u1', 'move_out', '2025-06-30', 1, 1, 3, 'Kratzer', 'finalized',
+                        '2025-06-30', '2025-06-30');
+            INSERT INTO meter_readings (id, handover_id, meter_type, reading_value, unit, created_at, updated_at)
+                VALUES ('mr', 'hp', 'cold_water', 130, 'm³', '2025-06-30', '2025-06-30');
+        """)
+
+
+def test_handover_upgrade_keeps_protocols_editable_and_guards_finalized_ones(migrate):
+    db_path = migrate(REVERSALS_REVISION)
+    _seed_previous_schema(db_path)
+    _seed_handover(db_path)
+    migrate(HANDOVER_REVISION)
+    schema = _schema(db_path)
+    assert {"handover_rooms", "handover_defects", "handover_keys", "handover_photos"} <= set(schema)
+    assert {"correction_of_id", "document_id", "finalized_at", "finalized_by"} <= schema["handover_protocols"]
+    assert {"meter_id", "standalone_reading_id", "position"} <= schema["meter_readings"]
+    assert HANDOVER_TRIGGERS <= _triggers(db_path)
+    with sqlite3.connect(db_path) as conn:
+        # a status "finalized" set by hand is no archived original: the row stays as it was and editable
+        assert conn.execute("SELECT status, finalized_at, damages FROM handover_protocols").fetchall() == [
+            ("finalized", None, "Kratzer")]
+        conn.execute("UPDATE handover_protocols SET notes = 'nachgetragen'")
+        conn.execute("INSERT INTO handover_rooms (id, protocol_id, position, name, created_at, updated_at) "
+                     "VALUES ('r1', 'hp', 0, 'Bad', '2025-06-30', '2025-06-30')")
+        conn.execute("UPDATE handover_protocols SET finalized_at = '2025-07-01'")
+        for statement in ("UPDATE handover_protocols SET notes = 'x'", "DELETE FROM handover_rooms",
+                          "UPDATE meter_readings SET reading_value = 1"):
+            with pytest.raises(sqlite3.IntegrityError, match="immutable"):
+                conn.execute(statement)
+    with pytest.raises(RuntimeError, match="Handover protocol data exists"):
+        migrate.downgrade(REVERSALS_REVISION)
+    assert _version(db_path) == HANDOVER_REVISION
+
+
+def test_handover_downgrade_without_data_and_upgrade_again(migrate):
+    db_path = migrate(REVERSALS_REVISION)
+    _seed_previous_schema(db_path)
+    _seed_handover(db_path)
+    migrate(HANDOVER_REVISION)
+    migrate.downgrade(REVERSALS_REVISION)
+    schema = _schema(db_path)
+    assert not {"handover_rooms", "handover_defects", "handover_keys", "handover_photos"} & set(schema)
+    assert "finalized_at" not in schema["handover_protocols"] and "meter_id" not in schema["meter_readings"]
+    assert not HANDOVER_TRIGGERS & _triggers(db_path)
+    with sqlite3.connect(db_path) as conn:      # the older rows survive the round trip
+        assert conn.execute("SELECT id, damages FROM handover_protocols").fetchall() == [("hp", "Kratzer")]
+        assert conn.execute("SELECT id, reading_value FROM meter_readings").fetchall() == [("mr", 130)]
+    migrate()
+    assert _version(db_path) == migrate.head
+    assert _missing_from(_schema(db_path)) == {}
+
+
+def test_handover_downgrade_of_an_adopted_database_leaves_the_reference_columns(migrate):
+    from sqlalchemy import create_engine
+
+    engine = create_engine(f"sqlite:///{migrate.db_path}")
+    Base.metadata.create_all(engine)       # installs the triggers through the metadata event
+    engine.dispose()
+    assert HANDOVER_TRIGGERS <= _triggers(migrate.db_path)
+    migrate()
+    migrate.downgrade(REVERSALS_REVISION)
+    schema = _schema(migrate.db_path)
+    assert {"correction_of_id", "document_id"} <= schema["handover_protocols"]       # table-level references
+    assert "finalized_at" not in schema["handover_protocols"]
+    migrate()
+    assert _version(migrate.db_path) == migrate.head
+    assert _missing_from(_schema(migrate.db_path)) == {}
+

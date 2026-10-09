@@ -9,8 +9,10 @@ import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useToast } from '../components/Toast';
 import { RentIcon } from '../components/Icons';
-import { FileCheck, Users } from 'lucide-react';
+import { ClipboardCheck, FileCheck, Users } from 'lucide-react';
 import HousingConfirmationDialog from '../features/housingConfirmation/HousingConfirmationDialog';
+import HandoverProtocolsDialog from '../features/handoverProtocol/HandoverProtocolsDialog';
+import { handoverText } from '../features/handoverProtocol/handoverProtocolText';
 import OccupancyDialog from '../features/contracts/OccupancyDialog';
 import { formatDate, formatMoney } from '../utils/format';
 
@@ -26,7 +28,7 @@ function remainingDays(endDate) {
 const RENT_SOURCE_LABELS = { contract_start: 'Vertragsbeginn', adjustment: 'Mietanpassung', manual: 'Manuell' };
 
 export default function Contracts() {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const confirm = useConfirm();
   const toast = useToast();
   const store = useDataStore();
@@ -43,6 +45,7 @@ export default function Contracts() {
   const [rents, setRents] = useState({});
   const [history, setHistory] = useState(null);
   const [housing, setHousing] = useState(null);
+  const [handover, setHandover] = useState(null);
   const [occupants, setOccupants] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const loadRef = useRef(null);
@@ -305,11 +308,15 @@ export default function Contracts() {
         rowActions={() => [
           { label: 'Mietverlauf', icon: <RentIcon size={15} />, onClick: openHistory },
           { label: 'Wohnungsgeberbestätigung', icon: <FileCheck size={15} aria-hidden="true" />, onClick: row => setHousing(row.id) },
+          { label: handoverText(locale, 'action'), icon: <ClipboardCheck size={15} aria-hidden="true" />, onClick: row => setHandover(row.id) },
           { label: t('tenantsContracts.contracts.occupants.action'), icon: <Users size={15} aria-hidden="true" />, onClick: row => setOccupants(row) },
         ]}
       />
 
       {occupants && <OccupancyDialog contract={occupants} onClose={() => setOccupants(null)} />}
+
+      {handover && <HandoverProtocolsDialog contractId={handover} onClose={() => setHandover(null)}
+        onChanged={() => store?.invalidateRelated('documents', 'handover_protocols')} />}
 
       {housing && <HousingConfirmationDialog contractId={housing} onClose={() => setHousing(null)} onPublished={() => store?.invalidateRelated('documents')} />}
 
