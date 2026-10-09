@@ -7,6 +7,13 @@ export const METER_TYPES = ['cold_water', 'hot_water', 'heating', 'electricity',
 
 export const newId = () => crypto.randomUUID();
 
+export function formatDay(value, locale) {
+  if (!value) return '—';
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00Z`) : new Date(value);
+  if (!Number.isFinite(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeZone: 'UTC' }).format(date);
+}
+
 /** A number as typed: "1.234,5" and "1234.5" are 1234.5; empty is null, anything else NaN. */
 export function parseNumber(value) {
   if (typeof value === 'number') return Number.isFinite(value) ? value : Number.NaN;

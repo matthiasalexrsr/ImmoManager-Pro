@@ -7,8 +7,8 @@ import { mayWrite } from '../../utils/permissions';
 import HousingConfirmationDialog from '../housingConfirmation/HousingConfirmationDialog';
 import { useModalDialog } from '../partyWorkspace/useModalDialog';
 import { handoverProtocolService } from './handoverProtocolApi';
-import HandoverProtocolEditor, { formatDay } from './HandoverProtocolEditor';
-import { protocolState } from './handoverProtocolModel';
+import HandoverProtocolEditor from './HandoverProtocolEditor';
+import { formatDay, protocolState } from './handoverProtocolModel';
 import { handoverText } from './handoverProtocolText';
 import './HandoverProtocol.css';
 

@@ -103,7 +103,9 @@ describe('handover protocol form', () => {
     expect(photosOf(photos, null, null).map(p => p.id)).toEqual(['c']);
     expect(protocolState({ finalized_at: '2026-07-01T00:00:00' })).toBe('finalized');
     expect(protocolState({ finalized_at: null, correction_of_id: 'x' })).toBe('correction');
-    expect(formSignature(formFromDetail(detailFixture()))).toBe(formSignature(formFromDetail(detailFixture())));
+    const form = formFromDetail(detailFixture());
+    expect(formSignature(form)).toBe(formSignature(structuredClone(form)));
+    expect(formSignature({ ...form, notes: 'x' })).not.toBe(formSignature(form));
   });
 });
 
