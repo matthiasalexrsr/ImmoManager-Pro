@@ -92,13 +92,13 @@ def _finalized(engine, owner):
                                                                         protocol_type="move_out"), owner.id)
     protocol_id = detail["protocol"]["id"]
     rooms = [{"id": r["id"], "name": r["name"], "condition": "good"} for r in detail["rooms"]]
-    detail = service.save_content(_store(engine), protocol_id, ContentRequest(
-        base_revision=detail["protocol"]["revision"], protocol_date=date(2026, 6, 30),
-        tenant_signature="Mia Muster", landlord_signature="Linda Reiser", rooms=rooms,
-        defects=[{"id": str(uuid.uuid4()), "room_id": rooms[0]["id"], "description": "Kratzer im Parkett",
-                  "responsible": "tenant"}],
-        keys=[{"id": str(uuid.uuid4()), "key_type": "apartment_door", "handed_over": 2, "returned": 2}],
-        meter_readings=[{"id": str(uuid.uuid4()), "meter_id": meter.id, "reading_value": 130.25}]), owner.id)
+    detail = service.save_content(_store(engine), protocol_id, ContentRequest.model_validate({
+        "base_revision": detail["protocol"]["revision"], "protocol_date": "2026-06-30",
+        "tenant_signature": "Mia Muster", "landlord_signature": "Linda Reiser", "rooms": rooms,
+        "defects": [{"id": str(uuid.uuid4()), "room_id": rooms[0]["id"], "description": "Kratzer im Parkett",
+                     "responsible": "tenant"}],
+        "keys": [{"id": str(uuid.uuid4()), "key_type": "apartment_door", "handed_over": 2, "returned": 2}],
+        "meter_readings": [{"id": str(uuid.uuid4()), "meter_id": meter.id, "reading_value": 130.25}]}), owner.id)
     service.add_photo(_store(engine), protocol_id, _png(), "parkett.png", "image/png",
                       {"room_id": None, "defect_id": detail["defects"][0]["id"], "meter_reading_id": None},
                       "Kratzer", owner.id)

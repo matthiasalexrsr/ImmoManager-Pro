@@ -277,8 +277,8 @@ def _parents(unit: archive.Unit, contract_id: str, *, lock: bool = False, protoc
         raise _not_found("Vertrag") from None
     if lock and unit.db is not None:
         before = (contract.property_id, contract.unit_id, contract.tenant_id)
-        rows = [(TenantORM, contract.tenant_id), (PropertyORM, contract.property_id), (UnitORM, contract.unit_id),
-                (ContractORM, contract.id)]
+        rows: list[tuple[Any, str]] = [(TenantORM, contract.tenant_id), (PropertyORM, contract.property_id),
+                                       (UnitORM, contract.unit_id), (ContractORM, contract.id)]
         if protocol_id is not None:
             rows.append((HandoverProtocolORM, protocol_id))
         for model, key in rows:
@@ -589,7 +589,8 @@ def create_from_contract(store, payload: CreateRequest, actor_id: str) -> dict[s
         for position, key in enumerate(suggestion["keys"]):
             _put(unit, "keys", HandoverKey(id=archive_uuid(), protocol_id=protocol.id, position=position,
                                            key_type=key["key_type"], label=key["label"],
-                                           handed_over=key["handed_over"], created_at=stamp, updated_at=stamp))
+                                           handed_over=key["handed_over"], returned=None, created_at=stamp,
+                                           updated_at=stamp))
         _flush(unit)
         return {"created": True, **_detail(unit, protocol)}
 

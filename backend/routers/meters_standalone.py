@@ -3,7 +3,6 @@
 from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
-from ..services.deletion_guard import ensure_deletable
 from ..models import (
     Meter,
     MeterCreate,
@@ -11,6 +10,7 @@ from ..models import (
     StandaloneMeterReading,
     StandaloneMeterReadingCreate,
 )
+from ..services.deletion_guard import ensure_deletable
 from ..storage import NotFoundError, ValidationError
 from ._helpers import apply_sort
 

@@ -34,12 +34,11 @@ PHOTO_QUALITY = 72
 
 def pdf_photo(content: bytes) -> bytes:
     """A photo as embedded in the PDF: upright, RGB, at most PHOTO_EDGE pixels, JPEG (deterministic)."""
-    with PILImage.open(BytesIO(content)) as image:
-        image = ImageOps.exif_transpose(image)
-        image = image.convert("RGB")
-        image.thumbnail((PHOTO_EDGE, PHOTO_EDGE))
+    with PILImage.open(BytesIO(content)) as source:
+        upright = ImageOps.exif_transpose(source).convert("RGB")
+        upright.thumbnail((PHOTO_EDGE, PHOTO_EDGE))
         output = BytesIO()
-        image.save(output, format="JPEG", quality=PHOTO_QUALITY, optimize=False, progressive=False)
+        upright.save(output, format="JPEG", quality=PHOTO_QUALITY, optimize=False, progressive=False)
         return output.getvalue()
 
 
@@ -231,9 +230,9 @@ def render_pdf(review: dict, photos: dict[str, bytes]) -> bytes:
             if photo.get("room_id") in room_number:
                 where.append(f"Raum {room_number[photo['room_id']]}")
             if photo.get("defect_id"):
-                index = next((i for i, d in enumerate(review["defects"], 1) if d["id"] == photo["defect_id"]), None)
-                if index:
-                    where.append(f"Mangel {index}")
+                found = next((i for i, d in enumerate(review["defects"], 1) if d["id"] == photo["defect_id"]), None)
+                if found:
+                    where.append(f"Mangel {found}")
             label = " · ".join([f"Foto {photo_number[photo['id']]}", *where, photo.get("caption") or ""]).strip(" ·")
             cells.append([Image(BytesIO(photos[photo["id"]]), width=pixels_wide * scale, height=pixels_high * scale),
                           _p(f"{label}\nSHA-256 {photo['sha256'][:16]}…", styles["small"])])
