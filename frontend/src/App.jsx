@@ -19,6 +19,7 @@ const Accounts = lazy(() => import('./pages/Accounts'));
 const Bookings = lazy(() => import('./pages/Bookings'));
 const Invoices = lazy(() => import('./pages/Invoices'));
 const Maintenance = lazy(() => import('./pages/Maintenance'));
+const MaintenanceDetail = lazy(() => import('./pages/MaintenanceDetail'));
 const Tasks = lazy(() => import('./pages/Tasks'));
 const Documents = lazy(() => import('./pages/Documents'));
 const RentOverview = lazy(() => import('./pages/RentOverview'));
@@ -133,6 +134,7 @@ export default function App() {
           <Route path="bookings" element={<Bookings />} />
           <Route path="invoices" element={<Invoices />} />
           <Route path="maintenance" element={<Maintenance />} />
+          <Route path="maintenance/:id" element={<MaintenanceDetail />} />
           <Route path="tasks" element={<Tasks />} />
           <Route path="documents" element={<Documents />} />
           <Route path="rent-overview" element={<RentOverview />} />

@@ -7,11 +7,13 @@ import { prepareUploadAccess } from '../utils/uploadAccess';
 
 const BASE = (import.meta.env.VITE_API_URL || '/api/v1');
 
-export default function PhotoDropZone({ entityType, entityId }) {
-  return entityId ? <PhotoDropZoneSession key={`${entityType}:${entityId}`} entityType={entityType} entityId={entityId} /> : null;
+// onChange (optional) runs after a photo was added or removed, e.g. to refresh a record that lists them.
+export default function PhotoDropZone({ entityType, entityId, onChange }) {
+  return entityId ? <PhotoDropZoneSession key={`${entityType}:${entityId}`} entityType={entityType} entityId={entityId}
+    onChange={onChange} /> : null;
 }
 
-function PhotoDropZoneSession({ entityType, entityId }) {
+function PhotoDropZoneSession({ entityType, entityId, onChange }) {
   const confirm = useConfirm();
   const [photos, setPhotos] = useState([]);
   const [uploading, setUploading] = useState(false);
@@ -59,6 +61,7 @@ function PhotoDropZoneSession({ entityType, entityId }) {
       );
       if (!res.ok) throw new Error('Upload fehlgeschlagen');
       loadPhotos();
+      onChange?.();
     } catch (err) {
       console.warn('[PhotoDropZone] upload:', err.message);
     } finally {
@@ -78,6 +81,7 @@ function PhotoDropZoneSession({ entityType, entityId }) {
     try {
       await api.del(`/photos/${photoId}`);
       loadPhotos();
+      onChange?.();
     } catch (err) {
       console.warn('[PhotoDropZone] delete:', err.message);
     }

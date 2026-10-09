@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
@@ -85,7 +86,9 @@ export default function Maintenance() {
     : 0;
 
   const columns = [
-    { key: 'title', label: t('pages.maintenance.columns.title') || 'Titel', filterType: 'text' },
+    { key: 'title', label: t('pages.maintenance.columns.title') || 'Titel', filterType: 'text',
+      // the case is the project file: work packages, quotes, orders, invoices, protocols
+      render: (v, row) => <Link to={`/maintenance/${encodeURIComponent(row.id)}`}>{v || row.id}</Link> },
     { key: 'property_name', hidden: true, label: 'Immobilie', filterType: 'text' },
     { key: 'unit_label', subKey: 'property_name', label: 'Einheit', filterType: 'text' },
     { key: 'category', hidden: true, label: t('pages.maintenance.columns.category') || 'Kategorie', filterType: 'select' },

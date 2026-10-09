@@ -1,0 +1,89 @@
+/* Project file of a maintenance case. Mobile first: everything stacks at 320–360 px,
+   nothing needs a horizontal page scroll; only the tab bar scrolls sideways. */
+
+.maintenance-project { min-width: 0; }
+.maintenance-project .mp-header { flex-wrap: wrap; gap: 0.75rem; align-items: flex-start; }
+.maintenance-project .mp-title { flex: 1 1 220px; min-width: 0; overflow-wrap: anywhere; }
+.maintenance-project .mp-kicker { display: block; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; }
+
+.mp-workflow { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin: 0.25rem 0 1rem; }
+.mp-blocker { flex: 1 1 100%; margin: 0; font-size: 0.82rem; }
+.mp-readonly { margin: 0 0 0.75rem; }
+.mp-kpis { margin-bottom: 0.75rem; }
+.mp-warnings { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.75rem; }
+.mp-warnings .badge { white-space: normal; text-align: left; }
+.maintenance-project .alert { margin-bottom: 0.75rem; overflow-wrap: anywhere; }
+.alert-warning { background: var(--color-warning-light); border: 1px solid var(--color-warning); border-radius: var(--radius-sm); padding: 0.6rem 0.8rem; }
+.alert-success { background: var(--color-success-light); border: 1px solid var(--color-success); border-radius: var(--radius-sm); padding: 0.6rem 0.8rem; }
+
+.mp-tabs { scrollbar-width: thin; -webkit-overflow-scrolling: touch; }
+.mp-tabs .detail-tab { padding: 0.7rem 0.85rem; }
+
+.mp-grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); }
+.mp-stack { display: grid; gap: 1rem; min-width: 0; }
+
+.mp-section { min-width: 0; }
+.mp-section-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.mp-section-header h2 { margin: 0; font-size: 0.98rem; font-weight: 600; }
+.mp-section-body { padding: 0.9rem 1.1rem; min-width: 0; }
+
+.mp-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+.mp-actions .btn { white-space: normal; }
+.mp-empty { margin: 0; }
+
+.mp-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 0.6rem 1rem; margin: 0; }
+.mp-facts-compact { margin: 0.5rem 0; }
+.mp-fact { min-width: 0; }
+.mp-fact dt { font-size: 0.78rem; color: var(--color-text-muted); }
+.mp-fact dd { margin: 0.1rem 0 0; overflow-wrap: anywhere; font-weight: 500; }
+.mp-description { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0.75rem 0 0; }
+.mp-rule { font-size: 0.82rem; margin: 0.75rem 0 0; }
+
+.mp-list, .mp-cards, .mp-timeline, .mp-pick-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.5rem; }
+.mp-row { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; justify-content: space-between;
+  padding: 0.55rem 0; border-bottom: 1px solid var(--color-border-light); }
+.mp-row:last-child { border-bottom: 0; }
+.mp-row-main { display: grid; gap: 0.15rem; flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; }
+.mp-card { border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: 0.75rem; display: grid; gap: 0.45rem; min-width: 0; }
+.mp-card-head { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: flex-start; justify-content: space-between; }
+.mp-meta { margin: 0; font-size: 0.85rem; overflow-wrap: anywhere; }
+.mp-waiting { color: var(--color-warning); }
+.mp-amounts { display: flex; flex-wrap: wrap; gap: 0.35rem 0.9rem; align-items: center; margin: 0; }
+.mp-subhead { margin: 0.35rem 0 0; font-size: 0.85rem; font-weight: 600; }
+.mp-chip { display: inline-flex; align-items: center; gap: 0.2rem; margin: 0 0.3rem 0.2rem 0; padding: 0.05rem 0.45rem;
+  border-radius: 999px; background: var(--color-primary-50); border: 1px solid var(--color-border); }
+.mp-chip-remove { border: 0; background: none; cursor: pointer; font-size: 1rem; line-height: 1; padding: 0 0.15rem;
+  color: var(--color-text-muted); min-width: 24px; min-height: 24px; }
+.mp-conflicts ul { margin: 0.35rem 0 0; padding-left: 1.1rem; }
+.mp-conflicts { margin-bottom: 0.75rem; }
+
+.mp-timeline li { display: grid; grid-template-columns: minmax(80px, auto) 1fr; gap: 0.6rem; font-size: 0.9rem; }
+.mp-time { color: var(--color-text-muted); white-space: nowrap; }
+.mp-reason { font-style: italic; }
+
+.mp-modal { max-height: calc(100vh - 2rem); overflow-y: auto; }
+.mp-search { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; }
+.mp-search input { flex: 1 1 auto; min-width: 0; }
+.mp-pick-list li { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; justify-content: space-between;
+  border-bottom: 1px solid var(--color-border-light); padding: 0.5rem 0; }
+.mp-pick-text { display: grid; gap: 0.15rem; flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; }
+.mp-check { display: inline-flex; gap: 0.4rem; align-items: center; margin: 0.25rem 0.75rem 0.25rem 0; overflow-wrap: anywhere; }
+.mp-inline { display: inline-flex; gap: 0.4rem; align-items: center; font-size: 0.85rem; }
+.mp-inline select { max-width: 11rem; }
+.mp-pdf { min-height: 40vh; }
+
+.mp-form-grid { display: grid; gap: 0.6rem 1rem; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); }
+.mp-form-grid .form-group { display: grid; gap: 0.3rem; margin: 0; font-size: 0.85rem; }
+.mp-form-grid .form-group-full { grid-column: 1 / -1; }
+.mp-form-grid input, .mp-form-grid select, .mp-form-grid textarea { width: 100%; min-width: 0; box-sizing: border-box; }
+.mp-fieldset { border: 1px solid var(--color-border); border-radius: var(--radius-sm); margin: 0.9rem 0 0; padding: 0.6rem 0.75rem; min-width: 0; }
+.mp-fieldset legend { font-weight: 600; font-size: 0.9rem; padding: 0 0.3rem; }
+.mp-defect { border-bottom: 1px dashed var(--color-border); padding-bottom: 0.6rem; margin-bottom: 0.6rem; display: grid; gap: 0.4rem; }
+.mp-photo-choice { display: flex; flex-wrap: wrap; }
+
+@media (max-width: 480px) {
+  .mp-section-body { padding: 0.75rem; }
+  .mp-section-header { padding: 0.75rem; }
+  .mp-actions .btn { flex: 1 1 auto; }
+  .mp-timeline li { grid-template-columns: 1fr; gap: 0.1rem; }
+}
