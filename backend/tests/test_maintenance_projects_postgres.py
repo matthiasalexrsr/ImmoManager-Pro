@@ -191,6 +191,36 @@ def test_project_flow_on_postgres_in_exact_cents_with_an_immutable_protocol(post
             service.read_project(_store(engine), case_id, {"id": "someone", "role": "verwalter"})
 
 
+def test_restricted_writes_on_postgres_lock_only_rows_of_the_own_portfolio(postgres):
+    from backend.services.portfolio_scope import scope_from_user
+
+    engine, _ = postgres
+    target = _store(engine)
+    north, south = _estate(target, "Nord"), _estate(target, "Süd")
+    staff = auth.register_user("staff", "staff@example.com", "Staff", "Secret123", "verwalter",
+                               portfolio_access="selected", portfolio_ids=[north["portfolio"].id])
+    south_booking = target.create_booking(BookingCreate(account_id=south["account"].id, booking_date=date(2026, 5, 3),
+                                                        amount=-50))
+    user = auth.get_user_by_id(staff.id)
+    assert user is not None
+    with scope_context(scope_from_user(user)):
+        package = service.add_work_package(_store(engine), north["case"].id, mm.WorkPackageCreate(title="Gerüst"),
+                                           staff.id)
+        quote = service.add_quote(_store(engine), north["case"].id, mm.QuoteCreate(
+            supplier_name="Firma", quote_date=date(2026, 4, 1), net_amount=50, gross_amount=50), staff.id)
+        order = service.accept_quote(_store(engine), north["case"].id, quote.id, mm.QuoteDecision(), staff.id)
+        linked = service.link_invoice(_store(engine), north["case"].id, order.id, mm.InvoiceLinkCreate(
+            invoice=mm.InvoiceDraft(invoice_date=date(2026, 5, 1), net_amount=50, gross_amount=50)), staff.id)
+        with pytest.raises(NotFoundError):
+            service.add_work_package(_store(engine), south["case"].id, mm.WorkPackageCreate(title="Fremd"), staff.id)
+        with pytest.raises((NotFoundError, HTTPException)):
+            service.add_invoice_payment(_store(engine), linked["invoice"]["id"], mm.InvoicePaymentCreate(
+                booking_id=south_booking.id, amount=50), staff.id)
+        visible = service.read_project(_store(engine), north["case"].id, {"id": staff.id, "role": "verwalter"})
+    assert [wp["id"] for wp in visible["work_packages"]] == [package.id]
+    assert service.costs(_store(engine), north["case"].id)["paid"] == 0.0
+
+
 def _parallel(calls):
     barrier = threading.Barrier(len(calls))
     results: list = [None] * len(calls)
