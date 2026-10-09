@@ -1,0 +1,213 @@
+/* Objektverträge: list, deadlines and dossier; usable from 320 px on (no page-wide horizontal scroll). */
+
+.service-contracts-intro {
+  margin: 0 0 1rem;
+  max-width: 70ch;
+}
+
+.service-contracts-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.service-contracts-filters input,
+.service-contracts-filters select {
+  flex: 1 1 12rem;
+  min-width: 0;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.service-contracts-deadlines {
+  margin-bottom: 1rem;
+}
+
+.service-contracts-deadline-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.service-contracts-deadline-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+  padding: 0.4rem 0.5rem;
+  border-left: 3px solid var(--color-border);
+  overflow-wrap: anywhere;
+}
+
+.service-contracts-deadline-list li.is-urgent {
+  border-left-color: var(--color-warning);
+  background: var(--color-warning-light);
+}
+
+.sc-deadline-date {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.sc-panel-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.sc-row-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.sc-table td,
+.sc-table th {
+  vertical-align: top;
+}
+
+.sc-table tr.is-current td {
+  background: var(--color-primary-50);
+}
+
+.sc-inline-badge {
+  margin-left: 0.4rem;
+}
+
+.sc-break {
+  overflow-wrap: anywhere;
+  min-width: 8rem;
+}
+
+.sc-small {
+  font-size: 0.8rem;
+}
+
+.sc-note {
+  font-size: 0.85rem;
+  margin: 0.5rem 0 1rem;
+}
+
+.sc-notes {
+  white-space: pre-wrap;
+  margin: 0.75rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.sc-subtitle {
+  margin: 1rem 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+.sc-kpis {
+  margin-bottom: 1rem;
+}
+
+.sc-kpi-text {
+  font-size: 1.15rem;
+  overflow-wrap: anywhere;
+}
+
+.sc-deadline-card {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+}
+
+.sc-deadline-card strong {
+  font-size: 1.3rem;
+}
+
+.sc-deadline-card.is-urgent {
+  border-color: var(--color-warning);
+  background: var(--color-warning-light);
+}
+
+.sc-finance {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.sc-finance-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.sc-finance-toolbar select {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.sc-figures {
+  grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr));
+}
+
+.sc-instalments summary {
+  cursor: pointer;
+}
+
+.sc-instalment-list {
+  list-style: none;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(11rem, 100%), 1fr));
+  gap: 0.25rem 1rem;
+}
+
+.sc-instalment-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.sc-upload {
+  cursor: pointer;
+}
+
+.sc-documents li {
+  flex-wrap: wrap;
+}
+
+.sc-danger-zone {
+  margin-top: 1.5rem;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.service-contract-dossier .detail-header {
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+@media (max-width: 480px) {
+  .service-contract-dossier .detail-overview-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .service-contract-dossier .detail-field {
+    flex-wrap: wrap;
+    gap: 0.25rem;
+  }
+
+  .sc-finance-toolbar .btn {
+    flex: 1 1 100%;
+  }
+}
