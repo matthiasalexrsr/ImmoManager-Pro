@@ -386,6 +386,7 @@ export default function HandoverProtocolEditor({ protocolId, onClose, onChanged,
               <label>{say('landlordSigner')}<input value={form.landlord_signature} autoComplete="off"
                 onChange={event => setField('landlord_signature', event.target.value)} /></label>
               <label className="handover__wide">{say('notes')}<textarea rows="2" value={form.notes}
+                aria-label={`${say('notes')} – ${say('general')}`}
                 onChange={event => setField('notes', event.target.value)} /></label>
             </fieldset>
 
@@ -418,7 +419,7 @@ export default function HandoverProtocolEditor({ protocolId, onClose, onChanged,
               {form.defects.length === 0 && <p className="handover__muted">{say('noDefects')}</p>}
               {form.defects.map((defect, index) => <article className="handover__row" key={defect.id}>
                 <div className="handover__grid">
-                  <label>{say('defectRoom')}<select value={defect.room_id} aria-label={`${say('defectRoom')} ${index + 1}`}
+                  <label>{say('defectRoom')}<select value={defect.room_id} aria-label={`${say('defectRoom')} (${say('defects')} ${index + 1})`}
                     onChange={event => setRow('defects', defect.id, { room_id: event.target.value })}>
                     <option value="">{say('generalRoom')}</option>
                     {form.rooms.map(room => <option key={room.id} value={room.id}>{room.name || '—'}</option>)}

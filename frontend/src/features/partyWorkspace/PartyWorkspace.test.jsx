@@ -64,6 +64,27 @@ describe('party workspace', () => {
     expect(screen.getByRole('dialog', { name: 'Anna Müller' })).not.toHaveAttribute('inert');
   });
 
+  it('opens the handover protocols of exactly the chosen contract on top of the panel', async () => {
+    const handover = { contract_id: 'c2', source: { contract: { id: 'c2', contract_number: 'MV-20' },
+      property: { name: 'Alte Villa' }, unit: { label: 'EG' } }, protocols: [], suggestion: {}, meters: [],
+    related: { previous_contract: null, next_contract: null, templates: [] } };
+    api.get.mockImplementation(path => Promise.resolve(path.includes('/overview') ? overview
+      : path.includes('/handover-protocols/source') ? handover : response()));
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: 'Anna Müller' }));
+    const panel = await screen.findByRole('dialog', { name: 'Anna Müller' });
+    const card = within(panel).getByText('MV-20').closest('article');
+    fireEvent.click(within(card).getByRole('button', { name: 'Übergabeprotokolle' }));
+
+    expect(await screen.findByText('MV-20 · Alte Villa · EG')).toBeInTheDocument();
+    expect(api.get).toHaveBeenCalledWith('/handover-protocols/source?contract_id=c2&protocol_type=move_out',
+      expect.anything());
+    expect(panel).toHaveAttribute('inert');
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByText('MV-20 · Alte Villa · EG')).toBeNull());
+    expect(screen.getByRole('dialog', { name: 'Anna Müller' })).not.toHaveAttribute('inert');
+  });
+
   it('keeps party account links usable without a provider or router', () => {
     render(<PartyLink tenantId="t1">Anna Müller</PartyLink>);
     expect(screen.getByRole('link', { name: 'Anna Müller' })).toHaveAttribute('href', '/tenants/t1/account');
@@ -156,7 +177,7 @@ describe('party workspace', () => {
     expect(close).toHaveFocus();
     fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
     // the last contract card's last action
-    expect(within(dialog).getAllByRole('button', { name: 'Wohnungsgeberbestätigung' }).at(-1)).toHaveFocus();
+    expect(within(dialog).getAllByRole('button', { name: 'Übergabeprotokolle' }).at(-1)).toHaveFocus();
     fireEvent.keyDown(document, { key: 'Tab' });
     expect(close).toHaveFocus();
     const overviewTab = screen.getByRole('tab', { name: 'Übersicht' });
