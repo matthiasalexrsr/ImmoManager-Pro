@@ -37,6 +37,7 @@ from .routers import (
     i18n,
     insurances,
     integrations,
+    invoice_review,
     invoices,
     leads,
     listings,
@@ -96,6 +97,8 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(maintenance.router, dependencies=_auth_dep)
     api_v1.include_router(maintenance_projects.router, dependencies=_auth_dep)
     api_v1.include_router(maintenance_projects.payments_router, dependencies=_auth_dep)
+    api_v1.include_router(invoice_review.router, dependencies=_auth_dep)
+    api_v1.include_router(invoice_review.invoice_router, dependencies=_auth_dep)
     api_v1.include_router(documents.router, dependencies=_auth_dep)
     api_v1.include_router(tasks.router, dependencies=_auth_dep)
     api_v1.include_router(calendar.router, dependencies=_auth_dep)

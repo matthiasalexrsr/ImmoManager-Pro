@@ -269,6 +269,10 @@ def bulk_delete(entity_type: str, payload: dict):
                 ensure_deletable(store, guarded[entity_type], eid)
             if entity_type == "documents":
                 ensure_no_originals(store, "document", eid)
+            if entity_type == "invoices":
+                from ..services.invoice_review import ensure_invoice_deletable
+
+                ensure_invoice_deletable(store, eid)     # the review history stays as evidence
             delete_fn(eid)
             deleted += 1
         except HTTPException as e:
@@ -292,6 +296,9 @@ def _tenant_records(tenant_id: str) -> dict[str, list]:
     def of_contracts(items: list) -> list:
         return [item for item in items if item.contract_id in contract_ids]
 
+    documents = of_contracts(store.list_documents())
+    from ..services.invoice_review import records_for_documents
+
     statements = of_contracts(store.list_utility_statements())
     statement_ids = {s.id for s in statements}
     protocols = of_contracts(store.list_handover_protocols())
@@ -307,7 +314,9 @@ def _tenant_records(tenant_id: str) -> dict[str, list]:
         "utility_statements": statements,
         "billing_objections": [o for o in store.list_billing_objections() if o.statement_id in statement_ids],
         "contract_occupancies": of_contracts(store.list_contract_occupancies()),
-        "documents": of_contracts(store.list_documents()),
+        "documents": documents,
+        # invoice reviews whose original document is one of the tenant's documents, with their history
+        **records_for_documents(store, {d.id for d in documents}),
         "handover_protocols": protocols,
         # rooms, defects, keys, meter readings and photos (references) of those protocols
         **parts_of(store, {p.id for p in protocols}),
@@ -322,7 +331,8 @@ def dsgvo_export_tenant_data(tenant_id: str):
 
     Returns a JSON file with the tenant and every record linked to the tenant
     or to one of the tenant's contracts: bookings, deposits, receivables, rent
-    charges and adjustments, utility statements, documents, handover
+    charges and adjustments, utility statements, documents (and the invoice
+    reviews whose original is one of them, with their history), handover
     protocols with their rooms, defects, keys, meter readings and photo
     references, and message threads with their messages.
     """

@@ -495,13 +495,35 @@ def instalments_view(store: Any, contract_id: str, date_from: date, date_to: dat
                       for i in items]}
 
 
-def _bills(store: Any, contract_id: str) -> list[tuple[Any, Any]]:
+def _bills(store: Any, contract_id: str, *, reviewed: bool = False) -> list[tuple[Any, Any]]:
+    """(link, invoice) of the contract; `reviewed`: each invoice with the amount its review lets flow.
+
+    A reviewed invoice counts with its approved amount (services.invoice_review), a rejected
+    one with nothing; invoices without a review count with their gross amount, as before.
+    """
     pairs = []
     for link in store.list_service_contract_invoices(contract_id):
         invoice = _try(store.get_invoice, link.invoice_id)
         if invoice is not None:
             pairs.append((link, invoice))
+    if reviewed and pairs:
+        flows = review_flows(store, [invoice for _, invoice in pairs])
+        adjusted = []
+        for link, invoice in pairs:
+            if invoice.id in flows:
+                amount = flows[invoice.id][1]
+                gross = money(invoice.gross_amount)
+                net = cents(amount * money(invoice.net_amount) / gross) if gross else amount
+                invoice = invoice.model_copy(update={"gross_amount": float(amount), "net_amount": float(net)})
+            adjusted.append((link, invoice))
+        pairs = adjusted
     return sorted(pairs, key=lambda pair: (pair[1].invoice_date, pair[0].id))
+
+
+def review_flows(store: Any, invoices: list[Any]) -> dict[str, tuple[str, Decimal]]:
+    from .invoice_review import flows_for
+
+    return flows_for(store, invoices)
 
 
 def _payments(store: Any, contract_id: str) -> list[tuple[Any, Any]]:
@@ -536,6 +558,7 @@ def bills_view(store: Any, contract_id: str) -> list[dict]:
         if payment.service_contract_invoice_id:
             paid[payment.service_contract_invoice_id] += money(payment.amount)
     transfers = _transfers_by_link(store, {link.id for link, _ in bills})
+    reviews = review_flows(store, [invoice for _, invoice in bills])
     rows = []
     for link, invoice in bills:
         gross, credited = money(invoice.gross_amount), money(link.advances_credited)
@@ -554,6 +577,9 @@ def bills_view(store: Any, contract_id: str) -> list[dict]:
             "paid": as_number(paid[link.id]),
             "open": as_number(gross - credited - paid[link.id]),
             "transfers": transfers.get(link.id, []),
+            # the invoice review: status and the amount that counts (None: not reviewed, gross counts)
+            "review": ({"status": reviews[invoice.id][0], "amount": as_number(reviews[invoice.id][1])}
+                       if invoice.id in reviews else None),
         })
     return rows
 
@@ -571,6 +597,10 @@ def add_bill(store: Any, contract_id: str, request: InvoiceLinkRequest) -> Any:
             taken = store.list_service_contract_invoices(invoice_id=invoice_id)
         if taken:
             raise ValidationError("Diese Rechnung ist bereits einem Objektvertrag zugeordnet")
+        from .invoice_review import ensure_linkable
+        from .maintenance_rows import Rows
+
+        ensure_linkable(Rows.reading(store), invoice_id)
     return store.create_service_contract_invoice(data, request.invoice)
 
 
@@ -720,7 +750,7 @@ def reconciliation_view(store: Any, contract_id: str, date_from: date, date_to: 
     check_window(date_from, date_to)
     contract = store.get_service_contract(contract_id)
     result = reconcile(tariffs=store.list_service_contract_tariffs(contract_id), contract_start=contract.start_date,
-                       contract_end=Terms.of(contract).effective_end, invoices=_bills(store, contract_id),
+                       contract_end=Terms.of(contract).effective_end, invoices=_bills(store, contract_id, reviewed=True),
                        payments=_payments(store, contract_id), window_from=date_from, window_to=date_to)
     return {
         "date_from": _day(date_from), "date_to": _day(date_to),
@@ -810,7 +840,12 @@ def transfer_costs(store: Any, contract_id: str, request: CostTransferRequest) -
     locations = store.list_service_contract_locations(contract_id)
     if not property_weights(locations, period.start_date, period.end_date).get(period.property_id):
         raise ValidationError("Das Objekt der Abrechnungsperiode ist im Zeitraum kein Standort dieses Vertrags")
-    bills = _bills(store, contract_id)
+    bills = _bills(store, contract_id, reviewed=True)
+    review_state = review_flows(store, [invoice for _, invoice in bills])
+    from .maintenance_rows import Rows
+
+    by_review = {t.invoice_id for t in Rows.reading(store).find(
+        "invoice_cost_transfers", invoice_id=[invoice.id for _, invoice in bills])}
     wanted = set(request.invoice_link_ids) if request.invoice_link_ids is not None else None
     if wanted is not None and wanted - {link.id for link, _ in bills}:
         raise ValidationError("Eine gewählte Rechnung gehört nicht zu diesem Vertrag")
@@ -821,8 +856,15 @@ def transfer_costs(store: Any, contract_id: str, request: CostTransferRequest) -
     for link, invoice in bills:
         if wanted is not None and link.id not in wanted:
             continue
-        if link.id in present:
+        if link.id in present or invoice.id in by_review:
             skipped.append({"service_contract_invoice_id": link.id, "reason": "already_transferred"})
+            continue
+        state = review_state.get(invoice.id, ("legacy", ZERO))[0]
+        if state == "rejected":      # a rejected invoice never flows into a statement
+            skipped.append({"service_contract_invoice_id": link.id, "reason": "rejected"})
+            continue
+        if state in ("received", "query"):
+            skipped.append({"service_contract_invoice_id": link.id, "reason": "not_approved"})
             continue
         if not overlap_days(link.period_start, link.period_end, period.start_date, period.end_date):
             if wanted is not None:

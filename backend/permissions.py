@@ -10,6 +10,11 @@ Reading is open to every signed-in user. For writing:
                 maintenance case: plan, record quotes and change orders, write and finalize
                 protocols, but not award or cancel orders, decide change orders or link invoices
 - (buchhaltung also links invoices to the orders of a maintenance case)
+- invoice review (/invoices/{id}/review): buchhaltung records the receipt, checks the
+  arithmetic, decides within the four-eyes limit, settles disputes and transfers costs, but
+  does not confirm the factual check; techniker confirms the factual check (for invoices of a
+  maintenance order only, checked by the service) and nothing else of the review; the
+  settings (four-eyes limit) belong to eigentuemer and verwalter
 - readonly      only personal settings
 Everybody who works in the office may also keep tasks, documents, files, photos,
 messages, calendar entries and notifications. Endpoints add finer checks of their own
@@ -33,13 +38,16 @@ MAINTENANCE_DECISIONS = (r"^/maintenance/[^/]+/quotes/[^/]+/(accept|reject)$",
                          r"^/maintenance/[^/]+/orders/[^/]+/(cancel|complete)$",
                          r"^/maintenance/[^/]+/change-orders/[^/]+/(approve|reject)$")
 MAINTENANCE_INVOICES = (r"^/maintenance/[^/]+/orders/[^/]+/invoices$", r"^/maintenance/[^/]+/invoice-links/[^/]+$")
-BOOKKEEPING = ("/bookings", "/accounts", "/categories", "/invoices", "/receivables", "/rent-charges", "/deposits",
+# the factual check of an invoice: whether the work was ordered and done
+INVOICE_FACTUAL = (r"^/invoices/[^/]+/review/factual-check$",)
+BOOKKEEPING = ("/invoice-review/receipts", "/bookings", "/accounts", "/categories", "/invoices", "/receivables", "/rent-charges", "/deposits",
                "/budgets", "/tax-rates", "/reports", "/billing/cost-items", "/escalation/run", "/notifications/generate",
                r"^/contracts/[^/]+/dunning-campaign$", *MAINTENANCE_INVOICES,
                r"^/service-contracts/[^/]+/(invoices|payments|cost-transfers)(/[^/]+)?$")
-TECHNICAL = ("/maintenance", "/meters", "/handover-protocols")
+TECHNICAL = ("/maintenance", "/meters", "/handover-protocols", *INVOICE_FACTUAL)
 # inside an area the role may write, these paths stay closed to it
-DENIED: dict[str, tuple[str, ...]] = {"techniker": MAINTENANCE_DECISIONS + MAINTENANCE_INVOICES}
+DENIED: dict[str, tuple[str, ...]] = {"techniker": MAINTENANCE_DECISIONS + MAINTENANCE_INVOICES,
+                                      "buchhaltung": INVOICE_FACTUAL}
 OWNER_ONLY = ("/admin/restore", "/admin/import", "/data/import", "/admin/bulk-delete", "/updates/apply",
               "/updates/restart")
 

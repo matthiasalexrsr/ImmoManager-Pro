@@ -39,7 +39,8 @@ from .final_statements import FINAL_STATUSES, final_version_problems
 SNAPSHOT_FORMAT = "immomanager-snapshot"
 # 3: archived document originals (older versions would drop them, so they refuse the file)
 # 4: service contracts and the origin of transferred costs (likewise)
-SNAPSHOT_FORMAT_VERSION = 4
+# 5: invoice reviews, their immutable history and cost transfers (likewise)
+SNAPSHOT_FORMAT_VERSION = 5
 
 # Keys used by exports written before format 2.
 _KEY_ALIASES = {"viewing_appointments": ("viewings",)}

@@ -48,7 +48,7 @@ class AccessScope:
 _scope: ContextVar[AccessScope | None] = ContextVar("immo_portfolio_scope", default=None)
 _guarding: ContextVar[bool] = ContextVar("immo_scope_guarding", default=False)
 # installation definitions: everyone reads them, only all-access accounts change them
-GLOBAL_READ = frozenset({"tax_rates", "notification_templates", "escalation_rules"})
+GLOBAL_READ = frozenset({"tax_rates", "notification_templates", "escalation_rules", "invoice_review_settings"})
 # a shared address book: every account reads it; changing a record needs its binding (or all access)
 SHARED_READ = frozenset({"contacts"})
 _owning: ContextVar[bool] = ContextVar("immo_scope_owning", default=False)

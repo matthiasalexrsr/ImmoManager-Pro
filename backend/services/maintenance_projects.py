@@ -737,6 +737,9 @@ def link_invoice(store: Any, case_id: str, order_id: str, payload: mm.InvoiceLin
                 raise conflict("Die Rechnung ist keinem oder einem anderen Objekt zugeordnet als die Akte.")
             if invoice.status == "cancelled":
                 raise conflict("Eine stornierte Rechnung wird keinem Auftrag zugeordnet.")
+            from .invoice_review import ensure_linkable
+
+            ensure_linkable(p.rows, invoice.id)
             existing = p.rows.find("maintenance_order_invoices", invoice_id=invoice.id)
             if existing:
                 raise conflict("Die Rechnung ist bereits einem Auftrag zugeordnet und zählt nur einmal.")
@@ -783,6 +786,9 @@ def add_invoice_payment(store: Any, invoice_id: str, payload: mm.InvoicePaymentC
         invoice = rows.require("invoices", invoice_id, "Rechnung nicht gefunden")
         if invoice.status == "cancelled":
             raise conflict("Eine stornierte Rechnung wird nicht bezahlt.")
+        from .invoice_review import ensure_payable
+
+        ensure_payable(rows, invoice_id)
         if booking.reverses_booking_id:
             raise conflict("Ein Storno bezahlt keine Rechnung.")
         if money(booking.amount) >= 0:
@@ -1252,12 +1258,22 @@ def _costs(rows: Rows, case: Any, orders: list, changes: list, links: list, invo
     for reversal in rows.find("bookings", reverses_booking_id=booking_ids):
         reversed_by[reversal.reverses_booking_id] = reversed_by.get(reversal.reverses_booking_id, ZERO) + money(
             reversal.amount)
+    # a reviewed invoice counts with what was approved (services.invoice_review); a rejected one not at all
+    from .invoice_review import flows
+
+    reviewed = flows(rows, invoices.values())
+
+    def billed(invoice: Any) -> tuple[str, Decimal]:
+        if invoice.id not in reviewed:
+            return invoice.status, money(invoice.gross_amount)
+        state, amount = reviewed[invoice.id]
+        return ("cancelled" if state in ("rejected", "credit_note") else invoice.status), amount
+
     costs = roll_up(
         case.estimated_cost,
         [OrderFacts(o.id, o.status, money(o.gross_amount)) for o in orders],
         [ChangeFacts(c.order_id, c.status, money(c.gross_amount)) for c in changes],
-        [InvoiceFacts(link.invoice_id, link.order_id, invoices[link.invoice_id].status,
-                      money(invoices[link.invoice_id].gross_amount))
+        [InvoiceFacts(link.invoice_id, link.order_id, *billed(invoices[link.invoice_id]))
          for link in links if link.invoice_id in invoices],
         [AllocationFacts(a.id, a.invoice_id, a.booking_id, money(a.amount), a.created_at) for a in allocations],
         {key: BookingFacts(key, money(b.amount), reversed_by.get(key, ZERO)) for key, b in bookings.items()},

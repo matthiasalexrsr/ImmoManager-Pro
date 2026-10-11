@@ -9,6 +9,7 @@ from ..domain.invoice_matching import BookingCandidate, InvoiceMatcher, InvoiceT
 from ..domain.money import money
 from ..models import Invoice, InvoiceCreate, InvoicePatch
 from ..services.deletion_guard import ensure_deletable
+from ..services.invoice_review import ensure_invoice_change_allowed, ensure_invoice_deletable
 from ..services.maintenance_projects import ensure_invoice_unbound
 from ..services.portfolio_scope import scope_context
 from ..storage import NotFoundError, ValidationError
@@ -61,6 +62,7 @@ def get_invoice(invoice_id: str) -> Invoice:
 @router.put("/{invoice_id}", response_model=Invoice)
 def update_invoice(invoice_id: str, payload: InvoiceCreate) -> Invoice:
     try:
+        ensure_invoice_change_allowed(store, invoice_id, payload.model_dump())   # a decided review fixes the facts
         return store.update_invoice(invoice_id, payload)
     except (NotFoundError, ValidationError) as exc:
         status_code = status.HTTP_404_NOT_FOUND if isinstance(exc, NotFoundError) else status.HTTP_400_BAD_REQUEST
@@ -70,6 +72,7 @@ def update_invoice(invoice_id: str, payload: InvoiceCreate) -> Invoice:
 @router.patch("/{invoice_id}", response_model=Invoice)
 def patch_invoice(invoice_id: str, payload: InvoicePatch) -> Invoice:
     try:
+        ensure_invoice_change_allowed(store, invoice_id, payload.model_dump(exclude_unset=True))
         return store._patch_entity("invoice", invoice_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -80,6 +83,8 @@ def delete_invoice(invoice_id: str) -> None:
     try:
         store.get_invoice(invoice_id)
         ensure_invoice_unbound(store, invoice_id)        # billed against an order or paid by bookings
+        with scope_context(None):   # a credit note of another portfolio counts too
+            ensure_invoice_deletable(store, invoice_id)  # the review history stays as evidence
         with scope_context(None):   # references from other portfolios count too (the database refuses them)
             ensure_deletable(store, "invoice", invoice_id)
         store.delete_invoice(invoice_id)
