@@ -540,6 +540,7 @@ def require_file_access(value: str):
             ("listing_photos", "file_url"),
             ("meter_readings", "photo_url"),
             ("standalone_meter_readings", "photo_url"),
+            ("handover_photos", "file_url"),
         ):
             table = Base.metadata.tables[name]
             matches = or_(
@@ -578,6 +579,7 @@ def require_file_access(value: str):
             ("listing_photos", "file_url"),
             ("meter_readings", "photo_url"),
             ("standalone_meter_readings", "photo_url"),
+            ("handover_photos", "file_url"),
         ):
             for item in getattr(store, name).values():
                 file_key = _file_url_to_key(getattr(item, field, "") or "")

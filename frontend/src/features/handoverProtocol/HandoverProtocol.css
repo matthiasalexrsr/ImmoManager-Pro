@@ -1,0 +1,471 @@
+.handover__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 250;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgb(15 23 42 / .58);
+}
+
+.handover {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: min(72rem, 100%);
+  max-height: min(94vh, 64rem);
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface);
+  box-shadow: 0 1.2rem 4rem rgb(15 23 42 / .24);
+  color: var(--color-text);
+}
+
+.handover--list {
+  width: min(44rem, 100%);
+}
+
+.handover__header,
+.handover__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: .9rem 1rem;
+}
+
+.handover__header {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.handover__footer {
+  justify-content: flex-end;
+  border-top: 1px solid var(--color-border);
+}
+
+.handover__header > div {
+  min-width: 0;
+}
+
+.handover__header h2,
+.handover__header p,
+.handover h3 {
+  margin: 0;
+}
+
+.handover__header h2 {
+  font-size: clamp(1.1rem, 3vw, 1.45rem);
+  overflow-wrap: anywhere;
+}
+
+.handover__header > div > p:last-child {
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.handover__eyebrow {
+  color: var(--color-primary);
+  font-size: .76rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.handover .btn {
+  min-width: 0;
+  white-space: normal;
+}
+
+.handover__icon-button {
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.handover__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: 1rem;
+  min-width: 0;
+  overflow: auto;
+  padding: 1rem;
+}
+
+.handover__summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(12rem, 100%), 1fr));
+  gap: .55rem;
+}
+
+.handover__summary > div {
+  display: grid;
+  gap: .15rem;
+  min-width: 0;
+  padding: .7rem;
+  border: 1px solid var(--color-border);
+  border-radius: .75rem;
+  background: color-mix(in srgb, var(--color-surface) 92%, var(--color-primary) 8%);
+}
+
+.handover__summary span,
+.handover__muted,
+.handover__meter-name small,
+.handover__list small {
+  color: var(--color-text-muted);
+  font-size: .82rem;
+}
+
+.handover__summary strong,
+.handover__list strong {
+  overflow-wrap: anywhere;
+}
+
+.handover__section {
+  display: grid;
+  gap: .75rem;
+  min-width: 0;
+  margin: 0;
+  padding: .9rem;
+  border: 1px solid var(--color-border);
+  border-radius: .85rem;
+}
+
+.handover__section legend {
+  padding: 0 .35rem;
+  font-weight: 850;
+}
+
+.handover__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .7rem 1rem;
+  min-width: 0;
+}
+
+.handover__grid--keys {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
+  align-items: end;
+}
+
+.handover__wide {
+  grid-column: 1 / -1;
+}
+
+.handover label {
+  display: grid;
+  gap: .3rem;
+  min-width: 0;
+  font-weight: 650;
+}
+
+.handover :is(input:not([type="checkbox"]):not([type="file"]), select, textarea) {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 42px;
+  padding: .55rem .7rem;
+  border: 1px solid var(--color-border);
+  border-radius: .55rem;
+  font: inherit;
+  font-weight: 400;
+  color: var(--color-text);
+  background: var(--color-surface);
+}
+
+.handover :is(input, select, textarea):focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.handover textarea {
+  resize: vertical;
+}
+
+.handover label.handover__check {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: .55rem;
+  align-items: start;
+}
+
+.handover__check input {
+  margin-top: .2rem;
+}
+
+.handover__row {
+  display: grid;
+  gap: .6rem;
+  min-width: 0;
+  padding: .75rem;
+  border: 1px solid var(--color-border);
+  border-radius: .7rem;
+  background: color-mix(in srgb, var(--color-surface) 96%, var(--color-text) 4%);
+}
+
+.handover__remove {
+  justify-self: start;
+}
+
+.handover__missing {
+  margin: 0;
+  color: var(--color-danger);
+  font-weight: 700;
+}
+
+.handover__meter-name {
+  display: grid;
+  gap: .1rem;
+  margin: 0;
+}
+
+.handover__photos {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem;
+  min-width: 0;
+}
+
+.handover__photo {
+  position: relative;
+  display: grid;
+  gap: .2rem;
+  width: 6.5rem;
+  margin: 0;
+}
+
+.handover__photo img {
+  width: 100%;
+  height: 5rem;
+  object-fit: cover;
+  border: 1px solid var(--color-border);
+  border-radius: .5rem;
+  background: var(--color-surface);
+}
+
+.handover__photo figcaption {
+  font-size: .75rem;
+  overflow-wrap: anywhere;
+}
+
+.handover__photo-remove {
+  position: absolute;
+  top: .2rem;
+  right: .2rem;
+  width: 30px;
+  height: 30px;
+  background: var(--color-surface);
+  box-shadow: 0 1px 4px rgb(15 23 42 / .25);
+}
+
+.handover__photo-add {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  cursor: pointer;
+}
+
+.handover__photo-add input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.handover__photo-add:focus-within {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.handover__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .55rem;
+}
+
+.handover__original,
+.handover__preview {
+  display: grid;
+  gap: .7rem;
+  min-width: 0;
+  padding: .9rem;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 35%, var(--color-border));
+  border-radius: .85rem;
+  background: color-mix(in srgb, var(--color-primary) 6%, transparent);
+}
+
+.handover__original p,
+.handover__preview p {
+  margin: 0;
+}
+
+.handover__original-title,
+.handover__preview-title,
+.handover__notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: .55rem;
+}
+
+.handover__finish {
+  display: grid;
+  gap: .75rem;
+}
+
+.handover__problems {
+  display: grid;
+  gap: .3rem;
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.handover__problem--blocking {
+  color: var(--color-danger);
+  font-weight: 650;
+}
+
+.handover__notice {
+  min-width: 0;
+  padding: .75rem;
+  border-radius: .75rem;
+}
+
+.handover__notice > div,
+.handover__notice > span {
+  min-width: 0;
+  flex: 1 1 12rem;
+}
+
+.handover__notice p {
+  margin: .15rem 0 0;
+}
+
+.handover__notice--warning {
+  background: var(--color-warning-light);
+}
+
+.handover__notice--error {
+  background: var(--color-danger-light);
+}
+
+.handover__notice--success {
+  background: var(--color-success-light);
+}
+
+.handover__list {
+  display: grid;
+  gap: .5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.handover__list li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: .6rem;
+  padding: .65rem;
+  border: 1px solid var(--color-border);
+  border-radius: .7rem;
+}
+
+.handover__list li > div {
+  display: grid;
+  min-width: 0;
+}
+
+.handover__related {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+}
+
+.handover__related > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.handover__pdf {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: .6rem;
+  min-height: min(70vh, 44rem);
+  min-width: 0;
+  overflow: hidden;
+  padding: .75rem 1rem;
+}
+
+@media (max-width: 700px) {
+  .handover__overlay {
+    padding: .5rem;
+  }
+
+  .handover {
+    width: 100%;
+    max-height: 96vh;
+    border-radius: .75rem;
+  }
+
+  .handover__grid,
+  .handover__grid--keys {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .handover__section {
+    padding: .7rem;
+  }
+
+  .handover__actions .btn,
+  .handover__related .btn,
+  .handover__footer .btn {
+    width: 100%;
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 360px) {
+  .handover__overlay {
+    padding: 0;
+  }
+
+  .handover {
+    max-height: 100vh;
+    min-height: 100vh;
+    border-width: 0;
+    border-radius: 0;
+  }
+
+  .handover__header,
+  .handover__footer,
+  .handover__body {
+    padding-inline: .6rem;
+  }
+
+  .handover__row {
+    padding: .55rem;
+  }
+
+  .handover__list li {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .handover__list li > svg {
+    display: none;
+  }
+}

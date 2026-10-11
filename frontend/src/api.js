@@ -145,7 +145,9 @@ async function request(path, options = {}) {
   requireCurrentSession(generation);
   const token = getToken();
   const { signal, responseType, ...rest } = options;
-  const headers = { 'Content-Type': 'application/json', ...rest.headers };
+  // multipart bodies (file uploads) set their own boundary
+  const isForm = typeof FormData !== 'undefined' && rest.body instanceof FormData;
+  const headers = isForm ? { ...rest.headers } : { 'Content-Type': 'application/json', ...rest.headers };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
   let res;
@@ -261,6 +263,8 @@ export const api = {
   postBlob: (path, data, { signal } = {}) => request(path, {
     method: 'POST', body: JSON.stringify(data), signal, responseType: 'blob',
   }),
+  /** multipart upload (FormData) with the same session, refresh and logout handling as JSON */
+  upload: (path, formData, { signal } = {}) => request(path, { method: 'POST', body: formData, signal }),
 };
 
 export async function login(username, password) {

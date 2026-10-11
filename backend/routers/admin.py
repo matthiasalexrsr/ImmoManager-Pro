@@ -294,6 +294,9 @@ def _tenant_records(tenant_id: str) -> dict[str, list]:
 
     statements = of_contracts(store.list_utility_statements())
     statement_ids = {s.id for s in statements}
+    protocols = of_contracts(store.list_handover_protocols())
+    from ..services.handover_protocol import parts_of
+
     return {
         "contracts": contracts,
         "bookings": [b for b in store.list_bookings() if b.tenant_id == tenant_id],
@@ -305,7 +308,9 @@ def _tenant_records(tenant_id: str) -> dict[str, list]:
         "billing_objections": [o for o in store.list_billing_objections() if o.statement_id in statement_ids],
         "contract_occupancies": of_contracts(store.list_contract_occupancies()),
         "documents": of_contracts(store.list_documents()),
-        "handover_protocols": of_contracts(store.list_handover_protocols()),
+        "handover_protocols": protocols,
+        # rooms, defects, keys, meter readings and photos (references) of those protocols
+        **parts_of(store, {p.id for p in protocols}),
         "message_threads": threads,
         "messages": [m for m in store.list_messages() if m.thread_id in thread_ids],
     }
@@ -318,7 +323,8 @@ def dsgvo_export_tenant_data(tenant_id: str):
     Returns a JSON file with the tenant and every record linked to the tenant
     or to one of the tenant's contracts: bookings, deposits, receivables, rent
     charges and adjustments, utility statements, documents, handover
-    protocols and message threads with their messages.
+    protocols with their rooms, defects, keys, meter readings and photo
+    references, and message threads with their messages.
     """
 
     try:

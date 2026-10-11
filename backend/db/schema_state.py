@@ -149,6 +149,7 @@ def initialise_empty(engine: Engine) -> None:
         job_models,
         maintenance_project_models,
     )
+    from .handover_guards import GUARDED_TABLES, install_handover_guards
     from .orm_models import Base
 
     ensure_ui_contracts()
@@ -159,6 +160,8 @@ def initialise_empty(engine: Engine) -> None:
             document_version_models.install_guards(connection)
         if "maintenance_protocols" in tables:
             maintenance_project_models.install_protocol_guard(connection)
+        if set(GUARDED_TABLES) <= tables:
+            install_handover_guards(connection)       # also done by create_all's event; idempotent
         MigrationContext.configure(connection).stamp(_script(), "head")
 
 

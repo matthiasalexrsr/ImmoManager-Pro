@@ -20,9 +20,10 @@ PyJWT==2.15.1
 cryptography==50.0.0
 cffi==2.0.0
 
-# Mietvertrag-Wizard
+# Mietvertrag-Wizard; PDFs (Pillow: photos of handover protocols, also needed by reportlab)
 jinja2==3.1.6
 reportlab==4.4.10
+pillow==12.3.0
 
 # HTTP client (updater + autotest)
 httpx==0.28.1

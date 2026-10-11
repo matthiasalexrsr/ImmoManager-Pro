@@ -56,3 +56,19 @@ def pdf_bytes(size: int) -> bytes:
     """A PDF-looking payload of `size` bytes with varied content."""
     body = bytes((index * 7 + index // 251) % 256 for index in range(max(size - 5, 0)))
     return (b"%PDF-" + body)[:size]
+
+
+def purge_handover(store) -> None:
+    """Remove every handover protocol and its parts: the finalization guards are lifted for the moment."""
+    from backend.db.handover_guards import drop_handover_guards, install_handover_guards
+
+    if not hasattr(store, "db"):
+        return               # the memory store has no triggers; clear_business_data() empties it
+    store.db.rollback()
+    with store.db.get_bind().connect() as connection:
+        with connection.begin():
+            drop_handover_guards(connection)
+            for table in ("handover_photos", "handover_defects", "handover_keys", "handover_rooms", "meter_readings",
+                          "handover_protocols"):
+                connection.exec_driver_sql(f"DELETE FROM {table}")
+            install_handover_guards(connection)
