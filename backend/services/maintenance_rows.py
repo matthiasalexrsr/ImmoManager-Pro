@@ -15,26 +15,38 @@ from typing import Any
 from pydantic import BaseModel
 from sqlalchemy import select
 
+from .. import invoice_review_models as rm
 from .. import maintenance_models as mm
+from ..db import invoice_review_models as rv
 from ..db import maintenance_project_models as pm
 from ..db.orm_models import (
+    AllocationKeyORM,
+    BillingPeriodORM,
     BookingORM,
     CalendarEventORM,
     ChangeHistoryORM,
+    CostItemORM,
     DocumentORM,
     EntityPhotoORM,
     InvoiceORM,
     MaintenanceCaseORM,
 )
+from ..db.service_contract_models import (
+    ServiceContractInvoiceORM,
+    ServiceContractLocationORM,
+    ServiceContractORM,
+    ServiceContractTariffORM,
+)
 from ..storage import NotFoundError
 from . import memory_cascade
 
-PROJECT = frozenset(pm.PROJECT_TABLES)
+PROJECT = frozenset(pm.PROJECT_TABLES + rv.REVIEW_TABLES)
 
 
 @lru_cache(maxsize=1)
 def registry() -> dict[str, tuple[Any, type[BaseModel]]]:
     from .. import models  # the UI contract fields extend some models at import time
+    from .. import models_service_contracts as sc
 
     return {
         "maintenance_work_packages": (pm.MaintenanceWorkPackageORM, mm.MaintenanceWorkPackage),
@@ -55,6 +67,18 @@ def registry() -> dict[str, tuple[Any, type[BaseModel]]]:
         "documents": (DocumentORM, models.Document),
         "change_history": (ChangeHistoryORM, models.ChangeHistoryEntry),
         "entity_photos": (EntityPhotoORM, models.EntityPhoto),
+        # invoice review (services.invoice_review) and what it reads of contracts and billing
+        "invoice_reviews": (rv.InvoiceReviewORM, rm.InvoiceReview),
+        "invoice_review_events": (rv.InvoiceReviewEventORM, rm.InvoiceReviewEvent),
+        "invoice_cost_transfers": (rv.InvoiceCostTransferORM, rm.InvoiceCostTransfer),
+        "invoice_review_settings": (rv.InvoiceReviewSettingsORM, rm.InvoiceReviewSettings),
+        "service_contracts": (ServiceContractORM, sc.ServiceContract),
+        "service_contract_locations": (ServiceContractLocationORM, sc.ServiceContractLocation),
+        "service_contract_tariffs": (ServiceContractTariffORM, sc.ServiceContractTariff),
+        "service_contract_invoices": (ServiceContractInvoiceORM, sc.ServiceContractInvoice),
+        "cost_items": (CostItemORM, models.CostItem),
+        "billing_periods": (BillingPeriodORM, models.BillingPeriod),
+        "allocation_keys": (AllocationKeyORM, models.AllocationKey),
     }
 
 

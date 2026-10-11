@@ -146,6 +146,7 @@ def initialise_empty(engine: Engine) -> None:
     from . import (  # noqa: F401  (register the tables)
         access_models,
         document_version_models,
+        invoice_review_models,
         job_models,
         maintenance_project_models,
         service_contract_models,
@@ -161,6 +162,8 @@ def initialise_empty(engine: Engine) -> None:
             document_version_models.install_guards(connection)
         if "maintenance_protocols" in tables:
             maintenance_project_models.install_protocol_guard(connection)
+        if "invoice_review_events" in tables:
+            invoice_review_models.install_event_guard(connection)
         if set(GUARDED_TABLES) <= tables:
             install_handover_guards(connection)       # also done by create_all's event; idempotent
         MigrationContext.configure(connection).stamp(_script(), "head")

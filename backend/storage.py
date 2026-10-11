@@ -7,6 +7,7 @@ from pydantic import BaseModel as PydanticBaseModel
 
 from .domain.booking_reversal import reversal_problem
 from .domain.lease_engine import find_unit_overlap, unit_overlap_message
+from .invoice_review_models import InvoiceCostTransfer, InvoiceReview, InvoiceReviewEvent, InvoiceReviewSettings
 from .maintenance_models import (
     InvoicePayment,
     MaintenanceAppointment,
@@ -221,6 +222,11 @@ class InMemoryStore(ServiceContractMemoryStore):
     maintenance_protocols: Dict[str, MaintenanceProtocol] = field(default_factory=dict)
     maintenance_appointments: Dict[str, MaintenanceAppointment] = field(default_factory=dict)
     maintenance_case_documents: Dict[str, MaintenanceCaseDocument] = field(default_factory=dict)
+    # review of existing invoices (db/invoice_review_models.py)
+    invoice_reviews: Dict[str, InvoiceReview] = field(default_factory=dict)
+    invoice_review_events: Dict[str, InvoiceReviewEvent] = field(default_factory=dict)
+    invoice_cost_transfers: Dict[str, InvoiceCostTransfer] = field(default_factory=dict)
+    invoice_review_settings: Dict[str, InvoiceReviewSettings] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         # deletes of referenced records take the project rows along, as ON DELETE does in SQL

@@ -1,5 +1,7 @@
 """The in-memory store follows the ON DELETE rules of the project tables, like the database.
 
+The tables of the invoice review (db/invoice_review_models.py) follow the same rules.
+
 Deleting a case, an invoice, a booking, a calendar event or a document in memory takes
 the project rows that reference it along (CASCADE) or clears their reference (SET NULL),
 so a memory store never holds a reference the database would not hold. NO ACTION and
@@ -12,6 +14,7 @@ from collections import defaultdict
 from functools import lru_cache
 from typing import Any
 
+from ..db.invoice_review_models import REVIEW_TABLES
 from ..db.maintenance_project_models import PROJECT_TABLES
 from ..db.orm_models import Base
 
@@ -20,7 +23,7 @@ from ..db.orm_models import Base
 def _rules() -> dict[str, tuple[tuple[str, str, str], ...]]:
     """parent table -> ((child table, column, ON DELETE action), ...) for the project tables."""
     found: dict[str, list[tuple[str, str, str]]] = defaultdict(list)
-    for name in PROJECT_TABLES:
+    for name in PROJECT_TABLES + REVIEW_TABLES:
         for column in Base.metadata.tables[name].columns:
             for foreign in column.foreign_keys:
                 found[foreign.column.table.name].append((name, column.name, (foreign.ondelete or "").upper()))
