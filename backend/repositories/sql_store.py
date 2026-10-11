@@ -102,12 +102,12 @@ from ..models import (
 from ..storage import check_final_statement_change
 from .billing_repo import BillingRepository
 from .communication_repo import CommunicationRepository
+from .deposit_repo import DepositStoreMethods
 from .document_repo import DocumentRepository
 from .finance_repo import FinanceRepository
 from .maintenance_repo import MaintenanceRepository
 from .marketing_repo import MarketingRepository
 from .portfolio_repo import PortfolioRepository
-from .deposit_repo import DepositStoreMethods
 from .service_contract_repo import ServiceContractRepository, ServiceContractStoreMethods
 from .system_repo import SystemRepository
 from .tenant_repo import TenantRepository

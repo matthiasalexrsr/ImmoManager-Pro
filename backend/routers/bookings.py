@@ -7,6 +7,7 @@ from ..dependencies import store
 from ..domain.money import money, money_sum
 from ..models import Booking, BookingCreate, BookingPatch, PaymentAllocation
 from ..services.deletion_guard import ensure_deletable
+from ..services.deposits import _booking_linked, ensure_booking_unchanged
 from ..services.maintenance_projects import ensure_booking_unallocated
 from ..services.payment_allocations import (
     allocate_unassigned,
@@ -17,6 +18,10 @@ from ..services.payment_allocations import (
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/bookings", tags=["Buchungen"])
+
+
+def _deposit_linked(booking_id: str) -> bool:
+    return _booking_linked(store, booking_id)
 
 
 def _allocate(booking: Booking) -> None:
@@ -151,6 +156,7 @@ def get_booking(booking_id: str) -> Booking:
 @router.put("/{booking_id}", response_model=Booking)
 def update_booking(booking_id: str, payload: BookingCreate) -> Booking:
     try:
+        ensure_booking_unchanged(store, booking_id, payload.model_dump())
         booking = store.update_booking(booking_id, payload)
         _allocate(booking)
         return booking
@@ -162,6 +168,7 @@ def update_booking(booking_id: str, payload: BookingCreate) -> Booking:
 @router.patch("/{booking_id}", response_model=Booking)
 def patch_booking(booking_id: str, payload: BookingPatch) -> Booking:
     try:
+        ensure_booking_unchanged(store, booking_id, payload.model_dump(exclude_unset=True))
         booking = store._patch_entity("booking", booking_id, payload)
         _allocate(booking)
         return booking
@@ -175,7 +182,7 @@ def patch_booking(booking_id: str, payload: BookingPatch) -> Booking:
 def delete_booking(booking_id: str) -> None:
     try:
         store.get_booking(booking_id)
-        if store.list_booking_reversals(booking_id):     # indexed; the guard names them
+        if store.list_booking_reversals(booking_id) or _deposit_linked(booking_id):   # the guard names them
             ensure_deletable(store, "booking", booking_id)
         ensure_booking_unallocated(store, booking_id)       # it pays an invoice
         store.delete_booking(booking_id)

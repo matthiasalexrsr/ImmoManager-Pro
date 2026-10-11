@@ -1437,3 +1437,24 @@ def records_of(store, deposit_ids: set[str]) -> dict[str, list]:
         "deposit_settlement_items": [r for r in store.list_deposit_settlement_items()
                                      if r.settlement_id in settlement_ids],
     }
+
+
+# ─── Guards for bookings and receivables the deposit file names ──────────────
+
+def _booking_linked(store, booking_id: str) -> bool:
+    lister = getattr(store, "list_deposit_payments", None)
+    if lister is None:
+        return False
+    return bool(lister(booking_ids=[booking_id])) or any(
+        s.offset_credit_booking_id == booking_id for s in store.list_deposit_settlements())
+
+
+def ensure_booking_unchanged(store, booking_id: str, changes: dict[str, Any]) -> None:
+    """A booking the deposit file names keeps amount, date, account and tenant (unlink it there first)."""
+    if not _booking_linked(store, booking_id):
+        return
+    current = store.get_booking(booking_id)
+    guarded = ("amount", "booking_date", "account_id", "tenant_id", "reverses_booking_id")
+    if any(name in changes and changes[name] != getattr(current, name) for name in guarded):
+        raise _conflict("Die Buchung gehört zu einer Kautionsakte. Betrag, Datum, Konto und Mieter lassen sich nur "
+                        "ändern, nachdem sie dort gelöst wurde (eine abgerechnete Kaution bleibt unverändert).")
