@@ -48,6 +48,7 @@ from ..services.final_statements import (
     json_safe,
     statement_snapshot_hash,
 )
+from ..services.service_contracts import check_cost_item_origin
 from ..services.utility_billing import compute_period_billing
 from ..storage import NotFoundError, ValidationError
 
@@ -280,6 +281,7 @@ def create_cost_item(payload: CostItemCreate) -> CostItem:
     except NotFoundError:
         pass  # Let store.create_cost_item raise its own ValidationError
     try:
+        check_cost_item_origin(store, payload)
         return store.create_cost_item(payload)
     except ValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -299,6 +301,9 @@ def update_cost_item(item_id: str, payload: CostItemCreate) -> CostItem:
         existing = store.get_cost_item(item_id)
         period = store.get_billing_period(existing.billing_period_id)
         _assert_period_mutable(period)
+        # the origin of a transferred bill stays: otherwise the bill could be transferred twice
+        payload = payload.model_copy(update={"service_contract_invoice_id": existing.service_contract_invoice_id})
+        check_cost_item_origin(store, payload, exclude_id=item_id)
         return store.update_cost_item(item_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

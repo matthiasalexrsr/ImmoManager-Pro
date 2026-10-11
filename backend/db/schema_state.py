@@ -148,6 +148,7 @@ def initialise_empty(engine: Engine) -> None:
         document_version_models,
         job_models,
         maintenance_project_models,
+        service_contract_models,
     )
     from .handover_guards import GUARDED_TABLES, install_handover_guards
     from .orm_models import Base
