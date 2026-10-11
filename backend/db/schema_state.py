@@ -145,6 +145,7 @@ def initialise_empty(engine: Engine) -> None:
     from ..compat.ui_contracts import ensure_ui_contracts
     from . import (  # noqa: F401  (register the tables)
         access_models,
+        deposit_models,
         document_version_models,
         job_models,
         maintenance_project_models,
@@ -163,6 +164,9 @@ def initialise_empty(engine: Engine) -> None:
             maintenance_project_models.install_protocol_guard(connection)
         if set(GUARDED_TABLES) <= tables:
             install_handover_guards(connection)       # also done by create_all's event; idempotent
+        if {"deposits", *deposit_models.DEPOSIT_TABLES} <= tables:
+            from .deposit_guards import install_deposit_guards
+            install_deposit_guards(connection)        # likewise
         MigrationContext.configure(connection).stamp(_script(), "head")
 
 
