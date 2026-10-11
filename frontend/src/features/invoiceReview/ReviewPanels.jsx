@@ -34,7 +34,8 @@ export function Summary({ view }) {
         <Fact label={tx.gross}>{formatMoney(invoice.gross_amount)}</Fact>
         {review && <Fact label={tx.receivedOn}>{formatDate(review.received_on)}</Fact>}
         <Fact label={tx.dueOn}>{s.due_on ? formatDate(s.due_on) : null}</Fact>
-        {s.skonto_until && <Fact label={tx.skontoUntil}>{formatDate(s.skonto_until)} ({formatMoney(s.skonto_amount)})</Fact>}
+        {s.skonto_until && <Fact label={tx.skontoUntil}>{formatDate(s.skonto_until)} ({s.skonto_amount > 0
+          ? formatMoney(s.skonto_amount) : `${review?.skonto_percent} %`})</Fact>}
         <Fact label={tx.assignment}>
           {tx[`assign_${assignment.kind || 'none'}`]}
           {assignment.kind === 'maintenance_order' && <> · <Link to={`/maintenance/${encodeURIComponent(assignment.case_id)}`}>
@@ -188,9 +189,9 @@ export function Checks({ view, onChanged }) {
                   <label className="ir-check">
                     <input type="checkbox" checked={checked} disabled={!editable}
                       onChange={e => setManual(m => ({ ...m, [item.key]: e.target.checked }))} />
-                    {tx[`cl_${item.key}`] || item.label}
-                    <span className="text-muted"> · {item.required ? tx.required : tx.optional}
-                      {item.source === 'auto' ? ` · ${tx.auto}` : ''}</span>
+                    <span>{tx[`cl_${item.key}`] || item.label}
+                      <span className="text-muted"> · {item.required ? tx.required : tx.optional}
+                        {item.source === 'auto' ? ` · ${tx.auto}` : ''}</span></span>
                   </label>
                 </li>
               );

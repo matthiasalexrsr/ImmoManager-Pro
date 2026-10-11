@@ -73,7 +73,7 @@ def test_data_access_export_contains_everything_of_the_tenant_only(client, lars)
                       "contract_occupancies": 0, "documents": 1, "handover_protocols": 0,
                       "handover_rooms": 0, "handover_defects": 0, "handover_keys": 0,
                       "handover_meter_readings": 0, "handover_photos": 0,
-                      "message_threads": 1, "messages": 1}
+                      "message_threads": 1, "messages": 1, "invoice_reviews": 0, "invoice_review_events": 0}
     assert export["tenant"]["full_name"] == "Lars Petersen"
     assert "Nachbarin" not in str(export)
 
