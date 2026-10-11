@@ -539,7 +539,8 @@ def _detail(unit: archive.Unit, protocol: HandoverProtocol) -> dict[str, Any]:
         "correction_of": corrected,
         "corrections": [_summary(p) for p in successors],
         "related": _related(unit, contract, location),
-        "problems": _problems(unit, protocol, content, contract)[0],
+        # what still keeps a draft from being finalized (a finalized one is as it is)
+        "problems": [] if finalized else _problems(unit, protocol, content, contract)[0],
     }
 
 
