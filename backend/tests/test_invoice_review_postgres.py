@@ -38,7 +38,7 @@ from backend.services.portfolio_scope import scope_context, scope_from_user
 from backend.storage import NotFoundError
 
 PREVIOUS = "5e8b2d4f7a19"
-COMPLETE = {key: True for key in ("supplier_name_address", "recipient_name_address", "tax_number", "description",
+COMPLETE: dict[str, bool | None] = {key: True for key in ("supplier_name_address", "recipient_name_address", "tax_number", "description",
                                   "service_date")}
 
 
@@ -61,10 +61,9 @@ def _seed(engine) -> dict:
 
 def _invoice(engine, house, number="RE-1", gross=1190.0, net=1000.0):
     target = _store(engine)
-    invoice = target.create_invoice(InvoiceCreate(property_id=house.id, supplier="Dach Müller GmbH",
-                                                  invoice_date=date(2026, 5, 1), net_amount=net,
-                                                  vat_amount=round(gross - net, 2), gross_amount=gross,
-                                                  invoice_number=number))
+    invoice = target.create_invoice(InvoiceCreate.model_validate({    # invoice_number: a UI contract field
+        "property_id": house.id, "supplier": "Dach Müller GmbH", "invoice_date": date(2026, 5, 1), "net_amount": net,
+        "vat_amount": round(gross - net, 2), "gross_amount": gross, "invoice_number": number}))
     target.db.close()
     return invoice
 

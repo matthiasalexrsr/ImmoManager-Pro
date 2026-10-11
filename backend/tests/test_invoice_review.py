@@ -62,7 +62,7 @@ def test_duplicate_key_ignores_case_separators_legal_form_and_leading_zeros():
 
 
 def test_arithmetic_checks_every_rate_and_the_gross():
-    lines = [{"rate": 19, "net": 100, "vat": 19}, {"rate": 7, "net": 50, "vat": 3.5}]
+    lines: list[dict] = [{"rate": 19, "net": 100, "vat": 19}, {"rate": 7, "net": 50, "vat": 3.5}]
     assert rules.arithmetic_findings(150, 22.5, 172.5, 19, lines) == []
     wrong = rules.arithmetic_findings(150, 22.5, 175, 19, [{"rate": 19, "net": 100, "vat": 17},
                                                            {"rate": 7, "net": 50, "vat": 3.5}])
@@ -101,7 +101,7 @@ def test_settlement_partial_approval_credit_dispute_and_skonto():
                                                                           Decimal("190.00"), "open")
     # a credit note of 150 covers part of the dispute; 40 agreed to be paid after all
     s = rules.settle(gross=1190, status="partially_approved", approved=1000, credits=150, dispute_status="resolved",
-                     dispute_outcome="partial_payment", dispute_settled=40, payments=[pay(date(2026, 6, 1), 1040)])
+                     dispute_outcome="partial_payment", dispute_settled=40, payments=[pay(date(2026, 6, 1), Decimal("1040"))])
     assert (s.payable, s.written_off, s.payment_status, s.open) == (Decimal("1040.00"), Decimal("0.00"), "paid",
                                                                      Decimal("0.00"))
     # credit beyond the dispute reduces what is owed
@@ -109,13 +109,13 @@ def test_settlement_partial_approval_credit_dispute_and_skonto():
     assert s.payable == Decimal("450.00")
     # Skonto: 2 % within 10 days counts when every payment was on time
     on_time = rules.settle(gross=1000, status="approved", skonto_percent=2, skonto_until=date(2026, 5, 11),
-                           payments=[pay(date(2026, 5, 10), 980)], today=date(2026, 6, 1))
+                           payments=[pay(date(2026, 5, 10), Decimal("980"))], today=date(2026, 6, 1))
     assert (on_time.payment_status, on_time.skonto_taken, on_time.flow_amount()) == ("paid", Decimal("20.00"),
                                                                                      Decimal("980.00"))
     late = rules.settle(gross=1000, status="approved", skonto_percent=2, skonto_until=date(2026, 5, 11),
-                        payments=[pay(date(2026, 5, 12), 980)], due_on=date(2026, 5, 31), today=date(2026, 6, 1))
+                        payments=[pay(date(2026, 5, 12), Decimal("980"))], due_on=date(2026, 5, 31), today=date(2026, 6, 1))
     assert (late.payment_status, late.open, late.overdue) == ("partially_paid", Decimal("20.00"), True)
-    over = rules.settle(gross=100, status="approved", payments=[pay(date(2026, 5, 1), 120)])
+    over = rules.settle(gross=100, status="approved", payments=[pay(date(2026, 5, 1), Decimal("120"))])
     assert over.payment_status == "overpaid" and over.findings[0]["code"] == "overpaid"
     assert rules.settle(gross=100, status="rejected").flow_amount() == 0
     assert rules.settle(gross=100, status="legacy").flow_amount() is None
@@ -194,7 +194,7 @@ def _check(client, invoice_id, kind, result="confirmed", **extra):
     return client.post(f"{API}/invoices/{invoice_id}/review/{kind}-check", json={"result": result, **extra})
 
 
-COMPLETE = {key: True for key in ("supplier_name_address", "recipient_name_address", "tax_number", "description",
+COMPLETE: dict[str, bool | None] = {key: True for key in ("supplier_name_address", "recipient_name_address", "tax_number", "description",
                                   "service_date", "discount_agreement")}
 
 
@@ -738,7 +738,7 @@ def test_dsgvo_export_contains_reviews_of_the_tenants_documents(owner, estate):
     tenant = store.create_tenant(TenantCreate(full_name="Lars Lustig"))
     contract = store.create_contract(ContractCreate(property_id=estate["property"].id, unit_id=estate["unit"].id,
                                                     tenant_id=tenant.id, start_date=date(2025, 1, 1),
-                                                    rent_cold=500, contract_number="V-1"))
+                                                    contract_number="V-1"))
     document, _ = _document(estate, contract_id=contract.id)
     invoice = _invoice(owner, estate, number="Schaden-1", supplier="Glaserei")
     _ok(_receive(owner, invoice["id"], document_id=document.id), 201)

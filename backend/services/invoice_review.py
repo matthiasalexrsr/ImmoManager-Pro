@@ -926,8 +926,9 @@ def review_view(store: Any, invoice_id: str, actor: dict | None, today: date | N
     factual = _factual_findings(rows, invoice, review, links)
     duplicates = find_duplicates(rows, store, _invoice_facts(invoice), settings.duplicate_window_days)
     events = sorted(rows.find("invoice_review_events", invoice_id=invoice_id), key=lambda e: e.seq)
-    checked = next((e.details.get("checked") for e in reversed(events) if e.action == "arithmetic_check"), None)
-    changed_after_check = bool(checked) and (
+    checked: dict | None = next((e.details.get("checked") for e in reversed(events)
+                                 if e.action == "arithmetic_check"), None)
+    changed_after_check = checked is not None and (
         money(checked["gross"]) != money(invoice.gross_amount) or money(checked["net"]) != money(invoice.net_amount))
     findings = [*arithmetic, *rules.checklist_findings(listing), *factual, *settlement.findings]
     if duplicates:
@@ -1044,7 +1045,7 @@ def inbox(store: Any, *, status: str | None = None, due: str | None = None, skon
     today = today or date.today()
     q = (q or "").strip() or None
     rows = Rows.reading(store)
-    horizon = {"overdue": None, "week": today + timedelta(days=7), "month": today + timedelta(days=30)}
+    horizon: dict[str, Any] = {"overdue": None, "week": today + timedelta(days=7), "month": today + timedelta(days=30)}
     db = getattr(store, "db", None)
     if db is not None:
         from sqlalchemy import and_, func, not_, or_, select
@@ -1055,7 +1056,7 @@ def inbox(store: Any, *, status: str | None = None, due: str | None = None, skon
 
         inv, rev, pay = InvoiceORM.__table__, InvoiceReviewORM.__table__, InvoicePaymentORM.__table__
         query = select(InvoiceORM).outerjoin(InvoiceReviewORM, InvoiceReviewORM.invoice_id == InvoiceORM.id)
-        conditions = []
+        conditions: list[Any] = []
         if status == "legacy":
             conditions.append(rev.c.id.is_(None))
         elif status == "pending":
@@ -1133,7 +1134,8 @@ def inbox(store: Any, *, status: str | None = None, due: str | None = None, skon
         page = found[skip:skip + limit]
         reviews = {i.id: reviews_all[i.id] for i in page if i.id in reviews_all}
     settled = settlements(rows, page, today)
-    property_ids = {i.property_id or getattr(reviews.get(i.id), "property_id", None) for i in page} - {None}
+    property_ids = {key for key in (i.property_id or getattr(reviews.get(i.id), "property_id", None) for i in page)
+                    if key}
     names = {p.id: p.name for p in rows_properties(store, property_ids)}
     return {"items": [_row(i, reviews.get(i.id), settled[i.id], names) for i in page], "total": total,
             "skip": skip, "limit": limit, "has_more": skip + len(page) < total}
