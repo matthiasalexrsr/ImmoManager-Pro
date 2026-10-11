@@ -29,6 +29,7 @@ from .routers import (
     dev_notes,
     diagnostics,
     documents,
+    dunning,
     escalation,
     files,
     handover_protocols,
@@ -120,6 +121,7 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(integrations.router, dependencies=_auth_dep)
     api_v1.include_router(insurances.router, dependencies=_auth_dep)
     api_v1.include_router(service_contracts.router, dependencies=_auth_dep)
+    api_v1.include_router(dunning.router, dependencies=_auth_dep)
     api_v1.include_router(photos.router, dependencies=_auth_dep)
     api_v1.include_router(files.router, dependencies=_auth_dep)
     api_v1.include_router(tasks_status.router, dependencies=_auth_dep)

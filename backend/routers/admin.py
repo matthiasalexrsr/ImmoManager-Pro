@@ -295,6 +295,7 @@ def _tenant_records(tenant_id: str) -> dict[str, list]:
     statements = of_contracts(store.list_utility_statements())
     statement_ids = {s.id for s in statements}
     protocols = of_contracts(store.list_handover_protocols())
+    from ..services.dunning import records_of_contracts
     from ..services.handover_protocol import parts_of
 
     return {
@@ -313,6 +314,8 @@ def _tenant_records(tenant_id: str) -> dict[str, list]:
         **parts_of(store, {p.id for p in protocols}),
         "message_threads": threads,
         "messages": [m for m in store.list_messages() if m.thread_id in thread_ids],
+        # dunning cases with their claims, letters, outbox entries, blocks, disputes, replies and timeline
+        **records_of_contracts(store, contract_ids),
     }
 
 

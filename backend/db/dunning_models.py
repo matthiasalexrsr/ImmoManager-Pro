@@ -239,6 +239,9 @@ class DunningLetterORM(Base):
     __table_args__ = (
         Index("idx_dunning_letters_case", "case_id", "stage"),
         Index("idx_dunning_letters_contract", "contract_id"),
+        # one living letter per case and stage (a cancelled draft makes room for a new one)
+        Index("uq_dunning_letters_case_stage", "case_id", "stage", unique=True,
+              sqlite_where=text("status IN ('draft', 'final')"), postgresql_where=text("status IN ('draft', 'final')")),
         CheckConstraint("stage BETWEEN 1 AND 4", name="ck_dunning_letters_stage"),
         CheckConstraint("status IN ('draft', 'final', 'cancelled')", name="ck_dunning_letters_status"),
         CheckConstraint("status != 'final' OR (document_id IS NOT NULL AND finalized_at IS NOT NULL)",
