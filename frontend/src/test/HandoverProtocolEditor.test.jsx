@@ -182,7 +182,8 @@ describe('HandoverProtocolEditor', () => {
     expect(await screen.findByText(/Korrektur des Protokolls vom/)).toBeInTheDocument();
     expect(screen.getByLabelText('Raum 1')).not.toBeDisabled();
     expect(api.startCorrection).toHaveBeenCalledWith('p-1', expect.anything());
-    expect(api.load).toHaveBeenLastCalledWith('p-2', expect.anything());
+    // the editor reloads the new draft after the id changed (an effect, so after the render)
+    await waitFor(() => expect(api.load).toHaveBeenLastCalledWith('p-2', expect.anything()));
   });
 
   it('lets a read-only role look but not change', async () => {
