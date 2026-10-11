@@ -273,6 +273,18 @@ def test_tampering_is_detected(installation, tmp_path):
     assert not full_backup.verify_archive(archive, expected_sha256="0" * 64)["ok"]
 
 
+def test_a_damaged_byte_anywhere_is_reported_not_raised(installation):
+    event = full_backup.create_full_backup("manual", installation.sources)
+    archive = installation.sources.root / event["archive"]
+    original = archive.read_bytes()
+    damaged = archive.with_name("damaged.zip")
+    for offset in range(0, len(original), max(1, len(original) // 97)):    # compressed data, headers, directory
+        raw = bytearray(original)
+        raw[offset] ^= 0xFF
+        damaged.write_bytes(bytes(raw))
+        assert not full_backup.verify_archive(damaged)["ok"], offset
+
+
 def test_restore_probe_opens_checks_and_removes_the_copy(installation):
     full_backup.create_full_backup("manual", installation.sources)
     event = full_backup.restore_probe(sources=installation.sources)
