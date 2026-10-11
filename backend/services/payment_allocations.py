@@ -142,11 +142,12 @@ def set_allocations(store: Any, booking_id: str, items: Iterable[tuple[str, floa
 def allocate_unassigned(store: Any) -> dict:
     """Allocate tenant bookings that have no allocation yet (existing data, imports)."""
     allocated_ids = {a.booking_id for a in store.list_payment_allocations()}
+    shares = deposit_shares(store)
     done, unclear = 0, []
     # originals first: a reversal follows the allocation of the booking it cancels
     for booking in sorted(store.list_bookings(), key=lambda b: bool(b.reverses_booking_id)):
-        if not booking.tenant_id or booking.id in allocated_ids:
-            continue
+        if not booking.tenant_id or booking.id in allocated_ids or not rent_amount(booking, shares):
+            continue         # a booking that is all deposit pays no rent
         if auto_allocate(store, booking):
             done += 1
         else:

@@ -218,7 +218,7 @@
 
 .deposit__item {
   display: grid;
-  grid-template-columns: minmax(9rem, 1fr) minmax(10rem, 2fr) minmax(6rem, .8fr) minmax(9rem, 1.6fr) auto;
+  grid-template-columns: minmax(13rem, 1.4fr) minmax(10rem, 2fr) minmax(6rem, .8fr) minmax(9rem, 1.6fr) auto;
   align-items: end;
   gap: .5rem;
   min-width: 0;

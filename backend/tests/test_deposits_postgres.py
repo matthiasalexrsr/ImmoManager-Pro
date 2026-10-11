@@ -29,7 +29,13 @@ from backend.models import (
     TenantCreate,
     UnitCreate,
 )
-from backend.models_deposits import AgreementRequest, FinalizeRequest, ReceiptRequest, SettlementContent, SettlementCreate
+from backend.models_deposits import (
+    AgreementRequest,
+    FinalizeRequest,
+    ReceiptRequest,
+    SettlementContent,
+    SettlementCreate,
+)
 from backend.repositories import SQLAlchemyStore
 from backend.services import deposits as service
 from backend.services.document_version_validation import verify_document_versions

@@ -30,7 +30,12 @@ from backend.models import (
     TenantCreate,
     UnitCreate,
 )
-from backend.services.data_snapshot import SNAPSHOT_FORMAT_VERSION, clear_business_data, export_snapshot, import_snapshot
+from backend.services.data_snapshot import (
+    SNAPSHOT_FORMAT_VERSION,
+    clear_business_data,
+    export_snapshot,
+    import_snapshot,
+)
 
 SQL = os.environ.get("TEST_STORE_BACKEND", "memory") == "sql"
 API = "/api/v1"
@@ -241,6 +246,7 @@ def test_partial_payments_settle_the_instalments_and_count_once(client):
     account = client.get(f"{API}/tenants/{estate['tenant'].id}/account", params={"as_of": "2024-03-31"}).json()
     assert account["totals"]["paid"] == 1400.0 and account["totals"]["unassigned"] == 0.0
     assert account["deposit_total"] == 1200.0
+    assert client.post(f"{API}/bookings/allocate-unassigned").json()["unassigned"] == []   # all-deposit: no rent
     review = client.get(f"{API}/review").json()
     assert not [i for i in review.get("items", review) if i.get("kind") == "unassigned_payment"]
 
