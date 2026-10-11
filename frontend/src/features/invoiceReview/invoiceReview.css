@@ -1,0 +1,51 @@
+/* Invoice review: inbox, document beside the checks; one column below 1100 px, 360 px without side scrolling. */
+.ir-page { min-width: 0; }
+.ir-header { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; justify-content: space-between; }
+.ir-header h1 { overflow-wrap: anywhere; }
+.ir-back { margin-bottom: 0.5rem; }
+.ir-tabs { display: flex; gap: 0.25rem; border-bottom: 1px solid var(--border-color, #e5e7eb); margin: 0.75rem 0; }
+.ir-tab { background: none; border: 0; border-bottom: 2px solid transparent; padding: 0.5rem 0.75rem; cursor: pointer;
+  color: inherit; font: inherit; }
+.ir-tab.active { border-bottom-color: var(--primary, #2563eb); font-weight: 600; }
+.ir-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); gap: 0.5rem 0.75rem;
+  align-items: end; margin-bottom: 0.75rem; }
+.ir-check { display: flex; gap: 0.5rem; align-items: center; min-height: 2.25rem; overflow-wrap: anywhere; }
+.ir-check input { flex: none; }
+.ir-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
+.ir-row { border: 1px solid var(--border-color, #e5e7eb); border-radius: 8px; background: var(--card-bg, #fff); }
+.ir-row-link { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.25rem 0.75rem; padding: 0.625rem 0.75rem;
+  color: inherit; text-decoration: none; }
+.ir-row-link:hover, .ir-row-link:focus-visible { background: var(--hover-bg, rgba(37, 99, 235, 0.06)); }
+.ir-row-main { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
+.ir-row-amount { font-variant-numeric: tabular-nums; font-weight: 600; text-align: right; }
+.ir-row-state { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 0.25rem; align-items: center; }
+.ir-paging { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 0.75rem; }
+.ir-total { margin-top: 0.75rem; text-align: right; }
+.ir-duplicates { border: 1px solid #f59e0b; background: rgba(245, 158, 11, 0.08); border-radius: 8px; padding: 0.5rem 0.75rem;
+  margin: 0.75rem 0; }
+.ir-duplicates ul { margin: 0.25rem 0 0; padding-left: 1.25rem; }
+.ir-review { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; align-items: start; }
+@media (min-width: 1100px) {
+  .ir-review { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); }
+  .ir-document { position: sticky; top: 1rem; max-height: calc(100vh - 2rem); overflow: auto; }
+}
+.ir-document { padding: 0.75rem; min-width: 0; }
+.ir-document-head { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem; overflow-wrap: anywhere; }
+.ir-document-view { min-height: 20rem; }
+.ir-panels { display: grid; gap: 1rem; min-width: 0; }
+.ir-findings { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.375rem; }
+.ir-finding { display: flex; gap: 0.5rem; align-items: baseline; overflow-wrap: anywhere; }
+.ir-finding .badge { flex: none; }
+.ir-checklist { border: 0; padding: 0; margin: 0.75rem 0 0; min-width: 0; }
+.ir-checklist legend { font-weight: 600; margin-bottom: 0.25rem; }
+.ir-checklist ul { list-style: none; margin: 0; padding: 0; }
+.ir-missing label { color: var(--warning-text, #b45309); }
+.ir-check-actions { display: grid; gap: 0.5rem; margin-top: 0.5rem; }
+.ir-wrap { flex-wrap: wrap; }
+.ir-note { background: rgba(37, 99, 235, 0.06); border-radius: 6px; padding: 0.5rem 0.75rem; }
+.ir-vat { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.ir-vat th, .ir-vat td { text-align: right; padding: 0.25rem 0.5rem; border-bottom: 1px solid var(--border-color, #e5e7eb); }
+.ir-vat th:first-child, .ir-vat td:first-child { text-align: left; }
+.ir-history { list-style: none; margin: 0; padding: 0 0 0 0.75rem; border-left: 2px solid var(--border-color, #e5e7eb);
+  display: grid; gap: 0.625rem; }
+.ir-history li { display: flex; flex-direction: column; overflow-wrap: anywhere; }

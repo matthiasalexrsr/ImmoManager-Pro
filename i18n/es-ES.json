@@ -42,7 +42,8 @@
       "history": "Registro de cambios",
       "contractWizard": "Asistente de contrato",
       "review": "Lista de revisión",
-      "serviceContracts": "Contratos de servicios"
+      "serviceContracts": "Contratos de servicios",
+      "invoiceReview": "Revisión de facturas"
     },
     "sections": {
       "overview": "Resumen",

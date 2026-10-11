@@ -42,7 +42,8 @@
       "history": "Change Log",
       "contractWizard": "Lease Wizard",
       "review": "Review list",
-      "serviceContracts": "Service contracts"
+      "serviceContracts": "Service contracts",
+      "invoiceReview": "Invoice review"
     },
     "sections": {
       "overview": "Overview",

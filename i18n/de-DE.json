@@ -42,7 +42,8 @@
       "history": "Änderungsprotokoll",
       "contractWizard": "Mietvertrag-Wizard",
       "review": "Prüfliste",
-      "serviceContracts": "Objektverträge"
+      "serviceContracts": "Objektverträge",
+      "invoiceReview": "Rechnungsprüfung"
     },
     "sections": {
       "overview": "Übersicht",

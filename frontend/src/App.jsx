@@ -34,6 +34,8 @@ const Deposits = lazy(() => import('./pages/Deposits'));
 const Insurances = lazy(() => import('./pages/Insurances'));
 const ServiceContracts = lazy(() => import('./pages/ServiceContracts'));
 const ServiceContractDetail = lazy(() => import('./pages/ServiceContractDetail'));
+const InvoiceReview = lazy(() => import('./pages/InvoiceReview'));
+const InvoiceReviewDetail = lazy(() => import('./pages/InvoiceReviewDetail'));
 const Integrations = lazy(() => import('./pages/Integrations'));
 const Calendar = lazy(() => import('./pages/Calendar'));
 const Leads = lazy(() => import('./pages/Leads'));
@@ -149,6 +151,8 @@ export default function App() {
           <Route path="insurances" element={<Insurances />} />
           <Route path="service-contracts" element={<ServiceContracts />} />
           <Route path="service-contracts/:id" element={<ServiceContractDetail />} />
+          <Route path="invoice-review" element={<InvoiceReview />} />
+          <Route path="invoice-review/:id" element={<InvoiceReviewDetail />} />
           <Route path="integrations" element={<Integrations />} />
           <Route path="calendar" element={<Calendar />} />
           <Route path="leads" element={<Leads />} />
