@@ -388,9 +388,10 @@ def start_review(store: Any, invoice_id: str | None, payload: ReceiptRequest, ac
         duplicates = find_duplicates(rows, unit.store, _invoice_facts(invoice), settings.duplicate_window_days)
         same_key = [d for d in duplicates if d["reason"] == "same_number"]
         if same_key and not payload.accept_duplicate:
-            raise HTTPException(409, {
-                "message": "Rechnungsnummer und Lieferant sind bereits erfasst (Dublette). Nur mit Begründung "
-                           "trotzdem erfassen.", "duplicates": duplicates})
+            first = same_key[0]
+            raise conflict(f"Rechnungsnummer und Lieferant sind bereits erfasst (Dublette: Rechnung "
+                           f"{first['invoice_number']} vom {date.fromisoformat(first['invoice_date']):%d.%m.%Y}). "
+                           "Nur mit Begründung trotzdem erfassen.")
         links = _links(rows, invoice.id)
         if payload.kind == "credit_note":
             target_id = payload.credit_for_invoice_id or ""
