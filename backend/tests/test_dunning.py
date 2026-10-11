@@ -60,8 +60,10 @@ def _bearer(user) -> dict:
 
 
 def _user(name, role="eigentuemer", *portfolios) -> dict:
-    extra = {"portfolio_access": "selected", "portfolio_ids": [p.id for p in portfolios]} if portfolios else {}
-    return _bearer(auth.register_user(name, f"{name}@example.com", name.title(), "Secret123", role, **extra))
+    if portfolios:
+        return _bearer(auth.register_user(name, f"{name}@example.com", name.title(), "Secret123", role,
+                                          portfolio_access="selected", portfolio_ids=[p.id for p in portfolios]))
+    return _bearer(auth.register_user(name, f"{name}@example.com", name.title(), "Secret123", role))
 
 
 def _commit():

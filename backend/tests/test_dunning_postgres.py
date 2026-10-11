@@ -32,7 +32,7 @@ def _store(engine):
 
 def _seed(engine) -> dict:
     seed = _store(engine)
-    found = {}
+    found: dict = {}
     for name in ("Nord", "Süd"):
         portfolio = seed.create_portfolio(PortfolioCreate(name=name, owner_name=f"HV {name}"))
         prop = seed.create_property(PropertyCreate(portfolio_id=portfolio.id, name=f"{name}haus",
