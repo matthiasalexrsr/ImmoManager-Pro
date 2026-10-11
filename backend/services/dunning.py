@@ -445,7 +445,7 @@ def evaluate(ctx: Any, contract: Any, as_of: date) -> State:
             dunnable.append(claim)
     payments = [Payment(line.booking_date, money(line.amount)) for line in contract_payments(ctx.store, contract)]
     items, unapplied = rules_.apply_payments(dunnable, payments)
-    letters = sorted(_rows(ctx, "dunning_letters", case_id=open_case.id), key=lambda l: (l.stage, l.created_at)) \
+    letters = sorted(_rows(ctx, "dunning_letters", case_id=open_case.id), key=lambda x: (x.stage, x.created_at)) \
         if open_case else []
     return State(contract, as_of, items, excluded, unapplied, open_case,
                  {item.claim_key: item for item in all_items if open_case and item.case_id == open_case.id},
@@ -505,8 +505,9 @@ def letter_content(ctx: Any, state: State, stage: int, letter_date: date, refere
         lines.append({"key": claim.key, "kind": claim.kind, "description": claim.description,
                       "receivable_id": claim.receivable_id, "due_date": claim.due_date.isoformat(),
                       "amount": _s(claim.amount), "paid": _s(item.paid), "outstanding": _s(item.outstanding),
-                      "interest": _s(interest), "interest_from": (charged + timedelta(days=1)).isoformat()
-                      if interest else None, "interest_segments": segments})
+                      "interest": _s(interest),
+                      "interest_from": (charged + timedelta(days=1)).isoformat() if interest and charged else None,
+                      "interest_segments": segments})
     charges = [{"key": item.claim.key, "kind": item.claim.kind, "description": item.claim.description,
                 "receivable_id": item.claim.receivable_id, "due_date": item.claim.due_date.isoformat(),
                 "amount": _s(item.claim.amount), "paid": _s(item.paid), "outstanding": _s(item.outstanding)}
@@ -641,7 +642,7 @@ def _run_public(ctx: Any, run: DunningRun) -> dict:
     letters = _rows(ctx, "dunning_letters", run_id=run.id)
     return {"id": run.id, "portfolio_id": run.portfolio_id, "contract_id": run.contract_id,
             "as_of": run.as_of.isoformat(), "letter_date": run.letter_date.isoformat(), "summary": run.summary,
-            "letters": [_letter_brief(ctx, letter) for letter in sorted(letters, key=lambda l: l.contract_id)],
+            "letters": [_letter_brief(ctx, letter) for letter in sorted(letters, key=lambda x: x.contract_id)],
             "created_at": run.created_at.isoformat()}
 
 
@@ -790,17 +791,17 @@ def _replay(unit: archive.Unit, letter: DunningLetter, document: Document, reque
 
 
 def _add_receivable(unit: archive.Unit, contract_id: str, due: date, amount: Decimal, description: str) -> str:
-    stamp = now()
-    values = {"id": str(uuid4()), "contract_id": contract_id, "due_date": due, "amount_due": as_number(amount),
+    stamp, receivable_id = now(), str(uuid4())
+    values = {"id": receivable_id, "contract_id": contract_id, "due_date": due, "amount_due": as_number(amount),
               "dunning_level": None, "status": "open", "statement_id": None, "created_at": stamp,
               "updated_at": stamp}
     if unit.db is not None:
         unit.db.execute(insert(ReceivableORM), values)
     else:
         from ..models import Receivable
-        unit.insert(unit.store.receivables, values["id"], Receivable.model_validate({**values,
-                                                                                    "description": description}))
-    return values["id"]
+        unit.insert(unit.store.receivables, receivable_id, Receivable.model_validate({**values,
+                                                                                     "description": description}))
+    return receivable_id
 
 
 def _mark_level(unit: archive.Unit, receivable_ids: list[str], stage: int) -> None:
@@ -1077,7 +1078,7 @@ def contract_file(store: Any, contract_id: str, actor_id: str, as_of: date | Non
                        if case.status == "open" else case.result_outstanding,
                        "letters": [{**_letter_brief(unit, letter),
                                     "outbox": _outbox_public(outbox[letter.id]) if letter.id in outbox else None}
-                                   for letter in sorted(letters, key=lambda l: (l.stage, l.created_at))
+                                   for letter in sorted(letters, key=lambda x: (x.stage, x.created_at))
                                    if letter.case_id == case.id]}
                       for case in cases],
             "next": proposal(unit, state, day, rules, rates, parties),
@@ -1120,9 +1121,9 @@ def overview(store: Any, actor_id: str, *, status: str = "open", portfolio_id: s
                      "property_name": properties[contract.property_id].name
                      if contract.property_id in properties else None,
                      "drafts": sum(1 for letter in letters if letter.status == "draft"),
-                     "last_letter": _letter_brief(unit, max((l for l in letters if l.status == "final"),
-                                                            key=lambda l: l.stage))
-                     if any(l.status == "final" for l in letters) else None}
+                     "last_letter": _letter_brief(unit, max((x for x in letters if x.status == "final"),
+                                                            key=lambda x: x.stage))
+                     if any(x.status == "final" for x in letters) else None}
             if case.status == "open":
                 state = evaluate(unit, contract, day)
                 keys = {i.claim_key for i in _rows(unit, "dunning_case_items", case_id=case.id)}
@@ -1290,8 +1291,8 @@ def set_result(store: Any, case_id: str, payload: ResultRequest, actor_id: str) 
             "result_date": payload.result_date, "result_reference": payload.reference, "result_note": payload.note,
             "result_outstanding": as_number(outstanding)}))
         charges = [item.receivable_id for item in items if item.kind in ("fee", "interest") and item.receivable_id]
-        open_charges = {i.claim.receivable_id for i in state.items if i.claim.receivable_id in charges
-                        and i.outstanding > 0}
+        open_charges = {i.claim.receivable_id for i in state.items if i.claim.receivable_id
+                        and i.claim.receivable_id in charges and i.outstanding > 0}
         if payload.result == "written_off":
             _set_receivable_status(unit, sorted(open_charges), "cancelled")
         elif payload.result == "paid":
