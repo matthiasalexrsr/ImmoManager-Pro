@@ -138,10 +138,12 @@ def test_finalized_protocols_on_postgres_are_immutable_and_feed_the_meter(postgr
                                  owner.id)
     assert followed["defects"][0]["resolved_at"] == "2026-07-20"
 
+    with engine.connect() as connection:
+        before = connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar()
     with pytest.raises(RuntimeError, match="Handover protocol data exists"):
         command.downgrade(config, HANDOVER_PARENT)
-    with engine.connect() as connection:
-        assert connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar() == "a4d8e2f6c1b9"
+    with engine.connect() as connection:     # the refused downgrade changed nothing, not even a later revision
+        assert connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar() == before
 
 
 def test_two_finalizations_of_one_protocol_serialize_on_postgres(postgres):
