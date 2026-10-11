@@ -1419,7 +1419,15 @@ def assign_reply(store: Any, reply_id: str, payload: AssignRequest, actor_id: st
         reply = _need(unit, "dunning_replies", reply_id, "Eingang")
         if reply.status != "review":
             raise HTTPException(409, "Nur Eingänge der Prüfliste lassen sich zuordnen.")
-        case = _need(unit, "dunning_cases", payload.case_id, "Mahnakte")
+        if bool(payload.case_id) == bool(payload.reference):
+            raise HTTPException(422, "Bitte genau eine Mahnakte oder ein Aktenzeichen angeben.")
+        if payload.case_id:
+            case = _need(unit, "dunning_cases", payload.case_id, "Mahnakte")
+        else:
+            found = _rows(unit, "dunning_cases", reference=(payload.reference or "").strip().upper())
+            if not found:
+                raise HTTPException(404, "Mahnakte nicht vorhanden.")
+            case = found[0]
         reply = _save(unit, "dunning_replies", reply.model_copy(update={
             "case_id": case.id, "contract_id": case.contract_id, "status": "assigned", "assigned_by": actor_id,
             "assigned_at": now()}))

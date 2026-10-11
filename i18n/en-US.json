@@ -35,6 +35,7 @@
       "budgets": "Budgets",
       "taxRates": "Tax Rates",
       "receivables": "Receivables",
+      "dunning": "Dunning",
       "rentCharges": "Rent Charges",
       "allocationKeys": "Allocation Keys",
       "escalationRules": "Escalation Rules",

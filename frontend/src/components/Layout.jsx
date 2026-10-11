@@ -69,6 +69,7 @@ const NAV_SECTIONS = [
       { to: '/rent-overview', labelKey: 'navigation.main.rentOverview', fallback: 'Mietübersicht', icon: RentIcon },
       { to: '/statements', labelKey: 'navigation.main.statements', fallback: 'Abrechnungen', icon: StatementIcon },
       { to: '/receivables', labelKey: 'navigation.main.receivables', fallback: 'Forderungen', icon: InvoiceIcon },
+      { to: '/dunning', labelKey: 'navigation.main.dunning', fallback: 'Mahnwesen', icon: InvoiceIcon },
       { to: '/review', labelKey: 'navigation.main.review', fallback: 'Prüfliste', icon: InvoiceIcon },
       { to: '/rent-charges', labelKey: 'navigation.main.rentCharges', fallback: 'Sollstellungen', icon: RentIcon },
     ],

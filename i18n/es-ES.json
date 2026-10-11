@@ -35,6 +35,7 @@
       "budgets": "Presupuestos",
       "taxRates": "Tipos impositivos",
       "receivables": "Cuentas por cobrar",
+      "dunning": "Reclamaciones",
       "rentCharges": "Cargos de alquiler",
       "allocationKeys": "Claves de reparto",
       "escalationRules": "Reglas de escalamiento",

@@ -258,7 +258,10 @@ class ReplyRequest(BaseModel):
 
 
 class AssignRequest(BaseModel):
-    case_id: str = Field(min_length=1)
+    """The case by its id, or by the reference a person read on the reply (exactly one of both)."""
+
+    case_id: Optional[str] = Field(default=None, min_length=1)
+    reference: Optional[str] = Field(default=None, min_length=1, max_length=40)
 
 
 class MarkSentRequest(BaseModel):

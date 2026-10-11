@@ -407,6 +407,10 @@ def test_replies_attach_only_by_an_explicit_reference(client, owner):
     assert client.post(f"{API}/replies/{undone['id']}/dismiss", headers=owner).json()["status"] == "dismissed"
     thread = client.get(f"{API}/cases/{second['case_id']}/timeline", headers=owner).json()
     assert [e["kind"] for e in thread["items"]][-2:] == ["reply", "reply_unassigned"]
+    phone = reply(body="Anruf: zahlt nächste Woche", channel="phone")
+    by_reference = client.post(f"{API}/replies/{phone['id']}/assign", headers=owner, json={"reference": ref.lower()})
+    assert by_reference.status_code == 200 and by_reference.json()["case_id"] == first["case_id"]
+    assert client.post(f"{API}/replies/{phone['id']}/assign", headers=owner, json={}).status_code in (409, 422)
 
 
 def test_a_long_thread_is_read_completely_page_by_page(client, owner):
