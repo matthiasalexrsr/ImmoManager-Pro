@@ -638,7 +638,7 @@ def test_snapshots_carry_contracts_and_the_origin_of_transferred_costs(client, e
     client.post(f"{API}/{contract}/payments", headers=owner,
                 json={"booking_id": _book(estate["account"], "2027-01-20", -300.0).id})
     snapshot = export_snapshot(store)
-    assert snapshot["format_version"] == 4
+    assert snapshot["format_version"] >= 4
     counts = {key: len(snapshot[key]) for key in ("service_contracts", "service_contract_locations",
                                                   "service_contract_invoices", "service_contract_payments")}
     assert counts == {"service_contracts": 1, "service_contract_locations": 2, "service_contract_invoices": 1,

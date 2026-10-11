@@ -177,7 +177,7 @@ describe('party workspace', () => {
     expect(close).toHaveFocus();
     fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
     // the last contract card's last action
-    expect(within(dialog).getAllByRole('button', { name: 'Übergabeprotokolle' }).at(-1)).toHaveFocus();
+    expect(within(dialog).getAllByRole('button', { name: 'Kaution' }).at(-1)).toHaveFocus();
     fireEvent.keyDown(document, { key: 'Tab' });
     expect(close).toHaveFocus();
     const overviewTab = screen.getByRole('tab', { name: 'Übersicht' });
