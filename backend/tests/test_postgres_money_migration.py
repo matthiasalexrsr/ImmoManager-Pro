@@ -73,10 +73,11 @@ def _seed_bookings(engine, amounts):
 
 def _assert_decimal_schema(engine):
     inspector = sa.inspect(engine)
+    present = set(inspector.get_table_names())
     for table in Base.metadata.sorted_tables:
         declared = [column.name for column in table.columns
                     if isinstance(column.type, sa.Numeric) and not isinstance(column.type, sa.Float)]
-        if not declared:
+        if not declared or table.name not in present:    # after a downgrade, later tables do not exist yet
             continue
         columns = {column["name"]: column["type"] for column in inspector.get_columns(table.name)}
         for name in declared:
