@@ -38,7 +38,7 @@ Stand 8.–11. Oktober 2026, Branch `claude/handover-protocol` (auf `claude/drea
 - `test_migrations.py` (+3): Upgrade mit Altbestand (Status „finalized“ bleibt bearbeitbar, Trigger greifen nach `finalized_at`), Downgrade mit Daten abgewiesen / ohne Daten vollständig, Übernahme aus `create_all`.
 - Frontend (vitest): Modell/Texte (7, inkl. Schlüsselgleichheit de/en/es), API-Vertrag (6), Editor (8, StrictMode: Speichern, Validierung, Foto nach Speichern, Prüfen/PDF/Abschluss nur mit Bestätigungen, Änderung nach Prüfung, exakte Wiederholung, abgeschlossen mit Erledigung und Korrektur, Nur-Lesen), Liste/Mieterwechsel (5), Seite (2), Parteiakte-Einstieg (1).
 - Browser (Chromium, echte API, SQLite): Editor bei 360 px und 1440 px ohne horizontales Überlaufen, Foto-Miniatur lädt (200), PDF-Vorschau rendert bei 360 px (Canvas 314 px).
-- Gesamtläufe, ruff, mypy 2.4.0, Lint und Build: siehe Abschlussbericht des Branches.
+- Gesamtläufe: Backend Speicher 1527 bestanden / 35 übersprungen, SQLite 1528 / 34; PostgreSQL-Tests (Übergabe, Archiv, Portfolio-Grenze) 11 bestanden; `ruff check backend` sauber; `python -m mypy backend` (2.4.0) ohne Befund; vitest 52 Dateien / 289 Tests, `npm run lint` und `npm run build` sauber; `pip-audit -r requirements.txt --strict` ohne Befund.
 
 ## Bewusst offen
 
