@@ -37,7 +37,6 @@ import sqlite3
 import subprocess
 import time
 import zipfile
-import zlib
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -704,7 +703,8 @@ def verify_archive(path: Path, *, expected_sha256: str | None = None, pulse: _Pu
                     problems.append(f"Prüfsumme oder Größe stimmt nicht: {name}")
             if manifest.get("database", {}).get("path") not in entries:
                 problems.append("Archiv enthält keine Datenbank")
-    except (zipfile.BadZipFile, KeyError, ValueError, OSError, zipfile.LargeZipFile, zlib.error, EOFError) as exc:
+    # a damaged archive fails in many ways (zlib, bz2/lzma, an unknown method, the encryption flag): all unreadable
+    except Exception as exc:
         problems.append(f"Archiv nicht lesbar: {type(exc).__name__}: {exc}")
     return {"ok": not problems, "problems": problems, "archive": path.name, "sha256": digest,
             "files": len(manifest.get("files", [])), "manifest": _manifest_summary(manifest)}
