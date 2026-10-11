@@ -278,11 +278,12 @@ def test_a_damaged_byte_anywhere_is_reported_not_raised(installation):
     archive = installation.sources.root / event["archive"]
     original = archive.read_bytes()
     damaged = archive.with_name("damaged.zip")
-    for offset in range(0, len(original), max(1, len(original) // 97)):    # compressed data, headers, directory
+    for offset in range(0, len(original), max(1, len(original) // 401)):    # compressed data, headers, directory
         raw = bytearray(original)
         raw[offset] ^= 0xFF
         damaged.write_bytes(bytes(raw))
-        assert not full_backup.verify_archive(damaged)["ok"], offset
+        # never an exception; the archive checksum catches a byte the zip format itself ignores
+        assert not full_backup.verify_archive(damaged, expected_sha256=event["sha256"])["ok"], offset
 
 
 def test_restore_probe_opens_checks_and_removes_the_copy(installation):
