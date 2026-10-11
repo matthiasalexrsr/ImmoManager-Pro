@@ -146,6 +146,7 @@ def initialise_empty(engine: Engine) -> None:
     from . import (  # noqa: F401  (register the tables)
         access_models,
         document_version_models,
+        dunning_models,
         job_models,
         maintenance_project_models,
         service_contract_models,
