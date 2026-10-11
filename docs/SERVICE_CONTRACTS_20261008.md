@@ -93,4 +93,15 @@ Die Gesamtläufe stehen im Abschnitt „Gesamtläufe“ unten.
 
 ## Gesamtläufe
 
-Wird nach den abschließenden Läufen ergänzt.
+Linux, Python 3.11.15, PostgreSQL 16 lokal (`IMMO_TEST_POSTGRES_ADMIN_URL`), Node 22:
+
+| Prüfung | Ergebnis (Ausgangsstand `27fe494`) |
+| --- | --- |
+| Backend Speicher-Modus + PostgreSQL | 1610 bestanden, 8 übersprungen (vorher 1531 / 8) |
+| Backend SQL-Modus (`TEST_STORE_BACKEND=sql`) + PostgreSQL | 1609 bestanden, 9 übersprungen (vorher 1530 / 9) |
+| `ruff check backend`, `python -m mypy backend` (2.4.0) | sauber, 296 Dateien |
+| Frontend `npx vitest run --maxWorkers=1` | 48 Dateien, 271 Tests bestanden (davon 11 neu) |
+| `npm run lint`, `npm run build` | sauber bzw. gebaut |
+| Browser (Chromium headless, isolierte QA-Datenbank) | 360 × 800 und 1440 × 960: Liste, alle sechs Reiter, Finanzzahlen, exakter Arbeitspreis, Anlegen über das Formular bei 360 px, eingeschränktes Konto (Hinweis, kein Bearbeiten, nur eigener Standort); kein seitliches Scrollen, keine Konsolenfehler. Gefunden und behoben: unsichtbare Tabellenköpfe (`sr-only`) ließen bei 360 px die Seite seitlich scrollen. |
+
+Ein paralleler Vitest-Lauf während der Backend-Gesamtläufe hatte Zeitüberschreitungen in bestehenden, nicht betroffenen Tests (Vertrags-Cache, Parteiakte); der serielle Lauf ohne Last ist vollständig grün.
