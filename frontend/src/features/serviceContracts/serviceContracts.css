@@ -197,6 +197,22 @@
   gap: 0.75rem;
 }
 
+/* wide tables scroll inside their panel, never the page */
+.service-contracts,
+.service-contract-dossier,
+.service-contract-dossier .detail-tab-content,
+.service-contract-dossier .panel,
+.sc-finance > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.service-contract-dossier .dossier-table-scroll {
+  position: relative;       /* screen-reader-only headers stay inside the scroll area */
+  width: 100%;
+  overflow-x: auto;
+}
+
 @media (max-width: 480px) {
   .service-contract-dossier .detail-overview-grid {
     grid-template-columns: minmax(0, 1fr);
