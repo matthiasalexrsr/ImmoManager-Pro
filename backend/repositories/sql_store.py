@@ -107,13 +107,14 @@ from .finance_repo import FinanceRepository
 from .maintenance_repo import MaintenanceRepository
 from .marketing_repo import MarketingRepository
 from .portfolio_repo import PortfolioRepository
+from .service_contract_repo import ServiceContractRepository, ServiceContractStoreMethods
 from .system_repo import SystemRepository
 from .tenant_repo import TenantRepository
 
 logger = logging.getLogger(__name__)
 
 
-class SQLAlchemyStore:
+class SQLAlchemyStore(ServiceContractStoreMethods):
     """Facade that composes domain repositories.
 
     All public methods delegate to the appropriate domain repository.
@@ -133,6 +134,7 @@ class SQLAlchemyStore:
         self.communication = CommunicationRepository(db, portfolio_repo=self.portfolio)
         self.maintenance_repo = MaintenanceRepository(db, portfolio_repo=self.portfolio)
         self.system = SystemRepository(db)
+        self.service_contracts_repo = ServiceContractRepository(db)
 
     def _commit(self):
         self.db.commit()

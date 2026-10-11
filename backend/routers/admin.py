@@ -259,7 +259,7 @@ def bulk_delete(entity_type: str, payload: dict):
         raise HTTPException(400, f"Unbekannter Entitätstyp: {entity_type}")
 
     guarded = {"portfolios": "portfolio", "properties": "property", "units": "unit",
-               "tenants": "tenant", "contracts": "contract", "accounts": "account"}
+               "tenants": "tenant", "contracts": "contract", "accounts": "account", "invoices": "invoice"}
 
     deleted = 0
     errors = []

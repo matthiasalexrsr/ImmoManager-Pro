@@ -114,15 +114,8 @@ from .models import (
     ViewingAppointment,
     ViewingAppointmentCreate,
 )
-
-
-class NotFoundError(KeyError):
-    pass
-
-
-class ValidationError(ValueError):
-    pass
-
+from .storage_service_contracts import ServiceContractMemoryStore
+from .store_errors import NotFoundError, ValidationError
 
 FINAL_STATEMENT_MESSAGE = ("Die Einzelabrechnung ist finalisiert und bleibt unverändert; "
                            "Änderungen nur über eine Korrektur")
@@ -157,7 +150,7 @@ def check_occupancy_dates(contract: Any, data: Any) -> None:
 
 
 @dataclass
-class InMemoryStore:
+class InMemoryStore(ServiceContractMemoryStore):
     def __getattribute__(self, name):
         # a restricted request sees each collection through its portfolio boundary
         value = object.__getattribute__(self, name)
@@ -432,6 +425,7 @@ class InMemoryStore:
         for event_id, event in list(self.calendar_events.items()):
             if event.property_id == property_id:
                 del self.calendar_events[event_id]
+        self._drop_service_contract_rows("service_contract_locations", "property_id", property_id)
         del self.properties[property_id]
 
     def list_units(self) -> List[Unit]:
@@ -484,6 +478,7 @@ class InMemoryStore:
         for listing_id, listing in list(self.listings.items()):
             if listing.unit_id == unit_id:
                 self.delete_listing(listing_id)
+        self._drop_service_contract_rows("service_contract_locations", "unit_id", unit_id)
         del self.units[unit_id]
 
     def list_tenants(self) -> List[Tenant]:
@@ -647,6 +642,7 @@ class InMemoryStore:
             raise NotFoundError("Buchung nicht gefunden")
         for allocation in self.list_payment_allocations(booking_id=booking_id):
             del self.payment_allocations[allocation.id]
+        self._drop_service_contract_rows("service_contract_payments", "booking_id", booking_id)
         del self.bookings[booking_id]
 
     # --- Payment allocations (which contract a payment pays) ---
@@ -735,6 +731,8 @@ class InMemoryStore:
     def delete_invoice(self, invoice_id: str) -> None:
         if invoice_id not in self.invoices:
             raise NotFoundError("Rechnung nicht gefunden")
+        if any(link.invoice_id == invoice_id for link in self._raw_collection("service_contract_invoices").values()):
+            raise ValidationError("Die Rechnung ist einem Objektvertrag zugeordnet")
         del self.invoices[invoice_id]
 
     def list_maintenance_cases(self) -> List[MaintenanceCase]:
@@ -822,6 +820,7 @@ class InMemoryStore:
     def delete_document(self, document_id: str) -> None:
         if document_id not in self.documents:
             raise NotFoundError("Dokument nicht gefunden")
+        self._drop_service_contract_rows("service_contract_documents", "document_id", document_id)
         del self.documents[document_id]
 
     def _tenant_documents(self, tenant_id: str) -> list[Document]:
@@ -1893,6 +1892,8 @@ class InMemoryStore:
     def delete_contact(self, contact_id: str) -> None:
         if contact_id not in self.contacts:
             raise NotFoundError("Kontakt nicht gefunden")
+        if any(c.provider_contact_id == contact_id for c in self._raw_collection("service_contracts").values()):
+            raise ValidationError("Der Kontakt ist Anbieter eines Objektvertrags")
         del self.contacts[contact_id]
 
     # --- Meters ---
@@ -1921,6 +1922,7 @@ class InMemoryStore:
     def delete_meter(self, meter_id: str) -> None:
         if meter_id not in self.meters:
             raise NotFoundError("Zähler nicht gefunden")
+        self._forget_meter_in_locations(meter_id)
         del self.meters[meter_id]
 
     # --- Standalone Meter Readings ---

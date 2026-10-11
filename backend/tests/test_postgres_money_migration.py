@@ -71,7 +71,7 @@ def _seed_bookings(engine, amounts):
         """), [{"id": str(index), "amount": amount} for index, amount in enumerate(amounts)])
 
 
-def _assert_decimal_schema(engine):
+def _assert_decimal_schema(engine, *, below_head=False):
     inspector = sa.inspect(engine)
     present = set(inspector.get_table_names())
     for table in Base.metadata.sorted_tables:
@@ -167,7 +167,7 @@ def test_postgres_downgrade_and_reupgrade_keep_decimal_precision(postgres_money_
     _seed_bookings(engine, [Decimal("12345678901234567890.1234567890123456789")])
 
     command.downgrade(config, PREVIOUS_HEAD)
-    _assert_decimal_schema(engine)
+    _assert_decimal_schema(engine, below_head=True)
     command.upgrade(config, "head")
     command.upgrade(config, "head")
     with engine.connect() as connection:

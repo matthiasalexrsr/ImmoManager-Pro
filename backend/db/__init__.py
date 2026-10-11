@@ -3,4 +3,5 @@ from . import (
     document_version_models,  # noqa: F401  (registers the archive tables with Base)
     job_models,  # noqa: F401  (durable job runs and occurrence ledger)
     maintenance_project_models,  # noqa: F401  (project file of a maintenance case)
+    service_contract_models,  # noqa: F401  (property service contracts and their links)
 )

@@ -4,7 +4,8 @@ Reading is open to every signed-in user. For writing:
 - eigentuemer   everything
 - verwalter     everything except restoring, importing and bulk deleting data
 - buchhaltung   money: bookings, accounts, invoices, receivables, deposits, budgets,
-                costs of the utility statement, dunning
+                costs of the utility statement, dunning, bills/payments/cost transfers of
+                service contracts
 - techniker     building: maintenance, meters, handover protocols; in the project file of a
                 maintenance case: plan, record quotes and change orders, write and finalize
                 protocols, but not award or cancel orders, decide change orders or link invoices
@@ -34,7 +35,8 @@ MAINTENANCE_DECISIONS = (r"^/maintenance/[^/]+/quotes/[^/]+/(accept|reject)$",
 MAINTENANCE_INVOICES = (r"^/maintenance/[^/]+/orders/[^/]+/invoices$", r"^/maintenance/[^/]+/invoice-links/[^/]+$")
 BOOKKEEPING = ("/bookings", "/accounts", "/categories", "/invoices", "/receivables", "/rent-charges", "/deposits",
                "/budgets", "/tax-rates", "/reports", "/billing/cost-items", "/escalation/run", "/notifications/generate",
-               r"^/contracts/[^/]+/dunning-campaign$", *MAINTENANCE_INVOICES)
+               r"^/contracts/[^/]+/dunning-campaign$", *MAINTENANCE_INVOICES,
+               r"^/service-contracts/[^/]+/(invoices|payments|cost-transfers)(/[^/]+)?$")
 TECHNICAL = ("/maintenance", "/meters", "/handover-protocols")
 # inside an area the role may write, these paths stay closed to it
 DENIED: dict[str, tuple[str, ...]] = {"techniker": MAINTENANCE_DECISIONS + MAINTENANCE_INVOICES}

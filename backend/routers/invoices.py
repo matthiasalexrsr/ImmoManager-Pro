@@ -8,7 +8,9 @@ from ..dependencies import store
 from ..domain.invoice_matching import BookingCandidate, InvoiceMatcher, InvoiceToMatch
 from ..domain.money import money
 from ..models import Invoice, InvoiceCreate, InvoicePatch
+from ..services.deletion_guard import ensure_deletable
 from ..services.maintenance_projects import ensure_invoice_unbound
+from ..services.portfolio_scope import scope_context
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/invoices", tags=["Rechnungen"])
@@ -78,6 +80,8 @@ def delete_invoice(invoice_id: str) -> None:
     try:
         store.get_invoice(invoice_id)
         ensure_invoice_unbound(store, invoice_id)        # billed against an order or paid by bookings
+        with scope_context(None):   # references from other portfolios count too (the database refuses them)
+            ensure_deletable(store, "invoice", invoice_id)
         store.delete_invoice(invoice_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

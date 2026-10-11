@@ -36,7 +36,7 @@ it('keeps six everyday entries direct and exposes all other destinations through
   for (const button of within(navigation).getAllByRole('button')) {
     if (button.getAttribute('aria-expanded') === 'false') fireEvent.click(button);
   }
-  expect(within(navigation).getAllByRole('link')).toHaveLength(38);
+  expect(within(navigation).getAllByRole('link')).toHaveLength(39);
 });
 
 it('opens the active group on direct entry and on subsequent route changes', () => {

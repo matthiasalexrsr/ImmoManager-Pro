@@ -34,6 +34,7 @@ const NAV_SECTIONS = [
       { to: '/properties', labelKey: 'navigation.main.properties', fallback: 'Immobilien', icon: PropertyIcon },
       { to: '/units', labelKey: 'units.list.title', fallback: 'Einheiten', icon: UnitIcon },
       { to: '/insurances', labelKey: 'navigation.main.insurances', fallback: 'Versicherungen', icon: InsuranceIcon },
+      { to: '/service-contracts', labelKey: 'navigation.main.serviceContracts', fallback: 'Objektverträge', icon: ContractIcon },
     ],
   },
   {
