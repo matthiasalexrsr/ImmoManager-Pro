@@ -418,7 +418,6 @@ def test_four_eyes_above_the_limit(owner, estate):
     assert _view(books, big["id"])["four_eyes"]["required"] is True
     assert "Vier-Augen" in _error(_decide(books, big["id"]), 403)
     assert "Vier-Augen" in _error(_decide(manager, big["id"]), 409)       # the one who checked
-    _ok(_decide(books, big["id"], "reject", reason="falsch"), 200) if False else None
     approved = _ok(_decide(other, big["id"]))
     assert approved["status"] == "approved" and approved["approved_amount"] == 1190.0
     history = _view(owner, big["id"])["history"]
@@ -456,7 +455,7 @@ def test_partial_approval_dispute_credit_note_and_result(owner, estate):
     # proposed for payment: the approved part only
     proposal = {p["invoice_id"]: p for p in _ok(owner.get(f"{API}/invoice-review/payment-proposals"))["items"]}
     assert proposal[invoice["id"]]["proposed_amount"] == 990.0 and proposal[invoice["id"]]["dispute_open"] == 200.0
-    _ok(_pay(owner, invoice["id"], _booking(estate, -990), 990))
+    _ok(_pay(owner, invoice["id"], _booking(estate, -990), 990), 201)
     assert _view(owner, invoice["id"])["settlement"]["payment_status"] == "paid"
     assert invoice["id"] not in {p["invoice_id"] for p in
                                  _ok(owner.get(f"{API}/invoice-review/payment-proposals"))["items"]}
@@ -558,7 +557,7 @@ def test_history_is_immutable(owner, estate):
     # after the decision: no more changes of the receipt, the checks or the invoice's reviewed facts
     assert owner.patch(f"{API}/invoices/{invoice['id']}/review", json={"cost_category": "x"}).status_code == 409
     assert _check(owner, invoice["id"], "factual").status_code == 409
-    assert "geprüft" in _error(owner.patch(f"{API}/invoices/{invoice['id']}", json={"gross_amount": 1}), 409)
+    assert "geprüft" in _error(owner.patch(f"{API}/invoices/{invoice['id']}", json={"gross_amount": 2380, "net_amount": 2000, "vat_amount": 380}), 409)
     _ok(owner.patch(f"{API}/invoices/{invoice['id']}", json={"notes": "bezahlt per Überweisung"}))
     assert "Prüfverlauf" in _error(owner.delete(f"{API}/invoices/{invoice['id']}"), 409)
     bulk = _ok(owner.post(f"{API}/admin/bulk-delete/invoices", json={"ids": [invoice["id"]]}))
@@ -583,9 +582,9 @@ def test_payment_status_with_skonto_and_overpayment(owner, estate):
     proposal = _ok(owner.get(f"{API}/invoice-review/payment-proposals"))["items"][0]
     assert (proposal["proposed_amount"], proposal["skonto_amount"]) == (1166.2, 23.8)
     assert proposal["pay_by"] == (TODAY + timedelta(days=7)).isoformat()
-    _ok(_pay(owner, invoice["id"], _booking(estate, -1000), 1000))
+    _ok(_pay(owner, invoice["id"], _booking(estate, -1000), 1000), 201)
     assert _view(owner, invoice["id"])["settlement"]["payment_status"] == "partially_paid"
-    _ok(_pay(owner, invoice["id"], _booking(estate, -166.2), 166.2))
+    _ok(_pay(owner, invoice["id"], _booking(estate, -166.2), 166.2), 201)
     settlement = _view(owner, invoice["id"])["settlement"]
     assert (settlement["payment_status"], settlement["skonto_taken"], settlement["flow_amount"]) == (
         "paid", 23.8, 1166.2)
@@ -596,7 +595,7 @@ def test_payment_status_with_skonto_and_overpayment(owner, estate):
     _ok(_receive(owner, over["id"]), 201)
     _checked(owner, over["id"])
     _ok(_decide(owner, over["id"], "partial", amount=100, reason="Anfahrt nicht vereinbart"))
-    _ok(_pay(owner, over["id"], _booking(estate, -119), 119))               # paid in full before the decision
+    _ok(_pay(owner, over["id"], _booking(estate, -119), 119), 201)             # paid in full before the decision
     settlement = _view(owner, over["id"])["settlement"]
     assert settlement["payment_status"] == "overpaid" and "overpaid" in {f["code"] for f in settlement["findings"]}
 
@@ -677,7 +676,7 @@ def test_legacy_invoices_are_untouched(owner, estate):
     assert view["status"] == "legacy" and view["review"] is None and view["history"] == []
     assert view["settlement"]["flow_amount"] is None and view["abilities"]["receive"] is True
     assert _ok(owner.get(f"{API}/maintenance/{case['id']}/costs"))["invoiced"] == 1190.0
-    _ok(_pay(owner, legacy["id"], _booking(estate, -1190), 1190))            # payments as before
+    _ok(_pay(owner, legacy["id"], _booking(estate, -1190), 1190), 201)          # payments as before
     _ok(owner.put(f"{API}/invoices/{legacy['id']}", json={**{k: legacy[k] for k in (
         "property_id", "supplier", "invoice_date", "net_amount", "vat_amount", "gross_amount", "vat_rate")},
         "status": "paid"}))
@@ -726,10 +725,10 @@ def test_snapshot_round_trip_keeps_reviews_history_and_transfers(owner, estate):
     owner.put(f"{API}/invoice-review/settings", json={"four_eyes_limit": 5000})
     snapshot = export_snapshot(store)
     assert snapshot["format_version"] >= 5
-    assert len(snapshot["data"]["invoice_review_events"]) == 5
+    assert len(snapshot["invoice_review_events"]) == 5
     clear_business_data(store)
     assert _ok(owner.get(f"{API}/invoice-review/inbox"))["total"] == 0
-    import_snapshot(store, snapshot)
+    import_snapshot(store, snapshot, replace=True)
     view = _view(owner, invoice["id"])
     assert view["status"] == "partially_approved" and len(view["history"]) == 5
     assert view["settlement"]["dispute_open"] == 190.0 and view["settings"]["four_eyes_limit"] == 5000.0
@@ -762,8 +761,9 @@ def test_migration_up_down_and_refused_downgrade(tmp_path, monkeypatch):
     command.upgrade(config, "head")
     with sqlite3.connect(tmp_path / "app.db") as conn:
         conn.executescript("""
-            INSERT INTO invoices (id, supplier, invoice_date, net_amount, gross_amount, status, created_at, updated_at)
-                VALUES ('i1', 'Lieferant', '2026-05-01', 100, 119, 'open', '2026-05-01', '2026-05-01');
+            INSERT INTO invoices (id, supplier, invoice_date, net_amount, vat_amount, gross_amount, status, created_at,
+                                  updated_at)
+                VALUES ('i1', 'Lieferant', '2026-05-01', 100, 19, 119, 'open', '2026-05-01', '2026-05-01');
             INSERT INTO invoice_reviews (id, invoice_id, kind, received_on, status, checklist, vat_lines, recoverable,
                                          created_at, updated_at)
                 VALUES ('r1', 'i1', 'invoice', '2026-05-02', 'received', '{}', '[]', 0, '2026-05-02', '2026-05-02');
