@@ -2,6 +2,10 @@
 
 A reversal (Storno) is credited to the contracts of the booking it cancels, in that booking's
 proportions, and reduces exactly that payment; it is never allocated by the rules on its own.
+
+The share of a booking that a deposit file names (a deposit receipt, payout or offset,
+deposit_payments) is no rent: only the rest of the booking is credited to contracts, so
+every amount counts once.
 """
 
 from collections import defaultdict
@@ -49,8 +53,46 @@ def mirror_allocation(original_amount: Decimal, original_pairs: Pairs, amount: D
     return [(contract_id, share) for (contract_id, _), share in zip(original_pairs, shares) if share]
 
 
+def deposit_shares(store: Any, booking_ids: Iterable[str] | None = None) -> dict[str, Decimal]:
+    """The part of each booking a deposit file names (same sign as the booking)."""
+    lister = getattr(store, "list_deposit_payments", None)
+    if lister is None:
+        return {}
+    if booking_ids is not None:
+        booking_ids = list(booking_ids)
+        if not booking_ids:
+            return {}
+    shares: dict[str, Decimal] = defaultdict(lambda: ZERO)
+    for link in lister(booking_ids=booking_ids):
+        shares[link.booking_id] += money(link.amount)
+    return dict(shares)
+
+
+def rent_amount(booking: Any, shares: dict[str, Decimal]) -> Decimal:
+    """What of the booking can pay rent: its amount without the deposit share."""
+    return money(booking.amount) - shares.get(booking.id, ZERO)
+
+
 def _stored_pairs(store: Any, booking_id: str) -> Pairs:
     return [(a.contract_id, money(a.amount)) for a in store.list_payment_allocations(booking_id=booking_id)]
+
+
+def planned_pairs(store: Any, booking: Any) -> Pairs:
+    """The automatic allocation of a booking by the rules (without its deposit share)."""
+    if not booking.tenant_id:
+        return []
+    amount = rent_amount(booking, deposit_shares(store, [booking.id]))
+    if not amount:
+        return []
+    if booking.reverses_booking_id:
+        try:
+            original = store.get_booking(booking.reverses_booking_id)
+        except NotFoundError:
+            return []
+        original_amount = rent_amount(original, deposit_shares(store, [original.id]))
+        return mirror_allocation(original_amount, _stored_pairs(store, original.id), amount)
+    return suggest_allocation(amount, booking.booking_date, booking.unit_id,
+                              _candidates(store, booking.tenant_id, booking.booking_date))
 
 
 def auto_allocate(store: Any, booking: Any) -> list[Any]:
@@ -60,17 +102,7 @@ def auto_allocate(store: Any, booking: Any) -> list[Any]:
         return current
     for allocation in current:
         store.delete_payment_allocation(allocation.id)
-    if not booking.tenant_id:
-        return []
-    if booking.reverses_booking_id:
-        try:
-            original = store.get_booking(booking.reverses_booking_id)
-        except NotFoundError:
-            return []
-        pairs = mirror_allocation(money(original.amount), _stored_pairs(store, original.id), money(booking.amount))
-    else:
-        pairs = suggest_allocation(money(booking.amount), booking.booking_date, booking.unit_id,
-                                   _candidates(store, booking.tenant_id, booking.booking_date))
+    pairs = planned_pairs(store, booking)
     return [store.create_payment_allocation(PaymentAllocationCreate(
         booking_id=booking.id, contract_id=contract_id, amount=float(amount), source="auto"))
         for contract_id, amount in pairs]
@@ -94,8 +126,10 @@ def set_allocations(store: Any, booking_id: str, items: Iterable[tuple[str, floa
             raise ValidationError("Zuordnen lässt sich nur an Verträge des Mieters der Buchung")
         if (amount > 0) != (money(booking.amount) > 0):
             raise ValidationError("Zuordnungen haben dasselbe Vorzeichen wie die Buchung")
-    if abs(sum((amount for _, amount in wanted), ZERO)) > abs(money(booking.amount)):
-        raise ValidationError("Die Zuordnungen übersteigen den Buchungsbetrag")
+    available = rent_amount(booking, deposit_shares(store, [booking.id]))
+    if abs(sum((amount for _, amount in wanted), ZERO)) > abs(available):
+        raise ValidationError("Die Zuordnungen übersteigen den Buchungsbetrag"
+                              + (" ohne den Anteil der Kaution" if available != money(booking.amount) else ""))
     for allocation in store.list_payment_allocations(booking_id=booking_id):
         store.delete_payment_allocation(allocation.id)
     created = [store.create_payment_allocation(PaymentAllocationCreate(
@@ -139,6 +173,7 @@ def credited_by_tenant(store: Any, tenant_ids: Iterable[str] | None = None,
                     if b.tenant_id and (wanted is None or b.tenant_id in wanted)]
         booking_ids = {b.id for b in bookings}
         allocations = store.list_payment_allocations()
+    shares = deposit_shares(store, booking_ids if wanted is not None else None)
     stored: dict[str, list[Any]] = defaultdict(list)
     for allocation in allocations:
         if allocation.booking_id in booking_ids:
@@ -149,17 +184,20 @@ def credited_by_tenant(store: Any, tenant_ids: Iterable[str] | None = None,
     candidates: dict[tuple[str, date], list[ContractCandidate]] = {}
     # originals first: a reversal without stored allocations mirrors its original
     for booking in sorted(bookings, key=lambda b: bool(b.reverses_booking_id)):
+        amount = rent_amount(booking, shares)
         if stored[booking.id]:
             pairs = [(a.contract_id, money(a.amount)) for a in stored[booking.id]]
+        elif not amount:
+            pairs = []           # all of it is a deposit receipt, payout or offset
         elif booking.reverses_booking_id:
             original = by_id.get(booking.reverses_booking_id)
-            pairs = mirror_allocation(money(original.amount), pairs_of.get(original.id, []),
-                                      money(booking.amount)) if original is not None else []
+            pairs = mirror_allocation(rent_amount(original, shares), pairs_of.get(original.id, []),
+                                      amount) if original is not None else []
         else:
             key = (booking.tenant_id, booking.booking_date)
             if key not in candidates:
                 candidates[key] = _candidates(store, booking.tenant_id, booking.booking_date)
-            pairs = suggest_allocation(money(booking.amount), booking.booking_date, booking.unit_id, candidates[key])
+            pairs = suggest_allocation(amount, booking.booking_date, booking.unit_id, candidates[key])
         pairs_of[booking.id] = pairs
         credited[booking.tenant_id] += [(booking, contract_id, amount) for contract_id, amount in pairs]
     return credited
@@ -223,9 +261,10 @@ def tenant_account(store: Any, tenant_id: str, as_of: date) -> dict:
     for booking, _, amount in credited:
         allocated[booking.id] += amount
     own_bookings = [b for b in store.list_bookings(tenant_id=tenant_id) if b.booking_date <= as_of]
+    shares = deposit_shares(store, [b.id for b in own_bookings])
     unassigned, unassigned_total = [], ZERO
     for booking in own_bookings:
-        rest = money(booking.amount) - allocated[booking.id]
+        rest = rent_amount(booking, shares) - allocated[booking.id]
         if rest:
             unassigned_total += rest
             unassigned.append({"booking_id": booking.id, "booking_date": booking.booking_date.isoformat(),
@@ -236,4 +275,5 @@ def tenant_account(store: Any, tenant_id: str, as_of: date) -> dict:
     totals["unassigned"] = as_number(unassigned_total)
     return {"tenant_id": tenant_id, "as_of": as_of.isoformat(), "contracts": rows, "totals": totals,
             "paid_total": as_number(sum((money(b.amount) for b in own_bookings), ZERO)),
+            "deposit_total": as_number(sum(shares.values(), ZERO)),
             "unassigned": unassigned}
