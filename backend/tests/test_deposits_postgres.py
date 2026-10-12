@@ -96,10 +96,10 @@ def _draft(engine, owner):
                                                   account_type="deposit"))
     booking = target.create_booking(BookingCreate(account_id=account.id, tenant_id=tenant.id, property_id=prop.id,
                                                   unit_id=unit.id, booking_date=date(2024, 1, 1), amount=1500))
-    detail = service.create(_store(engine), AgreementRequest(contract_id=contract.id, amount=1500,
-                                                             account_id=account.id), owner.id)
+    detail = service.create(_store(engine), AgreementRequest.model_validate(
+        {"contract_id": contract.id, "amount": 1500, "account_id": account.id}), owner.id)
     deposit_id = detail["deposit"]["id"]
-    service.add_receipt(_store(engine), deposit_id, ReceiptRequest(booking_id=booking.id), owner.id)
+    service.add_receipt(_store(engine), deposit_id, ReceiptRequest.model_validate({"booking_id": booking.id}), owner.id)
     detail = service.create_settlement(_store(engine), deposit_id, SettlementCreate(), owner.id)
     settlement = detail["settlements"][0]
     service.save_settlement(_store(engine), deposit_id, settlement["id"], SettlementContent.model_validate({
@@ -114,8 +114,8 @@ def test_finalized_settlements_on_postgres_are_immutable_and_refuse_the_downgrad
     engine, config = postgres
     owner = auth.register_user("owner", "owner@example.com", "Owner", "Secret123", "eigentuemer")
     deposit_id, settlement_id, preview = _draft(engine, owner)
-    done = service.finalize(_store(engine), deposit_id, settlement_id, FinalizeRequest(
-        idempotency_key="pg-key-1", review_hash=preview["review_hash"], confirmed=True), owner.id)
+    done = service.finalize(_store(engine), deposit_id, settlement_id, FinalizeRequest.model_validate(
+        {"idempotency_key": "pg-key-1", "review_hash": preview["review_hash"], "confirmed": True}), owner.id)
     final = done["settlements"][0]
     assert done["stage"] == "settled" and final["result_amount"] == 1300.0
     content, row = service.read_original(_store(engine), deposit_id, settlement_id, owner.id)
@@ -154,8 +154,8 @@ def test_three_finalizations_of_one_settlement_serialize_on_postgres(postgres):
 
     def finalize(key):
         try:
-            service.finalize(_store(engine), deposit_id, settlement_id, FinalizeRequest(
-                idempotency_key=key, review_hash=preview["review_hash"], confirmed=True), owner.id)
+            service.finalize(_store(engine), deposit_id, settlement_id, FinalizeRequest.model_validate(
+                {"idempotency_key": key, "review_hash": preview["review_hash"], "confirmed": True}), owner.id)
             outcomes.append("ok")
         except HTTPException as error:
             outcomes.append(error.status_code)

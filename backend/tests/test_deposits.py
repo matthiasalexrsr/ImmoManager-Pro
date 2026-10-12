@@ -468,7 +468,7 @@ def test_claims_beyond_the_deposit_become_one_receivable(client):
     final = response.json()["settlements"][0]
     assert final["payout_booking_id"] is None and final["result_amount"] == -150.0
     claim = store.get_receivable(final["claim_receivable_id"])
-    assert claim.amount_due == 150.0 and claim.status == "open" and "Restforderung" in claim.description
+    assert claim.amount_due == 150.0 and claim.status == "open" and "Restforderung" in (claim.description or "")
 
 
 def test_retention_for_an_open_utility_period_and_its_later_release(client):
