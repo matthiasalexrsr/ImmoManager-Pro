@@ -97,8 +97,8 @@ Linux, Python 3.11.15, PostgreSQL 16 lokal (`IMMO_TEST_POSTGRES_ADMIN_URL`), Nod
 
 | Prüfung | Ergebnis (Ausgangsstand `7034701`) |
 | --- | --- |
-| Backend Speicher-Modus + PostgreSQL | MEM_RESULT |
-| Backend SQL-Modus (`TEST_STORE_BACKEND=sql`) + PostgreSQL | SQL_RESULT |
-| `ruff check backend`, `python -m mypy backend` | LINT_RESULT |
-| Frontend `npx vitest run` | VITEST_RESULT |
+| Backend Speicher-Modus + PostgreSQL | 1684 bestanden, 10 übersprungen (nur SQL-Store-Tests; keine PostgreSQL-Prüfung übersprungen) |
+| Backend SQL-Modus (`TEST_STORE_BACKEND=sql`) + PostgreSQL | 1685 bestanden, 9 übersprungen (nur Speicher-Store-Tests) |
+| `ruff check backend`, `python -m mypy backend` | sauber, 325 Dateien |
+| Frontend `npx vitest run` | 55 Dateien, 313 Tests bestanden (davon 6 neu). Hinweis: mit verlinktem statt kopiertem `node_modules` außerhalb des Worktrees verweigert Vite die PDF-Worker-Datei (14 Dateien ohne Tests); mit lokaler Kopie vollständig grün. |
 | `npm run lint`, `npm run build` | sauber bzw. gebaut |
