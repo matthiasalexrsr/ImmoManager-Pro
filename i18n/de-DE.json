@@ -35,6 +35,7 @@
       "budgets": "Budgets",
       "taxRates": "Steuersätze",
       "receivables": "Forderungen",
+      "dunning": "Mahnwesen",
       "rentCharges": "Sollstellungen",
       "allocationKeys": "Verteilerschlüssel",
       "escalationRules": "Eskalationsregeln",

@@ -98,10 +98,12 @@ def test_invoice_review_migration_and_history_guard_on_postgres(postgres):  # no
     with pytest.raises(sa.exc.IntegrityError):            # RESTRICT: the invoice keeps its evidence
         with engine.begin() as connection:
             connection.execute(sa.text("DELETE FROM invoices WHERE id = :id"), {"id": invoice.id})
+    with engine.begin() as connection:
+        before = connection.execute(sa.text("SELECT version_num FROM alembic_version")).scalar()
     with pytest.raises(RuntimeError, match="invoice reviews"):
         command.downgrade(config, PREVIOUS)
-    with engine.begin() as connection:
-        assert connection.execute(sa.text("SELECT version_num FROM alembic_version")).scalar() == "c9f4a2e7b1d5"
+    with engine.begin() as connection:     # refused in one transaction: the revision stays as it was
+        assert connection.execute(sa.text("SELECT version_num FROM alembic_version")).scalar() == before
         connection.execute(sa.text("DELETE FROM invoice_review_events"))
         connection.execute(sa.text("DELETE FROM invoice_reviews"))
     command.downgrade(config, PREVIOUS)

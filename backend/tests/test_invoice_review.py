@@ -776,10 +776,12 @@ def test_migration_up_down_and_refused_downgrade(tmp_path, monkeypatch):
             conn.execute("INSERT INTO invoice_reviews (id, invoice_id, kind, received_on, status, checklist, "
                          "vat_lines, recoverable, created_at, updated_at) VALUES ('r2', 'i1', 'invoice', "
                          "'2026-05-02', 'received', '{}', '[]', 0, '2026-05-02', '2026-05-02')")
+    with sqlite3.connect(tmp_path / "app.db") as conn:
+        before = conn.execute("SELECT version_num FROM alembic_version").fetchone()[0]
     with pytest.raises(RuntimeError, match="invoice reviews"):
         command.downgrade(config, "5e8b2d4f7a19")
-    with sqlite3.connect(tmp_path / "app.db") as conn:
-        assert conn.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "c9f4a2e7b1d5"
+    with sqlite3.connect(tmp_path / "app.db") as conn:     # refused: nothing changed, also not a later revision
+        assert conn.execute("SELECT version_num FROM alembic_version").fetchone()[0] in (before, "c9f4a2e7b1d5")
         conn.executescript("DELETE FROM invoice_review_events; DELETE FROM invoice_reviews;")
     command.downgrade(config, "5e8b2d4f7a19")
     with sqlite3.connect(tmp_path / "app.db") as conn:

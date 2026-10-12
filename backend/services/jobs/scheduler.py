@@ -66,13 +66,31 @@ def active_periodic() -> tuple[Periodic, ...]:
     return PERIODIC + ops_periodic()
 
 
-def escalation_handler(ctx) -> bool:
-    from ...routers.escalation import execute_escalation
+DUNNING_CHUNK = 100
 
+
+def escalation_handler(ctx) -> bool:
+    """Escalation rules first, then dunning proposals in chunks of contracts (proposals only, never letters)."""
+    from ...routers.escalation import execute_escalation
+    from ..dunning import contract_ids_after, propose
+
+    as_of = date.fromisoformat(ctx.run.payload["as_of"])
+    checkpoint, progress = ctx.checkpoint, ctx.progress
     with ctx.unit() as unit:
-        result = execute_escalation(unit.store, date.fromisoformat(ctx.run.payload["as_of"]))
-        unit.save({"done": True}, {k: result[k] for k in ("rules_checked", "notifications_generated")})
-    return True
+        if not checkpoint.get("escalated"):
+            result = execute_escalation(unit.store, as_of)
+            progress.update({k: result[k] for k in ("rules_checked", "notifications_generated")})
+            unit.save({"escalated": True, "after": ""}, progress)
+            return False
+        contracts = contract_ids_after(unit.store, checkpoint.get("after", ""), DUNNING_CHUNK)
+        if not contracts:
+            unit.save({**checkpoint, "done": True}, progress)
+            return True
+        progress["dunning_proposals"] = progress.get("dunning_proposals", 0) + propose(
+            unit.store, unit.ledger, unit.run.id, as_of, contracts)
+        progress["dunning_contracts"] = progress.get("dunning_contracts", 0) + len(contracts)
+        unit.save({"escalated": True, "after": contracts[-1].id}, progress)
+    return False
 
 
 def backup_handler(ctx: JobContext) -> bool:

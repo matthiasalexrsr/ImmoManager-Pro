@@ -115,6 +115,7 @@ from .models import (
     ViewingAppointment,
     ViewingAppointmentCreate,
 )
+from .storage_dunning import DunningMemoryStore
 from .storage_service_contracts import ServiceContractMemoryStore
 from .store_errors import NotFoundError, ValidationError
 
@@ -151,7 +152,7 @@ def check_occupancy_dates(contract: Any, data: Any) -> None:
 
 
 @dataclass
-class InMemoryStore(ServiceContractMemoryStore):
+class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore):
     def __getattribute__(self, name):
         # a restricted request sees each collection through its portfolio boundary
         value = object.__getattribute__(self, name)

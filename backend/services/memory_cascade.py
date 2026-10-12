@@ -14,6 +14,7 @@ from collections import defaultdict
 from functools import lru_cache
 from typing import Any
 
+from ..db.dunning_models import DUNNING_TABLES
 from ..db.invoice_review_models import REVIEW_TABLES
 from ..db.maintenance_project_models import PROJECT_TABLES
 from ..db.orm_models import Base
@@ -21,9 +22,9 @@ from ..db.orm_models import Base
 
 @lru_cache(maxsize=1)
 def _rules() -> dict[str, tuple[tuple[str, str, str], ...]]:
-    """parent table -> ((child table, column, ON DELETE action), ...) for the project tables."""
+    """parent table -> ((child table, column, ON DELETE action), ...) for the project and dunning tables."""
     found: dict[str, list[tuple[str, str, str]]] = defaultdict(list)
-    for name in PROJECT_TABLES + REVIEW_TABLES:
+    for name in (*PROJECT_TABLES, *REVIEW_TABLES, *DUNNING_TABLES):
         for column in Base.metadata.tables[name].columns:
             for foreign in column.foreign_keys:
                 found[foreign.column.table.name].append((name, column.name, (foreign.ondelete or "").upper()))
