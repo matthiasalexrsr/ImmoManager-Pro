@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
 from ..models import Receivable, ReceivableCreate, ReceivablePatch
+from ..services.deletion_guard import ensure_deletable
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/receivables", tags=["Forderungen"])
@@ -64,6 +65,8 @@ def patch_receivable(receivable_id: str, payload: ReceivablePatch) -> Receivable
 @router.delete("/{receivable_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_receivable(receivable_id: str) -> None:
     try:
+        store.get_receivable(receivable_id)
+        ensure_deletable(store, "receivable", receivable_id)     # offset or created by a deposit settlement
         store.delete_receivable(receivable_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

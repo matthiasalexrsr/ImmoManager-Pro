@@ -72,3 +72,19 @@ def purge_handover(store) -> None:
                           "handover_protocols"):
                 connection.exec_driver_sql(f"DELETE FROM {table}")
             install_handover_guards(connection)
+
+
+def purge_deposits(store) -> None:
+    """Remove every deposit file row: the settlement guards are lifted for the moment."""
+    from backend.db.deposit_guards import drop_deposit_guards, install_deposit_guards
+
+    if not hasattr(store, "db"):
+        return               # the memory store has no triggers; clear_business_data() empties it
+    store.db.rollback()
+    with store.db.get_bind().connect() as connection:
+        with connection.begin():
+            drop_deposit_guards(connection)
+            for table in ("deposit_payments", "deposit_settlement_items", "deposit_settlements",
+                          "deposit_interest_rates", "deposit_instalments"):
+                connection.exec_driver_sql(f"DELETE FROM {table}")
+            install_deposit_guards(connection)

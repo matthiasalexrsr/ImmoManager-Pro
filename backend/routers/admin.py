@@ -302,13 +302,17 @@ def _tenant_records(tenant_id: str) -> dict[str, list]:
     statements = of_contracts(store.list_utility_statements())
     statement_ids = {s.id for s in statements}
     protocols = of_contracts(store.list_handover_protocols())
+    deposits = of_contracts(store.list_deposits())
+    from ..services.deposits import records_of as deposit_records
     from ..services.dunning import records_of_contracts
     from ..services.handover_protocol import parts_of
 
     return {
         "contracts": contracts,
         "bookings": [b for b in store.list_bookings() if b.tenant_id == tenant_id],
-        "deposits": of_contracts(store.list_deposits()),
+        "deposits": deposits,
+        # instalments, payments (booking shares), interest rates and settlements of those deposits
+        **deposit_records(store, {d.id for d in deposits}),
         "receivables": of_contracts(store.list_receivables()),
         "rent_charges": of_contracts(store.list_rent_charges()),
         "rent_adjustments": of_contracts(store.list_rent_adjustments()),

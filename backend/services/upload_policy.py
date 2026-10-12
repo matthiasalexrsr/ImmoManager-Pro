@@ -25,7 +25,8 @@ DOCUMENT_EXTENSIONS = IMAGE_EXTENSIONS | frozenset(
 )
 # Generated originals (Wohnungsgeberbestätigung, Übergabe- and maintenance protocols, dunning letters) are served
 # from the verified archive, never from a file on disk that happens to have the same name.
-ARCHIVED_PREFIXES = ("housing-confirmations/", "handover-protocols/", "maintenance-protocols/", "dunning-letters/")
+ARCHIVED_PREFIXES = ("housing-confirmations/", "handover-protocols/", "maintenance-protocols/", "dunning-letters/",
+                     "deposit-settlements/")
 # Browsers render these inline without executing script.
 INLINE_SAFE_EXTENSIONS = frozenset({"pdf", "png", "jpg", "jpeg", "gif", "webp", "bmp"})
 
@@ -111,6 +112,9 @@ def read_archived_pdf(store, key: str, actor_id: str) -> bytes | None:
     if key.startswith("dunning-letters/"):
         from .dunning import read_pdf_for_key as read_letter
         return read_letter(store, key, actor_id)
+    if key.startswith("deposit-settlements/"):
+        from .deposits import read_pdf_for_key as read_settlement
+        return read_settlement(store, key, actor_id)
     from . import handover_protocol, housing_confirmation
 
     for reader in (housing_confirmation.read_pdf_for_key, handover_protocol.read_pdf_for_key):

@@ -102,6 +102,7 @@ from ..models import (
 from ..storage import check_final_statement_change
 from .billing_repo import BillingRepository
 from .communication_repo import CommunicationRepository
+from .deposit_repo import DepositStoreMethods
 from .document_repo import DocumentRepository
 from .finance_repo import FinanceRepository
 from .maintenance_repo import MaintenanceRepository
@@ -114,7 +115,7 @@ from .tenant_repo import TenantRepository
 logger = logging.getLogger(__name__)
 
 
-class SQLAlchemyStore(ServiceContractStoreMethods):
+class SQLAlchemyStore(ServiceContractStoreMethods, DepositStoreMethods):
     """Facade that composes domain repositories.
 
     All public methods delegate to the appropriate domain repository.

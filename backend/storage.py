@@ -115,6 +115,7 @@ from .models import (
     ViewingAppointment,
     ViewingAppointmentCreate,
 )
+from .storage_deposits import DepositMemoryStore
 from .storage_dunning import DunningMemoryStore
 from .storage_service_contracts import ServiceContractMemoryStore
 from .store_errors import NotFoundError, ValidationError
@@ -152,7 +153,7 @@ def check_occupancy_dates(contract: Any, data: Any) -> None:
 
 
 @dataclass
-class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore):
+class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemoryStore):
     def __getattribute__(self, name):
         # a restricted request sees each collection through its portfolio boundary
         value = object.__getattribute__(self, name)
@@ -1358,7 +1359,9 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore):
         if data.contract_id not in self.contracts:
             raise ValidationError("Vertrag existiert nicht")
         old = self.deposits[deposit_id]
-        deposit = Deposit(id=deposit_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc), **data.model_dump())
+        kept = old.model_dump(exclude=set(DepositCreate.model_fields) | {"id", "created_at", "updated_at"})
+        deposit = Deposit(id=deposit_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc),
+                          **kept, **data.model_dump())
         self.deposits[deposit_id] = deposit
         return deposit
 

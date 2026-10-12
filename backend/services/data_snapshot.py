@@ -41,7 +41,8 @@ SNAPSHOT_FORMAT = "immomanager-snapshot"
 # 4: service contracts and the origin of transferred costs (likewise)
 # 5: invoice reviews, their immutable history and cost transfers (likewise)
 # 6: dunning cases, letters, outbox, replies, blocks, disputes, settings (likewise)
-SNAPSHOT_FORMAT_VERSION = 6
+# 7: deposit file: instalments, payments, interest rates, settlements (likewise)
+SNAPSHOT_FORMAT_VERSION = 7
 
 # Keys used by exports written before format 2.
 _KEY_ALIASES = {"viewing_appointments": ("viewings",)}

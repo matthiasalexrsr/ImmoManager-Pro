@@ -943,6 +943,18 @@ class DepositCreate(BaseModel):
 
 class Deposit(DepositCreate):
     id: str = Field(..., min_length=1)
+    # deposit file (models_deposits.py): set through the agreement and release endpoints only
+    form: str = "transfer"
+    cap_reason: Optional[str] = None
+    account_id: Optional[str] = None
+    institution: Optional[str] = None
+    account_reference: Optional[str] = None
+    account_holder: Optional[str] = None
+    provided_on: Optional[date] = None
+    proof_document_id: Optional[str] = None
+    released_on: Optional[date] = None
+    release_document_id: Optional[str] = None
+    release_note: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 

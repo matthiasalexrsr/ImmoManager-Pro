@@ -732,3 +732,87 @@ def test_service_contracts_on_an_adopted_database(migrate):
     migrate()
     assert _version(migrate.db_path) == migrate.head
 
+
+
+DEPOSITS_REVISION = "3c7e9a1d5f20"
+DEPOSIT_TABLES = {"deposit_instalments", "deposit_interest_rates", "deposit_payments", "deposit_settlements",
+                  "deposit_settlement_items"}
+
+
+def test_deposit_file_upgrade_keeps_deposits_and_guards_the_downgrade(migrate):
+    db_path = migrate(SERVICE_CONTRACTS_REVISION)
+    _seed_previous_schema(db_path)
+    _seed_bookings(db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("INSERT INTO deposits (id, contract_id, amount, status, held_date, created_at, updated_at) "
+                     "VALUES ('d1', 'c1', 1500, 'held', '2020-01-01', '2025-01-01', '2025-01-01')")
+    migrate(DEPOSITS_REVISION)
+    schema = _schema(db_path)
+    assert DEPOSIT_TABLES <= set(schema) and {"form", "cap_reason", "account_id", "released_on"} <= schema["deposits"]
+    with sqlite3.connect(db_path) as conn:      # an existing deposit becomes a transfer without anything else
+        assert conn.execute("SELECT id, amount, status, form, account_id FROM deposits").fetchall() == [
+            ("d1", 1500, "held", "transfer", None)]
+        conn.execute("PRAGMA foreign_keys=ON")
+        conn.execute("INSERT INTO deposit_instalments (id, deposit_id, number, due_date, amount) "
+                     "VALUES ('i1', 'd1', 1, '2020-01-01', 1500)")
+        for statement in ("INSERT INTO deposit_instalments (id, deposit_id, number, due_date, amount) "
+                          "VALUES ('i2', 'd1', 4, '2020-01-01', 1)",                    # at most three
+                          "INSERT INTO deposit_payments (id, deposit_id, booking_id, kind, amount) "
+                          "VALUES ('p0', 'd1', 'b1', 'receipt', 0)"):                   # a share is never zero
+            with pytest.raises(sqlite3.IntegrityError):
+                conn.execute(statement)
+        conn.execute("INSERT INTO deposit_payments (id, deposit_id, booking_id, kind, amount) "
+                     "VALUES ('p1', 'd1', 'b1', 'receipt', 633.33)")
+        with pytest.raises(sqlite3.IntegrityError):    # a booking once per deposit
+            conn.execute("INSERT INTO deposit_payments (id, deposit_id, booking_id, kind, amount) "
+                         "VALUES ('p2', 'd1', 'b1', 'receipt', 1)")
+        with pytest.raises(sqlite3.IntegrityError):    # the booking of a deposit stays
+            conn.execute("DELETE FROM bookings WHERE id = 'b1'")
+        conn.execute("INSERT INTO deposit_settlements (id, deposit_id, kind, settlement_date) "
+                     "VALUES ('s1', 'd1', 'final', '2026-06-30')")
+        conn.execute("UPDATE deposit_settlements SET finalized_at = '2026-07-01' WHERE id = 's1'")
+        for statement in ("UPDATE deposit_settlements SET notes = 'x'", "DELETE FROM deposit_payments",
+                          "UPDATE deposits SET amount = 1", "DELETE FROM deposit_instalments"):
+            with pytest.raises(sqlite3.IntegrityError, match="immutable"):
+                conn.execute(statement)
+        conn.execute("UPDATE deposits SET status = 'returned'")      # the state may still change
+    with pytest.raises(RuntimeError, match="deposit file data exists"):
+        migrate.downgrade(SERVICE_CONTRACTS_REVISION)
+    assert _version(db_path) == DEPOSITS_REVISION
+
+
+def test_deposit_file_downgrade_without_data_and_upgrade_again(migrate):
+    db_path = migrate(SERVICE_CONTRACTS_REVISION)
+    _seed_previous_schema(db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("INSERT INTO deposits (id, contract_id, amount, status, created_at, updated_at) "
+                     "VALUES ('d1', 'c1', 900, 'held', '2025-01-01', '2025-01-01')")
+    migrate(DEPOSITS_REVISION)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("UPDATE deposits SET form = 'guarantee'")
+    with pytest.raises(RuntimeError, match="agreement details"):
+        migrate.downgrade(SERVICE_CONTRACTS_REVISION)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("UPDATE deposits SET form = 'transfer'")
+    migrate.downgrade(SERVICE_CONTRACTS_REVISION)
+    schema = _schema(db_path)
+    assert not DEPOSIT_TABLES & set(schema) and "form" not in schema["deposits"]
+    assert not {name for name in _triggers(db_path) if "deposit" in name}
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute("SELECT id, amount FROM deposits").fetchall() == [("d1", 900)]
+    migrate()
+    assert _version(db_path) == migrate.head and _missing_from(_schema(db_path)) == {}
+
+
+def test_deposit_file_on_an_adopted_database(migrate):
+    from sqlalchemy import create_engine
+
+    engine = create_engine(f"sqlite:///{migrate.db_path}")
+    Base.metadata.create_all(engine)       # installs the triggers through the metadata event
+    engine.dispose()
+    assert "immo_deposit_settlements_update" in _triggers(migrate.db_path)
+    migrate()
+    migrate.downgrade(SERVICE_CONTRACTS_REVISION)
+    assert not DEPOSIT_TABLES & set(_schema(migrate.db_path))
+    migrate()
+    assert _version(migrate.db_path) == migrate.head

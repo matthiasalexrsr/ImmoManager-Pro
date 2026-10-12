@@ -70,6 +70,14 @@ _DEPENDENTS: dict[str, tuple[str, list[tuple[str, str, tuple[str, str]]]]] = {
     # a reversal without its original would count as an income or expense of its own
     "booking": ("Buchung", [
         ("list_bookings", "reverses_booking_id", ("Stornobuchung", "Stornobuchungen")),
+        # a deposit receipt, payout or offset is part of the deposit file
+        ("list_deposit_payments", "booking_id", ("Kautionszahlung", "Kautionszahlungen")),
+        ("list_deposit_settlements", "offset_credit_booking_id", ("Kautionsverrechnung", "Kautionsverrechnungen")),
+    ]),
+    # a receivable offset or created by a deposit settlement
+    "receivable": ("Forderung", [
+        ("list_deposit_settlement_items", "receivable_id", ("Kautionsabrechnung", "Kautionsabrechnungen")),
+        ("list_deposit_settlements", "claim_receivable_id", ("Kautionsabrechnung", "Kautionsabrechnungen")),
     ]),
     # the provider of a service contract stays in the address book while the contract exists
     "contact": ("Kontakt", [
@@ -84,7 +92,8 @@ _DEPENDENTS: dict[str, tuple[str, list[tuple[str, str, tuple[str, str]]]]] = {
 _ALTERNATIVES = {
     "tenant": " Ehemalige Mieter lassen sich stattdessen archivieren.",
     "contract": " Ein beendeter Vertrag lässt sich stattdessen auf „beendet“ setzen.",
-    "booking": " Eine stornierte Buchung bleibt mit ihrem Storno stehen; beide zusammen zählen null.",
+    "booking": " Eine stornierte Buchung bleibt mit ihrem Storno stehen; beide zusammen zählen null. "
+               "Eine Kautionszahlung wird in der Kautionsakte gelöst.",
     "meter": " Ein ausgebauter Zähler lässt sich stattdessen mit Ausbaudatum deaktivieren.",
     "standalone_reading": " Ein falscher Stand wird über eine Korrektur des Übergabeprotokolls berichtigt.",
     "invoice": " Die Zuordnung lässt sich im Objektvertrag lösen, solange keine Abrechnung sie enthält.",

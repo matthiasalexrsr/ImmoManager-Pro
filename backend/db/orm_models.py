@@ -576,6 +576,20 @@ class DepositORM(Base):
     deductions: Mapped[float | None] = mapped_column(Numeric(12, 2, asdecimal=False))
     deduction_reason: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
+    # Deposit file (migration 3c7e9a1d5f20, db/deposit_models.py): form of the security, the reason for an
+    # amount above three net cold rents, where the money is held, and for a guarantee or a pledged savings
+    # book when it was provided and released (with proof). References are checked by the service.
+    form: Mapped[str] = mapped_column(String(20), nullable=False, default="transfer", server_default="transfer")
+    cap_reason: Mapped[str | None] = mapped_column(Text)
+    account_id: Mapped[str | None] = mapped_column(String(36))
+    institution: Mapped[str | None] = mapped_column(Text)
+    account_reference: Mapped[str | None] = mapped_column(Text)
+    account_holder: Mapped[str | None] = mapped_column(Text)
+    provided_on: Mapped[date | None] = mapped_column(Date)
+    proof_document_id: Mapped[str | None] = mapped_column(String(36))
+    released_on: Mapped[date | None] = mapped_column(Date)
+    release_document_id: Mapped[str | None] = mapped_column(String(36))
+    release_note: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 

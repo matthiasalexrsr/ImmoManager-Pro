@@ -73,6 +73,8 @@ def test_data_access_export_contains_everything_of_the_tenant_only(client, lars)
                       "contract_occupancies": 0, "documents": 1, "handover_protocols": 0,
                       "handover_rooms": 0, "handover_defects": 0, "handover_keys": 0,
                       "handover_meter_readings": 0, "handover_photos": 0,
+                      "deposit_instalments": 0, "deposit_interest_rates": 0, "deposit_payments": 0,
+                      "deposit_settlements": 0, "deposit_settlement_items": 0,
                       "message_threads": 1, "messages": 1, "invoice_reviews": 0, "invoice_review_events": 0,
                       **{name: 0 for name in ("dunning_cases", "dunning_case_items", "dunning_letters",
                                               "dunning_outbox", "dunning_blocks", "dunning_disputes",
