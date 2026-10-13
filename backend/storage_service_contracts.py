@@ -28,6 +28,7 @@ from .models_service_contracts import (
     ServiceContractTariffCreate,
     TariffInput,
 )
+from .services.memory_revisions import atomic_memory_update
 from .store_errors import NotFoundError, ValidationError
 
 CONTRACT_CHILDREN = ("service_contract_locations", "service_contract_tariffs", "service_contract_documents",
@@ -99,6 +100,7 @@ class ServiceContractMemoryStore:
         self._write_all(rows, together=[("service_contracts", contract.id)])
         return contract
 
+    @atomic_memory_update("service_contracts")
     def update_service_contract(self, contract_id: str, data: ServiceContractCreate) -> ServiceContract:
         old = self.get_service_contract(contract_id)
         contract = ServiceContract(id=contract_id, created_at=old.created_at,
@@ -133,6 +135,7 @@ class ServiceContractMemoryStore:
         self.service_contract_locations[row.id] = row
         return row
 
+    @atomic_memory_update("service_contract_locations")
     def update_service_contract_location(self, location_id: str,
                                          data: ServiceContractLocationCreate) -> ServiceContractLocation:
         old = self.get_service_contract_location(location_id)
@@ -170,6 +173,7 @@ class ServiceContractMemoryStore:
         self.service_contract_tariffs[row.id] = row
         return row
 
+    @atomic_memory_update("service_contract_tariffs")
     def update_service_contract_tariff(self, tariff_id: str, data: ServiceContractTariffCreate) -> ServiceContractTariff:
         old = self.get_service_contract_tariff(tariff_id)
         self._check_tariff_date(data, exclude_id=tariff_id)
@@ -216,6 +220,7 @@ class ServiceContractMemoryStore:
         self._write_all(rows)
         return link
 
+    @atomic_memory_update("service_contract_invoices")
     def update_service_contract_invoice(self, link_id: str,
                                         data: ServiceContractInvoiceCreate) -> ServiceContractInvoice:
         old = self.get_service_contract_invoice(link_id)

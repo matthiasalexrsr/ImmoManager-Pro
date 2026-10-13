@@ -116,6 +116,7 @@ from .models import (
     ViewingAppointment,
     ViewingAppointmentCreate,
 )
+from .services.memory_revisions import atomic_memory_update
 from .storage_deposits import DepositMemoryStore
 from .storage_dunning import DunningMemoryStore
 from .storage_service_contracts import ServiceContractMemoryStore
@@ -285,6 +286,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         except KeyError as exc:
             raise NotFoundError("Portfolio nicht gefunden") from exc
 
+    @atomic_memory_update("portfolios")
     def update_portfolio(self, portfolio_id: str, data: PortfolioCreate) -> Portfolio:
         if portfolio_id not in self.portfolios:
             raise NotFoundError("Portfolio nicht gefunden")
@@ -339,6 +341,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         except KeyError as exc:
             raise NotFoundError("Kategorie nicht gefunden") from exc
 
+    @atomic_memory_update("categories")
     def update_category(self, category_id: str, data: CategoryCreate) -> Category:
         if category_id not in self.categories:
             raise NotFoundError("Kategorie nicht gefunden")
@@ -361,6 +364,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
                 self.bookings[booking_id] = updated
         del self.categories[category_id]
 
+    @atomic_memory_update("accounts")
     def update_account(self, account_id: str, data: AccountCreate) -> Account:
         if account_id not in self.accounts:
             raise NotFoundError("Konto nicht gefunden")
@@ -395,6 +399,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         except KeyError as exc:
             raise NotFoundError("Immobilie nicht gefunden") from exc
 
+    @atomic_memory_update("properties")
     def update_property(self, property_id: str, data: PropertyCreate) -> Property:
         if property_id not in self.properties:
             raise NotFoundError("Immobilie nicht gefunden")
@@ -453,6 +458,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         except KeyError as exc:
             raise NotFoundError("Einheit nicht gefunden") from exc
 
+    @atomic_memory_update("units")
     def update_unit(self, unit_id: str, data: UnitCreate) -> Unit:
         if unit_id not in self.units:
             raise NotFoundError("Einheit nicht gefunden")
@@ -504,6 +510,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         except KeyError as exc:
             raise NotFoundError("Mieter nicht gefunden") from exc
 
+    @atomic_memory_update("tenants")
     def update_tenant(self, tenant_id: str, data: TenantCreate) -> Tenant:
         if tenant_id not in self.tenants:
             raise NotFoundError("Mieter nicht gefunden")
@@ -550,6 +557,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         except KeyError as exc:
             raise NotFoundError("Vertrag nicht gefunden") from exc
 
+    @atomic_memory_update("contracts")
     def update_contract(self, contract_id: str, data: ContractCreate) -> Contract:
         if contract_id not in self.contracts:
             raise NotFoundError("Vertrag nicht gefunden")
@@ -625,6 +633,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         except KeyError as exc:
             raise NotFoundError("Buchung nicht gefunden") from exc
 
+    @atomic_memory_update("bookings")
     def update_booking(self, booking_id: str, data: BookingCreate) -> Booking:
         if booking_id not in self.bookings:
             raise NotFoundError("Buchung nicht gefunden")
@@ -693,6 +702,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         except KeyError as exc:
             raise NotFoundError("Forderung nicht gefunden") from exc
 
+    @atomic_memory_update("receivables")
     def update_receivable(self, receivable_id: str, data: ReceivableCreate) -> Receivable:
         if receivable_id not in self.receivables:
             raise NotFoundError("Forderung nicht gefunden")
@@ -727,6 +737,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         except KeyError as exc:
             raise NotFoundError("Rechnung nicht gefunden") from exc
 
+    @atomic_memory_update("invoices")
     def update_invoice(self, invoice_id: str, data: InvoiceCreate) -> Invoice:
         if invoice_id not in self.invoices:
             raise NotFoundError("Rechnung nicht gefunden")
@@ -762,6 +773,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         except KeyError as exc:
             raise NotFoundError("Instandhaltungsfall nicht gefunden") from exc
 
+    @atomic_memory_update("maintenance_cases")
     def update_maintenance_case(self, case_id: str, data: MaintenanceCaseCreate) -> MaintenanceCase:
         if case_id not in self.maintenance_cases:
             raise NotFoundError("Instandhaltungsfall nicht gefunden")
@@ -814,6 +826,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         except KeyError as exc:
             raise NotFoundError("Dokument nicht gefunden") from exc
 
+    @atomic_memory_update("documents")
     def update_document(self, document_id: str, data: DocumentCreate) -> Document:
         if document_id not in self.documents:
             raise NotFoundError("Dokument nicht gefunden")
@@ -925,6 +938,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         except KeyError as exc:
             raise NotFoundError("Aufgabe nicht gefunden") from exc
 
+    @atomic_memory_update("tasks")
     def update_task(self, task_id: str, data: TaskCreate) -> Task:
         if task_id not in self.tasks:
             raise NotFoundError("Aufgabe nicht gefunden")
@@ -957,6 +971,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         except KeyError as exc:
             raise NotFoundError("Termin nicht gefunden") from exc
 
+    @atomic_memory_update("calendar_events")
     def update_calendar_event(self, event_id: str, data: CalendarEventCreate) -> CalendarEvent:
         if event_id not in self.calendar_events:
             raise NotFoundError("Termin nicht gefunden")
@@ -990,6 +1005,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         except KeyError as exc:
             raise NotFoundError("Inserat nicht gefunden") from exc
 
+    @atomic_memory_update("listings")
     def update_listing(self, listing_id: str, data: ListingCreate) -> Listing:
         if listing_id not in self.listings:
             raise NotFoundError("Inserat nicht gefunden")
@@ -1024,6 +1040,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         except KeyError as exc:
             raise NotFoundError("Inseratsfoto nicht gefunden") from exc
 
+    @atomic_memory_update("listing_photos")
     def update_listing_photo(self, photo_id: str, data: ListingPhotoCreate) -> ListingPhoto:
         if photo_id not in self.listing_photos:
             raise NotFoundError("Inseratsfoto nicht gefunden")
@@ -1059,6 +1076,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         except KeyError as exc:
             raise NotFoundError("Interessent nicht gefunden") from exc
 
+    @atomic_memory_update("leads")
     def update_lead(self, lead_id: str, data: LeadCreate) -> Lead:
         if lead_id not in self.leads:
             raise NotFoundError("Interessent nicht gefunden")
@@ -1100,6 +1118,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         except KeyError as exc:
             raise NotFoundError("Besichtigungstermin nicht gefunden") from exc
 
+    @atomic_memory_update("viewing_appointments")
     def update_viewing_appointment(self, appointment_id: str, data: ViewingAppointmentCreate) -> ViewingAppointment:
         if appointment_id not in self.viewing_appointments:
             raise NotFoundError("Besichtigungstermin nicht gefunden")
@@ -1140,6 +1159,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         except KeyError as exc:
             raise NotFoundError("Abrechnungsperiode nicht gefunden") from exc
 
+    @atomic_memory_update("billing_periods")
     def update_billing_period(self, period_id: str, data: BillingPeriodCreate) -> BillingPeriod:
         if period_id not in self.billing_periods:
             raise NotFoundError("Abrechnungsperiode nicht gefunden")
@@ -1194,6 +1214,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         except KeyError as exc:
             raise NotFoundError("Verteilerschlüssel nicht gefunden") from exc
 
+    @atomic_memory_update("allocation_keys")
     def update_allocation_key(self, key_id: str, data: AllocationKeyCreate) -> AllocationKey:
         if key_id not in self.allocation_keys:
             raise NotFoundError("Verteilerschlüssel nicht gefunden")
@@ -1233,6 +1254,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         except KeyError as exc:
             raise NotFoundError("Kostenposition nicht gefunden") from exc
 
+    @atomic_memory_update("cost_items")
     def update_cost_item(self, item_id: str, data: CostItemCreate) -> CostItem:
         if item_id not in self.cost_items:
             raise NotFoundError("Kostenposition nicht gefunden")
@@ -1272,6 +1294,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         except KeyError as exc:
             raise NotFoundError("Betriebskostenabrechnung nicht gefunden") from exc
 
+    @atomic_memory_update("utility_statements")
     def update_utility_statement(self, statement_id: str, data: UtilityStatementCreate) -> UtilityStatement:
         if statement_id not in self.utility_statements:
             raise NotFoundError("Betriebskostenabrechnung nicht gefunden")
@@ -1328,6 +1351,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         except KeyError as exc:
             raise NotFoundError("Widerspruch nicht gefunden") from exc
 
+    @atomic_memory_update("billing_objections")
     def update_billing_objection(self, objection_id: str, data: BillingObjectionCreate) -> BillingObjection:
         old = self.get_billing_objection(objection_id)
         self._check_objection(data)
@@ -1354,6 +1378,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         except KeyError as exc:
             raise NotFoundError("Kaution nicht gefunden") from exc
 
+    @atomic_memory_update("deposits")
     def update_deposit(self, deposit_id: str, data: DepositCreate) -> Deposit:
         if deposit_id not in self.deposits:
             raise NotFoundError("Kaution nicht gefunden")
@@ -1398,6 +1423,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         self.notifications[notification_id] = updated
         return updated
 
+    @atomic_memory_update("notifications")
     def update_notification(self, notification_id: str, data: NotificationCreate) -> Notification:
         if notification_id not in self.notifications:
             raise NotFoundError("Benachrichtigung nicht gefunden")
@@ -1430,6 +1456,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         except KeyError as exc:
             raise NotFoundError("Benachrichtigungsvorlage nicht gefunden") from exc
 
+    @atomic_memory_update("notification_templates")
     def update_notification_template(self, template_id: str, data: NotificationTemplateCreate) -> NotificationTemplate:
         if template_id not in self.notification_templates:
             raise NotFoundError("Benachrichtigungsvorlage nicht gefunden")
@@ -1492,6 +1519,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         "rent_charge": ("rent_charges", "Sollstellung nicht gefunden"),
     }
 
+    @atomic_memory_update()
     def _patch_entity(self, entity_type: str, entity_id: str, patch: PydanticBaseModel):
         """Apply a partial update to an entity. Only non-None fields in the patch are applied."""
         entry = self._ENTITY_TYPE_MAP.get(entity_type)
@@ -1606,6 +1634,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         except KeyError as exc:
             raise NotFoundError("Steuersatz nicht gefunden") from exc
 
+    @atomic_memory_update("tax_rates")
     def update_tax_rate(self, tax_rate_id: str, data: TaxRateCreate) -> TaxRate:
         if tax_rate_id not in self.tax_rates:
             raise NotFoundError("Steuersatz nicht gefunden")
@@ -1636,6 +1665,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         except KeyError as exc:
             raise NotFoundError("Mietanpassung nicht gefunden") from exc
 
+    @atomic_memory_update("rent_adjustments")
     def update_rent_adjustment(self, adj_id: str, data: RentAdjustmentCreate) -> RentAdjustment:
         if adj_id not in self.rent_adjustments:
             raise NotFoundError("Mietanpassung nicht gefunden")
@@ -1681,6 +1711,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         except KeyError as exc:
             raise NotFoundError("Mietstand nicht gefunden") from exc
 
+    @atomic_memory_update("contract_rent_periods")
     def update_contract_rent_period(self, period_id: str, data: ContractRentPeriodCreate) -> ContractRentPeriod:
         old = self.get_contract_rent_period(period_id)
         self._check_rent_period(data, exclude_id=period_id)
@@ -1742,6 +1773,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         except KeyError as exc:
             raise NotFoundError("Übergabeprotokoll nicht gefunden") from exc
 
+    @atomic_memory_update("handover_protocols")
     def update_handover_protocol(self, proto_id: str, data: HandoverProtocolCreate) -> HandoverProtocol:
         if proto_id not in self.handover_protocols:
             raise NotFoundError("Übergabeprotokoll nicht gefunden")
@@ -1785,6 +1817,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         except KeyError as exc:
             raise NotFoundError("Zählerstand nicht gefunden") from exc
 
+    @atomic_memory_update("meter_readings")
     def update_meter_reading(self, reading_id: str, data: MeterReadingCreate) -> MeterReading:
         if reading_id not in self.meter_readings:
             raise NotFoundError("Zählerstand nicht gefunden")
@@ -1836,6 +1869,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         except KeyError as exc:
             raise NotFoundError("Budget nicht gefunden") from exc
 
+    @atomic_memory_update("budgets")
     def update_budget(self, budget_id: str, data: BudgetCreate) -> Budget:
         if budget_id not in self.budgets:
             raise NotFoundError("Budget nicht gefunden")
@@ -1864,6 +1898,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         except KeyError as exc:
             raise NotFoundError("Eskalationsregel nicht gefunden") from exc
 
+    @atomic_memory_update("escalation_rules")
     def update_escalation_rule(self, rule_id: str, data: EscalationRuleCreate) -> EscalationRule:
         if rule_id not in self.escalation_rules:
             raise NotFoundError("Eskalationsregel nicht gefunden")
@@ -1892,6 +1927,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         except KeyError as exc:
             raise NotFoundError("Kontakt nicht gefunden") from exc
 
+    @atomic_memory_update("contacts")
     def update_contact(self, contact_id: str, data: ContactCreate) -> Contact:
         if contact_id not in self.contacts:
             raise NotFoundError("Kontakt nicht gefunden")
@@ -1922,6 +1958,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         except KeyError as exc:
             raise NotFoundError("Zähler nicht gefunden") from exc
 
+    @atomic_memory_update("meters")
     def update_meter(self, meter_id: str, data: MeterCreate) -> Meter:
         if meter_id not in self.meters:
             raise NotFoundError("Zähler nicht gefunden")
@@ -1951,6 +1988,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         except KeyError as exc:
             raise NotFoundError("Ablesung nicht gefunden") from exc
 
+    @atomic_memory_update("standalone_meter_readings")
     def update_standalone_meter_reading(self, reading_id: str, data: StandaloneMeterReadingCreate) -> StandaloneMeterReading:
         if reading_id not in self.standalone_meter_readings:
             raise NotFoundError("Ablesung nicht gefunden")
@@ -1979,6 +2017,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         except KeyError as exc:
             raise NotFoundError("Thread nicht gefunden") from exc
 
+    @atomic_memory_update("message_threads")
     def update_message_thread(self, thread_id: str, data: MessageThreadCreate) -> MessageThread:
         if thread_id not in self.message_threads:
             raise NotFoundError("Thread nicht gefunden")
@@ -2042,6 +2081,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         except KeyError as exc:
             raise NotFoundError("Sollstellung nicht gefunden") from exc
 
+    @atomic_memory_update("rent_charges")
     def update_rent_charge(self, charge_id: str, data: RentChargeCreate) -> RentCharge:
         if charge_id not in self.rent_charges:
             raise NotFoundError("Sollstellung nicht gefunden")
@@ -2073,6 +2113,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         except KeyError as exc:
             raise NotFoundError("Versicherung nicht gefunden") from exc
 
+    @atomic_memory_update("insurances")
     def update_insurance(self, insurance_id: str, data: InsuranceCreate) -> Insurance:
         if insurance_id not in self.insurances:
             raise NotFoundError("Versicherung nicht gefunden")
