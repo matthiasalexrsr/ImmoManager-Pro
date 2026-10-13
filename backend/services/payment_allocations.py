@@ -26,6 +26,39 @@ from .rent_history import charge_for, rent_steps
 Pairs = list[tuple[str, Decimal]]
 
 
+def _tenant_payment_rows(store: Any, tenant_ids: set[str], until: date | None):
+    """Read only these tenants' cash and links. Subqueries avoid huge booking-ID parameter lists."""
+    from sqlalchemy import select
+
+    from ..db.deposit_models import DepositPaymentORM
+    from ..db.orm_models import BookingORM, PaymentAllocationORM
+    from ..models import Booking, PaymentAllocation
+
+    bookings: list[Booking] = []
+    allocations: list[PaymentAllocation] = []
+    shares: dict[str, Decimal] = {}
+    wanted = sorted(tenant_ids)
+    for start in range(0, len(wanted), 500):
+        selected = select(BookingORM).where(BookingORM.tenant_id.in_(wanted[start:start + 500]))
+        ids = select(BookingORM.id).where(BookingORM.tenant_id.in_(wanted[start:start + 500]))
+        if until is not None:
+            selected = selected.where(BookingORM.booking_date <= until)
+            ids = ids.where(BookingORM.booking_date <= until)
+        bookings.extend(Booking.model_validate({c.key: getattr(row, c.key) for c in BookingORM.__table__.columns})
+                        for row in store.db.scalars(selected))
+        allocation_query = select(PaymentAllocationORM).where(PaymentAllocationORM.booking_id.in_(ids))
+        allocations.extend(PaymentAllocation.model_validate(
+            {c.key: getattr(row, c.key) for c in PaymentAllocationORM.__table__.columns})
+                           for row in store.db.scalars(allocation_query))
+        for booking_id, amount in store.db.execute(
+                select(DepositPaymentORM.booking_id, DepositPaymentORM.amount)
+                .where(DepositPaymentORM.booking_id.in_(ids))):
+            # Preserve deposit_shares' rounding of each stored legacy link. Rounding
+            # a SQL SUM instead changes two half-cent links from two cents to one.
+            shares[booking_id] = shares.get(booking_id, ZERO) + money(amount)
+    return bookings, allocations, shares
+
+
 def _candidates(store: Any, tenant_id: str, day: date) -> list[ContractCandidate]:
     candidates = []
     for contract in store.list_contracts():
@@ -156,7 +189,8 @@ def allocate_unassigned(store: Any) -> dict:
 
 
 def credited_by_tenant(store: Any, tenant_ids: Iterable[str] | None = None,
-                       bookings: list[Any] | None = None) -> dict[str, list[tuple[Any, str, Decimal]]]:
+                       bookings: list[Any] | None = None,
+                       until: date | None = None) -> dict[str, list[tuple[Any, str, Decimal]]]:
     """(booking, contract id, amount) per tenant, reading bookings and allocations once.
 
     Stored allocations count as they are; a booking without any (imported, or
@@ -164,7 +198,14 @@ def credited_by_tenant(store: Any, tenant_ids: Iterable[str] | None = None,
     `bookings` are all bookings when the caller has read them already.
     """
     wanted = set(tenant_ids) if tenant_ids is not None else None
-    if wanted is not None and len(wanted) == 1:
+    if wanted is not None and not wanted:
+        return {}
+    sql_selected = wanted is not None and bookings is None and hasattr(store, "db")
+    if sql_selected:
+        assert wanted is not None
+        bookings, allocations, shares = _tenant_payment_rows(store, wanted, until)
+        booking_ids = {b.id for b in bookings}
+    elif wanted is not None and len(wanted) == 1:
         # one tenant (account page, settlement): read only their bookings and allocations
         bookings = store.list_bookings(tenant_id=next(iter(wanted)))
         booking_ids = {b.id for b in bookings}
@@ -174,7 +215,8 @@ def credited_by_tenant(store: Any, tenant_ids: Iterable[str] | None = None,
                     if b.tenant_id and (wanted is None or b.tenant_id in wanted)]
         booking_ids = {b.id for b in bookings}
         allocations = store.list_payment_allocations()
-    shares = deposit_shares(store, booking_ids if wanted is not None else None)
+    if not sql_selected:
+        shares = deposit_shares(store, booking_ids if wanted is not None else None)
     stored: dict[str, list[Any]] = defaultdict(list)
     for allocation in allocations:
         if allocation.booking_id in booking_ids:
@@ -185,6 +227,8 @@ def credited_by_tenant(store: Any, tenant_ids: Iterable[str] | None = None,
     candidates: dict[tuple[str, date], list[ContractCandidate]] = {}
     # originals first: a reversal without stored allocations mirrors its original
     for booking in sorted(bookings, key=lambda b: bool(b.reverses_booking_id)):
+        if until is not None and booking.booking_date > until:
+            continue
         amount = rent_amount(booking, shares)
         if stored[booking.id]:
             pairs = [(a.contract_id, money(a.amount)) for a in stored[booking.id]]
