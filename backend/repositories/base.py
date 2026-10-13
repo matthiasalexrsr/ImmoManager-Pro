@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from ..db.orm_models import Base
 from ..domain.revision_time import next_updated_at
 from ..error_helpers import safe_db_operation
+from ..services.record_revisions import compare_sql_revision, consume_expected
 from ..storage import NotFoundError
 
 logger = logging.getLogger(__name__)
@@ -114,26 +115,37 @@ class BaseRepository:
         orm_obj = self.db.get(self.orm_class, entity_id)
         if orm_obj is None:
             raise NotFoundError(self.not_found_msg)
+        compare_sql_revision(self.db, self.orm_class, entity_id)
         previous = getattr(orm_obj, "updated_at", None)
         for key, value in data.model_dump().items():
             setattr(orm_obj, key, value)
-        setattr(orm_obj, "updated_at", next_updated_at(previous, datetime.now(timezone.utc)))
+        setattr(orm_obj, "updated_at", self._next_revision(previous))
         self.db.flush()
         self.db.refresh(orm_obj)
+        consume_expected(self.orm_class.__tablename__, entity_id)
         return self._to_pydantic(orm_obj)
+
+    def _next_revision(self, previous: datetime | None) -> datetime:
+        stamp = next_updated_at(previous, datetime.now(timezone.utc))
+        column = self.orm_class.__table__.c.updated_at
+        # Naive timestamp columns must receive naive UTC, or PostgreSQL converts
+        # an aware value through its session timezone on every update.
+        return stamp if getattr(column.type, "timezone", False) else stamp.replace(tzinfo=None)
 
     @safe_db_operation("patch")
     def patch(self, entity_id: str, data: PydanticBaseModel) -> Any:
         orm_obj = self.db.get(self.orm_class, entity_id)
         if orm_obj is None:
             raise NotFoundError(self.not_found_msg)
+        compare_sql_revision(self.db, self.orm_class, entity_id)
         previous = getattr(orm_obj, "updated_at", None)
         updates = data.model_dump(exclude_unset=True)
         for key, value in updates.items():
             setattr(orm_obj, key, value)
-        setattr(orm_obj, "updated_at", next_updated_at(previous, datetime.now(timezone.utc)))
+        setattr(orm_obj, "updated_at", self._next_revision(previous))
         self.db.flush()
         self.db.refresh(orm_obj)
+        consume_expected(self.orm_class.__tablename__, entity_id)
         return self._to_pydantic(orm_obj)
 
     @safe_db_operation("delete")

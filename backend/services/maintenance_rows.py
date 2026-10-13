@@ -38,8 +38,10 @@ from ..db.service_contract_models import (
     ServiceContractPaymentORM,
     ServiceContractTariffORM,
 )
+from ..domain.revision_time import next_updated_at
 from ..storage import NotFoundError
 from . import memory_cascade
+from .record_revisions import assert_expected, compare_sql_revision, consume_expected
 
 PROJECT = frozenset(pm.PROJECT_TABLES + rv.REVIEW_TABLES)
 
@@ -178,23 +180,34 @@ class Rows:
 
     def update(self, table: str, key: str, **changes: Any) -> Any:
         model = registry()[table][1]
-        if "updated_at" in model.model_fields and "updated_at" not in changes:
-            changes["updated_at"] = stamp(table)
+        stamp_revision = "updated_at" in model.model_fields and "updated_at" not in changes
         if self.db is not None:
             obj = self.db.get(registry()[table][0], key)
             if obj is None:
                 raise NotFoundError("Datensatz nicht gefunden")
+            compare_sql_revision(self.db, registry()[table][0], key)
+            if stamp_revision:
+                revision = next_updated_at(obj.updated_at, stamp(table))
+                column = registry()[table][0].__table__.c.updated_at
+                changes["updated_at"] = revision if getattr(column.type, "timezone", False) else revision.replace(tzinfo=None)
             for name, value in changes.items():
                 setattr(obj, name, value)
             self.db.flush()
+            consume_expected(table, key)
             return self._model(table, obj)
         collection = self._collection(table)
         old = collection.get(key)
         if old is None:
             raise NotFoundError("Datensatz nicht gefunden")
+        # Writable Rows belong to a unit holding memory_archive(store).lock.
+        assert_expected(table, key, getattr(old, "updated_at", None))
+        if stamp_revision:
+            revision = next_updated_at(old.updated_at, stamp(table))
+            changes["updated_at"] = revision.replace(tzinfo=None) if table in PROJECT else revision
         new = model.model_validate({**old.model_dump(), **changes})
         self.undo.append((self._raw()[table], key, True, old))
         collection[key] = new
+        consume_expected(table, key)
         return new
 
     def delete(self, table: str, key: str) -> None:

@@ -16,6 +16,7 @@ from typing import Any, Callable, Optional
 
 from ..models import PAYMENT_METHODS, normalize_payment_method
 from ..storage import NotFoundError, ValidationError
+from .record_revisions import ExpectedRevision, collection_table
 
 PROPERTY_TYPES = {"residential", "commercial", "mixed", "condominium", "single_family", "multi_family", "office",
                   "land", "parking", "other"}
@@ -340,24 +341,27 @@ def _moment(value: Any) -> Optional[datetime]:
     return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
 
 
-def check_not_stale(method: str, path: str, body: Any, store: Any) -> None:
+def check_not_stale(method: str, path: str, body: Any, store: Any) -> ExpectedRevision | None:
     """Refuse to save over a change someone else made after this user opened the record.
 
     Only when the client says which state it edited (`updated_at` in the body); clients
     that do not send it keep "the last one wins".
     """
     if method not in ("PUT", "PATCH") or not isinstance(body, dict) or not body.get("updated_at"):
-        return
+        return None
     match = _RECORD_PATH.match(path)
     getter = STORED.get(match["collection"]) if match else None
     if not match or not getter or not hasattr(store, getter):
-        return
+        return None
     current = _get(getattr(store, getter), match["id"])
     seen, stored = _moment(body["updated_at"]), _moment(getattr(current, "updated_at", None))
     if seen and stored and abs((stored - seen).total_seconds()) > 0.001:
         raise StaleRecordError(f"Der Datensatz wurde inzwischen geändert (zuletzt am "
                                f"{stored.astimezone():%d.%m.%Y um %H:%M:%S}). Bitte neu laden und die Änderung "
                                "noch einmal eintragen, damit nichts überschrieben wird.")
+    if seen and stored:
+        return ExpectedRevision(collection_table(match["collection"]), match["id"], current.updated_at)
+    return None
 
 
 def check(method: str, path: str, body: Any, store: Any) -> None:

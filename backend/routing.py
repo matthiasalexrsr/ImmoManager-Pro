@@ -4,6 +4,7 @@ Extracted from app.py. Assembles the v1 API router with all domain routers.
 """
 
 import json
+from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from starlette.concurrency import run_in_threadpool
@@ -142,21 +143,26 @@ def get_i18n_router() -> APIRouter:
     return i18n.router
 
 
-async def plausibility_guard(request: Request) -> None:
+async def plausibility_guard(request: Request) -> AsyncIterator[None]:
     """Check what users enter before the endpoint stores it (backend.services.plausibility)."""
     if request.method not in ("POST", "PUT", "PATCH") or "json" not in request.headers.get("content-type", ""):
+        yield
         return
     try:
         body = json.loads(await request.body() or b"null")
     except ValueError:
+        yield
         return          # the endpoint answers malformed JSON itself
     from .dependencies import store
     from .services.plausibility import StaleRecordError, check, check_not_stale
+    from .services.record_revisions import revision_scope
 
     path = request.url.path.removeprefix("/api/v1")
     try:
-        await run_in_threadpool(check_not_stale, request.method, path, body, store)
+        expected = await run_in_threadpool(check_not_stale, request.method, path, body, store)
     except StaleRecordError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    await run_in_threadpool(check, request.method, path, body, store)
+    with revision_scope(expected):
+        await run_in_threadpool(check, request.method, path, body, store)
+        yield
 
