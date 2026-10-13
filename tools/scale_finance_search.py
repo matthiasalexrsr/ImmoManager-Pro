@@ -53,7 +53,7 @@ SOURCE_FILES = (
     "backend/routers/search.py", "backend/services/global_search.py", "backend/routers/accounts.py",
     "backend/concurrency.py", "tools/scale_finance_search.py", "tools/scale_runtime.py", "tools/xstress/core.py",
     "backend/db/orm_models.py", "backend/db/migrations/versions/7a2c8e4f1b90_booking_date_index.py",
-    "backend/routers/bookings.py", "backend/services/booking_writes.py", "backend/services/csv_export.py",
+    "backend/routers/bookings.py", "backend/services/booking_writes.py", "backend/services/csv_export.py", "backend/storage.py",
 )
 
 
