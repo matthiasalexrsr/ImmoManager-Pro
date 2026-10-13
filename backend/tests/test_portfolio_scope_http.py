@@ -158,6 +158,25 @@ def test_a_changed_assignment_applies_to_the_token_already_issued(client, estate
     assert _ids(client.get("/api/v1/properties", headers=token)) == set()
 
 
+def test_duplicate_authorization_headers_cannot_drop_the_portfolio_scope(client, estate):
+    north, south = estate["north"], estate["south"]
+    staff = _bearer(_staff("staff", north["portfolio"]))["Authorization"]
+    headers = [("Authorization", staff), ("Authorization", "Bearer invalid-token")]
+    assert _ids(client.get("/api/v1/properties", headers=headers)) == {north["property"].id}
+    assert client.get(south["document"].file_url, headers=headers).status_code == 404
+    assert client.get("/api/v1/audit", headers=headers).status_code == 403
+
+
+def test_duplicate_upload_cookie_headers_cannot_drop_the_portfolio_scope(client, estate):
+    from backend.services.upload_access import UPLOAD_ACCESS_COOKIE
+
+    north, south = estate["north"], estate["south"]
+    staff = _staff("staff", north["portfolio"])
+    headers = [("Cookie", f"{UPLOAD_ACCESS_COOKIE}={auth.create_access_token(staff.id)}"),
+               ("Cookie", f"{UPLOAD_ACCESS_COOKIE}=invalid-token")]
+    assert client.get(south["document"].file_url, headers=headers).status_code in (401, 404)
+
+
 def test_an_account_without_portfolios_sees_and_creates_nothing(client, estate):
     nobody = _bearer(_staff("nobody"))
     for path in LISTS:

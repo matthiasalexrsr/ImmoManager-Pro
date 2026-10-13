@@ -2,6 +2,7 @@
 
 from fastapi import HTTPException
 from starlette.concurrency import run_in_threadpool
+from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from .portfolio_scope import refresh_scope, scope_context, scope_from_user
@@ -37,11 +38,11 @@ class PortfolioScopeMiddleware:
 
         async def checked_send(message):
             if message["type"] == "http.response.start":
-                started["status"] = message["status"]
                 # an assignment withdrawn while the request ran: no successful answer
                 # (an error already prepared stays deliverable)
                 if message["status"] < 400 and actor is not None and not actor.unrestricted:
                     await run_in_threadpool(refresh_scope, actor)
+                started["status"] = message["status"]
             await send(message)
 
         try:
@@ -57,13 +58,17 @@ class PortfolioScopeMiddleware:
 
 def _actor(scope):
     """The signed-in account, as upload_access/get_current_user would accept it, or None."""
-    headers = dict(scope.get("headers", ()))
-    if b"authorization" in headers:   # an explicit header never falls back to the file cookie
-        scheme, _, token = headers[b"authorization"].decode("latin-1").partition(" ")
+    # Use the same parsing as HTTPBearer and require_upload_access. A dict of
+    # raw headers picks the last duplicate while Request.headers picks the first;
+    # that disagreement could authenticate an account without installing its scope.
+    request = Request(scope)
+    authorization = request.headers.get("authorization")
+    if authorization is not None:   # an explicit header never falls back to the file cookie
+        scheme, _, token = authorization.partition(" ")
         token = token if scheme.lower() == "bearer" else ""
     elif scope.get("path", "").startswith("/uploads/"):
         from .upload_access import UPLOAD_ACCESS_COOKIE
-        token = _cookie(headers, UPLOAD_ACCESS_COOKIE) or ""
+        token = request.cookies.get(UPLOAD_ACCESS_COOKIE, "")
     else:
         return None
     if not token.strip():
@@ -78,17 +83,6 @@ def _actor(scope):
         return None
     user = get_user_by_id(payload.sub)
     return scope_from_user(user) if user and user["is_active"] else None
-
-
-def _cookie(headers, name):
-    from http.cookies import SimpleCookie
-
-    jar = SimpleCookie()
-    try:
-        jar.load(headers.get(b"cookie", b"").decode("latin-1"))
-    except Exception:
-        return None
-    return jar[name].value if name in jar else None
 
 
 def _refuse_installation_paths(scope):

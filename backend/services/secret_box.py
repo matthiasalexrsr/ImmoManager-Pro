@@ -21,8 +21,10 @@ import logging
 import os
 import re
 import secrets
+import sys
 import tempfile
 import threading
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -125,7 +127,7 @@ def write_private_file(path: Path, data: bytes) -> None:
             logger.warning("Could not restrict permissions of %s", path.parent)
     fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     try:
-        if os.name != "nt":
+        if sys.platform != "win32":
             os.fchmod(fd, 0o600)
         with os.fdopen(fd, "wb") as handle:
             handle.write(data)
@@ -135,6 +137,43 @@ def write_private_file(path: Path, data: bytes) -> None:
     except BaseException:
         Path(temporary).unlink(missing_ok=True)
         raise
+
+
+@contextmanager
+def _keyring_write_lock(path: Path):
+    """Serialize keyring changes across workers; the OS releases this lock on exit.
+
+    Keep the lock file in place: removing it would let another worker lock a
+    different inode while an existing waiter still owns the previous one.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lock_file = path.with_name(path.name + ".lock")
+    descriptor = os.open(lock_file, os.O_CREAT | os.O_RDWR, 0o600)
+    locked = False
+    try:
+        if sys.platform == "win32":
+            import msvcrt
+
+            if not os.fstat(descriptor).st_size:
+                os.write(descriptor, b"\0")
+            os.lseek(descriptor, 0, os.SEEK_SET)
+            msvcrt.locking(descriptor, msvcrt.LK_LOCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(descriptor, fcntl.LOCK_EX)
+        locked = True
+        yield
+    finally:
+        try:
+            if locked:
+                if sys.platform == "win32":
+                    os.lseek(descriptor, 0, os.SEEK_SET)
+                    msvcrt.locking(descriptor, msvcrt.LK_UNLCK, 1)
+                else:
+                    fcntl.flock(descriptor, fcntl.LOCK_UN)
+        finally:
+            os.close(descriptor)
 
 
 def parse_keyring(raw: bytes) -> list[Key]:
@@ -224,12 +263,18 @@ class SecretBox:
             keys = self.keys()
             if keys:
                 return keys[0]
-            key = Key(self._new_key_id(), secrets.token_bytes(32), "file",
-                      datetime.now(timezone.utc).isoformat(timespec="seconds"))
-            write_private_file(self.key_file, _keyring_bytes([key], key.id))
-            self._cache = None
-            logger.info("Created key file %s (key id %s)", self.key_file, key.id)
-            return key
+            with _keyring_write_lock(self.key_file):
+                # A different worker may have created it while we waited.
+                self._cache = None
+                keys = self.keys()
+                if keys:
+                    return keys[0]
+                key = Key(self._new_key_id(), secrets.token_bytes(32), "file",
+                          datetime.now(timezone.utc).isoformat(timespec="seconds"))
+                write_private_file(self.key_file, _keyring_bytes([key], key.id))
+                self._cache = None
+                logger.info("Created key file %s (key id %s)", self.key_file, key.id)
+                return key
 
     @staticmethod
     def _new_key_id() -> str:
@@ -239,7 +284,8 @@ class SecretBox:
         """Add a new file key and make it active; existing keys stay for decryption."""
         if self._env_keys:
             raise SecretError("SECRET_KEYS ist gesetzt: neuen Schlüssel dort voranstellen, den alten dahinter lassen")
-        with self._lock:
+        with self._lock, _keyring_write_lock(self.key_file):
+            self._cache = None
             keys = self._file_keys()
             key = Key(self._new_key_id(), secrets.token_bytes(32), "file",
                       datetime.now(timezone.utc).isoformat(timespec="seconds"))

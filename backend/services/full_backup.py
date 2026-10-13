@@ -229,7 +229,9 @@ def _libpq(database_url: str) -> tuple[str, dict[str, str]]:
     env = dict(os.environ)
     if url.password:
         env["PGPASSWORD"] = str(url.password)
-    plain = url.set(drivername="postgresql", password=None)
+    # URL.set treats None as "leave unchanged"; explicitly replace this field
+    # so credentials never appear in pg_dump/pg_restore command-line arguments.
+    plain = url.set(drivername="postgresql")._replace(password=None)
     return plain.render_as_string(hide_password=False), env
 
 

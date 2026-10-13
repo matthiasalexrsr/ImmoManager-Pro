@@ -419,6 +419,8 @@ def _scope_queries(state):
                         raise HTTPException(403, "Referenzen dürfen nur mit explizit geprüften Werten geändert werden.")
                 updates[field] = getattr(value, "value", None)
             guard_sql_write(state.session, table, updates)
+        if table.name not in INTERNAL:
+            state.session.info["scoped_writer"] = scope
     state.statement = statement
     if state.is_update or state.is_delete:
         connection = state.session.connection(bind_arguments=state.bind_arguments)
@@ -900,7 +902,10 @@ def _fence_commit(db):
     withdrawing the access (which updates that row) waits for this commit, or this
     commit sees the withdrawal and is refused. SQLite serializes the two writers.
     """
-    scope = db.info.pop("scoped_writer", None)
+    # before_commit precedes SQLAlchemy's implicit flush. Flush now so those
+    # writes undergo the same checks and register their scope before fencing.
+    db.flush()
+    scope = db.info.get("scoped_writer")
     if scope is None:
         return
     from ..auth import SQLUserStore, _user_store
@@ -927,4 +932,5 @@ def _forget_writer(db):
 
 @event.listens_for(Session, "after_commit")
 def _forget_created(db):
+    db.info.pop("scoped_writer", None)
     db.info.pop(CREATED, None)

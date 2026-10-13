@@ -6,6 +6,7 @@ Opt in with IMMO_TEST_POSTGRES_ADMIN_URL (see test_document_versions_postgres.py
 import pytest
 from archive_helpers import lease_with_document
 from fastapi import HTTPException
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 from test_document_versions_postgres import postgres  # noqa: F401  (fixture: own database per test)
 
@@ -108,3 +109,38 @@ def test_global_search_on_postgres(postgres):  # noqa: F811
     assert [hit["id"] for hit in page.items] == [north["contract"].id] and page.total == 1
     assert south["contract"].id not in {hit["id"] for hit in page.items}
     reader.db.close()
+
+
+@pytest.mark.parametrize("write", ["implicit_flush", "update", "delete"])
+def test_all_write_paths_are_fenced_at_commit_on_postgres(postgres, write):  # noqa: F811
+    from backend.db.orm_models import Base, ContactORM
+
+    engine, _ = postgres
+    seed = _store(engine)
+    north = lease_with_document(seed, number="N-1")
+    staff = auth.register_user("staff", "s@example.com", "Staff", "Secret123", "verwalter",
+                               portfolio_access="selected", portfolio_ids=[north["portfolio"].id])
+    captured = _scope(staff)
+    with scope_context(captured):
+        original = seed.create_contact(ContactCreate(contact_type="supplier", company_name="Before"))
+    seed.db.close()
+
+    with Session(engine, autoflush=False) as writer:
+        with scope_context(captured):
+            if write == "implicit_flush":
+                writer.add(ContactORM(id="new-contact", contact_type="supplier", company_name="New"))
+            elif write == "update":
+                writer.execute(update(Base.metadata.tables["contacts"]).where(ContactORM.id == original.id)
+                               .values(company_name="Changed"))
+            else:
+                writer.execute(delete(Base.metadata.tables["contacts"]).where(ContactORM.id == original.id))
+        auth.update_user(staff.id, {"portfolio_access": "selected", "portfolio_ids": []})
+        with scope_context(captured):
+            with pytest.raises(HTTPException) as refused:
+                writer.commit()
+            assert refused.value.status_code == 403
+            writer.rollback()
+
+    with Session(engine) as check:
+        assert check.get(ContactORM, "new-contact") is None
+        assert check.scalar(select(ContactORM.company_name).where(ContactORM.id == original.id)) == "Before"
