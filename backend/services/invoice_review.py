@@ -722,6 +722,7 @@ def transfer_cost(store: Any, invoice_id: str, payload: CostTransferRequest, act
                            "(zeitanteilig und nach Standorten).")
         if r.rows.find("invoice_cost_transfers", invoice_id=invoice_id):
             raise conflict("Die Rechnung ist bereits in eine Nebenkostenabrechnung übernommen und zählt nur einmal.")
+        r.rows.lock("billing_periods", payload.billing_period_id)
         period = r.rows.get("billing_periods", payload.billing_period_id)
         if period is None:
             raise NotFoundError("Abrechnungsperiode nicht gefunden")

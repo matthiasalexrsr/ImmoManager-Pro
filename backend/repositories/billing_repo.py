@@ -49,7 +49,8 @@ class BillingRepository:
         self._tenant_repo = tenant_repo
 
     def _commit(self):
-        self.db.commit()
+        from ..services.billing_writes import commit_or_flush
+        commit_or_flush(self.db)
 
     # --- Billing Periods ---
     def list_billing_periods(self) -> list[BillingPeriod]:

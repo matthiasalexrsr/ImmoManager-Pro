@@ -21,6 +21,7 @@ from decimal import Decimal
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, status
+from pydantic import ValidationError as ModelValidationError
 
 from ..dependencies import store
 from ..models import (
@@ -41,6 +42,7 @@ from ..models import (
     UtilityStatement,
     UtilityStatementPatch,
 )
+from ..services.billing_writes import atomic_billing
 from ..services.final_statements import (
     EDITABLE_STATUSES,
     FINAL_STATUSES,
@@ -144,6 +146,7 @@ def get_billing_period(period_id: str) -> BillingPeriod:
 
 
 @router.put("/periods/{period_id}", response_model=BillingPeriod)
+@atomic_billing(lambda: store, period_arg="period_id")
 def update_billing_period(period_id: str, payload: BillingPeriodCreate) -> BillingPeriod:
     try:
         existing = store.get_billing_period(period_id)
@@ -161,6 +164,7 @@ def update_billing_period(period_id: str, payload: BillingPeriodCreate) -> Billi
 
 
 @router.patch("/periods/{period_id}", response_model=BillingPeriod)
+@atomic_billing(lambda: store, period_arg="period_id")
 def patch_billing_period(period_id: str, payload: BillingPeriodPatch) -> BillingPeriod:
     try:
         existing = store.get_billing_period(period_id)
@@ -173,6 +177,7 @@ def patch_billing_period(period_id: str, payload: BillingPeriodPatch) -> Billing
 
 
 @router.delete("/periods/{period_id}", status_code=status.HTTP_204_NO_CONTENT)
+@atomic_billing(lambda: store, period_arg="period_id")
 def delete_billing_period(period_id: str) -> None:
     try:
         existing = store.get_billing_period(period_id)
@@ -274,6 +279,7 @@ def list_cost_items(
 
 
 @router.post("/cost-items", response_model=CostItem, status_code=status.HTTP_201_CREATED)
+@atomic_billing(lambda: store, destination_arg="payload")
 def create_cost_item(payload: CostItemCreate) -> CostItem:
     try:
         period = store.get_billing_period(payload.billing_period_id)
@@ -296,11 +302,14 @@ def get_cost_item(item_id: str) -> CostItem:
 
 
 @router.put("/cost-items/{item_id}", response_model=CostItem)
+@atomic_billing(lambda: store, cost_arg="item_id", destination_arg="payload")
 def update_cost_item(item_id: str, payload: CostItemCreate) -> CostItem:
     try:
         existing = store.get_cost_item(item_id)
         period = store.get_billing_period(existing.billing_period_id)
         _assert_period_mutable(period)
+        if payload.billing_period_id != existing.billing_period_id:
+            _assert_period_mutable(store.get_billing_period(payload.billing_period_id))
         # the origin of a transferred bill stays: otherwise the bill could be transferred twice
         payload = payload.model_copy(update={"service_contract_invoice_id": existing.service_contract_invoice_id})
         check_cost_item_origin(store, payload, exclude_id=item_id)
@@ -312,17 +321,29 @@ def update_cost_item(item_id: str, payload: CostItemCreate) -> CostItem:
 
 
 @router.patch("/cost-items/{item_id}", response_model=CostItem)
+@atomic_billing(lambda: store, cost_arg="item_id", destination_arg="payload")
 def patch_cost_item(item_id: str, payload: CostItemPatch) -> CostItem:
     try:
         existing = store.get_cost_item(item_id)
         period = store.get_billing_period(existing.billing_period_id)
         _assert_period_mutable(period)
+        if payload.billing_period_id is not None and payload.billing_period_id != existing.billing_period_id:
+            _assert_period_mutable(store.get_billing_period(payload.billing_period_id))
+        # PATCH must enforce the same source-invoice binding as PUT, using the full resulting cost.
+        updated = CostItemCreate.model_validate({
+            **existing.model_dump(include=set(CostItemCreate.model_fields)),
+            **payload.model_dump(exclude_unset=True),
+        })
+        check_cost_item_origin(store, updated, exclude_id=item_id)
         return store._patch_entity("cost_item", item_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except (ValidationError, ModelValidationError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @router.delete("/cost-items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+@atomic_billing(lambda: store, cost_arg="item_id")
 def delete_cost_item(item_id: str) -> None:
     try:
         existing = store.get_cost_item(item_id)
@@ -402,6 +423,7 @@ def _statements_outdated(period_id: str, billing: Any) -> bool:
 
 
 @router.post("/periods/{period_id}/submit-review", response_model=BillingPeriod)
+@atomic_billing(lambda: store, period_arg="period_id")
 def submit_period_for_review(period_id: str) -> BillingPeriod:
     """Transition period from draft to review status."""
     try:
@@ -419,6 +441,7 @@ def submit_period_for_review(period_id: str) -> BillingPeriod:
 
 
 @router.post("/periods/{period_id}/revert-draft", response_model=BillingPeriod)
+@atomic_billing(lambda: store, period_arg="period_id")
 def revert_period_to_draft(period_id: str) -> BillingPeriod:
     """Revert period from review back to draft."""
     try:
@@ -436,6 +459,7 @@ def revert_period_to_draft(period_id: str) -> BillingPeriod:
 
 
 @router.post("/periods/{period_id}/finalize", response_model=BillingPeriod)
+@atomic_billing(lambda: store, period_arg="period_id")
 def finalize_billing_period(period_id: str) -> BillingPeriod:
     """Finalize billing period after successful preflight and generated statements.
 
@@ -543,17 +567,21 @@ def get_utility_statement(statement_id: str) -> UtilityStatement:
 
 
 @router.patch("/statements/{statement_id}", response_model=UtilityStatement)
+@atomic_billing(lambda: store, statement_arg="statement_id", destination_arg="payload")
 def patch_utility_statement(statement_id: str, payload: UtilityStatementPatch) -> UtilityStatement:
     try:
         existing = store.get_utility_statement(statement_id)
         period = store.get_billing_period(existing.billing_period_id)
         _assert_period_mutable(period)
+        if payload.billing_period_id is not None and payload.billing_period_id != existing.billing_period_id:
+            _assert_period_mutable(store.get_billing_period(payload.billing_period_id))
         return store._patch_entity("utility_statement", statement_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.delete("/statements/{statement_id}", status_code=status.HTTP_204_NO_CONTENT)
+@atomic_billing(lambda: store, statement_arg="statement_id")
 def delete_utility_statement(statement_id: str) -> None:
     try:
         existing = store.get_utility_statement(statement_id)
@@ -574,6 +602,7 @@ def delete_utility_statement(statement_id: str) -> None:
     response_model=list[UtilityStatement],
     status_code=status.HTTP_201_CREATED,
 )
+@atomic_billing(lambda: store, period_arg="period_id")
 def generate_utility_statements(period_id: str) -> list[UtilityStatement]:
     """Generate the utility statements of a billing period.
 
@@ -687,6 +716,7 @@ def export_billing_period_zip(period_id: str):
 
 
 @router.post("/statements/{statement_id}/mark-delivered", response_model=UtilityStatement)
+@atomic_billing(lambda: store, statement_arg="statement_id")
 def mark_statement_delivered(
     statement_id: str,
     channel: str = "email",
@@ -723,6 +753,7 @@ def mark_statement_delivered(
 
 
 @router.post("/periods/{period_id}/create-receivables")
+@atomic_billing(lambda: store, period_arg="period_id")
 def create_receivables_from_period(period_id: str):
     """Create receivables/refund bookings from finalized statement balances.
 
@@ -814,6 +845,7 @@ _CORRECTION_SUFFIX = re.compile(r" \(Korrektur Rev\. \d+\)$")
 
 
 @router.post("/periods/{period_id}/revisions")
+@atomic_billing(lambda: store, period_arg="period_id")
 def create_period_revision(
     period_id: str,
     revision_notes: str = Query("", alias="revision_notes"),
@@ -885,6 +917,7 @@ def _save_objection(objection: BillingObjection, **changes: Any) -> BillingObjec
     return store.update_billing_objection(objection.id, data)
 
 
+@atomic_billing(lambda: store, period_arg="period_id")
 def _record_objection(period_id: str, request: BillingObjectionRequest) -> BillingObjection:
     """Record a tenant's objection against an issued statement; the period becomes 'disputed'."""
     try:

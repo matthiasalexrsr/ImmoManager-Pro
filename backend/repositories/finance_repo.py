@@ -70,7 +70,8 @@ class FinanceRepository:
         self._tenant_repo = tenant_repo
 
     def _commit(self):
-        self.db.commit()
+        from ..services.billing_writes import commit_or_flush
+        commit_or_flush(self.db)
 
     # --- Bookings ---
     def list_bookings(self, tenant_id: str | None = None) -> list[Booking]:

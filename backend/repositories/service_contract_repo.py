@@ -71,7 +71,8 @@ class ServiceContractRepository:
         """Commit; a broken unique rule or reference becomes a readable refusal (nothing is kept)."""
         try:
             self.db.flush()
-            self.db.commit()
+            from ..services.billing_writes import commit_or_flush
+            commit_or_flush(self.db)
         except IntegrityError as exc:
             self.db.rollback()
             logger.info("Service contract write refused: %s", exc.orig)

@@ -138,7 +138,8 @@ class SQLAlchemyStore(ServiceContractStoreMethods, DepositStoreMethods):
         self.service_contracts_repo = ServiceContractRepository(db)
 
     def _commit(self):
-        self.db.commit()
+        from ..services.billing_writes import commit_or_flush
+        commit_or_flush(self.db)
 
     def clear_all(self) -> None:
         """Delete all rows from every mapped table. Used by tests to reset state."""

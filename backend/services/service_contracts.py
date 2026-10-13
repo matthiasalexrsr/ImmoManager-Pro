@@ -860,6 +860,13 @@ def transfers_view(store: Any, contract_id: str) -> list[dict]:
 
 
 def transfer_costs(store: Any, contract_id: str, request: CostTransferRequest) -> dict:
+    from .billing_writes import billing_write
+
+    with billing_write(store, [request.billing_period_id]):
+        return _transfer_costs(store, contract_id, request)
+
+
+def _transfer_costs(store: Any, contract_id: str, request: CostTransferRequest) -> dict:
     """Recoverable bills of the contract enter a billing period as cost items, each bill once per period.
 
     Amount: the bill's gross, prorated to the service days inside the billing period,

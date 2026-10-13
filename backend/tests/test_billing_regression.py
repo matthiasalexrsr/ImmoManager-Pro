@@ -574,7 +574,8 @@ def test_f3_objections_need_an_issued_statement_of_the_period():
 
     billing.dispute_billing_period(case["period"].id)  # without a reason
     billing.dispute_billing_period(case["period"].id, reason="zweiter Mieter")  # a second objection
-    assert [o.reason for o in billing.list_billing_objections(case["period"].id)] == [
+    # Equal clock ticks are ordered by the ID tiebreaker, not necessarily by insertion.
+    assert sorted(o.reason for o in billing.list_billing_objections(case["period"].id)) == [
         "ohne Begründung", "zweiter Mieter"]
 
 
@@ -702,7 +703,138 @@ def test_g6_a_key_with_costs_is_not_deleted_with_them():
     assert any(ci.allocation_key_id == case["key"].id for ci in store.list_cost_items())
 
 
+@pytest.mark.parametrize("method", ["put", "patch"])
+@pytest.mark.parametrize("state", ["finalized", "delivered", "disputed", "corrected"])
+def test_g7_a_cost_cannot_be_moved_into_an_issued_period(method, state):
+    case = _finalized()
+    final = case["period"]
+    billing._set_period_status(final.id, state)
+    draft = _period(case["prop"], [("Entwurfskosten", 25, case["key"])])
+    cost = next(ci for ci in store.list_cost_items() if ci.billing_period_id == draft.id)
+    issued_before = _content(_stored(final.id))
+    costs_before = {ci.id for ci in store.list_cost_items() if ci.billing_period_id == final.id}
+
+    with pytest.raises(HTTPException) as refused:
+        if method == "put":
+            billing.update_cost_item(cost.id, CostItemCreate(**{
+                **cost.model_dump(include=set(CostItemCreate.model_fields)), "billing_period_id": final.id}))
+        else:
+            billing.patch_cost_item(cost.id, CostItemPatch(billing_period_id=final.id))
+
+    assert refused.value.status_code == 409
+    assert store.get_cost_item(cost.id).billing_period_id == draft.id
+    assert {ci.id for ci in store.list_cost_items() if ci.billing_period_id == final.id} == costs_before
+    assert _content(_stored(final.id)) == issued_before
+
+
+@pytest.mark.parametrize("method", ["put", "patch"])
+def test_g8_a_cost_can_still_move_between_editable_periods(method):
+    prop = _property()
+    key = _key(prop, "area_sqm")
+    source = _period(prop, [("Entwurfskosten", 25, key)])
+    destination = _period(prop, [])
+    cost = next(ci for ci in store.list_cost_items() if ci.billing_period_id == source.id)
+
+    if method == "put":
+        changed = billing.update_cost_item(cost.id, CostItemCreate(**{
+            **cost.model_dump(include=set(CostItemCreate.model_fields)), "billing_period_id": destination.id}))
+    else:
+        changed = billing.patch_cost_item(cost.id, CostItemPatch(billing_period_id=destination.id))
+
+    assert changed.billing_period_id == destination.id
+    assert store.get_cost_item(cost.id).amount == 25
+
+
+def test_g9_a_null_required_cost_field_is_a_recoverable_error():
+    prop = _property()
+    source = _period(prop, [("Entwurfskosten", 25, _key(prop, "area_sqm"))])
+    cost = next(ci for ci in store.list_cost_items() if ci.billing_period_id == source.id)
+
+    with pytest.raises(HTTPException) as refused:
+        billing.patch_cost_item(cost.id, CostItemPatch(amount=None))
+
+    assert refused.value.status_code == 400
+    assert store.get_cost_item(cost.id).amount == 25
+
+
 # --- HTTP ----------------------------------------------------------------------------------
+
+
+def test_finalization_failure_restores_correction_source_and_all_statements(monkeypatch):
+    case = _finalized()
+    source = case["period"]
+    billing.create_billing_objection(source.id, BillingObjectionRequest(reason="Check costs"))
+    revision = billing.create_period_revision(source.id)["new_period_id"]
+    billing.generate_utility_statements(revision)
+    before = {name: [row.model_dump() for row in getattr(store, f"list_{name}")()]
+              for name in ("billing_periods", "utility_statements", "billing_objections")}
+    close = billing._close_corrected_version
+
+    def fail_after_closing_source(period):
+        close(period)
+        raise RuntimeError("interrupted finalization")
+
+    monkeypatch.setattr(billing, "_close_corrected_version", fail_after_closing_source)
+    with pytest.raises(RuntimeError, match="interrupted finalization"):
+        billing.finalize_billing_period(revision)
+
+    for name, expected in before.items():
+        assert sorted((row.model_dump() for row in getattr(store, f"list_{name}")()), key=lambda row: row["id"]) == (
+            sorted(expected, key=lambda row: row["id"]))
+    monkeypatch.setattr(billing, "_close_corrected_version", close)
+    assert billing.finalize_billing_period(revision).status == "finalized"
+    assert store.get_billing_period(source.id).status == "corrected"
+
+
+def test_regeneration_failure_preserves_previous_statements(monkeypatch):
+    case = _finalized()
+    revision = billing.create_period_revision(case["period"].id)["new_period_id"]
+    billing.generate_utility_statements(revision)
+    before = [row.model_dump() for row in _stored(revision)]
+    create = store.create_utility_statement
+    calls = 0
+
+    def fail_after_first_statement(payload):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("interrupted regeneration")
+        return create(payload)
+
+    monkeypatch.setattr(store, "create_utility_statement", fail_after_first_statement)
+    with pytest.raises(RuntimeError, match="interrupted regeneration"):
+        billing.generate_utility_statements(revision)
+    assert [row.model_dump() for row in _stored(revision)] == before
+
+
+def test_statement_cannot_move_into_an_issued_period():
+    case = _finalized()
+    revision = billing.create_period_revision(case["period"].id)["new_period_id"]
+    statement = billing.generate_utility_statements(revision)[0]
+    with pytest.raises(HTTPException) as refused:
+        billing.patch_utility_statement(statement.id, UtilityStatementPatch(billing_period_id=case["period"].id))
+    assert refused.value.status_code == 409
+    assert store.get_utility_statement(statement.id).billing_period_id == revision
+
+
+def test_receivable_generation_rolls_back_all_tenants_on_failure(monkeypatch):
+    case = _finalized()
+    create = store.create_receivable
+    calls = 0
+
+    def fail_on_second_tenant(payload):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("interrupted receivables")
+        return create(payload)
+
+    monkeypatch.setattr(store, "create_receivable", fail_on_second_tenant)
+    with pytest.raises(RuntimeError, match="interrupted receivables"):
+        billing.create_receivables_from_period(case["period"].id)
+    assert store.list_receivables() == []
+    monkeypatch.setattr(store, "create_receivable", create)
+    assert billing.create_receivables_from_period(case["period"].id)["created_receivables"] == 2
 
 
 def test_http_occupancies_objections_and_meter_units():
