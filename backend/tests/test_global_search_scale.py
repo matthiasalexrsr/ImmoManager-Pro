@@ -15,7 +15,7 @@ def test_sqlite_avoids_python_callbacks_for_plain_ascii_and_preserves_every_valu
     engine = create_engine("sqlite:///:memory:")
     table = Table("samples", MetaData(), Column("id", Integer, primary_key=True), Column("value", Text))
     table.create(engine)
-    values = [f"Synthetic BOOKING {index}" for index in range(10000)]
+    values: list[str | None] = [f"Synthetic BOOKING {index}" for index in range(10000)]
     values += ["ÖZTÜRK", "ẞ", "İ", "ΟΣ", "A\u0308", "Straße", "😀ASCII", "line\nBREAK", "A\0B", "", None]
     with Session(engine) as db:
         db.execute(insert(table), [{"id": index, "value": value} for index, value in enumerate(values)])
@@ -26,7 +26,9 @@ def test_sqlite_avoids_python_callbacks_for_plain_ascii_and_preserves_every_valu
             calls.append(value)
             return value.lower() if isinstance(value, str) else value
 
-        db.connection().connection.driver_connection.create_function("immo_lower", 1, counted, deterministic=True)
+        connection = db.connection().connection.driver_connection
+        assert connection is not None
+        connection.create_function("immo_lower", 1, counted, deterministic=True)
         actual = list(db.scalars(select(lower(table.c.value)).order_by(table.c.id)))
         assert actual == [value.lower() if isinstance(value, str) else value for value in values]
         # CASE must short-circuit: ordinary ASCII and newlines never call into Python.
@@ -39,7 +41,9 @@ def test_sqlite_avoids_python_callbacks_for_plain_ascii_and_preserves_every_valu
                                    "%", "_", "\\", "line\nbreak", "ÄRGER", "ascii@", "search tail"])
 def test_native_and_unicode_branches_match_memory_counts_pages_and_export(query):
     engine = create_engine("sqlite:///:memory:")
-    TenantORM.__table__.create(engine)
+    table = TenantORM.__table__
+    assert isinstance(table, Table)
+    table.create(engine)
     names = ["SEARCH ordinary", "SEARCH ÖZTÜRK ÄRGER", "SEARCH Straße ẞ", "SEARCH İSTANBUL I",
              "SEARCH ΟΣ", "SEARCH a_%\\line\nBREAK", "SEARCH tail"]
     rows = [SimpleNamespace(id=f"row-{index:03d}", full_name=name,
