@@ -13,6 +13,7 @@ from ..dependencies import store
 from ..services import global_search as gs
 from ..services.ai.schemas import SearchHit
 from ..services.ai.semantic_search import IndexEntry, search_index
+from ..services.csv_export import spreadsheet_cell
 from ..services.portfolio_scope import require_installation_scope, resource_visible
 
 logger = logging.getLogger(__name__)
@@ -125,9 +126,7 @@ _CSV_COLUMNS = ("entity_type", "id", "display", "detail", "url")
 
 
 def _csv_cell(value) -> str:
-    text = "" if value is None else str(value)
-    # spreadsheet formula injection
-    return "'" + text if text[:1] in ("=", "+", "-", "@", "\t", "\r") else text
+    return spreadsheet_cell(value)
 
 
 @router.get("/export", response_model=None)

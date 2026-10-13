@@ -5,6 +5,8 @@
 .rent-overview-filters input, .rent-overview-filters select { min-height: 2.5rem; max-width: 100%; padding: .4rem .6rem; color: var(--text-primary); background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: .4rem; }
 .rent-overview .alert { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; }
 .rent-overview-basis { color: var(--text-secondary); margin: 1rem 0; max-width: 80ch; }
+.rent-overview-basis summary { cursor: pointer; padding: .4rem 0; color: var(--text-primary); }
+.rent-overview-basis summary:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }
 .rent-overview-links { display: flex; flex-wrap: wrap; gap: .6rem 1.25rem; margin: 1.25rem 0 .75rem; }
 .rent-payment-dialog { width: min(38rem, calc(100vw - 1rem)); }
 .rent-payment-dialog h2 { font-size: 1.15rem; margin: 0; }
@@ -14,5 +16,12 @@
   .rent-overview-heading { flex-wrap: wrap; }
   .rent-overview-filters { display: grid; grid-template-columns: 1fr; }
   .rent-overview-filters input, .rent-overview-filters select { width: 100%; box-sizing: border-box; }
+  .rent-overview .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem; }
+  .rent-overview .stats-grid.rent-summary-long-values { grid-template-columns: minmax(0, 1fr); }
+  .rent-overview .stat-card { min-width: 0; padding: .8rem; }
+  .rent-overview .stat-label { min-height: 2.5em; overflow-wrap: anywhere; font-size: .75rem; }
+  .rent-overview .stat-card:not(:has(.stat-icon)) .stat-value {
+    display: block; font-size: 1.1rem; white-space: normal; overflow-wrap: anywhere; min-width: 0; max-width: 100%;
+  }
   .rent-payment-dialog .modal-footer .btn { flex: 1 1 100%; white-space: normal; }
 }

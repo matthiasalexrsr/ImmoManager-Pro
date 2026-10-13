@@ -5,6 +5,7 @@ import { PlusIcon, EditIcon, TrashIcon } from './Icons';
 import StatusBadge from './StatusBadge';
 import { formatDate, formatMoney, plainLabel } from '../utils/format';
 import { codeLabel } from '../utils/codeLabels';
+import { csvCell } from '../utils/csv';
 import './DataTable.css';
 
 const PAGE_SIZES = [10, 25, 50, 100];
@@ -176,15 +177,8 @@ export default function DataTable({ columns, data, onEdit: editHandler, onDelete
       // complete selection and enrichment. A failed loader never falls back.
       const exportData = loadExportData ? await loadExportData() : sorted;
       if (!Array.isArray(exportData)) throw new Error('Exportdaten konnten nicht geladen werden.');
-      const headers = visibleColumns.map(c => c.label);
-      const rows = exportData.map(row =>
-        visibleColumns.map(col => {
-          const v = row[col.key];
-          const s = v == null ? '' : String(v);
-          return s.includes(',') || s.includes('"') || s.includes('\n')
-            ? `"${s.replace(/"/g, '""')}"` : s;
-        })
-      );
+      const headers = visibleColumns.map(c => csvCell(c.label));
+      const rows = exportData.map(row => visibleColumns.map(col => csvCell(row[col.key])));
       const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
       const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
       const url = URL.createObjectURL(blob);

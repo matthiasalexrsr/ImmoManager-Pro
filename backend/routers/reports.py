@@ -11,6 +11,7 @@ from ..concurrency import one_at_a_time
 from ..dependencies import store
 from ..domain.money import money
 from ..services import report_service
+from ..services.csv_export import spreadsheet_cell
 from ..services.finance_ledger import Dimensions, FinanceFilter, add_months, month_start
 from ..services.read_cache import CachedReads
 
@@ -47,7 +48,7 @@ def _csv_response(rows: list[dict], filename: str) -> Response:
         output = io.StringIO()
         writer = csv.DictWriter(output, fieldnames=rows[0].keys(), delimiter=";")
         writer.writeheader()
-        writer.writerows(rows)
+        writer.writerows({key: spreadsheet_cell(value) for key, value in row.items()} for row in rows)
     return Response(
         output.getvalue(),
         media_type="text/csv; charset=utf-8",

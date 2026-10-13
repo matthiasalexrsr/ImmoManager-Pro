@@ -127,6 +127,24 @@ try {
       await expect(page.getByRole('dialog')).toHaveCount(0);
     }
   });
+  await step('Large aggregate amounts fit compact mobile summary cards', async () => {
+    // A layout-only response fixture; no fabricated balance is written to the QA database.
+    await page.route('**/api/v1/rent-charges/ledger?*', async route => {
+      const response = await route.fetch();
+      const data = await response.json();
+      data.totals = { expected: 999999999999.99, paid: 999999999999.99,
+        outstanding: 999999999999.99, contract_credit: 999999999999.99 };
+      await route.fulfill({ response, json: data });
+    }, { times: 1 });
+    await page.reload();
+    await expect(page.locator('.stat-card')).toHaveCount(4);
+    assert.ok(await page.locator('.stat-card').evaluateAll(cards => cards.every(card => {
+      const value = card.querySelector('.stat-value');
+      const outer = card.getBoundingClientRect(); const inner = value.getBoundingClientRect();
+      return value.scrollWidth <= value.clientWidth + 1 && inner.right <= outer.right && inner.left >= outer.left;
+    })), 'Large amounts overflow their mobile card');
+    await screenshot(page, 'rent-large-amounts-320');
+  });
   await step('Read-only user sees balances without payment controls', async () => {
     const reader = await browser.newContext({ viewport: { width: 360, height: 1000 } });
     const view = await reader.newPage();

@@ -170,4 +170,14 @@ describe('DataTable server paging and complete CSV export', () => {
     expect(downloads).toHaveLength(0);
     expect(exportedBlob).toBeUndefined();
   });
+
+  it('exports literal text, escaped headings and numeric negative amounts', async () => {
+    render(<DataTable title="Sichere CSV" columns={[
+      { key: 'title', label: 'Titel, Name' }, { key: 'amount', label: 'Betrag', type: 'currency' },
+    ]} data={[{ id: 'formula', title: '  =1+1', amount: -123.45 },
+      { id: 'cr', title: 'Öztürk\rWohnung 1', amount: 12 }]} />);
+    fireEvent.click(screen.getByRole('button', { name: 'CSV' }));
+    await waitFor(() => expect(downloads).toHaveLength(1));
+    expect(await readBlob(exportedBlob)).toBe('"Titel, Name",Betrag\n\'  =1+1,-123.45\n"Öztürk\rWohnung 1",12');
+  });
 });

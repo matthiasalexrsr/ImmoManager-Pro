@@ -169,13 +169,15 @@ export default function RentOverview() {
     {loading && <p role="status">Mieten und Zahlungseingänge werden geladen…</p>}
     {ledger && <>
       <p><strong>{formatMonth(ledger.month)}</strong> · Zahlungsstand {formatDate(ledger.as_of)}</p>
-      <div className="stats-grid">
+      <div className={`stats-grid${amountKeys.some(key => formatMoney(ledger.totals[key]).length > 16) ? ' rent-summary-long-values' : ''}`}>
         {[['expected', 'Vereinbarte Miete'], ['paid', 'Aus Zahlungen gedeckt'], ['outstanding', 'Offen im Mietmonat'], ['contract_credit', 'Guthaben der angezeigten Verträge']]
           .map(([key, label]) => <div className="stat-card" key={key}><div className="stat-label">{label}</div>
             <div className="stat-value">{formatMoney(ledger.totals[key])}</div></div>)}
       </div>
-      <p className="rent-overview-basis">Grundlage ist der datierte Mietverlauf einschließlich Teilmonaten. Gebuchte Zahlungen werden ab ihrem Eingangsdatum
-        berücksichtigt und decken zuerst ältere Mietmonate. Stornos und Kautionsanteile sind berücksichtigt; Guthaben gilt zum Stichtag.</p>
+      <details className="rent-overview-basis"><summary>So werden Mieten und Zahlungen berechnet</summary>
+        <p>Grundlage ist der datierte Mietverlauf einschließlich Teilmonaten. Gebuchte Zahlungen werden ab ihrem Eingangsdatum
+          berücksichtigt und decken zuerst ältere Mietmonate. Stornos und Kautionsanteile sind berücksichtigt; Guthaben gilt zum Stichtag.</p>
+      </details>
       <DataTable title="Mieten im ausgewählten Monat" columns={columns} data={ledger.rows} />
     </>}
     <nav className="rent-overview-links" aria-label="Weitere Mietvorgänge">
