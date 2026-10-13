@@ -33,9 +33,9 @@ const entities = [];
 let api;
 let owner;
 let readonly;
-// Use full Chromium's new headless mode: the lightweight headless shell does
-// not initialize native PDF viewer frames reliably.
+// Exercise the same full Chromium used for the desktop acceptance checks.
 const browser = await chromium.launch({ channel: 'chromium', headless: true, timeout: 15000 });
+results.browserVersion = browser.version();
 
 async function bounded(promise, milliseconds, label) {
   let timeout;
@@ -140,8 +140,7 @@ async function screenshot(page, filename, scope = 'page') {
     const scroller = panel?.querySelector('.party-panel-content');
     return { viewport: { width: innerWidth, height: innerHeight }, root: { width: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth }, panel: panel && { width: panel.clientWidth, scrollWidth: panel.scrollWidth }, content: scroller && { width: scroller.clientWidth, scrollWidth: scroller.scrollWidth } };
   });
-  // Wait only for finite animations in this top document; never ask native PDF
-  // guest frames to execute animation scripts.
+  // Wait for finite animations before measuring the rendered application.
   await bounded(page.evaluate(async () => {
     await Promise.all(document.getAnimations().filter(animation => animation.effect?.getTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {})));
   }), 3000, 'finite page animations');
@@ -226,9 +225,14 @@ try {
     await expect(card.getByRole('button', { name: historicalDoc.title, exact: true })).toBeVisible();
     await expect(card.getByText(`${marker} Fremdes Einheitendokument`, { exact: true })).toHaveCount(0);
     const opener = card.getByRole('button', { name: historicalDoc.title, exact: true });
+    const pdfResponse = owner.waitForResponse(response => response.url() === `${base}${stored.file_url}`, { timeout: 10000 });
     await opener.click();
     const viewer = owner.getByRole('dialog', { name: historicalDoc.title, exact: true });
-    await expect(viewer.locator('iframe')).toHaveAttribute('src', `${base}${stored.file_url}`);
+    assert.ok((await pdfResponse).ok(), 'Historical PDF request failed');
+    await expect(viewer.getByRole('img', { name: `${historicalDoc.title} – Seite 1 von 1`, exact: true })).toBeVisible();
+    await viewer.getByRole('button', { name: 'PDF-Text', exact: true }).click();
+    await expect(viewer.locator('.pdf-preview-text')).toContainText(`${marker} historical lease document`);
+    await viewer.getByRole('button', { name: 'PDF-Text', exact: true }).click();
     const downloadEvent = owner.waitForEvent('download', { timeout: 10000 });
     await viewer.getByRole('button', { name: 'Herunterladen', exact: true }).click();
     const download = await downloadEvent;
@@ -350,8 +354,8 @@ try {
       const pdfResponse = owner.waitForResponse(response => response.url() === `${base}${stored.file_url}`, { timeout: 10000 });
       await card.getByRole('button', { name: historicalDoc.title, exact: true }).click();
       const preview = owner.getByRole('dialog', { name: historicalDoc.title, exact: true });
-      await expect(preview.locator('iframe')).toBeVisible();
-      await (await pdfResponse).finished();
+      assert.ok((await pdfResponse).ok(), 'Historical PDF request failed');
+      await expect(preview.getByRole('img', { name: `${historicalDoc.title} – Seite 1 von 1`, exact: true })).toBeVisible();
       await screenshot(owner, `party-preview-${width}.png`, 'party PDF preview');
       const previewSize = await preview.evaluate(element => ({ width: element.clientWidth, scrollWidth: element.scrollWidth }));
       assert.ok(previewSize.scrollWidth <= previewSize.width + 1, `Preview overflows: ${JSON.stringify(previewSize)}`);
