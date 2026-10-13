@@ -62,6 +62,7 @@ def isolated_env(directory: Path, *, secret: str, persistent: bool = True) -> di
             "SQLITE_PERSISTENT_STORE": str(persistent).lower(),
             "ALLOW_INMEMORY_FALLBACK": str(not persistent).lower(),
             "PLUGIN_DIRS": "[]", "AI_ENABLED": "false", "TASK_QUEUE_BACKEND": "sync",
+            "JOB_SCHEDULER_ENABLED": "false", "BACKUP_SCHEDULE_ENABLED": "false",
             "CORS_ORIGINS": '["http://localhost:5173"]'}
 
 
@@ -167,6 +168,10 @@ class Findings:
         return grouped
 
 
+class FixtureSetupError(RuntimeError):
+    """A prerequisite failed; dependent operations must not run with missing IDs."""
+
+
 class Client:
     """One logged-in user. Every call is timed; 5xx is always KRITISCH."""
 
@@ -217,6 +222,14 @@ class Client:
         status, content = self.call(method, path, body, **kw)
         return content if status in (200, 201, 204) else None
 
+    def require_entity(self, method: str, path: str, body: Any = None, **kw) -> dict:
+        """Create/read a prerequisite, preserving the failed HTTP call in the report."""
+        status, content = self.call(method, path, body, **kw)
+        if status not in (200, 201) or not isinstance(content, dict) or not content.get("id"):
+            raise FixtureSetupError(f"{self.username}: required {method} {path} failed "
+                                    f"(status {status}, expected an entity with an ID): {str(content)[:300]}")
+        return content
+
     def all(self, path: str, **kw) -> list:
         sep = "&" if "?" in path else "?"
         rows, skip = [], 0
@@ -250,15 +263,35 @@ def setup_users(server: Server, findings: Findings) -> dict[str, Client]:
     with httpx.Client(timeout=60) as http:
         status = http.get(f"{server.base}/auth/registration-status").json()
         if status.get("initial_setup"):
-            http.post(f"{server.base}/auth/register", json={"username": "owner", "email": "owner@stress.test",
-                                                        "full_name": "Petra Eigner", "password": PASSWORD})
+            registered = http.post(f"{server.base}/auth/register", json={"username": "owner", "email": "owner@stress.test",
+                                                                       "full_name": "Petra Eigner", "password": PASSWORD})
+            if registered.status_code not in (200, 201):
+                raise FixtureSetupError(f"Owner registration failed: {registered.status_code} {registered.text[:300]}")
     owner = Client(server, findings, "owner")
     for username, role, name in USERS[1:]:
-        owner.call("POST", "/auth/users", {"username": username, "email": f"{username}@stress.test",
-                                           "full_name": name, "password": PASSWORD, "role": role},
-                   expect=(201, 409), area="Benutzer")
+        status, _ = owner.call("POST", "/auth/users", {"username": username, "email": f"{username}@stress.test",
+                                                      "full_name": name, "password": PASSWORD, "role": role,
+                                                      "portfolio_access": "selected", "portfolio_ids": []},
+                               expect=(201, 409), area="Benutzer")
+        if status not in (201, 409):
+            raise FixtureSetupError(f"Could not create fixture user {username}: {status}")
     return {username: (owner if username == "owner" else Client(server, findings, username))
             for username, _, _ in USERS}
+
+
+def assign_portfolios(users: dict[str, Client], portfolio_ids: list[str]) -> None:
+    """Explicitly grant the generated portfolios; selected access excludes future portfolios."""
+    if not portfolio_ids or any(not pid for pid in portfolio_ids):
+        raise FixtureSetupError("Portfolio assignment needs successfully created portfolios")
+    owner = users["owner"]
+    for username, client in users.items():
+        if username == "owner":
+            continue
+        me = client.require_entity("GET", "/auth/me", area="Benutzer")
+        updated = owner.require_entity("PATCH", f"/auth/users/{me['id']}",
+                                       {"portfolio_access": "selected", "portfolio_ids": portfolio_ids}, area="Benutzer")
+        if updated.get("portfolio_access") != "selected" or set(updated.get("portfolio_ids", [])) != set(portfolio_ids):
+            raise FixtureSetupError(f"Portfolio assignment for {username} was not stored: {updated}")
 
 
 def write_report(findings: Findings, out: Path, meta: dict) -> Path:

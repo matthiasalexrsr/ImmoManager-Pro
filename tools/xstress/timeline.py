@@ -15,7 +15,7 @@ from collections import defaultdict
 from datetime import date, timedelta
 from decimal import Decimal
 
-from .core import Client, Findings
+from .core import Client, Findings, assign_portfolios
 from .ledger import Ledger, advances_between, money, monthly_due, step_on
 from .world import Tenancy, World, add_months, month_end, months
 
@@ -64,40 +64,41 @@ class Simulation:
     def setup(self) -> None:
         self.f.phase = "aufbau"
         o, v = self.u["owner"], self.u["verwalter"]
-        for n, pf in enumerate(self.w.portfolios):
-            created = o.ok("POST", "/portfolios", {"name": pf.name, "owner_name": pf.owner}, area="Aufbau")
+        for pf in self.w.portfolios:
+            created = o.require_entity("POST", "/portfolios", {"name": pf.name, "owner_name": pf.owner}, area="Aufbau")
             pf.id = created["id"]
-            account = o.ok("POST", "/accounts", {"portfolio_id": pf.id, "name": f"Mietkonto {pf.owner}",
+        assign_portfolios(self.u, [pf.id for pf in self.w.portfolios])
+        for n, pf in enumerate(self.w.portfolios):
+            account = o.require_entity("POST", "/accounts", {"portfolio_id": pf.id, "name": f"Mietkonto {pf.owner}",
                                                  "bank_name": "Sparkasse", "iban": german_iban(37040044, 532013000 + n),
                                                  "account_type": "bank", "opening_balance": 25000}, area="Aufbau")
             pf.account_id = account["id"]
-            cash = o.ok("POST", "/accounts", {"portfolio_id": pf.id, "name": f"Barkasse {pf.owner}",
+            cash = o.require_entity("POST", "/accounts", {"portfolio_id": pf.id, "name": f"Barkasse {pf.owner}",
                                               "account_type": "cash", "opening_balance": 0}, area="Aufbau")
-            self.cash_account[pf.id] = cash["id"] if cash else pf.account_id
+            self.cash_account[pf.id] = cash["id"]
             for name, kind in [("Mieteinnahmen", "income"), ("Betriebskosten", "expense"), ("Instandhaltung", "expense"),
                                ("Verwaltung", "expense"), ("Nebenkostennachzahlung", "income")]:
-                cat = o.ok("POST", "/categories", {"portfolio_id": pf.id, "name": name, "category_type": kind}, area="Aufbau")
-                pf.categories[name] = cat["id"] if cat else None
+                cat = o.require_entity("POST", "/categories", {"portfolio_id": pf.id, "name": name, "category_type": kind}, area="Aufbau")
+                pf.categories[name] = cat["id"]
             for prop in pf.properties:
                 body = {"portfolio_id": pf.id, "name": prop.name, "property_type": prop.kind, "city": prop.city,
                         "postal_code": prop.postal_code, "address_line": prop.street, "country": "DE",
                         "year_built": prop.year_built,
                         "living_area_sqm": sum(u.area or 0 for u in prop.units if u.kind == "flat") or None}
-                prop.id = o.ok("POST", "/properties", body, area="Aufbau")["id"]
+                prop.id = o.require_entity("POST", "/properties", body, area="Aufbau")["id"]
                 for unit in prop.units:
-                    created = v.ok("POST", "/units", {
+                    created = v.require_entity("POST", "/units", {
                         "property_id": prop.id, "label": unit.label, "unit_type": unit.unit_type, "area_sqm": unit.area,
                         "rooms": unit.rooms, "floor": unit.floor, "person_count": unit.persons, "status": "vacant",
                         "cold_rent": self.market(unit.cold, self.w.start), "service_charge_advance": unit.service,
                         "heating_advance": unit.heating}, area="Aufbau")
-                    unit.id = created["id"] if created else None
-                    if unit.kind in ("flat", "commercial") and unit.id:
-                        meter = self.u["hausmeister"].ok("POST", "/meters", {
+                    unit.id = created["id"]
+                    if unit.kind in ("flat", "commercial"):
+                        meter = self.u["hausmeister"].require_entity("POST", "/meters", {
                             "unit_id": unit.id, "meter_type": "water_cold", "serial_number": f"WZ-{unit.id[:8]}",
                             "installation_date": "2019-01-01"}, area="Zähler")
-                        if meter:
-                            self.meters[unit.id] = meter["id"]
-                            self.meter_values[unit.id] = round(self.rnd.uniform(50, 400), 2)
+                        self.meters[unit.id] = meter["id"]
+                        self.meter_values[unit.id] = round(self.rnd.uniform(50, 400), 2)
         # tenancies that began before the test period
         for t in sorted(self.w.tenancies, key=lambda x: x.start):
             if t.start < self.w.start:
@@ -109,26 +110,24 @@ class Simulation:
         prop = self.w.property_of(t.unit)
         cold = self.market(t.unit.cold, t.start)
         # the unit's rent is the default for the next contract
-        v.call("PATCH", f"/units/{t.unit.id}", {"cold_rent": cold, "service_charge_advance": t.unit.service,
+        v.require_entity("PATCH", f"/units/{t.unit.id}", {"cold_rent": cold, "service_charge_advance": t.unit.service,
                                                "heating_advance": t.unit.heating, "status": "occupied"}, area="Einzug")
         if not t.tenant.id:
-            created = v.ok("POST", "/tenants", {"full_name": t.tenant.name, "email": t.tenant.email,
+            created = v.require_entity("POST", "/tenants", {"full_name": t.tenant.name, "email": t.tenant.email,
                                                 "phone": t.tenant.phone,
                                                 "payment_method": "sepa" if t.behaviour == "sepa_return" else "transfer",
                                                 "sepa_mandate": t.tenant.iban if t.behaviour == "sepa_return" else None},
                            area="Einzug")
-            t.tenant.id = created["id"] if created else None
+            t.tenant.id = created["id"]
         if t.deposit:
             t.deposit = round(cold * 3, 2)       # three cold rents at the start (§ 551 BGB)
         notice_known = t.end is not None and add_months(t.end, -3) < self.w.start
-        contract = v.ok("POST", "/contracts", {
+        contract = v.require_entity("POST", "/contracts", {
             "contract_number": t.number, "property_id": prop.id, "unit_id": t.unit.id, "tenant_id": t.tenant.id,
             "start_date": t.start.isoformat(), "end_date": t.end.isoformat() if notice_known else None,
             "status": "terminated" if notice_known else "active", "notice_period": "3 Monate",
             "deposit_amount": t.deposit, "index_rent": t.rent_model,
             "persons": t.unit.persons}, area="Einzug")
-        if not contract:
-            return
         t.id = contract["id"]
         self.created.add(id(t))
         if notice_known:

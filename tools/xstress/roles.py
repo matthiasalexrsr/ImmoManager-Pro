@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from uuid import uuid4
 
-from .core import PASSWORD, Client, Findings, Server, setup_users
+from .core import PASSWORD, Client, Findings, FixtureSetupError, Server, setup_users
 
 SPARE_YEAR = date.today().year + 2     # test contracts in the future, but not implausibly far
 
@@ -29,7 +29,8 @@ MATRIX = {
     "Kaution ändern": {"eigentuemer", "verwalter", "buchhaltung"},
     "Wartungsfall anlegen": {"eigentuemer", "verwalter", "techniker"},
     "Zählerstand erfassen": {"eigentuemer", "verwalter", "techniker"},
-    "Daten exportieren": {"eigentuemer", "verwalter"},
+    # The office users have selected portfolios. Installation-wide exports require all access.
+    "Daten exportieren": {"eigentuemer"},
     "Backup wiederherstellen": {"eigentuemer"},
     "Benutzer anlegen (Verwalter-Rolle)": {"eigentuemer"},
     "Berichte lesen": {"eigentuemer", "verwalter", "buchhaltung", "techniker", "readonly"},
@@ -46,8 +47,8 @@ def _actions(c: Client, refs: dict, username: str) -> dict:
         "Buchung löschen": ("DELETE", f"/bookings/{refs['spare_bookings'][username]}", None),
         "Zahlung aufteilen": ("PUT", f"/bookings/{booking['id']}/allocations", []),
         "Vertrag anlegen": ("POST", "/contracts", {"contract_number": f"R-{username}-{n}", "property_id": refs["free_unit"]["property_id"],
-                                                   "unit_id": refs["free_unit"]["id"], "tenant_id": refs["tenant"],
-                                                   "start_date": "2030-01-01", "status": "draft"}),
+                                                   "unit_id": refs["action_units"][username], "tenant_id": refs["tenant"],
+                                                   "start_date": f"{SPARE_YEAR + 1}-01-01", "status": "draft"}),
         "Vertrag löschen": ("DELETE", f"/contracts/{refs['spare_contracts'][username]}", None),
         "Mietanpassung anwenden": ("POST", f"/rent-adjustments/{refs['adjustments'][username]}/apply", {}),
         "Mieter löschen": ("DELETE", f"/tenants/{refs['spare_tenants'][username]}", None),
@@ -70,32 +71,42 @@ def _prepare(users: dict[str, Client]) -> dict:
     contracts = v.all("/contracts")
     active = [x for x in contracts if x["status"] == "active"]
     units = v.all("/units")
+    accounts, meters, deposits = v.all("/accounts"), v.all("/meters"), v.all("/deposits")
+    for label, rows in (("active contracts", active), ("units", units), ("accounts", accounts),
+                        ("meters", meters), ("deposits", deposits)):
+        if not rows:
+            raise FixtureSetupError(f"Role matrix requires {label}; prerequisite data is missing or inaccessible")
     free = next((u for u in units if u["status"] == "vacant"), units[0])
-    account = v.all("/accounts")[0]["id"]
+    account = accounts[0]["id"]
     refs = {"account": account, "free_unit": free, "tenant": active[0]["tenant_id"], "property": active[0]["property_id"],
-            "meter": (v.all("/meters") or [{"id": "x"}])[0]["id"], "deposit": (v.all("/deposits") or [{"id": "x"}])[0]["id"],
-            "booking": v.ok("POST", "/bookings", {"account_id": account, "tenant_id": active[0]["tenant_id"],
+            "meter": meters[0]["id"], "deposit": deposits[0]["id"],
+            "booking": v.require_entity("POST", "/bookings", {"account_id": account, "tenant_id": active[0]["tenant_id"],
                                                   "booking_date": "2026-05-02", "amount": 50.0}),
-            "spare_bookings": {}, "spare_contracts": {}, "spare_tenants": {}, "adjustments": {}}
+            "spare_bookings": {}, "spare_contracts": {}, "spare_tenants": {}, "adjustments": {}, "action_units": {}}
     for username in users:
-        refs["spare_bookings"][username] = v.ok("POST", "/bookings", {"account_id": account, "booking_date": "2026-05-02",
+        refs["action_units"][username] = v.require_entity("POST", "/units", {
+            "property_id": free["property_id"], "label": f"Rechtetest {username}", "unit_type": "flat",
+            "status": "vacant", "cold_rent": 500})["id"]
+        refs["spare_bookings"][username] = v.require_entity("POST", "/bookings", {"account_id": account, "booking_date": "2026-05-02",
                                                                       "amount": 2.0})["id"]
-        tenant = v.ok("POST", "/tenants", {"full_name": f"Löschtest {username}"})
+        tenant = v.require_entity("POST", "/tenants", {"full_name": f"Löschtest {username}"})
         refs["spare_tenants"][username] = tenant["id"]
-        tenant2 = v.ok("POST", "/tenants", {"full_name": f"Vertragstest {username}"})
-        spare = v.ok("POST", "/contracts", {"contract_number": f"DEL-{username}", "property_id": free["property_id"],
-                                            "unit_id": free["id"], "tenant_id": tenant2["id"],
+        tenant2 = v.require_entity("POST", "/tenants", {"full_name": f"Vertragstest {username}"})
+        spare = v.require_entity("POST", "/contracts", {"contract_number": f"DEL-{username}", "property_id": free["property_id"],
+                                            "unit_id": refs["action_units"][username], "tenant_id": tenant2["id"],
                                             # one month each, two years ahead (the app refuses more than 5)
                                             "start_date": f"{SPARE_YEAR}-{2 + list(users).index(username):02d}-01",
                                             "end_date": f"{SPARE_YEAR}-{2 + list(users).index(username):02d}-28",
                                             "status": "draft"})
-        refs["spare_contracts"][username] = spare["id"] if spare else "x"
+        refs["spare_contracts"][username] = spare["id"]
         target = active[list(users).index(username) % len(active)]
-        periods = v.ok("GET", f"/contracts/{target['id']}/rent-periods") or [{"cold_rent": 500}]
-        adj = v.ok("POST", "/rent-adjustments", {"contract_id": target["id"], "adjustment_type": "index",
-                                                 "effective_date": "2027-02-01", "previous_rent": periods[-1]["cold_rent"],
+        periods = v.ok("GET", f"/contracts/{target['id']}/rent-periods")
+        if not periods:
+            raise FixtureSetupError(f"Role matrix requires a rent period for {target['id']}")
+        adj = v.require_entity("POST", "/rent-adjustments", {"contract_id": target["id"], "adjustment_type": "index",
+                                                 "effective_date": f"{SPARE_YEAR + 1}-{2 + list(users).index(username):02d}-01", "previous_rent": periods[-1]["cold_rent"],
                                                  "new_rent": round(periods[-1]["cold_rent"] * 1.02, 2)})
-        refs["adjustments"][username] = adj["id"] if adj else "x"
+        refs["adjustments"][username] = adj["id"]
     return refs
 
 
@@ -105,7 +116,7 @@ def matrix(users: dict[str, Client], f: Findings) -> None:
     for username, client in users.items():
         role = ROLE_OF[username]
         for action, (method, path, body) in _actions(client, refs, username).items():
-            status, _ = client.call(method, path, body, expect=tuple(range(200, 500)), area="Rechte")
+            status, content = client.call(method, path, body, expect=tuple(range(200, 500)), area="Rechte")
             if status is None or status >= 500:
                 continue
             allowed = status not in (401, 403)
@@ -115,6 +126,8 @@ def matrix(users: dict[str, Client], f: Findings) -> None:
                 f.add("RECHTE", "Rechte", f"Rolle „{role}“ darf „{action}“ ({method} {path.split('?')[0]} → {status})")
             elif not allowed and should:
                 f.add("RECHTE", "Rechte", f"Rolle „{role}“ darf „{action}“ nicht, sollte es aber ({status})")
+            elif should and status >= 400 and action != "Backup wiederherstellen":
+                f.add("FALSCH", "Rechte", f"Erlaubte Aktion „{action}“ für „{role}“ schlägt fehl ({status})", content)
     owner, verwalter = users["owner"], users["verwalter"]
     # nobody may raise their own role
     me = verwalter.ok("GET", "/auth/me", area="Rechte")
@@ -233,11 +246,15 @@ def mixed_load(server: Server, f: Findings, account: str, tenant_ids: list[str],
     barrier = threading.Barrier(10, action=lambda: started.__setitem__(0, time.perf_counter()))
     try:
         before = owner.all("/bookings", area="Last")
+        portfolio_ids = [p["id"] for p in owner.all("/portfolios", area="Last")]
+        if not portfolio_ids:
+            raise FixtureSetupError("Mixed load needs existing portfolios before creating scoped users")
         for i in range(10):
             username = f"load_{marker[-8:]}_{i}"
             status, _ = owner.call("POST", "/auth/users", {
                 "username": username, "email": f"{username}@stress.test", "full_name": f"Synthetic load user {i}",
-                "password": PASSWORD, "role": "readonly" if i < 8 else "buchhaltung"}, expect=(201,), area="Last")
+                "password": PASSWORD, "role": "readonly" if i < 8 else "buchhaltung",
+                "portfolio_access": "selected", "portfolio_ids": portfolio_ids}, expect=(201,), area="Last")
             if status != 201:
                 raise RuntimeError(f"Could not create independent load user {i}")
             clients.append(Client(server, f, username))

@@ -21,6 +21,8 @@ def test_fixture_environment_overrides_inherited_state(tmp_path, monkeypatch):
     monkeypatch.setenv("SQLITE_PERSISTENT_STORE", "false")
     monkeypatch.setenv("IMMO_TESTVERSION", "true")
     monkeypatch.setenv("TASK_QUEUE_BACKEND", "celery")
+    monkeypatch.setenv("JOB_SCHEDULER_ENABLED", "true")
+    monkeypatch.setenv("BACKUP_SCHEDULE_ENABLED", "true")
     server = core.Server(tmp_path / "owned")
     env = server.env()
     for name in ("DATA_DIR", "UPLOADS_DIR", "BACKUP_DIR", "INTEGRATION_STATE_FILE", "AI_CACHE_DIR", "LOG_FILE"):
@@ -31,6 +33,8 @@ def test_fixture_environment_overrides_inherited_state(tmp_path, monkeypatch):
     assert env["ALLOW_INMEMORY_FALLBACK"] == "false"
     assert env["IMMO_TESTVERSION"] == "false"
     assert env["TASK_QUEUE_BACKEND"] == "sync"
+    assert env["JOB_SCHEDULER_ENABLED"] == "false"
+    assert env["BACKUP_SCHEDULE_ENABLED"] == "false"
     if os.name == "nt":
         assert {key.upper(): value for key, value in env.items()}["SYSTEMROOT"] == os.environ["SystemRoot"]
     assert env["JWT_SECRET_KEY"] == server.env()["JWT_SECRET_KEY"]

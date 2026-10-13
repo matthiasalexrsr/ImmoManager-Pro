@@ -18,6 +18,16 @@ Berichte und Daten werden weder wiederverwendet noch gelöscht. Datenbank, Uploa
 Backups, Integrationskonfiguration und Journal, Logs und KI-Cache liegen in der
 jeweiligen synthetischen Fixture; KI und Plugins bleiben ausgeschaltet. Ein zufälliges
 JWT-Geheimnis gilt nur für den Lauf und seine Kopien und bleibt bei Neustarts stabil.
+Hintergrundjobs und automatische Backups sind ausgeschaltet, damit ausschließlich die
+ausdrücklich gestarteten Testschritte die Daten verändern.
+
+Der Eigentümer legt zunächst alle Testportfolios an und weist sie den vier Bürokonten
+ausdrücklich mit eingeschränktem Portfoliozugriff zu. Weitere Portfolios sind dadurch
+nicht automatisch sichtbar. Auch die zehn Lasttestkonten erhalten ausdrücklich die
+bestehenden Testportfolios; keines erhält pauschalen Zugriff auf alle Portfolios.
+Installationsexporte werden deshalb für den eingeschränkten Verwalter abgewiesen.
+Fehlt eine benötigte Entität oder ihre ID, bricht der Aufbau mit Fehlerbericht ab,
+statt abhängige Anfragen mit fehlenden IDs fortzusetzen.
 
 Auch Startfehler und abgebrochene Prüfungen erzeugen einen Bericht und `failure.txt`.
 Der Exitcode ist 1 bei jedem Befund außer `HINWEIS`, sonst 0. Ein gespeicherter Bericht
@@ -64,8 +74,9 @@ Diese lokale SQLite-Messung belegt weder PostgreSQL-Mehrschreiberkapazität noch
 langfristige Zuverlässigkeit. Die UI-Phase benötigt eine eigene erfolgreiche Prüfung,
 wenn sie mit `--skip ui` ausgelassen wird.
 
-Gezielte Harness-Regressionen: `python -m pytest tools/xstress/test_runtime.py
-tools/xstress/test_mixed_load.py` (die Standard-Testauswahl enthält nur `backend/tests`).
+Gezielte Harness-Regressionen: `python -m pytest tools/xstress`
+(die Standard-Testauswahl enthält nur `backend/tests`). Sie prüfen auch den Aufbau
+und die Rollenaktionen gegen einen eigenen echten HTTP-Server.
 
 ## Befundklassen
 

@@ -12,23 +12,30 @@ from __future__ import annotations
 import re
 from datetime import date, timedelta
 
-from .core import Client, Findings, Server, setup_users
+from .core import Client, Findings, FixtureSetupError, Server, setup_users
 
 LONG = "Ä" * 5000
 
 
 def references(c: Client) -> dict:
     contracts = [x for x in c.all("/contracts") if x["status"] == "active"]
+    if not contracts:
+        raise FixtureSetupError("Invalid-input checks require an accessible active contract")
     contract = contracts[0]
-    other = next(x for x in contracts if x["tenant_id"] != contract["tenant_id"] and x["property_id"] != contract["property_id"])
+    other = next((x for x in contracts if x["tenant_id"] != contract["tenant_id"] and
+                  x["property_id"] != contract["property_id"]), None)
+    if other is None:
+        raise FixtureSetupError("Invalid-input checks require active contracts of different tenants and properties")
     units = c.all("/units")
     accounts = c.all("/accounts")
     periods = c.ok("GET", f"/contracts/{contract['id']}/rent-periods") or []
     meters = c.all("/meters")
+    for label, rows in (("units", units), ("accounts", accounts), ("rent periods", periods), ("meters", meters)):
+        if not rows:
+            raise FixtureSetupError(f"Invalid-input checks require accessible {label}")
     return {"contract": contract, "other": other, "unit": next(u for u in units if u["id"] == contract["unit_id"]),
             "free_unit": next((u for u in units if u["status"] == "vacant"), units[-1]),
-            "account": accounts[0]["id"], "rent": periods[-1]["cold_rent"] if periods else 500,
-            "meter": meters[0]["id"] if meters else None}
+            "account": accounts[0]["id"], "rent": periods[-1]["cold_rent"], "meter": meters[0]["id"]}
 
 
 def cases(r: dict) -> list[tuple[str, str, str, str, dict, str]]:
@@ -197,16 +204,16 @@ def run(server: Server, f: Findings) -> None:
         c = users["verwalter"]
         refs = references(c)
         portfolio = c.all("/portfolios")[0]["id"]
-        booking = c.ok("POST", "/bookings", {"account_id": refs["account"], "tenant_id": refs["contract"]["tenant_id"],
+        booking = c.require_entity("POST", "/bookings", {"account_id": refs["account"], "tenant_id": refs["contract"]["tenant_id"],
                                              "booking_date": "2026-05-03", "amount": 120.0, "payment_text": "Test"})
         def review_count() -> int:
             return (c.ok("GET", "/review", area="Prüfliste") or {}).get("count", 0)
 
         for area, name, method, path, body, expectation in cases(refs):
             flagged_before = review_count() if expectation == "warn" else 0
-            path = path.replace("{booking}", booking["id"] if booking else "x").replace("{meter}", refs["meter"] or "x")
+            path = path.replace("{booking}", booking["id"]).replace("{meter}", refs["meter"])
             if isinstance(body, dict):
-                body = {k: (v.replace("{portfolio}", portfolio).replace("{meter}", refs["meter"] or "x")
+                body = {k: (v.replace("{portfolio}", portfolio).replace("{meter}", refs["meter"])
                             if isinstance(v, str) else v) for k, v in body.items()}
             status, result = c.call(method, path, body, expect=tuple(range(200, 500)), area=area)
             if status is None or status >= 500:

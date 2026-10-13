@@ -14,7 +14,7 @@ from tools.xstress.core import Findings
 
 @pytest.mark.parametrize("fault", [None, "reader403", "lostwrite", "corruptedwrite"])
 def test_mixed_load_overlaps_independent_clients_and_verifies_writes(fault):
-    records, logins = {}, []
+    records, logins, created_users = {}, [], {}
     lock = threading.Lock()
 
     class Handler(BaseHTTPRequestHandler):
@@ -38,8 +38,13 @@ def test_mixed_load_overlaps_independent_clients_and_verifies_writes(fault):
                     logins.append(data["username"])
                 return self.reply(200, {"access_token": data["username"]})
             if self.path.endswith("/auth/users"):
+                with lock:
+                    created_users[data["username"]] = data
                 return self.reply(201, {"id": data["username"], **data})
             assert self.path.endswith("/bookings")
+            username = self.headers.get("Authorization", "").removeprefix("Bearer ")
+            assert created_users[username]["portfolio_access"] == "selected"
+            assert created_users[username]["portfolio_ids"] == ["portfolio-1", "portfolio-2"]
             time.sleep(0.02)
             with lock:
                 row = {"id": str(len(records) + 1), **data}
@@ -47,6 +52,8 @@ def test_mixed_load_overlaps_independent_clients_and_verifies_writes(fault):
             self.reply(201, row)
 
         def do_GET(self):
+            if "/portfolios?" in self.path:
+                return self.reply(200, [{"id": "portfolio-1"}, {"id": "portfolio-2"}])
             if "limit=1000" in self.path:
                 with lock:
                     rows = list(records.values())
@@ -70,6 +77,9 @@ def test_mixed_load_overlaps_independent_clients_and_verifies_writes(fault):
     assert result["acknowledged_writes"] == 6
     assert result["overlapping_requests"] > 0
     assert len(set(logins) - {"owner"}) == 10
+    assert len(created_users) == 10
+    assert all(user["portfolio_access"] == "selected" and
+               user["portfolio_ids"] == ["portfolio-1", "portfolio-2"] for user in created_users.values())
     if fault is None:
         assert result["verified_writes"] == 6
         assert result["errors"] == 0
