@@ -757,6 +757,10 @@ def unlink_invoice(store: Any, case_id: str, link_id: str, actor_id: str | None)
 
 
 def _booking_left(rows: Rows, booking: Any) -> Decimal:
+    from .service_contracts import _is_tenant_money
+
+    if _is_tenant_money(rows.store, booking):
+        return ZERO
     return max(booking_payment_capacity(rows, [booking.id]).available.get(booking.id, ZERO), ZERO)
 
 
@@ -776,6 +780,8 @@ def invoice_payments(store: Any, invoice_id: str) -> dict:
 
 
 def add_invoice_payment(store: Any, invoice_id: str, payload: mm.InvoicePaymentCreate, actor_id: str | None) -> Any:
+    from .service_contracts import _is_tenant_money
+
     with work(store, actor_id, (f"/invoices/{invoice_id}/payments",)) as unit:
         rows = Rows.of(unit)
         # the same order everywhere (booking, then invoice): parallel allocations wait, never deadlock
@@ -794,6 +800,8 @@ def add_invoice_payment(store: Any, invoice_id: str, payload: mm.InvoicePaymentC
             raise conflict("Ein Storno bezahlt keine Rechnung.")
         if money(booking.amount) >= 0:
             raise conflict("Nur eine Ausgabe (negative Buchung) bezahlt eine Rechnung.")
+        if _is_tenant_money(unit.store, booking):
+            raise conflict("Die Buchung ist eine Mieterzahlung und bezahlt keine Anbieterrechnung.")
         if rows.find("invoice_payments", invoice_id=invoice_id, booking_id=booking.id):
             raise conflict("Diese Buchung ist der Rechnung bereits zugeordnet.")
         amount = money(payload.amount)

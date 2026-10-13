@@ -23,7 +23,16 @@ from backend.dependencies import store
 from backend.domain.project_costs import AllocationFacts, BookingFacts, InvoiceFacts, OrderFacts, roll_up
 from backend.domain.project_graph import Edge, cycle_path, find_cycle, schedule_conflicts, topological_order
 from backend.maintenance_models import QuoteDecision, WorkPackageCreate
-from backend.models import AccountCreate, BookingCreate, ContactCreate, PortfolioCreate, PropertyCreate, UnitCreate
+from backend.models import (
+    AccountCreate,
+    BookingCreate,
+    ContactCreate,
+    ContractCreate,
+    PortfolioCreate,
+    PropertyCreate,
+    TenantCreate,
+    UnitCreate,
+)
 from backend.services.data_snapshot import clear_business_data, export_snapshot, import_snapshot
 
 SQL = os.environ.get("TEST_STORE_BACKEND", "memory") == "sql"
@@ -351,6 +360,45 @@ def test_one_booking_paying_two_projects_is_counted_once(owner, estate):
 
 
 # ─── status workflow ─────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("linkage", ["tenant_only", "allocated_refund", "hidden_allocation"])
+@pytest.mark.parametrize("action", ["candidates", "allocate"])
+def test_tenant_refund_cannot_pay_a_provider_invoice(owner, estate, linkage, action):
+    tenant = store.create_tenant(TenantCreate(full_name="Mieter mit Erstattung"))
+    if linkage != "tenant_only":
+        lease_estate = _estate("Süd") if linkage == "hidden_allocation" else estate
+        lease = store.create_contract(ContractCreate(
+            contract_number="LEASE", property_id=lease_estate["property"].id,
+            unit_id=lease_estate["unit"].id, tenant_id=tenant.id, start_date=date(2025, 1, 1)))
+    booking = _ok(owner.post(f"{API}/bookings", json={
+        "account_id": estate["account"].id, "tenant_id": tenant.id,
+        "booking_date": "2026-05-02", "amount": -100, "status": "booked"}), 201)
+    booking_path = f"{API}/bookings/{booking['id']}"
+    if linkage != "tenant_only":
+        allocations = _ok(owner.put(f"{booking_path}/allocations", json=[
+            {"contract_id": lease.id, "amount": -100}]))
+        assert allocations[0]["amount"] == -100
+    if linkage == "hidden_allocation":
+        _ok(owner.patch(booking_path, json={"tenant_id": None}))
+    staff = owner if linkage == "tenant_only" else _client(
+        _user("staff", "verwalter", [estate["portfolio"]], mode="selected"))
+    _ok(staff.get(booking_path))
+    if linkage == "hidden_allocation":
+        assert _ok(staff.get(f"{booking_path}/allocations")) == []
+        assert len(_ok(owner.get(f"{booking_path}/allocations"))) == 1
+    invoice = _ok(owner.post(f"{API}/invoices", json={
+        "property_id": estate["property"].id, "supplier": "Handwerker",
+        "invoice_date": "2026-05-01", "net_amount": 100, "gross_amount": 100}), 201)
+    path = f"{API}/invoices/{invoice['id']}/payments"
+    if action == "candidates":
+        candidates = _ok(staff.get(f"{path}/candidates"))["items"]
+        assert all(row["free"] == 0 for row in candidates if row["id"] == booking["id"])
+    else:
+        refused = staff.post(path, json={"booking_id": booking["id"], "amount": 100})
+        assert refused.status_code == 409, refused.text
+        assert "Mieterzahlung" in refused.json()["error"]["message"]
+        assert _ok(owner.get(path))["allocated"] == 0
+
 
 def test_status_workflow_with_gates_and_history(owner, estate):
     case = _case(owner, estate)
