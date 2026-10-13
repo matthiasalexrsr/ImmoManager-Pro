@@ -1,3 +1,4 @@
+from collections.abc import MutableMapping
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional
@@ -159,7 +160,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
     def __getattribute__(self, name):
         # a restricted request sees each collection through its portfolio boundary
         value = object.__getattribute__(self, name)
-        if isinstance(value, dict) and name in object.__getattribute__(self, "__dataclass_fields__"):
+        if isinstance(value, MutableMapping) and name in object.__getattribute__(self, "__dataclass_fields__"):
             from .services.portfolio_scope import ScopedCollection, current_scope
             scope = current_scope()
             if scope is not None and not scope.unrestricted:

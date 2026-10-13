@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from ..dependencies import store
 from ..domain.money import money, money_sum
 from ..models import Booking, BookingCreate, BookingPatch, PaymentAllocation
+from ..services.booking_writes import booking_write
 from ..services.deletion_guard import ensure_deletable
 from ..services.deposits import _booking_linked, ensure_booking_unchanged
 from ..services.maintenance_projects import ensure_booking_unallocated
@@ -24,10 +25,10 @@ def _deposit_linked(booking_id: str) -> bool:
     return _booking_linked(store, booking_id)
 
 
-def _allocate(booking: Booking) -> None:
+def _allocate(target, booking: Booking) -> None:
     """Credit the booking to contracts; its reversals follow it."""
-    auto_allocate(store, booking)
-    reallocate_reversals(store, booking)
+    auto_allocate(target, booking)
+    reallocate_reversals(target, booking)
 
 
 @router.get("", response_model=list[Booking])
@@ -60,9 +61,10 @@ def list_bookings(
 @router.post("", response_model=Booking, status_code=status.HTTP_201_CREATED)
 def create_booking(payload: BookingCreate) -> Booking:
     try:
-        booking = store.create_booking(payload)
-        auto_allocate(store, booking)
-        return booking
+        with booking_write(store, reversal_of=payload.reverses_booking_id, changes=payload.model_dump()) as target:
+            booking = target.create_booking(payload)
+            auto_allocate(target, booking)
+            return booking
     except ValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -120,29 +122,29 @@ def reverse_booking(booking_id: str, payload: ReversalRequest | None = None) -> 
     """
     request = payload or ReversalRequest(amount=None)
     try:
-        original = store.get_booking(booking_id)
+        with booking_write(store, booking_id=booking_id) as target:
+            original = target.get_booking(booking_id)
+            remaining = money(original.amount) + money_sum(r.amount for r in target.list_booking_reversals(original.id))
+            if original.reverses_booking_id:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                    detail="Eine Stornobuchung lässt sich nicht stornieren")
+            if remaining == 0:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                    detail="Die Buchung ist bereits vollständig storniert")
+            amount = -remaining if request.amount is None else (money(request.amount) * (-1 if remaining > 0 else 1))
+            text = request.payment_text or f"Storno: {original.payment_text or original.booking_date.strftime('%d.%m.%Y')}"
+            data = BookingCreate(
+                account_id=original.account_id, category_id=original.category_id, property_id=original.property_id,
+                unit_id=original.unit_id, tenant_id=original.tenant_id,
+                booking_date=request.booking_date or max(date.today(), original.booking_date),
+                amount=float(amount), status=original.status, payment_text=text, reverses_booking_id=original.id)
+            reversal = target.create_booking(data)
+            auto_allocate(target, reversal)
+            return reversal
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    remaining = money(original.amount) + money_sum(r.amount for r in store.list_booking_reversals(original.id))
-    if original.reverses_booking_id:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail="Eine Stornobuchung lässt sich nicht stornieren")
-    if remaining == 0:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail="Die Buchung ist bereits vollständig storniert")
-    amount = -remaining if request.amount is None else (money(request.amount) * (-1 if remaining > 0 else 1))
-    text = request.payment_text or f"Storno: {original.payment_text or original.booking_date.strftime('%d.%m.%Y')}"
-    data = BookingCreate(
-        account_id=original.account_id, category_id=original.category_id, property_id=original.property_id,
-        unit_id=original.unit_id, tenant_id=original.tenant_id,
-        booking_date=request.booking_date or max(date.today(), original.booking_date),
-        amount=float(amount), status=original.status, payment_text=text, reverses_booking_id=original.id)
-    try:
-        reversal = store.create_booking(data)
     except ValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    auto_allocate(store, reversal)
-    return reversal
 
 
 @router.get("/{booking_id}", response_model=Booking)
@@ -156,10 +158,11 @@ def get_booking(booking_id: str) -> Booking:
 @router.put("/{booking_id}", response_model=Booking)
 def update_booking(booking_id: str, payload: BookingCreate) -> Booking:
     try:
-        ensure_booking_unchanged(store, booking_id, payload.model_dump())
-        booking = store.update_booking(booking_id, payload)
-        _allocate(booking)
-        return booking
+        with booking_write(store, booking_id=booking_id, changes=payload.model_dump()) as target:
+            ensure_booking_unchanged(target, booking_id, payload.model_dump())
+            booking = target.update_booking(booking_id, payload)
+            _allocate(target, booking)
+            return booking
     except (NotFoundError, ValidationError) as exc:
         status_code = status.HTTP_404_NOT_FOUND if isinstance(exc, NotFoundError) else status.HTTP_400_BAD_REQUEST
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
@@ -168,10 +171,11 @@ def update_booking(booking_id: str, payload: BookingCreate) -> Booking:
 @router.patch("/{booking_id}", response_model=Booking)
 def patch_booking(booking_id: str, payload: BookingPatch) -> Booking:
     try:
-        ensure_booking_unchanged(store, booking_id, payload.model_dump(exclude_unset=True))
-        booking = store._patch_entity("booking", booking_id, payload)
-        _allocate(booking)
-        return booking
+        with booking_write(store, booking_id=booking_id, changes=payload.model_dump(exclude_unset=True)) as target:
+            ensure_booking_unchanged(target, booking_id, payload.model_dump(exclude_unset=True))
+            booking = target._patch_entity("booking", booking_id, payload)
+            _allocate(target, booking)
+            return booking
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ValidationError as exc:
