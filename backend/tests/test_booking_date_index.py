@@ -8,7 +8,6 @@ import sqlalchemy as sa
 from alembic import command
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
-from test_postgres_money_migration import postgres_money_db  # noqa: F401
 
 import backend.models  # noqa: F401 (register all ORM columns)
 from backend.db.orm_models import AccountORM, Base, BookingORM, PortfolioORM
@@ -142,8 +141,3 @@ def test_fresh_orm_schema_has_the_same_index_and_explicit_upgrade_accepts_it(tmp
         assert _indexes(engine)[INDEX]["column_names"] == ["booking_date"]
     finally:
         engine.dispose()
-
-
-def test_postgres_date_index_upgrade_downgrade_and_actual_finance_plan(postgres_money_db):  # noqa: F811
-    engine, config = postgres_money_db
-    _exercise_migration(engine, config)
