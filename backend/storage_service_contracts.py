@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional
 from uuid import uuid4
 
+from .domain.revision_time import next_updated_at
 from .models_service_contracts import (
     LocationInput,
     ServiceContract,
@@ -100,7 +101,8 @@ class ServiceContractMemoryStore:
 
     def update_service_contract(self, contract_id: str, data: ServiceContractCreate) -> ServiceContract:
         old = self.get_service_contract(contract_id)
-        contract = ServiceContract(id=contract_id, created_at=old.created_at, updated_at=_now(), **data.model_dump())
+        contract = ServiceContract(id=contract_id, created_at=old.created_at,
+                                   updated_at=next_updated_at(old.updated_at, _now()), **data.model_dump())
         self.service_contracts[contract_id] = contract
         return contract
 
@@ -134,7 +136,8 @@ class ServiceContractMemoryStore:
     def update_service_contract_location(self, location_id: str,
                                          data: ServiceContractLocationCreate) -> ServiceContractLocation:
         old = self.get_service_contract_location(location_id)
-        row = ServiceContractLocation(id=location_id, created_at=old.created_at, updated_at=_now(), **data.model_dump())
+        row = ServiceContractLocation(id=location_id, created_at=old.created_at,
+                                      updated_at=next_updated_at(old.updated_at, _now()), **data.model_dump())
         self.service_contract_locations[location_id] = row
         return row
 
@@ -170,7 +173,8 @@ class ServiceContractMemoryStore:
     def update_service_contract_tariff(self, tariff_id: str, data: ServiceContractTariffCreate) -> ServiceContractTariff:
         old = self.get_service_contract_tariff(tariff_id)
         self._check_tariff_date(data, exclude_id=tariff_id)
-        row = ServiceContractTariff(id=tariff_id, created_at=old.created_at, updated_at=_now(), **data.model_dump())
+        row = ServiceContractTariff(id=tariff_id, created_at=old.created_at,
+                                    updated_at=next_updated_at(old.updated_at, _now()), **data.model_dump())
         self.service_contract_tariffs[tariff_id] = row
         return row
 
@@ -216,7 +220,8 @@ class ServiceContractMemoryStore:
                                         data: ServiceContractInvoiceCreate) -> ServiceContractInvoice:
         old = self.get_service_contract_invoice(link_id)
         self._check_invoice_free(data.invoice_id, exclude_id=link_id)
-        row = ServiceContractInvoice(id=link_id, created_at=old.created_at, updated_at=_now(), **data.model_dump())
+        row = ServiceContractInvoice(id=link_id, created_at=old.created_at,
+                                     updated_at=next_updated_at(old.updated_at, _now()), **data.model_dump())
         self.service_contract_invoices[link_id] = row
         return row
 

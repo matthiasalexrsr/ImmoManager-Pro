@@ -7,6 +7,7 @@ from pydantic import BaseModel as PydanticBaseModel
 
 from .domain.booking_reversal import reversal_problem
 from .domain.lease_engine import find_unit_overlap, unit_overlap_message
+from .domain.revision_time import next_updated_at
 from .invoice_review_models import InvoiceCostTransfer, InvoiceReview, InvoiceReviewEvent, InvoiceReviewSettings
 from .maintenance_models import (
     InvoicePayment,
@@ -290,7 +291,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         old = self.portfolios[portfolio_id]
         portfolio = Portfolio(
             id=portfolio_id, created_at=old.created_at,
-            updated_at=datetime.now(timezone.utc), **data.model_dump(),
+            updated_at=next_updated_at(old.updated_at, datetime.now(timezone.utc)), **data.model_dump(),
         )
         self.portfolios[portfolio_id] = portfolio
         return portfolio
@@ -346,7 +347,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         old = self.categories[category_id]
         category = Category(
             id=category_id, created_at=old.created_at,
-            updated_at=datetime.now(timezone.utc), **data.model_dump(),
+            updated_at=next_updated_at(old.updated_at, datetime.now(timezone.utc)), **data.model_dump(),
         )
         self.categories[category_id] = category
         return category
@@ -366,7 +367,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         if data.portfolio_id not in self.portfolios:
             raise ValidationError("Portfolio existiert nicht")
         old = self.accounts[account_id]
-        account = Account(id=account_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc), **data.model_dump())
+        account = Account(id=account_id, created_at=old.created_at, updated_at=next_updated_at(old.updated_at, datetime.now(timezone.utc)), **data.model_dump())
         self.accounts[account_id] = account
         return account
 
@@ -402,7 +403,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         old = self.properties[property_id]
         property_item = Property(
             id=property_id, created_at=old.created_at,
-            updated_at=datetime.now(timezone.utc), **data.model_dump(),
+            updated_at=next_updated_at(old.updated_at, datetime.now(timezone.utc)), **data.model_dump(),
         )
         self.properties[property_id] = property_item
         return property_item
@@ -458,7 +459,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         if data.property_id not in self.properties:
             raise ValidationError("Immobilie existiert nicht")
         old = self.units[unit_id]
-        unit = Unit(id=unit_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc), **data.model_dump())
+        unit = Unit(id=unit_id, created_at=old.created_at, updated_at=next_updated_at(old.updated_at, datetime.now(timezone.utc)), **data.model_dump())
         self.units[unit_id] = unit
         return unit
 
@@ -507,7 +508,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         if tenant_id not in self.tenants:
             raise NotFoundError("Mieter nicht gefunden")
         old = self.tenants[tenant_id]
-        tenant = Tenant(id=tenant_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc), **data.model_dump())
+        tenant = Tenant(id=tenant_id, created_at=old.created_at, updated_at=next_updated_at(old.updated_at, datetime.now(timezone.utc)), **data.model_dump())
         self.tenants[tenant_id] = tenant
         return tenant
 
@@ -571,7 +572,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         old = self.contracts[contract_id]
         contract = Contract(
             id=contract_id, created_at=old.created_at,
-            updated_at=datetime.now(timezone.utc), **data.model_dump(),
+            updated_at=next_updated_at(old.updated_at, datetime.now(timezone.utc)), **data.model_dump(),
         )
         self.contracts[contract_id] = contract
         return contract
@@ -641,7 +642,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         if data.reverses_booking_id is None and old.reverses_booking_id:
             data = data.model_copy(update={"reverses_booking_id": old.reverses_booking_id})  # the link stays
         self._check_reversal(data, booking_id, old)
-        booking = Booking(id=booking_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc), **data.model_dump())
+        booking = Booking(id=booking_id, created_at=old.created_at, updated_at=next_updated_at(old.updated_at, datetime.now(timezone.utc)), **data.model_dump())
         self.bookings[booking_id] = booking
         return booking
 
@@ -700,7 +701,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         old = self.receivables[receivable_id]
         receivable = Receivable(
             id=receivable_id, created_at=old.created_at,
-            updated_at=datetime.now(timezone.utc), **data.model_dump(),
+            updated_at=next_updated_at(old.updated_at, datetime.now(timezone.utc)), **data.model_dump(),
         )
         self.receivables[receivable_id] = receivable
         return receivable
@@ -732,7 +733,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         if data.property_id and data.property_id not in self.properties:
             raise ValidationError("Immobilie existiert nicht")
         old = self.invoices[invoice_id]
-        invoice = Invoice(id=invoice_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc), **data.model_dump())
+        invoice = Invoice(id=invoice_id, created_at=old.created_at, updated_at=next_updated_at(old.updated_at, datetime.now(timezone.utc)), **data.model_dump())
         self.invoices[invoice_id] = invoice
         return invoice
 
@@ -769,7 +770,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         if data.unit_id and data.unit_id not in self.units:
             raise ValidationError("Einheit existiert nicht")
         old = self.maintenance_cases[case_id]
-        case = MaintenanceCase(id=case_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc), **data.model_dump())
+        case = MaintenanceCase(id=case_id, created_at=old.created_at, updated_at=next_updated_at(old.updated_at, datetime.now(timezone.utc)), **data.model_dump())
         self.maintenance_cases[case_id] = case
         return case
 
@@ -820,7 +821,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         old = self.documents[document_id]
         document = Document(
             id=document_id, created_at=old.created_at,
-            updated_at=datetime.now(timezone.utc), **data.model_dump(),
+            updated_at=next_updated_at(old.updated_at, datetime.now(timezone.utc)), **data.model_dump(),
         )
         self.documents[document_id] = document
         return document
@@ -929,7 +930,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
             raise NotFoundError("Aufgabe nicht gefunden")
         self.validate_task(data)
         old = self.tasks[task_id]
-        task = Task(id=task_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc), **data.model_dump())
+        task = Task(id=task_id, created_at=old.created_at, updated_at=next_updated_at(old.updated_at, datetime.now(timezone.utc)), **data.model_dump())
         self.tasks[task_id] = task
         return task
 
@@ -964,7 +965,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         if data.unit_id and data.unit_id not in self.units:
             raise ValidationError("Einheit existiert nicht")
         old = self.calendar_events[event_id]
-        event = CalendarEvent(id=event_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc), **data.model_dump())
+        event = CalendarEvent(id=event_id, created_at=old.created_at, updated_at=next_updated_at(old.updated_at, datetime.now(timezone.utc)), **data.model_dump())
         self.calendar_events[event_id] = event
         return event
 
@@ -995,7 +996,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         if data.unit_id not in self.units:
             raise ValidationError("Einheit existiert nicht")
         old = self.listings[listing_id]
-        listing = Listing(id=listing_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc), **data.model_dump())
+        listing = Listing(id=listing_id, created_at=old.created_at, updated_at=next_updated_at(old.updated_at, datetime.now(timezone.utc)), **data.model_dump())
         self.listings[listing_id] = listing
         return listing
 
@@ -1029,7 +1030,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         if data.listing_id not in self.listings:
             raise ValidationError("Inserat existiert nicht")
         old = self.listing_photos[photo_id]
-        photo = ListingPhoto(id=photo_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc), **data.model_dump())
+        photo = ListingPhoto(id=photo_id, created_at=old.created_at, updated_at=next_updated_at(old.updated_at, datetime.now(timezone.utc)), **data.model_dump())
         self.listing_photos[photo_id] = photo
         return photo
 
@@ -1066,7 +1067,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         if data.unit_id and data.unit_id not in self.units:
             raise ValidationError("Einheit existiert nicht")
         old = self.leads[lead_id]
-        lead = Lead(id=lead_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc), **data.model_dump())
+        lead = Lead(id=lead_id, created_at=old.created_at, updated_at=next_updated_at(old.updated_at, datetime.now(timezone.utc)), **data.model_dump())
         self.leads[lead_id] = lead
         return lead
 
@@ -1109,7 +1110,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         old = self.viewing_appointments[appointment_id]
         appointment = ViewingAppointment(
             id=appointment_id, created_at=old.created_at,
-            updated_at=datetime.now(timezone.utc), **data.model_dump(),
+            updated_at=next_updated_at(old.updated_at, datetime.now(timezone.utc)), **data.model_dump(),
         )
         self.viewing_appointments[appointment_id] = appointment
         return appointment
@@ -1149,7 +1150,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         old = self.billing_periods[period_id]
         period = BillingPeriod(
             id=period_id, created_at=old.created_at,
-            updated_at=datetime.now(timezone.utc), **data.model_dump(),
+            updated_at=next_updated_at(old.updated_at, datetime.now(timezone.utc)), **data.model_dump(),
         )
         self.billing_periods[period_id] = period
         return period
@@ -1199,7 +1200,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         if data.property_id not in self.properties:
             raise ValidationError("Immobilie existiert nicht")
         old = self.allocation_keys[key_id]
-        key = AllocationKey(id=key_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc), **data.model_dump())
+        key = AllocationKey(id=key_id, created_at=old.created_at, updated_at=next_updated_at(old.updated_at, datetime.now(timezone.utc)), **data.model_dump())
         self.allocation_keys[key_id] = key
         return key
 
@@ -1240,7 +1241,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         if data.allocation_key_id not in self.allocation_keys:
             raise ValidationError("Verteilerschlüssel existiert nicht")
         old = self.cost_items[item_id]
-        item = CostItem(id=item_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc), **data.model_dump())
+        item = CostItem(id=item_id, created_at=old.created_at, updated_at=next_updated_at(old.updated_at, datetime.now(timezone.utc)), **data.model_dump())
         self.cost_items[item_id] = item
         return item
 
@@ -1283,7 +1284,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         old = self.utility_statements[statement_id]
         statement = UtilityStatement(
             id=statement_id, created_at=old.created_at,
-            updated_at=datetime.now(timezone.utc), **data.model_dump(),
+            updated_at=next_updated_at(old.updated_at, datetime.now(timezone.utc)), **data.model_dump(),
         )
         check_final_statement_change(old, statement)
         self.utility_statements[statement_id] = statement
@@ -1330,7 +1331,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
     def update_billing_objection(self, objection_id: str, data: BillingObjectionCreate) -> BillingObjection:
         old = self.get_billing_objection(objection_id)
         self._check_objection(data)
-        item = BillingObjection(id=objection_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc),
+        item = BillingObjection(id=objection_id, created_at=old.created_at, updated_at=next_updated_at(old.updated_at, datetime.now(timezone.utc)),
                                 **data.model_dump())
         self.billing_objections[objection_id] = item
         return item
@@ -1360,7 +1361,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
             raise ValidationError("Vertrag existiert nicht")
         old = self.deposits[deposit_id]
         kept = old.model_dump(exclude=set(DepositCreate.model_fields) | {"id", "created_at", "updated_at"})
-        deposit = Deposit(id=deposit_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc),
+        deposit = Deposit(id=deposit_id, created_at=old.created_at, updated_at=next_updated_at(old.updated_at, datetime.now(timezone.utc)),
                           **kept, **data.model_dump())
         self.deposits[deposit_id] = deposit
         return deposit
@@ -1403,7 +1404,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         old = self.notifications[notification_id]
         notification = Notification(
             id=notification_id, created_at=old.created_at,
-            updated_at=datetime.now(timezone.utc), **data.model_dump(),
+            updated_at=next_updated_at(old.updated_at, datetime.now(timezone.utc)), **data.model_dump(),
         )
         self.notifications[notification_id] = notification
         return notification
@@ -1435,7 +1436,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         old = self.notification_templates[template_id]
         template = NotificationTemplate(
             id=template_id, created_at=old.created_at,
-            updated_at=datetime.now(timezone.utc), **data.model_dump(),
+            updated_at=next_updated_at(old.updated_at, datetime.now(timezone.utc)), **data.model_dump(),
         )
         self.notification_templates[template_id] = template
         return template
@@ -1505,7 +1506,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         # Validate the merged record before storing it: an invalid value must
         # not be written (it would break every later read of the collection).
         updated = type(old).model_validate(
-            {**old.model_dump(), **updates, "updated_at": datetime.now(timezone.utc)}
+            {**old.model_dump(), **updates, "updated_at": next_updated_at(old.updated_at, datetime.now(timezone.utc))}
         )
         if entity_type == "document":
             self.validate_document_associations(updated)
@@ -1609,7 +1610,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         if tax_rate_id not in self.tax_rates:
             raise NotFoundError("Steuersatz nicht gefunden")
         old = self.tax_rates[tax_rate_id]
-        item = TaxRate(id=tax_rate_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc), **data.model_dump())
+        item = TaxRate(id=tax_rate_id, created_at=old.created_at, updated_at=next_updated_at(old.updated_at, datetime.now(timezone.utc)), **data.model_dump())
         self.tax_rates[tax_rate_id] = item
         return item
 
@@ -1639,7 +1640,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         if adj_id not in self.rent_adjustments:
             raise NotFoundError("Mietanpassung nicht gefunden")
         old = self.rent_adjustments[adj_id]
-        item = RentAdjustment(id=adj_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc), **data.model_dump())
+        item = RentAdjustment(id=adj_id, created_at=old.created_at, updated_at=next_updated_at(old.updated_at, datetime.now(timezone.utc)), **data.model_dump())
         self.rent_adjustments[adj_id] = item
         return item
 
@@ -1683,7 +1684,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
     def update_contract_rent_period(self, period_id: str, data: ContractRentPeriodCreate) -> ContractRentPeriod:
         old = self.get_contract_rent_period(period_id)
         self._check_rent_period(data, exclude_id=period_id)
-        item = ContractRentPeriod(id=period_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc),
+        item = ContractRentPeriod(id=period_id, created_at=old.created_at, updated_at=next_updated_at(old.updated_at, datetime.now(timezone.utc)),
                                   **data.model_dump())
         self.contract_rent_periods[period_id] = item
         return item
@@ -1747,7 +1748,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         old = self.handover_protocols[proto_id]
         item = HandoverProtocol(
             id=proto_id, created_at=old.created_at,
-            updated_at=datetime.now(timezone.utc), **data.model_dump(),
+            updated_at=next_updated_at(old.updated_at, datetime.now(timezone.utc)), **data.model_dump(),
             # set by the finalization/correction only: an update keeps them
             correction_of_id=old.correction_of_id, document_id=old.document_id,
             finalized_at=old.finalized_at, finalized_by=old.finalized_by,
@@ -1788,7 +1789,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         if reading_id not in self.meter_readings:
             raise NotFoundError("Zählerstand nicht gefunden")
         old = self.meter_readings[reading_id]
-        item = MeterReading(id=reading_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc),
+        item = MeterReading(id=reading_id, created_at=old.created_at, updated_at=next_updated_at(old.updated_at, datetime.now(timezone.utc)),
                             standalone_reading_id=old.standalone_reading_id, **data.model_dump())
         self.meter_readings[reading_id] = item
         return item
@@ -1839,7 +1840,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         if budget_id not in self.budgets:
             raise NotFoundError("Budget nicht gefunden")
         old = self.budgets[budget_id]
-        item = Budget(id=budget_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc), **data.model_dump())
+        item = Budget(id=budget_id, created_at=old.created_at, updated_at=next_updated_at(old.updated_at, datetime.now(timezone.utc)), **data.model_dump())
         self.budgets[budget_id] = item
         return item
 
@@ -1867,7 +1868,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         if rule_id not in self.escalation_rules:
             raise NotFoundError("Eskalationsregel nicht gefunden")
         old = self.escalation_rules[rule_id]
-        item = EscalationRule(id=rule_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc), **data.model_dump())
+        item = EscalationRule(id=rule_id, created_at=old.created_at, updated_at=next_updated_at(old.updated_at, datetime.now(timezone.utc)), **data.model_dump())
         self.escalation_rules[rule_id] = item
         return item
 
@@ -1895,7 +1896,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         if contact_id not in self.contacts:
             raise NotFoundError("Kontakt nicht gefunden")
         old = self.contacts[contact_id]
-        contact = Contact(id=contact_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc), **data.model_dump())
+        contact = Contact(id=contact_id, created_at=old.created_at, updated_at=next_updated_at(old.updated_at, datetime.now(timezone.utc)), **data.model_dump())
         self.contacts[contact_id] = contact
         return contact
 
@@ -1925,7 +1926,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         if meter_id not in self.meters:
             raise NotFoundError("Zähler nicht gefunden")
         old = self.meters[meter_id]
-        meter = Meter(id=meter_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc), **data.model_dump())
+        meter = Meter(id=meter_id, created_at=old.created_at, updated_at=next_updated_at(old.updated_at, datetime.now(timezone.utc)), **data.model_dump())
         self.meters[meter_id] = meter
         return meter
 
@@ -1954,7 +1955,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         if reading_id not in self.standalone_meter_readings:
             raise NotFoundError("Ablesung nicht gefunden")
         old = self.standalone_meter_readings[reading_id]
-        reading = StandaloneMeterReading(id=reading_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc), **data.model_dump())
+        reading = StandaloneMeterReading(id=reading_id, created_at=old.created_at, updated_at=next_updated_at(old.updated_at, datetime.now(timezone.utc)), **data.model_dump())
         self.standalone_meter_readings[reading_id] = reading
         return reading
 
@@ -1982,7 +1983,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         if thread_id not in self.message_threads:
             raise NotFoundError("Thread nicht gefunden")
         old = self.message_threads[thread_id]
-        thread = MessageThread(id=thread_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc), **data.model_dump())
+        thread = MessageThread(id=thread_id, created_at=old.created_at, updated_at=next_updated_at(old.updated_at, datetime.now(timezone.utc)), **data.model_dump())
         self.message_threads[thread_id] = thread
         return thread
 
@@ -2045,7 +2046,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         if charge_id not in self.rent_charges:
             raise NotFoundError("Sollstellung nicht gefunden")
         old = self.rent_charges[charge_id]
-        charge = RentCharge(id=charge_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc), **data.model_dump())
+        charge = RentCharge(id=charge_id, created_at=old.created_at, updated_at=next_updated_at(old.updated_at, datetime.now(timezone.utc)), **data.model_dump())
         self.rent_charges[charge_id] = charge
         return charge
 
@@ -2076,7 +2077,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         if insurance_id not in self.insurances:
             raise NotFoundError("Versicherung nicht gefunden")
         old = self.insurances[insurance_id]
-        item = Insurance(id=insurance_id, created_at=old.created_at, updated_at=datetime.now(timezone.utc), **data.model_dump())
+        item = Insurance(id=insurance_id, created_at=old.created_at, updated_at=next_updated_at(old.updated_at, datetime.now(timezone.utc)), **data.model_dump())
         self.insurances[insurance_id] = item
         return item
 

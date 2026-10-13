@@ -5,7 +5,7 @@ Runs on the memory store and, with TEST_STORE_BACKEND=sql, on SQLite (PostgreSQL
 test_service_contracts_postgres.py). Calendar rules: test_service_contract_terms.py.
 """
 
-from datetime import date
+from datetime import date, datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
@@ -234,9 +234,23 @@ def test_cancellation_takes_effect_at_the_earliest_end_unless_extraordinary(clie
     assert withdrawn["cancelled_on"] is None and withdrawn["cancellation_effective"] is None
 
 
-def test_put_keeps_the_rules_and_reports_a_stale_edit(client, estate):
+@pytest.mark.parametrize("freeze_clock", [False, True])
+def test_put_keeps_the_rules_and_reports_a_stale_edit(client, estate, monkeypatch, freeze_clock):
     owner = _owner()
     created = _create(client, owner, _payload(estate))
+    if freeze_clock:
+        from backend import storage_service_contracts
+        from backend.repositories import base
+
+        frozen = datetime.fromisoformat(created["updated_at"]).replace(tzinfo=timezone.utc)
+
+        class FrozenClock:
+            @staticmethod
+            def now(tz=None):
+                return frozen if tz is not None else frozen.replace(tzinfo=None)
+
+        monkeypatch.setattr(storage_service_contracts, "_now", lambda: frozen)
+        monkeypatch.setattr(base, "datetime", FrozenClock)
     body = {k: v for k, v in _payload(estate).items() if k not in ("locations", "tariff")}
     renamed = client.put(f"{API}/{created['id']}", headers=owner,
                          json={**body, "title": "Allgemeinstrom", "updated_at": created["updated_at"]})
@@ -244,6 +258,10 @@ def test_put_keeps_the_rules_and_reports_a_stale_edit(client, estate):
     stale = client.put(f"{API}/{created['id']}", headers=owner,
                        json={**body, "title": "Überholt", "updated_at": created["updated_at"]})
     assert stale.status_code == 409
+    fresh = client.put(f"{API}/{created['id']}", headers=owner,
+                       json={**body, "title": "Aktueller Stand", "updated_at": renamed.json()["updated_at"]})
+    assert fresh.status_code == 200, fresh.text
+    assert fresh.json()["updated_at"] != renamed.json()["updated_at"]
     later_start = client.put(f"{API}/{created['id']}", headers=owner, json={**body, "start_date": "2025-06-01"})
     assert later_start.status_code == 400 and "Tarife vor dem neuen Vertragsbeginn" in later_start.json()["error"]["message"]
 

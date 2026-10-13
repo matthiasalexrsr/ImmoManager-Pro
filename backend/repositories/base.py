@@ -16,6 +16,7 @@ from sqlalchemy import literal_column
 from sqlalchemy.orm import Session
 
 from ..db.orm_models import Base
+from ..domain.revision_time import next_updated_at
 from ..error_helpers import safe_db_operation
 from ..storage import NotFoundError
 
@@ -113,9 +114,10 @@ class BaseRepository:
         orm_obj = self.db.get(self.orm_class, entity_id)
         if orm_obj is None:
             raise NotFoundError(self.not_found_msg)
+        previous = getattr(orm_obj, "updated_at", None)
         for key, value in data.model_dump().items():
             setattr(orm_obj, key, value)
-        setattr(orm_obj, "updated_at", datetime.now(timezone.utc))
+        setattr(orm_obj, "updated_at", next_updated_at(previous, datetime.now(timezone.utc)))
         self.db.flush()
         self.db.refresh(orm_obj)
         return self._to_pydantic(orm_obj)
@@ -125,10 +127,11 @@ class BaseRepository:
         orm_obj = self.db.get(self.orm_class, entity_id)
         if orm_obj is None:
             raise NotFoundError(self.not_found_msg)
+        previous = getattr(orm_obj, "updated_at", None)
         updates = data.model_dump(exclude_unset=True)
         for key, value in updates.items():
             setattr(orm_obj, key, value)
-        setattr(orm_obj, "updated_at", datetime.now(timezone.utc))
+        setattr(orm_obj, "updated_at", next_updated_at(previous, datetime.now(timezone.utc)))
         self.db.flush()
         self.db.refresh(orm_obj)
         return self._to_pydantic(orm_obj)
