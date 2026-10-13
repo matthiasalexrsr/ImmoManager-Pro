@@ -415,6 +415,41 @@ def test_refunds_tenant_money_and_candidates(client, estate):
     assert found["items"][0]["reasons"] == ["number", "provider", "advance"]
 
 
+@pytest.mark.parametrize("action", ["candidates", "allocate"])
+def test_hidden_tenant_allocation_still_prevents_service_payment_reuse(client, estate, action):
+    owner = _owner()
+    staff = _staff("north", estate["north"])
+    contract = _yearly_contract(client, owner, estate)
+    tenant = store.create_tenant(TenantCreate(full_name="Hidden south tenant"))
+    lease = store.create_contract(ContractCreate(
+        contract_number="S-LEASE", property_id=estate["house_s"].id, unit_id=estate["unit_s"].id,
+        tenant_id=tenant.id, start_date=date(2025, 1, 1)))
+    created = client.post("/api/v1/bookings", headers=owner, json={
+        "account_id": estate["account"].id, "tenant_id": tenant.id,
+        "booking_date": "2026-04-02", "amount": -100, "status": "booked"})
+    assert created.status_code == 201, created.text
+    booking_id = created.json()["id"]
+    manual = client.put(f"/api/v1/bookings/{booking_id}/allocations", headers=owner,
+                        json=[{"contract_id": lease.id, "amount": -100}])
+    assert manual.status_code == 200, manual.text
+    # Correcting the booking's tenant preserves an explicit manual allocation.
+    changed = client.patch(f"/api/v1/bookings/{booking_id}", headers=owner, json={"tenant_id": None})
+    assert changed.status_code == 200 and changed.json()["tenant_id"] is None, changed.text
+    assert client.get(f"/api/v1/bookings/{booking_id}", headers=staff).status_code == 200
+    assert client.get(f"/api/v1/bookings/{booking_id}/allocations", headers=staff).json() == []
+    assert len(client.get(f"/api/v1/bookings/{booking_id}/allocations", headers=owner).json()) == 1
+    if action == "candidates":
+        response = client.get(f"{API}/{contract}/payment-candidates", headers=staff,
+                              params={"date_from": "2026-01-01", "date_to": "2026-12-31"})
+        assert response.status_code == 200, response.text
+        assert booking_id not in {row["booking_id"] for row in response.json()["items"]}
+    else:
+        response = client.post(f"{API}/{contract}/payments", headers=staff, json={"booking_id": booking_id})
+        assert response.status_code == 400, response.text
+        assert "Mieterzahlung" in response.json()["error"]["message"]
+        assert client.get(f"{API}/{contract}/payments", headers=owner).json() == []
+
+
 # --- utility billing -----------------------------------------------------------------------------
 
 def _period(estate, house, label="BK 2026", start="2026-01-01", end="2026-12-31"):

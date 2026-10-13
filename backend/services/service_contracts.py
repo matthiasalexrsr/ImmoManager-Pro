@@ -665,7 +665,12 @@ def payments_view(store: Any, contract_id: str) -> list[dict]:
 
 
 def _is_tenant_money(store: Any, booking: Any) -> bool:
-    return bool(booking.tenant_id) or bool(store.list_payment_allocations(booking_id=booking.id))
+    if booking.tenant_id:
+        return True
+    # The caller already authorized this booking. A hidden lease allocation still
+    # reserves its money; only the existence is used, never the hidden lease details.
+    with scope_context(None):
+        return bool(store.list_payment_allocations(booking_id=booking.id))
 
 
 def add_payment(store: Any, contract_id: str, request: PaymentLinkRequest, actor_id: str | None = None) -> Any:
@@ -744,8 +749,9 @@ def payment_candidates(store: Any, contract_id: str, date_from: date, date_to: d
         if len(chunk) < 1000:
             break
         page += 1
-    tenant_bookings = {a.booking_id for a in store.list_payment_allocations(booking_ids=[b.id for b in bookings])} \
-        if bookings else set()
+    with scope_context(None):
+        tenant_bookings = {a.booking_id for a in store.list_payment_allocations(booking_ids=[b.id for b in bookings])} \
+            if bookings else set()
     capacity = booking_payment_capacity(Rows.reading(store), (booking.id for booking in bookings))
     found = []
     for booking in bookings:

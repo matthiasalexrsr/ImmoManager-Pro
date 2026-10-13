@@ -91,7 +91,7 @@ def test_booking_payment_capacity_is_locked_across_writers(postgres, other_kind)
                                                 amount=-100, status="booked"))
     seed.db.close()
     gate = threading.Barrier(2)
-    outcomes = []
+    outcomes: list[str | BaseException] = []
 
     def allocate(primary):
         target = _store(engine)
