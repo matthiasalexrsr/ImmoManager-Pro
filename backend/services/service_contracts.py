@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
+from uuid import uuid4
 
 from fastapi import HTTPException
 
@@ -43,13 +44,15 @@ from ..models_service_contracts import (
     ServiceContractDocumentCreate,
     ServiceContractInvoiceCreate,
     ServiceContractLocationCreate,
-    ServiceContractPaymentCreate,
+    ServiceContractPayment,
     ServiceContractTariffCreate,
     TariffInput,
 )
 from ..store_errors import NotFoundError, ValidationError
+from .booking_payment_capacity import booking_payment_capacity
 from .final_statements import EDITABLE_STATUSES
 from .jobs.schedule import local_today
+from .maintenance_rows import Rows
 from .portfolio_scope import contract_has_hidden_locations, scope_context
 
 # deadlines overview and planned instalments: bounded windows, stated in the answer
@@ -526,12 +529,28 @@ def review_flows(store: Any, invoices: list[Any]) -> dict[str, tuple[str, Decima
     return flows_for(store, invoices)
 
 
-def _payments(store: Any, contract_id: str) -> list[tuple[Any, Any]]:
+def _payments(store: Any, contract_id: str, *, include_invoices: bool = False) -> list[tuple[Any, Any]]:
     pairs = []
+    rows = Rows.reading(store)
+    invoice_payment_ids = set()
     for payment in store.list_service_contract_payments(contract_id):
         booking = _try(store.get_booking, payment.booking_id)
         if booking is not None:
             pairs.append((payment, booking))
+    if include_invoices:
+        links = {link.invoice_id: link.id for link in store.list_service_contract_invoices(contract_id)}
+        for payment in rows.find("invoice_payments", invoice_id=list(links)):
+            booking = _try(store.get_booking, payment.booking_id)
+            if booking is not None:
+                invoice_payment_ids.add(payment.id)
+                pairs.append((ServiceContractPayment(
+                    id=payment.id, service_contract_id=contract_id, booking_id=booking.id, amount=payment.amount,
+                    service_contract_invoice_id=links[payment.invoice_id], created_at=payment.created_at), booking))
+    capacity = booking_payment_capacity(rows, (booking.id for _, booking in pairs))
+    pairs = [(payment.model_copy(update={"amount": as_number(
+        capacity.effective.get(("invoice_payments" if payment.id in invoice_payment_ids else
+                                "service_contract_payments", payment.id), ZERO))}), booking)
+             for payment, booking in pairs]
     return sorted(pairs, key=lambda pair: (pair[1].booking_date, pair[0].id))
 
 
@@ -549,14 +568,15 @@ def _transfers_by_link(store: Any, link_ids: set[str]) -> dict[str, list[Any]]:
 
 
 def bills_view(store: Any, contract_id: str) -> list[dict]:
+    from .invoice_review import _effective_payments
+
     contract = store.get_service_contract(contract_id)
     tariffs = store.list_service_contract_tariffs(contract_id)
     end = Terms.of(contract).effective_end
     bills = _bills(store, contract_id)
-    paid: dict[str, Decimal] = defaultdict(lambda: ZERO)
-    for payment, _booking in _payments(store, contract_id):
-        if payment.service_contract_invoice_id:
-            paid[payment.service_contract_invoice_id] += money(payment.amount)
+    payments = _effective_payments(Rows.reading(store), [invoice.id for _, invoice in bills])
+    paid = {link.id: sum((payment.amount for payment in payments.get(invoice.id, [])), ZERO)
+            for link, invoice in bills}
     transfers = _transfers_by_link(store, {link.id for link, _ in bills})
     reviews = review_flows(store, [invoice for _, invoice in bills])
     rows = []
@@ -644,22 +664,30 @@ def payments_view(store: Any, contract_id: str) -> list[dict]:
     return rows
 
 
-def _allocated_elsewhere(store: Any, booking_id: str) -> Decimal:
-    with scope_context(None):            # allocations of every contract count against the booking
-        return sum((money(p.amount) for p in store.list_service_contract_payments(booking_id=booking_id)), ZERO)
-
-
 def _is_tenant_money(store: Any, booking: Any) -> bool:
     return bool(booking.tenant_id) or bool(store.list_payment_allocations(booking_id=booking.id))
 
 
-def add_payment(store: Any, contract_id: str, request: PaymentLinkRequest) -> Any:
+def add_payment(store: Any, contract_id: str, request: PaymentLinkRequest, actor_id: str | None = None) -> Any:
     """Allocate (part of) a booking: paid = -booking amount; never more than the booking."""
+    from .maintenance_projects import work
+
+    with work(store, actor_id, (f"/service-contracts/{contract_id}/payments",)) as unit:
+        rows = Rows.of(unit)
+        # Invoice payments hold this same lock, so both allocation paths share one limit.
+        if not rows.lock("bookings", request.booking_id):
+            raise ValidationError("Buchung existiert nicht")
+        return _add_payment(unit.store, rows, contract_id, request)
+
+
+def _add_payment(store: Any, rows: Rows, contract_id: str, request: PaymentLinkRequest) -> Any:
     store.get_service_contract(contract_id)
     require_whole_contract(store, contract_id)
     booking = _try(store.get_booking, request.booking_id)
     if booking is None:
         raise ValidationError("Buchung existiert nicht")
+    if booking.reverses_booking_id:
+        raise ValidationError("Ein Storno ist keine Zahlung an den Anbieter oder Erstattung")
     if _is_tenant_money(store, booking):
         raise ValidationError("Die Buchung ist eine Mieterzahlung und gehört nicht zu einem Objektvertrag")
     if request.service_contract_invoice_id:
@@ -667,7 +695,7 @@ def add_payment(store: Any, contract_id: str, request: PaymentLinkRequest) -> An
         if link is None or link.service_contract_id != contract_id:
             raise ValidationError("Die Rechnung gehört nicht zu diesem Vertrag")
     paid_total = -money(booking.amount)                     # outgoing booking: positive payment
-    available = paid_total - _allocated_elsewhere(store, booking.id)
+    available = booking_payment_capacity(rows, [booking.id]).available[booking.id]
     amount = money(request.amount) if request.amount is not None else available
     if amount == 0:
         raise ValidationError("Die Buchung ist bereits vollständig zugeordnet")
@@ -676,8 +704,10 @@ def add_payment(store: Any, contract_id: str, request: PaymentLinkRequest) -> An
                               "Erstattung negativ)")
     if abs(amount) > abs(available):
         raise ValidationError(f"Höchstens {as_number(available):.2f} € der Buchung sind noch nicht zugeordnet")
-    return store.create_service_contract_payment(ServiceContractPaymentCreate(
-        service_contract_id=contract_id, booking_id=booking.id, amount=float(amount),
+    if rows.find("service_contract_payments", service_contract_id=contract_id, booking_id=booking.id):
+        raise ValidationError("Diese Buchung ist dem Vertrag bereits zugeordnet")
+    return rows.add("service_contract_payments", ServiceContractPayment(
+        id=str(uuid4()), service_contract_id=contract_id, booking_id=booking.id, amount=float(amount),
         service_contract_invoice_id=request.service_contract_invoice_id, notes=request.notes))
 
 
@@ -710,15 +740,13 @@ def payment_candidates(store: Any, contract_id: str, date_from: date, date_to: d
         page += 1
     tenant_bookings = {a.booking_id for a in store.list_payment_allocations(booking_ids=[b.id for b in bookings])} \
         if bookings else set()
-    allocated: dict[str, Decimal] = defaultdict(lambda: ZERO)
-    with scope_context(None):            # allocations of every contract count against a booking
-        for payment in store.list_service_contract_payments():
-            allocated[payment.booking_id] += money(payment.amount)
+    capacity = booking_payment_capacity(Rows.reading(store), (booking.id for booking in bookings))
     found = []
     for booking in bookings:
-        if booking.id in already or booking.tenant_id or booking.id in tenant_bookings or money(booking.amount) == 0:
+        if (booking.id in already or booking.tenant_id or booking.id in tenant_bookings
+                or booking.reverses_booking_id or money(booking.amount) == 0):
             continue
-        open_amount = -money(booking.amount) - allocated[booking.id]
+        open_amount = capacity.available.get(booking.id, ZERO)
         if open_amount == 0:
             continue
         text = (booking.payment_text or "").lower()
@@ -751,7 +779,8 @@ def reconciliation_view(store: Any, contract_id: str, date_from: date, date_to: 
     contract = store.get_service_contract(contract_id)
     result = reconcile(tariffs=store.list_service_contract_tariffs(contract_id), contract_start=contract.start_date,
                        contract_end=Terms.of(contract).effective_end, invoices=_bills(store, contract_id, reviewed=True),
-                       payments=_payments(store, contract_id), window_from=date_from, window_to=date_to)
+                       payments=_payments(store, contract_id, include_invoices=True),
+                       window_from=date_from, window_to=date_to)
     return {
         "date_from": _day(date_from), "date_to": _day(date_to),
         "expected": as_number(result.expected),

@@ -50,6 +50,7 @@ from ..domain.project_graph import Edge, cycle_path, schedule_conflicts, topolog
 from ..permissions import may_write
 from ..storage import NotFoundError, ValidationError
 from . import document_versions as archive
+from .booking_payment_capacity import booking_payment_capacity
 from .maintenance_protocol_validation import SCHEMA_VERSION, content_digest
 from .maintenance_rows import Rows, stamp
 
@@ -756,17 +757,17 @@ def unlink_invoice(store: Any, case_id: str, link_id: str, actor_id: str | None)
 
 
 def _booking_left(rows: Rows, booking: Any) -> Decimal:
-    reversed_amount = sum((money(b.amount) for b in rows.find("bookings", reverses_booking_id=booking.id)), ZERO)
-    allocated = sum((money(a.amount) for a in rows.find("invoice_payments", booking_id=booking.id)), ZERO)
-    return max(-(money(booking.amount) + reversed_amount), ZERO) - allocated
+    return max(booking_payment_capacity(rows, [booking.id]).available.get(booking.id, ZERO), ZERO)
 
 
 def invoice_payments(store: Any, invoice_id: str) -> dict:
+    from .invoice_review import _effective_payments
+
     rows = Rows.reading(store)
     invoice = rows.require("invoices", invoice_id, "Rechnung nicht gefunden")
     payments = rows.find("invoice_payments", invoice_id=invoice_id)
     bookings = {b.id: b for b in rows.find("bookings", id=[pay.booking_id for pay in payments])}
-    allocated = sum((money(pay.amount) for pay in payments), ZERO)
+    allocated = sum((pay.amount for pay in _effective_payments(rows, [invoice_id]).get(invoice_id, [])), ZERO)
     return {"invoice_id": invoice.id, "gross_amount": as_number(money(invoice.gross_amount)),
             "allocated": as_number(allocated), "open": as_number(money(invoice.gross_amount) - allocated),
             "items": [{**pay.model_dump(mode="json"),
@@ -786,7 +787,7 @@ def add_invoice_payment(store: Any, invoice_id: str, payload: mm.InvoicePaymentC
         invoice = rows.require("invoices", invoice_id, "Rechnung nicht gefunden")
         if invoice.status == "cancelled":
             raise conflict("Eine stornierte Rechnung wird nicht bezahlt.")
-        from .invoice_review import ensure_payable
+        from .invoice_review import _effective_payments, ensure_payable
 
         ensure_payable(rows, invoice_id)
         if booking.reverses_booking_id:
@@ -801,7 +802,7 @@ def add_invoice_payment(store: Any, invoice_id: str, payload: mm.InvoicePaymentC
             raise conflict(f"Von der Buchung sind nur noch {_amount_label(max(left, ZERO))} frei "
                            "(abzüglich Stornos und anderer Rechnungen).")
         open_amount = money(invoice.gross_amount) - sum(
-            (money(a.amount) for a in rows.find("invoice_payments", invoice_id=invoice_id)), ZERO)
+            (payment.amount for payment in _effective_payments(rows, [invoice_id]).get(invoice_id, [])), ZERO)
         if amount > open_amount:
             raise conflict(f"Die Rechnung ist nur noch über {_amount_label(max(open_amount, ZERO))} offen.")
         payment = mm.InvoicePayment(id=str(uuid4()), invoice_id=invoice_id, booking_id=booking.id,
@@ -1253,6 +1254,7 @@ def _costs(rows: Rows, case: Any, orders: list, changes: list, links: list, invo
     booking_ids = {payment.booking_id for payment in payments}
     # every allocation of these bookings decides how much of them is left for this project
     allocations = rows.find("invoice_payments", booking_id=booking_ids)
+    effective = booking_payment_capacity(rows, booking_ids).effective
     bookings = {b.id: b for b in rows.find("bookings", id=booking_ids)}
     reversed_by: dict[str, Decimal] = {}
     for reversal in rows.find("bookings", reverses_booking_id=booking_ids):
@@ -1278,6 +1280,7 @@ def _costs(rows: Rows, case: Any, orders: list, changes: list, links: list, invo
         [AllocationFacts(a.id, a.invoice_id, a.booking_id, money(a.amount), a.created_at) for a in allocations],
         {key: BookingFacts(key, money(b.amount), reversed_by.get(key, ZERO)) for key, b in bookings.items()},
         {key: invoice.status for key, invoice in invoices.items()},
+        {a.id: effective.get(("invoice_payments", a.id), ZERO) for a in allocations},
     )
     return costs, payments, bookings
 

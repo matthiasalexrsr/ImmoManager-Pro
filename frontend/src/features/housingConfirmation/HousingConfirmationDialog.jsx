@@ -186,7 +186,10 @@ export default function HousingConfirmationDialog({ contractId, onClose, onPubli
       const preview = await service.preview({ contractId, data, sourceEtags: view.source.source_etags,
         correctionOf: view.correctionOf }, { signal: controller.signal });
       if (controller.signal.aborted) return;
-      setStored(current => current.binding === binding
+      // Editing stays available during review. A reply may only approve the exact
+      // form, source and correction that were sent, even when it arrives later.
+      setStored(current => current.binding === binding && current.source === view.source
+        && current.correctionOf === view.correctionOf && formSignature(current.form) === formSignature(view.form)
         ? { ...current, preview, previewInvalidated: false, sourceConflict: false, error: null, saved: false } : current);
     } catch (error) {
       if (!controller.signal.aborted && error?.name !== 'AbortError') report(error, { conflict: true });

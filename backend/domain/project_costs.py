@@ -139,7 +139,8 @@ def effective_allocations(allocations: Iterable[AllocationFacts],
 
 def roll_up(budget: float | None, orders: Iterable[OrderFacts], changes: Iterable[ChangeFacts],
             invoices: Iterable[InvoiceFacts], allocations: Iterable[AllocationFacts],
-            bookings: dict[str, BookingFacts], invoice_status: dict[str, str] | None = None) -> ProjectCosts:
+            bookings: dict[str, BookingFacts], invoice_status: dict[str, str] | None = None,
+            effective_paid: dict[str, Decimal] | None = None) -> ProjectCosts:
     """The project's figures. `allocations` holds every allocation of the bookings involved,
     also to invoices of other projects: they decide how much of a booking is left."""
     costs = ProjectCosts(budget=None if budget is None else money(budget))
@@ -155,7 +156,7 @@ def roll_up(budget: float | None, orders: Iterable[OrderFacts], changes: Iterabl
             target.proposed_changes += money(change.gross)
 
     allocations = list(allocations)
-    effective = effective_allocations(allocations, bookings)
+    effective = effective_allocations(allocations, bookings) if effective_paid is None else effective_paid
     allocated: dict[str, Decimal] = defaultdict(lambda: ZERO)
     requested: dict[str, Decimal] = defaultdict(lambda: ZERO)
     for allocation in allocations:

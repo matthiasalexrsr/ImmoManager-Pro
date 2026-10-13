@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const authState = vi.hoisted(() => ({ user: null, write: null }));
@@ -114,6 +114,19 @@ describe('HousingConfirmationDialog', () => {
 
     expect(screen.queryByText('Vorläufige Vorschau geprüft')).toBeNull();
     expect(screen.getByText('Die Vorschau wurde wegen einer Änderung verworfen.')).toBeInTheDocument();
+  });
+
+  it('does not restore an obsolete preview when input changes while the review is loading', async () => {
+    let finish;
+    const api = service({ preview: vi.fn(() => new Promise(resolve => { finish = resolve; })) });
+    render(<HousingConfirmationDialog contractId="contract-1" service={api} onClose={vi.fn()} />);
+    await fillForm();
+    fireEvent.click(screen.getByRole('button', { name: 'Vorschau prüfen' }));
+    fireEvent.change(screen.getByLabelText(/^Tatsächlicher Einzug/), { target: { value: '2026-02-04' } });
+    await act(async () => finish({ review_hash: 'a'.repeat(64), pdf_sha256: 'c'.repeat(64),
+      size_bytes: 900, person_count: 1 }));
+    expect(screen.queryByText('Vorläufige Vorschau geprüft')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Freigeben und Original speichern' })).toBeNull();
   });
 
   it('keeps the exact release for a retry when the answer is lost', async () => {

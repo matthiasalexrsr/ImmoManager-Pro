@@ -16,15 +16,19 @@ from test_document_versions_postgres import postgres  # noqa: F401  (fixture: ow
 
 from backend import auth
 from backend.models import (
+    AccountCreate,
     AllocationKeyCreate,
     BillingPeriodCreate,
+    BookingCreate,
     ContactCreate,
+    InvoiceCreate,
     PortfolioCreate,
     PropertyCreate,
 )
 from backend.models_service_contracts import (
     CostTransferRequest,
     InvoiceLinkRequest,
+    PaymentLinkRequest,
     ServiceContractCreate,
     ServiceContractCreateRequest,
 )
@@ -68,6 +72,59 @@ def _staff_scope(seeded):
     stored = auth.get_user_by_id(user.id)
     assert stored is not None
     return scope_from_user(stored)
+
+
+@pytest.mark.parametrize("other_kind", ["invoice", "service"])
+def test_booking_payment_capacity_is_locked_across_writers(postgres, other_kind):  # noqa: F811
+    from backend.maintenance_models import InvoicePaymentCreate
+    from backend.services.maintenance_projects import add_invoice_payment
+
+    engine, _ = postgres
+    seeded = _seed(engine)
+    seed = _store(engine)
+    contract = service.create_contract(seed, _request(seeded, "house_n"))
+    other = service.create_contract(seed, _request(seeded, "house_n", title="Second contract"))
+    account = seed.create_account(AccountCreate(portfolio_id=seeded["north"].id, name="Bank", account_type="bank"))
+    invoice = seed.create_invoice(InvoiceCreate(supplier="Repair", invoice_date=date(2026, 4, 1),
+                                                property_id=seeded["house_n"].id, net_amount=100, gross_amount=100))
+    booking = seed.create_booking(BookingCreate(account_id=account.id, booking_date=date(2026, 4, 2),
+                                                amount=-100, status="booked"))
+    seed.db.close()
+    gate = threading.Barrier(2)
+    outcomes = []
+
+    def allocate(primary):
+        target = _store(engine)
+        try:
+            gate.wait(timeout=10)
+            if primary or other_kind == "service":
+                service.add_payment(target, contract.id if primary else other.id,
+                                    PaymentLinkRequest(booking_id=booking.id, amount=70))
+            else:
+                add_invoice_payment(target, invoice.id, InvoicePaymentCreate(booking_id=booking.id, amount=70), None)
+            outcomes.append("paid")
+        except (ValidationError, HTTPException):
+            outcomes.append("refused")
+        except BaseException as error:
+            outcomes.append(error)
+        finally:
+            target.db.close()
+
+    threads = [threading.Thread(target=allocate, args=(primary,)) for primary in (True, False)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=20)
+    assert not any(thread.is_alive() for thread in threads)
+    assert sorted(outcomes, key=str) == ["paid", "refused"], outcomes
+    with engine.connect() as connection:
+        service_paid = connection.execute(sa.text(
+            "SELECT COALESCE(SUM(amount), 0) FROM service_contract_payments WHERE booking_id = :id"),
+            {"id": booking.id}).scalar()
+        invoice_paid = connection.execute(sa.text(
+            "SELECT COALESCE(SUM(amount), 0) FROM invoice_payments WHERE booking_id = :id"),
+            {"id": booking.id}).scalar()
+    assert service_paid + invoice_paid == 70
 
 
 def test_service_contract_migration_on_postgres(postgres):  # noqa: F811

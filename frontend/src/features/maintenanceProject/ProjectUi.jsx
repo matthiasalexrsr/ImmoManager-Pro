@@ -81,6 +81,7 @@ export function PickerDialog({ title, load, renderItem, onPick, onClose, extra }
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [skip, setSkip] = useState(0);
+  const [nextSkip, setNextSkip] = useState(0);
   const [option, setOption] = useState(false);
 
   useEffect(() => {
@@ -89,8 +90,12 @@ export function PickerDialog({ title, load, renderItem, onPick, onClose, extra }
     setError(null);
     load({ q: submitted, skip, limit: 25, option }, { signal: controller.signal })
       .then(page => {
+        if (controller.signal.aborted) return;
         setItems(current => (skip === 0 ? page.items : [...current, ...page.items]));
         setHasMore(Boolean(page.has_more));
+        // A lookup may filter its page locally (already-linked documents, search).
+        // Its server offset must advance by consumed rows, not by visible results.
+        setNextSkip(page.next_skip ?? skip + 25);
       })
       .catch(failure => { if (failure?.name !== 'AbortError') setError(failure.message); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
@@ -125,7 +130,7 @@ export function PickerDialog({ title, load, renderItem, onPick, onClose, extra }
         </ul>
         {loading && <p className="text-muted" role="status">{tx.loading}</p>}
         {hasMore && !loading && (
-          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setSkip(items.length)}>{tx.loadMore}</button>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setSkip(nextSkip)}>{tx.loadMore}</button>
         )}
       </div>
     </Modal>

@@ -250,6 +250,86 @@ def test_put_keeps_the_rules_and_reports_a_stale_edit(client, estate):
 
 # --- expectation, bills, payments ----------------------------------------------------------------
 
+def test_reversed_bookings_are_not_service_contract_payment_candidates(client, estate):
+    owner = _owner()
+    contract = _create(client, owner, _payload(estate))["id"]
+    booking = _book(estate["account"], "2026-04-02", -100)
+    reversal = _book(estate["account"], "2026-04-03", 100, reverses_booking_id=booking.id)
+    candidates = client.get(f"{API}/{contract}/payment-candidates", headers=owner,
+                            params={"date_from": "2026-01-01", "date_to": "2026-12-31"})
+    assert candidates.status_code == 200, candidates.text
+    assert candidates.json()["items"] == []
+    for item in (booking, reversal):
+        refused = client.post(f"{API}/{contract}/payments", headers=owner, json={"booking_id": item.id})
+        assert refused.status_code == 400, refused.text
+
+
+@pytest.mark.parametrize("amount", [-100, 100])
+def test_service_contract_allocations_use_only_the_nonreversed_booking_amount(client, estate, amount):
+    owner = _owner()
+    contract = _create(client, owner, _payload(estate))["id"]
+    booking = _book(estate["account"], "2026-04-02", amount)
+    _book(estate["account"], "2026-04-03", -amount * 0.4, reverses_booking_id=booking.id)
+    refused = client.post(f"{API}/{contract}/payments", headers=owner,
+                          json={"booking_id": booking.id, "amount": -amount})
+    assert refused.status_code == 400, refused.text
+    payment = client.post(f"{API}/{contract}/payments", headers=owner, json={"booking_id": booking.id})
+    assert payment.status_code == 201, payment.text
+    assert payment.json()["amount"] == -amount * 0.6
+
+
+def test_reversal_reduces_existing_service_contract_payment_figures(client, estate):
+    owner = _owner()
+    first = _create(client, owner, _payload(estate))["id"]
+    second = _create(client, owner, _payload(estate, title="Second contract"))["id"]
+    booking = _book(estate["account"], "2026-04-02", -100)
+    for contract, amount in ((first, 70), (second, 30)):
+        response = client.post(f"{API}/{contract}/payments", headers=owner,
+                               json={"booking_id": booking.id, "amount": amount})
+        assert response.status_code == 201, response.text
+    _book(estate["account"], "2026-04-03", 40, reverses_booking_id=booking.id)
+    figures = [client.get(f"{API}/{contract}/reconciliation", headers=owner,
+                          params={"date_from": "2026-01-01", "date_to": "2026-12-31"}).json()
+               for contract in (first, second)]
+    assert sum(value["paid"] for value in figures) == 60
+    payments = [client.get(f"{API}/{contract}/payments", headers=owner).json()[0]
+                for contract in (first, second)]
+    assert sum(value["amount"] for value in payments) == 60
+    _book(estate["account"], "2026-04-04", 60, reverses_booking_id=booking.id)
+    for contract in (first, second):
+        figures = client.get(f"{API}/{contract}/reconciliation", headers=owner,
+                             params={"date_from": "2026-01-01", "date_to": "2026-12-31"}).json()
+        assert figures["paid"] == 0
+
+
+@pytest.mark.parametrize("service_first", [False, True])
+def test_invoice_and_service_contract_payments_share_booking_capacity(client, estate, service_first):
+    owner = _owner()
+    contract = _create(client, owner, _payload(estate))["id"]
+    invoice = store.create_invoice(InvoiceCreate(
+        supplier="Repair supplier", invoice_date=date(2026, 4, 1), net_amount=100,
+        gross_amount=100, property_id=estate["house_n"].id))
+    booking = _book(estate["account"], "2026-04-02", -100)
+    invoice_path = f"/api/v1/invoices/{invoice.id}/payments"
+    service_path = f"{API}/{contract}/payments"
+    first, second = (service_path, invoice_path) if service_first else (invoice_path, service_path)
+    accepted = client.post(first, headers=owner, json={"booking_id": booking.id, "amount": 70})
+    assert accepted.status_code == 201, accepted.text
+    refused = client.post(second, headers=owner, json={"booking_id": booking.id, "amount": 40})
+    assert refused.status_code in (400, 409), refused.text
+    accepted = client.post(second, headers=owner, json={"booking_id": booking.id, "amount": 30})
+    assert accepted.status_code == 201, accepted.text
+    _book(estate["account"], "2026-04-03", 40, reverses_booking_id=booking.id)
+    service_payment = client.get(service_path, headers=owner).json()[0]
+    assert service_payment["amount"] == (60 if service_first else 0)
+    # The earlier allocation keeps the residual regardless of which writer made it.
+    from backend.services.booking_payment_capacity import booking_payment_capacity
+    from backend.services.maintenance_rows import Rows
+
+    capacity = booking_payment_capacity(Rows.reading(store), [booking.id])
+    assert sum(capacity.effective.values()) == 60
+    assert capacity.available[booking.id] == 0
+
 def _yearly_contract(client, headers, estate, **fields) -> str:
     """One year from 1.1.2026, no renewal; advances of 100 a month."""
     body = _payload(estate, start_date="2026-01-01", minimum_term_months=12, renewal_mode="none", **fields)
@@ -417,6 +497,44 @@ def test_recoverable_bills_enter_each_billing_period_once(client, estate):
     assert [c["amount"] for c in into_correction["created"]] == [20.0]       # only the new bill
     assert {s["service_contract_invoice_id"] for s in into_correction["skipped"]} == {bill["id"]}
     assert late["id"] in {c["service_contract_invoice_id"] for c in into_correction["created"]}
+
+
+def test_transferred_cost_patch_preserves_source_invoice_constraints(client, estate):
+    owner = _owner()
+    contract = _caretaker(client, owner, estate)
+    _bill(client, owner, estate, contract, 300)
+    origin, origin_key = _period(estate, "house_n")
+    occupied, occupied_key = _period(estate, "house_n2")
+    foreign, foreign_key = _period(estate, "house_s")
+    original = client.post(f"{API}/{contract}/cost-transfers", headers=owner,
+                           json={"billing_period_id": origin.id, "allocation_key_id": origin_key.id}).json()["created"][0]
+    transferred = client.post(f"{API}/{contract}/cost-transfers", headers=owner,
+                              json={"billing_period_id": occupied.id, "allocation_key_id": occupied_key.id})
+    assert transferred.status_code == 201, transferred.text
+    for destination, key in ((foreign, foreign_key), (occupied, occupied_key)):
+        refused = client.patch(f"/api/v1/billing/cost-items/{original['id']}", headers=owner,
+                               json={"billing_period_id": destination.id, "allocation_key_id": key.id})
+        assert refused.status_code == 400, refused.text
+        assert store.get_cost_item(original["id"]).billing_period_id == origin.id
+
+
+def test_invoice_payments_update_service_bill_and_reconciliation(client, estate):
+    owner = _owner()
+    contract = _caretaker(client, owner, estate)
+    bill = _bill(client, owner, estate, contract, 100, day="2026-04-01")
+    booking = _book(estate["account"], "2026-04-02", -100)
+    path = f"/api/v1/invoices/{bill['invoice']['id']}/payments"
+    response = client.post(path, headers=owner, json={"booking_id": booking.id, "amount": 100})
+    assert response.status_code == 201, response.text
+    assert client.get(f"{API}/{contract}/invoices", headers=owner).json()[0]["paid"] == 100
+    result = client.get(f"{API}/{contract}/reconciliation", headers=owner,
+                        params={"date_from": "2026-01-01", "date_to": "2026-12-31"}).json()
+    assert result["paid"] == 100 and result["open"] == 0
+    _book(estate["account"], "2026-04-03", 100, reverses_booking_id=booking.id)
+    replacement = _book(estate["account"], "2026-04-04", -100)
+    response = client.post(path, headers=owner, json={"booking_id": replacement.id, "amount": 100})
+    assert response.status_code == 201, response.text
+    assert client.get(path, headers=owner).json()["allocated"] == 100
 
 
 def test_transfer_needs_recoverable_contracts_and_prorates_the_service_period(client, estate):

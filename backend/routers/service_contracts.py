@@ -8,11 +8,13 @@ location and changeable only with every location visible.
 
 from collections.abc import Callable
 from datetime import date
-from typing import Any, TypeVar
+from typing import Annotated, Any, TypeVar
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+from ..auth import require_auth
 from ..dependencies import store
+from ..models import UserRead
 from ..models_service_contracts import (
     CancellationRequest,
     CostTransferRequest,
@@ -241,8 +243,9 @@ def payment_candidates(contract_id: str, date_from: date | None = Query(None), d
 
 
 @router.post("/{contract_id}/payments", response_model=ServiceContractPayment, status_code=status.HTTP_201_CREATED)
-def add_payment(contract_id: str, payload: PaymentLinkRequest) -> Any:
-    return _call(lambda: service.add_payment(store, contract_id, payload))
+def add_payment(contract_id: str, payload: PaymentLinkRequest,
+                actor: Annotated[UserRead, Depends(require_auth)]) -> Any:
+    return _call(lambda: service.add_payment(store, contract_id, payload, getattr(actor, "id", None)))
 
 
 @router.delete("/{contract_id}/payments/{payment_id}", status_code=status.HTTP_204_NO_CONTENT)

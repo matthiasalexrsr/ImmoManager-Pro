@@ -76,6 +76,32 @@ beforeEach(() => vi.clearAllMocks());
 afterEach(cleanup);
 
 describe('maintenance project file', () => {
+  it('advances through server document pages even when every visible row was filtered out', async () => {
+    const detail = project();
+    const linked = Array.from({ length: 25 }, (_, index) => ({
+      id: `linked-${index}`, title: `Linked document ${index}`, document_type: 'maintenance',
+    }));
+    const available = { id: 'available', title: 'Later unlinked document', document_type: 'maintenance' };
+    detail.documents = linked.map(document => ({ document, link_id: document.id, role: 'other' }));
+    api.get.mockImplementation(path => {
+      if (path.endsWith('/project')) return Promise.resolve(detail);
+      if (path.startsWith('/documents?')) {
+        const skip = Number(new URLSearchParams(path.split('?')[1]).get('skip'));
+        return Promise.resolve([...linked, available].slice(skip, skip + 26));
+      }
+      return Promise.resolve([]);
+    });
+    api.list.mockResolvedValue([]);
+    render(<MemoryRouter><MaintenanceProject caseId="c1" /></MemoryRouter>);
+    await screen.findByRole('heading', { name: detail.case.title });
+    tab(de.tabDocuments);
+    fireEvent.click(screen.getByRole('button', { name: de.linkDocument }));
+    const more = await screen.findByRole('button', { name: de.loadMore });
+    fireEvent.click(more);
+    expect(await screen.findByText(available.title)).toBeInTheDocument();
+    expect(api.get.mock.calls.some(([path]) => path.includes('skip=25'))).toBe(true);
+  });
+
   it('shows the case as a project with costs, workflow gates and all seven sections', async () => {
     const { container } = show();
     expect(await screen.findByRole('heading', { name: 'Dachschaden nach Sturm' })).toBeInTheDocument();

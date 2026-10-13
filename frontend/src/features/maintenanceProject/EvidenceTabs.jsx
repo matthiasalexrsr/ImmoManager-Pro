@@ -263,6 +263,7 @@ export function DocumentsTab({ ctx }) {
     return {
       items: page.filter(doc => !linked.has(doc.id) && (!q || `${doc.title} ${doc.document_type || ''}`.toLocaleLowerCase().includes(q))),
       has_more: (rows || []).length > params.limit,
+      next_skip: params.skip + page.length,
     };
   }, [record.property_id, project.documents]);
 

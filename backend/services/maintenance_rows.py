@@ -35,6 +35,7 @@ from ..db.service_contract_models import (
     ServiceContractInvoiceORM,
     ServiceContractLocationORM,
     ServiceContractORM,
+    ServiceContractPaymentORM,
     ServiceContractTariffORM,
 )
 from ..storage import NotFoundError
@@ -63,6 +64,7 @@ def registry() -> dict[str, tuple[Any, type[BaseModel]]]:
         "maintenance_cases": (MaintenanceCaseORM, models.MaintenanceCase),
         "invoices": (InvoiceORM, models.Invoice),
         "bookings": (BookingORM, models.Booking),
+        "service_contract_payments": (ServiceContractPaymentORM, sc.ServiceContractPayment),
         "calendar_events": (CalendarEventORM, models.CalendarEvent),
         "documents": (DocumentORM, models.Document),
         "change_history": (ChangeHistoryORM, models.ChangeHistoryEntry),
