@@ -76,6 +76,7 @@ def main() -> int:
     started = time.time()
     out = fresh_directory(args.out, "run")
     findings = Findings()
+    findings.request_log = out / "requests.jsonl"
     server = None
     try:
         world = build_world(seed=args.seed, units=args.units, years=args.years)

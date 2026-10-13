@@ -146,6 +146,7 @@ class Findings:
         self.timings: list[tuple[str, str, float]] = []
         self.calls = Counter()
         self.measurements: dict = {}
+        self.request_log: Path | None = None
 
     def add(self, severity: str, area: str, message: str, detail: Any = None) -> None:
         assert severity in SEVERITIES, severity
@@ -205,6 +206,14 @@ class Client:
         with self.f.lock:
             self.f.timings.append((method, key, elapsed))
             self.f.calls[f"{self.username}"] += 1
+            if self.f.request_log is not None:
+                # Stream correlation evidence without retaining an unbounded request list.
+                # Payloads, credentials and response bodies never enter this log.
+                with self.f.request_log.open("a", encoding="utf-8") as output:
+                    output.write(json.dumps({"phase": self.f.phase, "user": self.username,
+                                             "method": method, "path": key, "status": resp.status_code,
+                                             "seconds": elapsed,
+                                             "request_id": resp.headers.get("x-request-id")}, ensure_ascii=False) + "\n")
         if resp.status_code == 401 and not quiet:
             self.login()
             return self.call(method, path, body, expect=expect, area=area, params=params, files=files, quiet=True,

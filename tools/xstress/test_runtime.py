@@ -6,10 +6,35 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
+import httpx
 import pytest
 
 from tools.xstress import core, run, saveload
+
+
+def test_request_correlation_log_is_append_only_and_excludes_payloads(tmp_path):
+    findings = core.Findings()
+    findings.request_log = tmp_path / "requests.jsonl"
+    client = object.__new__(core.Client)
+    client.server = SimpleNamespace(base="http://127.0.0.1:12345/api/v1")
+    client.f, client.username, client.token = findings, "writer", "synthetic-secret-token"
+    with httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(
+            201, headers={"x-request-id": "abc12345"}, json={"private": "not-in-trace"}))) as transport:
+        client.http = transport
+        for _ in range(2):
+            status, _ = client.call("POST", "/bookings/12345678-1234-1234-1234-123456789abc",
+                                    {"password": "not-in-trace", "note": "not-in-trace"})
+            assert status == 201
+    text = findings.request_log.read_text(encoding="utf-8")
+    entries = [json.loads(line) for line in text.splitlines()]
+    assert len(entries) == len(findings.timings) == 2
+    assert entries[0]["request_id"] == "abc12345"
+    assert entries[0]["path"] == "/bookings/{id}"
+    assert entries[0]["status"] == 201
+    assert set(entries[0]) == {"phase", "user", "method", "path", "status", "seconds", "request_id"}
+    assert "not-in-trace" not in text and "synthetic-secret-token" not in text
 
 
 def test_fixture_environment_overrides_inherited_state(tmp_path, monkeypatch):
