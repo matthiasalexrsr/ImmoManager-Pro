@@ -1,12 +1,14 @@
 """Shared reads across real connections: isolation, invalidation and bounded thread races."""
 
+import sqlite3
 import sys
 import threading
 from contextvars import ContextVar
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
-from sqlalchemy import Integer, create_engine, event, select, text, update
+from sqlalchemy import Integer, create_engine, event, insert, select, text, update
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, scoped_session, sessionmaker
 from test_stress_findings import client, world  # noqa: F401
 
@@ -14,6 +16,8 @@ from backend import concurrency
 from backend.dependencies import store as app_store
 from backend.repositories import SQLAlchemyStore
 from backend.services.portfolio_scope import AccessScope, current_scope, scope_context
+
+store: SQLAlchemyStore | None = None  # Swapped by the module-global-store regression test.
 
 
 class CacheBase(DeclarativeBase):
@@ -47,7 +51,7 @@ def _engine(path, value):
 
     CacheBase.metadata.create_all(engine)
     with engine.begin() as connection:
-        connection.execute(CacheRow.__table__.insert().values(id=1, value=value))
+        connection.execute(insert(CacheRow).values(id=1, value=value))
     return engine
 
 
@@ -86,13 +90,16 @@ def test_equivalent_arguments_and_independent_sessions_share_one_result(engine):
 def test_global_store_resolves_each_request_session_and_database(engine, cache, tmp_path, monkeypatch):
     request = ContextVar("cache_test_request", default="first")
     proxy = scoped_session(sessionmaker(bind=engine), scopefunc=request.get)
-    monkeypatch.setattr(sys.modules[__name__], "store", SQLAlchemyStore(proxy), raising=False)
+    monkeypatch.setattr(sys.modules[__name__], "store", SQLAlchemyStore(cast(Session, proxy)), raising=False)
     calls = []
 
     @concurrency.one_at_a_time
     def report():
         calls.append(1)
-        return {"value": store.db.get(CacheRow, 1).value}  # noqa: F821 (module store is swapped deliberately)
+        assert store is not None
+        row = store.db.get(CacheRow, 1)
+        assert row is not None
+        return {"value": row.value}
 
     other = _engine(tmp_path / "other.db", 9)
     try:
@@ -117,7 +124,9 @@ def test_read_only_auth_style_select_does_not_disable_sqlite_hits(engine):
     with Session(engine) as db:
         assert db.scalar(select(CacheRow.value)) == 1
         assert db.in_transaction()
-        assert not db.connection().connection.driver_connection.in_transaction
+        driver = db.connection().connection.driver_connection
+        assert isinstance(driver, sqlite3.Connection)
+        assert not driver.in_transaction
         assert report(db)["value"] == 1
     assert calls == [2026]
 
@@ -126,6 +135,7 @@ def test_caller_held_orm_identity_map_stays_local_after_another_connection_commi
     report, _ = _report()
     with Session(engine) as reader:
         held = reader.get(CacheRow, 1)
+        assert held is not None
         with Session(engine) as writer:
             writer.execute(update(CacheRow).values(value=2))
             writer.commit()
@@ -140,7 +150,9 @@ def test_portfolio_boundaries_never_share_results(cache):
     @concurrency.one_at_a_time
     def report():
         calls.append(1)
-        return {"portfolios": list(current_scope().portfolio_ids)}
+        scope = current_scope()
+        assert scope is not None
+        return {"portfolios": list(scope.portfolio_ids)}
 
     for ids in (("north",), ("south",), ("north",)):
         with scope_context(AccessScope("staff", "verwalter", False, ids)):
@@ -208,7 +220,9 @@ def test_writer_local_reads_and_commit_rollback_fences(engine, write_kind, finis
         elif write_kind == "bulk":
             writer.query(CacheRow).update({"value": 2})
         else:
-            writer.get(CacheRow, 1).value = 2
+            row = writer.get(CacheRow, 1)
+            assert row is not None
+            row.value = 2
             writer.flush()
         # The writer sees its private change; another connection still sees the
         # committed row and may cache it while the write is pending.
@@ -254,7 +268,9 @@ def test_unflushed_orm_changes_bypass_shared_reads(engine, kind):
 
     with Session(engine, autoflush=False) as writer, Session(engine) as reader:
         assert read(reader)["value"] == 1
-        writer.get(CacheRow, 1).value = 2
+        row = writer.get(CacheRow, 1)
+        assert row is not None
+        row.value = 2
         assert read(writer)["value"] == 2
         assert read(reader)["value"] == 1
         writer.rollback()

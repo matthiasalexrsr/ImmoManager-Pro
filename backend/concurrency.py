@@ -26,8 +26,11 @@ from copy import deepcopy
 from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Callable, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, TypeVar
 from uuid import UUID
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -167,7 +170,7 @@ def _shareable(db: Any) -> bool:
 
 class _Reads:
     def __init__(self, sources: list[Any]):
-        self.sessions = []
+        self.sessions: list[Session] = []
         self.memory = False
         for source in sources:
             db = _session(source)
