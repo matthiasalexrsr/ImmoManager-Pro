@@ -266,6 +266,25 @@ def test_receipt_records_original_and_refuses_a_duplicate_key_without_reason(own
     assert view["document"]["integrity"] == "changed" and "document_changed" in {f["code"] for f in view["findings"]}
 
 
+def test_duplicate_check_and_receipt_scan_past_500_unrelated_candidates(owner, estate):
+    from backend.models import InvoiceCreate
+
+    for index in range(501):
+        store.create_invoice(InvoiceCreate.model_validate({
+            "property_id": estate["property"].id, "supplier": f"Anderer Lieferant {index}",
+            "invoice_date": TODAY, "invoice_number": f"FREMD-42-{index}",
+            "net_amount": 1000, "vat_amount": 190, "gross_amount": 1190,
+        }))
+    actual = _invoice(owner, estate, number="RE-0042", day=TODAY - timedelta(days=365))
+    check = _ok(owner.get(f"{API}/invoice-review/duplicates", params={
+        "supplier": "DACH MÜLLER", "invoice_number": "re 42", "gross_amount": 50,
+        "invoice_date": TODAY.isoformat()}))
+    assert [(item["invoice_id"], item["reason"]) for item in check["duplicates"]] == [
+        (actual["id"], "same_number")]
+    duplicate = _invoice(owner, estate, number="re 42", supplier="DACH MÜLLER", gross=50, net=42.02)
+    assert "Dublette" in _error(_receive(owner, duplicate["id"]), 409)
+
+
 def test_new_invoice_and_receipt_in_one_step(owner, estate):
     created = _ok(owner.post(f"{API}/invoice-review/receipts", json={
         "received_on": TODAY.isoformat(), "property_id": estate["property"].id, "cost_category": "Reinigung",

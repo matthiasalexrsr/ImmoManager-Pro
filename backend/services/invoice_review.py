@@ -252,7 +252,7 @@ def _invoice_facts(invoice: Any) -> rules.InvoiceFacts:
                               invoice.invoice_date, money(invoice.gross_amount))
 
 
-def _duplicate_candidates(rows: Rows, store: Any, candidate: rules.InvoiceFacts, window: int) -> list[Any]:
+def _duplicate_candidates(rows: Rows, store: Any, candidate: rules.InvoiceFacts, window: int) -> Iterable[Any]:
     """Visible invoices that could be duplicates: same number, or same gross near the date."""
     number = rules.number_key(candidate.invoice_number)
     db = rows.db if rows.db is not None else getattr(store, "db", None)
@@ -270,9 +270,13 @@ def _duplicate_candidates(rows: Rows, store: Any, candidate: rules.InvoiceFacts,
             # the key compares loosely ("RE-0042" = "re 42"); the database narrows by the digits
             digits = "".join(ch for ch in number if ch.isdigit()).lstrip("0")
             clauses.append(number_column.ilike(f"%{digits or number}%"))
-        query = select(InvoiceORM).where(or_(*clauses)).where(InvoiceORM.id != candidate.id).limit(500)
-        return [rows._model("invoices", obj) for obj in db.scalars(query)]
-    return [i for i in rows._collection("invoices").values() if i.id != candidate.id]
+        query = select(InvoiceORM).where(or_(*clauses)).where(InvoiceORM.id != candidate.id)
+        # Supplier normalization happens in the domain; unrelated broad matches must
+        # never exhaust a cutoff before the actual duplicate is inspected.
+        for obj in db.scalars(query.execution_options(yield_per=200)):
+            yield rows._model("invoices", obj)
+        return
+    yield from (i for i in rows._collection("invoices").values() if i.id != candidate.id)
 
 
 def find_duplicates(rows: Rows, store: Any, candidate: rules.InvoiceFacts, window: int) -> list[dict]:
