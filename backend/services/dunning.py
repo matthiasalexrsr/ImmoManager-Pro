@@ -26,6 +26,7 @@ from __future__ import annotations
 import base64
 import binascii
 import re
+from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
@@ -239,8 +240,17 @@ def _new(model: Any, **values: Any) -> Any:
 
 def _event(ctx: Any, case: DunningCase, kind: str, summary: str, actor_id: str | None,
            data: dict | None = None, at: datetime | None = None) -> DunningEvent:
+    if at is None:
+        _lock_contract(ctx, case.contract_id)
+        if ctx.db is not None:
+            last = ctx.db.scalar(select(func.max(DunningEventORM.at)).where(DunningEventORM.case_id == case.id))
+        else:
+            last = max((event.at for event in _rows(ctx, "dunning_events", case_id=case.id)), default=None)
+        at = now()
+        if last is not None and at <= last:
+            at = last + timedelta(microseconds=1)
     return _save(ctx, "dunning_events", _new(DunningEvent, case_id=case.id, contract_id=case.contract_id, kind=kind,
-                                             at=at or now(), actor_id=actor_id, summary=summary, data=data))
+                                             at=at, actor_id=actor_id, summary=summary, data=data))
 
 
 def _lock_contract(ctx: Any, contract_id: str) -> None:
@@ -387,7 +397,34 @@ def _objected_statements(ctx: Any, statement_ids: set[str]) -> set[str]:
     return found
 
 
-def evaluate(ctx: Any, contract: Any, as_of: date) -> State:
+def _deposit_offsets(ctx: Any, contract_id: str) -> dict[str, list[tuple[date, Decimal]]]:
+    """Dated, claim-specific payments from finalized deposit settlements only."""
+    offsets: dict[str, list[tuple[date, Decimal]]] = defaultdict(list)
+    if ctx.db is not None:
+        from ..db.deposit_models import DepositSettlementItemORM, DepositSettlementORM
+        from ..db.orm_models import DepositORM
+
+        query = (select(DepositSettlementItemORM.receivable_id, DepositSettlementORM.settlement_date,
+                        DepositSettlementItemORM.amount)
+                 .join(DepositSettlementORM, DepositSettlementItemORM.settlement_id == DepositSettlementORM.id)
+                 .join(DepositORM, DepositSettlementORM.deposit_id == DepositORM.id)
+                 .where(DepositORM.contract_id == contract_id, DepositSettlementORM.finalized_at.is_not(None),
+                        DepositSettlementItemORM.kind == "receivable",
+                        DepositSettlementItemORM.receivable_id.is_not(None)))
+        for receivable_id, day, amount in ctx.db.execute(query):
+            offsets[receivable_id].append((day, money(amount)))
+        return offsets
+    deposit_ids = {d.id for d in ctx.store.list_deposits() if d.contract_id == contract_id}
+    for settlement in ctx.store.list_deposit_settlements():
+        if settlement.deposit_id not in deposit_ids or settlement.finalized_at is None:
+            continue
+        for item in ctx.store.list_deposit_settlement_items(settlement.id):
+            if item.kind == "receivable" and item.receivable_id:
+                offsets[item.receivable_id].append((settlement.settlement_date, money(item.amount)))
+    return offsets
+
+
+def evaluate(ctx: Any, contract: Any, as_of: date, *, payments_until: date | None = None) -> State:
     contract_id = contract.id
     cases = _rows(ctx, "dunning_cases", contract_id=contract_id)
     all_items = _rows(ctx, "dunning_case_items", case_id={c.id for c in cases}) if cases else []
@@ -406,12 +443,17 @@ def evaluate(ctx: Any, contract: Any, as_of: date) -> State:
             claims.append(Claim(f"rent:{line.period_start:%Y-%m}", "rent", line.due_date, money(line.total_amount),
                                 f"Miete {line.period_start:%m/%Y}"))
     receivables = _receivables_of(ctx, contract_id)
+    offsets = _deposit_offsets(ctx, contract_id)
+    payment_date = payments_until or as_of
     charge_items = {item.receivable_id: item for item in all_items if item.kind in ("fee", "interest")
                     and item.receivable_id}
     objected = _objected_statements(ctx, {r.statement_id for r in receivables if r.statement_id})
     manual: list[dict] = []
     for receivable in receivables:
-        if not is_unpaid_debt(receivable):
+        # A fully offset claim remains reconstructable before its settlement date.
+        offset_total = sum((amount for _, amount in offsets.get(receivable.id, [])), ZERO)
+        if not is_unpaid_debt(receivable) and not (receivable.status == "paid" and offset_total
+                                                   >= money(receivable.amount_due) > 0):
             continue
         charge = charge_items.get(receivable.id)
         if charge is not None:
@@ -443,7 +485,10 @@ def evaluate(ctx: Any, contract: Any, as_of: date) -> State:
                              "reason_label": EXCLUSION_LABELS[reason]})
         else:
             dunnable.append(claim)
-    payments = [Payment(line.booking_date, money(line.amount)) for line in contract_payments(ctx.store, contract)]
+    payments = [Payment(line.booking_date, money(line.amount))
+                for line in contract_payments(ctx.store, contract, until=payment_date)]
+    payments.extend(Payment(day, amount, claim.key) for claim in dunnable if claim.receivable_id
+                    for day, amount in offsets.get(claim.receivable_id, []) if day <= payment_date)
     items, unapplied = rules_.apply_payments(dunnable, payments)
     letters = sorted(_rows(ctx, "dunning_letters", case_id=open_case.id), key=lambda x: (x.stage, x.created_at)) \
         if open_case else []
@@ -728,7 +773,8 @@ def refresh_letter(store: Any, letter_id: str, actor_id: str) -> dict:
             raise HTTPException(409, "Nur ein Entwurf lässt sich neu berechnen.")
         _lock_contract(unit, letter.contract_id)
         contract = _contract(unit, letter.contract_id)
-        state = evaluate(unit, contract, date.fromisoformat(letter.content["as_of"]))
+        as_of = date.fromisoformat(letter.content["as_of"])
+        state = evaluate(unit, contract, as_of, payments_until=max(as_of, today()))
         if not state.overdue_principal() and not state.open_charges():
             raise HTTPException(409, "Es ist keine Forderung mehr offen. Bitte den Entwurf verwerfen.")
         content, _ = letter_content(unit, state, letter.stage, letter.letter_date, letter.content["reference"],
@@ -862,7 +908,8 @@ def finalize_letter(store: Any, letter_id: str, payload: FinalizeRequest, actor_
             raise HTTPException(409, "Ein früherer Entwurf ist noch offen.")
         if case.stage >= letter.stage:
             raise HTTPException(409, "Diese Mahnstufe ist bereits abgeschlossen.")
-        state = evaluate(unit, contract, date.fromisoformat(letter.content["as_of"]))
+        as_of = date.fromisoformat(letter.content["as_of"])
+        state = evaluate(unit, contract, as_of, payments_until=max(as_of, today()))
         for day in (letter.letter_date, today()):
             block = state.active_block(day)
             if block is not None:

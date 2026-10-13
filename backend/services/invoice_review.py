@@ -11,8 +11,9 @@ payment → dispute → result, on top of the existing invoices (docs/INVOICE_RE
 * Arithmetic check (rechnerisch): net + VAT = gross per rate, the § 14 UStG checklist.
 * Decision: approve, approve partially, reject, query the supplier, each recorded. Above the
   configured four-eyes limit only owner or manager approve, and never the person who checked.
-* Payment: the existing invoice_payments; status paid/partially paid/overpaid and Skonto are
-  derived. Only approved invoices are proposed for payment; nothing leaves the system.
+* Payment: invoice_payments and explicitly linked service-contract payments; status
+  paid/partially paid/overpaid and Skonto are derived. Only approved invoices are proposed
+  for payment; nothing leaves the system.
 * Dispute: the part not approved stays open until a credit note, an agreed partial payment
   or a write-off settles it.
 * Result: approved amounts feed project figures and service contracts (flows()); a rejected
@@ -56,6 +57,7 @@ from ..invoice_review_models import (
 )
 from ..permissions import may_write
 from ..storage import NotFoundError
+from .booking_payment_capacity import booking_payment_capacity
 from .maintenance_projects import work
 from .maintenance_rows import Rows, stamp
 
@@ -149,31 +151,29 @@ def _links(rows: Rows, invoice_id: str) -> Links:
 
 
 def _effective_payments(rows: Rows, invoice_ids: list[str]) -> dict[str, list[rules.Payment]]:
-    """Payments of the invoices: allocations of outgoing bookings, minus what reversals took back.
+    """Invoice payments and explicitly linked contract payments, after booking reversals.
 
-    A booking pays at most its amount less its reversals; its allocations (to any invoice)
-    use that up in the order they were made, like the project figures (domain.project_costs).
+    Both allocation paths share each booking's remaining amount. Unlinked contract
+    advances have no invoice attribution; explicitly linked refunds reduce the invoice.
     """
-    allocations = rows.find("invoice_payments", invoice_id=invoice_ids)
-    booking_ids = {a.booking_id for a in allocations}
+    bills = {bill.id: bill.invoice_id for bill in rows.find("service_contract_invoices", invoice_id=invoice_ids)}
+    allocations = [("invoice_payments", allocation, allocation.invoice_id)
+                   for allocation in rows.find("invoice_payments", invoice_id=invoice_ids)]
+    allocations.extend(("service_contract_payments", allocation, bills[allocation.service_contract_invoice_id])
+                       for allocation in rows.find("service_contract_payments", service_contract_invoice_id=list(bills)))
+    booking_ids = {allocation.booking_id for _, allocation, _ in allocations}
     if not booking_ids:
         return {}
     bookings = {b.id: b for b in rows.find("bookings", id=booking_ids)}
-    reversed_by: dict[str, Decimal] = defaultdict(lambda: ZERO)
-    for reversal in rows.find("bookings", reverses_booking_id=booking_ids):
-        reversed_by[reversal.reverses_booking_id] += money(reversal.amount)
-    left = {key: max(-(money(b.amount) + reversed_by[key]), ZERO) for key, b in bookings.items()}
-    wanted = set(invoice_ids)
+    capacity = booking_payment_capacity(rows, booking_ids)
     found: dict[str, list[rules.Payment]] = defaultdict(list)
-    every = rows.find("invoice_payments", booking_id=booking_ids)
-    for allocation in sorted(every, key=lambda a: (str(a.created_at), a.id)):
+    for table, allocation, invoice_id in allocations:
         booking = bookings.get(allocation.booking_id)
         if booking is None:
             continue
-        effective = min(money(allocation.amount), left[booking.id])
-        left[booking.id] -= effective
-        if allocation.invoice_id in wanted and effective > 0:
-            found[allocation.invoice_id].append(rules.Payment(booking.booking_date, effective))
+        effective = capacity.effective.get((table, allocation.id), ZERO)
+        if effective:
+            found[invoice_id].append(rules.Payment(booking.booking_date, effective))
     return found
 
 
@@ -1024,14 +1024,8 @@ def _row(invoice: Any, review: Any, settlement: rules.Settlement, names: dict[st
     }
 
 
-def _unpaid_sql(review_table: Any, invoice_table: Any, payments_table: Any) -> Any:
-    from sqlalchemy import func, literal, select
-
-    paid = (select(func.coalesce(func.sum(payments_table.c.amount), 0))
-            .where(payments_table.c.invoice_id == invoice_table.c.id).scalar_subquery())
-    base = func.coalesce(review_table.c.approved_amount, invoice_table.c.gross_amount)
-    least = base * (literal(100) - func.coalesce(review_table.c.skonto_percent, 0)) / literal(100)
-    return paid < least - literal(0.005)
+def _unpaid(settlement: rules.Settlement) -> bool:
+    return (settlement.gross - settlement.paid if settlement.payable is None else settlement.open) > ZERO
 
 
 def inbox(store: Any, *, status: str | None = None, due: str | None = None, skonto: bool = False,
@@ -1039,8 +1033,9 @@ def inbox(store: Any, *, status: str | None = None, due: str | None = None, skon
           today: date | None = None) -> dict:
     """Invoices with their review state, one page, newest first; filters run before paging.
 
-    "unpaid" (for due and Skonto) compares the allocated payments with the approved (or gross)
-    amount less Skonto; credit notes are not part of that filter, the row shows the exact state.
+    Due and Skonto filters use the same settlement as the row, including credits,
+    resolved disputes, effective payments and discounts. SQL candidates are evaluated
+    in bounded batches before counting and paging.
     """
     today = today or date.today()
     q = (q or "").strip() or None
@@ -1051,10 +1046,9 @@ def inbox(store: Any, *, status: str | None = None, due: str | None = None, skon
         from sqlalchemy import and_, func, not_, or_, select
 
         from ..db.invoice_review_models import InvoiceReviewORM
-        from ..db.maintenance_project_models import InvoicePaymentORM
         from ..db.orm_models import InvoiceORM
 
-        inv, rev, pay = InvoiceORM.__table__, InvoiceReviewORM.__table__, InvoicePaymentORM.__table__
+        inv, rev = InvoiceORM.__table__, InvoiceReviewORM.__table__
         query = select(InvoiceORM).outerjoin(InvoiceReviewORM, InvoiceReviewORM.invoice_id == InvoiceORM.id)
         conditions: list[Any] = []
         if status == "legacy":
@@ -1071,7 +1065,7 @@ def inbox(store: Any, *, status: str | None = None, due: str | None = None, skon
             pattern = f"%{q}%"
             conditions.append(or_(inv.c.supplier.ilike(pattern), inv.c.invoice_number.ilike(pattern)))
         unpaid = and_(or_(rev.c.status.is_(None), rev.c.status.notin_(("rejected",))),
-                      or_(rev.c.kind.is_(None), rev.c.kind == "invoice"), _unpaid_sql(rev, inv, pay))
+                      or_(rev.c.kind.is_(None), rev.c.kind == "invoice"))
         if due in horizon:
             due_on = func.coalesce(inv.c.due_date, rev.c.due_on)
             window = due_on < today if due == "overdue" else and_(due_on >= today, due_on <= horizon[due])
@@ -1081,11 +1075,22 @@ def inbox(store: Any, *, status: str | None = None, due: str | None = None, skon
                                not_(rev.c.status == "rejected")])
         if conditions:
             query = query.where(and_(*conditions))
-        total = db.scalar(select(func.count()).select_from(query.subquery()))
         order = ([func.coalesce(inv.c.due_date, rev.c.due_on).asc()] if due else
                  [rev.c.skonto_until.asc()] if skonto else [inv.c.invoice_date.desc()])
-        page = [rows._model("invoices", obj) for obj in
-                db.scalars(query.order_by(*order, inv.c.id).offset(skip).limit(limit))]
+        query = query.order_by(*order, inv.c.id)
+        if due or skonto:
+            total, page = 0, []
+            for batch in db.scalars(query.execution_options(yield_per=200)).partitions(200):
+                invoices = [rows._model("invoices", obj) for obj in batch]
+                balances = settlements(rows, invoices, today)
+                for invoice in invoices:
+                    if _unpaid(balances[invoice.id]):
+                        if skip <= total < skip + limit:
+                            page.append(invoice)
+                        total += 1
+        else:
+            total = db.scalar(select(func.count()).select_from(query.order_by(None).subquery()))
+            page = [rows._model("invoices", obj) for obj in db.scalars(query.offset(skip).limit(limit))]
         reviews = {r.invoice_id: r for r in rows.find("invoice_reviews", invoice_id=[i.id for i in page])}
     else:
         every = list(store.invoices.values())
@@ -1109,10 +1114,7 @@ def inbox(store: Any, *, status: str | None = None, due: str | None = None, skon
             if due or skonto:
                 if current == "rejected" or (review is not None and review.kind == "credit_note"):
                     return False
-                base = money(review.approved_amount if review is not None and review.approved_amount is not None
-                             else invoice.gross_amount)
-                percent = Decimal(str(review.skonto_percent or 0)) if review is not None else Decimal(0)
-                if settled_all[invoice.id].paid >= base * (100 - percent) / 100 - Decimal("0.005"):
+                if not _unpaid(settled_all[invoice.id]):
                     return False
             if due in horizon:
                 due_on = _due_on(invoice, review)

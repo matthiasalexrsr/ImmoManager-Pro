@@ -87,6 +87,7 @@ class Claim:
 class Payment:
     day: date
     amount: Decimal
+    claim_key: str | None = None
 
 
 @dataclass(frozen=True)
@@ -106,16 +107,18 @@ def _claim_order(claim: Claim) -> tuple:
 
 
 def apply_payments(claims: Iterable[Claim], payments: Iterable[Payment]) -> tuple[list[OpenItem], Decimal]:
-    """Each payment (oldest first) to the oldest open claim; returns the items and what is left over."""
+    """Apply dated payments to their named claim, otherwise oldest-first; return items and surplus."""
     ordered = sorted(claims, key=_claim_order)
     remaining = {claim.key: money(claim.amount) for claim in ordered}
     reductions: dict[str, list[tuple[date, Decimal]]] = {claim.key: [] for claim in ordered}
     unapplied = ZERO
-    for payment in sorted(payments, key=lambda p: p.day):
+    for payment in sorted(payments, key=lambda p: (p.day, p.claim_key is None)):
         left = money(payment.amount)
         if left <= 0:
             continue
         for claim in ordered:
+            if payment.claim_key is not None and payment.claim_key != claim.key:
+                continue
             if left == 0:
                 break
             open_amount = remaining[claim.key]

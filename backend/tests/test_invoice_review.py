@@ -573,6 +573,33 @@ def test_history_is_immutable(owner, estate):
 
 # ─── payment ─────────────────────────────────────────────────────────────────
 
+def test_explicit_service_contract_payments_and_refunds_reach_the_invoice(owner, estate):
+    provider = store.create_contact(ContactCreate(contact_type="supplier", company_name="Stadtwerke"))
+    contract = _contract(owner, estate, provider)
+    bill = _bill(owner, contract, 100, "SW-ZAHLUNG", "2026-01-01", "2026-06-30")
+    invoice_id = bill["invoice_id"]
+    _ok(_receive(owner, invoice_id), 201)
+    _ok(owner.patch(f"{API}/invoices/{invoice_id}", json={"due_date": (TODAY - timedelta(days=1)).isoformat()}))
+    _checked(owner, invoice_id)
+    _ok(_decide(owner, invoice_id))
+    payment = _booking(estate, -100)
+    _ok(owner.post(f"{API}/service-contracts/{contract}/payments", json={
+        "booking_id": payment.id, "service_contract_invoice_id": bill["id"]}), 201)
+    settlement = _view(owner, invoice_id)["settlement"]
+    assert (settlement["paid"], settlement["open"], settlement["payment_status"]) == (100, 0, "paid")
+    assert not _ok(owner.get(f"{API}/invoice-review/payment-proposals"))["items"]
+    assert _ok(owner.get(f"{API}/invoice-review/inbox", params={"due": "overdue"}))["total"] == 0
+
+    refund = _booking(estate, 20)
+    _ok(owner.post(f"{API}/service-contracts/{contract}/payments", json={
+        "booking_id": refund.id, "service_contract_invoice_id": bill["id"]}), 201)
+    settlement = _view(owner, invoice_id)["settlement"]
+    assert (settlement["paid"], settlement["open"]) == (80, 20)
+    assert _ok(owner.get(f"{API}/invoice-review/payment-proposals"))["items"][0]["proposed_amount"] == 20
+    due = _ok(owner.get(f"{API}/invoice-review/inbox", params={"due": "overdue", "limit": 1}))
+    assert due["total"] == 1 and due["items"][0]["invoice_id"] == invoice_id
+
+
 def test_payment_status_with_skonto_and_overpayment(owner, estate):
     invoice = _invoice(owner, estate, gross=1190, net=1000, day=TODAY - timedelta(days=3))
     _ok(_receive(owner, invoice["id"], skonto_percent=2, skonto_days=10, payment_days=30,
@@ -598,6 +625,28 @@ def test_payment_status_with_skonto_and_overpayment(owner, estate):
     _ok(_pay(owner, over["id"], _booking(estate, -119), 119), 201)             # paid in full before the decision
     settlement = _view(owner, over["id"])["settlement"]
     assert settlement["payment_status"] == "overpaid" and "overpaid" in {f["code"] for f in settlement["findings"]}
+
+
+def test_inbox_due_filter_uses_resolved_credit_and_dispute_balances_before_paging(owner, estate):
+    credited = _invoice(owner, estate, gross=100, net=100, number="C-BASE", vat_rate=0,
+                        due_date=(TODAY - timedelta(days=2)).isoformat())
+    partial = _invoice(owner, estate, gross=100, net=100, number="P-BASE", vat_rate=0,
+                       due_date=(TODAY - timedelta(days=1)).isoformat())
+    for invoice in (credited, partial):
+        _ok(_receive(owner, invoice["id"]), 201)
+        _checked(owner, invoice["id"])
+    _ok(_decide(owner, credited["id"]))
+    _ok(_decide(owner, partial["id"], "partial", amount=50, reason="Teilbetrag"))
+    _ok(owner.post(f"{API}/invoices/{partial['id']}/review/dispute", json={
+        "outcome": "partial_payment", "amount": 20, "reason": "Nachprüfung"}))
+    _ok(_pay(owner, partial["id"], _booking(estate, -50), 50), 201)
+    credit = _invoice(owner, estate, gross=100, net=100, number="C-NOTE", vat_rate=0)
+    _ok(_receive(owner, credit["id"], kind="credit_note", credit_for_invoice_id=credited["id"]), 201)
+    _ok(_check(owner, credit["id"], "arithmetic"))
+    _ok(_decide(owner, credit["id"]))
+    result = _ok(owner.get(f"{API}/invoice-review/inbox", params={"due": "overdue", "limit": 1}))
+    assert result["total"] == 1 and result["has_more"] is False
+    assert [(row["invoice_id"], row["settlement"]["open"]) for row in result["items"]] == [(partial["id"], 20)]
 
 
 def test_inbox_filters_count_before_paging(owner, estate):

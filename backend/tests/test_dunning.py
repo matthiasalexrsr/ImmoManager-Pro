@@ -7,7 +7,7 @@ test_dunning_postgres.py). Pure rules: test_dunning_process.py.
 """
 
 import hashlib
-from datetime import date
+from datetime import date, datetime
 
 import pytest
 from archive_helpers import purge_originals
@@ -206,6 +206,33 @@ def test_without_a_base_rate_no_interest_is_charged_and_it_is_said(client):
 
 
 # ─── payments, objections, disputes, blocks ──────────────────────────────────
+
+def test_as_of_excludes_later_payments_and_reversals(client, owner):
+    lease = _lease()
+    contract = lease["contract"].id
+    _pay(lease, "2026-07-20", 1000)
+    before = _preview(client, owner, "2026-07-10", contract_id=contract)["entries"][0]
+    assert before["status"] == "due" and before["letter"]["principal"] == 1000
+    after = _preview(client, owner, "2026-07-20", contract_id=contract)["entries"][0]
+    assert after["status"] == "nothing_due"
+    _pay(lease, "2026-07-25", -1000)
+    unchanged = _preview(client, owner, "2026-07-20", contract_id=contract)["entries"][0]
+    assert unchanged["status"] == "nothing_due"
+    reversed_payment = _preview(client, owner, "2026-07-25", contract_id=contract)["entries"][0]
+    assert reversed_payment["status"] == "due" and reversed_payment["letter"]["principal"] == 1000
+
+
+def test_draft_revalidation_does_not_count_future_bookings(client, owner, monkeypatch):
+    from backend.services import dunning
+
+    monkeypatch.setattr(dunning, "today", lambda: date(2026, 7, 15))
+    lease = _lease()
+    [draft] = _run(client, owner, lease["contract"].id, "2026-07-10")["letters"]
+    _pay(lease, "2026-07-20", 1000)
+    response = _finalize(client, owner, draft["id"])
+    assert response.status_code == 200, response.text
+    assert response.json()["principal"] == 1000
+
 
 def test_a_payment_after_the_run_stops_the_draft_and_a_partial_one_reduces_it(client, owner):
     lease = _lease()
@@ -413,6 +440,21 @@ def test_replies_attach_only_by_an_explicit_reference(client, owner):
     by_reference = client.post(f"{API}/replies/{phone['id']}/assign", headers=owner, json={"reference": ref.lower()})
     assert by_reference.status_code == 200 and by_reference.json()["case_id"] == first["case_id"]
     assert client.post(f"{API}/replies/{phone['id']}/assign", headers=owner, json={}).status_code in (409, 422)
+
+
+def test_timeline_preserves_write_order_when_the_clock_does_not_advance(client, owner, monkeypatch):
+    from backend.services import dunning
+
+    lease = _lease()
+    letter = _letter(client, owner, lease["contract"].id, "2026-07-10")
+    monkeypatch.setattr(dunning, "now", lambda: datetime(2030, 1, 1))
+    for text in ("Erster Vermerk", "Zweiter Vermerk", "Dritter Vermerk"):
+        response = client.post(f"{API}/cases/{letter['case_id']}/notes", headers=owner, json={"text": text})
+        assert response.status_code == 201, response.text
+    entries = client.get(f"{API}/cases/{letter['case_id']}/timeline", headers=owner).json()["items"]
+    notes = [entry for entry in entries if entry["kind"] == "note"]
+    assert [entry["summary"] for entry in notes] == ["Erster Vermerk", "Zweiter Vermerk", "Dritter Vermerk"]
+    assert notes[0]["at"] < notes[1]["at"] < notes[2]["at"]
 
 
 def test_a_long_thread_is_read_completely_page_by_page(client, owner):

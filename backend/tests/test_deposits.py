@@ -29,6 +29,7 @@ from backend.models import (
     ReceivableCreate,
     TenantCreate,
     UnitCreate,
+    UtilityStatementCreate,
 )
 from backend.services.data_snapshot import (
     SNAPSHOT_FORMAT_VERSION,
@@ -366,6 +367,73 @@ def _paid_deposit(client, estate, amount=1500):
     deposit_id = detail["deposit"]["id"]
     _receive(client, deposit_id, _book(client, estate, amount, "2024-01-01")["id"])
     return deposit_id
+
+
+@pytest.mark.parametrize("restricted", [False, True])
+def test_settlement_items_cannot_be_moved_from_another_file(client, restricted):
+    first, second = _estate("Nord", "N-1"), _estate("Süd", "S-1")
+    first_id = _file(client, first)["deposit"]["id"]
+    second_id = _file(client, second)["deposit"]["id"]
+    first_draft = client.post(f"{BASE}/{first_id}/settlements", json={}).json()["settlements"][0]
+    second_draft = client.post(f"{BASE}/{second_id}/settlements", json={}).json()["settlements"][0]
+    first_draft = _settle(client, first_id, first_draft, [
+        {"kind": "other", "description": "Reinigung", "amount": 90, "reason": "Rechnung 5"}])
+    original = first_draft["items"][0]
+    writer = (_client(_user("staff", "verwalter", portfolio_access="selected",
+                            portfolio_ids=[second["portfolio"].id])) if restricted else client)
+    response = writer.put(f"{BASE}/{second_id}/settlements/{second_draft['id']}", json={
+        "base_revision": second_draft["revision"], "settlement_date": "2026-06-30",
+        "items": [{"id": original["id"], "kind": "other", "description": "Fremde Position",
+                   "amount": 1, "reason": "Korrektur"}]})
+    assert response.status_code == 409, response.text
+    assert client.get(f"{BASE}/{first_id}/file").json()["settlements"][0]["items"] == [original]
+    assert client.get(f"{BASE}/{second_id}/file").json()["settlements"][0]["items"] == []
+
+
+def test_dunning_counts_finalized_deposit_receivable_offsets_once(client):
+    estate = _estate()
+    deposit_id = _paid_deposit(client, estate, amount=100)
+    period = store.create_billing_period(BillingPeriodCreate(
+        property_id=estate["property"].id, label="NK 2025", start_date=date(2025, 1, 1),
+        end_date=date(2025, 12, 31), status="finalized"))
+    statement = store.create_utility_statement(UtilityStatementCreate(
+        billing_period_id=period.id, contract_id=estate["contract"].id, unit_id=estate["unit"].id,
+        total_cost=1500, advance_paid=1000, balance=500, status="finalized"))
+    receivable = store.create_receivable(ReceivableCreate(
+        contract_id=estate["contract"].id, statement_id=statement.id, due_date=date(2026, 7, 1), amount_due=500))
+    _book(client, estate, 21000, "2026-06-01", account="rent_account", text="Miete vollständig")
+    draft = client.post(f"{BASE}/{deposit_id}/settlements", json={}).json()["settlements"][0]
+    draft = _settle(client, deposit_id, draft, [
+        {"kind": "receivable", "description": "Nebenkostennachzahlung", "amount": 100,
+         "receivable_id": receivable.id}], day="2026-07-05")
+
+    def outstanding(day):
+        response = client.get(f"{API}/dunning/contracts/{estate['contract'].id}", params={"as_of": day})
+        assert response.status_code == 200, response.text
+        return next(c for c in response.json()["claims"] if c["receivable_id"] == receivable.id)
+
+    assert outstanding("2026-07-10")["outstanding"] == 500     # a draft offset never pays
+    assert _finalize(client, deposit_id, draft["id"])[1].status_code == 200
+    assert outstanding("2026-07-04")["outstanding"] == 500     # before the dated offset
+    claim = outstanding("2026-07-10")
+    assert (claim["amount"], claim["paid"], claim["outstanding"]) == (500, 100, 400)
+
+
+def test_settlement_rejects_duplicate_item_ids_atomically_and_preserves_own_ids(client):
+    deposit_id = _file(client, _estate())["deposit"]["id"]
+    draft = client.post(f"{BASE}/{deposit_id}/settlements", json={}).json()["settlements"][0]
+    item_id = str(uuid.uuid4())
+    item = {"id": item_id, "kind": "other", "description": "Reinigung", "amount": 90,
+            "reason": "Rechnung 5"}
+    draft = _settle(client, deposit_id, draft, [item])
+    assert draft["items"][0]["id"] == item_id
+    draft = _settle(client, deposit_id, draft, [{**item, "amount": 95}])
+    assert draft["items"][0]["id"] == item_id and draft["items"][0]["amount"] == 95
+    response = client.put(f"{BASE}/{deposit_id}/settlements/{draft['id']}", json={
+        "base_revision": draft["revision"], "settlement_date": "2026-06-30",
+        "items": [item, {**item, "description": "Zweite Position", "amount": 10}]})
+    assert response.status_code == 400, response.text
+    assert client.get(f"{BASE}/{deposit_id}/file").json()["settlements"][0]["items"] == draft["items"]
 
 
 def test_final_settlement_from_the_move_out_protocol_creates_payout_and_offsets_once(client):

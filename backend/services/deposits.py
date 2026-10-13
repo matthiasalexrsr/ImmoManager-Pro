@@ -135,14 +135,20 @@ def _conflict(message: str) -> HTTPException:
 
 # ─── Writing through one unit (SQL session or memory store) ──────────────────
 
-def _put(unit: archive.Unit, collection: str, item: Any) -> None:
+def _put(unit: archive.Unit, collection: str, item: Any, *, insert_only: bool = False) -> None:
     """Insert or update a record of a store collection inside the unit."""
     if unit.db is None:
+        # Match SQL's primary-key check even if an existing ID is outside the actor's scope.
+        if insert_only and item.id in object.__getattribute__(unit.store, "__dict__")[collection]:
+            raise _conflict("Die Positionskennung ist bereits vergeben. Bitte die Abrechnung neu laden.")
         unit.insert(getattr(unit.store, collection), item.id, item)
         return
     orm = _ORM[collection]
     columns = {column.key for column in orm.__table__.columns}
     values = {key: value for key, value in item.model_dump().items() if key in columns}
+    if insert_only:
+        unit.db.add(orm(**values))
+        return
     row = unit.db.get(orm, item.id)
     if row is None:
         unit.db.add(orm(**values))
@@ -798,6 +804,9 @@ def save_settlement(store, deposit_id: str, settlement_id: str, payload: Settlem
         settlement = _settlement(unit, deposit, settlement_id)
         _check_revision(settlement, payload.base_revision)
         _require_draft(settlement)
+        item_ids = [item.id for item in payload.items if item.id is not None]
+        if len(item_ids) != len(set(item_ids)):
+            raise HTTPException(400, "Jede Position braucht eine eigene Kennung.")
         if settlement.kind == "retention_release" and any(item.kind == "retention" for item in payload.items):
             raise HTTPException(400, "Die Freigabe eines Einbehalts behält nichts weiter ein.")
         if sum(1 for item in payload.items if item.kind in ("retention", "rent_arrears")) > len(
@@ -816,11 +825,12 @@ def save_settlement(store, deposit_id: str, settlement_id: str, payload: Settlem
         _flush(unit)
         stamp = now()
         for position, item in enumerate(payload.items):
+            # Our previous items were deleted above; an occupied ID belongs to another file.
             _put(unit, "deposit_settlement_items", DepositSettlementItem(
                 id=item.id or new_id(), settlement_id=settlement.id, position=position, kind=item.kind,
                 description=item.description, amount=float(money(item.amount)), reason=item.reason,
                 handover_defect_id=item.handover_defect_id, receivable_id=item.receivable_id,
-                created_at=stamp, updated_at=stamp))
+                created_at=stamp, updated_at=stamp), insert_only=True)
         _flush(unit)
         updated = settlement.model_copy(update={
             "settlement_date": payload.settlement_date,

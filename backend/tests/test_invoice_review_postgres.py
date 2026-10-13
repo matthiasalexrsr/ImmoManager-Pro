@@ -136,6 +136,7 @@ def test_review_flow_in_cents_with_skonto_and_project_figures_on_postgres(postgr
     view = service.review_view(target, invoice.id, {"role": "eigentuemer"}, today=date(2026, 6, 1))
     assert view["settlement"]["payment_status"] == "paid"
     assert (view["settlement"]["skonto_taken"], view["settlement"]["flow_amount"]) == (23.8, 1166.2)
+    assert service.inbox(target, skonto=True, today=date(2026, 5, 10))["total"] == 0
     assert [e["action"] for e in view["history"]] == ["received", "factual_check", "arithmetic_check", "approved"]
     target.db.close()
 

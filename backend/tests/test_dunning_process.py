@@ -43,6 +43,22 @@ def test_an_overpayment_is_left_over_and_costs_come_before_interest_before_princ
     assert all(i.outstanding == 0 for i in items) and left == D("2000.00") - D("1000.00") - D("2.28")
 
 
+def test_an_offset_pays_only_its_claim_and_preserves_the_interest_dates():
+    utility = Claim("receivable:utility", "receivable", date(2026, 7, 5), D("500"), "NK")
+    items, left = apply_payments([rent(7), utility], [
+        Payment(date(2026, 7, 10), D("100"), utility.key),
+        Payment(date(2026, 7, 15), D("1100")),
+    ])
+    assert [(i.paid, i.outstanding) for i in items] == [(D("1000"), D("0")), (D("200"), D("300"))]
+    assert left == 0
+    result = default_interest(items[1], charged_until=date(2026, 7, 5), until=date(2026, 7, 20), rates=RATES)
+    assert [(s.start, s.end, s.principal) for s in result.segments] == [
+        (date(2026, 7, 6), date(2026, 7, 9), D("500")),
+        (date(2026, 7, 10), date(2026, 7, 14), D("400")),
+        (date(2026, 7, 15), date(2026, 7, 20), D("300")),
+    ]
+
+
 def _open(claim: Claim, *reductions) -> OpenItem:
     return OpenItem(claim, sum((r[1] for r in reductions), D("0")), claim.amount - sum((r[1] for r in reductions),
                                                                                        D("0")), tuple(reductions))
