@@ -3,10 +3,11 @@
 import threading
 from datetime import date
 from functools import partial
+from typing import cast
 
 import pytest
 from fastapi import HTTPException
-from sqlalchemy.orm import scoped_session, sessionmaker
+from sqlalchemy.orm import Session, scoped_session, sessionmaker
 from test_document_versions_postgres import postgres  # noqa: F401
 
 from backend.models import (
@@ -48,7 +49,7 @@ def _draft(target):
 def test_cost_write_waits_for_finalization_and_then_rejects(postgres, monkeypatch, kind):  # noqa: F811
     engine, _ = postgres
     sessions = scoped_session(sessionmaker(engine))
-    target = SQLAlchemyStore(sessions)
+    target = SQLAlchemyStore(cast(Session, sessions))
     monkeypatch.setattr(billing, "store", target)
     period, payload = _draft(target)
     write_cost = partial(billing.create_cost_item, payload.model_copy(update={"description": "Late cost"}))
@@ -62,7 +63,8 @@ def test_cost_write_waits_for_finalization_and_then_rejects(postgres, monkeypatc
     elif kind == "service":
         from test_service_contracts_postgres import _request
 
-        from backend.models_service_contracts import CostTransferRequest, InvoiceLinkRequest
+        from backend.models_service_contracts import CostTransferRequest as ServiceCostTransferRequest
+        from backend.models_service_contracts import InvoiceLinkRequest
         from backend.services import service_contracts
 
         prop = target.get_property(period.property_id)
@@ -71,13 +73,14 @@ def test_cost_write_waits_for_finalization_and_then_rejects(postgres, monkeypatc
         service_contracts.add_bill(target, contract.id, InvoiceLinkRequest.model_validate({
             "period_start": "2025-01-01", "period_end": "2025-12-31",
             "invoice": {"supplier": "Provider", "invoice_date": "2026-01-15", "net_amount": 30, "gross_amount": 30}}))
-        request = CostTransferRequest(billing_period_id=period.id, allocation_key_id=payload.allocation_key_id)
-        write_cost = partial(service_contracts.transfer_costs, target, contract.id, request)
+        service_request = ServiceCostTransferRequest(
+            billing_period_id=period.id, allocation_key_id=payload.allocation_key_id)
+        write_cost = partial(service_contracts.transfer_costs, target, contract.id, service_request)
     elif kind == "invoice":
         from test_invoice_review_postgres import _approved
 
         from backend import auth
-        from backend.invoice_review_models import CostTransferRequest
+        from backend.invoice_review_models import CostTransferRequest as InvoiceCostTransferRequest
         from backend.services import invoice_review
 
         owner = auth.register_user("owner", "owner@example.com", "Owner", "Secret123", "eigentuemer")
@@ -85,8 +88,9 @@ def test_cost_write_waits_for_finalization_and_then_rejects(postgres, monkeypatc
             property_id=period.property_id, supplier="Provider", invoice_date=date(2025, 5, 1),
             net_amount=30, gross_amount=30))
         _approved(engine, {"owner": owner}, invoice, recoverable=True)
-        request = CostTransferRequest(billing_period_id=period.id, allocation_key_id=payload.allocation_key_id)
-        write_cost = partial(invoice_review.transfer_cost, target, invoice.id, request, owner.id)
+        invoice_request = InvoiceCostTransferRequest(
+            billing_period_id=period.id, allocation_key_id=payload.allocation_key_id)
+        write_cost = partial(invoice_review.transfer_cost, target, invoice.id, invoice_request, owner.id)
     sessions.remove()
     freezing, resume, written = threading.Event(), threading.Event(), threading.Event()
     outcomes = {}
@@ -143,7 +147,7 @@ def test_cost_write_waits_for_finalization_and_then_rejects(postgres, monkeypatc
 def test_concurrent_receivable_generation_bills_each_statement_once(postgres, monkeypatch):  # noqa: F811
     engine, _ = postgres
     sessions = scoped_session(sessionmaker(engine))
-    target = SQLAlchemyStore(sessions)
+    target = SQLAlchemyStore(cast(Session, sessions))
     monkeypatch.setattr(billing, "store", target)
     period, _ = _draft(target)
     billing.finalize_billing_period(period.id)
