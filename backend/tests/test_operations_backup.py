@@ -6,6 +6,7 @@ import sqlite3
 import subprocess
 import sys
 import zipfile
+from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -48,7 +49,7 @@ def _stored(data: Path) -> dict:
 
 
 def _seed(db: Path) -> None:
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:
         conn.executescript("""
             INSERT INTO portfolios (id, name, currency, timezone, status, created_at, updated_at)
                 VALUES ('pf1', 'Nord', 'EUR', 'Europe/Berlin', 'active', '2025-01-01', '2025-01-01'),
@@ -351,7 +352,7 @@ def test_restore_builds_a_new_data_directory(installation, tmp_path):
     restored = _manager(target, secret_box.SecretBox(target / "secrets" / "keyring.json"))
     assert restored.persistence_error is None
     assert restored._config["email"]["smtp_password"] == "test-only-password"
-    with sqlite3.connect(target / "immo_manager.db") as conn:
+    with closing(sqlite3.connect(target / "immo_manager.db")) as conn, conn:
         assert conn.execute("SELECT COUNT(*) FROM portfolios").fetchone()[0] == 2
     with pytest.raises(full_backup.BackupError, match="nicht leer"):
         full_backup.restore_archive(installation.sources.root / event["archive"], target)
@@ -470,17 +471,35 @@ def test_monthly_slot_is_clamped_and_berlin_based():
     assert first.latest_due(datetime(2026, 10, 1, 1, 29)) == datetime(2026, 9, 1).date()
 
 
-def test_the_scheduled_jobs_back_up_and_probe(configured, monkeypatch):
+@pytest.mark.parametrize("probe_first", [False, True])
+def test_the_scheduled_jobs_back_up_and_probe(configured, monkeypatch, probe_first):
     from backend import dependencies
 
     monkeypatch.setattr(settings, "backup_schedule_enabled", True)
     monkeypatch.setattr(dependencies, "_scoped_session", object())
     jobs = MemoryJobStore(store_factory=InMemoryStore)
+    moment = datetime(2026, 10, 1, 4, 0)
+    jobs.clock = lambda: moment
     handlers: dict[str, Handler] = {scheduler.BACKUP_KIND: scheduler.backup_handler,
                                     scheduler.PROBE_KIND: scheduler.probe_handler}
     runner = scheduler.JobRunner(jobs, handlers)
-    scheduler.enqueue_due(jobs, datetime(2026, 10, 1, 4, 0), scheduler.ops_periodic())
-    done = runner.run_until_idle()
+    periodic = scheduler.ops_periodic()
+    for item in reversed(periodic) if probe_first else periodic:
+        scheduler.enqueue_due(jobs, moment, (item,))
+        moment += timedelta(microseconds=1)
+    first = runner.run_until_idle()
+    assert [run.kind for run in first] == [item.kind for item in
+                                          (reversed(periodic) if probe_first else periodic)]
+    if probe_first:
+        # A first-installation probe can claim before the first backup. Its retry
+        # must succeed on a later tick once that backup exists.
+        assert first[0].status == "queued"
+        queued = jobs.get(first[0].id)
+        assert queued is not None and queued.available_at is not None
+        moment = queued.available_at
+        retried = runner.run_until_idle()
+        assert [(run.kind, run.status) for run in retried] == [(scheduler.PROBE_KIND, "succeeded")]
+    done = jobs.list_runs()
     assert sorted((run.kind, run.status) for run in done) == [(scheduler.BACKUP_KIND, "succeeded"),
                                                               (scheduler.PROBE_KIND, "succeeded")]
     backup_run = next(run for run in done if run.kind == scheduler.BACKUP_KIND)
@@ -502,7 +521,7 @@ def outdated(configured):
 
 
 def _tables(db: Path) -> set[str]:
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:
         return {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
 
 
@@ -548,7 +567,7 @@ def test_upgrade_is_not_run_when_the_backup_fails(outdated):
 def test_a_newer_database_is_never_touched(configured):
     from backend.upgrade import EXIT_NEWER, upgrade
 
-    with sqlite3.connect(configured.db) as conn:
+    with closing(sqlite3.connect(configured.db)) as conn, conn:
         conn.execute("UPDATE alembic_version SET version_num = 'ffffffffffff'")
     assert upgrade(out=lambda line: None) == EXIT_NEWER
     engine = create_engine(settings.database_url)
@@ -574,8 +593,8 @@ def test_legacy_unversioned_desktop_database_is_adopted_by_the_upgrade(configure
     assert schema_state.inspect_url(settings.database_url).state == schema_state.UNVERSIONED
     assert upgrade(out=lambda line: None) == EXIT_OK
     assert schema_state.inspect_url(settings.database_url).state == schema_state.CURRENT
-    with sqlite3.connect(configured.db) as conn:
-        assert conn.execute("SELECT user_id, mode, origin FROM user_portfolio_access").fetchall() == [
+    with closing(sqlite3.connect(configured.db)) as sqlite_conn, sqlite_conn:
+        assert sqlite_conn.execute("SELECT user_id, mode, origin FROM user_portfolio_access").fetchall() == [
             ("staff", "all", "legacy_all")]
     assert [a.trigger for a in full_backup.list_archives(configured.data / "backups" / "full")] == ["pre-upgrade"]
 
@@ -611,7 +630,7 @@ def test_a_fresh_database_initialised_at_start_matches_the_migrated_schema(tmp_p
     _migrate(f"sqlite:///{migrated}", "head")
 
     def columns(db):
-        with sqlite3.connect(db) as conn:
+        with closing(sqlite3.connect(db)) as conn, conn:
             tables = [row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")]
             return {t: {row[1] for row in conn.execute(f'PRAGMA table_info("{t}")')} for t in tables}
 
