@@ -26,6 +26,8 @@ ausdrücklich mit eingeschränktem Portfoliozugriff zu. Weitere Portfolios sind 
 nicht automatisch sichtbar. Auch die zehn Lasttestkonten erhalten ausdrücklich die
 bestehenden Testportfolios; keines erhält pauschalen Zugriff auf alle Portfolios.
 Installationsexporte werden deshalb für den eingeschränkten Verwalter abgewiesen.
+Der installationsweite ältere Mahnjob läuft als Eigentümer; eingeschränkte Konten
+dürfen ihn nicht starten.
 Fehlt eine benötigte Entität oder ihre ID, bricht der Aufbau mit Fehlerbericht ab,
 statt abhängige Anfragen mit fehlenden IDs fortzusetzen.
 
@@ -55,7 +57,7 @@ Für den Browser-Durchlauf werden `frontend/dist` (`npm run build`) und Playwrig
 | | Betriebskosten, Grundsteuer, Versicherung, Verwaltung; Wartungsfälle mit Rechnungen | Buchhaltung, Hausmeister |
 | | Jährliche Nebenkostenabrechnung je Haus (Schlüssel, Kostenpositionen, Erzeugen, Abschließen, Forderungen) und Anpassung der Vorauszahlung bei hoher Nachzahlung | Verwalter |
 | | Jährliche Zählerablesung, vereinzelt mit Ablesefehler | Hausmeister |
-| | Mahnlauf zweimal im Jahr; der Steuerberater liest Berichte und versucht jeden Monat eine Buchung (muss scheitern) | Verwalter, Steuerberater |
+| | Installationsweiter Mahnlauf zweimal im Jahr; der Steuerberater liest Berichte und versucht jeden Monat eine Buchung (muss scheitern) | Eigentümer, Steuerberater |
 | Prüfungen | Alle 6 Monate und am Ende: Mieterkonten (Soll, gezahlt, Aufteilung), aktuelle Mieten, Mietverläufe, Dashboard, Belegung, Summe aller Buchungen, Berichte, Prüfliste | – |
 | Speichern/Laden | Jedes Jahresende: Neustart, Export → Import in eine frische Installation, doppelter Import. In der Mitte und am Ende zusätzlich: Backup → Änderung → Restore, Migration auf einer Kopie, harter Absturz mitten im Schreiben. In der Mitte: Stromausfall (Server hart beendet) | Eigentümer |
 | Fehldaten | Rund 90 unplausible oder fehlerhafte Eingaben (negative Mieten, Datum 1900/2100, Brutto ≠ Netto + MwSt, Kaution über drei Mieten, Kappungsgrenze, Nullbytes, 5000 Zeichen, deutsches Zahlenformat, falsche Zugehörigkeiten, kaputte Importdateien …) auf einer Kopie | Verwalter |

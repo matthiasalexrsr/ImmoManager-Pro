@@ -78,6 +78,10 @@ def test_real_setup_grants_generated_portfolios_and_excludes_future_portfolios(t
             assert status == 404
             status, _ = client.call("GET", "/data/export", expect=(403,))
             assert status == 403
+            status, _ = client.call("POST", "/escalation/run", {}, expect=(403,))
+            assert status == 403
+        status, _ = owner.call("POST", "/escalation/run", {})
+        assert status in (200, 201, 204)
         assert roles.MATRIX["Daten exportieren"] == {"eigentuemer"}
         roles.matrix(users, findings)
         assert not [item for item in findings.items if item["severity"] != "HINWEIS"]

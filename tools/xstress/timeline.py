@@ -512,7 +512,8 @@ class Simulation:
             if id(t) in self.created and id(t) not in self.closed and t.end and t.end <= month_end(month):
                 self.move_out(t)
         if month.month in (3, 9):
-            self.u["verwalter"].call("POST", "/escalation/run", {}, expect=(200, 201, 204), area="Mahnwesen")
+            # This legacy job scans the whole installation, beyond a selected manager's portfolios.
+            self.u["owner"].call("POST", "/escalation/run", {}, expect=(200, 201, 204), area="Mahnwesen")
         # the tax advisor looks, and must not be able to change anything
         s = self.u["steuerberater"]
         s.call("GET", "/reports/summary", area="Lesen")
