@@ -123,3 +123,16 @@ def test_empty_report_is_a_real_pdf():
     data = {"totalsByCategory": [], "bookingsTotal": 0, "filters": {}}
     text = text_of(render_report_pdf("finance", data))
     assert "Keine Einträge" in text and "0,00 EUR" in text
+
+
+def test_cashflow_last_supported_calendar_month_is_complete(estate):
+    from backend.services.finance_ledger import months_between
+
+    assert months_between(date(9999, 11, 15), date.max) == [date(9999, 11, 1), date(9999, 12, 1)]
+    assert months_between(date.max, date(9999, 11, 1)) == []
+    client, headers, *_ = estate
+    params = {"date_from": "9999-12-01", "date_to": "9999-12-31"}
+    response = client.get("/api/v1/reports/pdf/cashflow", params=params, headers=headers)
+    assert response.status_code == 200
+    text = text_of(response.content)
+    assert "9999-12-01 bis 9999-12-31" in text and "0,00 EUR" in text

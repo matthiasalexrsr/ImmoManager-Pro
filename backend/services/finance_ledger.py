@@ -59,6 +59,8 @@ def months_between(first: date, last: date) -> list[date]:
     months, current, end = [], month_start(first), month_start(last)
     while current <= end:
         months.append(current)
+        if current == end:
+            break
         current = add_months(current, 1)
     return months
 
