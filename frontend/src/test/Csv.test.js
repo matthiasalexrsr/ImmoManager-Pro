@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { csvCell } from '../utils/csv';
 
 describe('literal spreadsheet CSV fields', () => {
-  it.each(['=1+1', '+SUM(1)', '-CMD()', '@SUM(1)', '  =1+1', '\tName', '\rName', '\n=1+1', '\u00a0+SUM(1)'])(
+  it.each(['=1+1', '+SUM(1)', '-CMD()', '@SUM(1)', '  =1+1', '\tName', '\rName', '\n=1+1', '\u00a0+SUM(1)',
+    '\ufeff=1+1', '\x00=1+1', '\x01 \t@SUM(1)'])(
     'protects text %j including whitespace prefixes', text => {
       const encoded = csvCell(text);
       expect(encoded.startsWith("'") || encoded.startsWith('"\'')).toBe(true);

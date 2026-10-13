@@ -11,7 +11,8 @@ from backend.services.csv_export import spreadsheet_cell
 from backend.storage import InMemoryStore
 
 
-@pytest.mark.parametrize("text", ["=1+1", "+SUM(1)", "-CMD()", "@SUM(1)", "  =1+1", "\tName", "\rName", "\n=1+1", "\u00a0+SUM(1)"])
+@pytest.mark.parametrize("text", ["=1+1", "+SUM(1)", "-CMD()", "@SUM(1)", "  =1+1", "\tName", "\rName", "\n=1+1", "\u00a0+SUM(1)",
+                                "\ufeff=1+1", "\x00=1+1", "\x01 \t@SUM(1)"])
 def test_spreadsheet_text_is_literal(text: str) -> None:
     assert spreadsheet_cell(text) == "'" + text
     assert search._csv_cell(text) == "'" + text

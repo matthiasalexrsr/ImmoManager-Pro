@@ -3,7 +3,9 @@
 export function csvCell(value) {
   if (value == null) return '';
   let text = String(value);
-  if (typeof value !== 'number' && (/^[=+\-@]/u.test(text.trimStart()) || ['\t', '\r', '\n'].includes(text[0]))) {
+  let start = 0;
+  while (start < text.length && (text.charCodeAt(start) <= 32 || text[start].trim() === '')) start += 1;
+  if (typeof value !== 'number' && (/^[=+\-@]/u.test(text.slice(start)) || ['\t', '\r', '\n'].includes(text[0]))) {
     text = `'${text}`;
   }
   return /[,"\r\n]/u.test(text) ? `"${text.replace(/"/gu, '""')}"` : text;
