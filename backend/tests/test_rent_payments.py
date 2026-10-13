@@ -1,6 +1,7 @@
 """Real rent receipts: exact partials, statement date, retry, rollback and portfolio boundary."""
 
 from datetime import date
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -148,7 +149,7 @@ def test_late_retry_never_confirms_an_edited_or_reassigned_receipt(client, estat
                                json={"amount": 10, "booking_date": "2026-01-10"})
         assert response.status_code == 201, response.text
     else:
-        changes = {"amount": {"amount": 200.11}, "date": {"booking_date": date(2026, 1, 8)},
+        changes: dict[str, dict[str, Any]] = {"amount": {"amount": 200.11}, "date": {"booking_date": date(2026, 1, 8)},
                    "note": {"payment_text": "Korrigiert"}, "status": {"status": "open"},
                    "binding": {"unit_id": None}}
         original = store.get_booking(booking_id)
@@ -328,11 +329,13 @@ def test_sql_tenant_subset_preserves_legacy_deposit_rounding_and_visibility(clie
     # deposit read rounds each link; two half-cent links must subtract two cents.
     for _ in range(2):
         deposit = store.create_deposit(DepositCreate(contract_id=estate["contract"].id, amount=10))
-        store.db.execute(insert(DepositPaymentORM.__table__).values(
+        store.db.execute(insert(DepositPaymentORM).values(
             id=str(uuid4()), deposit_id=deposit.id, booking_id=booking.id, amount=0.005, kind="receipt"))
         store.db.commit()
     selected_actor, _ = user(portfolio_access="selected", portfolio_ids=[estate["portfolio"].id])
-    with scope_context(scope_from_user(auth.get_user_by_id(selected_actor.id))):
+    selected_account = auth.get_user_by_id(selected_actor.id)
+    assert selected_account is not None
+    with scope_context(scope_from_user(selected_account)):
         tenants = [estate["tenant"].id, *(str(uuid4()) for _ in range(501))]
         bounded = credited_by_tenant(store, tenants, until=date(2026, 1, 31))
         canonical = credited_by_tenant(store, tenants, bookings=store.list_bookings(), until=date(2026, 1, 31))
@@ -341,7 +344,9 @@ def test_sql_tenant_subset_preserves_legacy_deposit_rounding_and_visibility(clie
         assert credited_by_tenant(store, tenants, until=date(2026, 1, 6)) == {}
     other = store.create_portfolio(PortfolioCreate(name="Süd"))
     hidden_actor, _ = user(portfolio_access="selected", portfolio_ids=[other.id])
-    with scope_context(scope_from_user(auth.get_user_by_id(hidden_actor.id))):
+    hidden_account = auth.get_user_by_id(hidden_actor.id)
+    assert hidden_account is not None
+    with scope_context(scope_from_user(hidden_account)):
         assert credited_by_tenant(store, tenants, until=date(2026, 1, 31)) == {}
 
 

@@ -17,7 +17,8 @@ def test_concurrent_receipt_retries_commit_one_booking_and_allocation(postgres):
     actor, _ = user()
     request = rent_payments.ContractPaymentRequest.model_validate(payment(estate))
     gate = threading.Barrier(3)
-    results = []
+    results: list[dict] = []
+    errors: list[BaseException] = []
 
     def pay():
         with Session(engine) as db:
@@ -25,7 +26,7 @@ def test_concurrent_receipt_retries_commit_one_booking_and_allocation(postgres):
                 gate.wait(timeout=10)
                 results.append(rent_payments.record_payment(SQLAlchemyStore(db), request, actor.id))
             except BaseException as error:
-                results.append(error)
+                errors.append(error)
 
     threads = [threading.Thread(target=pay) for _ in range(3)]
     for thread in threads:
@@ -33,7 +34,7 @@ def test_concurrent_receipt_retries_commit_one_booking_and_allocation(postgres):
     for thread in threads:
         thread.join(timeout=30)
         assert not thread.is_alive()
-    assert all(isinstance(result, dict) for result in results), results
+    assert not errors, errors
     assert sorted(result["replayed"] for result in results) == [False, True, True]
     with Session(engine) as db:
         target = SQLAlchemyStore(db)
