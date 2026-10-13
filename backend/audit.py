@@ -76,26 +76,47 @@ class SQLAuditStore(AuditStore):
 
     def add(self, entry: AuditLogEntry) -> None:
         from .db.orm_models import AuditLogORM
+        from .services.sqlite_writes import sqlite_write_gate, write_outcome, write_stage
 
         session = self._session_factory()
         try:
-            obj = AuditLogORM(
-                id=entry.id,
-                user_id=entry.user_id,
-                username=entry.username,
-                action=entry.action,
-                entity_type=entry.entity_type,
-                entity_id=entry.entity_id,
-                changes=entry.changes,
-                timestamp=entry.timestamp,
-            )
-            session.add(obj)
-            session.commit()
+            bind = session.get_bind()
         except SQLAlchemyError:
-            session.rollback()
-            logger.exception("Failed to persist audit log entry")
-        finally:
-            session.close()
+            try:
+                session.rollback()
+                logger.exception("Failed to persist audit log entry")
+            finally:
+                session.close()
+            return
+        with sqlite_write_gate(bind, "audit") as timing:
+            if timing is not None:
+                timing.attach(session)
+            try:
+                with write_stage(session, "connection_ms"):
+                    session.connection()
+                obj = AuditLogORM(
+                    id=entry.id,
+                    user_id=entry.user_id,
+                    username=entry.username,
+                    action=entry.action,
+                    entity_type=entry.entity_type,
+                    entity_id=entry.entity_id,
+                    changes=entry.changes,
+                    timestamp=entry.timestamp,
+                )
+                session.add(obj)
+                with write_stage(session, "flush_ms"):
+                    session.flush()
+                with write_stage(session, "commit_ms"):
+                    session.commit()
+                write_outcome(session, "committed")
+            except SQLAlchemyError:
+                with write_stage(session, "rollback_ms"):
+                    session.rollback()
+                write_outcome(session, "rolled_back")
+                logger.exception("Failed to persist audit log entry")
+            finally:
+                session.close()
 
     def list_all(
         self,

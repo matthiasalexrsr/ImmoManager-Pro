@@ -24,7 +24,7 @@ from __future__ import annotations
 import hashlib
 import threading
 from collections.abc import Iterable, Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import PurePosixPath
@@ -48,6 +48,7 @@ from .document_version_validation import (
     validate_feature_snapshot,
     validate_manifest_identity,
 )
+from .sqlite_writes import sqlite_write_gate, write_outcome, write_stage
 
 DOCUMENTS_AREA = "/documents"
 BINDING_FIELDS = ("portfolio_id", "property_id", "unit_id", "contract_id", "tenant_id")
@@ -76,10 +77,12 @@ def memory_archive(store) -> MemoryArchive:
 
 def begin_writer(db: Session) -> None:
     """Take SQLite's write lock now, before reading what the write depends on."""
-    connection = db.connection()
+    with write_stage(db, "connection_ms"):
+        connection = db.connection()
     driver = connection.connection.driver_connection
     if connection.dialect.name == "sqlite" and driver is not None and not driver.in_transaction:
-        connection.exec_driver_sql("BEGIN IMMEDIATE")
+        with write_stage(db, "begin_ms"):
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
 
 
 class Unit:
@@ -147,24 +150,35 @@ def work(store, actor_id: str, *, write_areas: Iterable[str] = ()) -> Iterator[U
     from ..repositories.sql_store import SQLAlchemyStore
 
     bind = store.db.get_bind()
-    db = Session(bind=getattr(bind, "engine", bind), autoflush=False, expire_on_commit=False)
-    try:
-        if not areas:
-            yield Unit(SQLAlchemyStore(db), db, check_account(auth.get_user_by_id(actor_id)), None)
-            return
-        begin_writer(db)
-        from .portfolio_scope import current_scope
-        scope = current_scope()
-        if scope is not None and not scope.unrestricted:
-            db.info["scoped_writer"] = scope      # Core inserts skip before_flush: fence the commit anyway
-        with auth.locked_account(actor_id, db) as user:
-            yield Unit(SQLAlchemyStore(db), db, check_account(user, write_areas=areas), None)
-            db.commit()
-    except BaseException:
-        db.rollback()
-        raise
-    finally:
-        db.close()
+    if areas:
+        from ..dependencies import release_request_read_connection
+        release_request_read_connection(store)
+    gate = sqlite_write_gate(bind, "archive") if areas else nullcontext(None)
+    with gate as timing:
+        db = Session(bind=getattr(bind, "engine", bind), autoflush=False, expire_on_commit=False)
+        if timing is not None:
+            timing.attach(db)
+        try:
+            if not areas:
+                yield Unit(SQLAlchemyStore(db), db, check_account(auth.get_user_by_id(actor_id)), None)
+                return
+            begin_writer(db)
+            from .portfolio_scope import current_scope
+            scope = current_scope()
+            if scope is not None and not scope.unrestricted:
+                db.info["scoped_writer"] = scope      # Core inserts skip before_flush: fence the commit anyway
+            with auth.locked_account(actor_id, db) as user:
+                yield Unit(SQLAlchemyStore(db), db, check_account(user, write_areas=areas), None)
+                with write_stage(db, "commit_ms"):
+                    db.commit()
+                write_outcome(db, "committed")
+        except BaseException:
+            with write_stage(db, "rollback_ms"):
+                db.rollback()
+            write_outcome(db, "rolled_back")
+            raise
+        finally:
+            db.close()
 
 
 # ─── Reading the archive ─────────────────────────────────────────────────────

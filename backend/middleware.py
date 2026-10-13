@@ -204,6 +204,10 @@ class AuditMiddleware(BaseHTTPMiddleware):
                 user_id = getattr(request.state, "audit_user_id", None)
                 username = getattr(request.state, "audit_username", None)
 
+                # This middleware wraps RequestLoggingMiddleware. Its contextvar
+                # changes do not propagate outward across BaseHTTPMiddleware;
+                # the shared request state carries the correlation ID instead.
+                audit_context = request_id_var.set(getattr(request.state, "request_id", None))
                 try:
                     await run_in_threadpool(
                         log_action,
@@ -218,6 +222,8 @@ class AuditMiddleware(BaseHTTPMiddleware):
                         "Audit log failed for %s %s (non-fatal)",
                         action, entity_type, exc_info=True,
                     )
+                finally:
+                    request_id_var.reset(audit_context)
 
         return response
 

@@ -23,6 +23,7 @@ from ..storage import NotFoundError, ValidationError
 from .billing_writes import _ACTIVE
 from .document_versions import begin_writer, check_account, memory_archive
 from .portfolio_scope import current_scope, scope_from_user
+from .sqlite_writes import sqlite_write_gate, write_outcome, write_stage
 
 _OWNED = "booking_write_unit"
 _BINDING = ("account_id", "category_id", "property_id", "unit_id", "tenant_id", "reverses_booking_id")
@@ -240,24 +241,33 @@ def booking_write(store, *, booking_id=None, reversal_of=None, changes=None):
             # A file database would deadlock on the caller's writer; a shared
             # in-memory connection could commit/rollback the caller's work.
             raise RuntimeError("Die Buchung benötigt eine eigene Transaktion; zuerst die laufende SQLite-Transaktion beenden.")
-    db = Session(bind=getattr(bind, "engine", bind), autoflush=False, expire_on_commit=False)
-    target = SQLAlchemyStore(db)
-    db.info[_ACTIVE] = True  # the existing repository commit_or_flush coordination
-    db.info[_OWNED] = True
-    try:
-        begin_writer(db)
-        with _actor(scope, db):
-            _lock_booking(db, target, booking_id, reversal_of, changes)
-            yield target
-            _recheck_actor(scope, db)
-            db.commit()
-    except BaseException:
-        db.rollback()
-        raise
-    finally:
-        db.close()
-        # Refresh clean booking models a direct caller may have read, without
-        # discarding its unrelated pending edits or committing its transaction.
-        for row in list(caller.identity_map.values()):
-            if isinstance(row, (BookingORM, PaymentAllocationORM)) and row not in caller.dirty:
-                caller.expire(row)
+    from ..dependencies import release_request_read_connection
+    release_request_read_connection(store)
+    with sqlite_write_gate(bind, "booking") as timing:
+        db = Session(bind=getattr(bind, "engine", bind), autoflush=False, expire_on_commit=False)
+        target = SQLAlchemyStore(db)
+        db.info[_ACTIVE] = True  # the existing repository commit_or_flush coordination
+        db.info[_OWNED] = True
+        if timing is not None:
+            timing.attach(db)
+        try:
+            begin_writer(db)
+            with _actor(scope, db):
+                _lock_booking(db, target, booking_id, reversal_of, changes)
+                yield target
+                _recheck_actor(scope, db)
+                with write_stage(db, "commit_ms"):
+                    db.commit()
+                write_outcome(db, "committed")
+        except BaseException:
+            with write_stage(db, "rollback_ms"):
+                db.rollback()
+            write_outcome(db, "rolled_back")
+            raise
+        finally:
+            db.close()
+            # Refresh clean booking models a direct caller may have read, without
+            # discarding its unrelated pending edits or committing its transaction.
+            for row in list(caller.identity_map.values()):
+                if isinstance(row, (BookingORM, PaymentAllocationORM)) and row not in caller.dirty:
+                    caller.expire(row)
