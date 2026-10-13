@@ -18,6 +18,7 @@ import contextvars
 import logging
 import threading
 from collections.abc import Generator
+from typing import Any
 from uuid import uuid4
 
 from .compat.ui_contracts import ensure_ui_contracts
@@ -42,6 +43,7 @@ _scoped_session = None
 # Outside a request (startup, scripts, tests calling routers directly) the
 # thread stays the scope.
 _request_scope: contextvars.ContextVar[str | None] = contextvars.ContextVar("db_request_scope", default=None)
+_READ_RELEASE_CHECK = object()       # only our server-side read diagnostic may bypass function conservatism
 
 
 def _session_scope() -> object:
@@ -59,6 +61,118 @@ def end_request_scope(token: contextvars.Token) -> None:
         cleanup_session()
     finally:
         _request_scope.reset(token)
+
+
+def release_request_read_connection(source: Any) -> bool:
+    """Return a clean middleware read connection before an owned write unit starts.
+
+    Request validation can already hold a pooled connection. A second session for
+    the atomic write must not wait for that first connection while every other
+    writer does the same. Only this request's registered, tracked AUTOBEGIN read
+    is disposable; explicit transactions and caller-owned sessions stay intact.
+    The write unit must repeat its authoritative actor/scope/revision checks.
+    Raw DBAPI BEGIN/SET transaction or session controls are outside this disposable
+    middleware-read contract: use Session.begin() or a caller-owned connection.
+    """
+    from sqlalchemy.engine import Engine
+    from sqlalchemy.orm import SessionTransactionOrigin
+
+    from . import concurrency
+
+    registry = _scoped_session
+    if (_request_scope.get() is None or registry is None or not concurrency._tracking
+            or registry.registry.scopefunc is not _session_scope or not registry.registry.has()):
+        return False
+    db = registry.registry()
+    candidate = getattr(source, "db", source)
+    if candidate is not registry and candidate is not db:
+        return False
+    transaction = db.get_transaction()
+    if (transaction is None or transaction.origin is not SessionTransactionOrigin.AUTOBEGIN
+            or db.info.get("request_read_connection_guard") is not transaction
+            or not db.is_active or db.in_nested_transaction()
+            or db.new or db.dirty or db.deleted
+            or db.info.get("changed_tables") or db.info.get("cache_pending_write")
+            or db.info.get("scoped_writer")):
+        return False
+    # A Connection bind can belong to another transaction outside this Session.
+    if not isinstance(db.get_bind(), Engine):
+        return False
+    connection = db.connection()
+    if connection.dialect.name == "sqlite":
+        import sqlite3
+
+        driver = connection.connection.driver_connection
+        if not isinstance(driver, sqlite3.Connection) or driver.in_transaction:
+            return False
+    elif connection.dialect.name == "postgresql":
+        if connection.get_isolation_level() not in {"READ COMMITTED", "AUTOCOMMIT"}:
+            return False
+        from sqlalchemy import and_, column, exists, func, or_, select, table
+
+        # Raw DBAPI cursor writes bypass all SQLAlchemy execution hooks. An
+        # assigned XID or nontrivial caller lock makes this transaction private.
+        # Both diagnostics share one read; observing the XID does not allocate it.
+        activity = table("pg_locks", column("pid"), column("granted"), column("locktype"), column("mode"),
+                         schema="pg_catalog")
+        caller_locks = exists().where(
+            activity.c.pid == func.pg_catalog.pg_backend_pid(), activity.c.granted.is_(True),
+            or_(activity.c.locktype == "advisory",
+                and_(activity.c.locktype == "relation", activity.c.mode != "AccessShareLock")))
+        check = select(func.pg_catalog.pg_current_xact_id_if_assigned(), caller_locks).execution_options(
+            request_read_release_check=_READ_RELEASE_CHECK)
+        xid, locked = connection.execute(check).one()
+        if xid is not None or locked:
+            db.info["cache_pending_write"] = True
+            concurrency.note_change()
+            return False
+    else:
+        return False
+    db.rollback()       # returns the connection; the same request Session can be reused later
+    return True
+
+
+def _guard_request_read_connection(db: Any, transaction: Any, connection: Any) -> None:
+    """Track SQL on exactly the request connection, including direct Connection DML.
+
+    Session execution hooks cannot see ``session.connection().exec_driver_sql``.
+    Treat uncompiled SQL as unknown, and preserve that evidence through the
+    existing cache guard's outer commit/rollback fence.
+    """
+    from sqlalchemy import event
+    from sqlalchemy.sql import visitors
+    from sqlalchemy.sql.elements import TextClause
+    from sqlalchemy.sql.functions import FunctionElement
+
+    registry = _scoped_session
+    if (_request_scope.get() is None or registry is None or transaction.parent is not None
+            or registry.registry.scopefunc is not _session_scope or not registry.registry.has()
+            or registry.registry() is not db):
+        return
+    db.info["request_read_connection_guard"] = transaction
+
+    def before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+        compiled = context.compiled
+        expression = compiled.statement if compiled is not None else None
+        diagnostic = context.execution_options.get("request_read_release_check") is _READ_RELEASE_CHECK
+        readonly = expression is not None and getattr(expression, "is_select", False) and not any(
+            getattr(node, "is_dml", False) or isinstance(node, TextClause)
+            or (isinstance(node, FunctionElement) and not diagnostic)
+            or getattr(node, "_for_update_arg", None) is not None for node in visitors.iterate(expression))
+        if not readonly:
+            from . import concurrency
+
+            db.info["cache_pending_write"] = True
+            concurrency.note_change()
+
+    event.listen(connection, "before_cursor_execute", before_cursor_execute)
+
+
+def _track_request_read_connections() -> None:
+    from sqlalchemy import event
+    from sqlalchemy.orm import Session
+
+    event.listen(Session, "after_begin", _guard_request_read_connection)
 
 # Use SQLAlchemy store for all databases including SQLite (default).
 # InMemoryStore is only used when sqlite_persistent_store is explicitly False.
@@ -170,3 +284,6 @@ def get_db() -> Generator:
         raise
     finally:
         db.close()
+
+
+_track_request_read_connections()
