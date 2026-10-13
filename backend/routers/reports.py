@@ -100,8 +100,15 @@ def get_finance_report(format: Format = None, date_from: DateFrom = None, date_t
 
 @router.get("/occupancy")
 @one_at_a_time
-def get_occupancy_report(format: Format = None):
-    data = report_service.compute_occupancy(units=store.list_units(), contracts=store.list_contracts())
+def get_occupancy_report(format: Format = None, portfolio_id: PortfolioId = None,
+                         property_id: PropertyId = None, unit_id: UnitId = None):
+    flt = _filter(portfolio_id=portfolio_id, property_id=property_id, unit_id=unit_id)
+    dims = Dimensions(store, flt)
+    data = report_service.compute_occupancy(
+        units=[u for u in store.list_units() if dims.unit_record_matches(u)],
+        contracts=[c for c in store.list_contracts() if dims.contract_matches(c)],
+    )
+    data["filters"] = flt.echo()
 
     if format == "csv":
         rate = data["occupancyRate"]
@@ -396,91 +403,46 @@ def liquidity_forecast(
 
 @router.get("/pdf/{report_name}", response_model=None)
 @one_at_a_time
-def export_report_pdf(report_name: str):
-    """T8: Export a report as PDF.
+def export_report_pdf(report_name: str, date_from: DateFrom = None, date_to: DateTo = None,
+                      portfolio_id: PortfolioId = None, property_id: PropertyId = None,
+                      unit_id: UnitId = None,
+                      months: Annotated[int | None, Query(ge=1, le=120)] = None):
+    """Export the same filtered figures as JSON, with complete, wrapping PDF content."""
+    from ..services.report_render import REPORT_TITLES, render_report_pdf
 
-    Uses simple text-based PDF generation.
-    Supported reports: summary, finance, occupancy, cashflow.
-    """
-
-    valid_reports = ["summary", "finance", "occupancy", "cashflow", "receivables-aging"]
-    if report_name not in valid_reports:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Ungültiger Report. Erlaubt: {', '.join(valid_reports)}",
-        )
-
-    # Get report data
-    if report_name == "summary":
-        data = get_summary()
-    elif report_name == "finance":
-        data = get_finance_report()
-    elif report_name == "occupancy":
-        data = get_occupancy_report()
+    if report_name not in REPORT_TITLES:
+        raise HTTPException(400, f"Ungültiger Report. Erlaubt: {', '.join(REPORT_TITLES)}")
+    flt = _filter(date_from, date_to, portfolio_id, property_id, unit_id)
+    if months is not None and report_name != "cashflow":
+        raise HTTPException(422, "Monatsanzahl gilt nur für die Zahlungsübersicht")
+    if report_name == "occupancy":
+        if date_from or date_to:
+            raise HTTPException(422, "Die Belegungsübersicht zeigt den heutigen Stand; kein Zeitraum möglich")
+        data = get_occupancy_report(portfolio_id=portfolio_id, property_id=property_id, unit_id=unit_id)
     elif report_name == "cashflow":
-        data = get_cashflow_report()
-    elif report_name == "receivables-aging":
-        data = get_receivables_aging()
+        data = get_cashflow_report(date_from=date_from, date_to=date_to, portfolio_id=portfolio_id,
+                                   property_id=property_id, unit_id=unit_id, months=months)
     else:
-        data = {}
+        compute = {
+            "summary": report_service.compute_summary,
+            "finance": report_service.compute_finance,
+            "receivables-aging": report_service.compute_receivables_aging,
+            "period-result": report_service.compute_period_result,
+        }[report_name]
+        data = compute(store, flt)
 
-    # Generate simple text-based PDF
-    lines = [
-        f"ImmoManager Pro - {report_name.replace('-', ' ').title()}",
-        f"Erstellt am: {date.today().isoformat()}",
-        "=" * 60,
-        "",
-    ]
-
-    def _flatten(obj, prefix=""):
-        if isinstance(obj, dict):
-            for k, v in obj.items():
-                _flatten(v, f"{prefix}{k}: " if not prefix else f"{prefix}.{k}: ")
-        elif isinstance(obj, list):
-            for i, item in enumerate(obj):
-                _flatten(item, f"{prefix}[{i}] ")
-        else:
-            lines.append(f"{prefix}{obj}")
-
-    _flatten(data)
-    text_content = "\n".join(lines)
-
-    # Try to use reportlab for real PDF
-    try:
-        from reportlab.lib.pagesizes import A4
-        from reportlab.pdfgen import canvas
-
-        buf = io.BytesIO()
-        c = canvas.Canvas(buf, pagesize=A4)
-        width, height = A4
-        y = height - 50
-        c.setFont("Helvetica-Bold", 16)
-        c.drawString(50, y, f"ImmoManager Pro - {report_name.replace('-', ' ').title()}")
-        y -= 25
-        c.setFont("Helvetica", 10)
-        c.drawString(50, y, f"Erstellt am: {date.today().isoformat()}")
-        y -= 20
-        c.line(50, y, width - 50, y)
-        y -= 15
-        c.setFont("Helvetica", 9)
-        for line in text_content.split("\n")[3:]:  # Skip header
-            if y < 50:
-                c.showPage()
-                y = height - 50
-                c.setFont("Helvetica", 9)
-            c.drawString(50, y, line[:100])  # Truncate long lines
-            y -= 12
-        c.save()
-        return Response(
-            buf.getvalue(),
-            media_type="application/pdf",
-            headers={"Content-Disposition": f"attachment; filename={report_name}.pdf"},
-        )
-    except ImportError:
-        # Fallback: return as plain text with PDF-like header
-        return Response(
-            text_content.encode("utf-8"),
-            media_type="text/plain",
-            headers={"Content-Disposition": f"attachment; filename={report_name}.txt",
-                     "X-PDF-Fallback": "reportlab not installed"},
-        )
+    # Resolve labels through the same scoped store as the report. Never expose names
+    # from an unfiltered lookup when a requested id is outside this user's access.
+    selection = {}
+    for field, method, label in (("portfolio_id", "get_portfolio", "name"),
+                                  ("property_id", "get_property", "name"),
+                                  ("unit_id", "get_unit", "label")):
+        value = data["filters"].get(field)
+        if value:
+            try:
+                record = getattr(store, method)(value)
+                selection[field] = getattr(record, label) if record else "Nicht verfügbar"
+            except KeyError:
+                selection[field] = "Nicht verfügbar"
+    return Response(render_report_pdf(report_name, data, selection=selection), media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="{report_name}.pdf"'})
