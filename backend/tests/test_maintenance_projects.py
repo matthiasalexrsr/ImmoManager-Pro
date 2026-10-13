@@ -219,6 +219,38 @@ def _quote(client, case_id, net, gross, **extra):
         "quote_date": "2026-04-01", "net_amount": net, "gross_amount": gross, **extra}), 201)
 
 
+def test_project_counts_explicit_service_contract_payments_and_refunds(owner, estate, roofer):
+    case = _case(owner, estate, estimated_cost=100)
+    base = f"{API}/maintenance/{case['id']}"
+    quote = _quote(owner, case["id"], 100, 100, contact_id=roofer.id)
+    order = _ok(owner.post(f"{base}/quotes/{quote['id']}/accept", json={}), 201)
+    invoice = _ok(owner.post(f"{base}/orders/{order['id']}/invoices", json={
+        "invoice": {"invoice_date": "2026-05-01", "net_amount": 100, "gross_amount": 100}}), 201)["invoice"]
+    contract = _ok(owner.post(f"{API}/service-contracts", json={
+        "contract_type": "caretaker", "title": "Dachwartung", "provider_contact_id": roofer.id,
+        "start_date": "2026-01-01", "renewal_mode": "indefinite", "notice_to": "month_end",
+        "notice_period_value": 1, "notice_period_unit": "month",
+        "locations": [{"property_id": estate["property"].id}]}), 201)
+    bill = _ok(owner.post(f"{API}/service-contracts/{contract['id']}/invoices", json={
+        "invoice_id": invoice["id"], "period_start": "2026-05-01", "period_end": "2026-05-31"}), 201)
+    payment = _booking(estate, -100)
+    _ok(owner.post(f"{API}/service-contracts/{contract['id']}/payments", json={
+        "booking_id": payment.id, "service_contract_invoice_id": bill["id"]}), 201)
+
+    def assert_paid(expected):
+        costs = _ok(owner.get(f"{base}/costs"))
+        assert (costs["paid"], costs["open_to_pay"], costs["orders"][0]["paid"]) == (expected, 100 - expected, expected)
+        assert _project(owner, case["id"])["invoices"][0]["paid"] == expected
+
+    assert_paid(100)
+    _booking(estate, 20, reverses_booking_id=payment.id)
+    assert_paid(80)
+    refund = _booking(estate, 10)
+    _ok(owner.post(f"{API}/service-contracts/{contract['id']}/payments", json={
+        "booking_id": refund.id, "service_contract_invoice_id": bill["id"]}), 201)
+    assert_paid(70)
+
+
 def test_quote_order_change_order_invoice_payment_flow_and_costs(owner, estate, roofer):
     case = _case(owner, estate, estimated_cost=1500)
     base = f"{API}/maintenance/{case['id']}"

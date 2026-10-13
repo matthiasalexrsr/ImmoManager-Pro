@@ -704,6 +704,12 @@ def _add_payment(store: Any, rows: Rows, contract_id: str, request: PaymentLinkR
                               "Erstattung negativ)")
     if abs(amount) > abs(available):
         raise ValidationError(f"Höchstens {as_number(available):.2f} € der Buchung sind noch nicht zugeordnet")
+    if amount > 0 and request.service_contract_invoice_id:
+        from .invoice_review import ensure_payable
+
+        if not rows.lock("invoices", link.invoice_id):
+            raise ValidationError("Rechnung existiert nicht")
+        ensure_payable(rows, link.invoice_id)
     if rows.find("service_contract_payments", service_contract_id=contract_id, booking_id=booking.id):
         raise ValidationError("Diese Buchung ist dem Vertrag bereits zugeordnet")
     return rows.add("service_contract_payments", ServiceContractPayment(

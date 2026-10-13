@@ -1261,9 +1261,10 @@ def _costs(rows: Rows, case: Any, orders: list, changes: list, links: list, invo
         reversed_by[reversal.reverses_booking_id] = reversed_by.get(reversal.reverses_booking_id, ZERO) + money(
             reversal.amount)
     # a reviewed invoice counts with what was approved (services.invoice_review); a rejected one not at all
-    from .invoice_review import flows
+    from .invoice_review import _effective_payments, flows
 
     reviewed = flows(rows, invoices.values())
+    invoice_payments = _effective_payments(rows, list(invoices))
 
     def billed(invoice: Any) -> tuple[str, Decimal]:
         if invoice.id not in reviewed:
@@ -1281,6 +1282,8 @@ def _costs(rows: Rows, case: Any, orders: list, changes: list, links: list, invo
         {key: BookingFacts(key, money(b.amount), reversed_by.get(key, ZERO)) for key, b in bookings.items()},
         {key: invoice.status for key, invoice in invoices.items()},
         {a.id: effective.get(("invoice_payments", a.id), ZERO) for a in allocations},
+        {invoice_id: sum((payment.amount for payment in invoice_payments.get(invoice_id, [])), ZERO)
+         for invoice_id in invoices},
     )
     return costs, payments, bookings
 

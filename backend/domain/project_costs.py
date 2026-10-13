@@ -140,7 +140,8 @@ def effective_allocations(allocations: Iterable[AllocationFacts],
 def roll_up(budget: float | None, orders: Iterable[OrderFacts], changes: Iterable[ChangeFacts],
             invoices: Iterable[InvoiceFacts], allocations: Iterable[AllocationFacts],
             bookings: dict[str, BookingFacts], invoice_status: dict[str, str] | None = None,
-            effective_paid: dict[str, Decimal] | None = None) -> ProjectCosts:
+            effective_paid: dict[str, Decimal] | None = None,
+            paid_by_invoice: dict[str, Decimal] | None = None) -> ProjectCosts:
     """The project's figures. `allocations` holds every allocation of the bookings involved,
     also to invoices of other projects: they decide how much of a booking is left."""
     costs = ProjectCosts(budget=None if budget is None else money(budget))
@@ -162,6 +163,9 @@ def roll_up(budget: float | None, orders: Iterable[OrderFacts], changes: Iterabl
     for allocation in allocations:
         allocated[allocation.invoice_id] += effective[allocation.id]
         requested[allocation.invoice_id] += money(allocation.amount)
+    if paid_by_invoice is not None:
+        # Canonical invoice balances include explicit service-contract payments/refunds.
+        allocated.update(paid_by_invoice)
 
     for invoice in invoices:
         target = costs.orders.get(invoice.order_id)

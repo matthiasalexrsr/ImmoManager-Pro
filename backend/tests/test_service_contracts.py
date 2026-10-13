@@ -537,6 +537,28 @@ def test_invoice_payments_update_service_bill_and_reconciliation(client, estate)
     assert client.get(path, headers=owner).json()["allocated"] == 100
 
 
+def test_service_contract_cannot_pay_a_subsequently_rejected_invoice(client, estate):
+    owner = _owner()
+    contract = _caretaker(client, owner, estate)
+    bill = _bill(client, owner, estate, contract, 100, day="2026-04-01")
+    review = f"/api/v1/invoices/{bill['invoice']['id']}/review"
+    received = client.post(review, headers=owner, json={"received_on": "2026-04-01"})
+    assert received.status_code == 201, received.text
+    rejected = client.post(f"{review}/decision", headers=owner,
+                           json={"decision": "reject", "reason": "Leistung nicht erbracht"})
+    assert rejected.status_code == 200, rejected.text
+    booking = _book(estate["account"], "2026-04-02", -100)
+    path = f"{API}/{contract}/payments"
+    refused = client.post(path, headers=owner,
+                          json={"booking_id": booking.id, "service_contract_invoice_id": bill["id"]})
+    assert refused.status_code == 409, refused.text
+    assert client.get(path, headers=owner).json() == []
+    refund = _book(estate["account"], "2026-04-03", 20)
+    allowed = client.post(path, headers=owner,
+                          json={"booking_id": refund.id, "service_contract_invoice_id": bill["id"]})
+    assert allowed.status_code == 201 and allowed.json()["amount"] == -20, allowed.text
+
+
 def test_transfer_needs_recoverable_contracts_and_prorates_the_service_period(client, estate):
     owner = _owner()
     plain = _caretaker(client, owner, estate, recoverable=False, title="Wartung")
