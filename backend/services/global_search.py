@@ -15,7 +15,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import func, literal, select
+from sqlalchemy import LargeBinary, case, cast, func, literal, select
 
 from ..db.orm_models import Base
 
@@ -146,10 +146,17 @@ _ORM_BY_TABLE = {getattr(mapper.local_table, "name", None): mapper.class_ for ma
 
 def _sql_lower(db) -> Callable[[Any], Any]:
     if db.get_bind().dialect.name == "sqlite":
-        # SQLite's lower() folds ASCII only; use Python's like the memory store
+        # SQLite's lower() folds ASCII only. Keep Python's Unicode semantics,
+        # but avoid a GIL-taking Python callback for every ordinary ASCII row.
         db.connection().connection.driver_connection.create_function(
             "immo_lower", 1, lambda v: v.lower() if isinstance(v, str) else v, deterministic=True)
-        return func.immo_lower
+        def lower(value):
+            # UTF-8 byte and character lengths agree only for ASCII. SQLite's
+            # text length stops at NUL, so those strings conservatively use Python.
+            ascii_only = func.length(cast(value, LargeBinary)) == func.length(value)
+            return case((ascii_only, func.lower(value)), else_=func.immo_lower(value))
+
+        return lower
     return func.lower
 
 

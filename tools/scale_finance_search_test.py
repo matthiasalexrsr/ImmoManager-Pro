@@ -104,6 +104,19 @@ def test_startup_failure_still_writes_failed_report_and_returns_nonzero(tmp_path
     assert next(tmp_path.glob("*/failure.txt")).exists()
 
 
+def test_overall_deadline_does_not_reset_when_phase_changes(tmp_path, monkeypatch):
+    stopped = []
+    server = SimpleNamespace(proc=None, stop=lambda **kw: stopped.append(kw))
+    guard = runtime.Monitor(server, tmp_path, seconds=1)
+    timestamps = iter([0, 0, 2])
+    monkeypatch.setattr(runtime.time, "monotonic", lambda: next(timestamps))
+    guard.done = SimpleNamespace(is_set=lambda: False, wait=lambda _: setattr(guard, "phase", "seed"))
+    guard._run()
+    assert guard.phase == "seed"
+    assert guard.failure == "Overall run exceeded 1 seconds"
+    assert stopped == [{"hard": True}]
+
+
 def test_server_overrides_inherited_background_settings(tmp_path, monkeypatch):
     monkeypatch.setenv("JOB_SCHEDULER_ENABLED", "true")
     monkeypatch.setenv("BACKUP_SCHEDULE_ENABLED", "true")
@@ -138,7 +151,7 @@ def test_cleanup_closes_http_clients_even_when_server_stop_fails():
 
 
 def test_http_wall_clock_deadline_fails_even_if_transport_returns_success(tmp_path, monkeypatch):
-    args = SimpleNamespace(rows=1000, out=tmp_path, request_seconds=0.01, stage_seconds=60,
+    args = SimpleNamespace(rows=1000, out=tmp_path, request_seconds=0.01, stage_seconds=60, mixed_seconds=30,
                            memory_mib=2048, minimum_free_mib=1, no_receivables=True)
     run = scale.Run(args)
     stopped = []

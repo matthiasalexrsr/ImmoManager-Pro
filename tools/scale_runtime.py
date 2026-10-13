@@ -164,7 +164,7 @@ class Monitor:
                         if sample["available_bytes"] < self.minimum:
                             raise RuntimeError(f"Available system memory fell below {self.minimum} bytes")
                     if time.monotonic() - started > self.seconds:
-                        raise RuntimeError(f"Stage exceeded {self.seconds} seconds")
+                        raise RuntimeError(f"Overall run exceeded {self.seconds} seconds")
                     self.done.wait(0.25)
         except Exception as exc:
             self.fail(str(exc))

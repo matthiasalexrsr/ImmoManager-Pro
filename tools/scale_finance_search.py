@@ -274,7 +274,9 @@ class Run:
                      "platform": platform.platform(), "python": sys.version, "sqlite": sqlite3.sqlite_version,
                      "logical_cpus": os.cpu_count(), "date": date.today().isoformat(),
                      "limits": {"request_seconds": args.request_seconds, "stage_seconds": args.stage_seconds,
-                                "memory_mib": args.memory_mib, "minimum_free_mib": args.minimum_free_mib},
+                                "stage_scope": "overall_run", "memory_mib": args.memory_mib,
+                                "minimum_free_mib": args.minimum_free_mib},
+                     "mixed_seconds": args.mixed_seconds,
                      "coverage": {"finance": True, "cashflow": True, "search_keyword": True,
                                   "search_selected_export": True, "receivables": not args.no_receivables,
                                   "period_result": False, "forecast": False, "DATEV": False, "restart": False,
@@ -625,7 +627,8 @@ def main(argv=None):
     parser.add_argument("--out", type=Path, default=REPO / "artifacts" / "scale-finance-search")
     parser.add_argument("--mixed-seconds", type=float, default=30)
     parser.add_argument("--request-seconds", type=float, default=30)
-    parser.add_argument("--stage-seconds", type=float, default=600)
+    parser.add_argument("--stage-seconds", type=float, default=600,
+                        help="Overall run deadline, including startup, fixture generation and every phase")
     parser.add_argument("--memory-mib", type=int, default=2048)
     parser.add_argument("--minimum-free-mib", type=int, default=1024)
     parser.add_argument("--no-receivables", action="store_true", help="Isolate booking/search pressure; records this exclusion")

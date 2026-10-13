@@ -55,9 +55,11 @@ or browser rendering. These exclusions are also stored in `report.json`.
 
 ## Bounds and evidence
 
-Defaults are 30 seconds per HTTP operation, 600 seconds for the stage, 2 GiB
+Defaults are 30 seconds per HTTP operation, 600 seconds for the entire run, 2 GiB
 maximum combined app-process RSS/private memory and at least 1 GiB system memory
-remaining. Flags expose each bound. Resource sampling occurs every 250 ms and
+remaining. The `--stage-seconds` flag is the overall deadline, including startup,
+fixture generation and every phase; it never resets at phase boundaries.
+Flags expose each bound. Resource sampling occurs every 250 ms and
 includes the app worker, not just its Python launcher. A guard stop is failure;
 partial work is never converted into success. CPU values in raw samples are
 cumulative process counters; phase records also carry sampled CPU deltas.
@@ -69,3 +71,59 @@ cumulative process counters; phase records also carry sampled CPU deltas.
 remain available for investigation. No bearer tokens or passwords are included
 in the request or report output. Exit code 0 requires every executed oracle and
 cleanup to succeed; any error returns 1.
+
+## Recorded runs, 2026-10-13
+
+These are actual local SQLite runs on Windows with 8 logical CPUs and SQLite
+3.53.1. Every run included 72,000 receivables and 240 months. Evidence directories
+below are relative to `artifacts/scale-finance-search/`; each retains its original
+`report.json`, `requests.jsonl`, resource samples and fixture. The two original
+baselines were preserved. All four runs recorded unchanged relevant source hashes
+between startup and completion.
+
+| Bookings | Code | Evidence directory | Result | HTTP requests | Writes acknowledged / verified | Peak app RSS MiB |
+| ---: | --- | --- | --- | ---: | --- | ---: |
+| 100,000 | Baseline | `rows-100000-pwx4zpi9` | Passed | 1,225 | 40 / 40 | 327.91 |
+| 100,000 | Native ASCII lower | `rows-100000-ncftvroe` | Passed | 1,722 | 40 / 40 | 326.36 |
+| 1,000,000 | Baseline | `rows-1000000-vyv5yfnk` | Failed: search HTTP deadline | 333 | 20 / verification not reached | 327.84 |
+| 1,000,000 | Native ASCII lower | `rows-1000000-km9ecxc7` | Passed | 204 | 40 / 40 | 327.91 |
+
+The optimized runs used a configured 60-second mixed window and completed their
+in-flight operations after 62.06 and 62.49 seconds. The 100k baseline mixed phase
+lasted 63.42 seconds. The 1m baseline was stopped after 30.02 seconds of mixed
+load by the unchanged 30-second search request guard; its configured mixed window
+was not recorded, so it is not a matched-duration throughput comparison. It had
+eight failed HTTP operations when the guard stopped its server. The optimized
+runs had no HTTP errors, reached ten simultaneous requests and verified every
+acknowledged write, including immediately refreshed aggregate results. Both
+optimized reports confirm owned-process cleanup.
+
+The following maxima are seconds, grouped by actual route in `requests.jsonl`,
+not by the combined finance/cashflow phase. The single-user phases exercised the
+same filters and repeated reads in every run.
+
+| Bookings / code | Single finance max | Single cashflow max | Single search max | Mixed search requests / p95 / max | Mixed cashflow requests / p95 / max |
+| --- | ---: | ---: | ---: | --- | --- |
+| 100k baseline | 0.326 | 0.289 | 0.263 | 48 / 7.418 / 8.007 | 1,057 / 0.257 / 0.792 |
+| 100k optimized | 0.214 | 0.311 | 0.201 | 451 / 0.661 / 0.951 | 1,151 / 0.215 / 0.756 |
+| 1m baseline, interrupted | 2.222 | 3.607 | 3.475 | 6 / 30.010 / 30.010, includes errors | 231 / 1.818 / 2.898, includes errors |
+| 1m optimized | 2.068 | 2.861 | 1.489 | 52 / 6.288 / 6.496 | 32 / 9.119 / 9.176 |
+
+The optimized 1m run verified complete selected exports of 10,310 owner-visible
+and 3,437 restricted-user hits. Its whole run lasted 186.50 seconds, including
+fixture generation, with peak private memory of 301.67 MiB. Mixed booking-write
+latency peaked at 0.359 seconds.
+
+The search change avoids Python callbacks for ASCII text using a short-circuiting
+SQLite `CASE`; Unicode text keeps the previous Python lowercase semantics.
+Regression tests count callbacks across 10,000 ASCII rows and compare SQL versus
+memory matching, counts, pages and exports for Unicode, literal `%`, `_`,
+backslash and newline queries. PostgreSQL retains its existing database `lower`.
+The fixture's booking text is mostly ASCII (the Unicode marker occurs roughly
+once per 997 rows), so these timings do not establish Unicode-heavy performance.
+Substring search still scans matching tables. The 1m mixed reads still took up
+to 6.50 seconds for search and 9.18 seconds for cashflow; passing the guards is
+not evidence of consistently low interactive latency or additional user capacity.
+
+An earlier optimized 100k pilot, `rows-100000-0iisstwt`, also passed with a shorter
+30-second mixed window; it is excluded from the main comparison above.
