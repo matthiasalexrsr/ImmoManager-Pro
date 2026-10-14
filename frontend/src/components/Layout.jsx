@@ -109,8 +109,10 @@ function LayoutFrame() {
     const params = new URLSearchParams(location.search);
     if (params.get('neu') !== '1') { dropNewEntry(location.pathname); return; }
     params.delete('neu');
-    navigate({ pathname: location.pathname, search: params.toString() ? `?${params}` : '', hash: location.hash }, { replace: true, state: location.state });
-    if (!requestNewEntry()) holdNewEntry(location.pathname);
+    const { prefill, ...state } = location.state || {};
+    navigate({ pathname: location.pathname, search: params.toString() ? `?${params}` : '', hash: location.hash },
+      { replace: true, state: Object.keys(state).length ? state : null });
+    if (!requestNewEntry(prefill)) holdNewEntry(location.pathname, prefill);
   }, [location, navigate]);
 
   // "?" shows the shortcuts, Alt+N asks the page's list for its New form. Never while typing

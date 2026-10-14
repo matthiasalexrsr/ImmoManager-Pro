@@ -1,15 +1,53 @@
-import { useState, useEffect } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
+import { useCanWrite } from '../contexts/AuthContext';
 import DataTable from '../components/DataTable';
+import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import FileViewer from '../components/FileViewer';
-import { ArrowRightIcon } from '../components/Icons';
-import { formatArea, formatMoney, plainLabel } from '../utils/format';
+import { ArrowRightIcon, EditIcon, PlusIcon } from '../components/Icons';
+import { formatArea, formatDate, formatMoney, plainLabel } from '../utils/format';
 import { codeLabel } from '../utils/codeLabels';
+import { newEntryLink } from '../utils/newEntry';
 import { resolveFileUrl } from '../features/partyWorkspace/files';
+import { PartyLink } from '../features/partyWorkspace/PartyWorkspace';
+import { propertyFields } from '../features/properties/propertyFields';
 import './propertyDossier.css';
+
+// What can be started from a property, each opened prefilled with it.
+const NEW_FOR_PROPERTY = [
+  ['/units', 'Einheit'], ['/contracts', 'Mietvertrag'], ['/maintenance', 'Wartungsfall'],
+  ['/bookings', 'Buchung'], ['/invoices', 'Rechnung'], ['/tasks', 'Aufgabe'],
+];
+
+/** "Neu für dieses Objekt …": a small menu of New forms that start with this property. */
+function NewForProperty({ propertyId }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = event => {
+      if (event.type === 'keydown' ? event.key === 'Escape' : !ref.current?.contains(event.target)) setOpen(false);
+    };
+    document.addEventListener('keydown', close);
+    document.addEventListener('mousedown', close);
+    return () => { document.removeEventListener('keydown', close); document.removeEventListener('mousedown', close); };
+  }, [open]);
+  return (
+    <div className="dossier-new" ref={ref}>
+      <button type="button" className="btn btn-primary btn-sm" aria-expanded={open} aria-haspopup="true"
+        onClick={() => setOpen(value => !value)}><PlusIcon size={15} /> Neu für dieses Objekt</button>
+      {open && <ul className="dossier-new-menu">
+        {NEW_FOR_PROPERTY.map(([path, label]) => {
+          const link = newEntryLink(path, { property_id: propertyId });
+          return <li key={path}><Link to={link.to} state={link.state}>{label}</Link></li>;
+        })}
+      </ul>}
+    </div>
+  );
+}
 
 function fmt(v) {
   return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(v || 0);
@@ -42,6 +80,12 @@ function PropertyDossier({ id }) {
   const [error, setError] = useState(null);
   const [revision, setRevision] = useState(0);
   const [viewerFile, setViewerFile] = useState(null);
+  const [tenants, setTenants] = useState([]);
+  const [editing, setEditing] = useState(null);       // the portfolios for the edit form, once loaded
+  const canEdit = useCanWrite('/properties');
+  const navigate = useNavigate();
+  // a New form of another list, prefilled with this property
+  const startNew = path => () => { const link = newEntryLink(path, { property_id: id }); navigate(link.to, { state: link.state }); };
 
   useEffect(() => {
     let cancelled = false;
@@ -56,7 +100,8 @@ function PropertyDossier({ id }) {
       api.list(`/contracts?property_id=${propertyId}`, options),
       api.list(`/documents?property_id=${propertyId}`, options),
       api.list(`/maintenance?property_id=${propertyId}`, options),
-    ]).then(([prop, propUnits, propContracts, propDocs, propMaint]) => {
+      api.list('/tenants', options).catch(() => []),
+    ]).then(([prop, propUnits, propContracts, propDocs, propMaint, allTenants]) => {
       if (cancelled) return;
       if (!prop) throw new Error('Immobilie nicht gefunden');
       setProperty(prop);
@@ -64,6 +109,7 @@ function PropertyDossier({ id }) {
       setContracts(propContracts || []);
       setDocuments(propDocs || []);
       setMaintenance(propMaint || []);
+      setTenants(allTenants || []);
     }).catch(failure => { if (!cancelled) setError(failure.message || 'Immobilienakte konnte nicht geladen werden.'); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; controller.abort(); };
@@ -94,6 +140,7 @@ function PropertyDossier({ id }) {
   const TABS = [
     { key: 'overview', label: t('pages.propertyOverview.keyData') || 'Übersicht' },
     { key: 'units', label: `${unitLabel} (${units.length})` },
+    { key: 'contracts', label: `Mieter & Verträge (${activeContracts})` },
     { key: 'finance', label: t('navigation.sections.finance') || 'Finanzen' },
     { key: 'documents', label: `${docLabel} (${documents.length})` },
     { key: 'maintenance', label: `${maintLabel} (${openMaintenance})` },
@@ -109,6 +156,29 @@ function PropertyDossier({ id }) {
       render: v => v != null ? fmt(v) : '—' },
     { key: 'status', label: t('ui.form.status') || 'Status', type: 'status', filterType: 'select' },
   ];
+
+  const tenantName = Object.fromEntries(tenants.map(tn => [tn.id, tn.full_name]));
+  const unitName = Object.fromEntries(units.map(u => [u.id, u.label || u.unit_number]));
+  const CONTRACT_COLUMNS = [
+    { key: 'contract_number', label: 'Vertrag', filterType: 'text' },
+    { key: 'tenant_name', label: 'Mieter', filterType: 'text',
+      render: (value, contract) => <PartyLink tenantId={contract.tenant_id}>{value || '—'}</PartyLink> },
+    { key: 'unit_name', label: 'Einheit', filterType: 'text',
+      render: (value, contract) => <Link to={`/units/${encodeURIComponent(contract.unit_id)}`}>{value || 'Einheit öffnen'}</Link> },
+    { key: 'start_date', label: 'Beginn', type: 'date', render: v => formatDate(v) },
+    { key: 'end_date', label: 'Ende', type: 'date', render: v => (v ? formatDate(v) : 'unbefristet') },
+    { key: 'status', label: t('ui.form.status') || 'Status', type: 'status', filterType: 'select' },
+  ];
+  const contractRows = contracts.map(c => ({ ...c, tenant_name: tenantName[c.tenant_id], unit_name: unitName[c.unit_id] }));
+
+  const openEdit = async () => {
+    const portfolios = await api.list('/portfolios').catch(() => []);
+    setEditing({ portfolios });
+  };
+  const saveProperty = async data => {
+    await api.put(`/properties/${encodeURIComponent(id)}`, data);
+    setRevision(value => value + 1);
+  };
 
   const DOC_COLUMNS = [
     { key: 'title', label: t('pages.propertyDetail.docTitle') || 'Titel', filterType: 'text', wrap: true,
@@ -137,6 +207,10 @@ function PropertyDossier({ id }) {
           </span>
         </div>
         <StatusBadge status={property.status} />
+        {canEdit && <div className="dossier-actions">
+          <button type="button" className="btn btn-secondary btn-sm" onClick={openEdit}><EditIcon size={15} /> Bearbeiten</button>
+          <NewForProperty propertyId={id} />
+        </div>}
       </div>
 
       {/* KPI Summary */}
@@ -241,7 +315,14 @@ function PropertyDossier({ id }) {
         )}
 
         {tab === 'units' && (
-          <DataTable title={unitLabel} columns={UNIT_COLUMNS} data={units} />
+          <DataTable title={unitLabel} columns={UNIT_COLUMNS} data={units} settingsKey="property-units"
+            onAdd={startNew('/units')} addLabel="Einheit anlegen" writeArea="/units"
+            onRowClick={unit => navigate(`/units/${encodeURIComponent(unit.id)}`)} />
+        )}
+
+        {tab === 'contracts' && (
+          <DataTable title="Mieter & Verträge" columns={CONTRACT_COLUMNS} data={contractRows} settingsKey="property-contracts"
+            onAdd={startNew('/contracts')} addLabel="Vertrag anlegen" writeArea="/contracts" />
         )}
 
         {tab === 'finance' && (
@@ -302,6 +383,11 @@ function PropertyDossier({ id }) {
                 </table>
                 </div>
               </div>
+              <div className="dossier-navigation dossier-finance-links">
+                <Link className="btn btn-secondary btn-sm" to={`/bookings?suche=${encodeURIComponent(property.name)}`}>Buchungen dieser Immobilie <ArrowRightIcon size={14} /></Link>
+                <Link className="btn btn-secondary btn-sm" to="/rent-overview">Mietübersicht (Soll und Ist) <ArrowRightIcon size={14} /></Link>
+                <Link className="btn btn-secondary btn-sm" to={`/invoices?suche=${encodeURIComponent(property.name)}`}>Rechnungen <ArrowRightIcon size={14} /></Link>
+              </div>
             </div>
           </div>
         )}
@@ -311,9 +397,13 @@ function PropertyDossier({ id }) {
         )}
 
         {tab === 'maintenance' && (
-          <DataTable title={t('pages.propertyDetail.maintenanceTitle') || 'Wartung & Instandhaltung'} columns={MAINT_COLUMNS} data={maintenance} />
+          <DataTable title={t('pages.propertyDetail.maintenanceTitle') || 'Wartung & Instandhaltung'} columns={MAINT_COLUMNS} data={maintenance}
+            settingsKey="property-maintenance" onAdd={startNew('/maintenance')} addLabel="Wartungsfall anlegen" writeArea="/maintenance"
+            onRowClick={item => navigate(`/maintenance/${encodeURIComponent(item.id)}`)} />
         )}
       </div>
+      {editing && <FormModal title="Immobilie bearbeiten" fields={propertyFields(t, editing.portfolios)}
+        initial={property} onSave={saveProperty} onClose={() => setEditing(null)} />}
       {viewerFile && <FileViewer key={viewerFile.id} fileUrl={viewerFile.file_url} title={viewerFile.title} onClose={() => setViewerFile(null)} />}
     </div>
   );

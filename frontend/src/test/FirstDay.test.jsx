@@ -138,3 +138,22 @@ describe('Erste Schritte', () => {
     expect(screen.queryByRole('region', { name: 'Erste Schritte' })).not.toBeInTheDocument();
   });
 });
+
+describe('New forms opened from elsewhere', () => {
+  it('pass the values a request carries to the list, also when the list appears later', async () => {
+    const { holdNewEntry, requestNewEntry } = await import('../utils/newEntry');
+    const onAdd = vi.fn();
+    holdNewEntry('/units', { property_id: 'p1' });
+    render(<DataTable title="Einheiten" columns={[{ key: 'label', label: 'Einheit' }]} data={[]} onAdd={onAdd} />);
+    expect(onAdd).toHaveBeenLastCalledWith({ property_id: 'p1' });
+    expect(requestNewEntry({ property_id: 'p2' })).toBe(true);
+    expect(onAdd).toHaveBeenLastCalledWith({ property_id: 'p2' });
+  });
+
+  it('never hand a click event to the list as values', () => {
+    const onAdd = vi.fn();
+    render(<DataTable title="Einheiten" columns={[{ key: 'label', label: 'Einheit' }]} data={[{ id: '1', label: 'WE 1' }]} onAdd={onAdd} />);
+    fireEvent.click(document.querySelector('[data-table-add]'));
+    expect(onAdd).toHaveBeenCalledWith();
+  });
+});

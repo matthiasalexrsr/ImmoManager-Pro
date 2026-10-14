@@ -197,3 +197,60 @@ describe('property dossier actions', () => {
     await waitFor(() => expect(screen.getByText('Energieausweis Beta')).toBeInTheDocument());
   });
 });
+
+describe('property page as the place to act on a property', () => {
+  const contract = { id: 'c1', contract_number: 'MV-7', property_id: 'p1', unit_id: 'u1', tenant_id: 't1',
+    start_date: '2019-05-01', end_date: null, status: 'active' };
+  const withContract = () => {
+    const base = api.list.getMockImplementation();
+    api.list.mockImplementation(path => {
+      if (path.startsWith('/contracts')) return Promise.resolve([contract]);
+      if (path === '/tenants') return Promise.resolve([{ id: 't1', full_name: 'Lena Langzeit' }]);
+      if (path === '/portfolios') return Promise.resolve([{ id: 'pf1', name: 'Nord' }]);
+      return base(path);
+    });
+  };
+
+  it('lists who lives in the property with links to the party and the unit', async () => {
+    withContract();
+    show();
+    fireEvent.click(await screen.findByRole('button', { name: 'Mieter & Verträge (1)' }));
+    const row = screen.getByRole('row', { name: /MV-7/ });
+    expect(within(row).getByText('Lena Langzeit')).toBeInTheDocument();
+    expect(within(row).getByRole('link', { name: 'Wohnung Alpha' })).toHaveAttribute('href', '/units/u1');
+  });
+
+  it('offers New forms of other lists that start with this property', async () => {
+    show();
+    fireEvent.click(await screen.findByRole('button', { name: 'Neu für dieses Objekt' }));
+    for (const [name, path] of [['Einheit', '/units'], ['Mietvertrag', '/contracts'], ['Wartungsfall', '/maintenance'],
+      ['Buchung', '/bookings'], ['Rechnung', '/invoices'], ['Aufgabe', '/tasks']]) {
+      expect(screen.getByRole('link', { name })).toHaveAttribute('href', `${path}?neu=1`);
+    }
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('link', { name: 'Einheit' })).not.toBeInTheDocument();
+  });
+
+  it('edits the property in place and shows the saved values', async () => {
+    withContract();
+    api.put.mockResolvedValue({});
+    show();
+    fireEvent.click(await screen.findByRole('button', { name: 'Bearbeiten' }));
+    const form = await screen.findByRole('dialog', { name: 'Immobilie bearbeiten' });
+    expect(within(form).getByLabelText('Name *')).toHaveValue('Haus Alpha');
+    api.get.mockImplementation(path => (path === '/properties/p1'
+      ? Promise.resolve({ ...properties.p1, year_built: 1928 }) : Promise.resolve(undefined)));
+    fireEvent.change(within(form).getByLabelText('Baujahr'), { target: { value: '1928' } });
+    fireEvent.submit(form.querySelector('form'));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith('/properties/p1', expect.objectContaining({ year_built: 1928 })));
+    expect(await screen.findByText('1928')).toBeInTheDocument();
+  });
+
+  it('offers no actions to roles that may not change the property', async () => {
+    access.canWrite = false;
+    show();
+    await screen.findByRole('heading', { name: 'Haus Alpha' });
+    expect(screen.queryByRole('button', { name: 'Bearbeiten' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Neu für dieses Objekt' })).not.toBeInTheDocument();
+  });
+});

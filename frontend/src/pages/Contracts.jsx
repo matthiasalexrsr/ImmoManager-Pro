@@ -44,6 +44,8 @@ export default function Contracts() {
   const [contracts, setContracts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
+  // values a New form starts with when opened from elsewhere (the property page's "Einheit anlegen")
+  const [prefill, setPrefill] = useState(null);
   const [filter, setFilter] = useState('all');
   const [rents, setRents] = useState({});
   const [history, setHistory] = useState(null);
@@ -314,7 +316,7 @@ export default function Contracts() {
         title={t('tenantsContracts.contracts.title') || 'Verträge'}
         columns={columns}
         data={filtered}
-        onAdd={() => setModal('create')}
+        onAdd={values => { setPrefill(values || null); setModal('create'); }}
         onEdit={row => setModal(row)}
         onDelete={handleDelete}
         rowActions={() => [
@@ -340,7 +342,7 @@ export default function Contracts() {
         <FormModal
           title={modal === 'create' ? 'Vertrag erstellen' : 'Vertrag bearbeiten'}
           fields={fields}
-          initial={modal === 'create' ? null : modal}
+          initial={modal === 'create' ? prefill : modal}
           onSave={handleSave}
           onClose={() => setModal(null)}
         />

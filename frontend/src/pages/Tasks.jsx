@@ -328,7 +328,7 @@ export default function Tasks() {
         title={t('pages.tasks.title') || 'Aufgaben'}
         columns={columns}
         data={filtered}
-        onAdd={() => { setPrefill(null); setModal('create'); }}
+        onAdd={values => { setPrefill(values || null); setModal('create'); }}
         onEdit={row => setModal(row)}
         onDelete={handleDelete}
         writeArea="/tasks"

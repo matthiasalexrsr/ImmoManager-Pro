@@ -23,6 +23,8 @@ export default function Units() {
   const [units, setUnits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
+  // values a New form starts with when opened from elsewhere (the property page's "Einheit anlegen")
+  const [prefill, setPrefill] = useState(null);
   const [filter, setFilter] = useState('all');
 
   const refreshData = () => {
@@ -217,7 +219,7 @@ export default function Units() {
         title={t('units.list.title') || 'Einheiten'}
         columns={columns}
         data={filtered}
-        onAdd={() => setModal('create')}
+        onAdd={values => { setPrefill(values || null); setModal('create'); }}
         onEdit={row => setModal(row)}
         onDelete={handleDelete}
         onRowClick={row => navigate(`/units/${row.id}`)}
@@ -228,7 +230,7 @@ export default function Units() {
           title={modal === 'create' ? 'Einheit erstellen' : 'Einheit bearbeiten'}
           repeatKeep={['property_id', 'unit_type']}
           fields={fields}
-          initial={modal === 'create' ? null : modal}
+          initial={modal === 'create' ? prefill : modal}
           onSave={handleSave}
           onClose={() => setModal(null)}
         />

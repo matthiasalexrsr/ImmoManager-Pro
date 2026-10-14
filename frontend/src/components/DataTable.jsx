@@ -275,13 +275,15 @@ export default function DataTable({ columns, data, onEdit: editHandler, onDelete
   const addRef = useRef(onAdd);
   addRef.current = onAdd;
   useEffect(() => {
+    // a request may carry values the New form starts with (onAdd(prefill))
     const answer = event => {
       if (!addRef.current || event.defaultPrevented) return;
       event.preventDefault();
-      addRef.current();
+      addRef.current(event.detail || undefined);
     };
     window.addEventListener(NEW_ENTRY_EVENT, answer);
-    if (addRef.current && takeNewEntry()) addRef.current();
+    const held = addRef.current ? takeNewEntry() : null;
+    if (held) addRef.current(held.prefill || undefined);
     return () => window.removeEventListener(NEW_ENTRY_EVENT, answer);
   }, []);
 
@@ -412,7 +414,7 @@ export default function DataTable({ columns, data, onEdit: editHandler, onDelete
             <button onClick={exportCsv} disabled={exporting} aria-busy={exporting}
                     className="btn btn-sm btn-secondary">{exporting ? 'CSV …' : 'CSV'}</button>
             {onAdd && !hideAddButton && (
-              <button onClick={onAdd} className="btn btn-primary" data-table-add="">
+              <button onClick={() => onAdd()} className="btn btn-primary" data-table-add="">
                 <PlusIcon size={16} /> {addLabel || t('ui.buttons.new')}
               </button>
             )}
@@ -547,7 +549,7 @@ export default function DataTable({ columns, data, onEdit: editHandler, onDelete
                     // nothing here (yet): offer the entry right here
                     <div className="table-empty-state">
                       <span>{emptyText || tr('comp.dataTable.empty', 'Keine Einträge vorhanden.')}</span>
-                      {onAdd && <button type="button" className="btn btn-primary btn-sm" onClick={onAdd}>
+                      {onAdd && <button type="button" className="btn btn-primary btn-sm" onClick={() => onAdd()}>
                         <PlusIcon size={14} /> {tr('comp.dataTable.addEntry', 'Neuen Eintrag anlegen')}
                       </button>}
                     </div>

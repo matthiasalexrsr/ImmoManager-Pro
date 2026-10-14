@@ -453,7 +453,7 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount }) {
         title={t('finance.bookings.title') || 'Buchungen'}
         columns={columns}
         data={filtered}
-        onAdd={() => openModal('create')}
+        onAdd={values => setModal({ generation: ++modalGeneration.current, initial: 'create', prefill: values || null })}
         onEdit={openModal}
         onDelete={handleDelete}
         rowActions={() => [{ label: 'Duplizieren', write: true, icon: <CopyIcon size={15} />, onClick: openDuplicate }]}
