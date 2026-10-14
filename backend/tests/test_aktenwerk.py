@@ -243,6 +243,21 @@ def test_a_restricted_account_sees_only_its_portfolios(estate):
     assert len([name for name in archive.namelist() if name.startswith("files/")]) == 1
 
 
+def test_every_account_learns_only_whether_a_transfer_can_start(estate, aktenwerk_on, monkeypatch):
+    staff = auth.register_user("bert", "bert@example.com", "Bert", "Secret123", "buchhaltung",
+                               portfolio_access="selected", portfolio_ids=[estate["portfolio"].id])
+    client = TestClient(app, headers=_bearer(staff))
+    # the settings stay with the installation's administrators, the lists only ask this
+    assert client.get(f"{API}/integrations/aktenwerk").status_code == 403
+    status = client.get(f"{API}/aktenwerk/status")
+    assert status.status_code == 200
+    assert status.json() == {"enabled": True, "configured": True, "ready": True}
+    assert "geheim-123" not in status.text and "aktenwerk.example.test" not in status.text
+    assert aktenwerk_on == []                                    # no health check, nothing reached out
+    monkeypatch.setitem(integration_manager._config, "aktenwerk", {"base_url": "http://dms.example.com"})
+    assert client.get(f"{API}/aktenwerk/status").json() == {"enabled": True, "configured": False, "ready": False}
+
+
 @pytest.mark.parametrize("document_type,kind", [
     ("Mietvertrag", "vertrag"), ("mietvertrag", "vertrag"), ("contract", "vertrag"), ("Kündigung", "vertrag"),
     ("Handwerkerrechnung", "rechnung"), ("invoice", "rechnung"), ("Betriebskostenabrechnung", "abrechnung"),

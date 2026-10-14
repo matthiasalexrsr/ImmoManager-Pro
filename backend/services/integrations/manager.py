@@ -317,6 +317,17 @@ class IntegrationManager:
 
         return self.execute(integration_id, payload, lambda config: provider.run(payload, config))
 
+    def readiness(self, integration_id: str) -> dict[str, bool]:
+        """Only whether execute() would start: switched on and validly configured. Nothing of the
+        configuration and no health check (which may reach out), so every signed-in user may know it."""
+        provider = self._providers.get(integration_id)
+        if provider is None:
+            raise KeyError(integration_id)
+        config = self._config.get(integration_id, {})
+        enabled = bool(self._enabled.get(integration_id, False))
+        configured = bool(provider.is_configured(config) and self.validate_config(integration_id, config).get("valid"))
+        return {"enabled": enabled, "configured": configured, "ready": enabled and configured}
+
     def execute(self, integration_id: str, payload: dict, work, *, journal_all_keys: bool = False) -> dict:
         """Run work(config) under the checks and the journal of run(): for actions that need the request's
         data (e.g. documents to hand over). The journal keeps the manifest's action inputs of payload, or

@@ -43,6 +43,16 @@ def _selection(kind: list[str] | None, year: int | None, property_id: str | None
 Kinds = Annotated[list[str] | None, Query(description="Dokumentarten, z. B. rechnung, beleg, vertrag")]
 
 
+@router.get("/status")
+def get_status() -> dict:
+    """Whether a hand-over can start (switched on, address set): for the "An Aktenwerk" buttons.
+
+    Open to every signed-in account, including one limited to some portfolios; the settings
+    themselves (/integrations/aktenwerk) stay with the installation's administrators.
+    """
+    return integration_manager.readiness("aktenwerk")
+
+
 @router.get("/manifest")
 def get_manifest(
     kind: Kinds = None,

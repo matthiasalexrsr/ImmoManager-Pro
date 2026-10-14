@@ -27,7 +27,8 @@ export const aktenwerkApi = {
   manifest: (filters, options) => api.get(`/aktenwerk/manifest${queryOf(filters)}`, options),
   exportZip: (filters, options) => api.getBlob(`/aktenwerk/export${queryOf(filters)}`, options),
   send: exchangeIds => api.post('/aktenwerk/send', { exchange_ids: exchangeIds }),
-  status: options => api.get('/integrations/aktenwerk', options),
+  // not /integrations/aktenwerk: accounts limited to some portfolios may not read the settings
+  status: options => api.get('/aktenwerk/status', options),
 };
 
 // The server takes at most this many documents per request.

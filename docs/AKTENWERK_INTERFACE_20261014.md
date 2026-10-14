@@ -133,6 +133,7 @@ Alle Endpunkte verlangen eine Anmeldung (Bearer-Token eines ImmoManager-Kontos) 
 
 | Endpunkt | Zweck | Rechte |
 | --- | --- | --- |
+| `GET /api/v1/aktenwerk/status` | Nur `{"enabled", "configured", "ready"}`: ob eine Übergabe starten kann (für die Schaltflächen); keine Einstellungen, keine Verbindungsprüfung | lesen, auch mit Portfolio-Beschränkung |
 | `GET /api/v1/aktenwerk/manifest` | Manifest ohne Dateien und ohne `generated_at` (gleiche Daten, gleiche Antwort), mit `counts` je Art (Vorschau, Abruf durch Aktenwerk) | lesen |
 | `GET /api/v1/aktenwerk/export` | ZIP-Paket (Abschnitt 2) | lesen |
 | `POST /api/v1/aktenwerk/send` mit `{"exchange_ids": [...]}` (1–200) | Übergabe an Aktenwerk (Abschnitt 3) | Eigentümer, Verwalter, Buchhaltung |
