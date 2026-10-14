@@ -8,6 +8,7 @@ import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 import { formatDate, formatMoney } from '../utils/format';
+import { bulkDelete } from '../utils/bulkActions';
 
 const TODAY = new Date();
 TODAY.setHours(0, 0, 0, 0);
@@ -166,7 +167,8 @@ export default function Maintenance() {
     if (store) store.invalidateRelated('maintenance', 'properties', 'units');
   };
 
-  if (loading) return <div className="page-loading">Lade Wartungsaufträge...</div>;
+  // only the first load replaces the list; a reload keeps the table (its search, selection, results)
+  if (loading && items.length === 0) return <div className="page-loading">Lade Wartungsaufträge...</div>;
 
   return (
     <div className="page">
@@ -217,6 +219,9 @@ export default function Maintenance() {
         title={t('pages.maintenance.title') || 'Wartung & Instandhaltung'}
         columns={columns}
         data={filtered}
+        rowName={row => row.title || row.id}
+        bulkActions={[bulkDelete({ one: 'Wartungsauftrag', many: 'Wartungsaufträge', remove: row => api.del(`/maintenance/${row.id}`),
+          finished: () => { refreshData(); store?.invalidateRelated('maintenance', 'properties', 'units'); } })]}
         onAdd={() => setModal('create')}
         onEdit={row => setModal(row)}
         onDelete={handleDelete}

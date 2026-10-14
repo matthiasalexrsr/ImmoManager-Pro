@@ -165,7 +165,8 @@ export default function Units() {
     if (store) store.invalidateRelated('units', 'properties', 'contracts');
   };
 
-  if (loading) return <div className="page-loading">Lade Einheiten...</div>;
+  // only the first load replaces the page; a reload keeps the table and an open form ("Speichern & weiteren")
+  if (loading && units.length === 0) return <div className="page-loading">Lade Einheiten...</div>;
 
   return (
     <div className="page">
@@ -225,6 +226,7 @@ export default function Units() {
       {modal && (
         <FormModal
           title={modal === 'create' ? 'Einheit erstellen' : 'Einheit bearbeiten'}
+          repeatKeep={['property_id', 'unit_type']}
           fields={fields}
           initial={modal === 'create' ? null : modal}
           onSave={handleSave}

@@ -236,4 +236,31 @@ describe('DataTable server paging and complete CSV export', () => {
       "'-Abzug;",
     ]);
   });
+
+  it('finds search, filters and page as left when the list is opened again in the same tab', () => {
+    const first = render(<DataTable columns={columns} data={rows} title="Dokumente" />);
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Dokument' } });
+    fireEvent.click(screen.getByRole('button', { name: /nextPage/ }));
+    fireEvent.click(screen.getByRole('button', { name: /filter/i }));
+    fireEvent.change(screen.getByPlaceholderText(/filterText/), { target: { value: 'Dok' } });
+    fireEvent.click(screen.getByRole('button', { name: /nextPage/ }));
+    expect(renderedTitles()[0]).toBe('Dokument 05');
+    first.unmount();
+
+    render(<DataTable columns={columns} data={rows} title="Dokumente" />);
+    expect(screen.getByRole('textbox', { name: 'Dokumente durchsuchen' })).toHaveValue('Dokument');
+    expect(screen.getByPlaceholderText(/filterText/)).toHaveValue('Dok');
+    expect(renderedTitles()[0]).toBe('Dokument 05');
+    cleanup();
+
+    // a new tab, unusable saved values or a server-paged list start fresh
+    sessionStorage.setItem('table_view:/|Dokumente', JSON.stringify({ search: 7, page: -2, columnFilters: { title: ['x'], gone: 'y' } }));
+    render(<DataTable columns={columns} data={rows} title="Dokumente" />);
+    expect(screen.getByRole('textbox', { name: 'Dokumente durchsuchen' })).toHaveValue('');
+    expect(renderedTitles()).toHaveLength(25);
+    cleanup();
+    sessionStorage.clear();
+    render(<DataTable columns={columns} data={rows} title="Dokumente" />);
+    expect(renderedTitles()[0]).toBe('Dokument 30');
+  });
 });

@@ -117,7 +117,8 @@ export default function RentCharges() {
     }
   };
 
-  if (loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  // only the first load replaces the page; a reload keeps the table and an open form
+  if (loading && charges.length === 0) return <div className="page-loading">{t('ui.table.loading')}</div>;
   if (error) return <div className="page"><div className="alert alert-error">{error}</div></div>;
 
   return (

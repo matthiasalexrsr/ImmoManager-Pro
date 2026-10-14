@@ -149,4 +149,64 @@ describe('FormModal', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
   });
+
+  describe('Speichern & weiteren', () => {
+    const series = [
+      { key: 'account_id', label: 'Konto', type: 'select', required: true, options: [{ value: 'a1', label: 'Giro' }, { value: 'a2', label: 'Rücklage' }] },
+      { key: 'booking_date', label: 'Datum', type: 'date', required: true },
+      { key: 'amount', label: 'Betrag', type: 'number', required: true },
+      { key: 'payment_text', label: 'Text' },
+      { key: 'status', label: 'Status', type: 'select', default: 'open', options: [{ value: 'open', label: 'Offen' }, { value: 'paid', label: 'Bezahlt' }] },
+    ];
+
+    it('saves, keeps the named fields, clears the others and continues in the first cleared field', async () => {
+      const onSave = vi.fn().mockResolvedValue(undefined);
+      const onClose = vi.fn();
+      render(<FormModal title="Buchung" fields={series} initial={null} onSave={onSave} onClose={onClose} repeatKeep={['account_id', 'booking_date']} />);
+      fireEvent.change(screen.getByLabelText('Konto *'), { target: { value: 'a2' } });
+      fireEvent.change(screen.getByLabelText('Datum *'), { target: { value: '2026-10-01' } });
+      fireEvent.change(screen.getByLabelText('Betrag *'), { target: { value: '120.5' } });
+      fireEvent.change(screen.getByLabelText('Text'), { target: { value: 'Miete Oktober' } });
+      fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'paid' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Speichern & weiteren' }));
+
+      await waitFor(() => expect(onSave).toHaveBeenCalledWith({ account_id: 'a2', booking_date: '2026-10-01', amount: 120.5, payment_text: 'Miete Oktober', status: 'paid' }));
+      expect(await screen.findByRole('status')).toHaveTextContent('1 gespeichert – nächster Eintrag');
+      expect(onClose).not.toHaveBeenCalled();
+      expect(screen.getByLabelText('Konto *')).toHaveValue('a2');
+      expect(screen.getByLabelText('Datum *')).toHaveValue('2026-10-01');
+      expect(screen.getByLabelText('Betrag *')).toHaveValue(null);
+      expect(screen.getByLabelText('Text')).toHaveValue('');
+      expect(screen.getByLabelText('Status')).toHaveValue('open');
+      await waitFor(() => expect(screen.getByLabelText('Betrag *')).toHaveFocus());
+
+      // nothing typed since the save: closing does not ask
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('checks required fields first and keeps everything when saving fails', async () => {
+      const onSave = vi.fn().mockRejectedValueOnce(new Error('Konto gesperrt')).mockResolvedValue(undefined);
+      render(<FormModal title="Buchung" fields={series} initial={null} onSave={onSave} onClose={vi.fn()} repeatKeep={['account_id']} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Speichern & weiteren' }));
+      expect(onSave).not.toHaveBeenCalled();
+
+      fireEvent.change(screen.getByLabelText('Konto *'), { target: { value: 'a1' } });
+      fireEvent.change(screen.getByLabelText('Datum *'), { target: { value: '2026-10-02' } });
+      fireEvent.change(screen.getByLabelText('Betrag *'), { target: { value: '5' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Speichern & weiteren' }));
+      expect(await screen.findByRole('alert')).toHaveTextContent('Konto gesperrt');
+      expect(screen.getByLabelText('Betrag *')).toHaveValue(5);
+
+      // Ctrl+Shift+Enter is the same as the button
+      fireEvent.keyDown(screen.getByLabelText('Betrag *'), { key: 'Enter', ctrlKey: true, shiftKey: true });
+      await waitFor(() => expect(onSave).toHaveBeenCalledTimes(2));
+      expect(await screen.findByRole('status')).toHaveTextContent('1 gespeichert');
+    });
+
+    it('is not offered when editing an existing record', () => {
+      render(<FormModal title="Buchung" fields={series} initial={{ id: 'b1', account_id: 'a1' }} onSave={vi.fn()} onClose={vi.fn()} repeatKeep={['account_id']} />);
+      expect(screen.queryByRole('button', { name: 'Speichern & weiteren' })).not.toBeInTheDocument();
+    });
+  });
 });

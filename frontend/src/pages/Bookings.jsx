@@ -470,6 +470,7 @@ function BookingsWorkspace({ bookingId }) {
         <FormModal
           key={modal.generation}
           title={modal.initial === 'create' ? 'Buchung erstellen' : 'Buchung bearbeiten'}
+          repeatKeep={['account_id', 'category_id', 'property_id', 'booking_date', 'status']}
           fields={fields}
           initial={modal.initial === 'create' ? null : modal.initial}
           onSave={handleSave}

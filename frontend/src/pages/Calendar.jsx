@@ -5,6 +5,7 @@ import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
+import { bulkDelete } from '../utils/bulkActions';
 
 const EVENT_TYPES = [
   { value: 'viewing', label: 'Besichtigung' },
@@ -110,6 +111,9 @@ export default function Calendar() {
         title={t('navigation.main.calendar') || 'Kalender'}
         columns={COLUMNS}
         data={events}
+        rowName={row => row.title || row.id}
+        bulkActions={[bulkDelete({ one: 'Termin', many: 'Termine', remove: row => api.del(`/calendar/${row.id}`),
+          finished: () => refreshData() })]}
         onAdd={() => setModal('create')}
         onEdit={row => setModal(row)}
         onDelete={handleDelete}
@@ -117,6 +121,7 @@ export default function Calendar() {
       {modal && (
         <FormModal
           title={modal === 'create' ? 'Termin erstellen' : 'Termin bearbeiten'}
+          repeatKeep={['event_type', 'event_date', 'property_id']}
           fields={fields}
           initial={modal === 'create' ? null : modal}
           onSave={handleSave}

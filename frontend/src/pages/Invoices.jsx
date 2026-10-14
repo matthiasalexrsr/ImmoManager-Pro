@@ -163,7 +163,8 @@ export default function Invoices() {
     if (store) store.invalidateRelated('invoices', 'contracts', 'receivables');
   };
 
-  if (loading) return <div className="page-loading">Lade Rechnungen...</div>;
+  // only the first load replaces the page; a reload keeps the table and an open form ("Speichern & weiteren")
+  if (loading && invoices.length === 0) return <div className="page-loading">Lade Rechnungen...</div>;
 
   return (
     <div className="page">
@@ -231,6 +232,7 @@ export default function Invoices() {
       {modal && (
         <FormModal
           title={modal === 'create' ? 'Rechnung erstellen' : 'Rechnung bearbeiten'}
+          repeatKeep={['property_id', 'invoice_date', 'vat_rate', 'category']}
           fields={fields}
           initial={modal === 'create' ? null : modal}
           onSave={handleSave}

@@ -22,3 +22,22 @@ export function useStoredTableSettings(key, defaults) {
   }, [key, settings]);
   return [settings, setSettings];
 }
+
+// What a list shows right now (search, column filters, page), kept for this browser tab only:
+// opening a record and coming back finds the list as it was left. A new tab starts fresh.
+const VIEW_PREFIX = 'table_view:';
+
+export function readTableView(key) {
+  if (!key) return null;
+  try {
+    const value = JSON.parse(window.sessionStorage.getItem(VIEW_PREFIX + key) || 'null');
+    return value && typeof value === 'object' ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeTableView(key, view) {
+  if (!key) return;
+  try { window.sessionStorage.setItem(VIEW_PREFIX + key, JSON.stringify(view)); } catch { /* not kept */ }
+}

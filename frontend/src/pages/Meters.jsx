@@ -329,6 +329,7 @@ export default function Meters() {
       {modal === 'create-meter' && (
         <FormModal
           title="Zähler anlegen"
+          repeatKeep={['unit_id', 'meter_type', 'measure_unit', 'installation_date']}
           fields={meterFields}
           initial={null}
           onSave={handleSaveMeter}
@@ -347,6 +348,7 @@ export default function Meters() {
       {modal === 'create-reading' && (
         <FormModal
           title="Ablesung erfassen"
+          repeatKeep={['reading_date', 'recorded_by']}
           fields={readingFields}
           initial={selectedMeter ? { meter_id: selectedMeter.id } : null}
           onSave={handleSaveReading}

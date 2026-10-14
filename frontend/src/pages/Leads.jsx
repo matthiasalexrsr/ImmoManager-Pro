@@ -6,6 +6,7 @@ import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 import { formatDate } from '../utils/format';
+import { bulkDelete } from '../utils/bulkActions';
 
 const PRIORITY_COLORS = { 1: 'var(--danger)', 2: 'var(--warning)', 3: 'var(--info)' };
 
@@ -164,7 +165,8 @@ export default function Leads() {
     }
   };
 
-  if (loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  // only the first load replaces the list; a reload keeps the tables (their search, selection, results)
+  if (loading && leads.length === 0) return <div className="page-loading">{t('ui.table.loading')}</div>;
 
   const statusCounts = leads.reduce((acc, l) => { acc[l.status] = (acc[l.status] || 0) + 1; return acc; }, {});
   const grouped = getGrouped();
@@ -223,6 +225,9 @@ export default function Leads() {
             title={group.label ? '' : 'Interessenten'}
             columns={COLUMNS}
             data={group.leads}
+        rowName={row => row.full_name || row.id}
+        bulkActions={[bulkDelete({ one: 'Interessent', many: 'Interessenten', remove: row => api.del(`/leads/${row.id}`),
+          finished: () => refreshData() })]}
             onAdd={gi === 0 ? () => setModal('create') : undefined}
             onEdit={row => setModal(row)}
             onDelete={handleDelete}
@@ -233,6 +238,7 @@ export default function Leads() {
       {modal && (
         <FormModal
           title={modal === 'create' ? 'Interessent erstellen' : 'Interessent bearbeiten'}
+          repeatKeep={['source', 'unit_id', 'listing_id']}
           fields={fields}
           initial={modal === 'create' ? null : modal}
           onSave={handleSave}

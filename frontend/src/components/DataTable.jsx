@@ -3,10 +3,11 @@ import { useTranslation } from '../i18n';
 import { useCanWrite } from '../contexts/AuthContext';
 import { PlusIcon, EditIcon, TrashIcon } from './Icons';
 import StatusBadge from './StatusBadge';
+import BulkBar from './BulkBar';
 import { formatDate, formatMoney, plainLabel } from '../utils/format';
 import { codeLabel } from '../utils/codeLabels';
 import { buildCsv } from '../utils/tableCsv';
-import { useStoredTableSettings } from '../utils/tableSettings';
+import { readTableView, useStoredTableSettings, writeTableView } from '../utils/tableSettings';
 import { NEW_ENTRY_EVENT, takeNewEntry } from '../utils/newEntry';
 import './DataTable.css';
 
@@ -61,8 +62,9 @@ function cellClass(col) {
 
 export default function DataTable({ columns, data, onEdit: editHandler, onDelete: deleteHandler, title,
   onAdd: addHandler, onRowClick, rowActions: rowActionsFor, writeArea, serverPaged = false, loadExportData, hideTitle = false,
-  settingsKey }) {
+  settingsKey, bulkActions: bulkActionsFor, rowName }) {
   const { t } = useTranslation();
+  const tr = (key, fallback) => { const text = t(key); return !text || text === key ? fallback : text; };
   const titleId = useId();
   // Roles that may not change this list do not get New/Edit/Delete (the server would refuse anyway).
   const canWrite = useCanWrite(writeArea);
@@ -70,9 +72,18 @@ export default function DataTable({ columns, data, onEdit: editHandler, onDelete
   const onEdit = canWrite ? editHandler : undefined;
   const onDelete = canWrite ? deleteHandler : undefined;
   const rowActions = rowActionsFor && (row => rowActionsFor(row).filter(a => canWrite || !a.write));
-  const [search, setSearch] = useState('');
+  // Several rows at once: a checkbox column appears only when the page offers actions this role may run.
+  const bulkActions = (bulkActionsFor || []).filter(a => canWrite || !a.write);
+  const selectable = bulkActions.length > 0;
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [bulkReport, setBulkReport] = useState(null);
+  const lastToggled = useRef(null);
+  const storageKey = settingsKey === undefined ? defaultSettingsKey(title) : settingsKey;
+  // search, filters and page as left in this tab (server-paged lists keep their own state)
+  const [savedView] = useState(() => (serverPaged ? null : readTableView(storageKey)));
+  const [search, setSearch] = useState(() => (typeof savedView?.search === 'string' ? savedView.search : ''));
   // Sorting, rows per page and hidden columns are remembered per list in this browser.
-  const [stored, setStored] = useStoredTableSettings(settingsKey === undefined ? defaultSettingsKey(title) : settingsKey,
+  const [stored, setStored] = useStoredTableSettings(storageKey,
     { sortKey: null, sortDir: 'asc', pageSize: 25, hiddenCols: {} });
   const sortKey = !serverPaged && columns.some(c => c.key === stored.sortKey && c.sortable !== false) ? stored.sortKey : null;
   const sortDir = stored.sortDir === 'desc' ? 'desc' : 'asc';
@@ -84,8 +95,20 @@ export default function DataTable({ columns, data, onEdit: editHandler, onDelete
   const setSort = (key, dir) => setStored(current => ({ ...current, sortKey: key, sortDir: dir }));
   const setPageSize = size => setStored(current => ({ ...current, pageSize: size }));
   const toggleColumn = key => setStored(current => ({ ...current, hiddenCols: { ...hiddenCols, [key]: !hiddenCols[key] } }));
-  const [page, setPage] = useState(0);
-  const [columnFilters, setColumnFilters] = useState({});
+  const [page, setPage] = useState(() => (Number.isInteger(savedView?.page) && savedView.page > 0 ? savedView.page : 0));
+  const [columnFilters, setColumnFilters] = useState(() => {
+    const saved = savedView?.columnFilters;
+    if (!saved || typeof saved !== 'object') return {};
+    // only filters of columns this list still has, in the shape their filter expects
+    return Object.fromEntries(columns.filter(col => col.filterType && saved[col.key] != null).map(col => [col.key, saved[col.key]])
+      .filter(([key, value]) => {
+        const type = columns.find(col => col.key === key).filterType;
+        return type === 'dateRange' || type === 'numberRange' ? Array.isArray(value) && value.length === 2 : typeof value === 'string';
+      }));
+  });
+  useEffect(() => {
+    if (!serverPaged) writeTableView(storageKey, { search, columnFilters, page });
+  }, [storageKey, serverPaged, search, columnFilters, page]);
   const [showColMenu, setShowColMenu] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -256,7 +279,53 @@ export default function DataTable({ columns, data, onEdit: editHandler, onDelete
   });
 
   const hasActions = Boolean(onEdit || onDelete || rowActions);
-  const colSpan = visibleColumns.length + (hasActions ? 1 : 0);
+  const colSpan = visibleColumns.length + (hasActions ? 1 : 0) + (selectable ? 1 : 0);
+
+  // The selection follows what the list shows: rows that left it (deleted, or hidden by the search
+  // or a filter) are not acted on, so nothing invisible is changed.
+  const rowsById = useMemo(() => new Map(sorted.map(row => [row.id, row])), [sorted]);
+  const selectedRows = [...selectedIds].map(id => rowsById.get(id)).filter(Boolean);
+  const pageIds = pageData.map(row => row.id);
+  const pageSelected = pageIds.length > 0 && pageIds.every(id => selectedIds.has(id));
+  const pageSomeSelected = pageIds.some(id => selectedIds.has(id));
+  const toggleRow = (row, event) => {
+    // Shift+click selects or clears the whole range since the last box on this page.
+    const from = event?.shiftKey && lastToggled.current != null ? pageIds.indexOf(lastToggled.current) : -1;
+    const to = pageIds.indexOf(row.id);
+    const range = from >= 0 && to >= 0 ? pageIds.slice(Math.min(from, to), Math.max(from, to) + 1) : [row.id];
+    const select = !selectedIds.has(row.id);
+    lastToggled.current = row.id;
+    if (selectedIds.size === 0) setBulkReport(null);
+    setSelectedIds(current => {
+      const next = new Set(current);
+      range.forEach(id => (select ? next.add(id) : next.delete(id)));
+      return next;
+    });
+  };
+  const togglePage = () => {
+    if (selectedIds.size === 0) setBulkReport(null);
+    setSelectedIds(current => {
+      const next = new Set(current);
+      pageIds.forEach(id => (pageSelected ? next.delete(id) : next.add(id)));
+      return next;
+    });
+  };
+  const bulkWords = {
+    region: tr('comp.dataTable.bulk.region', 'Auswahl'),
+    selected: n => tr('comp.dataTable.bulk.selected', '{{count}} ausgewählt').replace('{{count}}', n),
+    selectAll: n => tr('comp.dataTable.bulk.selectAll', 'Alle {{count}} Treffer auswählen').replace('{{count}}', n),
+    clear: tr('comp.dataTable.bulk.clear', 'Auswahl aufheben'),
+    applies: n => tr('comp.dataTable.bulk.applies', 'Betrifft {{count}} der ausgewählten Einträge').replace('{{count}}', n),
+    progress: r => `${r.label}: ${r.done} / ${r.count} …`,
+    report: r => [
+      tr('comp.dataTable.bulk.done', '{{label}}: {{count}} erledigt').replace('{{label}}', r.label).replace('{{count}}', r.succeeded),
+      r.failed.length ? tr('comp.dataTable.bulk.failed', '{{count}} fehlgeschlagen').replace('{{count}}', r.failed.length) : null,
+      r.skipped ? tr('comp.dataTable.bulk.skipped', '{{count}} nicht betroffen').replace('{{count}}', r.skipped) : null,
+    ].filter(Boolean).join(' · '),
+    more: n => tr('comp.dataTable.bulk.more', 'und {{count}} weitere').replace('{{count}}', n),
+    dismiss: tr('ui.buttons.close', 'Schließen'),
+    rowName: row => (rowName ? rowName(row) : String(row[visibleColumns[0]?.key] ?? row.id)),
+  };
   const hasColumnFilters = !serverPaged && columns.some(c => c.filterType);
   const activeFilterCount = Object.values(columnFilters).filter(v =>
     Array.isArray(v) ? v.some(x => x !== '') : v !== '' && v != null).length;
@@ -321,11 +390,27 @@ export default function DataTable({ columns, data, onEdit: editHandler, onDelete
       </div>
 
       {exportError && <p className="error-message" role="alert">{exportError}</p>}
+      {selectable && (selectedRows.length > 0 || bulkReport) && (
+        <BulkBar rows={selectedRows} report={bulkReport} setReport={setBulkReport} total={sorted.length} allSelected={selectedRows.length >= sorted.length}
+          actions={bulkActions} words={bulkWords}
+          onSelectAll={() => setSelectedIds(new Set(sorted.map(row => row.id)))}
+          onClear={() => setSelectedIds(new Set())}
+          // rows that worked leave the selection; failed ones stay selected for another try
+          onFinished={({ succeeded }) => setSelectedIds(current => {
+            const next = new Set(current);
+            succeeded.forEach(row => next.delete(row.id));
+            return next;
+          })} />
+      )}
 
       <div className="table-scroll">
         <table className="data-table" aria-labelledby={title ? titleId : undefined}>
           <thead>
             <tr>
+              {selectable && <th className="th-select">
+                <input type="checkbox" checked={pageSelected} aria-label={tr('comp.dataTable.bulk.selectPage', 'Alle Einträge dieser Seite auswählen')}
+                  ref={el => { if (el) el.indeterminate = !pageSelected && pageSomeSelected; }} onChange={togglePage} />
+              </th>}
               {visibleColumns.map(col => (
                 <th
                   key={col.key}
@@ -347,6 +432,7 @@ export default function DataTable({ columns, data, onEdit: editHandler, onDelete
             {/* Column filter row */}
             {hasColumnFilters && (showFilters || hasActiveFilters) && (
               <tr className="filter-row">
+                {selectable && <th />}
                 {visibleColumns.map(col => (
                   <th key={`f-${col.key}`} className="filter-cell">
                     {col.filterType === 'select' ? (
@@ -426,7 +512,13 @@ export default function DataTable({ columns, data, onEdit: editHandler, onDelete
               <tr><td colSpan={colSpan} className="table-empty">{t('ui.table.noResults')}</td></tr>
             ) : (
               pageData.map(row => (
-                <tr key={row.id} onClick={() => onRowClick?.(row)} className={onRowClick ? 'clickable-row' : ''} style={onRowClick ? { cursor: 'pointer' } : undefined}>
+                <tr key={row.id} onClick={() => onRowClick?.(row)} aria-selected={selectable ? selectedIds.has(row.id) : undefined}
+                  className={[onRowClick ? 'clickable-row' : '', selectedIds.has(row.id) ? 'row-selected' : ''].filter(Boolean).join(' ') || undefined}
+                  style={onRowClick ? { cursor: 'pointer' } : undefined}>
+                  {selectable && <td className="td-select" onClick={e => e.stopPropagation()}>
+                    <input type="checkbox" checked={selectedIds.has(row.id)} onChange={() => {}}
+                      onClick={e => toggleRow(row, e)} aria-label={`${tr('comp.dataTable.bulk.selectRow', 'Auswählen')}: ${bulkWords.rowName(row)}`} />
+                  </td>}
                   {visibleColumns.map(col => (
                     <td key={col.key} className={cellClass(col)}>
                       {cellContent(col, row)}

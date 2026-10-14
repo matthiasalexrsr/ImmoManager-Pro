@@ -146,7 +146,10 @@
       "discardQuestion": "Discard unsaved changes?",
       "keepEditing": "Keep editing",
       "discard": "Discard",
-      "saveShortcut": "Ctrl+Enter saves"
+      "saveShortcut": "Ctrl+Enter saves",
+      "savedNext": "{{count}} saved – next entry",
+      "saveAndNew": "Save & add another",
+      "saveAndNewShortcut": "Ctrl+Shift+Enter"
     },
     "table": {
       "adjustColumns": "Adjust Columns",
@@ -1284,7 +1287,20 @@
       "filterTo": "To",
       "filterMin": "Min",
       "filterMax": "Max",
-      "filterText": "Filter…"
+      "filterText": "Filter…",
+      "bulk": {
+        "region": "Selection",
+        "selected": "{{count}} selected",
+        "selectAll": "Select all {{count}} matches",
+        "clear": "Clear selection",
+        "applies": "Applies to {{count}} of the selected entries",
+        "done": "{{label}}: {{count}} done",
+        "failed": "{{count}} failed",
+        "skipped": "{{count}} not affected",
+        "more": "and {{count}} more",
+        "selectPage": "Select all entries on this page",
+        "selectRow": "Select"
+      }
     },
     "formModal": {
       "selectPlaceholder": "— Select —",

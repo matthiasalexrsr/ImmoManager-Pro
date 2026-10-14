@@ -3350,3 +3350,13 @@ table.data-table tbody tr:last-child td {
 }
 .portfolio-access-list label { display: flex; gap: 10px; align-items: center; padding: 6px 0; cursor: pointer; overflow-wrap: anywhere; }
 .portfolio-access-warning { margin-top: 8px; }
+
+.form-saved-next {
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius);
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+  font-size: 0.85rem;
+  font-weight: 600;
+}

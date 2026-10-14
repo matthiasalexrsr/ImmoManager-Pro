@@ -6,6 +6,7 @@ import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
+import { bulkDelete } from '../utils/bulkActions';
 
 const STATUS_COLORS = {
   scheduled: 'var(--primary)',
@@ -235,7 +236,8 @@ export default function Viewings() {
     }
   };
 
-  if (loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  // only the first load replaces the list; a reload keeps the table (its search, selection, results)
+  if (loading && viewings.length === 0) return <div className="page-loading">{t('ui.table.loading')}</div>;
 
   const statusLabels = { scheduled: 'Geplant', completed: 'Durchgeführt', cancelled: 'Abgesagt', no_show: 'Nicht erschienen' };
 
@@ -373,6 +375,9 @@ export default function Viewings() {
           title=""
           columns={TABLE_COLUMNS}
           data={enriched}
+        rowName={row => row.lead_name || row.id}
+        bulkActions={[bulkDelete({ one: 'Besichtigung', many: 'Besichtigungen', remove: row => api.del(`/viewings/${row.id}`),
+          finished: () => { refreshData(); store?.invalidateRelated('viewings', 'leads', 'units'); } })]}
           onAdd={() => setModal('create')}
           onEdit={row => setModal(row)}
           onDelete={handleDelete}

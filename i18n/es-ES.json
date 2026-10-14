@@ -146,7 +146,10 @@
       "discardQuestion": "¿Descartar los cambios sin guardar?",
       "keepEditing": "Seguir editando",
       "discard": "Descartar",
-      "saveShortcut": "Ctrl+Intro guarda"
+      "saveShortcut": "Ctrl+Intro guarda",
+      "savedNext": "{{count}} guardados – siguiente entrada",
+      "saveAndNew": "Guardar y añadir otro",
+      "saveAndNewShortcut": "Ctrl+Mayús+Intro"
     },
     "table": {
       "adjustColumns": "Ajustar columnas",
@@ -2044,7 +2047,20 @@
       "filterTo": "Hasta",
       "filterMin": "Mín",
       "filterMax": "Máx",
-      "filterText": "Filtro…"
+      "filterText": "Filtro…",
+      "bulk": {
+        "region": "Selección",
+        "selected": "{{count}} seleccionados",
+        "selectAll": "Seleccionar los {{count}} resultados",
+        "clear": "Quitar selección",
+        "applies": "Afecta a {{count}} de las entradas seleccionadas",
+        "done": "{{label}}: {{count}} hechos",
+        "failed": "{{count}} fallidos",
+        "skipped": "{{count}} no afectados",
+        "more": "y {{count}} más",
+        "selectPage": "Seleccionar todas las entradas de esta página",
+        "selectRow": "Seleccionar"
+      }
     },
     "fileViewer": {
       "title": "Vista de archivo",

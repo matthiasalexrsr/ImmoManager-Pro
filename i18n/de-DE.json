@@ -146,7 +146,10 @@
       "discardQuestion": "Ungespeicherte Änderungen verwerfen?",
       "keepEditing": "Weiter bearbeiten",
       "discard": "Verwerfen",
-      "saveShortcut": "Strg+Enter speichert"
+      "saveShortcut": "Strg+Enter speichert",
+      "savedNext": "{{count}} gespeichert – nächster Eintrag",
+      "saveAndNew": "Speichern & weiteren",
+      "saveAndNewShortcut": "Strg+Umschalt+Enter"
     },
     "table": {
       "adjustColumns": "Spalten anpassen",
@@ -1284,7 +1287,20 @@
       "filterTo": "Bis",
       "filterMin": "Min",
       "filterMax": "Max",
-      "filterText": "Filter…"
+      "filterText": "Filter…",
+      "bulk": {
+        "region": "Auswahl",
+        "selected": "{{count}} ausgewählt",
+        "selectAll": "Alle {{count}} Treffer auswählen",
+        "clear": "Auswahl aufheben",
+        "applies": "Betrifft {{count}} der ausgewählten Einträge",
+        "done": "{{label}}: {{count}} erledigt",
+        "failed": "{{count}} fehlgeschlagen",
+        "skipped": "{{count}} nicht betroffen",
+        "more": "und {{count}} weitere",
+        "selectPage": "Alle Einträge dieser Seite auswählen",
+        "selectRow": "Auswählen"
+      }
     },
     "formModal": {
       "selectPlaceholder": "— Auswählen —",

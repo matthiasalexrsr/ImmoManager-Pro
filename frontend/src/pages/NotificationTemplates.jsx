@@ -108,7 +108,7 @@ export default function NotificationTemplates() {
       />
       {modal && (
         <FormModal
-          title={modal === 'create' ? t('ui.buttons.create') : t('ui.buttons.edit')}
+          title={modal === 'create' ? 'Vorlage erstellen' : 'Vorlage bearbeiten'}
           fields={fields}
           initial={modal === 'create' ? null : modal}
           onSave={handleSave}

@@ -10,6 +10,7 @@ import { useConfirm } from '../components/ConfirmDialog';
 import { useToast } from '../components/Toast';
 import { useCanWrite } from '../contexts/AuthContext';
 import { formatDate } from '../utils/format';
+import { bulkDelete } from '../utils/bulkActions';
 
 function parseRecurrence(rule) {
   if (!rule) return '—';
@@ -327,6 +328,17 @@ export default function Tasks() {
         onEdit={row => setModal(row)}
         onDelete={handleDelete}
         writeArea="/tasks"
+        rowName={row => row.title || row.id}
+        bulkActions={[
+          { key: 'complete', label: 'Erledigen', write: true, applies: row => row.status !== 'completed',
+            run: row => api.patch(`/tasks/${row.id}`, { status: 'completed', updated_at: row.updated_at }),
+            finished: ({ succeeded }) => { if (succeeded.length) toast.success(`${succeeded.length} ${succeeded.length === 1 ? 'Aufgabe erledigt' : 'Aufgaben erledigt'}`); refreshData(); store?.invalidateRelated('tasks'); } },
+          { key: 'reopen', label: 'Wiederöffnen', write: true, applies: row => row.status === 'completed',
+            run: row => api.patch(`/tasks/${row.id}`, { status: 'open', updated_at: row.updated_at }),
+            finished: () => { refreshData(); store?.invalidateRelated('tasks'); } },
+          bulkDelete({ one: 'Aufgabe', many: 'Aufgaben', remove: row => api.del(`/tasks/${row.id}`),
+            finished: () => { refreshData(); store?.invalidateRelated('tasks', 'properties', 'units'); } }),
+        ]}
         rowActions={row => busy.has(row.id) ? [] : [{
           label: row.status === 'completed' ? 'Wiederöffnen' : 'Erledigen', write: true,
           icon: row.status === 'completed' ? <RotateCcw size={15} /> : <Check size={15} />,
@@ -337,6 +349,7 @@ export default function Tasks() {
       {modal && (
         <FormModal
           title={modal === 'create' ? 'Aufgabe erstellen' : 'Aufgabe bearbeiten'}
+          repeatKeep={['assignee', 'property_id', 'due_date', 'priority', 'status']}
           fields={fields}
           initial={modal === 'create' ? null : modal}
           onSave={handleSave}

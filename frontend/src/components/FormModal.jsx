@@ -15,7 +15,9 @@ const spansRow = f => f.full || f.type === 'textarea';
 // In two columns, full-width fields (notes, descriptions) go last so the pairs above stay aligned.
 const ordered = list => [...list.filter(f => !spansRow(f)), ...list.filter(spansRow)];
 
-export default function FormModal({ title, fields, initial, onSave, onClose }) {
+// repeatKeep: for a new record, offer "Speichern & weiteren" and keep these fields for the next
+// entry (a series of bookings on one account, readings of one day); every other field starts over.
+export default function FormModal({ title, fields, initial, onSave, onClose, repeatKeep }) {
   const { t } = useTranslation();
   const tr = (key, fallback) => { const text = t(key); return !text || text === key ? fallback : text; };
   // Inline prefill objects are recreated by several callers; that is not a new form.
@@ -27,8 +29,11 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
   // Typed input is never thrown away silently: closing an edited form asks first.
   const [dirty, setDirty] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const repeatable = Array.isArray(repeatKeep) && initial?.id == null;
+  const [savedCount, setSavedCount] = useState(0);
   const modalRef = useRef(null);
   const formRef = useRef(null);
+  const againRef = useRef(null);
   const pressStartedOnOverlay = useRef(false);
   const sessionRef = useRef({ key: initialKey, id: initial?.id, updatedAt: initial?.updated_at });
 
@@ -51,6 +56,18 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
     });
   }, [initialKey, initial, fields]);
 
+  // after "Speichern & weiteren": continue in the first required field that starts over
+  // (the amount of the next booking), else in the first field that starts over
+  useEffect(() => {
+    if (!savedCount) return;
+    const keep = new Set(repeatKeep);
+    const cleared = fields.filter(f => f.type !== 'hidden' && !keep.has(f.key));
+    const next = cleared.find(f => f.required) || cleared[0];
+    const element = next && modalRef.current?.querySelector(`#form-field-${next.key}`);
+    (element || modalRef.current?.querySelector('.modal-body :is(input:not([type="hidden"]), select, textarea)'))?.focus();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savedCount]);
+
   const update = (key, value, extra) => {
     setDirty(true);
     setConfirmDiscard(false);
@@ -72,12 +89,14 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
         else requestClose();
       } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && modalRef.current?.contains(document.activeElement)) {
         e.preventDefault();
-        formRef.current?.requestSubmit();
+        // Ctrl+Shift+Enter: save and start the next entry
+        if (e.shiftKey && repeatable) againRef.current?.click();
+        else formRef.current?.requestSubmit();
       }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [requestClose, confirmDiscard]);
+  }, [requestClose, confirmDiscard, repeatable]);
 
   // Focus trap
   useEffect(() => {
@@ -109,8 +128,10 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
     return () => modal.removeEventListener('keydown', trapFocus);
   }, [fields]);
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e, again = false) => {
     e.preventDefault();
+    // the browser's own checks (required fields) apply to "Speichern & weiteren" as well
+    if (again && !formRef.current?.reportValidity()) return;
     setSaving(true);
     setError(null);
     try {
@@ -134,6 +155,13 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
       if (sessionRef.current.id && sessionRef.current.updatedAt) cleaned.updated_at = sessionRef.current.updatedAt;
       await onSave(cleaned);
       setDirty(false);
+      if (again) {
+        const keep = new Set(repeatKeep);
+        setValues(current => Object.fromEntries(fields.map(f => [f.key,
+          keep.has(f.key) ? current[f.key] : toFieldValue(f, initial?.[f.key] ?? f.default ?? '')])));
+        setSavedCount(count => count + 1);
+        return;
+      }
       onClose();
     } catch (err) {
       setError(err.message);
@@ -167,6 +195,11 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
         <form ref={formRef} onSubmit={handleSubmit}>
           <div className="modal-body">
             {error && <div className="alert-error" role="alert">{error}</div>}
+            {savedCount > 0 && !error && (
+              <div className="form-saved-next" role="status">
+                {tr('ui.form.savedNext', '{{count}} gespeichert – nächster Eintrag').replace('{{count}}', savedCount)}
+              </div>
+            )}
             {(() => {
               const renderField = (f) => {
                 if (f.type === 'hidden') {
@@ -250,6 +283,11 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
             <div className="modal-footer">
               <span className="modal-shortcut-hint" aria-hidden="true">{dirty ? tr('ui.form.saveShortcut', 'Strg+Enter speichert') : ''}</span>
               <button type="button" onClick={requestClose} className="btn btn-secondary">{t('ui.buttons.cancel')}</button>
+              {repeatable && (
+                <button ref={againRef} type="button" className="btn btn-secondary" disabled={saving}
+                  title={tr('ui.form.saveAndNewShortcut', 'Strg+Umschalt+Enter')}
+                  onClick={event => handleSubmit(event, true)}>{tr('ui.form.saveAndNew', 'Speichern & weiteren')}</button>
+              )}
               <button type="submit" className="btn btn-primary" disabled={saving}>
                 {saving ? `${t('ui.buttons.save')}...` : t('ui.buttons.save')}
               </button>
