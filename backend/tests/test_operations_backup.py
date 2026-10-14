@@ -380,6 +380,87 @@ def test_a_failing_second_target_is_reported_and_the_backup_kept(installation, t
     assert "second_target_failed" in codes
 
 
+def test_the_owner_sets_the_second_target_in_the_app(configured, tmp_path):
+    usb = tmp_path / "usb" / "ImmoManager-Sicherung"
+    first = full_backup.create_full_backup("manual")
+    assert "second_target" not in first
+    result = full_backup.set_second_target(f'"{usb}"')          # as the Windows Explorer copies a path
+    assert result["second_target"] == str(usb) and result["source"] == "app" and usb.is_dir()
+    assert not list(usb.iterdir())                              # the write test leaves nothing behind
+    assert full_backup.configured_second_target() == (str(usb), "app")
+    assert Sources.from_settings().second_target == usb
+    overview = full_backup.overview()
+    codes = {w["code"] for w in overview["warnings"]}
+    assert "second_target_pending" in codes and not {"no_second_target", "second_target_failed"} & codes
+    assert overview["backup"]["second_target"] == str(usb)
+    assert overview["backup"]["second_target_source"] == "app"
+
+    event = full_backup.create_full_backup("manual")
+    assert event["second_target"]["ok"] and (usb / event["archive"]).is_file()
+    assert full_backup.verify_archive(usb / event["archive"])["ok"]
+    codes = {w["code"] for w in full_backup.overview()["warnings"]}
+    assert not {"second_target_pending", "second_target_failed", "no_second_target"} & codes
+    assert "second_target_same_device" in codes                 # tmp_path is the same disk as the data
+
+    assert full_backup.set_second_target("  ")["second_target"] is None
+    assert Sources.from_settings().second_target is None
+    assert not (configured.data / full_backup.TARGET_FILE).exists()
+    assert "no_second_target" in {w["code"] for w in full_backup.overview()["warnings"]}
+
+
+@pytest.mark.parametrize("value, message", [
+    ("Sicherung", "vollständigen Pfad"),
+    ("{data}/backups/extra", "Datenordner"),
+    ("{data}", "Datenordner"),
+    ("{file}", "Datei, kein Ordner"),
+    ("{tmp}/x\0y", "ungültige Zeichen"),
+])
+def test_an_unsuitable_second_target_is_refused(configured, tmp_path, value, message):
+    blocker = tmp_path / "blocker.txt"
+    blocker.write_text("x")
+    path = value.format(data=configured.data, file=blocker, tmp=tmp_path)
+    with pytest.raises(ValueError, match=message):
+        full_backup.set_second_target(path)
+    assert not (configured.data / full_backup.TARGET_FILE).exists()
+    assert Sources.from_settings().second_target is None
+
+
+def test_the_attachments_folder_is_no_second_target(configured, tmp_path, monkeypatch):
+    uploads = tmp_path / "anhaenge"                     # attachments kept outside the data folder
+    uploads.mkdir()
+    monkeypatch.setattr(settings, "uploads_dir", str(uploads))
+    with pytest.raises(ValueError, match="Anhänge"):
+        full_backup.set_second_target(str(uploads / "sicherung"))
+    assert Sources.from_settings().second_target is None
+
+
+def test_an_unwritable_second_target_is_refused(configured, tmp_path, monkeypatch):
+    def refuse(_fd):
+        raise OSError(30, "Read-only file system")
+
+    monkeypatch.setattr(full_backup.os, "fsync", refuse)
+    with pytest.raises(ValueError, match="nicht schreiben: Read-only file system"):
+        full_backup.set_second_target(str(tmp_path / "readonly"))
+    assert not list((tmp_path / "readonly").iterdir())
+    assert not (configured.data / full_backup.TARGET_FILE).exists()
+
+
+def test_the_configured_second_target_wins_and_cannot_be_changed_in_the_app(configured, tmp_path, monkeypatch):
+    (configured.data / full_backup.TARGET_FILE).write_text(json.dumps({"second_target": str(tmp_path / "app")}))
+    monkeypatch.setattr(settings, "backup_second_target", str(tmp_path / "nas"))
+    assert full_backup.configured_second_target() == (str(tmp_path / "nas"), "env")
+    assert Sources.from_settings().second_target == tmp_path / "nas"
+    with pytest.raises(ValueError, match="BACKUP_SECOND_TARGET"):
+        full_backup.set_second_target(str(tmp_path / "other"))
+    assert full_backup.overview()["backup"]["second_target_source"] == "env"
+
+
+def test_unreadable_backup_settings_mean_no_second_target(configured):
+    (configured.data / full_backup.TARGET_FILE).write_text("{kaputt", encoding="utf-8")
+    assert full_backup.configured_second_target() == ("", None)
+    assert "no_second_target" in {w["code"] for w in full_backup.overview()["warnings"]}
+
+
 def test_failures_are_logged_and_concurrent_runs_refused(installation):
     installation.db.unlink()
     with pytest.raises(full_backup.BackupError, match="nicht gefunden"):
@@ -657,7 +738,8 @@ def api(configured):
     restricted = bearer(auth.register_user("ops-staff", "ops-staff@example.test", "Staff", "Secret123", "verwalter",
                                            portfolio_access="selected", portfolio_ids=[portfolio.id]))
     reader = bearer(auth.register_user("ops-reader", "ops-reader@example.test", "Reader", "Secret123", "readonly"))
-    yield SimpleNamespace(client=TestClient(app), owner=owner, restricted=restricted, reader=reader)
+    manager = bearer(auth.register_user("ops-manager", "ops-manager@example.test", "Manager", "Secret123", "verwalter"))
+    yield SimpleNamespace(client=TestClient(app), owner=owner, restricted=restricted, reader=reader, manager=manager)
     auth.clear_users()
     store.clear_all()
 
@@ -672,6 +754,25 @@ def test_restricted_accounts_get_403_on_the_operations_overview(api):
     body = response.json()
     assert {"backup", "restore_probe", "secrets", "warnings", "failures", "jobs", "schema"} <= set(body)
     assert body["backup"]["retention"] == {"daily": 14, "monthly": 6, "pre_upgrade": 3}
+
+
+def test_only_the_owner_sets_the_second_target_through_the_api(api, tmp_path):
+    url = "/api/v1/admin/operations/second-target"
+    target = tmp_path / "nas" / "Sicherung"
+    for headers in (api.manager, api.restricted, api.reader):
+        assert api.client.put(url, json={"path": str(target)}, headers=headers).status_code == 403
+    assert not target.exists()
+    refused = api.client.put(url, json={"path": "Sicherung"}, headers=api.owner)
+    assert refused.status_code == 400 and "vollständigen Pfad" in refused.json()["error"]["message"]
+    saved = api.client.put(url, json={"path": str(target)}, headers=api.owner)
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["second_target"] == str(target) and target.is_dir()
+    overview = api.client.get("/api/v1/admin/operations", headers=api.owner).json()
+    assert overview["backup"]["second_target"] == str(target)
+    assert overview["backup"]["second_target_source"] == "app"
+    removed = api.client.put(url, json={"path": ""}, headers=api.owner)
+    assert removed.status_code == 200 and removed.json()["second_target"] is None
+    assert api.client.get("/api/v1/admin/operations", headers=api.owner).json()["backup"]["second_target"] is None
 
 
 def test_the_overview_function_refuses_a_restricted_scope_directly():

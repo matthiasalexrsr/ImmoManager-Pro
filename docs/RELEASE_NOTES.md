@@ -60,6 +60,7 @@ Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal u
 - **Rollen und Rechte:** Rollen (Verwaltung, Buchhaltung, Technik, Nur Lesen) mit Portfoliozugriff je Konto.
 - **Datensicherung:**
   - täglich ein geprüftes Vollbackup mit Datenbank, Anhängen, Einstellungen und Schlüssel;
+  - auf Wunsch eine geprüfte zweite Kopie auf USB-Festplatte oder Netzlaufwerk, eingerichtet unter Einstellungen → System → Betrieb;
   - monatlich eine Wiederherstellungsprobe;
   - Zugangsdaten von Schnittstellen werden verschlüsselt gespeichert.
 - **Datenbank-Updates** nur ausdrücklich und immer mit Vollbackup davor.

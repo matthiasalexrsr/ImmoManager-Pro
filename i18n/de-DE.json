@@ -980,7 +980,7 @@
       "loadError": "Betriebsübersicht konnte nicht geladen werden",
       "warnings": {
         "schedule_disabled": "Die tägliche Sicherung ist ausgeschaltet.",
-        "no_second_target": "Kein zweites Sicherungsziel (z. B. Netzlaufwerk) eingerichtet.",
+        "no_second_target": "Kein zweites Sicherungsziel eingerichtet. Bei „Zweites Ziel“ einen Ordner auf einer anderen Festplatte, einem USB-Laufwerk oder Netzlaufwerk eintragen (Eigentümer).",
         "second_target_failed": "Die Kopie ins zweite Ziel ist fehlgeschlagen.",
         "no_backup": "Es gibt noch kein erfolgreiches Vollbackup.",
         "backup_stale": "Das letzte erfolgreiche Vollbackup ist {{hours}} Stunden alt.",
@@ -988,12 +988,24 @@
         "no_probe": "Es gibt noch keine bestandene Wiederherstellungsprobe.",
         "probe_stale": "Die letzte bestandene Wiederherstellungsprobe ist {{days}} Tage alt.",
         "last_probe_failed": "Die letzte Wiederherstellungsprobe ist fehlgeschlagen.",
-        "keys_unprotected": "Die Schlüssel liegen ohne Passphrase im Archiv (BACKUP_PASSPHRASE setzen).",
+        "keys_unprotected": "Die Schlüssel liegen ohne Passphrase im Archiv. Abhilfe: in der Datei {{file}} die Zeile BACKUP_PASSPHRASE=… ergänzen, das Programm neu starten und die Passphrase getrennt aufbewahren.",
         "keys_not_in_backup": "Diese Schlüssel sind nicht im Vollbackup: {{ids}} – getrennt sichern.",
         "plaintext_secrets": "{{count}} Integrationsgeheimnis(se) noch unverschlüsselt gespeichert.",
         "secrets_error": "Integrationsgeheimnisse sind nicht lesbar (Schlüssel fehlt?); Änderungen sind gesperrt.",
-        "schema_not_current": "Die Datenbank ist nicht auf dem aktuellen Schemastand."
-      }
+        "schema_not_current": "Die Datenbank ist nicht auf dem aktuellen Schemastand.",
+        "second_target_pending": "Im zweiten Ziel liegt noch keine Kopie des neuesten Vollbackups; „Vollbackup jetzt“ legt sie an.",
+        "second_target_same_device": "Das zweite Ziel liegt auf demselben Laufwerk wie die Daten und schützt nicht vor einem Festplattendefekt."
+      },
+      "secondTargetSetUp": "Einrichten",
+      "secondTargetChange": "Ändern",
+      "secondTargetSave": "Speichern",
+      "secondTargetRemove": "Entfernen",
+      "secondTargetCancel": "Abbrechen",
+      "secondTargetFixed": "festgelegt in der Konfiguration (BACKUP_SECOND_TARGET)",
+      "secondTargetPlaceholder": "z. B. E:\\ImmoManager-Sicherung oder \\\\NAS\\Sicherung",
+      "secondTargetHint": "Ein Ordner auf einer anderen Festplatte, einem USB-Laufwerk oder Netzlaufwerk. Jedes Vollbackup wird dorthin kopiert und die Kopie geprüft.",
+      "secondTargetSaved": "Gespeichert: {{path}}. Das nächste Vollbackup wird dorthin kopiert, sofort mit „Vollbackup jetzt“.",
+      "secondTargetRemoved": "Das zweite Ziel ist entfernt."
     },
     "about": {
       "title": "Über ImmoManager Pro",

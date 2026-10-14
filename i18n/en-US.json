@@ -980,7 +980,7 @@
       "loadError": "Operations overview could not be loaded",
       "warnings": {
         "schedule_disabled": "The daily backup is switched off.",
-        "no_second_target": "No second backup target (e.g. network share) configured.",
+        "no_second_target": "No second backup target set up. Enter a folder on another disk, a USB drive or a network drive under “Second target” (owner).",
         "second_target_failed": "The copy to the second target failed.",
         "no_backup": "There is no successful full backup yet.",
         "backup_stale": "The last successful full backup is {{hours}} hours old.",
@@ -988,12 +988,24 @@
         "no_probe": "There is no passed restore probe yet.",
         "probe_stale": "The last passed restore probe is {{days}} days old.",
         "last_probe_failed": "The last restore probe failed.",
-        "keys_unprotected": "The keys are stored in the archive without a passphrase (set BACKUP_PASSPHRASE).",
+        "keys_unprotected": "The keys are stored in the archive without a passphrase. To fix: add the line BACKUP_PASSPHRASE=… to the file {{file}}, restart the program and keep the passphrase separately.",
         "keys_not_in_backup": "These keys are not in the full backup: {{ids}} – keep them safe separately.",
         "plaintext_secrets": "{{count}} integration secret(s) still stored unencrypted.",
         "secrets_error": "Integration secrets cannot be read (key missing?); changes are locked.",
-        "schema_not_current": "The database is not at the current schema version."
-      }
+        "schema_not_current": "The database is not at the current schema version.",
+        "second_target_pending": "The second target has no copy of the newest full backup yet; “Full backup now” creates it.",
+        "second_target_same_device": "The second target is on the same drive as the data and does not protect against a disk failure."
+      },
+      "secondTargetSetUp": "Set up",
+      "secondTargetChange": "Change",
+      "secondTargetSave": "Save",
+      "secondTargetRemove": "Remove",
+      "secondTargetCancel": "Cancel",
+      "secondTargetFixed": "set in the configuration (BACKUP_SECOND_TARGET)",
+      "secondTargetPlaceholder": "e.g. E:\\ImmoManager-Backup or \\\\NAS\\Backup",
+      "secondTargetHint": "A folder on another disk, a USB drive or a network drive. Every full backup is copied there and the copy is checked.",
+      "secondTargetSaved": "Saved: {{path}}. The next full backup is copied there; right away with “Full backup now”.",
+      "secondTargetRemoved": "The second target has been removed."
     },
     "about": {
       "title": "About ImmoManager Pro",

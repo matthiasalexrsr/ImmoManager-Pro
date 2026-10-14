@@ -35,9 +35,13 @@ Sicherung
 ---------
 Das Programm legt jeden Tag um 01:30 Uhr ein geprüftes Vollbackup an (Datenbank, Anhänge,
 Einstellungen und Schlüssel) und prüft einmal im Monat, ob es sich wiederherstellen lässt.
-Übersicht und "Vollbackup jetzt": Einstellungen → System.
-Empfehlung: den Ordner "backups" zusätzlich regelmäßig auf einen USB-Stick oder ein
-Netzlaufwerk kopieren.
+Übersicht und "Vollbackup jetzt": Einstellungen → System → Betrieb.
+Dringend empfohlen: eine zweite Kopie auf einem anderen Laufwerk. Dazu unter Einstellungen →
+System → Betrieb bei "Zweites Ziel" auf "Einrichten" klicken und einen Ordner auf einer
+USB-Festplatte oder einem Netzlaufwerk eintragen (z. B. E:\ImmoManager-Sicherung oder
+\\NAS\Sicherung). Jedes Vollbackup wird dann dorthin kopiert und die Kopie geprüft. Ist das
+Laufwerk einmal nicht angeschlossen, meldet die Übersicht das; die Sicherung im Datenordner
+entsteht trotzdem.
 
 
 Auf eine neue Version aktualisieren

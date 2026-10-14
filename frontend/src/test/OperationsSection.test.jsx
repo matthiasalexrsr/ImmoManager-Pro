@@ -4,9 +4,11 @@ import OperationsSection from '../pages/settings/OperationsSection';
 import { api } from '../api';
 import { formatBytes } from '../utils/format';
 
-vi.mock('../api', () => ({ api: { get: vi.fn(), post: vi.fn() } }));
+vi.mock('../api', () => ({ api: { get: vi.fn(), post: vi.fn(), put: vi.fn() } }));
 const t = (key, params) => (params ? `${key} ${JSON.stringify(params)}` : key);
 vi.mock('../i18n', () => ({ useTranslation: () => ({ t }) }));
+const signedIn = vi.hoisted(() => ({ role: 'eigentuemer' }));
+vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ user: { role: signedIn.role } }) }));
 
 const OVERVIEW = {
   backup: {
@@ -33,6 +35,58 @@ describe('OperationsSection', () => {
   beforeEach(() => {
     api.get.mockReset();
     api.post.mockReset();
+    api.put.mockReset();
+    signedIn.role = 'eigentuemer';
+  });
+
+  it('lets the owner set up the second target and reloads the overview', async () => {
+    api.get.mockResolvedValueOnce(OVERVIEW).mockResolvedValue({
+      ...OVERVIEW, backup: { ...OVERVIEW.backup, second_target: 'E:\\Sicherung', second_target_source: 'app' },
+    });
+    api.put.mockResolvedValue({ second_target: 'E:\\Sicherung', source: 'app', same_device: false });
+    render(<OperationsSection />);
+    fireEvent.click(await screen.findByText('settings.operations.secondTargetSetUp'));
+    fireEvent.change(screen.getByLabelText('settings.operations.secondTarget'), { target: { value: 'E:\\Sicherung' } });
+    fireEvent.click(screen.getByText('settings.operations.secondTargetSave'));
+    expect(await screen.findByRole('status')).toHaveTextContent('settings.operations.secondTargetSaved');
+    expect(screen.getByTestId('second-target')).toHaveTextContent('E:\\Sicherung');
+    expect(api.put).toHaveBeenCalledWith('/admin/operations/second-target', { path: 'E:\\Sicherung' });
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(2));
+    expect(screen.queryByLabelText('settings.operations.secondTarget')).not.toBeInTheDocument();
+  });
+
+  it('keeps the form open with the reason when the folder is refused', async () => {
+    api.get.mockResolvedValue(OVERVIEW);
+    api.put.mockRejectedValue(new Error('In den Ordner lässt sich nicht schreiben'));
+    render(<OperationsSection />);
+    fireEvent.click(await screen.findByText('settings.operations.secondTargetSetUp'));
+    fireEvent.change(screen.getByLabelText('settings.operations.secondTarget'), { target: { value: 'F:\\' } });
+    fireEvent.click(screen.getByText('settings.operations.secondTargetSave'));
+    expect(await screen.findByText('In den Ordner lässt sich nicht schreiben')).toBeInTheDocument();
+    expect(screen.getByLabelText('settings.operations.secondTarget')).toHaveValue('F:\\');
+  });
+
+  it('offers no change to a manager or for a target set in the configuration', async () => {
+    signedIn.role = 'verwalter';
+    api.get.mockResolvedValue(OVERVIEW);
+    const { unmount } = render(<OperationsSection />);
+    await screen.findByText(/immomanager-full-a.zip/);
+    expect(screen.queryByText('settings.operations.secondTargetSetUp')).not.toBeInTheDocument();
+    unmount();
+
+    signedIn.role = 'eigentuemer';
+    api.get.mockResolvedValue({ ...OVERVIEW, backup: { ...OVERVIEW.backup, second_target: '/mnt/nas', second_target_source: 'env' } });
+    render(<OperationsSection />);
+    expect(await screen.findByTestId('second-target')).toHaveTextContent('/mnt/nas');
+    expect(screen.getByText('settings.operations.secondTargetFixed')).toBeInTheDocument();
+    expect(screen.queryByText('settings.operations.secondTargetChange')).not.toBeInTheDocument();
+  });
+
+  it('names the file for the passphrase', async () => {
+    api.get.mockResolvedValue({ ...OVERVIEW, warnings: [{ code: 'keys_unprotected', file: 'C:\\Daten\\.env' }] });
+    render(<OperationsSection />);
+    expect(await screen.findByTestId('operations-warnings'))
+      .toHaveTextContent('settings.operations.warnings.keys_unprotected {"file":"C:\\\\Daten\\\\.env"}');
   });
 
   it('shows the last backup, the failed probe and the notices', async () => {
