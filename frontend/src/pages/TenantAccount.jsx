@@ -73,7 +73,9 @@ export default function TenantAccount() {
             <tbody>
               {account.contracts.map(c => (
                 <tr key={c.contract_id}>
-                  <td>{c.contract_number}</td>
+                  <td>{c.contract_number}
+                    {c.ledger_start && <div className="td-sub">Konto ab {day(c.ledger_start)} übernommen
+                      {c.carried_balance ? ` · Saldo ${eur(c.carried_balance)}` : ''}</div>}</td>
                   <td className="text-right td-num">{eur(c.expected)}</td>
                   <td className="text-right td-num">{eur(c.paid)}</td>
                   <td className={`text-right td-num ${c.outstanding > 0 ? 'text-red' : ''}`}>{eur(c.outstanding)}</td>

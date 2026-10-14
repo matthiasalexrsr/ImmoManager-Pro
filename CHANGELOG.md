@@ -2,6 +2,16 @@
 
 All notable changes to ImmoManager Pro will be documented in this file.
 
+## Unreleased — 2026-10-14 first day and running tenancies
+
+Found by using a fresh production installation from the first account to the first rent payment.
+
+- **Running tenancies can be taken over.** A contract that began before the app was used counted every month since its start as unpaid (a tenancy from 2019 showed 81 open months in the account, the rent overview and dunning). Contracts now take "Mietkonto hier geführt ab" (the first of a month) and "Saldo zum Übernahmetag" (arrears positive, credit negative). The account, the rent overview, dunning, the contract settlement and deposit settlements count rent from that month on. Arrears are the oldest claim ("Rückstand zum Übernahmetag"), a credit pays the first months, and payments booked before the day are part of the carried balance. Reports of rent due per month keep every month. Migration `981b2631e1e8` adds the two fields and refuses a downgrade while a contract uses them; the tenant account shows the takeover.
+- **"Erste Schritte"** on the dashboard of a new installation: portfolio, property, units, bank account and contracts in order, the next step highlighted, until done or hidden.
+- **No dead ends in forms**: a required choice with nothing to choose (no portfolio yet for a property) says what is missing and links to its New form. A required choice with exactly one option is made already (the only portfolio, property or account), also in the rent payment dialog, which links to creating an account when there is none.
+- **Empty lists lead on**: "Neuen Eintrag anlegen" when a list is empty, "Suche und Filter zurücksetzen" when the search finds nothing. Properties and tenants open their New form for Alt+N and links (`?neu=1`) like the other lists.
+- Defaults: property type residential, unit type apartment, the next free contract number in the pattern in use. A property without units shows "—" instead of a red 0 %.
+
 ## Unreleased — 2026-10-14 links, totals and Aktenwerk
 
 - **Records link to each other.** A tenant name in bookings, contracts, receivables, rent charges, statements and other lists opens the party file. Properties, units, maintenance cases, service contracts, invoice reviews, tenant accounts and dunning cases open their own page. A supplier, provider or contact opens the contact list searched for that name, and an account name opens its bookings filtered to that account (a chip shows the filter and removes it). The contract cards in the party file link to their property and unit. Links inside a row do not also open the row.

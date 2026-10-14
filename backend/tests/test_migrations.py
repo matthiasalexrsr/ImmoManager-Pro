@@ -816,3 +816,27 @@ def test_deposit_file_on_an_adopted_database(migrate):
     assert not DEPOSIT_TABLES & set(_schema(migrate.db_path))
     migrate()
     assert _version(migrate.db_path) == migrate.head
+
+
+TAKEOVER_REVISION = "981b2631e1e8"
+
+
+def test_contract_takeover_upgrade_keeps_contracts_and_guards_the_downgrade(migrate):
+    db_path = migrate(DEPOSITS_REVISION)
+    _seed_previous_schema(db_path)
+    migrate(TAKEOVER_REVISION)
+    assert {"ledger_start", "carried_balance"} <= _schema(db_path)["contracts"]
+    with sqlite3.connect(db_path) as conn:      # existing tenancies keep their full account
+        assert conn.execute("SELECT id, ledger_start, carried_balance FROM contracts").fetchall() == [("c1", None, None)]
+        conn.execute("UPDATE contracts SET ledger_start = '2026-01-01', carried_balance = 250.5")
+    with pytest.raises(RuntimeError, match="takeover date or carried balance"):
+        migrate.downgrade(DEPOSITS_REVISION)
+    assert _version(db_path) == TAKEOVER_REVISION
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("UPDATE contracts SET ledger_start = NULL, carried_balance = NULL")
+    triggers = _triggers(db_path)
+    migrate.downgrade(DEPOSITS_REVISION)
+    assert not {"ledger_start", "carried_balance"} & _schema(db_path)["contracts"]
+    assert _triggers(db_path) == triggers      # dropped in place: the table keeps its triggers
+    migrate(TAKEOVER_REVISION)
+    assert {"ledger_start", "carried_balance"} <= _schema(db_path)["contracts"]

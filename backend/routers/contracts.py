@@ -23,6 +23,7 @@ from ..services.document_versions import ensure_binding_kept
 from ..services.payment_allocations import contract_payments
 from ..services.read_cache import CachedReads
 from ..services.rent_history import charge_for, follow_contract_start, rent_steps, start_rent_history
+from ..services.rent_ledger import account_receivables
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/contracts", tags=["Verträge"])
@@ -162,7 +163,7 @@ def get_contract_settlement(
     dashboard = LeaseEngine.build_dashboard(
         contract_start=contract.start_date,
         contract_end=contract.end_date,
-        rent_steps=steps,
+        receivables=account_receivables(store, contract, today, steps),
         payments=payments,
         today=today,
     )
@@ -203,7 +204,7 @@ def create_dunning_campaign(
     campaign = LeaseEngine.build_dunning_campaign(
         contract_start=contract.start_date,
         contract_end=contract.end_date,
-        rent_steps=steps,
+        receivables=account_receivables(store, contract, today, steps),
         payments=payments,
         today=today,
         policy=dunning_policy,

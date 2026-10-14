@@ -119,6 +119,8 @@ class ReceivableLine:
     service_charge_advance: Decimal
     heating_advance: Decimal
     total_amount: Decimal
+    # set for a claim that is no monthly rent (the balance carried over from a previous system)
+    label: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -148,6 +150,7 @@ class ReceivableSettlementLine:
     paid_amount: Decimal
     outstanding_amount: Decimal
     status: str
+    label: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -395,6 +398,7 @@ class LeaseEngine:
                     paid_amount=_money(paid),
                     outstanding_amount=outstanding,
                     status=status,
+                    label=receivable.label,
                 )
             )
 
@@ -469,16 +473,20 @@ class LeaseEngine:
         until_including: date | None = None,
         due_day: int = 3,
         rent_steps: Iterable[RentStep] | None = None,
+        receivables: list[ReceivableLine] | None = None,
     ) -> SettlementDashboard:
+        """Settlement of a contract; ``receivables`` are the account's claims when the caller built
+        them already (an account taken over from a previous system starts later)."""
         horizon = until_including or today
-        receivables = LeaseEngine.build_monthly_receivables(
-            contract_start=contract_start,
-            contract_end=contract_end,
-            charge=charge,
-            until_including=horizon,
-            due_day=due_day,
-            rent_steps=rent_steps,
-        )
+        if receivables is None:
+            receivables = LeaseEngine.build_monthly_receivables(
+                contract_start=contract_start,
+                contract_end=contract_end,
+                charge=charge,
+                until_including=horizon,
+                due_day=due_day,
+                rent_steps=rent_steps,
+            )
         payment_list = list(payments)
 
         allocations = LeaseEngine.allocate_payments_fifo(receivables, payment_list)
@@ -518,6 +526,7 @@ class LeaseEngine:
         due_day: int = 3,
         current_level_by_period: dict[date, int] | None = None,
         rent_steps: Iterable[RentStep] | None = None,
+        receivables: list[ReceivableLine] | None = None,
     ) -> "DunningCampaign":
         from .dunning_engine import DunningEngine, ReceivableState
 
@@ -530,10 +539,11 @@ class LeaseEngine:
             until_including=until_including,
             due_day=due_day,
             rent_steps=rent_steps,
+            receivables=receivables,
         )
 
         levels = current_level_by_period or {}
-        receivables = [
+        states = [
             ReceivableState(
                 receivable_id=line.period_start.isoformat(),
                 due_date=line.due_date,
@@ -545,4 +555,4 @@ class LeaseEngine:
             if line.outstanding_amount > Decimal("0.00")
         ]
 
-        return DunningEngine.build_campaign(receivables, today=today, policy=policy)
+        return DunningEngine.build_campaign(states, today=today, policy=policy)

@@ -65,7 +65,6 @@ from ..domain.dunning_process import (
     digest,
     next_stage,
 )
-from ..domain.lease_engine import LeaseEngine
 from ..domain.money import ZERO, as_number, money
 from ..domain.receivables import is_unpaid_debt
 from ..models import Document, DocumentCreate, NotificationCreate
@@ -111,7 +110,7 @@ from .dunning_letter_validation import (
 )
 from .dunning_render import plain_text, render_pdf, subject
 from .payment_allocations import contract_payments
-from .rent_history import rent_steps
+from .rent_ledger import account_receivables
 
 WRITE_AREAS = ("/dunning",)
 FINALIZE_AREAS = ("/dunning", "/documents")
@@ -435,11 +434,13 @@ def evaluate(ctx: Any, contract: Any, as_of: date, *, payments_until: date | Non
     disputed = {d.claim_key: d.status for d in disputes if d.status in ("open", "upheld")}
 
     claims: list[Claim] = []
-    steps = rent_steps(ctx.store, contract)
-    for line in LeaseEngine.build_monthly_receivables(contract_start=contract.start_date,
-                                                      contract_end=contract.end_date, rent_steps=steps,
-                                                      until_including=as_of):
-        if line.total_amount > 0:
+    # the tenant account's claims: from the takeover on for a tenancy taken over, arrears carried over first
+    for line in account_receivables(ctx.store, contract, as_of):
+        if line.total_amount <= 0:
+            continue
+        if line.label:
+            claims.append(Claim("rent:carried", "rent", line.due_date, money(line.total_amount), line.label))
+        else:
             claims.append(Claim(f"rent:{line.period_start:%Y-%m}", "rent", line.due_date, money(line.total_amount),
                                 f"Miete {line.period_start:%m/%Y}"))
     receivables = _receivables_of(ctx, contract_id)

@@ -9,7 +9,7 @@ const STEPS = [
   { key: 'properties', label: 'Immobilie anlegen', detail: 'Adresse und Eckdaten des Objekts.', to: '/properties?neu=1' },
   { key: 'units', label: 'Einheiten anlegen', detail: 'Wohnungen, Gewerbe, Stellplätze mit Fläche und Miete.', to: '/units?neu=1' },
   { key: 'accounts', label: 'Bankkonto anlegen', detail: 'Auf dieses Konto werden Mieten und Kosten gebucht.', to: '/accounts?neu=1' },
-  { key: 'contracts', label: 'Mietverträge erfassen', detail: 'Mieter und Vertrag je vermieteter Einheit, laufende Verträge mit ihrem Beginn.', to: '/contracts?neu=1' },
+  { key: 'contracts', label: 'Mietverträge erfassen', detail: 'Mieter und Vertrag je vermieteter Einheit. Laufende Verträge mit „Mietkonto hier geführt ab“ und Saldo, damit keine alten Monate als offen gelten.', to: '/contracts?neu=1' },
 ];
 
 const storageKey = user => `immo.setup.dismissed.${user?.id || user?.username || 'local'}`;

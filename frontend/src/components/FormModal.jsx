@@ -258,9 +258,9 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
                           onChange={e => update(f.key, e.target.value)}
                           required={f.required}
                         />
-                        <button type="button" className="btn btn-sm btn-ghost date-today"
+                        {!f.noToday && <button type="button" className="btn btn-sm btn-ghost date-today"
                           aria-label={tr('ui.form.todayFill', 'Heute eintragen')} aria-controls={inputId}
-                          onClick={() => update(f.key, localToday())}>{tr('ui.form.today', 'Heute')}</button>
+                          onClick={() => update(f.key, localToday())}>{tr('ui.form.today', 'Heute')}</button>}
                       </span>
                     ) : (
                       <input

@@ -1,7 +1,7 @@
 from datetime import date, datetime, timezone
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from .domain.money import money
 
@@ -152,6 +152,11 @@ class ContractCreate(BaseModel):
     index_rent: Optional[str] = None
     service_charge_settlement: Optional[str] = None
     persons: Optional[int] = Field(default=None, ge=0)  # household size for person-based utility keys
+    # Taking over a running tenancy: the tenant account is kept here from this first of a month on;
+    # the months before were settled in the previous system. carried_balance is the account's balance
+    # on that day (positive: the tenant owes it, negative: the tenant's credit).
+    ledger_start: Optional[date] = None
+    carried_balance: Optional[float] = Field(default=None, ge=-10_000_000, le=10_000_000)
 
     @field_validator("end_date")
     @classmethod
@@ -167,6 +172,26 @@ class ContractCreate(BaseModel):
         if v not in _VALID_CONTRACT_STATUSES:
             raise ValueError(f"Ungültiger Status. Erlaubt: {', '.join(sorted(_VALID_CONTRACT_STATUSES))}")
         return v
+
+    @field_validator("carried_balance")
+    @classmethod
+    def carried_balance_in_cents(cls, v: Optional[float]) -> Optional[float]:
+        return None if v is None else float(money(v))
+
+    @model_validator(mode="after")
+    def validate_takeover(self) -> "ContractCreate":
+        start = self.ledger_start
+        if start is None:
+            if self.carried_balance:
+                raise ValueError("Ein Saldo zum Übernahmetag braucht das Datum, ab dem das Mietkonto hier geführt wird.")
+            return self
+        if start.day != 1:
+            raise ValueError("Das Mietkonto wird ab einem Monatsersten übernommen (z. B. 01.01.2026).")
+        if start <= self.start_date:
+            raise ValueError("Der Übernahmetag muss nach dem Vertragsbeginn liegen; beginnt der Vertrag erst hier, bleibt das Feld leer.")
+        if self.end_date is not None and start > self.end_date:
+            raise ValueError("Der Übernahmetag muss vor dem Vertragsende liegen.")
+        return self
 
 
 class Contract(ContractCreate):
@@ -511,6 +536,8 @@ class ContractPatch(BaseModel):
     index_rent: Optional[str] = None
     service_charge_settlement: Optional[str] = None
     persons: Optional[int] = Field(default=None, ge=0)
+    ledger_start: Optional[date] = None
+    carried_balance: Optional[float] = Field(default=None, ge=-10_000_000, le=10_000_000)
 
 
 class AccountPatch(BaseModel):

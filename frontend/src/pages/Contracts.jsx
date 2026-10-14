@@ -192,6 +192,12 @@ export default function Contracts() {
       { value: 'expired', label: t('status.contract.expired') || 'Ausgelaufen' },
       { value: 'draft', label: t('ui.filterChips.draft') || 'Entwurf' },
     ]},
+    // A tenancy that ran before the app: its account starts here, the months before were settled
+    // in the previous system and only the balance of that day comes along.
+    { section: 'Übernahme aus dem Vorsystem', key: 'ledger_start', label: 'Mietkonto hier geführt ab', type: 'date', noToday: true,
+      hint: 'Nur für laufende Verträge, immer ein Monatserster. Mieten davor gelten als im Vorsystem abgerechnet; leer = ab Vertragsbeginn.' },
+    { section: 'Übernahme aus dem Vorsystem', key: 'carried_balance', label: 'Saldo zum Übernahmetag (€)', type: 'number',
+      hint: 'Rückstand des Mieters positiv, Guthaben negativ; 0 oder leer = ausgeglichen.' },
   ];
 
   const handleSave = async (data) => {

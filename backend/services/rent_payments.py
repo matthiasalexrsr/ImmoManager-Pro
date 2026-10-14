@@ -40,7 +40,7 @@ from .maintenance_rows import Rows
 from .payment_allocations import contract_payments, credited_by_tenant, deposit_shares
 from .portfolio_scope import scope_context
 from .read_cache import CachedReads
-from .rent_history import rent_steps
+from .rent_ledger import account_receivables
 
 
 class ContractPaymentRequest(BaseModel):
@@ -197,8 +197,8 @@ def monthly_ledger(store: Any, month: str, as_of: date, property_id: str | None 
     result = []
     for contract in contracts:
         dashboard = LeaseEngine.build_dashboard(
-            contract_start=contract.start_date, contract_end=contract.end_date,
-            rent_steps=rent_steps(store, contract), today=as_of,
+            contract_start=contract.start_date, contract_end=contract.end_date, today=as_of,
+            receivables=account_receivables(store, contract, as_of),
             payments=contract_payments(store, contract, credited.get(contract.tenant_id, []), until=as_of))
         line = next((line for line in dashboard.settlement_lines if line.period_start == selected), None)
         if line is None:
