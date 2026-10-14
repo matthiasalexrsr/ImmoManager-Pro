@@ -1,12 +1,16 @@
 import uuid
+from io import BytesIO
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
 from ..dependencies import store
 from ..models import Document, DocumentCreate, DocumentPatch
 from ..routers.files import _perform_ocr, analyze_file, process_ocr
+from ..services.document_versions import ensure_binding_kept, ensure_no_originals
 from ..services.file_storage import get_file_storage
+from ..services.upload_policy import DOCUMENT_EXTENSIONS, read_limited, require_allowed_extension
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/documents", tags=["Dokumente"])
@@ -57,35 +61,35 @@ async def import_document(
     property_id: str | None = Form(None),
     unit_id: str | None = Form(None),
     contract_id: str | None = Form(None),
+    tenant_id: str | None = Form(None),
 ) -> Document:
     """Import a document in one step: upload + OCR + metadata persistence."""
     storage = get_file_storage()
-    ext = (file.filename or "file").rsplit(".", 1)[-1].lower()
+    ext = require_allowed_extension(file.filename, DOCUMENT_EXTENSIONS)
     key = f"documents/{uuid.uuid4().hex}_{(file.filename or 'file').replace(' ', '_')}"
-    storage.save(key, file.file, content_type=file.content_type or "application/octet-stream")
     file_url = storage.get_url(key)
-
-    if ext in {"pdf", "png", "jpg", "jpeg", "tiff", "tif", "bmp"}:
-        ocr_text = _perform_ocr(storage, key, ext)
-        if ocr_text:
-            from io import BytesIO
-
-            ocr_key = f"{key.rsplit('.', 1)[0]}_ocr.txt"
-            storage.save(ocr_key, BytesIO(ocr_text.encode("utf-8")), content_type="text/plain")
-
     payload = DocumentCreate(
         title=title,
         document_type=document_type,
-        document_date=document_date,
+        document_date=document_date,  # type: ignore[arg-type]  # pydantic parses ISO date strings
         tags=tags,
         description=description,
         property_id=property_id,
         unit_id=unit_id,
         contract_id=contract_id,
+        tenant_id=tenant_id,
         file_url=file_url,
     )
     try:
-        return store.create_document(payload)
+        await run_in_threadpool(store.validate_document_associations, payload)
+        contents = await read_limited(file)
+        storage.save(key, BytesIO(contents), content_type=file.content_type or "application/octet-stream")
+        if ext in {"pdf", "png", "jpg", "jpeg", "tiff", "tif", "bmp"}:
+            ocr_text = _perform_ocr(storage, key, ext)
+            if ocr_text:
+                ocr_key = f"{key.rsplit('.', 1)[0]}_ocr.txt"
+                storage.save(ocr_key, BytesIO(ocr_text.encode("utf-8")), content_type="text/plain")
+        return await run_in_threadpool(store.create_document, payload)
     except ValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -130,6 +134,7 @@ def get_document(document_id: str) -> Document:
 @router.put("/{document_id}", response_model=Document)
 def update_document(document_id: str, payload: DocumentCreate) -> Document:
     try:
+        ensure_binding_kept(store, "document", document_id, store.get_document(document_id), payload.model_dump())
         return store.update_document(document_id, payload)
     except (NotFoundError, ValidationError) as exc:
         status_code = status.HTTP_404_NOT_FOUND if isinstance(exc, NotFoundError) else status.HTTP_400_BAD_REQUEST
@@ -139,14 +144,18 @@ def update_document(document_id: str, payload: DocumentCreate) -> Document:
 @router.patch("/{document_id}", response_model=Document)
 def patch_document(document_id: str, payload: DocumentPatch) -> Document:
     try:
+        ensure_binding_kept(store, "document", document_id, store.get_document(document_id),
+                            payload.model_dump(exclude_unset=True))
         return store._patch_entity("document", document_id, payload)
-    except NotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except (NotFoundError, ValidationError) as exc:
+        status_code = status.HTTP_404_NOT_FOUND if isinstance(exc, NotFoundError) else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
 
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_document(document_id: str) -> None:
     try:
+        ensure_no_originals(store, "document", document_id)
         store.delete_document(document_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

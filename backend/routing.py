@@ -3,13 +3,18 @@
 Extracted from app.py. Assembles the v1 API router with all domain routers.
 """
 
-from fastapi import APIRouter, Depends
+import json
+from collections.abc import AsyncIterator
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from starlette.concurrency import run_in_threadpool
 
 from .auth import require_auth, require_role
 from .routers import (
     accounts,
     admin,
     admin_runtime,
+    aktenwerk,
     audit,
     auth,
     autotest,
@@ -26,20 +31,25 @@ from .routers import (
     dev_notes,
     diagnostics,
     documents,
+    dunning,
     escalation,
     files,
     handover_protocols,
     history,
+    housing_confirmations,
     i18n,
     insurances,
     integrations,
+    invoice_review,
     invoices,
     leads,
     listings,
     maintenance,
+    maintenance_projects,
     messages,
     meters_standalone,
     notifications,
+    operations,
     photos,
     portfolios,
     properties,
@@ -47,7 +57,9 @@ from .routers import (
     rent_adjustments,
     rent_charges,
     reports,
+    review,
     search,
+    service_contracts,
     tasks,
     tasks_status,
     tax_rates,
@@ -66,8 +78,9 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(auth.router)
 
     # Protected routes
-    _auth_dep = [Depends(require_auth)]
+    _auth_dep = [Depends(require_auth), Depends(plausibility_guard)]
     _admin_dep = [Depends(require_role("eigentuemer", "verwalter"))]
+    api_v1.include_router(operations.router, dependencies=_admin_dep)
     api_v1.include_router(admin_runtime.router, dependencies=_admin_dep)
     api_v1.include_router(admin.router, dependencies=_admin_dep)
     api_v1.include_router(audit.router, dependencies=_auth_dep)
@@ -77,12 +90,18 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(properties.router, dependencies=_auth_dep)
     api_v1.include_router(units.router, dependencies=_auth_dep)
     api_v1.include_router(tenants.router, dependencies=_auth_dep)
+    api_v1.include_router(housing_confirmations.router, dependencies=_auth_dep)
     api_v1.include_router(contracts.router, dependencies=_auth_dep)
     api_v1.include_router(accounts.router, dependencies=_auth_dep)
     api_v1.include_router(bookings.router, dependencies=_auth_dep)
+    api_v1.include_router(review.router, dependencies=_auth_dep)
     api_v1.include_router(receivables.router, dependencies=_auth_dep)
     api_v1.include_router(invoices.router, dependencies=_auth_dep)
     api_v1.include_router(maintenance.router, dependencies=_auth_dep)
+    api_v1.include_router(maintenance_projects.router, dependencies=_auth_dep)
+    api_v1.include_router(maintenance_projects.payments_router, dependencies=_auth_dep)
+    api_v1.include_router(invoice_review.router, dependencies=_auth_dep)
+    api_v1.include_router(invoice_review.invoice_router, dependencies=_auth_dep)
     api_v1.include_router(documents.router, dependencies=_auth_dep)
     api_v1.include_router(tasks.router, dependencies=_auth_dep)
     api_v1.include_router(calendar.router, dependencies=_auth_dep)
@@ -105,7 +124,10 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(messages.router, dependencies=_auth_dep)
     api_v1.include_router(rent_charges.router, dependencies=_auth_dep)
     api_v1.include_router(integrations.router, dependencies=_auth_dep)
+    api_v1.include_router(aktenwerk.router, dependencies=_auth_dep)
     api_v1.include_router(insurances.router, dependencies=_auth_dep)
+    api_v1.include_router(service_contracts.router, dependencies=_auth_dep)
+    api_v1.include_router(dunning.router, dependencies=_auth_dep)
     api_v1.include_router(photos.router, dependencies=_auth_dep)
     api_v1.include_router(files.router, dependencies=_auth_dep)
     api_v1.include_router(tasks_status.router, dependencies=_auth_dep)
@@ -121,3 +143,28 @@ def build_api_v1() -> APIRouter:
 def get_i18n_router() -> APIRouter:
     """Return the i18n router (not versioned, public)."""
     return i18n.router
+
+
+async def plausibility_guard(request: Request) -> AsyncIterator[None]:
+    """Check what users enter before the endpoint stores it (backend.services.plausibility)."""
+    if request.method not in ("POST", "PUT", "PATCH") or "json" not in request.headers.get("content-type", ""):
+        yield
+        return
+    try:
+        body = json.loads(await request.body() or b"null")
+    except ValueError:
+        yield
+        return          # the endpoint answers malformed JSON itself
+    from .dependencies import store
+    from .services.plausibility import StaleRecordError, check, check_not_stale
+    from .services.record_revisions import revision_scope
+
+    path = request.url.path.removeprefix("/api/v1")
+    try:
+        expected = await run_in_threadpool(check_not_stale, request.method, path, body, store)
+    except StaleRecordError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    with revision_scope(expected):
+        await run_in_threadpool(check, request.method, path, body, store)
+        yield
+

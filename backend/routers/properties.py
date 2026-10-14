@@ -2,6 +2,8 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
 from ..models import Property, PropertyCreate, PropertyPatch
+from ..services.deletion_guard import ensure_deletable
+from ..services.document_versions import ensure_binding_kept
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/properties", tags=["Immobilien"])
@@ -47,6 +49,7 @@ def get_property(property_id: str) -> Property:
 @router.put("/{property_id}", response_model=Property)
 def update_property(property_id: str, payload: PropertyCreate) -> Property:
     try:
+        ensure_binding_kept(store, "property", property_id, store.get_property(property_id), payload.model_dump())
         return store.update_property(property_id, payload)
     except (NotFoundError, ValidationError) as exc:
         status_code = status.HTTP_404_NOT_FOUND if isinstance(exc, NotFoundError) else status.HTTP_400_BAD_REQUEST
@@ -56,6 +59,8 @@ def update_property(property_id: str, payload: PropertyCreate) -> Property:
 @router.patch("/{property_id}", response_model=Property)
 def patch_property(property_id: str, payload: PropertyPatch) -> Property:
     try:
+        ensure_binding_kept(store, "property", property_id, store.get_property(property_id),
+                            payload.model_dump(exclude_unset=True))
         return store._patch_entity("property", property_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -64,6 +69,7 @@ def patch_property(property_id: str, payload: PropertyPatch) -> Property:
 @router.delete("/{property_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_property(property_id: str) -> None:
     try:
+        ensure_deletable(store, "property", property_id)
         store.delete_property(property_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

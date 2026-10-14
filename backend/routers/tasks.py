@@ -1,41 +1,30 @@
-from datetime import date, timedelta
+from datetime import date
+from threading import RLock
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Response, status
+from pydantic import BaseModel
 
 from ..dependencies import store
 from ..models import Task, TaskCreate, TaskPatch
+from ..services.jobs import recurring
+from ..services.jobs.schedule import local_today
+from ..services.task_recurrence import next_due_date as _next_due_date
+from ..services.task_recurrence import parse_rrule as _parse_rrule
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/tasks", tags=["Aufgaben"])
+_recurrence_lock = RLock()  # same process; other processes are fenced by the occurrence ledger
 
 
-def _parse_rrule(rule: str) -> dict:
-    """Parse a simplified iCal RRULE string into a dict."""
-    parts = {}
-    for part in rule.split(";"):
-        if "=" in part:
-            key, value = part.split("=", 1)
-            parts[key.strip().upper()] = value.strip()
-    return parts
+class RecurrenceError(BaseModel):
+    task_id: str
+    title: str
+    error: str
 
 
-def _next_due_date(current: date, rrule: dict) -> date:
-    """Calculate the next due date based on an RRULE."""
-    freq = rrule.get("FREQ", "MONTHLY").upper()
-    interval = int(rrule.get("INTERVAL", "1"))
-    if freq == "DAILY":
-        return current + timedelta(days=interval)
-    elif freq == "WEEKLY":
-        return current + timedelta(weeks=interval)
-    elif freq == "MONTHLY":
-        month = current.month + interval
-        year = current.year + (month - 1) // 12
-        month = (month - 1) % 12 + 1
-        day = min(current.day, 28)  # safe for all months
-        return date(year, month, day)
-    elif freq == "YEARLY":
-        return date(current.year + interval, current.month, min(current.day, 28))
-    return current + timedelta(days=30 * interval)
+class RecurrenceReport(BaseModel):
+    created: list[Task]
+    errors: list[RecurrenceError]
 
 
 @router.get("", response_model=list[Task])
@@ -50,30 +39,18 @@ def list_tasks(
     date_to: date | None = Query(None),
 ) -> list[Task]:
     filters = {"status": status_filter, "assignee": assignee}
-    has_date_filter = isinstance(date_from, date) or isinstance(date_to, date)
-    results = store._list_paginated(
+    return store._list_paginated(
         entity_type="task",
-        skip=0 if has_date_filter else skip,
-        limit=10000 if has_date_filter else limit,
+        skip=skip,
+        limit=limit,
         filters=filters,
         order_by=sort_by,
         order_desc=(sort_order == "desc"),
+        range_filters={"due_date": (
+            date_from if isinstance(date_from, date) else None,
+            date_to if isinstance(date_to, date) else None,
+        )},
     )
-    if isinstance(date_from, date):
-        results = [
-            r for r in results
-            if getattr(r, 'due_date', None)
-            and r.due_date >= date_from
-        ]
-    if isinstance(date_to, date):
-        results = [
-            r for r in results
-            if getattr(r, 'due_date', None)
-            and r.due_date <= date_to
-        ]
-    if has_date_filter:
-        results = results[skip : skip + limit]
-    return results
 
 
 @router.post("", response_model=Task, status_code=status.HTTP_201_CREATED)
@@ -84,67 +61,64 @@ def create_task(payload: TaskCreate) -> Task:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
-# Static path MUST come before /{task_id} to avoid route collision
-@router.post("/generate-recurring", response_model=list[Task])
-def generate_recurring_tasks(
-    as_of: date | None = Query(None),
-) -> list[Task]:
-    """Generate next instances of recurring tasks that are due.
-
-    Looks at all tasks with a recurrence_rule and creates the next instance
-    if the current instance is completed and the next due date is <= as_of.
-    """
-    if as_of is None:
-        as_of = date.today()
-
-    all_tasks = store.list_tasks()
-    recurring_templates = [t for t in all_tasks if t.recurrence_rule]
-
-    created = []
-    for template in recurring_templates:
-        # Skip if there's already an open child task
-        has_open_child = any(
-            t.parent_task_id == template.id and t.status in {"open", "in_progress"}
-            for t in all_tasks
-        )
-        if has_open_child:
-            continue
-
-        rrule = _parse_rrule(template.recurrence_rule)
-        base_date = template.due_date or date.today()
-        next_date = _next_due_date(base_date, rrule)
-
-        # Check COUNT limit
-        count_limit = int(rrule.get("COUNT", "0"))
-        if count_limit > 0:
-            child_count = sum(1 for t in all_tasks if t.parent_task_id == template.id)
-            if child_count >= count_limit:
+def _generate_recurring_report(as_of: date) -> RecurrenceReport:
+    report = RecurrenceReport(created=[], errors=[])
+    ledger = recurring.ledger_for(store)
+    with _recurrence_lock:
+        all_tasks = store.list_tasks()
+        children: dict[str, list[Task]] = {}
+        for task in all_tasks:
+            if task.parent_task_id:
+                children.setdefault(task.parent_task_id, []).append(task)
+        for template in all_tasks:
+            if not template.recurrence_rule or template.parent_task_id:
                 continue
-
-        # Check UNTIL limit
-        until = rrule.get("UNTIL")
-        if until:
             try:
-                until_date = date.fromisoformat(until)
-                if next_date > until_date:
+                rrule = _parse_rrule(template.recurrence_rule)
+                instances = children.get(template.id, [])
+                if any(task.status in {"open", "in_progress"} for task in instances):
                     continue
-            except ValueError:
-                pass
+                # COUNT is the established number of children, not the template.
+                if "COUNT" in rrule and len(instances) >= int(rrule["COUNT"]):
+                    continue
+                dues = [task.due_date for task in instances if task.due_date]
+                base_date = recurring.processed_through(store, ledger, template, recurring.Children(
+                    len(instances), max(dues) if dues else None))
+                next_date = _next_due_date(base_date, rrule)
+                if next_date > as_of or ("UNTIL" in rrule and next_date > date.fromisoformat(rrule["UNTIL"])):
+                    continue
+                payload = recurring.child_payload(template, next_date)
+                recurring.validate_task(store, payload)
+                # the ledger row commits with the child: another process cannot create it twice
+                if not ledger.record(recurring.rule_key(template.id), recurring.rule_version(template),
+                                     next_date.isoformat(), "created"):
+                    continue
+                report.created.append(store.create_task(payload))
+            except (ValueError, OverflowError, ValidationError) as exc:
+                report.errors.append(RecurrenceError(task_id=template.id, title=template.title, error=str(exc)))
+    return report
 
-        if next_date <= as_of:
-            new_task = store.create_task(TaskCreate(
-                title=template.title,
-                description=template.description,
-                assignee=template.assignee,
-                due_date=next_date,
-                priority=template.priority,
-                property_id=template.property_id,
-                unit_id=template.unit_id,
-                parent_task_id=template.id,
-            ))
-            created.append(new_task)
 
-    return created
+# Static paths MUST come before /{task_id} to avoid route collision.
+@router.post("/generate-recurring/report", response_model=RecurrenceReport)
+def generate_recurring_report(as_of: date | None = Query(None)) -> RecurrenceReport:
+    """One due child per series, with individual errors for invalid historic rules.
+
+    COUNT limits children; UNTIL is inclusive. Open children block another child;
+    the template itself can remain open. Monthly/yearly dates clamp to day 28.
+    Same-process requests serialize; across processes the occurrence ledger dedupes.
+    """
+    return _generate_recurring_report(as_of if isinstance(as_of, date) else local_today())
+
+
+@router.post("/generate-recurring", response_model=list[Task])
+def generate_recurring_tasks(as_of: date | None = Query(None),
+                             response: Response = None) -> list[Task]:  # type: ignore[assignment]  # FastAPI injects it
+    """Compatible list result; use /generate-recurring/report for per-series errors."""
+    report = _generate_recurring_report(as_of if isinstance(as_of, date) else local_today())
+    if response is not None:
+        response.headers["X-Recurring-Error-Count"] = str(len(report.errors))
+    return report.created
 
 
 @router.get("/{task_id}", response_model=Task)
@@ -168,8 +142,9 @@ def update_task(task_id: str, payload: TaskCreate) -> Task:
 def patch_task(task_id: str, payload: TaskPatch) -> Task:
     try:
         return store._patch_entity("task", task_id, payload)
-    except NotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except (NotFoundError, ValidationError) as exc:
+        status_code = status.HTTP_404_NOT_FOUND if isinstance(exc, NotFoundError) else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
 
 
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)

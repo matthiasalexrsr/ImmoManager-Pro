@@ -1,34 +1,70 @@
 """Billing Engine – cost allocation for utility statements (Betriebskostenabrechnung).
 
-Distributes property-level costs across units using allocation keys.
-Compares allocated costs with advance payments to produce per-unit statements.
+Distributes property-level costs across parties using allocation keys and
+compares the allocated costs with advance payments.
+
+A party is a tenancy of a unit (unit + contract) or a vacant stretch of a
+unit (contract None: the landlord's share). With usage dates a unit can have
+several parties in one period, e.g. tenant, vacancy, next tenant.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 CENTS = Decimal("0.01")
+
+PartyKey = tuple[str, Optional[str], Optional[date], Optional[date]]
 
 
 def _money(value: Decimal | float | int | str) -> Decimal:
     return Decimal(str(value)).quantize(CENTS, rounding=ROUND_HALF_UP)
 
 
+def allocate_cents(amount: Decimal, weights: List[Decimal]) -> List[Decimal]:
+    """Split an amount by weights into cents that add up exactly.
+
+    Largest remainder method: every party gets its exact share rounded down to
+    the cent, the cents left over go to the largest remainders. No party is
+    more than one cent away from its exact share, whatever the order.
+    """
+    total_weight = sum(weights, Decimal("0"))
+    if total_weight <= 0:
+        raise ValueError("weights must add up to more than 0")
+    sign = Decimal("-1") if amount < 0 else Decimal("1")
+    cents = int((abs(_money(amount)) * 100).to_integral_value())
+    exact = [Decimal(cents) * weight / total_weight for weight in weights]
+    floors = [int(value) for value in exact]
+    left_over = cents - sum(floors)
+    by_remainder = sorted(range(len(weights)), key=lambda i: (-(exact[i] - floors[i]), i))
+    for index in by_remainder[:left_over]:
+        floors[index] += 1
+    return [sign * (Decimal(value) / 100).quantize(CENTS) for value in floors]
+
+
 @dataclass(frozen=True)
 class UnitShare:
-    """A unit's share value for an allocation key (e.g., area in sqm, person count)."""
+    """A party's share value for an allocation key (e.g., m² × days, persons × days)."""
     unit_id: str
-    contract_id: str
+    contract_id: Optional[str]  # None: vacancy, borne by the landlord
     share_value: Decimal
+    usage_start: Optional[date] = None
+    usage_end: Optional[date] = None
 
     def __post_init__(self) -> None:
-        normalized = _money(self.share_value)
-        if normalized < Decimal("0.00"):
+        # Shares are not money: keep full precision (e.g. water in m³ with three
+        # decimals). Rounding them to cents would shift costs between units.
+        normalized = Decimal(str(self.share_value))
+        if normalized < Decimal("0"):
             raise ValueError("share_value must be >= 0")
         object.__setattr__(self, "share_value", normalized)
+
+    @property
+    def party(self) -> PartyKey:
+        return (self.unit_id, self.contract_id, self.usage_start, self.usage_end)
 
 
 @dataclass(frozen=True)
@@ -37,6 +73,7 @@ class CostEntry:
     description: str
     amount: Decimal
     allocation_key_id: str
+    cost_id: Optional[str] = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "amount", _money(self.amount))
@@ -58,22 +95,33 @@ class StatementLine:
     """A single cost line item in a utility statement."""
     description: str
     allocated_amount: Decimal
+    cost_id: Optional[str] = None
+    allocation_key_id: Optional[str] = None
+    total_amount: Optional[Decimal] = None   # the whole cost item
+    share_value: Optional[Decimal] = None    # this party's share
+    total_share: Optional[Decimal] = None    # all shares of the key
 
 
 @dataclass(frozen=True)
 class GeneratedStatement:
-    """Result of cost allocation for one contract/unit."""
-    contract_id: str
+    """Result of cost allocation for one party."""
+    contract_id: Optional[str]
     unit_id: str
     line_items: tuple[StatementLine, ...]
     total_cost: Decimal
     advance_paid: Decimal
     balance: Decimal  # positive = tenant owes, negative = refund
+    usage_start: Optional[date] = None
+    usage_end: Optional[date] = None
+
+    @property
+    def is_vacancy(self) -> bool:
+        return self.contract_id is None
 
 
 @dataclass
 class BillingEngine:
-    """Allocates property costs across units using allocation keys.
+    """Allocates property costs across parties using allocation keys.
 
     Usage:
         engine = BillingEngine()
@@ -105,57 +153,46 @@ class BillingEngine:
         self._advances[key] = self._advances.get(key, Decimal("0.00")) + advance.total_advance
 
     def generate(self) -> List[GeneratedStatement]:
-        """Allocate all costs and produce statements per contract/unit."""
-        # Collect all unique (unit_id, contract_id) pairs
-        all_units: Dict[tuple[str, str], List[StatementLine]] = {}
+        """Allocate all costs and produce one statement per party."""
+        lines: Dict[PartyKey, List[StatementLine]] = {}
         for shares_list in self._shares.values():
             for share in shares_list:
-                key = (share.unit_id, share.contract_id)
-                if key not in all_units:
-                    all_units[key] = []
+                lines.setdefault(share.party, [])
 
-        # Allocate each cost entry
         for cost in self._costs:
             shares = self._shares.get(cost.allocation_key_id, [])
-            total_share = sum(s.share_value for s in shares)
-            if total_share == Decimal("0.00"):
+            total_share = sum((s.share_value for s in shares), Decimal("0"))
+            if total_share == Decimal("0"):
                 continue
+            portions = allocate_cents(cost.amount, [s.share_value for s in shares])
+            for share, portion in zip(shares, portions):
+                lines[share.party].append(StatementLine(
+                    description=cost.description,
+                    allocated_amount=portion,
+                    cost_id=cost.cost_id,
+                    allocation_key_id=cost.allocation_key_id,
+                    total_amount=cost.amount,
+                    share_value=share.share_value,
+                    total_share=total_share,
+                ))
 
-            allocated_sum = Decimal("0.00")
-            allocations: List[tuple[tuple[str, str], Decimal]] = []
-
-            for i, share in enumerate(shares):
-                key = (share.unit_id, share.contract_id)
-                if i == len(shares) - 1:
-                    # Last unit gets the remainder to avoid rounding drift
-                    portion = _money(cost.amount - allocated_sum)
-                else:
-                    portion = _money(cost.amount * share.share_value / total_share)
-                    allocated_sum += portion
-                allocations.append((key, portion))
-
-            for unit_key, portion in allocations:
-                if unit_key not in all_units:
-                    all_units[unit_key] = []
-                all_units[unit_key].append(
-                    StatementLine(description=cost.description, allocated_amount=portion)
-                )
-
-        # Build statements
         statements: List[GeneratedStatement] = []
-        for (unit_id, contract_id), lines in all_units.items():
-            total_cost = _money(sum(line.allocated_amount for line in lines))
-            advance_paid = self._advances.get((unit_id, contract_id), Decimal("0.00"))
-            balance = _money(total_cost - advance_paid)
+        for (unit_id, contract_id, usage_start, usage_end), party_lines in lines.items():
+            total_cost = _money(sum((line.allocated_amount for line in party_lines), Decimal("0")))
+            advance_paid = (
+                self._advances.get((unit_id, contract_id), Decimal("0.00"))
+                if contract_id is not None else Decimal("0.00")
+            )
             statements.append(
                 GeneratedStatement(
                     contract_id=contract_id,
                     unit_id=unit_id,
-                    line_items=tuple(lines),
+                    line_items=tuple(party_lines),
                     total_cost=total_cost,
                     advance_paid=advance_paid,
-                    balance=balance,
+                    balance=_money(total_cost - advance_paid),
+                    usage_start=usage_start,
+                    usage_end=usage_end,
                 )
             )
-
         return statements

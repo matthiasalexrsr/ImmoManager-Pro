@@ -3,7 +3,7 @@
 from datetime import date
 
 import pytest
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response
 
 from backend.dependencies import store
 from backend.models import (
@@ -76,7 +76,7 @@ def _setup_data():
 class TestCSVExport:
     def test_summary_csv(self, _setup_data):
         result = get_summary(format="csv")
-        assert isinstance(result, StreamingResponse)
+        assert isinstance(result, Response)
         assert "zusammenfassung.csv" in result.headers["content-disposition"]
 
     def test_summary_json(self, _setup_data):
@@ -91,20 +91,20 @@ class TestCSVExport:
             amount=800.0, category_id=category.id
         ))
         result = get_finance_report(format="csv")
-        assert isinstance(result, StreamingResponse)
+        assert isinstance(result, Response)
 
     def test_occupancy_csv(self, _setup_data):
         result = get_occupancy_report(format="csv")
-        assert isinstance(result, StreamingResponse)
+        assert isinstance(result, Response)
         assert "belegungsquote.csv" in result.headers["content-disposition"]
 
     def test_receivables_aging_csv(self, _setup_data):
         result = get_receivables_aging(format="csv")
-        assert isinstance(result, StreamingResponse)
+        assert isinstance(result, Response)
 
     def test_cashflow_csv(self, _setup_data):
         result = get_cashflow_report(format="csv")
-        assert isinstance(result, StreamingResponse)
+        assert isinstance(result, Response)
         assert "cashflow.csv" in result.headers["content-disposition"]
 
     def test_maintenance_costs_csv(self, _setup_data):
@@ -113,11 +113,11 @@ class TestCSVExport:
             property_id=prop.id, title="Fix", category="Elektrik", estimated_cost=500.0
         ))
         result = get_maintenance_costs_report(format="csv")
-        assert isinstance(result, StreamingResponse)
+        assert isinstance(result, Response)
 
     def test_csv_response_empty(self):
         result = _csv_response([], "test.csv")
-        assert isinstance(result, StreamingResponse)
+        assert isinstance(result, Response)
 
 
 # === DATEV Export Tests ===
@@ -135,7 +135,7 @@ class TestDATEVExport:
             amount=-150.0, payment_text="Reparatur"
         ))
         result = datev_export(start_date=None, end_date=None)
-        assert isinstance(result, StreamingResponse)
+        assert isinstance(result, Response)
         assert "EXTF_Buchungsstapel.csv" in result.headers["content-disposition"]
 
     def test_datev_export_date_filter(self, _setup_data):
@@ -150,11 +150,11 @@ class TestDATEVExport:
             start_date=date(2024, 6, 1),
             end_date=date(2024, 6, 30),
         )
-        assert isinstance(result, StreamingResponse)
+        assert isinstance(result, Response)
 
     def test_datev_export_empty(self):
         result = datev_export(start_date=None, end_date=None)
-        assert isinstance(result, StreamingResponse)
+        assert isinstance(result, Response)
 
 
 # === Bank Import Tests ===

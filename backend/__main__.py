@@ -1,14 +1,19 @@
 """CLI launcher for ImmoManager Pro.
 
 Usage:
-    python -m backend                    # Start server
+    python -m backend                    # Explicit upgrade step (backup first, if needed), then start
     python -m backend --seed             # Seed demo data then start
     python -m backend --port 9000        # Custom port
     python -m backend --no-browser       # Don't open browser
+    python -m backend --no-upgrade       # Skip the upgrade step (an outdated database refuses to start)
+    python -m backend upgrade [--check]  # Only the explicit upgrade (backend.upgrade)
+    python -m backend ops <command>      # Backup, probe, restore (backend.ops)
 
 Also works as PyInstaller-bundled .exe:
     ImmoManager-Pro.exe
     ImmoManager-Pro.exe --seed --port 9000
+    ImmoManager-Pro.exe upgrade
+    ImmoManager-Pro.exe ops backup
 """
 
 import multiprocessing
@@ -93,14 +98,24 @@ def _persist_env_default(config_file, key, value):
     return value
 
 
-def _configure_runtime_environment(data_dir_arg=None):
+def _is_testversion():
+    return os.environ.get("IMMO_TESTVERSION", "").strip().lower() in ("1", "true", "yes", "ja")
+
+
+def _configure_runtime_environment(data_dir_arg=None, testversion=False):
     """Prepare safe local runtime defaults before importing backend.app."""
     project_env = os.path.join(_exe_dir(), ".env")
     _load_env_file(project_env)
+    if testversion:
+        os.environ["IMMO_TESTVERSION"] = "true"
 
     data_dir = data_dir_arg or os.environ.get("DATA_DIR")
     if not data_dir and (IS_FROZEN or os.name == "nt"):
         data_dir = _default_windows_data_dir()
+        if _is_testversion():
+            data_dir += "-Testversion"      # never mixed with real data of an installed version
+    if not data_dir and _is_testversion():
+        data_dir = os.path.join(os.path.expanduser("~"), ".immomanager-testversion")
 
     if not data_dir:
         return None
@@ -199,8 +214,60 @@ class _TeeWriter:
         return getattr(self.original, "encoding", "utf-8")
 
 
+def _pop_data_dir(argv):
+    """Remove `--data-dir X` from a tool's arguments; returns (data_dir, remaining)."""
+    remaining, data_dir, items = [], None, iter(argv)
+    for item in items:
+        if item == "--data-dir":
+            data_dir = next(items, None)
+        elif item.startswith("--data-dir="):
+            data_dir = item.split("=", 1)[1]
+        else:
+            remaining.append(item)
+    return data_dir, remaining
+
+
+def _prepare_frozen_paths():
+    base_dir = _get_base_dir()
+    if IS_FROZEN:
+        os.chdir(base_dir)
+        if base_dir not in sys.path:
+            sys.path.insert(0, base_dir)
+    return base_dir
+
+
+def run_tool(argv):
+    """`upgrade …` and `ops …` with the same runtime paths as a normal start."""
+    data_dir, rest = _pop_data_dir(argv[1:])
+    _prepare_frozen_paths()
+    _configure_runtime_environment(data_dir)
+    if argv[0] == "upgrade":
+        from backend.upgrade import main as tool_main
+    else:
+        from backend.ops import main as tool_main
+    return tool_main(rest)
+
+
+def run_upgrade_step():
+    """Explicit upgrade before the start: full backup first, only when the schema is behind.
+
+    An empty database is left to the normal start (it initialises it). Returns an exit code.
+    """
+    from backend.upgrade import EXIT_OK, upgrade
+
+    code = upgrade(backup=True, initialise_empty=False)
+    if code != EXIT_OK:
+        print()
+        print("FEHLER: Das Datenbank-Upgrade wurde nicht ausgeführt; das Programm startet nicht.")
+        print("Die Daten sind unverändert (bzw. das Vollbackup liegt im Sicherungsordner unter 'full').")
+    return code
+
+
 def main():
     import argparse
+
+    if sys.argv[1:2] in (["upgrade"], ["ops"]):
+        sys.exit(run_tool(sys.argv[1:]))
 
     parser = argparse.ArgumentParser(
         prog="immomanager",
@@ -209,19 +276,19 @@ def main():
     parser.add_argument("--host", default="127.0.0.1", help="Bind address (default: 127.0.0.1)")
     parser.add_argument("--port", type=int, default=8000, help="Port (default: 8000)")
     parser.add_argument("--seed", action="store_true", help="Load demo data on startup")
+    parser.add_argument("--testversion", action="store_true",
+                        help="Test version: realistic data set and master logins on the first start")
     parser.add_argument("--no-browser", action="store_true", help="Don't auto-open browser")
     parser.add_argument("--data-dir", default=None, help="Persistent data directory for SQLite, uploads, backups, and logs")
+    parser.add_argument("--no-upgrade", action="store_true",
+                        help="Skip the explicit upgrade step; an outdated database then refuses to start")
     args = parser.parse_args()
 
     # When running as frozen .exe, set working directory and sys.path
-    base_dir = _get_base_dir()
+    base_dir = _prepare_frozen_paths()
 
-    if IS_FROZEN:
-        os.chdir(base_dir)
-        if base_dir not in sys.path:
-            sys.path.insert(0, base_dir)
-
-    data_dir = _configure_runtime_environment(args.data_dir)
+    data_dir = _configure_runtime_environment(args.data_dir, testversion=args.testversion)
+    testversion = _is_testversion()
 
     print("ImmoManager Pro v1.0.0")
     print(f"Python {sys.version}")
@@ -237,6 +304,15 @@ def main():
         print("Starten Sie die App mit --port 9000 oder beenden Sie den anderen Prozess.")
         sys.exit(1)
 
+    # The schema changes only here, explicitly, with a full backup first; the app itself
+    # refuses an outdated database (backend.db.schema_state).
+    if not args.no_upgrade:
+        print("Pruefe Datenbankstand...")
+        code = run_upgrade_step()
+        if code:
+            sys.exit(code)
+        print()
+
     # Import the app early so import errors are visible before uvicorn starts
     print("Lade Anwendung...")
     try:
@@ -248,6 +324,23 @@ def main():
         sys.exit(1)
 
     print("Anwendung geladen.")
+
+    if testversion:
+        try:
+            from backend.testversion import seed_testversion
+            from backend.testversion.dataset import MASTERS, PASSWORD
+
+            if seed_testversion(app):
+                print()
+            print("TESTVERSION – alle Daten sind frei erfunden.")
+            print("Anmelden mit:")
+            for username, email, _name, _role in MASTERS:
+                print(f"  {email}  (oder {username})  Passwort: {PASSWORD}")
+            print()
+        except Exception as exc:
+            print(f"FEHLER beim Anlegen der Testdaten:\n{exc}")
+            import traceback
+            traceback.print_exc()
 
     # Seed demo data if requested
     if args.seed:

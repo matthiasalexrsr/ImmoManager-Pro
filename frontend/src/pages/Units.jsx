@@ -4,14 +4,18 @@ import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
+import { PartyLink } from '../features/partyWorkspace/PartyWorkspace';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
+import { useToast } from '../components/Toast';
+import { formatArea, formatMoney, formatPercent } from '../utils/format';
 
 export default function Units() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const confirm = useConfirm();
+  const toast = useToast();
   const store = useDataStore();
   const { items: properties } = useEntities('properties', '/properties');
   const { items: contracts } = useEntities('contracts', '/contracts');
@@ -19,18 +23,20 @@ export default function Units() {
   const [units, setUnits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
+  // values a New form starts with when opened from elsewhere (the property page's "Einheit anlegen")
+  const [prefill, setPrefill] = useState(null);
   const [filter, setFilter] = useState('all');
 
   const refreshData = () => {
     setLoading(true);
-    api.get('/units').catch(() => [])
+    api.list('/units').catch(() => [])
       .then(data => setUnits(Array.isArray(data) ? data : []))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     let cancelled = false;
-    api.get('/units').catch(() => [])
+    api.list('/units').catch(() => [])
       .then(data => { if (!cancelled) setUnits(Array.isArray(data) ? data : []); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -39,12 +45,12 @@ export default function Units() {
   const propMap = Object.fromEntries(properties.map(p => [p.id, p.name]));
   const tenantMap = Object.fromEntries(tenants.map(tn => [tn.id, tn.full_name]));
 
-  // Build a map of unit_id -> tenant name for active contracts
+  // Preserve the tenant ID together with the name for active contracts.
   const unitTenantMap = useMemo(() => {
     const map = {};
     contracts.forEach(c => {
       if (c.status === 'active' && c.unit_id && c.tenant_id) {
-        map[c.unit_id] = tenantMap[c.tenant_id] || '—';
+        map[c.unit_id] = { id: c.tenant_id, name: tenantMap[c.tenant_id] || '—' };
       }
     });
     return map;
@@ -68,7 +74,8 @@ export default function Units() {
       ...u,
       property_name: propMap[u.property_id] || '—',
       warm_rent: warmRent,
-      tenant_name: unitTenantMap[u.id] || '—',
+      tenant_id: unitTenantMap[u.id]?.id || null,
+      tenant_name: unitTenantMap[u.id]?.name || '—',
       vacant_since: u.status === 'vacant' ? (u.created_at || '—') : null,
     };
   });
@@ -90,22 +97,23 @@ export default function Units() {
   const vacantCount = enriched.filter(u => u.status === 'vacant').length;
   const coldRents = enriched.filter(u => u.cold_rent != null && Number(u.cold_rent) > 0).map(u => Number(u.cold_rent));
   const avgColdRent = coldRents.length > 0 ? coldRents.reduce((s, v) => s + v, 0) / coldRents.length : 0;
-  const occupancyRate = totalCount > 0 ? ((occupiedCount / totalCount) * 100).toFixed(1) : '0.0';
+  const occupancyRate = totalCount > 0 ? Math.round((occupiedCount / totalCount) * 100) : 0;
 
   const columns = [
     { key: 'label', label: t('units.list.columns.label') || 'Bezeichnung', filterType: 'text' },
-    { key: 'property_name', label: 'Immobilie', filterType: 'text' },
+    { key: 'property_name', label: 'Immobilie', filterType: 'text', link: 'property' },
     { key: 'unit_type', label: t('units.list.columns.type') || 'Typ', filterType: 'select' },
-    { key: 'rooms', label: t('units.form.rooms') || 'Zimmer', type: 'number', align: 'right' },
-    { key: 'floor', label: t('units.form.floor') || 'Etage' },
+    { key: 'rooms', hidden: true, label: t('units.form.rooms') || 'Zimmer', type: 'number', align: 'right' },
+    { key: 'floor', hidden: true, label: t('units.form.floor') || 'Etage' },
     { key: 'area_sqm', label: t('units.list.columns.area') || 'Fläche (m²)', type: 'number', align: 'right', filterType: 'numberRange',
-      render: v => v != null ? `${Number(v).toLocaleString('de-DE')} m²` : '—' },
-    { key: 'cold_rent', label: t('units.list.columns.coldRent') || 'Kaltmiete (€)', type: 'number', align: 'right', filterType: 'numberRange',
-      render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
-    { key: 'warm_rent', label: 'Warmmiete (€)', type: 'number', align: 'right',
-      render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
-    { key: 'person_count', label: t('units.form.personCount') || 'Personen', type: 'number', align: 'right' },
-    { key: 'tenant_name', label: 'Mieter', filterType: 'text' },
+      render: v => formatArea(v) },
+    { key: 'cold_rent', label: t('units.list.columns.coldRent') || 'Kaltmiete (€)', type: 'number', sum: true, align: 'right', filterType: 'numberRange',
+      render: v => formatMoney(v) },
+    { key: 'warm_rent', hidden: true, label: 'Warmmiete (€)', type: 'number', align: 'right',
+      render: v => formatMoney(v) },
+    { key: 'person_count', hidden: true, label: t('units.form.personCount') || 'Personen', type: 'number', align: 'right' },
+    { key: 'tenant_name', label: 'Mieter', filterType: 'text',
+      render: (v, row) => row.tenant_id && v !== '—' ? <PartyLink tenantId={row.tenant_id}>{v}</PartyLink> : v },
     { key: 'status', label: t('ui.form.status') || 'Status', type: 'status', filterType: 'select',
       render: v => <StatusBadge status={v} /> },
   ];
@@ -114,7 +122,7 @@ export default function Units() {
     { key: 'property_id', label: t('portfolio.properties.form.name') || 'Immobilie', required: true, type: 'select',
       options: properties.map(p => ({ value: p.id, label: p.name })) },
     { key: 'label', label: t('units.list.columns.label') || 'Bezeichnung', required: true, placeholder: 'z.B. Wohnung 1 OG links' },
-    { key: 'unit_type', label: t('units.list.columns.type') || 'Typ', required: true, type: 'select', options: [
+    { key: 'unit_type', label: t('units.list.columns.type') || 'Typ', required: true, type: 'select', default: 'Wohnung', options: [
       { value: 'Wohnung', label: t('units.types.apartment') || 'Wohnung' },
       { value: 'Gewerbe', label: t('units.types.commercial') || 'Gewerbe' },
       { value: 'Stellplatz', label: t('units.types.parking') || 'Stellplatz' },
@@ -125,7 +133,8 @@ export default function Units() {
     { key: 'rooms', label: t('units.form.rooms') || 'Zimmer', type: 'number' },
     { key: 'person_count', label: t('units.form.personCount') || 'Personenzahl', type: 'number', placeholder: 'Bewohneranzahl für NK-Abrechnung' },
     { key: 'floor', label: t('units.form.floor') || 'Etage' },
-    { key: 'cold_rent', label: t('units.list.columns.coldRent') || 'Kaltmiete (€)', type: 'number' },
+    { key: 'cold_rent', label: t('units.list.columns.coldRent') || 'Kaltmiete (€)', type: 'number',
+      hint: 'Vorgabe für neue Verträge. Laufende Mieten ändern Sie über Mietanpassungen.' },
     { key: 'service_charge_advance', label: t('units.form.serviceChargeAdvance') || 'NK-Vorauszahlung (€)', type: 'number' },
     { key: 'heating_advance', label: t('units.form.heatingAdvance') || 'Heizkosten-Vorauszahlung (€)', type: 'number' },
     { key: 'features', label: t('units.form.features') || 'Ausstattung', type: 'textarea', placeholder: 'z.B. Balkon, Einbauküche, Keller' },
@@ -148,43 +157,49 @@ export default function Units() {
 
   const handleDelete = async (row) => {
     if (!await confirm(`"${row.label}" ${t('modals.confirmDelete.body')}`)) return;
-    await api.del(`/units/${row.id}`);
+    try {
+      await api.del(`/units/${row.id}`);
+    } catch (err) {
+      toast.error(err.message);
+      return;
+    }
     refreshData();
     if (store) store.invalidateRelated('units', 'properties', 'contracts');
   };
 
-  if (loading) return <div className="page-loading">Lade Einheiten...</div>;
+  // only the first load replaces the page; a reload keeps the table and an open form ("Speichern & weiteren")
+  if (loading && units.length === 0) return <div className="page-loading">Lade Einheiten...</div>;
 
   return (
     <div className="page">
       <h1 className="page-title">{t('units.list.title') || 'Einheiten'}</h1>
 
       {/* Summary cards */}
-      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{totalCount}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Gesamt</div>
+      <div className="kpi-row">
+        <div className="kpi">
+          <div className="kpi-value">{totalCount}</div>
+          <div className="kpi-label">Gesamt</div>
         </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--success)' }}>{occupiedCount}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Vermietet</div>
+        <div className="kpi">
+          <div className="kpi-value" style={{ color: 'var(--success)' }}>{occupiedCount}</div>
+          <div className="kpi-label">Vermietet</div>
         </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--warning)' }}>{vacantCount}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Leer</div>
+        <div className="kpi">
+          <div className="kpi-value" style={{ color: 'var(--warning)' }}>{vacantCount}</div>
+          <div className="kpi-label">Leer</div>
         </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{avgColdRent.toFixed(2)} €</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Ø Kaltmiete</div>
+        <div className="kpi">
+          <div className="kpi-value">{formatMoney(avgColdRent)}</div>
+          <div className="kpi-label">Ø Kaltmiete</div>
         </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: Number(occupancyRate) >= 80 ? 'var(--success)' : 'var(--warning)' }}>{occupancyRate}%</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Vermietungsquote</div>
+        <div className="kpi">
+          <div className="kpi-value" style={{ color: Number(occupancyRate) >= 80 ? 'var(--success)' : 'var(--warning)' }}>{formatPercent(occupancyRate)}</div>
+          <div className="kpi-label">Vermietungsquote</div>
         </div>
       </div>
 
       {/* Filter tabs */}
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+      <div className="filter-chips">
         {[
           { key: 'all', label: 'Alle' },
           { key: 'occupied', label: 'Vermietet' },
@@ -204,7 +219,7 @@ export default function Units() {
         title={t('units.list.title') || 'Einheiten'}
         columns={columns}
         data={filtered}
-        onAdd={() => setModal('create')}
+        onAdd={values => { setPrefill(values || null); setModal('create'); }}
         onEdit={row => setModal(row)}
         onDelete={handleDelete}
         onRowClick={row => navigate(`/units/${row.id}`)}
@@ -213,8 +228,9 @@ export default function Units() {
       {modal && (
         <FormModal
           title={modal === 'create' ? 'Einheit erstellen' : 'Einheit bearbeiten'}
+          repeatKeep={['property_id', 'unit_type']}
           fields={fields}
-          initial={modal === 'create' ? null : modal}
+          initial={modal === 'create' ? prefill : modal}
           onSave={handleSave}
           onClose={() => setModal(null)}
         />

@@ -1,0 +1,106 @@
+/* Mahnwesen: overview, run preview, case file, outbox, replies; usable from 320 px on. */
+
+.dunning-intro { margin: 0 0 1rem; max-width: 70ch; }
+
+.dn-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.dn-tabs button {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--color-text-secondary, inherit);
+  padding: 0.5rem 0.75rem;
+  font: inherit;
+  cursor: pointer;
+}
+
+.dn-tabs button[aria-selected='true'] {
+  border-bottom-color: var(--color-primary);
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.dn-figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.dn-figure {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+}
+
+.dn-figure strong { display: block; font-size: 1.25rem; font-variant-numeric: tabular-nums; }
+
+.dn-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: flex-end;
+  margin-bottom: 0.75rem;
+}
+
+.dn-form label { display: grid; gap: 0.2rem; flex: 1 1 10rem; min-width: 0; font-size: 0.875rem; }
+
+.dn-form input,
+.dn-form select,
+.dn-form textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  box-sizing: border-box;
+}
+
+.dn-form .dn-check { flex-direction: row; display: flex; align-items: flex-start; gap: 0.4rem; flex-basis: 100%; }
+.dn-form .dn-check input { width: auto; margin-top: 0.2rem; }
+
+.dn-table-wrap { overflow-x: auto; max-width: 100%; }
+
+.dn-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+.dn-table th, .dn-table td { padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--color-border); text-align: left; vertical-align: top; }
+.dn-table td.num, .dn-table th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.dn-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
+
+.dn-card {
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  overflow-wrap: anywhere;
+}
+
+.dn-card-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.25rem 0.75rem; align-items: baseline; }
+
+.dn-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.5rem; }
+
+.dn-section { margin-bottom: 1rem; }
+.dn-section > h2, .dn-section > h3 { font-size: 1rem; margin: 0 0 0.5rem; }
+
+.dn-muted { color: var(--color-text-secondary, #666); font-size: 0.85rem; }
+
+.dn-timeline { list-style: none; margin: 0; padding: 0; border-left: 2px solid var(--color-border); }
+.dn-timeline li { margin: 0 0 0.6rem 0.75rem; overflow-wrap: anywhere; }
+.dn-timeline pre { white-space: pre-wrap; font: inherit; margin: 0.25rem 0 0; }
+
+.dn-pdf { margin-top: 0.75rem; }
+
+@media (max-width: 480px) {
+  .dn-tabs button { padding: 0.45rem 0.5rem; }
+  .dn-form label { flex-basis: 100%; }
+}

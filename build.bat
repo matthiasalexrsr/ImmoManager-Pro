@@ -22,7 +22,7 @@ if exist ".venv\Scripts\activate.bat" (
 REM Install all project dependencies + PyInstaller
 echo Installiere Abhaengigkeiten...
 pip install --upgrade pip setuptools wheel -q
-pip install -e ".[build]" -q
+pip install -e ".[build]" -c constraints.txt -q
 if !errorlevel! neq 0 (
     echo FEHLER: pip install fehlgeschlagen.
     pause

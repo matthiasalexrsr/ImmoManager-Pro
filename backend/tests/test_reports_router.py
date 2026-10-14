@@ -251,6 +251,66 @@ def test_reports_receivables_aging() -> None:
     assert report["buckets"]["days90plus"] == 500.0
 
 
+def test_credits_are_not_netted_against_receivables() -> None:
+    """Regression: refunds from utility statements lowered open and overdue receivables."""
+    from backend.routers.dashboard import get_dashboard_stats
+
+    store.clear_all()
+    portfolio = store.create_portfolio(PortfolioCreate(name="Portfolio"))
+    property_item = store.create_property(
+        PropertyCreate(portfolio_id=portfolio.id, name="Objekt", property_type="Wohnung")
+    )
+    unit = store.create_unit(UnitCreate(property_id=property_item.id, label="1", unit_type="Wohnung"))
+    tenant = store.create_tenant(TenantCreate(full_name="Mieter"))
+    contract = store.create_contract(ContractCreate(
+        contract_number="C-500", property_id=property_item.id, unit_id=unit.id, tenant_id=tenant.id,
+        start_date=datetime.date(2024, 1, 1),
+    ))
+    today = datetime.date.today()
+    for days_ago, amount, status in [(40, 900.0, "open"), (10, 300.0, "overdue"), (-5, 200.0, "open"),
+                                     (20, -206.32, "open"), (3, 50.0, "paid")]:
+        store.create_receivable(ReceivableCreate(
+            contract_id=contract.id, due_date=today - datetime.timedelta(days=days_ago),
+            amount_due=amount, status=status,
+        ))
+
+    summary = reports.get_summary()["finance"]
+    aging = reports.get_receivables_aging()
+    stats = get_dashboard_stats()
+
+    assert (summary["openReceivables"], summary["overdueReceivables"], summary["openCredits"]) == (
+        1400.0, 1200.0, 206.32)
+    assert (aging["openTotal"], aging["openCredits"]) == (1400.0, 206.32)
+    assert aging["buckets"]["days1to30"] == 300.0
+    # a receivable past its due date is overdue even if nobody set the status
+    assert (stats["open_receivables"], stats["overdue_receivables"]) == (3, 2)
+
+
+def test_account_balance_and_liquidity_start_from_the_opening_balance() -> None:
+    """Regression: account balances stayed at what was typed in (0 €) and the forecast ignored opening balances."""
+    from backend.models import AccountCreate as _AccountCreate
+    from backend.routers import accounts
+
+    store.clear_all()
+    portfolio = store.create_portfolio(PortfolioCreate(name="Portfolio"))
+    rent = store.create_account(_AccountCreate(portfolio_id=portfolio.id, name="Mietkonto", account_type="bank",
+                                               opening_balance=10000.0))
+    store.create_account(_AccountCreate(portfolio_id=portfolio.id, name="Rücklage", account_type="bank",
+                                        opening_balance=2500.0, balance=99.0))
+    today = datetime.date.today()
+    for days_ago, amount in [(40, 640.0), (10, 640.0), (5, -230.5)]:
+        store.create_booking(BookingCreate(account_id=rent.id, amount=amount,
+                                           booking_date=today - datetime.timedelta(days=days_ago)))
+
+    balances = {a.name: a.balance for a in accounts.list_accounts(
+        skip=0, limit=100, portfolio_id=None, account_type=None, sort_by=None, sort_order="asc")}
+    forecast = reports.liquidity_forecast(months=3, property_id=None)
+
+    assert balances == {"Mietkonto": 11049.5, "Rücklage": 2500.0}
+    assert accounts.get_account(rent.id).balance == 11049.5
+    assert forecast["current_balance"] == 13549.5
+
+
 def test_reports_cashflow() -> None:
     store.clear_all()
 
@@ -315,11 +375,12 @@ def test_reports_contracts_expiring() -> None:
             end_date=today + datetime.timedelta(days=30),
         )
     )
+    other_unit = store.create_unit(UnitCreate(property_id=property_item.id, label="5.2", unit_type="Wohnung"))
     store.create_contract(
         ContractCreate(
             contract_number="C-501",
             property_id=property_item.id,
-            unit_id=unit.id,
+            unit_id=other_unit.id,
             tenant_id=tenant.id,
             start_date=today - datetime.timedelta(days=400),
             end_date=today + datetime.timedelta(days=150),

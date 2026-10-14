@@ -165,3 +165,28 @@ def test_preflight_consumption_blocker_without_readings():
 
     assert result.has_blockers is True
     assert 'MISSING_CONSUMPTION' in {i.code for i in result.blockers}
+
+
+def test_preflight_warns_when_rooms_stand_in_for_person_count():
+    _clear_store()
+    portfolio = store.create_portfolio(PortfolioCreate(name='P'))
+    prop = store.create_property(PropertyCreate(portfolio_id=portfolio.id, name='Haus', property_type='MFH'))
+    unit = store.create_unit(UnitCreate(property_id=prop.id, label='EG', unit_type='Wohnung', rooms=3,
+                                        service_charge_advance=100.0))
+    tenant = store.create_tenant(TenantCreate(full_name='Max'))
+    store.create_contract(ContractCreate(contract_number='C-1', property_id=prop.id, unit_id=unit.id,
+                                         tenant_id=tenant.id, start_date=datetime.date(2024, 1, 1)))
+    period = store.create_billing_period(BillingPeriodCreate(
+        property_id=prop.id, label='BK 2024',
+        start_date=datetime.date(2024, 1, 1), end_date=datetime.date(2024, 12, 31)))
+    key = store.create_allocation_key(AllocationKeyCreate(property_id=prop.id, name='Personen',
+                                                          key_type='person_count'))
+    store.create_cost_item(CostItemCreate(billing_period_id=period.id, description='Müll',
+                                          amount=120.0, allocation_key_id=key.id))
+
+    result = billing.get_billing_period_preflight(period.id)
+
+    assert result.has_blockers is False
+    warning = next(i for i in result.warnings if i.code == 'PERSON_COUNT_FROM_ROOMS')
+    assert warning.context == unit.label  # labels, not internal IDs: the UI shows the context
+    assert result.metrics['person_count_from_rooms_units'] == 1

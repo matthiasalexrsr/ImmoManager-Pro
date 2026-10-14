@@ -1,6 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { api } from '../api';
+import { useAuth } from './AuthContext';
 
 const PreferencesContext = createContext(null);
 
@@ -31,9 +32,13 @@ export function PreferencesProvider({ children }) {
     document.documentElement.setAttribute('data-theme', theme);
   }, [prefs.theme]);
 
-  // Load preferences from server
+  // Load preferences from server once a user is signed in. Requesting them while
+  // signed out returns 401, which makes the API client redirect to /login: on the
+  // login page itself that is an endless reload loop.
+  const userId = useAuth()?.user?.id;
   useEffect(() => {
-    api.get('/users/me/preferences')
+    if (!userId) return;
+    api.get('/auth/users/me/preferences')
       .then(data => {
         if (data) {
           const merged = { ...DEFAULT_PREFS, ...data };
@@ -41,15 +46,15 @@ export function PreferencesProvider({ children }) {
           localStorage.setItem('user_preferences', JSON.stringify(merged));
         }
       })
-      .catch(err => console.warn('[Preferences]', err.message)); // Not logged in or no preferences
-  }, []);
+      .catch(err => console.warn('[Preferences]', err.message));
+  }, [userId]);
 
   const updatePrefs = useCallback((updates) => {
     setPrefs(prev => {
       const next = { ...prev, ...updates };
       localStorage.setItem('user_preferences', JSON.stringify(next));
       // Persist to server (fire and forget)
-      api.put('/users/me/preferences', next).catch(err => console.warn('[Preferences]', err.message));
+      api.put('/auth/users/me/preferences', next).catch(err => console.warn('[Preferences]', err.message));
       return next;
     });
   }, []);
@@ -59,7 +64,7 @@ export function PreferencesProvider({ children }) {
       const nextTheme = prev.theme === 'light' ? 'dark' : 'light';
       const next = { ...prev, theme: nextTheme };
       localStorage.setItem('user_preferences', JSON.stringify(next));
-      api.put('/users/me/preferences', next).catch(err => console.warn('[Preferences]', err.message));
+      api.put('/auth/users/me/preferences', next).catch(err => console.warn('[Preferences]', err.message));
       return next;
     });
   }, []);
@@ -68,7 +73,7 @@ export function PreferencesProvider({ children }) {
     setPrefs(prev => {
       const next = { ...prev, sidebar_collapsed: !prev.sidebar_collapsed };
       localStorage.setItem('user_preferences', JSON.stringify(next));
-      api.put('/users/me/preferences', next).catch(err => console.warn('[Preferences]', err.message));
+      api.put('/auth/users/me/preferences', next).catch(err => console.warn('[Preferences]', err.message));
       return next;
     });
   }, []);

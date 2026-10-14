@@ -103,7 +103,7 @@ def _create_tenant(client, headers, name="Max Mustermann"):
 
 
 class TestPropertyManagementFlow:
-    """Create portfolio -> property -> unit -> update unit -> delete property -> verify cascade."""
+    """Create portfolio -> property -> unit -> update unit -> delete (children first)."""
 
     def test_full_property_lifecycle(self, client, auth_headers):
         # Step 1: Create a portfolio
@@ -134,18 +134,21 @@ class TestPropertyManagementFlow:
         assert patched["cold_rent"] == 850.0
         assert patched["status"] == "occupied"
 
-        # Step 5: Delete the property (should cascade-delete the unit)
+        # Step 5: Deleting the property is refused while the unit still exists
+        del_resp = client.delete(
+            f"/api/v1/properties/{property_id}",
+            headers=auth_headers,
+        )
+        assert del_resp.status_code == 409
+        assert client.get(f"/api/v1/units/{unit_id}", headers=auth_headers).status_code == 200
+
+        # Step 6: Delete the unit first, then the property
+        assert client.delete(f"/api/v1/units/{unit_id}", headers=auth_headers).status_code == 204
         del_resp = client.delete(
             f"/api/v1/properties/{property_id}",
             headers=auth_headers,
         )
         assert del_resp.status_code == 204
-
-        # Step 6: Verify the unit was cascade-deleted
-        units_resp = client.get("/api/v1/units", headers=auth_headers)
-        assert units_resp.status_code == 200
-        remaining_units = units_resp.json()
-        assert len(remaining_units) == 0
 
         # Verify the property is gone too
         get_resp = client.get(
@@ -371,28 +374,26 @@ class TestFinancialFlow:
 
 
 class TestAuthUserManagementFlow:
-    """Register -> login -> get me -> create second user -> list users -> delete user."""
+    """Initial setup -> login -> get me -> owner creates user -> list users -> delete user."""
 
     def test_auth_full_flow(self, client):
-        # Step 1: Register a user (eigentuemer role via self-register gets capped to readonly)
+        # Step 1: The very first registration sets up the owner account
         reg_resp = client.post(
             "/api/v1/auth/register",
             json={
-                "username": "admin1",
-                "email": "admin1@example.com",
-                "full_name": "Admin Eins",
+                "username": "owner",
+                "email": "owner@example.com",
+                "full_name": "Owner",
                 "password": "Secret123",
-                "role": "readonly",
             },
         )
         assert reg_resp.status_code == 201
-        user1 = reg_resp.json()
-        assert user1["username"] == "admin1"
+        assert reg_resp.json()["role"] == "eigentuemer"
 
         # Step 2: Login with the registered user
         login_resp = client.post(
             "/api/v1/auth/login",
-            json={"username": "admin1", "password": "Secret123"},
+            json={"username": "owner", "password": "Secret123"},
         )
         assert login_resp.status_code == 200
         tokens = login_resp.json()
@@ -400,42 +401,44 @@ class TestAuthUserManagementFlow:
         assert tokens["token_type"] == "bearer"
 
         # Step 3: Get current user profile using the token
-        me_headers = {"Authorization": f"Bearer {tokens['access_token']}"}
-        me_resp = client.get("/api/v1/auth/me", headers=me_headers)
+        owner_headers = {"Authorization": f"Bearer {tokens['access_token']}"}
+        me_resp = client.get("/api/v1/auth/me", headers=owner_headers)
         assert me_resp.status_code == 200
         me = me_resp.json()
-        assert me["username"] == "admin1"
-        assert me["email"] == "admin1@example.com"
+        assert me["username"] == "owner"
+        assert me["email"] == "owner@example.com"
 
-        # Step 4: Register a second user
-        reg2_resp = client.post(
+        # Step 4: Public sign-up is now closed; the owner creates the second user
+        closed = client.post(
             "/api/v1/auth/register",
             json={
                 "username": "user2",
                 "email": "user2@example.com",
                 "full_name": "User Zwei",
                 "password": "Secret456",
-                "role": "readonly",
+            },
+        )
+        assert closed.status_code == 403
+        reg2_resp = client.post(
+            "/api/v1/auth/users",
+            headers=owner_headers,
+            json={
+                "username": "user2",
+                "email": "user2@example.com",
+                "full_name": "User Zwei",
+                "password": "Secret456",
+                "role": "techniker",
             },
         )
         assert reg2_resp.status_code == 201
-        user2 = reg2_resp.json()
-        user2_id = user2["id"]
+        assert reg2_resp.json()["role"] == "techniker"
+        user2_id = reg2_resp.json()["id"]
 
         # Step 5: List users (requires eigentuemer or verwalter role)
-        # The self-registered user is readonly, so we create an eigentuemer via the auth module
-        owner = register_user("owner", "owner@example.com", "Owner", "Secret789", "eigentuemer")
-        owner_token = create_access_token(owner.id)
-        owner_headers = {"Authorization": f"Bearer {owner_token}"}
-
         users_resp = client.get("/api/v1/auth/users", headers=owner_headers)
         assert users_resp.status_code == 200
-        users = users_resp.json()
-        # Should have at least admin1, user2, and owner
-        usernames = {u["username"] for u in users}
-        assert "admin1" in usernames
-        assert "user2" in usernames
-        assert "owner" in usernames
+        usernames = {u["username"] for u in users_resp.json()}
+        assert {"owner", "user2"} <= usernames
 
         # Step 6: Delete user2 (only eigentuemer can delete)
         del_resp = client.delete(

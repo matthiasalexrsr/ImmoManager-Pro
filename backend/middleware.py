@@ -11,12 +11,13 @@ import time
 from uuid import uuid4
 
 from fastapi import Request, Response
+from starlette.concurrency import run_in_threadpool
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
 from .audit import log_action
 from .config import settings
-from .dependencies import cleanup_session
+from .dependencies import begin_request_scope, end_request_scope
 from .logging_config import request_id_var
 
 logger = logging.getLogger(__name__)
@@ -127,6 +128,9 @@ class DBSessionMiddleware(BaseHTTPMiddleware):
     """
 
     async def dispatch(self, request: Request, call_next):
+        # The scope travels with the request into the worker thread of a sync
+        # endpoint (context variables are copied), so this removes its session.
+        token = begin_request_scope()
         try:
             response = await call_next(request)
             if response.status_code >= 500:
@@ -142,7 +146,7 @@ class DBSessionMiddleware(BaseHTTPMiddleware):
             )
             raise
         finally:
-            cleanup_session()
+            end_request_scope(token)
 
 
 # ─── Audit Middleware ────────────────────────────────────────────────────────
@@ -182,8 +186,9 @@ class AuditMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         # Pre-resolve user identity for audit attribution
+        # Token checks and the audit entry use the database: never on the event loop.
         if request.method in _WRITE_METHODS and request.url.path not in _SKIP_PATHS:
-            uid, uname = self._extract_user_from_token(request)
+            uid, uname = await run_in_threadpool(self._extract_user_from_token, request)
             request.state.audit_user_id = uid
             request.state.audit_username = uname
 
@@ -200,7 +205,8 @@ class AuditMiddleware(BaseHTTPMiddleware):
                 username = getattr(request.state, "audit_username", None)
 
                 try:
-                    log_action(
+                    await run_in_threadpool(
+                        log_action,
                         action=action,
                         entity_type=entity_type,
                         entity_id=entity_id,
@@ -229,33 +235,39 @@ _RBAC_SKIP_PATHS = {
 
 
 class RBACWriteGuardMiddleware(BaseHTTPMiddleware):
-    """Blocks write operations from users with the 'readonly' role.
+    """Blocks writes a role may not make (see backend.permissions).
 
-    Readonly users can access GET/HEAD/OPTIONS endpoints, but any
-    POST/PUT/PATCH/DELETE on protected API routes is rejected with 403.
-
-    This acts as a defence-in-depth layer — individual endpoints can
-    apply finer-grained role checks via require_role().
+    Reading stays open to every signed-in user. Requests without a valid token pass
+    through: the endpoints answer them with 401. Endpoints can add finer checks.
     """
 
     async def dispatch(self, request: Request, call_next):
+        path = request.url.path
         if (
             request.method in _RBAC_WRITE_METHODS
-            and request.url.path.startswith("/api/v1/")
-            and not any(request.url.path.startswith(p) for p in _RBAC_SKIP_PATHS)
+            and path.startswith("/api/v1/")
+            and not any(path.startswith(p) for p in _RBAC_SKIP_PATHS)
         ):
-            role = self._get_user_role(request)
-            if role == "readonly":
-                logger.warning(
-                    "RBAC blocked: readonly user attempted %s %s",
-                    request.method, request.url.path,
-                )
+            from .permissions import ROLE_LABELS, may_write
+
+            role = await run_in_threadpool(self._get_user_role, request)
+            if role is not None and not may_write(role, path[len("/api/v1"):]):
+                logger.warning("RBAC blocked: %s attempted %s %s", role, request.method, path)
+                label = ROLE_LABELS.get(role, role)
                 return JSONResponse(
                     status_code=403,
-                    content={"detail": "Lesezugriff-Rolle hat keine Schreibberechtigung"},
+                    content={"detail": f"Die Rolle „{label}“ darf hier nichts ändern"},
                 )
 
-        return await call_next(request)
+        if request.method not in _RBAC_WRITE_METHODS:
+            return await call_next(request)
+        from .concurrency import note_write
+
+        note_write()        # shared report results are stale from now on (backend.concurrency)
+        try:
+            return await call_next(request)
+        finally:
+            note_write()
 
     @staticmethod
     def _get_user_role(request: Request) -> str | None:

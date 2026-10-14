@@ -6,17 +6,18 @@ Middleware implementations live in middleware.py; router assembly in routing.py.
 
 import asyncio
 import logging
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict
 
-from fastapi import Body, FastAPI, Request, Response
+from fastapi import Body, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import FileResponse, RedirectResponse
 
-from .config import settings
+from .config import MIN_JWT_SECRET_LENGTH, settings
 from .exceptions import register_exception_handlers
 from .logging_config import setup_logging
 from .middleware import (
@@ -29,6 +30,8 @@ from .middleware import (
 from .paths import ensure_runtime_dirs, get_uploads_dir
 from .plugins import get_plugins, load_plugins
 from .routing import build_api_v1, get_i18n_router
+from .services.portfolio_http import PortfolioScopeMiddleware
+from .services.upload_policy import UploadStaticFiles
 
 # Initialize logging first
 setup_logging()
@@ -46,9 +49,17 @@ def _validate_startup_config() -> None:
     from .dependencies import store as _active_store
 
     issues: list[str] = []
+    # Logged as critical in production but not blocking (see below).
+    advisories: list[str] = []
 
     if settings.jwt_secret_key == "dev-secret-key-change-in-production":
         issues.append("JWT_SECRET_KEY is using the default value. Set JWT_SECRET_KEY in production!")
+    elif len(settings.jwt_secret_key) < MIN_JWT_SECRET_LENGTH:
+        # Not blocking, so existing installations keep starting after an update.
+        advisories.append(
+            f"JWT_SECRET_KEY is shorter than {MIN_JWT_SECRET_LENGTH} characters. "
+            "Generate a longer random secret; changing it signs all users out."
+        )
 
     if any(origin == "*" for origin in settings.cors_origins):
         issues.append("CORS_ORIGINS contains wildcard '*'. Restrict origins in production.")
@@ -60,7 +71,9 @@ def _validate_startup_config() -> None:
         issues.append("AUTO_SEED_DEMO_DATA is enabled. Disable demo seeding in production.")
 
     if settings.auto_migrate:
-        issues.append("AUTO_MIGRATE is enabled. Run migrations explicitly via CI/CD in production.")
+        # not blocking: the setting has no effect any more
+        advisories.append("AUTO_MIGRATE is ignored. Schema changes run only through the explicit "
+                          "upgrade (python -m backend.upgrade), which takes a full backup first.")
 
     if settings.allow_inmemory_fallback:
         issues.append("ALLOW_INMEMORY_FALLBACK is enabled. Disable to prevent silent data loss.")
@@ -75,6 +88,12 @@ def _validate_startup_config() -> None:
     store_type = type(_active_store).__name__
     if store_type == "InMemoryStore":
         issues.append(f"Active store is {store_type} — data will NOT be persisted.")
+
+    for advisory in advisories:
+        if settings.is_production:
+            logger.critical("PRODUCTION CONFIG WARNING: %s", advisory)
+        else:
+            logger.warning("CONFIG WARNING: %s", advisory)
 
     if settings.is_production and issues:
         for issue in issues:
@@ -95,17 +114,8 @@ async def lifespan(app: FastAPI):
     """Startup / shutdown lifecycle."""
     logger.info("ImmoManager Pro %s starting up", settings.app_version)
     ensure_runtime_dirs()
-
-    # Auto-migrate if enabled
-    if settings.auto_migrate:
-        try:
-            from alembic import command
-            from alembic.config import Config
-            alembic_cfg = Config("alembic.ini")
-            command.upgrade(alembic_cfg, "head")
-            logger.info("Database migrations applied successfully")
-        except Exception:
-            logger.exception("Auto-migration failed")
+    # No schema change here: an existing database had to be at the Alembic head when
+    # backend.dependencies was imported (explicit upgrade: python -m backend.upgrade).
 
     # Load plugins
     if settings.plugin_dirs:
@@ -133,6 +143,19 @@ async def lifespan(app: FastAPI):
         except Exception:
             logger.exception("Auto-seed failed (non-fatal)")
 
+    # Credit existing tenant payments to their contracts (after the payment
+    # allocation migration, or bookings imported without allocations).
+    try:
+        from .dependencies import cleanup_session, store
+        from .services.payment_allocations import allocate_unassigned
+        result = allocate_unassigned(store)
+        if result["allocated"] or result["unassigned"]:
+            logger.info("Payment allocation: %d bookings allocated, %d need a decision",
+                        result["allocated"], len(result["unassigned"]))
+        cleanup_session()
+    except Exception:
+        logger.exception("Allocating existing payments failed (non-fatal)")
+
     # Start periodic cleanup of auth in-memory stores
     async def _periodic_auth_cleanup():
         from .auth import _cleanup_blacklist, _register_limiter
@@ -146,9 +169,19 @@ async def lifespan(app: FastAPI):
 
     cleanup_task = asyncio.create_task(_periodic_auth_cleanup())
 
+    # Durable installation jobs (recurring tasks, escalation): DB work runs in a thread
+    scheduler_stop = threading.Event()
+    scheduler_task = None
+    if settings.job_scheduler_enabled:
+        from .services.jobs.scheduler import run_forever
+        scheduler_task = asyncio.create_task(run_forever(settings.job_scheduler_interval_seconds, scheduler_stop))
+
     yield
 
     cleanup_task.cancel()
+    scheduler_stop.set()            # a running job stops after its current chunk
+    if scheduler_task is not None:
+        scheduler_task.cancel()
 
     # Shutdown plugins
     for plugin in get_plugins():
@@ -186,6 +219,8 @@ app.add_middleware(AcceptLanguageMiddleware)
 app.add_middleware(DBSessionMiddleware)
 app.add_middleware(AuditMiddleware)
 app.add_middleware(RBACWriteGuardMiddleware)
+# outermost: every layer below, the endpoints and the upload mount run inside the request's portfolio scope
+app.add_middleware(PortfolioScopeMiddleware)
 
 
 # ─── API Routers ─────────────────────────────────────────────────────────────
@@ -195,7 +230,7 @@ app.include_router(get_i18n_router())
 
 _UPLOADS_DIR = get_uploads_dir()
 _UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=_UPLOADS_DIR), name="uploads")
+app.mount("/uploads", UploadStaticFiles(directory=_UPLOADS_DIR), name="uploads")
 
 
 # ─── Contract Wizard ─────────────────────────────────────────────────────────
@@ -332,6 +367,8 @@ def health() -> dict:
         "database_connected": db_ok,
         "contract_wizard_available": CONTRACT_WIZARD_STATUS["available"],
         "contract_wizard_reason": CONTRACT_WIZARD_STATUS["reason"],
+        "developer_tools_enabled": settings.developer_tools_enabled,
+        "testversion": settings.immo_testversion,
     }
 
 
@@ -355,13 +392,36 @@ def _resolve_frontend_dir() -> Path | None:
 
 _FRONTEND_DIR = _resolve_frontend_dir()
 
-if _FRONTEND_DIR is not None:
-    _frontend_dir = _FRONTEND_DIR
-    app.mount("/assets", StaticFiles(directory=_frontend_dir / "assets"), name="frontend-assets")
+def _spa_file(frontend_root: Path, full_path: str) -> Path | None:
+    """Resolve a request path to a file inside the built frontend, or None.
 
-    @app.get("/{full_path:path}")
+    The path parameter is URL-decoded, so it may contain '..' segments or be
+    absolute; anything resolving outside the frontend directory is refused.
+    """
+    if not full_path:
+        return None
+    candidate = (frontend_root / full_path).resolve()
+    if candidate.is_relative_to(frontend_root) and candidate.is_file():
+        return candidate
+    return None
+
+
+def _mount_spa(target: FastAPI, frontend_dir: Path) -> None:
+    """Serve the built frontend; must be registered after all other routes."""
+    frontend_root = frontend_dir.resolve()
+    if (frontend_root / "assets").is_dir():
+        target.mount("/assets", StaticFiles(directory=frontend_root / "assets"), name="frontend-assets")
+
+    @target.get("/{full_path:path}", include_in_schema=False)
     async def serve_spa(full_path: str):
-        file_path = _frontend_dir / full_path
-        if full_path and file_path.is_file():
+        # Unknown API routes must stay JSON 404s instead of returning the SPA shell.
+        if full_path == "api" or full_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="Not Found")
+        file_path = _spa_file(frontend_root, full_path)
+        if file_path is not None:
             return FileResponse(file_path)
-        return FileResponse(_frontend_dir / "index.html")
+        return FileResponse(frontend_root / "index.html")
+
+
+if _FRONTEND_DIR is not None:
+    _mount_spa(app, _FRONTEND_DIR)

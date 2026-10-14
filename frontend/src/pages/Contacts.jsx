@@ -5,6 +5,7 @@ import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
+import { bulkDelete } from '../utils/bulkActions';
 
 const COLUMNS = [
   { key: 'display_name', label: 'Name', filterType: 'text' },
@@ -50,7 +51,7 @@ export default function Contacts() {
   const [tab, setTab] = useState('all');
 
   const loadData = () => {
-    api.get('/contacts').then(data => {
+    api.list('/contacts').then(data => {
       // Add display_name for each contact
       const enriched = (data || []).map(c => ({
         ...c,
@@ -112,6 +113,9 @@ export default function Contacts() {
         title="Kontakte"
         columns={COLUMNS}
         data={filtered}
+        rowName={row => row.display_name || row.id}
+        bulkActions={[bulkDelete({ one: 'Kontakt', many: 'Kontakte', remove: row => api.del(`/contacts/${row.id}`),
+          finished: () => loadData() })]}
         onAdd={() => setModal('create')}
         onEdit={row => setModal(row)}
         onDelete={handleDelete}
@@ -119,6 +123,7 @@ export default function Contacts() {
       {modal && (
         <FormModal
           title={modal === 'create' ? 'Kontakt erstellen' : 'Kontakt bearbeiten'}
+          repeatKeep={['contact_type']}
           fields={FIELDS}
           initial={modal === 'create' ? null : modal}
           onSave={handleSave}

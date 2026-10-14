@@ -5,18 +5,27 @@ import logging
 from sqlalchemy.orm import Session
 
 from ..db.orm_models import (
+    ContractOccupancyORM,
     ContractORM,
+    ContractRentPeriodORM,
     DepositORM,
     HandoverProtocolORM,
     LeadORM,
     MeterReadingORM,
+    PropertyORM,
     RentAdjustmentORM,
     TenantORM,
+    UnitORM,
     ViewingAppointmentORM,
 )
+from ..domain.lease_engine import find_unit_overlap, unit_overlap_message
 from ..models import (
     Contract,
     ContractCreate,
+    ContractOccupancy,
+    ContractOccupancyCreate,
+    ContractRentPeriod,
+    ContractRentPeriodCreate,
     Deposit,
     DepositCreate,
     HandoverProtocol,
@@ -32,7 +41,7 @@ from ..models import (
     ViewingAppointment,
     ViewingAppointmentCreate,
 )
-from ..storage import NotFoundError, ValidationError
+from ..storage import NotFoundError, ValidationError, check_occupancy_dates
 from .base import BaseRepository
 
 logger = logging.getLogger(__name__)
@@ -50,6 +59,8 @@ class TenantRepository:
         self._leads = BaseRepository(db, LeadORM, Lead, "Interessent nicht gefunden")
         self._deposits = BaseRepository(db, DepositORM, Deposit, "Kaution nicht gefunden")
         self._rent_adjustments = BaseRepository(db, RentAdjustmentORM, RentAdjustment, "Mietanpassung nicht gefunden")
+        self._rent_periods = BaseRepository(db, ContractRentPeriodORM, ContractRentPeriod, "Mietstand nicht gefunden")
+        self._occupancies = BaseRepository(db, ContractOccupancyORM, ContractOccupancy, "Bewohnerstand nicht gefunden")
         self._meter_readings = BaseRepository(db, MeterReadingORM, MeterReading, "Zählerstand nicht gefunden")
         # Cross-domain references (set by SQLAlchemyStore facade)
         self._portfolio_repo = portfolio_repo
@@ -83,6 +94,29 @@ class TenantRepository:
     def list_contracts(self) -> list[Contract]:
         return self._contracts.list_all()
 
+    def tenant_contract_overviews(self, tenant_id: str) -> list[dict]:
+        from ..services.rent_history import overview_rent
+
+        rows = self.db.query(ContractORM, PropertyORM.name, UnitORM.label).outerjoin(
+            PropertyORM, ContractORM.property_id == PropertyORM.id,
+        ).outerjoin(UnitORM, ContractORM.unit_id == UnitORM.id).filter(
+            ContractORM.tenant_id == tenant_id,
+        ).order_by(ContractORM.start_date.desc(), ContractORM.id.desc()).all()
+        periods = self._rent_periods._read(self.db.query(ContractRentPeriodORM).join(
+            ContractORM, ContractRentPeriodORM.contract_id == ContractORM.id,
+        ).filter(ContractORM.tenant_id == tenant_id))
+        periods_by_contract: dict[str, list] = {}
+        for period in periods:
+            periods_by_contract.setdefault(period.contract_id, []).append(period)
+        enriched = []
+        for contract_orm, property_name, unit_label in rows:
+            contract = self._contracts._to_pydantic(contract_orm)
+            enriched.append({
+                **contract.model_dump(), "property_name": property_name, "unit_label": unit_label,
+                "current_rent": overview_rent(contract, periods_by_contract.get(contract.id, [])),
+            })
+        return enriched
+
     def create_contract(self, data: ContractCreate) -> Contract:
         pr = self._portfolio_repo
         if pr and not pr._properties.exists(data.property_id):
@@ -100,6 +134,9 @@ class TenantRepository:
         existing = self.db.query(ContractORM).filter(ContractORM.contract_number == data.contract_number).first()
         if existing:
             raise ValidationError("Vertragsnummer existiert bereits")
+        clash = find_unit_overlap(data, self._contracts.filter_by(unit_id=data.unit_id))
+        if clash:
+            raise ValidationError(unit_overlap_message(clash))
         result = self._contracts.create(data)
         self._commit()
         return result
@@ -128,11 +165,18 @@ class TenantRepository:
         )
         if existing:
             raise ValidationError("Vertragsnummer existiert bereits")
+        clash = find_unit_overlap(data, self._contracts.filter_by(unit_id=data.unit_id), exclude_id=contract_id)
+        if clash:
+            raise ValidationError(unit_overlap_message(clash))
         result = self._contracts.update(contract_id, data)
         self._commit()
         return result
 
     def delete_contract(self, contract_id: str) -> None:
+        for period in self.list_contract_rent_periods(contract_id):
+            self._rent_periods.delete(period.id)
+        for occupancy in self.list_contract_occupancies(contract_id):
+            self._occupancies.delete(occupancy.id)
         self._contracts.delete(contract_id)
         self._commit()
 
@@ -263,7 +307,71 @@ class TenantRepository:
         return result
 
     def delete_rent_adjustment(self, adj_id: str) -> None:
+        for period in self.list_contract_rent_periods():
+            if period.rent_adjustment_id == adj_id:
+                self._rent_periods.delete(period.id)
         self._rent_adjustments.delete(adj_id)
+        self._commit()
+
+    # --- Contract rent periods (rent history) ---
+    def list_contract_rent_periods(self, contract_id: str | None = None) -> list[ContractRentPeriod]:
+        periods = (self._rent_periods.filter_by(contract_id=contract_id) if contract_id
+                   else self._rent_periods.list_all())
+        return sorted(periods, key=lambda p: (p.contract_id, p.valid_from))
+
+    def _check_rent_period(self, data: ContractRentPeriodCreate, exclude_id: str | None = None) -> None:
+        if not self._contracts.exists(data.contract_id):
+            raise ValidationError("Vertrag existiert nicht")
+        contract = self._contracts.get(data.contract_id)
+        if data.rent_adjustment_id and not self._rent_adjustments.exists(data.rent_adjustment_id):
+            raise ValidationError("Mietanpassung existiert nicht")
+        if data.valid_from < contract.start_date:
+            raise ValidationError("Ein Mietstand kann nicht vor Vertragsbeginn gelten")
+        if any(p.id != exclude_id and p.valid_from == data.valid_from
+               for p in self.list_contract_rent_periods(data.contract_id)):
+            raise ValidationError("Für dieses Datum gibt es schon einen Mietstand")
+
+    def create_contract_rent_period(self, data: ContractRentPeriodCreate) -> ContractRentPeriod:
+        self._check_rent_period(data)
+        result = self._rent_periods.create(data)
+        self._commit()
+        return result
+
+    def get_contract_rent_period(self, period_id: str) -> ContractRentPeriod:
+        return self._rent_periods.get(period_id)
+
+    def update_contract_rent_period(self, period_id: str, data: ContractRentPeriodCreate) -> ContractRentPeriod:
+        self._rent_periods.get(period_id)
+        self._check_rent_period(data, exclude_id=period_id)
+        result = self._rent_periods.update(period_id, data)
+        self._commit()
+        return result
+
+    def delete_contract_rent_period(self, period_id: str) -> None:
+        self._rent_periods.delete(period_id)
+        self._commit()
+
+    # --- Contract occupancies (dated occupants) ---
+    def list_contract_occupancies(self, contract_id: str | None = None) -> list[ContractOccupancy]:
+        items = (self._occupancies.filter_by(contract_id=contract_id) if contract_id
+                 else self._occupancies.list_all())
+        return sorted(items, key=lambda o: (o.contract_id, o.valid_from))
+
+    def create_contract_occupancy(self, data: ContractOccupancyCreate) -> ContractOccupancy:
+        if not self._contracts.exists(data.contract_id):
+            raise ValidationError("Vertrag existiert nicht")
+        check_occupancy_dates(self._contracts.get(data.contract_id), data)
+        if any(o.valid_from == data.valid_from for o in self.list_contract_occupancies(data.contract_id)):
+            raise ValidationError("Für dieses Datum gibt es schon einen Bewohnerstand")
+        result = self._occupancies.create(data)
+        self._commit()
+        return result
+
+    def get_contract_occupancy(self, occupancy_id: str) -> ContractOccupancy:
+        return self._occupancies.get(occupancy_id)
+
+    def delete_contract_occupancy(self, occupancy_id: str) -> None:
+        self._occupancies.delete(occupancy_id)
         self._commit()
 
     # --- Leads ---

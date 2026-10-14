@@ -73,7 +73,7 @@ _THIRD_PARTY_PACKAGES = [
     'anyio',
     'sniffio',
     'h11',
-    'jose',
+    'jwt',
     'cffi',
     'cryptography',
     'multipart',
@@ -89,6 +89,9 @@ _THIRD_PARTY_PACKAGES = [
 ]
 
 collected_hiddenimports = []
+# All backend modules (services, routers, the test version …): imports inside functions are
+# easy to miss, and a module missing from the bundle fails only when it is first used.
+collected_hiddenimports += collect_submodules('backend', filter=lambda name: '.tests' not in name)
 for pkg in _THIRD_PARTY_PACKAGES:
     try:
         mods = collect_submodules(pkg)
@@ -187,10 +190,7 @@ _EXPLICIT_THIRD_PARTY = [
     'anyio._backends._asyncio',
     'sniffio',
     'h11',
-    'jose',
-    'jose.jwt',
-    'jose.jws',
-    'jose.backends',
+    'jwt',
     'cffi',
     'cryptography',
     'cryptography.fernet',
@@ -227,6 +227,11 @@ if os.path.isdir(i18n_dir):
         if os.path.isfile(src):
             backend_data.append((src, 'i18n'))
 
+# Version number (backend.config reads it from pyproject.toml when the package metadata is missing)
+pyproject = os.path.join(ROOT, 'pyproject.toml')
+if os.path.isfile(pyproject):
+    backend_data.append((pyproject, '.'))
+
 # Include alembic config and migrations
 alembic_ini = os.path.join(ROOT, 'alembic.ini')
 if os.path.isfile(alembic_ini):
@@ -240,6 +245,12 @@ if os.path.isdir(migrations_dir):
             src = os.path.join(dirpath, f)
             rel = os.path.relpath(dirpath, ROOT)
             backend_data.append((src, rel))
+
+# Fonts of generated PDFs (Wohnungsgeberbestätigung): bundled, never the system's
+fonts_dir = os.path.join(ROOT, 'backend', 'assets', 'fonts')
+if os.path.isdir(fonts_dir):
+    for f in os.listdir(fonts_dir):
+        backend_data.append((os.path.join(fonts_dir, f), os.path.join('backend', 'assets', 'fonts')))
 
 # Include Mietvertrag wizard package assets/templates/static
 if os.path.isdir(WIZARD_ROOT):
@@ -388,7 +399,8 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    # not needed by the desktop program (SQLite; images without AVIF): keeps the package small enough to e-mail
+    excludes=['psycopg2', 'psycopg2_binary', 'PIL.AvifImagePlugin', 'PIL._avif'],
     noarchive=False,
 )
 

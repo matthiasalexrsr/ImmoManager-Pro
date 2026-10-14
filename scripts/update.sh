@@ -1,6 +1,6 @@
 #!/bin/bash
 # ImmoManager Pro — Update Script
-# Usage: ./scripts/update.sh
+# Usage: ./scripts/update.sh   (stop the server first; restart it afterwards)
 set -euo pipefail
 
 echo "=== ImmoManager Pro Update ==="
@@ -10,25 +10,20 @@ echo ""
 echo "[1/5] Pulling latest code..."
 git pull --ff-only origin main || { echo "ERROR: git pull failed. Resolve conflicts first."; exit 1; }
 
-# 2. Install/update Python dependencies
+# 2. Install/update Python dependencies (exact versions, whole tree)
 echo "[2/5] Installing Python dependencies..."
-pip install -r requirements.txt --quiet
+pip install -r requirements.txt -c constraints.txt --quiet
 
-# 3. Build frontend
+# 3. Build frontend (exact versions from package-lock.json)
 echo "[3/5] Building frontend..."
 cd frontend
-npm install --silent
+npm ci --silent
 npm run build
 cd ..
 
-# 4. Run database migrations
-echo "[4/5] Running database migrations..."
-if [ -f alembic.ini ]; then
-    alembic upgrade head
-    echo "  Migrations applied."
-else
-    echo "  No alembic.ini found, skipping migrations."
-fi
+# 4. Explicit upgrade: verified full backup first, then the migrations (only when needed)
+echo "[4/5] Explicit database upgrade (python -m backend.upgrade)..."
+python -m backend.upgrade || { echo "ERROR: upgrade failed; see the message above. The server will refuse to start."; exit 1; }
 
 # 5. Show version
 echo "[5/5] Checking version..."

@@ -35,11 +35,16 @@
       "budgets": "Budgets",
       "taxRates": "Steuersätze",
       "receivables": "Forderungen",
+      "dunning": "Mahnwesen",
       "rentCharges": "Sollstellungen",
       "allocationKeys": "Verteilerschlüssel",
       "escalationRules": "Eskalationsregeln",
       "handoverProtocols": "Übergabeprotokolle",
-      "history": "Änderungsprotokoll"
+      "history": "Änderungsprotokoll",
+      "contractWizard": "Mietvertrag-Wizard",
+      "review": "Prüfliste",
+      "serviceContracts": "Objektverträge",
+      "invoiceReview": "Rechnungsprüfung"
     },
     "sections": {
       "overview": "Übersicht",
@@ -57,6 +62,18 @@
       "notes": "Notizen",
       "attachments": "Anhänge",
       "activity": "Aktivität"
+    },
+    "actions": {
+      "booking": "Neue Buchung",
+      "task": "Neue Aufgabe",
+      "invoice": "Neue Rechnung",
+      "contact": "Neuer Kontakt",
+      "maintenance": "Neuer Wartungsfall",
+      "event": "Neuer Termin",
+      "receivable": "Neue Forderung",
+      "unit": "Neue Einheit",
+      "lead": "Neuer Interessent",
+      "contract": "Neuer Mietvertrag"
     }
   },
   "topBar": {
@@ -100,7 +117,8 @@
       "confirm": "Bestätigen",
       "next": "Weiter",
       "back": "Zurück",
-      "done": "Fertig"
+      "done": "Fertig",
+      "clear": "Suche leeren"
     },
     "commonActions": {
       "viewDetails": "Details anzeigen",
@@ -121,7 +139,19 @@
       "selectDate": "Datum auswählen",
       "selectTime": "Zeit auswählen",
       "enterAmount": "Betrag eingeben",
-      "search": "Suchen"
+      "search": "Suchen",
+      "none": "— Keine —",
+      "status": "Status",
+      "cancel": "Abbrechen",
+      "discardQuestion": "Ungespeicherte Änderungen verwerfen?",
+      "keepEditing": "Weiter bearbeiten",
+      "discard": "Verwerfen",
+      "saveShortcut": "Strg+Enter speichert",
+      "savedNext": "{{count}} gespeichert – nächster Eintrag",
+      "saveAndNew": "Speichern & weiteren",
+      "saveAndNewShortcut": "Strg+Umschalt+Enter",
+      "today": "Heute",
+      "todayFill": "Heute eintragen"
     },
     "table": {
       "adjustColumns": "Spalten anpassen",
@@ -133,7 +163,10 @@
       "nextPage": "Nächste Seite",
       "previousPage": "Vorherige Seite",
       "noResults": "Keine Ergebnisse",
-      "loading": "Laden…"
+      "loading": "Laden…",
+      "firstPage": "Erste Seite",
+      "lastPage": "Letzte Seite",
+      "pagination": "Seitennavigation"
     },
     "filterChips": {
       "active": "Aktiv",
@@ -174,7 +207,64 @@
       "expiring": "Auslaufend",
       "terminated": "Gekündigt",
       "ended": "Beendet",
-      "inReview": "In Prüfung"
+      "inReview": "In Prüfung",
+      "expired": "Ausgelaufen"
+    },
+    "booking": {
+      "booked": "Gebucht",
+      "matched": "Zugeordnet"
+    },
+    "badge": {
+      "active": "Aktiv",
+      "inactive": "Inaktiv",
+      "archived": "Archiviert",
+      "draft": "Entwurf",
+      "open": "Offen",
+      "closed": "Geschlossen",
+      "pending": "Ausstehend",
+      "new": "Neu",
+      "scheduled": "Geplant",
+      "completed": "Erledigt",
+      "done": "Erledigt",
+      "in_progress": "In Bearbeitung",
+      "cancelled": "Storniert",
+      "paused": "Pausiert",
+      "vacant": "Leer",
+      "occupied": "Vermietet",
+      "reserved": "Reserviert",
+      "renovation": "Renovierung",
+      "terminated": "Gekündigt",
+      "expired": "Ausgelaufen",
+      "signed": "Unterschrieben",
+      "review": "In Prüfung",
+      "finalized": "Abgeschlossen",
+      "delivered": "Zugestellt",
+      "corrected": "Korrigiert",
+      "disputed": "Widersprochen",
+      "paid": "Bezahlt",
+      "partial": "Teilbezahlt",
+      "overdue": "Überfällig",
+      "held": "Verwahrt",
+      "partially_returned": "Teilweise zurückgezahlt",
+      "returned": "Zurückgezahlt",
+      "unread": "Ungelesen",
+      "read": "Gelesen",
+      "applied": "Angewendet",
+      "rejected": "Abgelehnt",
+      "accepted": "Angenommen",
+      "matched": "Zugeordnet",
+      "booked": "Gebucht",
+      "contacted": "Kontaktiert",
+      "offer_sent": "Angebot gesendet",
+      "viewing_scheduled": "Besichtigung geplant",
+      "no_show": "Nicht erschienen",
+      "warning": "Warnung",
+      "info": "Info",
+      "critical": "Kritisch",
+      "low": "Niedrig",
+      "medium": "Mittel",
+      "high": "Hoch",
+      "urgent": "Dringend"
     }
   },
   "onboarding": {
@@ -201,7 +291,9 @@
       "password": "Passwort",
       "rememberMe": "Angemeldet bleiben",
       "forgotPassword": "Passwort vergessen?",
-      "submit": "Anmelden"
+      "submit": "Anmelden",
+      "userOrEmail": "Benutzername oder E-Mail",
+      "username": "Benutzername"
     },
     "forgotPassword": {
       "title": "Passwort zurücksetzen",
@@ -216,7 +308,8 @@
       "email": "E-Mail-Adresse",
       "password": "Passwort",
       "confirmPassword": "Passwort bestätigen",
-      "submit": "Konto erstellen"
+      "submit": "Konto erstellen",
+      "initialSetup": "Ersteinrichtung: Dieses Konto wird als Eigentümer-Konto angelegt."
     },
     "twoFactor": {
       "title": "Zwei-Faktor-Authentifizierung",
@@ -290,6 +383,40 @@
       "create": "Portfolio erstellen",
       "edit": "Portfolio bearbeiten",
       "archive": "Portfolio archivieren"
+    },
+    "properties": {
+      "form": {
+        "address": "Straße",
+        "city": "Stadt",
+        "country": "Land",
+        "livingArea": "Wohnfläche (m²)",
+        "marketValue": "Marktwert (€)",
+        "name": "Immobilie",
+        "ownershipShare": "Eigentumsanteil (%)",
+        "plotArea": "Grundstücksfläche (m²)",
+        "postalCode": "PLZ",
+        "purchaseDate": "Kaufdatum",
+        "purchasePrice": "Kaufpreis (€)",
+        "type": "Typ",
+        "usableArea": "Nutzfläche (m²)",
+        "valuationDate": "Bewertungsdatum",
+        "yearBuilt": "Baujahr"
+      },
+      "sections": {
+        "address": "Adresse",
+        "areas": "Flächen",
+        "basic": "Stammdaten",
+        "valuation": "Kauf & Bewertung"
+      },
+      "status": {
+        "inactive": "Inaktiv"
+      },
+      "title": "Immobilien",
+      "types": {
+        "commercial": "Gewerbe",
+        "mixed": "Gemischt",
+        "residential": "Wohngebäude"
+      }
     }
   },
   "properties": {
@@ -370,7 +497,13 @@
       "serviceCharge": "Nebenkosten-VZ",
       "warmRent": "Warmmiete",
       "status": "Status",
-      "tenant": "Mieter"
+      "tenant": "Mieter",
+      "columns": {
+        "area": "Fläche (m²)",
+        "coldRent": "Kaltmiete (€)",
+        "label": "Einheit",
+        "type": "Typ"
+      }
     },
     "types": {
       "apartment": "Wohnung",
@@ -380,7 +513,8 @@
       "parking": "Stellplatz",
       "garage": "Garage",
       "basement": "Keller",
-      "other": "Sonstiges"
+      "other": "Sonstiges",
+      "commercial": "Gewerbe"
     },
     "form": {
       "property": "Immobilie",
@@ -403,7 +537,15 @@
         "vacant": "Leerstand",
         "reserved": "Reserviert",
         "renovation": "In Renovierung"
-      }
+      },
+      "heatingAdvance": "Heizkosten-Vorauszahlung (€)",
+      "personCount": "Personen",
+      "serviceChargeAdvance": "NK-Vorauszahlung (€)"
+    },
+    "status": {
+      "occupied": "Vermietet",
+      "reserved": "Reserviert",
+      "vacant": "Leer"
     }
   },
   "tenantsContracts": {
@@ -431,7 +573,42 @@
       "deposit": "Kaution",
       "indexRent": "Index-/Staffelmiete",
       "serviceChargeSettlement": "Betriebskostenabrechnung",
-      "status": "Status"
+      "status": "Status",
+      "form": {
+        "persons": "Personen im Haushalt",
+        "personsHint": "für die Umlage nach Personen",
+        "contractNumber": "Vertragsnr.",
+        "deposit": "Kaution (€)",
+        "endDate": "Ende",
+        "indexRent": "Mietanpassung",
+        "noticePeriod": "Kündigungsfrist",
+        "serviceChargeSettlement": "NK-Abrechnung",
+        "startDate": "Beginn"
+      },
+      "indexRentTypes": {
+        "fixed": "Festmiete",
+        "index": "Indexmiete",
+        "stepped": "Staffelmiete"
+      },
+      "settlement": {
+        "annual": "Jährlich",
+        "monthly": "Monatlich"
+      },
+      "occupants": {
+        "action": "Bewohner",
+        "title": "Bewohner im Zeitverlauf",
+        "close": "Schließen",
+        "intro": "Ab Vertragsbeginn ({{start}}) gelten {{persons}} Personen laut Vertrag. Jede Änderung gilt ab ihrem Datum; die Umlage nach Personen rechnet tagesgenau mit Personentagen.",
+        "unknown": "keine Angabe",
+        "loading": "Lade Bewohner…",
+        "validFrom": "Gültig ab",
+        "persons": "Personen",
+        "notes": "Anlass",
+        "actions": "Aktionen",
+        "empty": "Keine Änderung erfasst",
+        "remove": "Entfernen",
+        "add": "Änderung hinzufügen"
+      }
     },
     "contractActions": {
       "activate": "Vertrag aktivieren",
@@ -466,7 +643,21 @@
       "type": "Kontotyp",
       "openingBalance": "Anfangssaldo",
       "balance": "Saldo",
-      "lastSync": "Letzte Synchronisation"
+      "lastSync": "Letzte Synchronisation",
+      "form": {
+        "accountType": "Kontotyp",
+        "balance": "Saldo (€)",
+        "bank": "Bank",
+        "name": "Kontoname",
+        "openingBalance": "Anfangssaldo (€)",
+        "type": "Typ"
+      },
+      "types": {
+        "checking": "Girokonto",
+        "deposit": "Kautionskonto",
+        "rent": "Mietkonto",
+        "savings": "Sparkonto"
+      }
     },
     "accountTypes": {
       "bank": "Bankkonto",
@@ -484,7 +675,15 @@
       "tenant": "Mieter",
       "paymentText": "Zahlungstext",
       "receipt": "Beleg",
-      "status": "Status"
+      "status": "Status",
+      "form": {
+        "amount": "Betrag (€)",
+        "bookingDate": "Buchungsdatum",
+        "category": "Kategorie",
+        "date": "Datum",
+        "paymentText": "Buchungstext",
+        "receiptUrl": "Beleg-URL"
+      }
     },
     "categories": {
       "rentIncome": "Mieteinnahmen",
@@ -748,6 +947,66 @@
       "dbDetails": "DB-Details",
       "createBackup": "Backup erstellen"
     },
+    "operations": {
+      "title": "Betrieb: Vollbackup & Wiederherstellungsprobe",
+      "intro": "Vollbackup = Datenbank, Anhänge, Konfiguration und Schlüssel in einem geprüften Archiv. Die Wiederherstellungsprobe spielt das neueste Archiv isoliert ein, prüft es und löscht die Kopie wieder.",
+      "lastBackup": "Letztes Vollbackup",
+      "lastProbe": "Letzte Wiederherstellungsprobe",
+      "never": "noch nie",
+      "ok": "erfolgreich",
+      "failed": "fehlgeschlagen",
+      "schedule": "Zeitplan",
+      "scheduleValue": "Täglich {{time}} Uhr, Probe monatlich am {{day}}. um {{probeTime}} Uhr ({{tz}})",
+      "scheduleOff": "Automatische Sicherung ausgeschaltet (BACKUP_SCHEDULE_ENABLED)",
+      "retention": "Aufbewahrung",
+      "retentionValue": "{{daily}} tägliche, {{monthly}} monatliche, {{preUpgrade}} vor Upgrades",
+      "archives": "Archive",
+      "archivesValue": "{{count}} Archive, zusammen {{size}}",
+      "secondTarget": "Zweites Ziel",
+      "notConfigured": "nicht eingerichtet",
+      "keys": "Schlüssel",
+      "keysValue": "Aktiver Schlüssel {{key}} · {{sealed}} verschlüsselt · {{plaintext}} unverschlüsselt",
+      "passphraseOn": "Schlüssel im Archiv mit Passphrase geschützt",
+      "passphraseOff": "Schlüssel im Archiv ohne Passphrase – Archive wie den Schlüssel selbst schützen",
+      "warningsTitle": "Hinweise",
+      "failures": "Fehler",
+      "actions": "Aktionen",
+      "runBackup": "Vollbackup jetzt",
+      "runProbe": "Wiederherstellungsprobe starten",
+      "refresh": "Aktualisieren",
+      "running": "Läuft …",
+      "backupDone": "Vollbackup erstellt und geprüft: {{name}}",
+      "probeDone": "Wiederherstellungsprobe bestanden: {{name}}",
+      "loadError": "Betriebsübersicht konnte nicht geladen werden",
+      "warnings": {
+        "schedule_disabled": "Die tägliche Sicherung ist ausgeschaltet.",
+        "no_second_target": "Kein zweites Sicherungsziel eingerichtet. Bei „Zweites Ziel“ einen Ordner auf einer anderen Festplatte, einem USB-Laufwerk oder Netzlaufwerk eintragen (Eigentümer).",
+        "second_target_failed": "Die Kopie ins zweite Ziel ist fehlgeschlagen.",
+        "no_backup": "Es gibt noch kein erfolgreiches Vollbackup.",
+        "backup_stale": "Das letzte erfolgreiche Vollbackup ist {{hours}} Stunden alt.",
+        "last_backup_failed": "Das letzte Vollbackup ist fehlgeschlagen.",
+        "no_probe": "Es gibt noch keine bestandene Wiederherstellungsprobe.",
+        "probe_stale": "Die letzte bestandene Wiederherstellungsprobe ist {{days}} Tage alt.",
+        "last_probe_failed": "Die letzte Wiederherstellungsprobe ist fehlgeschlagen.",
+        "keys_unprotected": "Die Schlüssel liegen ohne Passphrase im Archiv. Abhilfe: in der Datei {{file}} die Zeile BACKUP_PASSPHRASE=… ergänzen, das Programm neu starten und die Passphrase getrennt aufbewahren.",
+        "keys_not_in_backup": "Diese Schlüssel sind nicht im Vollbackup: {{ids}} – getrennt sichern.",
+        "plaintext_secrets": "{{count}} Integrationsgeheimnis(se) noch unverschlüsselt gespeichert.",
+        "secrets_error": "Integrationsgeheimnisse sind nicht lesbar (Schlüssel fehlt?); Änderungen sind gesperrt.",
+        "schema_not_current": "Die Datenbank ist nicht auf dem aktuellen Schemastand.",
+        "second_target_pending": "Im zweiten Ziel liegt noch keine Kopie des neuesten Vollbackups; „Vollbackup jetzt“ legt sie an.",
+        "second_target_same_device": "Das zweite Ziel liegt auf demselben Laufwerk wie die Daten und schützt nicht vor einem Festplattendefekt."
+      },
+      "secondTargetSetUp": "Einrichten",
+      "secondTargetChange": "Ändern",
+      "secondTargetSave": "Speichern",
+      "secondTargetRemove": "Entfernen",
+      "secondTargetCancel": "Abbrechen",
+      "secondTargetFixed": "festgelegt in der Konfiguration (BACKUP_SECOND_TARGET)",
+      "secondTargetPlaceholder": "z. B. E:\\ImmoManager-Sicherung oder \\\\NAS\\Sicherung",
+      "secondTargetHint": "Ein Ordner auf einer anderen Festplatte, einem USB-Laufwerk oder Netzlaufwerk. Jedes Vollbackup wird dorthin kopiert und die Kopie geprüft.",
+      "secondTargetSaved": "Gespeichert: {{path}}. Das nächste Vollbackup wird dorthin kopiert, sofort mit „Vollbackup jetzt“.",
+      "secondTargetRemoved": "Das zweite Ziel ist entfernt."
+    },
     "about": {
       "title": "Über ImmoManager Pro",
       "type": "Typ",
@@ -776,7 +1035,8 @@
       "rolledBack": "Automatischer Rollback wurde durchgeführt. Ihre Daten sind unverändert.",
       "history": "Update-Verlauf",
       "showHistory": "Anzeigen",
-      "noHistory": "Noch keine Updates durchgeführt"
+      "noHistory": "Noch keine Updates durchgeführt",
+      "download": "Neue Version herunterladen"
     }
   },
   "search": {
@@ -784,7 +1044,13 @@
       "placeholder": "Suche nach Immobilien, Einheiten, Mietern, Verträgen, Buchungen…",
       "recent": "Letzte Suchanfragen",
       "results": "Treffer",
-      "noResults": "Keine Treffer gefunden."
+      "noResults": "Keine Treffer gefunden.",
+      "shownOf": "{{shown}} von {{total}}",
+      "loadMore": "Weitere laden",
+      "pages": "Seiten",
+      "recentlyOpened": "Zuletzt geöffnet",
+      "clearRecent": "Verlauf leeren",
+      "actions": "Aktionen"
     }
   },
   "notifications": {
@@ -812,7 +1078,8 @@
       "title": "Wirklich löschen?",
       "body": "Diese Aktion kann nicht rückgängig gemacht werden.",
       "delete": "Löschen",
-      "cancel": "Abbrechen"
+      "cancel": "Abbrechen",
+      "confirm": "Bestätigen"
     },
     "confirmArchive": {
       "title": "Archivieren?",
@@ -1035,7 +1302,25 @@
       "filterTo": "Bis",
       "filterMin": "Min",
       "filterMax": "Max",
-      "filterText": "Filter…"
+      "filterText": "Filter…",
+      "bulk": {
+        "region": "Auswahl",
+        "selected": "{{count}} ausgewählt",
+        "selectAll": "Alle {{count}} Treffer auswählen",
+        "clear": "Auswahl aufheben",
+        "applies": "Betrifft {{count}} der ausgewählten Einträge",
+        "done": "{{label}}: {{count}} erledigt",
+        "failed": "{{count}} fehlgeschlagen",
+        "skipped": "{{count}} nicht betroffen",
+        "more": "und {{count}} weitere",
+        "selectPage": "Alle Einträge dieser Seite auswählen",
+        "selectRow": "Auswählen"
+      },
+      "total": "Summe ({{count}})",
+      "empty": "Keine Einträge vorhanden.",
+      "noMatches": "Keine Treffer für diese Suche oder diese Filter.",
+      "resetSearch": "Suche und Filter zurücksetzen",
+      "addEntry": "Neuen Eintrag anlegen"
     },
     "formModal": {
       "selectPlaceholder": "— Auswählen —",
@@ -1147,7 +1432,16 @@
       "actionCreated": "Erstellt",
       "actionUpdated": "Aktualisiert",
       "actionPatched": "Geändert",
-      "actionDeleted": "Gelöscht"
+      "actionDeleted": "Gelöscht",
+      "analysisTab": "Analyse",
+      "auditChanged": "Geändert",
+      "auditCreated": "Erstellt",
+      "auditDeleted": "Gelöscht",
+      "auditLoadError": "Audit-Log konnte nicht geladen werden",
+      "auditUpdated": "Aktualisiert",
+      "noActivity": "Keine Aktivitäten",
+      "workTab": "Arbeit",
+      "cashflow12": "Cashflow (letzte 12 Monate)"
     },
     "settings": {
       "title": "Einstellungen",
@@ -1192,7 +1486,71 @@
       "ocrLanguages": "OCR-Sprachen",
       "ocrLangs": "Deutsch + Englisch",
       "fileStorage": "Dateispeicher",
-      "fileStorageLocal": "Lokal (uploads/)"
+      "fileStorageLocal": "Lokal (uploads/)",
+      "users": {
+        "tab": "Benutzer",
+        "title": "Benutzerverwaltung",
+        "add": "Benutzer anlegen",
+        "edit": "Benutzer bearbeiten",
+        "resetPassword": "Passwort zurücksetzen",
+        "newPassword": "Neues Passwort",
+        "username": "Benutzername",
+        "email": "E-Mail",
+        "fullName": "Name",
+        "password": "Passwort",
+        "role": "Rolle",
+        "status": "Status",
+        "actions": "Aktionen",
+        "active": "Aktiv",
+        "inactive": "Deaktiviert",
+        "activate": "Aktivieren",
+        "deactivate": "Deaktivieren",
+        "delete": "Löschen",
+        "you": "(Sie)",
+        "empty": "Keine Benutzer vorhanden",
+        "loadError": "Benutzer konnten nicht geladen werden",
+        "saved": "Benutzer gespeichert",
+        "passwordSaved": "Passwort geändert",
+        "deleted": "Benutzer gelöscht",
+        "confirmDelete": "Benutzer „{{name}}“ endgültig löschen?",
+        "confirmDeactivate": "Benutzer „{{name}}“ deaktivieren? Die Anmeldung wird sofort gesperrt.",
+        "passwordHint": "Mind. 8 Zeichen, Groß- und Kleinbuchstaben sowie eine Ziffer.",
+        "managerHint": "Als Verwalter können Sie nur Benutzer mit Leserechten verwalten. Rollen vergibt der Eigentümer.",
+        "roles": {
+          "eigentuemer": "Eigentümer",
+          "verwalter": "Verwalter",
+          "buchhaltung": "Buchhaltung",
+          "techniker": "Techniker",
+          "readonly": "Nur Lesen"
+        },
+        "access": {
+          "column": "Portfolios",
+          "button": "Portfolios",
+          "title": "Portfolios für {{name}}",
+          "explanation": "Legt fest, welche Objekte, Einheiten, Verträge, Buchungen und Dokumente dieses Konto sieht und bearbeiten kann. Die Rolle bestimmt weiterhin, was es ändern darf.",
+          "scope": "Zugriff",
+          "all": "Alle Portfolios",
+          "allHint": "Auch künftige Portfolios und die Verwaltung der ganzen Installation.",
+          "selected": "Ausgewählte Portfolios",
+          "selectedHint": "Nur Daten dieser Portfolios; Installationsverwaltung, Protokolle und Gesamtexporte bleiben gesperrt.",
+          "portfolios": "Portfolios",
+          "noPortfolios": "Es gibt noch keine Portfolios.",
+          "nothingWarning": "Ohne ausgewähltes Portfolio sieht das Konto keine Daten.",
+          "saved": "Portfolio-Zugriff gespeichert",
+          "summaryAll": "Alle",
+          "summaryNone": "Keine – sieht nichts",
+          "summaryCount": "{{count}} ausgewählt",
+          "managerHint": "Neue Konten sehen erst Daten, wenn der Eigentümer ihnen Portfolios zuweist."
+        }
+      },
+      "skippedExisting": "bereits vorhanden, übersprungen",
+      "nothingNew": "Keine neuen Datensätze – alles war bereits vorhanden.",
+      "tabDev": "Entwicklung",
+      "tabPersonal": "Persönlich",
+      "tabSystem": "System",
+      "tabWorkflow": "Arbeitsweise",
+      "versionError": "Versionsinformationen konnten nicht geladen werden",
+      "chooseImportFile": "JSON-Datei wählen …"
     },
     "messages": {
       "title": "Nachrichten",
@@ -1201,7 +1559,18 @@
       "noMessages": "Keine Nachrichten",
       "type": "Typ",
       "noContent": "Kein Inhalt",
-      "selectMessage": "Nachricht auswählen, um Details anzuzeigen"
+      "selectMessage": "Nachricht auswählen, um Details anzuzeigen",
+      "conversations": "Konversationen",
+      "messagesCount": "Nachrichten",
+      "newConversation": "Neue Konversation",
+      "noConversations": "Keine Konversationen",
+      "noThreadMessages": "Noch keine Nachrichten in diesem Thread",
+      "notifications": "Benachrichtigungen",
+      "participants": "Teilnehmer",
+      "selectOrCreateConversation": "Konversation auswählen oder neue erstellen",
+      "send": "Senden",
+      "subject": "Betreff",
+      "writePlaceholder": "Nachricht schreiben..."
     },
     "statements": {
       "revisionReason": "Grund für Korrektur (optional):",
@@ -1295,7 +1664,40 @@
       "receivablesFailed": "Forderungen konnten nicht erzeugt werden",
       "exportFailed": "Export fehlgeschlagen",
       "disputeFailed": "Widerspruch konnte nicht eingelegt werden",
-      "preflightBlockers": "Preflight-Blocker vorhanden"
+      "preflightBlockers": "Preflight-Blocker vorhanden",
+      "colParty": "Mieter",
+      "vacancyParty": "Leerstand (Eigentümer)",
+      "colUsage": "Nutzungszeitraum",
+      "colDays": "Tage",
+      "colRecoverable": "Umlagefähig",
+      "notRecoverable": "nein (trägt der Eigentümer)",
+      "recoverable": "ja",
+      "formRecoverable": "Umlagefähig",
+      "recoverableYes": "Ja – wird auf die Mieter verteilt",
+      "recoverableNo": "Nein – trägt der Eigentümer",
+      "tenantShare": "Auf Mieter verteilt",
+      "vacancyShare": "Leerstand (Eigentümer)",
+      "nonRecoverableShare": "Nicht umlagefähig",
+      "statementsTitle": "Einzelabrechnungen je Nutzungszeitraum",
+      "stepCreate": "Erstellen",
+      "stepCosts": "Kosten",
+      "stepPreflight": "Prüfung",
+      "stepGenerate": "Generieren",
+      "stepFinalize": "Finalisieren",
+      "stepDeliver": "Zustellen",
+      "objections": "Widersprüche",
+      "objectionReceived": "Eingang",
+      "objectionStatement": "Einzelabrechnung",
+      "objectionReason": "Grund",
+      "objectionStatus": "Stand",
+      "objectionWholePeriod": "gesamte Abrechnung",
+      "objectionStatusValues": {
+        "open": "offen",
+        "correction": "in Korrektur",
+        "resolved": "durch Korrektur erledigt"
+      },
+      "correctsVersion": "Korrektur Rev. {{revision}} von „{{label}}“ – die korrigierte Fassung bleibt unverändert erhalten",
+      "finalVersionNote": "Finalisierte Fassung: Einzelabrechnungen, PDF und Summen bleiben unverändert; Änderungen nur über „Korrektur starten“"
     },
     "invoices": {
       "markPaidConfirm": "als bezahlt markieren?"
@@ -1308,7 +1710,9 @@
       "paid": "Bezahlt",
       "open": "Offen",
       "overdue": "Überfällig",
-      "title": "Mietübersicht"
+      "title": "Mietübersicht",
+      "charges": "Sollstellungen",
+      "receivables": "Forderungen"
     },
     "meters": {
       "title": "Zähler",
@@ -1326,7 +1730,11 @@
       "electricity": "Strom",
       "gas": "Gas",
       "water": "Wasser",
-      "heating": "Heizung"
+      "heating": "Heizung",
+      "measureUnitHint": "Einheit der Zählerstände; leer: m³ bei Wasser, kWh bei Strom. Heizung und Gas bitte immer angeben",
+      "installationDateHint": "Bei Zählerwechsel: Tag des Anfangsstands des neuen Zählers",
+      "removalDate": "Ausbaudatum (Zählerwechsel)",
+      "removalDateHint": "Tag des Endstands; der Verbrauch zählt bis hier, danach der neue Zähler"
     },
     "propertyOverview": {
       "notFound": "Immobilie nicht gefunden",
@@ -1623,7 +2031,8 @@
         "contactPerson": "Ansprechpartner",
         "phone": "Telefon",
         "notes": "Notizen",
-        "status": "Status"
+        "status": "Status",
+        "contactPhone": "Telefon"
       },
       "types": {
         "building": "Gebäudeversicherung",
@@ -1643,6 +2052,34 @@
         "expired": "Abgelaufen",
         "cancelled": "Gekündigt"
       }
+    },
+    "propertyDetail": {
+      "allUnits": "Alle {{count}} Einheiten",
+      "annualRent": "Jahresmiete (Kalt)",
+      "avgPerSqm": "Durchschnitt €/m²",
+      "docTitle": "Titel",
+      "dueDate": "Fällig",
+      "financeOverview": "Finanzübersicht",
+      "heating": "Heizung",
+      "maintenanceTitle": "Wartung & Instandhaltung",
+      "monthlyColdRent": "Monatliche Kaltmiete",
+      "noAddress": "Keine Adresse",
+      "noDocuments": "Keine Dokumente",
+      "noUnits": "Keine Einheiten",
+      "other": "Sonstig",
+      "priority": "Priorität",
+      "propertyDetails": "Immobiliendetails",
+      "recentDocuments": "Letzte Dokumente",
+      "rentByUnit": "Mietübersicht nach Einheit",
+      "serviceCharge": "NK",
+      "total": "Gesamt",
+      "totalArea": "Gesamtfläche",
+      "totalColdRent": "Kaltmiete gesamt",
+      "unitsOverview": "Einheiten-Übersicht"
+    },
+    "allocationKeys": {
+      "measureUnit": "Abrechnungseinheit (nur bei Verbrauch)",
+      "measureUnitHint": "Zähler in anderer Einheit werden nur mit exaktem Faktor umgerechnet (MWh → kWh, l → m³); Gas m³ → kWh und Heizkostenverteiler werden nicht umgerechnet"
     }
   },
   "sidebar": {
@@ -1655,6 +2092,7 @@
     "description": "Anmerkungen und Verbesserungsnotizen für Entwickler",
     "enable": "Entwicklermodus aktivieren",
     "disable": "Entwicklermodus deaktivieren",
+    "unavailable": "In der Produktionsumgebung deaktiviert",
     "shortcut": "Strg+Umschalt+D",
     "addNote": "Notiz hinzufügen",
     "notes": "Notizen",
@@ -1696,5 +2134,262 @@
     "fileNotFound": "Datei nicht gefunden",
     "fileTypeNotAllowed": "Dateityp nicht erlaubt",
     "uploadFailed": "Upload fehlgeschlagen"
+  },
+  "contractWizard": {
+    "description": "Erstellen Sie Schritt für Schritt einen rechtssicheren Mietvertrag."
+  },
+  "serviceContracts": {
+    "title": "Objektverträge",
+    "intro": "Energie- und Dienstleistungsverträge der Objekte: Anbieter, Standorte, Tarife, Fristen sowie Abschläge, Rechnungen und Zahlungen getrennt.",
+    "search": "Suche (Titel, Nummer, Anbieter)",
+    "allTypes": "Alle Vertragsarten",
+    "allStatuses": "Alle Status",
+    "create": "Neuer Objektvertrag",
+    "loading": "Objektverträge werden geladen…",
+    "loadError": "Objektverträge konnten nicht geladen werden.",
+    "retry": "Erneut laden",
+    "backToList": "Objektverträge",
+    "upcomingTitle": "Fristen in den nächsten 90 Tagen",
+    "noUpcoming": "Keine Fristen in diesem Zeitraum.",
+    "daysLeft": "noch {{days}} Tage",
+    "actions": "Aktionen",
+    "edit": "Bearbeiten",
+    "remove": "Entfernen",
+    "delete": "Objektvertrag löschen",
+    "confirmDelete": "Objektvertrag „{{name}}“ mit Standorten, Tarifen und Dokumentzuordnungen löschen?",
+    "editContract": "Objektvertrag bearbeiten",
+    "yes": "Ja",
+    "no": "Nein",
+    "current": "aktuell",
+    "contact": "Kontakt",
+    "numberShort": "Nr.",
+    "openEnded": "unbefristet",
+    "perMonth": "je Monat",
+    "perYear": "je Jahr",
+    "months": "{{count}} Monate",
+    "restrictedNote": "Dieser Vertrag hat weitere Standorte in Portfolios, auf die Sie keinen Zugriff haben. Sie sehen nur Ihre Standorte und Belege; ändern kann ihn nur ein Konto mit Zugriff auf alle Portfolios.",
+    "hiddenLocations": "Standorte anderer Portfolios sind ausgeblendet.",
+    "partialFigures": "Die Zahlen enthalten nur Rechnungen und Zahlungen Ihrer Portfolios.",
+    "tabs": {
+      "master": "Stammdaten",
+      "locations": "Standorte",
+      "tariffs": "Tarife",
+      "deadlines": "Fristen",
+      "finance": "Erwartung, Rechnungen, Zahlungen",
+      "documents": "Dokumente"
+    },
+    "sections": {
+      "master": "Stammdaten",
+      "term": "Laufzeit und Kündigung",
+      "location": "Erster Standort",
+      "firstTariff": "Erster Tarif (optional)",
+      "billing": "Umlage auf Mieter"
+    },
+    "fields": {
+      "type": "Vertragsart",
+      "title": "Bezeichnung",
+      "provider": "Anbieter",
+      "contractNumber": "Vertragsnummer",
+      "customerNumber": "Kundennummer",
+      "start": "Vertragsbeginn",
+      "end": "Ende der festen Laufzeit",
+      "minimumTerm": "Mindestlaufzeit (Monate)",
+      "renewal": "Verlängerung",
+      "renewalMonths": "Verlängerung um (Monate)",
+      "noticeValue": "Kündigungsfrist",
+      "noticeUnit": "Einheit der Frist",
+      "noticeTo": "Kündigung zum",
+      "reminderDays": "Erinnerung (Tage vorher)",
+      "property": "Immobilie",
+      "unit": "Einheit (optional)",
+      "meter": "Zähler (optional)",
+      "supplyPoint": "Zählpunkt / Marktlokation",
+      "shareWeight": "Kostengewicht",
+      "location": "Standort",
+      "locationFrom": "Standort ab",
+      "locationTo": "Standort bis",
+      "validity": "Gültigkeit",
+      "recoverable": "Umlagefähig",
+      "recoverablePercent": "Umlagefähiger Anteil (%)",
+      "costCategory": "Betriebskostenart",
+      "notes": "Notizen",
+      "status": "Status",
+      "nextDeadline": "Nächste Frist",
+      "validFrom": "Gültig ab",
+      "tariffLabel": "Tarif",
+      "advance": "Abschlag / Rate",
+      "advanceInterval": "Zahlungsrhythmus",
+      "advanceDay": "Fällig am (Tag)",
+      "basePrice": "Grundpreis",
+      "basePricePeriod": "Grundpreis je",
+      "priceLabel": "Preisbezeichnung",
+      "priceUnit": "Einheit",
+      "price": "Preis je Einheit (€)",
+      "unitPrices": "Arbeitspreise",
+      "priceGuarantee": "Preisgarantie bis",
+      "billKind": "Art der Rechnung",
+      "periodStart": "Leistung von",
+      "periodEnd": "Leistung bis",
+      "servicePeriod": "Leistungszeitraum",
+      "advancesCredited": "Angerechnete Abschläge",
+      "consumption": "Verbrauch",
+      "consumptionUnit": "Verbrauchseinheit",
+      "invoice": "Rechnung",
+      "invoiceNumber": "Rechnungsnummer",
+      "invoiceDate": "Rechnungsdatum",
+      "dueDate": "Fällig am",
+      "net": "Netto (€)",
+      "vatRate": "USt.-Satz (%)",
+      "gross": "Brutto (€)",
+      "billing": "In Abrechnung",
+      "booking": "Buchung",
+      "bookingDate": "Buchungsdatum",
+      "paymentText": "Verwendungszweck",
+      "allocated": "Zugeordneter Betrag (€)",
+      "forBill": "Für Rechnung (optional)",
+      "billingPeriod": "Abrechnungsperiode",
+      "allocationKey": "Verteilerschlüssel",
+      "cancelledOn": "Kündigung zugegangen am",
+      "effectiveDate": "Wirksam zum (optional)",
+      "extraordinary": "Außerordentlich / Sonderkündigung",
+      "document": "Dokument"
+    },
+    "hints": {
+      "provider": "Aus dem gemeinsamen Adressbuch (Kontakte); fehlt der Anbieter, dort zuerst anlegen.",
+      "end": "Entweder Enddatum oder Mindestlaufzeit.",
+      "noticeTo": "Monats-, Quartals- oder Jahresende nur bei unbefristeter Laufzeit.",
+      "price": "Bis zu sechs Nachkommastellen, z. B. 0,3247.",
+      "priceLabel": "z. B. Arbeitspreis",
+      "shareWeight": "Anteil dieses Standorts an den Kosten (Standard 1).",
+      "advancesCredited": "Nur bei Abrechnungen: bereits verlangte Abschläge.",
+      "gross": "Gesamtkosten des Leistungszeitraums, vor Abzug der Abschläge.",
+      "candidates": "Ausgaben ohne Mieterbezug der letzten 120 Tage, passende zuerst.",
+      "allocated": "Leer: der noch nicht zugeordnete Rest der Buchung.",
+      "cancelledOn": "Tag, an dem die Kündigung beim Empfänger eingeht.",
+      "effectiveDate": "Leer: frühestmöglicher Termin."
+    },
+    "types": {
+      "electricity": "Strom",
+      "gas": "Gas",
+      "district_heating": "Fernwärme",
+      "water": "Wasser / Abwasser",
+      "waste": "Müllabfuhr",
+      "cleaning": "Hausreinigung",
+      "caretaker": "Hauswart",
+      "elevator": "Aufzugswartung",
+      "garden": "Gartenpflege",
+      "winter_service": "Winterdienst",
+      "chimney_sweep": "Schornsteinfeger",
+      "heating_maintenance": "Heizungswartung",
+      "cable_tv": "Kabel-TV / Antenne",
+      "other": "Sonstiges"
+    },
+    "status": {
+      "upcoming": "beginnt",
+      "active": "aktiv",
+      "cancelled": "gekündigt",
+      "ended": "beendet"
+    },
+    "deadlines": {
+      "notice": "Kündigungsfrist",
+      "price_guarantee": "Ende der Preisgarantie",
+      "contract_end": "Vertragsende"
+    },
+    "intervals": {
+      "monthly": "monatlich",
+      "bimonthly": "zweimonatlich",
+      "quarterly": "vierteljährlich",
+      "semiannual": "halbjährlich",
+      "annual": "jährlich"
+    },
+    "renewal": {
+      "none": "keine (endet)",
+      "fixed": "automatisch um feste Dauer",
+      "indefinite": "unbefristet weiter"
+    },
+    "units": {
+      "day": "Tage",
+      "week": "Wochen",
+      "month": "Monate"
+    },
+    "noticeTo": {
+      "term_end": "Laufzeitende",
+      "any_day": "jederzeit",
+      "month_end": "Monatsende",
+      "quarter_end": "Quartalsende",
+      "year_end": "Jahresende"
+    },
+    "noticeText": "{{value}} {{unit}} zum {{to}}",
+    "noNotice": "keine Kündigung nötig",
+    "noticePeriod": "Kündigungsfrist",
+    "termTitle": "Laufzeit",
+    "firstTermEnd": "Ende der ersten Laufzeit",
+    "currentTerm": "Aktuelle Laufzeit",
+    "effectiveEnd": "Vertragsende",
+    "cancellation": "Kündigung",
+    "cancellationText": "zugegangen am {{on}}, wirksam zum {{effective}}",
+    "nextNotice": "Nächste Kündigungsfrist",
+    "noticeDeadlineText": "spätester Zugang der Kündigung für ein Ende zum {{end}} (noch {{days}} Tage)",
+    "renewsTo": "Sonst verlängert sich der Vertrag bis {{date}}.",
+    "continuesIndefinitely": "Sonst läuft der Vertrag unbefristet weiter.",
+    "noNoticeDeadline": "Keine Kündigungsfrist offen.",
+    "earliestEnd": "Eine heute zugehende Kündigung wirkt zum {{date}}.",
+    "upcomingDeadlines": "Kommende Fristen",
+    "reminderNote": "Erinnerung als Aufgabe und Benachrichtigung {{days}} Tage vor jeder Frist (täglicher Lauf).",
+    "cancel": "Kündigung erfassen",
+    "withdraw": "Kündigung zurücknehmen",
+    "confirmWithdraw": "Kündigung zurücknehmen? Der Vertrag läuft dann nach seinen Regeln weiter.",
+    "addLocation": "Standort hinzufügen",
+    "editLocation": "Standort bearbeiten",
+    "confirmRemoveLocation": "Standort „{{name}}“ entfernen?",
+    "addTariff": "Tarif hinzufügen",
+    "editTariff": "Tarif bearbeiten",
+    "confirmRemoveTariff": "Tarif ab {{date}} entfernen?",
+    "noTariffs": "Noch kein Tarif erfasst.",
+    "tariffHistoryHint": "Ein Tarif gilt ab seinem Datum bis zum Beginn des nächsten; ältere Tarife bleiben erhalten.",
+    "year": "Jahr",
+    "newBill": "Neue Rechnung erfassen",
+    "linkBill": "Vorhandene Rechnung zuordnen",
+    "linkPayment": "Zahlung zuordnen",
+    "transfer": "In Nebenkostenabrechnung übernehmen",
+    "transferDone": "{{created}} Kostenposition(en) übernommen, {{skipped}} übersprungen.",
+    "figures": {
+      "expected": "Soll (Abschläge)",
+      "invoiced": "Rechnungen",
+      "credited": "Angerechnete Abschläge",
+      "paid": "Gezahlt",
+      "open": "Offen",
+      "costs": "Kosten (zeitanteilig)"
+    },
+    "figuresNote": "Offen = Soll + (Rechnungen − angerechnete Abschläge) − Zahlungen. Kosten zählen nur aus Rechnungen, nach Leistungstagen im Jahr; Abschläge sind keine Kosten.",
+    "bills": "Rechnungen des Anbieters",
+    "noBills": "Keine Rechnungen zugeordnet.",
+    "billKinds": {
+      "regular": "Laufende Rechnung",
+      "settlement": "Abrechnung (mit Abschlägen)"
+    },
+    "plannedAdvances": "laut Tarif {{amount}}",
+    "confirmUnlinkBill": "Zuordnung der Rechnung lösen? Die Rechnung selbst bleibt erhalten.",
+    "payments": "Zahlungen",
+    "noPayments": "Keine Zahlungen zugeordnet.",
+    "instalments": "Geplante Abschläge ({{count}})",
+    "linkDocument": "Dokument zuordnen",
+    "uploadDocument": "Hochladen",
+    "uploading": "Wird hochgeladen…",
+    "uploadFailed": "Hochladen fehlgeschlagen",
+    "noDocuments": "Keine Dokumente.",
+    "openDocument": "Dokument ansehen",
+    "fromBill": "Beleg einer Rechnung",
+    "unlink": "Lösen"
+  },
+  "shortcutHelp": {
+    "title": "Tastenkürzel",
+    "or": "oder",
+    "search": "Suche öffnen (Seiten, Aktionen, Datensätze)",
+    "firstHit": "In der Suche: ersten Eintrag öffnen",
+    "newEntry": "Neuen Eintrag in der Liste dieser Seite anlegen",
+    "save": "Formular speichern",
+    "close": "Dialog oder Suche schließen",
+    "help": "Diese Übersicht anzeigen"
   }
 }

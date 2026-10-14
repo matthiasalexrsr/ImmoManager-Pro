@@ -1,231 +1,191 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../api';
 import DataTable from '../components/DataTable';
-import StatusBadge from '../components/StatusBadge';
-import { useTranslation } from '../i18n';
-import FormModal from '../components/FormModal';
+import { PartyLink } from '../features/partyWorkspace/PartyWorkspace';
+import { useAuth, useCanWrite } from '../contexts/AuthContext';
+import { useDataStore } from '../contexts/DataStoreContext';
+import { formatDate, formatMoney, formatMonth } from '../utils/format';
+import RentPaymentDialog from '../features/rentPayments/RentPaymentDialog';
+import './rentOverview.css';
 
-function fmt(v) {
-  return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(v || 0);
+const localDate = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+};
+const amountKeys = ['expected', 'paid', 'outstanding', 'contract_credit'];
+const validLedger = data => data && Array.isArray(data.rows) && data.totals
+  && amountKeys.every(key => Number.isFinite(data.totals[key]))
+  && data.rows.every(row => row.contract_id && row.contract_revision && amountKeys.every(key => Number.isFinite(row[key])));
+
+function readPending(key) {
+  if (!key) return null;
+  try {
+    const value = JSON.parse(sessionStorage.getItem(key));
+    return value?.request?.idempotency_key && value?.request?.contract_id === value?.row?.contract_id ? value : null;
+  } catch { return null; }
 }
 
-const COLUMNS = [
-  { key: 'contract_number', label: 'Vertrag', filterType: 'text' },
-  { key: 'tenant_name', label: 'Mieter', filterType: 'text' },
-  { key: 'unit_label', label: 'Einheit', filterType: 'text' },
-  { key: 'month', label: 'Monat', filterType: 'text' },
-  { key: 'total_due', label: 'Forderung (€)', type: 'number', align: 'right',
-    render: v => v != null ? fmt(v) : '—' },
-  { key: 'amount_paid', label: 'Bezahlt (€)', type: 'number', align: 'right',
-    render: v => v != null ? fmt(v) : '—' },
-  { key: 'remaining', label: 'Offen (€)', type: 'number', align: 'right',
-    render: (v) => {
-      const cls = v > 0 ? 'text-red' : v < 0 ? 'text-green' : '';
-      return <span className={cls}>{fmt(v)}</span>;
-    }},
-  { key: 'status', label: 'Status', type: 'status', filterType: 'select' },
-];
+function clearPending(key, command) {
+  if (readPending(key)?.request.idempotency_key === command.request.idempotency_key) sessionStorage.removeItem(key);
+}
 
 export default function RentOverview() {
-  const [charges, setCharges] = useState([]);
-  const [receivables, setReceivables] = useState([]);
+  const auth = useAuth();
+  const store = useDataStore();
+  const canWrite = useCanWrite('/bookings');
+  const pendingKey = auth?.user?.id ? `immo:pending-rent-payment:${auth.user.id}` : null;
+  const [today] = useState(localDate);
+  const [filters, setFilters] = useState({ month: today.slice(0, 7), as_of: today, property_id: '' });
+  const [ledger, setLedger] = useState(null);
   const [loading, setLoading] = useState(true);
-  const { t } = useTranslation();
   const [error, setError] = useState(null);
-  const [paymentModal, setPaymentModal] = useState(null);
-  const [tab, setTab] = useState('charges');
-
-  const refreshData = () => {
-    setLoading(true);
-    Promise.all([
-      api.get('/rent-charges').catch(() => []),
-      api.get('/receivables').catch(() => []),
-      api.get('/contracts').catch(() => []),
-      api.get('/tenants').catch(() => []),
-      api.get('/units').catch(() => []),
-    ]).then(([chargesList, recList, contracts, tenants, units]) => {
-      const contractMap = Object.fromEntries((contracts || []).map(c => [c.id, c]));
-      const tenantMap = Object.fromEntries((tenants || []).map(t => [t.id, t]));
-      const unitMap = Object.fromEntries((units || []).map(u => [u.id, u]));
-
-      const enrichedCharges = (chargesList || []).map(r => {
-        const contract = contractMap[r.contract_id] || {};
-        const tenant = tenantMap[contract.tenant_id] || {};
-        const unit = unitMap[contract.unit_id] || {};
-        const totalDue = (r.cold_rent || 0) + (r.service_charge || 0) + (r.heating_charge || 0) + (r.other_charges || 0);
-        return {
-          ...r, _type: 'charge',
-          contract_number: contract.contract_number || '—',
-          tenant_name: tenant.full_name || '—',
-          unit_label: unit.label || '—',
-          total_due: totalDue,
-          remaining: totalDue - (r.amount_paid || 0),
-        };
-      });
-
-      const enrichedReceivables = (recList || []).map(r => {
-        const contract = contractMap[r.contract_id] || {};
-        const tenant = tenantMap[contract.tenant_id] || {};
-        const unit = unitMap[contract.unit_id] || {};
-        return {
-          ...r, _type: 'receivable',
-          contract_number: contract.contract_number || '—',
-          tenant_name: tenant.full_name || '—',
-          unit_label: unit.label || '—',
-          month: r.due_date?.slice(0, 7) || '—',
-          total_due: r.amount_due || 0,
-          amount_paid: r.amount_paid || 0,
-          remaining: (r.amount_due || 0) - (r.amount_paid || 0),
-        };
-      });
-
-      setCharges(enrichedCharges);
-      setReceivables(enrichedReceivables);
-    }).catch(e => setError(e.message)).finally(() => setLoading(false));
-  };
+  const [choices, setChoices] = useState({ accounts: [], properties: [] });
+  const [choiceError, setChoiceError] = useState(null);
+  const [revision, setRevision] = useState(0);
+  const [paymentRow, setPaymentRow] = useState(null);
+  const [pending, setPending] = useState(() => readPending(pendingKey));
+  const [receipt, setReceipt] = useState(null);
+  const pendingRef = useRef(pending);
+  const generationRef = useRef(0);
 
   useEffect(() => {
-    let cancelled = false;
-    Promise.all([
-      api.get('/rent-charges').catch(() => []),
-      api.get('/receivables').catch(() => []),
-      api.get('/contracts').catch(() => []),
-      api.get('/tenants').catch(() => []),
-      api.get('/units').catch(() => []),
-    ]).then(([chargesList, recList, contracts, tenants, units]) => {
-      if (cancelled) return;
-      const contractMap = Object.fromEntries((contracts || []).map(c => [c.id, c]));
-      const tenantMap = Object.fromEntries((tenants || []).map(t => [t.id, t]));
-      const unitMap = Object.fromEntries((units || []).map(u => [u.id, u]));
+    generationRef.current += 1;
+    const recovered = readPending(pendingKey);
+    pendingRef.current = recovered;
+    setPending(recovered);
+    setPaymentRow(null);
+    setReceipt(null);
+    return () => { generationRef.current += 1; };
+  }, [pendingKey]);
 
-      const enrichedCharges = (chargesList || []).map(r => {
-        const contract = contractMap[r.contract_id] || {};
-        const tenant = tenantMap[contract.tenant_id] || {};
-        const unit = unitMap[contract.unit_id] || {};
-        const totalDue = (r.cold_rent || 0) + (r.service_charge || 0) + (r.heating_charge || 0) + (r.other_charges || 0);
-        return {
-          ...r, _type: 'charge',
-          contract_number: contract.contract_number || '—',
-          tenant_name: tenant.full_name || '—',
-          unit_label: unit.label || '—',
-          total_due: totalDue,
-          remaining: totalDue - (r.amount_paid || 0),
-        };
-      });
+  useEffect(() => {
+    const controller = new AbortController();
+    setChoiceError(null);
+    Promise.all(['/accounts', '/properties'].map(path => api.list(path, { signal: controller.signal })))
+      .then(([accounts, properties]) => {
+        if (!Array.isArray(accounts) || !Array.isArray(properties)) throw new Error('Konten und Immobilien konnten nicht geladen werden.');
+        if (!controller.signal.aborted) setChoices({ accounts, properties });
+      }).catch(failure => { if (!controller.signal.aborted) setChoiceError(failure.message); });
+    return () => controller.abort();
+  }, [revision, pendingKey]);
 
-      const enrichedReceivables = (recList || []).map(r => {
-        const contract = contractMap[r.contract_id] || {};
-        const tenant = tenantMap[contract.tenant_id] || {};
-        const unit = unitMap[contract.unit_id] || {};
-        return {
-          ...r, _type: 'receivable',
-          contract_number: contract.contract_number || '—',
-          tenant_name: tenant.full_name || '—',
-          unit_label: unit.label || '—',
-          month: r.due_date?.slice(0, 7) || '—',
-          total_due: r.amount_due || 0,
-          amount_paid: r.amount_paid || 0,
-          remaining: (r.amount_due || 0) - (r.amount_paid || 0),
-        };
-      });
-
-      setCharges(enrichedCharges);
-      setReceivables(enrichedReceivables);
-    }).catch(e => {
-      if (!cancelled) setError(e.message);
-    }).finally(() => {
-      if (!cancelled) setLoading(false);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const handleRecordPayment = async (formData) => {
-    if (paymentModal._type === 'charge') {
-      const newPaid = (paymentModal.amount_paid || 0) + Number(formData.payment_amount);
-      const newStatus = newPaid >= paymentModal.total_due ? 'paid' : 'partial';
-      await api.patch(`/rent-charges/${paymentModal.id}`, {
-        amount_paid: newPaid,
-        status: newStatus,
-      });
-    } else {
-      await api.patch(`/receivables/${paymentModal.id}`, {
-        status: Number(formData.payment_amount) >= paymentModal.remaining ? 'paid' : 'partial',
-      });
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true);
+    setError(null);
+    setLedger(null);
+    if (!filters.month || !filters.as_of) {
+      setError('Bitte Mietmonat und Stichtag vollständig angeben.');
+      setLoading(false);
+      return () => controller.abort();
     }
-    refreshData();
+    const query = new URLSearchParams(Object.entries(filters).filter(([, value]) => value));
+    api.get(`/rent-charges/ledger?${query}`, { signal: controller.signal }).then(data => {
+      if (!validLedger(data)) throw new Error('Die Mietübersicht enthält keine gültigen Beträge.');
+      if (!controller.signal.aborted) setLedger(data);
+    }).catch(failure => { if (!controller.signal.aborted) setError(failure.message); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [filters, revision, pendingKey]);
+
+  const refresh = useCallback(() => setRevision(value => value + 1), []);
+  const save = async values => {
+    const generation = generationRef.current;
+    let command = pendingRef.current;
+    if (!command) {
+      if (!pendingKey) throw new Error('Die Anmeldung wird noch geprüft. Bitte erneut versuchen.');
+      command = { row: paymentRow, request: { ...values, amount: String(values.amount),
+        contract_id: paymentRow.contract_id, contract_revision: paymentRow.contract_revision,
+        idempotency_key: crypto.randomUUID() } };
+      // Persist before sending, so a lost response can resume this exact command after navigation.
+      sessionStorage.setItem(pendingKey, JSON.stringify(command));
+      pendingRef.current = command;
+      setPending(command);
+    }
+    const current = () => generationRef.current === generation
+      && pendingRef.current?.request.idempotency_key === command.request.idempotency_key;
+    let result;
+    try {
+      result = await api.post('/rent-charges/contract-payment', command.request);
+      if (!result?.booking?.id || result.contract_id !== command.request.contract_id) {
+        throw new Error('Die Serverantwort bestätigt die Buchung nicht. Bitte denselben Vorgang erneut prüfen.');
+      }
+    } catch (failure) {
+      if (!current()) return;
+      // These validation responses precede every write. Unknown outcomes retain the command.
+      if ([400, 422].includes(failure.statusCode) || ['RENT_PAYMENT_NOT_CREATED', 'RENT_PAYMENT_REMOVED', 'RENT_PAYMENT_CHANGED', 'RENT_PAYMENT_RECORDED_UNAVAILABLE'].includes(failure.code)) {
+        clearPending(pendingKey, command);
+        pendingRef.current = null;
+        setPending(null);
+      }
+      throw failure;
+    }
+    if (!current()) return;
+    clearPending(pendingKey, command);
+    pendingRef.current = null;
+    setPending(null);
+    setPaymentRow(null);
+    setReceipt(result);
+    store?.invalidateRelated('bookings', 'accounts', 'contracts', 'rent_charges', 'tenants');
+    refresh();
   };
 
-  const paymentFields = [
-    { key: 'payment_amount', label: 'Zahlungsbetrag (€)', type: 'number', required: true },
-    { key: 'payment_date', label: 'Zahlungsdatum', type: 'date', required: true },
-    { key: 'payment_note', label: 'Bemerkung', type: 'textarea' },
+  const columns = [
+    { key: 'contract_number', label: 'Vertrag', filterType: 'text' },
+    { key: 'tenant_name', label: 'Mieter', filterType: 'text', render: (value, row) => <PartyLink tenantId={row.tenant_id}>{value}</PartyLink> },
+    { key: 'unit_label', subKey: 'property_name', label: 'Einheit', filterType: 'text' },
+    { key: 'expected', label: 'Vereinbarte Miete', type: 'currency' },
+    { key: 'paid', label: 'Aus Zahlungen gedeckt', type: 'currency' },
+    { key: 'outstanding', label: 'Offen', type: 'currency' },
+    { key: 'status', label: 'Status', type: 'status', filterType: 'select' },
+    { key: 'payment', label: 'Zahlung', render: (_, row) => canWrite && pendingKey
+      ? <button type="button" className="btn btn-sm btn-secondary" disabled={Boolean(pending) || Boolean(choiceError)}
+        onClick={() => setPaymentRow(row)}>Eingang buchen</button>
+      : <Link to={`/tenants/${encodeURIComponent(row.tenant_id)}/account`}>Mieterkonto</Link> },
   ];
 
-  if (loading) return <div className="page-loading">{t('pages.loading')}</div>;
-  if (error) return <div className="page"><div className="alert alert-error">{error}</div></div>;
-
-  const data = tab === 'charges' ? charges : receivables;
-  const allData = [...charges, ...receivables];
-  const totalDue = allData.reduce((s, r) => s + (r.total_due || 0), 0);
-  const totalPaid = allData.reduce((s, r) => s + (r.amount_paid || 0), 0);
-  const totalOpen = totalDue - totalPaid;
-  const overdueCount = allData.filter(r => r.status === 'overdue').length;
-
-  return (
-    <div className="page">
-      <div className="stats-grid" style={{ marginBottom: '1rem' }}>
-        <div className="stat-card">
-          <div className="stat-label">{t('pages.rentOverview.totalReceivables')}</div>
-          <div className="stat-value">{fmt(totalDue)}</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">{t('pages.rentOverview.paid')}</div>
-          <div className="stat-value text-green">{fmt(totalPaid)}</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">{t('pages.rentOverview.open')}</div>
-          <div className="stat-value text-red">{fmt(totalOpen)}</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">{t('pages.rentOverview.overdue')}</div>
-          <div className="stat-value">{overdueCount} <StatusBadge status="overdue" /></div>
-        </div>
-      </div>
-
-      <div className="tab-bar" style={{ marginBottom: '1rem' }}>
-        <button
-          className={`detail-tab ${tab === 'charges' ? 'active' : ''}`}
-          onClick={() => setTab('charges')}
-        >
-          {t('pages.rentOverview.charges') || 'Sollstellungen'} ({charges.length})
-        </button>
-        <button
-          className={`detail-tab ${tab === 'receivables' ? 'active' : ''}`}
-          onClick={() => setTab('receivables')}
-        >
-          {t('pages.rentOverview.receivables') || 'Forderungen'} ({receivables.length})
-        </button>
-      </div>
-
-      <DataTable
-        title={t('pages.rentOverview.title')}
-        columns={COLUMNS}
-        data={data}
-        onEdit={row => setPaymentModal(row)}
-      />
-
-      {paymentModal && (
-        <FormModal
-          title={`Zahlung erfassen — ${paymentModal.tenant_name} (${paymentModal.month || '—'})`}
-          fields={paymentFields}
-          initial={{ payment_amount: paymentModal.remaining, payment_date: new Date().toISOString().slice(0, 10) }}
-          onSave={handleRecordPayment}
-          onClose={() => setPaymentModal(null)}
-        />
-      )}
+  return <div className="page rent-overview">
+    <div className="rent-overview-heading"><div><h1>Mietübersicht</h1>
+      <p className="text-muted">Vereinbarte Mieten und tatsächlich gebuchte Zahlungen.</p></div>
+      <button type="button" className="btn btn-secondary" onClick={refresh}>Aktualisieren</button></div>
+    <div className="rent-overview-filters" role="group" aria-label="Mietübersicht filtern">
+      <label>Mietmonat<input type="month" value={filters.month} max={filters.as_of.slice(0, 7)}
+        onChange={e => setFilters(current => ({ ...current, month: e.target.value }))} /></label>
+      <label>Zahlungen bis Stichtag<input type="date" value={filters.as_of} max={today}
+        onChange={e => setFilters(current => ({ ...current, as_of: e.target.value }))} /></label>
+      <label>Immobilie<select value={filters.property_id} onChange={e => setFilters(current => ({ ...current, property_id: e.target.value }))}>
+        <option value="">Alle Immobilien</option>{choices.properties.map(property => <option key={property.id} value={property.id}>{property.name}</option>)}
+      </select></label>
     </div>
-  );
+    {pending && <div className="alert alert-warning" role="status">Ein Zahlungseingang wartet auf Bestätigung.
+      <button type="button" className="btn btn-secondary" onClick={() => setPaymentRow(pending.row)}>Buchung fortsetzen</button></div>}
+    {receipt && <div className="alert alert-success" role="status">
+      {receipt.replayed ? 'Bereits gebuchte Zahlung gefunden.' : 'Zahlung und Vertragszuordnung gespeichert.'} {' '}
+      {formatMoney(receipt.booking.amount)} · {formatDate(receipt.booking.booking_date)} {' '}
+      <Link to={`/bookings?booking_id=${encodeURIComponent(receipt.booking.id)}`}>Buchung ansehen</Link></div>}
+    {choiceError && <div className="alert alert-error" role="alert">Konten / Immobilien: {choiceError} <button type="button" onClick={refresh}>Erneut laden</button></div>}
+    {error && <div className="alert alert-error" role="alert">{error} <button type="button" onClick={refresh}>Erneut laden</button></div>}
+    {loading && <p role="status">Mieten und Zahlungseingänge werden geladen…</p>}
+    {ledger && <>
+      <p><strong>{formatMonth(ledger.month)}</strong> · Zahlungsstand {formatDate(ledger.as_of)}</p>
+      <div className="stats-grid">
+        {[['expected', 'Vereinbarte Miete'], ['paid', 'Aus Zahlungen gedeckt'], ['outstanding', 'Offen im Mietmonat'], ['contract_credit', 'Guthaben der angezeigten Verträge']]
+          .map(([key, label]) => <div className="stat-card" key={key}><div className="stat-label">{label}</div>
+            <div className="stat-value">{formatMoney(ledger.totals[key])}</div></div>)}
+      </div>
+      <p className="rent-overview-basis">Grundlage ist der datierte Mietverlauf einschließlich Teilmonaten. Gebuchte Zahlungen werden ab ihrem Eingangsdatum
+        berücksichtigt und decken zuerst ältere Mietmonate. Stornos und Kautionsanteile sind berücksichtigt; Guthaben gilt zum Stichtag.</p>
+      <DataTable title="Mieten im ausgewählten Monat" columns={columns} data={ledger.rows} />
+    </>}
+    <nav className="rent-overview-links" aria-label="Weitere Mietvorgänge">
+      <Link to="/bookings">Vorhandene Zahlung zuordnen</Link><Link to="/receivables">Weitere Forderungen und Guthaben</Link>
+      <Link to="/dunning">Mahnvorgänge</Link><Link to="/rent-charges">Manuell gepflegte Sollstellungen</Link>
+    </nav>
+    <p className="text-muted">Manuell gepflegte Sollstellungen und weitere Forderungen werden hier nicht zur Vertragsmiete addiert.
+      Ihre bisherigen Angaben bleiben in den jeweiligen Listen erhalten. Der Mahnstand kann zusätzliche Forderungen berücksichtigen.</p>
+    {paymentRow && <RentPaymentDialog key={paymentRow.contract_id} row={paymentRow}
+      accounts={choices.accounts} pending={pending} onSubmit={save} onClose={() => setPaymentRow(null)}
+      onReload={() => { setPaymentRow(null); refresh(); }} today={today} />}
+  </div>;
 }

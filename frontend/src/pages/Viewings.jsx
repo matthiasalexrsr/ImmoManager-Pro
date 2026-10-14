@@ -6,6 +6,7 @@ import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
+import { bulkDelete } from '../utils/bulkActions';
 
 const STATUS_COLORS = {
   scheduled: 'var(--primary)',
@@ -15,8 +16,8 @@ const STATUS_COLORS = {
 };
 
 const TABLE_COLUMNS = [
-  { key: 'lead_name', label: 'Interessent', filterType: 'text' },
-  { key: 'unit_label', label: 'Einheit', filterType: 'text' },
+  { key: 'lead_name', label: 'Interessent', filterType: 'text', link: 'lead' },
+  { key: 'unit_label', label: 'Einheit', filterType: 'text', link: 'unit' },
   { key: 'scheduled_at', label: 'Termin', type: 'date', filterType: 'dateRange' },
   { key: 'agent', label: 'Betreuer', filterType: 'text' },
   { key: 'status', label: 'Status', type: 'status', filterType: 'select',
@@ -149,14 +150,14 @@ export default function Viewings() {
 
   const refreshData = () => {
     setLoading(true);
-    api.get('/viewings').catch(err => { console.warn('[Viewings]', err.message); return []; })
+    api.list('/viewings').catch(err => { console.warn('[Viewings]', err.message); return []; })
       .then(v => setViewings(v || []))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     let cancelled = false;
-    api.get('/viewings').catch(err => { console.warn('[Viewings]', err.message); return []; })
+    api.list('/viewings').catch(err => { console.warn('[Viewings]', err.message); return []; })
       .then(data => { if (!cancelled) setViewings(data || []); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -235,7 +236,8 @@ export default function Viewings() {
     }
   };
 
-  if (loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  // only the first load replaces the list; a reload keeps the table (its search, selection, results)
+  if (loading && viewings.length === 0) return <div className="page-loading">{t('ui.table.loading')}</div>;
 
   const statusLabels = { scheduled: 'Geplant', completed: 'Durchgeführt', cancelled: 'Abgesagt', no_show: 'Nicht erschienen' };
 
@@ -249,9 +251,9 @@ export default function Viewings() {
       )}
 
       {/* View mode toggle */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-        <h2 style={{ margin: 0 }}>Besichtigungen</h2>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '1.25rem' }}>
+        <h1 className="page-title" style={{ margin: 0 }}>Besichtigungen</h1>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
           <button
             className={`btn btn-sm ${viewMode === 'calendar' ? 'btn-primary' : 'btn-secondary'}`}
             onClick={() => setViewMode('calendar')}
@@ -271,7 +273,7 @@ export default function Viewings() {
       </div>
 
       {viewMode === 'calendar' ? (
-        <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '1.5rem' }}>
+        <div className="viewings-layout">
           {/* Calendar sidebar */}
           <div>
             <MiniCalendar
@@ -373,6 +375,9 @@ export default function Viewings() {
           title=""
           columns={TABLE_COLUMNS}
           data={enriched}
+        rowName={row => row.lead_name || row.id}
+        bulkActions={[bulkDelete({ one: 'Besichtigung', many: 'Besichtigungen', remove: row => api.del(`/viewings/${row.id}`),
+          finished: () => { refreshData(); store?.invalidateRelated('viewings', 'leads', 'units'); } })]}
           onAdd={() => setModal('create')}
           onEdit={row => setModal(row)}
           onDelete={handleDelete}

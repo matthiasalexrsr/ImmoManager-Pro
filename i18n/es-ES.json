@@ -35,11 +35,16 @@
       "budgets": "Presupuestos",
       "taxRates": "Tipos impositivos",
       "receivables": "Cuentas por cobrar",
+      "dunning": "Reclamaciones",
       "rentCharges": "Cargos de alquiler",
       "allocationKeys": "Claves de reparto",
       "escalationRules": "Reglas de escalamiento",
       "handoverProtocols": "Protocolos de entrega",
-      "history": "Registro de cambios"
+      "history": "Registro de cambios",
+      "contractWizard": "Asistente de contrato",
+      "review": "Lista de revisión",
+      "serviceContracts": "Contratos de servicios",
+      "invoiceReview": "Revisión de facturas"
     },
     "sections": {
       "overview": "Resumen",
@@ -57,6 +62,18 @@
       "notes": "Notas",
       "attachments": "Adjuntos",
       "activity": "Actividad"
+    },
+    "actions": {
+      "booking": "Nuevo asiento",
+      "task": "Nueva tarea",
+      "invoice": "Nueva factura",
+      "contact": "Nuevo contacto",
+      "maintenance": "Nuevo caso de mantenimiento",
+      "event": "Nueva cita",
+      "receivable": "Nuevo crédito",
+      "unit": "Nueva unidad",
+      "lead": "Nuevo interesado",
+      "contract": "Nuevo contrato de alquiler"
     }
   },
   "topBar": {
@@ -100,7 +117,8 @@
       "confirm": "Confirmar",
       "next": "Siguiente",
       "back": "Atrás",
-      "done": "Hecho"
+      "done": "Hecho",
+      "clear": "Borrar búsqueda"
     },
     "commonActions": {
       "viewDetails": "Ver detalles",
@@ -121,7 +139,19 @@
       "selectDate": "Seleccionar fecha",
       "selectTime": "Seleccionar hora",
       "enterAmount": "Introducir importe",
-      "search": "Buscar"
+      "search": "Buscar",
+      "none": "— Ninguno —",
+      "status": "Estado",
+      "cancel": "Cancelar",
+      "discardQuestion": "¿Descartar los cambios sin guardar?",
+      "keepEditing": "Seguir editando",
+      "discard": "Descartar",
+      "saveShortcut": "Ctrl+Intro guarda",
+      "savedNext": "{{count}} guardados – siguiente entrada",
+      "saveAndNew": "Guardar y añadir otro",
+      "saveAndNewShortcut": "Ctrl+Mayús+Intro",
+      "today": "Hoy",
+      "todayFill": "Poner hoy"
     },
     "table": {
       "adjustColumns": "Ajustar columnas",
@@ -133,7 +163,10 @@
       "nextPage": "Página siguiente",
       "previousPage": "Página anterior",
       "noResults": "Sin resultados",
-      "loading": "Cargando…"
+      "loading": "Cargando…",
+      "firstPage": "Primera página",
+      "lastPage": "Última página",
+      "pagination": "Paginación"
     },
     "filterChips": {
       "active": "Activo",
@@ -174,7 +207,64 @@
       "expiring": "Próximo a vencer",
       "terminated": "Rescindido",
       "ended": "Finalizado",
-      "inReview": "En revisión"
+      "inReview": "En revisión",
+      "expired": "Vencido"
+    },
+    "booking": {
+      "booked": "Contabilizado",
+      "matched": "Asignado"
+    },
+    "badge": {
+      "active": "Activo",
+      "inactive": "Inactivo",
+      "archived": "Archivado",
+      "draft": "Borrador",
+      "open": "Abierto",
+      "closed": "Cerrado",
+      "pending": "Pendiente",
+      "new": "Nuevo",
+      "scheduled": "Programado",
+      "completed": "Completado",
+      "done": "Hecho",
+      "in_progress": "En curso",
+      "cancelled": "Cancelado",
+      "paused": "En pausa",
+      "vacant": "Vacía",
+      "occupied": "Alquilada",
+      "reserved": "Reservada",
+      "renovation": "En reforma",
+      "terminated": "Rescindido",
+      "expired": "Vencido",
+      "signed": "Firmado",
+      "review": "En revisión",
+      "finalized": "Finalizado",
+      "delivered": "Entregado",
+      "corrected": "Corregido",
+      "disputed": "Impugnado",
+      "paid": "Pagado",
+      "partial": "Pagado parcialmente",
+      "overdue": "Atrasado",
+      "held": "Depositada",
+      "partially_returned": "Devuelta parcialmente",
+      "returned": "Devuelta",
+      "unread": "No leído",
+      "read": "Leído",
+      "applied": "Aplicado",
+      "rejected": "Rechazado",
+      "accepted": "Aceptado",
+      "matched": "Asignado",
+      "booked": "Contabilizado",
+      "contacted": "Contactado",
+      "offer_sent": "Oferta enviada",
+      "viewing_scheduled": "Visita programada",
+      "no_show": "No se presentó",
+      "warning": "Advertencia",
+      "info": "Info",
+      "critical": "Crítico",
+      "low": "Baja",
+      "medium": "Media",
+      "high": "Alta",
+      "urgent": "Urgente"
     }
   },
   "onboarding": {
@@ -201,7 +291,9 @@
       "password": "Contraseña",
       "rememberMe": "Mantener sesión iniciada",
       "forgotPassword": "¿Olvidó su contraseña?",
-      "submit": "Iniciar sesión"
+      "submit": "Iniciar sesión",
+      "userOrEmail": "Usuario o correo electrónico",
+      "username": "Nombre de usuario"
     },
     "forgotPassword": {
       "title": "Restablecer contraseña",
@@ -216,7 +308,8 @@
       "email": "Correo electrónico",
       "password": "Contraseña",
       "confirmPassword": "Confirmar contraseña",
-      "submit": "Crear cuenta"
+      "submit": "Crear cuenta",
+      "initialSetup": "Configuración inicial: esta cuenta se creará como cuenta de propietario."
     },
     "twoFactor": {
       "title": "Autenticación de dos factores",
@@ -290,6 +383,40 @@
       "create": "Crear cartera",
       "edit": "Editar cartera",
       "archive": "Archivar cartera"
+    },
+    "properties": {
+      "form": {
+        "address": "Calle",
+        "city": "Ciudad",
+        "country": "País",
+        "livingArea": "Superficie habitable (m²)",
+        "marketValue": "Valor de mercado (€)",
+        "name": "Inmueble",
+        "ownershipShare": "Cuota de propiedad (%)",
+        "plotArea": "Superficie del terreno (m²)",
+        "postalCode": "Código postal",
+        "purchaseDate": "Fecha de compra",
+        "purchasePrice": "Precio de compra (€)",
+        "type": "Tipo",
+        "usableArea": "Superficie útil (m²)",
+        "valuationDate": "Fecha de tasación",
+        "yearBuilt": "Año de construcción"
+      },
+      "sections": {
+        "address": "Dirección",
+        "areas": "Superficies",
+        "basic": "Datos básicos",
+        "valuation": "Compra y tasación"
+      },
+      "status": {
+        "inactive": "Inactivo"
+      },
+      "title": "Inmuebles",
+      "types": {
+        "commercial": "Comercial",
+        "mixed": "Uso mixto",
+        "residential": "Residencial"
+      }
     }
   },
   "properties": {
@@ -370,7 +497,13 @@
       "serviceCharge": "Anticipo de gastos comunes",
       "warmRent": "Alquiler total",
       "status": "Estado",
-      "tenant": "Inquilino"
+      "tenant": "Inquilino",
+      "columns": {
+        "area": "Superficie (m²)",
+        "coldRent": "Alquiler sin gastos (€)",
+        "label": "Unidad",
+        "type": "Tipo"
+      }
     },
     "types": {
       "apartment": "Apartamento",
@@ -380,7 +513,8 @@
       "parking": "Plaza de aparcamiento",
       "garage": "Garaje",
       "basement": "Sótano",
-      "other": "Otros"
+      "other": "Otros",
+      "commercial": "Comercial"
     },
     "form": {
       "property": "Inmueble",
@@ -403,7 +537,15 @@
         "vacant": "Desocupado",
         "reserved": "Reservado",
         "renovation": "En renovación"
-      }
+      },
+      "heatingAdvance": "Anticipo de calefacción (€)",
+      "personCount": "Personas",
+      "serviceChargeAdvance": "Anticipo de gastos (€)"
+    },
+    "status": {
+      "occupied": "Alquilada",
+      "reserved": "Reservada",
+      "vacant": "Vacía"
     }
   },
   "tenantsContracts": {
@@ -431,7 +573,42 @@
       "deposit": "Fianza",
       "indexRent": "Alquiler indexado/escalonado",
       "serviceChargeSettlement": "Liquidación de gastos comunes",
-      "status": "Estado"
+      "status": "Estado",
+      "form": {
+        "persons": "Personas en el hogar",
+        "personsHint": "para el reparto por personas",
+        "contractNumber": "N.º de contrato",
+        "deposit": "Fianza (€)",
+        "endDate": "Fin",
+        "indexRent": "Actualización de la renta",
+        "noticePeriod": "Plazo de preaviso",
+        "serviceChargeSettlement": "Liquidación de gastos",
+        "startDate": "Inicio"
+      },
+      "indexRentTypes": {
+        "fixed": "Renta fija",
+        "index": "Renta indexada",
+        "stepped": "Renta escalonada"
+      },
+      "settlement": {
+        "annual": "Anual",
+        "monthly": "Mensual"
+      },
+      "occupants": {
+        "action": "Ocupantes",
+        "title": "Ocupantes a lo largo del tiempo",
+        "close": "Cerrar",
+        "intro": "Desde el inicio del contrato ({{start}}) cuentan {{persons}} personas según el contrato. Cada cambio rige desde su fecha; el reparto por personas se calcula por días-persona.",
+        "unknown": "sin dato",
+        "loading": "Cargando ocupantes…",
+        "validFrom": "Válido desde",
+        "persons": "Personas",
+        "notes": "Motivo",
+        "actions": "Acciones",
+        "empty": "Ningún cambio registrado",
+        "remove": "Eliminar",
+        "add": "Añadir cambio"
+      }
     },
     "contractActions": {
       "activate": "Activar contrato",
@@ -466,7 +643,21 @@
       "type": "Tipo de cuenta",
       "openingBalance": "Saldo inicial",
       "balance": "Saldo",
-      "lastSync": "Última sincronización"
+      "lastSync": "Última sincronización",
+      "form": {
+        "accountType": "Tipo de cuenta",
+        "balance": "Saldo (€)",
+        "bank": "Banco",
+        "name": "Nombre de la cuenta",
+        "openingBalance": "Saldo inicial (€)",
+        "type": "Tipo"
+      },
+      "types": {
+        "checking": "Cuenta corriente",
+        "deposit": "Cuenta de fianzas",
+        "rent": "Cuenta de alquileres",
+        "savings": "Cuenta de ahorro"
+      }
     },
     "accountTypes": {
       "bank": "Cuenta bancaria",
@@ -484,7 +675,15 @@
       "tenant": "Inquilino",
       "paymentText": "Concepto de pago",
       "receipt": "Comprobante",
-      "status": "Estado"
+      "status": "Estado",
+      "form": {
+        "amount": "Importe (€)",
+        "bookingDate": "Fecha de asiento",
+        "category": "Categoría",
+        "date": "Fecha",
+        "paymentText": "Concepto",
+        "receiptUrl": "URL del justificante"
+      }
     },
     "categories": {
       "rentIncome": "Ingresos por alquiler",
@@ -748,6 +947,66 @@
       "dbDetails": "Detalles de BD",
       "createBackup": "Crear copia de seguridad"
     },
+    "operations": {
+      "title": "Operación: copia completa y prueba de restauración",
+      "intro": "Copia completa = base de datos, adjuntos, configuración y claves en un archivo verificado. La prueba de restauración restaura el archivo más reciente de forma aislada, lo comprueba y vuelve a borrar la copia.",
+      "lastBackup": "Última copia completa",
+      "lastProbe": "Última prueba de restauración",
+      "never": "nunca",
+      "ok": "correcta",
+      "failed": "fallida",
+      "schedule": "Planificación",
+      "scheduleValue": "Diaria a las {{time}}, prueba mensual el día {{day}} a las {{probeTime}} ({{tz}})",
+      "scheduleOff": "Copia automática desactivada (BACKUP_SCHEDULE_ENABLED)",
+      "retention": "Conservación",
+      "retentionValue": "{{daily}} diarias, {{monthly}} mensuales, {{preUpgrade}} antes de actualizaciones",
+      "archives": "Archivos",
+      "archivesValue": "{{count}} archivos, {{size}} en total",
+      "secondTarget": "Segundo destino",
+      "notConfigured": "no configurado",
+      "keys": "Claves",
+      "keysValue": "Clave activa {{key}} · {{sealed}} cifrados · {{plaintext}} sin cifrar",
+      "passphraseOn": "Claves del archivo protegidas con frase de contraseña",
+      "passphraseOff": "Claves del archivo sin frase de contraseña: proteja los archivos como la propia clave",
+      "warningsTitle": "Avisos",
+      "failures": "Errores",
+      "actions": "Acciones",
+      "runBackup": "Copia completa ahora",
+      "runProbe": "Iniciar prueba de restauración",
+      "refresh": "Actualizar",
+      "running": "En curso …",
+      "backupDone": "Copia completa creada y verificada: {{name}}",
+      "probeDone": "Prueba de restauración superada: {{name}}",
+      "loadError": "No se pudo cargar el resumen de operación",
+      "warnings": {
+        "schedule_disabled": "La copia diaria está desactivada.",
+        "no_second_target": "No hay un segundo destino de copia. Indique en «Segundo destino» una carpeta en otro disco, una unidad USB o una unidad de red (propietario).",
+        "second_target_failed": "La copia al segundo destino ha fallado.",
+        "no_backup": "Todavía no hay ninguna copia completa correcta.",
+        "backup_stale": "La última copia completa correcta tiene {{hours}} horas.",
+        "last_backup_failed": "La última copia completa ha fallado.",
+        "no_probe": "Todavía no hay ninguna prueba de restauración superada.",
+        "probe_stale": "La última prueba de restauración superada tiene {{days}} días.",
+        "last_probe_failed": "La última prueba de restauración ha fallado.",
+        "keys_unprotected": "Las claves están en el archivo sin frase de contraseña. Solución: añadir la línea BACKUP_PASSPHRASE=… al archivo {{file}}, reiniciar el programa y guardar la frase por separado.",
+        "keys_not_in_backup": "Estas claves no están en la copia completa: {{ids}}; guárdelas por separado.",
+        "plaintext_secrets": "{{count}} secreto(s) de integración todavía sin cifrar.",
+        "secrets_error": "Los secretos de integración no se pueden leer (¿falta la clave?); los cambios están bloqueados.",
+        "schema_not_current": "La base de datos no tiene la versión de esquema actual.",
+        "second_target_pending": "El segundo destino aún no tiene copia de la copia completa más reciente; «Copia completa ahora» la crea.",
+        "second_target_same_device": "El segundo destino está en la misma unidad que los datos y no protege ante una avería del disco."
+      },
+      "secondTargetSetUp": "Configurar",
+      "secondTargetChange": "Cambiar",
+      "secondTargetSave": "Guardar",
+      "secondTargetRemove": "Quitar",
+      "secondTargetCancel": "Cancelar",
+      "secondTargetFixed": "fijado en la configuración (BACKUP_SECOND_TARGET)",
+      "secondTargetPlaceholder": "p. ej. E:\\ImmoManager-Copia o \\\\NAS\\Copia",
+      "secondTargetHint": "Una carpeta en otro disco, una unidad USB o una unidad de red. Cada copia completa se copia allí y se comprueba la copia.",
+      "secondTargetSaved": "Guardado: {{path}}. La próxima copia completa se copiará allí; ahora mismo con «Copia completa ahora».",
+      "secondTargetRemoved": "Se ha quitado el segundo destino."
+    },
     "about": {
       "title": "Acerca de ImmoManager Pro",
       "type": "Tipo",
@@ -776,7 +1035,8 @@
       "rolledBack": "Se realizó una reversión automática. Sus datos no han cambiado.",
       "history": "Historial de actualizaciones",
       "showHistory": "Mostrar",
-      "noHistory": "Aún no se han realizado actualizaciones"
+      "noHistory": "Aún no se han realizado actualizaciones",
+      "download": "Descargar la nueva versión"
     }
   },
   "search": {
@@ -784,7 +1044,13 @@
       "placeholder": "Buscar inmuebles, unidades, inquilinos, contratos, asientos contables…",
       "recent": "Búsquedas recientes",
       "results": "Resultados",
-      "noResults": "No se encontraron resultados."
+      "noResults": "No se encontraron resultados.",
+      "shownOf": "{{shown}} de {{total}}",
+      "loadMore": "Cargar más",
+      "pages": "Páginas",
+      "recentlyOpened": "Abiertos recientemente",
+      "clearRecent": "Borrar historial",
+      "actions": "Acciones"
     }
   },
   "notifications": {
@@ -812,7 +1078,8 @@
       "title": "¿Eliminar de verdad?",
       "body": "Esta acción no se puede deshacer.",
       "delete": "Eliminar",
-      "cancel": "Cancelar"
+      "cancel": "Cancelar",
+      "confirm": "Confirmar"
     },
     "confirmArchive": {
       "title": "¿Archivar?",
@@ -1020,6 +1287,7 @@
     "description": "Anotaciones y notas de mejora para desarrolladores",
     "enable": "Activar modo desarrollador",
     "disable": "Desactivar modo desarrollador",
+    "unavailable": "Desactivado en producción",
     "shortcut": "Ctrl+Mayús+D",
     "addNote": "Añadir nota",
     "notes": "Notas",
@@ -1142,7 +1410,40 @@
       "receivablesFailed": "No se pudieron crear las cuentas por cobrar",
       "exportFailed": "Error en la exportación",
       "disputeFailed": "No se pudo presentar la disputa",
-      "preflightBlockers": "Bloqueadores de preflight presentes"
+      "preflightBlockers": "Bloqueadores de preflight presentes",
+      "colParty": "Inquilino",
+      "vacancyParty": "Vacío (propietario)",
+      "colUsage": "Periodo de uso",
+      "colDays": "Días",
+      "colRecoverable": "Repercutible",
+      "notRecoverable": "no (a cargo del propietario)",
+      "recoverable": "sí",
+      "formRecoverable": "Repercutible",
+      "recoverableYes": "Sí – se reparte entre los inquilinos",
+      "recoverableNo": "No – a cargo del propietario",
+      "tenantShare": "Repartido a inquilinos",
+      "vacancyShare": "Vacío (propietario)",
+      "nonRecoverableShare": "No repercutible",
+      "statementsTitle": "Liquidaciones por periodo de uso",
+      "stepCreate": "Crear",
+      "stepCosts": "Costes",
+      "stepPreflight": "Comprobación",
+      "stepGenerate": "Generar",
+      "stepFinalize": "Finalizar",
+      "stepDeliver": "Entregar",
+      "objections": "Objeciones",
+      "objectionReceived": "Recibida",
+      "objectionStatement": "Liquidación",
+      "objectionReason": "Motivo",
+      "objectionStatus": "Estado",
+      "objectionWholePeriod": "liquidación completa",
+      "objectionStatusValues": {
+        "open": "abierta",
+        "correction": "en corrección",
+        "resolved": "resuelta por corrección"
+      },
+      "correctsVersion": "Corrección rev. {{revision}} de «{{label}}»: la versión corregida se conserva sin cambios",
+      "finalVersionNote": "Versión finalizada: liquidaciones, PDF y totales no cambian; cambios solo mediante «Iniciar corrección»"
     },
     "dashboard": {
       "quickAccess": "Acceso rápido",
@@ -1196,7 +1497,16 @@
       "days": "días",
       "allContracts": "Todos los contratos",
       "notifications": "Notificaciones",
-      "noNotifications": "Sin notificaciones nuevas"
+      "noNotifications": "Sin notificaciones nuevas",
+      "analysisTab": "Análisis",
+      "auditChanged": "Modificado",
+      "auditCreated": "Creado",
+      "auditDeleted": "Eliminado",
+      "auditLoadError": "No se pudo cargar el registro de auditoría",
+      "auditUpdated": "Actualizado",
+      "noActivity": "Sin actividad",
+      "workTab": "Trabajo",
+      "cashflow12": "Flujo de caja (últimos 12 meses)"
     },
     "invoices": {
       "markPaidConfirm": "¿marcar como pagada?"
@@ -1269,7 +1579,71 @@
       "ocrLanguages": "Idiomas OCR",
       "ocrLangs": "Alemán + Inglés",
       "fileStorage": "Almacenamiento de archivos",
-      "fileStorageLocal": "Local (uploads/)"
+      "fileStorageLocal": "Local (uploads/)",
+      "users": {
+        "tab": "Usuarios",
+        "title": "Gestión de usuarios",
+        "add": "Añadir usuario",
+        "edit": "Editar usuario",
+        "resetPassword": "Restablecer contraseña",
+        "newPassword": "Nueva contraseña",
+        "username": "Usuario",
+        "email": "Correo",
+        "fullName": "Nombre",
+        "password": "Contraseña",
+        "role": "Rol",
+        "status": "Estado",
+        "actions": "Acciones",
+        "active": "Activo",
+        "inactive": "Desactivado",
+        "activate": "Activar",
+        "deactivate": "Desactivar",
+        "delete": "Eliminar",
+        "you": "(usted)",
+        "empty": "No hay usuarios",
+        "loadError": "No se pudieron cargar los usuarios",
+        "saved": "Usuario guardado",
+        "passwordSaved": "Contraseña cambiada",
+        "deleted": "Usuario eliminado",
+        "confirmDelete": "¿Eliminar definitivamente al usuario «{{name}}»?",
+        "confirmDeactivate": "¿Desactivar al usuario «{{name}}»? El acceso se bloquea de inmediato.",
+        "passwordHint": "Mínimo 8 caracteres con mayúsculas, minúsculas y un dígito.",
+        "managerHint": "Como administrador solo puede gestionar usuarios de solo lectura. Los roles los asigna el propietario.",
+        "roles": {
+          "eigentuemer": "Propietario",
+          "verwalter": "Administrador",
+          "buchhaltung": "Contabilidad",
+          "techniker": "Técnico",
+          "readonly": "Solo lectura"
+        },
+        "access": {
+          "column": "Carteras",
+          "button": "Carteras",
+          "title": "Carteras de {{name}}",
+          "explanation": "Define qué inmuebles, unidades, contratos, asientos y documentos ve y puede tratar esta cuenta. El rol sigue decidiendo qué puede modificar.",
+          "scope": "Acceso",
+          "all": "Todas las carteras",
+          "allHint": "Incluidas las carteras futuras y la administración de toda la instalación.",
+          "selected": "Carteras seleccionadas",
+          "selectedHint": "Solo datos de estas carteras; la administración de la instalación, los registros y las exportaciones completas siguen bloqueados.",
+          "portfolios": "Carteras",
+          "noPortfolios": "Todavía no hay carteras.",
+          "nothingWarning": "Sin una cartera seleccionada la cuenta no ve ningún dato.",
+          "saved": "Acceso a carteras guardado",
+          "summaryAll": "Todas",
+          "summaryNone": "Ninguna – no ve nada",
+          "summaryCount": "{{count}} seleccionadas",
+          "managerHint": "Las cuentas nuevas solo ven datos cuando el propietario les asigna carteras."
+        }
+      },
+      "skippedExisting": "ya existentes, omitidos",
+      "nothingNew": "No hay registros nuevos: todo ya existía.",
+      "tabDev": "Desarrollo",
+      "tabPersonal": "Personal",
+      "tabSystem": "Sistema",
+      "tabWorkflow": "Forma de trabajo",
+      "versionError": "No se pudo cargar la información de la versión",
+      "chooseImportFile": "Elegir archivo JSON …"
     },
     "messages": {
       "title": "Mensajes",
@@ -1278,7 +1652,18 @@
       "noMessages": "Sin mensajes",
       "type": "Tipo",
       "noContent": "Sin contenido",
-      "selectMessage": "Seleccione un mensaje para ver detalles"
+      "selectMessage": "Seleccione un mensaje para ver detalles",
+      "conversations": "Conversaciones",
+      "messagesCount": "Mensajes",
+      "newConversation": "Nueva conversación",
+      "noConversations": "Sin conversaciones",
+      "noThreadMessages": "Todavía no hay mensajes en esta conversación",
+      "notifications": "Avisos",
+      "participants": "Participantes",
+      "selectOrCreateConversation": "Seleccione una conversación o cree una nueva",
+      "send": "Enviar",
+      "subject": "Asunto",
+      "writePlaceholder": "Escribir un mensaje..."
     },
     "meters": {
       "title": "Contadores",
@@ -1296,7 +1681,11 @@
       "electricity": "Electricidad",
       "gas": "Gas",
       "water": "Agua",
-      "heating": "Calefacción"
+      "heating": "Calefacción",
+      "measureUnitHint": "Unidad de las lecturas; vacío: m³ para agua, kWh para electricidad. Indíquela siempre para calefacción y gas",
+      "installationDateHint": "En un cambio de contador: día de la lectura inicial del contador nuevo",
+      "removalDate": "Fecha de retirada (cambio de contador)",
+      "removalDateHint": "Día de la lectura final; el consumo cuenta hasta aquí, después el contador nuevo"
     },
     "propertyOverview": {
       "notFound": "Inmueble no encontrado",
@@ -1457,7 +1846,8 @@
         "contactPerson": "Persona de contacto",
         "phone": "Teléfono",
         "notes": "Notas",
-        "status": "Estado"
+        "status": "Estado",
+        "contactPhone": "Teléfono"
       },
       "types": {
         "building": "Seguro de edificio",
@@ -1619,7 +2009,37 @@
       "totalReceivables": "Cuentas por cobrar totales",
       "paid": "Pagado",
       "open": "Abierto",
-      "overdue": "Vencido"
+      "overdue": "Vencido",
+      "charges": "Cargos de alquiler",
+      "receivables": "Cobros pendientes"
+    },
+    "propertyDetail": {
+      "allUnits": "Las {{count}} unidades",
+      "annualRent": "Alquiler anual (sin gastos)",
+      "avgPerSqm": "Promedio €/m²",
+      "docTitle": "Título",
+      "dueDate": "Vence",
+      "financeOverview": "Resumen financiero",
+      "heating": "Calefacción",
+      "maintenanceTitle": "Mantenimiento y reparaciones",
+      "monthlyColdRent": "Alquiler mensual sin gastos",
+      "noAddress": "Sin dirección",
+      "noDocuments": "Sin documentos",
+      "noUnits": "Sin unidades",
+      "other": "Otros",
+      "priority": "Prioridad",
+      "propertyDetails": "Detalles del inmueble",
+      "recentDocuments": "Documentos recientes",
+      "rentByUnit": "Alquiler por unidad",
+      "serviceCharge": "Gastos",
+      "total": "Total",
+      "totalArea": "Superficie total",
+      "totalColdRent": "Alquiler total sin gastos",
+      "unitsOverview": "Resumen de unidades"
+    },
+    "allocationKeys": {
+      "measureUnit": "Unidad de facturación (solo consumo)",
+      "measureUnitHint": "Los contadores en otra unidad solo se convierten con un factor exacto (MWh → kWh, l → m³); gas m³ → kWh y repartidores de costes de calefacción no se convierten"
     }
   },
   "comp": {
@@ -1642,7 +2062,25 @@
       "filterTo": "Hasta",
       "filterMin": "Mín",
       "filterMax": "Máx",
-      "filterText": "Filtro…"
+      "filterText": "Filtro…",
+      "bulk": {
+        "region": "Selección",
+        "selected": "{{count}} seleccionados",
+        "selectAll": "Seleccionar los {{count}} resultados",
+        "clear": "Quitar selección",
+        "applies": "Afecta a {{count}} de las entradas seleccionadas",
+        "done": "{{label}}: {{count}} hechos",
+        "failed": "{{count}} fallidos",
+        "skipped": "{{count}} no afectados",
+        "more": "y {{count}} más",
+        "selectPage": "Seleccionar todas las entradas de esta página",
+        "selectRow": "Seleccionar"
+      },
+      "total": "Total ({{count}})",
+      "empty": "Todavía no hay entradas.",
+      "noMatches": "Ningún resultado para esta búsqueda o estos filtros.",
+      "resetSearch": "Restablecer búsqueda y filtros",
+      "addEntry": "Añadir una entrada"
     },
     "fileViewer": {
       "title": "Vista de archivo",
@@ -1696,5 +2134,262 @@
     "fileNotFound": "Archivo no encontrado",
     "fileTypeNotAllowed": "Tipo de archivo no permitido",
     "uploadFailed": "Carga fallida"
+  },
+  "contractWizard": {
+    "description": "Cree paso a paso un contrato de arrendamiento jurídicamente sólido."
+  },
+  "serviceContracts": {
+    "title": "Contratos de servicios",
+    "intro": "Contratos de energía y servicios de los inmuebles: proveedor, ubicaciones, tarifas, plazos, y anticipos, facturas y pagos por separado.",
+    "search": "Buscar (título, número, proveedor)",
+    "allTypes": "Todos los tipos",
+    "allStatuses": "Todos los estados",
+    "create": "Nuevo contrato de servicio",
+    "loading": "Cargando contratos…",
+    "loadError": "No se pudieron cargar los contratos.",
+    "retry": "Recargar",
+    "backToList": "Contratos de servicios",
+    "upcomingTitle": "Plazos en los próximos 90 días",
+    "noUpcoming": "No hay plazos en este periodo.",
+    "daysLeft": "quedan {{days}} días",
+    "actions": "Acciones",
+    "edit": "Editar",
+    "remove": "Quitar",
+    "delete": "Eliminar contrato",
+    "confirmDelete": "¿Eliminar el contrato «{{name}}» con sus ubicaciones, tarifas y documentos vinculados?",
+    "editContract": "Editar contrato",
+    "yes": "Sí",
+    "no": "No",
+    "current": "vigente",
+    "contact": "Contacto",
+    "numberShort": "N.º",
+    "openEnded": "indefinido",
+    "perMonth": "al mes",
+    "perYear": "al año",
+    "months": "{{count}} meses",
+    "restrictedNote": "Este contrato tiene más ubicaciones en carteras a las que no tiene acceso. Solo ve sus ubicaciones y registros; solo una cuenta con acceso a todas las carteras puede modificarlo.",
+    "hiddenLocations": "Las ubicaciones de otras carteras están ocultas.",
+    "partialFigures": "Las cifras solo incluyen facturas y pagos de sus carteras.",
+    "tabs": {
+      "master": "Datos maestros",
+      "locations": "Ubicaciones",
+      "tariffs": "Tarifas",
+      "deadlines": "Plazos",
+      "finance": "Previsto, facturas, pagos",
+      "documents": "Documentos"
+    },
+    "sections": {
+      "master": "Datos maestros",
+      "term": "Duración y rescisión",
+      "location": "Primera ubicación",
+      "firstTariff": "Primera tarifa (opcional)",
+      "billing": "Repercusión a inquilinos"
+    },
+    "fields": {
+      "type": "Tipo de contrato",
+      "title": "Denominación",
+      "provider": "Proveedor",
+      "contractNumber": "Número de contrato",
+      "customerNumber": "Número de cliente",
+      "start": "Inicio",
+      "end": "Fin del plazo fijo",
+      "minimumTerm": "Duración mínima (meses)",
+      "renewal": "Renovación",
+      "renewalMonths": "Se renueva por (meses)",
+      "noticeValue": "Plazo de preaviso",
+      "noticeUnit": "Unidad del plazo",
+      "noticeTo": "Rescisión al",
+      "reminderDays": "Aviso (días antes)",
+      "property": "Inmueble",
+      "unit": "Unidad (opcional)",
+      "meter": "Contador (opcional)",
+      "supplyPoint": "Punto de suministro",
+      "shareWeight": "Peso de costes",
+      "location": "Ubicación",
+      "locationFrom": "Ubicación desde",
+      "locationTo": "Ubicación hasta",
+      "validity": "Validez",
+      "recoverable": "Repercutible",
+      "recoverablePercent": "Parte repercutible (%)",
+      "costCategory": "Tipo de gasto",
+      "notes": "Notas",
+      "status": "Estado",
+      "nextDeadline": "Próximo plazo",
+      "validFrom": "Válida desde",
+      "tariffLabel": "Tarifa",
+      "advance": "Cuota",
+      "advanceInterval": "Periodicidad",
+      "advanceDay": "Vence el (día)",
+      "basePrice": "Precio base",
+      "basePricePeriod": "Precio base por",
+      "priceLabel": "Concepto del precio",
+      "priceUnit": "Unidad",
+      "price": "Precio por unidad (€)",
+      "unitPrices": "Precios unitarios",
+      "priceGuarantee": "Garantía de precio hasta",
+      "billKind": "Tipo de factura",
+      "periodStart": "Servicio desde",
+      "periodEnd": "Servicio hasta",
+      "servicePeriod": "Periodo de servicio",
+      "advancesCredited": "Anticipos descontados",
+      "consumption": "Consumo",
+      "consumptionUnit": "Unidad de consumo",
+      "invoice": "Factura",
+      "invoiceNumber": "Número de factura",
+      "invoiceDate": "Fecha de factura",
+      "dueDate": "Vence el",
+      "net": "Neto (€)",
+      "vatRate": "IVA (%)",
+      "gross": "Bruto (€)",
+      "billing": "En liquidación",
+      "booking": "Asiento",
+      "bookingDate": "Fecha",
+      "paymentText": "Concepto",
+      "allocated": "Importe asignado (€)",
+      "forBill": "Para la factura (opcional)",
+      "billingPeriod": "Periodo de liquidación",
+      "allocationKey": "Clave de reparto",
+      "cancelledOn": "Rescisión recibida el",
+      "effectiveDate": "Efectiva el (opcional)",
+      "extraordinary": "Rescisión extraordinaria",
+      "document": "Documento"
+    },
+    "hints": {
+      "provider": "De la agenda compartida (contactos); si falta, créelo allí primero.",
+      "end": "O una fecha de fin o una duración mínima.",
+      "noticeTo": "Fin de mes, trimestre o año solo para contratos indefinidos.",
+      "price": "Hasta seis decimales, p. ej. 0,3247.",
+      "priceLabel": "p. ej. precio de energía",
+      "shareWeight": "Parte de esta ubicación en los costes (por defecto 1).",
+      "advancesCredited": "Solo en liquidaciones: anticipos ya exigidos.",
+      "gross": "Coste total del periodo, antes de descontar anticipos.",
+      "candidates": "Gastos sin inquilino de los últimos 120 días, primero los más adecuados.",
+      "allocated": "Vacío: la parte del asiento aún no asignada.",
+      "cancelledOn": "Día en que la rescisión llega al destinatario.",
+      "effectiveDate": "Vacío: la fecha más temprana posible."
+    },
+    "types": {
+      "electricity": "Electricidad",
+      "gas": "Gas",
+      "district_heating": "Calefacción urbana",
+      "water": "Agua / aguas residuales",
+      "waste": "Recogida de residuos",
+      "cleaning": "Limpieza",
+      "caretaker": "Conserje",
+      "elevator": "Mantenimiento de ascensor",
+      "garden": "Jardinería",
+      "winter_service": "Servicio invernal",
+      "chimney_sweep": "Deshollinador",
+      "heating_maintenance": "Mantenimiento de calefacción",
+      "cable_tv": "TV por cable / antena",
+      "other": "Otro"
+    },
+    "status": {
+      "upcoming": "próximo",
+      "active": "activo",
+      "cancelled": "rescindido",
+      "ended": "finalizado"
+    },
+    "deadlines": {
+      "notice": "Plazo de rescisión",
+      "price_guarantee": "Fin de la garantía de precio",
+      "contract_end": "Fin del contrato"
+    },
+    "intervals": {
+      "monthly": "mensual",
+      "bimonthly": "bimestral",
+      "quarterly": "trimestral",
+      "semiannual": "semestral",
+      "annual": "anual"
+    },
+    "renewal": {
+      "none": "ninguna (termina)",
+      "fixed": "automática por plazo fijo",
+      "indefinite": "continúa indefinidamente"
+    },
+    "units": {
+      "day": "días",
+      "week": "semanas",
+      "month": "meses"
+    },
+    "noticeTo": {
+      "term_end": "fin del plazo",
+      "any_day": "cualquier día",
+      "month_end": "fin de mes",
+      "quarter_end": "fin de trimestre",
+      "year_end": "fin de año"
+    },
+    "noticeText": "{{value}} {{unit}} al {{to}}",
+    "noNotice": "no requiere rescisión",
+    "noticePeriod": "Plazo de preaviso",
+    "termTitle": "Duración",
+    "firstTermEnd": "Fin del primer plazo",
+    "currentTerm": "Plazo actual",
+    "effectiveEnd": "Fin del contrato",
+    "cancellation": "Rescisión",
+    "cancellationText": "recibida el {{on}}, efectiva el {{effective}}",
+    "nextNotice": "Próximo plazo de rescisión",
+    "noticeDeadlineText": "recepción límite de la rescisión para terminar el {{end}} (quedan {{days}} días)",
+    "renewsTo": "Si no, el contrato se renueva hasta el {{date}}.",
+    "continuesIndefinitely": "Si no, el contrato continúa indefinidamente.",
+    "noNoticeDeadline": "No hay plazo de rescisión pendiente.",
+    "earliestEnd": "Una rescisión recibida hoy surte efecto el {{date}}.",
+    "upcomingDeadlines": "Próximos plazos",
+    "reminderNote": "Aviso como tarea y notificación {{days}} días antes de cada plazo (ejecución diaria).",
+    "cancel": "Registrar rescisión",
+    "withdraw": "Retirar rescisión",
+    "confirmWithdraw": "¿Retirar la rescisión? El contrato continúa según sus reglas.",
+    "addLocation": "Añadir ubicación",
+    "editLocation": "Editar ubicación",
+    "confirmRemoveLocation": "¿Quitar la ubicación «{{name}}»?",
+    "addTariff": "Añadir tarifa",
+    "editTariff": "Editar tarifa",
+    "confirmRemoveTariff": "¿Quitar la tarifa desde {{date}}?",
+    "noTariffs": "Aún no hay tarifas.",
+    "tariffHistoryHint": "Una tarifa rige desde su fecha hasta el inicio de la siguiente; las anteriores se conservan.",
+    "year": "Año",
+    "newBill": "Registrar factura",
+    "linkBill": "Vincular factura existente",
+    "linkPayment": "Asignar pago",
+    "transfer": "Pasar a la liquidación",
+    "transferDone": "{{created}} partida(s) transferida(s), {{skipped}} omitida(s).",
+    "figures": {
+      "expected": "Previsto (cuotas)",
+      "invoiced": "Facturas",
+      "credited": "Anticipos descontados",
+      "paid": "Pagado",
+      "open": "Pendiente",
+      "costs": "Costes (prorrata)"
+    },
+    "figuresNote": "Pendiente = previsto + (facturas − anticipos descontados) − pagos. Los costes solo provienen de facturas, por días de servicio del año; las cuotas no son costes.",
+    "bills": "Facturas del proveedor",
+    "noBills": "No hay facturas vinculadas.",
+    "billKinds": {
+      "regular": "Factura ordinaria",
+      "settlement": "Liquidación (con anticipos)"
+    },
+    "plannedAdvances": "según tarifa {{amount}}",
+    "confirmUnlinkBill": "¿Desvincular la factura? La factura se conserva.",
+    "payments": "Pagos",
+    "noPayments": "No hay pagos asignados.",
+    "instalments": "Cuotas previstas ({{count}})",
+    "linkDocument": "Vincular documento",
+    "uploadDocument": "Subir",
+    "uploading": "Subiendo…",
+    "uploadFailed": "Error al subir",
+    "noDocuments": "No hay documentos.",
+    "openDocument": "Ver documento",
+    "fromBill": "Justificante de factura",
+    "unlink": "Desvincular"
+  },
+  "shortcutHelp": {
+    "title": "Atajos de teclado",
+    "or": "o",
+    "search": "Abrir la búsqueda (páginas, acciones, registros)",
+    "firstHit": "En la búsqueda: abrir la primera entrada",
+    "newEntry": "Crear una entrada en la lista de esta página",
+    "save": "Guardar el formulario",
+    "close": "Cerrar un diálogo o la búsqueda",
+    "help": "Mostrar este resumen"
   }
 }

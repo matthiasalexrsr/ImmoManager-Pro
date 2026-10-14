@@ -6,18 +6,21 @@ import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
+import { useToast } from '../components/Toast';
+import { useCanWrite } from '../contexts/AuthContext';
+import { formatMoney, formatPercent } from '../utils/format';
 
 const COLUMNS = [
-  { key: 'contract_number', label: 'Vertrag', filterType: 'text' },
+  { key: 'contract_number', label: 'Vertrag', filterType: 'text', link: 'contract' },
   { key: 'adjustment_type', label: 'Art', filterType: 'select',
     render: v => v === 'index' ? 'Indexmiete' : v === 'stepped' ? 'Staffelmiete' : v || '—' },
   { key: 'effective_date', label: 'Wirksamkeit', type: 'date', filterType: 'dateRange' },
   { key: 'previous_rent', label: 'Bisherige Miete (€)', type: 'number', align: 'right',
-    render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
+    render: v => formatMoney(v) },
   { key: 'new_rent', label: 'Neue Miete (€)', type: 'number', align: 'right',
-    render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
+    render: v => formatMoney(v) },
   { key: 'increase_percent', label: 'Erhöhung (%)', type: 'number', align: 'right',
-    render: v => v != null ? `${Number(v).toFixed(1)} %` : '—' },
+    render: v => formatPercent(v) },
   { key: 'status', label: 'Status', type: 'status', filterType: 'select',
     render: v => <StatusBadge status={v} /> },
 ];
@@ -25,6 +28,8 @@ const COLUMNS = [
 export default function RentAdjustments() {
   const { t } = useTranslation();
   const confirm = useConfirm();
+  const toast = useToast();
+  const canWrite = useCanWrite();
   const store = useDataStore();
   const { items: contracts } = useEntities('contracts', '/contracts');
   const [adjustments, setAdjustments] = useState([]);
@@ -34,19 +39,37 @@ export default function RentAdjustments() {
 
   const refreshData = () => {
     setLoading(true);
-    api.get('/rent-adjustments').catch(err => { console.warn('[RentAdj]', err.message); return []; })
+    api.list('/rent-adjustments').catch(err => { console.warn('[RentAdj]', err.message); return []; })
       .then(adj => setAdjustments(adj || []))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     let cancelled = false;
-    api.get('/rent-adjustments').catch(err => { console.warn('[RentAdjustments] adjustments:', err.message); return []; })
+    api.list('/rent-adjustments').catch(err => { console.warn('[RentAdjustments] adjustments:', err.message); return []; })
       .then(data => { if (!cancelled) setAdjustments(data || []); })
       .catch(e => { if (!cancelled) console.warn('[RentAdjustments] load failed:', e.message); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, []);
+
+  // Applying writes the new rent into the contract's rent history from its effective date.
+  const runAction = async (row, action) => {
+    try {
+      const res = await api.post(`/rent-adjustments/${row.id}/${action}`, {});
+      (res?.warnings || []).forEach(w => toast.warning(w));
+      toast.success(action === 'apply' ? 'Mietanpassung angewendet' : 'Mietanpassung zurückgenommen');
+      refreshData();
+      if (store) store.invalidateRelated('rent_adjustments', 'contracts');
+    } catch (err) {
+      toast.error(err.message);
+    }
+  };
+
+  const columns = [...COLUMNS, { key: 'actions', label: '', render: (_, row) => !canWrite ? null : (row.status === 'applied'
+    ? <button className="btn btn-sm btn-secondary" onClick={() => runAction(row, 'revert')}>Zurücknehmen</button>
+    : row.status !== 'rejected' && (
+      <button className="btn btn-sm btn-primary" onClick={() => runAction(row, 'apply')}>Anwenden</button>)) }];
 
   const contractMap = Object.fromEntries(contracts.map(c => [c.id, c]));
   const enriched = adjustments.map(a => ({
@@ -97,7 +120,8 @@ export default function RentAdjustments() {
     }
   };
 
-  if (loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  // only the first load replaces the page; a reload keeps the table and an open form
+  if (loading && adjustments.length === 0) return <div className="page-loading">{t('ui.table.loading')}</div>;
 
   return (
     <div className="page">
@@ -109,7 +133,7 @@ export default function RentAdjustments() {
       )}
       <DataTable
         title="Mietanpassungen"
-        columns={COLUMNS}
+        columns={columns}
         data={enriched}
         onAdd={() => setModal('create')}
         onEdit={row => setModal(row)}

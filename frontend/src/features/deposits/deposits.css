@@ -1,0 +1,290 @@
+/* Deposit file (Kautionsakte): the same dialog language as the handover protocol. */
+.deposit__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 250;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgb(15 23 42 / .58);
+}
+
+.deposit {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: min(64rem, 100%);
+  max-height: min(94vh, 64rem);
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface);
+  box-shadow: 0 1.2rem 4rem rgb(15 23 42 / .24);
+  color: var(--color-text);
+}
+
+.deposit--list { width: min(44rem, 100%); }
+
+.deposit__header,
+.deposit__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: .9rem 1rem;
+}
+
+.deposit__header { border-bottom: 1px solid var(--color-border); }
+.deposit__footer { justify-content: flex-end; border-top: 1px solid var(--color-border); }
+.deposit__header > div { min-width: 0; }
+.deposit__header h2, .deposit__header p, .deposit h3, .deposit h4 { margin: 0; }
+.deposit__header h2 { font-size: clamp(1.1rem, 3vw, 1.45rem); overflow-wrap: anywhere; }
+.deposit__header > div > p:last-child { color: var(--color-text-muted); overflow-wrap: anywhere; }
+
+.deposit__eyebrow {
+  color: var(--color-primary);
+  font-size: .76rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.deposit .btn { min-width: 0; white-space: normal; }
+
+.deposit__icon-button {
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.deposit__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: 1rem;
+  min-width: 0;
+  overflow: auto;
+  padding: 1rem;
+}
+
+.deposit__section,
+.deposit__form {
+  display: grid;
+  gap: .75rem;
+  min-width: 0;
+  margin: 0;
+  padding: .9rem;
+  border: 1px solid var(--color-border);
+  border-radius: .85rem;
+}
+
+.deposit__section-group { display: grid; gap: 1rem; min-width: 0; }
+.deposit__section-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; }
+.deposit h4 { font-size: .95rem; }
+
+.deposit__figures,
+.deposit__outcome {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(10rem, 100%), 1fr));
+  gap: .55rem;
+  margin: 0;
+}
+
+.deposit__figures > div,
+.deposit__outcome > div {
+  display: grid;
+  gap: .15rem;
+  min-width: 0;
+  padding: .7rem;
+  border: 1px solid var(--color-border);
+  border-radius: .75rem;
+  background: color-mix(in srgb, var(--color-surface) 92%, var(--color-primary) 8%);
+}
+
+.deposit__figures dt, .deposit__outcome dt, .deposit__facts dt { color: var(--color-text-muted); font-size: .82rem; }
+.deposit__figures dd, .deposit__outcome dd, .deposit__facts dd { margin: 0; font-weight: 750; overflow-wrap: anywhere; }
+.deposit__outcome-result { border-color: var(--color-primary) !important; }
+
+.deposit__facts { display: grid; gap: .5rem; margin: 0; }
+.deposit__facts > div { display: grid; grid-template-columns: minmax(8rem, 14rem) minmax(0, 1fr); gap: .75rem; }
+.deposit__facts dd { font-weight: 500; }
+
+.deposit__stage {
+  display: inline-block;
+  padding: .1rem .55rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-surface) 80%, var(--color-primary) 20%);
+  font-size: .82rem;
+}
+
+.deposit__stage--settled, .deposit__stage--closed, .deposit__stage--released, .deposit__stage--received {
+  background: color-mix(in srgb, var(--color-surface) 78%, var(--color-success, #15803d) 22%);
+}
+
+.deposit__stage--retained, .deposit__stage--partially_received, .deposit__stage--settlement_draft {
+  background: color-mix(in srgb, var(--color-surface) 78%, var(--color-warning, #b45309) 22%);
+}
+
+.deposit__badge { color: var(--color-warning, #b45309); font-size: .82rem; font-weight: 700; }
+
+.deposit__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(13rem, 100%), 1fr));
+  gap: .7rem 1rem;
+  min-width: 0;
+}
+
+.deposit__wide { grid-column: 1 / -1; }
+.deposit__fieldset { min-width: 0; margin: 0; padding: .6rem .8rem; border: 1px solid var(--color-border); border-radius: .7rem; }
+
+.deposit label { display: grid; gap: .3rem; min-width: 0; font-weight: 650; }
+
+.deposit :is(input:not([type="checkbox"]), select, textarea) {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 42px;
+  padding: .55rem .7rem;
+  border: 1px solid var(--color-border);
+  border-radius: .55rem;
+  font: inherit;
+  font-weight: 400;
+  color: var(--color-text);
+  background: var(--color-surface);
+}
+
+.deposit :is(input, select, textarea):focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.deposit textarea { resize: vertical; }
+
+.deposit label.deposit__check { grid-template-columns: auto minmax(0, 1fr); align-items: start; font-weight: 500; }
+.deposit__check input { width: 1.2rem; height: 1.2rem; margin-top: .15rem; }
+
+.deposit__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .5rem; }
+.deposit__muted { margin: 0; color: var(--color-text-muted); font-size: .86rem; }
+
+.deposit__notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem;
+  margin: 0;
+  padding: .65rem .8rem;
+  border-radius: .7rem;
+  border: 1px solid var(--color-border);
+}
+
+.deposit__notice--error { border-color: var(--color-danger, #b91c1c); color: var(--color-danger, #b91c1c); }
+.deposit__notice--warning { border-color: var(--color-warning, #b45309); }
+.deposit__notice--success { border-color: var(--color-success, #15803d); }
+
+.deposit__table-wrap { min-width: 0; max-width: 100%; overflow-x: auto; }
+.deposit__table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.deposit__table :is(th, td) { padding: .45rem .5rem; border-bottom: 1px solid var(--color-border); text-align: left; vertical-align: top; }
+.deposit__table th { color: var(--color-text-muted); font-size: .8rem; font-weight: 700; }
+.deposit__num { text-align: right !important; white-space: nowrap; }
+
+.deposit__list, .deposit__candidates, .deposit__suggestions ul, .deposit__problems {
+  display: grid;
+  gap: .5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.deposit__list li, .deposit__candidates li, .deposit__suggestions li, .deposit__suggestion-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: .5rem;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.deposit__list li { grid-template-columns: auto minmax(0, 1fr) auto; padding: .6rem; border: 1px solid var(--color-border); border-radius: .7rem; }
+.deposit__list li div { display: grid; min-width: 0; }
+.deposit__list small { color: var(--color-text-muted); }
+.deposit__candidates li { grid-template-columns: minmax(0, 1fr) minmax(5.5rem, 8rem) auto; }
+
+.deposit__suggestions { display: grid; gap: .5rem; padding: .7rem; border-radius: .7rem; background: color-mix(in srgb, var(--color-surface) 94%, var(--color-primary) 6%); }
+
+.deposit__items { display: grid; gap: .6rem; }
+
+.deposit__item {
+  display: grid;
+  grid-template-columns: minmax(13rem, 1.4fr) minmax(10rem, 2fr) minmax(6rem, .8fr) minmax(9rem, 1.6fr) auto;
+  align-items: end;
+  gap: .5rem;
+  min-width: 0;
+  margin: 0;
+  padding: .6rem;
+  border: 1px solid var(--color-border);
+  border-radius: .7rem;
+}
+
+.deposit__rate { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: end; gap: .5rem; }
+
+.deposit__problems li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .4rem; font-size: .88rem; color: var(--color-text-muted); }
+.deposit__problem--blocking { color: var(--color-danger, #b91c1c) !important; font-weight: 650; }
+
+.deposit__finish { display: grid; gap: .7rem; padding: .8rem; border: 1px dashed var(--color-primary); border-radius: .8rem; }
+.deposit__pdf { min-width: 0; max-width: 100%; overflow: hidden; }
+
+.deposit__original { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.deposit__original code { overflow-wrap: anywhere; }
+
+.deposit__sr {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .deposit__overlay { padding: .5rem; }
+  .deposit { width: 100%; max-height: 96vh; border-radius: .75rem; }
+  .deposit__item { grid-template-columns: minmax(0, 1fr); }
+  .deposit__candidates li { grid-template-columns: minmax(0, 1fr) minmax(5rem, 7rem); }
+  .deposit__candidates li button { grid-column: 1 / -1; justify-self: end; }
+  .deposit__facts > div { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
+  .deposit__rate { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .deposit__rate button { grid-column: 1 / -1; justify-self: end; }
+}
+
+@media (max-width: 380px) {
+  .deposit__overlay { padding: 0; }
+  .deposit { max-height: 100vh; min-height: 100vh; border-width: 0; border-radius: 0; }
+  .deposit__header, .deposit__footer, .deposit__body { padding: .7rem; }
+  .deposit__section, .deposit__form { padding: .65rem; }
+}
+
+/* list page */
+.deposits-page__filters { display: flex; flex-wrap: wrap; gap: .5rem; align-items: end; margin-bottom: 1rem; }
+.deposits-page__filters label { display: grid; gap: .25rem; min-width: 0; flex: 1 1 12rem; font-weight: 650; }
+.deposits-page__filters :is(input, select) {
+  min-height: 40px; padding: .45rem .6rem; border: 1px solid var(--color-border); border-radius: .55rem; font: inherit;
+  background: var(--color-surface); color: var(--color-text); min-width: 0; width: 100%;
+}
+.deposits-page__totals { display: flex; flex-wrap: wrap; gap: .5rem 1.5rem; margin: 0 0 .75rem; color: var(--color-text-muted); }
+.deposits-page__pager { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .5rem; margin-top: .75rem; }
+.deposits-page__table-wrap { max-width: 100%; overflow-x: auto; }
+.deposits-page__table { width: 100%; border-collapse: collapse; }
+.deposits-page__table :is(th, td) { padding: .55rem .5rem; border-bottom: 1px solid var(--color-border); text-align: left; vertical-align: top; }
+.deposits-page__table th { font-size: .8rem; color: var(--color-text-muted); }
+.deposits-page__table td small { display: block; color: var(--color-text-muted); }
+
+@media (max-width: 640px) {
+  .deposits-page__table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .deposits-page__table, .deposits-page__table tbody, .deposits-page__table tr, .deposits-page__table td { display: block; width: 100%; }
+  .deposits-page__table tr { padding: .6rem; margin-bottom: .6rem; border: 1px solid var(--color-border); border-radius: .7rem; }
+  .deposits-page__table td { border: 0; padding: .15rem 0; }
+  .deposits-page__table td[data-label]::before { content: attr(data-label) ": "; color: var(--color-text-muted); font-size: .8rem; }
+}

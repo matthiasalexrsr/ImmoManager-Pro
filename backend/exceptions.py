@@ -18,10 +18,13 @@ request ID, user ID, exception type, and traceback where applicable.
 import logging
 import traceback
 from enum import Enum
+from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError as PydanticValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .logging_config import request_id_var
 from .storage import NotFoundError, ValidationError
@@ -56,7 +59,7 @@ class ServiceUnavailableError(Exception):
 
 def _request_context(request: Request) -> dict:
     """Extract detailed context from a request for logging."""
-    ctx = {
+    ctx: dict[str, Any] = {
         "method": request.method,
         "path": request.url.path,
         "request_id": request_id_var.get() or "-",
@@ -80,7 +83,7 @@ def _error_response(
     details: list | None = None,
 ) -> JSONResponse:
     """Build a standardized error JSON response."""
-    body = {
+    body: dict[str, dict[str, Any]] = {
         "error": {
             "code": code.value,
             "message": message,
@@ -90,6 +93,53 @@ def _error_response(
     if details:
         body["error"]["details"] = details
     return JSONResponse(status_code=status_code, content=body)
+
+
+# Default texts of the framework, as users read them
+_STANDARD_TEXTS = {"Not Found": "Nicht gefunden", "Method Not Allowed": "Diese Aktion ist hier nicht möglich",
+                   "Not authenticated": "Bitte anmelden", "Unauthorized": "Bitte anmelden",
+                   "Forbidden": "Keine Berechtigung", "Internal Server Error": "Interner Fehler"}
+
+_FIELD_TEXT = {
+    "float_parsing": "Bitte eine gültige Zahl angeben", "float_type": "Bitte eine gültige Zahl angeben",
+    "int_parsing": "Bitte eine ganze Zahl angeben", "int_type": "Bitte eine ganze Zahl angeben",
+    "int_from_float": "Bitte eine ganze Zahl angeben", "decimal_parsing": "Bitte eine gültige Zahl angeben",
+    "finite_number": "Bitte eine endliche Zahl angeben",
+    "bool_parsing": "Bitte ja oder nein angeben", "bool_type": "Bitte ja oder nein angeben",
+    "date_parsing": "Bitte ein gültiges Datum angeben (JJJJ-MM-TT)",
+    "date_from_datetime_parsing": "Bitte ein gültiges Datum angeben (JJJJ-MM-TT)",
+    "date_type": "Bitte ein gültiges Datum angeben (JJJJ-MM-TT)",
+    "datetime_parsing": "Bitte Datum und Uhrzeit angeben (JJJJ-MM-TT hh:mm)",
+    "datetime_from_date_parsing": "Bitte Datum und Uhrzeit angeben (JJJJ-MM-TT hh:mm)",
+    "string_type": "Bitte einen Text angeben", "list_type": "Bitte eine Liste angeben",
+    "dict_type": "Ungültige Daten", "model_type": "Ungültige Daten", "model_attributes_type": "Ungültige Daten",
+    "json_invalid": "Ungültiges JSON", "enum": "Ungültiger Wert", "literal_error": "Ungültiger Wert",
+    "uuid_parsing": "Ungültige ID", "extra_forbidden": "Unbekanntes Feld",
+}
+
+
+def german_message(err: dict) -> str:
+    """A pydantic error as a sentence a user understands (the UI shows only this text)."""
+    kind, ctx = err.get("type", ""), err.get("ctx") or {}
+    loc = [str(x) for x in err.get("loc", []) if x not in ("body", "query", "path")]
+    field = loc[-1] if loc else ""
+    if kind == "value_error":
+        return str(err.get("msg", "")).removeprefix("Value error, ")
+    if kind == "missing":
+        return f"Pflichtangabe fehlt: {field}" if field else "Pflichtangabe fehlt"
+    bounds = {"greater_than_equal": ("mindestens", "ge"), "greater_than": ("größer als", "gt"),
+              "less_than_equal": ("höchstens", "le"), "less_than": ("kleiner als", "lt")}
+    if kind in bounds:
+        word, key = bounds[kind]
+        return f"{field or 'Der Wert'}: muss {word} {ctx.get(key)} sein"
+    if kind == "string_too_short":
+        return f"{field or 'Der Text'}: zu kurz (mindestens {ctx.get('min_length')} Zeichen)"
+    if kind == "string_too_long":
+        return f"{field or 'Der Text'}: zu lang (höchstens {ctx.get('max_length')} Zeichen)"
+    text = _FIELD_TEXT.get(kind)
+    if text:
+        return f"{field}: {text}" if field else text
+    return str(err.get("msg", "Ungültige Eingabe"))
 
 
 def register_exception_handlers(app: FastAPI) -> None:
@@ -114,6 +164,15 @@ def register_exception_handlers(app: FastAPI) -> None:
             request.method, request.url.path, msg, ctx,
         )
         return _error_response(400, ErrorCode.VALIDATION_ERROR, msg)
+
+    @app.exception_handler(RequestValidationError)
+    async def request_validation_handler(request: Request, exc: RequestValidationError):
+        """Body and query errors: same shape as FastAPI's ({"detail": [{loc, msg, type}]}), German texts."""
+        detail = [{"loc": list(err.get("loc", [])), "type": err.get("type"), "msg": german_message(err)}
+                  for err in exc.errors()]
+        logger.warning("REQUEST_VALIDATION: %s %s – %s", request.method, request.url.path,
+                       [d["msg"] for d in detail])
+        return JSONResponse(status_code=422, content={"detail": detail})
 
     @app.exception_handler(PydanticValidationError)
     async def pydantic_validation_handler(request: Request, exc: PydanticValidationError):
@@ -158,8 +217,9 @@ def register_exception_handlers(app: FastAPI) -> None:
     except ImportError:
         pass  # error_helpers not available — skip handler
 
-    @app.exception_handler(HTTPException)
-    async def http_exception_handler(request: Request, exc: HTTPException):
+    # Starlette's own exceptions too: unknown routes (404) and wrong methods (405)
+    @app.exception_handler(StarletteHTTPException)
+    async def http_exception_handler(request: Request, exc: StarletteHTTPException):
         code = ErrorCode.INTERNAL_ERROR
         if exc.status_code == 401:
             code = ErrorCode.AUTH_FAILED
@@ -174,6 +234,9 @@ def register_exception_handlers(app: FastAPI) -> None:
         elif exc.status_code in (400, 422):
             code = ErrorCode.VALIDATION_ERROR
         msg = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+        msg = _STANDARD_TEXTS.get(msg, msg)
+        if exc.status_code == 405:
+            code = ErrorCode.VALIDATION_ERROR
         ctx = _request_context(request)
         log_level = logging.WARNING if exc.status_code < 500 else logging.ERROR
         logger.log(

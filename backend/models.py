@@ -1,7 +1,19 @@
 from datetime import date, datetime, timezone
-from typing import Optional
+from typing import Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+from .domain.money import money
+
+
+def _cent_amount(v: Optional[float]) -> Optional[float]:
+    """Money arrives as cents: rounded half up (domain.money); a zero amount is refused."""
+    if v is None:
+        return v
+    rounded = money(v)
+    if rounded == 0:
+        raise ValueError("Betrag darf nicht 0 sein")
+    return float(rounded)
 
 
 class PortfolioCreate(BaseModel):
@@ -59,11 +71,37 @@ class UnitCreate(BaseModel):
     features: Optional[str] = None
     person_count: Optional[int] = None
 
+    @field_validator("area_sqm")
+    @classmethod
+    def validate_area(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None and v <= 0:
+            raise ValueError("Fläche muss größer als 0 m² sein")
+        return v
+
 
 class Unit(UnitCreate):
     id: str = Field(..., min_length=1)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+# Payment methods: the codes the app uses, and spellings of other systems and imports
+PAYMENT_METHODS = {"bank_transfer", "sepa_direct_debit", "cash"}
+PAYMENT_METHOD_ALIASES = {
+    "transfer": "bank_transfer", "überweisung": "bank_transfer", "ueberweisung": "bank_transfer",
+    "dauerauftrag": "bank_transfer", "sepa": "sepa_direct_debit", "lastschrift": "sepa_direct_debit",
+    "sepa-lastschrift": "sepa_direct_debit", "direct_debit": "sepa_direct_debit", "bar": "cash",
+    "barzahlung": "cash",
+}
+
+
+def normalize_payment_method(value: Optional[str]) -> Optional[str]:
+    if not isinstance(value, str):
+        return value
+    key = value.strip().lower()
+    if not key:
+        return None
+    return key if key in PAYMENT_METHODS else PAYMENT_METHOD_ALIASES.get(key, value)
 
 
 class TenantCreate(BaseModel):
@@ -78,6 +116,11 @@ class TenantCreate(BaseModel):
     sepa_mandate: Optional[str] = None
     notes: Optional[str] = None
     archived: bool = False
+
+    @field_validator("payment_method")
+    @classmethod
+    def normalize_payment_method(cls, v: Optional[str]) -> Optional[str]:
+        return normalize_payment_method(v)
 
     @field_validator("email")
     @classmethod
@@ -108,6 +151,12 @@ class ContractCreate(BaseModel):
     deposit_amount: Optional[float] = None
     index_rent: Optional[str] = None
     service_charge_settlement: Optional[str] = None
+    persons: Optional[int] = Field(default=None, ge=0)  # household size for person-based utility keys
+    # Taking over a running tenancy: the tenant account is kept here from this first of a month on;
+    # the months before were settled in the previous system. carried_balance is the account's balance
+    # on that day (positive: the tenant owes it, negative: the tenant's credit).
+    ledger_start: Optional[date] = None
+    carried_balance: Optional[float] = Field(default=None, ge=-10_000_000, le=10_000_000)
 
     @field_validator("end_date")
     @classmethod
@@ -123,6 +172,26 @@ class ContractCreate(BaseModel):
         if v not in _VALID_CONTRACT_STATUSES:
             raise ValueError(f"Ungültiger Status. Erlaubt: {', '.join(sorted(_VALID_CONTRACT_STATUSES))}")
         return v
+
+    @field_validator("carried_balance")
+    @classmethod
+    def carried_balance_in_cents(cls, v: Optional[float]) -> Optional[float]:
+        return None if v is None else float(money(v))
+
+    @model_validator(mode="after")
+    def validate_takeover(self) -> "ContractCreate":
+        start = self.ledger_start
+        if start is None:
+            if self.carried_balance:
+                raise ValueError("Ein Saldo zum Übernahmetag braucht das Datum, ab dem das Mietkonto hier geführt wird.")
+            return self
+        if start.day != 1:
+            raise ValueError("Das Mietkonto wird ab einem Monatsersten übernommen (z. B. 01.01.2026).")
+        if start <= self.start_date:
+            raise ValueError("Der Übernahmetag muss nach dem Vertragsbeginn liegen; beginnt der Vertrag erst hier, bleibt das Feld leer.")
+        if self.end_date is not None and start > self.end_date:
+            raise ValueError("Der Übernahmetag muss vor dem Vertragsende liegen.")
+        return self
 
 
 class Contract(ContractCreate):
@@ -171,12 +240,23 @@ class BookingCreate(BaseModel):
     status: str = "open"
     payment_text: Optional[str] = None
     receipt_url: Optional[str] = None
+    reverses_booking_id: Optional[str] = None  # a reversal (Storno): the booking it cancels
+
+    @field_validator("amount")
+    @classmethod
+    def validate_amount(cls, v: Optional[float]) -> Optional[float]:
+        return _cent_amount(v)
 
 
 class Booking(BookingCreate):
     id: str = Field(..., min_length=1)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    @field_validator("amount")
+    @classmethod
+    def validate_amount(cls, v: Optional[float]) -> Optional[float]:
+        return v  # stored rows stay readable as they are; calculations round them (domain.money)
 
 
 class ReceivableCreate(BaseModel):
@@ -186,6 +266,7 @@ class ReceivableCreate(BaseModel):
     dunning_level: Optional[str] = None
     status: str = "open"
     statement_id: Optional[str] = None  # link back to source UtilityStatement
+    description: Optional[str] = None
 
 
 class Receivable(ReceivableCreate):
@@ -240,6 +321,7 @@ class DocumentCreate(BaseModel):
     property_id: Optional[str] = None
     unit_id: Optional[str] = None
     contract_id: Optional[str] = None
+    tenant_id: Optional[str] = None
     title: str
     document_type: Optional[str] = None
     document_date: Optional[date] = None
@@ -258,6 +340,34 @@ class Document(DocumentCreate):
     ai_analyzed_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class TenantContractRent(BaseModel):
+    cold_rent: float
+    service_charge: float
+    heating_charge: float
+    valid_from: date
+
+
+class TenantContractOverview(Contract):
+    property_name: Optional[str] = None
+    unit_label: Optional[str] = None
+    current_rent: Optional[TenantContractRent] = None
+
+
+class TenantOverview(BaseModel):
+    tenant: Tenant
+    contracts: list[TenantContractOverview]
+    document_count: int
+    document_types: list[str]
+
+
+class TenantDocumentPage(BaseModel):
+    items: list[Document]
+    total: int
+    skip: int
+    limit: int
+    has_more: bool
 
 
 class TaskCreate(BaseModel):
@@ -379,6 +489,13 @@ class UnitPatch(BaseModel):
     features: Optional[str] = None
     person_count: Optional[int] = None
 
+    @field_validator("area_sqm")
+    @classmethod
+    def validate_area(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None and v <= 0:
+            raise ValueError("Fläche muss größer als 0 m² sein")
+        return v
+
 
 class TenantPatch(BaseModel):
     full_name: Optional[str] = None
@@ -392,6 +509,11 @@ class TenantPatch(BaseModel):
     sepa_mandate: Optional[str] = None
     notes: Optional[str] = None
     archived: Optional[bool] = None
+
+    @field_validator("payment_method")
+    @classmethod
+    def normalize_payment_method(cls, v: Optional[str]) -> Optional[str]:
+        return normalize_payment_method(v)
 
     @field_validator("email")
     @classmethod
@@ -413,6 +535,9 @@ class ContractPatch(BaseModel):
     deposit_amount: Optional[float] = None
     index_rent: Optional[str] = None
     service_charge_settlement: Optional[str] = None
+    persons: Optional[int] = Field(default=None, ge=0)
+    ledger_start: Optional[date] = None
+    carried_balance: Optional[float] = Field(default=None, ge=-10_000_000, le=10_000_000)
 
 
 class AccountPatch(BaseModel):
@@ -443,6 +568,11 @@ class BookingPatch(BaseModel):
     status: Optional[str] = None
     payment_text: Optional[str] = None
     receipt_url: Optional[str] = None
+
+    @field_validator("amount")
+    @classmethod
+    def validate_amount(cls, v: Optional[float]) -> Optional[float]:
+        return _cent_amount(v)
 
 
 class ReceivablePatch(BaseModel):
@@ -487,6 +617,7 @@ class DocumentPatch(BaseModel):
     property_id: Optional[str] = None
     unit_id: Optional[str] = None
     contract_id: Optional[str] = None
+    tenant_id: Optional[str] = None
     title: Optional[str] = None
     document_type: Optional[str] = None
     document_date: Optional[date] = None
@@ -612,6 +743,10 @@ class BillingPeriodCreate(BaseModel):
     start_date: date
     end_date: date
     status: str = "draft"
+    # Corrections are new versions: they name the version they correct and count up.
+    revision: int = Field(default=1, ge=1)
+    corrects_period_id: Optional[str] = None
+    revision_notes: Optional[str] = None  # why the correction was made
 
     @field_validator("end_date")
     @classmethod
@@ -641,6 +776,10 @@ class AllocationKeyCreate(BaseModel):
     name: str
     key_type: str  # area_sqm, unit_count, person_count, consumption
     description: Optional[str] = None
+    meter_type: Optional[str] = None  # consumption keys: which meters count (cold_water, heating, …)
+    # consumption keys: the unit the key bills in; meters in another unit are converted only
+    # when the factor is exact (MWh -> kWh, l -> m³), otherwise the statement is refused
+    measure_unit: Optional[str] = None
 
 
 class AllocationKey(AllocationKeyCreate):
@@ -654,6 +793,8 @@ class AllocationKeyPatch(BaseModel):
     name: Optional[str] = None
     key_type: Optional[str] = None
     description: Optional[str] = None
+    meter_type: Optional[str] = None
+    measure_unit: Optional[str] = None
 
 
 class CostItemCreate(BaseModel):
@@ -667,6 +808,8 @@ class CostItemCreate(BaseModel):
     vat_rate: Optional[float] = None
     net_amount: Optional[float] = None
     gross_amount: Optional[float] = None
+    # set by the transfer from a service contract bill (services.service_contracts); kept by corrections
+    service_contract_invoice_id: Optional[str] = None
 
 
 class CostItem(CostItemCreate):
@@ -688,10 +831,17 @@ class CostItemPatch(BaseModel):
     gross_amount: Optional[float] = None
 
 
+_STATEMENT_PARTIES = {"tenant", "vacancy"}
+
+
 class UtilityStatementCreate(BaseModel):
     billing_period_id: str
-    contract_id: str
+    contract_id: Optional[str] = None  # None for a vacancy row (the landlord's share)
     unit_id: str
+    party: str = "tenant"  # tenant | vacancy
+    usage_start: Optional[date] = None  # usage period of the party within the billing period
+    usage_end: Optional[date] = None
+    usage_days: Optional[int] = None
     total_cost: float
     advance_paid: float
     balance: float  # positive = tenant owes, negative = refund
@@ -704,6 +854,18 @@ class UtilityStatementCreate(BaseModel):
     delivered_at: Optional[datetime] = None
     delivery_channel: Optional[str] = None  # email | post | portal
     snapshot_hash: Optional[str] = None  # immutable content hash after finalization
+    # Advances per stretch of equal monthly advance: [{start, end, days, monthly, amount}]
+    advance_sections: Optional[list[dict]] = None
+    # What the statement shows (names, addresses, rows, totals), frozen at finalization so
+    # later edits of tenants, units or contracts never change the issued version.
+    final_document: Optional[dict] = None
+
+    @field_validator("party")
+    @classmethod
+    def validate_party(cls, v: str) -> str:
+        if v not in _STATEMENT_PARTIES:
+            raise ValueError(f"Ungültige Partei. Erlaubt: {', '.join(sorted(_STATEMENT_PARTIES))}")
+        return v
 
 
 class UtilityStatement(UtilityStatementCreate):
@@ -728,6 +890,51 @@ class UtilityStatementPatch(BaseModel):
     delivered_at: Optional[datetime] = None
     delivery_channel: Optional[str] = None
     snapshot_hash: Optional[str] = None
+    final_document: Optional[dict] = None
+
+
+# Fields of a statement that may still change after finalization: the delivery
+# workflow, not the content. Everything else is the issued version.
+STATEMENT_WORKFLOW_FIELDS = frozenset({"status", "delivery_status", "delivered_at", "delivery_channel",
+                                       "updated_at"})
+
+OBJECTION_STATUSES = {"open", "correction", "resolved"}
+
+
+class BillingObjectionCreate(BaseModel):
+    """A tenant's objection (Widerspruch) against an issued statement.
+
+    It never changes the issued version; it is answered by a correction, a new
+    version of the period that names the version it corrects.
+    """
+
+    billing_period_id: str
+    statement_id: Optional[str] = None  # None: against the period as a whole
+    received_on: date
+    reason: str = Field(min_length=1)
+    status: str = "open"
+    correction_period_id: Optional[str] = None
+
+    @field_validator("status")
+    @classmethod
+    def validate_objection_status(cls, v: str) -> str:
+        if v not in OBJECTION_STATUSES:
+            raise ValueError(f"Ungültiger Status. Erlaubt: {', '.join(sorted(OBJECTION_STATUSES))}")
+        return v
+
+
+class BillingObjection(BillingObjectionCreate):
+    id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class BillingObjectionRequest(BaseModel):
+    """What the API takes for a new objection; the period comes from the path."""
+
+    statement_id: Optional[str] = None
+    received_on: Optional[date] = None  # default: today
+    reason: str = Field(min_length=1)
 
 
 class BillingPreflightIssue(BaseModel):
@@ -763,6 +970,18 @@ class DepositCreate(BaseModel):
 
 class Deposit(DepositCreate):
     id: str = Field(..., min_length=1)
+    # deposit file (models_deposits.py): set through the agreement and release endpoints only
+    form: str = "transfer"
+    cap_reason: Optional[str] = None
+    account_id: Optional[str] = None
+    institution: Optional[str] = None
+    account_reference: Optional[str] = None
+    account_holder: Optional[str] = None
+    provided_on: Optional[date] = None
+    proof_document_id: Optional[str] = None
+    released_on: Optional[date] = None
+    release_document_id: Optional[str] = None
+    release_note: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -847,6 +1066,9 @@ class UserCreate(BaseModel):
     full_name: str
     password: str = Field(..., min_length=6)
     role: str = "readonly"  # eigentuemer, verwalter, buchhaltung, techniker, readonly
+    # which portfolios the account sees; a new account sees none until the owner assigns them
+    portfolio_access: Literal["all", "selected"] = "selected"
+    portfolio_ids: list[str] = Field(default_factory=list)
 
     @field_validator("email")
     @classmethod
@@ -870,6 +1092,9 @@ class UserRead(BaseModel):
     full_name: str
     role: str
     is_active: bool = True
+    portfolio_access: Literal["all", "selected"] = "all"
+    portfolio_ids: list[str] = Field(default_factory=list)
+    portfolio_access_origin: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -879,6 +1104,26 @@ class UserPatch(BaseModel):
     full_name: Optional[str] = None
     role: Optional[str] = None
     is_active: Optional[bool] = None
+    portfolio_access: Optional[Literal["all", "selected"]] = None
+    portfolio_ids: Optional[list[str]] = None
+
+    @field_validator("email")
+    @classmethod
+    def validate_user_email(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and "@" not in v:
+            raise ValueError("Ungültige E-Mail-Adresse")
+        return v
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in _VALID_ROLES:
+            raise ValueError(f"Ungültige Rolle. Erlaubt: {', '.join(sorted(_VALID_ROLES))}")
+        return v
+
+
+class UserPasswordReset(BaseModel):
+    password: str = Field(..., min_length=6)
 
 
 class TokenResponse(BaseModel):
@@ -976,6 +1221,91 @@ class RentAdjustment(RentAdjustmentCreate):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+# Where a contract's rent came from: the start of the contract, an applied rent
+# adjustment, or a manual correction.
+RENT_PERIOD_SOURCES = {"contract_start", "adjustment", "manual"}
+
+
+class ContractRentPeriodCreate(BaseModel):
+    """The rent of a contract from a date on, until the next period starts."""
+
+    contract_id: str
+    valid_from: date
+    cold_rent: float = Field(default=0.0, ge=0)
+    service_charge_advance: float = Field(default=0.0, ge=0)
+    heating_advance: float = Field(default=0.0, ge=0)
+    source: str = "manual"
+    rent_adjustment_id: Optional[str] = None
+    notes: Optional[str] = None
+
+    @field_validator("source")
+    @classmethod
+    def validate_source(cls, v: str) -> str:
+        if v not in RENT_PERIOD_SOURCES:
+            raise ValueError(f"Ungültige Herkunft: {v}")
+        return v
+
+
+class ContractRentPeriod(ContractRentPeriodCreate):
+    id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class ContractOccupancyCreate(BaseModel):
+    """Persons living in the contract's flat from a date on, until the next entry.
+
+    Before the first entry the contract's household size (persons) applies.
+    The person key shares by person-days, so a change splits the tenancy into
+    sections with their own number of persons.
+    """
+
+    contract_id: str
+    valid_from: date
+    persons: int = Field(ge=0)
+    notes: Optional[str] = None
+
+
+class ContractOccupancy(ContractOccupancyCreate):
+    id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class PaymentAllocationCreate(BaseModel):
+    """Part of a booking credited to one contract (a transfer may pay flat and garage at once)."""
+
+    booking_id: str
+    contract_id: str
+    amount: float
+    source: str = "manual"  # auto: suggested by the rules, manual: set by a user
+
+    @field_validator("amount")
+    @classmethod
+    def validate_amount(cls, v: float) -> float:
+        rounded = _cent_amount(v)
+        assert rounded is not None
+        return rounded
+
+    @field_validator("source")
+    @classmethod
+    def validate_source(cls, v: str) -> str:
+        if v not in {"auto", "manual"}:
+            raise ValueError(f"Ungültige Herkunft: {v}")
+        return v
+
+
+class PaymentAllocation(PaymentAllocationCreate):
+    id: str = Field(..., min_length=1)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    @field_validator("amount")
+    @classmethod
+    def validate_amount(cls, v: float) -> float:
+        return v  # stored rows stay readable as they are
+
+
 class RentAdjustmentPatch(BaseModel):
     contract_id: Optional[str] = None
     adjustment_type: Optional[str] = None
@@ -1002,10 +1332,14 @@ class MeterReadingCreate(BaseModel):
     unit: str = "kWh"  # kWh, m³, etc.
     photo_url: Optional[str] = None
     notes: Optional[str] = None
+    meter_id: Optional[str] = None  # the unit's meter; its reading reaches the utility billing at finalization
+    position: Optional[int] = None
 
 
 class MeterReading(MeterReadingCreate):
     id: str = Field(..., min_length=1)
+    # set by the finalization: the meter reading (standalone_meter_readings) this one recorded
+    standalone_reading_id: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -1018,6 +1352,8 @@ class MeterReadingPatch(BaseModel):
     unit: Optional[str] = None
     photo_url: Optional[str] = None
     notes: Optional[str] = None
+    meter_id: Optional[str] = None
+    position: Optional[int] = None
 
 
 class HandoverProtocolCreate(BaseModel):
@@ -1040,6 +1376,70 @@ class HandoverProtocolCreate(BaseModel):
 
 class HandoverProtocol(HandoverProtocolCreate):
     id: str = Field(..., min_length=1)
+    # Set by the service only (services/handover_protocol.py), never by a create/update payload.
+    correction_of_id: Optional[str] = None
+    document_id: Optional[str] = None
+    finalized_at: Optional[datetime] = None
+    finalized_by: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+# Parts of a handover protocol (records of the stores; the API's input DTOs are in
+# services/handover_protocol_types.py).
+
+class HandoverRoom(BaseModel):
+    id: str = Field(..., min_length=1)
+    protocol_id: str
+    position: int = 0
+    name: str
+    condition: Optional[str] = None  # good, fair, poor; None: not assessed
+    notes: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class HandoverDefect(BaseModel):
+    id: str = Field(..., min_length=1)
+    protocol_id: str
+    room_id: Optional[str] = None
+    position: int = 0
+    description: str
+    responsible: Literal["tenant", "landlord", "open"] = "open"
+    remedy: Optional[str] = None
+    due_date: Optional[date] = None
+    resolved_at: Optional[date] = None  # follow-up, editable after finalization
+    resolution_note: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class HandoverKey(BaseModel):
+    id: str = Field(..., min_length=1)
+    protocol_id: str
+    position: int = 0
+    key_type: str
+    label: Optional[str] = None
+    handed_over: int = Field(0, ge=0)
+    returned: Optional[int] = Field(None, ge=0)
+    notes: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class HandoverPhoto(BaseModel):
+    id: str = Field(..., min_length=1)
+    protocol_id: str
+    room_id: Optional[str] = None
+    defect_id: Optional[str] = None
+    meter_reading_id: Optional[str] = None
+    position: int = 0
+    file_url: str
+    caption: Optional[str] = None
+    media_type: str
+    sha256: str = Field(..., pattern=r"^[a-f0-9]{64}$")
+    size_bytes: int = Field(..., ge=1)
+    uploaded_by: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -1215,12 +1615,23 @@ class ContactPatch(BaseModel):
 class MeterCreate(BaseModel):
     unit_id: str
     meter_type: str  # cold_water, hot_water, heating, electricity, gas
+    # Unit of the readings (m³, l, kWh, MWh, HKV, …); unset: the medium's usual unit if it has one.
+    measure_unit: Optional[str] = None
     serial_number: Optional[str] = None
     location: Optional[str] = None
-    installation_date: Optional[date] = None
+    installation_date: Optional[date] = None  # replacement: the new meter's first day (initial reading)
+    removal_date: Optional[date] = None  # replacement: the old meter's last day (final reading)
     next_inspection: Optional[date] = None
     supplier: Optional[str] = None
     is_active: bool = True
+
+    @field_validator("removal_date")
+    @classmethod
+    def validate_removal_after_installation(cls, v: Optional[date], info) -> Optional[date]:
+        installed = info.data.get("installation_date")
+        if v is not None and installed is not None and v < installed:
+            raise ValueError("Ausbaudatum muss nach dem Einbaudatum liegen")
+        return v
 
 
 class Meter(MeterCreate):
@@ -1232,9 +1643,11 @@ class Meter(MeterCreate):
 class MeterPatch(BaseModel):
     unit_id: Optional[str] = None
     meter_type: Optional[str] = None
+    measure_unit: Optional[str] = None
     serial_number: Optional[str] = None
     location: Optional[str] = None
     installation_date: Optional[date] = None
+    removal_date: Optional[date] = None
     next_inspection: Optional[date] = None
     supplier: Optional[str] = None
     is_active: Optional[bool] = None
@@ -1418,3 +1831,11 @@ class EntityPhotoPatch(BaseModel):
     caption: Optional[str] = None
     is_primary: Optional[bool] = None
     sort_order: Optional[int] = None
+
+
+# Apply UI field extensions here, at the end of the module, so every importer
+# (storage, repositories, routers) binds the extended classes regardless of
+# import order. Otherwise the in-memory store silently drops these fields.
+from .compat.ui_contracts import ensure_ui_contracts  # noqa: E402
+
+ensure_ui_contracts()

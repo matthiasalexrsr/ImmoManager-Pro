@@ -60,12 +60,25 @@ class CommunicationRepository:
     def list_tasks(self) -> list[Task]:
         return self._tasks.list_all()
 
-    def create_task(self, data: TaskCreate) -> Task:
+    def validate_task(self, data: TaskCreate) -> None:
+        from ..services.task_recurrence import parse_rrule
+
         pr = self._portfolio_repo
         if data.property_id and pr and not pr._properties.exists(data.property_id):
             raise ValidationError("Immobilie existiert nicht")
-        if data.unit_id and pr and not pr._units.exists(data.unit_id):
-            raise ValidationError("Einheit existiert nicht")
+        if data.unit_id and pr:
+            if not pr._units.exists(data.unit_id):
+                raise ValidationError("Einheit existiert nicht")
+            if data.property_id and pr._units.get(data.unit_id).property_id != data.property_id:
+                raise ValidationError("Einheit gehört nicht zur gewählten Immobilie")
+        if data.recurrence_rule:
+            try:
+                parse_rrule(data.recurrence_rule)
+            except ValueError as exc:
+                raise ValidationError(str(exc)) from exc
+
+    def create_task(self, data: TaskCreate) -> Task:
+        self.validate_task(data)
         result = self._tasks.create(data)
         self._commit()
         return result
@@ -74,11 +87,8 @@ class CommunicationRepository:
         return self._tasks.get(task_id)
 
     def update_task(self, task_id: str, data: TaskCreate) -> Task:
-        pr = self._portfolio_repo
-        if data.property_id and pr and not pr._properties.exists(data.property_id):
-            raise ValidationError("Immobilie existiert nicht")
-        if data.unit_id and pr and not pr._units.exists(data.unit_id):
-            raise ValidationError("Einheit existiert nicht")
+        self._tasks.get(task_id)
+        self.validate_task(data)
         result = self._tasks.update(task_id, data)
         self._commit()
         return result

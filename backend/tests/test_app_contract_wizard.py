@@ -29,7 +29,7 @@ def test_mount_contract_wizard_if_available_mounts_sub_app(monkeypatch):
     app_module._mount_contract_wizard_if_available(test_app)
 
     # Verify a Mount was added at /mietvertrag
-    mount_paths = [r.path for r in test_app.routes if hasattr(r, "app")]
+    mount_paths = [getattr(r, "path", None) for r in test_app.routes if hasattr(r, "app")]
     assert "/mietvertrag" in mount_paths
 
 
@@ -39,7 +39,7 @@ def test_mount_contract_wizard_if_available_skips_when_missing(monkeypatch):
     test_app = FastAPI()
     app_module._mount_contract_wizard_if_available(test_app)
 
-    mount_paths = [r.path for r in test_app.routes if hasattr(r, "app")]
+    mount_paths = [getattr(r, "path", None) for r in test_app.routes if hasattr(r, "app")]
     assert "/mietvertrag" not in mount_paths
 
 
@@ -138,7 +138,7 @@ def test_mount_contract_wizard_required_does_not_raise_when_mounted(monkeypatch)
     finally:
         monkeypatch.setattr(app_module.settings, "contract_wizard_required", False)
 
-    mount_paths = [r.path for r in test_app.routes if hasattr(r, "app")]
+    mount_paths = [getattr(r, "path", None) for r in test_app.routes if hasattr(r, "app")]
     assert "/mietvertrag" in mount_paths
 
 

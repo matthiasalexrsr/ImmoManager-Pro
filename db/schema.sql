@@ -137,6 +137,7 @@ CREATE TABLE bookings (
 );
 
 CREATE INDEX idx_bookings_account ON bookings(account_id);
+CREATE INDEX idx_bookings_tenant ON bookings(tenant_id);
 
 CREATE TABLE receivables (
   id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),

@@ -1,5 +1,8 @@
-# Development/test dependencies
+# Development/test dependencies (same versions as the CI workflow)
+#   pip install -r backend/requirements-dev.txt -c constraints.txt
 -r requirements.txt
-pytest==9.0.2
 httpx==0.28.1
-ruff==0.15.4
+ruff==0.15.20
+mypy==2.4.0
+pytest-cov==7.1.0
+pdfplumber==0.11.10

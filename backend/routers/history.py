@@ -20,11 +20,13 @@ def list_history(
         results = [h for h in results if h.entity_type == entity_type]
     if entity_id:
         results = [h for h in results if h.entity_id == entity_id]
-    # Sort by changed_at descending
-    results.sort(key=lambda h: h.changed_at, reverse=True)
+    # Equal clock ticks have no chronological ordering. IDs provide a stable
+    # descending tie break, so repeated queries and adjacent pages agree.
+    results.sort(key=lambda h: (h.changed_at, h.id), reverse=True)
     return results[skip: skip + limit]
 
 
 @router.get("/{entity_type}/{entity_id}", response_model=list[ChangeHistoryEntry])
 def get_entity_history(entity_type: str, entity_id: str):
-    return store.get_entity_history(entity_type, entity_id)
+    return sorted(store.get_entity_history(entity_type, entity_id),
+                  key=lambda h: (h.changed_at, h.id), reverse=True)

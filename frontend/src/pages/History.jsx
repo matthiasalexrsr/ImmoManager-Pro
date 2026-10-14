@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import DataTable from '../components/DataTable';
+import { formatDateTime } from '../utils/format';
 
 export default function History() {
   const { t } = useTranslation();
@@ -29,7 +30,7 @@ export default function History() {
 
   const COLUMNS = [
     { key: 'changed_at', label: t('properties.list.status'), type: 'date', filterType: 'dateRange',
-      render: v => v ? new Date(v).toLocaleString('de-DE') : '—' },
+      render: v => formatDateTime(v) },
     { key: 'action', label: 'Aktion', filterType: 'select' },
     { key: 'entity_type', label: 'Entität', filterType: 'select' },
     { key: 'entity_id', label: 'ID', render: v => v ? String(v).slice(0, 8) + '…' : '—' },

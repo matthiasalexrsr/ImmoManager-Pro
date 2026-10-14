@@ -4,24 +4,33 @@ import { usePreferences } from '../contexts/PreferencesContext';
 import { useDevMode } from '../contexts/DevModeContext';
 import { useTranslation } from '../i18n';
 import { useToast } from '../components/Toast';
+import { useTutorial } from '../components/Tutorial';
 import { api } from '../api';
 import UpdateSection from './settings/UpdateSection';
 import AutotestSection from './settings/AutotestSection';
 import BackupSection from './settings/BackupSection';
+import OperationsSection from './settings/OperationsSection';
+import UsersSection from './settings/UsersSection';
 
 export default function Settings() {
   const { prefs, toggleTheme, toggleSidebar, updatePrefs } = usePreferences();
   const auth = useAuth();
   const devMode = useDevMode();
   const { t, locale, setLocale } = useTranslation();
+  const { start: startTour } = useTutorial();
   const toast = useToast();
   const isAdmin = auth?.isAdmin;
   const [versionInfo, setVersionInfo] = useState(null);
   const [settingsTab, setSettingsTab] = useState('personal');
 
+  // Only admins may read /admin/version. Load once: the error toast re-renders the page, and
+  // with toast/t as dependencies a refused request turned into an endless request loop.
   useEffect(() => {
-    api.get('/admin/version').then(setVersionInfo).catch(() => { toast.error(t('pages.settings.versionError') || 'Versionsinformationen konnten nicht geladen werden'); });
-  }, [toast, t]);
+    if (!isAdmin) return;
+    api.get('/admin/version').then(setVersionInfo).catch(() => {
+      toast.error(t('pages.settings.versionError') || 'Versionsinformationen konnten nicht geladen werden');
+    });
+  }, [isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const tr = (key, fallback) => {
     const result = t(key);
@@ -32,6 +41,7 @@ export default function Settings() {
     { key: 'personal', label: t('pages.settings.tabPersonal') || 'Persönlich' },
     { key: 'workflow', label: t('pages.settings.tabWorkflow') || 'Arbeitsweise' },
     { key: 'system', label: t('pages.settings.tabSystem') || 'System' },
+    ...(isAdmin ? [{ key: 'users', label: t('pages.settings.users.tab') }] : []),
     ...(isAdmin ? [{ key: 'dev', label: t('pages.settings.tabDev') || 'Entwicklung' }] : []),
   ];
 
@@ -77,6 +87,12 @@ export default function Settings() {
                     <button className="btn btn-sm btn-secondary" onClick={toggleSidebar}>
                       {prefs.sidebar_collapsed ? t('pages.settings.show') : t('pages.settings.hide')}
                     </button>
+                  </div>
+                </div>
+                <div className="settings-row">
+                  <label>Tutorial</label>
+                  <div className="settings-control">
+                    <button className="btn btn-sm btn-secondary" onClick={() => startTour(0)}>Tour starten</button>
                   </div>
                 </div>
                 <div className="settings-row">
@@ -223,10 +239,13 @@ export default function Settings() {
           </>
         )}
 
+        {settingsTab === 'users' && isAdmin && <UsersSection currentUser={auth?.user} />}
+
         {/* System tab: Backup, Updates, About */}
         {settingsTab === 'system' && (
           <>
             {isAdmin && <BackupSection />}
+            {isAdmin && <OperationsSection />}
             {isAdmin && <UpdateSection versionInfo={versionInfo} />}
 
             <div className="panel">
@@ -235,7 +254,7 @@ export default function Settings() {
                 <div className="settings-row">
                   <label>Version</label>
                   <div className="settings-control">
-                    <span className="text-muted">{versionInfo?.version || '...'}</span>
+                    <span className="text-muted">{versionInfo?.version || (isAdmin ? '…' : '—')}</span>
                   </div>
                 </div>
                 <div className="settings-row">
@@ -261,6 +280,8 @@ export default function Settings() {
                     <button
                       className={`btn btn-sm ${devMode?.enabled ? 'btn-primary' : 'btn-secondary'}`}
                       onClick={() => devMode?.toggle()}
+                      disabled={!devMode?.available}
+                      title={devMode?.available ? undefined : tr('devMode.unavailable', 'Disabled in production')}
                     >
                       {devMode?.enabled
                         ? tr('devMode.disable', 'Disable Developer Mode')

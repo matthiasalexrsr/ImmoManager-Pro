@@ -1,0 +1,18 @@
+.rent-overview-heading { display: flex; align-items: start; justify-content: space-between; gap: 1rem; }
+.rent-overview-heading h1 { margin-bottom: .25rem; }
+.rent-overview-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 1rem; margin: 1rem 0; }
+.rent-overview-filters label { display: grid; gap: .35rem; font-weight: 600; min-width: 0; }
+.rent-overview-filters input, .rent-overview-filters select { min-height: 2.5rem; max-width: 100%; padding: .4rem .6rem; color: var(--text-primary); background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: .4rem; }
+.rent-overview .alert { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; }
+.rent-overview-basis { color: var(--text-secondary); margin: 1rem 0; max-width: 80ch; }
+.rent-overview-links { display: flex; flex-wrap: wrap; gap: .6rem 1.25rem; margin: 1.25rem 0 .75rem; }
+.rent-payment-dialog { width: min(38rem, calc(100vw - 1rem)); }
+.rent-payment-dialog h2 { font-size: 1.15rem; margin: 0; }
+.rent-payment-dialog fieldset { border: 0; padding: 0; min-width: 0; }
+.rent-payment-dialog .modal-footer { flex-wrap: wrap; }
+@media (max-width: 480px) {
+  .rent-overview-heading { flex-wrap: wrap; }
+  .rent-overview-filters { display: grid; grid-template-columns: 1fr; }
+  .rent-overview-filters input, .rent-overview-filters select { width: 100%; box-sizing: border-box; }
+  .rent-payment-dialog .modal-footer .btn { flex: 1 1 100%; white-space: normal; }
+}

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
@@ -6,6 +7,8 @@ import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
+import { formatDate, formatMoney } from '../utils/format';
+import { bulkDelete } from '../utils/bulkActions';
 
 const TODAY = new Date();
 TODAY.setHours(0, 0, 0, 0);
@@ -31,18 +34,20 @@ export default function Maintenance() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
+  // values a New form starts with when opened from elsewhere (the property page's "Einheit anlegen")
+  const [prefill, setPrefill] = useState(null);
   const [filter, setFilter] = useState('all');
 
   const refreshData = () => {
     setLoading(true);
-    api.get('/maintenance').catch(() => [])
+    api.list('/maintenance').catch(() => [])
       .then(data => setItems(Array.isArray(data) ? data : []))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     let cancelled = false;
-    api.get('/maintenance').catch(() => [])
+    api.list('/maintenance').catch(() => [])
       .then(data => { if (!cancelled) setItems(Array.isArray(data) ? data : []); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -80,32 +85,34 @@ export default function Maintenance() {
 
   const openOrInProgress = enriched.filter(r => r.status === 'open' || r.status === 'in_progress');
   const avgAge = openOrInProgress.length > 0
-    ? Math.round(openOrInProgress.reduce((sum, r) => sum + (r.age_days || 0), 0) / openOrInProgress.length)
+    ? Math.max(0, Math.round(openOrInProgress.reduce((sum, r) => sum + Math.max(0, r.age_days || 0), 0) / openOrInProgress.length))
     : 0;
 
   const columns = [
-    { key: 'title', label: t('pages.maintenance.columns.title') || 'Titel', filterType: 'text' },
-    { key: 'property_name', label: 'Immobilie', filterType: 'text' },
-    { key: 'unit_label', label: 'Einheit', filterType: 'text' },
-    { key: 'category', label: t('pages.maintenance.columns.category') || 'Kategorie', filterType: 'select' },
+    { key: 'title', label: t('pages.maintenance.columns.title') || 'Titel', filterType: 'text',
+      // the case is the project file: work packages, quotes, orders, invoices, protocols
+      render: (v, row) => <Link to={`/maintenance/${encodeURIComponent(row.id)}`}>{v || row.id}</Link> },
+    { key: 'property_name', hidden: true, label: 'Immobilie', filterType: 'text' },
+    { key: 'unit_label', subKey: 'property_name', label: 'Einheit', filterType: 'text', link: 'unit', subLink: 'property' },
+    { key: 'category', hidden: true, label: t('pages.maintenance.columns.category') || 'Kategorie', filterType: 'select' },
     { key: 'priority', label: t('pages.maintenance.columns.priority') || 'Priorität', type: 'status', filterType: 'select' },
-    { key: 'assignee', label: t('pages.maintenance.columns.assignee') || 'Zuständig', filterType: 'text' },
+    { key: 'assignee', hidden: true, label: t('pages.maintenance.columns.assignee') || 'Zuständig', filterType: 'text' },
     { key: 'contractor', label: t('pages.maintenance.form.contractor') || 'Handwerker', filterType: 'text' },
-    { key: 'reported_by', label: t('pages.maintenance.form.reportedBy') || 'Gemeldet von', filterType: 'text' },
+    { key: 'reported_by', hidden: true, label: t('pages.maintenance.form.reportedBy') || 'Gemeldet von', filterType: 'text' },
     { key: 'due_date', label: t('pages.maintenance.columns.dueDate') || 'Fällig am', type: 'date', filterType: 'dateRange',
       render: (v, row) => {
         if (!v) return '—';
-        const display = new Date(v).toLocaleDateString('de-DE');
+        const display = formatDate(v);
         if (isOverdue(row)) {
           return <span style={{ color: 'var(--danger)', fontWeight: 700 }}>{display}</span>;
         }
         return display;
       }},
-    { key: 'appointment_at', label: t('pages.maintenance.form.appointment') || 'Termin', type: 'date', filterType: 'dateRange' },
-    { key: 'age_days', label: 'Alter (Tage)', type: 'number', align: 'right',
+    { key: 'appointment_at', hidden: true, label: t('pages.maintenance.form.appointment') || 'Termin', type: 'date', filterType: 'dateRange' },
+    { key: 'age_days', hidden: true, label: 'Alter (Tage)', type: 'number', align: 'right',
       render: v => v != null ? `${v} T` : '—' },
     { key: 'estimated_cost', label: t('pages.maintenance.columns.cost') || 'Kosten (€)', type: 'number', align: 'right',
-      render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
+      render: v => formatMoney(v) },
     { key: 'status', label: t('pages.maintenance.columns.status') || 'Status', type: 'status', filterType: 'select',
       render: v => <StatusBadge status={v} /> },
   ];
@@ -162,38 +169,39 @@ export default function Maintenance() {
     if (store) store.invalidateRelated('maintenance', 'properties', 'units');
   };
 
-  if (loading) return <div className="page-loading">Lade Wartungsaufträge...</div>;
+  // only the first load replaces the list; a reload keeps the table (its search, selection, results)
+  if (loading && items.length === 0) return <div className="page-loading">Lade Wartungsaufträge...</div>;
 
   return (
     <div className="page">
       <h1 className="page-title">{t('pages.maintenance.title') || 'Wartung & Instandhaltung'}</h1>
 
       {/* Summary cards */}
-      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{totalCount}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Gesamt</div>
+      <div className="kpi-row">
+        <div className="kpi">
+          <div className="kpi-value">{totalCount}</div>
+          <div className="kpi-label">Gesamt</div>
         </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--info, #2196f3)' }}>{openCount}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Offen</div>
+        <div className="kpi">
+          <div className="kpi-value" style={{ color: 'var(--info, #2196f3)' }}>{openCount}</div>
+          <div className="kpi-label">Offen</div>
         </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--warning)' }}>{inProgressCount}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>In Bearbeitung</div>
+        <div className="kpi">
+          <div className="kpi-value" style={{ color: 'var(--warning)' }}>{inProgressCount}</div>
+          <div className="kpi-label">In Bearbeitung</div>
         </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--danger)' }}>{overdueCount}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Überfällig</div>
+        <div className="kpi">
+          <div className="kpi-value" style={{ color: 'var(--danger)' }}>{overdueCount}</div>
+          <div className="kpi-label">Überfällig</div>
         </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{avgAge} T</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>&Oslash; Alter offener Fälle</div>
+        <div className="kpi">
+          <div className="kpi-value">{avgAge} Tage</div>
+          <div className="kpi-label">&Oslash; Alter offener Fälle</div>
         </div>
       </div>
 
       {/* Filter tabs */}
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+      <div className="filter-chips">
         {[
           { key: 'all', label: 'Alle' },
           { key: 'open', label: 'Offen' },
@@ -213,7 +221,10 @@ export default function Maintenance() {
         title={t('pages.maintenance.title') || 'Wartung & Instandhaltung'}
         columns={columns}
         data={filtered}
-        onAdd={() => setModal('create')}
+        rowName={row => row.title || row.id}
+        bulkActions={[bulkDelete({ one: 'Wartungsauftrag', many: 'Wartungsaufträge', remove: row => api.del(`/maintenance/${row.id}`),
+          finished: () => { refreshData(); store?.invalidateRelated('maintenance', 'properties', 'units'); } })]}
+        onAdd={values => { setPrefill(values || null); setModal('create'); }}
         onEdit={row => setModal(row)}
         onDelete={handleDelete}
       />
@@ -222,7 +233,7 @@ export default function Maintenance() {
         <FormModal
           title={modal === 'create' ? 'Wartungsauftrag erstellen' : 'Wartungsauftrag bearbeiten'}
           fields={fields}
-          initial={modal === 'create' ? null : modal}
+          initial={modal === 'create' ? prefill : modal}
           onSave={handleSave}
           onClose={() => setModal(null)}
         />

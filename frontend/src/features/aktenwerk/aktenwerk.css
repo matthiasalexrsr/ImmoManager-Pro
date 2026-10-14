@@ -1,0 +1,11 @@
+.aktenwerk-filters { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; border: 0; padding: 0; margin: 0 0 12px; }
+.aktenwerk-filters label { display: inline-flex; align-items: center; gap: 6px; font-size: 0.875rem; }
+.aktenwerk-filters select { min-width: 120px; }
+.aktenwerk-kinds { display: flex; flex-wrap: wrap; gap: 6px; flex: 1 1 100%; }
+.aktenwerk-summary { margin: 4px 0 8px; font-weight: 600; }
+.aktenwerk-preview { max-height: 46vh; overflow: auto; border: 1px solid var(--color-border); border-radius: var(--radius, 8px); }
+.aktenwerk-hint { margin-top: 12px; font-size: 0.85rem; }
+@media (max-width: 640px) {
+  .aktenwerk-dialog .modal-footer { flex-wrap: wrap; }
+  .aktenwerk-dialog .modal-footer .btn { flex: 1 1 100%; }
+}

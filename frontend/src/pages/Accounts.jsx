@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { useState, useEffect, useMemo } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
@@ -6,10 +7,13 @@ import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
+import { useToast } from '../components/Toast';
+import { formatMoney } from '../utils/format';
 
 export default function Accounts() {
   const { t } = useTranslation();
   const confirm = useConfirm();
+  const toast = useToast();
   const store = useDataStore();
   const { items: portfolios } = useEntities('portfolios', '/portfolios');
 
@@ -19,14 +23,14 @@ export default function Accounts() {
 
   const refreshData = () => {
     setLoading(true);
-    api.get('/accounts').catch(() => [])
+    api.list('/accounts').catch(() => [])
       .then(data => setAccounts(Array.isArray(data) ? data : []))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     let cancelled = false;
-    api.get('/accounts').catch(err => { console.warn('[Accounts] load:', err.message); return []; })
+    api.list('/accounts').catch(err => { console.warn('[Accounts] load:', err.message); return []; })
       .then(data => { if (!cancelled) setAccounts(Array.isArray(data) ? data : []); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -46,17 +50,19 @@ export default function Accounts() {
   const totalBalance = enriched.reduce((s, a) => s + Number(a.balance || 0), 0);
 
   const columns = [
-    { key: 'name', label: t('finance.accounts.form.name') || 'Kontoname', filterType: 'text' },
+    // the name opens the account's bookings
+    { key: 'name', label: t('finance.accounts.form.name') || 'Kontoname', filterType: 'text',
+      render: (v, row) => <Link to={`/bookings?konto=${encodeURIComponent(row.id)}`} className="entity-link" onClick={e => e.stopPropagation()}>{v}</Link> },
     { key: 'portfolio_name', label: 'Portfolio', filterType: 'text' },
     { key: 'bank_name', label: t('finance.accounts.form.bank') || 'Bank', filterType: 'text' },
     { key: 'iban', label: 'IBAN' },
     { key: 'account_type', label: t('finance.accounts.form.type') || 'Typ', filterType: 'select' },
-    { key: 'balance', label: t('finance.accounts.form.balance') || 'Saldo (€)', type: 'number', align: 'right', filterType: 'numberRange',
+    { key: 'balance', label: t('finance.accounts.form.balance') || 'Saldo (€)', type: 'number', sum: true, align: 'right', filterType: 'numberRange',
       render: v => {
         const n = Number(v);
         if (v == null || isNaN(n)) return '—';
         const cls = n < 0 ? 'text-red' : n > 0 ? 'text-green' : '';
-        return <span className={cls}>{n.toFixed(2)} €</span>;
+        return <span className={cls}>{formatMoney(n)}</span>;
       }},
   ];
 
@@ -73,8 +79,8 @@ export default function Accounts() {
       { value: 'Sparkonto', label: t('finance.accounts.types.savings') || 'Sparkonto' },
       { value: 'Kautionskonto', label: t('finance.accounts.types.deposit') || 'Kautionskonto' },
     ]},
+    // The balance follows from the opening balance and the bookings.
     { key: 'opening_balance', label: t('finance.accounts.form.openingBalance') || 'Anfangssaldo (€)', type: 'number', default: 0 },
-    { key: 'balance', label: t('finance.accounts.form.currentBalance') || 'Aktueller Saldo (€)', type: 'number', default: 0 },
   ];
 
   const handleSave = async (data) => {
@@ -89,7 +95,12 @@ export default function Accounts() {
 
   const handleDelete = async (row) => {
     if (!await confirm(`"${row.name || row.id}" ${t('modals.confirmDelete.body')}`)) return;
-    await api.del(`/accounts/${row.id}`);
+    try {
+      await api.del(`/accounts/${row.id}`);
+    } catch (err) {
+      toast.error(err.message);
+      return;
+    }
     refreshData();
     if (store) store.invalidateRelated('accounts', 'portfolios', 'bookings');
   };
@@ -101,14 +112,14 @@ export default function Accounts() {
       <h1 className="page-title">{t('finance.accounts.title') || 'Konten'}</h1>
 
       {/* Summary cards */}
-      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{totalCount}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Anzahl Konten</div>
+      <div className="kpi-row">
+        <div className="kpi">
+          <div className="kpi-value">{totalCount}</div>
+          <div className="kpi-label">Anzahl Konten</div>
         </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: totalBalance < 0 ? 'var(--danger)' : totalBalance > 0 ? 'var(--success)' : undefined }}>{totalBalance.toFixed(2)} €</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Gesamtsaldo</div>
+        <div className="kpi">
+          <div className="kpi-value" style={{ color: totalBalance < 0 ? 'var(--danger)' : totalBalance > 0 ? 'var(--success)' : undefined }}>{formatMoney(totalBalance)}</div>
+          <div className="kpi-label">Gesamtsaldo</div>
         </div>
       </div>
 

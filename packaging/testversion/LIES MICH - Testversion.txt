@@ -1,0 +1,65 @@
+ImmoManager Pro – Testversion
+=============================
+
+Diese Version enthält einen fiktiven, aber realistischen Datenbestand: 15 Objekte in
+Leipzig, Dresden, Halle, Chemnitz und Umgebung mit 93 Einheiten, gut 100 Mietern und
+drei Jahren Verlauf (Mieten, Mieterhöhungen, Mieterwechsel, Nebenkostenabrechnungen,
+Reparaturen, Mahnungen). Alle Namen, Adressen und Bankdaten sind frei erfunden.
+Sie können also gefahrlos anlegen, ändern und löschen.
+
+
+Starten
+-------
+1. Den ZIP-Ordner vollständig entpacken (z. B. auf den Desktop), nicht aus dem ZIP heraus starten.
+2. Im entpackten Ordner "ImmoManager-Pro" doppelt auf "ImmoManager-Pro.exe" klicken.
+3. Windows meldet beim ersten Start eventuell "Der Computer wurde durch Windows geschützt".
+   Dann auf "Weitere Informationen" und "Trotzdem ausführen" klicken. (Das Programm ist
+   nicht signiert; das ist bei Testversionen üblich.)
+4. Beim allerersten Start werden die Testdaten angelegt. Das dauert ein bis zwei Minuten;
+   im schwarzen Fenster ist der Fortschritt zu sehen.
+5. Danach öffnet sich der Browser mit http://127.0.0.1:8000 (sonst diese Adresse selbst öffnen).
+
+Das schwarze Fenster ist der Server: solange Sie testen, bitte offen lassen.
+Zum Beenden das Fenster schließen oder Strg+C drücken.
+
+
+Anmelden
+--------
+  linda_reiser@web.de     Passwort: Immo-Test-2026
+  mat.thias@online.de     Passwort: Immo-Test-2026
+
+Beide Zugänge haben alle Rechte (Eigentümer). Statt der E-Mail-Adresse geht auch der
+Benutzername (linda.reiser bzw. mat.thias).
+
+Zum Ausprobieren der Rollen gibt es weitere Benutzer, ebenfalls mit Passwort Immo-Test-2026:
+  s.krause      Verwaltung     (Mieter, Verträge, Mietanpassungen, Abrechnungen)
+  p.lindner     Buchhaltung    (Zahlungen, Rechnungen, Kautionen, Mahnwesen)
+  j.vogel       Technik        (Wartung, Zähler, Übergaben)
+  stb.hofmann   Nur Lesen      (Steuerberatung: sieht alles, ändert nichts)
+
+
+Tutorial
+--------
+Nach der ersten Anmeldung bietet die App eine geführte Tour an (ca. 5 Minuten).
+Sie lässt sich jederzeit über das Fragezeichen oben rechts neu starten.
+
+Gute Einstiege zum Ausprobieren:
+  - Prüfliste: zwei Zahlungen ohne Mieter zuordnen, eine fällige Mietanpassung anwenden
+  - Abrechnungen: die Abrechnung 2025 für "Bautzner Straße 61" prüfen und abschließen
+  - Mietübersicht und Forderungen: ein Mieter ist seit vier Monaten im Rückstand
+  - Wartung: offene Schäden, einer davon überfällig
+  - Leerstand: zwei freie Wohnungen mit Inseraten, Interessenten und Besichtigungsterminen
+
+
+Daten
+-----
+Die Daten liegen unter %LOCALAPPDATA%\ImmoManagerPro-Testversion (getrennt von einer
+späteren echten Installation). Um mit frischen Testdaten neu zu beginnen: Programm
+beenden, diesen Ordner löschen, Programm neu starten.
+
+
+Probleme?
+---------
+Falls das Fenster sofort wieder zugeht oder eine Fehlermeldung zeigt: die Datei
+"immo_startup.log" im Programmordner enthält die Ausgabe, bitte mitschicken.
+Ist Port 8000 belegt, startet die Testversion mit:  ImmoManager-Pro.exe --port 9000

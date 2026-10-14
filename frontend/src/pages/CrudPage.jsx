@@ -6,6 +6,7 @@ import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import { useConfirm } from '../components/ConfirmDialog';
+import { bulkDelete } from '../utils/bulkActions';
 
 // Derive a cache key from endpoint, e.g. "/properties" → "properties"
 function endpointKey(ep) {
@@ -75,15 +76,16 @@ export default function CrudPage({ title, endpoint, columns, formFields, onRowCl
       : undefined),
   }));
 
-  if (loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  // only the first load replaces the list; a reload keeps the table (its search, selection, results)
+  if (loading && items.length === 0) return <div className="page-loading">{t('ui.table.loading')}</div>;
   if (error) return <div className="page"><div className="alert alert-error">{error}</div></div>;
 
   return (
     <div className="page">
       {deleteError && (
-        <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
+        <div className="alert alert-error" role="alert" style={{ marginBottom: '1rem' }}>
           {deleteError}
-          <button onClick={() => setDeleteError(null)} style={{ marginLeft: '1rem', cursor: 'pointer' }}>✕</button>
+          <button type="button" onClick={() => setDeleteError(null)} aria-label="Meldung schließen" style={{ marginLeft: '1rem', cursor: 'pointer' }}>✕</button>
         </div>
       )}
       <DataTable
@@ -94,6 +96,8 @@ export default function CrudPage({ title, endpoint, columns, formFields, onRowCl
         onEdit={(row) => setModal(row)}
         onDelete={handleDelete}
         onRowClick={onRowClick}
+        bulkActions={[bulkDelete({ one: 'Eintrag', many: 'Einträge', remove: row => api.del(`${endpoint}/${row.id}`),
+          finished: invalidateAfterMutation })]}
       />
       {modal && (
         <FormModal

@@ -1,13 +1,41 @@
 """Rent charges (Sollstellung) router: monthly rent ledger entries."""
 
-from fastapi import APIRouter, HTTPException, Query, status
+from datetime import date
+from typing import Annotated
 
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError
+
+from ..auth import require_auth
 from ..dependencies import store
-from ..models import RentCharge, RentChargeCreate, RentChargePatch
+from ..models import RentCharge, RentChargeCreate, RentChargePatch, UserRead
+from ..services import rent_payments
+from ..services.jobs.schedule import local_today
 from ..storage import NotFoundError, ValidationError
 from ._helpers import apply_sort
 
 router = APIRouter(prefix="/rent-charges", tags=["Sollstellung"])
+
+
+@router.get("/ledger")
+def rent_ledger(month: str = Query(pattern=r"^\d{4}-\d{2}$"), as_of: date | None = None,
+                property_id: str | None = None) -> dict:
+    return rent_payments.monthly_ledger(store, month, as_of or local_today(), property_id)
+
+
+@router.post("/contract-payment", status_code=status.HTTP_201_CREATED, response_model=None)
+def record_contract_payment(payload: rent_payments.ContractPaymentRequest,
+                            actor: Annotated[UserRead, Depends(require_auth)]) -> dict | JSONResponse:
+    try:
+        return rent_payments.record_payment(store, payload, actor.id)
+    except rent_payments.PaymentConflict as exc:
+        return JSONResponse(status_code=exc.status_code, content={"error": {"code": exc.code, "message": exc.detail,
+                                                               "details": exc.details}})
+    except NotFoundError as exc:
+        raise HTTPException(404, "Vertrag oder Zahlungskonto nicht vorhanden.") from exc
+    except IntegrityError as exc:
+        raise HTTPException(409, "Der Bestand wurde gleichzeitig geändert. Bitte den Vorgang erneut prüfen.") from exc
 
 
 @router.get("", response_model=list[RentCharge])

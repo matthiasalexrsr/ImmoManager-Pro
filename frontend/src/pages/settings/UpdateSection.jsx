@@ -141,25 +141,29 @@ export default function UpdateSection({ versionInfo }) {
               </div>
             )}
 
-            {updateInfo.update_available && (
+            {updateInfo.update_available && updateInfo.can_apply !== false && (
               <div className="settings-row">
                 <label>{tr('settings.update.applyLabel', 'Update installieren')}</label>
                 <div className="settings-control">
-                  <button
-                    className="btn btn-sm btn-primary"
-                    onClick={applyUpdate}
-                    disabled={updateApplying || updateInfo.is_frozen}
-                    title={updateInfo.is_frozen ? 'Im Bundle-Modus nicht verfügbar' : ''}
-                  >
+                  <button className="btn btn-sm btn-primary" onClick={applyUpdate} disabled={updateApplying}>
                     {updateApplying
                       ? tr('settings.update.applying', 'Wird installiert...')
                       : tr('settings.update.applyNow', 'Jetzt installieren')}
                   </button>
-                  {updateInfo.is_frozen && (
-                    <span className="text-muted" style={{ marginLeft: '0.5rem', fontSize: '0.8rem' }}>
-                      {tr('settings.update.frozenHint', 'Im Bundle-Modus nicht verfügbar')}
-                    </span>
+                </div>
+              </div>
+            )}
+            {/* the Windows package is replaced by the new package: where to get it and what happens */}
+            {updateInfo.update_available && updateInfo.can_apply === false && (
+              <div className="settings-row" style={{ alignItems: 'flex-start' }}>
+                <label>{tr('settings.update.applyLabel', 'Update installieren')}</label>
+                <div className="settings-control" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '0.5rem' }}>
+                  {updateInfo.release_url && (
+                    <a className="btn btn-sm btn-primary" href={updateInfo.release_url} target="_blank" rel="noopener noreferrer">
+                      {tr('settings.update.download', 'Neue Version herunterladen')}
+                    </a>
                   )}
+                  {updateInfo.download_hint && <span className="text-muted" style={{ fontSize: '0.85rem' }}>{updateInfo.download_hint}</span>}
                 </div>
               </div>
             )}

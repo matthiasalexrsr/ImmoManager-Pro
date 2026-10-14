@@ -60,7 +60,7 @@ class TestIBANEncryption:
         assert decrypt_iban("") == ""
 
     def test_decrypt_none_returns_none(self):
-        assert decrypt_iban(None) is None
+        assert decrypt_iban(None) is None  # type: ignore[arg-type]
 
     def test_encrypt_empty_string(self):
         assert encrypt_iban("") == ""
@@ -244,7 +244,7 @@ class TestSyncQueue:
             raise ValueError("boom")
         result = q.enqueue(bad)
         assert result.status == "failed"
-        assert "boom" in result.error
+        assert result.error is not None and "boom" in result.error
 
     def test_cancel_pending_not_applicable(self):
         """SyncQueue executes immediately, so cancel on a completed task returns False."""
@@ -371,13 +371,13 @@ class TestEmailService:
         assert cfg.is_configured is True
 
     def test_send_email_not_configured_does_not_raise(self):
-        # Default config is not configured, should just log and return True
+        # Logging a request does not mean SMTP accepted a delivery.
         result = send_email(
             to="test@example.com",
             subject="Test",
             body_html="<p>Hello</p>",
         )
-        assert result is True
+        assert result is False
 
     def test_send_email_with_body_text(self):
         result = send_email(
@@ -386,4 +386,4 @@ class TestEmailService:
             body_html="<p>Hello</p>",
             body_text="Hello",
         )
-        assert result is True
+        assert result is False

@@ -1,8 +1,11 @@
 """Budget planning router (T27)."""
 
+from decimal import Decimal
+
 from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
+from ..domain.money import as_number, money, money_sum
 from ..models import Budget, BudgetCreate, BudgetPatch
 from ..storage import NotFoundError, ValidationError
 
@@ -46,21 +49,25 @@ def budget_analysis(
         results = [b for b in results if b.property_id == property_id]
     if year:
         results = [b for b in results if b.year == year]
-    total_planned = sum(b.planned_amount for b in results)
-    total_actual = sum(b.actual_amount for b in results)
+    total_planned = money_sum(b.planned_amount for b in results)
+    total_actual = money_sum(b.actual_amount for b in results)
+
+    def utilization(actual: Decimal, planned: Decimal) -> float:
+        return float(actual / planned * 100) if planned else 0
+
     return {
-        "total_planned": total_planned,
-        "total_actual": total_actual,
-        "total_deviation": total_actual - total_planned,
-        "utilization_percent": (total_actual / total_planned * 100) if total_planned else 0,
+        "total_planned": as_number(total_planned),
+        "total_actual": as_number(total_actual),
+        "total_deviation": as_number(total_actual - total_planned),
+        "utilization_percent": utilization(total_actual, total_planned),
         "by_category": [
             {
                 "id": b.id,
                 "category": b.category,
-                "planned": b.planned_amount,
-                "actual": b.actual_amount,
-                "deviation": b.actual_amount - b.planned_amount,
-                "utilization_percent": (b.actual_amount / b.planned_amount * 100) if b.planned_amount else 0,
+                "planned": as_number(money(b.planned_amount)),
+                "actual": as_number(money(b.actual_amount)),
+                "deviation": as_number(money(b.actual_amount) - money(b.planned_amount)),
+                "utilization_percent": utilization(money(b.actual_amount), money(b.planned_amount)),
             }
             for b in results
         ],

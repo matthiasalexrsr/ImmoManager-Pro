@@ -1,0 +1,35 @@
+.list-workspace .list-page-header { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 28px; }
+.list-workspace .list-eyebrow { color: var(--color-primary); font-size: 11px; font-weight: 700; letter-spacing: .14em; margin: 0 0 8px; }
+.list-workspace .page-title { margin: 0; line-height: 1.2; }
+.list-workspace .list-description { margin: 10px 0 0; color: var(--color-text-secondary); font-size: 14px; line-height: 1.6; }
+.list-workspace .list-page-header > .btn { flex-shrink: 0; min-height: 42px; }
+.list-workspace .kpi-row.list-summary { display: flex; flex-wrap: wrap; gap: 0; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 12px; padding: 20px 8px; margin: 0 0 28px; }
+.list-workspace .list-summary .kpi { flex: 1; min-width: 128px; box-shadow: none; border: 0; border-radius: 0; padding: 0 24px; background: none; }
+.list-workspace .list-summary .kpi + .kpi { border-left: 1px solid var(--color-border); }
+.list-workspace .list-summary .kpi-value { font-size: 26px; line-height: 1.25; font-weight: 650; letter-spacing: -.04em; color: var(--color-text); font-variant-numeric: tabular-nums; }
+.list-workspace .list-summary .kpi-label { margin-top: 6px; font-size: 12px; color: var(--color-text-secondary); text-transform: none; letter-spacing: 0; }
+.list-workspace .list-view-filters { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 16px; }
+.list-workspace .list-view-filters .btn { border-color: transparent; background: transparent; box-shadow: none; color: var(--color-text-secondary); border-radius: 8px; padding: 8px 14px; font-size: 13px; min-height: 36px; }
+.list-workspace .list-view-filters .btn[aria-pressed="true"] { color: var(--color-primary); background: var(--color-primary-light); font-weight: 650; }
+.list-workspace .list-view-filters .btn:hover { background: var(--color-surface); }
+.list-workspace .list-identity { display: flex; align-items: center; gap: 12px; min-width: 185px; }
+.list-workspace .list-identity-icon, .list-workspace .list-avatar { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 40px; height: 40px; border-radius: 10px; background: var(--color-primary-light); color: var(--color-primary); }
+.list-workspace .list-avatar { border-radius: 50%; font-size: 12px; font-weight: 650; letter-spacing: .03em; }
+.list-workspace .list-identity-copy { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }
+.list-workspace .list-identity-copy > strong, .list-workspace .list-identity-copy .party-link { font-size: 14px; font-weight: 650; color: var(--color-text); }
+.list-workspace .list-identity-copy > span { color: var(--color-text-secondary); font-size: 12px; font-weight: 400; }
+.list-workspace .list-property-link { color: var(--color-text); text-decoration: none; }
+.list-workspace .list-property-link:hover strong, .list-workspace .list-identity-copy .party-link:hover { color: var(--color-primary); text-decoration: underline; }
+.list-workspace .list-secondary-link { font-size: 12px; color: var(--color-text-secondary); text-decoration: none; }
+.list-workspace .list-secondary-link:hover { color: var(--color-primary); text-decoration: underline; }
+.list-workspace .list-occupancy { display: inline-flex; flex-direction: column; gap: 6px; align-items: flex-end; min-width: 62px; }
+.list-workspace .list-occupancy-track { width: 62px; height: 4px; background: var(--color-border); border-radius: 4px; overflow: hidden; }
+.list-workspace .list-occupancy-track > span { display: block; height: 100%; border-radius: inherit; }
+@media (max-width: 760px) {
+  .list-workspace .list-page-header { align-items: flex-start; flex-direction: column; gap: 16px; }
+  .list-workspace .kpi-row.list-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 8px; }
+  .list-workspace .list-summary .kpi { min-width: 0; padding: 12px; }
+  .list-workspace .list-summary .kpi + .kpi { border-left: 0; }
+  .list-workspace .list-summary .kpi-value { font-size: 24px; }
+  .list-workspace .list-view-filters .btn { padding: 8px 10px; }
+}

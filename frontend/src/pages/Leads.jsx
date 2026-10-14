@@ -5,6 +5,8 @@ import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
+import { formatDate } from '../utils/format';
+import { bulkDelete } from '../utils/bulkActions';
 
 const PRIORITY_COLORS = { 1: 'var(--danger)', 2: 'var(--warning)', 3: 'var(--info)' };
 
@@ -29,9 +31,9 @@ const COLUMNS = [
   { key: 'source', label: 'Quelle', filterType: 'select' },
   { key: 'status', label: 'Status', type: 'status', filterType: 'select',
     render: v => <StatusBadge status={v} /> },
-  { key: 'unit_label', label: 'Einheit', filterType: 'text' },
+  { key: 'unit_label', label: 'Einheit', filterType: 'text', link: 'unit' },
   { key: 'created_at', label: 'Erstellt', type: 'date',
-    render: v => v ? new Date(v).toLocaleDateString('de-DE') : '—' },
+    render: v => formatDate(v) },
 ];
 
 export default function Leads() {
@@ -48,9 +50,9 @@ export default function Leads() {
   const refreshData = () => {
     setLoading(true);
     Promise.all([
-      api.get('/leads').catch(err => { console.warn('[Leads]', err.message); return []; }),
-      api.get('/units').catch(() => []),
-      api.get('/listings').catch(() => []),
+      api.list('/leads').catch(err => { console.warn('[Leads]', err.message); return []; }),
+      api.list('/units').catch(() => []),
+      api.list('/listings').catch(() => []),
     ]).then(([l, u, li]) => {
       setLeads(l || []);
       setUnits(u || []);
@@ -61,8 +63,8 @@ export default function Leads() {
   useEffect(() => {
     let cancelled = false;
     Promise.all([
-      api.get('/leads').catch(err => { console.warn('[Leads]', err.message); return []; }),
-      api.get('/units').catch(err => { console.warn('[Leads] units:', err.message); return []; }),
+      api.list('/leads').catch(err => { console.warn('[Leads]', err.message); return []; }),
+      api.list('/units').catch(err => { console.warn('[Leads] units:', err.message); return []; }),
     ]).then(([l, u]) => {
       if (cancelled) return;
       setLeads(l || []);
@@ -163,7 +165,8 @@ export default function Leads() {
     }
   };
 
-  if (loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  // only the first load replaces the list; a reload keeps the tables (their search, selection, results)
+  if (loading && leads.length === 0) return <div className="page-loading">{t('ui.table.loading')}</div>;
 
   const statusCounts = leads.reduce((acc, l) => { acc[l.status] = (acc[l.status] || 0) + 1; return acc; }, {});
   const grouped = getGrouped();
@@ -178,22 +181,22 @@ export default function Leads() {
       )}
 
       {/* Summary stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '0.75rem', marginBottom: '1.5rem' }}>
-        <div className="panel" style={{ padding: '0.75rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--primary)' }}>{leads.length}</div>
-          <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Gesamt</div>
+      <div className="kpi-row">
+        <div className="kpi">
+          <div className="kpi-value">{leads.length}</div>
+          <div className="kpi-label">Gesamt</div>
         </div>
         {Object.entries(statusCounts).map(([status, count]) => (
-          <div key={status} className="panel" style={{ padding: '0.75rem', textAlign: 'center' }}>
-            <div style={{ fontSize: '1.25rem', fontWeight: 700 }}>{count}</div>
-            <div style={{ fontSize: '0.8rem' }}><StatusBadge status={status} /></div>
+          <div key={status} className="kpi">
+            <div className="kpi-value">{count}</div>
+            <div className="kpi-label"><StatusBadge status={status} /></div>
           </div>
         ))}
       </div>
 
       {/* Group-by controls */}
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', alignItems: 'center' }}>
-        <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Gruppieren nach:</span>
+      <div className="toolbar">
+        <span className="toolbar-label">Gruppieren nach:</span>
         {[
           { value: 'none', label: 'Keine' },
           { value: 'unit', label: 'Einheit' },
@@ -222,6 +225,9 @@ export default function Leads() {
             title={group.label ? '' : 'Interessenten'}
             columns={COLUMNS}
             data={group.leads}
+        rowName={row => row.full_name || row.id}
+        bulkActions={[bulkDelete({ one: 'Interessent', many: 'Interessenten', remove: row => api.del(`/leads/${row.id}`),
+          finished: () => refreshData() })]}
             onAdd={gi === 0 ? () => setModal('create') : undefined}
             onEdit={row => setModal(row)}
             onDelete={handleDelete}
@@ -232,6 +238,7 @@ export default function Leads() {
       {modal && (
         <FormModal
           title={modal === 'create' ? 'Interessent erstellen' : 'Interessent bearbeiten'}
+          repeatKeep={['source', 'unit_id', 'listing_id']}
           fields={fields}
           initial={modal === 'create' ? null : modal}
           onSave={handleSave}

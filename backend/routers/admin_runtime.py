@@ -2,14 +2,22 @@
 
 import json
 import logging
-import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
 from ..config import settings
-from ..paths import get_backup_dir, get_data_dir, get_uploads_dir
+from ..paths import get_backup_dir, get_data_dir, get_uploads_dir, sqlite_url_for_path
+from ..services.data_snapshot import SnapshotError, export_snapshot, prepare_import
+from ..services.document_version_validation import ArchiveIntegrityError
+from ..services.sqlite_backup import (
+    copy_database,
+    is_sqlite_database,
+    sqlite_path_from_url,
+    verify_archived_originals,
+)
+from ..storage import InMemoryStore
 from . import admin as legacy_admin
 
 logger = logging.getLogger(__name__)
@@ -46,17 +54,39 @@ def get_database_info():
     return info
 
 
+def _live_sqlite_path() -> Path | None:
+    """The SQLite file holding the live data, or None for other stores."""
+    from ..dependencies import store
+
+    if isinstance(store, InMemoryStore):
+        return None
+    return sqlite_path_from_url(settings.database_url)
+
+
+def _timestamp() -> str:
+    return datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+
+
 @router.post("/backup", response_model=None)
 def create_backup():
-    """Create a JSON backup in the configured runtime backup directory."""
+    """Back up all data into the runtime backup directory.
+
+    SQLite: a complete copy of the database (also user accounts) via the
+    online backup API. Other stores: a JSON snapshot of the business data.
+    """
+    from ..dependencies import store
+
     _BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    backup_name = f"backup_{timestamp}.json"
-    backup_path = _BACKUP_DIR / backup_name
-    payload = legacy_admin._export_store_data()
-    backup_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    logger.info("Backup created: %s", backup_name)
-    return {"backup": backup_name, "size_bytes": backup_path.stat().st_size}
+    db_path = _live_sqlite_path()
+    if db_path is not None:
+        backup_path = _BACKUP_DIR / f"backup_{_timestamp()}.db"
+        copy_database(db_path, backup_path)
+    else:
+        backup_path = _BACKUP_DIR / f"backup_{_timestamp()}.json"
+        payload = export_snapshot(store)
+        backup_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    logger.info("Backup created: %s", backup_path.name)
+    return {"backup": backup_path.name, "size_bytes": backup_path.stat().st_size}
 
 
 @router.get("/backups")
@@ -75,28 +105,79 @@ def list_backups():
 
 @router.post("/restore/{backup_name}", response_model=None)
 def restore_backup(backup_name: str):
-    """Restore a JSON backup or SQLite file without allowing path traversal."""
+    """Restore a JSON snapshot or SQLite backup without allowing path traversal.
+
+    The backup is validated first and the current data is saved as a
+    safety backup; on any problem the live data stays untouched.
+    """
+    from ..dependencies import store
+
     backup_path = _resolve_backup_path(backup_name)
     if not backup_path.exists():
         raise HTTPException(404, f"Backup not found: {backup_name}")
 
+    db_path = _live_sqlite_path()
     if backup_path.suffix == ".json":
         try:
             data = json.loads(backup_path.read_text(encoding="utf-8"))
-            return {
-                "restored_from": backup_name,
-                **legacy_admin._import_store_data(data, replace_existing=True),
-            }
-        except Exception as exc:
+        except (OSError, ValueError) as exc:
             raise HTTPException(400, f"Invalid JSON backup: {exc}") from exc
+        try:
+            prepared = prepare_import(store, data, replace=True)
+        except SnapshotError as exc:
+            raise HTTPException(400, f"Wiederherstellung abgebrochen – {exc}") from exc
+        safety = _safety_backup(store, db_path)
+        result = prepared.apply()
+        logger.info("Data restored from %s", backup_name)
+        return {"restored_from": backup_name, "safety_backup": safety.name, **result}
 
-    if "sqlite" not in settings.database_url:
+    if db_path is None:
         raise HTTPException(400, "Binary DB restore is only supported for SQLite databases")
+    if not is_sqlite_database(backup_path):
+        raise HTTPException(400, f"Not a SQLite database: {backup_name}")
 
-    db_path = settings.database_url.replace("sqlite:///", "")
-    safety = _BACKUP_DIR / f"pre_restore_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.db"
-    if Path(db_path).exists():
-        shutil.copy2(db_path, safety)
-    shutil.copy2(backup_path, db_path)
+    from ..db.schema_state import NEWER, inspect_sqlite_file, run_migrations
+
+    try:
+        status, application = inspect_sqlite_file(backup_path)
+    except Exception as exc:
+        raise HTTPException(400, f"Wiederherstellung abgebrochen – Sicherung nicht lesbar ({type(exc).__name__})") \
+            from None
+    if status.state == NEWER:
+        raise HTTPException(400, f"Wiederherstellung abgebrochen – {status.describe()}")
+    if not application:
+        raise HTTPException(400, f"Wiederherstellung abgebrochen – keine ImmoManager-Datenbank: {backup_name}")
+    try:
+        verify_archived_originals(backup_path)
+    except ArchiveIntegrityError as exc:
+        raise HTTPException(400, f"Wiederherstellung abgebrochen – {exc}") from exc
+
+    # Online backup API, not file copies: the live database runs in WAL mode
+    # and stays open, so a file copy would be overridden by the old WAL.
+    safety = _safety_backup(store, db_path)
+    copy_database(backup_path, db_path)
+    result = {"restored_from": backup_name, "safety_backup": safety.name}
+    if status.needs_upgrade:
+        # an explicit action with a safety copy taken: the older backup gets the explicit upgrade
+        try:
+            run_migrations(sqlite_url_for_path(db_path))
+        except Exception:
+            logger.exception("Upgrade of the restored backup %s failed; putting the previous data back", backup_name)
+            copy_database(safety, db_path)
+            raise HTTPException(500, "Wiederherstellung abgebrochen – das Upgrade der älteren Sicherung ist "
+                                     "fehlgeschlagen; der vorherige Stand ist wieder aktiv.") from None
+        result["upgraded_from"] = status.revision or status.state
     logger.info("Database restored from %s", backup_name)
-    return {"restored_from": backup_name, "safety_backup": safety.name}
+    return result
+
+
+def _safety_backup(store, db_path: Path | None) -> Path:
+    """Save the current data before it is replaced."""
+    _BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    if db_path is not None:
+        safety = _BACKUP_DIR / f"pre_restore_{_timestamp()}.db"
+        copy_database(db_path, safety)
+    else:
+        safety = _BACKUP_DIR / f"pre_restore_{_timestamp()}.json"
+        safety.write_text(json.dumps(export_snapshot(store), ensure_ascii=False, indent=2), encoding="utf-8")
+    return safety

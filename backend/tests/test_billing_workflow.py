@@ -177,6 +177,13 @@ def test_create_revision_creates_new_period():
     period, *_ = _setup_full_scenario()
     billing.generate_utility_statements(period.id)
 
+    import pytest
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as exc_info:  # a draft is edited, not corrected
+        billing.create_period_revision(period.id)
+    assert exc_info.value.status_code == 400
+
+    billing.finalize_billing_period(period.id)
     result = billing.create_period_revision(period.id)
     assert result["source_period_id"] == period.id
     assert result["revision"] == 2
@@ -184,6 +191,7 @@ def test_create_revision_creates_new_period():
     new_period = store.get_billing_period(result["new_period_id"])
     assert new_period.status == "draft"
     assert "Korrektur" in new_period.label
+    assert (new_period.corrects_period_id, new_period.revision) == (period.id, 2)
 
     # Cost items should be copied
     new_costs = [ci for ci in store.list_cost_items() if ci.billing_period_id == new_period.id]
