@@ -91,7 +91,7 @@ export default function Maintenance() {
       // the case is the project file: work packages, quotes, orders, invoices, protocols
       render: (v, row) => <Link to={`/maintenance/${encodeURIComponent(row.id)}`}>{v || row.id}</Link> },
     { key: 'property_name', hidden: true, label: 'Immobilie', filterType: 'text' },
-    { key: 'unit_label', subKey: 'property_name', label: 'Einheit', filterType: 'text' },
+    { key: 'unit_label', subKey: 'property_name', label: 'Einheit', filterType: 'text', link: 'unit', subLink: 'property' },
     { key: 'category', hidden: true, label: t('pages.maintenance.columns.category') || 'Kategorie', filterType: 'select' },
     { key: 'priority', label: t('pages.maintenance.columns.priority') || 'Priorität', type: 'status', filterType: 'select' },
     { key: 'assignee', hidden: true, label: t('pages.maintenance.columns.assignee') || 'Zuständig', filterType: 'text' },

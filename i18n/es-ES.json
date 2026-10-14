@@ -149,7 +149,9 @@
       "saveShortcut": "Ctrl+Intro guarda",
       "savedNext": "{{count}} guardados – siguiente entrada",
       "saveAndNew": "Guardar y añadir otro",
-      "saveAndNewShortcut": "Ctrl+Mayús+Intro"
+      "saveAndNewShortcut": "Ctrl+Mayús+Intro",
+      "today": "Hoy",
+      "todayFill": "Poner hoy"
     },
     "table": {
       "adjustColumns": "Ajustar columnas",
@@ -2060,7 +2062,8 @@
         "more": "y {{count}} más",
         "selectPage": "Seleccionar todas las entradas de esta página",
         "selectRow": "Seleccionar"
-      }
+      },
+      "total": "Total ({{count}})"
     },
     "fileViewer": {
       "title": "Vista de archivo",

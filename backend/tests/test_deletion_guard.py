@@ -104,3 +104,35 @@ def test_bulk_delete_skips_records_with_dependents(client, lease):
     assert resp.json()["deleted"] == 1
     assert "1 Vertrag" in resp.json()["errors"][0]["error"]
     assert store.get_tenant(lease["tenant"].id)
+
+
+def test_category_with_bookings_is_kept_and_a_free_one_deleted(client, lease):
+    """Regression: deleting a category detached its bookings (ON DELETE SET NULL) without a word."""
+    from backend.models import BookingPatch, CategoryCreate
+
+    used = store.create_category(CategoryCreate(portfolio_id=lease["pf"].id, name="Reparaturen", category_type="expense"))
+    free = store.create_category(CategoryCreate(portfolio_id=lease["pf"].id, name="Unbenutzt", category_type="expense"))
+    store._patch_entity("booking", lease["booking"].id, BookingPatch(category_id=used.id))
+
+    resp = client.delete(f"/api/v1/categories/{used.id}")
+    assert resp.status_code == 409
+    assert "Kategorie kann nicht gelöscht werden" in _message(resp)
+    assert "1 Buchung" in _message(resp)
+    assert "anderen Kategorie" in _message(resp)
+    assert store.get_booking(lease["booking"].id).category_id == used.id
+
+    assert client.delete(f"/api/v1/categories/{free.id}").status_code == 204
+    assert client.delete("/api/v1/categories/missing").status_code == 404
+
+
+def test_bulk_delete_of_bookings_keeps_reversed_originals(client, lease):
+    """Regression: the admin bulk delete skipped the booking guard of DELETE /bookings/{id}."""
+    original = lease["booking"]
+    reversal = client.post(f"/api/v1/bookings/{original.id}/reverse", json={})
+    assert reversal.status_code in (200, 201), reversal.text
+
+    resp = client.post("/api/v1/admin/bulk-delete/bookings", json={"ids": [original.id]})
+
+    assert resp.json()["deleted"] == 0
+    assert "Stornobuchung" in resp.json()["errors"][0]["error"]
+    assert store.get_booking(original.id)

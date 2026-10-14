@@ -11,6 +11,8 @@ import { useToast } from '../components/Toast';
 import { useCanWrite } from '../contexts/AuthContext';
 import { formatDate } from '../utils/format';
 import { bulkDelete } from '../utils/bulkActions';
+import { Copy as CopyIcon } from 'lucide-react';
+import { duplicateOf } from '../utils/duplicate';
 
 function parseRecurrence(rule) {
   if (!rule) return '—';
@@ -64,6 +66,8 @@ export default function Tasks() {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
+  // values of a duplicated task for the New form (null: an empty form)
+  const [prefill, setPrefill] = useState(null);
   const [filter, setFilter] = useState('all');
   const [loadError, setLoadError] = useState(null);
   const [actionError, setActionError] = useState(null);
@@ -135,7 +139,7 @@ export default function Tasks() {
   const columns = [
     { key: 'title', label: t('pages.tasks.columns.title') || 'Titel', filterType: 'text' },
     { key: 'property_name', hidden: true, label: t('portfolio.properties.form.name') || 'Immobilie', filterType: 'text' },
-    { key: 'unit_label', subKey: 'property_name', label: t('units.list.columns.label') || 'Einheit', filterType: 'text' },
+    { key: 'unit_label', subKey: 'property_name', label: t('units.list.columns.label') || 'Einheit', filterType: 'text', link: 'unit', subLink: 'property' },
     { key: 'assignee', label: t('pages.tasks.columns.assignee') || 'Zuständig', filterType: 'text' },
     { key: 'due_date', label: t('pages.tasks.columns.dueDate') || 'Fällig am', type: 'date', filterType: 'dateRange',
       render: (v, row) => {
@@ -324,7 +328,7 @@ export default function Tasks() {
         title={t('pages.tasks.title') || 'Aufgaben'}
         columns={columns}
         data={filtered}
-        onAdd={() => setModal('create')}
+        onAdd={() => { setPrefill(null); setModal('create'); }}
         onEdit={row => setModal(row)}
         onDelete={handleDelete}
         writeArea="/tasks"
@@ -340,6 +344,9 @@ export default function Tasks() {
             finished: () => { refreshData(); store?.invalidateRelated('tasks', 'properties', 'units'); } }),
         ]}
         rowActions={row => busy.has(row.id) ? [] : [{
+          label: 'Duplizieren', write: true, icon: <CopyIcon size={15} />,
+          onClick: () => { setPrefill(duplicateOf(row, ['status', 'completed_at', 'generated_from_task_id', 'occurrence_date'])); setModal('create'); },
+        }, {
           label: row.status === 'completed' ? 'Wiederöffnen' : 'Erledigen', write: true,
           icon: row.status === 'completed' ? <RotateCcw size={15} /> : <Check size={15} />,
           onClick: toggleCompleted,
@@ -351,7 +358,7 @@ export default function Tasks() {
           title={modal === 'create' ? 'Aufgabe erstellen' : 'Aufgabe bearbeiten'}
           repeatKeep={['assignee', 'property_id', 'due_date', 'priority', 'status']}
           fields={fields}
-          initial={modal === 'create' ? null : modal}
+          initial={modal === 'create' ? prefill : modal}
           onSave={handleSave}
           onClose={() => setModal(null)}
         />

@@ -23,11 +23,11 @@ const MEASURE_UNITS = ['m³', 'l', 'kWh', 'MWh', 'Wh', 'HKV'].map(value => ({ va
 const METER_COLUMNS = [
   { key: 'serial_number', label: 'Seriennr.', filterType: 'text' },
   { key: 'property_name', hidden: true, label: 'Immobilie', filterType: 'text' },
-  { key: 'unit_label', subKey: 'property_name', label: 'Einheit', filterType: 'text' },
+  { key: 'unit_label', subKey: 'property_name', label: 'Einheit', filterType: 'text', link: 'unit', subLink: 'property' },
   { key: 'meter_type', label: 'Typ', filterType: 'select',
     render: v => METER_TYPE_LABELS[v] || v },
   { key: 'location', hidden: true, label: 'Standort' },
-  { key: 'supplier', hidden: true, label: 'Versorger', filterType: 'text' },
+  { key: 'supplier', hidden: true, label: 'Versorger', filterType: 'text', link: 'contact' },
   { key: 'measure_unit', hidden: true, label: 'Einheit der Ablesung' },
   { key: 'installation_date', hidden: true, label: 'Einbaudatum', type: 'date' },
   { key: 'removal_date', hidden: true, label: 'Ausbaudatum', type: 'date' },

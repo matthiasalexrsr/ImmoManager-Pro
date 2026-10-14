@@ -10,6 +10,7 @@ from typing import Any
 from ...config import settings
 from ...paths import get_data_dir
 from ..secret_box import SecretBox, SecretError, default_secret_box, is_sealed, token_key_id
+from .aktenwerk_provider import AktenwerkProvider
 from .base import IntegrationProvider, IntegrationRunRecord
 from .config_store import InMemoryIntegrationConfigStore, JsonFileIntegrationConfigStore
 from .history_store import IntegrationHistoryStore
@@ -53,6 +54,7 @@ class IntegrationManager:
             DeutschePostProvider(),
             ListingPortalProvider(),
             HuggingFaceProvider(),
+            AktenwerkProvider(),
         ):
             self.register(provider)
         self._load_state()
@@ -120,6 +122,9 @@ class IntegrationManager:
         fields = config_fields(manifest)
         errors = field_errors(config, fields, required=True)
         errors.update({key: "Unbekanntes Konfigurationsfeld" for key in set(config) - {field["key"] for field in fields}})
+        # provider-specific rules (e.g. Aktenwerk: plain HTTP only inside the local network)
+        if hasattr(provider, "config_errors"):
+            errors.update(provider.config_errors(config))
         if integration_id == "email":
             if config.get("smtp_user") and not config.get("smtp_password"):
                 errors["smtp_password"] = "Passwort für SMTP-Benutzer fehlt"
@@ -310,8 +315,18 @@ class IntegrationManager:
             self._append_history(integration_id, payload, result)
             return result
 
+        return self.execute(integration_id, payload, lambda config: provider.run(payload, config))
+
+    def execute(self, integration_id: str, payload: dict, work, *, journal_all_keys: bool = False) -> dict:
+        """Run work(config) under the checks and the journal of run(): for actions that need the request's
+        data (e.g. documents to hand over). The journal keeps the manifest's action inputs of payload, or
+        with journal_all_keys every key of the (compact, caller-built) payload; secrets are redacted."""
+        provider = self._providers.get(integration_id)
+        if provider is None:
+            raise KeyError(integration_id)
+        manifest = provider.manifest
         if not self._enabled.get(integration_id, False):
-            result = {"success": False, "message": "Integration ist deaktiviert"}
+            result: dict[str, Any] = {"success": False, "message": "Integration ist deaktiviert"}
             self._append_history(integration_id, payload, result)
             return result
 
@@ -327,7 +342,8 @@ class IntegrationManager:
             return result
 
         record = IntegrationRunRecord(integration_id, False, "Ausführung begonnen; Ergebnis unbestätigt",
-                                      self._history_payload(manifest, payload), {"code": "in_progress"})
+                                      self._history_payload(manifest, payload, all_keys=journal_all_keys),
+                                      {"code": "in_progress"})
         try:
             self._ensure_writable()
             self._journal.append(record)
@@ -335,7 +351,7 @@ class IntegrationManager:
             return {"success": False, "message": "Integrationsjournal nicht verfügbar; Aktion wurde nicht ausgeführt.",
                     "details": {"code": "history_unavailable"}}
         try:
-            action = provider.run(payload, deepcopy(config))
+            action = work(deepcopy(config))
             result = {"success": action.success, "message": action.message, "details": action.details}
         except Exception as exc:
             result = {"success": False, "message": "Integration fehlgeschlagen. Konfiguration prüfen und erneut versuchen.",
@@ -396,7 +412,7 @@ class IntegrationManager:
         self._journal.append(record)
 
     @staticmethod
-    def _history_payload(manifest, payload):
+    def _history_payload(manifest, payload, *, all_keys: bool = False):
         allowed = {"action"} | {field["key"] for action in manifest.actions for field in action.get("inputs", [])}
         def redact(value):
             if isinstance(value, dict):
@@ -405,7 +421,7 @@ class IntegrationManager:
             if isinstance(value, list):
                 return [redact(item) for item in value]
             return value
-        return redact({key: value for key, value in payload.items() if not manifest.actions or key in allowed})
+        return redact({key: value for key, value in payload.items() if all_keys or not manifest.actions or key in allowed})
 
     def _load_state(self) -> None:
         try:

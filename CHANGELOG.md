@@ -2,6 +2,22 @@
 
 All notable changes to ImmoManager Pro will be documented in this file.
 
+## Unreleased — 2026-10-14 links, totals and Aktenwerk
+
+- **Records link to each other.** A tenant name in bookings, contracts, receivables, rent charges, statements and other lists opens the party file. Properties, units, maintenance cases, service contracts, invoice reviews, tenant accounts and dunning cases open their own page. A supplier, provider or contact opens the contact list searched for that name, and an account name opens its bookings filtered to that account (a chip shows the filter and removes it). The contract cards in the party file link to their property and unit. Links inside a row do not also open the row.
+- **Totals**: amount columns of bookings, accounts, invoices, contracts, units, receivables, rent charges and budgets show a "Summe (n)" row for the rows matching the current search and filters. A selection shows the sum of its rows in the selection bar, and a bulk result stays visible until it is closed or a new selection starts.
+- **Duplicate** a booking, invoice, task or appointment: the New form opens prefilled without what must not be copied (receipt, status and reversal link of a booking; invoice number, status, original document and payment reference of an invoice; completion and series of a task).
+- **"Heute"** next to every date field fills in today's date.
+- **Lists opened from a link** (`?suche=`) start with that search on the first page instead of a remembered search or filter.
+- **Aktenwerk (DMS) interface** `immomanager-aktenwerk/1`. Documents (contracts, invoices, statements, protocols, letters, tax assessments) and booking receipts are described with kind, date, references, amounts and a tax classification ("steuerlich relevant", "absetzbar / Werbungskosten", year).
+  - **Export package**: "Dokumente → Aktenwerk …" filters by year, kind and tax view, previews the selection and downloads a ZIP package (`manifest.json` + files with SHA-256). Unreadable files are listed with a reason.
+  - **Direct hand-over**: with Aktenwerk configured under Schnittstellen, the same dialog and the bulk actions in documents, bookings (receipts) and invoices hand the selection over. This happens only on that click, per document, with an idempotency key, so a repeated hand-over creates nothing twice.
+  - **Rules**: the token is stored encrypted and never journaled; plain http is accepted only in the local network; read-only roles may export but not send. See [the interface contract](docs/AKTENWERK_INTERFACE_20261014.md).
+- **Fixes**:
+  - A category that still has bookings is no longer deleted; deletion is refused with the reason.
+  - Deleting several bookings at once now keeps a booking that has a reversal, belongs to a deposit or is allocated to a project, and reports why.
+  - Contact roles and other status badges show their German label. The error message of the generic lists is announced to screen readers.
+
 ## Unreleased — 2026-10-14 everyday workflow
 
 - **Forms keep what was typed.** Escape, the close button, Cancel or a backdrop click on an edited form ask "Ungespeicherte Änderungen verwerfen?" first (a second Escape returns to editing); untouched forms close at once. A click only closes on the backdrop when it also started there, so selecting text and releasing the mouse outside no longer ends the form. Forms open in their first field instead of the close button, and Ctrl/Cmd+Enter saves from any field, multi-line notes included.

@@ -6,6 +6,8 @@ import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 import { bulkDelete } from '../utils/bulkActions';
+import { Copy as CopyIcon } from 'lucide-react';
+import { duplicateOf } from '../utils/duplicate';
 
 const EVENT_TYPES = [
   { value: 'viewing', label: 'Besichtigung' },
@@ -33,6 +35,8 @@ export default function Calendar() {
   const [properties, setProperties] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
+  // values of a duplicated appointment for the New form (null: an empty form)
+  const [prefill, setPrefill] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
 
   const refreshData = () => {
@@ -114,16 +118,18 @@ export default function Calendar() {
         rowName={row => row.title || row.id}
         bulkActions={[bulkDelete({ one: 'Termin', many: 'Termine', remove: row => api.del(`/calendar/${row.id}`),
           finished: () => refreshData() })]}
-        onAdd={() => setModal('create')}
+        onAdd={() => { setPrefill(null); setModal('create'); }}
         onEdit={row => setModal(row)}
         onDelete={handleDelete}
+        rowActions={row => [{ label: 'Duplizieren', write: true, icon: <CopyIcon size={15} />,
+          onClick: () => { setPrefill(duplicateOf(row)); setModal('create'); } }]}
       />
       {modal && (
         <FormModal
           title={modal === 'create' ? 'Termin erstellen' : 'Termin bearbeiten'}
           repeatKeep={['event_type', 'event_date', 'property_id']}
           fields={fields}
-          initial={modal === 'create' ? null : modal}
+          initial={modal === 'create' ? prefill : modal}
           onSave={handleSave}
           onClose={() => setModal(null)}
         />

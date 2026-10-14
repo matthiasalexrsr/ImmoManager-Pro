@@ -16,8 +16,8 @@ const STATUS_COLORS = {
 };
 
 const TABLE_COLUMNS = [
-  { key: 'lead_name', label: 'Interessent', filterType: 'text' },
-  { key: 'unit_label', label: 'Einheit', filterType: 'text' },
+  { key: 'lead_name', label: 'Interessent', filterType: 'text', link: 'lead' },
+  { key: 'unit_label', label: 'Einheit', filterType: 'text', link: 'unit' },
   { key: 'scheduled_at', label: 'Termin', type: 'date', filterType: 'dateRange' },
   { key: 'agent', label: 'Betreuer', filterType: 'text' },
   { key: 'status', label: 'Status', type: 'status', filterType: 'select',

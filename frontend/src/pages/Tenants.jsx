@@ -96,6 +96,9 @@ export default function Tenants() {
       ...tn,
       property_name: activeContract ? (propMap[activeContract.property_id] || '—') : '—',
       unit_label: activeContract ? (unitMap[activeContract.unit_id] || '—') : '—',
+      // where the current contract is, for the links in the list (not tenant fields)
+      link_unit_id: activeContract?.unit_id || null,
+      link_property_id: activeContract?.property_id || null,
       contract_status: activeContract ? activeContract.status : 'kein Vertrag',
       has_sepa: tn.sepa_mandate ? '✓' : '—',
       payment_label: PAYMENT_LABELS[tn.payment_method] || tn.payment_method || '—',
@@ -130,7 +133,8 @@ export default function Tenants() {
         </span>
       ) },
     { key: 'property_name', hidden: true, label: 'Immobilie', filterType: 'text' },
-    { key: 'unit_label', subKey: 'property_name', label: 'Einheit', filterType: 'text' },
+    { key: 'unit_label', subKey: 'property_name', label: 'Einheit', filterType: 'text',
+      link: { kind: 'unit', idKey: 'link_unit_id' }, subLink: { kind: 'property', idKey: 'link_property_id' } },
     { key: 'contract_status', label: 'Vertragsstatus', filterType: 'select',
       render: v => v === 'kein Vertrag' ? <span className="badge badge-gray">Kein aktiver Vertrag</span> : <StatusBadge status={v} /> },
     { key: 'email', label: 'E-Mail', filterType: 'text' },

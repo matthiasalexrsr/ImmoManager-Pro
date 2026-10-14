@@ -4,6 +4,7 @@ import { useCanWrite } from '../contexts/AuthContext';
 import { PlusIcon, EditIcon, TrashIcon } from './Icons';
 import StatusBadge from './StatusBadge';
 import BulkBar from './BulkBar';
+import EntityLink from './EntityLink';
 import { formatDate, formatMoney, plainLabel } from '../utils/format';
 import { codeLabel } from '../utils/codeLabels';
 import { buildCsv } from '../utils/tableCsv';
@@ -13,6 +14,16 @@ import './DataTable.css';
 
 const PAGE_SIZES = [10, 25, 50, 100];
 const NUMERIC_TYPES = new Set(['number', 'currency']);
+
+// link: { kind, idKey } (or just the kind) makes the shown name lead to its record; subLink does
+// the same for the second line (the property under a unit). Default id keys follow the kind.
+const ID_KEYS = { tenant: 'tenant_id', property: 'property_id', unit: 'unit_id', contract: 'contract_id',
+  maintenance: 'id', serviceContract: 'service_contract_id', contact: 'contact_id', lead: 'lead_id', account: 'account_id' };
+function linked(spec, row, text) {
+  if (!spec || text == null || text === '' || text === '\u2014') return text;
+  const { kind, idKey } = typeof spec === 'string' ? { kind: spec } : spec;
+  return <EntityLink kind={kind} id={row[idKey || ID_KEYS[kind]]} text={String(text)}>{text}</EntityLink>;
+}
 
 // Cells keep to one line; long plain text is cut with an ellipsis and shown in full on hover.
 function cellContent(col, row) {
@@ -29,12 +40,12 @@ function cellContent(col, row) {
     const hasMain = text !== '\u2014';
     return (
       <span className="cell-stack">
-        <span className="cell-text">{hasMain ? text : (sub || text)}</span>
-        {hasMain && sub && sub !== '\u2014' && <span className="cell-text td-sub">{sub}</span>}
+        <span className="cell-text">{hasMain ? linked(col.link, row, text) : linked(col.subLink, row, sub || text)}</span>
+        {hasMain && sub && sub !== '\u2014' && <span className="cell-text td-sub">{linked(col.subLink, row, sub)}</span>}
       </span>
     );
   }
-  return <span className="cell-text" title={text.length > 30 ? text : undefined}>{text}</span>;
+  return <span className="cell-text" title={text.length > 30 ? text : undefined}>{linked(col.link, row, text)}</span>;
 }
 
 
@@ -51,6 +62,14 @@ function defaultSettingsKey(title) {
   if (typeof window === 'undefined' || !title) return null;
   const path = window.location.pathname.split('/').map(part => (/\d/.test(part) ? ':id' : part)).join('/');
   return `${path}|${title}`;
+}
+
+// Totals in whole cents, so 0.1 + 0.2 is 0.30 and long lists do not drift.
+function centsTotal(rows, key) {
+  return rows.reduce((total, row) => {
+    const n = Number(row[key]);
+    return Number.isFinite(n) ? total + Math.round(n * 100) : total;
+  }, 0);
 }
 
 function cellClass(col) {
@@ -81,7 +100,12 @@ export default function DataTable({ columns, data, onEdit: editHandler, onDelete
   const storageKey = settingsKey === undefined ? defaultSettingsKey(title) : settingsKey;
   // search, filters and page as left in this tab (server-paged lists keep their own state)
   const [savedView] = useState(() => (serverPaged ? null : readTableView(storageKey)));
-  const [search, setSearch] = useState(() => (typeof savedView?.search === 'string' ? savedView.search : ''));
+  // A link to a list filtered to one record (/contacts?suche=Name) starts with that search.
+  const [search, setSearch] = useState(() => {
+    const linkedSearch = !serverPaged && typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('suche') : null;
+    if (linkedSearch) return linkedSearch;
+    return typeof savedView?.search === 'string' ? savedView.search : '';
+  });
   // Sorting, rows per page and hidden columns are remembered per list in this browser.
   const [stored, setStored] = useStoredTableSettings(storageKey,
     { sortKey: null, sortDir: 'asc', pageSize: 25, hiddenCols: {} });
@@ -95,10 +119,11 @@ export default function DataTable({ columns, data, onEdit: editHandler, onDelete
   const setSort = (key, dir) => setStored(current => ({ ...current, sortKey: key, sortDir: dir }));
   const setPageSize = size => setStored(current => ({ ...current, pageSize: size }));
   const toggleColumn = key => setStored(current => ({ ...current, hiddenCols: { ...hiddenCols, [key]: !hiddenCols[key] } }));
-  const [page, setPage] = useState(() => (Number.isInteger(savedView?.page) && savedView.page > 0 ? savedView.page : 0));
+  const [linkedOnMount] = useState(() => !serverPaged && typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('suche'));
+  const [page, setPage] = useState(() => (!linkedOnMount && Number.isInteger(savedView?.page) && savedView.page > 0 ? savedView.page : 0));
   const [columnFilters, setColumnFilters] = useState(() => {
     const saved = savedView?.columnFilters;
-    if (!saved || typeof saved !== 'object') return {};
+    if (linkedOnMount || !saved || typeof saved !== 'object') return {};
     // only filters of columns this list still has, in the shape their filter expects
     return Object.fromEntries(columns.filter(col => col.filterType && saved[col.key] != null).map(col => [col.key, saved[col.key]])
       .filter(([key, value]) => {
@@ -209,6 +234,12 @@ export default function DataTable({ columns, data, onEdit: editHandler, onDelete
   const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
   const safePage = Math.min(page, totalPages - 1);
   const pageData = serverPaged ? sorted : sorted.slice(safePage * pageSize, (safePage + 1) * pageSize);
+  // sum: true on a money column adds a total of every row the filters show (all pages)
+  const sumColumns = visibleColumns.filter(col => col.sum);
+  const showTotals = !serverPaged && sumColumns.length > 0 && sorted.length > 0;
+  const totals = useMemo(() => Object.fromEntries(sumColumns.map(col => [col.key, centsTotal(sorted, col.key)])),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sorted, sumColumns.map(col => col.key).join('|')]);
   const startRow = sorted.length === 0 ? 0 : safePage * pageSize + 1;
   const endRow = Math.min((safePage + 1) * pageSize, sorted.length);
 
@@ -391,7 +422,8 @@ export default function DataTable({ columns, data, onEdit: editHandler, onDelete
 
       {exportError && <p className="error-message" role="alert">{exportError}</p>}
       {selectable && (selectedRows.length > 0 || bulkReport) && (
-        <BulkBar rows={selectedRows} report={bulkReport} setReport={setBulkReport} total={sorted.length} allSelected={selectedRows.length >= sorted.length}
+        <BulkBar rows={selectedRows} report={bulkReport} setReport={setBulkReport}
+          sums={columns.filter(col => col.sum).map(col => ({ label: plainLabel(col.label), value: formatMoney(centsTotal(selectedRows, col.key) / 100) }))} total={sorted.length} allSelected={selectedRows.length >= sorted.length}
           actions={bulkActions} words={bulkWords}
           onSelectAll={() => setSelectedIds(new Set(sorted.map(row => row.id)))}
           onClear={() => setSelectedIds(new Set())}
@@ -548,6 +580,20 @@ export default function DataTable({ columns, data, onEdit: editHandler, onDelete
               ))
             )}
           </tbody>
+          {showTotals && (
+            <tfoot>
+              <tr className="table-totals">
+                {selectable && <td />}
+                {visibleColumns.map((col, index) => (
+                  <td key={col.key} className={cellClass(col)}>
+                    {col.sum ? formatMoney(totals[col.key] / 100)
+                      : index === 0 ? tr('comp.dataTable.total', 'Summe ({{count}})').replace('{{count}}', sorted.length) : null}
+                  </td>
+                ))}
+                {hasActions && <td />}
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
 

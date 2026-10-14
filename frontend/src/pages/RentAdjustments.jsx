@@ -11,7 +11,7 @@ import { useCanWrite } from '../contexts/AuthContext';
 import { formatMoney, formatPercent } from '../utils/format';
 
 const COLUMNS = [
-  { key: 'contract_number', label: 'Vertrag', filterType: 'text' },
+  { key: 'contract_number', label: 'Vertrag', filterType: 'text', link: 'contract' },
   { key: 'adjustment_type', label: 'Art', filterType: 'select',
     render: v => v === 'index' ? 'Indexmiete' : v === 'stepped' ? 'Staffelmiete' : v || '—' },
   { key: 'effective_date', label: 'Wirksamkeit', type: 'date', filterType: 'dateRange' },

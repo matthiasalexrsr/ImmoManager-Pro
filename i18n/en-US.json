@@ -149,7 +149,9 @@
       "saveShortcut": "Ctrl+Enter saves",
       "savedNext": "{{count}} saved – next entry",
       "saveAndNew": "Save & add another",
-      "saveAndNewShortcut": "Ctrl+Shift+Enter"
+      "saveAndNewShortcut": "Ctrl+Shift+Enter",
+      "today": "Today",
+      "todayFill": "Enter today"
     },
     "table": {
       "adjustColumns": "Adjust Columns",
@@ -1300,7 +1302,8 @@
         "more": "and {{count}} more",
         "selectPage": "Select all entries on this page",
         "selectRow": "Select"
-      }
+      },
+      "total": "Total ({{count}})"
     },
     "formModal": {
       "selectPlaceholder": "— Select —",

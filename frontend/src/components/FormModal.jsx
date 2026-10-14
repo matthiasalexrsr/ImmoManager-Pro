@@ -9,6 +9,12 @@ const isBooleanSelect = f => f.type === 'select' && f.options?.length === 2
 // Selects hold strings: true/false and numbers come back as 'true'/'false'/'12'.
 const toFieldValue = (f, v) => (f.type === 'select' && (typeof v === 'boolean' || typeof v === 'number') ? String(v) : v);
 
+// Today as the date input writes it (local calendar day, not UTC: 00:30 on the 1st is still the 1st).
+const localToday = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+};
+
 // Long forms get two columns; free text and explicitly wide fields span both.
 const WIDE_FORM_FIELDS = 8;
 const spansRow = f => f.full || f.type === 'textarea';
@@ -233,6 +239,20 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
                         required={f.required}
                         rows={3}
                       />
+                    ) : f.type === 'date' ? (
+                      // dates: one click for today, the most common entry (booking, reading, appointment)
+                      <span className="date-input-row">
+                        <input
+                          id={inputId}
+                          type="date"
+                          value={values[f.key] ?? ''}
+                          onChange={e => update(f.key, e.target.value)}
+                          required={f.required}
+                        />
+                        <button type="button" className="btn btn-sm btn-ghost date-today"
+                          aria-label={tr('ui.form.todayFill', 'Heute eintragen')} aria-controls={inputId}
+                          onClick={() => update(f.key, localToday())}>{tr('ui.form.today', 'Heute')}</button>
+                      </span>
                     ) : (
                       <input
                         id={inputId}

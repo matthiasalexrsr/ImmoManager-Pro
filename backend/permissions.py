@@ -41,7 +41,7 @@ MAINTENANCE_DECISIONS = (r"^/maintenance/[^/]+/quotes/[^/]+/(accept|reject)$",
 MAINTENANCE_INVOICES = (r"^/maintenance/[^/]+/orders/[^/]+/invoices$", r"^/maintenance/[^/]+/invoice-links/[^/]+$")
 # the factual check of an invoice: whether the work was ordered and done
 INVOICE_FACTUAL = (r"^/invoices/[^/]+/review/factual-check$",)
-BOOKKEEPING = ("/invoice-review/receipts", "/bookings", "/accounts", "/categories", "/invoices", "/receivables", "/rent-charges", "/deposits",
+BOOKKEEPING = ("/aktenwerk", "/invoice-review/receipts", "/bookings", "/accounts", "/categories", "/invoices", "/receivables", "/rent-charges", "/deposits",
                "/budgets", "/tax-rates", "/reports", "/billing/cost-items", "/escalation/run", "/notifications/generate",
                r"^/contracts/[^/]+/dunning-campaign$", "/dunning", *MAINTENANCE_INVOICES,
                r"^/service-contracts/[^/]+/(invoices|payments|cost-transfers)(/[^/]+)?$")

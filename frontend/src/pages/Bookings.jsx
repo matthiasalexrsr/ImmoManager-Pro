@@ -14,20 +14,28 @@ import { useToast } from '../components/Toast';
 import { useCanWrite } from '../contexts/AuthContext';
 import { formatDate, formatMoney } from '../utils/format';
 import './bookingReview.css';
+import { Copy as CopyIcon } from 'lucide-react';
+import { duplicateOf } from '../utils/duplicate';
+import { aktenwerkBulkAction, receiptExchangeId, useAktenwerkReady } from '../features/aktenwerk/aktenwerkApi';
 
 export default function Bookings() {
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const bookingId = params.get('booking_id');
+  // /bookings?konto=<id>: the bookings of one account (from the account list), removable
+  const accountId = params.get('konto');
+  const clearAccount = () => setParams(current => { const next = new URLSearchParams(current); next.delete('konto'); return next; });
   // A navigation starts a new editing/viewing session; old requests cannot own it.
-  return <BookingsWorkspace key={bookingId === null ? 'list' : `booking:${bookingId}`} bookingId={bookingId} />;
+  return <BookingsWorkspace key={bookingId === null ? 'list' : `booking:${bookingId}`} bookingId={bookingId}
+    accountId={accountId} onClearAccount={clearAccount} />;
 }
 
-function BookingsWorkspace({ bookingId }) {
+function BookingsWorkspace({ bookingId, accountId, onClearAccount }) {
   const { t } = useTranslation();
   const confirm = useConfirm();
   const toast = useToast();
   const canWrite = useCanWrite();
   const store = useDataStore();
+  const aktenwerkReady = useAktenwerkReady();
   const contractSource = useEntities('contracts', '/contracts');
   const { items: contracts } = contractSource;
   const { items: accounts } = useEntities('accounts', '/accounts');
@@ -71,6 +79,9 @@ function BookingsWorkspace({ bookingId }) {
 
   const refreshData = () => setRefreshVersion(value => value + 1);
   const openModal = initial => setModal({ generation: ++modalGeneration.current, initial });
+  // a new booking prefilled from an existing one (not its reversal link, receipt or state)
+  const openDuplicate = row => setModal({ generation: ++modalGeneration.current, initial: 'create',
+    prefill: duplicateOf(row, ['reverses_booking_id', 'receipt_url', 'status']) });
   // An old save may finish after cancellation and reopening; only its own session may close.
   const closeModal = session => setModal(current => current === session ? null : current);
 
@@ -172,16 +183,17 @@ function BookingsWorkspace({ bookingId }) {
 
   // Filtered data
   const filtered = useMemo(() => {
+    const rows = accountId ? enriched.filter(b => b.account_id === accountId) : enriched;
     switch (filter) {
-      case 'open': return enriched.filter(b => b.status === 'open');
-      case 'unassigned': return enriched.filter(b => b.unassigned);
-      case 'no_category': return enriched.filter(b => !b.category_id);
-      case 'no_receipt': return enriched.filter(b => !resolveFileUrl(b.receipt_url));
-      case 'income': return enriched.filter(b => Number(b.amount) > 0);
-      case 'expense': return enriched.filter(b => Number(b.amount) < 0);
-      default: return enriched;
+      case 'open': return rows.filter(b => b.status === 'open');
+      case 'unassigned': return rows.filter(b => b.unassigned);
+      case 'no_category': return rows.filter(b => !b.category_id);
+      case 'no_receipt': return rows.filter(b => !resolveFileUrl(b.receipt_url));
+      case 'income': return rows.filter(b => Number(b.amount) > 0);
+      case 'expense': return rows.filter(b => Number(b.amount) < 0);
+      default: return rows;
     }
-  }, [enriched, filter]);
+  }, [enriched, filter, accountId]);
 
   // Summary stats
   const totalCount = enriched.length;
@@ -197,9 +209,11 @@ function BookingsWorkspace({ bookingId }) {
 
   const columns = [
     { key: 'booking_date', label: t('finance.bookings.form.date') || 'Datum', type: 'date', filterType: 'dateRange' },
-    { key: 'account_name', hidden: true, label: t('finance.accounts.form.name') || 'Konto', filterType: 'text' },
+    { key: 'account_name', hidden: true, label: t('finance.accounts.form.name') || 'Konto', filterType: 'text',
+      render: (v, row) => (row.account_id ? <Link to={`/bookings?konto=${encodeURIComponent(row.account_id)}`} className="entity-link"
+        onClick={e => e.stopPropagation()}>{v}</Link> : v) },
     { key: 'category_name', label: t('finance.bookings.form.category') || 'Kategorie', filterType: 'text' },
-    { key: 'amount', label: t('finance.bookings.form.amount') || 'Betrag (€)', type: 'number', align: 'right', filterType: 'numberRange',
+    { key: 'amount', label: t('finance.bookings.form.amount') || 'Betrag (€)', type: 'number', sum: true, align: 'right', filterType: 'numberRange',
       render: (v, row) => {
         const n = Number(v);
         const cls = n < 0 ? 'text-red' : 'text-green';
@@ -207,9 +221,10 @@ function BookingsWorkspace({ bookingId }) {
           {row.reverses_booking_id && <span className="badge badge-gray" title="Storno: zählt mit der stornierten Buchung zusammen">Storno</span>}</span>;
       }},
     { key: 'payment_text', label: t('finance.bookings.form.paymentText') || 'Buchungstext', filterType: 'text' },
-    { key: 'property_name', label: t('portfolio.properties.form.name') || 'Immobilie', filterType: 'text' },
-    { key: 'unit_label', label: t('units.list.columns.label') || 'Einheit', filterType: 'text', hidden: true },
-    { key: 'tenant_name', label: t('tenantsContracts.tenants.title') || 'Mieter', filterType: 'text', hidden: true,
+    { key: 'property_name', label: t('portfolio.properties.form.name') || 'Immobilie', filterType: 'text', link: 'property' },
+    { key: 'unit_label', label: t('units.list.columns.label') || 'Einheit', filterType: 'text', hidden: true, link: 'unit' },
+    // the payer: a click opens the party file (contracts, account, documents)
+    { key: 'tenant_name', label: t('tenantsContracts.tenants.title') || 'Mieter', filterType: 'text',
       render: (v, row) => row.tenant_id && v !== '—' ? <PartyLink tenantId={row.tenant_id}>{v}</PartyLink> : v },
     { key: 'allocation_label', label: 'Vertrag', filterType: 'text',
       render: (v, row) => (row.tenant_id
@@ -426,6 +441,12 @@ function BookingsWorkspace({ bookingId }) {
             disabled={f.key === 'unassigned' && !allocationReady}
           >{f.label}</button>
         ))}
+        {accountId && (
+          <span className="filter-chip-active" role="status">
+            Konto: {accountMap[accountId] || 'unbekannt'}
+            <button type="button" className="btn btn-sm btn-ghost" onClick={onClearAccount} aria-label="Kontofilter entfernen">✕</button>
+          </span>
+        )}
       </div>
 
       {filter === 'unassigned' && !allocationReady ? <p>Der Zuordnungsstand ist derzeit nicht verfügbar.</p> : <DataTable
@@ -435,6 +456,10 @@ function BookingsWorkspace({ bookingId }) {
         onAdd={() => openModal('create')}
         onEdit={openModal}
         onDelete={handleDelete}
+        rowActions={() => [{ label: 'Duplizieren', write: true, icon: <CopyIcon size={15} />, onClick: openDuplicate }]}
+        rowName={row => row.payment_text || formatDate(row.booking_date)}
+        // receipts (deductible ones above all) for the document management system
+        bulkActions={aktenwerkReady ? [aktenwerkBulkAction(row => (resolveFileUrl(row.receipt_url) ? receiptExchangeId(row.id) : null), 'Belege an Aktenwerk')] : []}
       />}
       </>}
 
@@ -472,7 +497,7 @@ function BookingsWorkspace({ bookingId }) {
           title={modal.initial === 'create' ? 'Buchung erstellen' : 'Buchung bearbeiten'}
           repeatKeep={['account_id', 'category_id', 'property_id', 'booking_date', 'status']}
           fields={fields}
-          initial={modal.initial === 'create' ? null : modal.initial}
+          initial={modal.initial === 'create' ? (modal.prefill || null) : modal.initial}
           onSave={handleSave}
           onClose={() => closeModal(modal)}
         />

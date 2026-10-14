@@ -66,7 +66,7 @@ const PORTAL_TEMPLATES = {
 
 const COLUMNS = [
   { key: 'title', label: 'Titel', filterType: 'text' },
-  { key: 'unit_label', label: 'Einheit', filterType: 'text' },
+  { key: 'unit_label', label: 'Einheit', filterType: 'text', link: 'unit' },
   { key: 'portal', label: 'Portal', filterType: 'select',
     render: v => PORTAL_TEMPLATES[v]?.label || v || '—' },
   { key: 'target_rent', label: 'Zielmiete (€)', type: 'number', align: 'right',

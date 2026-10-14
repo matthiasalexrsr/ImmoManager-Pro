@@ -12,16 +12,18 @@ const COLORS = {
   reserved: 'badge-blue', partial: 'badge-yellow', pending: 'badge-yellow', disputed: 'badge-red',
   critical: 'badge-red', urgent: 'badge-red', high: 'badge-yellow', medium: 'badge-blue', normal: 'badge-blue',
   low: 'badge-gray', booked: 'badge-gray', cancelled: 'badge-gray', inactive: 'badge-gray', applied: 'badge-green',
-  rejected: 'badge-red', archived: 'badge-gray', sent: 'badge-green', failed: 'badge-red',
+  rejected: 'badge-red', archived: 'badge-gray', sent: 'badge-green', failed: 'badge-red', danger: 'badge-red',
 };
 
-export default function StatusBadge({ status }) {
+// label: the word to show when the caller knows it better than the status dictionary
+// (a contact's role, "Überfällig"); the status still picks the colour.
+export default function StatusBadge({ status, label: given }) {
   const { t } = useTranslation();
   if (!status) return null;
   const value = String(status);
   const key = value.toLowerCase();
   // Statuses are stored as English codes; show the translated word where there is one.
   const translated = t(`status.badge.${key}`);
-  const label = translated === `status.badge.${key}` ? value : translated;
+  const label = given || (translated === `status.badge.${key}` ? value : translated);
   return <span className={`badge ${COLORS[key] || 'badge-gray'}`}>{label}</span>;
 }

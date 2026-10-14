@@ -52,7 +52,7 @@ export default function Receivables() {
     { key: 'contract_label', label: t('tenantsContracts.contracts.title'), filterType: 'text' },
     { key: 'tenant_name', label: 'Mieter', filterType: 'text',
       render: (v, row) => row.tenant_id && v !== '—' ? <PartyLink tenantId={row.tenant_id}>{v}</PartyLink> : v },
-    { key: 'amount_due', label: t('finance.bookings.amount'), type: 'number', align: 'right',
+    { key: 'amount_due', label: t('finance.bookings.amount'), type: 'number', sum: true, align: 'right',
       render: v => formatMoney(v) },
     { key: 'due_date', label: t('finance.receivables.dueDate'), type: 'date', filterType: 'dateRange' },
     { key: 'status', label: 'Status', type: 'status', filterType: 'select',

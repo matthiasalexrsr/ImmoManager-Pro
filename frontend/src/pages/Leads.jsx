@@ -31,7 +31,7 @@ const COLUMNS = [
   { key: 'source', label: 'Quelle', filterType: 'select' },
   { key: 'status', label: 'Status', type: 'status', filterType: 'select',
     render: v => <StatusBadge status={v} /> },
-  { key: 'unit_label', label: 'Einheit', filterType: 'text' },
+  { key: 'unit_label', label: 'Einheit', filterType: 'text', link: 'unit' },
   { key: 'created_at', label: 'Erstellt', type: 'date',
     render: v => formatDate(v) },
 ];

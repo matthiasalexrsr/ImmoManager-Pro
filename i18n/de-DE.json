@@ -149,7 +149,9 @@
       "saveShortcut": "Strg+Enter speichert",
       "savedNext": "{{count}} gespeichert – nächster Eintrag",
       "saveAndNew": "Speichern & weiteren",
-      "saveAndNewShortcut": "Strg+Umschalt+Enter"
+      "saveAndNewShortcut": "Strg+Umschalt+Enter",
+      "today": "Heute",
+      "todayFill": "Heute eintragen"
     },
     "table": {
       "adjustColumns": "Spalten anpassen",
@@ -1300,7 +1302,8 @@
         "more": "und {{count}} weitere",
         "selectPage": "Alle Einträge dieser Seite auswählen",
         "selectRow": "Auswählen"
-      }
+      },
+      "total": "Summe ({{count}})"
     },
     "formModal": {
       "selectPlaceholder": "— Auswählen —",

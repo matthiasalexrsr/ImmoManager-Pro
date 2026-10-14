@@ -83,9 +83,9 @@ export default function CrudPage({ title, endpoint, columns, formFields, onRowCl
   return (
     <div className="page">
       {deleteError && (
-        <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
+        <div className="alert alert-error" role="alert" style={{ marginBottom: '1rem' }}>
           {deleteError}
-          <button onClick={() => setDeleteError(null)} style={{ marginLeft: '1rem', cursor: 'pointer' }}>✕</button>
+          <button type="button" onClick={() => setDeleteError(null)} aria-label="Meldung schließen" style={{ marginLeft: '1rem', cursor: 'pointer' }}>✕</button>
         </div>
       )}
       <DataTable

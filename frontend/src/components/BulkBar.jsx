@@ -6,7 +6,7 @@ import { useConfirm } from './ConfirmDialog';
 // A failure does not stop the others; the bar reports which rows failed and keeps them selected.
 // The report lives in the table: when every row succeeded the selection empties, and the result
 // must stay visible until it is dismissed or a new selection starts.
-export default function BulkBar({ rows, total, allSelected, actions, onSelectAll, onClear, onFinished, words, report, setReport }) {
+export default function BulkBar({ rows, total, allSelected, actions, onSelectAll, onClear, onFinished, words, report, setReport, sums = [] }) {
   const confirm = useConfirm();
   const [running, setRunning] = useState(null);
 
@@ -41,6 +41,7 @@ export default function BulkBar({ rows, total, allSelected, actions, onSelectAll
     <div className="bulk-bar" role="region" aria-label={words.region}>
       {rows.length > 0 && <>
       <span className="bulk-bar-count" aria-live="polite">{words.selected(rows.length)}</span>
+      {sums.map(sum => <span key={sum.label} className="bulk-bar-sum">{sum.label}: <strong>{sum.value}</strong></span>)}
       {!allSelected && total > rows.length && (
         <button type="button" className="btn btn-sm btn-ghost" onClick={onSelectAll} disabled={Boolean(running)}>{words.selectAll(total)}</button>
       )}

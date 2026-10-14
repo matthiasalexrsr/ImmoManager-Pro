@@ -99,13 +99,13 @@ export default function Units() {
 
   const columns = [
     { key: 'label', label: t('units.list.columns.label') || 'Bezeichnung', filterType: 'text' },
-    { key: 'property_name', label: 'Immobilie', filterType: 'text' },
+    { key: 'property_name', label: 'Immobilie', filterType: 'text', link: 'property' },
     { key: 'unit_type', label: t('units.list.columns.type') || 'Typ', filterType: 'select' },
     { key: 'rooms', hidden: true, label: t('units.form.rooms') || 'Zimmer', type: 'number', align: 'right' },
     { key: 'floor', hidden: true, label: t('units.form.floor') || 'Etage' },
     { key: 'area_sqm', label: t('units.list.columns.area') || 'Fläche (m²)', type: 'number', align: 'right', filterType: 'numberRange',
       render: v => formatArea(v) },
-    { key: 'cold_rent', label: t('units.list.columns.coldRent') || 'Kaltmiete (€)', type: 'number', align: 'right', filterType: 'numberRange',
+    { key: 'cold_rent', label: t('units.list.columns.coldRent') || 'Kaltmiete (€)', type: 'number', sum: true, align: 'right', filterType: 'numberRange',
       render: v => formatMoney(v) },
     { key: 'warm_rent', hidden: true, label: 'Warmmiete (€)', type: 'number', align: 'right',
       render: v => formatMoney(v) },

@@ -130,10 +130,10 @@ export default function Contracts() {
   const columns = [
     { key: 'contract_number', label: t('tenantsContracts.contracts.form.contractNumber') || 'Vertragsnr.', filterType: 'text' },
     { key: 'property_name', hidden: true, label: 'Immobilie', filterType: 'text' },
-    { key: 'unit_label', subKey: 'property_name', label: 'Einheit', filterType: 'text' },
+    { key: 'unit_label', subKey: 'property_name', label: 'Einheit', filterType: 'text', link: 'unit', subLink: 'property' },
     { key: 'tenant_name', label: 'Mieter', filterType: 'text',
       render: (v, row) => row.tenant_id ? <PartyLink tenantId={row.tenant_id}>{v === '—' ? 'Partei öffnen' : v}</PartyLink> : v },
-    { key: 'cold_rent', label: 'Kaltmiete (€)', type: 'number', align: 'right',
+    { key: 'cold_rent', label: 'Kaltmiete (€)', type: 'number', sum: true, align: 'right',
       render: v => formatMoney(v) },
     { key: 'start_date', label: t('tenantsContracts.contracts.form.startDate') || 'Beginn', type: 'date', filterType: 'dateRange' },
     { key: 'end_date', label: t('tenantsContracts.contracts.form.endDate') || 'Ende', type: 'date', filterType: 'dateRange',

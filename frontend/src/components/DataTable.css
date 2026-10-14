@@ -55,3 +55,13 @@
 @media (max-width: 640px) {
   .bulk-bar-actions { margin-left: 0; flex: 1 1 100%; }
 }
+
+/* Names that lead to their record: the same look as the tenant links (party-link) */
+.entity-link { color: var(--color-primary); font-weight: 600; text-decoration: none; overflow-wrap: anywhere; border-radius: 3px; }
+.entity-link:hover { color: var(--color-primary-hover); text-decoration: underline; text-underline-offset: 3px; }
+.entity-link:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }
+.td-sub .entity-link, .td-sub .party-link { font-weight: 500; }
+
+/* Totals of money columns over every filtered row */
+.data-table tfoot .table-totals td { border-top: 2px solid var(--color-border); font-weight: 700; background: var(--color-bg); white-space: nowrap; }
+.bulk-bar-sum { color: var(--color-text-secondary); font-size: 0.85rem; }

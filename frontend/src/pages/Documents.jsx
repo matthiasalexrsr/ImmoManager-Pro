@@ -11,6 +11,8 @@ import { useTranslation } from '../i18n';
 import { PartyLink, usePartyWorkspace } from '../features/partyWorkspace/PartyWorkspace';
 import { useCanWrite } from '../contexts/AuthContext';
 import { documentTypeLabel } from '../utils/documentType';
+import AktenwerkDialog from '../features/aktenwerk/AktenwerkDialog';
+import { aktenwerkBulkAction, documentExchangeId, useAktenwerkReady } from '../features/aktenwerk/aktenwerkApi';
 
 const BASE = (import.meta.env.VITE_API_URL || '/api/v1');
 
@@ -53,6 +55,8 @@ function DocumentsWorkspace() {
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
   const [viewerFile, setViewerFile] = useState(null);
+  const [aktenwerkOpen, setAktenwerkOpen] = useState(false);
+  const aktenwerkReady = useAktenwerkReady();
   const [uploadedUrl, setUploadedUrl] = useState('');
   const [dragActive, setDragActive] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -173,8 +177,8 @@ function DocumentsWorkspace() {
     { key: 'title', label: t('pages.documents.columns.title') || 'Titel', filterType: 'text' },
     { key: 'document_type', label: t('pages.documents.columns.type') || 'Typ', filterType: 'select', render: documentTypeLabel },
     { key: 'party_name', label: 'Mieter / Partei', filterType: 'text', render: (value, row) => <PartyLink tenantId={row.party_id}>{value}</PartyLink> },
-    { key: 'property_name', label: 'Immobilie', filterType: 'text' },
-    { key: 'unit_label', label: 'Einheit', filterType: 'text' },
+    { key: 'property_name', label: 'Immobilie', filterType: 'text', link: 'property' },
+    { key: 'unit_label', label: 'Einheit', filterType: 'text', link: 'unit' },
     { key: 'contract_label', label: 'Vertrag', filterType: 'text' },
     { key: 'document_date', label: t('pages.documents.columns.date') || 'Datum', type: 'date', filterType: 'dateRange' },
     { key: 'tags', label: t('pages.documents.columns.tags') || 'Tags', filterType: 'text' },
@@ -344,7 +348,10 @@ function DocumentsWorkspace() {
         </select>
         </div>
         {tenantId && party && <button className="btn btn-secondary" onClick={() => party.openParty(tenantId)}>Parteienkarte öffnen</button>}
+        {/* contracts, invoices, receipts for the document management system: package or hand-over */}
+        <button type="button" className="btn btn-secondary" onClick={() => setAktenwerkOpen(true)}>Aktenwerk …</button>
       </div>
+      {aktenwerkOpen && <AktenwerkDialog ready={aktenwerkReady} onClose={() => setAktenwerkOpen(false)} />}
       {tenantId && <p className="text-muted">Dokumente von {overview?.tenant.full_name || 'dieser Partei'} und ihren Mietverträgen. Neue Uploads werden dieser Partei zugeordnet.</p>}
       {searchParams.get('create') === '1' && canWrite && <p role="status">Wählen Sie unten eine oder mehrere Dateien. Bei einer Datei können Sie die Angaben vor dem Speichern prüfen.</p>}
       {error && <div role="alert" className="alert alert-error">{error} <button className="btn btn-sm btn-secondary" onClick={refreshData}>Erneut laden</button></div>}
@@ -481,6 +488,8 @@ function DocumentsWorkspace() {
         onDelete={handleDelete}
         onRowClick={row => row.file_url && setViewerFile(row)}
         rowActions={row => row.file_url ? [{ label: 'Dokument ansehen', icon: <span aria-hidden="true">↗</span>, onClick: () => setViewerFile(row) }] : []}
+        rowName={row => row.title || row.id}
+        bulkActions={aktenwerkReady ? [aktenwerkBulkAction(row => (row.file_url ? documentExchangeId(row.id) : null))] : []}
       />}
       {tenantId && documentPage && !loading && !error && <nav aria-label="Dokumentseiten" className="toolbar" style={{ flexWrap: 'wrap', justifyContent: 'space-between' }}>
         <button className="btn btn-secondary" disabled={skip === 0} onClick={() => setSkip(value => Math.max(0, value - 25))}>Vorherige Dokumente</button>

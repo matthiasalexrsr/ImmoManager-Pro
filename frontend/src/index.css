@@ -3360,3 +3360,20 @@ table.data-table tbody tr:last-child td {
   font-size: 0.85rem;
   font-weight: 600;
 }
+
+/* An active filter that came from a link (e.g. "Konto: Mietkonto Berlin"), removable */
+.filter-chip-active {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px 2px 10px;
+  border-radius: 999px;
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.date-input-row { display: flex; gap: 6px; align-items: center; }
+.date-input-row input { flex: 1 1 auto; min-width: 0; }
+.date-input-row .date-today { flex: 0 0 auto; }

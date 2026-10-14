@@ -259,7 +259,9 @@ def bulk_delete(entity_type: str, payload: dict):
         raise HTTPException(400, f"Unbekannter Entitätstyp: {entity_type}")
 
     guarded = {"portfolios": "portfolio", "properties": "property", "units": "unit",
-               "tenants": "tenant", "contracts": "contract", "accounts": "account", "invoices": "invoice"}
+               "tenants": "tenant", "contracts": "contract", "accounts": "account", "invoices": "invoice",
+               # reversals and deposit payments refuse here as on DELETE /bookings/{id}
+               "bookings": "booking"}
 
     deleted = 0
     errors = []
@@ -269,6 +271,10 @@ def bulk_delete(entity_type: str, payload: dict):
                 ensure_deletable(store, guarded[entity_type], eid)
             if entity_type == "documents":
                 ensure_no_originals(store, "document", eid)
+            if entity_type == "bookings":
+                from ..services.maintenance_projects import ensure_booking_unallocated
+
+                ensure_booking_unallocated(store, eid)   # it pays an invoice
             if entity_type == "invoices":
                 from ..services.invoice_review import ensure_invoice_deletable
 

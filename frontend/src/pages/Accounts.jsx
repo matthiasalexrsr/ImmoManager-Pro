@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { useState, useEffect, useMemo } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
@@ -49,12 +50,14 @@ export default function Accounts() {
   const totalBalance = enriched.reduce((s, a) => s + Number(a.balance || 0), 0);
 
   const columns = [
-    { key: 'name', label: t('finance.accounts.form.name') || 'Kontoname', filterType: 'text' },
+    // the name opens the account's bookings
+    { key: 'name', label: t('finance.accounts.form.name') || 'Kontoname', filterType: 'text',
+      render: (v, row) => <Link to={`/bookings?konto=${encodeURIComponent(row.id)}`} className="entity-link" onClick={e => e.stopPropagation()}>{v}</Link> },
     { key: 'portfolio_name', label: 'Portfolio', filterType: 'text' },
     { key: 'bank_name', label: t('finance.accounts.form.bank') || 'Bank', filterType: 'text' },
     { key: 'iban', label: 'IBAN' },
     { key: 'account_type', label: t('finance.accounts.form.type') || 'Typ', filterType: 'select' },
-    { key: 'balance', label: t('finance.accounts.form.balance') || 'Saldo (€)', type: 'number', align: 'right', filterType: 'numberRange',
+    { key: 'balance', label: t('finance.accounts.form.balance') || 'Saldo (€)', type: 'number', sum: true, align: 'right', filterType: 'numberRange',
       render: v => {
         const n = Number(v);
         if (v == null || isNaN(n)) return '—';

@@ -57,7 +57,7 @@ export default function HandoverProtocols({ service = handoverProtocolService })
   const columns = [
     { key: 'protocol_date', label: say('date'), type: 'date' },
     { key: 'type_label', label: say('kind') },
-    { key: 'unit_label', label: say('unit') },
+    { key: 'unit_label', label: say('unit'), link: 'unit' },
     { key: 'contract_label', label: say('contract') },
     { key: 'state_label', label: say('status') },
   ];
