@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
@@ -7,7 +7,8 @@ import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import FileViewer from '../components/FileViewer';
-import { ArrowRightIcon, EditIcon, PlusIcon } from '../components/Icons';
+import { ArrowRightIcon, EditIcon } from '../components/Icons';
+import NewForMenu from '../components/NewForMenu';
 import { formatArea, formatDate, formatMoney, plainLabel } from '../utils/format';
 import { codeLabel } from '../utils/codeLabels';
 import { newEntryLink } from '../utils/newEntry';
@@ -21,33 +22,6 @@ const NEW_FOR_PROPERTY = [
   ['/units', 'Einheit'], ['/contracts', 'Mietvertrag'], ['/maintenance', 'Wartungsfall'],
   ['/bookings', 'Buchung'], ['/invoices', 'Rechnung'], ['/tasks', 'Aufgabe'],
 ];
-
-/** "Neu für dieses Objekt …": a small menu of New forms that start with this property. */
-function NewForProperty({ propertyId }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-  useEffect(() => {
-    if (!open) return undefined;
-    const close = event => {
-      if (event.type === 'keydown' ? event.key === 'Escape' : !ref.current?.contains(event.target)) setOpen(false);
-    };
-    document.addEventListener('keydown', close);
-    document.addEventListener('mousedown', close);
-    return () => { document.removeEventListener('keydown', close); document.removeEventListener('mousedown', close); };
-  }, [open]);
-  return (
-    <div className="dossier-new" ref={ref}>
-      <button type="button" className="btn btn-primary btn-sm" aria-expanded={open} aria-haspopup="true"
-        onClick={() => setOpen(value => !value)}><PlusIcon size={15} /> Neu für dieses Objekt</button>
-      {open && <ul className="dossier-new-menu">
-        {NEW_FOR_PROPERTY.map(([path, label]) => {
-          const link = newEntryLink(path, { property_id: propertyId });
-          return <li key={path}><Link to={link.to} state={link.state}>{label}</Link></li>;
-        })}
-      </ul>}
-    </div>
-  );
-}
 
 function fmt(v) {
   return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(v || 0);
@@ -209,7 +183,7 @@ function PropertyDossier({ id }) {
         <StatusBadge status={property.status} />
         {canEdit && <div className="dossier-actions">
           <button type="button" className="btn btn-secondary btn-sm" onClick={openEdit}><EditIcon size={15} /> Bearbeiten</button>
-          <NewForProperty propertyId={id} />
+          <NewForMenu label="Neu für dieses Objekt" items={NEW_FOR_PROPERTY} prefill={{ property_id: id }} />
         </div>}
       </div>
 

@@ -20,6 +20,7 @@ Found by using a fresh production installation from the first account to the fir
 - **Empty lists lead on**: "Neuen Eintrag anlegen" when a list is empty, "Suche und Filter zurücksetzen" when the search finds nothing. Properties and tenants open their New form for Alt+N and links (`?neu=1`) like the other lists.
 - Defaults: property type residential, unit type apartment, the next free contract number in the pattern in use. A property without units shows "—" instead of a red 0 %.
 - **The property page is where a property is worked on**: "Bearbeiten" edits it in place, "Neu für dieses Objekt" opens the New form of a unit, contract, maintenance case, booking, invoice or task already filled with the property, and the new tab "Mieter & Verträge" lists who lives there with links to the party file and the unit. The units, contracts and maintenance tabs add entries for the property, rows open their record, and the finance tab leads to the property's bookings, invoices and the rent overview.
+- **The unit page** offers "Mietvertrag anlegen" for a vacant unit and "Neu für diese Einheit" (contract, maintenance case, booking, task), prefilled with the unit and its property; past contracts link to their party file.
 - New forms opened from a link (`?neu=1`) can start with values (passed in the navigation state, not the address), so a reload never repeats them.
 
 ## Unreleased — 2026-10-14 links, totals and Aktenwerk

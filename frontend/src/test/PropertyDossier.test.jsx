@@ -254,3 +254,21 @@ describe('property page as the place to act on a property', () => {
     expect(screen.queryByRole('button', { name: 'Neu für dieses Objekt' })).not.toBeInTheDocument();
   });
 });
+
+describe('unit page as the place to act on a unit', () => {
+  it('offers a contract for a vacant unit and New forms that start with the unit', async () => {
+    show('/units/u1');
+    expect(await screen.findByText('Nicht vermietet')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Mietvertrag anlegen' })).toHaveAttribute('href', '/contracts?neu=1');
+    fireEvent.click(screen.getByRole('button', { name: 'Neu für diese Einheit' }));
+    expect(screen.getByRole('link', { name: 'Wartungsfall' })).toHaveAttribute('href', '/maintenance?neu=1');
+  });
+
+  it('offers nothing to roles that may not change units or contracts', async () => {
+    access.canWrite = false;
+    show('/units/u1');
+    expect(await screen.findByText('Nicht vermietet')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Mietvertrag anlegen' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Neu für diese Einheit' })).not.toBeInTheDocument();
+  });
+});
