@@ -17,6 +17,7 @@ import OccupancyDialog from '../features/contracts/OccupancyDialog';
 import DepositsDialog from '../features/deposits/DepositsDialog';
 import { depositText } from '../features/deposits/depositText';
 import { formatDate, formatMoney } from '../utils/format';
+import { nextNumber } from '../utils/nextNumber';
 
 const RENT_MODEL_LABELS = { index: 'Indexmiete', stepped: 'Staffelmiete', fixed: 'Festmiete' };
 
@@ -160,7 +161,9 @@ export default function Contracts() {
   ];
 
   const fields = [
-    { key: 'contract_number', label: t('tenantsContracts.contracts.form.contractNumber') || 'Vertragsnr.', required: true, placeholder: 'z.B. MV-2024-001' },
+    // the next free number in the pattern already in use; it can be overwritten
+    { key: 'contract_number', label: t('tenantsContracts.contracts.form.contractNumber') || 'Vertragsnr.', required: true, placeholder: 'z.B. MV-2024-001',
+      default: nextNumber(contracts.map(c => c.contract_number), 'MV-1') },
     { key: 'property_id', label: t('portfolio.properties.form.name') || 'Immobilie', required: true, type: 'select',
       options: properties.map(p => ({ value: p.id, label: p.name })) },
     { key: 'unit_id', label: t('units.list.columns.label') || 'Einheit', required: true, type: 'select',

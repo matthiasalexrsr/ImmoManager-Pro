@@ -45,10 +45,29 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('actual contract payments', () => {
-  it('requires an account, preserves date/note, links actual booking and never patches payment status', async () => {
+  it('leaves the account to choose when the portfolio has several, and links to creating one when it has none', async () => {
+    api.list.mockImplementation(path => Promise.resolve(path === '/accounts'
+      ? [{ id: 'a1', portfolio_id: 'north', name: 'Mietkonto' }, { id: 'a3', portfolio_id: 'north', name: 'Rücklagenkonto' }]
+      : [{ id: 'p1', name: 'Haus A' }]));
     mount();
     const dialog = await open();
     expect(within(dialog).getByLabelText('Zahlungskonto')).toHaveValue('');
+    expect(within(dialog).getByLabelText('Zahlungskonto')).toBeRequired();
+    cleanup();
+
+    api.list.mockImplementation(path => Promise.resolve(path === '/accounts'
+      ? [{ id: 'a2', portfolio_id: 'south', name: 'Fremdes Konto' }] : [{ id: 'p1', name: 'Haus A' }]));
+    mount();
+    const without = await open();
+    expect(within(without).getByRole('link', { name: 'Konto anlegen' })).toHaveAttribute('href', '/accounts?neu=1');
+    expect(within(without).getByRole('button', { name: /als Eingang buchen/ })).toBeDisabled();
+  });
+
+  it('requires an account, preserves date/note, links actual booking and never patches payment status', async () => {
+    mount();
+    const dialog = await open();
+    // the portfolio's only account is chosen already; another portfolio's account is not offered
+    expect(within(dialog).getByLabelText('Zahlungskonto')).toHaveValue('a1');
     expect(within(dialog).queryByRole('option', { name: 'Fremdes Konto' })).not.toBeInTheDocument();
     fill(dialog);
     fireEvent.click(within(dialog).getByRole('button', { name: /als Eingang buchen/ }));

@@ -1303,7 +1303,11 @@
         "selectPage": "Alle Einträge dieser Seite auswählen",
         "selectRow": "Auswählen"
       },
-      "total": "Summe ({{count}})"
+      "total": "Summe ({{count}})",
+      "empty": "Keine Einträge vorhanden.",
+      "noMatches": "Keine Treffer für diese Suche oder diese Filter.",
+      "resetSearch": "Suche und Filter zurücksetzen",
+      "addEntry": "Neuen Eintrag anlegen"
     },
     "formModal": {
       "selectPlaceholder": "— Auswählen —",

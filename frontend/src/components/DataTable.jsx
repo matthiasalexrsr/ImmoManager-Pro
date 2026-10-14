@@ -81,7 +81,7 @@ function cellClass(col) {
 
 export default function DataTable({ columns, data, onEdit: editHandler, onDelete: deleteHandler, title,
   onAdd: addHandler, onRowClick, rowActions: rowActionsFor, writeArea, serverPaged = false, loadExportData, hideTitle = false,
-  settingsKey, bulkActions: bulkActionsFor, rowName }) {
+  settingsKey, bulkActions: bulkActionsFor, rowName, addLabel, hideAddButton = false, emptyText }) {
   const { t } = useTranslation();
   const tr = (key, fallback) => { const text = t(key); return !text || text === key ? fallback : text; };
   const titleId = useId();
@@ -411,9 +411,9 @@ export default function DataTable({ columns, data, onEdit: editHandler, onDelete
             </div>
             <button onClick={exportCsv} disabled={exporting} aria-busy={exporting}
                     className="btn btn-sm btn-secondary">{exporting ? 'CSV …' : 'CSV'}</button>
-            {onAdd && (
+            {onAdd && !hideAddButton && (
               <button onClick={onAdd} className="btn btn-primary" data-table-add="">
-                <PlusIcon size={16} /> {t('ui.buttons.new')}
+                <PlusIcon size={16} /> {addLabel || t('ui.buttons.new')}
               </button>
             )}
           </div>
@@ -541,7 +541,27 @@ export default function DataTable({ columns, data, onEdit: editHandler, onDelete
           </thead>
           <tbody>
             {pageData.length === 0 ? (
-              <tr><td colSpan={colSpan} className="table-empty">{t('ui.table.noResults')}</td></tr>
+              <tr><td colSpan={colSpan} className="table-empty">
+                {serverPaged ? t('ui.table.noResults')
+                  : data.length === 0 ? (
+                    // nothing here (yet): offer the entry right here
+                    <div className="table-empty-state">
+                      <span>{emptyText || tr('comp.dataTable.empty', 'Keine Einträge vorhanden.')}</span>
+                      {onAdd && <button type="button" className="btn btn-primary btn-sm" onClick={onAdd}>
+                        <PlusIcon size={14} /> {tr('comp.dataTable.addEntry', 'Neuen Eintrag anlegen')}
+                      </button>}
+                    </div>
+                  ) : (
+                    // the search or a filter hides every row: one click shows them again
+                    <div className="table-empty-state">
+                      <span>{tr('comp.dataTable.noMatches', 'Keine Treffer für diese Suche oder diese Filter.')}</span>
+                      <button type="button" className="btn btn-secondary btn-sm"
+                        onClick={() => { setSearch(''); setColumnFilters({}); setPage(0); }}>
+                        {tr('comp.dataTable.resetSearch', 'Suche und Filter zurücksetzen')}
+                      </button>
+                    </div>
+                  )}
+              </td></tr>
             ) : (
               pageData.map(row => (
                 <tr key={row.id} onClick={() => onRowClick?.(row)} aria-selected={selectable ? selectedIds.has(row.id) : undefined}

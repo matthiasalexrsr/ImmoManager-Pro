@@ -2063,7 +2063,11 @@
         "selectPage": "Seleccionar todas las entradas de esta página",
         "selectRow": "Seleccionar"
       },
-      "total": "Total ({{count}})"
+      "total": "Total ({{count}})",
+      "empty": "Todavía no hay entradas.",
+      "noMatches": "Ningún resultado para esta búsqueda o estos filtros.",
+      "resetSearch": "Restablecer búsqueda y filtros",
+      "addEntry": "Añadir una entrada"
     },
     "fileViewer": {
       "title": "Vista de archivo",

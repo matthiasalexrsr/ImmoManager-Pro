@@ -3377,3 +3377,7 @@ table.data-table tbody tr:last-child td {
 .date-input-row { display: flex; gap: 6px; align-items: center; }
 .date-input-row input { flex: 1 1 auto; min-width: 0; }
 .date-input-row .date-today { flex: 0 0 auto; }
+
+/* A required choice with nothing to choose yet names what is missing and links to it. */
+.form-hint.form-hint-missing { color: var(--color-warning); }
+.form-hint.form-hint-missing a { font-weight: 600; }

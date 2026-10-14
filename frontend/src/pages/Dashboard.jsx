@@ -4,6 +4,7 @@ import { api } from '../api';
 import { useTranslation } from '../i18n';
 import StatusBadge from '../components/StatusBadge';
 import DashboardWorkflow from '../components/DashboardWorkflow';
+import SetupChecklist from '../components/SetupChecklist';
 import { ArrowRightIcon } from '../components/Icons';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -261,6 +262,7 @@ export default function Dashboard() {
       <button type="button" aria-pressed={dashView === 'work'} onClick={() => setDashView('work')}>Arbeit</button>
       <button type="button" aria-pressed={dashView === 'analysis'} onClick={() => setDashView('analysis')}>Analyse</button>
     </div>
+    <SetupChecklist stats={stats} ready={inventory.status === 'success'} />
     <Inventory source={inventory} stats={stats} />
     {dashView === 'work' && <>
       <div className="dashboard-start-grid"><DashboardWorkflow {...workflowProps} section="attention" /><FinanceOverview cashflow={cashflowSource} aging={agingSource} stats={stats} known={inventory.status === 'success'} /></div>

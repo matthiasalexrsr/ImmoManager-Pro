@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { Link, useInRouterContext } from 'react-router-dom';
 import { useTranslation } from '../i18n';
 import { CloseIcon } from './Icons';
 import { codeLabel } from '../utils/codeLabels';
+import { onlyChoices, prerequisiteFor } from '../utils/prerequisites';
 
 const isBooleanSelect = f => f.type === 'select' && f.options?.length === 2
   && f.options.every(o => o.value === 'true' || o.value === 'false');
@@ -61,6 +63,13 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
       return next;
     });
   }, [initialKey, initial, fields]);
+
+  // A required choice with one possibility is made already (the only portfolio, property or
+  // account); it does not count as an edit, so closing still needs no confirmation.
+  useEffect(() => {
+    const picks = onlyChoices(fields, values);
+    if (Object.keys(picks).length) setValues(current => ({ ...current, ...picks }));
+  }, [fields, values]);
 
   // after "Speichern & weiteren": continue in the first required field that starts over
   // (the amount of the next booking), else in the first field that starts over
@@ -265,6 +274,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
                       />
                     )}
                     {f.hint && <small className="form-hint">{f.hint}</small>}
+                    <MissingChoice hint={prerequisiteFor(f, options)} />
                   </div>
                 );
               };
@@ -316,5 +326,17 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
         </form>
       </div>
     </div>
+  );
+}
+
+// Nothing to choose from yet: say what is missing and link to where it is created.
+function MissingChoice({ hint }) {
+  const inRouter = useInRouterContext();
+  if (!hint) return null;
+  return (
+    <small className="form-hint form-hint-missing" role="note">
+      {hint.text}{' '}
+      {inRouter ? <Link to={hint.to}>{hint.label}</Link> : <a href={hint.to}>{hint.label}</a>}
+    </small>
   );
 }

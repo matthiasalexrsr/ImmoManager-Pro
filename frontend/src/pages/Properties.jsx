@@ -128,7 +128,8 @@ export default function Properties() {
     { key: 'postal_code', hidden: true, label: t('portfolio.properties.form.postalCode') || 'PLZ', filterType: 'text' },
     { key: 'unit_count', label: 'Einheiten', type: 'number', align: 'right' },
     { key: 'occupancy_rate', label: 'Vermietung', type: 'number', align: 'right',
-      render: v => {
+      render: (v, row) => {
+        if (!row.unit_count) return <span className="text-muted" title="Noch keine Einheiten">—</span>;
         const color = v >= 80 ? 'var(--color-success)' : v >= 50 ? 'var(--color-warning)' : 'var(--color-danger)';
         return <span className="list-occupancy"><span style={{ color, fontWeight: 600 }}>{v}%</span><span className="list-occupancy-track" aria-hidden="true"><span style={{ width: `${v}%`, background: color }} /></span></span>;
       }},
@@ -152,7 +153,7 @@ export default function Properties() {
     { section: sStamm, key: 'portfolio_id', label: 'Portfolio', required: true, type: 'select',
       options: portfolios.map(p => ({ value: p.id, label: p.name })) },
     { section: sStamm, key: 'name', label: t('portfolio.properties.form.name') || 'Name', required: true },
-    { section: sStamm, key: 'property_type', label: t('portfolio.properties.form.type') || 'Typ', required: true, type: 'select', options: [
+    { section: sStamm, key: 'property_type', label: t('portfolio.properties.form.type') || 'Typ', required: true, type: 'select', default: 'residential', options: [
       { value: 'residential', label: t('portfolio.properties.types.residential') || 'Wohngebäude' },
       { value: 'commercial', label: t('portfolio.properties.types.commercial') || 'Gewerbe' },
       { value: 'mixed', label: t('portfolio.properties.types.mixed') || 'Gemischt' },
@@ -252,6 +253,9 @@ export default function Properties() {
         title={t('portfolio.properties.title') || 'Immobilien'}
         columns={columns}
         data={filtered}
+        onAdd={() => setModal('create')}
+        addLabel="Immobilie anlegen"
+        hideAddButton
         onEdit={row => setModal(row)}
         onDelete={handleDelete}
         onRowClick={row => navigate(`/properties/${row.id}`)}

@@ -8,8 +8,10 @@ export default function RentPaymentDialog({ row, accounts, pending, onSubmit, on
   const busyRef = useRef(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  // the portfolio's only account is the one the money went to
   const [values, setValues] = useState(() => pending?.request || {
-    account_id: '', amount: row.outstanding > 0 ? String(row.outstanding) : '', booking_date: today, payment_text: '',
+    account_id: (() => { const own = accounts.filter(account => account.portfolio_id === row.portfolio_id); return own.length === 1 ? own[0].id : ''; })(),
+    amount: row.outstanding > 0 ? String(row.outstanding) : '', booking_date: today, payment_text: '',
   });
   useModalDialog(ref, () => { if (!busyRef.current) onClose(); });
   const submit = async event => {
@@ -55,7 +57,8 @@ export default function RentPaymentDialog({ row, accounts, pending, onSubmit, on
             <div className="form-group"><label htmlFor="rent-payment-note">Buchungstext / Bemerkung</label>
               <textarea id="rent-payment-note" maxLength={2000} value={values.payment_text} onChange={e => update('payment_text', e.target.value)} /></div>
           </fieldset>
-          {!pending && accountOptions.length === 0 && <p role="alert">Für dieses Portfolio ist noch kein Zahlungskonto verfügbar.</p>}
+          {!pending && accountOptions.length === 0 && <p role="alert">Für dieses Portfolio ist noch kein Zahlungskonto verfügbar.{' '}
+            <Link to="/accounts?neu=1">Konto anlegen</Link></p>}
         </div>
         <div className="modal-footer">
           <button type="button" className="btn btn-secondary" disabled={busy} onClick={onClose}>{pending ? 'Später prüfen' : 'Abbrechen'}</button>

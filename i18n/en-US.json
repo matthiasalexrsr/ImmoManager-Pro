@@ -1303,7 +1303,11 @@
         "selectPage": "Select all entries on this page",
         "selectRow": "Select"
       },
-      "total": "Total ({{count}})"
+      "total": "Total ({{count}})",
+      "empty": "No entries yet.",
+      "noMatches": "Nothing matches this search or these filters.",
+      "resetSearch": "Reset search and filters",
+      "addEntry": "Add an entry"
     },
     "formModal": {
       "selectPlaceholder": "— Select —",

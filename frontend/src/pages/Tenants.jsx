@@ -267,6 +267,9 @@ export default function Tenants() {
         title={`Mieter (${filtered.length})`}
         columns={columns}
         data={filtered}
+        onAdd={() => setModal('create')}
+        addLabel="Partei anlegen"
+        hideAddButton
         onEdit={row => setModal(row)}
         onDelete={handleDelete}
         rowActions={row => [

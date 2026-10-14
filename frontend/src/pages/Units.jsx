@@ -120,7 +120,7 @@ export default function Units() {
     { key: 'property_id', label: t('portfolio.properties.form.name') || 'Immobilie', required: true, type: 'select',
       options: properties.map(p => ({ value: p.id, label: p.name })) },
     { key: 'label', label: t('units.list.columns.label') || 'Bezeichnung', required: true, placeholder: 'z.B. Wohnung 1 OG links' },
-    { key: 'unit_type', label: t('units.list.columns.type') || 'Typ', required: true, type: 'select', options: [
+    { key: 'unit_type', label: t('units.list.columns.type') || 'Typ', required: true, type: 'select', default: 'Wohnung', options: [
       { value: 'Wohnung', label: t('units.types.apartment') || 'Wohnung' },
       { value: 'Gewerbe', label: t('units.types.commercial') || 'Gewerbe' },
       { value: 'Stellplatz', label: t('units.types.parking') || 'Stellplatz' },
