@@ -2,6 +2,9 @@
 
 Full-stack property management application for German real estate portfolios.
 
+- What the current version does, and how to install and update it: [docs/RELEASE_NOTES.md](docs/RELEASE_NOTES.md) (German)
+- How it is built and how to extend it: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md); all documents: [docs/README.md](docs/README.md)
+
 ## Tech Stack
 
 | Layer | Technology |
