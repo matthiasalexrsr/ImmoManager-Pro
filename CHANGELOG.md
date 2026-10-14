@@ -2,6 +2,14 @@
 
 All notable changes to ImmoManager Pro will be documented in this file.
 
+## 2.0.0 — release candidate (2026-10-14)
+
+The version is now 2.0.0 (`pyproject.toml`; it was still 1.0.0 although 1.2.0 had been released). Everything under "Unreleased" below is part of it; the German release notes for users are in [docs/RELEASE_NOTES.md](docs/RELEASE_NOTES.md).
+
+- **Release workflow** "Release (Windows)": a tag `v<version>` matching `pyproject.toml` builds the Windows package with a German "LIES MICH.txt" (install, data folder, backup, update, restoring the pre-upgrade backup). It tries a first start, the upgrade check, a full backup, a restore probe and the update from the previous release's package on the same data. Then it publishes the GitHub release; a version with a suffix becomes a pre-release.
+- **Update check for every installation:** it reads this repository's releases by default (`UPDATE_REPO_URL`), and only when "Jetzt prüfen" is clicked. The Windows package was refused the check altogether; it now learns about a newer version, gets the download link and is told what happens to its data. Only git checkouts install updates themselves (`can_apply`).
+- The Aktenwerk manifest preview no longer carries a fresh timestamp, so the same data gives the same answer (it made the portfolio-scope comparison of all read endpoints fail at random).
+
 ## Unreleased — 2026-10-14 first day and running tenancies
 
 Found by using a fresh production installation from the first account to the first rent payment.

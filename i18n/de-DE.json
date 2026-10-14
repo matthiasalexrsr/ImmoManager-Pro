@@ -1023,7 +1023,8 @@
       "rolledBack": "Automatischer Rollback wurde durchgeführt. Ihre Daten sind unverändert.",
       "history": "Update-Verlauf",
       "showHistory": "Anzeigen",
-      "noHistory": "Noch keine Updates durchgeführt"
+      "noHistory": "Noch keine Updates durchgeführt",
+      "download": "Neue Version herunterladen"
     }
   },
   "search": {

@@ -1023,7 +1023,8 @@
       "rolledBack": "Automatic rollback was performed. Your data is unchanged.",
       "history": "Update History",
       "showHistory": "Show",
-      "noHistory": "No updates performed yet"
+      "noHistory": "No updates performed yet",
+      "download": "Download the new version"
     }
   },
   "search": {

@@ -181,8 +181,8 @@ class Settings(BaseSettings):
     max_upload_size_bytes: int = 50 * 1024 * 1024  # 50 MB
 
     # --- Updates ---
-    # GitHub repository URL for checking updates (e.g. "https://github.com/owner/repo")
-    update_repo_url: str = ""
+    # GitHub repository whose releases the update check reads (only when someone clicks "Jetzt prüfen")
+    update_repo_url: str = "https://github.com/matthiasalexrsr/ImmoManager-Pro"
     # "stable" = only released versions; "preview" = include pre-releases
     update_channel: str = "stable"
     # Optional GitHub personal access token for private repos / higher rate limits

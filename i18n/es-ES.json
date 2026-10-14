@@ -1023,7 +1023,8 @@
       "rolledBack": "Se realizó una reversión automática. Sus datos no han cambiado.",
       "history": "Historial de actualizaciones",
       "showHistory": "Mostrar",
-      "noHistory": "Aún no se han realizado actualizaciones"
+      "noHistory": "Aún no se han realizado actualizaciones",
+      "download": "Descargar la nueva versión"
     }
   },
   "search": {
