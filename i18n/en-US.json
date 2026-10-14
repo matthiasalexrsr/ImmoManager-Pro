@@ -130,7 +130,11 @@
       "search": "Search",
       "none": "— None —",
       "status": "Status",
-      "cancel": "Cancel"
+      "cancel": "Cancel",
+      "discardQuestion": "Discard unsaved changes?",
+      "keepEditing": "Keep editing",
+      "discard": "Discard",
+      "saveShortcut": "Ctrl+Enter saves"
     },
     "table": {
       "adjustColumns": "Adjust Columns",
@@ -1012,7 +1016,10 @@
       "results": "Results",
       "noResults": "No results found.",
       "shownOf": "{{shown}} of {{total}}",
-      "loadMore": "Load more"
+      "loadMore": "Load more",
+      "pages": "Pages",
+      "recentlyOpened": "Recently opened",
+      "clearRecent": "Clear history"
     }
   },
   "notifications": {

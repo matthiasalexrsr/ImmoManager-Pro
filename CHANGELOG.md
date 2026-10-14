@@ -2,6 +2,14 @@
 
 All notable changes to ImmoManager Pro will be documented in this file.
 
+## Unreleased — 2026-10-14 everyday workflow
+
+- **Forms keep what was typed.** Escape, the close button, Cancel or a backdrop click on an edited form ask "Ungespeicherte Änderungen verwerfen?" first (a second Escape returns to editing); untouched forms close at once. A click only closes on the backdrop when it also started there, so selecting text and releasing the mouse outside no longer ends the form. Forms open in their first field instead of the close button, and Ctrl/Cmd+Enter saves from any field, multi-line notes included.
+- **Tables remember their settings** per list in this browser: sorting, rows per page and hidden columns survive reloads and navigation (unusable stored values are ignored; without browser storage the table works as before). The table search also finds what the table shows: status labels ("Bezahlt") and dates as written ("14.10.2026").
+- **Table CSV opens in German spreadsheets in columns**: semicolon separated with CRLF lines like the server exports, decimal comma for amounts and numbers, and cells starting like a formula written as text.
+- **Global search (Ctrl+K) finds pages**: typing "mahn" or "uebergabe" offers Mahnwesen or Übergabeprotokolle (umlauts optional) above the records, Enter opens the first entry, and records of an earlier query are not opened while the new one loads. Records opened from the search are listed under "Zuletzt geöffnet" for an empty query (per user, in this browser only, with "Verlauf leeren").
+- The browser tab names the current page ("Mahnwesen · ImmoManager Pro"). Sign-in fields are labelled for screen readers and password managers.
+
 ## Unreleased — 2026-10-13 review
 
 - Close the duplicate-header portfolio bypass and enforce access checks through implicit flushes and Core writes. Serialize encryption-key changes across workers and remove database passwords from backup-tool command lines.

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from '../i18n';
 import { CloseIcon } from './Icons';
 import { codeLabel } from '../utils/codeLabels';
@@ -17,13 +17,19 @@ const ordered = list => [...list.filter(f => !spansRow(f)), ...list.filter(spans
 
 export default function FormModal({ title, fields, initial, onSave, onClose }) {
   const { t } = useTranslation();
+  const tr = (key, fallback) => { const text = t(key); return !text || text === key ? fallback : text; };
   // Inline prefill objects are recreated by several callers; that is not a new form.
   const initialKey = initial?.id != null ? `record:${initial.id}` : `prefill:${JSON.stringify(initial ?? null)}`;
   const [values, setValues] = useState(() => Object.fromEntries(fields.map(f =>
     [f.key, toFieldValue(f, initial?.[f.key] ?? f.default ?? '')])));
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
+  // Typed input is never thrown away silently: closing an edited form asks first.
+  const [dirty, setDirty] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
   const modalRef = useRef(null);
+  const formRef = useRef(null);
+  const pressStartedOnOverlay = useRef(false);
   const sessionRef = useRef({ key: initialKey, id: initial?.id, updatedAt: initial?.updated_at });
 
   useEffect(() => {
@@ -31,6 +37,8 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
     if (changedRecord) {
       sessionRef.current = { key: initialKey, id: initial?.id, updatedAt: initial?.updated_at };
       setError(null);
+      setDirty(false);
+      setConfirmDiscard(false);
     }
     setValues(current => {
       const addedFields = fields.filter(f => !Object.prototype.hasOwnProperty.call(current, f.key));
@@ -43,30 +51,52 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
     });
   }, [initialKey, initial, fields]);
 
-  // Escape key to close
+  const update = (key, value, extra) => {
+    setDirty(true);
+    setConfirmDiscard(false);
+    setValues(current => ({ ...current, [key]: value, ...extra }));
+  };
+
+  const requestClose = useCallback(() => {
+    if (saving) return;
+    if (dirty && !confirmDiscard) setConfirmDiscard(true);
+    else onClose();
+  }, [saving, dirty, confirmDiscard, onClose]);
+
+  // Escape closes (or asks first); a second Escape on the question returns to editing.
+  // Ctrl/Cmd+Enter saves from any field, including multi-line notes.
   useEffect(() => {
     const handler = (e) => {
       if (e.key === 'Escape') {
-        onClose();
+        if (confirmDiscard) setConfirmDiscard(false);
+        else requestClose();
+      } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && modalRef.current?.contains(document.activeElement)) {
+        e.preventDefault();
+        formRef.current?.requestSubmit();
       }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [onClose]);
+  }, [requestClose, confirmDiscard]);
 
   // Focus trap
   useEffect(() => {
     const modal = modalRef.current;
     if (!modal) return;
-    const focusable = modal.querySelectorAll(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    const query = () => modal.querySelectorAll(
+      'button, [href], input:not([type="hidden"]), select, textarea, [tabindex]:not([tabindex="-1"])'
     );
-    if (focusable.length > 0 && !modal.contains(document.activeElement)) focusable[0].focus();
+    const focusable = query();
+    // Start in the first field to fill in, not on the close button in the header.
+    const firstField = modal.querySelector('.modal-body :is(input:not([type="hidden"]), select, textarea):not(:disabled)');
+    if (focusable.length > 0 && !modal.contains(document.activeElement)) (firstField || focusable[0]).focus();
 
     const trapFocus = (e) => {
-      if (e.key !== 'Tab' || focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
+      // the footer swaps its buttons for the discard question, so look the controls up each time
+      const current = query();
+      if (e.key !== 'Tab' || current.length === 0) return;
+      const first = current[0];
+      const last = current[current.length - 1];
       if (e.shiftKey && document.activeElement === first) {
         e.preventDefault();
         last.focus();
@@ -103,6 +133,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
       // the state the record was opened in: the server refuses to save over someone else's newer change
       if (sessionRef.current.id && sessionRef.current.updatedAt) cleaned.updated_at = sessionRef.current.updatedAt;
       await onSave(cleaned);
+      setDirty(false);
       onClose();
     } catch (err) {
       setError(err.message);
@@ -115,22 +146,25 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
   const arrange = wide ? ordered : list => list;
 
   return (
-    <div className="modal-overlay" onClick={onClose} role="presentation">
+    // Only a click that starts and ends on the backdrop closes: selecting text in a field
+    // and releasing the mouse outside the dialog must not end the form.
+    <div className="modal-overlay" role="presentation"
+      onMouseDown={e => { pressStartedOnOverlay.current = e.target === e.currentTarget; }}
+      onClick={e => { if (pressStartedOnOverlay.current && e.target === e.currentTarget) requestClose(); pressStartedOnOverlay.current = false; }}>
       <div
         className={`modal${wide ? ' modal-wide' : ''}`}
         ref={modalRef}
-        onClick={e => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-label={title}
       >
         <div className="modal-header">
           <h3>{title}</h3>
-          <button onClick={onClose} className="btn-close" aria-label={t('ui.buttons.close')}>
+          <button type="button" onClick={requestClose} className="btn-close" aria-label={t('ui.buttons.close')}>
             <CloseIcon size={18} />
           </button>
         </div>
-        <form onSubmit={handleSubmit}>
+        <form ref={formRef} onSubmit={handleSubmit}>
           <div className="modal-body">
             {error && <div className="alert-error" role="alert">{error}</div>}
             {(() => {
@@ -147,8 +181,8 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
                       <select
                         id={inputId}
                         value={values[f.key] ?? ''}
-                        onChange={e => setValues(current => ({ ...current, [f.key]: e.target.value,
-                          ...Object.fromEntries((f.clearOnChange || []).map(key => [key, ''])) }))}
+                        onChange={e => update(f.key, e.target.value,
+                          Object.fromEntries((f.clearOnChange || []).map(key => [key, ''])))}
                         required={f.required}
                       >
                         <option value="">{t('ui.form.pleaseSelect')}</option>
@@ -162,7 +196,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
                       <textarea
                         id={inputId}
                         value={values[f.key] || ''}
-                        onChange={e => setValues({ ...values, [f.key]: e.target.value })}
+                        onChange={e => update(f.key, e.target.value)}
                         required={f.required}
                         rows={3}
                       />
@@ -171,7 +205,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
                         id={inputId}
                         type={f.type || 'text'}
                         value={values[f.key] ?? ''}
-                        onChange={e => setValues({ ...values, [f.key]: e.target.value })}
+                        onChange={e => update(f.key, e.target.value)}
                         required={f.required}
                         step={f.type === 'number' ? '0.01' : undefined}
                         placeholder={f.placeholder}
@@ -206,12 +240,21 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
               ));
             })()}
           </div>
-          <div className="modal-footer">
-            <button type="button" onClick={onClose} className="btn btn-secondary">{t('ui.buttons.cancel')}</button>
-            <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? `${t('ui.buttons.save')}...` : t('ui.buttons.save')}
-            </button>
-          </div>
+          {confirmDiscard ? (
+            <div className="modal-footer modal-discard" role="alertdialog" aria-modal="false" aria-labelledby="form-discard-question">
+              <span id="form-discard-question" className="modal-discard-question">{tr('ui.form.discardQuestion', 'Ungespeicherte Änderungen verwerfen?')}</span>
+              <button type="button" onClick={() => setConfirmDiscard(false)} className="btn btn-secondary" autoFocus>{tr('ui.form.keepEditing', 'Weiter bearbeiten')}</button>
+              <button type="button" onClick={onClose} className="btn btn-danger">{tr('ui.form.discard', 'Verwerfen')}</button>
+            </div>
+          ) : (
+            <div className="modal-footer">
+              <span className="modal-shortcut-hint" aria-hidden="true">{dirty ? tr('ui.form.saveShortcut', 'Strg+Enter speichert') : ''}</span>
+              <button type="button" onClick={requestClose} className="btn btn-secondary">{t('ui.buttons.cancel')}</button>
+              <button type="submit" className="btn btn-primary" disabled={saving}>
+                {saving ? `${t('ui.buttons.save')}...` : t('ui.buttons.save')}
+              </button>
+            </div>
+          )}
         </form>
       </div>
     </div>

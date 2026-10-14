@@ -716,6 +716,29 @@ table.data-table tbody tr:last-child td {
   border-radius: 0 0 var(--radius-lg) var(--radius-lg);
 }
 
+.modal-footer .modal-shortcut-hint {
+  margin-right: auto;
+  align-self: center;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.modal-footer.modal-discard {
+  flex-wrap: wrap;
+  align-items: center;
+  background: var(--color-warning-light);
+}
+
+.modal-discard-question {
+  margin-right: auto;
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .modal-footer .modal-shortcut-hint { display: none; }
+  .modal-discard-question { flex: 1 1 100%; }
+}
+
 /* =============================================================
    FORMS
    ============================================================= */
@@ -1372,6 +1395,28 @@ table.data-table tbody tr:last-child td {
 .search-bar-group-header:first-child {
   border-top: none;
   margin-top: 0;
+}
+
+.search-bar-group-header-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.search-bar-clear-recent {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--color-primary, inherit);
+  font-size: 0.72rem;
+  text-transform: none;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
+.search-bar-clear-recent:hover {
+  text-decoration: underline;
 }
 
 /* =============================================================

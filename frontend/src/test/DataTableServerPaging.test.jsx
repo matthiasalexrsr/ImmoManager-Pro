@@ -31,6 +31,7 @@ describe('DataTable server paging and complete CSV export', () => {
   let downloads;
 
   beforeEach(() => {
+    localStorage.clear();
     exportedBlob = undefined;
     downloads = [];
     const NativeURL = globalThis.URL;
@@ -100,9 +101,9 @@ describe('DataTable server paging and complete CSV export', () => {
     fireEvent.click(screen.getByRole('button', { name: 'CSV' }));
     await waitFor(() => expect(downloads).toHaveLength(1));
     const csv = await readBlob(exportedBlob);
-    expect(csv.trim().split('\n')).toHaveLength(10);
-    expect(csv).toContain('Titel,Partei');
-    expect(csv).toContain('Dokument 01,Mia');
+    expect(csv.trim().split('\r\n')).toHaveLength(10);
+    expect(csv).toContain('Titel;Partei');
+    expect(csv).toContain('Dokument 01;Mia');
     expect(csv).not.toContain('Intern');
     expect(csv).not.toContain('Dokument 10');
   });
@@ -118,8 +119,8 @@ describe('DataTable server paging and complete CSV export', () => {
     fireEvent.click(screen.getByRole('button', { name: 'CSV' }));
     await waitFor(() => expect(downloads).toHaveLength(1));
     const csv = await readBlob(exportedBlob);
-    expect(csv.trim().split('\n')).toHaveLength(64);
-    expect(csv.trim().split('\n')[0]).toBe('Partei');
+    expect(csv.trim().split('\r\n')).toHaveLength(64);
+    expect(csv.trim().split('\r\n')[0]).toBe('Partei');
     expect(csv).toContain('Person 63');
     expect(csv).not.toContain('Mia');
     expect(csv).not.toContain('Voll 1');
@@ -159,7 +160,7 @@ describe('DataTable server paging and complete CSV export', () => {
     fireEvent.click(csvButton);
     await waitFor(() => expect(downloads).toHaveLength(1));
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-    expect(await readBlob(exportedBlob)).toContain('Vollständiger Export,Mia');
+    expect(await readBlob(exportedBlob)).toContain('Vollständiger Export;Mia');
   });
 
   it('rejects malformed export results without downloading an incomplete fallback', async () => {
@@ -169,5 +170,70 @@ describe('DataTable server paging and complete CSV export', () => {
     expect(await screen.findByRole('alert')).toBeInTheDocument();
     expect(downloads).toHaveLength(0);
     expect(exportedBlob).toBeUndefined();
+  });
+
+  it('remembers sorting, rows per page and hidden columns for the same list', () => {
+    const { unmount } = render(<DataTable columns={columns} data={rows} title="Dokumente" />);
+    fireEvent.click(screen.getByRole('columnheader', { name: 'Titel' }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Zeilen pro Seite' }), { target: { value: '10' } });
+    fireEvent.click(screen.getByRole('button', { name: /adjustColumns/ }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Partei' }));
+    unmount();
+
+    render(<DataTable columns={columns} data={rows} title="Dokumente" />);
+    expect(renderedTitles()).toHaveLength(10);
+    expect(renderedTitles()[0]).toBe('Dokument 01');
+    expect(screen.queryByRole('columnheader', { name: 'Partei' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Intern' })).not.toBeInTheDocument();
+    cleanup();
+
+    // another list keeps its own defaults
+    render(<DataTable columns={columns} data={rows} title="Andere Liste" />);
+    expect(renderedTitles()).toHaveLength(25);
+    expect(renderedTitles()[0]).toBe('Dokument 30');
+  });
+
+  it('ignores stored settings it cannot use and works without browser storage', () => {
+    localStorage.setItem('table_settings:/|Dokumente', JSON.stringify({ sortKey: 'gone', pageSize: 7, hiddenCols: 'x' }));
+    render(<DataTable columns={columns} data={rows} title="Dokumente" />);
+    expect(renderedTitles()).toHaveLength(25);
+    expect(renderedTitles()[0]).toBe('Dokument 30');
+    cleanup();
+
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked'); });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('blocked'); });
+    render(<DataTable columns={columns} data={rows} title="Dokumente" />);
+    fireEvent.click(screen.getByRole('columnheader', { name: 'Titel' }));
+    expect(renderedTitles()[0]).toBe('Dokument 01');
+  });
+
+  it('finds rows by the label the table shows, not only by the stored code', () => {
+    const statusColumns = [{ key: 'title', label: 'Titel' }, { key: 'state', label: 'Status', type: 'status' }, { key: 'due', label: 'Fällig', type: 'date' }];
+    const data = [
+      { id: 'a', title: 'Offen A', state: 'open', due: '2026-10-14' },
+      { id: 'b', title: 'Bezahlt B', state: 'paid', due: '2026-11-01' },
+    ];
+    render(<DataTable columns={statusColumns} data={data} title="Status" />);
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '14.10.2026' } });
+    expect(renderedTitles()).toEqual(['Offen A']);
+  });
+
+  it('writes CSV that German spreadsheets open in columns and that cannot run formulas', async () => {
+    const moneyColumns = [{ key: 'title', label: 'Titel' }, { key: 'amount', label: 'Betrag', type: 'currency' }];
+    const data = [
+      { id: 'a', title: '=HYPERLINK("x")', amount: '1234.50' },
+      { id: 'b', title: 'Gutschrift; Mai', amount: -12.5 },
+      { id: 'c', title: '-Abzug', amount: null },
+    ];
+    render(<DataTable columns={moneyColumns} data={data} title="Beträge" />);
+    fireEvent.click(screen.getByRole('button', { name: 'CSV' }));
+    await waitFor(() => expect(downloads).toHaveLength(1));
+    const lines = (await readBlob(exportedBlob)).replace(/^\ufeff/, '').split('\r\n');
+    expect(lines).toEqual([
+      'Titel;Betrag',
+      `"'=HYPERLINK(""x"")";1234,50`,
+      '"Gutschrift; Mai";-12,5',
+      "'-Abzug;",
+    ]);
   });
 });

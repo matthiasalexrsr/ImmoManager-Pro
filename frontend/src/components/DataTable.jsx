@@ -1,10 +1,12 @@
-import { useState, useMemo, useCallback, useId } from 'react';
+import { useState, useMemo, useCallback, useEffect, useId } from 'react';
 import { useTranslation } from '../i18n';
 import { useCanWrite } from '../contexts/AuthContext';
 import { PlusIcon, EditIcon, TrashIcon } from './Icons';
 import StatusBadge from './StatusBadge';
 import { formatDate, formatMoney, plainLabel } from '../utils/format';
 import { codeLabel } from '../utils/codeLabels';
+import { buildCsv } from '../utils/tableCsv';
+import { useStoredTableSettings } from '../utils/tableSettings';
 import './DataTable.css';
 
 const PAGE_SIZES = [10, 25, 50, 100];
@@ -34,6 +36,21 @@ function cellContent(col, row) {
 }
 
 
+// What a person can search for: the stored value, and what the table shows for it
+// (a status code as its German label, a date as it is written).
+function searchText(col, value) {
+  if (value == null || value === '') return '';
+  const shown = col.type === 'date' ? formatDate(value) : codeLabel(value);
+  return `${value} ${shown}`.toLowerCase();
+}
+
+// One stored setting per list, not per record: /properties/7 and /properties/9 share their tables.
+function defaultSettingsKey(title) {
+  if (typeof window === 'undefined' || !title) return null;
+  const path = window.location.pathname.split('/').map(part => (/\d/.test(part) ? ':id' : part)).join('/');
+  return `${path}|${title}`;
+}
+
 function cellClass(col) {
   return [
     col.align === 'right' || (col.align == null && NUMERIC_TYPES.has(col.type)) ? 'text-right td-num' : '',
@@ -42,7 +59,8 @@ function cellClass(col) {
 }
 
 export default function DataTable({ columns, data, onEdit: editHandler, onDelete: deleteHandler, title,
-  onAdd: addHandler, onRowClick, rowActions: rowActionsFor, writeArea, serverPaged = false, loadExportData, hideTitle = false }) {
+  onAdd: addHandler, onRowClick, rowActions: rowActionsFor, writeArea, serverPaged = false, loadExportData, hideTitle = false,
+  settingsKey }) {
   const { t } = useTranslation();
   const titleId = useId();
   // Roles that may not change this list do not get New/Edit/Delete (the server would refuse anyway).
@@ -52,12 +70,21 @@ export default function DataTable({ columns, data, onEdit: editHandler, onDelete
   const onDelete = canWrite ? deleteHandler : undefined;
   const rowActions = rowActionsFor && (row => rowActionsFor(row).filter(a => canWrite || !a.write));
   const [search, setSearch] = useState('');
-  const [sortKey, setSortKey] = useState(null);
-  const [sortDir, setSortDir] = useState('asc');
+  // Sorting, rows per page and hidden columns are remembered per list in this browser.
+  const [stored, setStored] = useStoredTableSettings(settingsKey === undefined ? defaultSettingsKey(title) : settingsKey,
+    { sortKey: null, sortDir: 'asc', pageSize: 25, hiddenCols: {} });
+  const sortKey = !serverPaged && columns.some(c => c.key === stored.sortKey && c.sortable !== false) ? stored.sortKey : null;
+  const sortDir = stored.sortDir === 'desc' ? 'desc' : 'asc';
+  const pageSize = PAGE_SIZES.includes(stored.pageSize) ? stored.pageSize : 25;
+  const hiddenCols = useMemo(() => ({
+    ...Object.fromEntries(columns.filter(c => c.hidden).map(c => [c.key, true])),
+    ...(stored.hiddenCols && typeof stored.hiddenCols === 'object' ? stored.hiddenCols : {}),
+  }), [columns, stored.hiddenCols]);
+  const setSort = (key, dir) => setStored(current => ({ ...current, sortKey: key, sortDir: dir }));
+  const setPageSize = size => setStored(current => ({ ...current, pageSize: size }));
+  const toggleColumn = key => setStored(current => ({ ...current, hiddenCols: { ...hiddenCols, [key]: !hiddenCols[key] } }));
   const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(25);
   const [columnFilters, setColumnFilters] = useState({});
-  const [hiddenCols, setHiddenCols] = useState(() => Object.fromEntries(columns.filter(c => c.hidden).map(c => [c.key, true])));
   const [showColMenu, setShowColMenu] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -71,13 +98,13 @@ export default function DataTable({ columns, data, onEdit: editHandler, onDelete
   // Sort: asc → desc → none
   const handleSort = useCallback((key) => {
     if (sortKey === key) {
-      if (sortDir === 'asc') setSortDir('desc');
-      else { setSortKey(null); setSortDir('asc'); }
+      if (sortDir === 'asc') setSort(key, 'desc');
+      else setSort(null, 'asc');
     } else {
-      setSortKey(key);
-      setSortDir('asc');
+      setSort(key, 'asc');
     }
     setPage(0);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sortKey, sortDir]);
 
   const visibleColumns = useMemo(
@@ -92,12 +119,7 @@ export default function DataTable({ columns, data, onEdit: editHandler, onDelete
 
     if (search) {
       const q = search.toLowerCase();
-      items = items.filter(row =>
-        columns.some(col => {
-          const val = row[col.key];
-          return val && String(val).toLowerCase().includes(q);
-        })
-      );
+      items = items.filter(row => columns.some(col => searchText(col, row[col.key]).includes(q)));
     }
 
     for (const col of columns) {
@@ -176,16 +198,7 @@ export default function DataTable({ columns, data, onEdit: editHandler, onDelete
       // complete selection and enrichment. A failed loader never falls back.
       const exportData = loadExportData ? await loadExportData() : sorted;
       if (!Array.isArray(exportData)) throw new Error('Exportdaten konnten nicht geladen werden.');
-      const headers = visibleColumns.map(c => c.label);
-      const rows = exportData.map(row =>
-        visibleColumns.map(col => {
-          const v = row[col.key];
-          const s = v == null ? '' : String(v);
-          return s.includes(',') || s.includes('"') || s.includes('\n')
-            ? `"${s.replace(/"/g, '""')}"` : s;
-        })
-      );
-      const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+      const csv = buildCsv(visibleColumns, exportData);
       const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       try {
@@ -202,6 +215,13 @@ export default function DataTable({ columns, data, onEdit: editHandler, onDelete
       setExporting(false);
     }
   }, [sorted, visibleColumns, title, loadExportData, exporting]);
+
+  useEffect(() => {
+    if (!showColMenu) return;
+    const close = event => { if (event.key === 'Escape') setShowColMenu(false); };
+    document.addEventListener('keydown', close);
+    return () => document.removeEventListener('keydown', close);
+  }, [showColMenu]);
 
   // Unique values for select filters
   const selectOptions = useMemo(() => {
@@ -265,7 +285,7 @@ export default function DataTable({ columns, data, onEdit: editHandler, onDelete
                         <input
                           type="checkbox"
                           checked={!hiddenCols[col.key]}
-                          onChange={() => setHiddenCols(prev => ({ ...prev, [col.key]: !prev[col.key] }))}
+                          onChange={() => toggleColumn(col.key)}
                         />
                         {col.label}
                       </label>

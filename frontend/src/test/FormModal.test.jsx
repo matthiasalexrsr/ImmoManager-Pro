@@ -95,4 +95,58 @@ describe('FormModal', () => {
     fireEvent.submit(container.querySelector('form'));
     await waitFor(() => expect(onSave).toHaveBeenCalledWith({ full_name: 'Ben', updated_at: '2026-10-06T10:00:00' }));
   });
+
+  it('closes an untouched form at once and starts in its first field', () => {
+    const onClose = vi.fn();
+    render(<FormModal title="Mieter" fields={fields} initial={{ full_name: 'Anna' }} onSave={vi.fn()} onClose={onClose} />);
+    expect(screen.getByLabelText('Name')).toHaveFocus();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks before discarding typed input, and a second Escape returns to editing', () => {
+    const onClose = vi.fn();
+    render(<FormModal title="Mieter" fields={fields} initial={{ full_name: 'Anna' }} onSave={vi.fn()} onClose={onClose} />);
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Anna Neu' } });
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole('alertdialog')).toHaveTextContent('Ungespeicherte Änderungen verwerfen?');
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Name')).toHaveValue('Anna Neu');
+
+    fireEvent.click(screen.getByRole('button', { name: 'ui.buttons.cancel' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter bearbeiten' }));
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'ui.buttons.close' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Verwerfen' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes on the backdrop only for a click that started there', () => {
+    const onClose = vi.fn();
+    const { container } = render(<FormModal title="Mieter" fields={fields} initial={{}} onSave={vi.fn()} onClose={onClose} />);
+    const overlay = container.querySelector('.modal-overlay');
+    // selecting text in the field and releasing the mouse over the backdrop
+    fireEvent.mouseDown(screen.getByLabelText('Name'));
+    fireEvent.click(overlay);
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.mouseDown(overlay);
+    fireEvent.click(overlay);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('saves with Ctrl+Enter from a field and closes without asking', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const onClose = vi.fn();
+    render(<FormModal title="Mieter" fields={[...fields, { key: 'notes', label: 'Notiz', type: 'textarea' }]}
+      initial={{}} onSave={onSave} onClose={onClose} />);
+    fireEvent.change(screen.getByLabelText('Notiz'), { target: { value: 'Zeile 1' } });
+    screen.getByLabelText('Notiz').focus();
+    fireEvent.keyDown(screen.getByLabelText('Notiz'), { key: 'Enter', ctrlKey: true });
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith({ full_name: null, notes: 'Zeile 1' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+  });
 });
