@@ -109,6 +109,18 @@ def test_manifest_classifies_documents_invoices_and_receipts(owner, estate):
     assert manifest["counts"] == {"vertrag": 1, "rechnung": 1, "beleg": 1, "bescheid": 1}
 
 
+def test_manifest_preview_is_the_same_for_the_same_data(owner, estate):
+    # A read without a fresh timestamp: the same data gives the same answer, also a second later
+    # (the portfolio-scope comparison of every read endpoint relies on that).
+    from backend.services import aktenwerk
+
+    first = owner.get(f"{API}/aktenwerk/manifest").json()
+    assert "generated_at" not in first
+    assert owner.get(f"{API}/aktenwerk/manifest").json() == first
+    # the package says when it was made
+    assert "generated_at" in aktenwerk.manifest([], app_version="x")
+
+
 def test_manifest_filters_deductible_receipts_of_a_year(owner, estate):
     deductible = owner.get(f"{API}/aktenwerk/manifest", params={"deductible": True, "year": 2025}).json()
     assert {e["kind"] for e in deductible["entries"]} == {"rechnung", "beleg"}

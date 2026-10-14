@@ -279,9 +279,11 @@ def file_info(data: bytes, original_name: str, entry: Entry) -> dict:
 
 
 def manifest(entries: Iterable[Entry], *, files: dict[str, dict] | None = None, problems: list[dict] | None = None,
-             app_version: str | None = None) -> dict:
+             app_version: str | None = None, stamped: bool = True) -> dict:
+    """The manifest; a package names when it was made, a preview is the same for the same data."""
+    stamp = {"generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds")} if stamped else {}
     return {
-        "schema": SCHEMA, "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "schema": SCHEMA, **stamp,
         "source": {"system": "ImmoManager Pro", "version": app_version},
         "entries": [entry.as_manifest(files.get(entry.exchange_id) if files is not None else None) for entry in entries
                     if files is None or entry.exchange_id in files],

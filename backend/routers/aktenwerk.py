@@ -53,7 +53,7 @@ def get_manifest(
 ) -> dict:
     """What an export would contain (without reading the files): for the preview and for a pulling DMS."""
     entries = exchange.select(store, _selection(kind, year, property_id, tax_relevant, deductible))
-    document = exchange.manifest(entries, app_version=_app_version())
+    document = exchange.manifest(entries, app_version=_app_version(), stamped=False)
     document["counts"] = {k: sum(1 for e in entries if e.kind == k) for k in exchange.KINDS
                           if any(e.kind == k for e in entries)}
     return document
