@@ -156,10 +156,12 @@ describe('party workspace', () => {
     await screen.findByRole('dialog', { name: 'Anna Müller' });
     // The label shows for 2 s after the clipboard promise settles. A role query computes the
     // accessible name of every element in the large dialog and took longer than that window
-    // under CI load, so watch the clicked button's own label, which is cheap to poll.
+    // under CI load, so watch the clicked button's own label, which is cheap to poll. The 2 s
+    // start when the label appears, not at the click: polling every 10 ms catches it however
+    // late it comes, so the wait is not capped below 2 s (that cap failed under CI load).
     const copyButton = screen.getByRole('button', { name: 'Kopieren: Adresse' });
     fireEvent.click(copyButton);
-    await waitFor(() => expect(copyButton).toHaveAttribute('aria-label', 'Kopiert: Adresse'), { timeout: 1900, interval: 10 });
+    await waitFor(() => expect(copyButton).toHaveAttribute('aria-label', 'Kopiert: Adresse'), { timeout: 8000, interval: 10 });
     expect(writeText).toHaveBeenCalledWith('Lindenstraße 8\n10115 Berlin\nDE');
     api.get.mockRejectedValue(new Error('Verbindung unterbrochen'));
     fireEvent.click(screen.getByRole('tab', { name: /Dokumente/ }));
@@ -169,7 +171,7 @@ describe('party workspace', () => {
     api.get.mockResolvedValue(response());
     fireEvent.click(screen.getByRole('button', { name: 'Erneut versuchen' }));
     await screen.findByRole('button', { name: doc.title });
-  });
+  }, 20000);
 
   it('traps keyboard focus and supports arrow-key tab selection', async () => {
     mount();
