@@ -3,8 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useAuth } from '../contexts/AuthContext';
-import { SearchIcon, CloseIcon, ENTITY_ICON_MAP } from './Icons';
-import { NAV_SECTIONS } from './navigation';
+import { SearchIcon, CloseIcon, PlusIcon, ENTITY_ICON_MAP } from './Icons';
+import { NAV_SECTIONS, QUICK_ACTIONS } from './navigation';
+import { mayWrite } from '../utils/permissions';
 
 const ENTITY_ROUTES = {
   property: '/properties',
@@ -78,6 +79,7 @@ const ENTITY_LABELS = {
 };
 
 const PAGE_LIMIT = 6;
+const ACTION_LIMIT = 4;
 const RECENT_LIMIT = 8;
 const PAGES = NAV_SECTIONS.flatMap(section => section.items.map(item => ({ ...item, sectionKey: section.labelKey, sectionFallback: section.fallback })));
 // "Uebergabe", "übergabe" and "Ubergabe" all find "Übergabeprotokolle"
@@ -103,7 +105,8 @@ function writeRecent(key, list) {
 export default function SearchBar() {
   const { t } = useTranslation();
   const tr = (key, fallback) => { const text = t(key); return !text || text === key ? fallback : text; };
-  const userId = useAuth()?.user?.id;
+  const auth = useAuth();
+  const userId = auth?.user?.id;
   const recentKey = userId ? `recent_search:${userId}` : null;
   const [recent, setRecent] = useState(() => readRecent(recentKey));
   useEffect(() => { setRecent(readRecent(recentKey)); }, [recentKey]);
@@ -123,7 +126,11 @@ export default function SearchBar() {
   // Keyboard shortcut: Ctrl+K
   useEffect(() => {
     const handler = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+      const typing = e.target instanceof HTMLElement
+        && (e.target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName));
+      // "/" as in many web apps, unless typing or inside a dialog
+      const slash = e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey && !typing && !document.querySelector('[aria-modal="true"]');
+      if (((e.ctrlKey || e.metaKey) && e.key === 'k') || slash) {
         e.preventDefault();
         inputRef.current?.focus();
         setOpen(true);
@@ -161,9 +168,18 @@ export default function SearchBar() {
     .map(page => ({ ...page, kind: 'page', label: tr(page.labelKey, page.fallback), section: tr(page.sectionKey, page.sectionFallback) }))
     .filter(page => fold(page.label).includes(fold(query.trim())))
     .slice(0, PAGE_LIMIT) : [];
+  // "buchung" offers the page Buchungen and the action Neue Buchung; read-only roles get no actions
+  const actionMatches = searching ? QUICK_ACTIONS
+    .filter(action => !auth?.user || mayWrite(auth.write, action.area))
+    .map(action => {
+      const page = PAGES.find(p => p.to === action.area);
+      return { ...action, kind: 'page', label: tr(action.labelKey, action.fallback), pageLabel: page ? tr(page.labelKey, page.fallback) : '' };
+    })
+    .filter(action => [action.label, action.pageLabel].some(text => fold(text).includes(fold(query.trim()))))
+    .slice(0, ACTION_LIMIT) : [];
   const showRecent = !query && recent.length > 0;
   // one list for the arrow keys: pages first, then records (or the recently opened records)
-  const options = showRecent ? recent : [...pageMatches, ...currentResults];
+  const options = showRecent ? recent : [...pageMatches, ...actionMatches, ...currentResults];
   const dropdownOpen = open && (query.length >= 2 || showRecent);
 
   // Next keyset page of one type, appended to its group
@@ -228,7 +244,8 @@ export default function SearchBar() {
         e.preventDefault();
         // Enter without choosing opens the first entry: "mahn" + Enter goes to the dunning page
         if (activeIndex >= 0 && activeIndex < options.length) handleSelect(options[activeIndex]);
-        else if (!awaitingResults || pageMatches.length > 0) handleSelect(options[0]);
+        // pages and actions are known at once; records only count once they are loaded
+        else if (!awaitingResults || pageMatches.length + actionMatches.length > 0) handleSelect(options[0]);
         break;
       case 'Escape':
         e.preventDefault();
@@ -329,8 +346,14 @@ export default function SearchBar() {
                     {pageMatches.map(page => option(page, page.label, page.section, page.icon))}
                   </div>
                 )}
+                {actionMatches.length > 0 && (
+                  <div>
+                    <div className="search-bar-group-header">{tr('search.global.actions', 'Aktionen')}</div>
+                    {actionMatches.map(action => option(action, action.label, action.pageLabel, PlusIcon))}
+                  </div>
+                )}
                 {awaitingResults && <div className="search-bar-loading" role="status">{t('ui.table.loading')}</div>}
-                {!awaitingResults && currentResults.length === 0 && pageMatches.length === 0 && <div className="search-bar-empty" role="status">{t('search.global.noResults')}</div>}
+                {!awaitingResults && currentResults.length === 0 && pageMatches.length === 0 && actionMatches.length === 0 && <div className="search-bar-empty" role="status">{t('search.global.noResults')}</div>}
                 {!awaitingResults && Object.entries(grouped).map(([type, items]) => (
                   <div key={type}>
                     <div className="search-bar-group-header">

@@ -12,7 +12,12 @@ import {
   SunIcon, MoonIcon, LogoutIcon, ChevronLeftIcon, ChevronRightIcon,
   SettingsIcon, MenuIcon, CloseIcon, HelpIcon,
 } from './Icons';
+import { Keyboard, Star } from 'lucide-react';
 import { NAV_SECTIONS } from './navigation';
+import ShortcutHelp from './ShortcutHelp';
+import { useAuth } from '../contexts/AuthContext';
+import { useNavFavorites } from '../utils/navFavorites';
+import { dropNewEntry, holdNewEntry, requestNewEntry } from '../utils/newEntry';
 
 
 const LOCALES = [
@@ -61,12 +66,16 @@ export default function Layout() {
 }
 
 const PRIMARY_PATHS = ['/', '/properties', '/tenants', '/bookings', '/tasks', '/documents'];
+const ALL_ITEMS = NAV_SECTIONS.flatMap(section => section.items);
+const PINNABLE_PATHS = ALL_ITEMS.map(item => item.to).filter(path => !PRIMARY_PATHS.includes(path));
+const isEditable = element => element instanceof HTMLElement
+  && (element.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(element.tagName));
 const PRIMARY_ITEMS = PRIMARY_PATHS.map(path => NAV_SECTIONS.flatMap(section => section.items).find(item => item.to === path));
 const GROUPS = NAV_SECTIONS.slice(1).map(section => ({ ...section, items: section.items.filter(item => !PRIMARY_PATHS.includes(item.to)) }));
 const SHELL_TEXT = {
-  de: { navigation: 'Hauptnavigation', open: 'Navigation öffnen', close: 'Navigation schließen', workspace: 'Arbeitsplatz', areas: 'Verwaltungsbereiche', expand: 'Navigation erweitern', collapse: 'Navigation einklappen', theme: 'Darstellung wechseln', logout: 'Abmelden' },
-  en: { navigation: 'Main navigation', open: 'Open navigation', close: 'Close navigation', workspace: 'Workspace', areas: 'Management', expand: 'Expand navigation', collapse: 'Collapse navigation', theme: 'Change theme', logout: 'Sign out' },
-  es: { navigation: 'Navegación principal', open: 'Abrir navegación', close: 'Cerrar navegación', workspace: 'Área de trabajo', areas: 'Administración', expand: 'Ampliar navegación', collapse: 'Contraer navegación', theme: 'Cambiar tema', logout: 'Cerrar sesión' },
+  de: { favorites: 'Favoriten', pin: 'Als Favorit in die Seitenleiste', unpin: 'Aus den Favoriten entfernen', shortcuts: 'Tastenkürzel', navigation: 'Hauptnavigation', open: 'Navigation öffnen', close: 'Navigation schließen', workspace: 'Arbeitsplatz', areas: 'Verwaltungsbereiche', expand: 'Navigation erweitern', collapse: 'Navigation einklappen', theme: 'Darstellung wechseln', logout: 'Abmelden' },
+  en: { favorites: 'Favourites', pin: 'Pin to the sidebar', unpin: 'Remove from favourites', shortcuts: 'Keyboard shortcuts', navigation: 'Main navigation', open: 'Open navigation', close: 'Close navigation', workspace: 'Workspace', areas: 'Management', expand: 'Expand navigation', collapse: 'Collapse navigation', theme: 'Change theme', logout: 'Sign out' },
+  es: { favorites: 'Favoritos', pin: 'Fijar en la barra lateral', unpin: 'Quitar de favoritos', shortcuts: 'Atajos de teclado', navigation: 'Navegación principal', open: 'Abrir navegación', close: 'Cerrar navegación', workspace: 'Área de trabajo', areas: 'Administración', expand: 'Ampliar navegación', collapse: 'Contraer navegación', theme: 'Cambiar tema', logout: 'Cerrar sesión' },
 };
 
 function LayoutFrame() {
@@ -80,6 +89,9 @@ function LayoutFrame() {
   const [groupsOpen, setGroupsOpen] = useState({});
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState(null);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [favorites, toggleFavorite] = useNavFavorites(useAuth()?.user?.id, PINNABLE_PATHS);
+  const favoriteItems = favorites.map(path => ALL_ITEMS.find(item => item.to === path)).filter(Boolean);
   const sidebarRef = useRef(null);
   const closeRef = useRef(null);
   const menuRef = useRef(null);
@@ -90,6 +102,29 @@ function LayoutFrame() {
   const activeSection = NAV_SECTIONS.find(section => section.items.includes(activeItem));
   const activeGroup = GROUPS.find(section => section.items.some(item => item.to === activeItem?.to))?.labelKey;
   const currentPageTitle = activeItem ? tr(activeItem.labelKey, activeItem.fallback) : tr('navigation.main.dashboard', 'Dashboard');
+
+  // /bookings?neu=1 (a quick action of the search): drop the marker so a reload or a later
+  // filter change does not open the form again, then ask the page's list for its New form.
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get('neu') !== '1') { dropNewEntry(location.pathname); return; }
+    params.delete('neu');
+    navigate({ pathname: location.pathname, search: params.toString() ? `?${params}` : '', hash: location.hash }, { replace: true, state: location.state });
+    if (!requestNewEntry()) holdNewEntry(location.pathname);
+  }, [location, navigate]);
+
+  // "?" shows the shortcuts, Alt+N asks the page's list for its New form. Never while typing
+  // or while a dialog is open (its own keys apply there).
+  useEffect(() => {
+    const keydown = event => {
+      if (event.defaultPrevented || event.ctrlKey || event.metaKey || isEditable(event.target)) return;
+      if (document.querySelector('[aria-modal="true"]')) return;
+      if (event.key === '?') { event.preventDefault(); setShowShortcuts(true); }
+      else if (event.altKey && event.code === 'KeyN') { event.preventDefault(); requestNewEntry(); }
+    };
+    document.addEventListener('keydown', keydown);
+    return () => document.removeEventListener('keydown', keydown);
+  }, []);
 
   // The browser tab and history name the page, so several open tabs can be told apart.
   useEffect(() => { document.title = `${currentPageTitle} · ImmoManager Pro`; }, [currentPageTitle]);
@@ -176,6 +211,10 @@ function LayoutFrame() {
         </div>
         <nav className="sidebar-nav" id="primary-navigation" aria-label={words.navigation}>
           <div className="nav-primary">{PRIMARY_ITEMS.map(navItem)}</div>
+          {favoriteItems.length > 0 && <>
+            <div className="sidebar-section-label">{words.favorites}</div>
+            <div className="nav-favorites">{favoriteItems.map(navItem)}</div>
+          </>}
           <div className="sidebar-section-label">{words.areas}</div>
           {GROUPS.map((section, index) => {
             const open = !collapsed && Boolean(groupsOpen[section.labelKey]);
@@ -207,16 +246,26 @@ function LayoutFrame() {
         <div className="top-bar">
           <div className="top-bar-left">
             {mobile && <button ref={menuRef} type="button" className="top-bar-mobile-toggle" onClick={() => setMobileNavOpen(true)} aria-controls="primary-navigation" aria-expanded={mobileNavOpen} aria-label={words.open}><MenuIcon size={20} /></button>}
-            <div className="top-bar-page-title"><span className="shell-context">{activeSection ? tr(activeSection.labelKey, activeSection.fallback) : words.workspace}</span><span className="shell-context-divider" aria-hidden="true">/</span><span>{currentPageTitle}</span></div>
+            <div className="top-bar-page-title"><span className="shell-context">{activeSection ? tr(activeSection.labelKey, activeSection.fallback) : words.workspace}</span><span className="shell-context-divider" aria-hidden="true">/</span><span>{currentPageTitle}</span>
+              {activeItem && PINNABLE_PATHS.includes(activeItem.to) && (() => {
+                const pinned = favorites.includes(activeItem.to);
+                return <button type="button" className={`favorite-toggle${pinned ? ' is-pinned' : ''}`} aria-pressed={pinned}
+                  aria-label={`${pinned ? words.unpin : words.pin}: ${currentPageTitle}`} title={pinned ? words.unpin : words.pin}
+                  onClick={() => toggleFavorite(activeItem.to)}><Star size={15} aria-hidden="true" fill={pinned ? 'currentColor' : 'none'} /></button>;
+              })()}
+            </div>
           </div>
           <SearchBar />
-          <div className="top-bar-utilities"><TestVersionBadge /><TutorialButton /><NotificationBell /></div>
+          <div className="top-bar-utilities"><TestVersionBadge />
+            <button type="button" className="top-bar-icon-btn top-bar-shortcuts" onClick={() => setShowShortcuts(true)} title={`${words.shortcuts} (?)`} aria-label={words.shortcuts}><Keyboard size={18} aria-hidden="true" /></button>
+            <TutorialButton /><NotificationBell /></div>
         </div>
         <div className="main-content-body">
           <h1 className="page-title page-title-auto">{currentPageTitle}</h1>
           <Outlet />
         </div>
       </main>
+      {showShortcuts && <ShortcutHelp onClose={() => setShowShortcuts(false)} />}
     </div>
   );
 }

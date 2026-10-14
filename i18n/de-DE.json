@@ -62,6 +62,18 @@
       "notes": "Notizen",
       "attachments": "Anhänge",
       "activity": "Aktivität"
+    },
+    "actions": {
+      "booking": "Neue Buchung",
+      "task": "Neue Aufgabe",
+      "invoice": "Neue Rechnung",
+      "contact": "Neuer Kontakt",
+      "maintenance": "Neuer Wartungsfall",
+      "event": "Neuer Termin",
+      "receivable": "Neue Forderung",
+      "unit": "Neue Einheit",
+      "lead": "Neuer Interessent",
+      "contract": "Neuer Mietvertrag"
     }
   },
   "topBar": {
@@ -1019,7 +1031,8 @@
       "loadMore": "Weitere laden",
       "pages": "Seiten",
       "recentlyOpened": "Zuletzt geöffnet",
-      "clearRecent": "Verlauf leeren"
+      "clearRecent": "Verlauf leeren",
+      "actions": "Aktionen"
     }
   },
   "notifications": {
@@ -2332,5 +2345,15 @@
     "openDocument": "Dokument ansehen",
     "fromBill": "Beleg einer Rechnung",
     "unlink": "Lösen"
+  },
+  "shortcutHelp": {
+    "title": "Tastenkürzel",
+    "or": "oder",
+    "search": "Suche öffnen (Seiten, Aktionen, Datensätze)",
+    "firstHit": "In der Suche: ersten Eintrag öffnen",
+    "newEntry": "Neuen Eintrag in der Liste dieser Seite anlegen",
+    "save": "Formular speichern",
+    "close": "Dialog oder Suche schließen",
+    "help": "Diese Übersicht anzeigen"
   }
 }

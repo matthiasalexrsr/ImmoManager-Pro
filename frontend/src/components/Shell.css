@@ -130,3 +130,21 @@
   .workspace-shell .main-content-body { padding: 22px 16px 32px; }
   .workspace-shell .sidebar-header { gap: 9px; }
 }
+
+/* Pin the current page to the sidebar */
+.workspace-shell .favorite-toggle { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; margin-left: 2px; padding: 0; border: none; border-radius: 6px; background: transparent; color: var(--color-text-muted); cursor: pointer; }
+.workspace-shell .favorite-toggle:hover { background: var(--color-bg); color: var(--color-text); }
+.workspace-shell .favorite-toggle.is-pinned { color: var(--color-warning); }
+.workspace-shell .favorite-toggle:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; }
+
+/* Keyboard shortcut overview */
+.shortcut-help { max-width: 520px; }
+.shortcut-list { margin: 0; display: grid; gap: 10px; }
+.shortcut-row { display: grid; grid-template-columns: minmax(130px, auto) 1fr; gap: 12px; align-items: baseline; }
+.shortcut-row dt { white-space: nowrap; font-size: 0.85rem; }
+.shortcut-row dd { margin: 0; color: var(--color-text-secondary); font-size: 0.9rem; }
+.shortcut-or { color: var(--color-text-muted); }
+.shortcut-help kbd { display: inline-block; min-width: 1.6em; padding: 1px 6px; border: 1px solid var(--color-border); border-bottom-width: 2px; border-radius: 5px; background: var(--color-bg); font: 600 0.78rem/1.5 inherit; text-align: center; color: var(--color-text); }
+@media (max-width: 480px) {
+  .shortcut-row { grid-template-columns: 1fr; gap: 2px; }
+}

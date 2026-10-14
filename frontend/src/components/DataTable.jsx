@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect, useId } from 'react';
+import { useState, useMemo, useCallback, useEffect, useId, useRef } from 'react';
 import { useTranslation } from '../i18n';
 import { useCanWrite } from '../contexts/AuthContext';
 import { PlusIcon, EditIcon, TrashIcon } from './Icons';
@@ -7,6 +7,7 @@ import { formatDate, formatMoney, plainLabel } from '../utils/format';
 import { codeLabel } from '../utils/codeLabels';
 import { buildCsv } from '../utils/tableCsv';
 import { useStoredTableSettings } from '../utils/tableSettings';
+import { NEW_ENTRY_EVENT, takeNewEntry } from '../utils/newEntry';
 import './DataTable.css';
 
 const PAGE_SIZES = [10, 25, 50, 100];
@@ -216,6 +217,20 @@ export default function DataTable({ columns, data, onEdit: editHandler, onDelete
     }
   }, [sorted, visibleColumns, title, loadExportData, exporting]);
 
+  // The global search's "Neue Buchung" and Alt+N ask the page for its New form (utils/newEntry).
+  const addRef = useRef(onAdd);
+  addRef.current = onAdd;
+  useEffect(() => {
+    const answer = event => {
+      if (!addRef.current || event.defaultPrevented) return;
+      event.preventDefault();
+      addRef.current();
+    };
+    window.addEventListener(NEW_ENTRY_EVENT, answer);
+    if (addRef.current && takeNewEntry()) addRef.current();
+    return () => window.removeEventListener(NEW_ENTRY_EVENT, answer);
+  }, []);
+
   useEffect(() => {
     if (!showColMenu) return;
     const close = event => { if (event.key === 'Escape') setShowColMenu(false); };
@@ -297,7 +312,7 @@ export default function DataTable({ columns, data, onEdit: editHandler, onDelete
             <button onClick={exportCsv} disabled={exporting} aria-busy={exporting}
                     className="btn btn-sm btn-secondary">{exporting ? 'CSV …' : 'CSV'}</button>
             {onAdd && (
-              <button onClick={onAdd} className="btn btn-primary">
+              <button onClick={onAdd} className="btn btn-primary" data-table-add="">
                 <PlusIcon size={16} /> {t('ui.buttons.new')}
               </button>
             )}

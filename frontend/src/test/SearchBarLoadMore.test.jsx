@@ -17,6 +17,7 @@ vi.mock('../i18n', () => ({
 }));
 
 function Where() { return <span data-testid="where">{useLocation().pathname}</span>; }
+function WhereWithSearch() { const location = useLocation(); return <span data-testid="where">{location.pathname + location.search}</span>; }
 
 const hit = (id) => ({ entity_type: 'tenant', id, display: `Mieter ${id}`, detail: '', url: '/tenants' });
 
@@ -93,5 +94,33 @@ describe('SearchBar pages and recently opened records', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Verlauf leeren' }));
     expect(screen.queryByText('Zuletzt geöffnet')).toBeNull();
     expect(localStorage.getItem('recent_search:u1')).toBe('[]');
+  });
+});
+
+describe('SearchBar quick actions', () => {
+  afterEach(() => { auth.user = null; auth.write = undefined; });
+
+  it('offers "Neue Buchung" for "buchung" and opens the page with its New form request', () => {
+    api.get.mockResolvedValue({ results: [], groups: [] });
+    render(<MemoryRouter initialEntries={['/']}><SearchBar /><Routes><Route path="*" element={<WhereWithSearch />} /></Routes></MemoryRouter>);
+    const box = screen.getByRole('searchbox');
+    fireEvent.change(box, { target: { value: 'buchung' } });
+    expect(screen.getByText('Aktionen')).toBeTruthy();
+    expect(screen.getByRole('option', { name: /Neue Buchung/ })).toBeTruthy();
+    // Enter at once, while the records are still loading
+    fireEvent.change(box, { target: { value: 'neue buchung' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    expect(screen.getByTestId('where')).toHaveTextContent('/bookings?neu=1');
+  });
+
+  it('offers no actions to a role that may not change the area', () => {
+    api.get.mockResolvedValue({ results: [], groups: [] });
+    auth.user = { id: 'r1', role: 'readonly' };
+    auth.write = [];
+    render(<MemoryRouter><SearchBar /></MemoryRouter>);
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'buchung' } });
+    expect(screen.getByRole('option', { name: /Buchungen/ })).toBeTruthy();
+    expect(screen.queryByText('Aktionen')).toBeNull();
+    expect(screen.queryByRole('option', { name: /Neue Buchung/ })).toBeNull();
   });
 });

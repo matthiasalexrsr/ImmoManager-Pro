@@ -8,6 +8,9 @@ All notable changes to ImmoManager Pro will be documented in this file.
 - **Tables remember their settings** per list in this browser: sorting, rows per page and hidden columns survive reloads and navigation (unusable stored values are ignored; without browser storage the table works as before). The table search also finds what the table shows: status labels ("Bezahlt") and dates as written ("14.10.2026").
 - **Table CSV opens in German spreadsheets in columns**: semicolon separated with CRLF lines like the server exports, decimal comma for amounts and numbers, and cells starting like a formula written as text.
 - **Global search (Ctrl+K) finds pages**: typing "mahn" or "uebergabe" offers Mahnwesen or Übergabeprotokolle (umlauts optional) above the records, Enter opens the first entry, and records of an earlier query are not opened while the new one loads. Records opened from the search are listed under "Zuletzt geöffnet" for an empty query (per user, in this browser only, with "Verlauf leeren").
+- **Quick actions in the search**: "buchung" also offers "Neue Buchung" (likewise task, invoice, contact, maintenance case, appointment, receivable, unit, lead and the contract wizard), only for roles that may change that area. The page opens with its New form, also when it is already open; the address drops the marker, so reloading or changing a filter does not open it again.
+- **Keyboard**: "/" opens the search, Alt+N opens the New form of the page's list, "?" (or the keyboard button in the top bar) shows all shortcuts. None of them fire while typing or inside a dialog.
+- **Favourites**: the star next to the page name pins any page beyond the six everyday ones to a "Favoriten" section at the top of the sidebar (per user, in this browser only).
 - The browser tab names the current page ("Mahnwesen · ImmoManager Pro"). Sign-in fields are labelled for screen readers and password managers.
 
 ## Unreleased — 2026-10-13 review

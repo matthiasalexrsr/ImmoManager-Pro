@@ -95,3 +95,18 @@ export const NAV_SECTIONS = [
     ],
   },
 ];
+
+// Frequent "new" entries the global search offers directly. `?neu=1` makes the page's list
+// open its New form once (see DataTable); the contract wizard is a page of its own.
+export const QUICK_ACTIONS = [
+  { to: '/bookings?neu=1', area: '/bookings', labelKey: 'navigation.actions.booking', fallback: 'Neue Buchung', icon: BookingIcon },
+  { to: '/tasks?neu=1', area: '/tasks', labelKey: 'navigation.actions.task', fallback: 'Neue Aufgabe', icon: TaskIcon },
+  { to: '/invoices?neu=1', area: '/invoices', labelKey: 'navigation.actions.invoice', fallback: 'Neue Rechnung', icon: InvoiceIcon },
+  { to: '/contacts?neu=1', area: '/contacts', labelKey: 'navigation.actions.contact', fallback: 'Neuer Kontakt', icon: ContactIcon },
+  { to: '/maintenance?neu=1', area: '/maintenance', labelKey: 'navigation.actions.maintenance', fallback: 'Neuer Wartungsfall', icon: MaintenanceIcon },
+  { to: '/calendar?neu=1', area: '/calendar', labelKey: 'navigation.actions.event', fallback: 'Neuer Termin', icon: CalendarIcon },
+  { to: '/receivables?neu=1', area: '/receivables', labelKey: 'navigation.actions.receivable', fallback: 'Neue Forderung', icon: InvoiceIcon },
+  { to: '/units?neu=1', area: '/units', labelKey: 'navigation.actions.unit', fallback: 'Neue Einheit', icon: UnitIcon },
+  { to: '/leads?neu=1', area: '/leads', labelKey: 'navigation.actions.lead', fallback: 'Neuer Interessent', icon: TenantIcon },
+  { to: '/contract-wizard', area: '/contracts', labelKey: 'navigation.actions.contract', fallback: 'Neuer Mietvertrag', icon: ContractIcon },
+];

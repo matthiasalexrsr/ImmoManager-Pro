@@ -62,6 +62,18 @@
       "notes": "Notes",
       "attachments": "Attachments",
       "activity": "Activity"
+    },
+    "actions": {
+      "booking": "New booking",
+      "task": "New task",
+      "invoice": "New invoice",
+      "contact": "New contact",
+      "maintenance": "New maintenance case",
+      "event": "New appointment",
+      "receivable": "New receivable",
+      "unit": "New unit",
+      "lead": "New lead",
+      "contract": "New rental contract"
     }
   },
   "topBar": {
@@ -1019,7 +1031,8 @@
       "loadMore": "Load more",
       "pages": "Pages",
       "recentlyOpened": "Recently opened",
-      "clearRecent": "Clear history"
+      "clearRecent": "Clear history",
+      "actions": "Actions"
     }
   },
   "notifications": {
@@ -2332,5 +2345,15 @@
     "openDocument": "View document",
     "fromBill": "Scan of a bill",
     "unlink": "Unlink"
+  },
+  "shortcutHelp": {
+    "title": "Keyboard shortcuts",
+    "or": "or",
+    "search": "Open search (pages, actions, records)",
+    "firstHit": "In search: open the first entry",
+    "newEntry": "Add a new entry to this page's list",
+    "save": "Save the form",
+    "close": "Close a dialog or the search",
+    "help": "Show this overview"
   }
 }
