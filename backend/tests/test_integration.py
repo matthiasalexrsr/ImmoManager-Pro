@@ -238,8 +238,20 @@ class TestRouteCollisionFix:
 
 class TestCORS:
     def test_cors_headers(self, client):
+        from backend.config import settings
+
+        # Check the configured server, rather than assuming a particular local
+        # frontend port. Isolated release checks use their own allowed origin.
+        origin = next((value for value in settings.cors_origins if value != "*"), "https://cors-test.invalid")
         resp = client.options("/api/v1/portfolios", headers={
-            "Origin": "http://localhost:3000",
+            "Origin": origin,
             "Access-Control-Request-Method": "GET",
         })
-        assert resp.headers.get("access-control-allow-origin") == "http://localhost:3000"
+        assert resp.headers.get("access-control-allow-origin") == origin
+        if "*" not in settings.cors_origins:
+            rejected = client.options("/api/v1/portfolios", headers={
+                "Origin": "https://untrusted-cors-test.invalid",
+                "Access-Control-Request-Method": "GET",
+            })
+            assert rejected.status_code == 400
+            assert "access-control-allow-origin" not in rejected.headers
