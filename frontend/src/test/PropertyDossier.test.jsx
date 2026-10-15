@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import PropertyDetail from '../pages/PropertyDetail';
 import UnitOverview from '../pages/UnitOverview';
 import { api } from '../api';
@@ -12,10 +12,13 @@ vi.mock('pdfjs-dist/legacy/build/pdf.mjs', () => ({ GlobalWorkerOptions: {}, get
   return { promise: new Promise(() => {}), destroy: async () => {} };
 } }));
 
-const access = vi.hoisted(() => ({ canWrite: true }));
+const access = vi.hoisted(() => ({ canWrite: true, write: null }));
 vi.mock('../api', () => ({ api: { get: vi.fn(), list: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), del: vi.fn() } }));
 vi.mock('../i18n', () => ({ useTranslation: () => ({ t: () => undefined, locale: 'de-DE' }) }));
-vi.mock('../contexts/AuthContext', () => ({ useCanWrite: () => access.canWrite }));
+vi.mock('../contexts/AuthContext', () => ({
+  useCanWrite: path => access.canWrite && (access.write === null || access.write.includes(path)),
+  useAuth: () => ({ user: { id: 'viewer' }, write: access.canWrite ? access.write : [] }),
+}));
 vi.mock('../components/PhotoDropZone', () => ({ default: () => null }));
 
 const properties = {
@@ -41,6 +44,11 @@ const deferred = () => {
   return { promise, resolve };
 };
 
+function NewFormTarget() {
+  const location = useLocation();
+  return <pre data-testid="new-form-target">{JSON.stringify({ path: location.pathname + location.search, state: location.state })}</pre>;
+}
+
 function RoutesUnderTest() {
   const navigate = useNavigate();
   return <>
@@ -50,6 +58,8 @@ function RoutesUnderTest() {
       <Route path="/units/:id" element={<UnitOverview />} />
       <Route path="/properties" element={<h1>Immobilienliste</h1>} />
       <Route path="/units" element={<h1>Einheitenliste</h1>} />
+      <Route path="/tasks" element={<NewFormTarget />} />
+      <Route path="/bookings" element={<NewFormTarget />} />
     </Routes>
   </>;
 }
@@ -59,6 +69,7 @@ beforeEach(() => {
   pdfSources.length = 0;
   vi.resetAllMocks();
   access.canWrite = true;
+  access.write = null;
   api.get.mockImplementation(path => {
     if (path === '/auth/me') return Promise.resolve({ id: 'reader' });
     if (path.startsWith('/properties/')) return Promise.resolve(properties[path.split('/').pop()]);
@@ -231,6 +242,17 @@ describe('property page as the place to act on a property', () => {
     expect(screen.queryByRole('link', { name: 'Einheit' })).not.toBeInTheDocument();
   });
 
+  it('offers only permitted target actions even without permission to edit the property', async () => {
+    access.write = ['/tasks'];
+    show();
+    fireEvent.click(await screen.findByRole('button', { name: 'Neu für dieses Objekt' }));
+    expect(screen.queryByRole('button', { name: 'Bearbeiten' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Einheit' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Buchung' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('link', { name: 'Aufgabe' }));
+    expect(JSON.parse(screen.getByTestId('new-form-target').textContent)).toEqual({ path: '/tasks?neu=1', state: { prefill: { property_id: 'p1' } } });
+  });
+
   it('edits the property in place and shows the saved values', async () => {
     withContract();
     api.put.mockResolvedValue({});
@@ -256,6 +278,16 @@ describe('property page as the place to act on a property', () => {
 });
 
 describe('unit page as the place to act on a unit', () => {
+  it('permits a booking action independently of unit or contract write permission', async () => {
+    access.write = ['/bookings'];
+    show('/units/u1');
+    fireEvent.click(await screen.findByRole('button', { name: 'Neu für diese Einheit' }));
+    expect(screen.queryByRole('link', { name: 'Mietvertrag anlegen' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Mietvertrag' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Wartungsfall' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('link', { name: 'Buchung' }));
+    expect(JSON.parse(screen.getByTestId('new-form-target').textContent)).toEqual({ path: '/bookings?neu=1', state: { prefill: { property_id: 'p1', unit_id: 'u1' } } });
+  });
   it('offers a contract for a vacant unit and New forms that start with the unit', async () => {
     show('/units/u1');
     expect(await screen.findByText('Nicht vermietet')).toBeInTheDocument();

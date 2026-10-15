@@ -1,5 +1,6 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { cleanup, render, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, render, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import FormModal from '../components/FormModal';
 
 const fields = [{ key: 'full_name', label: 'Name' }];
@@ -14,6 +15,67 @@ function submit(initial) {
 }
 
 describe('FormModal', () => {
+  it('sends only one save while a keyboard submission is pending', async () => {
+    let complete;
+    const onSave = vi.fn(() => new Promise(resolve => { complete = resolve; }));
+    const onClose = vi.fn();
+    const { container } = render(<FormModal title="Mieter" fields={fields} onSave={onSave} onClose={onClose} />);
+    const input = screen.getByLabelText('Name');
+    fireEvent.change(input, { target: { value: 'Anna' } });
+    fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true });
+    fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true });
+    fireEvent.submit(container.querySelector('form'));
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(input).toBeDisabled();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onClose).not.toHaveBeenCalled();
+    await act(async () => complete());
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('requires explicit discard even when close is requested twice', () => {
+    const onClose = vi.fn();
+    render(<FormModal title="Mieter" fields={fields} onSave={vi.fn()} onClose={onClose} />);
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Anna' } });
+    fireEvent.click(screen.getByRole('button', { name: 'ui.buttons.close' }));
+    fireEvent.click(screen.getByRole('button', { name: 'ui.buttons.close' }));
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Verwerfen' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    const afterDiscard = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(afterDiscard);
+    expect(afterDiscard.defaultPrevented).toBe(false);
+  });
+
+  it('protects drafts before following a missing-prerequisite link', () => {
+    const Where = () => <span data-testid="where">{useLocation().pathname}</span>;
+    render(<MemoryRouter initialEntries={['/properties']}><FormModal title="Immobilie" fields={[
+      { key: 'name', label: 'Name' }, { key: 'portfolio_id', label: 'Portfolio', required: true, type: 'select', options: [] },
+    ]} onSave={vi.fn()} onClose={vi.fn()} /><Where /></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Entwurf' } });
+    fireEvent.click(screen.getByRole('link', { name: 'Portfolio anlegen' }));
+    expect(screen.getByTestId('where')).toHaveTextContent('/properties');
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter bearbeiten' }));
+    expect(screen.getByLabelText('Name')).toHaveValue('Entwurf');
+    fireEvent.click(screen.getByRole('link', { name: 'Portfolio anlegen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Verwerfen' }));
+    expect(screen.getByTestId('where')).toHaveTextContent('/portfolios');
+  });
+
+  it('protects an unsaved draft from browser reload until a save succeeds', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const onClose = vi.fn();
+    const { container } = render(<FormModal title="Mieter" fields={fields} onSave={onSave} onClose={onClose} />);
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Anna' } });
+    const before = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(before);
+    expect(before.defaultPrevented).toBe(true);
+    fireEvent.submit(container.querySelector('form'));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    const after = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(after);
+    expect(after.defaultPrevented).toBe(false);
+  });
   it('sends the state the record was opened in, so a newer change by someone else is not overwritten', async () => {
     const onSave = submit({ id: 't1', full_name: 'Anna', updated_at: '2026-10-05T10:00:00' });
     await waitFor(() => expect(onSave).toHaveBeenCalled());
@@ -158,6 +220,16 @@ describe('FormModal', () => {
       { key: 'payment_text', label: 'Text' },
       { key: 'status', label: 'Status', type: 'select', default: 'open', options: [{ value: 'open', label: 'Offen' }, { value: 'paid', label: 'Bezahlt' }] },
     ];
+
+    it('clears copied values outside repeatKeep after saving a duplicate', async () => {
+      render(<FormModal title="Buchung" fields={series} initial={{ account_id: 'a2', booking_date: '2026-10-01', amount: 120, payment_text: 'Original' }}
+        onSave={vi.fn().mockResolvedValue(undefined)} onClose={vi.fn()} repeatKeep={['account_id', 'booking_date']} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Speichern & weiteren' }));
+      await screen.findByRole('status');
+      expect(screen.getByLabelText('Konto *')).toHaveValue('a2');
+      expect(screen.getByLabelText('Betrag *')).toHaveValue(null);
+      expect(screen.getByLabelText('Text')).toHaveValue('');
+    });
 
     it('saves, keeps the named fields, clears the others and continues in the first cleared field', async () => {
       const onSave = vi.fn().mockResolvedValue(undefined);

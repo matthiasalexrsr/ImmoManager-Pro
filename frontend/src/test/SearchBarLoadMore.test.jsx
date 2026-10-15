@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import SearchBar from '../components/SearchBar';
@@ -20,10 +20,62 @@ function Where() { return <span data-testid="where">{useLocation().pathname}</sp
 function WhereWithSearch() { const location = useLocation(); return <span data-testid="where">{location.pathname + location.search}</span>; }
 
 const hit = (id) => ({ entity_type: 'tenant', id, display: `Mieter ${id}`, detail: '', url: '/tenants' });
+const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe('SearchBar', () => {
+  it('keeps the latest query when an older request finishes later', async () => {
+    const old = deferred();
+    api.get.mockReturnValueOnce(old.promise).mockResolvedValueOnce({ results: [hit('new')], groups: [] });
+    render(<MemoryRouter><SearchBar /></MemoryRouter>);
+    const box = screen.getByRole('searchbox');
+    fireEvent.change(box, { target: { value: 'Anna' } });
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(1));
+    fireEvent.change(box, { target: { value: 'Ben' } });
+    expect(await screen.findByText('Mieter new')).toBeInTheDocument();
+    await act(async () => old.resolve({ results: [hit('old')], groups: [] }));
+    expect(screen.getByText('Mieter new')).toBeInTheDocument();
+    expect(screen.queryByText('Mieter old')).not.toBeInTheDocument();
+    expect(screen.queryByText('ui.table.loading')).not.toBeInTheDocument();
+  });
+
+  it('discards a load-more response from an earlier query', async () => {
+    const more = deferred();
+    api.get.mockResolvedValueOnce({ results: [hit('first')], groups: [{ entity_type: 'tenant', total: 2, next_cursor: 'old' }] })
+      .mockReturnValueOnce(more.promise).mockResolvedValueOnce({ results: [hit('new')], groups: [] });
+    render(<MemoryRouter><SearchBar /></MemoryRouter>);
+    const box = screen.getByRole('searchbox');
+    fireEvent.change(box, { target: { value: 'Anna' } });
+    fireEvent.click(await screen.findByText('Weitere laden'));
+    fireEvent.change(box, { target: { value: 'Ben' } });
+    expect(await screen.findByText('Mieter new')).toBeInTheDocument();
+    await act(async () => more.resolve({ results: [hit('stale')], groups: [{ entity_type: 'tenant', next_cursor: 'stale' }] }));
+    expect(screen.queryByText('Mieter stale')).not.toBeInTheDocument();
+    expect(screen.queryByText('Weitere laden')).not.toBeInTheDocument();
+  });
+
+  it('uses the visible group order for keyboard selection', async () => {
+    api.get.mockResolvedValueOnce({ results: [hit('first'), { entity_type: 'property', id: 'p1', display: 'Haus', url: '/properties/p1' }, hit('last')], groups: [] });
+    render(<MemoryRouter><SearchBar /><Where /></MemoryRouter>);
+    const box = screen.getByRole('searchbox');
+    fireEvent.change(box, { target: { value: 'xyz' } });
+    await screen.findByText('Mieter last');
+    screen.getAllByRole('option').forEach(option => { option.scrollIntoView = vi.fn(); });
+    fireEvent.keyDown(box, { key: 'ArrowDown' });
+    fireEvent.keyDown(box, { key: 'ArrowDown' });
+    expect(screen.getByRole('option', { name: /Mieter last/ })).toHaveAttribute('aria-selected', 'true');
+    fireEvent.keyDown(box, { key: 'Enter' });
+    expect(screen.getByTestId('where')).toHaveTextContent('/tenants');
+  });
+
+  it('leaves focus inside a modal when Ctrl+K is pressed', () => {
+    render(<MemoryRouter><SearchBar /><div role="dialog" aria-modal="true"><input aria-label="Draft" /></div></MemoryRouter>);
+    const draft = screen.getByLabelText('Draft');
+    draft.focus();
+    fireEvent.keyDown(draft, { key: 'k', ctrlKey: true });
+    expect(draft).toHaveFocus();
+  });
   it('shows the total of a group and appends its next page', async () => {
     api.get
       .mockResolvedValueOnce({
@@ -50,6 +102,21 @@ describe('SearchBar', () => {
 
 describe('SearchBar pages and recently opened records', () => {
   afterEach(() => { localStorage.clear(); auth.user = null; });
+
+  it('ignores malformed recent records and nonlocal destinations', () => {
+    auth.user = { id: 'u1' };
+    localStorage.setItem('recent_search:u1', JSON.stringify([
+      { ...hit('object'), display: { bad: true } },
+      { ...hit('detail'), detail: { bad: true } },
+      { ...hit('external'), url: '//example.org' },
+      { ...hit('slash'), url: '/\\example.org' },
+      hit('valid'),
+    ]));
+    render(<MemoryRouter><SearchBar /></MemoryRouter>);
+    fireEvent.focus(screen.getByRole('searchbox'));
+    expect(screen.getAllByRole('option')).toHaveLength(1);
+    expect(screen.getByRole('option', { name: /Mieter valid/ })).toBeInTheDocument();
+  });
 
   it('offers matching pages by name, also typed without umlauts, and opens the first with Enter', async () => {
     api.get.mockResolvedValue({ results: [], groups: [] });

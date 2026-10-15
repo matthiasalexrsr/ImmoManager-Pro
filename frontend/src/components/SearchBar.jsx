@@ -86,12 +86,19 @@ const PAGES = NAV_SECTIONS.flatMap(section => section.items.map(item => ({ ...it
 const fold = text => String(text || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   .replace(/ae/g, 'a').replace(/oe/g, 'o').replace(/ue/g, 'u').replace(/ß/g, 'ss');
 
+const localRoute = value => typeof value === 'string' && /^\/(?!\/)/.test(value)
+  && [...value].every(character => character !== '\\' && character.charCodeAt(0) >= 32);
+
 // The records a person opened from the search, kept per signed-in user in this browser only.
 function readRecent(key) {
   if (!key) return [];
   try {
     const list = JSON.parse(window.localStorage.getItem(key) || '[]');
-    return Array.isArray(list) ? list.filter(r => r && r.entity_type && r.id != null && r.display).slice(0, RECENT_LIMIT) : [];
+    return Array.isArray(list) ? list.filter(r => r && typeof r.entity_type === 'string'
+      && Object.hasOwn(ENTITY_ROUTES, r.entity_type) && ['string', 'number'].includes(typeof r.id)
+      && typeof r.display === 'string' && r.display
+      && (r.detail == null || typeof r.detail === 'string') && (r.url == null || localRoute(r.url)))
+      .slice(0, RECENT_LIMIT) : [];
   } catch {
     return [];
   }
@@ -121,11 +128,14 @@ export default function SearchBar() {
   const [activeIndex, setActiveIndex] = useState(-1);
   const inputRef = useRef(null);
   const listRef = useRef(null);
+  const searchSession = useRef(null);
+  const moreRequest = useRef(null);
   const navigate = useNavigate();
 
   // Keyboard shortcut: Ctrl+K
   useEffect(() => {
     const handler = (e) => {
+      if (e.defaultPrevented || document.querySelector('[aria-modal="true"]')) return;
       const typing = e.target instanceof HTMLElement
         && (e.target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName));
       // "/" as in many web apps, unless typing or inside a dialog
@@ -142,22 +152,30 @@ export default function SearchBar() {
 
   // Debounced search
   useEffect(() => {
+    const session = {};
+    searchSession.current = session;
+    moreRequest.current = null;
+    setLoadingMore(null);
+    setLoading(false);
+    setActiveIndex(-1);
     if (query.length < 2) {
       return;
     }
+    let cancelled = false;
     const timer = setTimeout(() => {
       setLoading(true);
       api.get(`/search?q=${encodeURIComponent(query)}`)
         .then(data => {
+          if (cancelled) return;
           setResults(data.results || []);
           setResultsFor(query);
           setGroups(Object.fromEntries((data.groups || []).map(g => [g.entity_type, g])));
           setActiveIndex(-1);
         })
-        .catch(() => { setResults([]); setResultsFor(query); setGroups({}); })
-        .finally(() => setLoading(false));
+        .catch(() => { if (!cancelled) { setResults([]); setResultsFor(query); setGroups({}); } })
+        .finally(() => { if (!cancelled) setLoading(false); });
     }, 300);
-    return () => clearTimeout(timer);
+    return () => { cancelled = true; clearTimeout(timer); if (searchSession.current === session) searchSession.current = null; };
   }, [query]);
 
   // Clear results when query is too short
@@ -179,16 +197,21 @@ export default function SearchBar() {
     .slice(0, ACTION_LIMIT) : [];
   const showRecent = !query && recent.length > 0;
   // one list for the arrow keys: pages first, then records (or the recently opened records)
-  const options = showRecent ? recent : [...pageMatches, ...actionMatches, ...currentResults];
+  // Match the displayed group order, also if the server interleaves entity types.
+  const groupedResults = Object.groupBy(currentResults, result => result.entity_type);
+  const options = showRecent ? recent : [...pageMatches, ...actionMatches, ...(awaitingResults ? [] : Object.values(groupedResults).flat())];
   const dropdownOpen = open && (query.length >= 2 || showRecent);
 
   // Next keyset page of one type, appended to its group
   const loadMore = useCallback((type) => {
     const cursor = groups[type]?.next_cursor;
-    if (!cursor) return;
+    if (!cursor || moreRequest.current || resultsFor !== query) return;
+    const request = { session: searchSession.current };
+    moreRequest.current = request;
     setLoadingMore(type);
     api.get(`/search?q=${encodeURIComponent(query)}&type=${encodeURIComponent(type)}&limit=${LOAD_MORE_LIMIT}&cursor=${encodeURIComponent(cursor)}`)
       .then(data => {
+        if (searchSession.current !== request.session) return;
         setResults(prev => {
           const seen = new Set(prev.map(r => `${r.entity_type}:${r.id}`));
           return [...prev, ...(data.results || []).filter(r => !seen.has(`${r.entity_type}:${r.id}`))];
@@ -196,8 +219,8 @@ export default function SearchBar() {
         setGroups(prev => ({ ...prev, [type]: { ...prev[type], ...(data.groups?.[0] || {}) } }));
       })
       .catch(() => {})
-      .finally(() => setLoadingMore(null));
-  }, [groups, query]);
+      .finally(() => { if (moreRequest.current === request) { moreRequest.current = null; setLoadingMore(null); } });
+  }, [groups, query, resultsFor]);
 
   const handleSelect = useCallback((result) => {
     setOpen(false);
@@ -205,7 +228,7 @@ export default function SearchBar() {
     setActiveIndex(-1);
     inputRef.current?.blur();
     if (result.kind === 'page') { navigate(result.to); return; }
-    const route = result.url || ENTITY_ROUTES[result.entity_type] || '/';
+    const route = localRoute(result.url) ? result.url : ENTITY_ROUTES[result.entity_type] || '/';
     const entry = { entity_type: result.entity_type, id: result.id, display: result.display, detail: result.detail || '', url: route };
     setRecent(current => {
       const next = [entry, ...current.filter(r => !(r.entity_type === entry.entity_type && r.id === entry.id))].slice(0, RECENT_LIMIT);
@@ -273,7 +296,7 @@ export default function SearchBar() {
           type="text"
           placeholder={`${t('ui.form.search')}...`}
           value={query}
-          onChange={e => { setQuery(e.target.value); setOpen(true); }}
+          onChange={e => { setQuery(e.target.value); setActiveIndex(-1); setOpen(true); }}
           onFocus={() => setOpen(true)}
           onKeyDown={handleKeyDown}
           className="search-bar-input"
@@ -332,12 +355,6 @@ export default function SearchBar() {
                 </div>
               );
             }
-            const grouped = {};
-            currentResults.forEach(r => {
-              const type = r.entity_type;
-              if (!grouped[type]) grouped[type] = [];
-              grouped[type].push(r);
-            });
             return (
               <>
                 {pageMatches.length > 0 && (
@@ -354,7 +371,7 @@ export default function SearchBar() {
                 )}
                 {awaitingResults && <div className="search-bar-loading" role="status">{t('ui.table.loading')}</div>}
                 {!awaitingResults && currentResults.length === 0 && pageMatches.length === 0 && actionMatches.length === 0 && <div className="search-bar-empty" role="status">{t('search.global.noResults')}</div>}
-                {!awaitingResults && Object.entries(grouped).map(([type, items]) => (
+                {!awaitingResults && Object.entries(groupedResults).map(([type, items]) => (
                   <div key={type}>
                     <div className="search-bar-group-header">
                       {ENTITY_LABELS[type] || type}
@@ -368,7 +385,7 @@ export default function SearchBar() {
                         type="button"
                         className="search-bar-load-more"
                         onClick={(e) => { e.stopPropagation(); loadMore(type); }}
-                        disabled={loadingMore === type}
+                        disabled={loadingMore !== null}
                       >
                         {loadingMore === type ? t('ui.table.loading') : t('search.global.loadMore')}
                       </button>

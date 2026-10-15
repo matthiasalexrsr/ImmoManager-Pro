@@ -166,7 +166,7 @@ export default function Leads() {
   };
 
   // only the first load replaces the list; a reload keeps the tables (their search, selection, results)
-  if (loading && leads.length === 0) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  if (loading && leads.length === 0 && !modal) return <div className="page-loading">{t('ui.table.loading')}</div>;
 
   const statusCounts = leads.reduce((acc, l) => { acc[l.status] = (acc[l.status] || 0) + 1; return acc; }, {});
   const grouped = getGrouped();

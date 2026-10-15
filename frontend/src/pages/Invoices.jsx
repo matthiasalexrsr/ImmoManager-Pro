@@ -171,7 +171,7 @@ export default function Invoices() {
   };
 
   // only the first load replaces the page; a reload keeps the table and an open form ("Speichern & weiteren")
-  if (loading && invoices.length === 0) return <div className="page-loading">Lade Rechnungen...</div>;
+  if (loading && invoices.length === 0 && !modal) return <div className="page-loading">Lade Rechnungen...</div>;
 
   return (
     <div className="page">

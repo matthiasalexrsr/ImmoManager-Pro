@@ -181,10 +181,10 @@ function PropertyDossier({ id }) {
           </span>
         </div>
         <StatusBadge status={property.status} />
-        {canEdit && <div className="dossier-actions">
-          <button type="button" className="btn btn-secondary btn-sm" onClick={openEdit}><EditIcon size={15} /> Bearbeiten</button>
+        <div className="dossier-actions">
+          {canEdit && <button type="button" className="btn btn-secondary btn-sm" onClick={openEdit}><EditIcon size={15} /> Bearbeiten</button>}
           <NewForMenu label="Neu für dieses Objekt" items={NEW_FOR_PROPERTY} prefill={{ property_id: id }} />
-        </div>}
+        </div>
       </div>
 
       {/* KPI Summary */}

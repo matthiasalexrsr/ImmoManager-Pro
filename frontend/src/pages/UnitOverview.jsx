@@ -28,7 +28,6 @@ export default function UnitOverview() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [revision, setRevision] = useState(0);
-  const canAct = useCanWrite('/units');
   const canContract = useCanWrite('/contracts');
 
   useEffect(() => {
@@ -74,7 +73,7 @@ export default function UnitOverview() {
         <div className="dossier-navigation">
           {property && <Link to={`/properties/${encodeURIComponent(unit.property_id)}`} className="btn btn-secondary">← Zur Immobilie</Link>}
           <Link to="/units" className="btn btn-secondary">Alle Einheiten</Link>
-          {canAct && <NewForMenu label="Neu für diese Einheit" items={NEW_FOR_UNIT} prefill={prefill} />}
+          <NewForMenu label="Neu für diese Einheit" items={NEW_FOR_UNIT} prefill={prefill} />
         </div>
       </div>
 

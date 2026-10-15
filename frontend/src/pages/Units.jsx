@@ -168,7 +168,7 @@ export default function Units() {
   };
 
   // only the first load replaces the page; a reload keeps the table and an open form ("Speichern & weiteren")
-  if (loading && units.length === 0) return <div className="page-loading">Lade Einheiten...</div>;
+  if (loading && units.length === 0 && !modal) return <div className="page-loading">Lade Einheiten...</div>;
 
   return (
     <div className="page">

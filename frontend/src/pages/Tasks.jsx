@@ -262,7 +262,7 @@ export default function Tasks() {
     if (propertyState.error) propertyState.reload();
     if (unitState.error) unitState.reload();
   };
-  if (loading && tasks.length === 0 && !loadError) return <div className="page-loading">Lade Aufgaben...</div>;
+  if (loading && tasks.length === 0 && !loadError && !modal) return <div className="page-loading">Lade Aufgaben...</div>;
 
   return (
     <div className="page">

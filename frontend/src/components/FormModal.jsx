@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Link, useInRouterContext } from 'react-router-dom';
+import { Link, useInRouterContext, useNavigate } from 'react-router-dom';
 import { useTranslation } from '../i18n';
 import { CloseIcon } from './Icons';
 import { codeLabel } from '../utils/codeLabels';
@@ -44,6 +44,9 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
   const againRef = useRef(null);
   const pressStartedOnOverlay = useRef(false);
   const sessionRef = useRef({ key: initialKey, id: initial?.id, updatedAt: initial?.updated_at });
+  const savingRef = useRef(false);
+  const leaveRef = useRef(null);
+  const unloadRef = useRef(null);
 
   useEffect(() => {
     const changedRecord = sessionRef.current.key !== initialKey;
@@ -52,6 +55,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
       setError(null);
       setDirty(false);
       setConfirmDiscard(false);
+      leaveRef.current = null;
     }
     setValues(current => {
       const addedFields = fields.filter(f => !Object.prototype.hasOwnProperty.call(current, f.key));
@@ -89,21 +93,36 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
     setValues(current => ({ ...current, [key]: value, ...extra }));
   };
 
+  const requestLeave = useCallback(action => {
+    if (savingRef.current) return;
+    if (dirty) { leaveRef.current = action; setConfirmDiscard(true); }
+    else action();
+  }, [dirty]);
+
   const requestClose = useCallback(() => {
-    if (saving) return;
-    if (dirty && !confirmDiscard) setConfirmDiscard(true);
-    else onClose();
-  }, [saving, dirty, confirmDiscard, onClose]);
+    requestLeave(onClose);
+  }, [requestLeave, onClose]);
+
+  // Reloading or closing the browser also protects an unsaved draft.
+  useEffect(() => {
+    if (!dirty) return;
+    const beforeUnload = event => { event.preventDefault(); event.returnValue = ''; };
+    unloadRef.current = beforeUnload;
+    window.addEventListener('beforeunload', beforeUnload);
+    return () => { window.removeEventListener('beforeunload', beforeUnload); if (unloadRef.current === beforeUnload) unloadRef.current = null; };
+  }, [dirty]);
 
   // Escape closes (or asks first); a second Escape on the question returns to editing.
   // Ctrl/Cmd+Enter saves from any field, including multi-line notes.
   useEffect(() => {
     const handler = (e) => {
       if (e.key === 'Escape') {
+        e.preventDefault();
         if (confirmDiscard) setConfirmDiscard(false);
         else requestClose();
       } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && modalRef.current?.contains(document.activeElement)) {
         e.preventDefault();
+        if (savingRef.current || confirmDiscard) return;
         // Ctrl+Shift+Enter: save and start the next entry
         if (e.shiftKey && repeatable) againRef.current?.click();
         else formRef.current?.requestSubmit();
@@ -118,7 +137,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
     const modal = modalRef.current;
     if (!modal) return;
     const query = () => modal.querySelectorAll(
-      'button, [href], input:not([type="hidden"]), select, textarea, [tabindex]:not([tabindex="-1"])'
+      'button:not(:disabled), [href], input:not([type="hidden"]):not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"]):not(:disabled)'
     );
     const focusable = query();
     // Start in the first field to fill in, not on the close button in the header.
@@ -141,12 +160,14 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
     };
     modal.addEventListener('keydown', trapFocus);
     return () => modal.removeEventListener('keydown', trapFocus);
-  }, [fields]);
+  }, [fields, confirmDiscard]);
 
   const handleSubmit = async (e, again = false) => {
     e.preventDefault();
+    if (savingRef.current || confirmDiscard) return;
     // the browser's own checks (required fields) apply to "Speichern & weiteren" as well
     if (again && !formRef.current?.reportValidity()) return;
+    savingRef.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -173,7 +194,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
       if (again) {
         const keep = new Set(repeatKeep);
         setValues(current => Object.fromEntries(fields.map(f => [f.key,
-          keep.has(f.key) ? current[f.key] : toFieldValue(f, initial?.[f.key] ?? f.default ?? '')])));
+          keep.has(f.key) ? current[f.key] : toFieldValue(f, f.default ?? '')])));
         setSavedCount(count => count + 1);
         return;
       }
@@ -181,6 +202,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
     } catch (err) {
       setError(err.message);
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
@@ -232,6 +254,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
                         onChange={e => update(f.key, e.target.value,
                           Object.fromEntries((f.clearOnChange || []).map(key => [key, ''])))}
                         required={f.required}
+                        disabled={saving}
                       >
                         <option value="">{t('ui.form.pleaseSelect')}</option>
                         {options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -246,6 +269,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
                         value={values[f.key] || ''}
                         onChange={e => update(f.key, e.target.value)}
                         required={f.required}
+                        disabled={saving}
                         rows={3}
                       />
                     ) : f.type === 'date' ? (
@@ -257,9 +281,10 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
                           value={values[f.key] ?? ''}
                           onChange={e => update(f.key, e.target.value)}
                           required={f.required}
+                          disabled={saving}
                         />
                         {!f.noToday && <button type="button" className="btn btn-sm btn-ghost date-today"
-                          aria-label={tr('ui.form.todayFill', 'Heute eintragen')} aria-controls={inputId}
+                          aria-label={tr('ui.form.todayFill', 'Heute eintragen')} aria-controls={inputId} disabled={saving}
                           onClick={() => update(f.key, localToday())}>{tr('ui.form.today', 'Heute')}</button>}
                       </span>
                     ) : (
@@ -269,12 +294,13 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
                         value={values[f.key] ?? ''}
                         onChange={e => update(f.key, e.target.value)}
                         required={f.required}
+                        disabled={saving}
                         step={f.type === 'number' ? '0.01' : undefined}
                         placeholder={f.placeholder}
                       />
                     )}
                     {f.hint && <small className="form-hint">{f.hint}</small>}
-                    <MissingChoice hint={prerequisiteFor(f, options)} />
+                    <MissingChoice hint={prerequisiteFor(f, options)} requestLeave={requestLeave} />
                   </div>
                 );
               };
@@ -307,7 +333,13 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
             <div className="modal-footer modal-discard" role="alertdialog" aria-modal="false" aria-labelledby="form-discard-question">
               <span id="form-discard-question" className="modal-discard-question">{tr('ui.form.discardQuestion', 'Ungespeicherte Änderungen verwerfen?')}</span>
               <button type="button" onClick={() => setConfirmDiscard(false)} className="btn btn-secondary" autoFocus>{tr('ui.form.keepEditing', 'Weiter bearbeiten')}</button>
-              <button type="button" onClick={onClose} className="btn btn-danger">{tr('ui.form.discard', 'Verwerfen')}</button>
+              <button type="button" onClick={() => {
+                // A plain prerequisite link may leave the browser page immediately.
+                // The explicit discard has already answered its unload question.
+                if (unloadRef.current) window.removeEventListener('beforeunload', unloadRef.current);
+                setDirty(false); setConfirmDiscard(false);
+                (leaveRef.current || onClose)();
+              }} className="btn btn-danger">{tr('ui.form.discard', 'Verwerfen')}</button>
             </div>
           ) : (
             <div className="modal-footer">
@@ -330,13 +362,25 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
 }
 
 // Nothing to choose from yet: say what is missing and link to where it is created.
-function MissingChoice({ hint }) {
+function MissingChoice({ hint, requestLeave }) {
   const inRouter = useInRouterContext();
   if (!hint) return null;
   return (
     <small className="form-hint form-hint-missing" role="note">
       {hint.text}{' '}
-      {inRouter ? <Link to={hint.to}>{hint.label}</Link> : <a href={hint.to}>{hint.label}</a>}
+      {inRouter ? <PrerequisiteLink hint={hint} requestLeave={requestLeave} /> : <a href={hint.to}
+        onClick={event => { if (isCurrentNavigation(event)) { event.preventDefault(); requestLeave(() => window.location.assign(hint.to)); } }}>{hint.label}</a>}
     </small>
   );
+}
+
+const isCurrentNavigation = event => event.button === 0 && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey;
+
+function PrerequisiteLink({ hint, requestLeave }) {
+  const navigate = useNavigate();
+  return <Link to={hint.to} onClick={event => {
+    if (!isCurrentNavigation(event)) return;
+    event.preventDefault();
+    requestLeave(() => navigate(hint.to));
+  }}>{hint.label}</Link>;
 }
