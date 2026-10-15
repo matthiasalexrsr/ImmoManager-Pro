@@ -59,6 +59,7 @@ SOURCE_FILES = (
     "backend/db/migrations/versions/981b2631e1e8_contract_ledger_takeover.py",
     "backend/db/migrations/versions/d2e6c8a4f019_merge_date_index_and_takeover.py",
     "backend/services/payment_allocations.py", "backend/services/rent_ledger.py", "backend/domain/lease_engine.py",
+    "backend/services/secret_box.py",
 )
 
 
