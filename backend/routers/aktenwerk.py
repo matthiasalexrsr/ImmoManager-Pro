@@ -99,17 +99,21 @@ class SendRequest(BaseModel):
 def send(payload: SendRequest, actor: Annotated[UserRead, Depends(require_auth)]) -> dict:
     """Hand the chosen documents to the configured Aktenwerk; only on this explicit request."""
     wanted = list(dict.fromkeys(payload.exchange_ids))
-    entries = exchange.select(store, exchange.Selection(exchange_ids=set(wanted)))
-    found = {entry.exchange_id for entry in entries}
-    missing = [exchange_id for exchange_id in wanted if exchange_id not in found]
+    entries, aliases = exchange.select_for_transfer(store, wanted)
+    missing = [exchange_id for exchange_id in wanted if exchange_id not in aliases]
     outcome: dict = {}
 
     def work(config: dict) -> IntegrationActionResult:
         outcome.update(exchange.send_entries(store, entries, config, actor.id))
-        results = outcome["results"] + [{"exchange_id": exchange_id, "status": "failed",
+        by_id = {item["exchange_id"]: item for item in outcome["results"]}
+        results = [{**by_id[aliases[requested]], "exchange_id": requested,
+                    **({"canonical_exchange_id": aliases[requested]} if aliases[requested] != requested else {})}
+                   for requested in wanted if requested in aliases]
+        results += [{"exchange_id": exchange_id, "status": "failed",
                                          "reason": "Dokument nicht gefunden oder nicht sichtbar"} for exchange_id in missing]
         outcome["results"] = results
-        outcome["failed"] = outcome["failed"] + len(missing)
+        outcome["sent"] = sum(item["status"] in ("sent", "already_present") for item in results)
+        outcome["failed"] = len(results) - outcome["sent"]
         sent, failed = outcome["sent"], outcome["failed"]
         message = (f"{sent} an Aktenwerk übergeben" + (f", {failed} fehlgeschlagen" if failed else "")) if sent \
             else "Nichts übergeben" + (f" ({failed} fehlgeschlagen)" if failed else "")

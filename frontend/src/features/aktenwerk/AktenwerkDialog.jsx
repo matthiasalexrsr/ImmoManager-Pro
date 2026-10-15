@@ -16,18 +16,20 @@ export default function AktenwerkDialog({ onClose, ready, initialYear = '' }) {
   const [kinds, setKinds] = useState([]);
   const [taxRelevant, setTaxRelevant] = useState(false);
   const [deductible, setDeductible] = useState(false);
-  const [manifest, setManifest] = useState(null);
+  const [preview, setPreview] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(null);
   const [outcome, setOutcome] = useState(null);
   const closeRef = useRef(null);
   const filters = useMemo(() => ({ kinds, year, taxRelevant, deductible }), [kinds, year, taxRelevant, deductible]);
+  // A previous selection is never actionable while the new preview is pending or failed.
+  const manifest = preview?.filters === filters ? preview.data : null;
 
   useEffect(() => {
     const controller = new AbortController();
     setError(null);
     aktenwerkApi.manifest(filters, { signal: controller.signal })
-      .then(data => { setManifest(data); setOutcome(null); })
+      .then(data => { if (!controller.signal.aborted) { setPreview({ filters, data }); setOutcome(null); } })
       .catch(err => { if (err.name !== 'AbortError') setError(err.message); });
     return () => controller.abort();
   }, [filters]);
@@ -85,7 +87,7 @@ export default function AktenwerkDialog({ onClose, ready, initialYear = '' }) {
           <button ref={closeRef} type="button" className="btn-close" onClick={onClose} disabled={Boolean(busy)} aria-label="Schließen"><CloseIcon size={18} /></button>
         </div>
         <div className="modal-body">
-          <fieldset className="aktenwerk-filters">
+          <fieldset className="aktenwerk-filters" disabled={Boolean(busy)}>
             <legend className="sr-only">Auswahl</legend>
             <label>Jahr
               <select value={year} onChange={event => setYear(event.target.value)}>
@@ -141,6 +143,7 @@ export default function AktenwerkDialog({ onClose, ready, initialYear = '' }) {
               {failed.length > 0 && <ul>{failed.slice(0, 8).map(item => <li key={item.exchange_id}>{entries.find(e => e.exchange_id === item.exchange_id)?.title || item.exchange_id}: {item.reason}</li>)}</ul>}
             </div>
           )}
+          {outcome?.history_warning && <div className="alert-error" role="alert">{outcome.history_warning}</div>}
           {!ready && (
             <p className="text-muted aktenwerk-hint">
               Ohne Verbindung lässt sich das Paket herunterladen und in Aktenwerk importieren. Für die direkte Übergabe

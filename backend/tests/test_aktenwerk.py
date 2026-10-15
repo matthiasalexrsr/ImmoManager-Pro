@@ -243,6 +243,94 @@ def test_a_restricted_account_sees_only_its_portfolios(estate):
     assert len([name for name in archive.namelist() if name.startswith("files/")]) == 1
 
 
+def test_restricted_receipt_access_follows_the_booking_portfolio(estate, aktenwerk_on):
+    other = lease_with_document(store, number="MV-10", file_url=_save("documents/aw-other.pdf", b"%PDF other"))
+    other_account = store.create_account(AccountCreate(portfolio_id=other["portfolio"].id, name="Fremd",
+                                                       account_type="bank"))
+    foreign_url = _save("receipts/aw-foreign.pdf", b"%PDF foreign receipt")
+    foreign = store.create_booking(BookingCreate(account_id=other_account.id, property_id=other["property"].id,
+                                                booking_date=date(2025, 5, 6), amount=-12, receipt_url=foreign_url))
+    staff = auth.register_user("receipt-staff", "receipt@example.com", "Staff", "Secret123", "buchhaltung",
+                               portfolio_access="selected", portfolio_ids=[estate["portfolio"].id])
+    client = TestClient(app, headers=_bearer(staff))
+    # Files were stored by the unrestricted owner; no draft-upload grant is involved.
+    assert client.get(estate["expense"].receipt_url).content == b"%PDF-1.4 beleg"
+    assert client.get(foreign_url).status_code == 404
+    # Knowing a foreign path is no authority to attach it and thereby gain access.
+    forged = client.post(f"{API}/bookings", json={"account_id": estate["account"].id,
+        "booking_date": "2025-05-06", "amount": -12, "receipt_url": foreign_url})
+    assert forged.status_code == 404, forged.text
+    forged_edit = client.patch(f"{API}/bookings/{estate['expense'].id}", json={"receipt_url": foreign_url})
+    assert forged_edit.status_code == 404, forged_edit.text
+    assert client.get(foreign_url).status_code == 404
+    archive = zipfile.ZipFile(io.BytesIO(client.get(f"{API}/aktenwerk/export").content))
+    document = json.loads(archive.read("manifest.json"))
+    receipt_id = f"immomanager:booking-receipt:{estate['expense'].id}"
+    foreign_id = f"immomanager:booking-receipt:{foreign.id}"
+    assert receipt_id in _entries(document)
+    assert foreign_id not in _entries(document)
+    sent = client.post(f"{API}/aktenwerk/send", json={"exchange_ids": [receipt_id, foreign_id]}).json()
+    assert sent["sent"] == 1 and sent["failed"] == 1
+    assert len(aktenwerk_on) == 1 and b"foreign receipt" not in aktenwerk_on[0].content
+
+
+def test_unreadable_file_keeps_completed_transfers_and_remaining_documents(owner, estate, aktenwerk_on, monkeypatch):
+    storage = get_file_storage()
+    original_get = storage.get
+
+    def read(key):
+        if key == "documents/aw-rechnung.pdf":
+            raise PermissionError("private filesystem path must not be exposed")
+        return original_get(key)
+
+    monkeypatch.setattr(storage, "get", read)
+    ids = [f"immomanager:document:{estate['document'].id}",
+           f"immomanager:document:{estate['invoice_doc'].id}",
+           f"immomanager:booking-receipt:{estate['expense'].id}"]
+    response = owner.post(f"{API}/aktenwerk/send", json={"exchange_ids": ids})
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert (body["sent"], body["failed"]) == (2, 1)
+    assert len(aktenwerk_on) == 2
+    assert body["results"][1]["reason"] == "Die Datei konnte nicht gelesen werden."
+    assert "private filesystem" not in response.text
+    archive = zipfile.ZipFile(io.BytesIO(owner.get(f"{API}/aktenwerk/export").content))
+    document = json.loads(archive.read("manifest.json"))
+    assert ids[0] in _entries(document) and ids[2] in _entries(document)
+    assert any(problem["exchange_id"] == ids[1] for problem in document["problems"])
+
+
+def test_archived_booking_receipt_sends_once_under_the_canonical_document_id(estate, aktenwerk_on):
+    booking = store.create_booking(BookingCreate(account_id=estate["account"].id,
+        property_id=estate["property"].id, booking_date=date(2025, 3, 4), amount=-119,
+        receipt_url=estate["invoice_doc"].file_url))
+    canonical = f"immomanager:document:{estate['invoice_doc'].id}"
+    alias = f"immomanager:booking-receipt:{booking.id}"
+    staff = auth.register_user("alias-staff", "alias@example.com", "Staff", "Secret123", "buchhaltung",
+                               portfolio_access="selected", portfolio_ids=[estate["portfolio"].id])
+    client = TestClient(app, headers=_bearer(staff))
+    preview = _entries(client.get(f"{API}/aktenwerk/manifest").json())
+    assert canonical in preview and alias not in preview
+    result = client.post(f"{API}/aktenwerk/send", json={"exchange_ids": [alias, canonical]})
+    assert result.status_code == 200, result.text
+    assert result.json()["sent"] == 2 and result.json()["failed"] == 0
+    assert result.json()["results"][0]["canonical_exchange_id"] == canonical
+    assert result.json()["results"][0]["exchange_id"] == alias
+    assert len(aktenwerk_on) == 1
+    assert aktenwerk_on[0].headers["Idempotency-Key"].startswith(canonical + ":")
+    foreign = auth.register_user("alias-foreign", "alias-foreign@example.com", "Foreign", "Secret123", "buchhaltung",
+                                 portfolio_access="selected", portfolio_ids=[])
+    denied = TestClient(app, headers=_bearer(foreign)).post(f"{API}/aktenwerk/send", json={"exchange_ids": [alias]})
+    assert denied.status_code == 200 and denied.json()["sent"] == 0 and denied.json()["failed"] == 1
+    assert len(aktenwerk_on) == 1
+
+
+@pytest.mark.parametrize("url", ["https://[broken", "https://dms.example.com:bad", "https://dms.example.com:99999"])
+def test_malformed_host_and_port_are_validation_errors(url):
+    assert exchange.base_url_problem(url)
+    assert integration_manager.validate_config("aktenwerk", {"base_url": url})["valid"] is False
+
+
 def test_every_account_learns_only_whether_a_transfer_can_start(estate, aktenwerk_on, monkeypatch):
     staff = auth.register_user("bert", "bert@example.com", "Bert", "Secret123", "buchhaltung",
                                portfolio_access="selected", portfolio_ids=[estate["portfolio"].id])

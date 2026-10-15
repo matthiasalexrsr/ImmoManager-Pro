@@ -229,6 +229,28 @@ def select(store, selection: Selection) -> list[Entry]:
     return [entry for entry in collect_entries(store) if selection.matches(entry)]
 
 
+def select_for_transfer(store, exchange_ids: list[str]) -> tuple[list[Entry], dict[str, str]]:
+    """Resolve visible booking receipts to the archived document that owns the same file.
+
+    The preview/export de-duplicates those receipts. A booking's explicit action still works,
+    using the document's canonical idempotency key so it cannot create a second DMS copy.
+    Both collections come through the current request's portfolio scope.
+    """
+    entries = collect_entries(store)
+    by_id = {entry.exchange_id: entry for entry in entries}
+    documents_by_url = {entry.file_url: entry.exchange_id for entry in entries
+                        if entry.source.get("type") == "document"}
+    receipts = {f"{EXCHANGE_PREFIX}:booking-receipt:{booking.id}": (booking.receipt_url or "").strip()
+                for booking in store.list_bookings()}
+    aliases = {}
+    for requested in exchange_ids:
+        canonical = requested if requested in by_id else documents_by_url.get(receipts.get(requested))
+        if canonical is not None:
+            aliases[requested] = canonical
+    selected = set(aliases.values())
+    return [entry for entry in entries if entry.exchange_id in selected], aliases
+
+
 class FileUnavailable(Exception):
     """The file of an entry cannot be read (missing, outside the account's portfolios, not an upload)."""
 
@@ -253,6 +275,10 @@ def read_file(store, entry: Entry, actor_id: str) -> tuple[bytes, str]:
             data = get_file_storage().get(key)
     except HTTPException as exc:
         raise FileUnavailable(str(exc.detail)) from exc
+    except OSError as exc:
+        # A temporarily unreadable receipt must not discard the results of documents
+        # already handed over, or prevent the rest of an export from being packaged.
+        raise FileUnavailable("Die Datei konnte nicht gelesen werden.") from exc
     if data is None:
         raise FileUnavailable("Die Datei wurde nicht gefunden.")
     return data, key.rsplit("/", 1)[-1]
@@ -318,7 +344,11 @@ _LOCAL_SUFFIXES = (".local", ".lan", ".home", ".internal", ".fritz.box")
 
 def base_url_problem(value: str) -> str | None:
     """None for a usable base URL; plain HTTP only inside the local network."""
-    parsed = urlparse((value or "").strip())
+    try:
+        parsed = urlparse(value.strip() if isinstance(value, str) else "")
+        parsed.port   # reject malformed and out-of-range ports before storing/using the URL
+    except ValueError:
+        return "Adresse enthält einen ungültigen Rechnernamen oder Port"
     if parsed.scheme not in ("http", "https") or not parsed.hostname:
         return "Adresse muss mit http:// oder https:// beginnen und einen Rechnernamen enthalten"
     if parsed.username or parsed.password or parsed.query or parsed.fragment:

@@ -37,15 +37,31 @@ export const SEND_BATCH = 200;
 /** Hand over any number of documents in batches the server accepts; one result for all of them. */
 export async function sendAll(exchangeIds, send = aktenwerkApi.send) {
   let sent = 0; let failed = 0; const results = [];
+  const warnings = new Set();
   for (let start = 0; start < exchangeIds.length; start += SEND_BATCH) {
-    const outcome = await send(exchangeIds.slice(start, start + SEND_BATCH));
+    let outcome;
+    try {
+      outcome = await send(exchangeIds.slice(start, start + SEND_BATCH));
+    } catch (err) {
+      // A lost response may follow an accepted transfer. Keep completed batches
+      // visible, stop sending and distinguish the unconfirmed batch from later ones.
+      results.push(...exchangeIds.slice(start).map((id, offset) => ({
+        exchange_id: id, status: 'failed',
+        reason: offset < SEND_BATCH
+          ? `Übergabe unbestätigt: ${err?.message || 'Antwort nicht erhalten'}. Vor erneutem Versand in Aktenwerk prüfen.`
+          : 'Nach unterbrochener Übergabe nicht gesendet.',
+      })));
+      failed += exchangeIds.length - start;
+      break;
+    }
     sent += outcome?.sent || 0; failed += outcome?.failed || 0;
     results.push(...(outcome?.results || []));
+    if (outcome?.history_warning) warnings.add(outcome.history_warning);
   }
   const message = sent
     ? `${sent} an Aktenwerk übergeben${failed ? `, ${failed} fehlgeschlagen` : ''}`
     : `Nichts übergeben${failed ? ` (${failed} fehlgeschlagen)` : ''}`;
-  return { message, sent, failed, results };
+  return { message, sent, failed, results, ...(warnings.size ? { history_warning: [...warnings].join(' ') } : {}) };
 }
 
 // Whether a transfer is possible: the integration is switched on and has a usable address.

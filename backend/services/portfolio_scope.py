@@ -413,7 +413,7 @@ def _scope_queries(state):
                     column.foreign_keys
                     or field in TEXT_PARENTS
                     or field in csv_parents(table)
-                    or field in {"entity_id", "entity_type", "file_url", "photo_url"}
+                    or field in {"entity_id", "entity_type", "file_url", "photo_url", "receipt_url"}
                 ):
                     if not isinstance(value, BindParameter):
                         raise HTTPException(403, "Referenzen dürfen nur mit explizit geprüften Werten geändert werden.")
@@ -570,7 +570,7 @@ def _guard_sql_write(db, table, values, *, entity_id=None, creating=False, pendi
         parent = Base.metadata.tables.get(parent_name or "")
         if parent is None or not _sql_visible(db, parent, values["entity_id"]):
             raise HTTPException(403, "Die Referenz liegt außerhalb Ihrer erlaubten Portfolios.")
-    for field in ("file_url", "photo_url"):
+    for field in ("file_url", "photo_url", "receipt_url"):
         if values.get(field):
             require_file_access(values[field])
 
@@ -626,6 +626,7 @@ def require_file_access(value: str):
         linked = False
         for name, field in (
             ("documents", "file_url"),
+            ("bookings", "receipt_url"),
             ("entity_photos", "file_url"),
             ("listing_photos", "file_url"),
             ("meter_readings", "photo_url"),
@@ -665,6 +666,7 @@ def require_file_access(value: str):
         linked = False
         for name, field in (
             ("documents", "file_url"),
+            ("bookings", "receipt_url"),
             ("entity_photos", "file_url"),
             ("listing_photos", "file_url"),
             ("meter_readings", "photo_url"),
@@ -870,7 +872,7 @@ class ScopedCollection(MutableMapping):
             parent = raw.get(parent_name, {}).get(item.entity_id)
             if parent is None or not memory_visible(self.store, parent_name, parent):
                 raise HTTPException(403, "Die Referenz liegt außerhalb Ihrer erlaubten Portfolios.")
-        for field in ("file_url", "photo_url"):
+        for field in ("file_url", "photo_url", "receipt_url"):
             if getattr(item, field, None):
                 require_file_access(getattr(item, field))
         if (self.name, key) not in together and not memory_visible(self.store, self.name, item):
