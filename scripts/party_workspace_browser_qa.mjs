@@ -26,7 +26,7 @@ if (!playwrightPath) {
   catch { throw new Error('Set QA_PLAYWRIGHT_PATH to an existing @playwright/test/index.mjs installation, or install Playwright in your own frontend development environment.'); }
 }
 const { chromium, expect, request } = await import(pathToFileURL(playwrightPath).href);
-const output = path.resolve(process.cwd(), 'artifacts', 'party-browser');
+const output = path.resolve(process.env.QA_OUTPUT || path.join(process.cwd(), 'artifacts', 'party-browser'));
 const marker = `QA-Party-${new Date().toISOString().replace(/[:.]/g, '-')}`;
 const results = { marker, base, started: new Date().toISOString(), checks: [], screenshots: [], consoleErrors: [], apiFailures: [], cleanup: [], fixtures: {} };
 const entities = [];
