@@ -338,6 +338,10 @@ def resolve_context(store, entity_type: str, entity_id: str, actor_id: str, *, l
             if include_dependencies else []
         title = next((str(values[key]) for key in ("title", "full_name", "name", "contract_number", "label",
                      "supplier", "description", "payment_text", "serial_number") if values.get(key)), kind)
+        if kind == "contact":
+            personal_name = " ".join(str(values.get(key) or "").strip() for key in ("first_name", "last_name")).strip()
+            title = str(values.get("company_name") or "").strip() or personal_name \
+                or str(values.get("email") or "").strip() or "Unbenannter Kontakt"
         paths = {"property": "properties", "unit": "units", "maintenance": "maintenance", "invoice": "invoice-review",
                  "service_contract": "service-contracts"}
         context = next((key for key, (candidate, _) in CONTEXTS.items() if candidate == kind), table_name)

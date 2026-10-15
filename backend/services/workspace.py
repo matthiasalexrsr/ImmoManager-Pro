@@ -389,6 +389,11 @@ def mutate(store, actor_id: str, kind: str, identifier: str, body: dict, *, dele
                                                         lock=True, include_dependencies=True)
                         if not contexts.same_revision(body["source_revision"], live["revision"]):
                             raise HTTPException(409, {"code": "source_conflict", "current_revision": live["revision"]})
+                        provided = {(stamp["table"], stamp["id"]): stamp["revision"] for stamp in body["dependency_etags"]}
+                        actual = {(stamp["table"], stamp["id"]): stamp["revision"] for stamp in live["dependencies"]}
+                        if len(provided) != len(body["dependency_etags"]) or provided.keys() != actual.keys() or any(
+                                not contexts.same_revision(provided[key], value) for key, value in actual.items()):
+                            raise HTTPException(409, {"code": "source_conflict", "message": "Ein verknüpfter Datensatz wurde geändert. Bitte erneut vergleichen."})
                         context, payload = prior.context, deepcopy(prior.payload)
                         if payload.get("source"):
                             payload["source"]["revision"] = body["source_revision"]

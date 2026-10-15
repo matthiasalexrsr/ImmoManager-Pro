@@ -15,6 +15,7 @@ from sqlalchemy import Column, MetaData, String, Table, create_engine, inspect, 
 from backend import auth
 from backend.dependencies import store
 from backend.models import (
+    ContactCreate,
     ContractCreate,
     MeterCreate,
     PortfolioCreate,
@@ -35,6 +36,12 @@ app.include_router(auth_router.router, prefix="/api/v1")
 
 def command(revision=0, **values):
     return {"base_revision": revision, "idempotency_key": str(uuid4()), **values}
+
+
+def dependency_etags(client, kind, identifier):
+    response = client.get(f"{API}/source/{kind}/{identifier}")
+    assert response.status_code == 200, response.text
+    return response.json()["dependency_etags"]
 
 
 @pytest.fixture(autouse=True)
@@ -79,6 +86,23 @@ def test_drafts_are_durable_owner_private_and_never_save_the_domain(estate):
     assert saved.headers["cache-control"] == "private, no-store"
 
 
+@pytest.mark.parametrize("fields,title", [
+    ({"first_name": " Ada ", "last_name": "Lovelace"}, "Ada Lovelace"),
+    ({"first_name": "Ada", "last_name": "Lovelace", "company_name": "Hausverwaltung"}, "Hausverwaltung"),
+    ({"email": "contact@example.test"}, "contact@example.test"),
+    ({}, "Unbenannter Kontakt"),
+])
+def test_contact_source_and_favorites_have_identifiable_titles(fields, title):
+    _, owner = client("contact-titles")
+    contact = store.create_contact(ContactCreate(**fields))
+    source = owner.get(f"{API}/source/contact/{contact.id}")
+    assert source.status_code == 200, source.text
+    assert source.json()["title"] == title
+    favorite = owner.put(f"{API}/favorites/contact/{contact.id}", json=command())
+    assert favorite.status_code == 200, favorite.text
+    assert favorite.json()["title"] == title
+
+
 def test_cas_retry_and_tombstone_revision_prevent_lost_updates(estate):
     _, owner = client("cas")
     identifier = str(uuid4())
@@ -115,9 +139,10 @@ def test_changed_source_preserves_autosave_until_explicit_rebase(estate):
     assert autosave.status_code == 200, autosave.text
     assert autosave.json()["source_state"]["status"] == "changed"
     assert store.get_property(prop.id).name == "Fremde Änderung"
-    wrong = owner.post(f"{API}/drafts/{identifier}/rebase", json=command(2, source_revision=source["revision"], values={"name": "Merge"}))
+    tokens = dependency_etags(owner, "property", prop.id)
+    wrong = owner.post(f"{API}/drafts/{identifier}/rebase", json=command(2, source_revision=source["revision"], dependency_etags=tokens, values={"name": "Merge"}))
     assert wrong.status_code == 409
-    rebased = owner.post(f"{API}/drafts/{identifier}/rebase", json=command(2, source_revision=updated.updated_at.isoformat(), values={"name": "Merge"}))
+    rebased = owner.post(f"{API}/drafts/{identifier}/rebase", json=command(2, source_revision=updated.updated_at.isoformat(), dependency_etags=tokens, values={"name": "Merge"}))
     assert rebased.status_code == 200, rebased.text
     assert rebased.json()["source_state"]["status"] == "current"
     assert store.get_property(prop.id).name == "Fremde Änderung"
@@ -136,7 +161,14 @@ def test_parent_source_changes_are_recoverable_without_replacing_the_revision(es
     recovered = owner.get(f"{API}/drafts/{identifier}").json()
     assert recovered["source"]["revision"] == original_revision
     assert recovered["source_state"]["status"] == "changed" and recovered["source_state"]["dependencies_changed"]
-    rebased = owner.post(f"{API}/drafts/{identifier}/rebase", json=command(1, source_revision=original_revision, values={"title": "Bewusst geprüft"}))
+    old_tokens = dependency_etags(owner, "task", task.id)
+    store.update_property(prop.id, PropertyCreate(**{**prop.model_dump(), "name": "Erneut nach Vergleich geändert"}))
+    stale = owner.post(f"{API}/drafts/{identifier}/rebase", json=command(1, source_revision=original_revision,
+        dependency_etags=old_tokens, values={"title": "Veralteter Vergleich"}))
+    assert stale.status_code == 409, stale.text
+    assert owner.get(f"{API}/drafts/{identifier}").json()["revision"] == 1
+    rebased = owner.post(f"{API}/drafts/{identifier}/rebase", json=command(1, source_revision=original_revision,
+        dependency_etags=dependency_etags(owner, "task", task.id), values={"title": "Bewusst geprüft"}))
     assert rebased.status_code == 200, rebased.text
     assert rebased.json()["source_state"]["status"] == "current"
     assert store.get_task(task.id).title == "Aufgabe"
@@ -424,8 +456,10 @@ def test_anchor_only_create_draft_detects_changes_and_rebases_without_executing_
     assert recovered["source_state"]["status"] == "changed"
     assert recovered["source_state"]["reference"] == "anchor"
     assert recovered["values"]["body"] == "Noch nicht geführtes Gespräch"
-    assert owner.post(f"{API}/drafts/{identifier}/rebase", json=command(1, source_revision=prop.updated_at.isoformat(), values=recovered["values"])).status_code == 409
-    rebased = owner.post(f"{API}/drafts/{identifier}/rebase", json=command(1, source_revision=updated.updated_at.isoformat(), values=recovered["values"]))
+    tokens = dependency_etags(owner, "property", prop.id)
+    assert owner.post(f"{API}/drafts/{identifier}/rebase", json=command(1, source_revision=updated.updated_at.isoformat(), values=recovered["values"])).status_code == 422
+    assert owner.post(f"{API}/drafts/{identifier}/rebase", json=command(1, source_revision=prop.updated_at.isoformat(), dependency_etags=tokens, values=recovered["values"])).status_code == 409
+    rebased = owner.post(f"{API}/drafts/{identifier}/rebase", json=command(1, source_revision=updated.updated_at.isoformat(), dependency_etags=tokens, values=recovered["values"]))
     assert rebased.status_code == 200, rebased.text
     assert rebased.json()["source"] is None and rebased.json()["source_state"]["status"] == "current"
     assert rebased.json()["anchor_revision"] == updated.updated_at.isoformat()

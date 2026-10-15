@@ -35,7 +35,8 @@ def test_workspace_and_business_regressions_on_native_postgres(tmp_path):
                    "INTEGRATION_STATE_FILE": str(tmp_path / "integrations.json"),
                    "JOB_SCHEDULER_ENABLED": "false", "BACKUP_SCHEDULE_ENABLED": "false", "PYTHONPATH": str(root)}
     nodes = [str(root / "backend" / "tests" / name) for name in (
-        "test_workspace.py", "test_business_qol.py", "test_business_qol_review.py")]
+        "test_workspace.py", "test_business_qol.py", "test_business_qol_review.py",
+        "test_business_contact_matching.py", "test_workspace_scale.py")]
     created = False
     try:
         with admin.connect() as connection:
@@ -53,7 +54,9 @@ def test_workspace_and_business_regressions_on_native_postgres(tmp_path):
         required = {"test_simultaneous_retries_create_once_and_competing_updates_conflict",
                     "test_independent_request_writers_serialize_retries_and_reject_lost_updates",
                     "test_expired_same_key_processing_attempt_cannot_publish_into_new_lease",
-                    "test_business_migration_adopts_partial_schema_preserving_data_and_indexes"}
+                    "test_business_migration_adopts_partial_schema_preserving_data_and_indexes",
+                    "test_contact_unicode_matches_page_without_cutoff_or_false_positives",
+                    "test_work_center_and_timeline_paginate_past_ten_thousand_without_loss"}
         assert len(cases) >= 40 and not skipped and required.issubset(names), (
             f"Native workspace gate refused: {len(cases)} cases, {len(skipped)} skipped; missing {required - names}")
         print(f"Native workspace child gate passed: {len(cases)} cases, none skipped, independent backend PID CAS included.")

@@ -32,8 +32,16 @@ class DraftWrite(WorkspaceMutation):
     values: dict[str, Any] = Field(default_factory=dict)
 
 
+class DependencyETag(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    table: str = Field(min_length=1, max_length=80)
+    id: str = Field(min_length=1, max_length=120)
+    revision: str = Field(max_length=120)
+
+
 class DraftRebase(WorkspaceMutation):
     source_revision: str = Field(min_length=1, max_length=120)
+    dependency_etags: list[DependencyETag] = Field(min_length=1, max_length=1000)
     values: dict[str, Any]
 
 
