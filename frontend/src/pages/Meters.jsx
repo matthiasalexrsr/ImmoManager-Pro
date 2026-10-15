@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../api';
+import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from '../i18n';
-import { useToast } from '../components/Toast';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 import { formatDate, formatNumber } from '../utils/format';
+import KpiAction from '../components/KpiAction';
 
 const METER_TYPE_LABELS = {
   cold_water: 'Kaltwasser',
@@ -58,9 +59,9 @@ const READING_COLUMNS = [
 ];
 
 export default function Meters() {
+  const [, setSearchParams] = useSearchParams();
   const { t } = useTranslation();
   const confirm = useConfirm();
-  const toast = useToast();
   const store = useDataStore();
   const { items: units } = useEntities('units', '/units');
   const { items: properties } = useEntities('properties', '/properties');
@@ -71,48 +72,40 @@ export default function Meters() {
   const [modal, setModal] = useState(null);
   const [groupBy, setGroupBy] = useState('none'); // 'none' | 'property' | 'type' | 'supplier'
 
-  const refreshData = useCallback(() => {
-    const unitMap = Object.fromEntries(units.map(x => [x.id, x]));
-    const propMap = Object.fromEntries(properties.map(x => [x.id, x]));
+  const [loadError, setLoadError] = useState(null);
+  const [revision, setRevision] = useState(0);
+  const [sourceFilter, setSourceFilter] = useState('all');
+  const [drilldown, setDrilldown] = useState(0);
+  const refreshData = useCallback(() => setRevision(value => value + 1), []);
+  const openSources = value => { setSearchParams(current => { const next = new URLSearchParams(current); next.delete('focus_id'); next.delete('suche'); return next; }); setSourceFilter(value); setGroupBy('none'); setSelectedMeter(null); setDrilldown(number => number + 1); };
+  const inspectionSoon = meter => meter.next_inspection && Math.ceil((new Date(meter.next_inspection) - new Date()) / 86400000) < 30;
+  const visibleMeters = meters.filter(meter => sourceFilter === 'all' || (sourceFilter === 'active' ? meter.is_active !== false
+    : sourceFilter === 'inspection' ? inspectionSoon(meter) : meter.meter_type === sourceFilter.slice(5)));
 
-    api.list('/meters').catch(() => []).then(m => {
-      const enriched = (m || []).map(meter => {
-        const unit = unitMap[meter.unit_id];
-        const prop = unit?.property_id ? propMap[unit.property_id] : null;
-        return {
-          ...meter,
-          unit_label: unit?.label || meter.unit_id || '—',
-          property_name: prop?.name || '—',
-          property_id: unit?.property_id || null,
-          last_reading_value: '—',
-          last_reading_date: '—',
-        };
-      });
-
-      api.list('/meters/readings/all').then(allReadings => {
-        const readingsByMeter = {};
-        (allReadings || []).forEach(r => {
-          if (!readingsByMeter[r.meter_id]) readingsByMeter[r.meter_id] = [];
-          readingsByMeter[r.meter_id].push(r);
+  useEffect(() => {
+    const request = new AbortController(); setLoading(true); setLoadError(null);
+    Promise.allSettled(['/meters', '/meters/readings/all'].map(path => api.list(path, { signal: request.signal }))).then(([result, readingResult]) => {
+      if (request.signal.aborted) return;
+      const failures = [];
+      if (result.status !== 'fulfilled' || !Array.isArray(result.value)) {
+        setLoadError(result.reason?.message || 'Die Zähler konnten nicht gelesen werden.'); return;
+      }
+      const unitMap = Object.fromEntries(units.map(row => [row.id, row]));
+      const propMap = Object.fromEntries(properties.map(row => [row.id, row]));
+      const latest = new Map();
+      if (readingResult.status === 'fulfilled' && Array.isArray(readingResult.value)) {
+        readingResult.value.forEach(reading => {
+          if (!latest.has(reading.meter_id) || reading.reading_date > latest.get(reading.meter_id).reading_date) latest.set(reading.meter_id, reading);
         });
-
-        enriched.forEach(meter => {
-          const meterReadings = readingsByMeter[meter.id] || [];
-          if (meterReadings.length > 0) {
-            const sorted = meterReadings.sort((a, b) =>
-              (b.reading_date || '').localeCompare(a.reading_date || '')
-            );
-            meter.last_reading_value = sorted[0].value;
-            meter.last_reading_date = sorted[0].reading_date;
-          }
-        });
-
-        setMeters([...enriched]);
-      }).catch(() => setMeters(enriched));
-    }).catch(() => { toast.error('Zählerstände konnten nicht geladen werden'); }).finally(() => setLoading(false));
-  }, [units, properties, toast]);
-
-  useEffect(() => { refreshData(); }, [refreshData]);
+      } else failures.push(readingResult.reason?.message || 'Die Ablesungen konnten nicht gelesen werden.');
+      setMeters(result.value.map(meter => { const unit = unitMap[meter.unit_id]; const reading = latest.get(meter.id);
+        return { ...meter, unit_label: unit?.label || meter.unit_id || '—', property_id: unit?.property_id || null,
+          property_name: propMap[unit?.property_id]?.name || '—', last_reading_value: reading?.value ?? '—', last_reading_date: reading?.reading_date || '—' };
+      }));
+      if (failures.length) setLoadError(failures.join(' · '));
+    }).finally(() => { if (!request.signal.aborted) setLoading(false); });
+    return () => request.abort();
+  }, [revision, units, properties]);
 
   const handleSelectMeter = (meter) => {
     setSelectedMeter(meter);
@@ -190,10 +183,10 @@ export default function Meters() {
 
   // Group meters
   const getGroupedMeters = () => {
-    if (groupBy === 'none') return [{ label: null, meters }];
+    if (groupBy === 'none') return [{ label: null, meters: visibleMeters }];
 
     const groups = {};
-    meters.forEach(m => {
+    visibleMeters.forEach(m => {
       let key;
       if (groupBy === 'property') key = m.property_name || 'Ohne Immobilie';
       else if (groupBy === 'type') key = METER_TYPE_LABELS[m.meter_type] || m.meter_type || 'Unbekannt';
@@ -211,12 +204,7 @@ export default function Meters() {
   const stats = {
     total: meters.length,
     active: meters.filter(m => m.is_active !== false).length,
-    dueInspection: meters.filter(m => {
-      if (!m.next_inspection) return false;
-      const d = new Date(m.next_inspection);
-      const now = new Date();
-      return Math.ceil((d - now) / (1000 * 60 * 60 * 24)) < 30;
-    }).length,
+    dueInspection: meters.filter(inspectionSoon).length,
     types: Object.entries(
       meters.reduce((acc, m) => { acc[m.meter_type] = (acc[m.meter_type] || 0) + 1; return acc; }, {})
     ),
@@ -228,26 +216,14 @@ export default function Meters() {
 
   return (
     <div className="page">
+      {loadError && <p role="alert">{loadError} <button type="button" className="btn btn-secondary" onClick={refreshData}>Erneut laden</button></p>}
+      {sourceFilter === 'inspection' && <p className="text-muted">Prüftermine in weniger als 30 Tagen, einschließlich überfälliger Termine und inaktiver Zähler.</p>}
       {/* Summary Cards */}
       <div className="kpi-row">
-        <div className="kpi">
-          <div className="kpi-value">{stats.total}</div>
-          <div className="kpi-label">Zähler gesamt</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-value" style={{ color: 'var(--success)' }}>{stats.active}</div>
-          <div className="kpi-label">Aktiv</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-value" style={{ color: stats.dueInspection > 0 ? 'var(--warning)' : undefined }}>{stats.dueInspection}</div>
-          <div className="kpi-label">Prüfung fällig</div>
-        </div>
-        {stats.types.map(([type, count]) => (
-          <div key={type} className="kpi">
-            <div className="kpi-value">{count}</div>
-            <div className="kpi-label">{METER_TYPE_LABELS[type] || type}</div>
-          </div>
-        ))}
+        <KpiAction label="Zähler gesamt" value={loadError && !meters.length ? '—' : stats.total} onClick={() => openSources('all')} />
+        <KpiAction label="Aktiv" value={loadError && !meters.length ? '—' : stats.active} color="var(--success)" onClick={() => openSources('active')} />
+        <KpiAction label="Prüfung fällig" value={loadError && !meters.length ? '—' : stats.dueInspection} color={stats.dueInspection ? 'var(--warning)' : undefined} onClick={() => openSources('inspection')} />
+        {stats.types.map(([type, count]) => <KpiAction key={type} label={METER_TYPE_LABELS[type] || type} value={count} onClick={() => openSources(`type:${type}`)} />)}
       </div>
 
       {/* Group-by controls */}
@@ -282,6 +258,10 @@ export default function Meters() {
             title={group.label ? '' : 'Zähler'}
             columns={METER_COLUMNS}
             data={group.meters}
+            drilldownKey={drilldown}
+            emptyText={loadError && !meters.length ? 'Zähler noch nicht verfügbar.' : undefined}
+            viewConfig={{ column_filters: { meter_filter: sourceFilter } }}
+            onApplyView={config => setSourceFilter(config.column_filters?.meter_filter || 'all')}
             onEdit={handleSelectMeter}
             onAdd={gi === 0 ? () => setModal('create-meter') : undefined}
             onDelete={handleDeleteMeter}

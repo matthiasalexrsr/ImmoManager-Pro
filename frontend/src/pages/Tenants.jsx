@@ -12,6 +12,7 @@ import { useCanWrite } from '../contexts/AuthContext';
 import { DocumentIcon, PlusIcon } from '../components/Icons';
 import { Archive, ArchiveRestore } from 'lucide-react';
 import './ListWorkspace.css';
+import KpiAction from '../components/KpiAction';
 
 const PAYMENT_LABELS = { bank_transfer: 'Überweisung', sepa_direct_debit: 'SEPA-Lastschrift', cash: 'Bar' };
 
@@ -34,6 +35,8 @@ export default function Tenants() {
   const [modal, setModal] = useState(null);
   const [error, setError] = useState(null);
   const [filter, setFilter] = useState('active');
+  const [drilldown, setDrilldown] = useState(0);
+  const openSources = value => { setSearchParams(current => { const next = new URLSearchParams(current); next.delete('focus_id'); next.delete('suche'); return next; }); setFilter(value); setDrilldown(number => number + 1); };
   const [revision, setRevision] = useState(0);
 
   const refreshData = () => setRevision(value => value + 1);
@@ -44,7 +47,7 @@ export default function Tenants() {
     setLoading(true);
     setError(null);
     api.list('/tenants?include_archived=true', { signal: controller.signal })
-      .then(data => { if (!cancelled) setTenants(data || []); })
+      .then(data => { if (!Array.isArray(data)) throw new Error('Die Parteienquelle konnte nicht gelesen werden.'); if (!cancelled) setTenants(data); })
       .catch(err => { if (!cancelled) setError(err.message || 'Mieter konnten nicht geladen werden.'); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; controller.abort(); };
@@ -109,7 +112,8 @@ export default function Tenants() {
     if (filter === 'all') return enriched;
     if (filter === 'active') return enriched.filter(t => !t.archived);
     if (filter === 'archived') return enriched.filter(t => t.archived);
-    if (filter === 'with_contract') return enriched.filter(t => t.contract_status === 'active');
+    if (filter === 'with_contract') return enriched.filter(t => !t.archived && t.contract_status === 'active');
+    if (filter === 'with_sepa') return enriched.filter(t => !t.archived && t.sepa_mandate);
     if (filter === 'no_sepa') return enriched.filter(t => !t.archived && !t.sepa_mandate);
     if (filter === 'no_email') return enriched.filter(t => !t.archived && !t.email);
     return enriched;
@@ -222,28 +226,11 @@ export default function Tenants() {
 
       {/* Summary cards */}
       <div className="kpi-row list-summary" aria-label="Parteienübersicht">
-        <div className="kpi">
-          <div className="kpi-value">{activeTenants.length}</div>
-          <div className="kpi-label">Aktive Parteien</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-value">{archivedCount}</div>
-          <div className="kpi-label">Archiviert</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-value">{withContract}</div>
-          <div className="kpi-label">Mit Vertrag</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-value">{withSepa}</div>
-          <div className="kpi-label">Mit SEPA</div>
-        </div>
-        {noEmail > 0 && (
-          <div className="kpi">
-            <div className="kpi-value">{noEmail}</div>
-            <div className="kpi-label">Ohne E-Mail</div>
-          </div>
-        )}
+        <KpiAction label="Aktive Parteien" value={activeTenants.length} onClick={() => openSources('active')} />
+        <KpiAction label="Archiviert" value={archivedCount} onClick={() => openSources('archived')} />
+        <KpiAction label="Mit Vertrag" value={withContract} onClick={() => openSources('with_contract')} />
+        <KpiAction label="Mit SEPA" value={withSepa} onClick={() => openSources('with_sepa')} />
+        {noEmail > 0 && <KpiAction label="Ohne E-Mail" value={noEmail} onClick={() => openSources('no_email')} />}
       </div>
 
       {/* Filter tabs */}
@@ -253,20 +240,25 @@ export default function Tenants() {
           { key: 'all', label: 'Alle' },
           { key: 'archived', label: 'Archiviert' },
           { key: 'with_contract', label: 'Mit Vertrag' },
+          { key: 'with_sepa', label: 'Mit SEPA' },
           { key: 'no_sepa', label: 'Ohne SEPA' },
           { key: 'no_email', label: 'Ohne E-Mail' },
         ].map(f => (
-          <button key={f.key} aria-pressed={filter === f.key} className={`btn btn-sm ${filter === f.key ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setFilter(f.key)}>
+          <button key={f.key} aria-pressed={filter === f.key} className={`btn btn-sm ${filter === f.key ? 'btn-primary' : 'btn-secondary'}`} onClick={() => openSources(f.key)}>
             {f.label}
           </button>
         ))}
       </div>
 
       <DataTable
+        settingsKey="tenants-main"
         hideTitle
         title={`Mieter (${filtered.length})`}
         columns={columns}
         data={filtered}
+        drilldownKey={drilldown}
+        viewConfig={{ column_filters: { tenant_filter: filter } }}
+        onApplyView={config => setFilter(['all', 'active', 'archived', 'with_contract', 'with_sepa', 'no_sepa', 'no_email'].includes(config.column_filters?.tenant_filter) ? config.column_filters.tenant_filter : 'active')}
         onAdd={() => setModal('create')}
         addLabel="Partei anlegen"
         hideAddButton

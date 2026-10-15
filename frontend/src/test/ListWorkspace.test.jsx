@@ -23,6 +23,34 @@ beforeEach(() => { mocks.list.mockReset(); mocks.related = {}; mocks.reload.mock
 afterEach(cleanup);
 
 describe('accessible list workspace', () => {
+  it('opens the exact property vacancy source and resets a narrower table search', async () => {
+    mocks.list.mockResolvedValue([{ id: 'p1', name: 'Vermietetes Haus', status: 'active' }, { id: 'p2', name: 'Leeres Haus', status: 'inactive' }]);
+    mocks.related.units = { items: [{ id: 'u1', property_id: 'p1', status: 'occupied' }, { id: 'u2', property_id: 'p2', status: 'vacant' }] };
+    render(<MemoryRouter><Properties /></MemoryRouter>);
+    fireEvent.click(await screen.findByRole('button', { name: 'Mit Leerstand: Quellvorgänge anzeigen' }));
+    expect(screen.getByRole('link', { name: /Leeres Haus/ })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Vermietetes Haus/ })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Nicht vorhanden' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Ø Vermietungsquote: Quellvorgänge anzeigen' }));
+    expect(screen.getByRole('link', { name: /Vermietetes Haus/ })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Leeres Haus/ })).toBeInTheDocument();
+  });
+
+  it('keeps archived parties out of active contract and SEPA KPI sources', async () => {
+    mocks.list.mockResolvedValue([{ id: 't1', full_name: 'Aktive Partei', archived: false, sepa_mandate: true },
+      { id: 't2', full_name: 'Archivierte Partei', archived: true, sepa_mandate: true }, { id: 't3', full_name: 'Ohne Mandat', archived: false }]);
+    mocks.related.contracts = { items: [{ id: 'c1', tenant_id: 't1', status: 'active' }, { id: 'c2', tenant_id: 't2', status: 'active' }] };
+    render(<MemoryRouter><Tenants /></MemoryRouter>);
+    fireEvent.click(await screen.findByRole('button', { name: 'Mit Vertrag: Quellvorgänge anzeigen' }));
+    expect(screen.getByRole('button', { name: 'Aktive Partei' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Archivierte Partei' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Ohne Mandat' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Mit SEPA: Quellvorgänge anzeigen' }));
+    expect(screen.getByRole('button', { name: 'Aktive Partei' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Archivierte Partei' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Archiviert: Quellvorgänge anzeigen' }));
+    expect(screen.getByRole('button', { name: 'Archivierte Partei' })).toBeInTheDocument();
+  });
   it('retains a named table with a visually hidden duplicate title and keyboard sorting', async () => {
     const user = userEvent.setup();
     render(<DataTable title="Immobilien" hideTitle columns={[{ key: 'name', label: 'Name' }]}

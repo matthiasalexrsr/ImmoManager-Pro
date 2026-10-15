@@ -60,6 +60,23 @@ describe('Statements detail', () => {
     expect(screen.getByText('pages.statements.notRecoverable')).toBeInTheDocument();
   });
 
+  it('opens the exact tenant, vacancy and nonrecoverable cost sources from the preview cards', async () => {
+    await openPeriod();
+    fireEvent.click(screen.getByRole('button', { name: /pages.statements.vacancyShare/ }));
+    const statements = screen.getByRole('region', { name: 'Einzelabrechnungen als Verteilungsquelle' });
+    expect(statements).toHaveFocus();
+    expect(within(statements).queryByText('Lukas Becker')).not.toBeInTheDocument();
+    expect(within(statements).getByText('pages.statements.vacancyParty')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /pages.statements.tenantShare/ }));
+    expect(within(statements).getByText('Lukas Becker')).toBeInTheDocument();
+    expect(within(statements).queryByText('pages.statements.vacancyParty')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /pages.statements.nonRecoverableShare/ }));
+    const costs = screen.getByRole('region', { name: 'Kostenquellen dieser Abrechnung' });
+    expect(costs).toHaveFocus();
+    expect(within(costs).getByText('Dachreparatur')).toBeInTheDocument();
+    expect(within(costs).queryByText('Grundsteuer')).not.toBeInTheDocument();
+  });
+
   it('opens the reason dialog for a correction of a finalized version', async () => {
     // Regression: the dialog state was never rendered, so the button did nothing.
     withPeriod({ status: 'finalized' });

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
+import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from '../i18n';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
@@ -7,6 +8,8 @@ import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 import { formatDate } from '../utils/format';
 import { bulkDelete } from '../utils/bulkActions';
+import KpiAction from '../components/KpiAction';
+const STATUS_LABELS = { new: 'Neu', contacted: 'Kontaktiert', viewing_scheduled: 'Besichtigung geplant', offer_sent: 'Angebot gesendet', accepted: 'Angenommen', rejected: 'Abgelehnt' };
 
 const PRIORITY_COLORS = { 1: 'var(--danger)', 2: 'var(--warning)', 3: 'var(--info)' };
 
@@ -37,6 +40,7 @@ const COLUMNS = [
 ];
 
 export default function Leads() {
+  const [, setSearchParams] = useSearchParams();
   const { t } = useTranslation();
   const confirm = useConfirm();
   const [leads, setLeads] = useState([]);
@@ -46,39 +50,27 @@ export default function Leads() {
   const [modal, setModal] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
   const [groupBy, setGroupBy] = useState('none');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [drilldown, setDrilldown] = useState(0);
+  const [loadError, setLoadError] = useState(null);
+  const [revision, setRevision] = useState(0);
+  const openSources = value => { setSearchParams(current => { const next = new URLSearchParams(current); next.delete('focus_id'); next.delete('suche'); return next; }); setStatusFilter(value); setGroupBy('none'); setDrilldown(number => number + 1); };
 
-  const refreshData = () => {
-    setLoading(true);
-    Promise.all([
-      api.list('/leads').catch(err => { console.warn('[Leads]', err.message); return []; }),
-      api.list('/units').catch(() => []),
-      api.list('/listings').catch(() => []),
-    ]).then(([l, u, li]) => {
-      setLeads(l || []);
-      setUnits(u || []);
-      setListings(li || []);
-    }).finally(() => setLoading(false));
-  };
+  const refreshData = () => setRevision(value => value + 1);
 
   useEffect(() => {
-    let cancelled = false;
-    Promise.all([
-      api.list('/leads').catch(err => { console.warn('[Leads]', err.message); return []; }),
-      api.list('/units').catch(err => { console.warn('[Leads] units:', err.message); return []; }),
-    ]).then(([l, u]) => {
-      if (cancelled) return;
-      setLeads(l || []);
-      setUnits(u || []);
-    }).catch(e => {
-      if (!cancelled) console.warn('[Leads] load failed:', e.message);
-    }).finally(() => {
-      if (!cancelled) setLoading(false);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    const request = new AbortController(); setLoading(true); setLoadError(null);
+    Promise.allSettled(['/leads', '/units', '/listings'].map(path => api.list(path, { signal: request.signal }))).then(results => {
+      if (request.signal.aborted) return;
+      const setters = [setLeads, setUnits, setListings]; const failures = [];
+      results.forEach((result, index) => {
+        if (result.status === 'fulfilled' && Array.isArray(result.value)) setters[index](result.value);
+        else failures.push(result.reason?.message || 'Die Quelldaten konnten nicht gelesen werden.');
+      });
+      if (failures.length) setLoadError(failures.join(' · '));
+    }).finally(() => { if (!request.signal.aborted) setLoading(false); });
+    return () => request.abort();
+  }, [revision]);
 
   const unitMap = Object.fromEntries(units.map(u => [u.id, u]));
   const enriched = leads.map(l => ({
@@ -87,7 +79,7 @@ export default function Leads() {
   }));
 
   // Sort by priority (higher priority = lower number = first), then by name
-  const sorted = [...enriched].sort((a, b) => {
+  const sorted = enriched.filter(row => statusFilter === 'all' || row.status === statusFilter).sort((a, b) => {
     const pa = a.priority || 99;
     const pb = b.priority || 99;
     if (pa !== pb) return pa - pb;
@@ -173,6 +165,7 @@ export default function Leads() {
 
   return (
     <div className="page">
+      {loadError && <p role="alert">{loadError} <button type="button" className="btn btn-secondary" onClick={refreshData}>Erneut laden</button></p>}
       {deleteError && (
         <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
           {deleteError}
@@ -182,15 +175,9 @@ export default function Leads() {
 
       {/* Summary stats */}
       <div className="kpi-row">
-        <div className="kpi">
-          <div className="kpi-value">{leads.length}</div>
-          <div className="kpi-label">Gesamt</div>
-        </div>
+        <KpiAction label="Gesamt" value={loadError && !leads.length ? '—' : leads.length} onClick={() => openSources('all')} />
         {Object.entries(statusCounts).map(([status, count]) => (
-          <div key={status} className="kpi">
-            <div className="kpi-value">{count}</div>
-            <div className="kpi-label"><StatusBadge status={status} /></div>
-          </div>
+          <KpiAction key={status} label={STATUS_LABELS[status] || status || 'Ohne Status'} value={count} onClick={() => openSources(status)} />
         ))}
       </div>
 
@@ -225,6 +212,10 @@ export default function Leads() {
             title={group.label ? '' : 'Interessenten'}
             columns={COLUMNS}
             data={group.leads}
+            drilldownKey={drilldown}
+            emptyText={loadError && !leads.length ? 'Interessenten noch nicht verfügbar.' : undefined}
+            viewConfig={{ column_filters: { lead_status: statusFilter } }}
+            onApplyView={config => setStatusFilter(config.column_filters?.lead_status || 'all')}
         rowName={row => row.full_name || row.id}
         bulkActions={[bulkDelete({ one: 'Interessent', many: 'Interessenten', remove: row => api.del(`/leads/${row.id}`),
           finished: () => refreshData() })]}

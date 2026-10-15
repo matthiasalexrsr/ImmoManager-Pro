@@ -13,6 +13,7 @@ import { useCanWrite } from '../contexts/AuthContext';
 import { documentTypeLabel } from '../utils/documentType';
 import AktenwerkDialog from '../features/aktenwerk/AktenwerkDialog';
 import { aktenwerkBulkAction, documentExchangeId, useAktenwerkReady } from '../features/aktenwerk/aktenwerkApi';
+import KpiAction from '../components/KpiAction';
 
 const BASE = (import.meta.env.VITE_API_URL || '/api/v1');
 
@@ -63,6 +64,14 @@ function DocumentsWorkspace() {
   const [uploadQueue, setUploadQueue] = useState([]);
   const [ocrResult, setOcrResult] = useState(null);
   const [filter, setFilter] = useState('all');
+  const [drilldown, setDrilldown] = useState(0);
+  const [pageSource, setPageSource] = useState(null);
+  const openSources = value => {
+    setSearchParams(current => { const next = new URLSearchParams(current); next.delete('focus_id'); next.delete('suche'); return next; });
+    setDrilldown(number => number + 1);
+    if (tenantId) { setFilter('all'); setPageSource(value === 'all' ? null : value); if (value === 'all') setSkip(0); }
+    else setFilter(value);
+  };
   const [error, setError] = useState(null);
   const [revision, setRevision] = useState(0);
   const [partyOverview, setPartyOverview] = useState(null);
@@ -108,6 +117,7 @@ function DocumentsWorkspace() {
       ? Promise.all([api.get(`/tenants/${encodeURIComponent(tenantId)}/documents?${params}`, options), api.get(`/tenants/${encodeURIComponent(tenantId)}/overview`, options)])
       : api.list('/documents', options).then(items => [{ items }, null]);
     request.then(([page, overview]) => {
+      if (!Array.isArray(page?.items) || (tenantId && (!Number.isInteger(page.total) || page.total < 0))) throw new Error('Die Dokumentquelle konnte nicht vollständig gelesen werden.');
       if (!cancelled) { setDocuments(page.items); setDocumentPage(tenantId ? page : null); setPartyOverview(overview); }
     }).catch(err => { if (!cancelled) setError(err.message); })
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -162,11 +172,14 @@ function DocumentsWorkspace() {
   };
 
   const filtered = useMemo(() => {
+    if (tenantId) return enriched;
     if (filter === 'all') return enriched;
     if (filter === 'no_assignment') return enriched.filter(d => !d.property_id && !d.unit_id && !d.contract_id && !d.tenant_id);
     if (filter === 'ocr_open') return enriched.filter(d => d.ocr_status === 'processing' || (!d.ocr_status && d.file_url));
+    if (filter === 'with_file') return enriched.filter(d => d.file_url);
+    if (filter === 'ocr_completed') return enriched.filter(d => d.ocr_status === 'completed');
     return enriched;
-  }, [enriched, filter]);
+  }, [enriched, filter, tenantId]);
 
   // Summary stats
   const withFile = enriched.filter(d => d.file_url).length;
@@ -359,24 +372,10 @@ function DocumentsWorkspace() {
 
       {/* Summary cards */}
       {!loading && !error && <div className="kpi-row">
-        <div className="kpi">
-          <div className="kpi-value">{documentPage?.total ?? enriched.length}</div>
-          <div className="kpi-label">Gesamt</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-value">{withFile}</div>
-          <div className="kpi-label">Mit Datei{tenantId ? ' auf dieser Seite' : ''}</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-value">{ocrCompleted}</div>
-          <div className="kpi-label">OCR erkannt{tenantId ? ' auf dieser Seite' : ''}</div>
-        </div>
-        {noAssignment > 0 && (
-          <div className="kpi">
-            <div className="kpi-value" style={{ color: 'var(--warning)' }}>{noAssignment}</div>
-            <div className="kpi-label">Ohne Zuordnung</div>
-          </div>
-        )}
+        <KpiAction label="Gesamt" value={documentPage?.total ?? enriched.length} onClick={() => openSources('all')} />
+        <KpiAction label={`Mit Datei${tenantId ? ' auf dieser Seite' : ''}`} value={withFile} onClick={() => openSources('with_file')} />
+        <KpiAction label={`OCR erkannt${tenantId ? ' auf dieser Seite' : ''}`} value={ocrCompleted} onClick={() => openSources('ocr_completed')} />
+        {noAssignment > 0 && <KpiAction label={`Ohne Zuordnung${tenantId ? ' auf dieser Seite' : ''}`} value={noAssignment} color="var(--warning)" onClick={() => openSources('no_assignment')} />}
       </div>}
 
       {/* Filter tabs */}
@@ -385,8 +384,10 @@ function DocumentsWorkspace() {
           { key: 'all', label: 'Alle' },
           { key: 'no_assignment', label: 'Ohne Zuordnung' },
           { key: 'ocr_open', label: 'OCR offen' },
+          { key: 'with_file', label: 'Mit Datei' },
+          { key: 'ocr_completed', label: 'OCR erkannt' },
         ].map(f => (
-          <button key={f.key} className={`btn btn-sm ${filter === f.key ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setFilter(f.key)}>
+          <button key={f.key} className={`btn btn-sm ${filter === f.key ? 'btn-primary' : 'btn-secondary'}`} onClick={() => openSources(f.key)}>
             {f.label}
           </button>
         ))}
@@ -478,19 +479,27 @@ function DocumentsWorkspace() {
       )}
 
       {loading && <p role="status">Dokumente werden geladen …</p>}
+      {tenantId && pageSource && !loading && !error && <section aria-label="Kennzahlquelle auf dieser Dokumentseite" className="panel">
+        <div className="panel-header">{pageSource === 'with_file' ? 'Mit Datei' : pageSource === 'ocr_completed' ? 'OCR erkannt' : 'Ohne Zuordnung'} · Quelle auf dieser Seite
+          <button type="button" className="btn btn-sm btn-secondary" onClick={() => setPageSource(null)}>Quellansicht schließen</button></div>
+        <DataTable title="Dokumente auf dieser Seite" settingsKey="documents-page-source" columns={columns}
+          data={enriched.filter(row => pageSource === 'with_file' ? Boolean(row.file_url) : pageSource === 'ocr_completed' ? row.ocr_status === 'completed' : !row.property_id && !row.unit_id && !row.contract_id && !row.tenant_id)}
+          drilldownKey={drilldown} onRowClick={row => row.file_url && setViewerFile(row)} />
+      </section>}
       {!loading && !error && <DataTable
         title={t('pages.documents.title') || 'Dokumente'}
         columns={columns}
         data={filtered}
+        drilldownKey={drilldown}
         serverPaged={Boolean(tenantId)}
         viewAnchor={tenantId ? { kind: 'tenant', id: tenantId } : undefined}
         viewConfig={tenantId ? { search, column_filters: { document_type: docType, document_filter: filter } } : { column_filters: { document_filter: filter } }}
         onApplyView={tenantId ? config => {
           setSearch(typeof config.search === 'string' ? config.search : '');
           setDocType(typeof config.column_filters?.document_type === 'string' ? config.column_filters.document_type : '');
-          setFilter(['all', 'no_assignment', 'ocr_open'].includes(config.column_filters?.document_filter) ? config.column_filters.document_filter : 'all');
+          setFilter('all'); setPageSource(null);
           setSkip(0);
-        } : config => setFilter(['all', 'no_assignment', 'ocr_open'].includes(config.column_filters?.document_filter) ? config.column_filters.document_filter : 'all')}
+        } : config => setFilter(['all', 'no_assignment', 'ocr_open', 'with_file', 'ocr_completed'].includes(config.column_filters?.document_filter) ? config.column_filters.document_filter : 'all')}
         loadExportData={tenantId ? loadPartyExport : undefined}
         onAdd={() => fileRef.current?.click()}
         onEdit={row => setModal(row)}

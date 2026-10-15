@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
@@ -13,10 +13,12 @@ import { useCanWrite } from '../contexts/AuthContext';
 import { PlusIcon, PropertyIcon } from '../components/Icons';
 import './ListWorkspace.css';
 import { propertyFields } from '../features/properties/propertyFields';
+import KpiAction from '../components/KpiAction';
 
 export default function Properties() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const [, setSearchParams] = useSearchParams();
   const confirm = useConfirm();
   const toast = useToast();
   const store = useDataStore();
@@ -34,6 +36,8 @@ export default function Properties() {
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
   const [filter, setFilter] = useState('all');
+  const [drilldown, setDrilldown] = useState(0);
+  const openSources = value => { setSearchParams(current => { const next = new URLSearchParams(current); next.delete('focus_id'); next.delete('suche'); return next; }); setFilter(value); setDrilldown(number => number + 1); };
   const [error, setError] = useState(null);
   const [revision, setRevision] = useState(0);
 
@@ -182,22 +186,10 @@ export default function Properties() {
 
       {/* Summary cards */}
       <div className="kpi-row list-summary" aria-label="Bestandsübersicht">
-        <div className="kpi">
-          <div className="kpi-value">{totalCount}</div>
-          <div className="kpi-label">Immobilien gesamt</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-value">{activeCount}</div>
-          <div className="kpi-label">Aktiv</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-value">{vacancyCount}</div>
-          <div className="kpi-label">Mit Leerstand</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-value">{avgOccupancy}%</div>
-          <div className="kpi-label">&Oslash; Vermietungsquote</div>
-        </div>
+        <KpiAction label="Immobilien gesamt" value={totalCount} onClick={() => openSources('all')} />
+        <KpiAction label="Aktiv" value={activeCount} onClick={() => openSources('active')} />
+        <KpiAction label="Mit Leerstand" value={vacancyCount} onClick={() => openSources('vacancy')} />
+        <KpiAction label="Ø Vermietungsquote" value={`${avgOccupancy}%`} onClick={() => openSources('all')} />
       </div>
 
       {/* Filter tabs */}
@@ -212,7 +204,7 @@ export default function Properties() {
           <button
             key={f.key}
             className={`btn btn-sm ${filter === f.key ? 'btn-primary' : 'btn-secondary'}`}
-            onClick={() => setFilter(f.key)}
+            onClick={() => openSources(f.key)}
             aria-pressed={filter === f.key}
           >{f.label}</button>
         ))}
@@ -223,6 +215,9 @@ export default function Properties() {
         title={t('portfolio.properties.title') || 'Immobilien'}
         columns={columns}
         data={filtered}
+        drilldownKey={drilldown}
+        viewConfig={{ column_filters: { property_filter: filter } }}
+        onApplyView={config => setFilter(['all', 'active', 'inactive', 'vacancy', 'open_maintenance'].includes(config.column_filters?.property_filter) ? config.column_filters.property_filter : 'all')}
         onAdd={() => setModal('create')}
         addLabel="Immobilie anlegen"
         hideAddButton

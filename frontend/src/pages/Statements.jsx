@@ -215,6 +215,13 @@ export default function Statements() {
   const [sourceRows, setSourceRows] = useState({ items: [], loading: false, error: null });
   const [sourceAttempt, setSourceAttempt] = useState(0);
   const [drilldown, setDrilldown] = useState(0);
+  const costSources = useRef(null);
+  const statementSourceTable = useRef(null);
+  const [costSourceFilter, setCostSourceFilter] = useState('all');
+  const [statementSourceFilter, setStatementSourceFilter] = useState('all');
+  const [sourceDrilldown, setSourceDrilldown] = useState(0);
+  const openCostSources = filter => { setCostSourceFilter(filter); setSourceDrilldown(value => value + 1); costSources.current?.focus(); costSources.current?.scrollIntoView?.({ block: 'center' }); };
+  const openStatementSources = filter => { setStatementSourceFilter(filter); setSourceDrilldown(value => value + 1); statementSourceTable.current?.focus(); statementSourceTable.current?.scrollIntoView?.({ block: 'center' }); };
   const { t } = useTranslation();
   const toast = useToast();
   const [periods, setPeriods] = useState([]);
@@ -633,6 +640,7 @@ export default function Statements() {
   };
 
   const handleSelectPeriod = (period) => {
+    setCostSourceFilter('all'); setStatementSourceFilter('all');
     setSelectedPeriod(period);
     setView('detail');
     setObjections([]);
@@ -818,27 +826,27 @@ export default function Statements() {
         )}
 
         <div className="stats-grid" style={{ marginBottom: '1rem' }}>
-          <div className="stat-card">
+          <button type="button" className="stat-card kpi-action" onClick={() => openCostSources('all')}>
             <div className="stat-label">{t('pages.statements.totalCosts')}</div>
             <div className="stat-value">{formatMoney(totalCosts)}</div>
-          </div>
+          </button>
           {periodStmts.length > 0 && (
-            <div className="stat-card">
+            <button type="button" className="stat-card kpi-action" onClick={() => openStatementSources('tenant')}>
               <div className="stat-label">{t('pages.statements.tenantShare') || 'Auf Mieter verteilt'}</div>
               <div className="stat-value">{formatMoney(tenantShare)}</div>
-            </div>
+            </button>
           )}
           {periodStmts.length > 0 && (
-            <div className="stat-card">
+            <button type="button" className="stat-card kpi-action" onClick={() => openStatementSources('vacancy')}>
               <div className="stat-label">{t('pages.statements.vacancyShare') || 'Leerstand (Eigentümer)'}</div>
               <div className="stat-value">{formatMoney(vacancyShare)}</div>
-            </div>
+            </button>
           )}
           {nonRecoverable > 0 && (
-            <div className="stat-card">
+            <button type="button" className="stat-card kpi-action" onClick={() => openCostSources('nonrecoverable')}>
               <div className="stat-label">{t('pages.statements.nonRecoverableShare') || 'Nicht umlagefähig'}</div>
               <div className="stat-value">{formatMoney(nonRecoverable)}</div>
-            </div>
+            </button>
           )}
           <div className="stat-card">
             <div className="stat-label">{t('ui.form.status') || 'Status'}</div>
@@ -990,7 +998,8 @@ export default function Statements() {
           </div>
         )}
 
-        <div style={{ marginBottom: '1.5rem' }}>
+        <div ref={costSources} role="region" aria-label="Kostenquellen dieser Abrechnung" tabIndex={-1} style={{ marginBottom: '1.5rem' }}>
+          {costSourceFilter === 'nonrecoverable' && <p>Quelle: Nicht umlagefähige Kosten. <button type="button" onClick={() => openCostSources('all')}>Alle Kosten anzeigen</button></p>}
           {editable && (
             <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', justifyContent: 'flex-end' }}>
               <label className="btn btn-sm btn-secondary" style={{ cursor: 'pointer', margin: 0 }}>
@@ -1008,7 +1017,8 @@ export default function Statements() {
           <DataTable
             title={t('pages.statements.costItems')}
             columns={COST_COLUMNS}
-            data={periodCosts}
+            data={costSourceFilter === 'nonrecoverable' ? periodCosts.filter(row => row.is_recoverable === false) : periodCosts}
+            drilldownKey={sourceDrilldown}
             onAdd={editable ? () => setCostModal('create') : undefined}
             onEdit={editable ? (row => setCostModal(row)) : undefined}
           />
@@ -1079,11 +1089,15 @@ export default function Statements() {
         )}
 
         {periodStmts.length > 0 && (
+          <section ref={statementSourceTable} aria-label="Einzelabrechnungen als Verteilungsquelle" tabIndex={-1}>
+          {statementSourceFilter !== 'all' && <p>Quelle: {statementSourceFilter === 'vacancy' ? 'Leerstand (Eigentümer)' : 'Auf Mieter verteilt'}. <button type="button" onClick={() => openStatementSources('all')}>Alle Einzelabrechnungen anzeigen</button></p>}
           <DataTable
             title={t('pages.statements.statementsTitle') || 'Einzelabrechnungen je Nutzungszeitraum'}
             columns={STMT_COLUMNS}
-            data={periodStmts}
+            data={statementSourceFilter === 'vacancy' ? periodStmts.filter(row => row.party === 'vacancy') : statementSourceFilter === 'tenant' ? periodStmts.filter(row => row.party !== 'vacancy') : periodStmts}
+            drilldownKey={sourceDrilldown}
           />
+          </section>
         )}
 
         {costModal && editable && (

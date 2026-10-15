@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../api';
 import { useToast } from '../components/Toast';
@@ -14,9 +14,14 @@ export default function TenantAccount() {
   const party = usePartyWorkspace();
   const [tenant, setTenant] = useState(null);
   const [account, setAccount] = useState(null);
-  const [asOf, setAsOf] = useState(() => new Date().toISOString().slice(0, 10));
+  const [asOf, setAsOf] = useState(() => { const date = new Date();
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  });
   const [error, setError] = useState(null);
   const [revision, setRevision] = useState(0);
+  const contractSources = useRef(null);
+  const unassignedSources = useRef(null);
+  const showSources = target => { target.current?.focus(); target.current?.scrollIntoView?.({ block: 'center' }); };
 
   useEffect(() => {
     let cancelled = false;
@@ -56,16 +61,16 @@ export default function TenantAccount() {
       </div>
 
       <div className="stats-grid" style={{ marginBottom: '1rem' }}>
-        <div className="stat-card"><div className="stat-label">Soll</div><div className="stat-value">{eur(totals.expected)}</div></div>
-        <div className="stat-card"><div className="stat-label">Gezahlt (zugeordnet)</div><div className="stat-value">{eur(totals.paid)}</div></div>
-        <div className="stat-card">
+        <button type="button" className="stat-card kpi-action" onClick={() => showSources(contractSources)}><div className="stat-label">Soll</div><div className="stat-value">{eur(totals.expected)}</div></button>
+        <button type="button" className="stat-card kpi-action" onClick={() => showSources(contractSources)}><div className="stat-label">Gezahlt (zugeordnet)</div><div className="stat-value">{eur(totals.paid)}</div></button>
+        <button type="button" className="stat-card kpi-action" onClick={() => showSources(contractSources)}>
           <div className="stat-label">{totals.balance >= 0 ? 'Offen' : 'Guthaben'}</div>
           <div className={`stat-value ${totals.balance > 0 ? 'text-red' : 'text-green'}`}>{eur(Math.abs(totals.balance))}</div>
-        </div>
-        <div className="stat-card"><div className="stat-label">Nicht zugeordnet</div><div className="stat-value">{eur(unassigned)}</div></div>
+        </button>
+        <button type="button" className="stat-card kpi-action" onClick={() => showSources(unassignedSources)}><div className="stat-label">Nicht zugeordnet</div><div className="stat-value">{eur(unassigned)}</div></button>
       </div>
 
-      <div className="card" style={{ marginBottom: '1rem' }}>
+      <section ref={contractSources} aria-label="Vertragsquellen zum Stichtag" tabIndex={-1} className="card" style={{ marginBottom: '1rem' }}>
         <div className="card-header"><strong>Verträge</strong></div>
         <div className="table-scroll">
           <table className="data-table">
@@ -86,9 +91,9 @@ export default function TenantAccount() {
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
 
-      <div className="card">
+      <section ref={unassignedSources} aria-label="Nicht zugeordnete Zahlungsquellen zum Stichtag" tabIndex={-1} className="card">
         <div className="card-header"><strong>Nicht zugeordnete Zahlungen</strong></div>
         {account.unassigned.length === 0
           ? <p className="text-muted" style={{ padding: '1rem' }}>Alle Zahlungen sind Verträgen zugeordnet.</p>
@@ -112,7 +117,7 @@ export default function TenantAccount() {
               </p>
             </div>
           )}
-      </div>
+      </section>
     </div>
   );
 }

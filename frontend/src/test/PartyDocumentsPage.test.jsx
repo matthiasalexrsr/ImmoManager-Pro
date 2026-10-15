@@ -83,6 +83,25 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('party documents page', () => {
+  it('keeps the server total and page intact when opening current-page KPI sources', async () => {
+    const loaded = [{ ...direct, ocr_status: 'completed' }, { ...legacy, file_url: '' }];
+    api.get.mockImplementation(path => path.includes('/overview') ? Promise.resolve(overview(anna)) : Promise.resolve(page(loaded, { total: 57, has_more: true })));
+    mount();
+    await screen.findByText('Direkter Brief');
+    const requestsBefore = documentRequests().length;
+    fireEvent.click(screen.getByRole('button', { name: 'Mit Datei auf dieser Seite: Quellvorgänge anzeigen' }));
+    const source = screen.getByRole('table', { name: 'Dokumente auf dieser Seite' });
+    expect(within(source).getByText('Direkter Brief')).toBeInTheDocument();
+    expect(within(source).queryByText('Historischer Mietvertrag')).not.toBeInTheDocument();
+    const main = screen.getByRole('table', { name: 'Dokumente' });
+    expect(within(main).getByText('Direkter Brief')).toBeInTheDocument();
+    expect(within(main).getByText('Historischer Mietvertrag')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Gesamt: Quellvorgänge anzeigen' })).toHaveTextContent('57');
+    expect(documentRequests()).toHaveLength(requestsBefore);
+    fireEvent.click(screen.getByRole('button', { name: 'Gesamt: Quellvorgänge anzeigen' }));
+    expect(screen.queryByRole('table', { name: 'Dokumente auf dieser Seite' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Gesamt: Quellvorgänge anzeigen' })).toHaveTextContent('57');
+  });
   it('shows direct and historical-contract documents from the scoped endpoint, with server paging and filters', async () => {
     const documents = Array.from({ length: 26 }, (_, index) => ({ ...(index === 0 ? legacy : direct), id: `d${index}`, title: `Unterlage ${index}` }));
     api.get.mockImplementation(path => {

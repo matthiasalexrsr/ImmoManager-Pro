@@ -83,7 +83,8 @@ describe('contract tenant cache across page mutations', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Zur Vertragsseite' }));
     await screen.findByText('MV-1');
     if (mutation === 'rename') await screen.findByRole('button', { name: 'Neue Partei' });
-    if (mutation === 'archive') expect(screen.getByRole('button', { name: 'Bisherige Partei' })).toBeInTheDocument();
+    // Contract rows and their separately cached party names resolve independently.
+    if (mutation === 'archive') await screen.findByRole('button', { name: 'Bisherige Partei' });
     fireEvent.click(screen.getByRole('button', { name: 'Neu' }));
     const select = screen.getByLabelText('Mieter *');
     if (mutation === 'archive') {

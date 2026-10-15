@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { afterEach, describe, it, expect, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import TenantAccount from '../pages/TenantAccount';
 import { api } from '../api';
@@ -14,9 +14,11 @@ const ACCOUNT = {
   ],
   unassigned: [{ booking_id: 'b', booking_date: '2025-09-20', amount: 2000, unassigned: 430, payment_text: 'Nachzahlung' }],
 };
+afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 describe('TenantAccount', () => {
   it('shows each contract and the payments without a contract', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date(2026, 9, 15, 0, 30));
     api.get.mockImplementation(path => Promise.resolve(path.includes('/account') ? ACCOUNT : { full_name: 'Familie Yilmaz' }));
     render(<MemoryRouter initialEntries={['/tenants/t1/account']}>
       <Routes><Route path="/tenants/:id/account" element={<TenantAccount />} /></Routes>
@@ -27,5 +29,10 @@ describe('TenantAccount', () => {
     expect(screen.getByRole('link', { name: 'Familie Yilmaz' })).toHaveAttribute('href', '/tenants/t1/account');
     expect(screen.getByText('Nachzahlung')).toBeInTheDocument();
     expect(screen.getByText(/15\.700,00/)).toBeInTheDocument();  // open in total
+    expect(screen.getByLabelText('Stichtag')).toHaveValue('2026-10-15');
+    fireEvent.click(screen.getByRole('button', { name: /Gezahlt \(zugeordnet\)/ }));
+    expect(screen.getByRole('region', { name: 'Vertragsquellen zum Stichtag' })).toHaveFocus();
+    fireEvent.click(screen.getByRole('button', { name: /Nicht zugeordnet/ }));
+    expect(screen.getByRole('region', { name: 'Nicht zugeordnete Zahlungsquellen zum Stichtag' })).toHaveFocus();
   });
 });
