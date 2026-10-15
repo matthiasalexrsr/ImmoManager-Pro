@@ -90,7 +90,7 @@ export default function HandoverProtocols({ service = handoverProtocolService })
     }
   };
 
-  if (loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  if (loading && !creating && !editor) return <div className="page-loading">{t('ui.table.loading')}</div>;
 
   return (
     <div className="page">

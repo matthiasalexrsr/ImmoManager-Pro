@@ -77,8 +77,9 @@ export default function CrudPage({ title, endpoint, columns, formFields, onRowCl
   }));
 
   // only the first load replaces the list; a reload keeps the table (its search, selection, results)
-  if (loading && items.length === 0) return <div className="page-loading">{t('ui.table.loading')}</div>;
-  if (error) return <div className="page"><div className="alert alert-error">{error}</div></div>;
+  // An open form owns draft cleanup and closing after its mutation triggers a reload.
+  if (loading && items.length === 0 && !modal) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  if (error && !modal) return <div className="page"><div className="alert alert-error">{error}</div></div>;
 
   return (
     <div className="page">

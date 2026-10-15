@@ -198,7 +198,7 @@ export default function Maintenance() {
   };
 
   // only the first load replaces the list; a reload keeps the table (its search, selection, results)
-  if (loading && items.length === 0 && !error) return <div className="page-loading">Lade Wartungsaufträge...</div>;
+  if (loading && items.length === 0 && !error && !modal) return <div className="page-loading">Lade Wartungsaufträge...</div>;
 
   return (
     <div className="page">

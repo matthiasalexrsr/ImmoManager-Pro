@@ -243,9 +243,9 @@ export default function Contracts() {
     if (tenantState.error) tenantState.reload();
     if (filter === 'missing_documents' && documentState.error) documentState.reload();
   };
-  if (loading && contracts.length === 0 && !loadError) return <div className="page-loading">Lade Verträge...</div>;
-  if (filter === 'missing_documents' && documentState.loading) return <div className="page-loading">Vertragsbelege werden geprüft…</div>;
-  if (filter === 'missing_documents' && documentState.error) return <div className="page"><p className="alert-error" role="alert">{documentState.error}<button type="button" onClick={retry}>Erneut laden</button></p></div>;
+  if (loading && contracts.length === 0 && !loadError && !modal) return <div className="page-loading">Lade Verträge...</div>;
+  if (filter === 'missing_documents' && documentState.loading && !modal) return <div className="page-loading">Vertragsbelege werden geprüft…</div>;
+  if (filter === 'missing_documents' && documentState.error && !modal) return <div className="page"><p className="alert-error" role="alert">{documentState.error}<button type="button" onClick={retry}>Erneut laden</button></p></div>;
 
   return (
     <div className="page">

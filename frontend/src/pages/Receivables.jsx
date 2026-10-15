@@ -119,8 +119,8 @@ export default function Receivables() {
   };
 
   // only the first load replaces the page; a reload keeps the table and an open form
-  if (loading && receivables.length === 0 || contractState.loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
-  if (error || contractState.error) return <div className="page"><div className="alert alert-error" role="alert">{error || contractState.error}<button type="button" className="btn btn-secondary" onClick={() => { setAttempt(value => value + 1); contractState.reload?.(); }}>Erneut laden</button></div></div>;
+  if (!modal && (loading && receivables.length === 0 || contractState.loading)) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  if (!modal && (error || contractState.error)) return <div className="page"><div className="alert alert-error" role="alert">{error || contractState.error}<button type="button" className="btn btn-secondary" onClick={() => { setAttempt(value => value + 1); contractState.reload?.(); }}>Erneut laden</button></div></div>;
 
   return (
     <div className="page">

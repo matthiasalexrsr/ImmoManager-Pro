@@ -112,8 +112,8 @@ export default function Budgets() {
     }
   };
 
-  if (loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
-  if (loadError) return <div className="page"><div className="alert alert-error" role="alert">{loadError}<button type="button" className="btn btn-secondary" onClick={() => setAttempt(value => value + 1)}>Erneut laden</button></div></div>;
+  if (loading && !modal) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  if (loadError && !modal) return <div className="page"><div className="alert alert-error" role="alert">{loadError}<button type="button" className="btn btn-secondary" onClick={() => setAttempt(value => value + 1)}>Erneut laden</button></div></div>;
 
   return (
     <div className="page">

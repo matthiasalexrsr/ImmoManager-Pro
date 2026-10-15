@@ -101,7 +101,7 @@ export default function Calendar() {
     }
   };
 
-  if (loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  if (loading && !modal) return <div className="page-loading">{t('ui.table.loading')}</div>;
 
   return (
     <div className="page">

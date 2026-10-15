@@ -210,7 +210,7 @@ export default function Meters() {
     ),
   };
 
-  if (loading) return <div className="page-loading">Laden...</div>;
+  if (loading && !modal) return <div className="page-loading">Laden...</div>;
 
   const grouped = getGroupedMeters();
 

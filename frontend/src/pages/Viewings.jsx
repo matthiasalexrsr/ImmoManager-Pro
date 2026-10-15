@@ -237,7 +237,7 @@ export default function Viewings() {
   };
 
   // only the first load replaces the list; a reload keeps the table (its search, selection, results)
-  if (loading && viewings.length === 0) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  if (loading && viewings.length === 0 && !modal) return <div className="page-loading">{t('ui.table.loading')}</div>;
 
   const statusLabels = { scheduled: 'Geplant', completed: 'Durchgeführt', cancelled: 'Abgesagt', no_show: 'Nicht erschienen' };
 

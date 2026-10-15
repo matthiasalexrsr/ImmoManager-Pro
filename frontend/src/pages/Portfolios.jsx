@@ -147,7 +147,7 @@ export default function Portfolios() {
   };
 
   // only the first load replaces the page; a reload keeps the table and an open form
-  if (loading && portfolios.length === 0) return <div className="page-loading">Lade Portfolios...</div>;
+  if (loading && portfolios.length === 0 && !modal) return <div className="page-loading">Lade Portfolios...</div>;
 
   return (
     <div className="page">

@@ -112,7 +112,7 @@ export default function Accounts() {
     if (store) store.invalidateRelated('accounts', 'portfolios', 'bookings');
   };
 
-  if (loading) return <div className="page-loading">Lade Konten...</div>;
+  if (loading && !modal) return <div className="page-loading">Lade Konten...</div>;
 
   return (
     <div className="page">

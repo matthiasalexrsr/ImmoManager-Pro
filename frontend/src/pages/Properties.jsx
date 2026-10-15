@@ -173,9 +173,9 @@ export default function Properties() {
     if (store) store.invalidateRelated('properties', 'portfolios', 'units', 'contracts');
   };
 
-  if (loading || relatedSources.some(source => source.loading)) return <div className="page-loading">Lade Immobilien...</div>;
+  if (!modal && (loading || relatedSources.some(source => source.loading))) return <div className="page-loading">Lade Immobilien...</div>;
   const loadError = error || relatedSources.find(source => source.error)?.error;
-  if (loadError) return <div className="page list-workspace"><h1 className="page-title">Immobilien</h1><div className="alert alert-error" role="alert">{loadError}</div><button className="btn btn-secondary" onClick={() => { refreshData(); relatedSources.filter(source => source.error).forEach(source => source.reload()); }}>Erneut laden</button></div>;
+  if (loadError && !modal) return <div className="page list-workspace"><h1 className="page-title">Immobilien</h1><div className="alert alert-error" role="alert">{loadError}</div><button className="btn btn-secondary" onClick={() => { refreshData(); relatedSources.filter(source => source.error).forEach(source => source.reload()); }}>Erneut laden</button></div>;
 
   return (
     <div className="page list-workspace">

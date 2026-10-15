@@ -672,7 +672,7 @@ export default function Statements() {
     tenant_id: contractMap[row.contract_id]?.tenant_id || null,
     tenant_name: tenantMap[contractMap[row.contract_id]?.tenant_id] || '—' }));
 
-  if (loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  if (loading && !modal && !costModal && !promptModal) return <div className="page-loading">{t('ui.table.loading')}</div>;
 
   if (view === 'detail' && selectedPeriod) {
     const periodCosts = costItems.filter(ci => ci.billing_period_id === selectedPeriod.id)

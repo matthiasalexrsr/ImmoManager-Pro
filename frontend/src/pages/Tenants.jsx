@@ -204,10 +204,11 @@ export default function Tenants() {
     }
   };
 
-  if (loading || relatedSources.some(source => source.loading)) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  // Saving refreshes both sources before FormModal has finished its private draft cleanup.
+  if (!modal && (loading || relatedSources.some(source => source.loading))) return <div className="page-loading">{t('ui.table.loading')}</div>;
   const relatedError = relatedSources.find(source => source.error)?.error;
-  if (relatedError) return <div className="page list-workspace"><h1 className="page-title">Mieter</h1><div className="alert alert-error" role="alert">{relatedError}</div><button className="btn btn-secondary" onClick={() => relatedSources.filter(source => source.error).forEach(source => source.reload())}>Erneut laden</button></div>;
-  if (error && !tenants.length) return <div className="page"><h1 className="page-title">Mieter</h1><div className="alert alert-error" role="alert">{error}</div><button className="btn btn-secondary" onClick={refreshData}>Erneut laden</button></div>;
+  if (relatedError && !modal) return <div className="page list-workspace"><h1 className="page-title">Mieter</h1><div className="alert alert-error" role="alert">{relatedError}</div><button className="btn btn-secondary" onClick={() => relatedSources.filter(source => source.error).forEach(source => source.reload())}>Erneut laden</button></div>;
+  if (error && !tenants.length && !modal) return <div className="page"><h1 className="page-title">Mieter</h1><div className="alert alert-error" role="alert">{error}</div><button className="btn btn-secondary" onClick={refreshData}>Erneut laden</button></div>;
 
   return (
     <div className="page list-workspace">

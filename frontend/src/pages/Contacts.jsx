@@ -91,7 +91,7 @@ export default function Contacts() {
     manager: contacts.filter(c => c.contact_type === 'manager').length,
   };
 
-  if (loading) return <div className="page-loading">Laden...</div>;
+  if (loading && !modal) return <div className="page-loading">Laden...</div>;
 
   return (
     <div className="page">

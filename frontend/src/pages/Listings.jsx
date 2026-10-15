@@ -185,7 +185,7 @@ export default function Listings() {
   };
 
   // only the first load replaces the page; a reload keeps the table and an open form
-  if (loading && listings.length === 0) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  if (loading && listings.length === 0 && !modal) return <div className="page-loading">{t('ui.table.loading')}</div>;
 
   return (
     <div className="page">

@@ -87,8 +87,8 @@ export default function NotificationTemplates() {
     }
   };
 
-  if (loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
-  if (error) return <div className="page"><div className="alert alert-error">{error}</div></div>;
+  if (loading && !modal) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  if (error && !modal) return <div className="page"><div className="alert alert-error">{error}</div></div>;
 
   return (
     <div className="page">

@@ -128,7 +128,7 @@ export default function Messages() {
     return notifications.filter(n => n.severity === filter);
   }, [notifications, filter]);
 
-  if (loading) return <div className="page-loading">{t('pages.loading')}</div>;
+  if (loading && !modal) return <div className="page-loading">{t('pages.loading')}</div>;
 
   return (
     <div className="page">
