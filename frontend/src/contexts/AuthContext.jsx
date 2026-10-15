@@ -42,9 +42,17 @@ export function AuthProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    const clear = () => { clearWorkspaceBrowserData(); setUser(null); setWrite(null); };
+    const clear = event => {
+      if (event.detail?.external) setWorkspaceOwner(null);
+      else clearWorkspaceBrowserData();
+      setUser(null); setWrite(null);
+    };
+    const synchronize = event => {
+      if (event.key === null || event.key === 'access_token' || event.key === 'refresh_token') api.checkSession?.();
+    };
     window.addEventListener('workspace-logout', clear);
-    return () => window.removeEventListener('workspace-logout', clear);
+    window.addEventListener('storage', synchronize);
+    return () => { window.removeEventListener('workspace-logout', clear); window.removeEventListener('storage', synchronize); };
   }, []);
 
   const isAdmin = user?.role === 'eigentuemer' || user?.role === 'verwalter';

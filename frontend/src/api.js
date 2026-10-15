@@ -9,14 +9,68 @@
  *   - Safe JSON parsing with fallbacks
  */
 
+import { workspaceOwner } from './utils/workspaceIdentity';
+
 const BASE = import.meta.env.VITE_API_URL || '/api/v1';
 let refreshInFlight = null;
 let logoutInFlight = null;
 let logoutRequested = false;
 let sessionGeneration = 0;
+let sessionChanged = false;
+let validatedOwner = null;
 
-function requireCurrentSession(generation) {
-  if (logoutRequested || generation !== sessionGeneration) throw new Error('Die Sitzung wurde beendet oder geändert.');
+// This only checks browser-session coherence. The server verifies JWT signatures.
+function tokenOwner(token) {
+  if (!token) return null;
+  const parts = token.split('.');
+  if (parts.length !== 3) return undefined; // Opaque credentials are checked by the server.
+  try {
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+    return typeof payload.sub === 'string' ? payload.sub : null;
+  } catch { return null; }
+}
+
+function changedSessionError() {
+  return Object.assign(new Error('Die Sitzung wurde in einem anderen Fenster geändert. Bitte warten Sie auf die erneute Anmeldung.'), { code: 'SESSION_CHANGED' });
+}
+
+function invalidateExternalSession() {
+  if (sessionChanged) return;
+  sessionChanged = true;
+  validatedOwner = null;
+  logoutRequested = false;
+  sessionGeneration += 1;
+  // Invalidate old writers immediately; never revoke the other tab's tokens.
+  window.dispatchEvent(new CustomEvent('workspace-logout', { detail: { external: true } }));
+}
+
+function checkSession() {
+  const expected = workspaceOwner();
+  const actual = tokenOwner(getToken());
+  if (expected && actual !== undefined && actual !== expected) invalidateExternalSession();
+}
+
+function requireCurrentSession(generation, owner, bootstrap = false) {
+  // An already-invalidated operation must not invalidate a newly verified user.
+  if (logoutRequested || generation !== sessionGeneration) {
+    throw Object.assign(new Error('Die Sitzung wurde beendet oder geändert.'), { code: 'SESSION_CHANGED' });
+  }
+  const actual = tokenOwner(getToken());
+  if (owner != null && actual !== undefined && actual !== owner) {
+    invalidateExternalSession();
+    throw changedSessionError();
+  }
+  if (sessionChanged && validatedOwner && workspaceOwner() === validatedOwner) sessionChanged = false;
+  if (sessionChanged && !bootstrap) throw changedSessionError();
+}
+
+function captureSession() {
+  checkSession();
+  const generation = sessionGeneration;
+  const owner = workspaceOwner() || tokenOwner(getToken());
+  const current = () => requireCurrentSession(generation, owner);
+  current();
+  return current;
 }
 
 // ---------------------------------------------------------------------------
@@ -34,7 +88,8 @@ function getToken() {
 const MAX_RETRIES = 2;
 const RETRY_DELAYS = [1000, 2000]; // ms
 
-async function fetchWithRetry(url, options, retriesLeft = MAX_RETRIES) {
+async function fetchWithRetry(url, options, retriesLeft = MAX_RETRIES, beforeAttempt = () => {}) {
+  beforeAttempt();
   try {
     return await fetch(url, options);
   } catch (err) {
@@ -47,7 +102,7 @@ async function fetchWithRetry(url, options, retriesLeft = MAX_RETRIES) {
       const delay = RETRY_DELAYS[MAX_RETRIES - retriesLeft] || 1000;
       console.warn(`[API] Network error, retrying in ${delay}ms (${retriesLeft} left):`, err.message);
       await new Promise(r => setTimeout(r, delay));
-      return fetchWithRetry(url, options, retriesLeft - 1);
+      return fetchWithRetry(url, options, retriesLeft - 1, beforeAttempt);
     }
     throw err;
   }
@@ -57,11 +112,16 @@ async function fetchWithRetry(url, options, retriesLeft = MAX_RETRIES) {
 // Token refresh
 // ---------------------------------------------------------------------------
 
-function tryRefreshToken() {
+function tryRefreshToken(owner) {
   if (logoutRequested) return Promise.resolve(false);
   if (refreshInFlight) return refreshInFlight;
   const refreshToken = localStorage.getItem('refresh_token');
   if (!refreshToken) return Promise.resolve(false);
+  const refreshOwner = tokenOwner(refreshToken);
+  if (owner != null && refreshOwner !== undefined && refreshOwner !== owner) {
+    invalidateExternalSession();
+    return Promise.reject(changedSessionError());
+  }
   refreshInFlight = (async () => {
     let res;
     try {
@@ -77,6 +137,12 @@ function tryRefreshToken() {
     if (!res.ok) throw parseApiError(await res.json().catch(() => ({})), res.status);
     const data = await res.json();
     if (!data.access_token) throw new Error('Die Sitzung konnte nicht erneuert werden. Bitte erneut versuchen.');
+    const actual = tokenOwner(getToken());
+    const renewed = tokenOwner(data.access_token);
+    if (owner != null && ((actual !== undefined && actual !== owner) || (renewed !== undefined && renewed !== owner))) {
+      invalidateExternalSession();
+      throw changedSessionError();
+    }
     if (localStorage.getItem('refresh_token') !== refreshToken) return false;
     // Logout waits for this result, then revokes these newest tokens.
     localStorage.setItem('access_token', data.access_token);
@@ -141,10 +207,14 @@ function networkError(originalError) {
 // ---------------------------------------------------------------------------
 
 async function request(path, options = {}) {
+  checkSession();
+  const bootstrap = path === '/auth/me' && options.sessionBootstrap === true;
   const generation = sessionGeneration;
-  requireCurrentSession(generation);
   const token = getToken();
-  const { signal, responseType, ...rest } = options;
+  const owner = bootstrap ? tokenOwner(token) : workspaceOwner() || tokenOwner(token);
+  const current = () => requireCurrentSession(generation, owner, bootstrap);
+  current();
+  const { signal, responseType, sessionBootstrap: _sessionBootstrap, ...rest } = options;
   // multipart bodies (file uploads) set their own boundary
   const isForm = typeof FormData !== 'undefined' && rest.body instanceof FormData;
   const headers = isForm ? { ...rest.headers } : { 'Content-Type': 'application/json', ...rest.headers };
@@ -152,18 +222,18 @@ async function request(path, options = {}) {
 
   let res;
   try {
-    res = await fetchWithRetry(`${BASE}${path}`, { credentials: 'include', ...rest, headers, signal });
+    res = await fetchWithRetry(`${BASE}${path}`, { credentials: 'include', ...rest, headers, signal }, MAX_RETRIES, current);
   } catch (err) {
-    if (err.name === 'AbortError') throw err;
+    if (err.name === 'AbortError' || err.code === 'SESSION_CHANGED') throw err;
     // All retries exhausted — network error
     throw networkError(err);
   }
 
   // On 401, try refreshing the token once
-  requireCurrentSession(generation);
+  current();
   if (res.status === 401) {
-    const refreshed = getToken() && getToken() !== token ? true : await tryRefreshToken();
-    requireCurrentSession(generation);
+    const refreshed = getToken() && getToken() !== token ? true : await tryRefreshToken(owner);
+    current();
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
     if (refreshed) {
       headers['Authorization'] = `Bearer ${getToken()}`;
@@ -174,7 +244,7 @@ async function request(path, options = {}) {
         throw networkError(err);
       }
     }
-    requireCurrentSession(generation);
+    current();
     if (res.status === 401) {
       await logout();
       // Never redirect from the login page to itself: that reloads it forever.
@@ -186,13 +256,14 @@ async function request(path, options = {}) {
   if (res.status === 204) return null;
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
+    current();
     throw parseApiError(body, res.status);
   }
 
   if (responseType === 'blob') {
     // Generated or protected files (PDF): the same session checks as JSON, also after reading.
     const blob = await res.blob();
-    requireCurrentSession(generation);
+    current();
     return blob;
   }
 
@@ -204,7 +275,14 @@ async function request(path, options = {}) {
     console.warn('[API] Failed to parse JSON response for', path);
     return null;
   }
-  requireCurrentSession(generation);
+  current();
+  if (bootstrap && data?.id) {
+    if (owner != null && data.id !== owner) {
+      invalidateExternalSession();
+      throw changedSessionError();
+    }
+    validatedOwner = data.id;
+  }
   return data;
 }
 
@@ -229,10 +307,13 @@ function pagePath(path, skip) {
  * skip cannot make it spin.
  */
 async function requestList(path, { signal } = {}) {
+  const current = captureSession();
   const rows = [];
   const seen = new Set();
   for (let page = 0; page < LIST_MAX_PAGES; page += 1) {
+    current();
     const data = await request(pagePath(path, page * LIST_PAGE_SIZE), { signal });
+    current();
     if (!Array.isArray(data)) return page === 0 ? data : rows;
     let added = 0;
     for (const row of data) {
@@ -253,7 +334,9 @@ async function requestList(path, { signal } = {}) {
 // ---------------------------------------------------------------------------
 
 export const api = {
-  get: (path, { signal } = {}) => request(path, { signal }),
+  checkSession,
+  captureSession,
+  get: (path, { signal, sessionBootstrap = false } = {}) => request(path, { signal, sessionBootstrap }),
   list: (path, { signal } = {}) => requestList(path, { signal }),
   post: (path, data, { signal } = {}) => request(path, { method: 'POST', body: JSON.stringify(data), signal }),
   put: (path, data, { signal } = {}) => request(path, { method: 'PUT', body: JSON.stringify(data), signal }),
@@ -324,12 +407,19 @@ export async function register(username, email, full_name, password) {
 
 export function logout() {
   if (logoutInFlight) return logoutInFlight;
+  try { captureSession(); } catch (error) { return Promise.reject(error); }
+  const departingOwner = workspaceOwner() || tokenOwner(getToken());
+  const ownerChanged = () => {
+    const actual = tokenOwner(getToken());
+    return departingOwner != null && actual !== undefined && actual !== departingOwner;
+  };
   logoutRequested = true;
   sessionGeneration += 1;
   logoutInFlight = (async () => {
     try {
       // A temporary refresh failure must not prevent an explicit logout.
       if (refreshInFlight) await refreshInFlight.catch(() => {});
+      if (ownerChanged()) { checkSession(); logoutRequested = false; return; }
       const accessToken = localStorage.getItem('access_token');
       const refreshToken = localStorage.getItem('refresh_token');
       // Always call the server: an HttpOnly upload cookie can outlive local storage.
@@ -345,6 +435,7 @@ export function logout() {
         }),
       });
       if (!response.ok) throw new Error('Die Abmeldung wurde vom Server nicht bestätigt. Bitte erneut versuchen.');
+      if (ownerChanged()) { checkSession(); logoutRequested = false; return; }
       localStorage.removeItem('access_token');
       localStorage.removeItem('refresh_token');
       window.dispatchEvent(new Event('workspace-logout'));

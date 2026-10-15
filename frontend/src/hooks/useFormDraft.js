@@ -187,9 +187,11 @@ export default function useFormDraft({ fields, initial, enabled = true, context:
     });
     const retry = () => { if (ready.current && !blocked.current) persist(); };
     const invalidate = () => { active.current = false; generation.current += 1; clearTimeout(timer.current); controller.abort(); };
+    const ownerChanged = event => { if (event.detail !== owner) invalidate(); };
     window.addEventListener('online', retry);
     window.addEventListener('workspace-logout', invalidate);
-    return () => { invalidate(); window.removeEventListener('online', retry); window.removeEventListener('workspace-logout', invalidate); };
+    window.addEventListener('workspace-owner', ownerChanged);
+    return () => { invalidate(); window.removeEventListener('online', retry); window.removeEventListener('workspace-logout', invalidate); window.removeEventListener('workspace-owner', ownerChanged); };
   // Each form session owns a writer; inline initial/fields objects must not reload it.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [identity, supported, attempt]);

@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense } from 'react';
+import { useState, useEffect, lazy, Suspense, Fragment } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { isLoggedIn, api } from './api';
 import Layout from './components/Layout';
@@ -68,6 +68,15 @@ function ProtectedRoute({ children }) {
   const auth = useAuth();
 
   useEffect(() => {
+    const synchronize = () => {
+      setStatus(isLoggedIn() ? 'validating' : 'unauthenticated');
+      setAttempt(value => value + 1);
+    };
+    window.addEventListener('workspace-logout', synchronize);
+    return () => window.removeEventListener('workspace-logout', synchronize);
+  }, []);
+
+  useEffect(() => {
     let active = true;
     if (!isLoggedIn()) {
       setStatus('unauthenticated');
@@ -77,7 +86,7 @@ function ProtectedRoute({ children }) {
     setStatus('validating');
     setError(null);
     // Validate the session against the backend before rendering
-    api.get('/auth/me')
+    api.get('/auth/me', { sessionBootstrap: true })
       .then((userData) => {
         if (!active) return;
         auth?.updateUser(userData);
@@ -108,7 +117,7 @@ function ProtectedRoute({ children }) {
   if (status === 'unauthenticated') {
     return <Navigate to="/login" />;
   }
-  return children;
+  return <Fragment key={auth?.user?.id || 'session'}>{children}</Fragment>;
 }
 
 function DevModeWrapper({ children }) {
