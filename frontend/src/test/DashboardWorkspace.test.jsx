@@ -86,12 +86,12 @@ describe('dashboard working overview', () => {
     await screen.findByText('Heizung prüfen');
     const area = name => screen.getByText(name, { selector: 'summary > strong' }).closest('details');
     for (const name of ['Finanzen', 'Betrieb', 'Abrechnung']) fireEvent.click(within(area(name)).getByText(name, { selector: 'summary > strong' }));
-    expect(within(area('Finanzen')).getByRole('link', { name: 'Offene Forderungen 7' })).toHaveAttribute('href', '/receivables');
-    expect(within(area('Betrieb')).getByRole('link', { name: 'Offene Aufgaben 4' })).toHaveAttribute('href', '/tasks');
-    expect(within(area('Betrieb')).getByRole('link', { name: 'Überfällige Instandhaltung 3' })).toHaveAttribute('href', '/maintenance');
-    expect(within(area('Betrieb')).getByRole('link', { name: 'Fehlende Vertragsdokumente 2' })).toHaveAttribute('href', '/documents');
-    expect(within(area('Abrechnung')).getByRole('link', { name: 'Abrechnungen 0' })).toHaveAttribute('href', '/statements');
-    expect(within(area('Abrechnung')).getByRole('link', { name: 'Offene Rechnungen 0' })).toHaveAttribute('href', '/invoices');
+    expect(within(area('Finanzen')).getByRole('link', { name: 'Offene Forderungen 7' })).toHaveAttribute('href', '/receivables?status=unpaid');
+    expect(within(area('Betrieb')).getByRole('link', { name: 'Offene Aufgaben 4' })).toHaveAttribute('href', '/tasks?status=open');
+    expect(within(area('Betrieb')).getByRole('link', { name: 'Überfällige Instandhaltung 3' })).toHaveAttribute('href', '/maintenance?filter=overdue');
+    expect(within(area('Betrieb')).getByRole('link', { name: 'Fehlende Vertragsdokumente 2' })).toHaveAttribute('href', '/contracts?filter=missing_documents');
+    expect(within(area('Abrechnung')).getByRole('link', { name: 'Abrechnungen 0' })).toHaveAttribute('href', '/statements?filter=statements');
+    expect(within(area('Abrechnung')).getByRole('link', { name: 'Offene Rechnungen 0' })).toHaveAttribute('href', '/invoices?status=open');
   });
 
   it('keeps failed inventory unknown and retries that source without reloading the others', async () => {

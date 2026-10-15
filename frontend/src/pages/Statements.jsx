@@ -6,6 +6,7 @@ import { PartyLink } from '../features/partyWorkspace/PartyWorkspace';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { formatMoney } from '../utils/format';
+import { useSearchParams } from 'react-router-dom';
 
 /** Inline toast-style notification hook. */
 function useToast() {
@@ -209,6 +210,11 @@ function StepIndicator({ currentStep, t: tr }) {
 }
 
 export default function Statements() {
+  const [params, setParams] = useSearchParams();
+  const sourceFilter = ['preflight_blockers', 'statements'].includes(params.get('filter')) ? params.get('filter') : 'all';
+  const [sourceRows, setSourceRows] = useState({ items: [], loading: false, error: null });
+  const [sourceAttempt, setSourceAttempt] = useState(0);
+  const [drilldown, setDrilldown] = useState(0);
   const { t } = useTranslation();
   const toast = useToast();
   const [periods, setPeriods] = useState([]);
@@ -220,7 +226,7 @@ export default function Statements() {
   const [contracts, setContracts] = useState([]);
   const [tenants, setTenants] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [, setLoadError] = useState(null);
+  const [loadError, setLoadError] = useState(null);
   const [modal, setModal] = useState(null);
   const [selectedPeriod, setSelectedPeriod] = useState(null);
   const [costModal, setCostModal] = useState(null);
@@ -248,6 +254,7 @@ export default function Statements() {
 
   const loadData = () => {
     setLoadError(null);
+    setSourceAttempt(value => value + 1);
     Promise.all([
       api.list('/billing/periods'),
       api.list('/billing/cost-items'),
@@ -273,6 +280,18 @@ export default function Statements() {
   };
 
   useEffect(() => { loadData(); }, []); // eslint-disable-line react-hooks/exhaustive-deps -- loadData is stable, called on mount only
+  useEffect(() => {
+    setView('list'); setSelectedPeriod(null); setDrilldown(value => value + 1);
+  }, [sourceFilter]);
+  useEffect(() => {
+    if (sourceFilter !== 'preflight_blockers') return;
+    const request = new AbortController(); setSourceRows(current => ({ ...current, loading: true, error: null }));
+    api.list('/billing/periods?workflow_filter=preflight_blockers', { signal: request.signal }).then(rows => {
+      if (!Array.isArray(rows)) throw new Error('Die Abrechnungsquelle konnte nicht gelesen werden.');
+      if (!request.signal.aborted) setSourceRows({ items: rows, loading: false, error: null });
+    }).catch(failure => { if (!request.signal.aborted) setSourceRows(current => ({ ...current, loading: false, error: failure.message })); });
+    return () => request.abort();
+  }, [sourceFilter, sourceAttempt]);
 
   const propMap = Object.fromEntries(properties.map(p => [p.id, p]));
   const unitMap = Object.fromEntries(units.map(u => [u.id, u]));
@@ -280,7 +299,7 @@ export default function Statements() {
   const contractMap = Object.fromEntries(contracts.map(c => [c.id, c]));
   const tenantMap = Object.fromEntries(tenants.map(tn => [tn.id, tn.full_name]));
 
-  const enriched = periods.map(bp => {
+  const enriched = (sourceFilter === 'preflight_blockers' ? sourceRows.items : periods).map(bp => {
     const costs = costItems.filter(ci => ci.billing_period_id === bp.id);
     const totalCosts = costs.reduce((s, c) => s + (c.amount || 0), 0);
     const stmts = statements.filter(s => s.billing_period_id === bp.id);
@@ -641,6 +660,9 @@ export default function Statements() {
   const COLUMNS = getColumns(t);
   const COST_COLUMNS = getCostColumns(t);
   const STMT_COLUMNS = getStmtColumns(t, msg => toast.show(msg));
+  const statementSources = statements.map(row => ({ ...row, unit_label: unitMap[row.unit_id]?.label || '—',
+    tenant_id: contractMap[row.contract_id]?.tenant_id || null,
+    tenant_name: tenantMap[contractMap[row.contract_id]?.tenant_id] || '—' }));
 
   if (loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
 
@@ -1066,6 +1088,8 @@ export default function Statements() {
 
         {costModal && editable && (
           <FormModal
+            draftContext="billing/cost-items"
+            draftAnchor={{ kind: 'billing_period', id: selectedPeriod.id }}
             title={costModal === 'create' ? 'Kostenposition hinzufügen' : 'Kostenposition bearbeiten'}
             fields={costFields}
             initial={costModal === 'create'
@@ -1090,6 +1114,14 @@ export default function Statements() {
 
   return (
     <div className="page">
+      <div className="filter-chips"><label>Quelle <select value={sourceFilter} onChange={event => setParams(current => {
+        const next = new URLSearchParams(current); ['focus_id', 'suche'].forEach(key => next.delete(key));
+        if (event.target.value === 'all') next.delete('filter'); else next.set('filter', event.target.value); return next;
+      })}><option value="all">Abrechnungszeiträume</option><option value="statements">Alle Einzelabrechnungen</option><option value="preflight_blockers">Zeiträume mit Preflight-Fehlern</option></select></label></div>
+      {loadError && <p role="alert">{loadError} <button type="button" onClick={loadData}>Erneut laden</button></p>}
+      {sourceFilter === 'preflight_blockers' && <><p className="text-muted">Noch nicht abgeschlossene Zeiträume ohne abrechenbare Verträge, ohne Kosten oder mit einer unpassenden Schlüsselzuordnung.</p>
+        {sourceRows.loading && <p role="status">Preflight-Quellen werden geladen…</p>}
+        {sourceRows.error && <p role="alert">{sourceRows.error} <button type="button" onClick={() => setSourceAttempt(value => value + 1)}>Preflight-Quelle erneut laden</button></p>}</>}
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
         {selectedPeriod && (
           <button className="btn btn-sm btn-secondary" onClick={() => setModal('copy')}>
@@ -1098,14 +1130,21 @@ export default function Statements() {
         )}
       </div>
       <DataTable
-        title="Nebenkostenabrechnungen"
-        columns={COLUMNS}
-        data={enriched}
-        onAdd={() => setModal('create')}
-        onEdit={handleSelectPeriod}
+        title={sourceFilter === 'statements' ? 'Einzelabrechnungen · Quellzeilen' : 'Nebenkostenabrechnungen'}
+        columns={sourceFilter === 'statements' ? STMT_COLUMNS : COLUMNS}
+        data={sourceFilter === 'statements' ? statementSources : enriched}
+        drilldownKey={drilldown}
+        emptyText={sourceFilter === 'preflight_blockers' && (sourceRows.loading || sourceRows.error) ? 'Preflight-Quelle noch nicht verfügbar.' : loadError ? 'Daten noch nicht verfügbar.' : undefined}
+        viewConfig={{ column_filters: { source_filter: sourceFilter } }}
+        onApplyView={config => setParams(current => { const next = new URLSearchParams(current); const value = config.column_filters?.source_filter;
+          if (['statements', 'preflight_blockers'].includes(value)) next.set('filter', value); else next.delete('filter'); return next; })}
+        onAdd={sourceFilter === 'statements' ? undefined : () => setModal('create')}
+        onEdit={sourceFilter === 'statements' ? row => { const period = periods.find(item => item.id === row.billing_period_id);
+          if (period) handleSelectPeriod(period); else toast.show('Der Abrechnungszeitraum ist nicht verfügbar. Bitte neu laden.'); } : handleSelectPeriod}
       />
       {(modal === 'create' || modal === 'copy') && (
         <FormModal
+          draftContext="billing/periods"
           title={modal === 'copy' ? 'Abrechnung kopieren (neuer Zeitraum)' : 'Abrechnung erstellen'}
           fields={fields}
           initial={modal === 'copy' && selectedPeriod ? {
@@ -1118,6 +1157,7 @@ export default function Statements() {
       )}
       {modal && modal !== 'create' && modal !== 'copy' && modal.id && (
         <FormModal
+          draftContext="billing/periods"
           title="Abrechnung bearbeiten"
           fields={fields}
           initial={modal}

@@ -4,8 +4,10 @@ import { useEntities } from '../contexts/DataStoreContext';
 import StatusBadge from '../components/StatusBadge';
 import { useTranslation } from '../i18n';
 import FormModal from '../components/FormModal';
+import { useSearchParams } from 'react-router-dom';
 
 export default function Messages() {
+  const [params, setParams] = useSearchParams();
   const [threads, setThreads] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [selectedThread, setSelectedThread] = useState(null);
@@ -15,7 +17,14 @@ export default function Messages() {
   const { t } = useTranslation();
   const [view, setView] = useState('notifications');
   const [selected, setSelected] = useState(null);
-  const [filter, setFilter] = useState('all');
+  const [filter, setFilter] = useState(() => params.get('status') === 'unread' ? 'unread' : params.get('severity') || 'all');
+  const [notificationReady, setNotificationReady] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const linkedStatus = params.get('status') || params.get('severity');
+  useEffect(() => { setFilter(['unread', 'error', 'warning', 'info'].includes(linkedStatus) ? linkedStatus : 'all'); if (linkedStatus) setView('notifications'); }, [linkedStatus]);
+  const chooseFilter = value => { setFilter(value); setParams(current => { const next = new URLSearchParams(current);
+    next.delete('status'); next.delete('severity');
+    if (value === 'unread') next.set('status', 'unread'); else if (value !== 'all') next.set('severity', value); return next; }); };
   const [modal, setModal] = useState(null);
   const [newMessage, setNewMessage] = useState('');
   const [contacts, setContacts] = useState([]);
@@ -28,18 +37,24 @@ export default function Messages() {
   }, []);
 
   useEffect(() => {
-    Promise.all([
-      api.list('/notifications').catch(() => []),
-      api.list('/messages/threads').catch(() => []),
-    ]).then(([notifs, thr]) => {
-      setNotifications(notifs || []);
-      setThreads(thr || []);
-    }).finally(() => setLoading(false));
-  }, []);
+    const request = new AbortController(); setLoading(true); setError(null);
+    Promise.allSettled([api.list('/notifications', { signal: request.signal }), api.list('/messages/threads', { signal: request.signal })])
+      .then(([notifs, thr]) => {
+        if (request.signal.aborted) return;
+        const failures = [];
+        if (notifs.status === 'fulfilled' && Array.isArray(notifs.value)) { setNotifications(notifs.value); setNotificationReady(true); }
+        else { setNotificationReady(false); failures.push(notifs.reason?.message || 'Hinweise konnten nicht gelesen werden.'); }
+        if (thr.status === 'fulfilled' && Array.isArray(thr.value)) setThreads(thr.value);
+        else failures.push(thr.reason?.message || 'Konversationen konnten nicht gelesen werden.');
+        if (failures.length) setError(failures.join(' · '));
+      }).finally(() => { if (!request.signal.aborted) setLoading(false); });
+    return () => request.abort();
+  }, [attempt]);
 
   const markRead = async (id) => {
-    await api.patch(`/notifications/${id}`, { status: 'read' }).catch(err => console.warn('[Messages] mark read:', err.message));
-    setNotifications(prev => prev.map(n => n.id === id ? { ...n, status: 'read' } : n));
+    try { await api.patch(`/notifications/${id}`, { status: 'read' });
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, status: 'read' } : n));
+    } catch (failure) { setError(failure.message || 'Der Hinweis konnte nicht als gelesen markiert werden.'); }
   };
 
   const loadThreadMessages = async (thread) => {
@@ -120,8 +135,9 @@ export default function Messages() {
       <h1 className="page-title">{t('pages.messages.title')}</h1>
 
       {error && (
-        <div className="alert alert-danger" style={{ marginBottom: '1rem', padding: '0.75rem', background: 'var(--color-error-bg, #fef2f2)', border: '1px solid var(--color-error, #dc2626)', borderRadius: '6px', color: 'var(--color-error, #dc2626)' }}>
+        <div role="alert" className="alert alert-danger" style={{ marginBottom: '1rem', padding: '0.75rem', background: 'var(--color-error-bg, #fef2f2)', border: '1px solid var(--color-error, #dc2626)', borderRadius: '6px', color: 'var(--color-error, #dc2626)' }}>
           {error}
+          <button type="button" className="btn btn-sm btn-secondary" onClick={() => setAttempt(value => value + 1)}>Erneut laden</button>
           <button className="btn btn-sm" onClick={() => setError(null)} style={{ float: 'right' }}>&times;</button>
         </div>
       )}
@@ -145,22 +161,22 @@ export default function Messages() {
         <div className="messages-layout">
           <div className="messages-sidebar">
             <div className="messages-filters" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
-              <button className={`btn btn-sm ${filter === 'all' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setFilter('all')}>
+              <button className={`btn btn-sm ${filter === 'all' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => chooseFilter('all')}>
                 Alle ({notifications.length})
               </button>
-              <button className={`btn btn-sm ${filter === 'unread' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setFilter('unread')}>
+              <button className={`btn btn-sm ${filter === 'unread' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => chooseFilter('unread')}>
                 Ungelesen ({unreadCount})
               </button>
-              <button className={`btn btn-sm ${filter === 'error' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setFilter('error')}>
+              <button className={`btn btn-sm ${filter === 'error' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => chooseFilter('error')}>
                 Fehler
               </button>
-              <button className={`btn btn-sm ${filter === 'warning' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setFilter('warning')}>
+              <button className={`btn btn-sm ${filter === 'warning' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => chooseFilter('warning')}>
                 Warnungen
               </button>
             </div>
             <div className="messages-list">
               {filteredNotifs.length === 0 ? (
-                <p className="panel-empty">{t('pages.messages.noMessages')}</p>
+                <p className="panel-empty">{notificationReady ? t('pages.messages.noMessages') : 'Hinweise noch nicht verfügbar.'}</p>
               ) : filteredNotifs.map(n => (
                 <div
                   key={n.id}

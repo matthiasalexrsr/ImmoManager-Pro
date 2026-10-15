@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
 import Tasks from '../pages/Tasks';
 import Contracts from '../pages/Contracts';
 import { api } from '../api';
@@ -47,7 +48,7 @@ afterEach(() => cleanup());
 describe('task hardening', () => {
   it('shows list failure and retries instead of displaying an empty success', async () => {
     api.list.mockRejectedValueOnce(new Error('Aufgaben nicht erreichbar'));
-    render(<Tasks />);
+    render(<MemoryRouter><Tasks /></MemoryRouter>);
     expect(await screen.findByRole('alert')).toHaveTextContent('Aufgaben nicht erreichbar');
     fireEvent.click(screen.getByRole('button', { name: 'Erneut laden' }));
     expect(await screen.findByText('Serienkind')).toBeInTheDocument();
@@ -55,7 +56,7 @@ describe('task hardening', () => {
   });
 
   it('edits with PATCH and preserves the series relationship and revision', async () => {
-    render(<Tasks />);
+    render(<MemoryRouter><Tasks /></MemoryRouter>);
     await screen.findByText('Serienkind');
     fireEvent.click(screen.getByRole('button', { name: 'Bearbeiten' }));
     fireEvent.change(screen.getByLabelText('Titel *'), { target: { value: 'Geändert' } });
@@ -66,7 +67,7 @@ describe('task hardening', () => {
   });
 
   it('filters unit options by property and clears the old unit when property changes', async () => {
-    render(<Tasks />);
+    render(<MemoryRouter><Tasks /></MemoryRouter>);
     await screen.findByText('Serienkind');
     fireEvent.click(screen.getByRole('button', { name: 'Bearbeiten' }));
     const unitSelect = screen.getByLabelText('Einheit');
@@ -78,7 +79,7 @@ describe('task hardening', () => {
   });
 
   it('completes and reopens with returned revision while retaining rows on refresh failure', async () => {
-    render(<Tasks />);
+    render(<MemoryRouter><Tasks /></MemoryRouter>);
     await screen.findByText('Serienkind');
     api.list.mockRejectedValue(new Error('Aktualisierung fehlgeschlagen'));
     fireEvent.click(screen.getByRole('button', { name: 'Erledigen' }));
@@ -90,7 +91,7 @@ describe('task hardening', () => {
   });
 
   it('shows quick action conflicts and deletion errors without losing the task', async () => {
-    render(<Tasks />);
+    render(<MemoryRouter><Tasks /></MemoryRouter>);
     await screen.findByText('Serienkind');
     api.patch.mockRejectedValue(new Error('Datensatz wurde inzwischen geändert'));
     fireEvent.click(screen.getByRole('button', { name: 'Erledigen' }));
@@ -114,7 +115,7 @@ describe('task hardening', () => {
       saved = { ...saved, ...data, updated_at: '2026-10-07T12:00:00Z' };
       return { ...saved };
     });
-    render(<Tasks />);
+    render(<MemoryRouter><Tasks /></MemoryRouter>);
     await screen.findByText('Serienkind');
     saved = { ...saved, title: 'Von anderer Person geändert', updated_at: '2026-10-07T11:00:00Z' };
     fireEvent.click(screen.getByRole('button', { name: 'Erledigen' }));
@@ -139,7 +140,7 @@ describe('task hardening', () => {
       writes.push({ ...data });
       throw Object.assign(new Error('Datensatz wurde inzwischen geändert. Bitte neu laden.'), { statusCode: 409 });
     });
-    render(<Tasks />);
+    render(<MemoryRouter><Tasks /></MemoryRouter>);
     await screen.findByText('Serienkind');
     let rejectAction;
     api.patch.mockImplementationOnce((_path, data) => {
@@ -166,7 +167,7 @@ describe('task hardening', () => {
   it('shows per-series generation errors alongside successful children', async () => {
     api.post.mockResolvedValue({ created: [{ ...task, id: 'next', title: 'Neue Folge' }],
       errors: [{ task_id: 'bad', title: 'Alte Serie', error: 'INTERVAL muss positiv sein' }] });
-    render(<Tasks />);
+    render(<MemoryRouter><Tasks /></MemoryRouter>);
     await screen.findByText('Serienkind');
     fireEvent.click(screen.getByRole('button', { name: 'Folgeaufgaben erzeugen' }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('/tasks/generate-recurring/report', {}));
@@ -177,7 +178,7 @@ describe('task hardening', () => {
 
 describe('historical contracts', () => {
   it('keeps archived parties named and reachable through their party workspace', async () => {
-    render(<Contracts />);
+    render(<MemoryRouter><Contracts /></MemoryRouter>);
     fireEvent.click(await screen.findByRole('button', { name: 'Archivierte Partei' }));
     expect(context.openParty).toHaveBeenCalledWith('archived');
     fireEvent.click(screen.getByRole('button', { name: 'Bearbeiten' }));
@@ -186,7 +187,7 @@ describe('historical contracts', () => {
 
   it('shows contract load errors and retries', async () => {
     api.list.mockRejectedValueOnce(new Error('Verträge nicht erreichbar'));
-    render(<Contracts />);
+    render(<MemoryRouter><Contracts /></MemoryRouter>);
     expect(await screen.findByRole('alert')).toHaveTextContent('Verträge nicht erreichbar');
     fireEvent.click(screen.getByRole('button', { name: 'Erneut laden' }));
     expect(await screen.findByText('Historischer Vertrag')).toBeInTheDocument();
@@ -194,7 +195,7 @@ describe('historical contracts', () => {
 
   it('retains current rent and contracts if a later refresh fails', async () => {
     api.get.mockResolvedValue({ contract: { cold_rent: 915 } });
-    render(<Contracts />);
+    render(<MemoryRouter><Contracts /></MemoryRouter>);
     await screen.findByText('Historischer Vertrag');
     api.list.mockRejectedValue(new Error('Verträge nicht erreichbar'));
     api.get.mockRejectedValue(new Error('Mieten nicht erreichbar'));

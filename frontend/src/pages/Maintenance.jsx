@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
@@ -9,23 +9,27 @@ import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 import { formatDate, formatMoney } from '../utils/format';
 import { bulkDelete } from '../utils/bulkActions';
+import KpiAction from '../components/KpiAction';
 
-const TODAY = new Date();
-TODAY.setHours(0, 0, 0, 0);
+const FILTERS = ['all', 'open', 'in_progress', 'completed', 'cancelled', 'overdue', 'urgent', 'no_appointment', 'no_assignee', 'age_basis', 'escalation'];
+const today = () => { const value = new Date(); value.setHours(0, 0, 0, 0); return value; };
 
 function ageDays(createdAt) {
   if (!createdAt) return null;
-  return Math.floor((TODAY - new Date(createdAt)) / (1000 * 60 * 60 * 24));
+  return Math.floor((today() - new Date(createdAt)) / (1000 * 60 * 60 * 24));
 }
 
 function isOverdue(row) {
   if (!row.due_date) return false;
   const due = new Date(row.due_date);
   due.setHours(0, 0, 0, 0);
-  return due < TODAY && (row.status === 'open' || row.status === 'in_progress');
+  return due < today() && ['open', 'in_progress', 'pending', 'review'].includes(String(row.status || '').toLowerCase());
 }
 
 export default function Maintenance() {
+  const [params, setParams] = useSearchParams();
+  const requestedFilter = params.get('status') || params.get('filter') || 'all';
+  const linkedFilter = FILTERS.includes(requestedFilter) ? requestedFilter : 'all';
   const { t } = useTranslation();
   const confirm = useConfirm();
   const store = useDataStore();
@@ -36,46 +40,70 @@ export default function Maintenance() {
   const [modal, setModal] = useState(null);
   // values a New form starts with when opened from elsewhere (the property page's "Einheit anlegen")
   const [prefill, setPrefill] = useState(null);
-  const [filter, setFilter] = useState('all');
-
-  const refreshData = () => {
-    setLoading(true);
-    api.list('/maintenance').catch(() => [])
-      .then(data => setItems(Array.isArray(data) ? data : []))
-      .finally(() => setLoading(false));
+  const [filter, setFilter] = useState(linkedFilter);
+  const [drilldown, setDrilldown] = useState(0);
+  const [error, setError] = useState(null);
+  const [source, setSource] = useState({ items: [], loading: false, error: null });
+  const [sourceAttempt, setSourceAttempt] = useState(0);
+  const [attempt, setAttempt] = useState(0);
+  const openSources = key => {
+    setFilter(key); setDrilldown(value => value + 1);
+    setParams(current => { const next = new URLSearchParams(current); ['filter', 'status', 'focus_id', 'suche'].forEach(name => next.delete(name));
+      if (key !== 'all') next.set(['open', 'in_progress', 'completed', 'cancelled'].includes(key) ? 'status' : 'filter', key); return next; });
   };
+  useEffect(() => { setFilter(linkedFilter); setDrilldown(value => value + 1); }, [linkedFilter, params]);
+
+  const refreshData = useCallback(() => {
+    setAttempt(value => value + 1); setSourceAttempt(value => value + 1);
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    api.list('/maintenance').catch(() => [])
-      .then(data => { if (!cancelled) setItems(Array.isArray(data) ? data : []); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
+    const request = new AbortController(); setLoading(true); setError(null);
+    api.list('/maintenance', { signal: request.signal })
+      .then(data => { if (!Array.isArray(data)) throw new Error('Die Wartungsfälle konnten nicht gelesen werden.'); if (!request.signal.aborted) setItems(data); })
+      .catch(failure => { if (!request.signal.aborted) setError(failure.message); })
+      .finally(() => { if (!request.signal.aborted) setLoading(false); });
+    return () => request.abort();
+  }, [attempt]);
+  useEffect(() => {
+    if (filter !== 'escalation') return;
+    const request = new AbortController(); setSource(current => ({ ...current, loading: true, error: null }));
+    api.list('/maintenance?workflow_filter=escalation', { signal: request.signal }).then(data => {
+      if (!Array.isArray(data)) throw new Error('Die Eskalationsquelle konnte nicht gelesen werden.');
+      if (!request.signal.aborted) setSource({ items: data, loading: false, error: null });
+    }).catch(failure => { if (!request.signal.aborted) setSource(current => ({ ...current, loading: false, error: failure.message })); });
+    return () => request.abort();
+  }, [filter, sourceAttempt]);
 
   // Lookup maps
   const propMap = Object.fromEntries(properties.map(p => [p.id, p.name]));
   const unitMap = Object.fromEntries(units.map(u => [u.id, u.label]));
 
   // Enrich data
-  const enriched = items.map(row => ({
+  const enrich = rows => rows.filter(row => (!params.get('property_id') || row.property_id === params.get('property_id'))
+    && (!params.get('unit_id') || row.unit_id === params.get('unit_id'))).map(row => ({
     ...row,
     property_name: propMap[row.property_id] || '—',
     unit_label: unitMap[row.unit_id] || '—',
     age_days: ageDays(row.created_at),
   }));
+  const enriched = enrich(items);
+  const escalations = enrich(source.items);
 
   // Filter logic
   const filtered = useMemo(() => {
     if (filter === 'all') return enriched;
     if (filter === 'open') return enriched.filter(r => r.status === 'open');
     if (filter === 'in_progress') return enriched.filter(r => r.status === 'in_progress');
+    if (filter === 'completed' || filter === 'cancelled') return enriched.filter(r => r.status === filter);
+    if (filter === 'age_basis') return enriched.filter(r => r.status === 'open' || r.status === 'in_progress');
+    if (filter === 'escalation') return escalations;
     if (filter === 'overdue') return enriched.filter(r => isOverdue(r));
     if (filter === 'urgent') return enriched.filter(r => r.priority === 'urgent' || r.priority === 'high');
     if (filter === 'no_appointment') return enriched.filter(r => !r.appointment_at);
     if (filter === 'no_assignee') return enriched.filter(r => !r.assignee);
     return enriched;
-  }, [enriched, filter]);
+  }, [enriched, filter, escalations]);
 
   // Summary stats
   const totalCount = enriched.length;
@@ -170,34 +198,23 @@ export default function Maintenance() {
   };
 
   // only the first load replaces the list; a reload keeps the table (its search, selection, results)
-  if (loading && items.length === 0) return <div className="page-loading">Lade Wartungsaufträge...</div>;
+  if (loading && items.length === 0 && !error) return <div className="page-loading">Lade Wartungsaufträge...</div>;
 
   return (
     <div className="page">
       <h1 className="page-title">{t('pages.maintenance.title') || 'Wartung & Instandhaltung'}</h1>
+      {error && <p role="alert">{error} <button type="button" className="btn btn-secondary" onClick={refreshData}>Erneut laden</button></p>}
+      {filter === 'escalation' && <><p className="text-muted">Fälle mit aktiver Instandhaltungsregel, erreichtem Überfälligkeitsgrenzwert und Status offen, in Bearbeitung, ausstehend oder Prüfung.</p>
+        {source.loading && <p role="status">Eskalationsfälle werden geladen…</p>}
+        {source.error && <p role="alert">{source.error} <button type="button" onClick={() => setSourceAttempt(value => value + 1)}>Eskalationsquelle erneut laden</button></p>}</>}
 
       {/* Summary cards */}
       <div className="kpi-row">
-        <div className="kpi">
-          <div className="kpi-value">{totalCount}</div>
-          <div className="kpi-label">Gesamt</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-value" style={{ color: 'var(--info, #2196f3)' }}>{openCount}</div>
-          <div className="kpi-label">Offen</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-value" style={{ color: 'var(--warning)' }}>{inProgressCount}</div>
-          <div className="kpi-label">In Bearbeitung</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-value" style={{ color: 'var(--danger)' }}>{overdueCount}</div>
-          <div className="kpi-label">Überfällig</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-value">{avgAge} Tage</div>
-          <div className="kpi-label">&Oslash; Alter offener Fälle</div>
-        </div>
+        <KpiAction label="Gesamt" value={error && !items.length ? '—' : totalCount} onClick={() => openSources('all')} />
+        <KpiAction label="Offen" value={error && !items.length ? '—' : openCount} color="var(--info)" onClick={() => openSources('open')} />
+        <KpiAction label="In Bearbeitung" value={error && !items.length ? '—' : inProgressCount} color="var(--warning)" onClick={() => openSources('in_progress')} />
+        <KpiAction label="Überfällig" value={error && !items.length ? '—' : overdueCount} color="var(--danger)" onClick={() => openSources('overdue')} />
+        <KpiAction label="Ø Alter (offen / in Bearbeitung)" value={error && !items.length ? '—' : `${avgAge} Tage`} onClick={() => openSources('age_basis')} />
       </div>
 
       {/* Filter tabs */}
@@ -207,11 +224,13 @@ export default function Maintenance() {
           { key: 'open', label: 'Offen' },
           { key: 'in_progress', label: 'In Bearbeitung' },
           { key: 'overdue', label: 'Überfällig' },
+          { key: 'escalation', label: 'Eskalationsfälle' },
+          { key: 'age_basis', label: 'Basis Durchschnittsalter' },
           { key: 'urgent', label: 'Dringend' },
           { key: 'no_appointment', label: 'Ohne Termin' },
           { key: 'no_assignee', label: 'Ohne Zuständigen' },
         ].map(f => (
-          <button key={f.key} className={`btn btn-sm ${filter === f.key ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setFilter(f.key)}>
+          <button key={f.key} className={`btn btn-sm ${filter === f.key ? 'btn-primary' : 'btn-secondary'}`} onClick={() => openSources(f.key)}>
             {f.label}
           </button>
         ))}
@@ -221,6 +240,13 @@ export default function Maintenance() {
         title={t('pages.maintenance.title') || 'Wartung & Instandhaltung'}
         columns={columns}
         data={filtered}
+        drilldownKey={drilldown}
+        emptyText={filter === 'escalation' && (source.loading || source.error) ? 'Eskalationsquelle noch nicht verfügbar.' : undefined}
+        viewConfig={{ column_filters: { workflow_filter: filter, property_id: params.get('property_id') || '', unit_id: params.get('unit_id') || '' } }}
+        onApplyView={config => { const saved = config.column_filters || {}; setFilter(FILTERS.includes(saved.workflow_filter) ? saved.workflow_filter : 'all');
+          setParams(current => { const next = new URLSearchParams(current); ['status', 'filter', 'focus_id', 'suche'].forEach(key => next.delete(key));
+            if (FILTERS.includes(saved.workflow_filter) && saved.workflow_filter !== 'all') next.set('filter', saved.workflow_filter);
+            ['property_id', 'unit_id'].forEach(key => { if (saved[key]) next.set(key, saved[key]); else next.delete(key); }); return next; }); }}
         rowName={row => row.title || row.id}
         bulkActions={[bulkDelete({ one: 'Wartungsauftrag', many: 'Wartungsaufträge', remove: row => api.del(`/maintenance/${row.id}`),
           finished: () => { refreshData(); store?.invalidateRelated('maintenance', 'properties', 'units'); } })]}

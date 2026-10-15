@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import Statements from '../pages/Statements';
 import { api } from '../api';
 
@@ -32,7 +33,7 @@ function withPeriod(changes, extra = []) {
 }
 
 async function openPeriod() {
-  render(<Statements />);
+  render(<MemoryRouter><Statements /></MemoryRouter>);
   const row = (await screen.findAllByText('MFH Leipzig'))[0].closest('tr');
   fireEvent.click(within(row).getByLabelText('ui.buttons.edit'));
   return screen.findByText('Lukas Becker');

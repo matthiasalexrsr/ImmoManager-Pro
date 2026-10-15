@@ -278,7 +278,7 @@ export default function Dashboard() {
         <ActivityCard title="Offene Aufgaben" source={taskSource} sourceLabel="Aufgaben" empty="Keine offenen Aufgaben." to="/tasks" linkLabel="Alle Aufgaben" subtitle="Bis zu fünf offene Einträge">
           {tasks.length > 0 && <ul className="dashboard-item-list">{tasks.map(task => <li key={task.id}><div><strong>{task.title}</strong><small>{task.due_date ? `Fällig am ${formatDate(task.due_date)}` : 'Ohne Fälligkeitsdatum'}</small></div><StatusBadge status={task.priority} /></li>)}</ul>}
         </ActivityCard>
-        <ActivityCard title="Vertragsfristen" source={expiringSource} sourceLabel="Vertragsfristen" empty="Keine Vertragsenddaten in diesem Zeitraum." to="/contracts" linkLabel="Verträge öffnen" subtitle="Enddatum in den nächsten 90 Tagen">
+        <ActivityCard title="Vertragsfristen" source={expiringSource} sourceLabel="Vertragsfristen" empty="Keine Vertragsenddaten in diesem Zeitraum." to="/contracts?filter=expiring90" linkLabel="Verträge öffnen" subtitle="Enddatum in den nächsten 90 Tagen">
           {expiring?.contracts.length > 0 && <ul className="dashboard-item-list">{expiring.contracts.slice(0, 5).map(contract => <li key={contract.contractId}><div><strong>{contract.contractNumber}</strong><small>{formatDate(contract.endDate)}</small></div><span className="dashboard-date-note">{contract.daysRemaining} Tage</span></li>)}</ul>}
         </ActivityCard>
         <ActivityCard title="Ungelesene Hinweise" source={notificationSource} sourceLabel="Hinweise" empty="Keine ungelesenen Hinweise." to="/messages" linkLabel="Alle Hinweise" subtitle="Bis zu fünf Einträge">

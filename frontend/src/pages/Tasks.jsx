@@ -13,6 +13,8 @@ import { formatDate } from '../utils/format';
 import { bulkDelete } from '../utils/bulkActions';
 import { Copy as CopyIcon } from 'lucide-react';
 import { duplicateOf } from '../utils/duplicate';
+import { useSearchParams } from 'react-router-dom';
+import KpiAction from '../components/KpiAction';
 import InlineFieldEditor from '../features/workCenter/InlineFieldEditor';
 import UndoNotice from '../features/workCenter/UndoNotice';
 import '../features/workCenter/workCenter.css';
@@ -27,7 +29,7 @@ function parseRecurrence(rule) {
 }
 
 function isOverdue(dueDate, status) {
-  if (!dueDate || status === 'completed') return false;
+  if (!dueDate || ['completed', 'cancelled', 'canceled', 'closed', 'done', 'archived'].includes(status)) return false;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const due = new Date(dueDate);
@@ -56,6 +58,11 @@ function isWithinWeek(dueDate) {
 }
 
 export default function Tasks() {
+  const [params, setParams] = useSearchParams();
+  const readFilter = () => {
+    const value = params.get('status') || params.get('filter');
+    return ['all', 'open', 'in_progress', 'completed', 'cancelled', 'today', 'week', 'overdue', 'recurring'].includes(value) ? value : 'all';
+  };
   const { t } = useTranslation();
   const confirm = useConfirm();
   const toast = useToast();
@@ -72,7 +79,16 @@ export default function Tasks() {
   // values of a duplicated task for the New form (null: an empty form)
   const [prefill, setPrefill] = useState(null);
   const [quickChange, setQuickChange] = useState(null);
-  const [filter, setFilter] = useState('all');
+  const [filter, setFilter] = useState(readFilter);
+  const [drilldown, setDrilldown] = useState(0);
+  const openSources = key => {
+    setFilter(key); setDrilldown(value => value + 1);
+    setParams(current => { const next = new URLSearchParams(current); ['filter', 'status', 'focus_id', 'suche'].forEach(name => next.delete(name));
+      if (key !== 'all') next.set(['open', 'in_progress', 'completed', 'cancelled'].includes(key) ? 'status' : 'filter', key);
+      return next; });
+  };
+  const linkedFilter = readFilter();
+  useEffect(() => { setFilter(linkedFilter); setDrilldown(value => value + 1); }, [linkedFilter, params]);
   const [loadError, setLoadError] = useState(null);
   const [actionError, setActionError] = useState(null);
   const [recurrenceErrors, setRecurrenceErrors] = useState([]);
@@ -113,7 +129,8 @@ export default function Tasks() {
   const unitMap = Object.fromEntries(units.map(u => [u.id, u.label]));
 
   // Enriched data
-  const enriched = tasks.map(task => ({
+  const enriched = tasks.filter(task => (!params.get('property_id') || task.property_id === params.get('property_id'))
+    && (!params.get('unit_id') || task.unit_id === params.get('unit_id'))).map(task => ({
     ...task,
     property_name: propertyMap[task.property_id] || '—',
     unit_label: unitMap[task.unit_id] || '—',
@@ -125,6 +142,7 @@ export default function Tasks() {
   const filtered = useMemo(() => {
     switch (filter) {
       case 'open': return enriched.filter(t => t.status === 'open');
+      case 'in_progress': case 'completed': case 'cancelled': return enriched.filter(t => t.status === filter);
       case 'today': return enriched.filter(t => isToday(t.due_date));
       case 'week': return enriched.filter(t => isWithinWeek(t.due_date));
       case 'overdue': return enriched.filter(t => t.is_overdue);
@@ -301,26 +319,11 @@ export default function Tasks() {
 
       {/* Summary cards */}
       <div className="kpi-row">
-        <div className="kpi">
-          <div className="kpi-value">{totalCount}</div>
-          <div className="kpi-label">Gesamt</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-value" style={{ color: 'var(--info)' }}>{openCount}</div>
-          <div className="kpi-label">Offen</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-value" style={{ color: overdueCount > 0 ? 'var(--danger)' : undefined }}>{overdueCount}</div>
-          <div className="kpi-label">Überfällig</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-value" style={{ color: 'var(--warning)' }}>{inProgressCount}</div>
-          <div className="kpi-label">In Bearbeitung</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-value">{recurringCount}</div>
-          <div className="kpi-label">Wiederkehrend</div>
-        </div>
+        <KpiAction label="Gesamt" value={loadError && !tasks.length ? '—' : totalCount} onClick={() => openSources('all')} />
+        <KpiAction label="Offen" value={loadError && !tasks.length ? '—' : openCount} color="var(--info)" onClick={() => openSources('open')} />
+        <KpiAction label="Überfällig" value={loadError && !tasks.length ? '—' : overdueCount} color={overdueCount ? 'var(--danger)' : undefined} onClick={() => openSources('overdue')} />
+        <KpiAction label="In Bearbeitung" value={loadError && !tasks.length ? '—' : inProgressCount} color="var(--warning)" onClick={() => openSources('in_progress')} />
+        <KpiAction label="Wiederkehrend" value={loadError && !tasks.length ? '—' : recurringCount} onClick={() => openSources('recurring')} />
       </div>
 
       {/* Filter tabs */}
@@ -328,6 +331,8 @@ export default function Tasks() {
         {[
           { key: 'all', label: 'Alle' },
           { key: 'open', label: 'Offen' },
+          { key: 'in_progress', label: 'In Bearbeitung' },
+          { key: 'completed', label: 'Erledigt' },
           { key: 'today', label: 'Heute' },
           { key: 'week', label: 'Diese Woche' },
           { key: 'overdue', label: 'Überfällig' },
@@ -336,7 +341,7 @@ export default function Tasks() {
           <button
             key={f.key}
             className={`btn btn-sm ${filter === f.key ? 'btn-primary' : 'btn-secondary'}`}
-            onClick={() => setFilter(f.key)}
+            onClick={() => openSources(f.key)}
           >{f.label}</button>
         ))}
       </div>
@@ -345,8 +350,12 @@ export default function Tasks() {
         title={t('pages.tasks.title') || 'Aufgaben'}
         columns={columns}
         data={filtered}
-        viewConfig={{ column_filters: { workflow_filter: filter } }}
-        onApplyView={config => setFilter(['all', 'open', 'today', 'week', 'overdue', 'recurring'].includes(config.column_filters?.workflow_filter) ? config.column_filters.workflow_filter : 'all')}
+        drilldownKey={drilldown}
+        viewConfig={{ column_filters: { workflow_filter: filter, property_id: params.get('property_id') || '', unit_id: params.get('unit_id') || '' } }}
+        onApplyView={config => { const saved = config.column_filters || {}; setFilter(['all', 'open', 'in_progress', 'completed', 'cancelled', 'today', 'week', 'overdue', 'recurring'].includes(saved.workflow_filter) ? saved.workflow_filter : 'all');
+          setParams(current => { const next = new URLSearchParams(current); ['status', 'filter', 'focus_id', 'suche'].forEach(key => next.delete(key));
+            if (saved.workflow_filter && saved.workflow_filter !== 'all') next.set('filter', saved.workflow_filter);
+            ['property_id', 'unit_id'].forEach(key => { if (saved[key]) next.set(key, saved[key]); else next.delete(key); }); return next; }); }}
         onAdd={values => { setPrefill(values || null); setModal('create'); }}
         onEdit={row => setModal(row)}
         onDelete={handleDelete}

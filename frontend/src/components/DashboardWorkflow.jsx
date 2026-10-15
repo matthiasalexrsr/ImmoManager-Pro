@@ -37,7 +37,9 @@ export default function DashboardWorkflow({ stats, expiring, notifications, t, s
       const Icon = ICONS[item.id] || PortfolioIcon;
       return <details className="dashboard-area" key={item.id}>
         <summary><span className="dashboard-area-icon"><Icon size={18} /></span><strong>{AREA_NAMES[item.id]}</strong>{statsReady && <span className="dashboard-area-metric">{translate(t, item.metricKey, item.metricFallback, { count: item.metricCount })}</span>}<span className="dashboard-area-chevron" aria-hidden="true">⌄</span></summary>
-        <div className="dashboard-area-content"><p>{translate(t, item.descriptionKey, item.descriptionFallback)}</p><div className="dashboard-area-links">{item.steps.map(step => {
+        <div className="dashboard-area-content"><p>{translate(t, item.descriptionKey, item.descriptionFallback)}</p>
+          {statsReady && <Link className="dashboard-area-action" to={item.metricTo}>Quelle zur Kennzahl: {translate(t, item.metricKey, item.metricFallback, { count: item.metricCount })} <ArrowRightIcon size={14} /></Link>}
+          <div className="dashboard-area-links">{item.steps.map(step => {
           const display = areaStep(step, stats, t);
           return <Link key={step.labelKey} to={step.to} aria-label={statsReady ? `${display.label} ${display.count}` : display.label}><span>{display.label}</span>{statsReady && <strong>{display.count}</strong>}</Link>;
         })}</div><Link className="dashboard-area-action" to={item.actionTo}>Bereich öffnen <ArrowRightIcon size={14} /></Link></div>
