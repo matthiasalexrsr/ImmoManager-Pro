@@ -193,3 +193,194 @@ Mietzahlungsfälle erneut erfolgreich ausgeführt. Der Produktcode blieb dabei
 unverändert. Der vorangegangene vollständige Backend-Gesamtlauf wird für dieses
 Paket nicht erneut behauptet; maßgeblich sind die oben getrennt aufgeführten
 gezielten Regressionen, echten Datenbank-/Browserprüfungen und Lastläufe.
+
+## Zweites Paket: Cache-Richtigkeit, Transaktionen und verbleibende Last
+
+Ausgangspunkt ist der veröffentlichte Stand `3909602b`. Der nächste Schritt folgt
+den tatsächlich verbliebenen Messbefunden und erweitert die Prüfung um deren
+Richtigkeitsrisiken. Die Ausgangsläufe bleiben unverändert erhalten.
+
+- **Datumsindex:** explizite Migration `7a2c8e4f1b90`, gleicher ORM-Index für neue
+  Datenbanken. SQLite und PostgreSQL verwenden ihn im geprüften selektiven
+  Zeitraumbericht, bei unveränderten Summen und vollständig erhaltenen Daten.
+  Upgrade/Downgrade und Startverweigerung eines alten Schemas wurden geprüft.
+  Die PostgreSQL-Prüfung liegt in einer eigenen, vom verpflichtenden CI-Gate
+  automatisch erfassten Datei. Details: `BOOKING_DATE_INDEX_20261013.md`.
+- **CSV:** gemeinsamer Feldschutz für normale Berichte und Suche sowie die
+  Tabellenexporte im Frontend. Auch Texte mit führenden Leerzeichen werden als
+  Text behandelt. Echte negative Zahlen bleiben Zahlen; Kommas, Anführungszeichen
+  und CR-/LF-Zeilenumbrüche werden korrekt serialisiert. Proprietäre DATEV-/WISO-
+  Formate werden damit nicht verändert. 42 gezielte Backendfälle unter Memory und
+  dieselben 42 unter SQLite sowie 28 gezielte Frontendfälle bestanden.
+- **Mobile Mietübersicht:** kompakte Kennzahlen, bei langen Beträgen automatisch
+  breitere Karten und eine aufklappbare Erklärung der Berechnungsgrundlage.
+  Der echte Browserlauf besteht sieben Abläufe bei 1440/360/320 Pixeln,
+  einschließlich einer ausdrücklich nur zur Layoutprüfung simulierten großen
+  Summe. Kontrollbilder wurden visuell geprüft. Der vorhandene Zahlungsablauf
+  einschließlich verlorener Antwort und Nur-Lese-Rolle besteht weiterhin.
+- **Cache:** Datenbankidentität, Zugriffsgrenze und normalisierte Argumente trennen
+  Einträge. Ergebnisse werden gegen unbeabsichtigte Mutation geschützt. Unbestätigte
+  Änderungen, feste Lesesnapshots und Savepoints dürfen keine fremden Cacheeinträge
+  lesen oder veröffentlichen. ORM-, Core-/Text- und Bulk-Änderungen invalidieren
+  auch nach Abschluss der äußeren Transaktion. Ein Cachetreffer muss nicht hinter
+  einer fremden langsamen Berechnung warten. Nachweise: 42 gezielte SQL-Regressionen,
+  vier echte PostgreSQL-Isolationstests, ein tatsächlicher authentifizierter HTTP-
+  Cachetreffer; nach Typkorrekturen nochmals 26 gezielte SQL-Cachetests.
+- **Atomare normale Buchungen:** POST, Storno, PUT und PATCH speichern Buchung und
+  automatische Zuordnungen gemeinsam. Ein Fehler rollt auch bereits angelegte
+  Zuordnungen zurück. Gemessen wird je Vorgang ein fachlicher Commit; Audit bleibt
+  separat. Eigene verschachtelte Vorgänge nutzen Savepoints und hängen am äußeren
+  Commit. Fremde ungeflushte Änderungen des Aufrufers bleiben erhalten. Eine bereits
+  physisch aktive fremde SQLite-Transaktion muss vor einem unabhängigen Schreibvorgang
+  beendet werden; sie wird weder heimlich mitcommitted noch zurückgerollt.
+  38 Unitprüfungen, sechs native PostgreSQL-Prüfungen und 41 SQL-HTTP-Regressionen
+  bestanden; backendabhängige Skips wurden getrennt aufgezeichnet.
+
+Die unabhängige Prüfung der neuen atomaren Vorgänge deckte drei zusätzliche
+Richtigkeitsfälle auf und führte jeweils zu einer Regression:
+
+1. Der Memory-Änderungsjournal muss weiterhin durch die Objektberechtigungen
+   laufen. Bekannte fremde Buchungskennungen dürfen auch innerhalb eines Journals
+   keine Bearbeitung oder Stornierung ermöglichen. Rollback kopiert nur geänderte
+   Einträge, keinen vollständigen historischen Bestand.
+2. Referenzeltern werden in PostgreSQL in konsistenter Reihenfolge gesperrt und
+   ihre Zuordnung nach Wartezeiten erneut geprüft. Ein Portfoliowechsel wartet
+   bis zum Buchungsabschluss. Der Mieter wird vor Ermittlung der Vertragskandidaten
+   gesperrt, damit ein parallel eingefügter Vertrag keine ungeschützte neue
+   Zuordnungsgrundlage bildet.
+3. Eigene verschachtelte SQL-Vorgänge dürfen nicht unabhängig committen. Scheitert
+   der äußere Vorgang, verschwinden auch seine inneren Buchungen. Ein abgefangener
+   innerer Fehler rollt seinen Savepoint zurück und lässt den übrigen äußeren
+   Vorgang konsistent fortfahren.
+
+Der gesamte Frontendlauf bestand 353 Tests. Nach der letzten Ergänzung des CSV-
+Feldschutzes um Steuerzeichen/BOM bestanden nochmals 22 gezielte CSV-/Tabellentests
+und 14 Backend-CSV-Tests. Gesamter Frontend-Lint und Produktionsbuild bestanden;
+Ruff und mypy prüfen den Backendstand mit 380 Dateien erfolgreich.
+
+Die vertiefte Untersuchung korrigiert außerdem die Lastbeschreibung: Der frühere
+Schreibstoß bestand aus 40 Zahlungen mit höchstens **acht gleichzeitig laufenden
+Anfragen**. Die zwei langsamen Anfragen benötigten im inneren Servertimer jeweils
+2,125 Sekunden; allein der HTTP-Client erklärt die Verzögerung daher nicht.
+Buchung, Zuordnung und Audit verursachten bisher ungefähr drei Commitzyklen pro
+Zahlung. Der globale Berechnungslock gehört nicht zum Buchungs-Endpunkt.
+
+Neue lokale Laufartefakte dieses Pakets liegen unter
+`artifacts/performance-20261013/`; die vorherigen Großbestandsläufe bleiben unter
+ihren bisherigen eindeutigen Verzeichnissen bestehen.
+
+### Neuer Millionentest auf `8c9686cd`
+
+`rows-1000000-v1v0dtl1` bestand alle ausgeführten fachlichen Orakel, Suchseiten,
+vollständigen Exporte und Nachprüfungen. Zehn getrennte Benutzer erreichten zehn
+gleichzeitige Anfragen; **40 von 40** bestätigten Schreibvorgängen wurden einzeln
+nachgeprüft, mit 91 Lese-/Schreibüberlappungen und ohne HTTP-Fehler. Die relevanten
+Quellfingerprints blieben während des Laufs unverändert; eigene Prozesse wurden
+nachweislich beendet. Lastfenster: 60 Sekunden, mit Abschluss laufender Anfragen
+62,77 Sekunden. Vergleich: vorheriger erfolgreicher Lauf
+`rows-1000000-km9ecxc7`, ebenfalls 60 Sekunden konfigurierte Last.
+
+| Route / Messung | Vorher | Neues Paket |
+| --- | ---: | ---: |
+| Cashflow unter Mischlast: Anfragen | 32 | 903 |
+| Cashflow unter Mischlast: p95 / Maximum | 9,119 / 9,176 s | 0,768 / 1,448 s |
+| Suche unter Mischlast: Anfragen | 52 | 64 |
+| Suche unter Mischlast: p95 / Maximum | 6,288 / 6,496 s | 4,905 / 5,149 s |
+| Schreibzugriffe unter Mischlast: Maximum | 0,359 s | 0,563 s |
+| Finanzbericht ohne Mischlast: Maximum | 2,068 s | 2,174 s |
+| Cashflow ohne Mischlast: Maximum | 2,861 s | 3,499 s |
+
+Die Verbesserung betrifft vor allem wiederholte historische Finanzabfragen im
+Parallelbetrieb. Nicht alle Messwerte werden schneller: der breiteste Cashflow-
+Einzelaufruf und die maximale Schreibzeit liegen höher. Die gesamte Messung
+einschließlich Neuerzeugung des indexierten Bestands dauerte 221,42 statt 186,50
+Sekunden. Das neue Paket ist daher kein pauschaler Geschwindigkeitsgewinn für
+beliebige Abfragen oder Importe. Die verbleibenden rund fünf Sekunden Suchlatenz
+unter Mischlast erfordern einen eigenen weiteren Arbeitsschritt.
+
+Rohwerte und der reproduzierbare Routenvergleich liegen unter
+`artifacts/performance-20261013/scale-comparison.json`. Die fachlichen und
+systemischen Ausschlüsse des bisherigen Benchmarks gelten weiterhin, besonders
+für PostgreSQL-Leistung, globale Prüfliste, physische Dokumentarchive und eine
+vollständige 20-Jahres-Simulation.
+
+### Gegenprobe zum Schreibstoß und weiterer Korrekturschritt
+
+Der anschließende vollständige XStress-Kurzlauf auf `8c9686cd` bestätigte erneut
+korrekte Fachwerte, Berechtigungen und 40 von 40 nachgelesenen Lastzahlungen.
+Er war dennoch **nicht grün**: Sechs gleichzeitige Buchungsanfragen überschritten
+die unveränderte Zwei-Sekunden-Grenze, maximal 4,5 Sekunden. Originalnachweis:
+`artifacts/performance-20261013/xstress/run-rui27ve6/`.
+
+Die inneren Servertimings zeigen, dass spät gestartete Schreibanfragen früher
+beendet wurden als lange wartende Anfragen. Das stützt die Diagnose konkurrierender
+SQLite-Schreiber, ersetzt jedoch keine getrennte Messung von Queue, Verbindungs-
+erwerb, BEGIN und Commit. Diese Zeitabschnitte werden deshalb im nächsten Lauf
+mit der jeweiligen Anfragekennung protokolliert. XStress schreibt nun einen
+fortlaufenden `requests.jsonl`-Nachweis ohne Nutzdaten, Zugangsdaten oder
+Antwortinhalte; 18 Werkzeugregressionen bestanden einschließlich dieses Schutzes.
+
+Zusätzlich halten die bisherigen Plausibilitätsprüfungen eine Request-Leseverbindung,
+während die Fachunit eine eigene Verbindung anfordert. Bei sehr vielen gleichzeitigen
+Schreibern kann das den Verbindungspool gegenseitig blockieren. Die Korrektur darf
+ausschließlich nachweislich saubere, automatisch begonnene Request-Lesetransaktionen
+freigeben; fremde, explizite oder noch unbestätigte Schreibtransaktionen bleiben
+erhalten. Die bisherige Regression wird durch die erfolgreiche Cashflow-Messung
+nicht verdeckt.
+
+### Geordnete Schreiber und sichere Verbindungsfreigabe
+
+Implementierungsstand `5cb201f0` enthält eine FIFO-Warteschlange je SQLite-Engine
+für Buchungs-, Dokumentarchiv- und Auditschreibvorgänge. Die Zulassung erfolgt vor
+dem Verbindungserwerb und gilt bis zum Transaktionsende. PostgreSQL nutzt seine
+eigenen Sperren. Externe Prozesse und bislang nicht umgestellte Legacy-, Billing-
+und Maintenance-Schreiber werden durch diese prozesslokale Queue nicht geordnet.
+Die Queue darf deshalb nicht als globale Serialisierung sämtlicher Datenbank-
+zugriffe ausgegeben werden. Queuewartezeit, Verbindungserwerb, BEGIN, Commit oder
+Rollback und Haltezeit sind mit Anfragekennung getrennt messbar. Im Audit wird
+die Kennung ausdrücklich über die äußere Middleware weitergegeben und danach
+zurückgesetzt; SQL, Nutzdaten und Zugangsdaten gelangen nicht in diese Zeitlogs.
+
+Eine eigene Fachtransaktion darf vorher ausschließlich eine nachgewiesene reine
+AUTOBEGIN-Lesetransaktion der registrierten Request-Session zurückgeben. Fremde
+Sessions, Connection-Binds, explizite Transaktionen, ausstehende Änderungen,
+Savepoints und feste Snapshots werden erhalten. Connection-Level-Tracking erkennt
+auch direkte SQLAlchemy-Connection-Schreibzugriffe, DML-CTEs, unbekanntes SQL,
+Funktionsaufrufe und Locking-Selects. SQLite verlangt zusätzlich eine nachweislich
+nicht aktive physische Transaktion. PostgreSQL prüft im selben diagnostischen
+Roundtrip die serverseitige XID und eigene gewährte Advisory-/Relationlocks
+außerhalb von AccessShare. Die XID-Abfrage vergibt selbst keine neue XID.
+[PostgreSQL 16: Transaktionsinformationen](https://www.postgresql.org/docs/16/functions-info.html),
+[Sperrübersicht](https://www.postgresql.org/docs/16/view-pg-locks.html).
+
+Rohe DBAPI-`BEGIN`-/`SET`-Steuerung liegt ausdrücklich außerhalb dieses disponiblen
+Middleware-Lesevertrags; dafür bleiben `Session.begin()` beziehungsweise eine
+caller-eigene Connection der geschützte Weg. Die Fachunit wiederholt unmittelbar
+vor ihrer Speicherung die maßgeblichen Berechtigungs- und Zuordnungsprüfungen.
+
+Abnahme vor den Endmessungen: acht Queue-/Audit-/Kontextprüfungen, 22 SQLite-
+Verbindungs-/Transaktionsprüfungen, sechs PostgreSQL-Buchungsprüfungen und 13 native
+PostgreSQL-Helperprüfungen bestanden. Der deterministische Pool-Kontrollfall mit
+zwei Verbindungen und zwei Request-Schreibern lässt ohne Readfreigabe beide
+Schreiber in den Pooltimeout laufen; mit Freigabe committen beide. Echte PostgreSQL-
+Prüfungen belegen außerdem den Erhalt roher DBAPI-Schreibänderungen und zusätzlicher
+Caller-Sperren. Eine unabhängige rein lesende Endprüfung des Commits hat keinen
+weiteren konkreten Befund. Globale Ruff-Prüfung und mypy mit 383 Dateien bestanden.
+Die Endmessungen und Gesamtregression werden anschließend ergänzt.
+
+### Verbliebene Großbestandspfade
+
+Eine weitere rein lesende Prüfung bestätigt als nächsten wesentlichen Engpass die
+globale Prüfliste: Sie lädt weiterhin alle Buchungen samt Zuordnungen/Kautionslinks
+und bildet zusätzliche Vollbestandsstrukturen. Der abgesicherte Volltabellen-Cache
+kopiert diese Modelle tief; die bisherige Millionentest-Abnahme schließt diesen
+Pfad ausdrücklich aus. Geplant ist eine gemeinsame SQL-Prüfgrundlage mit genauen
+Zählern, Cursorseiten und vollständigem Export. Legacy-Zahlungen ohne gespeicherte
+Zuordnung benötigen dabei einen begrenzten, fortsetzbaren Fallback nach denselben
+Fachregeln. Einzelne Kautionslinks bleiben vor der Summierung centgenau gerundet.
+
+Das Dashboard verwendet keine vollständige Buchungsliste, liest jedoch zahlreiche
+andere Tabellen vollständig. Die globale Dokumentenseite sammelt noch alle API-Seiten,
+während die Mieter-Dokumentansicht bereits tatsächlich paginiert ist. Diese konkreten
+Unterschiede werden im nächsten Paket berücksichtigt; historische bereits behobene
+Lücken werden nicht erneut als offen ausgewiesen.

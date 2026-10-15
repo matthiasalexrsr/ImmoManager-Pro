@@ -127,3 +127,34 @@ not evidence of consistently low interactive latency or additional user capacity
 
 An earlier optimized 100k pilot, `rows-100000-0iisstwt`, also passed with a shorter
 30-second mixed window; it is excluded from the main comparison above.
+
+### Follow-up: date index, isolated caches and atomic booking writes
+
+On commit `8c9686cd`, `rows-1000000-v1v0dtl1` passed with unchanged relevant source
+fingerprints, ten simultaneous requests and a configured 60-second mixed window
+(62.77 seconds including completion of outstanding operations). All 40 acknowledged
+writes were verified; 91 read/write overlap events and zero HTTP failures. Full
+selected exports retained 10,310 owner-visible and 3,437 restricted hits. Peak app
+RSS 328.36 MiB; private memory 302.24 MiB. Owned processes stopped successfully.
+
+Compared with `rows-1000000-km9ecxc7`, on the same workload:
+
+| Route | Previous mixed requests / p95 / max | Follow-up mixed requests / p95 / max |
+| --- | --- | --- |
+| Search | 52 / 6.288 / 6.496 s | 64 / 4.905 / 5.149 s |
+| Cashflow | 32 / 9.119 / 9.176 s | 903 / 0.768 / 1.448 s |
+| Booking writes | 40 / 0.169 / 0.359 s | 40 / 0.325 / 0.563 s |
+
+This is a substantial improvement for repeated historical cashflow under load,
+not a uniform speedup. Single-user finance maximum rose from 2.068 to 2.174 s and
+cashflow from 2.861 to 3.499 s. The whole run including creation of the indexed
+fixture took 221.42 seconds instead of 186.50. Search remains a substring scan and
+still reaches approximately five seconds under this mixed load.
+
+The follow-up code includes a booking-date index, cache hits before the global
+compute lock, database/transaction/mutation-safe cache boundaries, and one atomic
+booking/allocation commit. Therefore this combined run does not isolate how much
+each change contributes. The source fingerprint now also covers ORM/schema,
+booking writer, memory scope guard and spreadsheet-export helpers. The previously
+documented functional/system exclusions remain in force. Raw route comparison:
+`artifacts/performance-20261013/scale-comparison.json`.
