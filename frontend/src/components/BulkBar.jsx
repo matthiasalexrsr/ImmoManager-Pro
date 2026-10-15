@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useConfirm } from './ConfirmDialog';
 
 // Actions on several selected rows. Each row runs through the page's own single-row call, one
@@ -6,35 +6,45 @@ import { useConfirm } from './ConfirmDialog';
 // A failure does not stop the others; the bar reports which rows failed and keeps them selected.
 // The report lives in the table: when every row succeeded the selection empties, and the result
 // must stay visible until it is dismissed or a new selection starts.
-export default function BulkBar({ rows, total, allSelected, actions, onSelectAll, onClear, onFinished, words, report, setReport, sums = [] }) {
+export default function BulkBar({ rows, total, allSelected, actions, onSelectAll, onClear, onFinished, onRunningChange, words, report, setReport, sums = [] }) {
   const confirm = useConfirm();
   const [running, setRunning] = useState(null);
+  const busy = useRef(false);
 
   const run = async action => {
-    const targets = action.applies ? rows.filter(action.applies) : rows;
-    if (targets.length === 0) return;
-    const question = action.confirm?.(targets);
-    if (question) {
-      const ok = confirm ? await confirm(question) : window.confirm(question);
-      if (!ok) return;
-    }
-    setReport(null);
-    const failed = [];
-    for (let i = 0; i < targets.length; i += 1) {
-      setRunning({ label: action.label, done: i, count: targets.length });
-      try {
-        await action.run(targets[i]);
-      } catch (error) {
-        failed.push({ row: targets[i], message: error?.message || String(error) });
+    if (busy.current) return;
+    busy.current = true;
+    try {
+      onRunningChange?.(true);
+      const targets = action.applies ? rows.filter(action.applies) : rows;
+      if (targets.length === 0) return;
+      setRunning({ label: action.label, done: 0, count: targets.length });
+      const question = action.confirm?.(targets);
+      if (question) {
+        const ok = await (confirm ? confirm(question) : window.confirm(question));
+        if (!ok) return;
       }
+      setReport(null);
+      const failed = [];
+      for (let i = 0; i < targets.length; i += 1) {
+        setRunning({ label: action.label, done: i, count: targets.length });
+        try {
+          await action.run(targets[i]);
+        } catch (error) {
+          failed.push({ row: targets[i], message: error?.message || String(error) });
+        }
+      }
+      const succeeded = targets.length - failed.length;
+      setReport({ label: action.label, succeeded, failed, skipped: rows.length - targets.length });
+      const result = { succeeded: targets.filter(row => !failed.some(f => f.row === row)), failed };
+      onFinished?.(result);
+      // the page reloads its list once, not once per row
+      try { await action.finished?.(result); } catch { /* the page shows its own load errors */ }
+    } finally {
+      busy.current = false;
+      setRunning(null);
+      onRunningChange?.(false);
     }
-    setRunning(null);
-    const succeeded = targets.length - failed.length;
-    setReport({ label: action.label, succeeded, failed, skipped: rows.length - targets.length });
-    const result = { succeeded: targets.filter(row => !failed.some(f => f.row === row)), failed };
-    onFinished?.(result);
-    // the page reloads its list once, not once per row
-    try { await action.finished?.(result); } catch { /* the page shows its own load errors */ }
   };
 
   return (

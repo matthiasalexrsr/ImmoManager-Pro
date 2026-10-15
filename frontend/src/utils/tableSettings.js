@@ -8,7 +8,7 @@ function read(key) {
   if (!key) return null;
   try {
     const value = JSON.parse(window.localStorage.getItem(PREFIX + key) || 'null');
-    return value && typeof value === 'object' ? value : null;
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
   } catch {
     return null;
   }
@@ -31,7 +31,7 @@ export function readTableView(key) {
   if (!key) return null;
   try {
     const value = JSON.parse(window.sessionStorage.getItem(VIEW_PREFIX + key) || 'null');
-    return value && typeof value === 'object' ? value : null;
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
   } catch {
     return null;
   }

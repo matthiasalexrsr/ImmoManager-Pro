@@ -143,7 +143,7 @@ describe('New forms opened from elsewhere', () => {
   it('pass the values a request carries to the list, also when the list appears later', async () => {
     const { holdNewEntry, requestNewEntry } = await import('../utils/newEntry');
     const onAdd = vi.fn();
-    holdNewEntry('/units', { property_id: 'p1' });
+    holdNewEntry(window.location.pathname, { property_id: 'p1' });
     render(<DataTable title="Einheiten" columns={[{ key: 'label', label: 'Einheit' }]} data={[]} onAdd={onAdd} />);
     expect(onAdd).toHaveBeenLastCalledWith({ property_id: 'p1' });
     expect(requestNewEntry({ property_id: 'p2' })).toBe(true);

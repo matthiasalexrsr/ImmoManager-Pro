@@ -4,13 +4,15 @@ import DataTable from '../components/DataTable';
 import { bulkDelete } from '../utils/bulkActions';
 
 const auth = vi.hoisted(() => ({ canWrite: true }));
+const dialog = vi.hoisted(() => ({ confirm: null }));
 vi.mock('../contexts/AuthContext', () => ({ useCanWrite: () => auth.canWrite }));
+vi.mock('../components/ConfirmDialog', () => ({ useConfirm: () => dialog.confirm }));
 
 const columns = [{ key: 'title', label: 'Titel' }, { key: 'status', label: 'Status' }];
 const rows = Array.from({ length: 30 }, (_, i) => ({ id: `t${i + 1}`, title: `Aufgabe ${String(i + 1).padStart(2, '0')}`, status: i % 3 === 0 ? 'completed' : 'open' }));
 const box = name => screen.getByRole('checkbox', { name: `Auswählen: ${name}` });
 
-beforeEach(() => { localStorage.clear(); auth.canWrite = true; vi.stubGlobal('confirm', vi.fn(() => true)); });
+beforeEach(() => { localStorage.clear(); auth.canWrite = true; dialog.confirm = null; vi.stubGlobal('confirm', vi.fn(() => true)); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('DataTable bulk selection', () => {
@@ -96,10 +98,45 @@ describe('DataTable bulk selection', () => {
     expect(screen.getByRole('region', { name: 'Auswahl' })).toHaveTextContent('1 ausgewählt');
   });
 
+  it('does not start a second batch while confirmation or the first batch is pending', async () => {
+    let answer;
+    dialog.confirm = vi.fn(() => new Promise(resolve => { answer = resolve; }));
+    const run = vi.fn().mockResolvedValue(undefined);
+    render(<DataTable title="Aufgaben" columns={columns} data={rows}
+      bulkActions={[{ key: 'x', label: 'Archivieren', confirm: () => 'Bestätigen?', run }]} />);
+    fireEvent.click(box('Aufgabe 01'));
+    const action = screen.getByRole('button', { name: 'Archivieren' });
+    fireEvent.click(action);
+    fireEvent.click(action);
+    expect(dialog.confirm).toHaveBeenCalledTimes(1);
+    expect(action).toBeDisabled();
+    expect(run).not.toHaveBeenCalled();
+    answer(true);
+    await waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+  });
+
   it('a checkbox click does not open the row', () => {
     const onRowClick = vi.fn();
     render(<DataTable title="Aufgaben" columns={columns} data={rows} onRowClick={onRowClick} bulkActions={[{ key: 'x', label: 'X', run: vi.fn() }]} />);
     fireEvent.click(box('Aufgabe 01'));
     expect(onRowClick).not.toHaveBeenCalled();
+  });
+
+  it('keeps the running batch mounted when refreshed rows leave its selection', async () => {
+    let finish;
+    const run = vi.fn(() => new Promise(resolve => { finish = resolve; }));
+    const props = { title: 'Aufgaben', columns, bulkActions: [{ key: 'x', label: 'Archivieren', run }] };
+    const { rerender } = render(<DataTable {...props} data={rows} />);
+    fireEvent.click(box('Aufgabe 01'));
+    fireEvent.click(screen.getByRole('button', { name: 'Archivieren' }));
+    await waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+    rerender(<DataTable {...props} data={[]} />);
+    expect(screen.getByRole('region', { name: 'Auswahl' })).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Archivieren');
+    rerender(<DataTable {...props} data={rows} />);
+    expect(box('Aufgabe 01')).toBeDisabled();
+    finish();
+    await waitFor(() => expect(box('Aufgabe 01')).not.toBeDisabled());
+    expect(run).toHaveBeenCalledTimes(1);
   });
 });

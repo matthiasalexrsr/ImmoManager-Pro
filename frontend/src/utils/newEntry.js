@@ -21,8 +21,8 @@ export function dropNewEntry(pathname) { if (pending?.pathname !== pathname) pen
 
 /** Once, for the first list that appears on the page the request was held for (the shell drops the
  * request as soon as another page is shown): `{ prefill }`, else null. */
-export function takeNewEntry() {
-  if (pending === null) return null;
+export function takeNewEntry(pathname = window.location.pathname) {
+  if (pending === null || pending.pathname !== pathname) return null;
   const taken = { prefill: pending.prefill };
   pending = null;
   return taken;

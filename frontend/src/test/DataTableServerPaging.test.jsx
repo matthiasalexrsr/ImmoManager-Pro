@@ -203,6 +203,28 @@ describe('DataTable server paging and complete CSV export', () => {
     expect(renderedTitles()[0]).toBe('Dokument 30');
   });
 
+  it('loads a changed list key without copying the previous list settings or filters', () => {
+    localStorage.setItem('table_settings:B', JSON.stringify({ pageSize: 10, sortKey: 'title', sortDir: 'asc' }));
+    const { rerender } = render(<DataTable columns={columns} data={rows} title="Dokumente" settingsKey="A" />);
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'nicht vorhanden' } });
+    rerender(<DataTable columns={columns} data={rows} title="Dokumente" settingsKey="B" />);
+    expect(screen.getByRole('textbox')).toHaveValue('');
+    expect(renderedTitles()).toHaveLength(10);
+    expect(renderedTitles()[0]).toBe('Dokument 01');
+    expect(JSON.parse(localStorage.getItem('table_settings:B')).pageSize).toBe(10);
+    expect(JSON.parse(sessionStorage.getItem('table_view:A')).search).toBe('nicht vorhanden');
+  });
+
+  it('ignores malformed range endpoints and nonboolean column settings', () => {
+    localStorage.setItem('table_settings:malformed', JSON.stringify({ hiddenCols: { title: 'false' } }));
+    sessionStorage.setItem('table_view:malformed', JSON.stringify({ columnFilters: { amount: [{ x: 1 }, []] } }));
+    render(<DataTable title="Beträge" settingsKey="malformed" columns={[
+      { key: 'title', label: 'Titel' }, { key: 'amount', label: 'Betrag', filterType: 'numberRange' },
+    ]} data={[{ id: 'a', title: 'Miete', amount: 100 }]} />);
+    expect(screen.getByRole('columnheader', { name: 'Titel' })).toBeInTheDocument();
+    expect(renderedTitles()).toEqual(['Miete']);
+  });
+
   it('ignores stored settings it cannot use and works without browser storage', () => {
     localStorage.setItem('table_settings:/|Dokumente', JSON.stringify({ sortKey: 'gone', pageSize: 7, hiddenCols: 'x' }));
     render(<DataTable columns={columns} data={rows} title="Dokumente" />);
