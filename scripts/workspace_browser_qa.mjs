@@ -45,6 +45,9 @@ function fixturePdf(text) {
 }
 async function editTenant(name) {
   await page.goto(`${base.origin}/tenants`);
+  // The list deliberately remembers the previous search; start this new lookup
+  // with an explicit clear rather than depending on changing row-count titles.
+  await page.locator('.data-table-wrapper .search-input').fill('');
   await tenantRow(name).getByRole('button', { name: 'Bearbeiten', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Mieter bearbeiten' });
   await expect(dialog.getByLabel('Vollständiger Name', { exact: false })).toBeEnabled();
