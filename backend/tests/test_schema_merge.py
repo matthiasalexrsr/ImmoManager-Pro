@@ -17,7 +17,11 @@ MERGE = "d2e6c8a4f019"
 
 
 def _exercise_existing_branch(engine, config, revision):
-    assert ScriptDirectory.from_config(config).get_heads() == [MERGE]
+    scripts = ScriptDirectory.from_config(config)
+    heads = scripts.get_heads()
+    assert len(heads) == 1, "Supported upgrades must converge on one current schema"
+    head = heads[0]
+    assert MERGE in {item.revision for item in scripts.walk_revisions()}
     command.upgrade(config, revision)
     with engine.begin() as connection:
         connection.execute(sa.insert(PortfolioORM), {"id": "pf", "name": "Existing portfolio"})
@@ -40,7 +44,7 @@ def _exercise_existing_branch(engine, config, revision):
     assert {"ledger_start", "carried_balance"} <= {c["name"] for c in sa.inspect(engine).get_columns("contracts")}
     assert "idx_bookings_date" in {i["name"] for i in sa.inspect(engine).get_indexes("bookings")}
     with engine.connect() as connection:
-        assert connection.scalar(sa.text("SELECT version_num FROM alembic_version")) == MERGE
+        assert connection.scalar(sa.text("SELECT version_num FROM alembic_version")) == head
         assert connection.execute(sa.select(BookingORM.id, BookingORM.amount)).one() == ("b", 123.45)
         assert connection.execute(sa.select(ContractORM.id, ContractORM.ledger_start, ContractORM.carried_balance)).one() == (
             "c", date(2026, 1, 1) if revision == TAKEOVER else None, -250.5 if revision == TAKEOVER else None)

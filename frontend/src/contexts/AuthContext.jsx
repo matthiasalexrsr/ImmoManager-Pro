@@ -25,8 +25,10 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     if (!user?.id) return;
+    let live = true;
     setWrite(user.role === 'readonly' ? [] : null);
-    api.get('/auth/me/permissions').then(p => setWrite(p?.write ?? null)).catch(() => {});
+    api.get('/auth/me/permissions').then(p => { if (live) setWrite(p?.write ?? null); }).catch(() => {});
+    return () => { live = false; };
   }, [user?.id, user?.role]);
 
   const updateUser = useCallback((userData) => {
