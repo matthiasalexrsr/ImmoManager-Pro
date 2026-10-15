@@ -267,9 +267,11 @@ def _duplicate_candidates(rows: Rows, store: Any, candidate: rules.InvoiceFacts,
                     InvoiceORM.invoice_date <= candidate.invoice_date + timedelta(days=window))
         clauses = [near]
         if number:
-            # the key compares loosely ("RE-0042" = "re 42"); the database narrows by the digits
-            digits = "".join(ch for ch in number if ch.isdigit()).lstrip("0")
-            clauses.append(number_column.ilike(f"%{digits or number}%"))
+            # Domain normalization folds arbitrary separators, Unicode and
+            # leading zeroes: RE10 also matches RE1-0, regardless of date or
+            # amount. Raw LIKE is not a safe prefilter. Stream numbered rows
+            # with bounded memory until a normalized persisted index exists.
+            clauses.append(number_column.is_not(None))
         query = select(InvoiceORM).where(or_(*clauses)).where(InvoiceORM.id != candidate.id)
         # Supplier normalization happens in the domain; unrelated broad matches must
         # never exhaust a cutoff before the actual duplicate is inspected.

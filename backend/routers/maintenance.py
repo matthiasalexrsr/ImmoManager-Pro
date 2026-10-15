@@ -1,4 +1,5 @@
 from datetime import date
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
@@ -25,7 +26,12 @@ def list_maintenance_cases(
     sort_order: str = Query("asc"),
     date_from: date | None = Query(None),
     date_to: date | None = Query(None),
+    workflow_filter: Literal["escalation"] | None = Query(None),
 ) -> list[MaintenanceCase]:
+    if workflow_filter == "escalation":
+        from ..services.business_kpi_sources import escalation_cases
+        return escalation_cases(store, skip=skip, limit=limit, property_id=property_id, status_filter=status_filter,
+            sort_by=sort_by, descending=sort_order == "desc", date_from=date_from, date_to=date_to)
     filters = {"property_id": property_id, "status": status_filter}
     return store._list_paginated(
         entity_type="maintenance",

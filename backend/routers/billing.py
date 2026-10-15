@@ -18,7 +18,7 @@ import logging
 import re
 from datetime import date, timedelta
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import ValidationError as ModelValidationError
@@ -114,7 +114,11 @@ def list_billing_periods(
     limit: int = Query(100, ge=1, le=1000),
     property_id: str | None = Query(None),
     status_filter: str | None = Query(None, alias="status"),
+    workflow_filter: Literal["preflight_blockers"] | None = Query(None),
 ) -> list[BillingPeriod]:
+    if workflow_filter == "preflight_blockers":
+        from ..services.business_kpi_sources import billing_blockers
+        return billing_blockers(store, skip=skip, limit=limit, property_id=property_id, status_filter=status_filter)
     results = store.list_billing_periods()
     if property_id:
         results = [r for r in results if r.property_id == property_id]
