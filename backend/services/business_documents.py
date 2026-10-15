@@ -9,7 +9,7 @@ from typing import Any
 from uuid import uuid4
 
 from fastapi import HTTPException
-from sqlalchemy import and_, exists, false, func, or_, select
+from sqlalchemy import and_, exists, false, func, or_, select, true
 
 from ..business_qol_models import (
     DocumentIntake,
@@ -390,6 +390,34 @@ def _normalized_phone(column):
     return result
 
 
+def _phone_candidate(column, wanted: str):
+    normalized = _normalized_phone(column)
+    residue = normalized
+    for digit in "0123456789":
+        residue = func.replace(residue, digit, "")
+    # Python's digit filter accepts arbitrary separators and Unicode digits.
+    # Rows beyond the ordinary ASCII format must reach that exact comparison.
+    return or_(normalized == wanted, func.length(residue) > 0)
+
+
+def _text_candidate(store, column, wanted: str):
+    value = func.coalesce(column, "")
+    dialect = store.db.get_bind().dialect.name
+    if dialect == "postgresql":
+        # C lower is exact for printable ASCII, independent of the installation
+        # locale (e.g. Turkish I). Unicode casefold remains Python's decision.
+        ordinary = func.lower(func.trim(value).collate("C"))
+        unusual = or_(func.octet_length(func.convert_to(value, "UTF8")) > func.length(value),
+                      value.op("~")("[[:cntrl:]]"))
+    elif dialect == "sqlite":
+        ordinary = func.lower(func.trim(value))
+        unusual = value.op("GLOB")("*[^ -~]*")
+    else:
+        # A new dialect must never silently narrow a Unicode casefold search.
+        return true()
+    return or_(ordinary == wanted, unusual)
+
+
 def _duplicate_rows(store, payload: DuplicateCheck, after: str | None):
     query: Any
     values, kind = payload.candidate, payload.kind
@@ -400,14 +428,18 @@ def _duplicate_rows(store, payload: DuplicateCheck, after: str | None):
         if hasattr(store, "db"):
             clauses = []
             if email:
-                clauses.append(func.lower(func.trim(ContactORM.email)) == email)
+                clauses.append(_text_candidate(store, ContactORM.email, email))
             if phone:
-                clauses.extend([_normalized_phone(ContactORM.phone) == phone, _normalized_phone(ContactORM.mobile) == phone])
+                clauses.extend([_phone_candidate(ContactORM.phone, phone), _phone_candidate(ContactORM.mobile, phone)])
             if address[0] and address[1] and (last or company):
-                names = and_(func.lower(func.trim(ContactORM.first_name)) == first,
-                             func.lower(func.trim(ContactORM.last_name)) == last) if last else func.lower(func.trim(ContactORM.company_name)) == company
-                clauses.append(and_(names, func.lower(func.trim(ContactORM.street)) == address[0],
-                                    func.lower(func.trim(ContactORM.zip_code)) == address[1]))
+                names = []
+                if last:
+                    names.append(and_(_text_candidate(store, ContactORM.first_name, first),
+                                      _text_candidate(store, ContactORM.last_name, last)))
+                if company:
+                    names.append(_text_candidate(store, ContactORM.company_name, company))
+                clauses.append(and_(or_(*names), _text_candidate(store, ContactORM.street, address[0]),
+                                    _text_candidate(store, ContactORM.zip_code, address[1])))
             query = select(ContactORM).where(or_(*clauses) if clauses else false())
             if after:
                 query = query.where(ContactORM.id > after)
