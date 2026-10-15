@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { MemoryRouter } from 'react-router-dom';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../api';
 import { DataStoreProvider } from '../contexts/DataStoreContext';
@@ -70,7 +70,11 @@ describe('contract tenant cache across page mutations', () => {
     await screen.findByRole('button', { name: 'Bisherige Partei' });
 
     if (mutation === 'archive') {
-      fireEvent.click(screen.getByRole('button', { name: 'Archivieren' }));
+      // Drain confirmation, mutation and the immediate mocked source reloads.
+      // A transient loading screen alone does not prove archival completed.
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Archivieren' })); });
+      expect(api.patch).toHaveBeenCalledExactlyOnceWith('/tenants/tenant/archive', {});
+      expect(within(screen.getByRole('button', { name: 'Archiviert: Quellvorgänge anzeigen' })).getByText('1')).toBeInTheDocument();
       await waitFor(() => expect(screen.queryByRole('button', { name: 'Bisherige Partei' })).not.toBeInTheDocument());
     } else {
       fireEvent.click(screen.getByRole('button', { name: mutation === 'create' ? 'Partei anlegen' : 'Bearbeiten' }));
