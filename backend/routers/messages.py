@@ -88,6 +88,8 @@ def create_message(thread_id: str, payload: MessageCreate) -> Message:
         store.get_message_thread(thread_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    if payload.thread_id != thread_id:
+        raise HTTPException(status_code=422, detail="Nachricht und ausgewählte Konversation stimmen nicht überein.")
     try:
         return store.create_message(payload)
     except ValidationError as exc:
