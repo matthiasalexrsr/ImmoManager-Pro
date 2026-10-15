@@ -6,6 +6,7 @@ on:
       - main
       - claude/**
       - codex/**
+      - pro/**
   pull_request:
   workflow_dispatch:
 
