@@ -30,6 +30,11 @@ import {
 } from './handoverProtocolModel';
 import { handoverText } from './handoverProtocolText';
 import './HandoverProtocol.css';
+import useEntityFormDraft from '../../hooks/useEntityFormDraft';
+import CustomDraftNotice from '../../components/CustomDraftNotice';
+
+const DRAFT_FIELDS = ['protocol_date', 'tenant_present', 'landlord_present', 'overall_condition', 'notes',
+  'tenant_signature', 'landlord_signature', 'rooms', 'defects', 'keys', 'meters'].map(key => ({ key }));
 
 function PhotoStrip({ photos, label, editable, busy, onAdd, onRemove, say }) {
   const inputId = useId();
@@ -82,6 +87,8 @@ export default function HandoverProtocolEditor({ protocolId, onClose, onChanged,
   const mounted = useRef(true);
   const canEdit = mayWrite(write, '/handover-protocols');
   const canFinalize = canEdit && mayWrite(write, '/documents') && mayWrite(write, '/meters');
+  const draft = useEntityFormDraft({ context: 'handover-protocol-content', kind: 'handover_protocol', id: currentId,
+    fields: DRAFT_FIELDS, enabled: canEdit && Boolean(detail?.state.editable) && service === handoverProtocolService });
 
   useEffect(() => {
     mounted.current = true;      // StrictMode runs setup twice: mark mounted on every setup
@@ -145,12 +152,13 @@ export default function HandoverProtocolEditor({ protocolId, onClose, onChanged,
   const dirty = Boolean(form) && formSignature(form) !== baseline;
   const editable = Boolean(detail?.state.editable) && canEdit;
   const previewValid = Boolean(preview && detail && !dirty && preview.revision === detail.protocol.revision);
-  const locked = Boolean(busy) || unknown;
+  const locked = Boolean(busy) || unknown || draft.loading || (draft.enabled && !draft.ready) || Boolean(draft.recovery) || draft.status === 'changed';
   const type = detail?.protocol.protocol_type;
 
   const change = updater => {
     if (!editable || locked) return;
-    setForm(current => updater(current));
+    const next = updater(form);
+    setForm(next); draft.stage(next);
     setNotice(null);
   };
   const setField = (name, value) => change(current => ({ ...current, [name]: value }));
@@ -173,6 +181,7 @@ export default function HandoverProtocolEditor({ protocolId, onClose, onChanged,
     const saved = await run('save', signal => service.save(currentId, contentPayload(form, detail.protocol.revision),
       { signal }));
     if (!saved) return null;
+    await draft.clear({ completed: true }).catch(() => {});
     apply(saved);
     setNotice(say('saved'));
     onChanged?.();
@@ -315,6 +324,14 @@ export default function HandoverProtocolEditor({ protocolId, onClose, onChanged,
             <ArrowLeft size={16} aria-hidden="true" />{say('back')}</button></div>
           <PdfPreview key={pdf.url} url={pdf.url} title={pdf.title} />
         </div> : <div className="handover__body">
+          <CustomDraftNotice draft={draft} currentValues={form} locked={Boolean(busy) || unknown} beforeRestore={async () => {
+            const session = draft.sessionKey;
+            const fresh = await service.load(currentId);
+            if (!draft.isCurrent(session)) return null;
+            const freshForm = formFromDetail(fresh);
+            setDetail(fresh); setBaseline(formSignature(freshForm)); return freshForm;
+          }}
+            onRestore={values => { setForm(values); setPreview(null); setConfirmed({ content: false, signatures: false }); setPending(null); setNotice(null); draft.stage(values); }} />
           {askDiscard && <div className="handover__notice handover__notice--warning" role="alertdialog"
             aria-label={say('discardTitle')}>
             <AlertTriangle size={18} aria-hidden="true" />

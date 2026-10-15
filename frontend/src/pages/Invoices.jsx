@@ -4,9 +4,11 @@ import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
+import KpiAction from '../components/KpiAction';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
-import { CheckCircleIcon } from '../components/Icons';
+import { CheckCircleIcon, SearchIcon } from '../components/Icons';
 import { formatDate, formatMoney, formatPercent } from '../utils/format';
 import { Copy as CopyIcon } from 'lucide-react';
 import { duplicateOf } from '../utils/duplicate';
@@ -53,6 +55,8 @@ const COLUMNS = [
 ];
 
 export default function Invoices() {
+  const [params] = useSearchParams();
+  const navigate = useNavigate();
   const { t } = useTranslation();
   const confirm = useConfirm();
   const store = useDataStore();
@@ -60,23 +64,29 @@ export default function Invoices() {
   const { items: taxRates } = useEntities('taxRates', '/tax-rates');
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [modal, setModal] = useState(null);
   // values of a duplicated invoice for the New form (null: an empty form)
   const [prefill, setPrefill] = useState(null);
   const aktenwerkReady = useAktenwerkReady();
-  const [filter, setFilter] = useState('all');
+  const [filter, setFilter] = useState(() => params.get('status') || 'all');
+  const [drilldown, setDrilldown] = useState(0);
+  const openSources = key => { setFilter(key); setDrilldown(value => value + 1); };
 
   const refreshData = () => {
     setLoading(true);
-    api.list('/invoices').catch(() => [])
-      .then(inv => setInvoices(Array.isArray(inv) ? inv : []))
+    setLoadError(null);
+    api.list('/invoices')
+      .then(inv => { if (!Array.isArray(inv)) throw new Error('Rechnungen konnten nicht gelesen werden.'); setInvoices(inv); })
+      .catch(failure => setLoadError(failure.message))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     let cancelled = false;
-    api.list('/invoices').catch(err => { console.warn('[Invoices] invoices:', err.message); return []; })
-      .then(data => { if (!cancelled) setInvoices(Array.isArray(data) ? data : []); })
+    api.list('/invoices')
+      .then(data => { if (!Array.isArray(data)) throw new Error('Rechnungen konnten nicht gelesen werden.'); if (!cancelled) setInvoices(data); })
+      .catch(failure => { if (!cancelled) setLoadError(failure.message); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, []);
@@ -95,10 +105,11 @@ export default function Invoices() {
   }, [enriched, filter]);
 
   // Summary stats
-  const totalOpen = enriched.filter(i => i.status === 'open').reduce((s, i) => s + (Number(i.gross_amount) || 0), 0);
-  const totalOverdue = enriched.filter(i => i.status === 'overdue').reduce((s, i) => s + (Number(i.gross_amount) || 0), 0);
-  const totalPaid = enriched.filter(i => i.status === 'paid').reduce((s, i) => s + (Number(i.gross_amount) || 0), 0);
-  const totalVat = enriched.reduce((s, i) => s + (Number(i.vat_amount) || 0), 0);
+  const sum = (rows, key) => rows.reduce((s, i) => s + Math.round((Number(i[key]) || 0) * 100), 0) / 100;
+  const totalOpen = sum(enriched.filter(i => i.status === 'open'), 'gross_amount');
+  const totalOverdue = sum(enriched.filter(i => i.status === 'overdue'), 'gross_amount');
+  const totalPaid = sum(enriched.filter(i => i.status === 'paid'), 'gross_amount');
+  const totalVat = sum(enriched, 'vat_amount');
 
   const defaultVatRate = taxRates.find(t => t.is_default)?.rate || 19;
 
@@ -176,30 +187,16 @@ export default function Invoices() {
   return (
     <div className="page">
       <h1 className="page-title">Rechnungen</h1>
+      {loadError && <p className="alert-error" role="alert">Rechnungen konnten nicht aktualisiert werden. {loadError}<button type="button" className="btn btn-secondary" onClick={refreshData}>Erneut laden</button></p>}
 
       {/* Summary cards */}
-      <div className="kpi-row">
-        <div className="kpi">
-          <div className="kpi-value">{enriched.length}</div>
-          <div className="kpi-label">Gesamt</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-value" style={{ color: 'var(--warning)' }}>{formatMoney(totalOpen)}</div>
-          <div className="kpi-label">Offen</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-value" style={{ color: 'var(--danger)' }}>{formatMoney(totalOverdue)}</div>
-          <div className="kpi-label">Überfällig</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-value" style={{ color: 'var(--success)' }}>{formatMoney(totalPaid)}</div>
-          <div className="kpi-label">Bezahlt</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-value">{formatMoney(totalVat)}</div>
-          <div className="kpi-label">MwSt gesamt</div>
-        </div>
-      </div>
+      {!loadError && <div className="kpi-row">
+        <KpiAction label="Gesamt" value={enriched.length} onClick={() => openSources('all')} />
+        <KpiAction label="Offen" value={formatMoney(totalOpen)} color="var(--warning)" onClick={() => openSources('open')} />
+        <KpiAction label="Überfällig" value={formatMoney(totalOverdue)} color="var(--danger)" onClick={() => openSources('overdue')} />
+        <KpiAction label="Bezahlt" value={formatMoney(totalPaid)} color="var(--success)" onClick={() => openSources('paid')} />
+        <KpiAction label="MwSt gesamt" value={formatMoney(totalVat)} onClick={() => openSources('all')} />
+      </div>}
 
       {/* Filter tabs */}
       <div className="filter-chips">
@@ -223,6 +220,9 @@ export default function Invoices() {
         title="Rechnungen"
         columns={COLUMNS}
         data={filtered}
+        drilldownKey={drilldown}
+        viewConfig={{ column_filters: { workflow_filter: filter } }}
+        onApplyView={config => setFilter(config.column_filters?.workflow_filter || 'all')}
         rowName={row => `${row.supplier || 'Rechnung'} ${row.invoice_number || ''}`.trim()}
         // the invoice's document (received through the invoice review) for the document management system
         bulkActions={aktenwerkReady ? [aktenwerkBulkAction(row => documentExchangeId(row.source_document_id))] : []}
@@ -230,6 +230,10 @@ export default function Invoices() {
         onEdit={row => setModal(row)}
         onDelete={handleDelete}
         rowActions={row => [{
+          label: 'Dubletten prüfen',
+          icon: <SearchIcon size={15} />,
+          onClick: () => navigate(`/duplicate-check?kind=invoice&id=${encodeURIComponent(row.id)}`),
+        }, {
           label: 'Duplizieren', write: true, icon: <CopyIcon size={15} />,
           // a new invoice of the same supplier: its own number, state and document
           onClick: () => { setPrefill(duplicateOf(row, ['invoice_number', 'status', 'source_document_id', 'payment_reference'])); setModal('create'); },

@@ -6,7 +6,7 @@ import { api } from '../api';
 const access = vi.hoisted(() => ({ canWrite: true }));
 vi.mock('../api', () => ({ api: { get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn() } }));
 vi.mock('../i18n', () => ({ useTranslation: () => ({ t: () => undefined }) }));
-vi.mock('../contexts/AuthContext', () => ({ useCanWrite: () => access.canWrite }));
+vi.mock('../contexts/AuthContext', () => ({ useCanWrite: () => access.canWrite, useAuth: () => null }));
 
 const email = {
   id: 'email', name: 'E-Mail (SMTP)', description: 'SMTP', category: 'communication', enabled: true,

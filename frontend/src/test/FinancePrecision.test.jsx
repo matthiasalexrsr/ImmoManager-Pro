@@ -10,7 +10,7 @@ const context = vi.hoisted(() => ({
 }));
 vi.mock('../api', () => ({ api: { get: vi.fn(), list: vi.fn(), post: vi.fn(), put: vi.fn(), del: vi.fn() } }));
 vi.mock('../i18n', () => ({ useTranslation: () => ({ t: () => undefined, locale: 'de-DE' }) }));
-vi.mock('../contexts/AuthContext', () => ({ useCanWrite: () => true }));
+vi.mock('../contexts/AuthContext', () => ({ useCanWrite: () => true, useAuth: () => null }));
 vi.mock('../contexts/DataStoreContext', () => ({
   useEntities: () => ({ items: [], loading: false, error: null }),
   useDataStore: () => context.store,

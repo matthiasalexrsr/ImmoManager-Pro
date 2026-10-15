@@ -11,7 +11,7 @@ vi.mock('../api', () => ({ api: { get: vi.fn(), list: vi.fn(), post: vi.fn(), pu
 const i18n = vi.hoisted(() => ({ locale: 'de-DE' }));
 vi.mock('../i18n', () => ({ useTranslation: () => ({ t: key => key, locale: i18n.locale }) }));
 const access = vi.hoisted(() => ({ canWrite: true }));
-vi.mock('../contexts/AuthContext', () => ({ useCanWrite: () => access.canWrite }));
+vi.mock('../contexts/AuthContext', () => ({ useCanWrite: () => access.canWrite, useAuth: () => null }));
 vi.mock('../components/PdfPreview', () => ({ default: ({ title }) => <div>PDF {title}</div> }));
 
 const OVERVIEW = {

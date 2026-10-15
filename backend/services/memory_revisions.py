@@ -13,6 +13,7 @@ def atomic_memory_update(table: str | None = None):
         @wraps(function)
         def wrapped(*args, **kwargs):
             # Deferred imports keep the storage/model initialization acyclic.
+            from .business_field_history import record_memory_changes
             from .document_versions import memory_archive
             from .record_revisions import assert_expected, consume_expected
 
@@ -30,7 +31,15 @@ def atomic_memory_update(table: str | None = None):
                 current = getattr(store, collection_name).get(record_id)
                 if current is not None:
                     assert_expected(collection_name, record_id, current.updated_at)
+                before = current.model_copy(deep=True) if current is not None else None
                 result = function(*args, **kwargs)
+                try:
+                    record_memory_changes(store, collection_name, before, getattr(store, collection_name).get(record_id))
+                except BaseException:
+                    # The field history and the source replacement form one memory write.
+                    if before is not None:
+                        getattr(store, collection_name)[record_id] = before
+                    raise
                 consume_expected(collection_name, record_id)
                 return result
 

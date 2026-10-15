@@ -5,7 +5,7 @@ import { bulkDelete } from '../utils/bulkActions';
 
 const auth = vi.hoisted(() => ({ canWrite: true }));
 const dialog = vi.hoisted(() => ({ confirm: null }));
-vi.mock('../contexts/AuthContext', () => ({ useCanWrite: () => auth.canWrite }));
+vi.mock('../contexts/AuthContext', () => ({ useCanWrite: () => auth.canWrite, useAuth: () => null }));
 vi.mock('../components/ConfirmDialog', () => ({ useConfirm: () => dialog.confirm }));
 
 const columns = [{ key: 'title', label: 'Titel' }, { key: 'status', label: 'Status' }];

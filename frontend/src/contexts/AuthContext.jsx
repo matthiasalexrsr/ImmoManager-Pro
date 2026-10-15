@@ -2,6 +2,7 @@
 import { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { api } from '../api';
 import { areaForRoute, mayWrite } from '../utils/permissions';
+import { setWorkspaceOwner, clearWorkspaceBrowserData } from '../utils/workspaceIdentity';
 
 const AuthContext = createContext(null);
 
@@ -29,11 +30,19 @@ export function AuthProvider({ children }) {
   }, [user?.id, user?.role]);
 
   const updateUser = useCallback((userData) => {
+    setWorkspaceOwner(userData?.id);
     setUser(userData);
   }, []);
 
   const clearUser = useCallback(() => {
+    setWorkspaceOwner(null);
     setUser(null);
+  }, []);
+
+  useEffect(() => {
+    const clear = () => { clearWorkspaceBrowserData(); setUser(null); setWrite(null); };
+    window.addEventListener('workspace-logout', clear);
+    return () => window.removeEventListener('workspace-logout', clear);
   }, []);
 
   const isAdmin = user?.role === 'eigentuemer' || user?.role === 'verwalter';

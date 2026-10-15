@@ -6,6 +6,7 @@ import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import { PartyLink } from '../features/partyWorkspace/PartyWorkspace';
 import FormModal from '../components/FormModal';
+import KpiAction from '../components/KpiAction';
 import FileViewer from '../components/FileViewer';
 import { resolveFileUrl } from '../features/partyWorkspace/files';
 import StatusBadge from '../components/StatusBadge';
@@ -16,6 +17,7 @@ import { formatDate, formatMoney } from '../utils/format';
 import './bookingReview.css';
 import { Copy as CopyIcon } from 'lucide-react';
 import { duplicateOf } from '../utils/duplicate';
+import { cashflowSide } from '../utils/cashflowBasis';
 import { aktenwerkBulkAction, receiptExchangeId, useAktenwerkReady } from '../features/aktenwerk/aktenwerkApi';
 
 export default function Bookings() {
@@ -23,13 +25,23 @@ export default function Bookings() {
   const bookingId = params.get('booking_id');
   // /bookings?konto=<id>: the bookings of one account (from the account list), removable
   const accountId = params.get('konto');
+  const sourceFilters = Object.fromEntries(['date_from', 'date_to', 'property_id', 'unit_id', 'portfolio_id', 'tenant_id', 'category_id', 'status', 'flow'].map(key => [key, params.get(key) || '']));
   const clearAccount = () => setParams(current => { const next = new URLSearchParams(current); next.delete('konto'); return next; });
+  const applySourceFilters = config => setParams(current => {
+    const next = new URLSearchParams(current);
+    for (const key of Object.keys(sourceFilters)) {
+      const value = key === 'flow' ? config.column_filters?.workflow_filter : config.column_filters?.[key];
+      if (value && value !== 'all') next.set(key, value); else next.delete(key);
+    }
+    if (config.column_filters?.account_id) next.set('konto', config.column_filters.account_id); else next.delete('konto');
+    return next;
+  });
   // A navigation starts a new editing/viewing session; old requests cannot own it.
   return <BookingsWorkspace key={bookingId === null ? 'list' : `booking:${bookingId}`} bookingId={bookingId}
-    accountId={accountId} onClearAccount={clearAccount} />;
+    accountId={accountId} sourceFilters={sourceFilters} onApplySourceFilters={applySourceFilters} onClearAccount={clearAccount} />;
 }
 
-function BookingsWorkspace({ bookingId, accountId, onClearAccount }) {
+function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters, onApplySourceFilters }) {
   const { t } = useTranslation();
   const confirm = useConfirm();
   const toast = useToast();
@@ -38,10 +50,13 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount }) {
   const aktenwerkReady = useAktenwerkReady();
   const contractSource = useEntities('contracts', '/contracts');
   const { items: contracts } = contractSource;
-  const { items: accounts } = useEntities('accounts', '/accounts');
-  const { items: categories } = useEntities('categories', '/categories');
+  const accountSource = useEntities('accounts', '/accounts');
+  const { items: accounts } = accountSource;
+  const categorySource = useEntities('categories', '/categories');
+  const { items: categories } = categorySource;
   const { items: properties } = useEntities('properties', '/properties');
-  const { items: units } = useEntities('units', '/units');
+  const unitSource = useEntities('units', '/units');
+  const { items: units } = unitSource;
   const { items: tenants } = useEntities('tenants', '/tenants');
 
   const [bookings, setBookings] = useState([]);
@@ -50,7 +65,10 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount }) {
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [modal, setModal] = useState(null);
   const modalGeneration = useRef(0);
-  const [filter, setFilter] = useState('all');
+  const [filter, setFilter] = useState(sourceFilters.flow || 'all');
+  useEffect(() => { setFilter(sourceFilters.flow || 'all'); }, [sourceFilters.flow]);
+  const [drilldown, setDrilldown] = useState(0);
+  const openSources = key => { setFilter(key); setDrilldown(value => value + 1); };
   const [allocations, setAllocations] = useState([]);
   const [allocationStatus, setAllocationStatus] = useState('loading');
   const [allocationError, setAllocationError] = useState(null);
@@ -69,6 +87,11 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount }) {
   const splitSession = useRef(null);
 
   const noneOpt = t('ui.form.none') || '— Keine —';
+  const categoryTypes = useMemo(() => new Map(categories.map(category => [category.id, category.category_type])), [categories]);
+  const unitProperties = useMemo(() => new Map(units.map(unit => [unit.id, unit.property_id])), [units]);
+  const accountPortfolios = useMemo(() => new Map(accounts.map(account => [account.id, account.portfolio_id])), [accounts]);
+  const basisLoading = categorySource.loading || (sourceFilters.property_id && unitSource.loading) || (sourceFilters.portfolio_id && accountSource.loading);
+  const basisError = categorySource.error || (sourceFilters.property_id && unitSource.error) || (sourceFilters.portfolio_id && accountSource.error);
   const allocationReady = allocationStatus === 'ready';
   const canSplit = canWrite && allocationReady && !contractSource.loading && !contractSource.error;
 
@@ -182,25 +205,34 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount }) {
   }));
 
   // Filtered data
+  const basis = enriched.filter(row => (!accountId || row.account_id === accountId)
+    && (!sourceFilters.date_from || row.booking_date >= sourceFilters.date_from)
+    && (!sourceFilters.date_to || row.booking_date <= sourceFilters.date_to)
+    && (!sourceFilters.property_id || (row.property_id || unitProperties.get(row.unit_id)) === sourceFilters.property_id)
+    && (!sourceFilters.unit_id || row.unit_id === sourceFilters.unit_id)
+    && (!sourceFilters.tenant_id || row.tenant_id === sourceFilters.tenant_id)
+    && (!sourceFilters.category_id || row.category_id === sourceFilters.category_id)
+    && (!sourceFilters.status || row.status === sourceFilters.status)
+    && (!sourceFilters.portfolio_id || accountPortfolios.get(row.account_id) === sourceFilters.portfolio_id));
   const filtered = useMemo(() => {
-    const rows = accountId ? enriched.filter(b => b.account_id === accountId) : enriched;
+    const rows = basis;
     switch (filter) {
       case 'open': return rows.filter(b => b.status === 'open');
       case 'unassigned': return rows.filter(b => b.unassigned);
       case 'no_category': return rows.filter(b => !b.category_id);
       case 'no_receipt': return rows.filter(b => !resolveFileUrl(b.receipt_url));
-      case 'income': return rows.filter(b => Number(b.amount) > 0);
-      case 'expense': return rows.filter(b => Number(b.amount) < 0);
+      case 'income': return rows.filter(b => cashflowSide(b, categoryTypes) === 'income');
+      case 'expense': return rows.filter(b => cashflowSide(b, categoryTypes) === 'expense');
       default: return rows;
     }
-  }, [enriched, filter, accountId]);
+  }, [basis, filter, categoryTypes]);
 
   // Summary stats
-  const totalCount = enriched.length;
-  const totalIncome = enriched.filter(b => Number(b.amount) > 0).reduce((s, b) => s + Number(b.amount), 0);
-  const totalExpense = enriched.filter(b => Number(b.amount) < 0).reduce((s, b) => s + Math.abs(Number(b.amount)), 0);
-  const noCategory = enriched.filter(b => !b.category_id).length;
-  const noReceipt = enriched.filter(b => !resolveFileUrl(b.receipt_url)).length;
+  const totalCount = basis.length;
+  const totalIncome = basis.filter(b => cashflowSide(b, categoryTypes) === 'income').reduce((s, b) => s + Math.round(Number(b.amount) * 100), 0) / 100;
+  const totalExpense = -basis.filter(b => cashflowSide(b, categoryTypes) === 'expense').reduce((s, b) => s + Math.round(Number(b.amount) * 100), 0) / 100;
+  const noCategory = basis.filter(b => !b.category_id).length;
+  const noReceipt = basis.filter(b => !resolveFileUrl(b.receipt_url)).length;
 
   const receiptAction = row => resolveFileUrl(row.receipt_url)
     ? <button type="button" className="btn btn-sm btn-secondary" onClick={() => setViewer({ fileUrl: row.receipt_url, title: `Beleg: ${row.payment_text || formatDate(row.booking_date)}` })}>Beleg öffnen</button>
@@ -399,29 +431,17 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount }) {
       </div>}
 
       {!loading && !loadError && <>
+      {Object.values(sourceFilters).some(Boolean) && <p role="status" className="draft-status">Quellenauswahl: {sourceFilters.date_from && `ab ${formatDate(sourceFilters.date_from)} `}{sourceFilters.date_to && `bis ${formatDate(sourceFilters.date_to)} `}{(sourceFilters.property_id || sourceFilters.unit_id || sourceFilters.portfolio_id || sourceFilters.tenant_id || sourceFilters.category_id || sourceFilters.status) && 'mit übernommener Objekt- und Vorgangsauswahl'}</p>}
       {/* Summary cards */}
-      <div className="kpi-row">
-        <div className="kpi">
-          <div className="kpi-value">{totalCount}</div>
-          <div className="kpi-label">Gesamt</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-value" style={{ color: 'var(--success)' }}>{formatMoney(totalIncome)}</div>
-          <div className="kpi-label">Einnahmen</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-value" style={{ color: 'var(--danger)' }}>{formatMoney(totalExpense)}</div>
-          <div className="kpi-label">Ausgaben</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-value" style={{ color: noCategory > 0 ? 'var(--warning)' : undefined }}>{noCategory}</div>
-          <div className="kpi-label">Ohne Kategorie</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-value" style={{ color: noReceipt > 0 ? 'var(--warning)' : undefined }}>{noReceipt}</div>
-          <div className="kpi-label">Ohne nutzbaren Beleg</div>
-        </div>
-      </div>
+      {basisLoading && <p role="status">Finanzgrundlage wird geladen …</p>}
+      {basisError && <p role="alert">Die Finanzgrundlage konnte nicht vollständig geladen werden. Bitte die Ansicht erneut laden.</p>}
+      {!basisLoading && !basisError && <div className="kpi-row">
+        <KpiAction label="Gesamt" value={totalCount} onClick={() => openSources('all')} />
+        <KpiAction label="Einnahmen" value={formatMoney(totalIncome)} color="var(--success)" onClick={() => openSources('income')} />
+        <KpiAction label="Ausgaben" value={formatMoney(totalExpense)} color="var(--danger)" onClick={() => openSources('expense')} />
+        <KpiAction label="Ohne Kategorie" value={noCategory} onClick={() => openSources('no_category')} />
+        <KpiAction label="Ohne nutzbaren Beleg" value={noReceipt} onClick={() => openSources('no_receipt')} />
+      </div>}
 
       {/* Filter tabs */}
       <div className="filter-chips">
@@ -453,6 +473,9 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount }) {
         title={t('finance.bookings.title') || 'Buchungen'}
         columns={columns}
         data={filtered}
+        drilldownKey={drilldown}
+        viewConfig={{ column_filters: { ...sourceFilters, account_id: accountId || '', workflow_filter: filter } }}
+        onApplyView={config => { setFilter(config.column_filters?.workflow_filter || 'all'); onApplySourceFilters(config); }}
         onAdd={values => setModal({ generation: ++modalGeneration.current, initial: 'create', prefill: values || null })}
         onEdit={openModal}
         onDelete={handleDelete}

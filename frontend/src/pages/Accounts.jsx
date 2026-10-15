@@ -5,6 +5,7 @@ import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
+import KpiAction from '../components/KpiAction';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useToast } from '../components/Toast';
@@ -19,19 +20,25 @@ export default function Accounts() {
 
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [modal, setModal] = useState(null);
+  const [basisOpen, setBasisOpen] = useState(false);
+  const [drilldown, setDrilldown] = useState(0);
 
   const refreshData = () => {
     setLoading(true);
-    api.list('/accounts').catch(() => [])
-      .then(data => setAccounts(Array.isArray(data) ? data : []))
+    setLoadError(null);
+    api.list('/accounts')
+      .then(data => { if (!Array.isArray(data)) throw new Error('Konten konnten nicht gelesen werden.'); setAccounts(data); })
+      .catch(failure => setLoadError(failure.message))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     let cancelled = false;
-    api.list('/accounts').catch(err => { console.warn('[Accounts] load:', err.message); return []; })
-      .then(data => { if (!cancelled) setAccounts(Array.isArray(data) ? data : []); })
+    api.list('/accounts')
+      .then(data => { if (!Array.isArray(data)) throw new Error('Konten konnten nicht gelesen werden.'); if (!cancelled) setAccounts(data); })
+      .catch(failure => { if (!cancelled) setLoadError(failure.message); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, []);
@@ -47,7 +54,7 @@ export default function Accounts() {
 
   // Summary stats
   const totalCount = enriched.length;
-  const totalBalance = enriched.reduce((s, a) => s + Number(a.balance || 0), 0);
+  const totalBalance = enriched.reduce((s, a) => s + Math.round(Number(a.balance || 0) * 100), 0) / 100;
 
   const columns = [
     // the name opens the account's bookings
@@ -110,23 +117,25 @@ export default function Accounts() {
   return (
     <div className="page">
       <h1 className="page-title">{t('finance.accounts.title') || 'Konten'}</h1>
+      {loadError && <p className="alert-error" role="alert">Konten konnten nicht aktualisiert werden. {loadError}<button type="button" className="btn btn-secondary" onClick={refreshData}>Erneut laden</button></p>}
 
       {/* Summary cards */}
-      <div className="kpi-row">
-        <div className="kpi">
-          <div className="kpi-value">{totalCount}</div>
-          <div className="kpi-label">Anzahl Konten</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-value" style={{ color: totalBalance < 0 ? 'var(--danger)' : totalBalance > 0 ? 'var(--success)' : undefined }}>{formatMoney(totalBalance)}</div>
-          <div className="kpi-label">Gesamtsaldo</div>
-        </div>
-      </div>
+      {!loadError && <div className="kpi-row">
+        <KpiAction label="Anzahl Konten" value={totalCount} onClick={() => setDrilldown(value => value + 1)} />
+        <KpiAction label="Gesamtsaldo" value={formatMoney(totalBalance)} onClick={() => setBasisOpen(value => !value)} />
+      </div>}
+      {basisOpen && !loadError && <section aria-label="Grundlage des Gesamtsaldos" className="draft-recovery"><h2>Grundlage des Gesamtsaldos</h2>
+        <p>Der Saldo besteht aus dem erfassten Anfangssaldo und den Buchungen jedes Kontos.</p>
+        <div className="table-scroll"><table className="data-table"><thead><tr><th>Konto</th><th>Anfangssaldo</th><th>Buchungen netto</th><th>Saldo</th></tr></thead><tbody>{enriched.map(account => <tr key={account.id}>
+          <td><Link to={`/bookings?konto=${encodeURIComponent(account.id)}`}>{account.name}</Link></td>
+          <td>{formatMoney(account.opening_balance || 0)}</td><td>{formatMoney((Math.round(Number(account.balance || 0) * 100) - Math.round(Number(account.opening_balance || 0) * 100)) / 100)}</td><td>{formatMoney(account.balance || 0)}</td>
+        </tr>)}</tbody></table></div></section>}
 
       <DataTable
         title={t('finance.accounts.title') || 'Konten'}
         columns={columns}
         data={enriched}
+        drilldownKey={drilldown}
         onAdd={() => setModal('create')}
         onEdit={row => setModal(row)}
         onDelete={handleDelete}

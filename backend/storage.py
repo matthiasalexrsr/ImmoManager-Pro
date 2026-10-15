@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel as PydanticBaseModel
 
+from .business_qol_models import BusinessCommand, ConversationNote, DocumentIntake, DuplicateException
 from .domain.booking_reversal import reversal_problem
 from .domain.lease_engine import find_unit_overlap, unit_overlap_message
 from .domain.revision_time import next_updated_at
@@ -232,6 +233,10 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
     invoice_review_events: Dict[str, InvoiceReviewEvent] = field(default_factory=dict)
     invoice_cost_transfers: Dict[str, InvoiceCostTransfer] = field(default_factory=dict)
     invoice_review_settings: Dict[str, InvoiceReviewSettings] = field(default_factory=dict)
+    business_conversation_notes: Dict[str, ConversationNote] = field(default_factory=dict)
+    business_qol_commands: Dict[str, BusinessCommand] = field(default_factory=dict)
+    business_document_intake: Dict[str, DocumentIntake] = field(default_factory=dict)
+    business_duplicate_exceptions: Dict[str, DuplicateException] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         # deletes of referenced records take the project rows along, as ON DELETE does in SQL

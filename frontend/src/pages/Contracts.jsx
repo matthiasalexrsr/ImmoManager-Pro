@@ -18,19 +18,22 @@ import DepositsDialog from '../features/deposits/DepositsDialog';
 import { depositText } from '../features/deposits/depositText';
 import { formatDate, formatMoney } from '../utils/format';
 import { nextNumber } from '../utils/nextNumber';
+import { useSearchParams } from 'react-router-dom';
+import KpiAction from '../components/KpiAction';
 
 const RENT_MODEL_LABELS = { index: 'Indexmiete', stepped: 'Staffelmiete', fixed: 'Festmiete' };
 
 function remainingDays(endDate) {
   if (!endDate) return null;
-  const end = new Date(endDate);
   const today = new Date();
-  return Math.ceil((end - today) / (1000 * 60 * 60 * 24));
+  const [year, month, day] = endDate.slice(0, 10).split('-').map(Number);
+  return Math.round((Date.UTC(year, month - 1, day) - Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())) / 86400000);
 }
 
 const RENT_SOURCE_LABELS = { contract_start: 'Vertragsbeginn', adjustment: 'Mietanpassung', manual: 'Manuell' };
 
 export default function Contracts() {
+  const [params] = useSearchParams();
   const { t, locale } = useTranslation();
   const confirm = useConfirm();
   const toast = useToast();
@@ -38,6 +41,7 @@ export default function Contracts() {
   const propertyState = useEntities('properties', '/properties');
   const unitState = useEntities('units', '/units');
   const tenantState = useEntities('tenants_all', '/tenants?include_archived=true');
+  const documentState = useEntities('documents', '/documents');
   const properties = propertyState.items;
   const units = unitState.items;
   const tenants = tenantState.items;
@@ -46,7 +50,9 @@ export default function Contracts() {
   const [modal, setModal] = useState(null);
   // values a New form starts with when opened from elsewhere (the property page's "Einheit anlegen")
   const [prefill, setPrefill] = useState(null);
-  const [filter, setFilter] = useState('all');
+  const [filter, setFilter] = useState(() => params.get('status') || params.get('filter') || 'all');
+  const [drilldown, setDrilldown] = useState(0);
+  const openSources = key => { setFilter(key); setDrilldown(value => value + 1); };
   const [rents, setRents] = useState({});
   const [history, setHistory] = useState(null);
   const [housing, setHousing] = useState(null);
@@ -118,11 +124,16 @@ export default function Contracts() {
     if (filter === 'all') return enriched;
     if (filter === 'active') return enriched.filter(c => c.status === 'active');
     if (filter === 'ending_soon') return enriched.filter(c => c.remaining_days != null && c.remaining_days > 0 && c.remaining_days <= 90 && c.status === 'active');
+    if (filter === 'expiring90') return enriched.filter(c => c.remaining_days != null && c.remaining_days >= 0 && c.remaining_days <= 90);
+    if (filter === 'missing_documents') {
+      const documented = new Set(documentState.items.map(document => document.contract_id).filter(Boolean));
+      return enriched.filter(c => c.status === 'active' && !documented.has(c.id));
+    }
     if (filter === 'terminated') return enriched.filter(c => c.status === 'terminated');
     if (filter === 'draft') return enriched.filter(c => c.status === 'draft');
     if (filter === 'no_deposit') return enriched.filter(c => !c.deposit_amount || Number(c.deposit_amount) === 0);
     return enriched;
-  }, [enriched, filter]);
+  }, [enriched, filter, documentState.items]);
 
   // Summary stats
   const totalActive = enriched.filter(c => c.status === 'active').length;
@@ -224,14 +235,17 @@ export default function Contracts() {
     if (store) store.invalidateRelated('contracts', 'properties', 'units', 'tenants', 'tenants_all', 'deposits', 'receivables', 'rent_adjustments');
   };
 
-  const lookupErrors = [propertyState.error, unitState.error, tenantState.error].filter(Boolean);
+  const lookupErrors = [propertyState.error, unitState.error, tenantState.error, filter === 'missing_documents' && documentState.error].filter(Boolean);
   const retry = () => {
     refreshData();
     if (propertyState.error) propertyState.reload();
     if (unitState.error) unitState.reload();
     if (tenantState.error) tenantState.reload();
+    if (filter === 'missing_documents' && documentState.error) documentState.reload();
   };
   if (loading && contracts.length === 0 && !loadError) return <div className="page-loading">Lade Verträge...</div>;
+  if (filter === 'missing_documents' && documentState.loading) return <div className="page-loading">Vertragsbelege werden geprüft…</div>;
+  if (filter === 'missing_documents' && documentState.error) return <div className="page"><p className="alert-error" role="alert">{documentState.error}<button type="button" onClick={retry}>Erneut laden</button></p></div>;
 
   return (
     <div className="page">
@@ -243,28 +257,13 @@ export default function Contracts() {
       {loading && contracts.length > 0 && <p role="status">Verträge werden aktualisiert…</p>}
 
       {/* Summary cards */}
-      <div className="kpi-row">
-        <div className="kpi">
-          <div className="kpi-value">{enriched.length}</div>
-          <div className="kpi-label">Gesamt</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-value" style={{ color: 'var(--success)' }}>{totalActive}</div>
-          <div className="kpi-label">Aktiv</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-value" style={{ color: 'var(--warning)' }}>{endingSoon}</div>
-          <div className="kpi-label">Endet &lt; 90 Tage</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-value" style={{ color: 'var(--danger)' }}>{terminated}</div>
-          <div className="kpi-label">Gekündigt</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-value" style={{ color: noDeposit > 0 ? 'var(--danger)' : 'inherit' }}>{noDeposit}</div>
-          <div className="kpi-label">Ohne Kaution</div>
-        </div>
-      </div>
+      {!loadError && <div className="kpi-row">
+        <KpiAction label="Gesamt" value={enriched.length} onClick={() => openSources('all')} />
+        <KpiAction label="Aktiv" value={totalActive} onClick={() => openSources('active')} />
+        <KpiAction label="Endet < 90 Tage" value={endingSoon} onClick={() => openSources('ending_soon')} />
+        <KpiAction label="Gekündigt" value={terminated} onClick={() => openSources('terminated')} />
+        <KpiAction label="Ohne Kaution" value={noDeposit} onClick={() => openSources('no_deposit')} />
+      </div>}
 
       {/* Filter tabs */}
       <div className="filter-chips">
@@ -316,6 +315,9 @@ export default function Contracts() {
         title={t('tenantsContracts.contracts.title') || 'Verträge'}
         columns={columns}
         data={filtered}
+        drilldownKey={drilldown}
+        viewConfig={{ column_filters: { source_filter: filter } }}
+        onApplyView={config => setFilter(config.column_filters?.source_filter || 'all')}
         onAdd={values => { setPrefill(values || null); setModal('create'); }}
         onEdit={row => setModal(row)}
         onDelete={handleDelete}

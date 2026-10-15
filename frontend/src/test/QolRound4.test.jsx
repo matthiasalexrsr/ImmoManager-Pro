@@ -5,7 +5,7 @@ import FormModal from '../components/FormModal';
 import { duplicateOf } from '../utils/duplicate';
 import { SEND_BATCH, sendAll } from '../features/aktenwerk/aktenwerkApi';
 
-vi.mock('../contexts/AuthContext', () => ({ useCanWrite: () => true }));
+vi.mock('../contexts/AuthContext', () => ({ useCanWrite: () => true, useAuth: () => null }));
 
 beforeEach(() => { localStorage.clear(); });
 afterEach(() => { cleanup(); vi.useRealTimers(); });

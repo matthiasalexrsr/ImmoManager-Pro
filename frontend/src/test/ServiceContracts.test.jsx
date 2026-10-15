@@ -12,7 +12,7 @@ vi.mock('../api', () => ({ api: { get: vi.fn(), list: vi.fn(), post: vi.fn(), pu
 const t = (key, params) => (params ? `${key} ${JSON.stringify(params)}` : key);
 vi.mock('../i18n', () => ({ useTranslation: () => ({ t }) }));
 const access = vi.hoisted(() => ({ canWrite: true }));
-vi.mock('../contexts/AuthContext', () => ({ useCanWrite: () => access.canWrite }));
+vi.mock('../contexts/AuthContext', () => ({ useCanWrite: () => access.canWrite, useAuth: () => null }));
 
 const CONTRACT = {
   id: 'sc1', title: 'Allgemeinstrom Nordhaus', contract_type: 'electricity', provider_contact_id: 'sw',

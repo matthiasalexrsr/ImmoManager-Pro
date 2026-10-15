@@ -1,15 +1,40 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from '../i18n';
+import useFormDraft from '../hooks/useFormDraft';
+import CustomDraftNotice from '../components/CustomDraftNotice';
+import { useAuth } from '../contexts/AuthContext';
+
+const DRAFT_FIELDS = [{ key: 'form' }];
 
 export default function ContractWizard() {
   const { t } = useTranslation();
   const iframeRef = useRef(null);
+  const owner = useAuth()?.user?.id;
+  const [frameOwner, setFrameOwner] = useState(null);
+  const frameReady = frameOwner === owner;
 
   const [wizardStatus, setWizardStatus] = useState({
     loading: true,
     available: false,
     reason: null,
   });
+  const draft = useFormDraft({ context: 'contract-wizard', fields: DRAFT_FIELDS, enabled: wizardStatus.available });
+  const draftRef = useRef(draft);
+  useLayoutEffect(() => { draftRef.current = draft; }, [draft]);
+  const [draftValues, setDraftValues] = useState(null);
+  useEffect(() => { setDraftValues(null); }, [owner]);
+  useEffect(() => {
+    if (!owner || frameOwner !== owner) return;
+    const receive = event => {
+      if (event.origin !== window.location.origin || event.source !== iframeRef.current?.contentWindow
+        || event.data?.type !== 'immo-wizard-draft' || !event.data.form || !draftRef.current.ready
+        || !draftRef.current.isCurrent(draftRef.current.sessionKey) || draftRef.current.recovery) return;
+      const next = { form: event.data.form };
+      setDraftValues(next); draftRef.current.stage(next);
+    };
+    window.addEventListener('message', receive);
+    return () => window.removeEventListener('message', receive);
+  }, [owner, frameOwner]);
 
   const label = t('navigation.main.contractWizard');
   const title = label === 'navigation.main.contractWizard' ? 'Mietvertrag-Wizard' : label;
@@ -120,11 +145,17 @@ export default function ContractWizard() {
           ? t('contractWizard.description')
           : 'Erstellen Sie Schritt für Schritt einen rechtssicheren Mietvertrag.'}
       </p>
+      <CustomDraftNotice draft={{ ...draft, recover: draft.resume }} currentValues={draftValues} locked={!frameReady}
+        onRestore={values => { if (!frameReady || !draft.isCurrent(draft.sessionKey)) return;
+          iframeRef.current?.contentWindow?.immoWizardDraft?.restore(values.form); setDraftValues(values); draft.stage(values); }} />
 
       <iframe
+        key={owner}
         ref={iframeRef}
         src="/mietvertrag/"
         title={title}
+        onLoad={() => setFrameOwner(iframeRef.current?.contentWindow?.immoWizardDraft ? owner : null)}
+        inert={draft.enabled && (!draft.ready || Boolean(draft.recovery)) ? true : undefined}
         style={{
           flex: 1,
           border: '1px solid var(--border-color, #e2e8f0)',

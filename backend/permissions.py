@@ -30,9 +30,9 @@ from __future__ import annotations
 import re
 
 # one's own notifications (mark read, dismiss) – not the templates, not generating new ones
-PERSONAL = ("/auth/users/me/preferences", "/auth/2fa", "/auth/logout", "/auth/refresh", "/auth/login",
+PERSONAL = ("/workspace", "/auth/users/me/preferences", "/auth/2fa", "/auth/logout", "/auth/refresh", "/auth/login",
             r"^/notifications/(?!templates$|templates/|generate/)[^/]+(/read)?$")
-OFFICE = ("/tasks", "/documents", "/files", "/photos", "/messages", "/calendar", "/dev-notes")
+OFFICE = ("/work-center", "/tasks", "/documents", "/files", "/photos", "/messages", "/calendar", "/dev-notes")
 # Project file of a maintenance case: awarding and cancelling orders and deciding change orders
 # commits money; the invoices of an order are bookkeeping. Both are not the technician's.
 MAINTENANCE_DECISIONS = (r"^/maintenance/[^/]+/quotes/[^/]+/(accept|reject)$",

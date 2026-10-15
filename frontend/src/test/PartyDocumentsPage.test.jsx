@@ -24,7 +24,7 @@ const context = vi.hoisted(() => ({
 
 vi.mock('../api', () => ({ api: { get: vi.fn(), list: vi.fn(), post: vi.fn(), put: vi.fn(), del: vi.fn() } }));
 vi.mock('../i18n', () => ({ useTranslation: () => ({ t: context.t, locale: 'de-DE' }) }));
-vi.mock('../contexts/AuthContext', () => ({ useCanWrite: () => context.canWrite }));
+vi.mock('../contexts/AuthContext', () => ({ useCanWrite: () => context.canWrite, useAuth: () => null }));
 vi.mock('../contexts/DataStoreContext', () => ({
   useEntities: key => ({ items: context.entities[key] || context.empty }),
   useDataStore: () => context.store,

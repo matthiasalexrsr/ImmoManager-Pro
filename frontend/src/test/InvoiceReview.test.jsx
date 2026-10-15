@@ -12,7 +12,7 @@ vi.mock('../api', () => ({ api: { get: vi.fn(), list: vi.fn(), post: vi.fn(), pu
 const lang = vi.hoisted(() => ({ locale: 'de-DE' }));
 vi.mock('../i18n', () => ({ useTranslation: () => ({ t: key => key, locale: lang.locale }) }));
 const access = vi.hoisted(() => ({ canWrite: true }));
-vi.mock('../contexts/AuthContext', () => ({ useCanWrite: () => access.canWrite }));
+vi.mock('../contexts/AuthContext', () => ({ useCanWrite: () => access.canWrite, useAuth: () => null }));
 vi.mock('../components/PdfPreview', () => ({ default: ({ url }) => <div data-testid="pdf">{url}</div> }));
 vi.mock('../components/FileViewer', () => ({ default: () => <div data-testid="viewer" /> }));
 

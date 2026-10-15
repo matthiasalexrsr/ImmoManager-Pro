@@ -92,6 +92,9 @@ def created_together(records) -> Iterator[None]:
     finally:
         _created_together.reset(token)
 INTERNAL = frozenset({
+    # Private workspace services always predicate by owner and recheck source visibility.
+    "workspace_drafts", "workspace_views", "workspace_recents", "workspace_favorites",
+    "workspace_view_states", "workspace_deferrals", "workspace_commands",
     "users",
     "user_preferences",
     "login_attempts",

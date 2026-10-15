@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { privateStorageKey } from './workspaceIdentity';
 
 // Per-viewer table conveniences (sorting, rows per page, hidden columns) kept in this browser.
 // Storage may be unavailable (private window, blocked site data); the table then works as before.
@@ -7,7 +8,7 @@ const PREFIX = 'table_settings:';
 function read(key) {
   if (!key) return null;
   try {
-    const value = JSON.parse(window.localStorage.getItem(PREFIX + key) || 'null');
+    const value = JSON.parse(window.localStorage.getItem(privateStorageKey(PREFIX + key)) || 'null');
     return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
   } catch {
     return null;
@@ -18,7 +19,7 @@ export function useStoredTableSettings(key, defaults) {
   const [settings, setSettings] = useState(() => ({ ...defaults, ...(read(key) || {}) }));
   useEffect(() => {
     if (!key) return;
-    try { window.localStorage.setItem(PREFIX + key, JSON.stringify(settings)); } catch { /* not kept */ }
+    try { window.localStorage.setItem(privateStorageKey(PREFIX + key), JSON.stringify(settings)); } catch { /* not kept */ }
   }, [key, settings]);
   return [settings, setSettings];
 }
@@ -30,7 +31,7 @@ const VIEW_PREFIX = 'table_view:';
 export function readTableView(key) {
   if (!key) return null;
   try {
-    const value = JSON.parse(window.sessionStorage.getItem(VIEW_PREFIX + key) || 'null');
+    const value = JSON.parse(window.sessionStorage.getItem(privateStorageKey(VIEW_PREFIX + key)) || 'null');
     return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
   } catch {
     return null;
@@ -39,5 +40,5 @@ export function readTableView(key) {
 
 export function writeTableView(key, view) {
   if (!key) return;
-  try { window.sessionStorage.setItem(VIEW_PREFIX + key, JSON.stringify(view)); } catch { /* not kept */ }
+  try { window.sessionStorage.setItem(privateStorageKey(VIEW_PREFIX + key), JSON.stringify(view)); } catch { /* not kept */ }
 }

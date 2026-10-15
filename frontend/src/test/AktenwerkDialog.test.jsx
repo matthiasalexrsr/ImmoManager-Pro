@@ -6,7 +6,7 @@ import { aktenwerkApi, sendAll, SEND_BATCH } from '../features/aktenwerk/aktenwe
 import { api } from '../api';
 
 vi.mock('../api', () => ({ api: { get: vi.fn(), post: vi.fn(), getBlob: vi.fn() } }));
-vi.mock('../contexts/AuthContext', () => ({ useCanWrite: () => true }));
+vi.mock('../contexts/AuthContext', () => ({ useCanWrite: () => true, useAuth: () => null }));
 
 afterEach(() => { cleanup(); vi.resetAllMocks(); });
 

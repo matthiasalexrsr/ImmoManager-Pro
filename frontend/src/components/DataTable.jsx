@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useId, useRef } from 'react';
-import { useInRouterContext, useLocation } from 'react-router-dom';
+import { useInRouterContext, useLocation, useNavigate, useNavigationType } from 'react-router-dom';
 import { useTranslation } from '../i18n';
 import { useCanWrite } from '../contexts/AuthContext';
 import { PlusIcon, EditIcon, TrashIcon } from './Icons';
@@ -12,9 +12,14 @@ import { buildCsv } from '../utils/tableCsv';
 import { readTableView, useStoredTableSettings, writeTableView } from '../utils/tableSettings';
 import { NEW_ENTRY_EVENT, takeNewEntry } from '../utils/newEntry';
 import './DataTable.css';
+import NamedViews from './NamedViews';
+import { formContext } from '../utils/workspaceClient';
+import { markWorkspaceRow, readWorkspaceRow } from '../hooks/useNavigationState';
+import useWorkspaceViewState from '../hooks/useWorkspaceViewState';
 
 const PAGE_SIZES = [10, 25, 50, 100];
 const NUMERIC_TYPES = new Set(['number', 'currency']);
+const keyHash = value => { let hash = 2166136261; for (const char of value || '') hash = Math.imul(hash ^ char.charCodeAt(0), 16777619); return (hash >>> 0).toString(16); };
 
 // link: { kind, idKey } (or just the kind) makes the shown name lead to its record; subLink does
 // the same for the second line (the property under a unit). Default id keys follow the kind.
@@ -87,8 +92,12 @@ export default function DataTable(props) {
 }
 
 function RoutedDataTable(props) {
-  const { pathname } = useLocation();
-  return <TableWithKey {...props} pathname={pathname} />;
+  const { pathname, search } = useLocation();
+  const navigation = useNavigationType();
+  const navigate = useNavigate();
+  return <TableWithKey {...props} pathname={pathname} routeSearch={search} restoreLocationState={navigation === 'POP'} clearFocusedRow={() => {
+    const query = new URLSearchParams(search); query.delete('focus_id'); navigate(`${pathname}${query.size ? `?${query}` : ''}`);
+  }} />;
 }
 
 function TableWithKey(props) {
@@ -101,7 +110,8 @@ function TableWithKey(props) {
 
 function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler, title,
   onAdd: addHandler, onRowClick, rowActions: rowActionsFor, writeArea, serverPaged = false, loadExportData, hideTitle = false,
-  resolvedSettingsKey: storageKey, pathname, bulkActions: bulkActionsFor, rowName, addLabel, hideAddButton = false, emptyText }) {
+  resolvedSettingsKey: storageKey, pathname, routeSearch, bulkActions: bulkActionsFor, rowName, addLabel, hideAddButton = false, emptyText,
+  viewConfig, onApplyView, viewAnchor, drilldownKey, clearFocusedRow, restoreLocationState = false }) {
   const { t } = useTranslation();
   const tr = (key, fallback) => { const text = t(key); return !text || text === key ? fallback : text; };
   const titleId = useId();
@@ -119,11 +129,12 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
   const [bulkRunning, setBulkRunning] = useState(false);
   const lastToggled = useRef(null);
   // search, filters and page as left in this tab (server-paged lists keep their own state)
-  const [savedView] = useState(() => (serverPaged ? null : readTableView(storageKey)));
+  const viewStorageKey = storageKey && routeSearch ? `${storageKey}|query:${routeSearch}` : storageKey;
+  const [savedView] = useState(() => (serverPaged ? null : readTableView(viewStorageKey)));
   // A link to a list filtered to one record (/contacts?suche=Name) starts with that search.
   const [search, setSearch] = useState(() => {
-    const linkedSearch = !serverPaged && typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('suche') : null;
-    if (linkedSearch) return linkedSearch;
+    const linkedSearch = !serverPaged && typeof window !== 'undefined' ? new URLSearchParams(routeSearch ?? window.location.search).get('suche') : null;
+    if (new URLSearchParams(routeSearch ?? window.location.search).size && (!restoreLocationState || !savedView)) return linkedSearch || '';
     return typeof savedView?.search === 'string' ? savedView.search : '';
   });
   // Sorting, rows per page and hidden columns are remembered per list in this browser.
@@ -139,11 +150,11 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
   const setSort = (key, dir) => setStored(current => ({ ...current, sortKey: key, sortDir: dir }));
   const setPageSize = size => setStored(current => ({ ...current, pageSize: size }));
   const toggleColumn = key => setStored(current => ({ ...current, hiddenCols: { ...hiddenCols, [key]: !hiddenCols[key] } }));
-  const [linkedOnMount] = useState(() => !serverPaged && typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('suche'));
-  const [page, setPage] = useState(() => (!linkedOnMount && Number.isInteger(savedView?.page) && savedView.page > 0 ? savedView.page : 0));
+  const [linkedOnMount] = useState(() => !serverPaged && typeof window !== 'undefined' && new URLSearchParams(routeSearch ?? window.location.search).size > 0);
+  const [page, setPage] = useState(() => ((!linkedOnMount || restoreLocationState) && Number.isInteger(savedView?.page) && savedView.page > 0 ? savedView.page : 0));
   const [columnFilters, setColumnFilters] = useState(() => {
     const saved = savedView?.columnFilters;
-    if (linkedOnMount || !saved || typeof saved !== 'object') return {};
+    if (linkedOnMount && !restoreLocationState || !saved || typeof saved !== 'object') return {};
     // only filters of columns this list still has, in the shape their filter expects
     return Object.fromEntries(columns.filter(col => col.filterType && saved[col.key] != null).map(col => [col.key, saved[col.key]])
       .filter(([key, value]) => {
@@ -154,12 +165,43 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
       }));
   });
   useEffect(() => {
-    if (!serverPaged) writeTableView(storageKey, { search, columnFilters, page });
-  }, [storageKey, serverPaged, search, columnFilters, page]);
+    if (!serverPaged) writeTableView(viewStorageKey, { search, columnFilters, page });
+  }, [viewStorageKey, serverPaged, search, columnFilters, page]);
   const [showColMenu, setShowColMenu] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
+  const viewContext = storageKey && formContext(pathname) ? `${formContext(pathname)}#${keyHash(storageKey)}` : null;
+  const namedConfig = { search, sort: sortKey ? { key: sortKey, direction: sortDir } : null,
+    visible_columns: columns.filter(col => !hiddenCols[col.key]).map(col => col.key), column_order: stored.columnOrder || columns.map(col => col.key), page_size: pageSize,
+    ...viewConfig, column_filters: { ...columnFilters, ...viewConfig?.column_filters } };
+  const applyView = config => {
+    if (!serverPaged) {
+      setSearch(typeof config.search === 'string' ? config.search : '');
+      const filters = config.column_filters || {};
+      setColumnFilters(Object.fromEntries(columns.filter(col => col.filterType && filters[col.key] != null).map(col => [col.key, filters[col.key]]).filter(([key, value]) => {
+      const type = columns.find(col => col.key === key).filterType;
+      return type === 'dateRange' || type === 'numberRange' ? Array.isArray(value) && value.length === 2 && value.every(v => typeof v === 'string') : typeof value === 'string';
+      })));
+    }
+    setStored(current => ({ ...current, sortKey: config.sort?.key || null, sortDir: config.sort?.direction === 'desc' ? 'desc' : 'asc',
+      pageSize: PAGE_SIZES.includes(config.page_size) ? config.page_size : 25,
+      hiddenCols: Object.fromEntries(columns.map(col => [col.key, Array.isArray(config.visible_columns) ? !config.visible_columns.includes(col.key) : Boolean(col.hidden)])),
+      columnOrder: Array.isArray(config.column_order) ? config.column_order.filter(key => columns.some(col => col.key === key)) : columns.map(col => col.key),
+    }));
+    setPage(0);
+    onApplyView?.(config);
+  };
+  const lastDrilldown = useRef(drilldownKey);
+  useEffect(() => {
+    if (lastDrilldown.current === drilldownKey) return;
+    lastDrilldown.current = drilldownKey;
+    setSearch(''); setColumnFilters({}); setPage(0);
+  }, [drilldownKey]);
+  useWorkspaceViewState(!serverPaged && !linkedOnMount ? viewContext : null,
+    { ...namedConfig, page_cursor: String(page) }, state => { if (savedView) return; applyView(state); if (/^\d+$/.test(state.page_cursor || '')) setPage(Number(state.page_cursor)); });
+  const [rowMark, setRowMark] = useState(() => readWorkspaceRow(storageKey));
+  const markRow = row => { markWorkspaceRow(storageKey, row.id); setRowMark(String(row.id)); };
 
   const setFilter = useCallback((key, value) => {
     setColumnFilters(prev => ({ ...prev, [key]: value }));
@@ -179,14 +221,22 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
   }, [sortKey, sortDir]);
 
   const visibleColumns = useMemo(
-    () => columns.filter(col => !hiddenCols[col.key]),
-    [columns, hiddenCols]
+    () => {
+      const order = Array.isArray(stored.columnOrder) ? stored.columnOrder : [];
+      return columns.filter(col => !hiddenCols[col.key]).sort((a, b) => {
+        const ai = order.indexOf(a.key), bi = order.indexOf(b.key);
+        return (ai < 0 ? order.length : ai) - (bi < 0 ? order.length : bi);
+      });
+    },
+    [columns, hiddenCols, stored.columnOrder]
   );
 
   // Filter
   const filtered = useMemo(() => {
     if (serverPaged) return data;
     let items = data;
+    const focusedId = new URLSearchParams(routeSearch ?? window.location.search).get('focus_id');
+    if (focusedId) items = items.filter(row => String(row.id) === focusedId);
 
     if (search) {
       const q = search.toLowerCase();
@@ -225,7 +275,7 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
       }
     }
     return items;
-  }, [data, search, columnFilters, columns, serverPaged]);
+  }, [data, search, columnFilters, columns, serverPaged, routeSearch]);
 
   // Sort
   const sorted = useMemo(() => {
@@ -446,6 +496,9 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
         </div>
       </div>
 
+      {(!serverPaged || onApplyView) && <NamedViews context={viewContext} config={namedConfig} onApply={applyView} anchor={viewAnchor} />}
+      {!serverPaged && new URLSearchParams(routeSearch ?? window.location.search).has('focus_id') && <p role="status">Ausgewählter Vorgang
+        {clearFocusedRow && <button type="button" className="btn btn-sm btn-ghost" onClick={clearFocusedRow}>Alle Vorgänge anzeigen</button>}</p>}
       {exportError && <p className="error-message" role="alert">{exportError}</p>}
       {selectable && (selectedRows.length > 0 || bulkReport || bulkRunning) && (
         <BulkBar rows={selectedRows} report={bulkReport} setReport={setBulkReport} onRunningChange={setBulkRunning}
@@ -590,8 +643,8 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
               </td></tr>
             ) : (
               pageData.map(row => (
-                <tr key={row.id} onClick={() => onRowClick?.(row)} aria-selected={selectable ? selectedIds.has(row.id) : undefined}
-                  className={[onRowClick ? 'clickable-row' : '', selectedIds.has(row.id) ? 'row-selected' : ''].filter(Boolean).join(' ') || undefined}
+                <tr key={row.id} onClick={() => { markRow(row); onRowClick?.(row); }} aria-selected={selectable ? selectedIds.has(row.id) : undefined}
+                  className={[onRowClick ? 'clickable-row' : '', selectedIds.has(row.id) ? 'row-selected' : '', rowMark === String(row.id) ? 'workspace-row-mark' : ''].filter(Boolean).join(' ') || undefined}
                   style={onRowClick ? { cursor: 'pointer' } : undefined}>
                   {selectable && <td className="td-select" onClick={e => e.stopPropagation()}>
                     <input type="checkbox" checked={selectedIds.has(row.id)} disabled={bulkRunning} onChange={() => {}}
@@ -611,7 +664,7 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
                         </button>
                       ))}
                       {onEdit && (
-                        <button onClick={() => onEdit(row)} className="btn btn-sm btn-ghost" aria-label={t('ui.buttons.edit')} title={t('ui.buttons.edit')}>
+                        <button onClick={() => { markRow(row); onEdit(row); }} className="btn btn-sm btn-ghost" aria-label={t('ui.buttons.edit')} title={t('ui.buttons.edit')}>
                           <EditIcon size={15} />
                         </button>
                       )}

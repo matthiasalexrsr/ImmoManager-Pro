@@ -50,6 +50,9 @@ const ContractWizard = lazy(() => import('./pages/ContractWizard'));
 const Receivables = lazy(() => import('./pages/Receivables'));
 const TenantAccount = lazy(() => import('./pages/TenantAccount'));
 const ReviewList = lazy(() => import('./pages/ReviewList'));
+const WorkCenter = lazy(() => import('./features/workCenter/WorkCenter'));
+const DocumentIntakeQueue = lazy(() => import('./features/workCenter/DocumentIntakeQueue'));
+const DuplicateFinder = lazy(() => import('./features/workCenter/DuplicateFinder'));
 const RentCharges = lazy(() => import('./pages/RentCharges'));
 const EscalationRules = lazy(() => import('./pages/EscalationRules'));
 const NotificationTemplates = lazy(() => import('./pages/NotificationTemplates'));
@@ -135,6 +138,9 @@ export default function App() {
           <Route path="tenants" element={<Tenants />} />
           <Route path="tenants/:id/account" element={<TenantAccount />} />
           <Route path="review" element={<ReviewList />} />
+          <Route path="work-center" element={<WorkCenter />} />
+          <Route path="document-queue" element={<DocumentIntakeQueue />} />
+          <Route path="duplicate-check" element={<DuplicateFinder />} />
           <Route path="contracts" element={<Contracts />} />
           <Route path="accounts" element={<Accounts />} />
           <Route path="bookings" element={<Bookings />} />

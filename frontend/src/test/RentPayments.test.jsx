@@ -12,6 +12,10 @@ vi.mock('../i18n', () => ({ useTranslation: () => ({ t: () => undefined, locale:
 vi.mock('../contexts/AuthContext', () => ({ useCanWrite: () => context.canWrite, useAuth: () => ({ user: context.user }) }));
 vi.mock('../contexts/DataStoreContext', () => ({ useDataStore: () => context.store }));
 vi.mock('../features/partyWorkspace/PartyWorkspace', () => ({ PartyLink: ({ children }) => <span>{children}</span> }));
+// This suite isolates the financial command and its lost-response recovery.
+// Persistent editable drafts have their own API/browser acceptance checks.
+vi.mock('../hooks/useEntityFormDraft', () => ({ default: () => ({ enabled: false, ready: true,
+  stage: () => {}, clear: async () => {}, status: 'idle', recovery: null }) }));
 
 const row = { id: 'c1:2026-10', contract_id: 'c1', contract_revision: 'rev-1', contract_number: 'MV-1',
   tenant_id: 't1', tenant_name: 'Mia Mieterin', unit_label: 'Wohnung 1', property_id: 'p1', property_name: 'Haus A',

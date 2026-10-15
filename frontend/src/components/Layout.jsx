@@ -18,6 +18,7 @@ import ShortcutHelp from './ShortcutHelp';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavFavorites } from '../utils/navFavorites';
 import { dropNewEntry, holdNewEntry, requestNewEntry } from '../utils/newEntry';
+import useNavigationState from '../hooks/useNavigationState';
 
 
 const LOCALES = [
@@ -79,6 +80,7 @@ const SHELL_TEXT = {
 };
 
 function LayoutFrame() {
+  useNavigationState();
   const navigate = useNavigate();
   const location = useLocation();
   const { t, locale, setLocale } = useTranslation();

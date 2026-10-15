@@ -1,9 +1,15 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { Link, useInRouterContext, useNavigate } from 'react-router-dom';
 import { useTranslation } from '../i18n';
 import { CloseIcon } from './Icons';
 import { codeLabel } from '../utils/codeLabels';
 import { onlyChoices, prerequisiteFor } from '../utils/prerequisites';
+import { api } from '../api';
+import { useAuth } from '../contexts/AuthContext';
+import { formContext } from '../utils/workspaceClient';
+import useFormDraft from '../hooks/useFormDraft';
+import './workspace.css';
+import DuplicateHints from './DuplicateHints';
 
 const isBooleanSelect = f => f.type === 'select' && f.options?.length === 2
   && f.options.every(o => o.value === 'true' || o.value === 'false');
@@ -25,7 +31,8 @@ const ordered = list => [...list.filter(f => !spansRow(f)), ...list.filter(spans
 
 // repeatKeep: for a new record, offer "Speichern & weiteren" and keep these fields for the next
 // entry (a series of bookings on one account, readings of one day); every other field starts over.
-export default function FormModal({ title, fields, initial, onSave, onClose, repeatKeep }) {
+export default function FormModal({ title, fields, initial, onSave, onClose, repeatKeep, draftContext, draftAnchor, autosave = true,
+  onSaveNext, saveNextLabel = 'Speichern & nächster Beleg', onDraftRebase }) {
   const { t } = useTranslation();
   const tr = (key, fallback) => { const text = t(key); return !text || text === key ? fallback : text; };
   // Inline prefill objects are recreated by several callers; that is not a new form.
@@ -39,23 +46,40 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const repeatable = Array.isArray(repeatKeep) && initial?.id == null;
   const [savedCount, setSavedCount] = useState(0);
+  const draft = useFormDraft({ fields, initial, enabled: autosave, context: draftContext, anchor: draftAnchor });
+  const sessionKey = `${draft.sessionKey}:${initialKey}`;
+  // Loading an extra field changes the draft schema, not the record being edited.
+  const owner = useAuth()?.user?.id;
+  const formIdentity = `${owner || ''}:${draftContext || formContext(window.location.pathname)}:${initialKey}:${draftAnchor?.kind || ''}:${draftAnchor?.id || ''}`;
+  const [recoverySource, setRecoverySource] = useState(null);
+  const [draftBusy, setDraftBusy] = useState(false);
+  const draftWaiting = draft.enabled && (draft.status === 'loading' || Boolean(draft.recovery));
+  const fieldDisabled = saving || draftWaiting || draftBusy || (draft.enabled && !draft.ready);
   const modalRef = useRef(null);
   const formRef = useRef(null);
   const againRef = useRef(null);
   const pressStartedOnOverlay = useRef(false);
-  const sessionRef = useRef({ key: initialKey, id: initial?.id, updatedAt: initial?.updated_at });
+  const sessionRef = useRef({ key: sessionKey, formIdentity, id: initial?.id, updatedAt: initial?.updated_at });
+  const activeSession = useRef(null);
   const savingRef = useRef(false);
   const leaveRef = useRef(null);
   const unloadRef = useRef(null);
+  useLayoutEffect(() => {
+    activeSession.current = sessionKey;
+    return () => { activeSession.current = null; };
+  }, [sessionKey]);
+  const isCurrentSession = () => activeSession.current === sessionKey;
 
   useEffect(() => {
-    const changedRecord = sessionRef.current.key !== initialKey;
+    const changedRecord = sessionRef.current.formIdentity !== formIdentity;
+    sessionRef.current.key = sessionKey;
     if (changedRecord) {
-      sessionRef.current = { key: initialKey, id: initial?.id, updatedAt: initial?.updated_at };
+      sessionRef.current = { key: sessionKey, formIdentity, id: initial?.id, updatedAt: initial?.updated_at };
       setError(null);
       setDirty(false);
       setConfirmDiscard(false);
       leaveRef.current = null;
+      savingRef.current = false; setSaving(false); setDraftBusy(false); setRecoverySource(null);
     }
     setValues(current => {
       const addedFields = fields.filter(f => !Object.prototype.hasOwnProperty.call(current, f.key));
@@ -66,7 +90,14 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
       });
       return next;
     });
-  }, [initialKey, initial, fields]);
+  }, [sessionKey, formIdentity, initial, fields]);
+
+  useEffect(() => {
+    if (dirty && draft.ready && !draft.recovery) draft.stage(values);
+    // A changed schema gets its own private writer after preparation. Keep the
+    // current edits; ordinary typing is already staged synchronously by update.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft.sessionKey, draft.ready]);
 
   // A required choice with one possibility is made already (the only portfolio, property or
   // account); it does not count as an edit, so closing still needs no confirmation.
@@ -90,7 +121,9 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
   const update = (key, value, extra) => {
     setDirty(true);
     setConfirmDiscard(false);
-    setValues(current => ({ ...current, [key]: value, ...extra }));
+    const next = { ...values, [key]: value, ...extra };
+    draft.stage(next);
+    setValues(next);
   };
 
   const requestLeave = useCallback(action => {
@@ -162,11 +195,11 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
     return () => modal.removeEventListener('keydown', trapFocus);
   }, [fields, confirmDiscard]);
 
-  const handleSubmit = async (e, again = false) => {
+  const handleSubmit = async (e, again = false, next = false) => {
     e.preventDefault();
-    if (savingRef.current || confirmDiscard) return;
+    if (savingRef.current || confirmDiscard || draftWaiting || draft.status === 'changed' || draftBusy) return;
     // the browser's own checks (required fields) apply to "Speichern & weiteren" as well
-    if (again && !formRef.current?.reportValidity()) return;
+    if ((again || next) && !formRef.current?.reportValidity()) return;
     savingRef.current = true;
     setSaving(true);
     setError(null);
@@ -189,8 +222,13 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
       });
       // the state the record was opened in: the server refuses to save over someone else's newer change
       if (sessionRef.current.id && sessionRef.current.updatedAt) cleaned.updated_at = sessionRef.current.updatedAt;
-      await onSave(cleaned);
+      await (next ? onSaveNext(cleaned) : onSave(cleaned));
+      if (!isCurrentSession()) return;
+      // The domain save succeeded. Cleanup failure must never re-submit it.
+      await draft.clear({ completed: true }).catch(() => {});
+      if (!isCurrentSession()) return;
       setDirty(false);
+      if (next) return;
       if (again) {
         const keep = new Set(repeatKeep);
         setValues(current => Object.fromEntries(fields.map(f => [f.key,
@@ -200,10 +238,9 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
       }
       onClose();
     } catch (err) {
-      setError(err.message);
+      if (isCurrentSession()) setError(err.message);
     } finally {
-      savingRef.current = false;
-      setSaving(false);
+      if (isCurrentSession()) { savingRef.current = false; setSaving(false); }
     }
   };
 
@@ -232,6 +269,54 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
         <form ref={formRef} onSubmit={handleSubmit}>
           <div className="modal-body">
             {error && <div className="alert-error" role="alert">{error}</div>}
+            <DuplicateHints values={values} initial={initial} context={draftContext} />
+            {draft.enabled && <div className="draft-status" role="status">
+              {draft.status === 'loading' ? 'Gespeicherte Entwürfe werden geprüft …'
+                : draft.status === 'saving' || draft.status === 'pending' ? 'Entwurf wird gesichert …'
+                  : draft.status === 'saved' ? 'Entwurf automatisch gesichert'
+                    : draft.status === 'ready' ? 'Eingaben werden automatisch als Entwurf gesichert.' : ''}
+            </div>}
+            {draft.error && <div className="alert-error" role="alert">{draft.error}<button type="button" className="btn btn-sm btn-secondary" onClick={draft.retry}>Sicherung erneut versuchen</button></div>}
+            {(draft.recovery || draft.status === 'changed') && <section className="draft-recovery" aria-label="Entwurf wiederaufnehmen">
+              <strong>{draft.recovery ? 'Ungespeicherter Entwurf vorhanden' : 'Der Datensatz wurde zwischenzeitlich geändert.'}</strong>
+              <p>{draft.recovery?.source_state?.status === 'deleted' ? 'Die ursprüngliche Akte wurde gelöscht. Der Entwurf bleibt zur Einsicht erhalten.' : 'Prüfen Sie die Eingaben vor der Übernahme. Die Übernahme speichert ausschließlich den Entwurf.'}</p>
+              {draft.recovery?.source_state?.status === 'deleted' && <details open><summary>Entwurfsinhalt prüfen und kopieren</summary><dl>{fields.filter(f => f.type !== 'hidden').map(f => <div key={f.key}><dt>{f.label}</dt><dd>{String(draft.recovery.values?.[f.key] ?? '—')}</dd></div>)}</dl></details>}
+              {draft.recovery?.server_values && <details><summary>Abweichenden Serverentwurf anzeigen</summary><dl>{fields.filter(f => f.type !== 'hidden').map(f => <div key={f.key}><dt>{f.label}</dt><dd>{String(draft.recovery.server_values[f.key] ?? '—')}</dd></div>)}</dl></details>}
+              {recoverySource?.contextOnly && <p>Die zugehörige Akte „{recoverySource.title}“ wurde aktualisiert. Prüfen Sie die Notiz und ihre Zuordnung, bevor Sie den Entwurf auf diesen Stand übernehmen.</p>}
+              {recoverySource && !recoverySource.contextOnly && <div className="table-scroll"><table className="data-table"><thead><tr><th>Feld</th><th>Aktueller Datensatz</th><th>Entwurf</th></tr></thead><tbody>{fields.filter(f => f.type !== 'hidden' && String(recoverySource.values[f.key] ?? '') !== String((draft.recovery?.values || values)[f.key] ?? '')).map(f => <tr key={f.key}><th>{f.label}</th><td>{String(recoverySource.values[f.key] ?? '—')}</td><td>{String((draft.recovery?.values || values)[f.key] ?? '—')}</td></tr>)}</tbody></table></div>}
+              <div className="workspace-actions">
+                {draft.recovery?.source_state?.status !== 'deleted' && <button type="button" className="btn btn-secondary" disabled={draftBusy} onClick={async () => {
+                  setDraftBusy(true); setError(null);
+                  try {
+                    const source = draft.recovery?.source;
+                    const changed = draft.status === 'changed' || draft.recovery?.source_state?.status === 'changed';
+                    if (changed && !recoverySource) {
+                      const reference = source || draft.recovery?.anchor || draftAnchor;
+                      if (!reference?.kind || !reference?.id) throw new Error('Die geänderte Quellakte ist nicht mehr eindeutig. Bitte das Formular erneut öffnen; der Entwurf bleibt erhalten.');
+                      const fresh = await api.get(`/workspace/source/${encodeURIComponent(reference.kind)}/${encodeURIComponent(reference.id)}`);
+                      if (!isCurrentSession()) return;
+                      setRecoverySource({ ...fresh, values: fresh.values || {}, contextOnly: !source });
+                      return;
+                    }
+                    const restored = Object.fromEntries(fields.map(f => [f.key, toFieldValue(f, (draft.recovery?.values || values)[f.key] ?? f.default ?? '')]));
+                    await draft.resume(restored, recoverySource?.revision, recoverySource?.dependency_etags);
+                    if (!isCurrentSession()) return;
+                    if (recoverySource) {
+                      if (!recoverySource.contextOnly) sessionRef.current.updatedAt = recoverySource.revision;
+                      onDraftRebase?.(recoverySource);
+                    }
+                    setValues(restored); setDirty(true); setRecoverySource(null); draft.stage(restored);
+                  } catch (failure) { if (isCurrentSession()) { setError(failure.message); if (failure.statusCode === 409) setRecoverySource(null); } }
+                  finally { if (isCurrentSession()) setDraftBusy(false); }
+                }}>{recoverySource ? 'Verglichenen Entwurf übernehmen' : draft.status === 'changed' || draft.recovery?.source_state?.status === 'changed' ? 'Aktuellen Stand vergleichen' : 'Entwurf wiederaufnehmen'}</button>}
+                <button type="button" className="btn btn-ghost" disabled={draftBusy} onClick={async () => {
+                  setDraftBusy(true);
+                  try { await draft.clear(); if (isCurrentSession()) setRecoverySource(null); }
+                  catch (failure) { if (isCurrentSession()) setError(failure.message); }
+                  finally { if (isCurrentSession()) setDraftBusy(false); }
+                }}>Entwurf verwerfen</button>
+              </div>
+            </section>}
             {savedCount > 0 && !error && (
               <div className="form-saved-next" role="status">
                 {tr('ui.form.savedNext', '{{count}} gespeichert – nächster Eintrag').replace('{{count}}', savedCount)}
@@ -254,7 +339,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
                         onChange={e => update(f.key, e.target.value,
                           Object.fromEntries((f.clearOnChange || []).map(key => [key, ''])))}
                         required={f.required}
-                        disabled={saving}
+                        disabled={fieldDisabled}
                       >
                         <option value="">{t('ui.form.pleaseSelect')}</option>
                         {options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -269,7 +354,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
                         value={values[f.key] || ''}
                         onChange={e => update(f.key, e.target.value)}
                         required={f.required}
-                        disabled={saving}
+                        disabled={fieldDisabled}
                         rows={3}
                       />
                     ) : f.type === 'date' ? (
@@ -281,10 +366,10 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
                           value={values[f.key] ?? ''}
                           onChange={e => update(f.key, e.target.value)}
                           required={f.required}
-                          disabled={saving}
+                          disabled={fieldDisabled}
                         />
                         {!f.noToday && <button type="button" className="btn btn-sm btn-ghost date-today"
-                          aria-label={tr('ui.form.todayFill', 'Heute eintragen')} aria-controls={inputId} disabled={saving}
+                          aria-label={tr('ui.form.todayFill', 'Heute eintragen')} aria-controls={inputId} disabled={fieldDisabled}
                           onClick={() => update(f.key, localToday())}>{tr('ui.form.today', 'Heute')}</button>}
                       </span>
                     ) : (
@@ -294,7 +379,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
                         value={values[f.key] ?? ''}
                         onChange={e => update(f.key, e.target.value)}
                         required={f.required}
-                        disabled={saving}
+                        disabled={fieldDisabled}
                         step={f.type === 'number' ? '0.01' : undefined}
                         placeholder={f.placeholder}
                       />
@@ -333,12 +418,15 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
             <div className="modal-footer modal-discard" role="alertdialog" aria-modal="false" aria-labelledby="form-discard-question">
               <span id="form-discard-question" className="modal-discard-question">{tr('ui.form.discardQuestion', 'Ungespeicherte Änderungen verwerfen?')}</span>
               <button type="button" onClick={() => setConfirmDiscard(false)} className="btn btn-secondary" autoFocus>{tr('ui.form.keepEditing', 'Weiter bearbeiten')}</button>
-              <button type="button" onClick={() => {
+              <button type="button" disabled={draftBusy} onClick={async () => {
                 // A plain prerequisite link may leave the browser page immediately.
                 // The explicit discard has already answered its unload question.
                 if (unloadRef.current) window.removeEventListener('beforeunload', unloadRef.current);
-                setDirty(false); setConfirmDiscard(false);
-                (leaveRef.current || onClose)();
+                if (!draft.enabled) { setDirty(false); setConfirmDiscard(false); (leaveRef.current || onClose)(); return; }
+                setDraftBusy(true);
+                try { await draft.clear(); if (isCurrentSession()) { setDirty(false); setConfirmDiscard(false); (leaveRef.current || onClose)(); } }
+                catch (failure) { if (isCurrentSession()) { setError(failure.message); setConfirmDiscard(false); } }
+                finally { if (isCurrentSession()) setDraftBusy(false); }
               }} className="btn btn-danger">{tr('ui.form.discard', 'Verwerfen')}</button>
             </div>
           ) : (
@@ -346,11 +434,13 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
               <span className="modal-shortcut-hint" aria-hidden="true">{dirty ? tr('ui.form.saveShortcut', 'Strg+Enter speichert') : ''}</span>
               <button type="button" onClick={requestClose} className="btn btn-secondary">{t('ui.buttons.cancel')}</button>
               {repeatable && (
-                <button ref={againRef} type="button" className="btn btn-secondary" disabled={saving}
+                <button ref={againRef} type="button" className="btn btn-secondary" disabled={fieldDisabled || draft.status === 'changed'}
                   title={tr('ui.form.saveAndNewShortcut', 'Strg+Umschalt+Enter')}
                   onClick={event => handleSubmit(event, true)}>{tr('ui.form.saveAndNew', 'Speichern & weiteren')}</button>
               )}
-              <button type="submit" className="btn btn-primary" disabled={saving}>
+              {onSaveNext && <button type="button" className="btn btn-secondary" disabled={fieldDisabled || draft.status === 'changed'}
+                onClick={event => handleSubmit(event, false, true)}>{saveNextLabel}</button>}
+              <button type="submit" className="btn btn-primary" disabled={fieldDisabled || draft.status === 'changed'}>
                 {saving ? `${t('ui.buttons.save')}...` : t('ui.buttons.save')}
               </button>
             </div>

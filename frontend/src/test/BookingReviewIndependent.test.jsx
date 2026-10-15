@@ -15,7 +15,7 @@ vi.mock('../i18n', () => ({ useTranslation: () => ({ t: key => ({
   'ui.buttons.save': 'Speichern', 'ui.buttons.cancel': 'Abbrechen', 'ui.buttons.close': 'Schließen',
   'ui.buttons.edit': 'Bearbeiten', 'ui.buttons.delete': 'Löschen', 'ui.buttons.new': 'Neu',
 })[key], locale: 'de-DE' }) }));
-vi.mock('../contexts/AuthContext', () => ({ useCanWrite: () => context.canWrite }));
+vi.mock('../contexts/AuthContext', () => ({ useCanWrite: () => context.canWrite, useAuth: () => null }));
 vi.mock('../contexts/DataStoreContext', () => ({
   useEntities: key => ({
     items: key === 'categories' ? context.categories : key === 'contracts' ? context.contracts

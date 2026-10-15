@@ -6,6 +6,7 @@ import { workspace } from '../../utils/workspaceClient';
 export default function ConversationDialog({ entityType, entityId, entityRevision, title, onClose, onSaved }) {
   const command = useRef(workspace.command());
   const payloadRef = useRef(null);
+  const revision = useRef(entityRevision);
   const fields = [
     { key: 'conversation_kind', label: 'Art', type: 'select', default: 'note', required: true, options: [
       { value: 'note', label: 'Notiz' }, { value: 'phone', label: 'Telefonat' }, { value: 'email', label: 'E-Mail' }, { value: 'meeting', label: 'Besprechung' },
@@ -21,7 +22,7 @@ export default function ConversationDialog({ entityType, entityId, entityRevisio
   const save = async values => {
     if (!values.body?.trim()) throw new Error('Bitte eine Gesprächsnotiz eingeben.');
     if (!values.follow_up_title?.trim() && (values.follow_up_due || values.follow_up_assignee)) throw new Error('Bitte eine Aufgabe für die Wiedervorlage benennen.');
-    const payload = { entity_type: entityType, entity_id: entityId, base_revision: entityRevision,
+    const payload = { entity_type: entityType, entity_id: entityId, base_revision: revision.current,
       body: values.body.trim(), conversation_kind: values.conversation_kind,
       ...(values.follow_up_title?.trim() ? { follow_up: { title: values.follow_up_title.trim(), due_date: values.follow_up_due || null,
         assignee: values.follow_up_assignee || null, priority: values.follow_up_priority || 'medium' } } : {}) };
@@ -34,5 +35,6 @@ export default function ConversationDialog({ entityType, entityId, entityRevisio
     onSaved?.(result);
   };
   return <FormModal title={`Gespräch / Wiedervorlage · ${title || 'Vorgang'}`} fields={fields} onSave={save} onClose={onClose}
-    draftContext="conversation-note" draftAnchor={{ kind: entityType, id: entityId }} />;
+    draftContext="conversation-note" draftAnchor={{ kind: entityType, id: entityId }}
+    onDraftRebase={source => { revision.current = source.revision; }} />;
 }

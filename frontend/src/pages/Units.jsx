@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
@@ -10,51 +10,55 @@ import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useToast } from '../components/Toast';
 import { formatArea, formatMoney, formatPercent } from '../utils/format';
+import KpiAction from '../components/KpiAction';
+import { occupancyMapOn } from '../utils/occupancy';
 
 export default function Units() {
+  const [params] = useSearchParams();
   const { t } = useTranslation();
   const navigate = useNavigate();
   const confirm = useConfirm();
   const toast = useToast();
   const store = useDataStore();
   const { items: properties } = useEntities('properties', '/properties');
-  const { items: contracts } = useEntities('contracts', '/contracts');
+  const contractState = useEntities('contracts', '/contracts');
+  const contracts = contractState.items;
   const { items: tenants } = useEntities('tenants', '/tenants');
   const [units, setUnits] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
+  const [attempt, setAttempt] = useState(0);
   const [modal, setModal] = useState(null);
   // values a New form starts with when opened from elsewhere (the property page's "Einheit anlegen")
   const [prefill, setPrefill] = useState(null);
-  const [filter, setFilter] = useState('all');
+  const [filter, setFilter] = useState(() => params.get('status') || params.get('filter') || 'all');
+  const [drilldown, setDrilldown] = useState(0);
+  const openSources = key => { setFilter(key); setDrilldown(value => value + 1); };
 
   const refreshData = () => {
     setLoading(true);
-    api.list('/units').catch(() => [])
-      .then(data => setUnits(Array.isArray(data) ? data : []))
+    setLoadError(null);
+    api.list('/units')
+      .then(data => { if (!Array.isArray(data)) throw new Error('Einheiten konnten nicht gelesen werden.'); setUnits(data); })
+      .catch(error => setLoadError(error.message))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     let cancelled = false;
-    api.list('/units').catch(() => [])
-      .then(data => { if (!cancelled) setUnits(Array.isArray(data) ? data : []); })
+    setLoading(true); setLoadError(null);
+    api.list('/units')
+      .then(data => { if (!Array.isArray(data)) throw new Error('Einheiten konnten nicht gelesen werden.'); if (!cancelled) setUnits(data); })
+      .catch(error => { if (!cancelled) setLoadError(error.message); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, []);
+  }, [attempt]);
 
   const propMap = Object.fromEntries(properties.map(p => [p.id, p.name]));
   const tenantMap = Object.fromEntries(tenants.map(tn => [tn.id, tn.full_name]));
 
-  // Preserve the tenant ID together with the name for active contracts.
-  const unitTenantMap = useMemo(() => {
-    const map = {};
-    contracts.forEach(c => {
-      if (c.status === 'active' && c.unit_id && c.tenant_id) {
-        map[c.unit_id] = { id: c.tenant_id, name: tenantMap[c.tenant_id] || '—' };
-      }
-    });
-    return map;
-  }, [contracts, tenantMap]);
+  const today = new Date().toLocaleDateString('sv-SE');
+  const occupancy = useMemo(() => occupancyMapOn(units, contracts, today), [units, contracts, today]);
 
   // Build a map of unit_id -> true for units that have any contract
   const unitHasContract = useMemo(() => {
@@ -72,11 +76,12 @@ export default function Units() {
     const warmRent = (u.cold_rent != null) ? coldRent + serviceCharge + heatingAdvance : null;
     return {
       ...u,
+      status: occupancy[u.id].status,
       property_name: propMap[u.property_id] || '—',
       warm_rent: warmRent,
-      tenant_id: unitTenantMap[u.id]?.id || null,
-      tenant_name: unitTenantMap[u.id]?.name || '—',
-      vacant_since: u.status === 'vacant' ? (u.created_at || '—') : null,
+      tenant_id: occupancy[u.id].tenant_id,
+      tenant_name: tenantMap[occupancy[u.id].tenant_id] || '—',
+      vacant_since: occupancy[u.id].status === 'vacant' ? (u.created_at || '—') : null,
     };
   });
 
@@ -88,6 +93,7 @@ export default function Units() {
     if (filter === 'no_contract') return enriched.filter(u => !unitHasContract[u.id]);
     if (filter === 'no_area') return enriched.filter(u => !u.area_sqm || Number(u.area_sqm) === 0);
     if (filter === 'no_person_count') return enriched.filter(u => !u.person_count || Number(u.person_count) === 0);
+    if (filter === 'with_rent') return enriched.filter(u => u.cold_rent != null && Number(u.cold_rent) > 0);
     return enriched;
   }, [enriched, filter, unitHasContract]);
 
@@ -168,7 +174,8 @@ export default function Units() {
   };
 
   // only the first load replaces the page; a reload keeps the table and an open form ("Speichern & weiteren")
-  if (loading && units.length === 0 && !modal) return <div className="page-loading">Lade Einheiten...</div>;
+  if ((loading && units.length === 0 || contractState.loading) && !modal) return <div className="page-loading">Lade Einheiten...</div>;
+  if ((loadError || contractState.error) && !modal) return <div className="page"><div className="alert alert-error" role="alert">{loadError || contractState.error}<button type="button" className="btn btn-secondary" onClick={() => { setAttempt(value => value + 1); contractState.reload?.(); }}>Erneut laden</button></div></div>;
 
   return (
     <div className="page">
@@ -176,26 +183,11 @@ export default function Units() {
 
       {/* Summary cards */}
       <div className="kpi-row">
-        <div className="kpi">
-          <div className="kpi-value">{totalCount}</div>
-          <div className="kpi-label">Gesamt</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-value" style={{ color: 'var(--success)' }}>{occupiedCount}</div>
-          <div className="kpi-label">Vermietet</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-value" style={{ color: 'var(--warning)' }}>{vacantCount}</div>
-          <div className="kpi-label">Leer</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-value">{formatMoney(avgColdRent)}</div>
-          <div className="kpi-label">Ø Kaltmiete</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-value" style={{ color: Number(occupancyRate) >= 80 ? 'var(--success)' : 'var(--warning)' }}>{formatPercent(occupancyRate)}</div>
-          <div className="kpi-label">Vermietungsquote</div>
-        </div>
+        <KpiAction label="Gesamt" value={totalCount} onClick={() => openSources('all')} />
+        <KpiAction label="Vermietet" value={occupiedCount} onClick={() => openSources('occupied')} />
+        <KpiAction label="Leer" value={vacantCount} onClick={() => openSources('vacant')} />
+        <KpiAction label="Ø Kaltmiete" value={formatMoney(avgColdRent)} onClick={() => openSources('with_rent')} />
+        <KpiAction label="Vermietungsquote" value={formatPercent(occupancyRate)} onClick={() => openSources('occupied')} />
       </div>
 
       {/* Filter tabs */}
@@ -208,6 +200,7 @@ export default function Units() {
           { key: 'no_contract', label: 'Ohne Vertrag' },
           { key: 'no_area', label: 'Ohne Fläche' },
           { key: 'no_person_count', label: 'Ohne Personenzahl' },
+          { key: 'with_rent', label: 'Mit Mietvorgabe' },
         ].map(f => (
           <button key={f.key} className={`btn btn-sm ${filter === f.key ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setFilter(f.key)}>
             {f.label}
@@ -219,6 +212,9 @@ export default function Units() {
         title={t('units.list.title') || 'Einheiten'}
         columns={columns}
         data={filtered}
+        drilldownKey={drilldown}
+        viewConfig={{ column_filters: { source_filter: filter } }}
+        onApplyView={config => setFilter(config.column_filters?.source_filter || 'all')}
         onAdd={values => { setPrefill(values || null); setModal('create'); }}
         onEdit={row => setModal(row)}
         onDelete={handleDelete}

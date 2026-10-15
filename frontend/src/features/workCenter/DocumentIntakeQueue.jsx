@@ -179,7 +179,7 @@ function DocumentReview({ detail, canWrite, onPreview, onClose, onSaved, onRevie
   const fields = [
     { key: 'title', label: 'Titel', required: true, hint: <>
       {resolveFileUrl(document.file_url) ? <button type="button" className="btn btn-sm btn-ghost" onClick={onPreview}>Original ansehen</button> : 'Keine Datei vorhanden.'}
-      <label><input type="checkbox" checked={carryAssignments} onChange={event => setCarryAssignments(event.target.checked)} /> Zuordnung für den nächsten unzugeordneten Beleg übernehmen</label>
+      <label className="work-carry-option"><input type="checkbox" checked={carryAssignments} onChange={event => setCarryAssignments(event.target.checked)} /> <span>Zuordnung für den nächsten unzugeordneten Beleg übernehmen</span></label>
     </> },
     { key: 'document_type', label: 'Dokumententyp', hint: 'Vorschläge werden erst mit Speichern verbindlich.' },
     { key: 'description', label: 'Inhalt / Erkennungsvorschlag', type: 'textarea' },

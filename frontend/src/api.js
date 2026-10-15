@@ -258,7 +258,8 @@ export const api = {
   post: (path, data, { signal } = {}) => request(path, { method: 'POST', body: JSON.stringify(data), signal }),
   put: (path, data, { signal } = {}) => request(path, { method: 'PUT', body: JSON.stringify(data), signal }),
   patch: (path, data, { signal } = {}) => request(path, { method: 'PATCH', body: JSON.stringify(data), signal }),
-  del: (path, { signal } = {}) => request(path, { method: 'DELETE', signal }),
+  del: (path, { signal, data } = {}) => request(path, { method: 'DELETE', signal,
+    ...(data === undefined ? {} : { body: JSON.stringify(data) }) }),
   getBlob: (path, { signal } = {}) => request(path, { signal, responseType: 'blob' }),
   postBlob: (path, data, { signal } = {}) => request(path, {
     method: 'POST', body: JSON.stringify(data), signal, responseType: 'blob',
@@ -346,6 +347,7 @@ export function logout() {
       if (!response.ok) throw new Error('Die Abmeldung wurde vom Server nicht bestätigt. Bitte erneut versuchen.');
       localStorage.removeItem('access_token');
       localStorage.removeItem('refresh_token');
+      window.dispatchEvent(new Event('workspace-logout'));
     } catch (error) {
       logoutRequested = false;
       throw new Error('Die Abmeldung ist fehlgeschlagen. Ihre Sitzung bleibt bestehen. Bitte erneut versuchen.', { cause: error });

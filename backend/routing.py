@@ -21,6 +21,7 @@ from .routers import (
     billing,
     bookings,
     budgets,
+    business_qol,
     calendar,
     categories,
     contacts,
@@ -67,6 +68,7 @@ from .routers import (
     units,
     updates,
     viewings,
+    workspace,
 )
 
 
@@ -95,6 +97,8 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(accounts.router, dependencies=_auth_dep)
     api_v1.include_router(bookings.router, dependencies=_auth_dep)
     api_v1.include_router(review.router, dependencies=_auth_dep)
+    api_v1.include_router(workspace.router, dependencies=_auth_dep)
+    api_v1.include_router(business_qol.router, dependencies=_auth_dep)
     api_v1.include_router(receivables.router, dependencies=_auth_dep)
     api_v1.include_router(invoices.router, dependencies=_auth_dep)
     api_v1.include_router(maintenance.router, dependencies=_auth_dep)

@@ -12,6 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // LocalStorage Key
     const STORAGE_KEY = 'mietvertragWizardFormState_v2';
+    const embeddedWorkspace = window.parent !== window.self;
 
     // ---------- Eingabe-Hilfen (de-DE) ----------
     const DATE_RE = /^\d{2}\.\d{2}\.\d{4}$/;
@@ -67,7 +68,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Nach dem Laden: Versuche, gespeicherte Eingaben zu laden und Expertenmodus zu setzen
     try {
-        const savedRaw = localStorage.getItem(STORAGE_KEY);
+        // The host application owns authenticated, per-user drafts. Never load
+        // the standalone wizard's shared browser record inside another user's app.
+        const savedRaw = embeddedWorkspace ? null : localStorage.getItem(STORAGE_KEY);
         if (savedRaw) {
             const savedState = JSON.parse(savedRaw);
             applyFormState(savedState);
@@ -90,8 +93,22 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnClearLocal = document.getElementById('btn-clear-local');
     const btnExportJson = document.getElementById('btn-export-json');
     const inputImportJson = document.getElementById('input-import-json');
+    if (embeddedWorkspace) {
+        [btnSaveLocal, btnLoadLocal, btnClearLocal].forEach(button => { if (button) button.hidden = true; });
+        window.immoWizardDraft = {
+            serialize: serializeFormState,
+            restore: state => applyFormState(state),
+        };
+        const reportDraft = () => window.parent.postMessage({ type: 'immo-wizard-draft', form: serializeFormState() }, window.location.origin);
+        document.addEventListener('input', reportDraft);
+        document.addEventListener('change', reportDraft);
+        // Adding or removing a person changes the form without an input event.
+        document.addEventListener('click', event => {
+            if (event.target.closest('.add-person, .remove-person, #add-staffel, .remove-staffel')) queueMicrotask(reportDraft);
+        });
+    }
 
-    if (btnSaveLocal) {
+    if (btnSaveLocal && !embeddedWorkspace) {
         btnSaveLocal.addEventListener('click', () => {
             const state = serializeFormState();
             try {
@@ -102,7 +119,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
-    if (btnLoadLocal) {
+    if (btnLoadLocal && !embeddedWorkspace) {
         btnLoadLocal.addEventListener('click', () => {
             const raw = localStorage.getItem(STORAGE_KEY);
             if (!raw) {
@@ -118,7 +135,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
-    if (btnClearLocal) {
+    if (btnClearLocal && !embeddedWorkspace) {
         btnClearLocal.addEventListener('click', () => {
             localStorage.removeItem(STORAGE_KEY);
             alert('Gespeicherte Formulardaten wurden gelöscht.');
@@ -147,6 +164,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 try {
                     const state = JSON.parse(evt.target.result);
                     applyFormState(state);
+                    if (embeddedWorkspace) window.parent.postMessage({ type: 'immo-wizard-draft', form: serializeFormState() }, window.location.origin);
                     alert('JSON-Datei wurde geladen und angewendet.');
                 } catch (err) {
                     alert('Die JSON-Datei konnte nicht verarbeitet werden.');
@@ -174,7 +192,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (toggleEl) {
             toggleEl.checked = !!enabled;
         }
-        if (persist) {
+        if (persist && !embeddedWorkspace) {
             // Speichere das Flag im State, ohne andere Felder zu überschreiben
             try {
                 const raw = localStorage.getItem(STORAGE_KEY);
@@ -199,6 +217,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const elements = document.querySelectorAll('input, select, textarea');
         elements.forEach(el => {
+            if (el.type === 'file' || el.type === 'password') return;
             const key = el.id || el.name;
             if (!key) return;
             const entry = (el.type === 'checkbox' || el.type === 'radio')

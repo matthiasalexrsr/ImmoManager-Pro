@@ -152,6 +152,7 @@ class DBSessionMiddleware(BaseHTTPMiddleware):
 # ─── Audit Middleware ────────────────────────────────────────────────────────
 
 _WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+_READ_ONLY_POST_PATHS = frozenset({"/api/v1/work-center/duplicates/check"})
 _METHOD_TO_ACTION = {"POST": "create", "PUT": "update", "PATCH": "patch", "DELETE": "delete"}
 _API_PATH_RE = re.compile(r"/api/v1/(\w[\w-]*)(?:/([^/]+))?")
 _SKIP_PATHS = {"/api/v1/auth/login", "/api/v1/auth/register", "/api/v1/auth/refresh"}
@@ -187,14 +188,16 @@ class AuditMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         # Pre-resolve user identity for audit attribution
         # Token checks and the audit entry use the database: never on the event loop.
-        if request.method in _WRITE_METHODS and request.url.path not in _SKIP_PATHS:
+        mutation = request.method in _WRITE_METHODS and request.url.path not in _SKIP_PATHS and not (
+            request.method == "POST" and request.url.path in _READ_ONLY_POST_PATHS)
+        if mutation:
             uid, uname = await run_in_threadpool(self._extract_user_from_token, request)
             request.state.audit_user_id = uid
             request.state.audit_username = uname
 
         response: Response = await call_next(request)
 
-        if request.method in _WRITE_METHODS and request.url.path not in _SKIP_PATHS:
+        if mutation:
             match = _API_PATH_RE.match(request.url.path)
             if match and 200 <= response.status_code < 300:
                 entity_type = match.group(1).replace("-", "_")
@@ -249,6 +252,10 @@ class RBACWriteGuardMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
+        if request.method == "POST" and path in _READ_ONLY_POST_PATHS:
+            # A potentially large private candidate belongs in the body, not URL
+            # logs. Authentication and source scope remain enforced by the endpoint.
+            return await call_next(request)
         if (
             request.method in _RBAC_WRITE_METHODS
             and path.startswith("/api/v1/")

@@ -23,6 +23,11 @@ import {
 import { housingText } from './housingConfirmationText';
 import useHousingConfirmationCommand from './useHousingConfirmationCommand';
 import './HousingConfirmation.css';
+import useEntityFormDraft from '../../hooks/useEntityFormDraft';
+import CustomDraftNotice from '../../components/CustomDraftNotice';
+
+const DRAFT_FIELDS = ['dwelling_address', 'dwelling_label', 'housing_provider_name', 'housing_provider_address',
+  'owner_relation', 'owner_name', 'actual_move_in_date', 'issue_date', 'issuer_name', 'issuer_role', 'occupants', 'correction_of'].map(key => ({ key }));
 
 const PAGE_SIZE = 25;
 
@@ -91,7 +96,9 @@ export default function HousingConfirmationDialog({ contractId, onClose, onPubli
   }, [abortRequests, binding, closePdf]);
 
   const command = useHousingConfirmationCommand(binding, forgetPrivate);
-  const locked = command.busy || command.state.phase === 'unknown';
+  const draft = useEntityFormDraft({ context: 'housing-confirmation', kind: 'contract', id: contractId,
+    fields: DRAFT_FIELDS, enabled: canPublish && Boolean(view.source) && service === housingConfirmationService });
+  const locked = command.busy || command.state.phase === 'unknown' || draft.loading || (draft.enabled && !draft.ready) || Boolean(draft.recovery) || draft.status === 'changed';
   const dirty = Boolean(view.form && view.baseline !== formSignature(view.form))
     || Boolean(view.correctionOf) || command.state.phase === 'unknown';
 
@@ -154,13 +161,14 @@ export default function HousingConfirmationDialog({ contractId, onClose, onPubli
 
   const updateForm = useCallback(updater => {
     if (locked) return;
+    if (view.form) draft.stage({ ...updater(cloneHousingForm(view.form)), correction_of: view.correctionOf });
     setStored(current => {
       if (current.binding !== binding || !current.form) return current;
       const form = updater(cloneHousingForm(current.form));
       return { ...current, form, preview: null, previewInvalidated: Boolean(current.preview), saved: false, error: null };
     });
     if (!['unknown', 'sending'].includes(command.state.phase)) command.reset();
-  }, [binding, command, locked]);
+  }, [binding, command, locked, draft, view.form, view.correctionOf]);
 
   const patchForm = patch => updateForm(form => ({ ...form, ...patch }));
   const patchConfirmation = patch => {
@@ -232,6 +240,7 @@ export default function HousingConfirmationDialog({ contractId, onClose, onPubli
       payload: prepared.payload,
       send: prepared.send,
       onSuccess: record => {
+        void draft.clear({ completed: true }).catch(() => {});
         setStored(current => current.binding === binding && current.form ? {
           ...current, preview: null, previewInvalidated: false, baseline: formSignature(current.form),
           correctionOf: null, saved: true, error: null,
@@ -328,6 +337,18 @@ export default function HousingConfirmationDialog({ contractId, onClose, onPubli
           </div>
           <PdfPreview key={pdfView.url} url={pdfView.url} title={pdfView.title} />
         </div> : <div className="housing-confirmation__body">
+          <CustomDraftNotice draft={draft} currentValues={view.form} locked={command.busy || command.state.phase === 'unknown'} beforeRestore={async () => {
+            const source = await service.loadSource(contractId);
+            setStored(current => current.binding === binding ? { ...current, source, preview: null, previewInvalidated: true } : current);
+            return source.suggestions;
+          }}
+            onRestore={values => {
+              const { correction_of, ...savedForm } = values;
+              const form = { ...blankHousingForm(), ...cloneHousingForm(savedForm), confirmed_actual_move_in: false, confirmed_authority: false, confirmed_residents: false };
+              setStored(current => current.binding === binding ? { ...current, form, correctionOf: correction_of || null,
+                preview: null, previewInvalidated: true, saved: false, error: null } : current);
+              command.reset(); draft.stage({ ...savedForm, correction_of });
+            }} />
           {askDiscard && <div className="housing-confirmation__notice housing-confirmation__notice--warning" role="alertdialog"
             aria-label={say('discardTitle')}>
             <AlertTriangle size={18} aria-hidden="true" /><div><strong>{say('discardTitle')}</strong><p>{say('discardPrompt')}</p></div>

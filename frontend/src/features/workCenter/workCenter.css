@@ -35,3 +35,5 @@
 .dossier-kpi-button { font: inherit; text-align: left; cursor: pointer; color: inherit; }
 .dossier-kpi-button:hover { border-color: var(--color-primary); }
 .dossier-kpi-button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.modal-body .work-carry-option { display: flex; align-items: flex-start; gap: .5rem; margin-top: .5rem; font-weight: 400; }
+.modal-body .work-carry-option input[type="checkbox"] { flex: 0 0 auto; width: 1rem; height: 1rem; margin: .15rem 0 0; padding: 0; }

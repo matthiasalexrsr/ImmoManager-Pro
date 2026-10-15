@@ -347,6 +347,8 @@ export default function Meters() {
       )}
       {modal === 'create-reading' && (
         <FormModal
+          draftContext="readings"
+          draftAnchor={selectedMeter ? { kind: 'meter', id: selectedMeter.id } : undefined}
           title="Ablesung erfassen"
           repeatKeep={['reading_date', 'recorded_by']}
           fields={readingFields}
