@@ -263,7 +263,7 @@ def test_tenant_account_counts_partial_payments_and_the_return_once(estate):
     end_of_march = tenant_account(store, tom, date(2026, 3, 31))
     assert end_of_march["contracts"][0] | {"contract_id": None} == {
         "contract_id": None, "contract_number": "A1", "expected": 1899.99, "paid": 1899.99,
-        "outstanding": 0.0, "overpaid": 0.0}
+        "outstanding": 0.0, "overpaid": 0.0, "ledger_start": None, "carried_balance": None}
     assert end_of_march["unassigned"] == []
     # on 10 March the rest of March (333.33, paid on the 20th) is still open: later payments do not count yet
     tenth = tenant_account(store, tom, date(2026, 3, 10))

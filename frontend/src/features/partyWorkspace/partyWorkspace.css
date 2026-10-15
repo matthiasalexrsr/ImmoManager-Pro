@@ -120,3 +120,7 @@
   .party-section-heading > .btn { width: 100%; justify-content: center; }
 }
 @media (prefers-reduced-motion: reduce) { .party-backdrop, .party-panel { animation: none; } }
+/* the property and unit of a contract lead to their pages (the panel closes on navigation) */
+.party-entity-link { color: inherit; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 3px; }
+.party-entity-link:hover { color: var(--color-primary); text-decoration-style: solid; }
+.party-entity-link:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; border-radius: 2px; }

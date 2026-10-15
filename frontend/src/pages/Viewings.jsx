@@ -6,6 +6,7 @@ import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
+import { bulkDelete } from '../utils/bulkActions';
 
 const STATUS_COLORS = {
   scheduled: 'var(--primary)',
@@ -15,8 +16,8 @@ const STATUS_COLORS = {
 };
 
 const TABLE_COLUMNS = [
-  { key: 'lead_name', label: 'Interessent', filterType: 'text' },
-  { key: 'unit_label', label: 'Einheit', filterType: 'text' },
+  { key: 'lead_name', label: 'Interessent', filterType: 'text', link: 'lead' },
+  { key: 'unit_label', label: 'Einheit', filterType: 'text', link: 'unit' },
   { key: 'scheduled_at', label: 'Termin', type: 'date', filterType: 'dateRange' },
   { key: 'agent', label: 'Betreuer', filterType: 'text' },
   { key: 'status', label: 'Status', type: 'status', filterType: 'select',
@@ -235,7 +236,8 @@ export default function Viewings() {
     }
   };
 
-  if (loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  // only the first load replaces the list; a reload keeps the table (its search, selection, results)
+  if (loading && viewings.length === 0) return <div className="page-loading">{t('ui.table.loading')}</div>;
 
   const statusLabels = { scheduled: 'Geplant', completed: 'Durchgeführt', cancelled: 'Abgesagt', no_show: 'Nicht erschienen' };
 
@@ -373,6 +375,9 @@ export default function Viewings() {
           title=""
           columns={TABLE_COLUMNS}
           data={enriched}
+        rowName={row => row.lead_name || row.id}
+        bulkActions={[bulkDelete({ one: 'Besichtigung', many: 'Besichtigungen', remove: row => api.del(`/viewings/${row.id}`),
+          finished: () => { refreshData(); store?.invalidateRelated('viewings', 'leads', 'units'); } })]}
           onAdd={() => setModal('create')}
           onEdit={row => setModal(row)}
           onDelete={handleDelete}

@@ -72,3 +72,17 @@
   max-width: 100%;
   overflow-x: auto;
 }
+
+/* The property page as the place to act on a property: edit it and start what belongs to it. */
+.property-dossier .detail-header .dossier-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.dossier-new { position: relative; }
+.dossier-new .btn { display: inline-flex; align-items: center; gap: 6px; }
+.dossier-new-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; min-width: 200px; margin: 0; padding: 6px;
+  list-style: none; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.14); }
+.dossier-new-menu a { display: block; padding: 8px 10px; border-radius: 7px; color: var(--color-text); text-decoration: none; }
+.dossier-new-menu a:hover, .dossier-new-menu a:focus-visible { background: var(--color-primary-light); }
+.property-dossier .panel-body { padding: 0.25rem 1.25rem 1rem; }
+@media (max-width: 640px) {
+  .dossier-new-menu { right: auto; left: 0; }
+}

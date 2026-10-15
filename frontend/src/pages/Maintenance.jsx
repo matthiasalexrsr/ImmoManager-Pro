@@ -8,6 +8,7 @@ import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 import { formatDate, formatMoney } from '../utils/format';
+import { bulkDelete } from '../utils/bulkActions';
 
 const TODAY = new Date();
 TODAY.setHours(0, 0, 0, 0);
@@ -33,6 +34,8 @@ export default function Maintenance() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
+  // values a New form starts with when opened from elsewhere (the property page's "Einheit anlegen")
+  const [prefill, setPrefill] = useState(null);
   const [filter, setFilter] = useState('all');
 
   const refreshData = () => {
@@ -90,7 +93,7 @@ export default function Maintenance() {
       // the case is the project file: work packages, quotes, orders, invoices, protocols
       render: (v, row) => <Link to={`/maintenance/${encodeURIComponent(row.id)}`}>{v || row.id}</Link> },
     { key: 'property_name', hidden: true, label: 'Immobilie', filterType: 'text' },
-    { key: 'unit_label', subKey: 'property_name', label: 'Einheit', filterType: 'text' },
+    { key: 'unit_label', subKey: 'property_name', label: 'Einheit', filterType: 'text', link: 'unit', subLink: 'property' },
     { key: 'category', hidden: true, label: t('pages.maintenance.columns.category') || 'Kategorie', filterType: 'select' },
     { key: 'priority', label: t('pages.maintenance.columns.priority') || 'Priorität', type: 'status', filterType: 'select' },
     { key: 'assignee', hidden: true, label: t('pages.maintenance.columns.assignee') || 'Zuständig', filterType: 'text' },
@@ -166,7 +169,8 @@ export default function Maintenance() {
     if (store) store.invalidateRelated('maintenance', 'properties', 'units');
   };
 
-  if (loading) return <div className="page-loading">Lade Wartungsaufträge...</div>;
+  // only the first load replaces the list; a reload keeps the table (its search, selection, results)
+  if (loading && items.length === 0) return <div className="page-loading">Lade Wartungsaufträge...</div>;
 
   return (
     <div className="page">
@@ -217,7 +221,10 @@ export default function Maintenance() {
         title={t('pages.maintenance.title') || 'Wartung & Instandhaltung'}
         columns={columns}
         data={filtered}
-        onAdd={() => setModal('create')}
+        rowName={row => row.title || row.id}
+        bulkActions={[bulkDelete({ one: 'Wartungsauftrag', many: 'Wartungsaufträge', remove: row => api.del(`/maintenance/${row.id}`),
+          finished: () => { refreshData(); store?.invalidateRelated('maintenance', 'properties', 'units'); } })]}
+        onAdd={values => { setPrefill(values || null); setModal('create'); }}
         onEdit={row => setModal(row)}
         onDelete={handleDelete}
       />
@@ -226,7 +233,7 @@ export default function Maintenance() {
         <FormModal
           title={modal === 'create' ? 'Wartungsauftrag erstellen' : 'Wartungsauftrag bearbeiten'}
           fields={fields}
-          initial={modal === 'create' ? null : modal}
+          initial={modal === 'create' ? prefill : modal}
           onSave={handleSave}
           onClose={() => setModal(null)}
         />

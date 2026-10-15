@@ -21,7 +21,8 @@ from ..domain.payment_allocation import ContractCandidate, suggest_allocation
 from ..models import PaymentAllocationCreate
 from ..storage import NotFoundError, ValidationError
 from .read_cache import CachedReads
-from .rent_history import charge_for, rent_steps
+from .rent_history import charge_for
+from .rent_ledger import account_receivables, carried_credit, takeover
 
 Pairs = list[tuple[str, Decimal]]
 
@@ -257,12 +258,18 @@ def contract_payments(store: Any, contract: Any,
                       credited: list[tuple[Any, str, Decimal]] | None = None,
                       until: Optional[date] = None) -> list[PaymentLine]:
     """Payments credited to a contract (up to *until*); a reversal reduces the payment it
-    cancels, any other return the latest earlier payments."""
+    cancels, any other return the latest earlier payments.
+
+    An account taken over from a previous system (rent_ledger) counts only what was booked from
+    its takeover day on, plus the credit carried over; earlier payments are in the carried balance.
+    """
     if credited is None:
         credited = _credited(store, contract.tenant_id)
+    start, _ = takeover(contract)
     entries = sorted(((booking.booking_date, booking.id, booking.reverses_booking_id, amount)
                       for booking, contract_id, amount in credited
-                      if contract_id == contract.id and (until is None or booking.booking_date <= until)),
+                      if contract_id == contract.id and (until is None or booking.booking_date <= until)
+                      and (start is None or booking.booking_date >= start)),
                      key=lambda entry: entry[0])
     lines: list[list[Any]] = []    # [day, remaining amount, booking id]
     for day, booking_id, reverses, amount in entries:
@@ -276,7 +283,8 @@ def contract_payments(store: Any, contract: Any,
             owed -= taken
             if not owed:
                 break
-    return [PaymentLine(booking_date=day, amount=amount) for day, amount, _ in lines if amount > 0]
+    return carried_credit(contract, until) + [PaymentLine(booking_date=day, amount=amount)
+                                              for day, amount, _ in lines if amount > 0]
 
 
 def tenant_account(store: Any, tenant_id: str, as_of: date) -> dict:
@@ -292,16 +300,18 @@ def tenant_account(store: Any, tenant_id: str, as_of: date) -> dict:
     rows = []
     sums = {"expected": ZERO, "paid": ZERO, "outstanding": ZERO, "overpaid": ZERO}
     for contract in contracts:
-        receivables = LeaseEngine.build_monthly_receivables(
-            contract_start=contract.start_date, contract_end=contract.end_date,
-            rent_steps=rent_steps(store, contract), until_including=as_of)
-        balance = LeaseEngine.calculate_balance(receivables, contract_payments(store, contract, credited))
+        receivables = account_receivables(store, contract, as_of)
+        balance = LeaseEngine.calculate_balance(receivables, contract_payments(store, contract, credited, until=as_of))
         values = {"expected": balance.expected_total, "paid": balance.paid_total,
                   "outstanding": balance.outstanding_total, "overpaid": balance.overpaid_total}
         for name, value in values.items():
             sums[name] += value
+        start, carried = takeover(contract)
         rows.append({"contract_id": contract.id, "contract_number": contract.contract_number,
-                     **{name: as_number(value) for name, value in values.items()}})
+                     **{name: as_number(value) for name, value in values.items()},
+                     # a tenancy taken over from a previous system: its account starts here
+                     "ledger_start": start.isoformat() if start else None,
+                     "carried_balance": as_number(carried) if start else None})
     allocated: dict[str, Decimal] = defaultdict(lambda: ZERO)
     for booking, _, amount in credited:
         allocated[booking.id] += amount

@@ -81,6 +81,9 @@ def _assert_decimal_schema(engine, *, below_head=False):
             continue
         columns = {column["name"]: column["type"] for column in inspector.get_columns(table.name)}
         for name in declared:
+            if below_head and name not in columns:      # added to an existing table by a later migration
+                continue
+            assert name in columns, f"{table.name}.{name} is missing"
             assert isinstance(columns[name], sa.Numeric) and not isinstance(columns[name], sa.Float), (
                 f"{table.name}.{name} is {columns[name]}, expected decimal storage"
             )

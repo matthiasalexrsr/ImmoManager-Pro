@@ -64,7 +64,7 @@ function PromptModal({ title, defaultValue, onConfirm, onCancel }) {
 
 function getColumns(t) {
   return [
-    { key: 'property_name', label: t('pages.statements.colProperty') || 'Immobilie', filterType: 'text' },
+    { key: 'property_name', label: t('pages.statements.colProperty') || 'Immobilie', filterType: 'text', link: 'property' },
     { key: 'period_label', label: t('pages.statements.colPeriod') || 'Abrechnungszeitraum', filterType: 'text' },
     { key: 'total_costs', label: t('pages.statements.colTotalCosts') || 'Gesamtkosten (€)', type: 'number', align: 'right',
       render: v => formatMoney(v) },
@@ -96,7 +96,7 @@ function formatDate(iso) {
 
 function getStmtColumns(t, onError) {
   return [
-    { key: 'unit_label', label: t('pages.statements.colUnit') || 'Einheit' },
+    { key: 'unit_label', label: t('pages.statements.colUnit') || 'Einheit', link: 'unit' },
     { key: 'tenant_name', label: t('pages.statements.colParty') || 'Mieter',
       render: (v, row) => (row.party === 'vacancy'
         ? <span className="text-muted">{t('pages.statements.vacancyParty') || 'Leerstand (Eigentümer)'}</span>

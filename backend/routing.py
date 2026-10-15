@@ -14,6 +14,7 @@ from .routers import (
     accounts,
     admin,
     admin_runtime,
+    aktenwerk,
     audit,
     auth,
     autotest,
@@ -123,6 +124,7 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(messages.router, dependencies=_auth_dep)
     api_v1.include_router(rent_charges.router, dependencies=_auth_dep)
     api_v1.include_router(integrations.router, dependencies=_auth_dep)
+    api_v1.include_router(aktenwerk.router, dependencies=_auth_dep)
     api_v1.include_router(insurances.router, dependencies=_auth_dep)
     api_v1.include_router(service_contracts.router, dependencies=_auth_dep)
     api_v1.include_router(dunning.router, dependencies=_auth_dep)

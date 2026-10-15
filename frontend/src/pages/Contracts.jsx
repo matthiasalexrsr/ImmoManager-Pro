@@ -17,6 +17,7 @@ import OccupancyDialog from '../features/contracts/OccupancyDialog';
 import DepositsDialog from '../features/deposits/DepositsDialog';
 import { depositText } from '../features/deposits/depositText';
 import { formatDate, formatMoney } from '../utils/format';
+import { nextNumber } from '../utils/nextNumber';
 
 const RENT_MODEL_LABELS = { index: 'Indexmiete', stepped: 'Staffelmiete', fixed: 'Festmiete' };
 
@@ -43,6 +44,8 @@ export default function Contracts() {
   const [contracts, setContracts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
+  // values a New form starts with when opened from elsewhere (the property page's "Einheit anlegen")
+  const [prefill, setPrefill] = useState(null);
   const [filter, setFilter] = useState('all');
   const [rents, setRents] = useState({});
   const [history, setHistory] = useState(null);
@@ -130,10 +133,10 @@ export default function Contracts() {
   const columns = [
     { key: 'contract_number', label: t('tenantsContracts.contracts.form.contractNumber') || 'Vertragsnr.', filterType: 'text' },
     { key: 'property_name', hidden: true, label: 'Immobilie', filterType: 'text' },
-    { key: 'unit_label', subKey: 'property_name', label: 'Einheit', filterType: 'text' },
+    { key: 'unit_label', subKey: 'property_name', label: 'Einheit', filterType: 'text', link: 'unit', subLink: 'property' },
     { key: 'tenant_name', label: 'Mieter', filterType: 'text',
       render: (v, row) => row.tenant_id ? <PartyLink tenantId={row.tenant_id}>{v === '—' ? 'Partei öffnen' : v}</PartyLink> : v },
-    { key: 'cold_rent', label: 'Kaltmiete (€)', type: 'number', align: 'right',
+    { key: 'cold_rent', label: 'Kaltmiete (€)', type: 'number', sum: true, align: 'right',
       render: v => formatMoney(v) },
     { key: 'start_date', label: t('tenantsContracts.contracts.form.startDate') || 'Beginn', type: 'date', filterType: 'dateRange' },
     { key: 'end_date', label: t('tenantsContracts.contracts.form.endDate') || 'Ende', type: 'date', filterType: 'dateRange',
@@ -160,7 +163,9 @@ export default function Contracts() {
   ];
 
   const fields = [
-    { key: 'contract_number', label: t('tenantsContracts.contracts.form.contractNumber') || 'Vertragsnr.', required: true, placeholder: 'z.B. MV-2024-001' },
+    // the next free number in the pattern already in use; it can be overwritten
+    { key: 'contract_number', label: t('tenantsContracts.contracts.form.contractNumber') || 'Vertragsnr.', required: true, placeholder: 'z.B. MV-2024-001',
+      default: nextNumber(contracts.map(c => c.contract_number), 'MV-1') },
     { key: 'property_id', label: t('portfolio.properties.form.name') || 'Immobilie', required: true, type: 'select',
       options: properties.map(p => ({ value: p.id, label: p.name })) },
     { key: 'unit_id', label: t('units.list.columns.label') || 'Einheit', required: true, type: 'select',
@@ -189,6 +194,12 @@ export default function Contracts() {
       { value: 'expired', label: t('status.contract.expired') || 'Ausgelaufen' },
       { value: 'draft', label: t('ui.filterChips.draft') || 'Entwurf' },
     ]},
+    // A tenancy that ran before the app: its account starts here, the months before were settled
+    // in the previous system and only the balance of that day comes along.
+    { section: 'Übernahme aus dem Vorsystem', key: 'ledger_start', label: 'Mietkonto hier geführt ab', type: 'date', noToday: true,
+      hint: 'Nur für laufende Verträge, immer ein Monatserster. Mieten davor gelten als im Vorsystem abgerechnet; leer = ab Vertragsbeginn.' },
+    { section: 'Übernahme aus dem Vorsystem', key: 'carried_balance', label: 'Saldo zum Übernahmetag (€)', type: 'number',
+      hint: 'Rückstand des Mieters positiv, Guthaben negativ; 0 oder leer = ausgeglichen.' },
   ];
 
   const handleSave = async (data) => {
@@ -305,7 +316,7 @@ export default function Contracts() {
         title={t('tenantsContracts.contracts.title') || 'Verträge'}
         columns={columns}
         data={filtered}
-        onAdd={() => setModal('create')}
+        onAdd={values => { setPrefill(values || null); setModal('create'); }}
         onEdit={row => setModal(row)}
         onDelete={handleDelete}
         rowActions={() => [
@@ -331,7 +342,7 @@ export default function Contracts() {
         <FormModal
           title={modal === 'create' ? 'Vertrag erstellen' : 'Vertrag bearbeiten'}
           fields={fields}
-          initial={modal === 'create' ? null : modal}
+          initial={modal === 'create' ? prefill : modal}
           onSave={handleSave}
           onClose={() => setModal(null)}
         />

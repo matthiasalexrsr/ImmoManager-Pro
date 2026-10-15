@@ -105,7 +105,7 @@ class Sources:
     def from_settings(cls) -> Sources:
         data_dir = get_data_dir()
         state = settings.integration_state_file or str(data_dir / "integrations.json")
-        second = settings.backup_second_target.strip()
+        second, _ = configured_second_target(data_dir)
         return cls(
             database_url=settings.database_url, data_dir=data_dir, uploads_dir=get_uploads_dir(),
             root=get_backup_dir() / "full", integration_state=Path(state).expanduser(),
@@ -123,6 +123,106 @@ class Sources:
     @property
     def journal(self) -> Path:
         return self.integration_state.with_suffix(self.integration_state.suffix + ".history.sqlite3")
+
+
+# --- second target set in the app ---------------------------------------------------------
+# BACKUP_SECOND_TARGET (environment or .env) wins. Without it, the owner sets the folder under
+# Einstellungen → Betrieb; it is kept in the data folder, not in the archives, because it names
+# a drive of this computer.
+
+TARGET_FILE = "backup-settings.json"
+
+
+def configured_second_target(data_dir: Path | None = None) -> tuple[str, str | None]:
+    """The second target and where it is set: ("…", "env"), ("…", "app") or ("", None)."""
+    from_env = settings.backup_second_target.strip()
+    if from_env:
+        return from_env, "env"
+    path = (data_dir or get_data_dir()) / TARGET_FILE
+    try:
+        value = json.loads(path.read_text(encoding="utf-8")).get("second_target")
+    except FileNotFoundError:
+        return "", None
+    except (OSError, ValueError, AttributeError):
+        logger.warning("Ignoring the unreadable backup settings in %s", path, exc_info=True)
+        return "", None
+    value = value.strip() if isinstance(value, str) else ""
+    return (value, "app") if value else ("", None)
+
+
+def _inside(path: Path, folder: Path) -> bool:
+    return path == folder or folder in path.parents
+
+
+def _same_device(a: Path, b: Path) -> bool | None:
+    try:
+        return a.stat().st_dev == b.stat().st_dev
+    except OSError:
+        return None
+
+
+def set_second_target(raw: str, data_dir: Path | None = None, backup_root: Path | None = None) -> dict[str, Any]:
+    """Check and keep the folder every full backup is copied to; an empty value removes it.
+
+    Raises ValueError with a sentence for the user; nothing is kept then.
+    """
+    data_dir = data_dir or get_data_dir()
+    backup_root = backup_root or get_backup_dir() / "full"
+    if settings.backup_second_target.strip():
+        raise ValueError("Das zweite Ziel ist in der Konfiguration festgelegt (BACKUP_SECOND_TARGET) "
+                         "und lässt sich hier nicht ändern.")
+    text = (raw or "").strip()
+    # "Als Pfad kopieren" in the Windows Explorer puts the path in quotes
+    if len(text) >= 2 and text[0] == text[-1] and text[0] in "\"'":
+        text = text[1:-1].strip()
+    settings_file = data_dir / TARGET_FILE
+    if not text:
+        settings_file.unlink(missing_ok=True)
+        return {"second_target": None, "source": None, "same_device": None}
+    if len(text) > 500 or "\0" in text:
+        raise ValueError("Der Pfad ist zu lang oder enthält ungültige Zeichen.")
+    target = Path(text).expanduser()
+    if not target.is_absolute():
+        raise ValueError("Bitte den vollständigen Pfad angeben, z. B. E:\\ImmoManager-Sicherung "
+                         "oder \\\\NAS\\Sicherung.")
+    resolved = target.resolve(strict=False)
+    if _inside(resolved, data_dir.resolve()):
+        raise ValueError("Das zweite Ziel liegt im Datenordner des Programms. Es muss außerhalb liegen, "
+                         "am besten auf einem anderen Laufwerk.")
+    if _inside(resolved, backup_root.resolve()):
+        raise ValueError("Das zweite Ziel ist der Sicherungsordner selbst. Bitte einen anderen Ordner wählen.")
+    if _inside(resolved, get_uploads_dir().resolve()):
+        # every later backup would carry the earlier archives along with the attachments
+        raise ValueError("Das zweite Ziel liegt im Ordner der Anhänge. Bitte einen anderen Ordner wählen.")
+    if target.exists() and not target.is_dir():
+        raise ValueError("Unter diesem Pfad liegt eine Datei, kein Ordner.")
+    try:
+        target.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise ValueError(f"Der Ordner lässt sich nicht anlegen: {exc.strerror or exc}. "
+                         "Ist das Laufwerk angeschlossen?") from None
+    probe = target / f".immomanager-schreibtest-{secrets.token_hex(4)}"
+    try:
+        with probe.open("wb") as handle:
+            handle.write(b"ok")
+            handle.flush()
+            os.fsync(handle.fileno())
+        if probe.read_bytes() != b"ok":
+            raise OSError("Inhalt weicht ab")
+    except OSError as exc:
+        raise ValueError(f"In den Ordner lässt sich nicht schreiben: {exc.strerror or exc}.") from None
+    finally:
+        try:
+            probe.unlink(missing_ok=True)
+        except OSError:
+            logger.warning("Could not remove the write test %s", probe)
+    data_dir.mkdir(parents=True, exist_ok=True)
+    temporary = settings_file.with_name(settings_file.name + ".partial")
+    temporary.write_text(json.dumps({"second_target": str(target), "set_at": _utcnow().isoformat(timespec="seconds")},
+                                    ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(temporary, settings_file)
+    return {"second_target": str(target), "source": "app", "same_device": _same_device(target, data_dir),
+            "archives": len(list_archives(target))}
 
 
 class _Pulse:
@@ -1027,10 +1127,20 @@ def overview(sources: Sources | None = None, *, secret_status: dict[str, Any] | 
     warnings: list[dict[str, Any]] = []
     if not settings.backup_schedule_enabled:
         warnings.append({"code": "schedule_disabled"})
+    _, target_source = configured_second_target(sources.data_dir)
+    same_device = None
     if sources.second_target is None:
         warnings.append({"code": "no_second_target"})
-    elif last_ok_backup and not (last_ok_backup.get("second_target") or {}).get("ok"):
-        warnings.append({"code": "second_target_failed"})
+    else:
+        copy = (last_ok_backup or {}).get("second_target")
+        if last_ok_backup and copy and copy.get("path") == str(sources.second_target) and not copy.get("ok"):
+            warnings.append({"code": "second_target_failed", "error": copy.get("error")})
+        elif last_ok_backup and not (copy and copy.get("path") == str(sources.second_target)):
+            # the newest backup was made before this target was set
+            warnings.append({"code": "second_target_pending"})
+        same_device = _same_device(sources.second_target, sources.data_dir)
+        if same_device:
+            warnings.append({"code": "second_target_same_device"})
     age = _age_hours(last_ok_backup, now)
     if age is None:
         warnings.append({"code": "no_backup"})
@@ -1046,7 +1156,7 @@ def overview(sources: Sources | None = None, *, secret_status: dict[str, Any] | 
     if last_probe and not last_probe.get("ok"):
         warnings.append({"code": "last_probe_failed", "error": last_probe.get("error")})
     if not sources.passphrase:
-        warnings.append({"code": "keys_unprotected"})
+        warnings.append({"code": "keys_unprotected", "file": str(sources.env_file)})
     if last_ok_backup and last_ok_backup.get("missing_key_ids"):
         warnings.append({"code": "keys_not_in_backup", "ids": last_ok_backup["missing_key_ids"]})
     if secret_status:
@@ -1066,6 +1176,8 @@ def overview(sources: Sources | None = None, *, secret_status: dict[str, Any] | 
             "schedule": {"daily_at": settings.backup_daily_at, "timezone": BERLIN.key},
             "directory": str(sources.root),
             "second_target": str(sources.second_target) if sources.second_target else None,
+            "second_target_source": target_source if sources.second_target else None,
+            "second_target_same_device": same_device,
             "retention": {"daily": sources.keep_daily, "monthly": sources.keep_monthly,
                           "pre_upgrade": sources.keep_pre_upgrade},
             "passphrase_protected": bool(sources.passphrase),

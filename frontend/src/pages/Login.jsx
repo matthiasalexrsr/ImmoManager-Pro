@@ -57,25 +57,26 @@ export default function Login() {
             <div className="alert-info">{t('auth.register.initialSetup')}</div>
           )}
           <div className="form-group">
-            <label>{isRegister ? t('auth.login.username') : t('auth.login.userOrEmail')}</label>
-            <input type="text" value={username} onChange={e => setUsername(e.target.value)} required autoFocus
+            <label htmlFor="login-username">{isRegister ? t('auth.login.username') : t('auth.login.userOrEmail')}</label>
+            <input id="login-username" type="text" value={username} onChange={e => setUsername(e.target.value)} required autoFocus
               autoComplete="username" />
           </div>
           {isRegister && (
             <>
               <div className="form-group">
-                <label>{t('auth.register.email')}</label>
-                <input type="email" value={email} onChange={e => setEmail(e.target.value)} required />
+                <label htmlFor="login-email">{t('auth.register.email')}</label>
+                <input id="login-email" type="email" value={email} onChange={e => setEmail(e.target.value)} required autoComplete="email" />
               </div>
               <div className="form-group">
-                <label>{t('auth.register.firstName')}</label>
-                <input type="text" value={fullName} onChange={e => setFullName(e.target.value)} required />
+                <label htmlFor="login-full-name">{t('auth.register.firstName')}</label>
+                <input id="login-full-name" type="text" value={fullName} onChange={e => setFullName(e.target.value)} required autoComplete="name" />
               </div>
             </>
           )}
           <div className="form-group">
-            <label>{t('auth.login.password')}</label>
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={8} placeholder={t('auth.password.placeholder') || 'Mindestens 8 Zeichen'} />
+            <label htmlFor="login-password">{t('auth.login.password')}</label>
+            {/* password managers fill a sign-in and offer a generated password when registering */}
+            <input id="login-password" type="password" autoComplete={isRegister ? 'new-password' : 'current-password'} value={password} onChange={e => setPassword(e.target.value)} required minLength={8} placeholder={t('auth.password.placeholder') || 'Mindestens 8 Zeichen'} />
             <small className="form-hint">{t('auth.password.requirements') || 'Mindestens 8 Zeichen, 1 Großbuchstabe, 1 Kleinbuchstabe, 1 Zahl'}</small>
           </div>
           <button type="submit" className="btn btn-primary btn-block" disabled={loading}>

@@ -7,7 +7,15 @@ import PhotoDropZone from '../components/PhotoDropZone';
 import { formatDate, formatMoney } from '../utils/format';
 import { codeLabel } from '../utils/codeLabels';
 import { PartyLink } from '../features/partyWorkspace/PartyWorkspace';
+import { useCanWrite } from '../contexts/AuthContext';
+import NewForMenu from '../components/NewForMenu';
+import { newEntryLink } from '../utils/newEntry';
 import './propertyDossier.css';
+
+// What can be started from a unit, each opened prefilled with the unit and its property.
+const NEW_FOR_UNIT = [
+  ['/contracts', 'Mietvertrag'], ['/maintenance', 'Wartungsfall'], ['/bookings', 'Buchung'], ['/tasks', 'Aufgabe'],
+];
 
 export default function UnitOverview() {
   const { t } = useTranslation();
@@ -20,6 +28,8 @@ export default function UnitOverview() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [revision, setRevision] = useState(0);
+  const canAct = useCanWrite('/units');
+  const canContract = useCanWrite('/contracts');
 
   useEffect(() => {
     let cancelled = false;
@@ -50,6 +60,8 @@ export default function UnitOverview() {
   if (!unit) return <div className="page"><p>{t('pages.unitOverview.notFound') || 'Einheit nicht gefunden'}</p></div>;
 
   const activeContract = contracts.find(c => c.status === 'active');
+  const prefill = { property_id: unit.property_id, unit_id: unit.id };
+  const newContract = newEntryLink('/contracts', prefill);
 
   return (
     <div className="page unit-dossier">
@@ -62,6 +74,7 @@ export default function UnitOverview() {
         <div className="dossier-navigation">
           {property && <Link to={`/properties/${encodeURIComponent(unit.property_id)}`} className="btn btn-secondary">← Zur Immobilie</Link>}
           <Link to="/units" className="btn btn-secondary">Alle Einheiten</Link>
+          {canAct && <NewForMenu label="Neu für diese Einheit" items={NEW_FOR_UNIT} prefill={prefill} />}
         </div>
       </div>
 
@@ -99,7 +112,10 @@ export default function UnitOverview() {
                 <dt>{t('pages.unitOverview.deposit') || 'Kaution'}</dt><dd>{activeContract.deposit_amount ? `${formatMoney(activeContract.deposit_amount)}` : '—'}</dd>
               </dl>
             ) : (
-              <p className="empty-text">{t('pages.unitOverview.notRented') || 'Nicht vermietet'}</p>
+              <div className="empty-text">
+                <p>{t('pages.unitOverview.notRented') || 'Nicht vermietet'}</p>
+                {canContract && <Link className="btn btn-primary btn-sm" to={newContract.to} state={newContract.state}>Mietvertrag anlegen</Link>}
+              </div>
             )}
           </div>
         </div>
@@ -113,7 +129,8 @@ export default function UnitOverview() {
               <ul className="overview-list">
                 {contracts.map(c => (
                   <li key={c.id}>
-                    <span>{c.contract_number} ({formatDate(c.start_date)} – {c.end_date ? formatDate(c.end_date) : 'unbefristet'})</span>
+                    <span>{c.contract_number} ({formatDate(c.start_date)} – {c.end_date ? formatDate(c.end_date) : 'unbefristet'})
+                      {c.tenant_id && <> · <PartyLink tenantId={c.tenant_id}>Parteiakte</PartyLink></>}</span>
                     <StatusBadge status={c.status} />
                   </li>
                 ))}

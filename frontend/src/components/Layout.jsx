@@ -9,100 +9,16 @@ import NotificationBell from './NotificationBell';
 import { TutorialProvider, useTutorial } from './Tutorial';
 import { PartyWorkspaceProvider } from '../features/partyWorkspace/PartyWorkspace';
 import {
-  DashboardIcon, PortfolioIcon, PropertyIcon, UnitIcon,
-  TenantIcon, ContractIcon, AccountIcon, BookingIcon,
-  InvoiceIcon, MaintenanceIcon, TaskIcon, DocumentIcon,
   SunIcon, MoonIcon, LogoutIcon, ChevronLeftIcon, ChevronRightIcon,
-  RentIcon, MeterIcon, ContactIcon, StatementIcon, MessageIcon, SettingsIcon,
-  CategoryIcon, DepositIcon, InsuranceIcon, IntegrationIcon,
-  CalendarIcon, ChartIcon, SearchIcon, MenuIcon, CloseIcon, HelpIcon,
+  SettingsIcon, MenuIcon, CloseIcon, HelpIcon,
 } from './Icons';
+import { Keyboard, Star } from 'lucide-react';
+import { NAV_SECTIONS } from './navigation';
+import ShortcutHelp from './ShortcutHelp';
+import { useAuth } from '../contexts/AuthContext';
+import { useNavFavorites } from '../utils/navFavorites';
+import { dropNewEntry, holdNewEntry, requestNewEntry } from '../utils/newEntry';
 
-const NAV_SECTIONS = [
-  {
-    labelKey: 'navigation.sections.overview',
-    fallback: 'Overview',
-    items: [
-      { to: '/', labelKey: 'navigation.main.dashboard', fallback: 'Dashboard', icon: DashboardIcon },
-    ],
-  },
-  {
-    labelKey: 'navigation.sections.portfolio',
-    fallback: 'Portfolio',
-    items: [
-      { to: '/portfolios', labelKey: 'navigation.main.portfolio', fallback: 'Portfolios', icon: PortfolioIcon },
-      { to: '/properties', labelKey: 'navigation.main.properties', fallback: 'Immobilien', icon: PropertyIcon },
-      { to: '/units', labelKey: 'units.list.title', fallback: 'Einheiten', icon: UnitIcon },
-      { to: '/insurances', labelKey: 'navigation.main.insurances', fallback: 'Versicherungen', icon: InsuranceIcon },
-      { to: '/service-contracts', labelKey: 'navigation.main.serviceContracts', fallback: 'Objektverträge', icon: ContractIcon },
-    ],
-  },
-  {
-    labelKey: 'navigation.sections.tenants',
-    fallback: 'Mieter & Verträge',
-    items: [
-      { to: '/tenants', labelKey: 'tenantsContracts.tenants.title', fallback: 'Mieter', icon: TenantIcon },
-      { to: '/contracts', labelKey: 'tenantsContracts.contracts.title', fallback: 'Verträge', icon: ContractIcon },
-      { to: '/contract-wizard', labelKey: 'navigation.main.contractWizard', fallback: 'Mietvertrag-Wizard', icon: ContractIcon },
-      { to: '/contacts', labelKey: 'navigation.main.contacts', fallback: 'Kontakte', icon: ContactIcon },
-      { to: '/deposits', labelKey: 'navigation.main.deposits', fallback: 'Kautionen', icon: DepositIcon },
-      { to: '/rent-adjustments', labelKey: 'navigation.main.rentAdjustments', fallback: 'Mietanpassungen', icon: RentIcon },
-      { to: '/handover-protocols', labelKey: 'navigation.main.handoverProtocols', fallback: 'Übergabeprotokolle', icon: DocumentIcon },
-    ],
-  },
-  {
-    labelKey: 'navigation.sections.vacancy',
-    fallback: 'Leerstand',
-    items: [
-      { to: '/leads', labelKey: 'navigation.main.leads', fallback: 'Interessenten', icon: TenantIcon },
-      { to: '/listings', labelKey: 'navigation.main.listings', fallback: 'Inserate', icon: SearchIcon },
-      { to: '/viewings', labelKey: 'navigation.main.viewings', fallback: 'Besichtigungen', icon: CalendarIcon },
-    ],
-  },
-  {
-    labelKey: 'navigation.sections.finance',
-    fallback: 'Finanzen',
-    items: [
-      { to: '/accounts', labelKey: 'finance.accounts.title', fallback: 'Konten', icon: AccountIcon },
-      { to: '/bookings', labelKey: 'finance.bookings.title', fallback: 'Buchungen', icon: BookingIcon },
-      { to: '/invoices', labelKey: 'finance.invoices.title', fallback: 'Rechnungen', icon: InvoiceIcon },
-      { to: '/invoice-review', labelKey: 'navigation.main.invoiceReview', fallback: 'Rechnungsprüfung', icon: InvoiceIcon },
-      { to: '/rent-overview', labelKey: 'navigation.main.rentOverview', fallback: 'Mietübersicht', icon: RentIcon },
-      { to: '/statements', labelKey: 'navigation.main.statements', fallback: 'Abrechnungen', icon: StatementIcon },
-      { to: '/receivables', labelKey: 'navigation.main.receivables', fallback: 'Forderungen', icon: InvoiceIcon },
-      { to: '/dunning', labelKey: 'navigation.main.dunning', fallback: 'Mahnwesen', icon: InvoiceIcon },
-      { to: '/review', labelKey: 'navigation.main.review', fallback: 'Prüfliste', icon: InvoiceIcon },
-      { to: '/rent-charges', labelKey: 'navigation.main.rentCharges', fallback: 'Sollstellungen', icon: RentIcon },
-    ],
-  },
-  {
-    labelKey: 'navigation.sections.operations',
-    fallback: 'Betrieb',
-    items: [
-      { to: '/calendar', labelKey: 'navigation.main.calendar', fallback: 'Kalender', icon: CalendarIcon },
-      { to: '/maintenance', labelKey: 'navigation.main.maintenance', fallback: 'Wartung', icon: MaintenanceIcon },
-      { to: '/tasks', labelKey: 'navigation.main.tasks', fallback: 'Aufgaben', icon: TaskIcon },
-      { to: '/documents', labelKey: 'navigation.main.documents', fallback: 'Dokumente', icon: DocumentIcon },
-      { to: '/meters', labelKey: 'navigation.main.meters', fallback: 'Zähler', icon: MeterIcon },
-      { to: '/messages', labelKey: 'navigation.main.messages', fallback: 'Nachrichten', icon: MessageIcon },
-    ],
-  },
-  {
-    labelKey: 'navigation.sections.configuration',
-    fallback: 'Konfiguration',
-    items: [
-      { to: '/categories', labelKey: 'navigation.main.categories', fallback: 'Kategorien', icon: CategoryIcon },
-      { to: '/budgets', labelKey: 'navigation.main.budgets', fallback: 'Budgets', icon: ChartIcon },
-      { to: '/tax-rates', labelKey: 'navigation.main.taxRates', fallback: 'Steuersätze', icon: AccountIcon },
-      { to: '/allocation-keys', labelKey: 'navigation.main.allocationKeys', fallback: 'Verteilerschlüssel', icon: StatementIcon },
-      { to: '/integrations', labelKey: 'navigation.main.integrations', fallback: 'Schnittstellen', icon: IntegrationIcon },
-      { to: '/escalation-rules', labelKey: 'navigation.main.escalationRules', fallback: 'Eskalationsregeln', icon: MaintenanceIcon },
-      { to: '/notification-templates', labelKey: 'navigation.main.notificationTemplates', fallback: 'Benachrichtigungsvorlagen', icon: MessageIcon },
-      { to: '/history', labelKey: 'navigation.main.history', fallback: 'Änderungsprotokoll', icon: DocumentIcon },
-      { to: '/settings', labelKey: 'navigation.main.settings', fallback: 'Einstellungen', icon: SettingsIcon },
-    ],
-  },
-];
 
 const LOCALES = [
   { code: 'de-DE', label: 'DE' },
@@ -150,12 +66,16 @@ export default function Layout() {
 }
 
 const PRIMARY_PATHS = ['/', '/properties', '/tenants', '/bookings', '/tasks', '/documents'];
+const ALL_ITEMS = NAV_SECTIONS.flatMap(section => section.items);
+const PINNABLE_PATHS = ALL_ITEMS.map(item => item.to).filter(path => !PRIMARY_PATHS.includes(path));
+const isEditable = element => element instanceof HTMLElement
+  && (element.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(element.tagName));
 const PRIMARY_ITEMS = PRIMARY_PATHS.map(path => NAV_SECTIONS.flatMap(section => section.items).find(item => item.to === path));
 const GROUPS = NAV_SECTIONS.slice(1).map(section => ({ ...section, items: section.items.filter(item => !PRIMARY_PATHS.includes(item.to)) }));
 const SHELL_TEXT = {
-  de: { navigation: 'Hauptnavigation', open: 'Navigation öffnen', close: 'Navigation schließen', workspace: 'Arbeitsplatz', areas: 'Verwaltungsbereiche', expand: 'Navigation erweitern', collapse: 'Navigation einklappen', theme: 'Darstellung wechseln', logout: 'Abmelden' },
-  en: { navigation: 'Main navigation', open: 'Open navigation', close: 'Close navigation', workspace: 'Workspace', areas: 'Management', expand: 'Expand navigation', collapse: 'Collapse navigation', theme: 'Change theme', logout: 'Sign out' },
-  es: { navigation: 'Navegación principal', open: 'Abrir navegación', close: 'Cerrar navegación', workspace: 'Área de trabajo', areas: 'Administración', expand: 'Ampliar navegación', collapse: 'Contraer navegación', theme: 'Cambiar tema', logout: 'Cerrar sesión' },
+  de: { favorites: 'Favoriten', pin: 'Als Favorit in die Seitenleiste', unpin: 'Aus den Favoriten entfernen', shortcuts: 'Tastenkürzel', navigation: 'Hauptnavigation', open: 'Navigation öffnen', close: 'Navigation schließen', workspace: 'Arbeitsplatz', areas: 'Verwaltungsbereiche', expand: 'Navigation erweitern', collapse: 'Navigation einklappen', theme: 'Darstellung wechseln', logout: 'Abmelden' },
+  en: { favorites: 'Favourites', pin: 'Pin to the sidebar', unpin: 'Remove from favourites', shortcuts: 'Keyboard shortcuts', navigation: 'Main navigation', open: 'Open navigation', close: 'Close navigation', workspace: 'Workspace', areas: 'Management', expand: 'Expand navigation', collapse: 'Collapse navigation', theme: 'Change theme', logout: 'Sign out' },
+  es: { favorites: 'Favoritos', pin: 'Fijar en la barra lateral', unpin: 'Quitar de favoritos', shortcuts: 'Atajos de teclado', navigation: 'Navegación principal', open: 'Abrir navegación', close: 'Cerrar navegación', workspace: 'Área de trabajo', areas: 'Administración', expand: 'Ampliar navegación', collapse: 'Contraer navegación', theme: 'Cambiar tema', logout: 'Cerrar sesión' },
 };
 
 function LayoutFrame() {
@@ -169,6 +89,9 @@ function LayoutFrame() {
   const [groupsOpen, setGroupsOpen] = useState({});
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState(null);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [favorites, toggleFavorite] = useNavFavorites(useAuth()?.user?.id, PINNABLE_PATHS);
+  const favoriteItems = favorites.map(path => ALL_ITEMS.find(item => item.to === path)).filter(Boolean);
   const sidebarRef = useRef(null);
   const closeRef = useRef(null);
   const menuRef = useRef(null);
@@ -179,6 +102,34 @@ function LayoutFrame() {
   const activeSection = NAV_SECTIONS.find(section => section.items.includes(activeItem));
   const activeGroup = GROUPS.find(section => section.items.some(item => item.to === activeItem?.to))?.labelKey;
   const currentPageTitle = activeItem ? tr(activeItem.labelKey, activeItem.fallback) : tr('navigation.main.dashboard', 'Dashboard');
+
+  // /bookings?neu=1 (a quick action of the search): drop the marker so a reload or a later
+  // filter change does not open the form again, then ask the page's list for its New form.
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get('neu') !== '1') { dropNewEntry(location.pathname); return; }
+    params.delete('neu');
+    const { prefill, ...state } = location.state || {};
+    navigate({ pathname: location.pathname, search: params.toString() ? `?${params}` : '', hash: location.hash },
+      { replace: true, state: Object.keys(state).length ? state : null });
+    if (!requestNewEntry(prefill)) holdNewEntry(location.pathname, prefill);
+  }, [location, navigate]);
+
+  // "?" shows the shortcuts, Alt+N asks the page's list for its New form. Never while typing
+  // or while a dialog is open (its own keys apply there).
+  useEffect(() => {
+    const keydown = event => {
+      if (event.defaultPrevented || event.ctrlKey || event.metaKey || isEditable(event.target)) return;
+      if (document.querySelector('[aria-modal="true"]')) return;
+      if (event.key === '?') { event.preventDefault(); setShowShortcuts(true); }
+      else if (event.altKey && event.code === 'KeyN') { event.preventDefault(); requestNewEntry(); }
+    };
+    document.addEventListener('keydown', keydown);
+    return () => document.removeEventListener('keydown', keydown);
+  }, []);
+
+  // The browser tab and history name the page, so several open tabs can be told apart.
+  useEffect(() => { document.title = `${currentPageTitle} · ImmoManager Pro`; }, [currentPageTitle]);
 
   useEffect(() => {
     if (activeGroup) setGroupsOpen(current => ({ ...current, [activeGroup]: true }));
@@ -262,6 +213,10 @@ function LayoutFrame() {
         </div>
         <nav className="sidebar-nav" id="primary-navigation" aria-label={words.navigation}>
           <div className="nav-primary">{PRIMARY_ITEMS.map(navItem)}</div>
+          {favoriteItems.length > 0 && <>
+            <div className="sidebar-section-label">{words.favorites}</div>
+            <div className="nav-favorites">{favoriteItems.map(navItem)}</div>
+          </>}
           <div className="sidebar-section-label">{words.areas}</div>
           {GROUPS.map((section, index) => {
             const open = !collapsed && Boolean(groupsOpen[section.labelKey]);
@@ -293,16 +248,26 @@ function LayoutFrame() {
         <div className="top-bar">
           <div className="top-bar-left">
             {mobile && <button ref={menuRef} type="button" className="top-bar-mobile-toggle" onClick={() => setMobileNavOpen(true)} aria-controls="primary-navigation" aria-expanded={mobileNavOpen} aria-label={words.open}><MenuIcon size={20} /></button>}
-            <div className="top-bar-page-title"><span className="shell-context">{activeSection ? tr(activeSection.labelKey, activeSection.fallback) : words.workspace}</span><span className="shell-context-divider" aria-hidden="true">/</span><span>{currentPageTitle}</span></div>
+            <div className="top-bar-page-title"><span className="shell-context">{activeSection ? tr(activeSection.labelKey, activeSection.fallback) : words.workspace}</span><span className="shell-context-divider" aria-hidden="true">/</span><span>{currentPageTitle}</span>
+              {activeItem && PINNABLE_PATHS.includes(activeItem.to) && (() => {
+                const pinned = favorites.includes(activeItem.to);
+                return <button type="button" className={`favorite-toggle${pinned ? ' is-pinned' : ''}`} aria-pressed={pinned}
+                  aria-label={`${pinned ? words.unpin : words.pin}: ${currentPageTitle}`} title={pinned ? words.unpin : words.pin}
+                  onClick={() => toggleFavorite(activeItem.to)}><Star size={15} aria-hidden="true" fill={pinned ? 'currentColor' : 'none'} /></button>;
+              })()}
+            </div>
           </div>
           <SearchBar />
-          <div className="top-bar-utilities"><TestVersionBadge /><TutorialButton /><NotificationBell /></div>
+          <div className="top-bar-utilities"><TestVersionBadge />
+            <button type="button" className="top-bar-icon-btn top-bar-shortcuts" onClick={() => setShowShortcuts(true)} title={`${words.shortcuts} (?)`} aria-label={words.shortcuts}><Keyboard size={18} aria-hidden="true" /></button>
+            <TutorialButton /><NotificationBell /></div>
         </div>
         <div className="main-content-body">
           <h1 className="page-title page-title-auto">{currentPageTitle}</h1>
           <Outlet />
         </div>
       </main>
+      {showShortcuts && <ShortcutHelp onClose={() => setShowShortcuts(false)} />}
     </div>
   );
 }

@@ -19,16 +19,16 @@ const CATEGORY_OPTIONS = [
 ];
 
 const COLUMNS = [
-  { key: 'property_name', label: 'Immobilie', filterType: 'text' },
+  { key: 'property_name', label: 'Immobilie', filterType: 'text', link: 'property' },
   { key: 'year', label: 'Jahr', filterType: 'select' },
   { key: 'category', label: 'Kategorie', filterType: 'select',
     render: v => {
       const labels = { maintenance: 'Instandhaltung', operating_costs: 'Betriebskosten', renovation: 'Renovierung', reserve: 'Rücklage', other: 'Sonstiges' };
       return labels[v] || v;
     }},
-  { key: 'planned_amount', label: 'Geplant (€)', type: 'number', align: 'right',
+  { key: 'planned_amount', label: 'Geplant (€)', type: 'number', sum: true, align: 'right',
     render: v => fmt(v) },
-  { key: 'actual_amount', label: 'Tatsächlich (€)', type: 'number', align: 'right',
+  { key: 'actual_amount', label: 'Tatsächlich (€)', type: 'number', sum: true, align: 'right',
     render: v => fmt(v) },
   { key: 'variance', label: 'Abweichung (€)', type: 'number', align: 'right',
     render: (v) => {

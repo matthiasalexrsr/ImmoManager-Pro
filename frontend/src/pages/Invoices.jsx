@@ -8,6 +8,9 @@ import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 import { CheckCircleIcon } from '../components/Icons';
 import { formatDate, formatMoney, formatPercent } from '../utils/format';
+import { Copy as CopyIcon } from 'lucide-react';
+import { duplicateOf } from '../utils/duplicate';
+import { aktenwerkBulkAction, documentExchangeId, useAktenwerkReady } from '../features/aktenwerk/aktenwerkApi';
 
 const STATUS_OPTIONS = [
   { value: 'open', label: 'Offen' },
@@ -23,9 +26,10 @@ const CATEGORY_LABELS = {
 };
 
 const COLUMNS = [
-  { key: 'invoice_number', label: 'Rechnungs-Nr.', filterType: 'text' },
-  { key: 'supplier', label: 'Lieferant', filterType: 'text' },
-  { key: 'property_name', label: 'Immobilie', filterType: 'text' },
+  // the number opens the invoice's review: checks, decision, payments, history
+  { key: 'invoice_number', label: 'Rechnungs-Nr.', filterType: 'text', link: { kind: 'invoiceReview', idKey: 'id' } },
+  { key: 'supplier', label: 'Lieferant', filterType: 'text', link: 'contact' },
+  { key: 'property_name', label: 'Immobilie', filterType: 'text', link: 'property' },
   { key: 'category', hidden: true, label: 'Kategorie', filterType: 'select',
     render: v => CATEGORY_LABELS[v] || v || '—' },
   { key: 'invoice_date', label: 'Datum', type: 'date', filterType: 'dateRange' },
@@ -37,11 +41,11 @@ const COLUMNS = [
       const overdue = row.status !== 'paid' && row.status !== 'cancelled' && due < today;
       return <span style={{ color: overdue ? 'var(--danger)' : 'inherit', fontWeight: overdue ? 600 : 400 }}>{formatDate(v)}</span>;
     }},
-  { key: 'net_amount', hidden: true, label: 'Netto (€)', type: 'number', align: 'right',
+  { key: 'net_amount', hidden: true, label: 'Netto (€)', type: 'number', sum: true, align: 'right',
     render: v => formatMoney(v) },
   { key: 'vat_display', hidden: true, label: 'MwSt', align: 'right',
     render: (_, row) => row.vat_rate != null ? `${formatMoney(row.vat_amount || 0)} (${formatPercent(row.vat_rate)})` : '—' },
-  { key: 'gross_amount', label: 'Brutto (€)', type: 'number', align: 'right', filterType: 'numberRange',
+  { key: 'gross_amount', label: 'Brutto (€)', type: 'number', sum: true, align: 'right', filterType: 'numberRange',
     render: v => v != null ? <strong>{formatMoney(v)}</strong> : '—' },
   { key: 'payment_reference', hidden: true, label: 'Zahlungsreferenz' },
   { key: 'status', label: 'Status', type: 'status', filterType: 'select',
@@ -57,6 +61,9 @@ export default function Invoices() {
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
+  // values of a duplicated invoice for the New form (null: an empty form)
+  const [prefill, setPrefill] = useState(null);
+  const aktenwerkReady = useAktenwerkReady();
   const [filter, setFilter] = useState('all');
 
   const refreshData = () => {
@@ -163,7 +170,8 @@ export default function Invoices() {
     if (store) store.invalidateRelated('invoices', 'contracts', 'receivables');
   };
 
-  if (loading) return <div className="page-loading">Lade Rechnungen...</div>;
+  // only the first load replaces the page; a reload keeps the table and an open form ("Speichern & weiteren")
+  if (loading && invoices.length === 0) return <div className="page-loading">Lade Rechnungen...</div>;
 
   return (
     <div className="page">
@@ -215,24 +223,32 @@ export default function Invoices() {
         title="Rechnungen"
         columns={COLUMNS}
         data={filtered}
-        onAdd={() => setModal('create')}
+        rowName={row => `${row.supplier || 'Rechnung'} ${row.invoice_number || ''}`.trim()}
+        // the invoice's document (received through the invoice review) for the document management system
+        bulkActions={aktenwerkReady ? [aktenwerkBulkAction(row => documentExchangeId(row.source_document_id))] : []}
+        onAdd={values => { setPrefill(values || null); setModal('create'); }}
         onEdit={row => setModal(row)}
         onDelete={handleDelete}
-        rowActions={row => (row.status === 'open' || row.status === 'overdue' ? [{
+        rowActions={row => [{
+          label: 'Duplizieren', write: true, icon: <CopyIcon size={15} />,
+          // a new invoice of the same supplier: its own number, state and document
+          onClick: () => { setPrefill(duplicateOf(row, ['invoice_number', 'status', 'source_document_id', 'payment_reference'])); setModal('create'); },
+        }, ...(row.status === 'open' || row.status === 'overdue' ? [{
           label: 'Als bezahlt markieren',
           write: true,
           icon: <CheckCircleIcon size={15} />,
           onClick: async () => {
             if (await confirm(`"${row.supplier}" ${t('pages.invoices.markPaidConfirm') || 'als bezahlt markieren?'}`)) markPaid(row);
           },
-        }] : [])}
+        }] : [])]}
       />
 
       {modal && (
         <FormModal
           title={modal === 'create' ? 'Rechnung erstellen' : 'Rechnung bearbeiten'}
+          repeatKeep={['property_id', 'invoice_date', 'vat_rate', 'category']}
           fields={fields}
-          initial={modal === 'create' ? null : modal}
+          initial={modal === 'create' ? prefill : modal}
           onSave={handleSave}
           onClose={() => setModal(null)}
         />

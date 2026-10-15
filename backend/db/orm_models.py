@@ -150,6 +150,9 @@ class ContractORM(Base):
     index_rent: Mapped[str | None] = mapped_column(Text)
     service_charge_settlement: Mapped[str | None] = mapped_column(Text)
     persons: Mapped[int | None] = mapped_column(Integer)
+    # running tenancy taken over: account kept from this month on, with the balance of that day
+    ledger_start: Mapped[date | None] = mapped_column(Date)
+    carried_balance: Mapped[float | None] = mapped_column(Numeric(12, 2, asdecimal=False))
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 

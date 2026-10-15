@@ -2,6 +2,9 @@
 
 Full-stack property management application for German real estate portfolios.
 
+- What the current version does, and how to install and update it: [docs/RELEASE_NOTES.md](docs/RELEASE_NOTES.md) (German)
+- How it is built and how to extend it: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md); all documents: [docs/README.md](docs/README.md)
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -163,6 +166,11 @@ All endpoints are under `/api/v1`. Full interactive docs at `/docs`.
 - Schema updates are explicit: `python -m backend.upgrade` (Windows package: `ImmoManager-Pro.exe upgrade`) takes a verified full backup first, then runs the migrations. The normal start never changes an existing schema: it initialises an empty database and refuses one that is behind the Alembic head. The desktop launcher (`python -m backend`, the `.exe`, `start.bat`), the Docker entrypoint, `scripts/update.sh` and the in-app updater run the explicit step for you. Databases created by older desktop versions without Alembic are adopted by that step.
 - Full backups (database, uploads, configuration, keys), the monthly restore probe, the second backup target and key handling: [docs/OPERATIONS_BACKUP_SECRETS_20261008.md](docs/OPERATIONS_BACKUP_SECRETS_20261008.md).
 - Reproducible installs: `pip install -r requirements.txt -c constraints.txt`, `npm ci`; Docker base images are pinned by digest.
+
+## Releases and updates
+
+- **Making a release:** set the version in `pyproject.toml`, update `docs/RELEASE_NOTES.md` (German, shown on the release page and in the app's update check) and push a tag `v<version>` (for example `v2.0.0`; `v2.1.0-rc1` becomes a pre-release). The workflow "Release (Windows)" builds the package `ImmoManager-Pro-<version>-Windows.zip` with `packaging/release/LIES MICH.txt`. It tries a first start, the upgrade check, a full backup and a restore probe, and an update from the previous release's package on the same data. Then it publishes the GitHub release. A tag that does not match `pyproject.toml` is refused. Run by hand without a tag, it only builds and tries the package.
+- **Updating an installation:** Settings → System → Updates → "Jetzt prüfen" reads the releases of `UPDATE_REPO_URL` (this repository by default) and only on that click. The Windows package shows the download link: unpack the new version into a new folder and start it; the data stays in `%LOCALAPPDATA%\ImmoManagerPro`, and the first start takes a verified full backup before it upgrades the database. Git checkouts can install the update themselves (outside production, or with `UPDATE_ALLOW_IN_PRODUCTION=true`).
 
 ## License
 

@@ -716,6 +716,29 @@ table.data-table tbody tr:last-child td {
   border-radius: 0 0 var(--radius-lg) var(--radius-lg);
 }
 
+.modal-footer .modal-shortcut-hint {
+  margin-right: auto;
+  align-self: center;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.modal-footer.modal-discard {
+  flex-wrap: wrap;
+  align-items: center;
+  background: var(--color-warning-light);
+}
+
+.modal-discard-question {
+  margin-right: auto;
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .modal-footer .modal-shortcut-hint { display: none; }
+  .modal-discard-question { flex: 1 1 100%; }
+}
+
 /* =============================================================
    FORMS
    ============================================================= */
@@ -1372,6 +1395,28 @@ table.data-table tbody tr:last-child td {
 .search-bar-group-header:first-child {
   border-top: none;
   margin-top: 0;
+}
+
+.search-bar-group-header-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.search-bar-clear-recent {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--color-primary, inherit);
+  font-size: 0.72rem;
+  text-transform: none;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
+.search-bar-clear-recent:hover {
+  text-decoration: underline;
 }
 
 /* =============================================================
@@ -3305,3 +3350,34 @@ table.data-table tbody tr:last-child td {
 }
 .portfolio-access-list label { display: flex; gap: 10px; align-items: center; padding: 6px 0; cursor: pointer; overflow-wrap: anywhere; }
 .portfolio-access-warning { margin-top: 8px; }
+
+.form-saved-next {
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius);
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+/* An active filter that came from a link (e.g. "Konto: Mietkonto Berlin"), removable */
+.filter-chip-active {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px 2px 10px;
+  border-radius: 999px;
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.date-input-row { display: flex; gap: 6px; align-items: center; }
+.date-input-row input { flex: 1 1 auto; min-width: 0; }
+.date-input-row .date-today { flex: 0 0 auto; }
+
+/* A required choice with nothing to choose yet names what is missing and links to it. */
+.form-hint.form-hint-missing { color: var(--color-warning); }
+.form-hint.form-hint-missing a { font-weight: 600; }

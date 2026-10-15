@@ -52,7 +52,7 @@ export default function Receivables() {
     { key: 'contract_label', label: t('tenantsContracts.contracts.title'), filterType: 'text' },
     { key: 'tenant_name', label: 'Mieter', filterType: 'text',
       render: (v, row) => row.tenant_id && v !== '—' ? <PartyLink tenantId={row.tenant_id}>{v}</PartyLink> : v },
-    { key: 'amount_due', label: t('finance.bookings.amount'), type: 'number', align: 'right',
+    { key: 'amount_due', label: t('finance.bookings.amount'), type: 'number', sum: true, align: 'right',
       render: v => formatMoney(v) },
     { key: 'due_date', label: t('finance.receivables.dueDate'), type: 'date', filterType: 'dateRange' },
     { key: 'status', label: 'Status', type: 'status', filterType: 'select',
@@ -96,7 +96,8 @@ export default function Receivables() {
     }
   };
 
-  if (loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  // only the first load replaces the page; a reload keeps the table and an open form
+  if (loading && receivables.length === 0) return <div className="page-loading">{t('ui.table.loading')}</div>;
   if (error) return <div className="page"><div className="alert alert-error">{error}</div></div>;
 
   return (
@@ -117,7 +118,7 @@ export default function Receivables() {
       />
       {modal && (
         <FormModal
-          title={modal === 'create' ? t('ui.buttons.create') : t('ui.buttons.edit')}
+          title={modal === 'create' ? 'Forderung erstellen' : 'Forderung bearbeiten'}
           fields={fields}
           initial={modal === 'create' ? null : modal}
           onSave={handleSave}

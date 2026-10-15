@@ -194,14 +194,14 @@ def check_for_updates() -> dict:
         "is_git_repo": _is_git_repo(),
         "update_channel": channel,
         "is_frozen": getattr(sys, "frozen", False),
+        # whether this installation can install the update itself (a git checkout); the Windows
+        # package is replaced by the new package instead (download_hint)
+        "can_apply": False,
+        "download_hint": None,
     }
 
     if not repo_url:
         result["error"] = "Kein GitHub-Repository konfiguriert (UPDATE_REPO_URL)"
-        return result
-
-    if getattr(sys, "frozen", False):
-        result["error"] = "Updates sind im PyInstaller-Bundle nicht verfügbar. Bitte neue Version herunterladen."
         return result
 
     # Extract owner/repo from URL
@@ -250,6 +250,14 @@ def check_for_updates() -> dict:
         result["release_url"] = release.get("html_url", "")
         result["published_at"] = release.get("published_at", "")
         result["update_available"] = is_newer_version(tag, current)
+        frozen = bool(result["is_frozen"])
+        result["can_apply"] = (not frozen and bool(result["is_git_repo"])
+                               and (not settings.is_production or settings.update_allow_in_production))
+        if result["update_available"] and not result["can_apply"]:
+            result["download_hint"] = (
+                "Neue Version von der Release-Seite herunterladen, das ZIP entpacken und das Programm der neuen "
+                "Version starten. Die Daten bleiben im bisherigen Datenordner; beim ersten Start legt das Programm "
+                "zuerst ein geprüftes Vollbackup an und aktualisiert dann die Datenbank.")
 
     except httpx.TimeoutException:
         result["error"] = "Zeitüberschreitung bei der Verbindung zu GitHub"

@@ -23,6 +23,8 @@ export default function Units() {
   const [units, setUnits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
+  // values a New form starts with when opened from elsewhere (the property page's "Einheit anlegen")
+  const [prefill, setPrefill] = useState(null);
   const [filter, setFilter] = useState('all');
 
   const refreshData = () => {
@@ -99,13 +101,13 @@ export default function Units() {
 
   const columns = [
     { key: 'label', label: t('units.list.columns.label') || 'Bezeichnung', filterType: 'text' },
-    { key: 'property_name', label: 'Immobilie', filterType: 'text' },
+    { key: 'property_name', label: 'Immobilie', filterType: 'text', link: 'property' },
     { key: 'unit_type', label: t('units.list.columns.type') || 'Typ', filterType: 'select' },
     { key: 'rooms', hidden: true, label: t('units.form.rooms') || 'Zimmer', type: 'number', align: 'right' },
     { key: 'floor', hidden: true, label: t('units.form.floor') || 'Etage' },
     { key: 'area_sqm', label: t('units.list.columns.area') || 'Fläche (m²)', type: 'number', align: 'right', filterType: 'numberRange',
       render: v => formatArea(v) },
-    { key: 'cold_rent', label: t('units.list.columns.coldRent') || 'Kaltmiete (€)', type: 'number', align: 'right', filterType: 'numberRange',
+    { key: 'cold_rent', label: t('units.list.columns.coldRent') || 'Kaltmiete (€)', type: 'number', sum: true, align: 'right', filterType: 'numberRange',
       render: v => formatMoney(v) },
     { key: 'warm_rent', hidden: true, label: 'Warmmiete (€)', type: 'number', align: 'right',
       render: v => formatMoney(v) },
@@ -120,7 +122,7 @@ export default function Units() {
     { key: 'property_id', label: t('portfolio.properties.form.name') || 'Immobilie', required: true, type: 'select',
       options: properties.map(p => ({ value: p.id, label: p.name })) },
     { key: 'label', label: t('units.list.columns.label') || 'Bezeichnung', required: true, placeholder: 'z.B. Wohnung 1 OG links' },
-    { key: 'unit_type', label: t('units.list.columns.type') || 'Typ', required: true, type: 'select', options: [
+    { key: 'unit_type', label: t('units.list.columns.type') || 'Typ', required: true, type: 'select', default: 'Wohnung', options: [
       { value: 'Wohnung', label: t('units.types.apartment') || 'Wohnung' },
       { value: 'Gewerbe', label: t('units.types.commercial') || 'Gewerbe' },
       { value: 'Stellplatz', label: t('units.types.parking') || 'Stellplatz' },
@@ -165,7 +167,8 @@ export default function Units() {
     if (store) store.invalidateRelated('units', 'properties', 'contracts');
   };
 
-  if (loading) return <div className="page-loading">Lade Einheiten...</div>;
+  // only the first load replaces the page; a reload keeps the table and an open form ("Speichern & weiteren")
+  if (loading && units.length === 0) return <div className="page-loading">Lade Einheiten...</div>;
 
   return (
     <div className="page">
@@ -216,7 +219,7 @@ export default function Units() {
         title={t('units.list.title') || 'Einheiten'}
         columns={columns}
         data={filtered}
-        onAdd={() => setModal('create')}
+        onAdd={values => { setPrefill(values || null); setModal('create'); }}
         onEdit={row => setModal(row)}
         onDelete={handleDelete}
         onRowClick={row => navigate(`/units/${row.id}`)}
@@ -225,8 +228,9 @@ export default function Units() {
       {modal && (
         <FormModal
           title={modal === 'create' ? 'Einheit erstellen' : 'Einheit bearbeiten'}
+          repeatKeep={['property_id', 'unit_type']}
           fields={fields}
-          initial={modal === 'create' ? null : modal}
+          initial={modal === 'create' ? prefill : modal}
           onSave={handleSave}
           onClose={() => setModal(null)}
         />

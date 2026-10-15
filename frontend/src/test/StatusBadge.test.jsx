@@ -19,4 +19,13 @@ describe('StatusBadge', () => {
 
     expect(screen.getByText('Sonderfall')).toHaveClass('badge-gray');
   });
+
+  it('shows a label the caller gives, coloured by the status', () => {
+    // Regression: contacts showed "supplier", overdue tasks "danger" because the label was ignored.
+    render(<><StatusBadge status="supplier" label="Dienstleister" /><StatusBadge status="danger" label="Überfällig" /></>);
+
+    expect(screen.getByText('Dienstleister')).toHaveClass('badge-gray');
+    expect(screen.getByText('Überfällig')).toHaveClass('badge-red');
+    expect(screen.queryByText('supplier')).toBeNull();
+  });
 });

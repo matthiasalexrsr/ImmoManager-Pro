@@ -66,7 +66,7 @@ const PORTAL_TEMPLATES = {
 
 const COLUMNS = [
   { key: 'title', label: 'Titel', filterType: 'text' },
-  { key: 'unit_label', label: 'Einheit', filterType: 'text' },
+  { key: 'unit_label', label: 'Einheit', filterType: 'text', link: 'unit' },
   { key: 'portal', label: 'Portal', filterType: 'select',
     render: v => PORTAL_TEMPLATES[v]?.label || v || '—' },
   { key: 'target_rent', label: 'Zielmiete (€)', type: 'number', align: 'right',
@@ -184,7 +184,8 @@ export default function Listings() {
     }
   };
 
-  if (loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  // only the first load replaces the page; a reload keeps the table and an open form
+  if (loading && listings.length === 0) return <div className="page-loading">{t('ui.table.loading')}</div>;
 
   return (
     <div className="page">

@@ -62,6 +62,18 @@
       "notes": "Notas",
       "attachments": "Adjuntos",
       "activity": "Actividad"
+    },
+    "actions": {
+      "booking": "Nuevo asiento",
+      "task": "Nueva tarea",
+      "invoice": "Nueva factura",
+      "contact": "Nuevo contacto",
+      "maintenance": "Nuevo caso de mantenimiento",
+      "event": "Nueva cita",
+      "receivable": "Nuevo crédito",
+      "unit": "Nueva unidad",
+      "lead": "Nuevo interesado",
+      "contract": "Nuevo contrato de alquiler"
     }
   },
   "topBar": {
@@ -130,7 +142,16 @@
       "search": "Buscar",
       "none": "— Ninguno —",
       "status": "Estado",
-      "cancel": "Cancelar"
+      "cancel": "Cancelar",
+      "discardQuestion": "¿Descartar los cambios sin guardar?",
+      "keepEditing": "Seguir editando",
+      "discard": "Descartar",
+      "saveShortcut": "Ctrl+Intro guarda",
+      "savedNext": "{{count}} guardados – siguiente entrada",
+      "saveAndNew": "Guardar y añadir otro",
+      "saveAndNewShortcut": "Ctrl+Mayús+Intro",
+      "today": "Hoy",
+      "todayFill": "Poner hoy"
     },
     "table": {
       "adjustColumns": "Ajustar columnas",
@@ -959,7 +980,7 @@
       "loadError": "No se pudo cargar el resumen de operación",
       "warnings": {
         "schedule_disabled": "La copia diaria está desactivada.",
-        "no_second_target": "No hay un segundo destino de copia (p. ej. unidad de red) configurado.",
+        "no_second_target": "No hay un segundo destino de copia. Indique en «Segundo destino» una carpeta en otro disco, una unidad USB o una unidad de red (propietario).",
         "second_target_failed": "La copia al segundo destino ha fallado.",
         "no_backup": "Todavía no hay ninguna copia completa correcta.",
         "backup_stale": "La última copia completa correcta tiene {{hours}} horas.",
@@ -967,12 +988,24 @@
         "no_probe": "Todavía no hay ninguna prueba de restauración superada.",
         "probe_stale": "La última prueba de restauración superada tiene {{days}} días.",
         "last_probe_failed": "La última prueba de restauración ha fallado.",
-        "keys_unprotected": "Las claves están en el archivo sin frase de contraseña (defina BACKUP_PASSPHRASE).",
+        "keys_unprotected": "Las claves están en el archivo sin frase de contraseña. Solución: añadir la línea BACKUP_PASSPHRASE=… al archivo {{file}}, reiniciar el programa y guardar la frase por separado.",
         "keys_not_in_backup": "Estas claves no están en la copia completa: {{ids}}; guárdelas por separado.",
         "plaintext_secrets": "{{count}} secreto(s) de integración todavía sin cifrar.",
         "secrets_error": "Los secretos de integración no se pueden leer (¿falta la clave?); los cambios están bloqueados.",
-        "schema_not_current": "La base de datos no tiene la versión de esquema actual."
-      }
+        "schema_not_current": "La base de datos no tiene la versión de esquema actual.",
+        "second_target_pending": "El segundo destino aún no tiene copia de la copia completa más reciente; «Copia completa ahora» la crea.",
+        "second_target_same_device": "El segundo destino está en la misma unidad que los datos y no protege ante una avería del disco."
+      },
+      "secondTargetSetUp": "Configurar",
+      "secondTargetChange": "Cambiar",
+      "secondTargetSave": "Guardar",
+      "secondTargetRemove": "Quitar",
+      "secondTargetCancel": "Cancelar",
+      "secondTargetFixed": "fijado en la configuración (BACKUP_SECOND_TARGET)",
+      "secondTargetPlaceholder": "p. ej. E:\\ImmoManager-Copia o \\\\NAS\\Copia",
+      "secondTargetHint": "Una carpeta en otro disco, una unidad USB o una unidad de red. Cada copia completa se copia allí y se comprueba la copia.",
+      "secondTargetSaved": "Guardado: {{path}}. La próxima copia completa se copiará allí; ahora mismo con «Copia completa ahora».",
+      "secondTargetRemoved": "Se ha quitado el segundo destino."
     },
     "about": {
       "title": "Acerca de ImmoManager Pro",
@@ -1002,7 +1035,8 @@
       "rolledBack": "Se realizó una reversión automática. Sus datos no han cambiado.",
       "history": "Historial de actualizaciones",
       "showHistory": "Mostrar",
-      "noHistory": "Aún no se han realizado actualizaciones"
+      "noHistory": "Aún no se han realizado actualizaciones",
+      "download": "Descargar la nueva versión"
     }
   },
   "search": {
@@ -1012,7 +1046,11 @@
       "results": "Resultados",
       "noResults": "No se encontraron resultados.",
       "shownOf": "{{shown}} de {{total}}",
-      "loadMore": "Cargar más"
+      "loadMore": "Cargar más",
+      "pages": "Páginas",
+      "recentlyOpened": "Abiertos recientemente",
+      "clearRecent": "Borrar historial",
+      "actions": "Acciones"
     }
   },
   "notifications": {
@@ -2024,7 +2062,25 @@
       "filterTo": "Hasta",
       "filterMin": "Mín",
       "filterMax": "Máx",
-      "filterText": "Filtro…"
+      "filterText": "Filtro…",
+      "bulk": {
+        "region": "Selección",
+        "selected": "{{count}} seleccionados",
+        "selectAll": "Seleccionar los {{count}} resultados",
+        "clear": "Quitar selección",
+        "applies": "Afecta a {{count}} de las entradas seleccionadas",
+        "done": "{{label}}: {{count}} hechos",
+        "failed": "{{count}} fallidos",
+        "skipped": "{{count}} no afectados",
+        "more": "y {{count}} más",
+        "selectPage": "Seleccionar todas las entradas de esta página",
+        "selectRow": "Seleccionar"
+      },
+      "total": "Total ({{count}})",
+      "empty": "Todavía no hay entradas.",
+      "noMatches": "Ningún resultado para esta búsqueda o estos filtros.",
+      "resetSearch": "Restablecer búsqueda y filtros",
+      "addEntry": "Añadir una entrada"
     },
     "fileViewer": {
       "title": "Vista de archivo",
@@ -2325,5 +2381,15 @@
     "openDocument": "Ver documento",
     "fromBill": "Justificante de factura",
     "unlink": "Desvincular"
+  },
+  "shortcutHelp": {
+    "title": "Atajos de teclado",
+    "or": "o",
+    "search": "Abrir la búsqueda (páginas, acciones, registros)",
+    "firstHit": "En la búsqueda: abrir la primera entrada",
+    "newEntry": "Crear una entrada en la lista de esta página",
+    "save": "Guardar el formulario",
+    "close": "Cerrar un diálogo o la búsqueda",
+    "help": "Mostrar este resumen"
   }
 }

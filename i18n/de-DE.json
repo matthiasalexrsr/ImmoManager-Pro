@@ -62,6 +62,18 @@
       "notes": "Notizen",
       "attachments": "Anhänge",
       "activity": "Aktivität"
+    },
+    "actions": {
+      "booking": "Neue Buchung",
+      "task": "Neue Aufgabe",
+      "invoice": "Neue Rechnung",
+      "contact": "Neuer Kontakt",
+      "maintenance": "Neuer Wartungsfall",
+      "event": "Neuer Termin",
+      "receivable": "Neue Forderung",
+      "unit": "Neue Einheit",
+      "lead": "Neuer Interessent",
+      "contract": "Neuer Mietvertrag"
     }
   },
   "topBar": {
@@ -130,7 +142,16 @@
       "search": "Suchen",
       "none": "— Keine —",
       "status": "Status",
-      "cancel": "Abbrechen"
+      "cancel": "Abbrechen",
+      "discardQuestion": "Ungespeicherte Änderungen verwerfen?",
+      "keepEditing": "Weiter bearbeiten",
+      "discard": "Verwerfen",
+      "saveShortcut": "Strg+Enter speichert",
+      "savedNext": "{{count}} gespeichert – nächster Eintrag",
+      "saveAndNew": "Speichern & weiteren",
+      "saveAndNewShortcut": "Strg+Umschalt+Enter",
+      "today": "Heute",
+      "todayFill": "Heute eintragen"
     },
     "table": {
       "adjustColumns": "Spalten anpassen",
@@ -959,7 +980,7 @@
       "loadError": "Betriebsübersicht konnte nicht geladen werden",
       "warnings": {
         "schedule_disabled": "Die tägliche Sicherung ist ausgeschaltet.",
-        "no_second_target": "Kein zweites Sicherungsziel (z. B. Netzlaufwerk) eingerichtet.",
+        "no_second_target": "Kein zweites Sicherungsziel eingerichtet. Bei „Zweites Ziel“ einen Ordner auf einer anderen Festplatte, einem USB-Laufwerk oder Netzlaufwerk eintragen (Eigentümer).",
         "second_target_failed": "Die Kopie ins zweite Ziel ist fehlgeschlagen.",
         "no_backup": "Es gibt noch kein erfolgreiches Vollbackup.",
         "backup_stale": "Das letzte erfolgreiche Vollbackup ist {{hours}} Stunden alt.",
@@ -967,12 +988,24 @@
         "no_probe": "Es gibt noch keine bestandene Wiederherstellungsprobe.",
         "probe_stale": "Die letzte bestandene Wiederherstellungsprobe ist {{days}} Tage alt.",
         "last_probe_failed": "Die letzte Wiederherstellungsprobe ist fehlgeschlagen.",
-        "keys_unprotected": "Die Schlüssel liegen ohne Passphrase im Archiv (BACKUP_PASSPHRASE setzen).",
+        "keys_unprotected": "Die Schlüssel liegen ohne Passphrase im Archiv. Abhilfe: in der Datei {{file}} die Zeile BACKUP_PASSPHRASE=… ergänzen, das Programm neu starten und die Passphrase getrennt aufbewahren.",
         "keys_not_in_backup": "Diese Schlüssel sind nicht im Vollbackup: {{ids}} – getrennt sichern.",
         "plaintext_secrets": "{{count}} Integrationsgeheimnis(se) noch unverschlüsselt gespeichert.",
         "secrets_error": "Integrationsgeheimnisse sind nicht lesbar (Schlüssel fehlt?); Änderungen sind gesperrt.",
-        "schema_not_current": "Die Datenbank ist nicht auf dem aktuellen Schemastand."
-      }
+        "schema_not_current": "Die Datenbank ist nicht auf dem aktuellen Schemastand.",
+        "second_target_pending": "Im zweiten Ziel liegt noch keine Kopie des neuesten Vollbackups; „Vollbackup jetzt“ legt sie an.",
+        "second_target_same_device": "Das zweite Ziel liegt auf demselben Laufwerk wie die Daten und schützt nicht vor einem Festplattendefekt."
+      },
+      "secondTargetSetUp": "Einrichten",
+      "secondTargetChange": "Ändern",
+      "secondTargetSave": "Speichern",
+      "secondTargetRemove": "Entfernen",
+      "secondTargetCancel": "Abbrechen",
+      "secondTargetFixed": "festgelegt in der Konfiguration (BACKUP_SECOND_TARGET)",
+      "secondTargetPlaceholder": "z. B. E:\\ImmoManager-Sicherung oder \\\\NAS\\Sicherung",
+      "secondTargetHint": "Ein Ordner auf einer anderen Festplatte, einem USB-Laufwerk oder Netzlaufwerk. Jedes Vollbackup wird dorthin kopiert und die Kopie geprüft.",
+      "secondTargetSaved": "Gespeichert: {{path}}. Das nächste Vollbackup wird dorthin kopiert, sofort mit „Vollbackup jetzt“.",
+      "secondTargetRemoved": "Das zweite Ziel ist entfernt."
     },
     "about": {
       "title": "Über ImmoManager Pro",
@@ -1002,7 +1035,8 @@
       "rolledBack": "Automatischer Rollback wurde durchgeführt. Ihre Daten sind unverändert.",
       "history": "Update-Verlauf",
       "showHistory": "Anzeigen",
-      "noHistory": "Noch keine Updates durchgeführt"
+      "noHistory": "Noch keine Updates durchgeführt",
+      "download": "Neue Version herunterladen"
     }
   },
   "search": {
@@ -1012,7 +1046,11 @@
       "results": "Treffer",
       "noResults": "Keine Treffer gefunden.",
       "shownOf": "{{shown}} von {{total}}",
-      "loadMore": "Weitere laden"
+      "loadMore": "Weitere laden",
+      "pages": "Seiten",
+      "recentlyOpened": "Zuletzt geöffnet",
+      "clearRecent": "Verlauf leeren",
+      "actions": "Aktionen"
     }
   },
   "notifications": {
@@ -1264,7 +1302,25 @@
       "filterTo": "Bis",
       "filterMin": "Min",
       "filterMax": "Max",
-      "filterText": "Filter…"
+      "filterText": "Filter…",
+      "bulk": {
+        "region": "Auswahl",
+        "selected": "{{count}} ausgewählt",
+        "selectAll": "Alle {{count}} Treffer auswählen",
+        "clear": "Auswahl aufheben",
+        "applies": "Betrifft {{count}} der ausgewählten Einträge",
+        "done": "{{label}}: {{count}} erledigt",
+        "failed": "{{count}} fehlgeschlagen",
+        "skipped": "{{count}} nicht betroffen",
+        "more": "und {{count}} weitere",
+        "selectPage": "Alle Einträge dieser Seite auswählen",
+        "selectRow": "Auswählen"
+      },
+      "total": "Summe ({{count}})",
+      "empty": "Keine Einträge vorhanden.",
+      "noMatches": "Keine Treffer für diese Suche oder diese Filter.",
+      "resetSearch": "Suche und Filter zurücksetzen",
+      "addEntry": "Neuen Eintrag anlegen"
     },
     "formModal": {
       "selectPlaceholder": "— Auswählen —",
@@ -2325,5 +2381,15 @@
     "openDocument": "Dokument ansehen",
     "fromBill": "Beleg einer Rechnung",
     "unlink": "Lösen"
+  },
+  "shortcutHelp": {
+    "title": "Tastenkürzel",
+    "or": "oder",
+    "search": "Suche öffnen (Seiten, Aktionen, Datensätze)",
+    "firstHit": "In der Suche: ersten Eintrag öffnen",
+    "newEntry": "Neuen Eintrag in der Liste dieser Seite anlegen",
+    "save": "Formular speichern",
+    "close": "Dialog oder Suche schließen",
+    "help": "Diese Übersicht anzeigen"
   }
 }

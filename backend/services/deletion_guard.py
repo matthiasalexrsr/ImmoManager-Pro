@@ -58,6 +58,10 @@ _DEPENDENTS: dict[str, tuple[str, list[tuple[str, str, tuple[str, str]]]]] = {
     "account": ("Konto", [
         ("list_bookings", "account_id", ("Buchung", "Buchungen")),
     ]),
+    # bookings would silently lose their category and drop out of every report by category
+    "category": ("Kategorie", [
+        ("list_bookings", "category_id", ("Buchung", "Buchungen")),
+    ]),
     # a meter read in a handover protocol, and a reading a finalized protocol recorded
     "meter": ("Zähler", [
         ("list_meter_readings", "meter_id", ("Zählerstand eines Übergabeprotokolls",
@@ -97,6 +101,8 @@ _ALTERNATIVES = {
     "meter": " Ein ausgebauter Zähler lässt sich stattdessen mit Ausbaudatum deaktivieren.",
     "standalone_reading": " Ein falscher Stand wird über eine Korrektur des Übergabeprotokolls berichtigt.",
     "invoice": " Die Zuordnung lässt sich im Objektvertrag lösen, solange keine Abrechnung sie enthält.",
+    "category": " Die Buchungen lassen sich zuerst einer anderen Kategorie zuordnen; ein neuer Name lässt sich "
+                "auch direkt an der Kategorie ändern.",
 }
 
 

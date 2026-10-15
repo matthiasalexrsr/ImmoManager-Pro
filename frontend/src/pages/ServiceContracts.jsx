@@ -60,7 +60,7 @@ export default function ServiceContracts() {
     { key: 'title', label: t('serviceContracts.fields.title'), filterType: 'text', wrap: true,
       render: (value, row) => <Link to={`/service-contracts/${encodeURIComponent(row.id)}`}>{value}</Link> },
     { key: 'contract_type', label: t('serviceContracts.fields.type'), render: value => typeLabel(t, value) },
-    { key: 'provider_name', label: t('serviceContracts.fields.provider'), filterType: 'text' },
+    { key: 'provider_name', label: t('serviceContracts.fields.provider'), filterType: 'text', link: 'contact' },
     { key: 'locations', label: t('serviceContracts.tabs.locations'), wrap: true,
       render: value => (value || []).map(loc => loc.label).join('; ') || '—' },
     { key: 'status', label: t('serviceContracts.fields.status'),

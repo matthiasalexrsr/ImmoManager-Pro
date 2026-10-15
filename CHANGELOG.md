@@ -2,6 +2,59 @@
 
 All notable changes to ImmoManager Pro will be documented in this file.
 
+## 2.0.0 — release candidate (2026-10-14)
+
+The version is now 2.0.0 (`pyproject.toml`; it was still 1.0.0 although 1.2.0 had been released). Everything under "Unreleased" below is part of it; the German release notes for users are in [docs/RELEASE_NOTES.md](docs/RELEASE_NOTES.md).
+
+- **Release workflow** "Release (Windows)": a tag `v<version>` matching `pyproject.toml` builds the Windows package with a German "LIES MICH.txt" (install, data folder, backup, update, restoring the pre-upgrade backup). It tries a first start, the upgrade check, a full backup, a restore probe and the update from the previous release's package on the same data. Then it publishes the GitHub release; a version with a suffix becomes a pre-release.
+- **Update check for every installation:** it reads this repository's releases by default (`UPDATE_REPO_URL`), and only when "Jetzt prüfen" is clicked. The Windows package was refused the check altogether; it now learns about a newer version, gets the download link and is told what happens to its data. Only git checkouts install updates themselves (`can_apply`).
+- **Second backup target in the app:** the owner sets the folder every full backup is copied to (USB drive, NAS) under Einstellungen → System → Betrieb. Before it is kept, the folder is created and a test file written; a relative path, the data folder itself or a file is refused with a sentence. `BACKUP_SECOND_TARGET` still wins and is shown as fixed. The overview now tells a target that is waiting for its first copy from a failed copy, and warns when the target is on the same drive as the data. The passphrase notice names the file to put `BACKUP_PASSPHRASE` in.
+- The Aktenwerk manifest preview no longer carries a fresh timestamp, so the same data gives the same answer (it made the portfolio-scope comparison of all read endpoints fail at random).
+
+## Unreleased — 2026-10-14 first day and running tenancies
+
+Found by using a fresh production installation from the first account to the first rent payment.
+
+- **Running tenancies can be taken over.** A contract that began before the app was used counted every month since its start as unpaid (a tenancy from 2019 showed 81 open months in the account, the rent overview and dunning). Contracts now take "Mietkonto hier geführt ab" (the first of a month) and "Saldo zum Übernahmetag" (arrears positive, credit negative). The account, the rent overview, dunning, the contract settlement and deposit settlements count rent from that month on. Arrears are the oldest claim ("Rückstand zum Übernahmetag"), a credit pays the first months, and payments booked before the day are part of the carried balance. Reports of rent due per month keep every month. Migration `981b2631e1e8` adds the two fields and refuses a downgrade while a contract uses them; the tenant account shows the takeover.
+- **"Erste Schritte"** on the dashboard of a new installation: portfolio, property, units, bank account and contracts in order, the next step highlighted, until done or hidden.
+- **No dead ends in forms**: a required choice with nothing to choose (no portfolio yet for a property) says what is missing and links to its New form. A required choice with exactly one option is made already (the only portfolio, property or account), also in the rent payment dialog, which links to creating an account when there is none.
+- **Empty lists lead on**: "Neuen Eintrag anlegen" when a list is empty, "Suche und Filter zurücksetzen" when the search finds nothing. Properties and tenants open their New form for Alt+N and links (`?neu=1`) like the other lists.
+- Defaults: property type residential, unit type apartment, the next free contract number in the pattern in use. A property without units shows "—" instead of a red 0 %.
+- **The property page is where a property is worked on**: "Bearbeiten" edits it in place, "Neu für dieses Objekt" opens the New form of a unit, contract, maintenance case, booking, invoice or task already filled with the property, and the new tab "Mieter & Verträge" lists who lives there with links to the party file and the unit. The units, contracts and maintenance tabs add entries for the property, rows open their record, and the finance tab leads to the property's bookings, invoices and the rent overview.
+- **The unit page** offers "Mietvertrag anlegen" for a vacant unit and "Neu für diese Einheit" (contract, maintenance case, booking, task), prefilled with the unit and its property; past contracts link to their party file.
+- New forms opened from a link (`?neu=1`) can start with values (passed in the navigation state, not the address), so a reload never repeats them.
+
+## Unreleased — 2026-10-14 links, totals and Aktenwerk
+
+- **Records link to each other.** A tenant name in bookings, contracts, receivables, rent charges, statements and other lists opens the party file. Properties, units, maintenance cases, service contracts, invoice reviews, tenant accounts and dunning cases open their own page. A supplier, provider or contact opens the contact list searched for that name, and an account name opens its bookings filtered to that account (a chip shows the filter and removes it). The contract cards in the party file link to their property and unit. Links inside a row do not also open the row.
+- **Totals**: amount columns of bookings, accounts, invoices, contracts, units, receivables, rent charges and budgets show a "Summe (n)" row for the rows matching the current search and filters. A selection shows the sum of its rows in the selection bar, and a bulk result stays visible until it is closed or a new selection starts.
+- **Duplicate** a booking, invoice, task or appointment: the New form opens prefilled without what must not be copied (receipt, status and reversal link of a booking; invoice number, status, original document and payment reference of an invoice; completion and series of a task).
+- **"Heute"** next to every date field fills in today's date.
+- **Lists opened from a link** (`?suche=`) start with that search on the first page instead of a remembered search or filter.
+- **Aktenwerk (DMS) interface** `immomanager-aktenwerk/1`. Documents (contracts, invoices, statements, protocols, letters, tax assessments) and booking receipts are described with kind, date, references, amounts and a tax classification ("steuerlich relevant", "absetzbar / Werbungskosten", year).
+  - **Export package**: "Dokumente → Aktenwerk …" filters by year, kind and tax view, previews the selection and downloads a ZIP package (`manifest.json` + files with SHA-256). Unreadable files are listed with a reason.
+  - **Direct hand-over**: with Aktenwerk configured under Schnittstellen, the same dialog and the bulk actions in documents, bookings (receipts) and invoices hand the selection over. This happens only on that click, per document, with an idempotency key, so a repeated hand-over creates nothing twice.
+  - **Rules**: the token is stored encrypted and never journaled; plain http is accepted only in the local network; read-only roles may export but not send. See [the interface contract](docs/AKTENWERK_INTERFACE_20261014.md).
+- **Fixes**:
+  - A category that still has bookings is no longer deleted; deletion is refused with the reason.
+  - Deleting several bookings at once now keeps a booking that has a reversal, belongs to a deposit or is allocated to a project, and reports why.
+  - Contact roles and other status badges show their German label. The error message of the generic lists is announced to screen readers.
+
+## Unreleased — 2026-10-14 everyday workflow
+
+- **Forms keep what was typed.** Escape, the close button, Cancel or a backdrop click on an edited form ask "Ungespeicherte Änderungen verwerfen?" first (a second Escape returns to editing); untouched forms close at once. A click only closes on the backdrop when it also started there, so selecting text and releasing the mouse outside no longer ends the form. Forms open in their first field instead of the close button, and Ctrl/Cmd+Enter saves from any field, multi-line notes included.
+- **Tables remember their settings** per list in this browser: sorting, rows per page and hidden columns survive reloads and navigation (unusable stored values are ignored; without browser storage the table works as before). The table search also finds what the table shows: status labels ("Bezahlt") and dates as written ("14.10.2026").
+- **Table CSV opens in German spreadsheets in columns**: semicolon separated with CRLF lines like the server exports, decimal comma for amounts and numbers, and cells starting like a formula written as text.
+- **Global search (Ctrl+K) finds pages**: typing "mahn" or "uebergabe" offers Mahnwesen or Übergabeprotokolle (umlauts optional) above the records, Enter opens the first entry, and records of an earlier query are not opened while the new one loads. Records opened from the search are listed under "Zuletzt geöffnet" for an empty query (per user, in this browser only, with "Verlauf leeren").
+- **Quick actions in the search**: "buchung" also offers "Neue Buchung" (likewise task, invoice, contact, maintenance case, appointment, receivable, unit, lead and the contract wizard), only for roles that may change that area. The page opens with its New form, also when it is already open; the address drops the marker, so reloading or changing a filter does not open it again.
+- **Keyboard**: "/" opens the search, Alt+N opens the New form of the page's list, "?" (or the keyboard button in the top bar) shows all shortcuts. None of them fire while typing or inside a dialog.
+- **Favourites**: the star next to the page name pins any page beyond the six everyday ones to a "Favoriten" section at the top of the sidebar (per user, in this browser only).
+- **Several rows at once**: lists with actions get a selection column (a row, Shift+click for a range, the page, or all matches of the current search). Tasks can be completed, reopened or deleted together; contacts, appointments, leads, viewings, maintenance cases and the generic lists (categories, tax rates, insurances) can be deleted together after one confirmation. Every row goes through its normal request, so rights and deletion guards still apply per row: a protected record (for example a contact that is a service-contract provider) is reported with the server's reason and stays selected, the others are done. Rows hidden by the search are never acted on; read-only roles see no selection.
+- **"Speichern & weiteren"** in new bookings, tasks, contacts, appointments, units, invoices, leads, meters and meter readings: the form stays open, keeps what a series shares (account, category, property and date of bookings; date and reader of readings; …), clears the rest and continues in the first cleared required field (Ctrl+Shift+Enter does the same).
+- **Lists keep their state**: search, column filters and page survive opening a record and coming back (per browser tab). Lists no longer disappear behind "Laden…" while they reload after a change, so the table, a selection's result and an open series form stay in place.
+- Receivable and notification-template forms are titled "Forderung erstellen" / "Vorlage erstellen" instead of a bare "Erstellen".
+- The browser tab names the current page ("Mahnwesen · ImmoManager Pro"). Sign-in fields are labelled for screen readers and password managers.
+
 ## Unreleased — 2026-10-13 review
 
 - Close the duplicate-header portfolio bypass and enforce access checks through implicit flushes and Core writes. Serialize encryption-key changes across workers and remove database passwords from backup-tool command lines.

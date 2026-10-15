@@ -7,6 +7,7 @@ already by the portfolio middleware for /admin.
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
 
 from ..services import full_backup
 from ..services.integrations.manager import integration_manager
@@ -67,6 +68,26 @@ def run_full_backup() -> dict:
         return full_backup.create_full_backup("manual")
     except Exception as exc:     # logged in the ops log by create_full_backup
         raise _failed(exc) from None
+
+
+class SecondTargetRequest(BaseModel):
+    path: str = Field("", max_length=600)
+
+
+@router.put("/second-target")
+def set_second_target(payload: SecondTargetRequest) -> dict:
+    """Owner only: the folder every full backup is copied to (USB drive, NAS); empty removes it.
+
+    The folder is created and a test file written before it is kept; the next full backup
+    copies its archive there and checks the copy.
+    """
+    require_installation_scope()
+    try:
+        return full_backup.set_second_target(payload.path)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from None
+    except OSError as exc:
+        raise HTTPException(503, f"Einstellung nicht gespeichert: {exc.strerror or type(exc).__name__}") from None
 
 
 @router.post("/restore-probe")

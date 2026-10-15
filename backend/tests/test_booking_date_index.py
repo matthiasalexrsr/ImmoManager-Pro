@@ -125,7 +125,7 @@ def test_normal_start_refuses_old_schema_and_does_not_create_the_index(tmp_path)
         assert INDEX not in _indexes(engine)
         with engine.connect() as connection:
             assert connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar_one() == PARENT
-        command.upgrade(config, REVISION)
+        command.upgrade(config, "head")
         ensure_current(engine)
     finally:
         engine.dispose()
