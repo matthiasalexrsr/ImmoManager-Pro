@@ -145,6 +145,8 @@ try {
     await expect(dialog.getByLabel(/^Titel/)).toBeEnabled();
     await dialog.getByRole('button', { name: 'Original ansehen', exact: true }).click();
     const viewer = page.getByRole('dialog', { name: first.title, exact: true });
+    await expect(viewer.getByRole('img', { name: new RegExp(`${first.title}.*Seite 1`) })).toBeVisible();
+    await viewer.getByRole('button', { name: 'PDF-Text', exact: true }).click();
     await expect(viewer.locator('.pdf-preview-text')).toContainText('QA DOCUMENT QUEUE');
     await viewer.getByRole('button', { name: 'Schließen', exact: true }).click();
     await dialog.getByLabel('Immobilie', { exact: true }).selectOption(property.id);
@@ -181,6 +183,10 @@ try {
   await step('Read-only user has private views and no domain writing controls', async () => {
     const ownerPage = page;
     const readerContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+    await readerContext.addInitScript(id => {
+      localStorage.setItem('locale', 'de-DE');
+      if (id) localStorage.setItem(`immo.tutorial.${id}`, JSON.stringify({ offered: true }));
+    }, process.env.QA_READONLY_ID);
     try {
       page = await readerContext.newPage(); page.setDefaultTimeout(15000);
       page.on('pageerror', error => result.errors.push(String(error)));
@@ -198,6 +204,13 @@ try {
   for (const width of [1440, 360, 320]) await step(`Work center keyboard/mobile layout ${width}px`, async () => {
     await page.setViewportSize({ width, height: 1000 }); await page.goto(`${base.origin}/work-center`);
     await expect(page.getByRole('heading', { name: 'Arbeitszentrale', exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: /Offene Aufgaben:.*gezählte Vorgänge ansehen/ })).toBeVisible();
+    await page.keyboard.press('Tab');
+    assert.ok(await page.evaluate(() => ['A', 'BUTTON', 'INPUT', 'SELECT'].includes(document.activeElement?.tagName)), 'Keyboard focus should reach a control');
+    const layout = await page.evaluate(() => ({ viewport: innerWidth, width: document.documentElement.scrollWidth,
+      overflowing: [...document.querySelectorAll('.main-content-body *')].map(element => ({ tag: element.tagName, className: element.className, right: element.getBoundingClientRect().right }))
+        .filter(element => element.right > innerWidth + 1).slice(0, 20) }));
+    result.layouts ||= []; result.layouts.push(layout);
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'Horizontal page overflow');
     await page.screenshot({ path: path.join(out, `work-center-${width}.png`), fullPage: false }); result.screenshots.push(`work-center-${width}.png`);
   });

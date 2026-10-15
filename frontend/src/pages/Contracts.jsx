@@ -34,6 +34,7 @@ const RENT_SOURCE_LABELS = { contract_start: 'Vertragsbeginn', adjustment: 'Miet
 
 export default function Contracts() {
   const [params] = useSearchParams();
+  const [filter, setFilter] = useState(() => params.get('status') || params.get('filter') || 'all');
   const { t, locale } = useTranslation();
   const confirm = useConfirm();
   const toast = useToast();
@@ -41,7 +42,7 @@ export default function Contracts() {
   const propertyState = useEntities('properties', '/properties');
   const unitState = useEntities('units', '/units');
   const tenantState = useEntities('tenants_all', '/tenants?include_archived=true');
-  const documentState = useEntities('documents', '/documents');
+  const documentState = useEntities('documents', '/documents', filter === 'missing_documents');
   const properties = propertyState.items;
   const units = unitState.items;
   const tenants = tenantState.items;
@@ -50,7 +51,6 @@ export default function Contracts() {
   const [modal, setModal] = useState(null);
   // values a New form starts with when opened from elsewhere (the property page's "Einheit anlegen")
   const [prefill, setPrefill] = useState(null);
-  const [filter, setFilter] = useState(() => params.get('status') || params.get('filter') || 'all');
   const [drilldown, setDrilldown] = useState(0);
   const openSources = key => { setFilter(key); setDrilldown(value => value + 1); };
   const [rents, setRents] = useState({});

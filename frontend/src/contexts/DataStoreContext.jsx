@@ -24,25 +24,25 @@ export function useDataStore() {
  * Hook to consume a specific entity list from the global store.
  * Automatically fetches on mount if not cached, and re-renders on invalidation.
  */
-export function useEntities(entityKey, endpoint) {
+export function useEntities(entityKey, endpoint, enabled = true) {
   const store = useDataStore();
   const [, setTick] = useState(0);
 
   // Subscribe to invalidation events for this entity
   useEffect(() => {
-    if (!store) return;
+    if (!store || !enabled) return;
     const unsub = store.subscribe(entityKey, () => setTick(t => t + 1));
     // Trigger initial fetch if not cached
     store.ensureLoaded(entityKey, endpoint);
     return unsub;
-  }, [store, entityKey, endpoint]);
+  }, [store, entityKey, endpoint, enabled]);
 
   if (!store) return { items: [], loading: false, error: null, reload: () => {} };
 
   const entry = store.getCache(entityKey);
   return {
     items: entry?.data || [],
-    loading: entry?.loading || false,
+    loading: enabled && (!entry || Boolean(entry.loading)),
     error: entry?.error || null,
     reload: () => store.invalidate(entityKey, endpoint),
   };

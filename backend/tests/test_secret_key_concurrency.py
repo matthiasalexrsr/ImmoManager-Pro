@@ -1,5 +1,6 @@
 """Workers sharing a data directory must never replace each other's encryption keys."""
 
+import importlib
 import os
 import sys
 import threading
@@ -53,7 +54,9 @@ def test_simultaneous_rotations_retain_every_old_and_new_key(tmp_path, monkeypat
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows byte-range lock semantics")
 def test_empty_windows_lock_file_waits_without_an_unlocked_initialization_write(tmp_path, monkeypatch):
-    import msvcrt
+    # Resolve the platform API at runtime; Linux type stubs intentionally omit
+    # Windows byte-range locking members even though this test is skipped there.
+    msvcrt = importlib.import_module("msvcrt")
 
     key_file = tmp_path / "keyring.json"
     lock_file = key_file.with_name(key_file.name + ".lock")

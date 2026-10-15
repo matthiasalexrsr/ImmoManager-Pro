@@ -40,7 +40,8 @@ def test_work_center_and_timeline_paginate_past_ten_thousand_without_loss():
             ('/items', {'kind': 'task', 'property_id': prop.id}, 'entity_id'),
             ('/timeline', {'entity_type': 'property', 'entity_id': prop.id}, 'id'),
         ]:
-            seen, cursor = [], None
+            seen: list[str] = []
+            cursor = None
             while True:
                 response = client.get('/api/v1/work-center' + route,
                                       params={**parameters, 'limit': 100, **({'cursor': cursor} if cursor else {})})

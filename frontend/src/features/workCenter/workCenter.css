@@ -1,8 +1,12 @@
-.work-center { display: grid; gap: 1.25rem; }
+.work-center { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: 1.25rem; }
+.work-center > * { min-width: 0; }
+.work-center :is(h1, h2, h3, p, a, strong) { overflow-wrap: anywhere; }
+.work-shelf-list li > a { min-width: 0; overflow-wrap: anywhere; }
 .work-center-header, .work-item-heading, .work-item-actions, .entity-actions, .work-shelf-heading { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
 .work-center-header, .work-shelf-heading { justify-content: space-between; }
 .work-center-filters { display: flex; align-items: end; gap: .8rem; flex-wrap: wrap; }
-.work-center-filters label { display: grid; gap: .3rem; }
+.work-center-filters label { display: grid; gap: .3rem; min-width: 0; max-width: 100%; }
+.work-center-filters :is(input, select) { min-width: 0; max-width: 100%; }
 .work-center-filters input, .work-center-filters select { min-height: 2.25rem; padding: .4rem .6rem; border: 1px solid var(--color-border); border-radius: .45rem; background: var(--color-surface); color: inherit; }
 .work-item-list, .work-shelf-list { padding: 0; margin: 0; list-style: none; display: grid; gap: .75rem; }
 .work-item, .work-shelf, .work-document-queue { border: 1px solid var(--color-border); border-radius: .65rem; padding: 1rem; background: var(--color-surface); }

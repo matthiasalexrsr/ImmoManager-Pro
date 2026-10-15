@@ -171,7 +171,8 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
   const [showFilters, setShowFilters] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
-  const viewContext = storageKey && formContext(pathname) ? `${formContext(pathname)}#${keyHash(storageKey)}` : null;
+  const viewScope = viewAnchor ? `${storageKey}:${viewAnchor.kind}:${viewAnchor.id}` : storageKey;
+  const viewContext = storageKey && formContext(pathname) ? `${formContext(pathname)}#${keyHash(viewScope)}` : null;
   const namedConfig = { search, sort: sortKey ? { key: sortKey, direction: sortDir } : null,
     visible_columns: columns.filter(col => !hiddenCols[col.key]).map(col => col.key), column_order: stored.columnOrder || columns.map(col => col.key), page_size: pageSize,
     ...viewConfig, column_filters: { ...columnFilters, ...viewConfig?.column_filters } };

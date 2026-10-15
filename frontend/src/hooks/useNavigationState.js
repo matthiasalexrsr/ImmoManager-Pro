@@ -23,21 +23,33 @@ export default function useNavigationState() {
     const node = document.querySelector('.main-content-body');
     const targets = [node, document.querySelector('.main-content'), document.scrollingElement].filter(Boolean);
     const read = () => targets.map(target => ({ top: target.scrollTop, left: target.scrollLeft }));
-    const save = () => { try { sessionStorage.setItem(key, JSON.stringify(read())); } catch { /* optional */ } };
+    const save = () => {
+      if (restoring && !restored && !cancelled) return;
+      try { sessionStorage.setItem(key, JSON.stringify(read())); } catch { /* optional */ }
+    };
     let saved;
     try { saved = JSON.parse(sessionStorage.getItem(key) || 'null'); } catch { saved = null; }
     let cancelled = false;
-    const cancel = () => { cancelled = true; };
+    const restoring = navigation === 'POP' && Boolean(saved);
+    let restored = false;
+    let resize, mutations;
+    const disconnect = () => { resize?.disconnect(); mutations?.disconnect(); };
+    const cancel = () => { cancelled = true; disconnect(); cancelAnimationFrame(frame); };
     let frame;
-    let attempts = 0;
     const restore = () => {
       if (cancelled || !saved) return;
       const ready = targets.every((target, index) => !saved[index] || target.scrollHeight >= saved[index].top + target.clientHeight);
-      if (ready || ++attempts > 120) {
+      if (ready) {
         targets.forEach((target, index) => { if (saved[index]) { target.scrollTop = saved[index].top; target.scrollLeft = saved[index].left; } });
-      } else frame = requestAnimationFrame(restore);
+        restored = true; disconnect();
+      }
     };
-    if (navigation === 'POP') frame = requestAnimationFrame(restore);
+    const schedule = () => { if (!cancelled && !restored) { cancelAnimationFrame(frame); frame = requestAnimationFrame(restore); } };
+    if (restoring) {
+      if (typeof ResizeObserver !== 'undefined') { resize = new ResizeObserver(schedule); targets.forEach(target => resize.observe(target)); }
+      if (typeof MutationObserver !== 'undefined') { mutations = new MutationObserver(schedule); mutations.observe(node || document.body, { childList: true, subtree: true }); }
+      schedule();
+    }
     else if (last.current !== key) targets.forEach(target => { target.scrollTop = 0; target.scrollLeft = 0; });
     last.current = key;
     targets.forEach(target => target.addEventListener('scroll', save, { passive: true }));
@@ -46,7 +58,7 @@ export default function useNavigationState() {
     window.addEventListener('touchstart', cancel, { passive: true });
     window.addEventListener('keydown', cancel);
     return () => {
-      save(); cancelAnimationFrame(frame);
+      save(); disconnect(); cancelAnimationFrame(frame);
       targets.forEach(target => target.removeEventListener('scroll', save));
       window.removeEventListener('pagehide', save); window.removeEventListener('wheel', cancel);
       window.removeEventListener('touchstart', cancel); window.removeEventListener('keydown', cancel);
