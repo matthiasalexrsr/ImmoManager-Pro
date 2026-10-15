@@ -40,6 +40,7 @@ from .routers import (
     housing_confirmations,
     i18n,
     insurances,
+    integration_connections,
     integrations,
     invoice_review,
     invoices,
@@ -128,6 +129,7 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(messages.router, dependencies=_auth_dep)
     api_v1.include_router(rent_charges.router, dependencies=_auth_dep)
     api_v1.include_router(integrations.router, dependencies=_auth_dep)
+    api_v1.include_router(integration_connections.router, dependencies=_auth_dep)
     api_v1.include_router(aktenwerk.router, dependencies=_auth_dep)
     api_v1.include_router(insurances.router, dependencies=_auth_dep)
     api_v1.include_router(service_contracts.router, dependencies=_auth_dep)

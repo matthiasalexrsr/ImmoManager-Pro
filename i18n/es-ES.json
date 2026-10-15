@@ -44,7 +44,8 @@
       "contractWizard": "Asistente de contrato",
       "review": "Lista de revisión",
       "serviceContracts": "Contratos de servicios",
-      "invoiceReview": "Revisión de facturas"
+      "invoiceReview": "Revisión de facturas",
+      "connectionWorkspace": "Conexiones y operaciones"
     },
     "sections": {
       "overview": "Resumen",

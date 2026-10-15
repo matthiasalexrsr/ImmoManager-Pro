@@ -44,7 +44,8 @@
       "contractWizard": "Lease Wizard",
       "review": "Review list",
       "serviceContracts": "Service contracts",
-      "invoiceReview": "Invoice review"
+      "invoiceReview": "Invoice review",
+      "connectionWorkspace": "Connections and operations"
     },
     "sections": {
       "overview": "Overview",

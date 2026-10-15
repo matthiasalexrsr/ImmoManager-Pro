@@ -196,6 +196,8 @@ class Settings(BaseSettings):
 
     # --- Integrations ---
     integration_state_file: str | None = None
+    # Per-command processing budget, not a cap on a connection or its history.
+    integration_step_max_bytes: int = 4 * 1024 * 1024
 
     # --- AI / Hugging Face ---
     ai_enabled: bool = True  # Master toggle for AI features

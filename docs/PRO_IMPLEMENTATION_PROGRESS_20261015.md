@@ -2,7 +2,7 @@
 
 ## Einordnung
 
-Dies ist eine Teillieferung der Programmierübergabe CHATGPT_PRO_HANDOVER_20261015.md, keine Gesamtfertigstellung, Integrationsfreigabe oder Auslieferung. Die Fachpakete und externen Schnittstellen sind nicht pauschal abgenommen. Die aktive Frontendkorrektur wurde nicht geschrieben; ihr Tool-Aufruf wurde durch die Sicherheitsprüfung blockiert. Diese Sperre wurde nicht umgangen.
+Der Gesamtauftrag wurde nach der unzureichenden ersten Teillieferung wieder aufgenommen. Die zuvor nicht geschriebene Nachrichtenoberfläche ist jetzt implementiert, zusammen mit SQL-Keysetseiten, kontrollierten Wiederholungsbelegen, nativen Auth-/Nachrichtenprüfungen und einer isolierten Wiederherstellungsprobe. Aktueller Paketnachweis: `PRO_MESSAGE_WORKFLOW_20261016.md`. Der ursprüngliche Bericht bleibt unverändert als `PRO_IMPLEMENTATION_PROGRESS_20261015.initial.md` erhalten. Die übrigen Pakete sind weiterhin getrennt in der Matrix geführt; es gibt noch keine Gesamtfreigabe.
 
 ## Arbeitsbasis und Schutzgrenzen
 
@@ -14,7 +14,7 @@ Dies ist eine Teillieferung der Programmierübergabe CHATGPT_PRO_HANDOVER_202610
 - Prüfprozesse erhalten eigene DATA_DIR-, Upload-, Backup-, Secret- und Integrationspfade sowie ausgeschaltete Scheduler. Die vorhandene Python-Umgebung wurde nicht durch Paketinstallationen geändert.
 - ripgrep war im Werkzeug-PATH nicht verfügbar. Die Quellinventur verwendete deshalb lesendes git grep / git ls-files, ohne eine globale Werkzeuginstallation oder PATH-Änderung.
 
-## Implementierte Änderungen
+## Historische erste Änderungen (aktuelle Ergänzung im Paketnachweis)
 
 ### 1. Dauerhafter Sitzungswiderruf und Refresh-Claim
 
@@ -40,7 +40,7 @@ POST /api/v1/messages/threads/{thread_id}/messages prüft zunächst den berechti
 
 Dies schließt ausschließlich den serverseitigen Pfad-/Body-Fehler. Threadwechsel im Browser, getrennte Entwürfe, sichere späte Sendebestätigungen, dauerhafte Nachrichten-Idempotenz und SQL-Keysetseiten sind damit ausdrücklich nicht abgeschlossen.
 
-## Prüfhistorie und Nachweise
+## Prüfhistorie der ersten Teillieferung
 
 Lokal erhaltene Protokolle liegen unter artifacts/pro-tests/. Sie enthalten ausschließlich synthetische Testfälle; sie wurden nicht als private Rohprotokolle veröffentlicht.
 
@@ -54,23 +54,23 @@ Lokal erhaltene Protokolle liegen unter artifacts/pro-tests/. Sie enthalten auss
 - Zusätzliche Frontendregressionen auf unverändertem Messages.jsx: sechs Fälle ausgeführt, sechs fehlgeschlagen; frontend-baseline.json und frontend-baseline-complete.log. Der frühere PowerShell-Aufruf wurde durch Native-Stderr-Verarbeitung unterbrochen und zählt nicht als vollständiger Lauf.
 - Die sechs nicht erfüllten Frontend-Abnahmefälle sind als docs/MessagesBoundary.test.jsx.proposed erhalten. Sie sind eine separat übergebene, noch nicht integrierte Testspezifikation, keine bestandenen Produktregressionen. Bestehende Frontendtests oder CI-Konfigurationen wurden nicht geändert.
 
-Nicht ausgeführt: vollständige Backend-/Coverage-Matrix, native PostgreSQL-Abnahme, reale Browserprüfung der Änderungen, portable Restoreprobe und neue Großbestandsmessung. Für diese Teillieferung wird keine dieser Prüfungen behauptet.
+Diese Prüfungen waren in der ersten Teillieferung nicht ausgeführt. Aktuell bestehen native Auth-/Nachrichtenprüfungen, der gezielte Archiv-Restore und elf reale Browserabläufe einschließlich 10.057 Nachrichten. Die Gesamtmatrix läuft beziehungsweise enthält noch sichtbar dokumentierte Fehler; Einzelheiten und zugehörige Arbeitsstände stehen im neuen Paketnachweis.
 
-## Werkzeug- und Abhängigkeitsbefunde
+## Historische Werkzeugbefunde – inzwischen erneut geprüft
 
-Der Schreibaufruf für frontend/src/hooks/useMessageConversation.js wurde vom Tool mit „Sicherheitsstatus der Anfrage nicht bestimmen“ blockiert; die Datei existiert nicht. Kein alternatives Schreibverfahren wurde zur Umgehung verwendet. Der vorhandene Frontendcode blieb unverändert.
+Beim ersten Versuch war das Schreiben blockiert. In der Fortsetzung gelang ein regulärer write_file-Aufruf; der Hook und die echte Frontendverdrahtung sind jetzt vorhanden. Es wurden keine Tool-Sicherheitsregeln geändert.
 
-npm ci meldete mehrfach beschädigte/inkonsistente Tarball-Prüfsummen; ein sauberer Neuinstallationsnachweis liegt nicht vor. package-lock.json wurde nicht verändert. Für die isolierte Ausführung der sechs Baselinefälle wurde der vorhandene node_modules-Bestand des Referenzcheckouts in den eigenen Checkout kopiert, nicht gemeinsam beschrieben. Beide Lockdateien haben SHA256 07A5CBC9358ABE378FCECB8A45263B187AEC634DECA37443EFE65FFF6081D01B. Diese Wiederverwendung ersetzt keine erfolgreiche npm-ci-Abnahme.
+Der frühere npm-ci-Versuch meldete Prüfsummenprobleme. In der Fortsetzung bestand die saubere Installation im eigenen Frontend mit Exitcode 0 und identischer Lockdatei; der neue Paketnachweis nennt das Ergebnisverzeichnis. Der nachfolgende Satz beschreibt ausschließlich die damalige Baseline: package-lock.json wurde nicht verändert. Für die isolierte Ausführung der sechs Baselinefälle wurde der vorhandene node_modules-Bestand des Referenzcheckouts in den eigenen Checkout kopiert, nicht gemeinsam beschrieben. Beide Lockdateien haben SHA256 07A5CBC9358ABE378FCECB8A45263B187AEC634DECA37443EFE65FFF6081D01B. Diese Wiederverwendung ersetzt keine erfolgreiche npm-ci-Abnahme.
 
 ## Anforderung → Implementierung → Tests → externe Abnahme → Commit → offen
 
 | Anforderung / Paket | Implementierung und Prüfung | Commit / noch offen |
 | --- | --- | --- |
-| Sitzungswiderruf bei DB-Ausfall | Backend implementiert; Fehler-, Recovery-, Cookie-, Middleware- und getrennte Prozessfälle | fe561d0a; PostgreSQL, Browser und Gesamtmatrix offen |
-| Nachricht Pfad A / Body B | 422 ohne Schreiben; 404 vor Payloadvergleich; bisheriger positiver Vertrag geprüft | ae44ab93; nur API-Teil geschlossen |
-| Threadwechsel, Entwürfe, späte Sendebestätigung | Sechs rote Komponentenregressionen vorhanden; Frontendschreiben blockiert | docs/MessagesBoundary.test.jsx.proposed; Umsetzung offen |
-| Nachrichten-Keyset/Großthread | Nicht implementiert | >10.000 und Gleichzeitigkeit/Sortierung offen |
-| Verbindungs-/Mapping-/Run-/Receipt-Rahmen | Historische Arbeitskopien inventarisiert, nicht portiert | Offen |
+| Sitzungswiderruf bei DB-Ausfall | Backend, Fehler-/Recovery-/Cookie-/Middlewarefälle sowie native getrennte Prozesse und Neustart geprüft | fe561d0a + b264cf81; gemeinsame Gesamtmatrix noch nicht freigegeben |
+| Nachricht Pfad A / Body B | 422 ohne Schreiben, fremder Pfad 404; kompatibler Request-/Antwortvertrag | ae44ab93 + eb70b53c |
+| Threadwechsel, Entwürfe, späte Sendebestätigung | 15 aktive Komponentenfälle bestanden; echte Browser-, Rechte-, Sendebestätigungs- und 320/360/1440-Prüfungen | eb70b53c + b264cf81; allgemeine dauerhafte Outbox separat offen |
+| Nachrichten-Keyset/Großthread | Begrenzte Cursorseiten, 10.057 identische Zeitstempel vollständig, native Konkurrenz, Paket-Restore | eb70b53c; Migration c61e9a2f034b |
+| Verbindungs-/Mapping-/Run-/Receipt-Rahmen | Historische Daten-/Crypto-/Managerverträge werden mit aktuellem Produkt verglichen | Nächster Implementierungsblock; noch nicht abgeschlossen |
 | CSV-/MT940-Bankimport und Matching | Historische Arbeitskopien inventarisiert, nicht portiert | Offen |
 | TEHA Empfang und Rückübertragung | Historische Arbeitskopien inventarisiert; keine Portalaktion | Offen; keine neue externe Abnahme |
 | CAMT / lesendes FinTS | Nicht begonnen | Offen |
@@ -101,7 +101,7 @@ npm ci meldete mehrfach beschädigte/inkonsistente Tarball-Prüfsummen; ein saub
 
 Die Git-Arbeitskopien wurden gelistet, nicht pauschal fachlich übernommen: integration-history 0fb59785; integration-connections 552e3460; bank-import e01d3996; bank-discovery 80b548f7; teha-transport 951b3de5; teha-receive-domain b3d6d5d3; teha-transaction-unit-proposal 6d7157cb; datev-export d7ba1808; annual-tax-projection 12a537b3; annual-tax-fixture-guards ba12d451; buhl-probe 0ac0538b; communication-center d0a63ddf; portal-integrations-current 05f18c09. Eine Prüfung ihrer heutigen Daten-/Rechteverträge und Portierung ist noch erforderlich.
 
-## Integrationsanweisung für Codex
+## Historische Integrationsanweisung für die ersten zwei Fixes
 
 1. Zentralen Checkout erneut prüfen; ausschließlich gewünschte Commits übernehmen. Abhängigkeitsfolge: fe561d0a7cdbcdc4ee7b4adc1a23a1598450f5a7, danach ae44ab930fd1d1379ae546759d65d2ca47563cf2. Der nachfolgende Dokumentations-/Runnercommit enthält keine weitere Produktimplementierung.
 2. Konfliktstellen: backend/auth.py, backend/routers/auth.py, backend/services/portfolio_http.py und backend/routers/messages.py. Bestehende spätere Änderungen nicht überschreiben.
@@ -110,4 +110,4 @@ Die Git-Arbeitskopien wurden gelistet, nicht pauschal fachlich übernommen: inte
 5. Ruff/Mypy, verpflichtende vollständige Matrix und unabhängige PostgreSQL-/Browserprüfungen vor einer Freigabe erneut ausführen. Für die offene Frontendkorrektur die separat erhaltene Testspezifikation bewusst integrieren und alle sechs roten Fälle schließen; zusätzlich tatsächliche Browserfälle und Keyset-/Großthreadprüfung ergänzen.
 6. Rückweg im Entwicklungs-/Integrationszweig: die beiden Codecommits in umgekehrter Reihenfolge regulär revertieren. Kein Schema-Downgrade erforderlich. Ein Revert stellt allerdings auch die früheren Fehlerpfade wieder her; keine automatische Empfehlung zur Produktivumstellung.
 
-Dieser Zweig wurde in dieser Sitzung nicht auf GitHub gepusht. Zusammenführung, unabhängige Freigabe, Release und Umstellung bleiben bei Codex.
+Aktuelle Ergänzung: Der eigene Zweig wurde bis b264cf81 regulär gepusht; CI-Lauf 38815280138 ist gestartet. Die neue Migration, die aktuelle Übernahmereihenfolge und neuen Prüfungen stehen in PRO_MESSAGE_WORKFLOW_20261016.md. Zusammenführung, unabhängige Freigabe, Release und Umstellung bleiben bei Codex.

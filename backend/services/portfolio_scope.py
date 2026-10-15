@@ -99,6 +99,8 @@ INTERNAL = frozenset({
     "user_preferences",
     "login_attempts",
     "revoked_tokens",
+    "integration_connections", "integration_connection_secrets", "integration_connection_mappings",
+    "integration_action_runs", "integration_source_blocks", "integration_connection_events",
     "audit_logs",            # installation-wide; its API needs all access (middleware)
     "user_portfolio_access",
     "user_portfolio_grants",

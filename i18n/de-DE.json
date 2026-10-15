@@ -44,7 +44,8 @@
       "contractWizard": "Mietvertrag-Wizard",
       "review": "Prüfliste",
       "serviceContracts": "Objektverträge",
-      "invoiceReview": "Rechnungsprüfung"
+      "invoiceReview": "Rechnungsprüfung",
+      "connectionWorkspace": "Verbindungen und Vorgänge"
     },
     "sections": {
       "overview": "Übersicht",

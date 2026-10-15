@@ -4,6 +4,7 @@ from . import (
     deposit_models,  # noqa: F401  (deposit file: instalments, payments, interest, settlements)
     document_version_models,  # noqa: F401  (registers the archive tables with Base)
     dunning_models,  # noqa: F401  (dunning: cases, letters, outbox, replies)
+    integration_connection_models,  # noqa: F401 (private connections, mappings, runs and source receipts)
     invoice_review_models,  # noqa: F401  (review of existing invoices: history, transfers, settings)
     job_models,  # noqa: F401  (durable job runs and occurrence ledger)
     maintenance_project_models,  # noqa: F401  (project file of a maintenance case)

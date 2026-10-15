@@ -39,6 +39,7 @@ const InvoiceReviewDetail = lazy(() => import('./pages/InvoiceReviewDetail'));
 const Dunning = lazy(() => import('./pages/Dunning'));
 const DunningCase = lazy(() => import('./pages/DunningCase'));
 const Integrations = lazy(() => import('./pages/Integrations'));
+const IntegrationConnections = lazy(() => import('./pages/IntegrationConnections'));
 const Calendar = lazy(() => import('./pages/Calendar'));
 const Leads = lazy(() => import('./pages/Leads'));
 const Listings = lazy(() => import('./pages/Listings'));
@@ -173,6 +174,7 @@ export default function App() {
           <Route path="dunning" element={<Dunning />} />
           <Route path="dunning/contracts/:contractId" element={<DunningCase />} />
           <Route path="integrations" element={<Integrations />} />
+          <Route path="integration-connections" element={<IntegrationConnections />} />
           <Route path="calendar" element={<Calendar />} />
           <Route path="leads" element={<Leads />} />
           <Route path="listings" element={<Listings />} />
