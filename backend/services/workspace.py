@@ -272,7 +272,7 @@ def _prepare(unit, kind: str, identifier: str, body: dict, prior, *, delete: boo
         payload["values"] = contexts.recovery_values(payload.get("values", {}))
         if contexts.context_key(context) == "conversation-note" and not payload.get("anchor"):
             raise HTTPException(422, "Eine Gesprächsnotiz braucht einen Bezug.")
-        if contexts.CONTEXTS[contexts.context_key(context)][1] in contexts.CUSTOM_FIELDS and not (
+        if contexts.context_key(context) != "contract-wizard" and contexts.CONTEXTS[contexts.context_key(context)][1] in contexts.CUSTOM_FIELDS and not (
                 payload.get("anchor") or payload.get("source")):
             raise HTTPException(422, "Dieser Arbeitsstand braucht einen Datensatzbezug.")
         if payload.get("mode") == "edit" and not payload.get("source"):

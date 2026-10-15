@@ -52,8 +52,10 @@ CONTEXTS = {
     "maintenance-protocol": ("maintenance", "MaintenanceProtocol"),
     "dunning-action": ("contract", "DunningAction"),
     "work-center": ("task", "WorkCenterView"),
+    "contract-wizard": ("contract", "ContractWizard"),
 }
 CUSTOM_FIELDS = {
+    "ContractWizard": {"form"},
     "HousingForm": {"dwelling_address", "dwelling_label", "housing_provider_name", "housing_provider_address",
                     "owner_relation", "owner_name", "actual_move_in_date", "issue_date", "issuer_name", "issuer_role",
                     "occupants", "confirmed_actual_move_in", "confirmed_authority", "confirmed_residents", "correctionOf", "correction_of"},
@@ -147,7 +149,7 @@ def check_context(actor_id: str, context: str, *, edit: bool = False) -> str:
 
 def context_area(context: str) -> str:
     key = context_key(context)
-    return {"conversation-note": "/messages", "housing-confirmation": "/contracts",
+    return {"conversation-note": "/messages", "housing-confirmation": "/contracts", "contract-wizard": "/contracts",
             "handover-protocol-content": "/handover-protocols", "rent-payment": "/rent-charges",
             "invoice-review-action": "/invoices", "maintenance-protocol": "/maintenance",
             "dunning-action": "/dunning"}.get(key, "/" + key)

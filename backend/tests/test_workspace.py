@@ -369,3 +369,20 @@ def test_workspace_migration_adopts_existing_tables_and_preserves_records(tmp_pa
         assert inspect(connection).get_table_names() == ["users"]
         assert connection.execute(select(users.c.id)).scalar_one() == "owner"
     engine.dispose()
+
+
+def test_contract_wizard_creates_private_nested_draft_without_source_or_anchor(estate):
+    north, _, prop, foreign = estate
+    _, staff = client("wizard", "verwalter", portfolio_access="selected", portfolio_ids=[north.id])
+    identifier = str(uuid4())
+    saved = staff.put(f"{API}/drafts/{identifier}", json=command(context="contract-wizard",
+        values={"form": {"property_id": prop.id, "tenant": {"name": "Anna"}}}))
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["source_state"]["status"] == "new"
+    assert saved.json()["values"]["form"]["tenant"]["name"] == "Anna"
+    denied = staff.put(f"{API}/drafts/{uuid4()}", json=command(context="contract-wizard",
+        values={"form": {"property_id": foreign.id}}))
+    assert denied.status_code == 404
+    credentials = staff.put(f"{API}/drafts/{uuid4()}", json=command(context="contract-wizard",
+        values={"form": {"tenant": {"password": "hidden"}}}))
+    assert credentials.status_code == 422
