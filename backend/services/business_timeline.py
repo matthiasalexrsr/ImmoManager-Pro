@@ -172,6 +172,7 @@ def related_events(store: Any, context: dict, actor_id: str, before: Any, limit:
             continue
         values.append({"id": "related-change:" + row.id, "occurred_at": office.utc(row.changed_at).isoformat(),
             "kind": "change", "title": "Änderung: " + row.field_name, "body": row.reason or "",
+            "field_name": row.field_name, "old_value": row.old_value, "new_value": row.new_value,
             "actor": row.changed_by, "entity": {"type": source["kind"], "id": source["entity_id"],
             "title": source["title"], "href": source["href"]}})
     protocols = select(HandoverProtocolORM.id).where(located(HandoverProtocolORM))

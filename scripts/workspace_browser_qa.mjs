@@ -183,6 +183,22 @@ try {
     await expect(page.getByRole('dialog')).toHaveCount(0);
     assert.equal((await call('GET', `/tenants/${conflict.id}`)).full_name, 'QA Verglichener Entwurf');
   });
+  await step('Party timeline shows readable field changes with before and after values', async () => {
+    await tenantRow('QA Verglichener Entwurf').getByRole('button', { name: 'QA Verglichener Entwurf', exact: true }).click();
+    const party = page.getByRole('dialog', { name: 'QA Verglichener Entwurf', exact: true });
+    await party.getByRole('tab', { name: 'Aktivitäten', exact: true }).click();
+    const change = party.locator('.work-timeline li').filter({ hasText: 'Änderung: Name' })
+      .filter({ hasText: 'QA Zwischenzeitlich geändert' }).filter({ hasText: 'QA Verglichener Entwurf' });
+    await expect(change).toHaveCount(1);
+    await expect(change.getByText('Vorher', { exact: true })).toBeVisible();
+    await expect(change.getByText('Nachher', { exact: true })).toBeVisible();
+    await expect(change.getByText('QA Zwischenzeitlich geändert', { exact: true })).toBeVisible();
+    await expect(change.getByText('QA Verglichener Entwurf', { exact: true })).toBeVisible();
+    await page.screenshot({ path: path.join(out, 'party-timeline.png'), fullPage: false });
+    result.screenshots.push('party-timeline.png');
+    await party.getByRole('button', { name: 'Schließen', exact: true }).click();
+    await expect(party).toHaveCount(0);
+  });
   await step('Read-only user has private views and no domain writing controls', async () => {
     const ownerPage = page;
     const readerContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });

@@ -170,6 +170,13 @@ def test_maintenance_status_history_and_field_timeline_stay_distinct(fixture):
     assert sorted(row["title"] for row in changes) == ["Änderung: status"] * 3 + ["Änderung: title"]
     assert all(row["actor"] == "Review" for row in changes)
     assert next(row for row in changes if row["title"] == "Änderung: title")["body"] == "Feld geändert"
+    field = next(row for row in changes if row["field_name"] == "title")
+    assert (field["old_value"], field["new_value"]) == ("Dach prüfen", "Dach reparieren")
+    related = client.get(API + "/timeline", params={"entity_type": "property", "entity_id": document.property_id})
+    assert related.status_code == 200, related.text
+    related_field = next(row for row in related.json()["items"] if row.get("field_name") == "title"
+                         and row["entity"]["id"] == case_id)
+    assert (related_field["old_value"], related_field["new_value"]) == ("Dach prüfen", "Dach reparieren")
     fields = [row for row in store.list_change_history()
               if row.entity_type == "maintenance" and row.entity_id == case_id and row.field_name == "title"]
     assert [(row.old_value, row.new_value, row.changed_by) for row in fields] == [

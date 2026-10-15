@@ -338,6 +338,7 @@ def timeline(store, entity_type: str, entity_id: str, actor_id: str, *, cursor=N
                            {"entity_type": context["kind"], "entity_id": entity_id}, "changed_at", before, limit + 1):
             values.append({"id": row.id, "occurred_at": utc(row.changed_at).isoformat(), "kind": "change",
                            "title": "Änderung: " + row.field_name, "body": row.reason or "",
+                           "field_name": row.field_name, "old_value": row.old_value, "new_value": row.new_value,
                            "actor": row.changed_by, "entity": source})
         if context["kind"] == "invoice":
             for row in _events(store, InvoiceReviewEventORM, "invoice_review_events", {"invoice_id": entity_id},
