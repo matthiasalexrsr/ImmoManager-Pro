@@ -1054,6 +1054,8 @@ class MessageORM(Base):
     attachment_ids: Mapped[str | None] = mapped_column(Text)
     sent_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
+    __table_args__ = (Index("ix_messages_thread_sent_id", "thread_id", "sent_at", "id"),)
+
 
 class RentChargeORM(Base):
     __tablename__ = "rent_charges"

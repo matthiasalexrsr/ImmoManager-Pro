@@ -1,17 +1,25 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { api } from '../api';
 import { useEntities } from '../contexts/DataStoreContext';
 import StatusBadge from '../components/StatusBadge';
 import { useTranslation } from '../i18n';
 import FormModal from '../components/FormModal';
 import { useSearchParams } from 'react-router-dom';
+import useMessageConversation from '../hooks/useMessageConversation';
+import './messages.css';
+import { useCanWrite } from '../contexts/AuthContext';
 
 export default function Messages() {
   const [params, setParams] = useSearchParams();
   const [threads, setThreads] = useState([]);
   const [notifications, setNotifications] = useState([]);
-  const [selectedThread, setSelectedThread] = useState(null);
-  const [threadMessages, setThreadMessages] = useState([]);
+  const recordThread = useCallback(thread => {
+    setThreads(current => current.map(item => item.id === thread.id ? thread : item));
+  }, []);
+  const conversation = useMessageConversation(recordThread);
+  const { selectedThread, page: threadPage, draft: newMessage, notice } = conversation;
+  const threadMessages = threadPage.items;
+  const canWrite = useCanWrite('/messages');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const { t } = useTranslation();
@@ -26,21 +34,40 @@ export default function Messages() {
     next.delete('status'); next.delete('severity');
     if (value === 'unread') next.set('status', 'unread'); else if (value !== 'all') next.set('severity', value); return next; }); };
   const [modal, setModal] = useState(null);
-  const [newMessage, setNewMessage] = useState('');
+  const setNewMessage = conversation.setDraft;
   const [contacts, setContacts] = useState([]);
   const { items: properties } = useEntities('properties', '/properties');
   const { items: units } = useEntities('units', '/units');
   const { items: contracts } = useEntities('contracts', '/contracts');
 
   useEffect(() => {
-    api.list('/contacts').then(c => setContacts(c || [])).catch(() => []);
+    const request = new AbortController();
+    const sameSession = api.captureSession();
+    const invalidate = () => request.abort();
+    window.addEventListener('workspace-logout', invalidate);
+    window.addEventListener('workspace-owner', invalidate);
+    api.list('/contacts', { signal: request.signal }).then(values => {
+      if (request.signal.aborted) return;
+      sameSession();
+      if (!Array.isArray(values)) throw new Error('Die Kontaktliste ist unvollständig.');
+      setContacts(values);
+    }).catch(failure => { if (!request.signal.aborted && failure.code !== 'SESSION_CHANGED') setError(failure.message || 'Kontakte konnten nicht geladen werden.'); });
+    return () => { request.abort(); window.removeEventListener('workspace-logout', invalidate); window.removeEventListener('workspace-owner', invalidate); };
   }, []);
 
   useEffect(() => {
     const request = new AbortController(); setLoading(true); setError(null);
+    const sameSession = api.captureSession();
+    const invalidate = () => {
+      request.abort(); setThreads([]); setNotifications([]); setContacts([]); setSelected(null); setModal(null);
+      setLoading(false); setNotificationReady(false); setError('Die Sitzung wurde geändert. Bitte erneut anmelden.');
+    };
+    window.addEventListener('workspace-logout', invalidate);
+    window.addEventListener('workspace-owner', invalidate);
     Promise.allSettled([api.list('/notifications', { signal: request.signal }), api.list('/messages/threads', { signal: request.signal })])
       .then(([notifs, thr]) => {
         if (request.signal.aborted) return;
+        try { sameSession(); } catch { invalidate(); return; }
         const failures = [];
         if (notifs.status === 'fulfilled' && Array.isArray(notifs.value)) { setNotifications(notifs.value); setNotificationReady(true); }
         else { setNotificationReady(false); failures.push(notifs.reason?.message || 'Hinweise konnten nicht gelesen werden.'); }
@@ -48,7 +75,7 @@ export default function Messages() {
         else failures.push(thr.reason?.message || 'Konversationen konnten nicht gelesen werden.');
         if (failures.length) setError(failures.join(' · '));
       }).finally(() => { if (!request.signal.aborted) setLoading(false); });
-    return () => request.abort();
+    return () => { request.abort(); window.removeEventListener('workspace-logout', invalidate); window.removeEventListener('workspace-owner', invalidate); };
   }, [attempt]);
 
   const markRead = async (id) => {
@@ -57,38 +84,17 @@ export default function Messages() {
     } catch (failure) { setError(failure.message || 'Der Hinweis konnte nicht als gelesen markiert werden.'); }
   };
 
-  const loadThreadMessages = async (thread) => {
-    setSelectedThread(thread);
-    const msgs = await api.list(`/messages/threads/${thread.id}/messages`).catch(() => []);
-    setThreadMessages(msgs || []);
-  };
-
-  const handleSendMessage = async () => {
-    if (!newMessage.trim() || !selectedThread) return;
-    setError(null);
-    try {
-      await api.post(`/messages/threads/${selectedThread.id}/messages`, {
-        thread_id: selectedThread.id,
-        sender_name: 'Ich',
-        body: newMessage,
-      });
-      setNewMessage('');
-      loadThreadMessages(selectedThread);
-      const thr = await api.list('/messages/threads').catch(() => []);
-      setThreads(thr || []);
-    } catch (err) {
-      setError(err.message || 'Nachricht konnte nicht gesendet werden');
-    }
-  };
+  const loadThreadMessages = conversation.selectThread;
+  const handleSendMessage = () => conversation.send();
 
   const handleCreateThread = async (data) => {
+    const sameSession = api.captureSession();
     const thread = await api.post('/messages/threads', data);
-    const thr = await api.list('/messages/threads').catch(() => []);
-    setThreads(thr || []);
-    if (thread) {
-      loadThreadMessages(thread);
-      setView('threads');
-    }
+    sameSession();
+    if (!thread?.id) throw new Error('Die neue Konversation wurde nicht bestätigt.');
+    setThreads(current => [thread, ...current.filter(item => item.id !== thread.id)]);
+    loadThreadMessages(thread);
+    setView('threads');
   };
 
   const threadFields = [
@@ -131,7 +137,7 @@ export default function Messages() {
   if (loading && !modal) return <div className="page-loading">{t('pages.loading')}</div>;
 
   return (
-    <div className="page">
+    <div className="page messages-page">
       <h1 className="page-title">{t('pages.messages.title')}</h1>
 
       {error && (
@@ -228,9 +234,9 @@ export default function Messages() {
         <div className="messages-layout">
           <div className="messages-sidebar">
             <div className="messages-filters">
-              <button className="btn btn-sm btn-primary" onClick={() => setModal('create')}>
+              {canWrite && <button className="btn btn-sm btn-primary" onClick={() => setModal('create')}>
                 + {t('pages.messages.newConversation') || 'Neue Konversation'}
-              </button>
+              </button>}
             </div>
             <div className="messages-list">
               {threads.length === 0 ? (
@@ -239,6 +245,9 @@ export default function Messages() {
                 <div
                   key={thr.id}
                   className={`message-item ${selectedThread?.id === thr.id ? 'active' : ''}`}
+                  role="button" tabIndex={0}
+                  aria-pressed={selectedThread?.id === thr.id}
+                  onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); loadThreadMessages(thr); } }}
                   onClick={() => loadThreadMessages(thr)}
                 >
                   <div className="message-item-header">
@@ -265,8 +274,22 @@ export default function Messages() {
                 <div className="message-detail-header">
                   <h2>{selectedThread.subject}</h2>
                 </div>
-                <div className="thread-messages">
-                  {threadMessages.length === 0 ? (
+                <nav className="thread-pagination" aria-label="Nachrichtenseiten">
+                  <button type="button" className="btn btn-sm btn-secondary" onClick={conversation.newer} disabled={threadPage.status === 'loading' || !threadPage.history.length}>Neuere Nachrichten</button>
+                  <span>Seite {threadPage.number}{threadPage.total !== null ? ` · ${threadPage.total} Nachrichten insgesamt` : ''}</span>
+                  <button type="button" className="btn btn-sm btn-secondary" onClick={conversation.older} disabled={threadPage.status === 'loading' || !threadPage.nextCursor}>Ältere Nachrichten</button>
+                  <button type="button" className="btn btn-sm btn-secondary" onClick={conversation.refresh} disabled={threadPage.status === 'loading'}>Aktualisieren</button>
+                </nav>
+                {threadPage.status === 'loading' && <p role="status">Nachrichten werden geladen …</p>}
+                {threadPage.error && <div role="alert" className="alert alert-danger">{threadPage.error}
+                  <button type="button" className="btn btn-sm btn-secondary" onClick={conversation.retryRead}>Nachrichten erneut laden</button>
+                </div>}
+                {notice.error && <div role="alert" className="alert alert-danger">{notice.error}
+                  {notice.uncertain && <><p>Die Speicherung ist unbestätigt. Der ursprüngliche Vorgang wird mit derselben Kennung abgeglichen, nicht als neue Nachricht gesendet.</p>
+                    <button type="button" className="btn btn-sm btn-secondary" disabled={notice.sending} onClick={() => conversation.send({ retry: true })}>Speicherung abgleichen</button></>}
+                </div>}
+                <div className="thread-messages" aria-busy={threadPage.status === 'loading'}>
+                  {threadPage.status === 'ready' && threadMessages.length === 0 ? (
                     <p className="empty-text" style={{ padding: '1rem' }}>{t('pages.messages.noThreadMessages') || 'Noch keine Nachrichten in diesem Thread'}</p>
                   ) : threadMessages.map(m => (
                     <div key={m.id} className="thread-message">
@@ -278,18 +301,19 @@ export default function Messages() {
                     </div>
                   ))}
                 </div>
-                <div className="thread-composer">
-                  <textarea
+                {canWrite && <div className="thread-composer">
+                  <label htmlFor="thread-reply">Antwort an „{selectedThread.subject}“</label>
+                  <textarea id="thread-reply"
                     value={newMessage}
                     onChange={e => setNewMessage(e.target.value)}
                     placeholder={t('pages.messages.writePlaceholder') || 'Nachricht schreiben...'}
                     rows={3}
                     onKeyDown={e => { if (e.key === 'Enter' && e.ctrlKey) handleSendMessage(); }}
                   />
-                  <button className="btn btn-primary" onClick={handleSendMessage} disabled={!newMessage.trim()}>
-                    {t('pages.messages.send') || 'Senden'}
+                  <button className="btn btn-primary" onClick={handleSendMessage} disabled={!newMessage.trim() || notice.sending || notice.uncertain}>
+                    {notice.sending ? 'Wird gespeichert …' : t('pages.messages.send') || 'Senden'}
                   </button>
-                </div>
+                </div>}
               </>
             ) : (
               <div className="message-detail-empty">

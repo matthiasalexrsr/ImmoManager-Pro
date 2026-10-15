@@ -7,7 +7,7 @@ import Maintenance from '../pages/Maintenance';
 import Statements from '../pages/Statements';
 import Messages from '../pages/Messages';
 
-vi.mock('../api', () => ({ api: { get: vi.fn(), list: vi.fn(), post: vi.fn(), patch: vi.fn(), put: vi.fn(), del: vi.fn() } }));
+vi.mock('../api', () => ({ api: { captureSession: vi.fn(), get: vi.fn(), list: vi.fn(), post: vi.fn(), patch: vi.fn(), put: vi.fn(), del: vi.fn() } }));
 vi.mock('../i18n', () => ({ useTranslation: () => ({ t: () => undefined, locale: 'de-DE' }) }));
 vi.mock('../contexts/AuthContext', () => ({ useAuth: () => null, useCanWrite: () => false }));
 vi.mock('../contexts/DataStoreContext', () => ({ useDataStore: () => null, useEntities: () => ({ items: [] }) }));
@@ -22,6 +22,7 @@ const show = (component, path) => render(<MemoryRouter initialEntries={[path]}>{
 beforeEach(() => {
   vi.resetAllMocks(); localStorage.clear(); sessionStorage.clear();
   vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date(2026, 9, 15, 12));
+  api.captureSession.mockReturnValue(() => {});
   api.list.mockResolvedValue([]); api.get.mockResolvedValue({}); api.patch.mockResolvedValue({});
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
