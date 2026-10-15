@@ -37,6 +37,11 @@ def entries(collection, before: dict, after: dict):
         return []
     result = []
     for field in sorted(set(before) & set(after) - IGNORED):
+        # The maintenance workflow records status itself, including the user's
+        # reason, automatic-start reasons and the initial status on creation.
+        # Generic capture must not create a second, less informative event.
+        if collection == "maintenance_cases" and field == "status":
+            continue
         if SENSITIVE.search(field) or before[field] == after[field]:
             continue
         name = f"defect:{after['id']}:{field}" if collection == "handover_defects" else field

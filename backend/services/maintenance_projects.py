@@ -1338,7 +1338,7 @@ def read_project(store: Any, case_id: str, actor: dict | None) -> dict:
     case_documents = rows.find("maintenance_case_documents", case_id=case_id)
     invoices = {i.id: i for i in rows.find("invoices", id=[link.invoice_id for link in links])}
     events = {e.id: e for e in rows.find("calendar_events", id=[a.calendar_event_id for a in appointments])}
-    history = sorted(rows.find("change_history", entity_type="maintenance", entity_id=case_id),
+    history = sorted(rows.find("change_history", entity_type="maintenance", entity_id=case_id, field_name="status"),
                      key=lambda entry: (str(entry.changed_at), entry.id), reverse=True)
     project_costs, payments, bookings = _costs(rows, case, orders, changes, links, invoices)
 

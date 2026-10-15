@@ -207,6 +207,14 @@ class Rows:
         new = model.model_validate({**old.model_dump(), **changes})
         self.undo.append((self._raw()[table], key, True, old))
         collection[key] = new
+        if table == "maintenance_cases":
+            from .business_field_history import entries
+
+            # The case service bypasses the ordinary memory-store updater.
+            # Keep its field timeline atomic with the same unit's undo journal,
+            # matching SQL capture without duplicating explicit status history.
+            for entry in entries(table, old.model_dump(), new.model_dump()):
+                self.add("change_history", entry)
         consume_expected(table, key)
         return new
 

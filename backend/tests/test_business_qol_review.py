@@ -140,3 +140,65 @@ def test_business_migration_adopts_partial_schema_preserving_data_and_indexes(tm
             assert indexes.issubset({index["name"] for index in inspect(connection).get_indexes(table)})
         assert inspect(connection).get_unique_constraints("business_document_intake")[0]["column_names"] == ["document_id"]
     engine.dispose()
+
+
+def test_maintenance_status_history_and_field_timeline_stay_distinct(fixture):
+    user, client, document = fixture
+    created = client.post("/api/v1/maintenance", json={"property_id": document.property_id, "title": "Dach prüfen"})
+    assert created.status_code == 201, created.text
+    case_id = created.json()["id"]
+    base = f"/api/v1/maintenance/{case_id}"
+    changed = client.patch(base, json={"status": "in_progress", "title": "Dach reparieren"})
+    assert changed.status_code == 200, changed.text
+    transitioned = client.post(base + "/transition", json={"status": "cancelled", "reason": "Auftrag entfällt"})
+    assert transitioned.status_code == 200, transitioned.text
+    # Repeating an unchanged field must not add another timeline event.
+    assert client.patch(base, json={"title": "Dach reparieren"}).status_code == 200
+
+    project = client.get(base + "/project")
+    assert project.status_code == 200, project.text
+    history = project.json()["history"]
+    assert [(row["field_name"], row["old_value"], row["new_value"], row["reason"]) for row in history] == [
+        ("status", "in_progress", "cancelled", "Auftrag entfällt"),
+        ("status", "open", "in_progress", "Bearbeitet"),
+        ("status", None, "open", "Angelegt")]
+    assert all(row["changed_by"] == user.id and row["changed_by_name"] == "Review" for row in history)
+
+    timeline = client.get(API + "/timeline", params={"entity_type": "maintenance", "entity_id": case_id})
+    assert timeline.status_code == 200, timeline.text
+    changes = [row for row in timeline.json()["items"] if row["kind"] == "change"]
+    assert sorted(row["title"] for row in changes) == ["Änderung: status"] * 3 + ["Änderung: title"]
+    assert all(row["actor"] == "Review" for row in changes)
+    assert next(row for row in changes if row["title"] == "Änderung: title")["body"] == "Feld geändert"
+    fields = [row for row in store.list_change_history()
+              if row.entity_type == "maintenance" and row.entity_id == case_id and row.field_name == "title"]
+    assert [(row.old_value, row.new_value, row.changed_by) for row in fields] == [
+        ("Dach prüfen", "Dach reparieren", user.id)]
+
+
+def test_maintenance_failed_unit_rolls_back_status_and_field_history(fixture, monkeypatch):
+    from backend.services.maintenance_rows import Rows
+
+    _, client, document = fixture
+    created = client.post("/api/v1/maintenance", json={"property_id": document.property_id, "title": "Dach prüfen"})
+    assert created.status_code == 201, created.text
+    case_id = created.json()["id"]
+    base = f"/api/v1/maintenance/{case_id}"
+    original_update = Rows.update
+
+    def fail_after_update(self, table, key, **changes):
+        result = original_update(self, table, key, **changes)
+        if table == "maintenance_cases":
+            raise RuntimeError("Synthetic failure after field and status history were staged")
+        return result
+
+    monkeypatch.setattr(Rows, "update", fail_after_update)
+    failed = client.patch(base, json={"status": "in_progress", "title": "Dach reparieren"})
+    assert failed.status_code == 500, failed.text
+    project = client.get(base + "/project")
+    assert project.status_code == 200, project.text
+    assert (project.json()["case"]["status"], project.json()["case"]["title"]) == ("open", "Dach prüfen")
+    assert [(row["old_value"], row["new_value"]) for row in project.json()["history"]] == [(None, "open")]
+    timeline = client.get(API + "/timeline", params={"entity_type": "maintenance", "entity_id": case_id})
+    assert timeline.status_code == 200, timeline.text
+    assert [row["title"] for row in timeline.json()["items"] if row["kind"] == "change"] == ["Änderung: status"]
