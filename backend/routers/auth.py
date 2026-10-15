@@ -166,7 +166,7 @@ def refresh(
             detail="Benutzer nicht gefunden oder deaktiviert",
         )
     # Rotate: revoke the old refresh token so it cannot be reused
-    revoke_token(payload.refresh_token)
+    revoke_token(payload.refresh_token, require_unrevoked=True)
     tokens = TokenResponse(
         access_token=create_access_token(user["id"]),
         refresh_token=create_refresh_token(user["id"]),

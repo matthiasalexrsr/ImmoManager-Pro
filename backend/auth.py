@@ -20,7 +20,7 @@ import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt import PyJWTError as JWTError
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from .config import settings
 from .models import TokenPayload, UserRead
@@ -112,6 +112,7 @@ _register_limiter = RateLimiter(
 security = HTTPBearer(auto_error=False)
 
 # Token blacklist for logout/revocation
+_revocation_lock = threading.RLock()
 _token_blacklist: set[str] = set()
 _blacklist_expiry: dict[str, datetime] = {}  # token -> expiry time for cleanup
 _MAX_BLACKLIST_SIZE = 10_000
@@ -331,69 +332,113 @@ def _token_jti(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()[:32]
 
 
-def revoke_token(token: str) -> None:
-    """Add a token to the blacklist (for logout)."""
-    _cleanup_blacklist()
+def _revoked_error() -> HTTPException:
+    return HTTPException(status.HTTP_401_UNAUTHORIZED, "Token wurde widerrufen",
+                         headers={"WWW-Authenticate": "Bearer"})
+
+
+@contextmanager
+def _revocation_session() -> Iterator[Any]:
+    """Failures are neither a negative revocation check nor confirmed logout.
+
+    SQL exceptions may embed bind parameters and connection credentials. Log only
+    the event, including failures while opening, rolling back or closing a session.
+    """
+    session = None
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        exp = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
+        session = _new_auth_session()
+        yield session
+    except SQLAlchemyError:
+        if session is not None:
+            try:
+                session.rollback()
+            except SQLAlchemyError:
+                pass
+        logger.warning("Authentication revocation storage unavailable")
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Der Sitzungsstatus konnte nicht sicher gespeichert oder geprüft werden. Bitte erneut versuchen.",
+            headers={"Retry-After": "30", "Cache-Control": "no-store"},
+        ) from None
+    finally:
+        if session is not None:
+            try:
+                session.close()
+            except SQLAlchemyError:
+                # Closing a session cannot undo an already confirmed commit/read.
+                logger.warning("Authentication revocation session cleanup failed")
+
+
+def revoke_token(token: str, *, require_unrevoked: bool = False) -> None:
+    """Confirm durable revocation before caching it or allowing token rotation.
+
+    Logout is idempotent. Refresh uses the unique database token key as a
+    single-use claim, including across workers. Invalid/expired logout inputs
+    remain harmless; they cannot authorize a request in the first place.
+    """
+    with _revocation_lock:
+        _cleanup_blacklist()
+        try:
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            exp = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
+        except JWTError:
+            if require_unrevoked:
+                raise _revoked_error() from None
+            return
+        if require_unrevoked and token in _token_blacklist:
+            raise _revoked_error()
+        if _auth_session_factory is not None:
+            inserted = _revoke_token_db(token, exp)
+            if require_unrevoked and not inserted:
+                raise _revoked_error()
         _token_blacklist.add(token)
         _blacklist_expiry[token] = exp
-        # Also persist to DB for cross-restart durability
-        if _auth_session_factory is not None:
-            _revoke_token_db(token, exp)
-    except JWTError:
-        pass
 
 
-def _revoke_token_db(token: str, expires_at: datetime) -> None:
-    """Persist token revocation to the database."""
+def _revoke_token_db(token: str, expires_at: datetime) -> bool:
+    """Return whether this operation inserted the durable single-use claim."""
     from .db.orm_models import RevokedTokenORM
-    session = _new_auth_session()
-    try:
+    with _revocation_session() as session:
         jti = _token_jti(token)
-        exists = session.query(RevokedTokenORM).filter(
-            RevokedTokenORM.token_jti == jti
-        ).first()
-        if not exists:
-            session.add(RevokedTokenORM(token_jti=jti, expires_at=expires_at))
+        if session.query(RevokedTokenORM).filter(RevokedTokenORM.token_jti == jti).first():
+            return False
+        session.add(RevokedTokenORM(token_jti=jti, expires_at=expires_at))
+        try:
             session.commit()
-    except SQLAlchemyError:
-        session.rollback()
-        logger.warning("Failed to persist token revocation to DB", exc_info=True)
-    finally:
-        session.close()
+        except IntegrityError:
+            # A concurrent worker may already have committed the same token.
+            # Recheck the exact key; unrelated constraints must remain failures.
+            session.rollback()
+            if not session.query(RevokedTokenORM).filter(RevokedTokenORM.token_jti == jti).first():
+                raise
+            return False
+        return True
 
 
 def is_token_revoked(token: str) -> bool:
-    """Check if a token has been revoked."""
+    """A positive cache may deny access; only a successful DB read can allow it."""
     if token in _token_blacklist:
         return True
-    # Check DB if available
     if _auth_session_factory is not None:
         return _is_token_revoked_db(token)
     return False
 
 
 def _is_token_revoked_db(token: str) -> bool:
-    """Check DB for revoked token."""
     from .db.orm_models import RevokedTokenORM
-    session = _new_auth_session()
-    try:
-        jti = _token_jti(token)
+    with _revocation_session() as session:
         found = session.query(RevokedTokenORM).filter(
-            RevokedTokenORM.token_jti == jti
+            RevokedTokenORM.token_jti == _token_jti(token)
         ).first()
-        if found:
-            # Cache in memory so subsequent checks are fast
+        if found is None:
+            return False
+        expiry = found.expires_at
+        if expiry.tzinfo is None:
+            expiry = expiry.replace(tzinfo=timezone.utc)
+        with _revocation_lock:
             _token_blacklist.add(token)
-            return True
-        return False
-    except SQLAlchemyError:
-        logger.warning("DB token revocation check failed", exc_info=True)
-        return False
-    finally:
-        session.close()
+            _blacklist_expiry[token] = expiry
+        return True
 
 
 def _cleanup_blacklist() -> None:
@@ -416,19 +461,13 @@ def _cleanup_blacklist() -> None:
 
 
 def _cleanup_blacklist_db() -> None:
-    """Remove expired revoked tokens from the database."""
+    """Remove expired claims without hiding failures or logging SQL parameters."""
     from .db.orm_models import RevokedTokenORM
-    session = _new_auth_session()
-    try:
+    with _revocation_session() as session:
         session.query(RevokedTokenORM).filter(
             RevokedTokenORM.expires_at < datetime.now(timezone.utc)
         ).delete()
         session.commit()
-    except SQLAlchemyError:
-        session.rollback()
-        logger.debug("Failed to clean expired revoked tokens from DB", exc_info=True)
-    finally:
-        session.close()
 
 
 def decode_token(token: str) -> TokenPayload:

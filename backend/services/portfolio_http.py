@@ -33,7 +33,7 @@ class PortfolioScopeMiddleware:
         if scope["type"] != "http":
             return await self.app(scope, receive, send)
         # account reads touch the database: never on the event loop
-        actor = await run_in_threadpool(_actor, scope)
+        actor = None
         started = {"status": None}
 
         async def checked_send(message):
@@ -46,6 +46,7 @@ class PortfolioScopeMiddleware:
             await send(message)
 
         try:
+            actor = await run_in_threadpool(_actor, scope)
             with scope_context(actor):
                 if actor is not None and not actor.unrestricted:
                     _refuse_installation_paths(scope)
@@ -53,7 +54,7 @@ class PortfolioScopeMiddleware:
         except HTTPException as error:
             if started["status"] is not None:
                 raise
-            await JSONResponse({"detail": error.detail}, status_code=error.status_code)(scope, receive, send)
+            await JSONResponse({"detail": error.detail}, status_code=error.status_code, headers=error.headers)(scope, receive, send)
 
 
 def _actor(scope):
@@ -77,7 +78,9 @@ def _actor(scope):
 
     try:
         payload = decode_token(token)
-    except HTTPException:
+    except HTTPException as error:
+        if error.status_code != 401:
+            raise
         return None          # the endpoint answers 401 itself
     if payload.type != "access":
         return None
