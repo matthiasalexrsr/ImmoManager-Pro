@@ -44,14 +44,16 @@ class BrokenConsole(io.RawIOBase):
 
 @pytest.mark.parametrize("message", ["ASCII request", "Anfrage → 中文"])
 def test_console_io_errors_remain_visible_including_after_encoding_fallback(message):
-    console = io.TextIOWrapper(BrokenConsole(), encoding="cp1252", errors="strict", write_through=True)
+    console = io.TextIOWrapper(io.BufferedWriter(BrokenConsole(), buffer_size=1),
+                               encoding="cp1252", errors="strict", write_through=True)
     writer = _TeeWriter(console, io.StringIO())
     with pytest.raises(OSError, match="Console disconnected"):
         writer.write(message)
 
 
 def test_console_flush_io_errors_remain_visible():
-    console = io.TextIOWrapper(BrokenConsole(), encoding="cp1252", errors="strict")
+    console = io.TextIOWrapper(io.BufferedWriter(BrokenConsole(), buffer_size=1),
+                               encoding="cp1252", errors="strict")
     writer = _TeeWriter(console, io.StringIO())
     writer.write("Buffered request")
     with pytest.raises(OSError, match="Console disconnected"):
