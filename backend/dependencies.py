@@ -43,6 +43,9 @@ _scoped_session = None
 # Outside a request (startup, scripts, tests calling routers directly) the
 # thread stays the scope.
 _request_scope: contextvars.ContextVar[str | None] = contextvars.ContextVar("db_request_scope", default=None)
+# These built-ins are used by the application's read-only SQL aggregates/search.
+# Unknown functions remain private: a SELECT can invoke a writing function.
+_READ_FUNCTIONS = frozenset({"coalesce", "count", "sum", "min", "max", "round", "length", "lower"})
 _READ_RELEASE_CHECK = object()       # only our server-side read diagnostic may bypass function conservatism
 
 
@@ -155,9 +158,16 @@ def _guard_request_read_connection(db: Any, transaction: Any, connection: Any) -
         compiled = context.compiled
         expression = compiled.statement if compiled is not None else None
         diagnostic = context.execution_options.get("request_read_release_check") is _READ_RELEASE_CHECK
+
+        def read_function(node):
+            name = str(getattr(node, "name", "")).lower()
+            packages = getattr(node, "packagenames", ())
+            catalog = not packages or (conn.dialect.name == "postgresql" and packages == ("pg_catalog",))
+            return catalog and (name in _READ_FUNCTIONS or (conn.dialect.name == "sqlite" and name == "immo_lower"))
+
         readonly = expression is not None and getattr(expression, "is_select", False) and not any(
             getattr(node, "is_dml", False) or isinstance(node, TextClause)
-            or (isinstance(node, FunctionElement) and not diagnostic)
+            or (isinstance(node, FunctionElement) and not diagnostic and not read_function(node))
             or getattr(node, "_for_update_arg", None) is not None for node in visitors.iterate(expression))
         if not readonly:
             from . import concurrency

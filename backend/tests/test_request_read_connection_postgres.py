@@ -9,6 +9,9 @@ from sqlalchemy.orm import Session, scoped_session, sessionmaker
 from test_document_versions_postgres import postgres  # noqa: F401
 from test_request_read_connection import RequestBase, RequestRow
 from test_request_read_connection import (
+    test_builtin_aggregate_reads_do_not_invalidate_other_request_caches as _aggregate_case,
+)
+from test_request_read_connection import (
     test_two_request_reads_cannot_starve_their_owned_write_connections as _pool_case,
 )
 
@@ -35,6 +38,10 @@ def pool(postgres, monkeypatch):  # noqa: F811
 
 def test_postgres_two_readers_can_both_acquire_their_owned_write_connection(pool):
     _pool_case(pool, release=True)
+
+
+def test_postgres_builtin_aggregate_reads_do_not_invalidate_shared_caches(pool):
+    _aggregate_case(pool)
 
 
 @pytest.mark.parametrize("kind", ["raw", "core", "cte"])

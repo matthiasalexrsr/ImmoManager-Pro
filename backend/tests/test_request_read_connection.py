@@ -5,7 +5,7 @@ from threading import Barrier, Event
 from typing import cast
 
 import pytest
-from sqlalchemy import Integer, create_engine, insert, select, text, update
+from sqlalchemy import Integer, create_engine, func, insert, select, text, update
 from sqlalchemy.exc import TimeoutError as PoolTimeout
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, scoped_session, sessionmaker
 
@@ -98,6 +98,21 @@ def test_clean_request_autobegin_is_released_without_replacing_its_session(pool,
         assert not db.in_transaction()
         assert engine.pool.checkedout() == 0
         assert db.scalar(select(RequestRow.value).where(RequestRow.id == 1)) == 1
+    finally:
+        dependencies.end_request_scope(token)
+
+
+def test_builtin_aggregate_reads_do_not_invalidate_other_request_caches(pool):
+    _, registry, target = pool
+    token = dependencies.begin_request_scope()
+    try:
+        before = concurrency._version
+        assert registry.scalar(select(func.sum(func.round(RequestRow.value, 2)))) == 3
+        assert registry.scalar(select(func.count(RequestRow.id))) == 2
+        assert not registry.info.get("cache_pending_write")
+        assert concurrency._version == before
+        assert dependencies.release_request_read_connection(target)
+        assert concurrency._version == before
     finally:
         dependencies.end_request_scope(token)
 

@@ -56,6 +56,9 @@ SOURCE_FILES = (
     "backend/routers/bookings.py", "backend/services/booking_writes.py", "backend/services/csv_export.py", "backend/storage.py",
     "backend/dependencies.py", "backend/services/sqlite_writes.py", "backend/services/document_versions.py",
     "backend/audit.py", "backend/middleware.py",
+    "backend/db/migrations/versions/981b2631e1e8_contract_ledger_takeover.py",
+    "backend/db/migrations/versions/d2e6c8a4f019_merge_date_index_and_takeover.py",
+    "backend/services/payment_allocations.py", "backend/services/rent_ledger.py", "backend/domain/lease_engine.py",
 )
 
 
