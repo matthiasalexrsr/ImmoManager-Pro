@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from ..concurrency import one_at_a_time
 from ..dependencies import store
-from ..domain.lease_engine import LeaseEngine, PaymentLine, RentStep
+from ..domain.lease_engine import LeaseEngine
 from ..models import (
     Contract,
     ContractCreate,
@@ -20,10 +20,9 @@ from ..models import (
 )
 from ..services.deletion_guard import ensure_deletable
 from ..services.document_versions import ensure_binding_kept
-from ..services.payment_allocations import contract_payments
+from ..services.payment_allocations import contract_ledger
 from ..services.read_cache import CachedReads
-from ..services.rent_history import charge_for, follow_contract_start, rent_steps, start_rent_history
-from ..services.rent_ledger import account_receivables
+from ..services.rent_history import charge_for, follow_contract_start, start_rent_history
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/contracts", tags=["Verträge"])
@@ -139,13 +138,6 @@ def delete_contract(contract_id: str) -> None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
-def _build_charge_and_payments(contract: Contract, until: date) -> tuple[list[RentStep], list[PaymentLine]]:
-    """The contract's rent history and the payments credited to it up to the reference date."""
-    steps = rent_steps(store, contract)
-    payments = contract_payments(store, contract, until=until)
-    return steps, payments
-
-
 @router.get("/{contract_id}/settlement")
 def get_contract_settlement(
     contract_id: str,
@@ -158,12 +150,12 @@ def get_contract_settlement(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
     today = as_of or date.today()
-    steps, payments = _build_charge_and_payments(contract, today)
+    receivables, payments = contract_ledger(store, contract, today)
 
     dashboard = LeaseEngine.build_dashboard(
         contract_start=contract.start_date,
         contract_end=contract.end_date,
-        receivables=account_receivables(store, contract, today, steps),
+        receivables=receivables,
         payments=payments,
         today=today,
     )
@@ -188,7 +180,7 @@ def create_dunning_campaign(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
     today = as_of or date.today()
-    steps, payments = _build_charge_and_payments(contract, today)
+    receivables, payments = contract_ledger(store, contract, today)
 
     dunning_policy = None
     if policy:
@@ -204,7 +196,7 @@ def create_dunning_campaign(
     campaign = LeaseEngine.build_dunning_campaign(
         contract_start=contract.start_date,
         contract_end=contract.end_date,
-        receivables=account_receivables(store, contract, today, steps),
+        receivables=receivables,
         payments=payments,
         today=today,
         policy=dunning_policy,

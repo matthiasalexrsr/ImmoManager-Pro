@@ -9,12 +9,12 @@ every amount counts once.
 """
 
 from collections import defaultdict
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any, Iterable, Optional
 
 from ..domain.billing_engine import allocate_cents
-from ..domain.lease_engine import LeaseEngine, PaymentLine
+from ..domain.lease_engine import LeaseEngine, PaymentLine, ReceivableLine, RentStep
 from ..domain.money import ZERO, as_number, cents, money
 from ..domain.occupancy import NON_BILLABLE_STATUSES
 from ..domain.payment_allocation import ContractCandidate, suggest_allocation
@@ -263,28 +263,67 @@ def contract_payments(store: Any, contract: Any,
     An account taken over from a previous system (rent_ledger) counts only what was booked from
     its takeover day on, plus the credit carried over; earlier payments are in the carried balance.
     """
+    return _contract_cash(store, contract, credited, until)[0]
+
+
+def _contract_cash(store: Any, contract: Any, credited: list[tuple[Any, str, Decimal]] | None,
+                   until: date | None) -> tuple[list[PaymentLine], list[ReceivableLine]]:
+    """Remaining receipts and separately dated debt from returns exceeding receipts.
+
+    A return first undoes its original/earlier cash. Its unmatched share is an
+    additional claim, rather than silently disappearing when no receipt remains.
+    Later cash pays these claims through the same FIFO ledger as ordinary rent.
+    """
     if credited is None:
         credited = _credited(store, contract.tenant_id)
     start, _ = takeover(contract)
-    entries = sorted(((booking.booking_date, booking.id, booking.reverses_booking_id, amount)
-                      for booking, contract_id, amount in credited
-                      if contract_id == contract.id and (until is None or booking.booking_date <= until)
-                      and (start is None or booking.booking_date >= start)),
-                     key=lambda entry: entry[0])
-    lines: list[list[Any]] = []    # [day, remaining amount, booking id]
-    for day, booking_id, reverses, amount in entries:
+    # A manual split may contain several shares for the same booking/contract.
+    # They form one cash event and, if needed, one claim identified by that booking.
+    amounts: dict[str, Decimal] = defaultdict(lambda: ZERO)
+    bookings = {}
+    for booking, contract_id, amount in credited:
+        if (contract_id == contract.id and (until is None or booking.booking_date <= until)
+                and (start is None or booking.booking_date >= start)):
+            amounts[booking.id] += amount
+            bookings[booking.id] = booking
+    entries = sorted(((booking.booking_date, booking.id, booking.reverses_booking_id,
+                       amounts[booking.id], booking.created_at) for booking in bookings.values()),
+                     # Bookings have day precision: apply that day's receipts
+                     # before returns, with a stable order independent of SQL rows.
+                     key=lambda entry: (entry[0], entry[3] < 0, entry[2] is not None, entry[4], entry[1]))
+    # Opening credit participates in returns just like an earlier payment. Adding
+    # it after processing cash would leave refunded credit available to pay rent.
+    lines: list[list[Any]] = [[line.booking_date, line.amount, None]
+                             for line in carried_credit(contract, until)]
+    returns = []
+    for day, booking_id, reverses, amount, _ in entries:
         if amount > 0:
             lines.append([day, amount, booking_id])
             continue
         owed = -amount
-        for line in [line for line in lines if line[2] == reverses] + lines[::-1]:
+        original = [line for line in lines if reverses is not None and line[2] == reverses]
+        for line in original + lines[::-1]:
             taken = min(owed, line[1])
             line[1] -= taken
             owed -= taken
             if not owed:
                 break
-    return carried_credit(contract, until) + [PaymentLine(booking_date=day, amount=amount)
-                                              for day, amount, _ in lines if amount > 0]
+        if owed:
+            returns.append(ReceivableLine(
+                period_start=day, period_end=day + timedelta(days=1), due_date=day,
+                cold_rent=ZERO, service_charge_advance=ZERO, heating_advance=ZERO,
+                total_amount=owed, label="Rückzahlung / Rücklastschrift",
+                claim_key=f"rent:return:{booking_id}"))
+    return [PaymentLine(booking_date=day, amount=amount) for day, amount, _ in lines if amount > 0], returns
+
+
+def contract_ledger(store: Any, contract: Any, until: date,
+                    credited: list[tuple[Any, str, Decimal]] | None = None,
+                    steps: list[RentStep] | None = None, *,
+                    payments_until: date | None = None) -> tuple[list[ReceivableLine], list[PaymentLine]]:
+    """The complete account: rent, opening balance, returns and remaining receipts."""
+    payments, returns = _contract_cash(store, contract, credited, payments_until or until)
+    return account_receivables(store, contract, until, steps) + [line for line in returns if line.due_date <= until], payments
 
 
 def tenant_account(store: Any, tenant_id: str, as_of: date) -> dict:
@@ -300,8 +339,8 @@ def tenant_account(store: Any, tenant_id: str, as_of: date) -> dict:
     rows = []
     sums = {"expected": ZERO, "paid": ZERO, "outstanding": ZERO, "overpaid": ZERO}
     for contract in contracts:
-        receivables = account_receivables(store, contract, as_of)
-        balance = LeaseEngine.calculate_balance(receivables, contract_payments(store, contract, credited, until=as_of))
+        receivables, payments = contract_ledger(store, contract, as_of, credited)
+        balance = LeaseEngine.calculate_balance(receivables, payments)
         values = {"expected": balance.expected_total, "paid": balance.paid_total,
                   "outstanding": balance.outstanding_total, "overpaid": balance.overpaid_total}
         for name, value in values.items():

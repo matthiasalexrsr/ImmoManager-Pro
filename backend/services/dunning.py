@@ -109,8 +109,7 @@ from .dunning_letter_validation import (
     validate_dunning_letter_snapshot,
 )
 from .dunning_render import plain_text, render_pdf, subject
-from .payment_allocations import contract_payments
-from .rent_ledger import account_receivables
+from .payment_allocations import contract_ledger
 
 WRITE_AREAS = ("/dunning",)
 FINALIZE_AREAS = ("/dunning", "/documents")
@@ -434,12 +433,14 @@ def evaluate(ctx: Any, contract: Any, as_of: date, *, payments_until: date | Non
     disputed = {d.claim_key: d.status for d in disputes if d.status in ("open", "upheld")}
 
     claims: list[Claim] = []
+    receivable_lines, payment_lines = contract_ledger(ctx.store, contract, as_of, payments_until=payments_until)
     # the tenant account's claims: from the takeover on for a tenancy taken over, arrears carried over first
-    for line in account_receivables(ctx.store, contract, as_of):
+    for line in receivable_lines:
         if line.total_amount <= 0:
             continue
         if line.label:
-            claims.append(Claim("rent:carried", "rent", line.due_date, money(line.total_amount), line.label))
+            claims.append(Claim(line.claim_key or "rent:carried", "rent", line.due_date,
+                                money(line.total_amount), line.label))
         else:
             claims.append(Claim(f"rent:{line.period_start:%Y-%m}", "rent", line.due_date, money(line.total_amount),
                                 f"Miete {line.period_start:%m/%Y}"))
@@ -486,8 +487,7 @@ def evaluate(ctx: Any, contract: Any, as_of: date, *, payments_until: date | Non
                              "reason_label": EXCLUSION_LABELS[reason]})
         else:
             dunnable.append(claim)
-    payments = [Payment(line.booking_date, money(line.amount))
-                for line in contract_payments(ctx.store, contract, until=payment_date)]
+    payments = [Payment(line.booking_date, money(line.amount)) for line in payment_lines]
     payments.extend(Payment(day, amount, claim.key) for claim in dunnable if claim.receivable_id
                     for day, amount in offsets.get(claim.receivable_id, []) if day <= payment_date)
     items, unapplied = rules_.apply_payments(dunnable, payments)

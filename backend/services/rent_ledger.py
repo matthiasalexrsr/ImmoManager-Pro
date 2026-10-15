@@ -40,7 +40,7 @@ def account_receivables(store: Any, contract: Any, until: date,
         return lines
     lines = [line for line in lines if line.period_start >= start]
     day = start - timedelta(days=1)
-    if carried > 0 and day <= until:
+    if carried > 0 and start <= until:
         lines.insert(0, ReceivableLine(period_start=day, period_end=start, due_date=day, cold_rent=ZERO,
                                        service_charge_advance=ZERO, heating_advance=ZERO,
                                        total_amount=carried, label=CARRIED_LABEL))

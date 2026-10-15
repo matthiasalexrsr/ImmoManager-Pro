@@ -37,10 +37,9 @@ from . import document_versions as archive
 from .housing_confirmation import etag
 from .jobs.schedule import local_today
 from .maintenance_rows import Rows
-from .payment_allocations import contract_payments, credited_by_tenant, deposit_shares
+from .payment_allocations import contract_ledger, credited_by_tenant, deposit_shares
 from .portfolio_scope import scope_context
 from .read_cache import CachedReads
-from .rent_ledger import account_receivables
 
 
 class ContractPaymentRequest(BaseModel):
@@ -196,11 +195,12 @@ def monthly_ledger(store: Any, month: str, as_of: date, property_id: str | None 
     totals = {"expected": ZERO, "paid": ZERO, "outstanding": ZERO, "contract_credit": ZERO}
     result = []
     for contract in contracts:
+        receivables, payments = contract_ledger(store, contract, as_of, credited.get(contract.tenant_id, []))
         dashboard = LeaseEngine.build_dashboard(
             contract_start=contract.start_date, contract_end=contract.end_date, today=as_of,
-            receivables=account_receivables(store, contract, as_of),
-            payments=contract_payments(store, contract, credited.get(contract.tenant_id, []), until=as_of))
-        line = next((line for line in dashboard.settlement_lines if line.period_start == selected), None)
+            receivables=receivables, payments=payments)
+        line = next((line for line in dashboard.settlement_lines
+                     if line.period_start == selected and line.label is None), None)
         if line is None:
             continue
         values = {"expected": line.total_amount, "paid": line.paid_amount, "outstanding": line.outstanding_amount,

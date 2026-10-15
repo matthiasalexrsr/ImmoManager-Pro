@@ -87,9 +87,8 @@ from .deposit_validation import (
 from .final_statements import FINAL_STATUSES
 from .housing_confirmation import etag
 from .housing_confirmation_validation import digest
-from .payment_allocations import contract_payments, deposit_shares, planned_pairs, rent_amount
+from .payment_allocations import contract_ledger, deposit_shares, planned_pairs, rent_amount
 from .rent_history import charge_for
-from .rent_ledger import account_receivables
 
 logger = logging.getLogger(__name__)
 
@@ -716,8 +715,8 @@ def _tenant_defects(unit: archive.Unit, protocol_id: str | None) -> list[Any]:
 
 
 def _rent_outstanding(unit: archive.Unit, contract, day: date) -> Decimal:
-    receivables = account_receivables(unit.store, contract, day)
-    balance = LeaseEngine.calculate_balance(receivables, contract_payments(unit.store, contract, until=day))
+    receivables, payments = contract_ledger(unit.store, contract, day)
+    balance = LeaseEngine.calculate_balance(receivables, payments)
     return money(balance.outstanding_total)
 
 

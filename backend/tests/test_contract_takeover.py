@@ -19,7 +19,9 @@ from backend.models import (
     UnitCreate,
 )
 from backend.services import report_service
-from backend.services.payment_allocations import auto_allocate, tenant_account
+from backend.services.deposits import _rent_outstanding
+from backend.services.document_versions import Unit
+from backend.services.payment_allocations import auto_allocate, contract_payments, set_allocations, tenant_account
 
 TAKEOVER = date(2026, 1, 1)
 
@@ -114,6 +116,124 @@ def test_carried_credit_pays_the_first_months(client, estate):
     row = account_row(estate, date(2026, 2, 28))
     assert (row["expected"], row["paid"], row["outstanding"]) == (1200, 700, 500)
     assert account_row(estate, date(2026, 1, 31))["overpaid"] == 100
+
+
+@pytest.mark.parametrize("carried", [300, -300])
+def test_opening_balance_is_not_available_before_takeover(client, estate, carried):
+    take_over(client, estate, carried_balance=carried)
+    row = account_row(estate, date(2025, 12, 31))
+    assert (row["expected"], row["paid"], row["outstanding"], row["overpaid"]) == (0, 0, 0, 0)
+    response = client.get(f"/api/v1/contracts/{estate['contract'].id}/settlement?as_of=2025-12-31",
+                          headers=headers())
+    assert response.status_code == 200, response.text
+    assert response.json()["settlement_lines"] == []
+
+
+def test_refunding_opening_credit_reduces_every_account_view(client, estate):
+    take_over(client, estate, carried_balance=-700)
+    pay(estate, -250, date(2026, 1, 5))
+    row = account_row(estate, date(2026, 1, 31))
+    assert (row["expected"], row["paid"], row["outstanding"], row["overpaid"]) == (600, 450, 150, 0)
+    # The refund has not happened yet in a historical snapshot.
+    assert account_row(estate, date(2026, 1, 4))["overpaid"] == 100
+    response = client.get("/api/v1/rent-charges/ledger?month=2026-01&as_of=2026-01-31", headers=headers())
+    assert response.status_code == 200, response.text
+    assert (response.json()["rows"][0]["paid"], response.json()["rows"][0]["outstanding"]) == (450, 150)
+    response = client.get(f"/api/v1/dunning/contracts/{estate['contract'].id}?as_of=2026-01-31",
+                          headers=headers())
+    assert response.status_code == 200, response.text
+    assert response.json()["totals"]["overdue_principal"] == 150
+
+
+def test_a_return_consumes_new_receipts_before_opening_credit(client, estate):
+    take_over(client, estate, carried_balance=-700)
+    pay(estate, 200, date(2026, 1, 5))
+    pay(estate, -250, date(2026, 1, 6))
+    row = account_row(estate, date(2026, 1, 31))
+    assert (row["paid"], row["outstanding"], row["overpaid"]) == (650, 0, 50)
+    payments = contract_payments(store, store.get_contract(estate["contract"].id), until=date(2026, 1, 31))
+    assert [(line.booking_date, float(line.amount)) for line in payments] == [(TAKEOVER, 650)]
+
+
+def test_reversal_across_takeover_keeps_its_dated_debt_in_all_views(client, estate):
+    take_over(client, estate, carried_balance=300)
+    original = pay(estate, 600, date(2025, 12, 20))
+    response = client.post(f"/api/v1/bookings/{original.id}/reverse", headers=headers(),
+                           json={"amount": 600, "booking_date": "2026-01-01"})
+    assert response.status_code == 201, response.text
+    reversal_id = response.json()["id"]
+    claim_key = f"rent:return:{reversal_id}"
+    row = account_row(estate, date(2026, 1, 31))
+    assert (row["expected"], row["paid"], row["outstanding"]) == (1500, 0, 1500)
+    assert account_row(estate, date(2025, 12, 31))["outstanding"] == 0
+    contract = store.get_contract(estate["contract"].id)
+    assert _rent_outstanding(Unit(store, None, {}, None), contract, date(2026, 1, 31)) == 1500
+    response = client.get(f"/api/v1/contracts/{contract.id}/settlement?as_of=2026-01-31", headers=headers())
+    assert response.status_code == 200, response.text
+    returned = next(line for line in response.json()["settlement_lines"] if line["claim_key"] == claim_key)
+    assert (returned["due_date"], returned["total_amount"], returned["outstanding_amount"]) == (
+        "2026-01-01", 600, 600)
+    response = client.get(f"/api/v1/dunning/contracts/{contract.id}?as_of=2026-01-31", headers=headers())
+    assert response.status_code == 200, response.text
+    assert response.json()["totals"]["overdue_principal"] == 1500
+    assert claim_key in {line["key"] for line in response.json()["claims"]}
+    response = client.post(f"/api/v1/contracts/{contract.id}/dunning-campaign?as_of=2026-01-31", headers=headers())
+    assert response.status_code == 200, response.text
+    assert response.json()["total_principal"] == 1500
+    response = client.get("/api/v1/rent-charges/ledger?month=2026-01&as_of=2026-01-31", headers=headers())
+    assert response.status_code == 200, response.text
+    # A first-of-month return must not replace the monthly-rent row.
+    assert (response.json()["rows"][0]["expected"], response.json()["rows"][0]["outstanding"]) == (600, 600)
+
+
+def test_return_excess_can_be_paid_later_without_same_day_claim_collisions(client, estate):
+    take_over(client, estate)
+    first = pay(estate, -150, date(2026, 1, 1))
+    second = pay(estate, -50, date(2026, 1, 1))
+    pay(estate, 100, date(2026, 1, 5))
+    row = account_row(estate, date(2026, 1, 31))
+    assert (row["expected"], row["paid"], row["outstanding"]) == (800, 100, 700)
+    assert account_row(estate, date(2026, 1, 4))["outstanding"] == 800
+    response = client.get(f"/api/v1/contracts/{estate['contract'].id}/settlement?as_of=2026-01-31",
+                          headers=headers())
+    assert response.status_code == 200, response.text
+    lines = response.json()["settlement_lines"]
+    assert len(lines) == 3
+    assert {line["claim_key"] for line in lines if line["claim_key"]} == {
+        f"rent:return:{first.id}", f"rent:return:{second.id}"}
+    assert sum(line["paid_amount"] for line in lines) == 100
+    assert sum(line["outstanding_amount"] for line in lines) == 700
+    monthly = next(line for line in lines if line["label"] is None)
+    assert (monthly["total_amount"], monthly["paid_amount"]) == (600, 0)
+    response = client.get(f"/api/v1/dunning/contracts/{estate['contract'].id}?as_of=2026-01-31",
+                          headers=headers())
+    assert response.status_code == 200, response.text
+    dunning_paid = {line["key"]: line["paid"] for line in response.json()["claims"]}
+    assert {line["claim_key"]: line["paid_amount"] for line in lines
+            if line["claim_key"] and line["outstanding_amount"] > 0} == {
+        key: paid for key, paid in dunning_paid.items() if key.startswith("rent:return:")}
+
+
+def test_return_without_takeover_also_preserves_excess_debt(client, estate):
+    pay(estate, -50, date(2026, 1, 5))
+    row = account_row(estate, date(2026, 1, 31))
+    assert (row["expected"], row["paid"], row["outstanding"]) == (81 * 600 + 50, 0, 81 * 600 + 50)
+
+
+def test_duplicate_manual_shares_make_one_return_claim(client, estate):
+    take_over(client, estate)
+    returned = pay(estate, -50, date(2026, 1, 5))
+    contract_id = estate["contract"].id
+    set_allocations(store, returned.id, [(contract_id, -30), (contract_id, -20)])
+    pay(estate, 10, date(2026, 1, 6))
+    response = client.get(f"/api/v1/contracts/{contract_id}/settlement?as_of=2026-01-31", headers=headers())
+    assert response.status_code == 200, response.text
+    lines = response.json()["settlement_lines"]
+    returns = [line for line in lines if line["claim_key"] == f"rent:return:{returned.id}"]
+    assert len(returns) == 1
+    assert returns[0]["total_amount"] == 50
+    assert sum(line["paid_amount"] for line in lines) == 10
+    assert sum(line["outstanding_amount"] for line in lines) == 640
 
 
 def test_dunning_names_the_carried_arrears_and_nothing_before(client, estate):

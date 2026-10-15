@@ -121,6 +121,7 @@ class ReceivableLine:
     total_amount: Decimal
     # set for a claim that is no monthly rent (the balance carried over from a previous system)
     label: Optional[str] = None
+    claim_key: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -151,6 +152,7 @@ class ReceivableSettlementLine:
     outstanding_amount: Decimal
     status: str
     label: Optional[str] = None
+    claim_key: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -178,6 +180,7 @@ class ReceivablePaymentAllocation:
     receivable_period_start: date
     payment_booking_date: date
     allocated_amount: Decimal
+    receivable_claim_key: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -322,9 +325,10 @@ class LeaseEngine:
         receivable_rows: list[dict[str, object]] = [
             {
                 "period_start": row.period_start,
+                "claim_key": row.claim_key,
                 "remaining": _money(row.total_amount),
             }
-            for row in sorted(receivables, key=lambda item: item.due_date)
+            for row in sorted(receivables, key=lambda item: (item.due_date, item.claim_key or item.period_start.isoformat()))
         ]
         payment_rows: list[dict[str, object]] = [
             {
@@ -346,6 +350,7 @@ class LeaseEngine:
                 allocations.append(
                     ReceivablePaymentAllocation(
                         receivable_period_start=target["period_start"],  # type: ignore[arg-type]
+                        receivable_claim_key=target["claim_key"],  # type: ignore[arg-type]
                         payment_booking_date=payment["booking_date"],  # type: ignore[arg-type]
                         allocated_amount=_money(amount),
                     )
@@ -369,18 +374,17 @@ class LeaseEngine:
         *,
         today: date,
     ) -> list[ReceivableSettlementLine]:
-        sorted_receivables = sorted(receivables, key=lambda item: item.due_date)
+        sorted_receivables = sorted(receivables, key=lambda item: (item.due_date, item.claim_key or item.period_start.isoformat()))
         allocation_result = LeaseEngine.allocate_payments_fifo(sorted_receivables, payments)
 
-        paid_by_period: dict[date, Decimal] = {}
+        paid_by_period: dict[tuple[date, str | None], Decimal] = {}
         for item in allocation_result.allocations:
-            paid_by_period[item.receivable_period_start] = _money(
-                paid_by_period.get(item.receivable_period_start, Decimal("0.00")) + item.allocated_amount
-            )
+            key = (item.receivable_period_start, item.receivable_claim_key)
+            paid_by_period[key] = _money(paid_by_period.get(key, Decimal("0.00")) + item.allocated_amount)
 
         lines: list[ReceivableSettlementLine] = []
         for receivable in sorted_receivables:
-            paid = paid_by_period.get(receivable.period_start, Decimal("0.00"))
+            paid = paid_by_period.get((receivable.period_start, receivable.claim_key), Decimal("0.00"))
             outstanding = _money(receivable.total_amount - paid)
             if outstanding <= Decimal("0.00"):
                 status = "paid"
@@ -399,6 +403,7 @@ class LeaseEngine:
                     outstanding_amount=outstanding,
                     status=status,
                     label=receivable.label,
+                    claim_key=receivable.claim_key,
                 )
             )
 
@@ -545,7 +550,7 @@ class LeaseEngine:
         levels = current_level_by_period or {}
         states = [
             ReceivableState(
-                receivable_id=line.period_start.isoformat(),
+                receivable_id=line.claim_key or line.period_start.isoformat(),
                 due_date=line.due_date,
                 amount_due=line.total_amount,
                 amount_paid=line.paid_amount,
