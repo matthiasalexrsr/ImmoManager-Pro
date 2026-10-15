@@ -10,7 +10,8 @@ import './EntityTimeline.css';
 const FIELD_LABELS = {
   title: 'Titel', name: 'Name', full_name: 'Name', label: 'Bezeichnung', status: 'Status', priority: 'Priorität',
   description: 'Beschreibung', notes: 'Notizen', body: 'Notiz', reason: 'Grund', assignee: 'Zuständigkeit',
-  email: 'E-Mail', phone: 'Telefon', address: 'Anschrift', street: 'Straße', city: 'Ort', postal_code: 'Postleitzahl',
+  email: 'E-Mail', phone: 'Telefon', address: 'Anschrift', address_line: 'Straße', street: 'Straße',
+  city: 'Ort', postal_code: 'Postleitzahl', country: 'Land',
   type: 'Art', property_type: 'Immobilienart', document_type: 'Dokumentart', payment_method: 'Zahlungsart',
   frequency: 'Intervall', role: 'Rolle', due_date: 'Fälligkeit', start_date: 'Beginn', end_date: 'Ende',
   booking_date: 'Buchungsdatum', invoice_date: 'Rechnungsdatum', received_on: 'Eingangsdatum', protocol_date: 'Protokolldatum',
