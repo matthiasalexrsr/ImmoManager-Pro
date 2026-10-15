@@ -22,7 +22,7 @@ const FIELD_LABELS = {
   document_id: 'Dokumentkennung', account_id: 'Kontokennung', category_id: 'Kategorienkennung',
 };
 const DATE_FIELDS = new Set(['due_date', 'start_date', 'end_date', 'booking_date', 'invoice_date', 'received_on', 'protocol_date', 'next_inspection', 'actual_move_in_date']);
-const BOOLEAN_FIELDS = new Set(['archived', 'active', 'recoverable', 'is_recoverable', 'sepa_mandate']);
+const BOOLEAN_FIELDS = new Set(['archived', 'active', 'recoverable', 'is_recoverable']);
 const CODE_FIELDS = new Set(['status', 'priority', 'type', 'property_type', 'document_type', 'payment_method', 'frequency', 'role', 'condition']);
 const plainField = field => field?.startsWith('defect:') ? field.split(':').slice(2).join(':') : field;
 const fieldLabel = field => {

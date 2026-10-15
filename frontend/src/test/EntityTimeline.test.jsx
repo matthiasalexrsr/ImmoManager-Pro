@@ -45,7 +45,7 @@ it('preserves zero, false, free text, long multiline and unknown field values', 
   await show([
     change('amount', 0, '0'), change('archived', false, 'True'), change('active', 'False', '1'),
     change('description', null, longText), change('notes', '', '  '), change('title', 'invoice', 'false'),
-    change('custom_field', false, { label: 'Unbekannt', amount: 0 }),
+    change('custom_field', false, { label: 'Unbekannt', amount: 0 }), change('sepa_mandate', 'False', 'True'),
   ]);
   expect(values('Änderung: Betrag')).toEqual(['0', '0']);
   expect(values('Änderung: Archiviert')).toEqual(['Nein', 'Ja']);
@@ -55,6 +55,7 @@ it('preserves zero, false, free text, long multiline and unknown field values', 
   expect(values('Änderung: Notizen')).toEqual(['Nicht angegeben', 'Nicht angegeben']);
   expect(values('Änderung: Titel')).toEqual(['invoice', 'false']);
   expect(values('Änderung: custom_field')).toEqual(['Nein', '{"label":"Unbekannt","amount":0}']);
+  expect(values('Änderung: SEPA-Mandat')).toEqual(['False', 'True']);
 });
 
 it('humanizes older titles without inventing missing values and keeps unknown fields visible', async () => {

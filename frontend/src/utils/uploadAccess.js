@@ -1,4 +1,5 @@
 import { api } from '../api';
+import { workspaceOwner } from './workspaceIdentity';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api/v1';
 let pending = null;
@@ -45,10 +46,12 @@ function joinPreparation(token, signal) {
 export async function prepareUploadAccess(url, { signal } = {}) {
   if (signal?.aborted) throw aborted();
   if (!isOwnUploadUrl(url)) return;
+  const owner = workspaceOwner();
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const token = localStorage.getItem('access_token');
     await joinPreparation(token, signal);
     if (signal?.aborted) throw aborted();
+    if (owner && workspaceOwner() !== owner) throw new Error('Die Anmeldung hat sich geändert. Bitte öffnen Sie die Datei erneut.');
     const current = localStorage.getItem('access_token');
     if (current === token) return;
     if (!current) break;

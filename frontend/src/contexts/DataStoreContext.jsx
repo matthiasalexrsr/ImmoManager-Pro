@@ -59,7 +59,7 @@ function ScopedDataStore({ children, scopeKey }) {
   // Cache: { [entityKey]: { data, loading, error, fetchedAt, endpoint } }
   // Each identity owns a separate cache object. Late reads retain their old
   // object and can never populate the newly authorized viewer’s cache.
-  const cacheScope = useMemo(() => ({ cache: {}, subscribers: {}, pending: {} }), [scopeKey]);
+  const cacheScope = useMemo(() => ({ identity: scopeKey, cache: {}, subscribers: {}, pending: {} }), [scopeKey]);
   // Force re-render trigger
   const [, setVersion] = useState(0);
 
