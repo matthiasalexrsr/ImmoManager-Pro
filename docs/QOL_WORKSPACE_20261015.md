@@ -30,6 +30,10 @@ werden durch Entwurfssicherung, Dublettenprüfung oder Gesprächsnotizen ausgel�
   im Anfragekörper gewähren keinen Zugriff auf fremde Arbeitsstände.
 - Lesen, Wiederaufnehmen und Wiederholen prüfen die aktuellen Objekt- und
   Benutzerrechte. Favoriten und Verlauf gewähren keine zusätzlichen Rechte.
+- Der gemeinsame Browser-Datenzwischenspeicher ist an Benutzer, Rolle und
+  Objektberechtigungen gebunden. Ein Kontowechsel oder eine geänderte
+  Bestandsauswahl verwirft den bisherigen Cache. Verspätete Daten- und
+  Berechtigungsantworten dürfen den neuen Arbeitsbereich nicht überschreiben.
 - Entwürfe speichern keine Passwörter, Zugriffsschlüssel oder Dateiobjekte.
   Noch nicht bestätigte Eingaben besitzen zusätzlich einen benutzergebundenen
   Browserpuffer. Dessen Wiederaufnahme verlangt eine erfolgreiche Serverprüfung.
@@ -100,3 +104,46 @@ Normalisierungsfälle können vollständige, speicherbegrenzt gelesene Kandidate
 benötigen; dafür wird keine feste Abschneidegrenze eingeführt. Diese Änderungen
 beweisen weder eine allgemeine zwanzigjährige Kapazitätsgarantie noch die externe
 WISO-/TEHA-Schreibabnahme.
+
+## Nachweise der Integration am 15. Oktober
+
+Die isolierten Prüfungen verwenden ausschließlich synthetische Daten. Ihre
+Rohprotokolle bleiben unter `artifacts/review-20261015/` lokal erhalten; sie
+werden nicht als Anwendungsdaten oder Zugangsdaten nach GitHub übertragen.
+
+| Prüfung | Beleg und Ergebnis |
+| --- | --- |
+| Fachliche QoL-, Konflikt-, Snapshot- und Migrationsprüfungen | `qol-backend-focused.log`: 114 bestanden. Einschließlich echter Windows-Schlüsseldateisperre. |
+| Formular-, Quellen-, Navigation- und Cache-Regressionen | `qol-final-regressions.log`: 59 bestanden. Weitere abschließende Tests sichern Benutzerwechsel und verspätete Berechtigungsantworten ab. |
+| Zusätzliche Kennzahlquellen | 38 gezielte Prüfungen der Akten-, Dokument-, Zähler-, Interessenten-, Abrechnungs- und Mieterkontoseiten bestanden. |
+| Entwurfswiederaufnahme und an Parteien gebundene Ansichten | Abschließender gemeinsamer Nachlauf: 23 bestanden. Berechtigungs- und Quellvergleichsanforderungen wurden nicht gelockert. |
+| Benutzerwechsel und Sitzungsprüfung | Die vier neuen Cache-/Berechtigungstests sowie die bestehenden Rollen- und Sitzungsprüfungen bestanden. |
+| Mehr als 10.000 Vorgänge | `qol-scale-memory-second.log` und `qol-scale-sqlite.log`: jeweils vollständiger Durchlauf mit 10.005 Aufgaben, genauer Gesamtzahl und verlustfreier Seitennavigation in Arbeitszentrale und Chronik. Native PostgreSQL-Ausführung gehört ebenfalls zum verpflichtenden Prüfpfad. |
+| Tatsächlicher Browser | `browser-release/qol-mxjnmo0y/checks/results.json`: 13/13 bestanden, keine Fehler; Quellen, Absturzpuffer, Serverentwurf, Ansichten, Favoriten, Wiedervorlage, Rückgängig, zwei echte PDFs, explizite Zuordnungsübernahme und Leserrechte. |
+| Mobile Bedienung | Derselbe Browserlauf: 1440, 360 und 320 Pixel, tatsächliche Tastaturfokussierung; in allen drei Ansichten keine überlaufenden Elemente. Screenshots liegen neben dem Ergebnisprotokoll. |
+| Frontendqualität | Abschließendes ESLint und Produktionsbuild erfolgreich, `qol-lint-final.log` und `qol-build-final.log`. |
+
+Die vollständige gemeinsame Freigabe verwendet zusätzlich die GitHub-Pipeline
+des konkreten Commits: Frontendprüfungen, alle Backendtests mit mindestens
+80 Prozent Abdeckung auf Python 3.11/3.12 und Memory/SQL, Abhängigkeitsprüfung,
+Typprüfung, die native PostgreSQL-Prüfung ohne übersprungene Fälle sowie den
+Container-Systemtest. Der Status ist im
+[Prüfverlauf des Entwicklungszweigs](https://github.com/matthiasalexrsr/ImmoManager-Pro/actions/workflows/ci.yml?query=branch%3Acodex%2Fclaude-review-20261013)
+nachvollziehbar. Ein früherer erfolgreicher Einzeltest ersetzt diese Prüfung nicht.
+
+Die erste Gesamtprüfung des Integrationsstands machte drei zusätzliche Lücken
+sichtbar, die anschließend gezielt korrigiert wurden: Der Upgrade-Test erwartete
+noch den früheren Merge-Stand statt des eindeutigen aktuellen Schemas; eine
+Servertabellen-Testansicht hatte keinen Anwenden-Vertrag; die allgemeine
+SQL-Feldhistorie verdoppelte bereits fachlich erfasste Schadenstatusänderungen.
+Die Korrektur erhält fachliche Statusgründe und Autoren, trennt die Statusliste
+von anderen Feldänderungen und prüft den gemeinsamen Rollback von Änderung
+und Historie. Vorhandene historische Nachweise werden nicht heuristisch gelöscht.
+
+Unterbrochene lokale Läufe und der Versuch gegen einen nach Unterbrechung
+beendeten PostgreSQL-Testserver gelten ausdrücklich nicht als bestanden. Lokale
+Timingfehler wurden anhand fokussierter Wiederholungen und der unabhängigen
+Gesamtprüfung untersucht; die betroffenen Oberflächentests warten jetzt auf den
+tatsächlichen Abschluss ihrer simulierten Aktionen und prüfen zusätzlich die
+Fachantwort. Produktgrenzen, Assertions und Zeitbudgets der GitHub-Prüfung
+wurden dafür nicht gelockert.
