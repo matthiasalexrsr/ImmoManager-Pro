@@ -154,8 +154,8 @@ def _keyring_write_lock(path: Path):
         if sys.platform == "win32":
             import msvcrt
 
-            if not os.fstat(descriptor).st_size:
-                os.write(descriptor, b"\0")
+            # Windows byte-range locks may extend beyond EOF. Initializing a
+            # byte before locking races with a worker already holding that byte.
             os.lseek(descriptor, 0, os.SEEK_SET)
             msvcrt.locking(descriptor, msvcrt.LK_LOCK, 1)
         else:
