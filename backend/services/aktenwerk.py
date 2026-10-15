@@ -244,7 +244,9 @@ def select_for_transfer(store, exchange_ids: list[str]) -> tuple[list[Entry], di
                 for booking in store.list_bookings()}
     aliases = {}
     for requested in exchange_ids:
-        canonical = requested if requested in by_id else documents_by_url.get(receipts.get(requested))
+        receipt_url = receipts.get(requested)
+        canonical = requested if requested in by_id else (
+            documents_by_url.get(receipt_url) if receipt_url is not None else None)
         if canonical is not None:
             aliases[requested] = canonical
     selected = set(aliases.values())
